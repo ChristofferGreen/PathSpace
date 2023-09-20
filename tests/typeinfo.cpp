@@ -4,6 +4,32 @@
 
 using namespace PathSpace;
 
+TEST_CASE("Types") {
+    SECTION("Fundamental Types Equality") {
+        REQUIRE(typeid(short)==typeid(short int));
+        REQUIRE(typeid(signed short)==typeid(short int));
+        REQUIRE(typeid(signed short int)==typeid(short int));
+
+        REQUIRE(typeid(signed)==typeid(int));
+        REQUIRE(typeid(signed int)==typeid(int));
+
+        REQUIRE(typeid(unsigned)==typeid(unsigned int));
+
+        REQUIRE(typeid(long)==typeid(long int));
+        REQUIRE(typeid(signed long int)==typeid(long int));
+
+        REQUIRE(typeid(unsigned long)==typeid(unsigned long int));
+
+        REQUIRE(typeid(long long)==typeid(long long int));
+        REQUIRE(typeid(signed long long)==typeid(long long int));
+        REQUIRE(typeid(signed long long int)==typeid(long long int));
+
+        REQUIRE(typeid(unsigned long long)==typeid(unsigned long long int));
+
+        REQUIRE(typeid(unsigned long long)!=typeid(int));
+    }
+}
+
 TEST_CASE("TypeInfo") {
     SECTION("Int") {
         auto const tinfo = TypeInfo::Create<int>();
@@ -13,7 +39,7 @@ TEST_CASE("TypeInfo") {
         REQUIRE(tinfo.arrayElementType==nullptr);
         REQUIRE(tinfo.isTriviallyCopyable==true);
         REQUIRE(tinfo.isInternalDataTriviallyCopyable==false);
-        REQUIRE(tinfo.isFundamental==true);
+        REQUIRE(tinfo.fundamentalType==TypeInfo::FundamentalTypes::Int);
         REQUIRE(tinfo.isPathSpace==false);
         REQUIRE(tinfo.isArray==false);
     }
@@ -26,7 +52,7 @@ TEST_CASE("TypeInfo") {
         REQUIRE(tinfo.arrayElementType==&typeid(std::string::value_type));
         REQUIRE(tinfo.isTriviallyCopyable==false);
         REQUIRE(tinfo.isInternalDataTriviallyCopyable==true);
-        REQUIRE(tinfo.isFundamental==false);
+        REQUIRE(tinfo.fundamentalType==TypeInfo::FundamentalTypes::None);
         REQUIRE(tinfo.isPathSpace==false);
         REQUIRE(tinfo.isArray==false);
     }
@@ -39,7 +65,7 @@ TEST_CASE("TypeInfo") {
         REQUIRE(tinfo.arrayElementType==nullptr);
         REQUIRE(tinfo.isTriviallyCopyable==false);
         REQUIRE(tinfo.isInternalDataTriviallyCopyable==false);
-        REQUIRE(tinfo.isFundamental==false);
+        REQUIRE(tinfo.fundamentalType==TypeInfo::FundamentalTypes::None);
         REQUIRE(tinfo.isPathSpace==true);
         REQUIRE(tinfo.isArray==false);
     }
@@ -52,7 +78,7 @@ TEST_CASE("TypeInfo") {
         REQUIRE(tinfo.arrayElementType==&typeid(int));
         REQUIRE(tinfo.isTriviallyCopyable==false);
         REQUIRE(tinfo.isInternalDataTriviallyCopyable==true);
-        REQUIRE(tinfo.isFundamental==false);
+        REQUIRE(tinfo.fundamentalType==TypeInfo::FundamentalTypes::None);
         REQUIRE(tinfo.isPathSpace==false);
         REQUIRE(tinfo.isArray==false);
     }

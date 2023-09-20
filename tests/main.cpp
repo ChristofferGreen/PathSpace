@@ -6,7 +6,7 @@ int main(int argc, char** argv) {
     //for(auto i = 0; i < argc; ++i)
         //LOG("{}", argv[i]);
     
-    /*auto const ret = Catch::Session().run(argc, argv);
-    FSNG::Forge::DestroySingleton();
-    return ret;*/
+    auto const ret = Catch::Session().run(argc, argv);
+    //FSNG::Forge::DestroySingleton();
+    return ret;
 }
