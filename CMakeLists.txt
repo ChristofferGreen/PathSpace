@@ -1,11 +1,11 @@
-cmake_minimum_required(VERSION 3.14)
-project(PathSpace LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.15)
 
-include(CTest)
+# Define the project name and the language used
+project(PathSpaceTests LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+# Define the C++ standard to use
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-#SET (CMAKE_CXX_FLAGS "-fuse-ld=mold")
-set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "ON")
 
-add_subdirectory("tests")
+add_subdirectory(src)
+add_subdirectory(tests)

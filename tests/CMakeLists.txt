@@ -1,35 +1,40 @@
-add_executable(PathSpaceTest
-  main.cpp
-  catch.cpp
+cmake_minimum_required(VERSION 3.15)
 
-  typeinfo.cpp
+project(PathSpaceTests VERSION 1.0)
+
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
+
+include(FetchContent)
+
+FetchContent_Declare(
+  Catch2
+  GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+  GIT_TAG v3.4.0
 )
 
-target_include_directories(PathSpaceTest 
-  PUBLIC
-    ../src
-    ../include
-    ../ext
+FetchContent_MakeAvailable(Catch2)
+
+enable_testing()
+
+add_executable(PathSpaceTests
+  unit/test_PathRoot.cpp
+  unit/test_SpacePath.cpp
 )
 
-target_include_directories(PathSpaceTest 
-  SYSTEM
-  PUBLIC
+target_link_libraries(PathSpaceTests
+PRIVATE
+  Catch2::Catch2WithMain
+)
+
+target_include_directories(PathSpaceTests
   PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/include
 )
 
-if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-target_compile_options(PathSpaceTest PRIVATE
-  -Wno-deprecated-declarations
-)
-endif()
-
-target_compile_definitions(PathSpaceTest
-  PUBLIC
-    CATCH_AMALGAMATED_CUSTOM_MAIN
-)
-
-target_link_libraries(PathSpaceTest
-  PUBLIC
-)
-
+# If you need to link against other libraries from your project
+# target_link_libraries(PathSpaceTests PRIVATE my_project_lib)
+include(CTest)
+include(Catch)
+catch_discover_tests(PathSpaceTests)
