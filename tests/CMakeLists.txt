@@ -18,8 +18,8 @@ FetchContent_MakeAvailable(Catch2)
 enable_testing()
 
 add_executable(PathSpaceTests
-  unit/test_PathRoot.cpp
   unit/test_SpacePath.cpp
+  unit/test_Capabilities.cpp
 )
 
 target_link_libraries(PathSpaceTests

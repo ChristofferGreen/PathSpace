@@ -1,123 +1,108 @@
 #pragma once
 
-#include <string>
-#include <vector>
-#include <string_view>
-#include <optional>
-#include <sstream>
-#include <iterator>
-#include <algorithm>
-#include <map>
 #include <regex>
-
-#include "Error.hpp"
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <map>
 
 namespace SP {
 
-class SpacePathParser {
-public:
-    static std::optional<Error> validatePath(std::string_view path) {
-        if (path.empty() || path[0] != '/') {
-            return Error{Error::Code::InvalidPath, "Path must start with '/'"};
-        }
-        // Additional validation checks can be added here
-        return std::nullopt;
-    }
-
-    static std::vector<std::string> splitPath(std::string_view path) {
-        std::vector<std::string> components;
-        if (!path.empty() && path[0] == '/') {
-            path.remove_prefix(1); // Remove the leading '/'
-        }
-        std::stringstream ss{std::string(path)};
-        std::string component;
-        while (std::getline(ss, component, '/')) {
-            if (!component.empty()) {
-                components.push_back(component);
-            }
-        }
-        return components;
-    }
-};
-
 class SpacePath {
-    std::vector<std::string> pathComponents;
-
 public:
-    SpacePath() {}
-    explicit SpacePath(std::string_view path) {
-        if (auto error = SpacePathParser::validatePath(path); error.has_value()) {
-            throw std::invalid_argument(error->message.value_or("Invalid path"));
-        }
-        pathComponents = SpacePathParser::splitPath(path);
+    // Empty constructor
+    SpacePath() = default;
+
+    SpacePath(std::string_view path) : path_(path), pattern_string_(convertToRegex(path)), pattern_(pattern_string_) {}
+
+    SpacePath(char const * path)
+        : SpacePath(std::string_view(path)) {}
+
+    // Method to match another SpacePath with wildcards
+    bool matches(const SpacePath& other) const {
+        if (pattern_string_.empty()) return false; // No pattern compiled
+        return std::regex_match(other.path_, pattern_);
     }
 
-    const std::vector<std::string>& getPathComponents() const {
-        return this->pathComponents;
-    }
-
+    // Method to get the string representation of the path
     std::string toString() const {
-        std::string fullPath = "/";
-        for (const auto& comp : pathComponents) {
-            fullPath += comp + "/";
-        }
-        fullPath.pop_back(); // Remove the trailing '/'
-        return fullPath;
+        return path_;
     }
 
+    // Comparison operator for std::map
     bool operator<(const SpacePath& other) const {
-        return std::lexicographical_compare(
-            this->pathComponents.begin(), this->pathComponents.end(),
-            other.pathComponents.begin(), other.pathComponents.end());
+        return path_ < other.path_;
     }
 
-    auto matches(const SpacePath& other) const -> bool {
-        // If the number of components is different, they do not match
-        if (pathComponents.size() != other.pathComponents.size())
-            return false;
+    // Equality operator for std::unordered_map
+    bool operator==(const SpacePath& other) const {
+        if (pattern_string_.empty()) return path_ == other.path_;  // Direct comparison if no pattern
+        return std::regex_match(other.path_, pattern_);
+    }
 
-        // Check each component for a match using regex
-        for (size_t i = 0; i < pathComponents.size(); ++i) {
-            std::regex componentRegex(wildcardToRegex(pathComponents[i]));
-            if (!std::regex_match(other.pathComponents[i], componentRegex)) {
-                return false;
+    static bool bidirectionalMatch(const SpacePath& a, const SpacePath& b) {
+        return std::regex_match(a.path_, b.pattern_) || std::regex_match(b.path_, a.pattern_);
+    }
+
+    // Static function to find a matching path with wildcards in a map
+    static bool containsWithWildcard(const auto& map, const SpacePath& searchPath) {
+        for (const auto& [key, value] : map) {
+            if (bidirectionalMatch(key, searchPath)) {
+                return true;
             }
         }
-        return true;
+        return false;
+    }
+
+    template<typename MapType>
+    static auto findWithWildcard(MapType& map, const SpacePath& searchPath) -> typename MapType::const_iterator {
+        for (auto it = map.begin(); it != map.end(); ++it) {
+            if (bidirectionalMatch(it->first, searchPath)) {
+                return it;
+            }
+        }
+        return map.end();
     }
 
 private:
-// Converts a path component with wildcards to a regex
-    std::string wildcardToRegex(const std::string& wildcard) const {
-        // Escape all regex characters except for '*'
-        std::string regexStr;
-        for (char c : wildcard) {
-            switch (c) {
-                case '*':
-                    regexStr += ".*"; // '*' is replaced with '.*' (regex wildcard)
-                    break;
-                case '.':
-                case '\\':
-                case '+':
-                case '?':
-                case '{':
-                case '}':
-                case '(':
-                case ')':
-                case '[':
-                case ']':
-                case '^':
-                case '$':
-                case '|':
-                    regexStr += '\\'; // Fallthrough intended
-                default:
-                    regexStr += c; // Regular characters remain the same
-                    break;
+    std::string path_;
+    std::string pattern_string_;
+    std::regex pattern_;
+
+    // Helper function to convert wildcards to regex pattern
+    static std::string convertToRegex(std::string_view path) {
+        std::string regex_pattern;
+        regex_pattern.reserve(path.length() * 2); // Reserve to avoid frequent allocations
+
+        for (const auto& ch : path) {
+            switch (ch) {
+                case '*': regex_pattern += ".*"; break;
+                case '?': regex_pattern += '.'; break;
+                case '/': regex_pattern += "\\/"; break;
+                default: regex_pattern += ch;
             }
         }
-        return regexStr;
+        
+        // Replace "**" with ".*" which crosses directories
+        std::string special_star = "\\*\\*";
+        regex_pattern = std::regex_replace(regex_pattern, std::regex(special_star), ".*");
+
+        return regex_pattern;
     }
-    // Other methods like removeLastComponent(), etc., can be added as needed.
 };
 
-}
+} // namespace SP
+
+// Custom hash function for unordered_map
+struct SpacePathHash {
+    std::size_t operator()(const SP::SpacePath& sp) const {
+        return std::hash<std::string>()(sp.toString());
+    }
+};
+
+// Custom equality function for unordered_map
+struct SpacePathEqual {
+    bool operator()(const SP::SpacePath& lhs, const SP::SpacePath& rhs) const {
+        return lhs == rhs;
+    }
+};

@@ -27,20 +27,18 @@ private:
     std::map<SpacePath, std::set<Type>> capabilities;
 
 public:
-    void addCapability(const SpacePath& path, Type type) {
+    void addCapability(SpacePath const &path, Type const type) {
         capabilities[path].insert(type);
     }
 
-    // Removes a capability from a specific path
-    bool hasCapability(const SpacePath& path, Type capability) const {
-        auto it = capabilities.find(path);
+    auto hasCapability(SpacePath const &path, Type const capability) const -> bool {
+        const auto it = SpacePath::findWithWildcard(capabilities, path);
         if (it != capabilities.end()) {
-            return it->second.find(capability) != it->second.end();
+            return it->second.contains(capability);
         }
         return false;
     }
 
-    // Removes a capability from the specified path
     bool removeCapability(const SpacePath& path, Type capability) {
         auto it = capabilities.find(path);
         if (it != capabilities.end()) {
