@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <regex>
 #include <string>
 #include <string_view>
@@ -8,40 +9,55 @@
 
 namespace SP {
 
+/*
+Path Specification
+A path is very similar to a typical linux path and can contain glob patterns such as for example a* to match against anything starting with a.
+Glob patterns supported:
+    * Match one or more characters
+    ? Match one character
+    ** Match one or more characters, but can cross directory separators
+If the filename contains characters that would be parsed as a glob patterns the path should be encased in '' characters like so: 'examples*.txt'
+*/
+
 class SpacePath {
 public:
     // Empty constructor
     SpacePath() = default;
 
-    SpacePath(std::string_view path) : path_(path), pattern_string_(convertToRegex(path)), pattern_(pattern_string_) {}
+    SpacePath(std::string_view path) : path(stripEscaped(path)), pattern(convertToRegex(path)) {}
 
     SpacePath(char const * path)
         : SpacePath(std::string_view(path)) {}
 
-    // Method to match another SpacePath with wildcards
     bool matches(const SpacePath& other) const {
-        if (pattern_string_.empty()) return false; // No pattern compiled
-        return std::regex_match(other.path_, pattern_);
+        if (!this->pattern) return this->path==other.path; // No pattern compiled
+        return std::regex_match(other.path, *pattern);
     }
 
     // Method to get the string representation of the path
     std::string toString() const {
-        return path_;
+        return this->path;
     }
 
     // Comparison operator for std::map
     bool operator<(const SpacePath& other) const {
-        return path_ < other.path_;
+        return this->path < other.path;
     }
 
     // Equality operator for std::unordered_map
     bool operator==(const SpacePath& other) const {
-        if (pattern_string_.empty()) return path_ == other.path_;  // Direct comparison if no pattern
-        return std::regex_match(other.path_, pattern_);
+        if (!this->pattern) return path == other.path;  // Direct comparison if no pattern
+        return std::regex_match(other.path, *pattern);
     }
 
     static bool bidirectionalMatch(const SpacePath& a, const SpacePath& b) {
-        return std::regex_match(a.path_, b.pattern_) || std::regex_match(b.path_, a.pattern_);
+        if(b.pattern && std::regex_match(a.path, *b.pattern))
+            return true;
+        if(a.pattern && std::regex_match(b.path, *a.pattern))
+            return true;
+        if (!b.pattern && !a.pattern)
+            return a.path == b.path;  // Direct comparison if no pattern
+        return false;
     }
 
     // Static function to find a matching path with wildcards in a map
@@ -65,20 +81,50 @@ public:
     }
 
 private:
-    std::string path_;
-    std::string pattern_string_;
-    std::regex pattern_;
+    std::string path;
+    std::optional<std::regex> pattern;
 
-    // Helper function to convert wildcards to regex pattern
-    static std::string convertToRegex(std::string_view path) {
+    static std::string stripEscaped(std::string_view path) {
+        if(!path.contains('\\'))
+            return std::string(path);
+        std::string ret;
+        bool prevWasEscape=false;
+        for (const auto ch : path) {
+            if(prevWasEscape && ch != '*' && ch != '?')
+                ret += '\\';
+            if(ch != '\\')
+                ret += ch;
+            prevWasEscape = (ch == '\\');
+        }
+        ret.reserve(path.length() * 2);
+        return ret;
+    }
+
+    // Helper function to convert glob patterns to regex pattern
+    static std::optional<std::regex> convertToRegex(std::string_view path) {
+        bool foundGlobPattern = false;
+        bool prevWasEscape = false;
+        for (const auto ch : path) {
+            if(ch == '\\') {
+                prevWasEscape = true;
+            }
+            if(ch == '*' || ch == '?') {
+                if(!prevWasEscape) {
+                    foundGlobPattern = true;
+                    break;
+                }
+                prevWasEscape = false;
+            }
+        }
+        if(!foundGlobPattern)
+            return std::nullopt;
         std::string regex_pattern;
         regex_pattern.reserve(path.length() * 2); // Reserve to avoid frequent allocations
 
-        for (const auto& ch : path) {
+        for (const auto ch : path) {
             switch (ch) {
                 case '*': regex_pattern += ".*"; break;
                 case '?': regex_pattern += '.'; break;
-                case '/': regex_pattern += "\\/"; break;
                 default: regex_pattern += ch;
             }
         }
@@ -87,7 +133,7 @@ private:
         std::string special_star = "\\*\\*";
         regex_pattern = std::regex_replace(regex_pattern, std::regex(special_star), ".*");
 
-        return regex_pattern;
+        return std::regex(regex_pattern);
     }
 };
 

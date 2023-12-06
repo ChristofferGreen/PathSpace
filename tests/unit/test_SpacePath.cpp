@@ -71,6 +71,15 @@ TEST_CASE("SpacePath Wildcard", "[SpacePath]") {
         SpacePath sp2("/a/b/cxd");
         REQUIRE(sp1.matches(sp2));
     }
+
+   SECTION("Filename Containing Wildcard") {
+        SpacePath sp1("/a/test*");
+        SpacePath sp2("/a/testbaab");
+        SpacePath sp3("/a/test\\*");
+        REQUIRE(sp1.matches(sp2));
+        REQUIRE(!sp2.matches(sp3));
+        REQUIRE(sp3.toString()=="/a/test*");
+    }
 }
 
 TEST_CASE("SpacePath Wildcard Maps", "[SpacePath]") {

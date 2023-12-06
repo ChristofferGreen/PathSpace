@@ -15,8 +15,6 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(Catch2)
 
-enable_testing()
-
 add_executable(PathSpaceTests
   unit/test_SpacePath.cpp
   unit/test_Capabilities.cpp
@@ -33,8 +31,7 @@ target_include_directories(PathSpaceTests
     ${CMAKE_SOURCE_DIR}/include
 )
 
-# If you need to link against other libraries from your project
-# target_link_libraries(PathSpaceTests PRIVATE my_project_lib)
+list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 include(CTest)
 include(Catch)
 catch_discover_tests(PathSpaceTests)
