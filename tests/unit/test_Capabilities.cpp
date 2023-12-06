@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <pathspace/core/Capabilities.hpp>
-#include <pathspace/core/SpacePath.hpp>
+#include <pathspace/core/Path.hpp>
 
 using namespace SP;
 
@@ -30,9 +30,9 @@ TEST_CASE("Capabilities", "[Capabilities]") {
     }
 
     SECTION("Checking a capability with both action and path as wildcards") {
-        /*caps.addCapability("*", SpacePath("*"));
+        /*caps.addCapability("*", Path("*"));
         REQUIRE(caps.hasCapability("/any/path", Capabilities::Type::WRITE));
-        REQUIRE(caps.hasCapability("write", SpacePath("/different/path")));*/
+        REQUIRE(caps.hasCapability("write", Path("/different/path")));*/
     }
 }
 

@@ -16,7 +16,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(Catch2)
 
 add_executable(PathSpaceTests
-  unit/test_SpacePath.cpp
+  unit/test_Path.cpp
   unit/test_PathSpace.cpp
   unit/test_Capabilities.cpp
 )

@@ -19,17 +19,17 @@ Glob patterns supported:
 If the filename contains characters that would be parsed as a glob patterns the path should be encased in '' characters like so: 'examples*.txt'
 */
 
-class SpacePath {
+class Path {
 public:
     // Empty constructor
-    SpacePath() = default;
+    Path() = default;
 
-    SpacePath(std::string_view path) : path(stripEscaped(path)), pattern(convertToRegex(path)) {}
+    Path(std::string_view path) : path(stripEscaped(path)), pattern(convertToRegex(path)) {}
 
-    SpacePath(char const * path)
-        : SpacePath(std::string_view(path)) {}
+    Path(char const * path)
+        : Path(std::string_view(path)) {}
 
-    bool matches(const SpacePath& other) const {
+    bool matches(const Path& other) const {
         if (!this->pattern) return this->path==other.path; // No pattern compiled
         return std::regex_match(other.path, *pattern);
     }
@@ -40,17 +40,17 @@ public:
     }
 
     // Comparison operator for std::map
-    bool operator<(const SpacePath& other) const {
+    bool operator<(const Path& other) const {
         return this->path < other.path;
     }
 
     // Equality operator for std::unordered_map
-    bool operator==(const SpacePath& other) const {
+    bool operator==(const Path& other) const {
         if (!this->pattern) return path == other.path;  // Direct comparison if no pattern
         return std::regex_match(other.path, *pattern);
     }
 
-    static bool bidirectionalMatch(const SpacePath& a, const SpacePath& b) {
+    static bool bidirectionalMatch(const Path& a, const Path& b) {
         if(b.pattern && std::regex_match(a.path, *b.pattern))
             return true;
         if(a.pattern && std::regex_match(b.path, *a.pattern))
@@ -61,7 +61,7 @@ public:
     }
 
     // Static function to find a matching path with wildcards in a map
-    static bool containsWithWildcard(const auto& map, const SpacePath& searchPath) {
+    static bool containsWithWildcard(const auto& map, const Path& searchPath) {
         for (const auto& [key, value] : map) {
             if (bidirectionalMatch(key, searchPath)) {
                 return true;
@@ -71,7 +71,7 @@ public:
     }
 
     template<typename MapType>
-    static auto findWithWildcard(MapType& map, const SpacePath& searchPath) -> typename MapType::const_iterator {
+    static auto findWithWildcard(MapType& map, const Path& searchPath) -> typename MapType::const_iterator {
         for (auto it = map.begin(); it != map.end(); ++it) {
             if (bidirectionalMatch(it->first, searchPath)) {
                 return it;
@@ -140,15 +140,15 @@ private:
 } // namespace SP
 
 // Custom hash function for unordered_map
-struct SpacePathHash {
-    std::size_t operator()(const SP::SpacePath& sp) const {
+struct PathHash {
+    std::size_t operator()(const SP::Path& sp) const {
         return std::hash<std::string>()(sp.toString());
     }
 };
 
 // Custom equality function for unordered_map
-struct SpacePathEqual {
-    bool operator()(const SP::SpacePath& lhs, const SP::SpacePath& rhs) const {
+struct PathEqual {
+    bool operator()(const SP::Path& lhs, const SP::Path& rhs) const {
         return lhs == rhs;
     }
 };
