@@ -12,7 +12,6 @@ FetchContent_Declare(
   GIT_REPOSITORY https://github.com/catchorg/Catch2.git
   GIT_TAG v3.4.0
 )
-
 FetchContent_MakeAvailable(Catch2)
 
 add_executable(PathSpaceTests
@@ -24,12 +23,7 @@ add_executable(PathSpaceTests
 target_link_libraries(PathSpaceTests
 PRIVATE
   Catch2::Catch2WithMain
-)
-
-target_include_directories(PathSpaceTests
-  PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/include
+  PathSpace
 )
 
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)

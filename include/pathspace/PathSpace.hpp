@@ -1,5 +1,14 @@
 #pragma once
 
+#include "core/Error.hpp"
+#include "core/Capabilities.hpp"
+#include "core/TimeToLive.hpp"
+#include "core/PathNode.hpp"
+#include "core/Path.hpp"
+#include "core/ExecutionOptions.hpp"
+
+#include <parallel_hashmap/phmap.h>
+
 #include <expected>
 #include <string>
 #include <unordered_map>
@@ -7,13 +16,6 @@
 #include <functional>
 #include <chrono>
 #include <memory>
-
-#include "core/Error.hpp"
-#include "core/Capabilities.hpp"
-#include "core/TimeToLive.hpp"
-#include "core/PathNode.hpp"
-#include "core/Path.hpp"
-#include "core/ExecutionOptions.hpp"
 
 namespace SP {
 
@@ -23,7 +25,7 @@ using Expected = std::expected<T, Error>;
 class PathSpace {
 private:
     PathNode root;
-    std::unordered_map<std::string, std::function<Expected<void>(const Path&)>> subscribers;
+    phmap::parallel_flat_hash_map<std::string, std::function<Expected<void>(const Path&)>> subscribers;
 
 public:
     template<typename T>
