@@ -30,10 +30,11 @@ public:
     auto insert(const SpacePath& path,
                 const T& data,
                 const Capabilities& capabilities = Capabilities::All(),
-                const std::optional<TimeToLive>& ttl = std::nullopt) -> std::optional<Error> {
+                const std::optional<TimeToLive>& ttl = std::nullopt) -> Expected<int> {
         if (!capabilities.hasCapability(path, Capabilities::Type::READ)) {
-            return Error{Error::Code::CapabilityWriteMissing, "Write capability check failed"};
+            return std::unexpected({Error::Code::CapabilityWriteMissing, "Write capability check failed"});
         }
+        int nbrInserted = 0;
 
         // Navigate to the correct node in the path hierarchy, or create it if it doesn't exist.
         /*auto node = navigateToNode(path); // Pseudo-function to demonstrate the idea
@@ -50,7 +51,7 @@ public:
             // setupTTL(node, *ttl); // Pseudo-function to demonstrate setting up the TTL for the node
         }*/
 
-        return std::nullopt; // Return no error on success
+        return nbrInserted; // Return no error on success
     }
 
     // Read data from the PathSpace
