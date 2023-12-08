@@ -32,6 +32,18 @@ TEST_CASE("GlobPath", "[GlobPath]") {
             ++i;
         }
     }
+
+    SECTION("Path Iterator End") {
+        GlobPath path{"/a/b/c"};
+        auto iter = path.begin();
+        REQUIRE(!iter.isAtEnd());
+        ++iter;
+        REQUIRE(!iter.isAtEnd());
+        ++iter;
+        REQUIRE(!iter.isAtEnd());
+        ++iter;
+        REQUIRE(iter.isAtEnd());
+    }
 }
 
 /*

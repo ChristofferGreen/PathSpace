@@ -16,6 +16,8 @@ struct GlobPath {
         Iterator& operator++();
         auto operator==(const Iterator& other) const -> bool;
         auto operator*() const -> GlobName const;
+        
+        auto isAtEnd() const -> bool;
 
     private:
         std::string_view::const_iterator current;

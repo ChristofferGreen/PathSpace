@@ -19,6 +19,10 @@ auto GlobPath::Iterator::operator==(const Iterator& other) const -> bool{
     return current == other.current;
 }
 
+auto GlobPath::Iterator::isAtEnd() const -> bool {
+    return this->current==this->end;
+}
+
 auto GlobPath::begin() const -> GlobPath::Iterator {
     auto start = stringv.begin();
     ++start; // Skip initial '/'
