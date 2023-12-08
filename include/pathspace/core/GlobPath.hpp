@@ -11,17 +11,10 @@ namespace SP {
 struct GlobPath {
     class Iterator {
     public:
-        using iterator_category = std::forward_iterator_tag;
-        using value_type = GlobName;
-        using difference_type = std::ptrdiff_t;
-        using pointer = const value_type*;
-        using reference = const value_type&;
-
         Iterator(std::string_view::const_iterator iter, std::string_view::const_iterator endIter);
 
         Iterator& operator++();
         auto operator==(const Iterator& other) const -> bool;
-        auto operator!=(const Iterator& other) const -> bool;
         auto operator*() const -> GlobName const;
 
     private:
@@ -38,7 +31,6 @@ struct GlobPath {
     auto toString() const -> std::string;
 private:
     std::string_view stringv;
-    std::string_view::const_iterator currentNameIterator;
 };
 
 }
