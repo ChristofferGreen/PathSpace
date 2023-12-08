@@ -1,6 +1,44 @@
 #include "pathspace/core/GlobPath.hpp"
 
 namespace SP {
+    
+GlobPath::Iterator::Iterator(std::string_view::const_iterator iter, std::string_view::const_iterator endIter)
+    : current(iter), end(endIter) {}
+
+GlobPath::Iterator& GlobPath::Iterator::operator++() {
+    while (current != end && *current != '/') {
+        ++current;
+    }
+    if (current != end) {
+        ++current;
+    }
+    return *this;
+}
+
+auto GlobPath::Iterator::operator==(const Iterator& other) const -> bool{
+    return current == other.current;
+}
+
+auto GlobPath::Iterator::operator!=(const Iterator& other) const -> bool{
+    return !(*this == other);
+}
+
+auto GlobPath::begin() const -> GlobPath::Iterator {
+    return Iterator(currentNameIterator, stringv.end());
+}
+
+auto GlobPath::end() const -> GlobPath::Iterator {
+    return Iterator(stringv.end(), stringv.end());
+}
+
+auto GlobPath::Iterator::operator*() const -> GlobName const {
+    auto currentCopy = current;
+    auto const start = currentCopy;
+    while (currentCopy != end && *currentCopy != '/') {
+        ++currentCopy;
+    }
+    return GlobName{std::string_view(start, currentCopy - start)};
+}
 
 GlobPath::GlobPath(std::string_view const &stringv) : stringv(stringv) {
     if(stringv.size()>=1) {
@@ -21,21 +59,4 @@ auto GlobPath::toString() const -> std::string {
     return std::string(this->stringv);
 }
 
-auto GlobPath::currentName() const -> std::optional<GlobName> {
-    if(this->currentNameIterator == this->stringv.end())
-        return std::nullopt;
-    auto iter = this->currentNameIterator;
-    while(iter != this->stringv.end() && *iter != '/')
-        ++iter;
-    return std::string_view(this->currentNameIterator, iter);
 }
-
-auto GlobPath::moveToNextName() -> void {
-    ++this->currentNameIterator;
-    while(this->currentNameIterator != this->stringv.end() && *this->currentNameIterator != '/')
-        ++this->currentNameIterator;
-    if(this->currentNameIterator != this->stringv.end())
-        ++this->currentNameIterator;
-}
-
-} // namespace SP
