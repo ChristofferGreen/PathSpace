@@ -1,8 +1,6 @@
 #pragma once
-
 #include "pathspace/core/GlobName.hpp"
 
-#include <optional>
 #include <string_view>
 
 namespace SP {
