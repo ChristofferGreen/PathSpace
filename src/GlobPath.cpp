@@ -43,16 +43,20 @@ auto GlobPath::Iterator::operator*() const -> GlobName const {
 
 GlobPath::GlobPath(std::string_view const &stringv) : stringv(stringv) {}
 
+auto GlobPath::operator==(GlobPath const &other) const -> bool {
+    return this->stringv==other.stringv;
+}
+
+auto GlobPath::operator==(char const * const other) const -> bool {
+    return this->stringv==other;
+}
+
 auto GlobPath::validPath() const -> bool {
     if(this->stringv.size()==0)
         return false;
     if(this->stringv[0] != '/')
         return false;
     return true;
-}
-
-auto GlobPath::toString() const -> std::string {
-    return std::string(this->stringv);
 }
 
 }

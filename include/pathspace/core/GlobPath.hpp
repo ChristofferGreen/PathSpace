@@ -3,7 +3,6 @@
 #include "pathspace/core/GlobName.hpp"
 
 #include <optional>
-#include <string>
 #include <string_view>
 
 namespace SP {
@@ -14,7 +13,7 @@ struct GlobPath {
         Iterator(std::string_view::const_iterator iter, std::string_view::const_iterator endIter);
 
         Iterator& operator++();
-        auto operator==(const Iterator& other) const -> bool;
+        auto operator==(Iterator const &other) const -> bool;
         auto operator*() const -> GlobName const;
         
         auto isAtEnd() const -> bool;
@@ -28,9 +27,10 @@ struct GlobPath {
     auto end() const -> Iterator;
 
     GlobPath(std::string_view const &stringv);
+    auto operator==(GlobPath const &other) const -> bool;
+    auto operator==(char const * const other) const -> bool;
 
     auto validPath() const -> bool;
-    auto toString() const -> std::string;
 private:
     std::string_view stringv;
 };

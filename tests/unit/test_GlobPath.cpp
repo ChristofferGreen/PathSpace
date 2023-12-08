@@ -6,7 +6,7 @@ using namespace SP;
 TEST_CASE("GlobPath", "[GlobPath]") {
     SECTION("Standard Path") {
         GlobPath path{"/a/b/c"};
-        REQUIRE(path.toString()=="/a/b/c");
+        REQUIRE(path=="/a/b/c");
     }
 
     SECTION("Path Foreach") {
