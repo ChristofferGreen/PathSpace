@@ -90,6 +90,10 @@ TEST_CASE("GlobPath") {
         GlobPath sp1("/a/**");
         GlobPath sp2("/a/b/c");
         REQUIRE(sp1 == sp2);
+
+        GlobPath sp3("/a/**/c");
+        GlobPath sp4("/a/b/d/c");
+        REQUIRE(sp3 == sp4);
     }
 
     SECTION("Single Wildcard No Match") {
@@ -103,33 +107,25 @@ TEST_CASE("GlobPath") {
         GlobPath sp2("/a/d");
         REQUIRE(sp1 == sp2);
     }
+
+    SECTION("Glob Match with Special Characters") {
+        GlobPath sp1("/a/*/c?d");
+        GlobPath sp2("/a/b/cxd");
+        REQUIRE(sp1 == sp2);
+        GlobPath sp3("/a/b/c");
+        REQUIRE(sp1 != sp3);
+    }
+
+   //SECTION("Name Containing Wildcard") {
+   //     GlobPath sp1("/a/test*");
+   //     GlobPath sp2("/a/testbaab");
+   //     GlobPath sp3("/a/test*");
+   //     REQUIRE(sp1 == sp2);
+   //     REQUIRE(sp2 != sp3);
+   //     REQUIRE(sp3 == "/a/test*");
+   //}
 }
 
-//
-
-//
-//    SECTION("Multiple Wildcard Match") {
-//        Path sp1("/a/**/c");
-//        Path sp2("/a/b/d/c");
-//        REQUIRE(sp1.matches(sp2));
-//    }
-//
-//    SECTION("Wildcard Match with Special Characters") {
-//        Path sp1("/a/*/c?d");
-//        Path sp2("/a/b/cxd");
-//        REQUIRE(sp1.matches(sp2));
-//    }
-//
-//   SECTION("Filename Containing Wildcard") {
-//        Path sp1("/a/test*");
-//        Path sp2("/a/testbaab");
-//        Path sp3("/a/test\\*");
-//        REQUIRE(sp1.matches(sp2));
-//        REQUIRE(!sp2.matches(sp3));
-//        REQUIRE(sp3.toString()=="/a/test*");
-//    }
-//}
-//
 //TEST_CASE("Path Wildcard Maps", "[Path]") {
 //    std::map<Path, int> map;
 //    map[Path("/a/b/c")] = 1;

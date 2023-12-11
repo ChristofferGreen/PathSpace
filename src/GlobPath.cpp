@@ -6,17 +6,20 @@ GlobPath::Iterator::Iterator(std::string_view::const_iterator iter, std::string_
     : current(iter), end(endIter) {}
 
 GlobPath::Iterator& GlobPath::Iterator::operator++() {
-    while (current != end && *current != '/') {
-        ++current;
+    while (this->current != this->end && *current != '/') {
+        ++this->current;
     }
-    if (current != end) {
-        ++current;
-    }
+    this->skipSlashes();
     return *this;
 }
 
+auto GlobPath::Iterator::skipSlashes() -> void {
+    while (this->current != this->end && *current == '/')
+        ++this->current;
+}
+
 auto GlobPath::Iterator::operator==(const Iterator& other) const -> bool{
-    return current == other.current;
+    return this->current == other.current;
 }
 
 auto GlobPath::Iterator::isAtEnd() const -> bool {
@@ -24,7 +27,7 @@ auto GlobPath::Iterator::isAtEnd() const -> bool {
 }
 
 auto GlobPath::begin() const -> GlobPath::Iterator {
-    auto start = stringv.begin();
+    auto start = this->stringv.begin();
     ++start; // Skip initial '/'
     return Iterator(start, stringv.end());
 }

@@ -15,8 +15,8 @@ struct GlobPath {
         auto operator->() const -> GlobName;
         
         auto isAtEnd() const -> bool;
-
     private:
+        auto skipSlashes() -> void;
         std::string_view::const_iterator current;
         std::string_view::const_iterator end;
     };
