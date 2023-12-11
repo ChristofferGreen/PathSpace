@@ -48,9 +48,7 @@ auto Path::Iterator::operator->() const -> std::string_view {
     return **this;
 }
 
-Path::Path(char const * const ptr) : string(ptr) {}
-
-Path::Path(std::string_view const &stringv) : string(stringv) {}
+Path::Path(std::string const &str) : string(str) {}
 
 auto Path::operator==(Path const &other) const -> bool {
     return this->string==other.string;

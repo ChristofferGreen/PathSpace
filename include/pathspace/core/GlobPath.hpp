@@ -5,6 +5,7 @@
 
 namespace SP {
 
+struct Path;
 struct GlobPath {
     struct Iterator {
         Iterator(std::string_view::const_iterator iter, std::string_view::const_iterator endIter);
@@ -27,9 +28,10 @@ struct GlobPath {
     GlobPath() = default;
     GlobPath(char const * const ptr);
     GlobPath(std::string_view const &stringv);
-    auto operator<(GlobPath const &other) const -> bool;
+    auto operator<=>(GlobPath const &other) const -> std::strong_ordering;
     auto operator==(GlobPath const &other) const -> bool;
-    auto operator==(char const * const other) const -> bool;
+    auto operator==(Path const &other) const -> bool;
+    auto operator<=>(char const * const other) const -> std::strong_ordering;
 
     auto validPath() const -> bool;
 private:

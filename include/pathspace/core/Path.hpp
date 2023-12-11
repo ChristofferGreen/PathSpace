@@ -24,8 +24,7 @@ struct Path {
     auto end() const -> Iterator;
 
     Path() = default;
-    Path(char const * const ptr);
-    Path(std::string_view const &stringv);
+    Path(std::string const &str);
     auto operator<(Path const &other) const -> bool;
     auto operator==(Path const &other) const -> bool;
     auto operator==(char const * const other) const -> bool;

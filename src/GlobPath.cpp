@@ -1,4 +1,5 @@
 #include "pathspace/core/GlobPath.hpp"
+#include "pathspace/core/Path.hpp"
 
 namespace SP {
     
@@ -28,7 +29,8 @@ auto GlobPath::Iterator::isAtEnd() const -> bool {
 
 auto GlobPath::begin() const -> GlobPath::Iterator {
     auto start = this->stringv.begin();
-    ++start; // Skip initial '/'
+    if(this->stringv.size()>0)
+        ++start; // Skip initial '/'
     return Iterator(start, stringv.end());
 }
 
@@ -39,7 +41,7 @@ auto GlobPath::end() const -> GlobPath::Iterator {
 auto GlobPath::Iterator::operator*() const -> GlobName {
     auto currentCopy = current;
     auto const start = currentCopy;
-    while (currentCopy != end && *currentCopy != '/')
+    while (currentCopy != this->end && *currentCopy != '/')
         ++currentCopy;
     return GlobName{std::string_view(start, currentCopy)};
 }
@@ -51,6 +53,23 @@ auto GlobPath::Iterator::operator->() const -> GlobName {
 GlobPath::GlobPath(char const * const ptr) : stringv(ptr) {}
 
 GlobPath::GlobPath(std::string_view const &stringv) : stringv(stringv) {}
+
+auto GlobPath::operator==(Path const &other) const -> bool {
+    auto iterA = this->begin();
+    auto iterB = other.begin();
+    while(iterA != this->end() && iterB != other.end()) {
+        auto const match = iterA->isMatch(*iterB);
+        if(std::get<1>(match))
+            return true;
+        if(!std::get<0>(match))
+            return false;
+        ++iterA;
+        ++iterB;
+    }
+    if(iterA != this->end() || iterB != other.end())
+        return false;
+    return true;
+}
 
 auto GlobPath::operator==(GlobPath const &other) const -> bool {
     auto iterA = this->begin();
@@ -69,12 +88,12 @@ auto GlobPath::operator==(GlobPath const &other) const -> bool {
     return true;
 }
 
-auto GlobPath::operator<(GlobPath const &other) const -> bool {
-    return this->stringv<other.stringv;
+auto GlobPath::operator<=>(GlobPath const &other) const -> std::strong_ordering {
+    return this->stringv<=>other.stringv;
 }
 
-auto GlobPath::operator==(char const * const other) const -> bool {
-    return this->stringv==other;
+auto GlobPath::operator<=>(char const * const other) const -> std::strong_ordering {
+    return this->stringv<=>other;
 }
 
 auto GlobPath::validPath() const -> bool {

@@ -13,6 +13,7 @@ struct GlobName {
 
     auto isGlob() const -> bool;
     auto isMatch(GlobName const &other) const -> std::tuple<bool /*match*/, bool /*supermatch*/>;
+    auto isMatch(std::string_view const &other) const -> std::tuple<bool /*match*/, bool /*supermatch*/>;
 private:
     std::string_view stringv;
 };

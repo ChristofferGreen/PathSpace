@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <pathspace/core/GlobPath.hpp>
+#include <pathspace/core/Path.hpp>
 
 using namespace SP;
 
@@ -116,14 +117,16 @@ TEST_CASE("GlobPath") {
         REQUIRE(sp1 != sp3);
     }
 
-   //SECTION("Name Containing Wildcard") {
-   //     GlobPath sp1("/a/test*");
-   //     GlobPath sp2("/a/testbaab");
-   //     GlobPath sp3("/a/test*");
-   //     REQUIRE(sp1 == sp2);
-   //     REQUIRE(sp2 != sp3);
-   //     REQUIRE(sp3 == "/a/test*");
-   //}
+   SECTION("Name Containing Wildcard") {
+        GlobPath sp1("/a/test*");
+        GlobPath sp2("/a/testbaab");
+        Path sp3("/a/test*");
+        REQUIRE(sp1 == sp2);
+        REQUIRE(sp2 != sp3);
+        REQUIRE(sp3 == "/a/test*");
+        REQUIRE(sp3 == sp1);
+        REQUIRE(sp3 != sp2);
+   }
 }
 
 //TEST_CASE("Path Wildcard Maps", "[Path]") {

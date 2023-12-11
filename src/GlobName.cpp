@@ -113,6 +113,13 @@ auto GlobName::isGlob() const -> bool {
     return false;
 }
 
+auto GlobName::isMatch(std::string_view const &other) const -> std::tuple<bool /*match*/, bool /*supermatch*/> {
+    bool const selfIsGlob = this->isGlob();
+    if(selfIsGlob)
+        return match_glob(this->stringv, other);
+    return {this->stringv==other, false};
+}
+
 auto GlobName::isMatch(GlobName const &other) const -> std::tuple<bool /*match*/, bool /*supermatch*/> {
     bool const selfIsGlob = this->isGlob();
     bool const otherIsGlob = other.isGlob();
