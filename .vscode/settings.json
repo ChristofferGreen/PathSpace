@@ -86,6 +86,7 @@
         "stop_token": "cpp",
         "thread": "cpp",
         "expected": "cpp",
-        "format": "cpp"
+        "format": "cpp",
+        "list": "cpp"
     }
 }

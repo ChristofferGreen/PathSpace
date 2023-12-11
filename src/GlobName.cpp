@@ -4,7 +4,7 @@
 
 namespace SP {
 
-bool match_glob(const std::string_view& globPattern, const std::string_view& str) {
+static auto match_glob(const std::string_view& globPattern, const std::string_view& str) -> std::tuple<bool /*match*/, bool /*supermatch*/>{
     size_t globIdx = 0;
     size_t strIdx = 0;
 
@@ -14,12 +14,12 @@ bool match_glob(const std::string_view& globPattern, const std::string_view& str
             strIdx++;
         } else if (globIdx < globPattern.size() && globPattern[globIdx] == '*') {
             size_t nextGlobIdx = globIdx + 1;
-            while (nextGlobIdx < globPattern.size() && globPattern[nextGlobIdx] == '*') {
-                nextGlobIdx++;
+            if (nextGlobIdx < globPattern.size() && globPattern[nextGlobIdx] == '*') { // ** matches across name edge
+                return {true, true};
             }
 
             if (nextGlobIdx == globPattern.size()) {
-                return true; // Trailing '*' matches everything
+                return {true, false}; // Trailing '*' matches everything
             }
 
             size_t matchIdx = strIdx;
@@ -28,7 +28,7 @@ bool match_glob(const std::string_view& globPattern, const std::string_view& str
             }
 
             if (matchIdx == str.size()) {
-                return false;
+                return {false, false};
             }
 
             globIdx = nextGlobIdx;
@@ -69,14 +69,14 @@ bool match_glob(const std::string_view& globPattern, const std::string_view& str
             if ((invert && !matched) || (!invert && matched)) {
                 strIdx++;
             } else {
-                return false;
+                return {false, false};
             }
         } else {
             if (strIdx < str.size() && globPattern[globIdx] == str[strIdx]) {
                 globIdx++;
                 strIdx++;
             } else {
-                return false;
+                return {false, false};
             }
         }
     }
@@ -85,7 +85,7 @@ bool match_glob(const std::string_view& globPattern, const std::string_view& str
         globIdx++;
     }
 
-    return globIdx == globPattern.size() && strIdx == str.size();
+    return {globIdx == globPattern.size() && strIdx == str.size(), false};
 }
 
 GlobName::GlobName(std::string_view const &stringv) : stringv(stringv) {
@@ -96,18 +96,11 @@ auto GlobName::operator==(char const * const ptr) const -> bool {
 }
 
 auto GlobName::operator==(GlobName const &other) const -> bool {
-    bool const selfIsGlob = this->isGlob();
-    bool const otherIsGlob = other.isGlob();
-    if(!selfIsGlob && !otherIsGlob)
-        return this->stringv==other.stringv;
-    else if(selfIsGlob && otherIsGlob)
-        return this->stringv==other.stringv;
-    if(selfIsGlob) {
-        return match_glob(this->stringv, other.stringv);
-    }else {
-        return match_glob(other.stringv, this->stringv);
-    }
-    return false;
+    return std::get<0>(this->isMatch(other));
+}
+
+auto GlobName::operator->() const -> GlobName const * {
+    return this;
 }
 
 auto GlobName::isGlob() const -> bool {
@@ -118,6 +111,21 @@ auto GlobName::isGlob() const -> bool {
         prevWasEscape = ch == '\\';
     }
     return false;
+}
+
+auto GlobName::isMatch(GlobName const &other) const -> std::tuple<bool /*match*/, bool /*supermatch*/> {
+    bool const selfIsGlob = this->isGlob();
+    bool const otherIsGlob = other.isGlob();
+    if(!selfIsGlob && !otherIsGlob)
+        return {this->stringv==other.stringv, false};
+    else if(selfIsGlob && otherIsGlob)
+        return {this->stringv==other.stringv, false};
+    if(selfIsGlob) {
+        return match_glob(this->stringv, other.stringv);
+    }else {
+        return match_glob(other.stringv, this->stringv);
+    }
+    return {false, false};
 }
 
 }

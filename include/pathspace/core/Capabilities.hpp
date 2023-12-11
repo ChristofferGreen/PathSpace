@@ -6,7 +6,7 @@
 #include <vector>
 #include <algorithm>
 
-#include "Path.hpp"
+#include "GlobPath.hpp"
 
 namespace SP {
 
@@ -20,26 +20,26 @@ public:
     };
     static auto All() -> Capabilities {
         Capabilities c;
-        c.capabilities[Path("/*")].insert(Type::All);
+        c.capabilities[GlobPath("/*")].insert(Type::All);
         return c;
     }
 private:
-    std::map<Path, std::set<Type>> capabilities;
+    std::map<GlobPath, std::set<Type>> capabilities;
 
 public:
-    void addCapability(Path const &path, Type const type) {
+    void addCapability(GlobPath const &path, Type const type) {
         capabilities[path].insert(type);
     }
 
-    auto hasCapability(Path const &path, Type const capability) const -> bool {
-        const auto it = Path::findWithWildcard(capabilities, path);
+    auto hasCapability(GlobPath const &path, Type const capability) const -> bool {
+        /*const auto it = Path::findWithWildcard(capabilities, path);
         if (it != capabilities.end()) {
             return it->second.contains(capability);
-        }
+        }*/
         return false;
     }
 
-    bool removeCapability(const Path& path, Type capability) {
+    bool removeCapability(const GlobPath& path, Type capability) {
         auto it = capabilities.find(path);
         if (it != capabilities.end()) {
             return it->second.erase(capability) > 0;

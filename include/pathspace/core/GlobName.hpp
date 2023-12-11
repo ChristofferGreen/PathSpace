@@ -1,4 +1,5 @@
 #pragma once
+#include <tuple>
 #include <string_view>
 
 namespace SP {
@@ -8,8 +9,10 @@ struct GlobName {
 
     auto operator==(char const * const ptr) const -> bool;
     auto operator==(GlobName const &gn) const -> bool;
+    auto operator->() const -> GlobName const *;
 
     auto isGlob() const -> bool;
+    auto isMatch(GlobName const &other) const -> std::tuple<bool /*match*/, bool /*supermatch*/>;
 private:
     std::string_view stringv;
 };

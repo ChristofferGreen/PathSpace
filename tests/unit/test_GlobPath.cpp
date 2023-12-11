@@ -3,7 +3,7 @@
 
 using namespace SP;
 
-TEST_CASE("GlobPath", "[GlobPath]") {
+TEST_CASE("GlobPath") {
     SECTION("Standard Path") {
         GlobPath path{"/a/b/c"};
         REQUIRE(path=="/a/b/c");
@@ -44,65 +44,69 @@ TEST_CASE("GlobPath", "[GlobPath]") {
         ++iter;
         REQUIRE(iter.isAtEnd());
     }
-}
 
-/*
-
-TEST_CASE("Path Construction", "[Path]") {
     SECTION("Default construction") {
-        Path path;
-        REQUIRE(path.toString() == "");  // Assuming Path has a toString() method
+        GlobPath path;
+        REQUIRE(path == "");
     }
 
     SECTION("Construction with initial path") {
-        Path path("/root/child");
-        REQUIRE(path.toString() == "/root/child");
-    }
-}
-
-TEST_CASE("Path Matching", "[Path]") {
-    SECTION("Path does not match different path", "[Path]") {
-        Path sp("/path/to/node");
-        REQUIRE(sp.toString() != "/path/to/another_node");
-    }
-}
-
-TEST_CASE("Path Wildcard", "[Path]") {
-    Path wildcardPath("/root/*" );
-    Path exactPath( "/root/child" );
-    Path differentPath( "/root/otherChild" );
-
-    SECTION("Wildcard matches exact path") {
-        REQUIRE(wildcardPath.matches(exactPath) == true);
+        GlobPath path("/root/child");
+        REQUIRE(path == "/root/child");
     }
 
-    SECTION("Wildcard matches different path") {
-        REQUIRE(wildcardPath.matches(differentPath) == true);
+    SECTION("Path does not match different path") {
+        GlobPath sp("/path/to/node");
+        REQUIRE(sp != "/path/to/another_node");
+    }
+
+    GlobPath wildcardPath("/root/*" );
+    GlobPath exactPath( "/root/child" );
+    GlobPath differentPath( "/root/otherChild" );
+
+    SECTION("Glob matches exact path") {
+        REQUIRE(wildcardPath == exactPath);
+    }
+
+    SECTION("Glob matches different path") {
+        REQUIRE(wildcardPath == differentPath);
     }
 
     SECTION("Exact path does not match different path") {
-        REQUIRE(exactPath.matches(differentPath) == false);
+        REQUIRE(exactPath != differentPath);
     }
 
     SECTION("Path matches itself") {
-        REQUIRE(exactPath.matches(exactPath) == true);
+        REQUIRE(exactPath == exactPath);
     }
 
-    SECTION("Path does not match wildcard") {
-        REQUIRE(exactPath.matches(wildcardPath) == false);
+    SECTION("Single Wildcard Match") {
+        GlobPath sp1("/a/*/c");
+        GlobPath sp2("/a/b/c");
+        REQUIRE(sp1 == sp2);
     }
-*/
-//    SECTION("Single Wildcard Match") {
-//        Path sp1("/a/*/c");
-//        Path sp2("/a/b/c");
-//        REQUIRE(sp1.matches(sp2));
-//    }
+
+    SECTION("Double Wildcard Match") {
+        GlobPath sp1("/a/**");
+        GlobPath sp2("/a/b/c");
+        REQUIRE(sp1 == sp2);
+    }
+
+    SECTION("Single Wildcard No Match") {
+        GlobPath sp1("/a/*/d");
+        GlobPath sp2("/a/b/c");
+        REQUIRE(sp1 != sp2);
+    }
+
+    SECTION("Empty Name") {
+        GlobPath sp1("/a//d");
+        GlobPath sp2("/a/d");
+        REQUIRE(sp1 == sp2);
+    }
+}
+
 //
-//    SECTION("Single Wildcard No Match") {
-//        Path sp1("/a/*/d");
-//        Path sp2("/a/b/c");
-//        REQUIRE_FALSE(sp1.matches(sp2));
-//    }
+
 //
 //    SECTION("Multiple Wildcard Match") {
 //        Path sp1("/a/**/c");

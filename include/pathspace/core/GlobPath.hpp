@@ -6,13 +6,13 @@
 namespace SP {
 
 struct GlobPath {
-    class Iterator {
-    public:
+    struct Iterator {
         Iterator(std::string_view::const_iterator iter, std::string_view::const_iterator endIter);
 
         Iterator& operator++();
         auto operator==(Iterator const &other) const -> bool;
-        auto operator*() const -> GlobName const;
+        auto operator*() const -> GlobName;
+        auto operator->() const -> GlobName;
         
         auto isAtEnd() const -> bool;
 
@@ -24,7 +24,10 @@ struct GlobPath {
     auto begin() const -> Iterator;
     auto end() const -> Iterator;
 
+    GlobPath() = default;
+    GlobPath(char const * const ptr);
     GlobPath(std::string_view const &stringv);
+    auto operator<(GlobPath const &other) const -> bool;
     auto operator==(GlobPath const &other) const -> bool;
     auto operator==(char const * const other) const -> bool;
 
