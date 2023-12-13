@@ -108,4 +108,8 @@ auto GlobPath::isValidPath() const -> bool {
     return true;
 }
 
+auto GlobPath::toString() const -> std::string {
+    return std::string{this->stringv};
+}
+
 }

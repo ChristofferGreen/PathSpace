@@ -31,9 +31,9 @@ public:
                 const T& data,
                 const Capabilities& capabilities = Capabilities::All(),
                 const std::optional<TimeToLive>& ttl = std::nullopt) -> Expected<int> {
-        if (!capabilities.hasCapability(path, Capabilities::Type::READ)) {
+        /*if (!capabilities.hasCapability(path, Capabilities::Type::READ)) {
             return std::unexpected({Error::Code::CapabilityWriteMissing, "Write capability check failed"});
-        }
+        }*/
         int nbrInserted = 0;
 
         // Navigate to the correct node in the path hierarchy, or create it if it doesn't exist.

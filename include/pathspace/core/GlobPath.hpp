@@ -2,6 +2,7 @@
 #include "pathspace/core/GlobName.hpp"
 
 #include <string_view>
+#include <string>
 
 namespace SP {
 
@@ -35,6 +36,7 @@ struct GlobPath {
     auto operator<=>(char const * const other) const -> std::strong_ordering;
 
     auto isValidPath() const -> bool;
+    auto toString() const -> std::string;
 private:
     std::string_view stringv;
 };

@@ -23,6 +23,7 @@ struct Path {
     auto end() const -> Iterator;
 
     Path() = default;
+    Path(char const * const &str);
     Path(std::string_view const &str);
     auto operator<(Path const &other) const -> bool;
     auto operator==(Path const &other) const -> bool;
