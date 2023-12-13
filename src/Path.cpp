@@ -2,7 +2,7 @@
 
 namespace SP {
     
-Path::Iterator::Iterator(std::string::const_iterator iter, std::string::const_iterator endIter)
+Path::Iterator::Iterator(std::string_view::const_iterator iter, std::string_view::const_iterator endIter)
     : current(iter), end(endIter) {}
 
 Path::Iterator& Path::Iterator::operator++() {
@@ -27,13 +27,13 @@ auto Path::Iterator::isAtEnd() const -> bool {
 }
 
 auto Path::begin() const -> Path::Iterator {
-    auto start = this->string.begin();
+    auto start = this->stringv.begin();
     ++start; // Skip initial '/'
-    return Iterator(start, string.end());
+    return Iterator(start, this->stringv.end());
 }
 
 auto Path::end() const -> Path::Iterator {
-    return Iterator(string.end(), string.end());
+    return Iterator(this->stringv.end(), this->stringv.end());
 }
 
 auto Path::Iterator::operator*() const -> std::string_view {
@@ -48,24 +48,24 @@ auto Path::Iterator::operator->() const -> std::string_view {
     return **this;
 }
 
-Path::Path(std::string const &str) : string(str) {}
+Path::Path(std::string_view const &str) : stringv(str) {}
 
 auto Path::operator==(Path const &other) const -> bool {
-    return this->string==other.string;
+    return this->stringv==other.stringv;
 }
 
 auto Path::operator<(Path const &other) const -> bool {
-    return this->string<other.string;
+    return this->stringv<other.stringv;
 }
 
 auto Path::operator==(char const * const other) const -> bool {
-    return this->string==other;
+    return this->stringv==other;
 }
 
 auto Path::isValidPath() const -> bool {
-    if(this->string.size()==0)
+    if(this->stringv.size()==0)
         return false;
-    if(this->string[0] != '/')
+    if(this->stringv[0] != '/')
         return false;
     return true;
 }
