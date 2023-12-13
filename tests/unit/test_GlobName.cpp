@@ -11,7 +11,6 @@ TEST_CASE("GlobName", "[GlobName]") {
         GlobName pattern2{"test1*"};
         GlobName pattern3{"test?BC"};
         GlobName pattern4{"test?BD"};
-        auto b = pattern==name;
         REQUIRE(pattern==name);
         REQUIRE(pattern2!=name);
         REQUIRE(pattern3==name);

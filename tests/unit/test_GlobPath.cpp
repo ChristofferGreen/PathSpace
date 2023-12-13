@@ -63,7 +63,6 @@ TEST_CASE("GlobPath") {
 
     SECTION("Path does not match different path") {
         GlobPath sp("/path/to/node");
-        auto b = sp != "/path/to/another_node";
         REQUIRE(sp != "/path/to/another_node");
     }
 
@@ -142,7 +141,6 @@ TEST_CASE("GlobPath") {
         REQUIRE(sp1 != sp2);
         REQUIRE(sp2 != sp3);
         REQUIRE(sp3 == "/a/test*");
-        auto b = sp3 == sp1;
         REQUIRE(sp3 == sp1);
         REQUIRE(sp3 != sp2);
    }
