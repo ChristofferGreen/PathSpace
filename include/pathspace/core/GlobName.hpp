@@ -12,8 +12,7 @@ struct GlobName {
     auto operator==(GlobName const &other) const -> bool;
     auto operator->() const -> GlobName const *;
 
-    auto isMatch(GlobName const &other) const -> std::tuple<bool /*match*/, bool /*supermatch*/>;
-    auto isMatch(std::string_view const &other) const -> std::tuple<bool /*match*/, bool /*supermatch*/>;
+    auto match(const std::string_view& str) const -> std::tuple<bool /*match*/, bool /*supermatch*/>;
 private:
     std::string_view stringv;
 };

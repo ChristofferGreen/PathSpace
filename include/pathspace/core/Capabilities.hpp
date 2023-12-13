@@ -27,6 +27,10 @@ private:
     std::map<GlobPath, std::set<Type>> capabilities;
 
 public:
+    void addCapability(char const * const globPath, Type const type) {
+        return this->addCapability(GlobPath{globPath}, type);
+    }
+
     void addCapability(GlobPath const &path, Type const type) {
         capabilities[path].insert(type);
     }

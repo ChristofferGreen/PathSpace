@@ -62,7 +62,7 @@ auto Path::operator==(char const * const other) const -> bool {
     return this->string==other;
 }
 
-auto Path::validPath() const -> bool {
+auto Path::isValidPath() const -> bool {
     if(this->string.size()==0)
         return false;
     if(this->string[0] != '/')

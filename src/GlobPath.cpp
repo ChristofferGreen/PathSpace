@@ -54,11 +54,13 @@ GlobPath::GlobPath(char const * const ptr) : stringv(ptr) {}
 GlobPath::GlobPath(std::string_view const &stringv) : stringv(stringv) {}
 
 auto GlobPath::operator==(Path const &other) const -> bool {
+    if(!this->isValidPath() || !other.isValidPath())
+        return false;
     auto iterA = this->begin();
     auto iterB = other.begin();
     while(iterA != this->end() && iterB != other.end()) {
-        auto const match = iterA->isMatch(*iterB);
-        if(std::get<1>(match))
+        auto const match = iterA->match(*iterB);
+        if(std::get<1>(match)) // Supermatch (**)
             return true;
         if(!std::get<0>(match))
             return false;
@@ -71,13 +73,12 @@ auto GlobPath::operator==(Path const &other) const -> bool {
 }
 
 auto GlobPath::operator==(GlobPath const &other) const -> bool {
+    if(!this->isValidPath() || !other.isValidPath())
+        return false;
     auto iterA = this->begin();
     auto iterB = other.begin();
     while(iterA != this->end() && iterB != other.end()) {
-        auto const match = iterA->isMatch(*iterB);
-        if(std::get<1>(match))
-            return true;
-        if(!std::get<0>(match))
+        if(*iterA != *iterB)
             return false;
         ++iterA;
         ++iterB;
@@ -85,6 +86,10 @@ auto GlobPath::operator==(GlobPath const &other) const -> bool {
     if(iterA != this->end() || iterB != other.end())
         return false;
     return true;
+}
+
+auto GlobPath::operator==(char const * const other) const -> bool {
+    return *this == Path{other};
 }
 
 auto GlobPath::operator<=>(GlobPath const &other) const -> std::strong_ordering {

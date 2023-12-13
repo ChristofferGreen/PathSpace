@@ -27,10 +27,11 @@ struct GlobPath {
 
     GlobPath() = default;
     GlobPath(char const * const ptr);
-    GlobPath(std::string_view const &stringv);
+    explicit GlobPath(std::string_view const &stringv);
     auto operator<=>(GlobPath const &other) const -> std::strong_ordering;
     auto operator==(GlobPath const &other) const -> bool;
     auto operator==(Path const &other) const -> bool;
+    auto operator==(char const * const other) const -> bool;
     auto operator<=>(char const * const other) const -> std::strong_ordering;
 
     auto isValidPath() const -> bool;

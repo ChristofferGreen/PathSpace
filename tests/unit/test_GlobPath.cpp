@@ -46,9 +46,14 @@ TEST_CASE("GlobPath") {
         REQUIRE(iter.isAtEnd());
     }
 
-    SECTION("Default construction") {
+    SECTION("Default construction Invalid") {
         GlobPath path;
-        REQUIRE(path == "");
+        REQUIRE(path != "");
+    }
+
+    SECTION("Default construction") {
+        GlobPath path{"/"};
+        REQUIRE(path == "/");
     }
 
     SECTION("Construction with initial path") {
@@ -58,6 +63,7 @@ TEST_CASE("GlobPath") {
 
     SECTION("Path does not match different path") {
         GlobPath sp("/path/to/node");
+        auto b = sp != "/path/to/another_node";
         REQUIRE(sp != "/path/to/another_node");
     }
 
@@ -90,6 +96,7 @@ TEST_CASE("GlobPath") {
     SECTION("Double Wildcard Match") {
         GlobPath sp1("/a/**");
         Path sp2("/a/b/c");
+        bool b = sp1 == sp2; 
         REQUIRE(sp1 == sp2);
 
         GlobPath sp3("/a/**/c");
