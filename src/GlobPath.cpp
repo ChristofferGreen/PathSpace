@@ -7,9 +7,8 @@ GlobPath::Iterator::Iterator(std::string_view::const_iterator iter, std::string_
     : current(iter), end(endIter) {}
 
 GlobPath::Iterator& GlobPath::Iterator::operator++() {
-    while (this->current != this->end && *current != '/') {
+    while (this->current != this->end && *current != '/')
         ++this->current;
-    }
     this->skipSlashes();
     return *this;
 }
@@ -96,7 +95,7 @@ auto GlobPath::operator<=>(char const * const other) const -> std::strong_orderi
     return this->stringv<=>other;
 }
 
-auto GlobPath::validPath() const -> bool {
+auto GlobPath::isValidPath() const -> bool {
     if(this->stringv.size()==0)
         return false;
     if(this->stringv[0] != '/')

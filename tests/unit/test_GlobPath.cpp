@@ -62,8 +62,8 @@ TEST_CASE("GlobPath") {
     }
 
     GlobPath wildcardPath("/root/*" );
-    GlobPath exactPath( "/root/child" );
-    GlobPath differentPath( "/root/otherChild" );
+    Path exactPath( "/root/child" );
+    Path differentPath( "/root/otherChild" );
 
     SECTION("Glob matches exact path") {
         REQUIRE(wildcardPath == exactPath);
@@ -83,17 +83,17 @@ TEST_CASE("GlobPath") {
 
     SECTION("Single Wildcard Match") {
         GlobPath sp1("/a/*/c");
-        GlobPath sp2("/a/b/c");
+        Path sp2("/a/b/c");
         REQUIRE(sp1 == sp2);
     }
 
     SECTION("Double Wildcard Match") {
         GlobPath sp1("/a/**");
-        GlobPath sp2("/a/b/c");
+        Path sp2("/a/b/c");
         REQUIRE(sp1 == sp2);
 
         GlobPath sp3("/a/**/c");
-        GlobPath sp4("/a/b/d/c");
+        Path sp4("/a/b/d/c");
         REQUIRE(sp3 == sp4);
     }
 
@@ -111,7 +111,7 @@ TEST_CASE("GlobPath") {
 
     SECTION("Glob Match with Special Characters") {
         GlobPath sp1("/a/*/c?d");
-        GlobPath sp2("/a/b/cxd");
+        Path sp2("/a/b/cxd");
         REQUIRE(sp1 == sp2);
         GlobPath sp3("/a/b/c");
         REQUIRE(sp1 != sp3);
@@ -119,11 +119,23 @@ TEST_CASE("GlobPath") {
 
    SECTION("Name Containing Wildcard") {
         GlobPath sp1("/a/test*");
-        GlobPath sp2("/a/testbaab");
+        Path sp2("/a/testbaab");
         Path sp3("/a/test*");
         REQUIRE(sp1 == sp2);
         REQUIRE(sp2 != sp3);
         REQUIRE(sp3 == "/a/test*");
+        REQUIRE(sp3 == sp1);
+        REQUIRE(sp3 != sp2);
+   }
+
+   SECTION("Name Containing Wildcard Exact Match") {
+        GlobPath sp1("/a/test\\*");
+        GlobPath sp2("/a/testbaab");
+        Path sp3("/a/test*");
+        REQUIRE(sp1 != sp2);
+        REQUIRE(sp2 != sp3);
+        REQUIRE(sp3 == "/a/test*");
+        auto b = sp3 == sp1;
         REQUIRE(sp3 == sp1);
         REQUIRE(sp3 != sp2);
    }

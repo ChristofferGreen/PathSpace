@@ -9,7 +9,18 @@ static auto match_glob(const std::string_view& globPattern, const std::string_vi
     size_t strIdx = 0;
 
     while (strIdx < str.size()) {
-        if (globIdx < globPattern.size() && globPattern[globIdx] == '?') {
+        if (globPattern[globIdx] == '\\') {
+            // Handle escape character
+            globIdx++;  // Skip backslash
+            if (globIdx < globPattern.size() && globPattern[globIdx] == str[strIdx]) {
+                // Match the escaped character literally
+                ++strIdx;
+                ++globIdx;
+            } else {
+                // Mismatch, glob pattern does not match filename
+                return {false, false};
+            }
+        } else if (globIdx < globPattern.size() && globPattern[globIdx] == '?') {
             globIdx++;
             strIdx++;
         } else if (globIdx < globPattern.size() && globPattern[globIdx] == '*') {
@@ -96,43 +107,23 @@ auto GlobName::operator==(char const * const ptr) const -> bool {
 }
 
 auto GlobName::operator==(GlobName const &other) const -> bool {
-    return std::get<0>(this->isMatch(other));
+    return this->stringv == other.stringv;
+}
+
+auto GlobName::operator==(std::string_view const &other) const -> bool {
+    return std::get<0>(match_glob(this->stringv, other));
 }
 
 auto GlobName::operator->() const -> GlobName const * {
     return this;
 }
 
-auto GlobName::isGlob() const -> bool {
-    bool prevWasEscape = false;
-    for(auto const ch : this->stringv) {
-        if(!prevWasEscape && (ch == '*' || ch == '?'))
-            return true;
-        prevWasEscape = ch == '\\';
-    }
-    return false;
-}
-
 auto GlobName::isMatch(std::string_view const &other) const -> std::tuple<bool /*match*/, bool /*supermatch*/> {
-    bool const selfIsGlob = this->isGlob();
-    if(selfIsGlob)
-        return match_glob(this->stringv, other);
-    return {this->stringv==other, false};
+    return match_glob(this->stringv, other);
 }
 
 auto GlobName::isMatch(GlobName const &other) const -> std::tuple<bool /*match*/, bool /*supermatch*/> {
-    bool const selfIsGlob = this->isGlob();
-    bool const otherIsGlob = other.isGlob();
-    if(!selfIsGlob && !otherIsGlob)
-        return {this->stringv==other.stringv, false};
-    else if(selfIsGlob && otherIsGlob)
-        return {this->stringv==other.stringv, false};
-    if(selfIsGlob) {
-        return match_glob(this->stringv, other.stringv);
-    }else {
-        return match_glob(other.stringv, this->stringv);
-    }
-    return {false, false};
+    return {this->stringv==other.stringv, false};
 }
 
 }

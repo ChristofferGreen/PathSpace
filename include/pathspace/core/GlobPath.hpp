@@ -33,7 +33,7 @@ struct GlobPath {
     auto operator==(Path const &other) const -> bool;
     auto operator<=>(char const * const other) const -> std::strong_ordering;
 
-    auto validPath() const -> bool;
+    auto isValidPath() const -> bool;
 private:
     std::string_view stringv;
 };

@@ -1,15 +1,17 @@
 #include <catch2/catch_test_macros.hpp>
 #include <pathspace/core/GlobName.hpp>
+#include <pathspace/core/Path.hpp>
 
 using namespace SP;
 
 TEST_CASE("GlobName", "[GlobName]") {
     SECTION("Simple Glob Patterns") {
-        GlobName name{"testABC"};
+        std::string_view name{"testABC"};
         GlobName pattern{"test*"};
         GlobName pattern2{"test1*"};
         GlobName pattern3{"test?BC"};
         GlobName pattern4{"test?BD"};
+        auto b = pattern==name;
         REQUIRE(pattern==name);
         REQUIRE(pattern2!=name);
         REQUIRE(pattern3==name);
@@ -31,7 +33,7 @@ TEST_CASE("GlobName", "[GlobName]") {
     }
 
     SECTION("Empty Name Against Glob") {
-        GlobName name{""};
+        std::string_view name{""};
         GlobName pattern{"*"};
         REQUIRE(name==pattern);
     }
