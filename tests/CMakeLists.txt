@@ -15,6 +15,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(Catch2)
 
 add_executable(PathSpaceTests
+  unit/test_BasePath.cpp
   unit/test_Path.cpp
   unit/test_GlobPath.cpp
   unit/test_GlobName.cpp

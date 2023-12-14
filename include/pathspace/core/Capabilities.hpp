@@ -37,7 +37,7 @@ public:
         this->capabilities[path.toString()].insert(type);
     }
 
-    auto hasCapability(Path const &path, Type const capability) const -> bool {
+    auto hasCapability(BasePathStringView const &path, Type const capability) const -> bool {
         for (const auto &capabilityEntry : capabilities)
             if (GlobPath{capabilityEntry.first} == path) // Check if the path matches using wildcard matching
                 if (capabilityEntry.second.find(capability) != capabilityEntry.second.end()) // Check if the capability is present in the set for this path

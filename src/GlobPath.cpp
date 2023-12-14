@@ -1,5 +1,4 @@
 #include "pathspace/core/GlobPath.hpp"
-#include "pathspace/core/Path.hpp"
 
 namespace SP {
     
@@ -53,7 +52,7 @@ GlobPath::GlobPath(char const * const ptr) : stringv(ptr) {}
 
 GlobPath::GlobPath(std::string_view const &stringv) : stringv(stringv) {}
 
-auto GlobPath::operator==(Path const &other) const -> bool {
+auto GlobPath::operator==(BasePathStringView const &other) const -> bool {
     if(!this->isValidPath() || !other.isValidPath())
         return false;
     auto iterA = this->begin();
@@ -89,7 +88,7 @@ auto GlobPath::operator==(GlobPath const &other) const -> bool {
 }
 
 auto GlobPath::operator==(char const * const other) const -> bool {
-    return *this == Path{other};
+    return *this == BasePathStringView{other};
 }
 
 auto GlobPath::operator<=>(GlobPath const &other) const -> std::strong_ordering {

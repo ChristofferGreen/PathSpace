@@ -17,6 +17,7 @@ add_library(PathSpace
     GlobName.cpp
     GlobPath.cpp
     Path.cpp
+    BasePath.cpp
 )
 
 target_include_directories(PathSpace

@@ -1,12 +1,12 @@
 #pragma once
 #include "pathspace/core/GlobName.hpp"
+#include "pathspace/core/BasePath.hpp"
 
 #include <string_view>
 #include <string>
 
 namespace SP {
 
-struct Path;
 struct GlobPath {
     struct Iterator {
         Iterator(std::string_view::const_iterator iter, std::string_view::const_iterator endIter);
@@ -31,7 +31,7 @@ struct GlobPath {
     explicit GlobPath(std::string_view const &stringv);
     auto operator<=>(GlobPath const &other) const -> std::strong_ordering;
     auto operator==(GlobPath const &other) const -> bool;
-    auto operator==(Path const &other) const -> bool;
+    auto operator==(BasePathStringView const &other) const -> bool;
     auto operator==(char const * const other) const -> bool;
     auto operator<=>(char const * const other) const -> std::strong_ordering;
 
