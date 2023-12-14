@@ -13,11 +13,11 @@ FetchContent_MakeAvailable(ParallelHashmap)
 
 # Indicate that we only want to compile source files into a library
 add_library(PathSpace
-    PathSpace.cpp
-    GlobName.cpp
-    GlobPath.cpp
-    Path.cpp
-    BasePath.cpp
+    core/PathSpace.cpp
+    core/GlobName.cpp
+    core/GlobPath.cpp
+    core/Path.cpp
+    core/BasePath.cpp
 )
 
 target_include_directories(PathSpace
