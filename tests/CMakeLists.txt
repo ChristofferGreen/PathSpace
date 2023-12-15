@@ -21,6 +21,9 @@ add_executable(PathSpaceTests
   unit/test_GlobName.cpp
   unit/test_PathSpace.cpp
   unit/test_Capabilities.cpp
+  unit/path/test_ConcretePath.cpp
+  unit/path/test_ConcreteName.cpp
+  unit/path/test_ConcretePathIterator.cpp
 )
 
 target_link_libraries(PathSpaceTests

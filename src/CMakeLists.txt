@@ -18,6 +18,9 @@ add_library(PathSpace
     core/GlobPath.cpp
     core/Path.cpp
     core/BasePath.cpp
+    path/ConcretePath.cpp
+    path/ConcreteName.cpp
+    path/ConcretePathIterator.cpp
 )
 
 target_include_directories(PathSpace
