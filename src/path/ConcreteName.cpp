@@ -12,6 +12,10 @@ auto ConcreteName::operator<=>(ConcreteName const &other) const -> std::strong_o
     return this->name<=>other.name;
 }
 
+auto ConcreteName::operator==(ConcreteName const &other) const -> bool {
+    return this->name==other.name;
+}
+
 auto ConcreteName::operator==(char const * const other) const -> bool {
     return this->name==other;
 }

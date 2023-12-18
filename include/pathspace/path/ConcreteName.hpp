@@ -10,6 +10,7 @@ struct ConcreteName {
     ConcreteName(std::string_view::const_iterator const &iter, std::string_view::const_iterator const &endIter);
 
     auto operator<=>(ConcreteName const &other) const -> std::strong_ordering;
+    auto operator==(ConcreteName const &other) const -> bool;
     auto operator==(char const * const other) const -> bool;
 
 private:

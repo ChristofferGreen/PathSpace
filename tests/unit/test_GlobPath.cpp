@@ -71,7 +71,6 @@ TEST_CASE("GlobPath") {
     PathStringView differentPath( "/root/otherChild" );
 
     SECTION("Glob matches exact path") {
-        auto b = wildcardPath == exactPath;
         REQUIRE(wildcardPath == exactPath);
     }
 

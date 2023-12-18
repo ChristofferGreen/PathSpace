@@ -14,8 +14,6 @@ struct ConcretePathIterator {
     auto operator==(ConcretePathIterator const &other) const -> bool;
     auto operator*() const -> ConcreteName;
     auto operator->() const -> ConcreteName;
-    
-    auto isAtEnd() const -> bool;
 private:
     auto skipSlashes() -> void;
     T::const_iterator current;
