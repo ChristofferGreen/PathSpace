@@ -65,9 +65,4 @@ auto GlobPath<T>::operator==(ConcretePath<U> const &other) const -> bool {
     return true;
 }
 
-template<typename T>
-auto GlobPath<T>::operator==(char const * const other) const -> bool {
-    return this->operator==(std::string_view{other});
-}
-
 } // namespace SP

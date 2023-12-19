@@ -19,7 +19,6 @@ struct GlobPath : public Path<T> {
 
                          auto operator<=>(GlobPath<T> const      &other) const -> std::strong_ordering;
                          auto operator== (std::string_view const &other) const -> bool;
-                         auto operator== (char const * const      other) const -> bool;
     template<typename U> auto operator== (ConcretePath<U> const  &other) const -> bool;
     template<typename U> auto operator== (GlobPath<U> const      &other) const -> bool;
 };
