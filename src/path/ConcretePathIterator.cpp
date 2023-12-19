@@ -33,11 +33,6 @@ auto ConcretePathIterator<T>::operator*() const -> ConcreteName {
 }
 
 template<typename T>
-auto ConcretePathIterator<T>::operator->() const -> ConcreteName {
-    return {this->current, this->end};
-}
-
-template<typename T>
 auto ConcretePathIterator<T>::skipSlashes() -> void {
     while (this->current != this->end && *current == '/')
         ++this->current;

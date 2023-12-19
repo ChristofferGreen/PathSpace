@@ -14,7 +14,6 @@ struct ConcretePathIterator {
     auto operator++() -> ConcretePathIterator&;
     auto operator==(ConcretePathIterator const &other) const -> bool;
     auto operator*() const -> ConcreteName;
-    auto operator->() const -> ConcreteName;
 private:
     auto skipSlashes() -> void;
     SIterator current;

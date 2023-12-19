@@ -13,8 +13,7 @@ struct GlobPathIterator {
 
     auto operator++() -> GlobPathIterator&;
     auto operator==(GlobPathIterator const &other) const -> bool;
-    auto operator*() const ->  GlobName;
-    auto operator->() const -> GlobName;
+    auto operator*()  const -> GlobName;
 private:
     auto skipSlashes() -> void;
     SIterator current;

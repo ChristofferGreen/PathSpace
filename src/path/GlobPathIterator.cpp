@@ -33,11 +33,6 @@ auto GlobPathIterator<T>::operator*() const -> GlobName {
 }
 
 template<typename T>
-auto GlobPathIterator<T>::operator->() const -> GlobName {
-    return {this->current, this->end};
-}
-
-template<typename T>
 auto GlobPathIterator<T>::skipSlashes() -> void {
     while (this->current != this->end && *current == '/')
         ++this->current;

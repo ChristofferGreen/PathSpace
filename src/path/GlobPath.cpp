@@ -37,13 +37,25 @@ auto GlobPath<T>::operator<=>(GlobPath<T> const &other) const -> std::strong_ord
 
 template<typename T>
 auto GlobPath<T>::operator==(std::string_view const &otherView) const -> bool {
-    ConcretePathStringView const other{otherView};
+    return this->operator==(ConcretePathStringView{otherView});
+}
+
+template<typename T> template<typename U>
+auto GlobPath<T>::operator==(GlobPath<U> const &other) const -> bool {
+    return ConcretePathStringView{this->path} == ConcretePathStringView{other.getPath()};
+}
+
+template<typename T> template<typename U>
+auto GlobPath<T>::operator==(ConcretePath<U> const &other) const -> bool {
     if(!this->isValid() || !other.isValid())
         return false;
     auto iterA = this->begin();
     auto iterB = other.begin();
     while(iterA != this->end() && iterB != other.end()) {
-        if(*iterA != *iterB)
+        auto const match = (*iterA).match(*iterB);
+        if(std::get<1>(match)) // Supermatch (**)
+            return true;
+        if(!std::get<0>(match))
             return false;
         ++iterA;
         ++iterB;
@@ -51,18 +63,6 @@ auto GlobPath<T>::operator==(std::string_view const &otherView) const -> bool {
     if(iterA != this->end() || iterB != other.end())
         return false;
     return true;
-}
-
-template<typename T> template<typename U>
-auto GlobPath<T>::operator==(GlobPath<U> const &other) const -> bool {
-    if(!this->isValid() || !other.isValid())
-        return false;
-    return this->path==other.getPath();
-}
-
-template<typename T> template<typename U>
-auto GlobPath<T>::operator==(ConcretePath<U> const &other) const -> bool {
-    return this->operator==(other.getPath());
 }
 
 template<typename T>
