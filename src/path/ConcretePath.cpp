@@ -18,6 +18,9 @@ template<typename T>
 ConcretePath<T>::ConcretePath(T const &t) : path(t) {}
 
 template<typename T>
+ConcretePath<T>::ConcretePath(char const * const t) : path(t) {}
+
+template<typename T>
 auto ConcretePath<T>::operator==(ConcretePath<T> const &other) const -> bool {
     if(!this->isValid())
         return false;

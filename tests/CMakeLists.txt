@@ -15,14 +15,10 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(Catch2)
 
 add_executable(PathSpaceTests
-  unit/test_BasePath.cpp
-  unit/test_Path.cpp
-  unit/test_GlobPath.cpp
-  unit/test_GlobName.cpp
-  unit/test_PathSpace.cpp
   unit/test_Capabilities.cpp
   unit/path/test_ConcretePath.cpp
   unit/path/test_ConcreteName.cpp
+  unit/path/test_GlobPath.cpp
   unit/path/test_ConcretePathIterator.cpp
 )
 

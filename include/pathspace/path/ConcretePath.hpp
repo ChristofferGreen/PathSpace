@@ -14,6 +14,7 @@ struct ConcretePath : public Path<T> {
 
     ConcretePath() = default;
     ConcretePath(T const &t);
+    ConcretePath(char const * const t);
     auto operator==(char const * const other) const -> bool;
     auto operator==(ConcretePath<T> const &other) const -> bool;
 

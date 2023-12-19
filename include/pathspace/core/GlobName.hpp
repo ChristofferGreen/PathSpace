@@ -2,7 +2,7 @@
 #include <tuple>
 #include <string_view>
 
-namespace SP {
+namespace SP2 {
 
 struct GlobName {
     GlobName(std::string_view const &stringv);

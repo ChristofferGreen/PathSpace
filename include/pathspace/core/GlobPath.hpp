@@ -5,7 +5,7 @@
 #include <string_view>
 #include <string>
 
-namespace SP {
+namespace SP2 {
 
 struct GlobPath {
     struct Iterator {

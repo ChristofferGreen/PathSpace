@@ -13,6 +13,7 @@ struct ConcreteName {
     auto operator==(ConcreteName const &other) const -> bool;
     auto operator==(char const * const other) const -> bool;
 
+    friend struct GlobName;
 private:
     std::string_view name;
 };

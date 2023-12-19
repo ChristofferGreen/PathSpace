@@ -1,6 +1,6 @@
 #include "pathspace/core/GlobPath.hpp"
 
-namespace SP {
+namespace SP2 {
     
 GlobPath::Iterator::Iterator(std::string_view::const_iterator iter, std::string_view::const_iterator endIter)
     : current(iter), end(endIter) {}

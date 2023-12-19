@@ -2,7 +2,7 @@
 #include <string>
 #include <string_view>
 
-namespace SP {
+namespace SP2 {
 
 template<typename T>
 struct BasePath {

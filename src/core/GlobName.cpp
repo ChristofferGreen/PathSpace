@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace SP {
+namespace SP2 {
 
 GlobName::GlobName(std::string_view const &stringv) : stringv(stringv) {
 }

@@ -8,16 +8,17 @@ namespace SP {
 
 template<typename T>
 struct ConcretePathIterator {
-    ConcretePathIterator(T::const_iterator const &iter, T::const_iterator const &endIter);
+    using SIterator = T::const_iterator;
+    ConcretePathIterator(SIterator const &iter, SIterator const &endIter);
 
-    ConcretePathIterator& operator++();
+    auto operator++() -> ConcretePathIterator&;
     auto operator==(ConcretePathIterator const &other) const -> bool;
     auto operator*() const -> ConcreteName;
     auto operator->() const -> ConcreteName;
 private:
     auto skipSlashes() -> void;
-    T::const_iterator current;
-    T::const_iterator end;
+    SIterator current;
+    SIterator end;
 };
 
 }

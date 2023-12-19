@@ -1,5 +1,4 @@
 #pragma once
-
 #include <set>
 #include <string>
 #include <map>
@@ -7,13 +6,12 @@
 #include <vector>
 #include <algorithm>
 
-#include "GlobPath.hpp"
-#include "Path.hpp"
+#include "pathspace/path/GlobPath.hpp"
+#include "pathspace/path/ConcretePath.hpp"
 
 namespace SP {
 
-class Capabilities {
-public:
+struct Capabilities {
     enum class Type {
         READ,
         WRITE,
@@ -25,32 +23,31 @@ public:
         c.capabilities["/**"].insert(Type::All);
         return c;
     }
-private:
-    std::map<std::string, std::set<Type>> capabilities;
 
-public:
     void addCapability(char const * const path, Type const type) {
         this->capabilities[path].insert(type);
     }
 
-    void addCapability(GlobPath const &path, Type const type) {
-        this->capabilities[path.toString()].insert(type);
+    void addCapability(GlobPathString const &path, Type const type) {
+        this->capabilities[path].insert(type);
     }
 
-    auto hasCapability(BasePathStringView const &path, Type const capability) const -> bool {
+    auto hasCapability(ConcretePathStringView const &path, Type const capability) const -> bool {
         for (const auto &capabilityEntry : capabilities)
-            if (GlobPath{capabilityEntry.first} == path) // Check if the path matches using wildcard matching
+            if (capabilityEntry.first == path) // Check if the path matches using wildcard matching
                 if (capabilityEntry.second.find(capability) != capabilityEntry.second.end()) // Check if the capability is present in the set for this path
                     return true;
         return false;
     }    
 
-    bool removeCapability(const GlobPath& path, Type capability) {
-        auto it = this->capabilities.find(path.toString());
+    bool removeCapability(GlobPathString const &path, Type const capability) {
+        auto it = this->capabilities.find(path);
         if (it != this->capabilities.end())
             return it->second.erase(capability) > 0;
         return false;
     }
+private:
+    std::map<GlobPathString, std::set<Type>> capabilities;
 };
 
 }

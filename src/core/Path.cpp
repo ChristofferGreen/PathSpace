@@ -1,6 +1,6 @@
 #include "pathspace/core/Path.hpp"
 
-namespace SP {
+namespace SP2 {
 template struct Path<std::string>;
 template struct Path<std::string_view>;
 
