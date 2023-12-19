@@ -19,6 +19,7 @@ add_library(PathSpace
     path/GlobPath.cpp
     path/GlobPathIterator.cpp
     path/GlobName.cpp
+    path/Path.cpp
 )
 
 target_include_directories(PathSpace

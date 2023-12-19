@@ -32,6 +32,7 @@ TEST_CASE("ConcretePath", "[Path][ConcretePath]") {
     SECTION("Construction With Value", "[Path][ConcretePath]") {
         ConcretePathString path{"/a/b/c"};
         REQUIRE(path == "/a/b/c");
+        auto b = path != "/a/b/d";
         REQUIRE(path != "/a/b/d");
         
         ConcretePathStringView path2{"/a/b/c"};

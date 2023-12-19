@@ -9,25 +9,21 @@
 namespace SP {
 
 template<typename T>
-struct GlobPath : public Path<std::string_view> {
+struct GlobPath : public Path<T> {
     auto begin() const -> GlobPathIterator<T>;
-    auto end() const -> GlobPathIterator<T>;
+    auto end()   const -> GlobPathIterator<T>;
 
     GlobPath() = default;
     GlobPath(T const &t);
     GlobPath(char const *path);
-    auto operator==(char const * const other) const -> bool;
-    auto operator<=>(GlobPath<T> const &other) const -> std::strong_ordering;
-    template<typename U>
-    auto operator==(ConcretePath<U> const &other) const -> bool;
-    template<typename U>
-    auto operator==(GlobPath<U> const &other) const -> bool;
 
-    auto isValid() const -> bool;
-private:
-    T path;
+                         auto operator<=>(GlobPath<T> const      &other) const -> std::strong_ordering;
+                         auto operator== (std::string_view const &other) const -> bool;
+                         auto operator== (char const * const      other) const -> bool;
+    template<typename U> auto operator== (ConcretePath<U> const  &other) const -> bool;
+    template<typename U> auto operator== (GlobPath<U> const      &other) const -> bool;
 };
-using GlobPathString = GlobPath<std::string>;
+using GlobPathString     = GlobPath<std::string>;
 using GlobPathStringView = GlobPath<std::string_view>;
 
 } // namespace SP
