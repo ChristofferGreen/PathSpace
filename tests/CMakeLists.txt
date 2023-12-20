@@ -15,11 +15,12 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(Catch2)
 
 add_executable(PathSpaceTests
-  unit/test_Capabilities.cpp
+  unit/core/test_Capabilities.cpp
   unit/path/test_ConcretePath.cpp
   unit/path/test_ConcreteName.cpp
   unit/path/test_GlobPath.cpp
   unit/path/test_ConcretePathIterator.cpp
+  unit/type/test_InputMetadata.cpp
 )
 
 target_link_libraries(PathSpaceTests
