@@ -11,6 +11,15 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(ParallelHashmap)
 
+FetchContent_Declare(
+  Cereal
+  GIT_REPOSITORY git@github.com:USCiLab/cereal.git
+  GIT_TAG v1.3.2
+  GIT_SHALLOW TRUE
+)
+set(JUST_INSTALL_CEREAL ON)
+FetchContent_MakeAvailable(Cereal)
+
 # Indicate that we only want to compile source files into a library
 add_library(PathSpace
     path/ConcretePath.cpp
@@ -26,6 +35,7 @@ target_include_directories(PathSpace
 PUBLIC
     ${CMAKE_SOURCE_DIR}/include
     ${parallelhashmap_SOURCE_DIR}
+    ${cereal_SOURCE_DIR}/include
 )
 
 target_link_libraries(PathSpace

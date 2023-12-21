@@ -6,7 +6,7 @@ namespace SP {
 struct InputMetadata {
     InputMetadata() = default;
     template<typename T>
-    InputMetadata(T const&) 
+    InputMetadata(T const&)
         : isTriviallyCopyable(std::is_trivially_copyable<T>::value),
           isFundamental(std::is_fundamental<T>::value),
           isReference(std::is_reference<T>::value),
