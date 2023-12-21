@@ -3,7 +3,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace SP2 {
+namespace SP {
 
 struct PathNode {
     std::unordered_map<std::string, std::shared_ptr<PathNode>> children;

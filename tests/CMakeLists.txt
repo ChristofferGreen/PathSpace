@@ -23,6 +23,7 @@ add_executable(PathSpaceTests
   unit/type/test_InputMetadata.cpp
   unit/serialization/test_InputData.cpp
   unit/serialization/test_QueueStreamBuffer.cpp
+  unit/test_PathSpace.cpp
 )
 
 target_link_libraries(PathSpaceTests

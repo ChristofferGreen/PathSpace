@@ -5,6 +5,8 @@
 #include "core/TimeToLive.hpp"
 #include "core/PathNode.hpp"
 #include "core/ExecutionOptions.hpp"
+#include "core/PathNode.hpp"
+#include "serialization/InputData.hpp"
 
 #include <parallel_hashmap/phmap.h>
 
@@ -23,14 +25,15 @@ using Expected = std::expected<T, Error>;
 class PathSpace {
 private:
     PathNode root;
-    phmap::parallel_flat_hash_map<std::string, std::function<Expected<void>(const GlobPath&)>> subscribers;
+    phmap::parallel_flat_hash_map<std::string, std::function<Expected<void>(const GlobPathStringView&)>> subscribers;
 
 public:
     template<typename T>
-    auto insert(const GlobPath& path,
+    auto insert(const GlobPathStringView& path,
                 const T& data,
                 const Capabilities& capabilities = Capabilities::All(),
                 const std::optional<TimeToLive>& ttl = std::nullopt) -> Expected<int> {
+        InputData input{data};
         /*if (!capabilities.hasCapability(path, Capabilities::Type::READ)) {
             return std::unexpected({Error::Code::CapabilityWriteMissing, "Write capability check failed"});
         }*/
@@ -51,27 +54,25 @@ public:
             // setupTTL(node, *ttl); // Pseudo-function to demonstrate setting up the TTL for the node
         }*/
 
-        return nbrInserted; // Return no error on success
+        return nbrInserted;
     }
 
-    // Read data from the PathSpace
     template<typename T>
-    Expected<T> read(const GlobPath& path, const Capabilities& capabilities = Capabilities::All()) const;
+    Expected<T> read(const GlobPathStringView& path,
+                     const Capabilities& capabilities = Capabilities::All()) const;
 
-    // Grab data from the PathSpace (read and remove)
     template<typename T>
-    Expected<T> grab(const GlobPath& path, const Capabilities& capabilities = Capabilities::All());
+    Expected<T> grab(const GlobPathStringView& path,
+                     const Capabilities& capabilities = Capabilities::All());
 
-    // Subscribe to changes at a given path
-    Expected<void> subscribe(const GlobPath& path, std::function<void(const GlobPath&)> callback,
+    Expected<void> subscribe(const GlobPathStringView& path,
+                             std::function<void(const GlobPathStringView&)> callback,
                              const Capabilities& capabilities = Capabilities::All());
 
-    // Visit a node in the PathSpace
     template<typename T>
-    Expected<void> visit(const GlobPath& path, std::function<void(T&)> visitor,
+    Expected<void> visit(const GlobPathStringView& path,
+                         std::function<void(T&)> visitor,
                          const Capabilities& capabilities = Capabilities::All());
-
-    // More methods based on the described functionality can be added here
 };
 
 }
