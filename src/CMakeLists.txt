@@ -29,6 +29,7 @@ add_library(PathSpace
     path/GlobPathIterator.cpp
     path/GlobName.cpp
     path/Path.cpp
+    serialization/InputData.cpp
 )
 
 target_include_directories(PathSpace

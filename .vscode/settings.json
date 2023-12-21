@@ -87,6 +87,10 @@
         "thread": "cpp",
         "expected": "cpp",
         "format": "cpp",
-        "list": "cpp"
+        "list": "cpp",
+        "csignal": "cpp",
+        "forward_list": "cpp",
+        "typeindex": "cpp",
+        "valarray": "cpp"
     }
 }

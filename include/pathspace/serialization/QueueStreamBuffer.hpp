@@ -17,13 +17,24 @@ struct QueueStreamBuffer : public std::streambuf {
 protected:
     virtual int_type overflow(int_type c) override {
         if (c != EOF)
-            queue.push(std::byte(static_cast<char>(c)));
+            this->queue.push(std::byte(static_cast<char>(c)));
         return c;
     }
 
+    virtual int_type underflow() override {
+        if (this->queue.empty()) {
+            return traits_type::eof();
+        }
+
+        char c = static_cast<char>(this->queue.front());
+        queue.pop();
+
+        // Set buffer pointers
+        setg(&c, &c, &c + 1);
+        return traits_type::to_int_type(c);
+    }
 private:
     std::queue<std::byte> &queue;
 };
-
 
 } // namespace SP

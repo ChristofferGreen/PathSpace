@@ -4,10 +4,9 @@
 using namespace SP;
 
 struct MyStruct {
-    int data;
+    int data = 5;
 };
 
-// Non-member serialize function for MyStruct
 template <class Archive>
 void serialize(Archive& ar, MyStruct& myStruct) {
     ar(myStruct.data);
@@ -28,5 +27,24 @@ TEST_CASE("QueueStreamBuffer", "[Serialization][QueueStreamBuffer]") {
         MyStruct myStruct;
         oarchive(myStruct);
         REQUIRE(byteQueue.size() > 1);
+    }
+
+    SECTION("Simple Serialization", "[Serialization][QueueStreamBuffer]") {
+        std::queue<std::byte> byteQueue;
+        QueueStreamBuffer qbuf{byteQueue};
+        std::ostream os(&qbuf);
+        cereal::BinaryOutputArchive oarchive(os);
+
+        MyStruct myStruct;
+        myStruct.data = 6;
+        oarchive(myStruct);
+        REQUIRE(byteQueue.size() > 1);
+
+        MyStruct myStruct2;
+        myStruct2.data = 7;
+        std::istream is(&qbuf);
+        cereal::BinaryInputArchive iarchive(is);
+        iarchive(myStruct2);
+        REQUIRE(myStruct2.data==6);
     }
 }

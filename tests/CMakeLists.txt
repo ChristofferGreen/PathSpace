@@ -21,7 +21,7 @@ add_executable(PathSpaceTests
   unit/path/test_GlobPath.cpp
   unit/path/test_ConcretePathIterator.cpp
   unit/type/test_InputMetadata.cpp
-  unit/type/test_InputData.cpp
+  unit/serialization/test_InputData.cpp
   unit/serialization/test_QueueStreamBuffer.cpp
 )
 

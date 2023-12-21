@@ -1,8 +1,6 @@
 #pragma once
-#include "InputMetadata.hpp"
+#include "pathspace/type/InputMetadata.hpp"
 #include "InputDataSerialization.hpp"
-
-
 
 #include <utility>
 
@@ -12,6 +10,9 @@ struct InputData {
     template<typename T>
     InputData(T&& data) : metadata(std::forward<T>(data)), serialization(this->metadata, std::forward<T>(data)) {}
     
+    void serialize(void const *obj, std::queue<std::byte> &queue);
+    void deserialize(void *obj, std::queue<std::byte> &queue);
+
     InputMetadata metadata;
     InputDataSerialization serialization;
 };
