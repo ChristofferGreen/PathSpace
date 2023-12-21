@@ -30,8 +30,8 @@ static auto deserialize(void *objPtr, std::queue<std::byte> &byteQueue) -> void 
 struct InputDataSerialization {
     InputDataSerialization() = default;
     template<typename T>
-    InputDataSerialization(InputMetadata const &metadata, T const &data) : serializationFuncPtr(&serialize<T>),
-                                                                           deserializationFuncPtr(&deserialize<T>) {}
+    InputDataSerialization(T const &data) : serializationFuncPtr(&serialize<T>),
+                                            deserializationFuncPtr(&deserialize<T>) {}
 
     void (*serializationFuncPtr)(void const *obj, std::queue<std::byte>&);
     void (*deserializationFuncPtr)(void *obj, std::queue<std::byte>&);
