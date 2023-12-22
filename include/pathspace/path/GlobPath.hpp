@@ -21,6 +21,9 @@ struct GlobPath : public Path<T> {
                          auto operator== (std::string_view const &other) const -> bool;
     template<typename U> auto operator== (ConcretePath<U> const  &other) const -> bool;
     template<typename U> auto operator== (GlobPath<U> const      &other) const -> bool;
+
+    auto isConcrete() const -> bool;
+    auto isGlob() const -> bool;
 };
 using GlobPathString     = GlobPath<std::string>;
 using GlobPathStringView = GlobPath<std::string_view>;

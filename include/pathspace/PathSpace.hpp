@@ -24,8 +24,8 @@ using Expected = std::expected<T, Error>;
 
 class PathSpace {
 private:
-    PathNode root;
-    phmap::parallel_flat_hash_map<std::string, std::function<Expected<void>(const GlobPathStringView&)>> subscribers;
+    phmap::parallel_flat_hash_map<ConcreteName, std::unique_ptr<PathSpace>> nodes;
+    //phmap::parallel_flat_hash_map<std::string, std::function<Expected<void>(const GlobPathStringView&)>> subscribers;
 
 public:
     template<typename T>
@@ -34,10 +34,14 @@ public:
                 const Capabilities& capabilities = Capabilities::All(),
                 const std::optional<TimeToLive>& ttl = std::nullopt) -> Expected<int> {
         InputData input{data};
-        /*if (!capabilities.hasCapability(path, Capabilities::Type::READ)) {
-            return std::unexpected({Error::Code::CapabilityWriteMissing, "Write capability check failed"});
-        }*/
+        //if (!capabilities.hasCapability(path, Capabilities::Type::WRITE))
+        //    return std::unexpected({Error::Code::CapabilityWriteMissing, "Write capability check failed"});
         int nbrInserted = 0;
+
+        if(path.isConcrete()) {
+            ConcretePathStringView cpath{path.getPath()};
+        }
+
 
         // Navigate to the correct node in the path hierarchy, or create it if it doesn't exist.
         /*auto node = navigateToNode(path); // Pseudo-function to demonstrate the idea
@@ -58,21 +62,21 @@ public:
     }
 
     template<typename T>
-    Expected<T> read(const GlobPathStringView& path,
-                     const Capabilities& capabilities = Capabilities::All()) const;
+    auto read(const GlobPathStringView& path,
+              const Capabilities& capabilities = Capabilities::All()) const -> Expected<T>;
 
     template<typename T>
-    Expected<T> grab(const GlobPathStringView& path,
-                     const Capabilities& capabilities = Capabilities::All());
+    auto grab(const GlobPathStringView& path,
+              const Capabilities& capabilities = Capabilities::All()) -> Expected<T>;
 
-    Expected<void> subscribe(const GlobPathStringView& path,
-                             std::function<void(const GlobPathStringView&)> callback,
-                             const Capabilities& capabilities = Capabilities::All());
+    auto subscribe(const GlobPathStringView& path,
+                   std::function<void(const GlobPathStringView&)> callback,
+                   const Capabilities& capabilities = Capabilities::All()) -> Expected<void>;
 
     template<typename T>
-    Expected<void> visit(const GlobPathStringView& path,
-                         std::function<void(T&)> visitor,
-                         const Capabilities& capabilities = Capabilities::All());
+    auto visit(const GlobPathStringView& path,
+               std::function<void(T&)> visitor,
+               const Capabilities& capabilities = Capabilities::All()) -> Expected<void>;
 };
 
 }

@@ -65,4 +65,29 @@ auto GlobPath<T>::operator==(ConcretePath<U> const &other) const -> bool {
     return true;
 }
 
+template<typename T>
+auto GlobPath<T>::isConcrete() const -> bool {
+    return !this->isGlob();
+}
+
+template<typename T>
+auto GlobPath<T>::isGlob() const -> bool {
+    bool previousCharWasEscape = false;
+    for (auto const& ch : this->path) {
+        if (ch == '\\' && !previousCharWasEscape) {
+            previousCharWasEscape = true;
+            continue;
+        }
+        if (previousCharWasEscape) {
+            previousCharWasEscape = false;
+            continue;
+        }
+        if (ch == '*' || ch == '?' || ch == '[' || ch == ']') {
+            return true;
+        }
+    }
+    return false;
+}
+
+
 } // namespace SP

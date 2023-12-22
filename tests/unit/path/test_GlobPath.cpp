@@ -141,15 +141,76 @@ TEST_CASE("GlobPath") {
    }
 
    SECTION("Name Containing Wildcard Exact Match", "[Path][GlobPath]") {
-        GlobPathStringView sp1{"/a/test\\*"};
-        GlobPathStringView sp2{"/a/testbaab"};
-        ConcretePathStringView sp3{"/a/test*"};
+        const GlobPathStringView sp1{"/a/test\\*"};
+        const GlobPathStringView sp2{"/a/testbaab"};
+        const ConcretePathStringView sp3{"/a/test*"};
         REQUIRE(sp1 != sp2);
         REQUIRE(sp2 != sp3);
         REQUIRE(sp3 == "/a/test*");
         REQUIRE(sp3 == sp1);
         REQUIRE(sp3 != sp2);
    }
+
+    SECTION("Path with No Glob Characters", "[Path][GlobPath]") {
+        const GlobPath<std::string> path{"/user/data/file"};
+        REQUIRE_FALSE(path.isGlob());
+    }
+
+    SECTION("Path with Asterisk Glob", "[Path][GlobPath]") {
+        const GlobPath<std::string> path{"/user/*/file"};
+        REQUIRE(path.isGlob());
+    }
+
+    SECTION("Path with Question Mark Glob", "[Path][GlobPath]") {
+        const GlobPath<std::string> path{"/user/data/fil?"};
+        REQUIRE(path.isGlob());
+    }
+
+    SECTION("Path with Range Glob", "[Path][GlobPath]") {
+        const GlobPath<std::string> path{"/user/data/file[1-3]"};
+        REQUIRE(path.isGlob());
+    }
+
+    SECTION("Path with Escaped Glob Characters", "[Path][GlobPath]") {
+        const GlobPath<std::string> path{"/user/data/fi\\*le"};
+        REQUIRE_FALSE(path.isGlob());
+    }
+
+    SECTION("Path with Escaped Escape Character", "[Path][GlobPath]") {
+        const GlobPath<std::string> path{"/user/data/fi\\\\le"};
+        REQUIRE_FALSE(path.isGlob());
+    }
+
+    SECTION("Path with Mixed Escaped and Unescaped Gobs", "[Path][GlobPath]") {
+        const GlobPath<std::string> path{"/user/\\*/fi*le"};
+        REQUIRE(path.isGlob());
+    }
+
+    SECTION("Path with Escaped Range Glob", "[Path][GlobPath]") {
+        const GlobPath<std::string> path{"/user/data/fi\\[1-3\\]"};
+        REQUIRE_FALSE(path.isGlob());
+    }
+
+    SECTION("Path with Multiple Glob Patterns", "[Path][GlobPath]") {
+        const GlobPath<std::string> path{"/us?er/*/file[0-9]"};
+        REQUIRE(path.isGlob());
+    }
+
+    SECTION("Empty Path", "[Path][GlobPath]") {
+        const GlobPath<std::string> path{""};
+        REQUIRE_FALSE(path.isGlob());
+    }
+
+    SECTION("Path with Only Glob Characters", "[Path][GlobPath]") {
+        const GlobPath<std::string> path{"/*?"};
+        REQUIRE(path.isGlob());
+    }
+
+    SECTION("Path with Only Escaped Glob Characters", "[Path][GlobPath]") {
+        const GlobPath<std::string> path{"/\\*\\?"};
+        REQUIRE_FALSE(path.isGlob());
+    }
+
 }
 
 //TEST_CASE("Path Wildcard Maps", "[Path]") {
