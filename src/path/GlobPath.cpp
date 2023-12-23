@@ -72,21 +72,7 @@ auto GlobPath<T>::isConcrete() const -> bool {
 
 template<typename T>
 auto GlobPath<T>::isGlob() const -> bool {
-    bool previousCharWasEscape = false;
-    for (auto const& ch : this->path) {
-        if (ch == '\\' && !previousCharWasEscape) {
-            previousCharWasEscape = true;
-            continue;
-        }
-        if (previousCharWasEscape) {
-            previousCharWasEscape = false;
-            continue;
-        }
-        if (ch == '*' || ch == '?' || ch == '[' || ch == ']') {
-            return true;
-        }
-    }
-    return false;
+    return is_glob(this->path);
 }
 
 

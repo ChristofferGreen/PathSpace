@@ -23,7 +23,7 @@ TEST_CASE("InputData", "[Type][InputData]") {
         InputData data{a};
 
         std::queue<std::byte> queue;
-        data.serialize(&a, queue);
+        data.serialize(queue);
 
         int b = 3;
         data.deserialize(&b, queue);
@@ -35,7 +35,7 @@ TEST_CASE("InputData", "[Type][InputData]") {
         InputData data{a};
 
         std::queue<std::byte> queue;
-        data.serialize(&a, queue);
+        data.serialize(queue);
 
         MyStruct b{22};
         data.deserialize(&b, queue);

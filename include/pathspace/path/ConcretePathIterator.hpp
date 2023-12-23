@@ -19,5 +19,7 @@ private:
     SIterator current;
     SIterator end;
 };
+using ConcretePathIteratorString     = ConcretePathIterator<std::string>;
+using ConcretePathIteratorStringView = ConcretePathIterator<std::string_view>;
 
 }

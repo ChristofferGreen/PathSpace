@@ -6,6 +6,7 @@ namespace SP {
 struct TimeToLive {
     std::chrono::steady_clock::time_point expiryTime;
 
+    TimeToLive() = default;
     TimeToLive(std::chrono::steady_clock::duration duration)
         : expiryTime(std::chrono::steady_clock::now() + duration) {}
     

@@ -6,6 +6,8 @@
 
 namespace SP {
 
+auto is_glob(std::string_view const &strv) -> bool;
+
 struct GlobName {
     GlobName(char const * const ptr);
     GlobName(std::string::const_iterator const &iter, std::string::const_iterator const &endIter);
@@ -18,6 +20,10 @@ struct GlobName {
 
     auto match(const std::string_view& str) const -> std::tuple<bool /*match*/, bool /*supermatch*/>;
     auto match(const ConcreteName& str) const -> std::tuple<bool /*match*/, bool /*supermatch*/>;
+
+    auto isConcrete() const -> bool;
+    auto isGlob() const -> bool;
+    auto getName() const -> std::string_view const&;
 private:
     std::string_view name;
 };

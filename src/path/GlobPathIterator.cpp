@@ -10,12 +10,19 @@ GlobPathIterator<T>::GlobPathIterator(T::const_iterator const &iter, T::const_it
 }
 
 template<typename T>
-auto GlobPathIterator<T>::operator++() -> GlobPathIterator<T>&{
+auto GlobPathIterator<T>::operator++() -> GlobPathIterator<T>& {
     while (this->current != this->end && *current != '/') {
         ++this->current;
     }
     this->skipSlashes();
     return *this;
+}
+
+template<typename T>
+auto GlobPathIterator<T>::operator++(int) -> GlobPathIterator<T> {
+    GlobPathIterator<T> current = *this;
+    this->operator++();
+    return current;
 }
 
 template<typename T>

@@ -3,9 +3,8 @@
 #include "core/Error.hpp"
 #include "core/Capabilities.hpp"
 #include "core/TimeToLive.hpp"
-#include "core/PathNode.hpp"
 #include "core/ExecutionOptions.hpp"
-#include "core/PathNode.hpp"
+#include "core/NodeData.hpp"
 #include "serialization/InputData.hpp"
 
 #include <parallel_hashmap/phmap.h>
@@ -13,7 +12,9 @@
 #include <chrono>
 #include <expected>
 #include <functional>
+#include <iterator>
 #include <memory>
+#include <queue>
 #include <string>
 #include <vector>
 
@@ -22,43 +23,18 @@ namespace SP {
 template<typename T>
 using Expected = std::expected<T, Error>;
 
-class PathSpace {
-private:
-    phmap::parallel_flat_hash_map<ConcreteName, std::unique_ptr<PathSpace>> nodes;
-    //phmap::parallel_flat_hash_map<std::string, std::function<Expected<void>(const GlobPathStringView&)>> subscribers;
-
-public:
+struct PathSpace {
+    using NodeDataHashMap = phmap::parallel_flat_hash_map<ConcreteName, std::variant<NodeData, std::unique_ptr<PathSpace>>>;
     template<typename T>
-    auto insert(const GlobPathStringView& path,
-                const T& data,
-                const Capabilities& capabilities = Capabilities::All(),
-                const std::optional<TimeToLive>& ttl = std::nullopt) -> Expected<int> {
-        InputData input{data};
-        //if (!capabilities.hasCapability(path, Capabilities::Type::WRITE))
-        //    return std::unexpected({Error::Code::CapabilityWriteMissing, "Write capability check failed"});
-        int nbrInserted = 0;
-
-        if(path.isConcrete()) {
-            ConcretePathStringView cpath{path.getPath()};
-        }
-
-
-        // Navigate to the correct node in the path hierarchy, or create it if it doesn't exist.
-        /*auto node = navigateToNode(path); // Pseudo-function to demonstrate the idea
-        if (!node) {
-            // The navigateToNode would create the node if it doesn't exist, so if it's still nullptr, there's an error
-            return Error{Error::Code::NO_SUCH_PATH, "Path does not exist and could not be created"};
-        }
-
-        // Insert the data
-        node->insertData(data); // Pseudo-function for inserting data into the node
-
-        // If a TTL is provided, setup the expiration mechanism
-        if (ttl) {
-            // setupTTL(node, *ttl); // Pseudo-function to demonstrate setting up the TTL for the node
-        }*/
-
-        return nbrInserted;
+    auto insert(const GlobPathStringView &path,
+                const T &data,
+                const Capabilities &capabilities = Capabilities::All(),
+                const TimeToLive &ttl = {}) -> Expected<int> {
+        // Check if path is valid.
+        // Check if path actually has a final name subcomponent
+        // Check capabilities
+        // Implement TTL functionality
+        return this->insertInternal(path.begin(), path.end(), InputData{data}, capabilities, ttl);
     }
 
     template<typename T>
@@ -77,6 +53,57 @@ public:
     auto visit(const GlobPathStringView& path,
                std::function<void(T&)> visitor,
                const Capabilities& capabilities = Capabilities::All()) -> Expected<void>;
+private:
+    auto insertInternal(const GlobPathIteratorStringView &iter,
+                        const GlobPathIteratorStringView &end,
+                        const InputData &inputData,
+                        const Capabilities &capabilities,
+                        const TimeToLive &ttl) -> Expected<int>;
+    auto insertDataName(const GlobName &name,
+                        const InputData &inputData,
+                        const Capabilities &capabilities,
+                        const TimeToLive &ttl) -> Expected<int>;
+    auto insertGlobName(const GlobPathIteratorStringView &iter,
+                        const GlobPathIteratorStringView &nextIter,
+                        const GlobPathIteratorStringView &end,
+                        const GlobName &name,
+                        const InputData &inputData,
+                        const Capabilities &capabilities,
+                        const TimeToLive &ttl) -> Expected<int>;
+
+    NodeDataHashMap nodeDataMap;
 };
 
 }
+
+
+
+        /*else if(pathComponent.isGlob()) { // Send along down the line to all matching the glob expression
+            for(auto &nodePair : this->nodes) {
+                if(pathComponent == nodePair.first) {
+                    auto returnedValue = nodePair.second->insertInternal(nextIter, end, inputData, capabilities, ttl); //bugbug multithread write while readlock
+                    if(!returnedValue.has_value())
+                        return std::unexpected(returnedValue.error());
+                    nbrInserted += returnedValue.value();
+                }
+            }
+        } else { // If any local name matches, send down the line to that one
+            auto const concreteName = ConcreteName{pathComponent.getName()};
+            auto const updateIfExists = [&](auto &nodePair){
+                auto returnedValue = nodePair.second->insertInternal(nextIter, end, inputData, capabilities, ttl);
+                if(!returnedValue.has_value())
+                    return std::unexpected(returnedValue.error());
+                nbrInserted += returnedValue.value();
+            };
+            auto const emplaceIfNotExists = [&concreteName](const NodeHashMap::constructor& ctor){
+                ctor(concreteName, std::make_unique<PathSpace>());
+            };
+            if(this->nodes.lazy_emplace_l(concreteName, updateIfExists, emplaceIfNotExists)) {
+                this->nodes.if_contains(concreteName, [&](auto &nodePair){
+                    auto returnedValue = nodePair.second->insertInternal(nextIter, end, inputData, capabilities, ttl);
+                    if(!returnedValue.has_value())
+                        return std::unexpected(returnedValue.error());
+                    nbrInserted += returnedValue.value();
+                });
+            }
+        }*/
