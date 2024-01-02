@@ -8,6 +8,7 @@ struct Error {
     enum class Code {
         NoSuchPath,
         InvalidPath,
+        InvalidPathSubcomponent,
         InvalidType,
         Timeout,
         CapabilityMismatch,

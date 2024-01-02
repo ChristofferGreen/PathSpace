@@ -59,17 +59,24 @@ private:
                         const InputData &inputData,
                         const Capabilities &capabilities,
                         const TimeToLive &ttl) -> Expected<int>;
-    auto insertDataName(const GlobName &name,
+    auto insertDataName(const ConcreteName &name,
                         const InputData &inputData,
                         const Capabilities &capabilities,
                         const TimeToLive &ttl) -> Expected<int>;
-    auto insertGlobName(const GlobPathIteratorStringView &iter,
-                        const GlobPathIteratorStringView &nextIter,
-                        const GlobPathIteratorStringView &end,
-                        const GlobName &name,
-                        const InputData &inputData,
-                        const Capabilities &capabilities,
-                        const TimeToLive &ttl) -> Expected<int>;
+    auto insertConcretePathComponent(const GlobPathIteratorStringView &iter,
+                             const GlobPathIteratorStringView &nextIter,
+                             const GlobPathIteratorStringView &end,
+                             const ConcreteName &name,
+                             const InputData &inputData,
+                             const Capabilities &capabilities,
+                             const TimeToLive &ttl) -> Expected<int>;
+    auto insertGlobPathComponent(const GlobPathIteratorStringView &iter,
+                             const GlobPathIteratorStringView &nextIter,
+                             const GlobPathIteratorStringView &end,
+                             const GlobName &name,
+                             const InputData &inputData,
+                             const Capabilities &capabilities,
+                             const TimeToLive &ttl) -> Expected<int>;
 
     NodeDataHashMap nodeDataMap;
 };
