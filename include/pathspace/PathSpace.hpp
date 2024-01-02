@@ -6,8 +6,7 @@
 #include "core/ExecutionOptions.hpp"
 #include "core/NodeData.hpp"
 #include "serialization/InputData.hpp"
-
-#include <parallel_hashmap/phmap.h>
+#include "serialization/Helper.hpp"
 
 #include <chrono>
 #include <expected>
@@ -24,7 +23,6 @@ template<typename T>
 using Expected = std::expected<T, Error>;
 
 struct PathSpace {
-    using NodeDataHashMap = phmap::parallel_flat_hash_map<ConcreteName, std::variant<NodeData, std::unique_ptr<PathSpace>>>;
     template<typename T>
     auto insert(const GlobPathStringView &path,
                 const T &data,
@@ -53,6 +51,13 @@ struct PathSpace {
     auto visit(const GlobPathStringView& path,
                std::function<void(T&)> visitor,
                const Capabilities& capabilities = Capabilities::All()) -> Expected<void>;
+
+    auto toJSON(bool const isHumanReadable) const -> std::string;
+
+    template <class Archive>
+    void serialize(Archive &ar) {
+        ar(this->nodeDataMap);
+    }    
 private:
     auto insertInternal(const GlobPathIteratorStringView &iter,
                         const GlobPathIteratorStringView &end,

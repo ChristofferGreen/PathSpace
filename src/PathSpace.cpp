@@ -1,5 +1,12 @@
 #include "pathspace/PathSpace.hpp"
 
+#include <cereal/archives/json.hpp>
+#include <cereal/types/string.hpp>
+#include <cereal/types/variant.hpp>
+#include <cereal/types/memory.hpp>
+#include <cereal/types/queue.hpp>
+#include <sstream>
+
 namespace SP {
 
 auto PathSpace::insertInternal(const GlobPathIteratorStringView &iter,
@@ -75,4 +82,16 @@ auto PathSpace::insertGlobPathComponent(const GlobPathIteratorStringView &iter,
         }
     }
 */
+
+auto PathSpace::toJSON(bool const isHumanReadable) const -> std::string {
+    std::stringstream ss;
+    cereal::JSONOutputArchive archive(ss, isHumanReadable ? cereal::JSONOutputArchive::Options::Default() : 
+                                                            cereal::JSONOutputArchive::Options::NoIndent());
+    archive(cereal::make_nvp("PathSpace", *this));
+    auto json = ss.str();
+    if(!isHumanReadable)
+        json.erase(std::remove(json.begin(), json.end(), '\n'), json.cend());
+    return json;
 }
+
+} // namespace SP
