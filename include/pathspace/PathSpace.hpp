@@ -24,10 +24,10 @@ using Expected = std::expected<T, Error>;
 
 struct PathSpace {
     template<typename T>
-    auto insert(const GlobPathStringView &path,
-                const T &data,
-                const Capabilities &capabilities = Capabilities::All(),
-                const TimeToLive &ttl = {}) -> Expected<int> {
+    auto insert(GlobPathStringView const &path,
+                T const &data,
+                Capabilities const &capabilities = Capabilities::All(),
+                TimeToLive const &ttl = {}) -> Expected<int> {
         // Check if path is valid.
         // Check if path actually has a final name subcomponent
         // Check capabilities
@@ -36,21 +36,21 @@ struct PathSpace {
     }
 
     template<typename T>
-    auto read(const GlobPathStringView& path,
-              const Capabilities& capabilities = Capabilities::All()) const -> Expected<T>;
+    auto read(GlobPathStringView const &path,
+              Capabilities const &capabilities = Capabilities::All()) const -> Expected<T>;
 
     template<typename T>
-    auto grab(const GlobPathStringView& path,
-              const Capabilities& capabilities = Capabilities::All()) -> Expected<T>;
+    auto grab(GlobPathStringView const &path,
+              Capabilities const &capabilities = Capabilities::All()) -> Expected<T>;
 
-    auto subscribe(const GlobPathStringView& path,
+    auto subscribe(GlobPathStringView const &path,
                    std::function<void(const GlobPathStringView&)> callback,
-                   const Capabilities& capabilities = Capabilities::All()) -> Expected<void>;
+                   Capabilities const &capabilities = Capabilities::All()) -> Expected<void>;
 
     template<typename T>
-    auto visit(const GlobPathStringView& path,
+    auto visit(GlobPathStringView const &path,
                std::function<void(T&)> visitor,
-               const Capabilities& capabilities = Capabilities::All()) -> Expected<void>;
+               Capabilities const &capabilities = Capabilities::All()) -> Expected<void>;
 
     auto toJSON(bool const isHumanReadable) const -> std::string;
 
