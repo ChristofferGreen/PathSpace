@@ -1,32 +1,28 @@
 #include "pathspace/PathSpace.hpp"
 
 #include <cereal/archives/json.hpp>
-#include <cereal/types/string.hpp>
-#include <cereal/types/variant.hpp>
-#include <cereal/types/memory.hpp>
-#include <cereal/types/queue.hpp>
 #include <sstream>
 
 namespace SP {
 
-auto PathSpace::insertInternal(const GlobPathIteratorStringView &iter,
-                               const GlobPathIteratorStringView &end,
-                               const InputData &inputData,
-                               const Capabilities &capabilities,
-                               const TimeToLive &ttl) -> Expected<int> {
+auto PathSpace::insertInternal(GlobPathIteratorStringView const &iter,
+                               GlobPathIteratorStringView const &end,
+                               InputData const &inputData,
+                               Capabilities const &capabilities,
+                               TimeToLive const &ttl) -> Expected<int> {
     auto const nextIter = std::next(iter);
     auto const pathComponent = *iter;
     if(nextIter == end) // This is the end of the path, attempt to insert the data
         return this->insertDataName(pathComponent.getName(), inputData, capabilities, ttl);
     else if(pathComponent.isGlob()) // Send along down the line to all matching the glob expression
-        return this->insertGlobPathComponent(iter, nextIter, end, pathComponent, inputData, capabilities, ttl);
-    return this->insertConcretePathComponent(iter, nextIter, end, pathComponent.getName(), inputData, capabilities, ttl); // This sub-component is a concrete path
+        return this->insertGlobPathComponent(iter, end, pathComponent, inputData, capabilities, ttl);
+    return this->insertConcretePathComponent(iter, end, pathComponent.getName(), inputData, capabilities, ttl); // This sub-component is a concrete path
 }
 
-auto PathSpace::insertDataName(const ConcreteName &concreteName,
-                               const InputData &inputData,
-                               const Capabilities &capabilities,
-                               const TimeToLive &ttl) -> Expected<int> {
+auto PathSpace::insertDataName(ConcreteName const &concreteName,
+                               InputData const &inputData,
+                               Capabilities const &capabilities,
+                               TimeToLive const &ttl) -> Expected<int> {
     auto const appendDataIfNameExists = [&inputData](auto &nodePair){
         inputData.serialize(std::get<NodeData>(nodePair.second).data);
     };
@@ -39,13 +35,13 @@ auto PathSpace::insertDataName(const ConcreteName &concreteName,
     return 1;
 }
 
-auto PathSpace::insertConcretePathComponent(const GlobPathIteratorStringView &iter,
-                                            const GlobPathIteratorStringView &nextIter,
-                                            const GlobPathIteratorStringView &end,
-                                            const ConcreteName &concreteName,
-                                            const InputData &inputData,
-                                            const Capabilities &capabilities,
-                                            const TimeToLive &ttl) -> Expected<int> {
+auto PathSpace::insertConcretePathComponent(GlobPathIteratorStringView const &iter,
+                                            GlobPathIteratorStringView const &end,
+                                            ConcreteName const &concreteName,
+                                            InputData const &inputData,
+                                            Capabilities const &capabilities,
+                                            TimeToLive const &ttl) -> Expected<int> {
+    auto const nextIter = std::next(iter);
     Expected<int> expected;
     auto const appendDataIfNameExists = [&](auto &nodePair){
         expected = std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second) ?
@@ -61,16 +57,51 @@ auto PathSpace::insertConcretePathComponent(const GlobPathIteratorStringView &it
     return expected;
 }
 
-auto PathSpace::insertGlobPathComponent(const GlobPathIteratorStringView &iter,
-                                        const GlobPathIteratorStringView &nextIter,
-                                        const GlobPathIteratorStringView &end,
-                                        const GlobName &name,
-                                        const InputData &inputData,
-                                        const Capabilities &capabilities,
-                                        const TimeToLive &ttl) -> Expected<int> {
+auto PathSpace::insertGlobPathComponent(GlobPathIteratorStringView const &iter,
+                                        GlobPathIteratorStringView const &end,
+                                        GlobName const &name,
+                                        InputData const &inputData,
+                                        Capabilities const &capabilities,
+                                        TimeToLive const &ttl) -> Expected<int> {
+    auto const nextIter = std::next(iter);
     int nbrInserted{};
     return nbrInserted;
 }
+
+auto PathSpace::readInternal(ConcretePathIteratorStringView const &iter,
+                             ConcretePathIteratorStringView const &end,
+                             InputMetadata const &inputMetadata,
+                             void *obj,
+                             Capabilities const &capabilities) -> Expected<int> {
+    auto const nextIter = std::next(iter);
+    auto const pathComponent = *iter;
+    if(nextIter == end) // This is the end of the path, attempt to insert the data
+        return this->readDataName(pathComponent, nextIter, end, inputMetadata, obj, capabilities);
+    /*return this->readComponent(iter, nextIter, end, pathComponent.getName(), inputData, capabilities, ttl); // This sub-component is a concrete path
+    */
+   return 0;
+}
+
+auto PathSpace::readDataName(ConcreteName const &concreteName,
+                             ConcretePathIteratorStringView const &nextIter,
+                             ConcretePathIteratorStringView const &end,
+                             InputMetadata const &inputMetadata,
+                             void *obj,
+                             Capabilities const &capabilities) -> Expected<int> {
+    this->nodeDataMap.if_contains(concreteName, [&](auto const &nodePair){
+        
+    });
+    return 0;
+}
+
+/*
+                this->nodes.if_contains(concreteName, [&](auto &nodePair){
+                    auto returnedValue = nodePair.second->insertInternal(nextIter, end, inputData, capabilities, ttl);
+                    if(!returnedValue.has_value())
+                        return std::unexpected(returnedValue.error());
+                    nbrInserted += returnedValue.value();
+                });
+*/
 
 /*
     for(auto &nodePair : this->nodeDataMap) { // Is this multi threading safe?

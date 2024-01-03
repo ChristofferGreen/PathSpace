@@ -5,14 +5,27 @@
 
 using namespace SP;
 
+struct CustomClass {};
+struct Base { virtual ~Base() = default; template <typename A>void serialize(A &ar) {}};
+struct Derived : Base {template <typename A>void serialize(A &ar) {}};
+union MyUnion { int a; float b; template <typename A>void serialize(A &ar) {}};
+
 TEST_CASE("InputMetadata", "[Type][InputMetadata]") {
     SECTION("Simple Construction", "[Type][InputMetadata]") {
-        REQUIRE(InputMetadata(int{}).isTriviallyCopyable);
-        REQUIRE_FALSE(InputMetadata(std::vector<int>{}).isTriviallyCopyable);
+        REQUIRE(InputMetadata{InputMetadataT<int>{}}.isTriviallyCopyable);
+        REQUIRE(InputMetadata{InputMetadataT<int>{}}.isFundamental);
+        REQUIRE_FALSE(InputMetadata{InputMetadataT<std::vector<int>>{}}.isTriviallyCopyable);
+    }
+
+    SECTION("Simple Construction Stack Variable", "[Type][InputMetadata]") {
+        int a{23};
+        REQUIRE(InputMetadata{InputMetadataT<decltype(a)>{}}.isTriviallyCopyable);
+        REQUIRE(InputMetadata{InputMetadataT<decltype(a)>{}}.isFundamental);
+        REQUIRE_FALSE(InputMetadata{InputMetadataT<std::vector<decltype(a)>>{}}.isTriviallyCopyable);
     }
 
     SECTION("Fundamental Type", "[Type][InputMetadata]") {
-        InputMetadata metadata{int{}};
+        InputMetadata metadata{InputMetadataT<int>{}};
         REQUIRE(metadata.isFundamental);
         REQUIRE(metadata.isTriviallyCopyable);
         REQUIRE(metadata.isMoveable);
@@ -24,8 +37,7 @@ TEST_CASE("InputMetadata", "[Type][InputMetadata]") {
     }
 
     SECTION("Custom Class Type", "[Type][InputMetadata]") {
-        struct CustomClass {};
-        InputMetadata metadata{CustomClass{}};
+        InputMetadata metadata{InputMetadataT<CustomClass>{}};
         REQUIRE_FALSE(metadata.isFundamental);
         REQUIRE(metadata.isTriviallyCopyable);
         REQUIRE(metadata.isMoveable);
@@ -35,23 +47,26 @@ TEST_CASE("InputMetadata", "[Type][InputMetadata]") {
     }
 
     SECTION("Polymorphic Type", "[Type][InputMetadata]") {
-        struct Base { virtual ~Base() = default; };
-        struct Derived : Base {};
-        InputMetadata metadata{Derived{}};
+        InputMetadata metadata{InputMetadataT<Derived>{}};
         REQUIRE_FALSE(metadata.isTriviallyCopyable);
         REQUIRE(metadata.isPolymorphic);
     }
 
     SECTION("Function Pointer", "[Type][InputMetadata]") {
-        void (*funcPtr)() = []() {};
-        InputMetadata metadata{funcPtr};
+        InputMetadata metadata{InputMetadataT<void (*)()>{}};
         REQUIRE(metadata.isCallable);
         REQUIRE(metadata.isFunctionPointer);
     }
 
+    SECTION("std::function", "[Type][InputMetadata]") {
+        InputMetadata metadata{InputMetadataT<std::function<void()>>{}};
+        REQUIRE(metadata.isCallable);
+        REQUIRE_FALSE(metadata.isFunctionPointer);
+    }
+
     SECTION("Lambda Type", "[Type][InputMetadata]") {
-        auto lambda = []() {};
-        InputMetadata metadata{lambda};
+        auto lambda = [](){};
+        InputMetadata metadata{InputMetadataT<typeof(lambda)>{}};
         REQUIRE(metadata.isCallable);
         REQUIRE_FALSE(metadata.isFunctionPointer);
     }
@@ -64,13 +79,13 @@ TEST_CASE("InputMetadata", "[Type][InputMetadata]") {
             NonMovable(NonMovable&&) = delete;
             NonMovable& operator=(NonMovable&&) = delete;
         };
-        InputMetadata metadata{NonMovable{}};
+        InputMetadata metadata{InputMetadataT<NonMovable>{}};
         REQUIRE_FALSE(metadata.isMoveable);
     }
 
     SECTION("Array Type", "[Type][InputMetadata]") {
         int arr[5];
-        InputMetadata metadata{arr};
+        InputMetadata metadata{InputMetadataT<int[5]>{}};
         REQUIRE(metadata.isTriviallyCopyable);
         REQUIRE(metadata.isArray);
         REQUIRE(metadata.arraySize == 5);
@@ -79,7 +94,7 @@ TEST_CASE("InputMetadata", "[Type][InputMetadata]") {
 
     SECTION("Pointer Type", "[Type][InputMetadata]") {
         int* ptr = nullptr;
-        InputMetadata metadata{ptr};
+        InputMetadata metadata{InputMetadataT<int*>{}};
         REQUIRE(metadata.isTriviallyCopyable);
         REQUIRE(metadata.sizeOfType == sizeof(int*));
     }
@@ -89,13 +104,13 @@ TEST_CASE("InputMetadata", "[Type][InputMetadata]") {
             ExplicitType() {}
             ~ExplicitType() {}
         };
-        InputMetadata metadata{ExplicitType{}};
+        InputMetadata metadata{InputMetadataT<ExplicitType>{}};
         REQUIRE(metadata.isDefaultConstructible);
         REQUIRE(metadata.isDestructible);
     }
 
     SECTION("STL Vector Type", "[Type][InputMetadata]") {
-        InputMetadata metadata{std::vector<int>{}};
+        InputMetadata metadata{InputMetadataT<std::vector<int>>{}};
         REQUIRE_FALSE(metadata.isTriviallyCopyable);
         REQUIRE(metadata.isMoveable);
         REQUIRE(metadata.isCopyable);
@@ -107,7 +122,7 @@ TEST_CASE("InputMetadata", "[Type][InputMetadata]") {
     }
 
     SECTION("STL Map Type", "[Type][InputMetadata]") {
-        InputMetadata metadata{std::map<int, std::string>{}};
+        InputMetadata metadata{InputMetadataT<std::map<int, std::string>>{}};
         REQUIRE_FALSE(metadata.isTriviallyCopyable);
         REQUIRE(metadata.isMoveable);
         REQUIRE(metadata.isCopyable);
@@ -119,23 +134,19 @@ TEST_CASE("InputMetadata", "[Type][InputMetadata]") {
     }
 
     SECTION("Base Class with Virtual Function", "[Type][InputMetadata]") {
-        struct Base { virtual void func() {} };
-        InputMetadata metadataBase{Base{}};
+        InputMetadata metadataBase{InputMetadataT<Base>{}};
         REQUIRE_FALSE(metadataBase.isTriviallyCopyable);
         REQUIRE(metadataBase.isPolymorphic);
     }
 
     SECTION("Derived Class", "[Type][InputMetadata]") {
-        struct Base { virtual void func() {} };
-        struct Derived : Base {};
-        InputMetadata metadataDerived{Derived{}};
+        InputMetadata metadataDerived{InputMetadataT<Derived>{}};
         REQUIRE_FALSE(metadataDerived.isTriviallyCopyable);
         REQUIRE(metadataDerived.isPolymorphic);
     }
 
     SECTION("Union Type", "[Type][InputMetadata]") {
-        union MyUnion { int a; float b; };
-        InputMetadata metadata{MyUnion{}};
+        InputMetadata metadata{InputMetadataT<MyUnion>{}};
         REQUIRE(metadata.isTriviallyCopyable);
         REQUIRE_FALSE(metadata.isPolymorphic);
         REQUIRE_FALSE(metadata.isCallable);

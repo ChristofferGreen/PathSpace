@@ -36,8 +36,11 @@ struct PathSpace {
     }
 
     template<typename T>
-    auto read(GlobPathStringView const &path,
-              Capabilities const &capabilities = Capabilities::All()) const -> Expected<T>;
+    auto read(ConcretePathStringView const &path,
+              Capabilities const &capabilities = Capabilities::All()) const -> Expected<T> {
+        T obj;
+        return this->readInternal(path.begin(), path.end(), InputMetadataT<T>{}, &obj, capabilities);
+    }
 
     template<typename T>
     auto grab(GlobPathStringView const &path,
@@ -59,30 +62,39 @@ struct PathSpace {
         ar(this->nodeDataMap);
     }    
 private:
-    auto insertInternal(const GlobPathIteratorStringView &iter,
-                        const GlobPathIteratorStringView &end,
-                        const InputData &inputData,
-                        const Capabilities &capabilities,
-                        const TimeToLive &ttl) -> Expected<int>;
-    auto insertDataName(const ConcreteName &name,
-                        const InputData &inputData,
-                        const Capabilities &capabilities,
-                        const TimeToLive &ttl) -> Expected<int>;
-    auto insertConcretePathComponent(const GlobPathIteratorStringView &iter,
-                             const GlobPathIteratorStringView &nextIter,
-                             const GlobPathIteratorStringView &end,
-                             const ConcreteName &name,
-                             const InputData &inputData,
-                             const Capabilities &capabilities,
-                             const TimeToLive &ttl) -> Expected<int>;
-    auto insertGlobPathComponent(const GlobPathIteratorStringView &iter,
-                             const GlobPathIteratorStringView &nextIter,
-                             const GlobPathIteratorStringView &end,
-                             const GlobName &name,
-                             const InputData &inputData,
-                             const Capabilities &capabilities,
-                             const TimeToLive &ttl) -> Expected<int>;
+    auto insertInternal(GlobPathIteratorStringView const &iter,
+                        GlobPathIteratorStringView const &end,
+                        InputData const &inputData,
+                        Capabilities const &capabilities,
+                        TimeToLive const &ttl) -> Expected<int>;
+    auto insertDataName(ConcreteName const &name,
+                        InputData const &inputData,
+                        Capabilities const &capabilities,
+                        TimeToLive const &ttl) -> Expected<int>;
+    auto insertConcretePathComponent(GlobPathIteratorStringView const &iter,
+                                     GlobPathIteratorStringView const &end,
+                                     ConcreteName const &name,
+                                     InputData const &inputData,
+                                     Capabilities const &capabilities,
+                                     TimeToLive const &ttl) -> Expected<int>;
+    auto insertGlobPathComponent(GlobPathIteratorStringView const &iter,
+                                 GlobPathIteratorStringView const &end,
+                                 GlobName const &name,
+                                 InputData const &inputData,
+                                 Capabilities const &capabilities,
+                                 TimeToLive const &ttl) -> Expected<int>;
 
+    auto readInternal(ConcretePathIteratorStringView const &iter,
+                      ConcretePathIteratorStringView const &end,
+                      InputMetadata const &inputMetadata,
+                      void *obj,
+                      Capabilities const &capabilities) -> Expected<int>;
+    auto readDataName(ConcreteName const &concreteName,
+                      ConcretePathIteratorStringView const &nextIter,
+                      ConcretePathIteratorStringView const &end,
+                      InputMetadata const &inputMetadata,
+                      void *obj,
+                      Capabilities const &capabilities) -> Expected<int>;
     NodeDataHashMap nodeDataMap;
 };
 
