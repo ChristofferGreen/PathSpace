@@ -4,13 +4,11 @@
 using namespace SP;
 
 struct MyStruct {
+    template <typename A>
+    void serialize(A &ar) {ar(data);}
+    
     int data = 5;
 };
-
-template <class Archive>
-void serialize(Archive& ar, MyStruct& myStruct) {
-    ar(myStruct.data);
-}
 
 TEST_CASE("InputData", "[Type][InputData]") {
     SECTION("Simple Construction", "[Type][InputData]") {
@@ -25,9 +23,9 @@ TEST_CASE("InputData", "[Type][InputData]") {
         std::queue<std::byte> queue;
         data.serialize(queue);
 
-        int b = 3;
-        data.deserialize(&b, queue);
-        REQUIRE(b == 5);
+        a = 3;
+        data.deserialize(queue);
+        REQUIRE(a == 5);
     }
 
     SECTION("Custom Struct Serialization/Deserialization", "[Type][InputData]") {
@@ -37,8 +35,9 @@ TEST_CASE("InputData", "[Type][InputData]") {
         std::queue<std::byte> queue;
         data.serialize(queue);
 
-        MyStruct b{22};
-        data.deserialize(&b, queue);
-        REQUIRE(b.data == 35);
+        a.data = 22;
+        REQUIRE(a.data == 22);
+        data.deserialize(queue);
+        REQUIRE(a.data == 35);
     }
 }

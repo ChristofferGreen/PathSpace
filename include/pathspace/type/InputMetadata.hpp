@@ -18,7 +18,7 @@ namespace SP {
 
 template<typename T>
 static auto serialize(void const *objPtr, std::queue<std::byte> &byteQueue) -> void {
-    T const &obj = *static_cast<std::remove_reference_t<T> const *>(objPtr);
+    T const &obj = *static_cast<T const *>(objPtr);
 
     QueueStreamBuffer qbuf{byteQueue};
     std::ostream os{&qbuf};
@@ -28,57 +28,43 @@ static auto serialize(void const *objPtr, std::queue<std::byte> &byteQueue) -> v
 }
 
 template<typename T>
-static auto deserialize(void *objPtr, std::queue<std::byte> &byteQueue) -> void {
-    T &obj = *static_cast<std::remove_reference_t<T> *>(objPtr);
+static auto deserialize(void *objPtr, std::queue<std::byte> const &byteQueue) -> void {
+    T &obj = *static_cast<T*>(objPtr);
+    auto *bq = const_cast<std::queue<std::byte>*>(&byteQueue);
 
-    QueueStreamBuffer qbuf{byteQueue};
+    QueueStreamBuffer qbuf{*bq};
     std::istream is(&qbuf);
     cereal::BinaryInputArchive iarchive(is);
 
     iarchive(obj);
 }
 
-template<typename U>
-concept SerializableAndDeserializable = !std::is_same_v<U, std::function<void()>> && 
-                                        !std::is_same_v<U, void(*)()> &&
-                                        !std::is_pointer<U>::value &&
-                                        requires(U u, std::queue<std::byte>& q) {
-    { serialize<U>(&u, q) };
-    { deserialize<U>(&u, q) };
+template<typename T>
+concept SerializableAndDeserializable = !std::is_same_v<T, std::function<void()>> && 
+                                        !std::is_same_v<T, void(*)()> &&
+                                        !std::is_pointer<T>::value &&
+                                        requires(T t, std::queue<std::byte>& q) {
+    { serialize<T>(&t, q) };
+    { deserialize<T>(&t, q) };
 };
 
-template<typename CVRef>
+template<typename CVRefT>
 struct InputMetadataT {
+    using T = std::remove_cvref_t<CVRefT>;
     InputMetadataT() = default;
-    using T = std::remove_cvref_t<CVRef>;
-
-    static constexpr bool isTriviallyCopyable = std::is_trivially_copyable_v<T>;
-    static constexpr bool isFundamental = std::is_fundamental_v<T>;
-    static constexpr bool isMoveable = std::is_move_constructible_v<T>;
-    static constexpr bool isCopyable = std::is_copy_constructible_v<T>;
-    static constexpr bool isDefaultConstructible = std::is_default_constructible_v<T>;
-    static constexpr bool isDestructible = std::is_destructible_v<T>;
-    static constexpr bool isPolymorphic = std::is_polymorphic_v<T>;
-    static constexpr bool isCallable = std::is_invocable_v<T>;
-    static constexpr bool isFunctionPointer = std::is_function_v<std::remove_pointer_t<T>> && std::is_pointer_v<T>;
-    static constexpr bool isArray = std::is_array_v<T>;
-    static constexpr size_t sizeOfType = sizeof(T);
-    static constexpr size_t alignmentOf = alignof(T);
-    static constexpr size_t arraySize = isArray ? std::extent_v<T> : 0;
-
     static constexpr auto serializationFuncPtr = 
-        []<typename U = T>() -> std::conditional_t<SerializableAndDeserializable<U>, decltype(&serialize<U>), nullptr_t> {
-            if constexpr (SerializableAndDeserializable<U>) {
-                return &serialize<std::remove_reference_t<U>>;
+        []() -> std::conditional_t<SerializableAndDeserializable<T>, decltype(&serialize<T>), nullptr_t> {
+            if constexpr (SerializableAndDeserializable<T>) {
+                return &serialize<T>;
             } else {
                 return nullptr;
             }
         }();
 
     static constexpr auto deserializationFuncPtr = 
-        []<typename U = T>() -> std::conditional_t<SerializableAndDeserializable<U>, decltype(&deserialize<U>), nullptr_t> {
-            if constexpr (SerializableAndDeserializable<U>) {
-                return &deserialize<std::remove_reference_t<U>>;
+        []() -> std::conditional_t<SerializableAndDeserializable<T>, decltype(&deserialize<T>), nullptr_t> {
+            if constexpr (SerializableAndDeserializable<T>) {
+                return &deserialize<T>;
             } else {
                 return nullptr;
             }
@@ -87,21 +73,21 @@ struct InputMetadataT {
 
 struct InputMetadata {
     InputMetadata() = default;
-    template<typename T>
-    InputMetadata(InputMetadataT<T> const &obj)
-        : isTriviallyCopyable(obj.isTriviallyCopyable),
-          isFundamental(obj.isFundamental),
-          isMoveable(obj.isMoveable),
-          isCopyable(obj.isCopyable),
-          isDefaultConstructible(obj.isDefaultConstructible),
-          isDestructible(obj.isDestructible),
-          isPolymorphic(obj.isPolymorphic),
-          isCallable(obj.isCallable),
-          isFunctionPointer(obj.isFunctionPointer),
-          isArray(obj.isArray),
-          arraySize(obj.arraySize),
-          sizeOfType(obj.sizeOfType),
-          alignmentOf(obj.alignmentOf),
+    template<typename CVRefT, typename T = std::remove_cvref_t<CVRefT>>
+    InputMetadata(InputMetadataT<CVRefT> const &obj)
+        : isTriviallyCopyable(std::is_trivially_copyable_v<T>),
+          isFundamental(std::is_fundamental_v<T>),
+          isMoveable(std::is_move_constructible_v<T>),
+          isCopyable(std::is_copy_constructible_v<T>),
+          isDefaultConstructible(std::is_default_constructible_v<T>),
+          isDestructible(std::is_destructible_v<T>),
+          isPolymorphic(std::is_polymorphic_v<T>),
+          isCallable(std::is_invocable_v<T>),
+          isFunctionPointer(std::is_function_v<std::remove_pointer_t<T>> && std::is_pointer_v<T>),
+          isArray(std::is_array_v<T>),
+          arraySize(isArray ? std::extent_v<T> : 0),
+          sizeOfType(sizeof(T)),
+          alignmentOf(alignof(T)),
           id(&typeid(T)),
           serializationFuncPtr(obj.serializationFuncPtr),
           deserializationFuncPtr(obj.deserializationFuncPtr)
@@ -122,7 +108,7 @@ struct InputMetadata {
     size_t arraySize = 0;
     std::type_info const *id = nullptr;
     void (*serializationFuncPtr)(void const *obj, std::queue<std::byte>&) = nullptr;
-    void (*deserializationFuncPtr)(void *obj, std::queue<std::byte>&) = nullptr;
+    void (*deserializationFuncPtr)(void *obj, std::queue<std::byte> const&) = nullptr;
 };
 
 } // namespace SP

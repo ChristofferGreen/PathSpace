@@ -89,7 +89,8 @@ auto PathSpace::readDataName(ConcreteName const &concreteName,
                              void *obj,
                              Capabilities const &capabilities) -> Expected<int> {
     this->nodeDataMap.if_contains(concreteName, [&](auto const &nodePair){
-        
+        // if type matches
+        inputMetadata.deserializationFuncPtr(obj, std::get<NodeData>(nodePair.second).data);
     });
     return 0;
 }

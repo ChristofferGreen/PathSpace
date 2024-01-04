@@ -4,13 +4,9 @@
 using namespace SP;
 
 struct MyStruct {
+    template <typename A>void serialize(A &ar) {ar(data);}
     int data = 5;
 };
-
-template <class Archive>
-void serialize(Archive& ar, MyStruct& myStruct) {
-    ar(myStruct.data);
-}
 
 TEST_CASE("QueueStreamBuffer", "[Serialization][QueueStreamBuffer]") {
     SECTION("Simple Construction", "[Serialization][QueueStreamBuffer]") {

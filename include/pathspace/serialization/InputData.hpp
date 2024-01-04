@@ -7,12 +7,12 @@ namespace SP {
 
 struct InputData {
     template<typename T>
-    InputData(T&& data) : data(const_cast<void*>(static_cast<const void*>(&data))), metadata(InputMetadataT<T>{}) {}
+    InputData(T&& obj) : obj(const_cast<void*>(static_cast<const void*>(&obj))), metadata(InputMetadataT<T>{}) {}
     
     void serialize(std::queue<std::byte> &queue) const;
-    void deserialize(void *obj, std::queue<std::byte> &queue) const;
+    void deserialize(std::queue<std::byte> &queue) const;
 
-    void *data = nullptr;
+    void *obj = nullptr;
     InputMetadata metadata;
 };
 

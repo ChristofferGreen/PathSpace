@@ -12,7 +12,7 @@
 namespace SP {
 
 struct QueueStreamBuffer : public std::streambuf {
-    QueueStreamBuffer(std::queue<std::byte>& q) : queue(q) {}
+    QueueStreamBuffer(std::queue<std::byte> &q) : queue(q) {}
 
 protected:
     virtual int_type overflow(int_type c) override {

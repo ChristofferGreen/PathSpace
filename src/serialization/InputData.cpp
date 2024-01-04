@@ -3,11 +3,11 @@
 namespace SP {
 
 void InputData::serialize(std::queue<std::byte> &queue) const {
-    this->metadata.serializationFuncPtr(this->data, queue);
+    this->metadata.serializationFuncPtr(this->obj, queue);
 }
 
-void InputData::deserialize(void *obj, std::queue<std::byte> &queue) const {
-    this->metadata.deserializationFuncPtr(obj, queue);
+void InputData::deserialize(std::queue<std::byte> &queue) const {
+    this->metadata.deserializationFuncPtr(this->obj, queue);
 }
 
 
