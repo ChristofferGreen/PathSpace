@@ -62,7 +62,7 @@ struct InputMetadataT {
     using T = std::remove_cvref_t<CVRefT>;
     InputMetadataT() = default;
     static constexpr auto serializationFuncPtr = 
-        []() -> std::conditional_t<SerializableAndDeserializable<T>, decltype(&serialize<T>), nullptr_t> {
+        []() -> std::conditional_t<SerializableAndDeserializable<T>, decltype(&serialize<T>), std::nullptr_t> {
             if constexpr (SerializableAndDeserializable<T>) {
                 return &serialize<T>;
             } else {
@@ -71,7 +71,7 @@ struct InputMetadataT {
         }();
 
     static constexpr auto deserializationFuncPtr = 
-        []() -> std::conditional_t<SerializableAndDeserializable<T>, decltype(&deserialize<T>), nullptr_t> {
+        []() -> std::conditional_t<SerializableAndDeserializable<T>, decltype(&deserialize<T>), std::nullptr_t> {
             if constexpr (SerializableAndDeserializable<T>) {
                 return &deserialize<T>;
             } else {

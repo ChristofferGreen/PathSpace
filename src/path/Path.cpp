@@ -4,9 +4,6 @@
 #include "pathspace/path/Path.hpp"
 
 namespace SP {
-template struct Path<std::string>;
-template struct Path<std::string_view>;
-
 template<typename T>
 Path<T>::Path(T const &path) : path(path) {}
 
@@ -34,4 +31,6 @@ auto Path<T>::getPath() const -> T const& {
     return this->path;
 }
 
+template struct Path<std::string>;
+template struct Path<std::string_view>;
 } // namespace SP

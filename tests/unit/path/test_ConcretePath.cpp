@@ -120,7 +120,7 @@ TEST_CASE("ConcretePath", "[Path][ConcretePath]") {
         ++iter;
         REQUIRE(*iter == "非ASCII字符");
         ++iter;
-        iter == path.end();
+        REQUIRE(iter == path.end());
     }
 
     SECTION("Empty Components in Path", "[Path][ConcretePath]") {

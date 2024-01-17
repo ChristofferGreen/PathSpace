@@ -1,9 +1,6 @@
 #include "pathspace/path/ConcretePath.hpp"
 
 namespace SP {
-template struct ConcretePath<std::string>;
-template struct ConcretePath<std::string_view>;
-
 template<typename T>
 auto ConcretePath<T>::begin() const -> ConcretePathIterator<T> {
     return {this->path.begin(), this->path.end()};
@@ -50,4 +47,6 @@ auto ConcretePath<T>::operator==(char const * const other) const -> bool {
     return this->operator==(std::string_view{other});
 }
 
+template struct ConcretePath<std::string>;
+template struct ConcretePath<std::string_view>;
 } // namespace SP

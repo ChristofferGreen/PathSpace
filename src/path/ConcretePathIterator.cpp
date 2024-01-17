@@ -1,9 +1,6 @@
 #include "pathspace/path/ConcretePathIterator.hpp"
 
 namespace SP {
-template struct ConcretePathIterator<std::string>;
-template struct ConcretePathIterator<std::string_view>;
-
 template<typename T>
 ConcretePathIterator<T>::ConcretePathIterator(T::const_iterator const &iter, T::const_iterator const &endIter) : current(iter), end(endIter) {
     this->skipSlashes();
@@ -38,4 +35,6 @@ auto ConcretePathIterator<T>::skipSlashes() -> void {
         ++this->current;
 }
 
+template struct ConcretePathIterator<std::string>;
+template struct ConcretePathIterator<std::string_view>;
 } // namespace SP

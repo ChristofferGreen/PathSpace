@@ -1,19 +1,6 @@
 #include "pathspace/path/GlobPath.hpp"
 
 namespace SP {
-template struct GlobPath<std::string>;
-template auto   GlobPathString::operator==(ConcretePathString     const &) const -> bool;
-template auto   GlobPathString::operator==(ConcretePathStringView const &) const -> bool;
-template auto   GlobPathString::operator==(GlobPathString         const &) const -> bool;
-template auto   GlobPathString::operator==(GlobPathStringView     const &) const -> bool;
-
-template struct GlobPath<std::string_view>;
-template auto   GlobPathStringView::operator==(ConcretePathString     const &) const -> bool;
-template auto   GlobPathStringView::operator==(ConcretePathStringView const &) const -> bool;
-template auto   GlobPathStringView::operator==(GlobPathString         const &) const -> bool;
-template auto   GlobPathStringView::operator==(GlobPathStringView     const &) const -> bool;
-
-
 template<typename T>
 auto GlobPath<T>::begin() const -> GlobPathIterator<T> {
     return {this->path.begin(), this->path.end()};
@@ -75,5 +62,15 @@ auto GlobPath<T>::isGlob() const -> bool {
     return is_glob(this->path);
 }
 
+template struct GlobPath<std::string>;
+template auto   GlobPathString::operator==(ConcretePathString     const &) const -> bool;
+template auto   GlobPathString::operator==(ConcretePathStringView const &) const -> bool;
+template auto   GlobPathString::operator==(GlobPathString         const &) const -> bool;
+template auto   GlobPathString::operator==(GlobPathStringView     const &) const -> bool;
 
+template struct GlobPath<std::string_view>;
+template auto   GlobPathStringView::operator==(ConcretePathString     const &) const -> bool;
+template auto   GlobPathStringView::operator==(ConcretePathStringView const &) const -> bool;
+template auto   GlobPathStringView::operator==(GlobPathString         const &) const -> bool;
+template auto   GlobPathStringView::operator==(GlobPathStringView     const &) const -> bool;
 } // namespace SP

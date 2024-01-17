@@ -1,9 +1,6 @@
 #include "pathspace/path/GlobPathIterator.hpp"
 
 namespace SP {
-template struct GlobPathIterator<std::string>;
-template struct GlobPathIterator<std::string_view>;
-
 template<typename T>
 GlobPathIterator<T>::GlobPathIterator(T::const_iterator const &iter, T::const_iterator const &endIter) : current(iter), end(endIter) {
     this->skipSlashes();
@@ -45,4 +42,6 @@ auto GlobPathIterator<T>::skipSlashes() -> void {
         ++this->current;
 }
 
+template struct GlobPathIterator<std::string>;
+template struct GlobPathIterator<std::string_view>;
 } // namespace SP
