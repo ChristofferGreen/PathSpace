@@ -1,5 +1,5 @@
 #pragma once
-#include <queue>
+#include "pathspace/utils/ByteQueue.hpp"
 
 namespace SP {
 
@@ -9,7 +9,7 @@ struct NodeData {
         ar(this->data);
     }  
 
-    std::queue<std::byte> data;
+    ByteQueue data;
 };
 
 }

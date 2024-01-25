@@ -5,6 +5,13 @@ endif()
 include(FetchContent)
 
 FetchContent_Declare(
+  nlohmann
+  GIT_REPOSITORY https://github.com/nlohmann/json.git
+  GIT_TAG v3.11.3
+)
+FetchContent_MakeAvailable(nlohmann)
+
+FetchContent_Declare(
   ParallelHashmap
   GIT_REPOSITORY https://github.com/greg7mdp/parallel-hashmap.git
   GIT_TAG v1.3.11
@@ -37,6 +44,7 @@ target_include_directories(PathSpace
 PUBLIC
     ${CMAKE_SOURCE_DIR}/include
     ${parallelhashmap_SOURCE_DIR}
+    ${nlohmann_SOURCE_DIR}/include
     ${cereal_SOURCE_DIR}/include
 )
 

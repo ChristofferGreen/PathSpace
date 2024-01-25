@@ -8,6 +8,8 @@
 #include "serialization/InputData.hpp"
 #include "serialization/Helper.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <chrono>
 #include <expected>
 #include <functional>
@@ -98,7 +100,18 @@ private:
     NodeDataHashMap nodeDataMap;
 };
 
+inline void to_json(nlohmann::json &json, PathSpace const &space) {
+    //j = json{{"name", p.name}, {"address", p.address}, {"age", p.age}};
+    //json = nlohmann::json{{"name", p.name}};
 }
+
+inline void from_json(nlohmann::json const &j, PathSpace &space) {
+    /*j.at("name").get_to(p.name);
+    j.at("address").get_to(p.address);
+    j.at("age").get_to(p.age);*/
+}
+
+} // namespace SP
 
 
 

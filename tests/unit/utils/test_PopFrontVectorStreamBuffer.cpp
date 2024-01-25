@@ -76,4 +76,102 @@ TEST_CASE("PopFrontVectorStreamBuffer", "[PopFrontVector][PopFrontVectorStreamBu
         REQUIRE(readFloating == Catch::Approx(floating));
         REQUIRE(readText == text);
     }
+
+    SECTION("Writing and reading large data") {
+        std::iostream stream(&bufferStream);
+        std::string largeStr(1000, 'x'); // Large string of 1000 'x's
+
+        stream << largeStr;
+        stream.flush();
+
+        stream.clear();
+        stream.seekg(0);
+
+        std::string output;
+        std::getline(stream, output);
+
+        REQUIRE(output == largeStr);
+    }
+
+    SECTION("Check buffer size constraints") {
+        std::iostream stream(&bufferStream);
+        std::string longStr(2000, 'y'); // Longer than internal buffer size
+
+        stream << longStr;
+        stream.flush();
+
+        stream.clear();
+        stream.seekg(0);
+
+        std::string output;
+        std::getline(stream, output);
+
+        REQUIRE(output == longStr);
+    }
+
+    SECTION("Check underflow handling") {
+        std::iostream stream(&bufferStream);
+        std::string testStr = "Short test";
+
+        stream << testStr;
+        stream.flush();
+
+        stream.clear();
+        stream.seekg(0);
+
+        char ch;
+        std::string output;
+        while (stream.get(ch)) {
+            output.push_back(ch);
+        }
+
+        REQUIRE(output == testStr);
+    }
+
+    SECTION("Check for write after read") {
+        std::iostream stream(&bufferStream);
+        std::string initialStr = "Initial";
+        std::string newStr = "New";
+
+        stream << initialStr;
+        stream.flush();
+        stream.clear();
+        stream.seekg(0);
+
+        std::string output;
+        std::getline(stream, output);
+        REQUIRE(output == initialStr);
+
+        stream.clear();
+        stream.seekp(0);
+        stream << newStr;
+        stream.flush();
+        stream.clear();
+        stream.seekg(0);
+
+        std::getline(stream, output);
+        REQUIRE(output == newStr);
+    }
+
+    SECTION("Check handling of empty buffer") {
+        std::iostream stream(&bufferStream);
+
+        std::string output = "non-empty";
+        std::getline(stream, output);
+
+        REQUIRE(output.empty());
+    }
+
+    SECTION("Check stream state after operations") {
+        std::iostream stream(&bufferStream);
+
+        stream << "Test";
+        REQUIRE(stream.good());
+
+        stream.setstate(std::ios::badbit);
+        REQUIRE(stream.bad());
+
+        stream.clear();
+        REQUIRE(stream.good());
+    }    
 }

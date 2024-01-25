@@ -59,23 +59,35 @@ protected:
 
 protected:
     pos_type seekoff(off_type off, std::ios_base::seekdir dir, 
-                     std::ios_base::openmode which = std::ios_base::in) override {
+                    std::ios_base::openmode which) override {
         if (which & std::ios_base::in) {
+            // Handle input seek
             if (dir == std::ios::cur) {
-                // Forward seek within the read buffer
-                while (off-- > 0 && underflow() != traits_type::eof()) { }
-            } else if (dir == std::ios::beg && off >= 0) {
-                // Reset and seek from the beginning
-                resetBuffer();
-                while (off-- > 0 && underflow() != traits_type::eof()) { }
-            } else {
-                // Unsupported seek direction or position for this buffer
-                return pos_type(off_type(-1));
+                gbump(static_cast<int>(off));
+            } else if (dir == std::ios::beg) {
+                setg(eback(), eback() + off, egptr());
+            } else if (dir == std::ios::end) {
+                setg(eback(), egptr() - off, egptr());
             }
-            return pos_type(gptr() - eback());
+            return gptr() - eback();
+        } else if (which & std::ios_base::out) {
+            // Handle output seek
+            if (dir == std::ios::cur) {
+                pbump(static_cast<int>(off));
+            } else if (dir == std::ios::beg) {
+                setp(pbase(), epptr());
+                pbump(static_cast<int>(off));
+            } else if (dir == std::ios::end) {
+                setp(pbase(), epptr());
+                pbump(static_cast<int>(epptr() - pbase() - off));
+            }
+            return pptr() - pbase();
         }
-        return pos_type(off_type(-1)); // Seeking not supported for output
+
+        return pos_type(off_type(-1)); // Seeking not supported or invalid mode
     }
+
+
 
     pos_type seekpos(pos_type pos, 
                      std::ios_base::openmode which = std::ios_base::in) override {

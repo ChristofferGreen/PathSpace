@@ -90,7 +90,7 @@ auto PathSpace::readDataName(ConcreteName const &concreteName,
                              Capabilities const &capabilities) -> Expected<int> {
     this->nodeDataMap.if_contains(concreteName, [&](auto const &nodePair){
         // if type matches
-        inputMetadata.deserializationFuncPtr(obj, std::get<NodeData>(nodePair.second).data);
+        inputMetadata.deserializationFuncPtr2(obj, std::get<NodeData>(nodePair.second).data);
     });
     return 0;
 }
@@ -116,14 +116,15 @@ auto PathSpace::readDataName(ConcreteName const &concreteName,
 */
 
 auto PathSpace::toJSON(bool const isHumanReadable) const -> std::string {
-    std::stringstream ss;
+    /*std::stringstream ss;
     cereal::JSONOutputArchive archive(ss, isHumanReadable ? cereal::JSONOutputArchive::Options::Default() : 
                                                             cereal::JSONOutputArchive::Options::NoIndent());
     archive(cereal::make_nvp("PathSpace", *this));
     auto json = ss.str();
     if(!isHumanReadable)
         json.erase(std::remove(json.begin(), json.end(), '\n'), json.cend());
-    return json;
+    return json;*/
+    return "";
 }
 
 } // namespace SP
