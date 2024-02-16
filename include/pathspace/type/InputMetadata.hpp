@@ -65,6 +65,14 @@ static auto deserialize2(void *objPtr, ByteQueue const &byteQueue) -> void { // 
 }
 
 template<typename T>
+static auto deserializeConst(void *objPtr, ByteQueue const &byteQueue) -> void { // ToDo: remove const from byte queue?
+    T &obj = *static_cast<T*>(objPtr);
+    ByteQueue &bq = *const_cast<ByteQueue*>(&byteQueue);
+
+    deserialize_from_const_bytequeue(bq, obj);
+}
+
+template<typename T>
 concept SerializableAndDeserializable = !std::is_same_v<T, std::function<void()>> && 
                                         !std::is_same_v<T, void(*)()> &&
                                         !std::is_pointer<T>::value &&
@@ -121,6 +129,15 @@ struct InputMetadataT {
                 return nullptr;
             }
         }();
+
+    static constexpr auto deserializationFuncPtrConst = 
+        []() -> std::conditional_t<SerializableAndDeserializable2<T>, decltype(&deserialize2<T>), std::nullptr_t> {
+            if constexpr (SerializableAndDeserializable<T>) {
+                return &deserializeConst<T>;
+            } else {
+                return nullptr;
+            }
+        }();
 };
 
 struct InputMetadata {
@@ -144,7 +161,8 @@ struct InputMetadata {
           serializationFuncPtr(obj.serializationFuncPtr),
           deserializationFuncPtr(obj.deserializationFuncPtr),
           serializationFuncPtr2(obj.serializationFuncPtr2),
-          deserializationFuncPtr2(obj.deserializationFuncPtr2)
+          deserializationFuncPtr2(obj.deserializationFuncPtr2),
+          deserializationFuncPtrConst(obj.deserializationFuncPtrConst)
           {}
 
     bool isTriviallyCopyable = false;
@@ -165,6 +183,7 @@ struct InputMetadata {
     void (*deserializationFuncPtr)(void *obj, std::queue<std::byte> const&) = nullptr;
     void (*serializationFuncPtr2)(void const *obj, ByteQueue&) = nullptr;
     void (*deserializationFuncPtr2)(void *obj, ByteQueue const&) = nullptr;
+    void (*deserializationFuncPtrConst)(void *obj, ByteQueue const&) = nullptr;
 };
 
 } // namespace SP

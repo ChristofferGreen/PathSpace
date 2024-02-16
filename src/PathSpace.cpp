@@ -90,7 +90,7 @@ auto PathSpace::readDataName(ConcreteName const &concreteName,
                              Capabilities const &capabilities) const -> Expected<int> {
     this->nodeDataMap.if_contains(concreteName, [&](auto const &nodePair){
         // if type matches
-        inputMetadata.deserializationFuncPtr2(obj, std::get<NodeData>(nodePair.second).data);
+        inputMetadata.deserializationFuncPtrConst(obj, std::get<NodeData>(nodePair.second).data);
     });
     return 0;
 }

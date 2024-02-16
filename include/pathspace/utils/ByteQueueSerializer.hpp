@@ -59,4 +59,30 @@ auto deserialize_from_bytequeue(ByteQueue &bq, T &obj) -> void {
     }
 }
 
+template<typename T>
+auto deserialize_from_const_bytequeue(ByteQueue const &bq, T &obj) -> void {
+    std::string sizeStr;
+    sizeStr.resize(sizeof(uint64_t));
+    for (size_t i = 0; i < sizeof(uint64_t); ++i)
+        sizeStr[i] = static_cast<char>(bq[i]);
+
+    std::stringstream sizeStream(sizeStr);
+    uint64_t size;
+    {
+        cereal::BinaryInputArchive sizeArchive(sizeStream);
+        sizeArchive(size);
+    }
+
+    std::string str;
+    str.reserve(size);
+    for (size_t i = 0; i < size; ++i)
+        str.push_back(static_cast<char>(bq[sizeof(uint64_t)+i]));
+
+    std::stringstream ss(str);
+    {
+        cereal::BinaryInputArchive iarchive(ss);
+        iarchive(obj);
+    }
+}
+
 } // namespace SP
