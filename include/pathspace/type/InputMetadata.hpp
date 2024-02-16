@@ -28,44 +28,20 @@ TODO
 */
 
 template<typename T>
-static auto serialize(void const *objPtr, std::queue<std::byte> &byteQueue) -> void {
-    T const &obj = *static_cast<T const *>(objPtr);
-
-    QueueStreamBuffer qbuf{byteQueue};
-    std::ostream os{&qbuf};
-    cereal::BinaryOutputArchive oarchive(os);
-
-    oarchive(obj);
-}
-
-template<typename T>
-static auto deserialize(void *objPtr, std::queue<std::byte> const &byteQueue) -> void {
-    T &obj = *static_cast<T*>(objPtr);
-    auto *bq = const_cast<std::queue<std::byte>*>(&byteQueue);
-
-    QueueStreamBuffer qbuf{*bq};
-    std::istream is(&qbuf);
-    cereal::BinaryInputArchive iarchive(is);
-
-    iarchive(obj);
-}
-
-template<typename T>
-static auto serialize2(void const *objPtr, ByteQueue &byteQueue) -> void {
+static auto serialize(void const *objPtr, ByteQueue &byteQueue) -> void {
     T const &obj = *static_cast<T const *>(objPtr);
     serialize_to_bytequeue(byteQueue, obj);
 }
 
 template<typename T>
-static auto deserialize2(void *objPtr, ByteQueue const &byteQueue) -> void { // ToDo: remove const from byte queue?
+static auto deserialize(void *objPtr, ByteQueue &byteQueue) -> void {
     T &obj = *static_cast<T*>(objPtr);
-    ByteQueue &bq = *const_cast<ByteQueue*>(&byteQueue);
 
-    deserialize_from_bytequeue(bq, obj);
+    deserialize_from_bytequeue(byteQueue, obj);
 }
 
 template<typename T>
-static auto deserializeConst(void *objPtr, ByteQueue const &byteQueue) -> void { // ToDo: remove const from byte queue?
+static auto deserializeConst(void *objPtr, ByteQueue const &byteQueue) -> void {
     T &obj = *static_cast<T*>(objPtr);
     ByteQueue &bq = *const_cast<ByteQueue*>(&byteQueue);
 
@@ -76,24 +52,16 @@ template<typename T>
 concept SerializableAndDeserializable = !std::is_same_v<T, std::function<void()>> && 
                                         !std::is_same_v<T, void(*)()> &&
                                         !std::is_pointer<T>::value &&
-                                        requires(T t, std::queue<std::byte>& q) {
+                                        requires(T t, ByteQueue& q) {
     { serialize<T>(&t, q) };
     { deserialize<T>(&t, q) };
-};
-
-template<typename T>
-concept SerializableAndDeserializable2 = !std::is_same_v<T, std::function<void()>> && 
-                                        !std::is_same_v<T, void(*)()> &&
-                                        !std::is_pointer<T>::value &&
-                                        requires(T t, ByteQueue& q) {
-    { serialize2<T>(&t, q) };
-    { deserialize2<T>(&t, q) };
 };
 
 template<typename CVRefT>
 struct InputMetadataT {
     using T = std::remove_cvref_t<CVRefT>;
     InputMetadataT() = default;
+
     static constexpr auto serializationFuncPtr = 
         []() -> std::conditional_t<SerializableAndDeserializable<T>, decltype(&serialize<T>), std::nullptr_t> {
             if constexpr (SerializableAndDeserializable<T>) {
@@ -112,26 +80,8 @@ struct InputMetadataT {
             }
         }();
 
-    static constexpr auto serializationFuncPtr2 = 
-        []() -> std::conditional_t<SerializableAndDeserializable2<T>, decltype(&serialize2<T>), std::nullptr_t> {
-            if constexpr (SerializableAndDeserializable<T>) {
-                return &serialize2<T>;
-            } else {
-                return nullptr;
-            }
-        }();
-
-    static constexpr auto deserializationFuncPtr2 = 
-        []() -> std::conditional_t<SerializableAndDeserializable2<T>, decltype(&deserialize2<T>), std::nullptr_t> {
-            if constexpr (SerializableAndDeserializable<T>) {
-                return &deserialize2<T>;
-            } else {
-                return nullptr;
-            }
-        }();
-
     static constexpr auto deserializationFuncPtrConst = 
-        []() -> std::conditional_t<SerializableAndDeserializable2<T>, decltype(&deserialize2<T>), std::nullptr_t> {
+        []() -> std::conditional_t<SerializableAndDeserializable<T>, decltype(&deserializeConst<T>), std::nullptr_t> {
             if constexpr (SerializableAndDeserializable<T>) {
                 return &deserializeConst<T>;
             } else {
@@ -160,8 +110,6 @@ struct InputMetadata {
           id(&typeid(T)),
           serializationFuncPtr(obj.serializationFuncPtr),
           deserializationFuncPtr(obj.deserializationFuncPtr),
-          serializationFuncPtr2(obj.serializationFuncPtr2),
-          deserializationFuncPtr2(obj.deserializationFuncPtr2),
           deserializationFuncPtrConst(obj.deserializationFuncPtrConst)
           {}
 
@@ -179,10 +127,8 @@ struct InputMetadata {
     size_t alignmentOf = 0;
     size_t arraySize = 0;
     std::type_info const *id = nullptr;
-    void (*serializationFuncPtr)(void const *obj, std::queue<std::byte>&) = nullptr;
-    void (*deserializationFuncPtr)(void *obj, std::queue<std::byte> const&) = nullptr;
-    void (*serializationFuncPtr2)(void const *obj, ByteQueue&) = nullptr;
-    void (*deserializationFuncPtr2)(void *obj, ByteQueue const&) = nullptr;
+    void (*serializationFuncPtr)(void const *obj, ByteQueue&) = nullptr;
+    void (*deserializationFuncPtr)(void *obj, ByteQueue&) = nullptr;
     void (*deserializationFuncPtrConst)(void *obj, ByteQueue const&) = nullptr;
 };
 

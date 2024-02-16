@@ -2,20 +2,16 @@
 
 namespace SP {
 
-auto InputData::serialize(std::queue<std::byte> &queue) const -> void {
+auto InputData::serialize(ByteQueue &queue) const -> void {
     this->metadata.serializationFuncPtr(this->obj, queue);
 }
 
-auto InputData::deserialize(std::queue<std::byte> &queue) const -> void {
-    this->metadata.deserializationFuncPtr(this->obj, queue);
-}
-
-auto InputData::serialize(ByteQueue &queue) const -> void {
-    this->metadata.serializationFuncPtr2(this->obj, queue);
-}
-
 auto InputData::deserialize(ByteQueue const &queue) const -> void {
-    this->metadata.deserializationFuncPtr2(this->obj, queue);
+    this->metadata.deserializationFuncPtrConst(this->obj, queue);
+}
+
+auto InputData::deserialize(ByteQueue &queue) const -> void {
+    this->metadata.deserializationFuncPtr(this->obj, queue);
 }
 
 } // namespace SP
