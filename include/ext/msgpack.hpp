@@ -168,6 +168,9 @@ using is_not_random_access_iterator_t = std::enable_if_t<!std::is_convertible_v<
 class Packer {
  public:
 
+  Packer() : serialized_object(&serialized_object_d) {}
+  Packer(std::vector<uint8_t> &data) : serialized_object(&data) {}
+
   template<class ... Types>
   void operator()(const Types &... args) {
     (pack_type(std::forward<const Types &>(args)), ...);
@@ -179,15 +182,16 @@ class Packer {
   }
 
   const std::vector<uint8_t> &vector() const {
-    return serialized_object;
+    return *serialized_object;
   }
 
   void clear() {
-    serialized_object.clear();
+    serialized_object->clear();
   }
 
  private:
-  std::vector<uint8_t> serialized_object;
+  std::vector<uint8_t> serialized_object_d;
+  std::vector<uint8_t> *serialized_object = nullptr;
 
   template<class T>
   void pack_type(const T &value) {
@@ -213,16 +217,16 @@ class Packer {
   void pack_array(const T &array) {
     if (array.size() < 16) {
       auto size_mask = uint8_t(0b10010000);
-      serialized_object.emplace_back(uint8_t(array.size() | size_mask));
+      serialized_object->emplace_back(uint8_t(array.size() | size_mask));
     } else if (array.size() < std::numeric_limits<uint16_t>::max()) {
-      serialized_object.emplace_back(array16);
+      serialized_object->emplace_back(array16);
       for (auto i = sizeof(uint16_t); i > 0; --i) {
-        serialized_object.emplace_back(uint8_t(array.size() >> (8U * (i - 1)) & 0xff));
+        serialized_object->emplace_back(uint8_t(array.size() >> (8U * (i - 1)) & 0xff));
       }
     } else if (array.size() < std::numeric_limits<uint32_t>::max()) {
-      serialized_object.emplace_back(array32);
+      serialized_object->emplace_back(array32);
       for (auto i = sizeof(uint32_t); i > 0; --i) {
-        serialized_object.emplace_back(uint8_t(array.size() >> (8U * (i - 1)) & 0xff));
+        serialized_object->emplace_back(uint8_t(array.size() >> (8U * (i - 1)) & 0xff));
       }
     } else {
       return; // Give up if string is too long
@@ -236,16 +240,16 @@ class Packer {
   void pack_map(const T &map) {
     if (map.size() < 16) {
       auto size_mask = uint8_t(0b10000000);
-      serialized_object.emplace_back(uint8_t(map.size() | size_mask));
+      serialized_object->emplace_back(uint8_t(map.size() | size_mask));
     } else if (map.size() < std::numeric_limits<uint16_t>::max()) {
-      serialized_object.emplace_back(map16);
+      serialized_object->emplace_back(map16);
       for (auto i = sizeof(uint16_t); i > 0; --i) {
-        serialized_object.emplace_back(uint8_t(map.size() >> (8U * (i - 1)) & 0xff));
+        serialized_object->emplace_back(uint8_t(map.size() >> (8U * (i - 1)) & 0xff));
       }
     } else if (map.size() < std::numeric_limits<uint32_t>::max()) {
-      serialized_object.emplace_back(map32);
+      serialized_object->emplace_back(map32);
       for (auto i = sizeof(uint32_t); i > 0; --i) {
-        serialized_object.emplace_back(uint8_t(map.size() >> (8U * (i - 1)) & 0xff));
+        serialized_object->emplace_back(uint8_t(map.size() >> (8U * (i - 1)) & 0xff));
       }
     }
     for (const auto &elem : map) {
@@ -300,9 +304,9 @@ template<>
 inline
 void Packer::pack_type(const int8_t &value) {
   if (value > 31 || value < -32) {
-    serialized_object.emplace_back(int8);
+    serialized_object->emplace_back(int8);
   }
-  serialized_object.emplace_back(uint8_t(twos_complement(value).to_ulong()));
+  serialized_object->emplace_back(uint8_t(twos_complement(value).to_ulong()));
 }
 
 template<>
@@ -311,10 +315,10 @@ void Packer::pack_type(const int16_t &value) {
   if (abs(value) < abs(std::numeric_limits<int8_t>::min())) {
     pack_type(int8_t(value));
   } else {
-    serialized_object.emplace_back(int16);
+    serialized_object->emplace_back(int16);
     auto serialize_value = uint16_t(twos_complement(value).to_ulong());
     for (auto i = sizeof(value); i > 0; --i) {
-      serialized_object.emplace_back(uint8_t(serialize_value >> (8U * (i - 1)) & 0xff));
+      serialized_object->emplace_back(uint8_t(serialize_value >> (8U * (i - 1)) & 0xff));
     }
   }
 }
@@ -325,10 +329,10 @@ void Packer::pack_type(const int32_t &value) {
   if (abs(value) < abs(std::numeric_limits<int16_t>::min())) {
     pack_type(int16_t(value));
   } else {
-    serialized_object.emplace_back(int32);
+    serialized_object->emplace_back(int32);
     auto serialize_value = uint32_t(twos_complement(value).to_ulong());
     for (auto i = sizeof(value); i > 0; --i) {
-      serialized_object.emplace_back(uint8_t(serialize_value >> (8U * (i - 1)) & 0xff));
+      serialized_object->emplace_back(uint8_t(serialize_value >> (8U * (i - 1)) & 0xff));
     }
   }
 }
@@ -339,10 +343,10 @@ void Packer::pack_type(const int64_t &value) {
   if (llabs(value) < llabs(std::numeric_limits<int32_t>::min()) && value != std::numeric_limits<int64_t>::min()) {
     pack_type(int32_t(value));
   } else {
-    serialized_object.emplace_back(int64);
+    serialized_object->emplace_back(int64);
     auto serialize_value = uint64_t(twos_complement(value).to_ullong());
     for (auto i = sizeof(value); i > 0; --i) {
-      serialized_object.emplace_back(uint8_t(serialize_value >> (8U * (i - 1)) & 0xff));
+      serialized_object->emplace_back(uint8_t(serialize_value >> (8U * (i - 1)) & 0xff));
     }
   }
 }
@@ -351,10 +355,10 @@ template<>
 inline
 void Packer::pack_type(const uint8_t &value) {
   if (value <= 0x7f) {
-    serialized_object.emplace_back(value);
+    serialized_object->emplace_back(value);
   } else {
-    serialized_object.emplace_back(uint8);
-    serialized_object.emplace_back(value);
+    serialized_object->emplace_back(uint8);
+    serialized_object->emplace_back(value);
   }
 }
 
@@ -362,9 +366,9 @@ template<>
 inline
 void Packer::pack_type(const uint16_t &value) {
   if (value > std::numeric_limits<uint8_t>::max()) {
-    serialized_object.emplace_back(uint16);
+    serialized_object->emplace_back(uint16);
     for (auto i = sizeof(value); i > 0U; --i) {
-      serialized_object.emplace_back(uint8_t(value >> (8U * (i - 1)) & 0xff));
+      serialized_object->emplace_back(uint8_t(value >> (8U * (i - 1)) & 0xff));
     }
   } else {
     pack_type(uint8_t(value));
@@ -375,9 +379,9 @@ template<>
 inline
 void Packer::pack_type(const uint32_t &value) {
   if (value > std::numeric_limits<uint16_t>::max()) {
-    serialized_object.emplace_back(uint32);
+    serialized_object->emplace_back(uint32);
     for (auto i = sizeof(value); i > 0U; --i) {
-      serialized_object.emplace_back(uint8_t(value >> (8U * (i - 1)) & 0xff));
+      serialized_object->emplace_back(uint8_t(value >> (8U * (i - 1)) & 0xff));
     }
   } else {
     pack_type(uint16_t(value));
@@ -388,9 +392,9 @@ template<>
 inline
 void Packer::pack_type(const uint64_t &value) {
   if (value > std::numeric_limits<uint32_t>::max()) {
-    serialized_object.emplace_back(uint64);
+    serialized_object->emplace_back(uint64);
     for (auto i = sizeof(value); i > 0U; --i) {
-      serialized_object.emplace_back(uint8_t(value >> (8U * (i - 1)) & 0xff));
+      serialized_object->emplace_back(uint8_t(value >> (8U * (i - 1)) & 0xff));
     }
   } else {
     pack_type(uint32_t(value));
@@ -400,16 +404,16 @@ void Packer::pack_type(const uint64_t &value) {
 template<>
 inline
 void Packer::pack_type(const std::nullptr_t &/*value*/) {
-  serialized_object.emplace_back(nil);
+  serialized_object->emplace_back(nil);
 }
 
 template<>
 inline
 void Packer::pack_type(const bool &value) {
   if (value) {
-    serialized_object.emplace_back(true_bool);
+    serialized_object->emplace_back(true_bool);
   } else {
-    serialized_object.emplace_back(false_bool);
+    serialized_object->emplace_back(false_bool);
   }
 }
 
@@ -439,9 +443,9 @@ void Packer::pack_type(const float &value) {
     }
 
     uint32_t ieee754_float32 = (sign_mask | excess_127_exponent_mask | normalized_mantissa_mask).to_ulong();
-    serialized_object.emplace_back(float32);
+    serialized_object->emplace_back(float32);
     for (auto i = sizeof(uint32_t); i > 0; --i) {
-      serialized_object.emplace_back(uint8_t(ieee754_float32 >> (8U * (i - 1)) & 0xff));
+      serialized_object->emplace_back(uint8_t(ieee754_float32 >> (8U * (i - 1)) & 0xff));
     }
   }
 }
@@ -472,9 +476,9 @@ void Packer::pack_type(const double &value) {
       }
     }
     auto ieee754_float64 = (sign_mask | excess_127_exponent_mask | normalized_mantissa_mask).to_ullong();
-    serialized_object.emplace_back(float64);
+    serialized_object->emplace_back(float64);
     for (auto i = sizeof(ieee754_float64); i > 0; --i) {
-      serialized_object.emplace_back(uint8_t(ieee754_float64 >> (8U * (i - 1)) & 0xff));
+      serialized_object->emplace_back(uint8_t(ieee754_float64 >> (8U * (i - 1)) & 0xff));
     }
   }
 }
@@ -483,25 +487,25 @@ template<>
 inline
 void Packer::pack_type(const std::string &value) {
   if (value.size() < 32) {
-    serialized_object.emplace_back(uint8_t(value.size()) | 0b10100000);
+    serialized_object->emplace_back(uint8_t(value.size()) | 0b10100000);
   } else if (value.size() < std::numeric_limits<uint8_t>::max()) {
-    serialized_object.emplace_back(str8);
-    serialized_object.emplace_back(uint8_t(value.size()));
+    serialized_object->emplace_back(str8);
+    serialized_object->emplace_back(uint8_t(value.size()));
   } else if (value.size() < std::numeric_limits<uint16_t>::max()) {
-    serialized_object.emplace_back(str16);
+    serialized_object->emplace_back(str16);
     for (auto i = sizeof(uint16_t); i > 0; --i) {
-      serialized_object.emplace_back(uint8_t(value.size() >> (8U * (i - 1)) & 0xff));
+      serialized_object->emplace_back(uint8_t(value.size() >> (8U * (i - 1)) & 0xff));
     }
   } else if (value.size() < std::numeric_limits<uint32_t>::max()) {
-    serialized_object.emplace_back(str32);
+    serialized_object->emplace_back(str32);
     for (auto i = sizeof(uint32_t); i > 0; --i) {
-      serialized_object.emplace_back(uint8_t(value.size() >> (8U * (i - 1)) & 0xff));
+      serialized_object->emplace_back(uint8_t(value.size() >> (8U * (i - 1)) & 0xff));
     }
   } else {
     return; // Give up if string is too long
   }
   for (char i : value) {
-    serialized_object.emplace_back(static_cast<uint8_t>(i));
+    serialized_object->emplace_back(static_cast<uint8_t>(i));
   }
 }
 
@@ -509,23 +513,23 @@ template<>
 inline
 void Packer::pack_type(const std::vector<uint8_t> &value) {
   if (value.size() < std::numeric_limits<uint8_t>::max()) {
-    serialized_object.emplace_back(bin8);
-    serialized_object.emplace_back(uint8_t(value.size()));
+    serialized_object->emplace_back(bin8);
+    serialized_object->emplace_back(uint8_t(value.size()));
   } else if (value.size() < std::numeric_limits<uint16_t>::max()) {
-    serialized_object.emplace_back(bin16);
+    serialized_object->emplace_back(bin16);
     for (auto i = sizeof(uint16_t); i > 0; --i) {
-      serialized_object.emplace_back(uint8_t(value.size() >> (8U * (i - 1)) & 0xff));
+      serialized_object->emplace_back(uint8_t(value.size() >> (8U * (i - 1)) & 0xff));
     }
   } else if (value.size() < std::numeric_limits<uint32_t>::max()) {
-    serialized_object.emplace_back(bin32);
+    serialized_object->emplace_back(bin32);
     for (auto i = sizeof(uint32_t); i > 0; --i) {
-      serialized_object.emplace_back(uint8_t(value.size() >> (8U * (i - 1)) & 0xff));
+      serialized_object->emplace_back(uint8_t(value.size() >> (8U * (i - 1)) & 0xff));
     }
   } else {
     return; // Give up if vector is too large
   }
   for (const auto &elem : value) {
-    serialized_object.emplace_back(elem);
+    serialized_object->emplace_back(elem);
   }
 }
 
@@ -1170,6 +1174,18 @@ std::vector<uint8_t> pack(PackableObject &&obj) {
   auto packer = Packer{};
   obj.pack(packer);
   return packer.vector();
+}
+
+template<class PackableObject>
+void pack(PackableObject &obj, std::vector<uint8_t> &data) {
+  auto packer = Packer{data};
+  obj.pack(packer);
+}
+
+template<class PackableObject>
+void pack(PackableObject &&obj, std::vector<uint8_t> &data) {
+  auto packer = Packer{data};
+  obj.pack(packer);
 }
 
 template<class UnpackableObject, class InputIt>
