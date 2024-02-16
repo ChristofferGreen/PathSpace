@@ -19,10 +19,8 @@ add_executable(PathSpaceTests
   unit/path/test_ConcretePathIterator.cpp
   unit/type/test_InputMetadata.cpp
   unit/serialization/test_InputData.cpp
-  #unit/serialization/test_QueueStreamBuffer.cpp
-  #unit/utils/test_PopFrontVector.cpp
-  #unit/utils/test_PopFrontVectorStreamBuffer.cpp
   unit/utils/test_ByteQueue.cpp
+  unit/ext/test_msgpack.cpp
   unit/test_PathSpace.cpp
 )
 

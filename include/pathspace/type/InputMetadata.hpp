@@ -5,7 +5,6 @@
 #include <typeinfo>
 #include <queue>
 
-#include "pathspace/serialization/QueueStreamBuffer.hpp"
 #include "pathspace/utils/ByteQueue.hpp"
 #include "pathspace/utils/ByteQueueSerializer.hpp"
 
@@ -23,7 +22,6 @@ TODO
 --------------
 * Add a deserialize_read that can deserialize a single item
 * Change queue to deque for serialized data so we can have random access, perhaps find internet datastructure that is better
-* Add a better QueueStreamBuffer that can deserialize by reading
 * Add tests that const deserializes multiple objects making sure the data doesnt change 
 */
 
