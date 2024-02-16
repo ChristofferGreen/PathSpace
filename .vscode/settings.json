@@ -92,6 +92,8 @@
         "forward_list": "cpp",
         "typeindex": "cpp",
         "valarray": "cpp",
-        "queue": "cpp"
+        "queue": "cpp",
+        "codecvt": "cpp",
+        "ranges": "cpp"
     }
 }

@@ -7,6 +7,8 @@
 #include <fstream>
 #include <cassert>
 
+namespace SP {
+
 class ByteQueue {
 public:
     ByteQueue() = default;
@@ -23,7 +25,7 @@ public:
     }
 
     auto front() const -> std::byte {
-        return this->data_.front();
+        return *(this->data_.begin() + this->frontIndex_);
     }
 
     void pop_front() {
@@ -88,3 +90,5 @@ private:
         }
     }
 };
+
+} // namespace SP

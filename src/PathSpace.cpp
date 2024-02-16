@@ -72,7 +72,7 @@ auto PathSpace::readInternal(ConcretePathIteratorStringView const &iter,
                              ConcretePathIteratorStringView const &end,
                              InputMetadata const &inputMetadata,
                              void *obj,
-                             Capabilities const &capabilities) -> Expected<int> {
+                             Capabilities const &capabilities) const -> Expected<int> {
     auto const nextIter = std::next(iter);
     auto const pathComponent = *iter;
     if(nextIter == end) // This is the end of the path, attempt to insert the data
@@ -87,7 +87,7 @@ auto PathSpace::readDataName(ConcreteName const &concreteName,
                              ConcretePathIteratorStringView const &end,
                              InputMetadata const &inputMetadata,
                              void *obj,
-                             Capabilities const &capabilities) -> Expected<int> {
+                             Capabilities const &capabilities) const -> Expected<int> {
     this->nodeDataMap.if_contains(concreteName, [&](auto const &nodePair){
         // if type matches
         inputMetadata.deserializationFuncPtr2(obj, std::get<NodeData>(nodePair.second).data);

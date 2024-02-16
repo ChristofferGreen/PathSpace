@@ -28,3 +28,17 @@ TEST_CASE("PathSpace Construction", "[PathSpace]") {
         REQUIRE(pspace.toJSON(false) == R"({"PathSpace": {"value0": {"test3": {"index": 1,"data": {"ptr_wrapper": {"valid": 1,"data": {"value0": {"test": {"index": 1,"data": {"ptr_wrapper": {"valid": 1,"data": {"value0": {"data": {"index": 0,"data": {"value0": {"container": [56,0,0,0]}}}}}}}}}}}}}}})" );
     }*/
 }
+
+TEST_CASE("PathSpace Read", "[PathSpace]") {
+    SECTION("Simple PathSpace Read", "[PathSpace]") {
+        PathSpace pspace;
+        pspace.insert("/test", 56);
+        pspace.insert("/test", 58);
+        auto ret = pspace.read<int>("/test");
+        REQUIRE(ret.has_value());
+        REQUIRE(ret.value()==56);
+        auto ret2 = pspace.read<int>("/test");
+        REQUIRE(ret2.has_value());
+        REQUIRE(ret2.value()==56);
+    }
+}

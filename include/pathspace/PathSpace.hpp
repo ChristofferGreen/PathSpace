@@ -40,8 +40,12 @@ struct PathSpace {
     template<typename T>
     auto read(ConcretePathStringView const &path,
               Capabilities const &capabilities = Capabilities::All()) const -> Expected<T> {
-        T obj;
-        return this->readInternal(path.begin(), path.end(), InputMetadataT<T>{}, &obj, capabilities);
+        Expected<T> obj;
+        obj.emplace();
+        auto ret = this->readInternal(path.begin(), path.end(), InputMetadataT<T>{}, &obj.value(), capabilities);
+        if(!ret)
+            return std::unexpected{ret.error()};
+        return obj;
     }
 
     template<typename T>
@@ -90,13 +94,13 @@ private:
                       ConcretePathIteratorStringView const &end,
                       InputMetadata const &inputMetadata,
                       void *obj,
-                      Capabilities const &capabilities) -> Expected<int>;
+                      Capabilities const &capabilities) const -> Expected<int>;
     auto readDataName(ConcreteName const &concreteName,
                       ConcretePathIteratorStringView const &nextIter,
                       ConcretePathIteratorStringView const &end,
                       InputMetadata const &inputMetadata,
                       void *obj,
-                      Capabilities const &capabilities) -> Expected<int>;
+                      Capabilities const &capabilities) const -> Expected<int>;
     NodeDataHashMap nodeDataMap;
 };
 

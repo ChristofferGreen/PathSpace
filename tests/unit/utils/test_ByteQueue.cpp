@@ -1,7 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
 #include <pathspace/utils/ByteQueue.hpp>
+#include <pathspace/utils/ByteQueueSerializer.hpp>
 #include <cstddef>
 #include <stdexcept>
+
+using namespace SP;
 
 TEST_CASE("ByteQueue Tests", "[ByteQueue]") {
     ByteQueue bq;
@@ -13,11 +16,9 @@ TEST_CASE("ByteQueue Tests", "[ByteQueue]") {
     SECTION("Push Back and Pop Front") {
         bq.push_back(std::byte(0x01));
         bq.push_back(std::byte(0x02));
-        REQUIRE(*bq.begin() == std::byte(0x01));
-        REQUIRE(*(bq.begin() + 1) == std::byte(0x02));
-
+        REQUIRE(bq.front() == std::byte(0x01));
         bq.pop_front();
-        REQUIRE(*bq.begin() == std::byte(0x02));
+        REQUIRE(bq.front() == std::byte(0x02));
     }
 
     SECTION("Bounds Checking") {
@@ -55,5 +56,14 @@ TEST_CASE("ByteQueue Tests", "[ByteQueue]") {
         }
         REQUIRE(it1 == bq.end());
         REQUIRE(it2 == newBq.end());
+    }
+
+    SECTION("Serialization and Deserialization Methods") {
+        int obj{57};
+        int obj2{};
+        ByteQueue bq;
+        serialize_to_bytequeue(bq, obj);
+        deserialize_from_bytequeue(bq, obj2);
+        REQUIRE(obj2 == obj);
     }
 }
