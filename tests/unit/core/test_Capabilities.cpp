@@ -1,34 +1,34 @@
-#include <catch2/catch_test_macros.hpp>
+#include "ext/doctest.h"
 #include <pathspace/core/Capabilities.hpp>
 
 using namespace SP;
 
-TEST_CASE("Capabilities", "[Capabilities]") {
+TEST_CASE("Capabilities") {
     Capabilities caps;
 
-    SECTION("Adding and checking a specific capability") {
+    SUBCASE("Adding and checking a specific capability") {
         caps.addCapability("/path/to/resource", Capabilities::Type::READ);
         REQUIRE(caps.hasCapability("/path/to/resource", Capabilities::Type::READ));
     }
 
-    SECTION("Checking a capability that does not exist returns false") {
+    SUBCASE("Checking a capability that does not exist returns false") {
         REQUIRE_FALSE(caps.hasCapability("/path/to/resource", Capabilities::Type::WRITE));
     }
 
-    SECTION("Wildcard capability matches any path") {
+    SUBCASE("Wildcard capability matches any path") {
         caps.addCapability("/*/to/resource", Capabilities::Type::EXECUTE);
         REQUIRE(caps.hasCapability("/any_path/to/resource", Capabilities::Type::EXECUTE));
         REQUIRE_FALSE(caps.hasCapability("/path/not/matching/resource", Capabilities::Type::EXECUTE));
     }
 
-    SECTION("Adding capability with wildcard for any type and checking") {
+    SUBCASE("Adding capability with wildcard for any type and checking") {
         /*caps.addCapability("*", "/path/to/anywhere");
         REQUIRE(caps.hasCapability("/path/to/anywhere", Capabilities::Type::READ));
         REQUIRE(caps.hasCapability("/path/to/anywhere", Capabilities::Type::WRITE));
         REQUIRE(caps.hasCapability("/path/to/anywhere", Capabilities::Type::EXECUTE));*/
     }
 
-    SECTION("Checking a capability with both action and path as wildcards") {
+    SUBCASE("Checking a capability with both action and path as wildcards") {
         /*caps.addCapability("*", Path("*"));
         REQUIRE(caps.hasCapability("/any/path", Capabilities::Type::WRITE));
         REQUIRE(caps.hasCapability("write", Path("/different/path")));*/

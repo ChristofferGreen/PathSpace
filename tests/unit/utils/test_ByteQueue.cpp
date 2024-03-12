@@ -1,4 +1,4 @@
-#include <catch2/catch_test_macros.hpp>
+#include "ext/doctest.h"
 #include <pathspace/utils/ByteQueue.hpp>
 #include <pathspace/utils/ByteQueueSerializer.hpp>
 #include <cstddef>
@@ -6,14 +6,14 @@
 
 using namespace SP;
 
-TEST_CASE("ByteQueue Tests", "[ByteQueue]") {
+TEST_CASE("ByteQueue Tests") {
     ByteQueue bq;
 
-    SECTION("Initial State") {
+    SUBCASE("Initial State") {
         REQUIRE(bq.begin() == bq.end());
     }
 
-    SECTION("Push Back and Pop Front") {
+    SUBCASE("Push Back and Pop Front") {
         bq.push_back(std::byte(0x01));
         bq.push_back(std::byte(0x02));
         REQUIRE(bq.front() == std::byte(0x01));
@@ -21,12 +21,12 @@ TEST_CASE("ByteQueue Tests", "[ByteQueue]") {
         REQUIRE(bq.front() == std::byte(0x02));
     }
 
-    SECTION("Bounds Checking") {
+    SUBCASE("Bounds Checking") {
         bq.push_back(std::byte(0x01));
         REQUIRE(bq[0] == std::byte(0x01));
     }
 
-    SECTION("Serialization and Deserialization") {
+    SUBCASE("Serialization and Deserialization") {
         // Populate ByteQueue
         for (int i = 0; i < 10; ++i) {
             bq.push_back(std::byte(i));
@@ -58,7 +58,7 @@ TEST_CASE("ByteQueue Tests", "[ByteQueue]") {
         REQUIRE(it2 == newBq.end());
     }
 
-    SECTION("Serialization and Deserialization Methods") {
+    SUBCASE("Serialization and Deserialization Methods") {
         int obj{57};
         int obj2{};
         ByteQueue bq;

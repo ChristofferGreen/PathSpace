@@ -1,4 +1,4 @@
-#include <catch2/catch_test_macros.hpp>
+#include "ext/doctest.h"
 #include <pathspace/path/ConcretePath.hpp>
 #include <pathspace/path/ConcretePathIterator.hpp>
 
@@ -7,12 +7,12 @@
 using namespace SP;
 
 TEST_CASE("ConcretePathIterator") {
-    SECTION("Basic Iterator Begin", "[Path][ConcretePathIterator][ConcreteName]") {
+    SUBCASE("Basic Iterator Begin") {
         ConcretePathStringView path{"/a/b/c"};
         REQUIRE(*path.begin() == "a");
     }
 
-    SECTION("ForEach Name Iteration Short", "[Path][ConcretePathIterator][ConcreteName]") {
+    SUBCASE("ForEach Name Iteration Short") {
         ConcretePathStringView path{"/a/b/c"};
         REQUIRE(path.isValid());
         int i{};
@@ -25,7 +25,7 @@ TEST_CASE("ConcretePathIterator") {
         }
     }
 
-    SECTION("ForEach Name Iteration Long", "[Path][ConcretePathIterator][ConcreteName]") {
+    SUBCASE("ForEach Name Iteration Long") {
         ConcretePathStringView const path{"/woo/Foo/dOoO"};
         REQUIRE(path.isValid());
         int i{};
@@ -38,7 +38,7 @@ TEST_CASE("ConcretePathIterator") {
         }
     }
 
-    SECTION("Iterator End", "[Path][ConcretePathIterator][ConcreteName]") {
+    SUBCASE("Iterator End") {
         ConcretePathStringView const path{"/a/b/c"};
         auto iter = path.begin();
         REQUIRE(iter != path.end());
@@ -50,7 +50,7 @@ TEST_CASE("ConcretePathIterator") {
         REQUIRE(iter == path.end());
     }
 
-    SECTION("Match Skipped Name", "[Path][ConcretePath][ConcretePathIterator]") {
+    SUBCASE("Match Skipped Name") {
         ConcretePathString const sp1{"/a//d"};
         ConcretePathString const sp2{"/a/d"};
         REQUIRE(sp1 == sp2);
@@ -60,7 +60,7 @@ TEST_CASE("ConcretePathIterator") {
         REQUIRE(sp1 != sp4);
     }
 
-    SECTION("Path With Trailing Slash", "[Path][ConcretePath][ConcretePathIterator]") {
+    SUBCASE("Path With Trailing Slash") {
         ConcretePathString path{"/a/b/c/"};
         auto iter = path.begin();
         REQUIRE(iter != path.end());

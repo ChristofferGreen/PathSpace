@@ -1,4 +1,4 @@
-#include <catch2/catch_test_macros.hpp>
+#include "ext/doctest.h"
 #include <pathspace/path/GlobPath.hpp>
 
 #include <set>
@@ -6,17 +6,17 @@
 using namespace SP;
 
 TEST_CASE("GlobPath") {
-    SECTION("Basic Iterator Begin", "[Path][GlobPath]") {
+    SUBCASE("Basic Iterator Begin") {
         GlobPathStringView path{"/a/b/c"};
         REQUIRE(*path.begin() == "a");
     }
 
-    SECTION("Standard Path", "[Path][GlobPath]") {
+    SUBCASE("Standard Path") {
         GlobPathStringView path{"/a/b/c"};
         REQUIRE(path=="/a/b/c");
     }
 
-    SECTION("Path Foreach", "[Path][GlobPath]") {
+    SUBCASE("Path Foreach") {
         GlobPathStringView path{"/wooo/fooo/dooo"};
         int i{};
         for(auto const p : path) {
@@ -28,7 +28,7 @@ TEST_CASE("GlobPath") {
         }
     }
 
-    SECTION("Path Foreach Short", "[Path][GlobPath]") {
+    SUBCASE("Path Foreach Short") {
         GlobPathStringView path{"/a/b/c"};
         int i{};
         for(auto const p : path) {
@@ -40,7 +40,7 @@ TEST_CASE("GlobPath") {
         }
     }
 
-    SECTION("Path Iterator End", "[Path][GlobPath]") {
+    SUBCASE("Path Iterator End") {
         GlobPathStringView path{"/a/b/c"};
         auto iter = path.begin();
         REQUIRE(iter != path.end());
@@ -52,22 +52,22 @@ TEST_CASE("GlobPath") {
         REQUIRE(iter == path.end());
     }
 
-    SECTION("Default construction Invalid", "[Path][GlobPath]") {
+    SUBCASE("Default construction Invalid") {
         GlobPathStringView path;
         REQUIRE(path != "");
     }
 
-    SECTION("Default construction", "[Path][GlobPath]") {
+    SUBCASE("Default construction") {
         GlobPathStringView path{"/"};
         REQUIRE(path == "/");
     }
 
-    SECTION("Construction with initial path", "[Path][GlobPath]") {
+    SUBCASE("Construction with initial path") {
         GlobPathStringView path("/root/child");
         REQUIRE(path == "/root/child");
     }
 
-    SECTION("Path does not match different path", "[Path][GlobPath]") {
+    SUBCASE("Path does not match different path") {
         GlobPathStringView sp("/path/to/node");
         REQUIRE(sp != "/path/to/another_node");
     }
@@ -76,29 +76,29 @@ TEST_CASE("GlobPath") {
     ConcretePathStringView exactPath( "/root/child" );
     ConcretePathStringView differentPath( "/root/otherChild" );
 
-    SECTION("Glob matches exact path", "[Path][GlobPath]") {
+    SUBCASE("Glob matches exact path") {
         REQUIRE(wildcardPath == exactPath);
     }
 
-    SECTION("Glob matches different path", "[Path][GlobPath]") {
+    SUBCASE("Glob matches different path") {
         REQUIRE(wildcardPath == differentPath);
     }
 
-    SECTION("Exact path does not match different path", "[Path][GlobPath]") {
+    SUBCASE("Exact path does not match different path") {
         REQUIRE(exactPath != differentPath);
     }
 
-    SECTION("Path matches itself", "[Path][GlobPath]") {
+    SUBCASE("Path matches itself") {
         REQUIRE(exactPath == exactPath);
     }
 
-    SECTION("Single Wildcard Match", "[Path][GlobPath]") {
+    SUBCASE("Single Wildcard Match") {
         GlobPathStringView sp1{"/a/*/c"};
         ConcretePathStringView sp2{"/a/b/c"};
         REQUIRE(sp1 == sp2);
     }
 
-    SECTION("Double Wildcard Match", "[Path][GlobPath]") {
+    SUBCASE("Double Wildcard Match") {
         GlobPathStringView sp1{"/a/**"};
         ConcretePathStringView sp2{"/a/b/c"};
         bool b = sp1 == sp2; 
@@ -109,19 +109,19 @@ TEST_CASE("GlobPath") {
         REQUIRE(sp3 == sp4);
     }
 
-    SECTION("Single Wildcard No Match", "[Path][GlobPath]") {
+    SUBCASE("Single Wildcard No Match") {
         GlobPathStringView sp1{"/a/*/d"};
         GlobPathStringView sp2{"/a/b/c"};
         REQUIRE(sp1 != sp2);
     }
 
-    SECTION("Empty Name", "[Path][GlobPath]") {
+    SUBCASE("Empty Name") {
         GlobPathStringView sp1{"/a//d"};
         GlobPathStringView sp2{"/a/d"};
         REQUIRE(sp1 == sp2);
     }
 
-    SECTION("Glob Match with Special Characters", "[Path][GlobPath]") {
+    SUBCASE("Glob Match with Special Characters") {
         GlobPathStringView sp1{"/a/*/c?d"};
         ConcretePathStringView sp2{"/a/b/cxd"};
         REQUIRE(sp1 == sp2);
@@ -129,7 +129,7 @@ TEST_CASE("GlobPath") {
         REQUIRE(sp1 != sp3);
     }
 
-   SECTION("Name Containing Wildcard", "[Path][GlobPath]") {
+   SUBCASE("Name Containing Wildcard") {
         GlobPathStringView sp1{"/a/test*"};
         ConcretePathStringView sp2{"/a/testbaab"};
         ConcretePathStringView sp3{"/a/test*"};
@@ -140,7 +140,7 @@ TEST_CASE("GlobPath") {
         REQUIRE(sp3 != sp2);
    }
 
-   SECTION("Name Containing Wildcard Exact Match", "[Path][GlobPath]") {
+   SUBCASE("Name Containing Wildcard Exact Match") {
         const GlobPathStringView sp1{"/a/test\\*"};
         const GlobPathStringView sp2{"/a/testbaab"};
         const ConcretePathStringView sp3{"/a/test*"};
@@ -151,62 +151,62 @@ TEST_CASE("GlobPath") {
         REQUIRE(sp3 != sp2);
    }
 
-    SECTION("Path with No Glob Characters", "[Path][GlobPath]") {
+    SUBCASE("Path with No Glob Characters") {
         const GlobPath<std::string> path{"/user/data/file"};
         REQUIRE_FALSE(path.isGlob());
     }
 
-    SECTION("Path with Asterisk Glob", "[Path][GlobPath]") {
+    SUBCASE("Path with Asterisk Glob") {
         const GlobPath<std::string> path{"/user/*/file"};
         REQUIRE(path.isGlob());
     }
 
-    SECTION("Path with Question Mark Glob", "[Path][GlobPath]") {
+    SUBCASE("Path with Question Mark Glob") {
         const GlobPath<std::string> path{"/user/data/fil?"};
         REQUIRE(path.isGlob());
     }
 
-    SECTION("Path with Range Glob", "[Path][GlobPath]") {
+    SUBCASE("Path with Range Glob") {
         const GlobPath<std::string> path{"/user/data/file[1-3]"};
         REQUIRE(path.isGlob());
     }
 
-    SECTION("Path with Escaped Glob Characters", "[Path][GlobPath]") {
+    SUBCASE("Path with Escaped Glob Characters") {
         const GlobPath<std::string> path{"/user/data/fi\\*le"};
         REQUIRE_FALSE(path.isGlob());
     }
 
-    SECTION("Path with Escaped Escape Character", "[Path][GlobPath]") {
+    SUBCASE("Path with Escaped Escape Character") {
         const GlobPath<std::string> path{"/user/data/fi\\\\le"};
         REQUIRE_FALSE(path.isGlob());
     }
 
-    SECTION("Path with Mixed Escaped and Unescaped Gobs", "[Path][GlobPath]") {
+    SUBCASE("Path with Mixed Escaped and Unescaped Gobs") {
         const GlobPath<std::string> path{"/user/\\*/fi*le"};
         REQUIRE(path.isGlob());
     }
 
-    SECTION("Path with Escaped Range Glob", "[Path][GlobPath]") {
+    SUBCASE("Path with Escaped Range Glob") {
         const GlobPath<std::string> path{"/user/data/fi\\[1-3\\]"};
         REQUIRE_FALSE(path.isGlob());
     }
 
-    SECTION("Path with Multiple Glob Patterns", "[Path][GlobPath]") {
+    SUBCASE("Path with Multiple Glob Patterns") {
         const GlobPath<std::string> path{"/us?er/*/file[0-9]"};
         REQUIRE(path.isGlob());
     }
 
-    SECTION("Empty Path", "[Path][GlobPath]") {
+    SUBCASE("Empty Path") {
         const GlobPath<std::string> path{""};
         REQUIRE_FALSE(path.isGlob());
     }
 
-    SECTION("Path with Only Glob Characters", "[Path][GlobPath]") {
+    SUBCASE("Path with Only Glob Characters") {
         const GlobPath<std::string> path{"/*?"};
         REQUIRE(path.isGlob());
     }
 
-    SECTION("Path with Only Escaped Glob Characters", "[Path][GlobPath]") {
+    SUBCASE("Path with Only Escaped Glob Characters") {
         const GlobPath<std::string> path{"/\\*\\?"};
         REQUIRE_FALSE(path.isGlob());
     }
@@ -220,19 +220,19 @@ TEST_CASE("GlobPath") {
 //    std::unordered_map<Path, int, PathHash, PathEqual> unordered_map;
 //    unordered_map[Path("/a/b/c")] = 1;
 //
-//    SECTION("Standard Map Contains With Wildcard") {
+//    SUBCASE("Standard Map Contains With Wildcard") {
 //        REQUIRE(Path::containsWithWildcard(map, Path("/a/*/c")));
 //    }
 //
-//    SECTION("Standard Map Does Not Contain With Wildcard") {
+//    SUBCASE("Standard Map Does Not Contain With Wildcard") {
 //        REQUIRE_FALSE(Path::containsWithWildcard(map, Path("/a/c")));
 //    }
 //
-//    SECTION("Unordered Map Contains With Wildcard") {
+//    SUBCASE("Unordered Map Contains With Wildcard") {
 //        REQUIRE(Path::containsWithWildcard(unordered_map, Path("/a/*/c")));
 //    }
 //
-//    SECTION("Unordered Map Does Not Contain With Wildcard") {
+//    SUBCASE("Unordered Map Does Not Contain With Wildcard") {
 //        REQUIRE_FALSE(Path::containsWithWildcard(unordered_map, Path("/a/c")));
 //    }
 //}

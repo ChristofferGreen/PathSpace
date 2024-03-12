@@ -1,4 +1,4 @@
-#include <catch2/catch_test_macros.hpp>
+#include "ext/doctest.h"
 #include <ext/msgpack.hpp>
 struct Person {
   std::string name;
@@ -13,8 +13,8 @@ struct Person {
   }
 };
 
-TEST_CASE("Msgpack", "[Msgpack]") {
-    SECTION("Simple Packing", "[Msgpack]") {
+TEST_CASE("Msgpack") {
+    SUBCASE("Simple Packing") {
         auto person = Person{"John", 22, {"Ripper", "Silverhand"}};
 
         auto data = msgpack::pack(person); // Pack your object
@@ -22,7 +22,7 @@ TEST_CASE("Msgpack", "[Msgpack]") {
         REQUIRE(john==person);
     }
 
-    SECTION("Simple Packing Into Vector", "[Msgpack]") {
+    SUBCASE("Simple Packing Into Vector") {
         auto person = Person{"John", 22, {"Ripper", "Silverhand"}};
 
         std::vector<uint8_t> data;

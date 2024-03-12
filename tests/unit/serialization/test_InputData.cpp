@@ -1,4 +1,4 @@
-#include <catch2/catch_test_macros.hpp>
+#include "ext/doctest.h"
 #include <pathspace/serialization/InputData.hpp>
 
 using namespace SP;
@@ -10,13 +10,13 @@ struct MyStruct {
     int data = 5;
 };
 
-TEST_CASE("InputData", "[Type][InputData]") {
-    SECTION("Simple Construction", "[Type][InputData]") {
+TEST_CASE("InputData") {
+    SUBCASE("Simple Construction") {
         int a{};
         InputData data{a};
     }
 
-    /*SECTION("Simple Serialization/Deserialization", "[Type][InputData]") {
+    /*SUBCASE("Simple Serialization/Deserialization") {
         int a = 5;
         InputData data{a};
 
@@ -28,7 +28,7 @@ TEST_CASE("InputData", "[Type][InputData]") {
         REQUIRE(a == 5);
     }*/
 
-    /*SECTION("Custom Struct Serialization/Deserialization", "[Type][InputData]") {
+    /*SUBCASE("Custom Struct Serialization/Deserialization") {
         MyStruct a{35};
         InputData data{a};
 

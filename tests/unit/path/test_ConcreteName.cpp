@@ -1,7 +1,7 @@
-#include <catch2/catch_test_macros.hpp>
+#include "ext/doctest.h"
 #include <pathspace/path/ConcreteName.hpp>
 
 using namespace SP;
 
-TEST_CASE("ConcreteName", "[Path][ConcreteName]") {
+TEST_CASE("ConcreteName") {
 }
