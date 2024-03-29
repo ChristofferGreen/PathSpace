@@ -2,8 +2,6 @@ cmake_minimum_required(VERSION 3.15)
 
 project(PathSpaceTests VERSION 1.0)
 
-include(FetchContent)
-
 add_executable(PathSpaceTests
   unit/core/test_Capabilities.cpp
   unit/path/test_ConcretePath.cpp

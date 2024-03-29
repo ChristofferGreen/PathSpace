@@ -8,6 +8,8 @@
 #include "pathspace/utils/ByteQueue.hpp"
 #include "pathspace/utils/ByteQueueSerializer.hpp"
 
+#include "glaze/glaze.hpp"
+
 #include <cereal/types/string.hpp>
 #include <cereal/types/variant.hpp>
 #include <cereal/types/memory.hpp>
@@ -92,38 +94,11 @@ struct InputMetadata {
     InputMetadata() = default;
     template<typename CVRefT, typename T = std::remove_cvref_t<CVRefT>>
     InputMetadata(InputMetadataT<CVRefT> const &obj)
-        : isTriviallyCopyable(std::is_trivially_copyable_v<T>),
-          isFundamental(std::is_fundamental_v<T>),
-          isMoveable(std::is_move_constructible_v<T>),
-          isCopyable(std::is_copy_constructible_v<T>),
-          isDefaultConstructible(std::is_default_constructible_v<T>),
-          isDestructible(std::is_destructible_v<T>),
-          isPolymorphic(std::is_polymorphic_v<T>),
-          isCallable(std::is_invocable_v<T>),
-          isFunctionPointer(std::is_function_v<std::remove_pointer_t<T>> && std::is_pointer_v<T>),
-          isArray(std::is_array_v<T>),
-          arraySize(isArray ? std::extent_v<T> : 0),
-          sizeOfType(sizeof(T)),
-          alignmentOf(alignof(T)),
-          id(&typeid(T)),
+        : id(&typeid(T)),
           serializationFuncPtr(obj.serializationFuncPtr),
           deserializationFuncPtr(obj.deserializationFuncPtr),
           deserializationFuncPtrConst(obj.deserializationFuncPtrConst)
           {}
-
-    bool isTriviallyCopyable = false;
-    bool isFundamental = false;
-    bool isMoveable = false;
-    bool isCopyable = false;
-    bool isDefaultConstructible = false;
-    bool isDestructible = false;
-    bool isPolymorphic = false;
-    bool isCallable = false;
-    bool isFunctionPointer = false;
-    bool isArray = false;
-    size_t sizeOfType = 0;
-    size_t alignmentOf = 0;
-    size_t arraySize = 0;
     std::type_info const *id = nullptr;
     void (*serializationFuncPtr)(void const *obj, ByteQueue&) = nullptr;
     void (*deserializationFuncPtr)(void *obj, ByteQueue&) = nullptr;

@@ -1,4 +1,7 @@
 #pragma once
+#include <any>
+#include <vector>
+
 #include "pathspace/utils/ByteQueue.hpp"
 
 namespace SP {
@@ -10,6 +13,7 @@ struct NodeData {
     }  
 
     ByteQueue data;
+    std::vector<std::any> datav;
 };
 
 }

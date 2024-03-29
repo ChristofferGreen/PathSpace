@@ -27,6 +27,14 @@ FetchContent_Declare(
 set(JUST_INSTALL_CEREAL ON)
 FetchContent_MakeAvailable(Cereal)
 
+FetchContent_Declare(
+  glaze
+  GIT_REPOSITORY https://github.com/stephenberry/glaze.git
+  GIT_TAG main
+  GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(glaze)
+
 # Indicate that we only want to compile source files into a library
 add_library(PathSpace
     path/ConcretePath.cpp
@@ -46,10 +54,12 @@ PUBLIC
     ${parallelhashmap_SOURCE_DIR}
     ${nlohmann_SOURCE_DIR}/include
     ${cereal_SOURCE_DIR}/include
+    ${glaze_SOURCE_DIR}/include
 )
 
 target_link_libraries(PathSpace
 PRIVATE
+glaze::glaze
 )
 
 set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "../include/PathSpace.hpp")
