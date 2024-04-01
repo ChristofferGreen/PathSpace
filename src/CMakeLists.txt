@@ -19,6 +19,13 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(ParallelHashmap)
 
 FetchContent_Declare(
+  Cista
+  GIT_REPOSITORY https://github.com/felixguendling/cista.git
+  GIT_TAG v0.14
+)
+FetchContent_MakeAvailable(Cista)
+
+FetchContent_Declare(
   Cereal
   GIT_REPOSITORY git@github.com:USCiLab/cereal.git
   GIT_TAG v1.3.2
@@ -35,6 +42,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glaze)
 
+include(FetchContent)
+FetchContent_Declare(
+    alpaca
+    GIT_TAG 6bed0a0
+    GIT_REPOSITORY https://github.com/p-ranav/alpaca.git
+)
+FetchContent_MakeAvailable(alpaca)
+
 # Indicate that we only want to compile source files into a library
 add_library(PathSpace
     path/ConcretePath.cpp
@@ -48,6 +63,8 @@ add_library(PathSpace
     serialization/InputData.cpp
 )
 
+target_compile_options(PathSpace PUBLIC "-Wno-deprecated")
+
 target_include_directories(PathSpace
 PUBLIC
     ${CMAKE_SOURCE_DIR}/include
@@ -55,11 +72,14 @@ PUBLIC
     ${nlohmann_SOURCE_DIR}/include
     ${cereal_SOURCE_DIR}/include
     ${glaze_SOURCE_DIR}/include
+    ${cista_SOURCE_DIR}/include
+    ${alpaca_SOURCE_DIR}/include
 )
 
 target_link_libraries(PathSpace
 PRIVATE
-glaze::glaze
+    glaze::glaze
+    cista
 )
 
 set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "../include/PathSpace.hpp")

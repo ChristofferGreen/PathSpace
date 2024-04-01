@@ -94,6 +94,9 @@
         "valarray": "cpp",
         "queue": "cpp",
         "codecvt": "cpp",
-        "ranges": "cpp"
+        "ranges": "cpp",
+        "cfenv": "cpp",
+        "coroutine": "cpp",
+        "stdfloat": "cpp"
     }
 }

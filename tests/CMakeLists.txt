@@ -12,6 +12,7 @@ add_executable(PathSpaceTests
   unit/serialization/test_InputData.cpp
   unit/utils/test_ByteQueue.cpp
   unit/ext/test_msgpack.cpp
+  unit/ext/test_alpaca.cpp
   unit/test_PathSpace.cpp
   test_main.cpp
 )
