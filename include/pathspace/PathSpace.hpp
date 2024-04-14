@@ -4,8 +4,8 @@
 #include "core/Capabilities.hpp"
 #include "core/TimeToLive.hpp"
 #include "core/ExecutionOptions.hpp"
-#include "core/NodeData.hpp"
 #include "serialization/InputData.hpp"
+#include "core/NodeData.hpp"
 #include "serialization/Helper.hpp"
 
 #include <nlohmann/json.hpp>

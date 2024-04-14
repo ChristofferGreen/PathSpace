@@ -19,22 +19,6 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(ParallelHashmap)
 
 FetchContent_Declare(
-  Cista
-  GIT_REPOSITORY https://github.com/felixguendling/cista.git
-  GIT_TAG v0.14
-)
-FetchContent_MakeAvailable(Cista)
-
-FetchContent_Declare(
-  Cereal
-  GIT_REPOSITORY git@github.com:USCiLab/cereal.git
-  GIT_TAG v1.3.2
-  GIT_SHALLOW TRUE
-)
-set(JUST_INSTALL_CEREAL ON)
-FetchContent_MakeAvailable(Cereal)
-
-FetchContent_Declare(
   glaze
   GIT_REPOSITORY https://github.com/stephenberry/glaze.git
   GIT_TAG main
@@ -79,7 +63,6 @@ PUBLIC
 target_link_libraries(PathSpace
 PRIVATE
     glaze::glaze
-    cista
 )
 
 set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "../include/PathSpace.hpp")

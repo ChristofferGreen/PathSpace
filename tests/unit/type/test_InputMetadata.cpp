@@ -9,9 +9,9 @@ TEST_CASE("InputMetadata Fundamental") {
         ST s{5};
         InputMetadata imeta(InputMetadataT<ST>{});
         ST s2{57};
-        std::vector<uint8_t> bytes;
-        imeta.serializationFuncPtr(&s, bytes);
-        imeta.deserializationFuncPtr(&s2, bytes);
+        std::vector<SERIALIZATION_TYPE> bytes;
+        imeta.serialize(&s, bytes);
+        imeta.deserializePop(&s2, bytes);
         REQUIRE_EQ(s, s2);
     }
     SUBCASE("Double Serialize and Deserialize") {
@@ -19,9 +19,9 @@ TEST_CASE("InputMetadata Fundamental") {
         ST s{5.35};
         InputMetadata imeta(InputMetadataT<ST>{});
         ST s2{57.98};
-        std::vector<uint8_t> bytes;
-        imeta.serializationFuncPtr(&s, bytes);
-        imeta.deserializationFuncPtr(&s2, bytes);
+        std::vector<SERIALIZATION_TYPE> bytes;
+        imeta.serialize(&s, bytes);
+        imeta.deserializePop(&s2, bytes);
         REQUIRE_EQ(s, s2);
     }
     SUBCASE("Multiple Int Serialize and Deserialize") {
@@ -31,15 +31,15 @@ TEST_CASE("InputMetadata Fundamental") {
         ST sss{7};
         InputMetadata imeta(InputMetadataT<ST>{});
         ST s2{57};
-        std::vector<uint8_t> bytes;
-        imeta.serializationFuncPtr(&s, bytes);
-        imeta.serializationFuncPtr(&ss, bytes);
-        imeta.serializationFuncPtr(&sss, bytes);
-        imeta.deserializationFuncPtr(&s2, bytes);
+        std::vector<SERIALIZATION_TYPE> bytes;
+        imeta.serialize(&s, bytes);
+        imeta.serialize(&ss, bytes);
+        imeta.serialize(&sss, bytes);
+        imeta.deserializePop(&s2, bytes);
         REQUIRE_EQ(s, s2);
-        imeta.deserializationFuncPtr(&s2, bytes);
+        imeta.deserializePop(&s2, bytes);
         REQUIRE_EQ(ss, s2);
-        imeta.deserializationFuncPtr(&s2, bytes);
+        imeta.deserializePop(&s2, bytes);
         REQUIRE_EQ(sss, s2);
         REQUIRE_EQ(bytes.size(), 0);
     }
@@ -53,19 +53,19 @@ SUBCASE("Multiple Int/Double Serialize and Deserialize") {
         ST sss{7};
         InputMetadata imeta(InputMetadataT<ST>{});
         ST s2{57};
-        std::vector<uint8_t> bytes;
-        imeta.serializationFuncPtr(&s, bytes);
-        imeta.serializationFuncPtr(&ss, bytes);
-        imeta2.serializationFuncPtr(&ss2, bytes);
-        imeta.serializationFuncPtr(&sss, bytes);
+        std::vector<SERIALIZATION_TYPE> bytes;
+        imeta.serialize(&s, bytes);
+        imeta.serialize(&ss, bytes);
+        imeta2.serialize(&ss2, bytes);
+        imeta.serialize(&sss, bytes);
 
-        imeta.deserializationFuncPtr(&s2, bytes);
+        imeta.deserializePop(&s2, bytes);
         REQUIRE_EQ(s, s2);
-        imeta.deserializationFuncPtr(&s2, bytes);
+        imeta.deserializePop(&s2, bytes);
         REQUIRE_EQ(ss, s2);
-        imeta2.deserializationFuncPtr(&ss3, bytes);
+        imeta2.deserializePop(&ss3, bytes);
         REQUIRE_EQ(ss3, ss2);
-        imeta.deserializationFuncPtr(&s2, bytes);
+        imeta.deserializePop(&s2, bytes);
         REQUIRE_EQ(sss, s2);
         REQUIRE_EQ(bytes.size(), 0);
     }

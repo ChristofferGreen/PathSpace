@@ -12,7 +12,7 @@ struct NodeData {
         ar(this->data);
     }  
 
-    std::vector<uint8_t> data;
+    std::vector<SERIALIZATION_TYPE> data;
     std::vector<std::any> datav;
 };
 

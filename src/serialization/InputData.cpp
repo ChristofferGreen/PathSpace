@@ -2,12 +2,12 @@
 
 namespace SP {
 
-auto InputData::serialize(std::vector<uint8_t> &queue) const -> void {
-    this->metadata.serializationFuncPtr(this->obj, queue);
+auto InputData::serialize(std::vector<SERIALIZATION_TYPE> &queue) const -> void {
+    this->metadata.serialize(this->obj, queue);
 }
 
-auto InputData::deserialize(std::vector<uint8_t> &queue) const -> void {
-    this->metadata.deserializationFuncPtr(this->obj, queue);
+auto InputData::deserialize(std::vector<SERIALIZATION_TYPE> &queue) const -> void {
+    this->metadata.deserializePop(this->obj, queue);
 }
 
 } // namespace SP
