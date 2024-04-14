@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.15)
 # Define the project name and the language used
 project(PathSpaceTests LANGUAGES CXX)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Define the C++ standard to use
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

@@ -1,0 +1,134 @@
+[
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -isystem /config/workspace/PathSpace/build/_deps/glaze-src/include -g -std=gnu++23 -Wno-deprecated -Wno-missing-braces -o src/CMakeFiles/PathSpace.dir/path/ConcretePath.cpp.o -c /config/workspace/PathSpace/src/path/ConcretePath.cpp",
+  "file": "/config/workspace/PathSpace/src/path/ConcretePath.cpp",
+  "output": "src/CMakeFiles/PathSpace.dir/path/ConcretePath.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -isystem /config/workspace/PathSpace/build/_deps/glaze-src/include -g -std=gnu++23 -Wno-deprecated -Wno-missing-braces -o src/CMakeFiles/PathSpace.dir/path/ConcreteName.cpp.o -c /config/workspace/PathSpace/src/path/ConcreteName.cpp",
+  "file": "/config/workspace/PathSpace/src/path/ConcreteName.cpp",
+  "output": "src/CMakeFiles/PathSpace.dir/path/ConcreteName.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -isystem /config/workspace/PathSpace/build/_deps/glaze-src/include -g -std=gnu++23 -Wno-deprecated -Wno-missing-braces -o src/CMakeFiles/PathSpace.dir/path/ConcretePathIterator.cpp.o -c /config/workspace/PathSpace/src/path/ConcretePathIterator.cpp",
+  "file": "/config/workspace/PathSpace/src/path/ConcretePathIterator.cpp",
+  "output": "src/CMakeFiles/PathSpace.dir/path/ConcretePathIterator.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -isystem /config/workspace/PathSpace/build/_deps/glaze-src/include -g -std=gnu++23 -Wno-deprecated -Wno-missing-braces -o src/CMakeFiles/PathSpace.dir/path/GlobPath.cpp.o -c /config/workspace/PathSpace/src/path/GlobPath.cpp",
+  "file": "/config/workspace/PathSpace/src/path/GlobPath.cpp",
+  "output": "src/CMakeFiles/PathSpace.dir/path/GlobPath.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -isystem /config/workspace/PathSpace/build/_deps/glaze-src/include -g -std=gnu++23 -Wno-deprecated -Wno-missing-braces -o src/CMakeFiles/PathSpace.dir/path/GlobPathIterator.cpp.o -c /config/workspace/PathSpace/src/path/GlobPathIterator.cpp",
+  "file": "/config/workspace/PathSpace/src/path/GlobPathIterator.cpp",
+  "output": "src/CMakeFiles/PathSpace.dir/path/GlobPathIterator.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -isystem /config/workspace/PathSpace/build/_deps/glaze-src/include -g -std=gnu++23 -Wno-deprecated -Wno-missing-braces -o src/CMakeFiles/PathSpace.dir/path/GlobName.cpp.o -c /config/workspace/PathSpace/src/path/GlobName.cpp",
+  "file": "/config/workspace/PathSpace/src/path/GlobName.cpp",
+  "output": "src/CMakeFiles/PathSpace.dir/path/GlobName.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -isystem /config/workspace/PathSpace/build/_deps/glaze-src/include -g -std=gnu++23 -Wno-deprecated -Wno-missing-braces -o src/CMakeFiles/PathSpace.dir/path/Path.cpp.o -c /config/workspace/PathSpace/src/path/Path.cpp",
+  "file": "/config/workspace/PathSpace/src/path/Path.cpp",
+  "output": "src/CMakeFiles/PathSpace.dir/path/Path.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -isystem /config/workspace/PathSpace/build/_deps/glaze-src/include -g -std=gnu++23 -Wno-deprecated -Wno-missing-braces -o src/CMakeFiles/PathSpace.dir/PathSpace.cpp.o -c /config/workspace/PathSpace/src/PathSpace.cpp",
+  "file": "/config/workspace/PathSpace/src/PathSpace.cpp",
+  "output": "src/CMakeFiles/PathSpace.dir/PathSpace.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -isystem /config/workspace/PathSpace/build/_deps/glaze-src/include -g -std=gnu++23 -Wno-deprecated -Wno-missing-braces -o src/CMakeFiles/PathSpace.dir/serialization/InputData.cpp.o -c /config/workspace/PathSpace/src/serialization/InputData.cpp",
+  "file": "/config/workspace/PathSpace/src/serialization/InputData.cpp",
+  "output": "src/CMakeFiles/PathSpace.dir/serialization/InputData.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/glaze-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -g -std=gnu++23 -Wno-deprecated -o tests/CMakeFiles/PathSpaceTests.dir/unit/core/test_Capabilities.cpp.o -c /config/workspace/PathSpace/tests/unit/core/test_Capabilities.cpp",
+  "file": "/config/workspace/PathSpace/tests/unit/core/test_Capabilities.cpp",
+  "output": "tests/CMakeFiles/PathSpaceTests.dir/unit/core/test_Capabilities.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/glaze-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -g -std=gnu++23 -Wno-deprecated -o tests/CMakeFiles/PathSpaceTests.dir/unit/path/test_ConcretePath.cpp.o -c /config/workspace/PathSpace/tests/unit/path/test_ConcretePath.cpp",
+  "file": "/config/workspace/PathSpace/tests/unit/path/test_ConcretePath.cpp",
+  "output": "tests/CMakeFiles/PathSpaceTests.dir/unit/path/test_ConcretePath.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/glaze-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -g -std=gnu++23 -Wno-deprecated -o tests/CMakeFiles/PathSpaceTests.dir/unit/path/test_ConcreteName.cpp.o -c /config/workspace/PathSpace/tests/unit/path/test_ConcreteName.cpp",
+  "file": "/config/workspace/PathSpace/tests/unit/path/test_ConcreteName.cpp",
+  "output": "tests/CMakeFiles/PathSpaceTests.dir/unit/path/test_ConcreteName.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/glaze-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -g -std=gnu++23 -Wno-deprecated -o tests/CMakeFiles/PathSpaceTests.dir/unit/path/test_GlobPath.cpp.o -c /config/workspace/PathSpace/tests/unit/path/test_GlobPath.cpp",
+  "file": "/config/workspace/PathSpace/tests/unit/path/test_GlobPath.cpp",
+  "output": "tests/CMakeFiles/PathSpaceTests.dir/unit/path/test_GlobPath.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/glaze-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -g -std=gnu++23 -Wno-deprecated -o tests/CMakeFiles/PathSpaceTests.dir/unit/path/test_ConcretePathIterator.cpp.o -c /config/workspace/PathSpace/tests/unit/path/test_ConcretePathIterator.cpp",
+  "file": "/config/workspace/PathSpace/tests/unit/path/test_ConcretePathIterator.cpp",
+  "output": "tests/CMakeFiles/PathSpaceTests.dir/unit/path/test_ConcretePathIterator.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/glaze-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -g -std=gnu++23 -Wno-deprecated -o tests/CMakeFiles/PathSpaceTests.dir/unit/type/test_InputMetadata.cpp.o -c /config/workspace/PathSpace/tests/unit/type/test_InputMetadata.cpp",
+  "file": "/config/workspace/PathSpace/tests/unit/type/test_InputMetadata.cpp",
+  "output": "tests/CMakeFiles/PathSpaceTests.dir/unit/type/test_InputMetadata.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/glaze-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -g -std=gnu++23 -Wno-deprecated -o tests/CMakeFiles/PathSpaceTests.dir/unit/serialization/test_InputData.cpp.o -c /config/workspace/PathSpace/tests/unit/serialization/test_InputData.cpp",
+  "file": "/config/workspace/PathSpace/tests/unit/serialization/test_InputData.cpp",
+  "output": "tests/CMakeFiles/PathSpaceTests.dir/unit/serialization/test_InputData.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/glaze-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -g -std=gnu++23 -Wno-deprecated -o tests/CMakeFiles/PathSpaceTests.dir/unit/utils/test_ByteQueue.cpp.o -c /config/workspace/PathSpace/tests/unit/utils/test_ByteQueue.cpp",
+  "file": "/config/workspace/PathSpace/tests/unit/utils/test_ByteQueue.cpp",
+  "output": "tests/CMakeFiles/PathSpaceTests.dir/unit/utils/test_ByteQueue.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/glaze-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -g -std=gnu++23 -Wno-deprecated -o tests/CMakeFiles/PathSpaceTests.dir/unit/ext/test_msgpack.cpp.o -c /config/workspace/PathSpace/tests/unit/ext/test_msgpack.cpp",
+  "file": "/config/workspace/PathSpace/tests/unit/ext/test_msgpack.cpp",
+  "output": "tests/CMakeFiles/PathSpaceTests.dir/unit/ext/test_msgpack.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/glaze-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -g -std=gnu++23 -Wno-deprecated -o tests/CMakeFiles/PathSpaceTests.dir/unit/ext/test_alpaca.cpp.o -c /config/workspace/PathSpace/tests/unit/ext/test_alpaca.cpp",
+  "file": "/config/workspace/PathSpace/tests/unit/ext/test_alpaca.cpp",
+  "output": "tests/CMakeFiles/PathSpaceTests.dir/unit/ext/test_alpaca.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/glaze-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -g -std=gnu++23 -Wno-deprecated -o tests/CMakeFiles/PathSpaceTests.dir/unit/ext/test_glaze.cpp.o -c /config/workspace/PathSpace/tests/unit/ext/test_glaze.cpp",
+  "file": "/config/workspace/PathSpace/tests/unit/ext/test_glaze.cpp",
+  "output": "tests/CMakeFiles/PathSpaceTests.dir/unit/ext/test_glaze.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/glaze-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -g -std=gnu++23 -Wno-deprecated -o tests/CMakeFiles/PathSpaceTests.dir/unit/test_PathSpace.cpp.o -c /config/workspace/PathSpace/tests/unit/test_PathSpace.cpp",
+  "file": "/config/workspace/PathSpace/tests/unit/test_PathSpace.cpp",
+  "output": "tests/CMakeFiles/PathSpaceTests.dir/unit/test_PathSpace.cpp.o"
+},
+{
+  "directory": "/config/workspace/PathSpace/build",
+  "command": "/home/linuxbrew/.linuxbrew/bin/g++-13 -I/config/workspace/PathSpace/include -I/config/workspace/PathSpace/build/_deps/parallelhashmap-src -I/config/workspace/PathSpace/build/_deps/nlohmann-src/include -I/config/workspace/PathSpace/build/_deps/cereal-src/include -I/config/workspace/PathSpace/build/_deps/glaze-src/include -I/config/workspace/PathSpace/build/_deps/cista-src/include -I/config/workspace/PathSpace/build/_deps/alpaca-src/include -g -std=gnu++23 -Wno-deprecated -o tests/CMakeFiles/PathSpaceTests.dir/test_main.cpp.o -c /config/workspace/PathSpace/tests/test_main.cpp",
+  "file": "/config/workspace/PathSpace/tests/test_main.cpp",
+  "output": "tests/CMakeFiles/PathSpaceTests.dir/test_main.cpp.o"
+}
+]
