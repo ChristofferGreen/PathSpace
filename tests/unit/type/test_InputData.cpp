@@ -1,5 +1,5 @@
 #include "ext/doctest.h"
-#include <pathspace/serialization/InputData.hpp>
+#include <pathspace/type/InputData.hpp>
 
 using namespace SP;
 

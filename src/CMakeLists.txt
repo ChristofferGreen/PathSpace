@@ -44,7 +44,7 @@ add_library(PathSpace
     path/GlobName.cpp
     path/Path.cpp
     PathSpace.cpp
-    serialization/InputData.cpp
+    type/InputData.cpp
 )
 
 target_compile_options(PathSpace PUBLIC "-Wno-deprecated")

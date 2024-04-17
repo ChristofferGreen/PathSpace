@@ -9,7 +9,7 @@ add_executable(PathSpaceTests
   unit/path/test_GlobPath.cpp
   unit/path/test_ConcretePathIterator.cpp
   unit/type/test_InputMetadata.cpp
-  unit/serialization/test_InputData.cpp
+  unit/type/test_InputData.cpp
   unit/utils/test_ByteQueue.cpp
   unit/ext/test_msgpack.cpp
   unit/ext/test_alpaca.cpp

@@ -4,9 +4,9 @@
 #include "core/Capabilities.hpp"
 #include "core/TimeToLive.hpp"
 #include "core/ExecutionOptions.hpp"
-#include "serialization/InputData.hpp"
+#include "type/InputData.hpp"
 #include "core/NodeData.hpp"
-#include "serialization/Helper.hpp"
+#include "type/Helper.hpp"
 
 #include <chrono>
 #include <expected>

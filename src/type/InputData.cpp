@@ -1,4 +1,4 @@
-#include "pathspace/serialization/InputData.hpp"
+#include "pathspace/type/InputData.hpp"
 
 namespace SP {
 
