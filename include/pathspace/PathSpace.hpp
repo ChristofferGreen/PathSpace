@@ -47,8 +47,15 @@ struct PathSpace {
     }
 
     template<typename T>
-    auto grab(GlobPathStringView const &path,
-              Capabilities const &capabilities = Capabilities::All()) -> Expected<T>;
+    auto grab(ConcretePathStringView const &path,
+              Capabilities const &capabilities = Capabilities::All()) -> Expected<T> {
+        Expected<T> obj;
+        obj.emplace();
+        auto ret = this->grabInternal(path.begin(), path.end(), InputMetadataT<T>{}, &obj.value(), capabilities);
+        if(!ret)
+            return std::unexpected{ret.error()};
+        return obj;
+    }
 
     auto subscribe(GlobPathStringView const &path,
                    std::function<void(const GlobPathStringView&)> callback,
@@ -99,6 +106,17 @@ private:
                       InputMetadata const &inputMetadata,
                       void *obj,
                       Capabilities const &capabilities) const -> Expected<int>;
+    auto grabInternal(ConcretePathIteratorStringView const &iter,
+                      ConcretePathIteratorStringView const &end,
+                      InputMetadata const &inputMetadata,
+                      void *obj,
+                      Capabilities const &capabilities) -> Expected<int>;
+    auto grabDataName(ConcreteName const &concreteName,
+                      ConcretePathIteratorStringView const &nextIter,
+                      ConcretePathIteratorStringView const &end,
+                      InputMetadata const &inputMetadata,
+                      void *obj,
+                      Capabilities const &capabilities) -> Expected<int>;
     NodeDataHashMap nodeDataMap;
 };
 /*

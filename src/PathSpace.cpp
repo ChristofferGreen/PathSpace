@@ -95,6 +95,33 @@ auto PathSpace::readDataName(ConcreteName const &concreteName,
     return 0;
 }
 
+auto PathSpace::grabInternal(ConcretePathIteratorStringView const &iter,
+                             ConcretePathIteratorStringView const &end,
+                             InputMetadata const &inputMetadata,
+                             void *obj,
+                             Capabilities const &capabilities) -> Expected<int> {
+    auto const nextIter = std::next(iter);
+    auto const pathComponent = *iter;
+    if(nextIter == end) // This is the end of the path, attempt to insert the data
+        return this->grabDataName(pathComponent, nextIter, end, inputMetadata, obj, capabilities);
+    /*return this->readComponent(iter, nextIter, end, pathComponent.getName(), inputData, capabilities, ttl); // This sub-component is a concrete path
+    */
+   return 0;
+}
+
+auto PathSpace::grabDataName(ConcreteName const &concreteName,
+                             ConcretePathIteratorStringView const &nextIter,
+                             ConcretePathIteratorStringView const &end,
+                             InputMetadata const &inputMetadata,
+                             void *obj,
+                             Capabilities const &capabilities) -> Expected<int> {
+    this->nodeDataMap.modify_if(concreteName, [&](auto &nodePair){
+        // if type matches
+        inputMetadata.deserializePop(obj, std::get<NodeData>(nodePair.second).data);
+    });
+    return 0;
+}
+
 /*
                 this->nodes.if_contains(concreteName, [&](auto &nodePair){
                     auto returnedValue = nodePair.second->insertInternal(nextIter, end, inputData, capabilities, ttl);
