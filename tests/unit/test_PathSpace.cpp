@@ -5,28 +5,27 @@
 using namespace SP;
 
 TEST_CASE("PathSpace Construction") {
+    PathSpace pspace;
     SUBCASE("Simple PathSpace Construction") {
-        PathSpace pspace;
         CHECK(pspace.insert("/test", 54).value_or(0) == 1);
     }
 
     /*SUBCASE("Simple PathSpace Construction JSON") {
-        PathSpace pspace;
         CHECK(pspace.insert("/test", 54).value_or(0) == 1);        
         CHECK(pspace.toJSON(false) == R"({"PathSpace": {"value0": {"test": {"index": 0,"data": {"value0": {"container": [54,0,0,0]}}}}})" );
     }*/
 
     SUBCASE("Simple PathSpace Path Into Data") {
-        PathSpace pspace;
         CHECK(pspace.insert("/test", 54).value_or(0) == 1);
-        CHECK(pspace.insert("/test/data", 55).value_or(0) == 0);
+        auto const val = pspace.insert("/test/data", 55);
+        CHECK(!val.has_value());
+        CHECK(val.error().code==Error::Code::InvalidPathSubcomponent);
     }
 
-    /*SUBCASE("PathSpace Multi-Component Path") {
-        PathSpace pspace;
-        CHECK(pspace.insert("/test3/test/data", 56).value_or(0) == 1);
-        CHECK(pspace.toJSON(false) == R"({"PathSpace": {"value0": {"test3": {"index": 1,"data": {"ptr_wrapper": {"valid": 1,"data": {"value0": {"test": {"index": 1,"data": {"ptr_wrapper": {"valid": 1,"data": {"value0": {"data": {"index": 0,"data": {"value0": {"container": [56,0,0,0]}}}}}}}}}}}}}}})" );
-    }*/
+    SUBCASE("PathSpace Multi-Component Path") {
+        CHECK(pspace.insert("/test1/test2/data", 56).value_or(0) == 1);
+        //CHECK(pspace.toJSON(false) == R"({"PathSpace": {"value0": {"test3": {"index": 1,"data": {"ptr_wrapper": {"valid": 1,"data": {"value0": {"test": {"index": 1,"data": {"ptr_wrapper": {"valid": 1,"data": {"value0": {"data": {"index": 0,"data": {"value0": {"container": [56,0,0,0]}}}}}}}}}}}}}}})" );
+    }
 }
 
 TEST_CASE("PathSpace Read") {

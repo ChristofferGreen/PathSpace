@@ -2,8 +2,6 @@
 #include <type_traits>
 #include <typeinfo>
 
-//#define USE_GLAZE
-#define USE_ALPACA
 #include "pathspace/type/InputMetadataT.hpp"
 
 namespace SP {

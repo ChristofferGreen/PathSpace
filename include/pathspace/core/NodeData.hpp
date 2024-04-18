@@ -16,6 +16,11 @@ struct NodeData {
             this->types.push_back(std::make_pair(inputData.metadata.id, 1));
     }
 
+    auto deserialize() -> void {}
+
+    auto deserializePop() -> void {}
+
+//private:
     std::vector<SERIALIZATION_TYPE> data;
     std::vector<std::pair<std::type_info const * const, uint32_t>> types;
 };

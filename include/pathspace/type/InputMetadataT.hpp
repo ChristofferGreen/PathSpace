@@ -1,6 +1,10 @@
 #pragma once
 #include <functional>
 #include <cassert>
+
+//#define USE_GLAZE
+#define USE_ALPACA
+
 #ifdef USE_ALPACA
 #define SERIALIZATION_TYPE uint8_t
 #include <alpaca/alpaca.h>
@@ -114,21 +118,23 @@ struct InputMetadataT {
 namespace SP {
 
 template<typename T>
-static auto serialize(void const *objPtr, std::vector<std::byte> &bytes) -> void {
+static auto serialize_glaze(void const *objPtr, std::vector<std::byte> &bytes) -> void {
     T const &obj = *static_cast<T const *>(objPtr);
-    glz::write_binary_untagged(obj, bytes);
+    std::vector<std::byte> tmp;
+    glz::write_binary_untagged(obj, tmp);
+    bytes.insert(bytes.end(), tmp.begin(), tmp.end());
 }
 
 template<typename T>
-static auto deserialize_const(void *objPtr, std::vector<std::byte> const &bytes) -> void {
+static auto deserialize_glaze(void *objPtr, std::vector<std::byte> const &bytes) -> void {
     T* obj = static_cast<T*>(objPtr);
     auto error = glz::read_binary_untagged(obj, bytes);
     assert(!error);
 }
 
 template<typename T>
-static auto deserialize(void *objPtr, std::vector<std::byte> &bytes) -> void {
-    deserialize_const<T>(objPtr, bytes);
+static auto deserialize_pop_glaze(void *objPtr, std::vector<std::byte> &bytes) -> void {
+    deserialize_glaze<T>(objPtr, bytes);
     bytes.erase(bytes.begin(), bytes.begin() + sizeof(T));
 }
 
@@ -137,20 +143,9 @@ struct InputMetadataT {
     using T = std::remove_cvref_t<CVRefT>;
     InputMetadataT() = default;
 
-    static constexpr auto serialize = 
-        []() {
-            return &serialize<T>;
-        }();
-
-    static constexpr auto deserializePop = 
-        []() {
-            return &deserialize<T>;
-        }();
-
-    static constexpr auto deserialize = 
-        []() {
-            return &deserialize_const<T>;
-        }();
+    static constexpr auto serialize = &serialize_glaze<T>;
+    static constexpr auto deserialize = &deserialize_glaze<T>;
+    static constexpr auto deserializePop = &deserialize_pop_glaze<T>;
 };
 
 } // namespace SP
