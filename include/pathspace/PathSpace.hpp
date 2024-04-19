@@ -106,6 +106,12 @@ private:
                       InputMetadata const &inputMetadata,
                       void *obj,
                       Capabilities const &capabilities) const -> Expected<int>;
+    auto readConcretePathComponent(ConcretePathIteratorStringView const &nextIter,
+                                   ConcretePathIteratorStringView const &end,
+                                   ConcreteName const &concreteName,
+                                   InputMetadata const &inputMetadata,
+                                   void *obj,
+                                   Capabilities const &capabilities) const -> Expected<int>;
     auto grabInternal(ConcretePathIteratorStringView const &iter,
                       ConcretePathIteratorStringView const &end,
                       InputMetadata const &inputMetadata,

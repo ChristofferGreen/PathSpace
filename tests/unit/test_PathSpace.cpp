@@ -45,10 +45,10 @@ TEST_CASE("PathSpace Read") {
         PathSpace pspace;
         pspace.insert("/test1/test2", 56);
         pspace.insert("/test1/test2", 58);
-        auto ret = pspace.grab<int>("/test1/test2");
+        auto ret = pspace.read<int>("/test1/test2");
         CHECK(ret.has_value());
         CHECK(ret.value()==56);
-        auto ret2 = pspace.grab<int>("/test1/test2");
+        auto ret2 = pspace.read<int>("/test1/test2");
         CHECK(ret2.has_value());
         CHECK(ret2.value()==56);
     }

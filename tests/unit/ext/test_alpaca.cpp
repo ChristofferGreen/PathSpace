@@ -15,7 +15,7 @@ struct Person {
   }
 };
 
-TEST_CASE("Alpaca") {
+TEST_CASE("External: Alpaca") {
     auto const person = Person{"John", 22, {"Ripper", "Silverhand"}};
     std::vector<uint8_t> bytes;
     SUBCASE("Simple struct") {

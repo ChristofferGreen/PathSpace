@@ -1,6 +1,5 @@
 #include "pathspace/PathSpace.hpp"
 
-#include <cereal/archives/json.hpp>
 #include <sstream>
 
 namespace SP {
@@ -35,6 +34,17 @@ auto PathSpace::insertDataName(ConcreteName const &concreteName,
     return 1;
 }
 
+auto PathSpace::insertGlobPathComponent(GlobPathIteratorStringView const &iter,
+                                        GlobPathIteratorStringView const &end,
+                                        GlobName const &name,
+                                        InputData const &inputData,
+                                        Capabilities const &capabilities,
+                                        TimeToLive const &ttl) -> Expected<int> {
+    auto const nextIter = std::next(iter);
+    int nbrInserted{};
+    return nbrInserted;
+}
+
 auto PathSpace::insertConcretePathComponent(GlobPathIteratorStringView const &iter,
                                             GlobPathIteratorStringView const &end,
                                             ConcreteName const &concreteName,
@@ -57,17 +67,6 @@ auto PathSpace::insertConcretePathComponent(GlobPathIteratorStringView const &it
     return expected;
 }
 
-auto PathSpace::insertGlobPathComponent(GlobPathIteratorStringView const &iter,
-                                        GlobPathIteratorStringView const &end,
-                                        GlobName const &name,
-                                        InputData const &inputData,
-                                        Capabilities const &capabilities,
-                                        TimeToLive const &ttl) -> Expected<int> {
-    auto const nextIter = std::next(iter);
-    int nbrInserted{};
-    return nbrInserted;
-}
-
 auto PathSpace::readInternal(ConcretePathIteratorStringView const &iter,
                              ConcretePathIteratorStringView const &end,
                              InputMetadata const &inputMetadata,
@@ -77,9 +76,7 @@ auto PathSpace::readInternal(ConcretePathIteratorStringView const &iter,
     auto const pathComponent = *iter;
     if(nextIter == end) // This is the end of the path, attempt to insert the data
         return this->readDataName(pathComponent, nextIter, end, inputMetadata, obj, capabilities);
-    /*return this->readComponent(iter, nextIter, end, pathComponent.getName(), inputData, capabilities, ttl); // This sub-component is a concrete path
-    */
-   return 0;
+    return this->readConcretePathComponent(nextIter, end, pathComponent.getName(), inputMetadata, obj, capabilities); // This sub-component is a concrete path
 }
 
 auto PathSpace::readDataName(ConcreteName const &concreteName,
@@ -93,6 +90,21 @@ auto PathSpace::readDataName(ConcreteName const &concreteName,
         inputMetadata.deserialize(obj, std::get<NodeData>(nodePair.second).data);
     });
     return 0;
+}
+
+auto PathSpace::readConcretePathComponent(ConcretePathIteratorStringView const &nextIter,
+                                          ConcretePathIteratorStringView const &end,
+                                          ConcreteName const &concreteName,
+                                          InputMetadata const &inputMetadata,
+                                          void *obj,
+                                          Capabilities const &capabilities) const -> Expected<int> {
+    Expected<int> expected;
+    this->nodeDataMap.if_contains(concreteName, [&](auto const &nodePair){
+        expected = std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second) ?
+            std::get<std::unique_ptr<PathSpace>>(nodePair.second)->readInternal(nextIter, end, inputMetadata, obj, capabilities) :
+            std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
+    });
+    return expected;
 }
 
 auto PathSpace::grabInternal(ConcretePathIteratorStringView const &iter,
@@ -122,35 +134,7 @@ auto PathSpace::grabDataName(ConcreteName const &concreteName,
     return 0;
 }
 
-/*
-                this->nodes.if_contains(concreteName, [&](auto &nodePair){
-                    auto returnedValue = nodePair.second->insertInternal(nextIter, end, inputData, capabilities, ttl);
-                    if(!returnedValue.has_value())
-                        return std::unexpected(returnedValue.error());
-                    nbrInserted += returnedValue.value();
-                });
-*/
-
-/*
-    for(auto &nodePair : this->nodeDataMap) { // Is this multi threading safe?
-        if(name == nodePair.first) {
-            auto const returnedValue = std::get<std::unique_ptr<PathSpace>>(nodePair.second)->insertInternal(nextIter, end, inputData, capabilities, ttl); // what if its not a space??
-            if(!returnedValue.has_value())
-                return std::unexpected(returnedValue.error());
-            nbrInserted += returnedValue.value();
-        }
-    }
-*/
-
 auto PathSpace::toJSON(bool const isHumanReadable) const -> std::string {
-    /*std::stringstream ss;
-    cereal::JSONOutputArchive archive(ss, isHumanReadable ? cereal::JSONOutputArchive::Options::Default() : 
-                                                            cereal::JSONOutputArchive::Options::NoIndent());
-    archive(cereal::make_nvp("PathSpace", *this));
-    auto json = ss.str();
-    if(!isHumanReadable)
-        json.erase(std::remove(json.begin(), json.end(), '\n'), json.cend());
-    return json;*/
     return "";
 }
 

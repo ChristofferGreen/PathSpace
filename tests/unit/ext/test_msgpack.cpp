@@ -13,7 +13,7 @@ struct Person {
   }
 };
 
-TEST_CASE("Msgpack") {
+TEST_CASE("External: Msgpack") {
     SUBCASE("Simple Packing") {
         auto person = Person{"John", 22, {"Ripper", "Silverhand"}};
 
