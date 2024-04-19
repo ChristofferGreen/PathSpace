@@ -89,7 +89,7 @@ auto PathSpace::readDataName(ConcreteName const &concreteName,
         // if type matches
         inputMetadata.deserialize(obj, std::get<NodeData>(nodePair.second).data);
     });
-    return 0;
+    return 1;
 }
 
 auto PathSpace::readConcretePathComponent(ConcretePathIteratorStringView const &nextIter,
@@ -116,9 +116,7 @@ auto PathSpace::grabInternal(ConcretePathIteratorStringView const &iter,
     auto const pathComponent = *iter;
     if(nextIter == end) // This is the end of the path, attempt to insert the data
         return this->grabDataName(pathComponent, nextIter, end, inputMetadata, obj, capabilities);
-    /*return this->readComponent(iter, nextIter, end, pathComponent.getName(), inputData, capabilities, ttl); // This sub-component is a concrete path
-    */
-   return 0;
+    return this->grabConcretePathComponent(nextIter, end, pathComponent.getName(), inputMetadata, obj, capabilities); // This sub-component is a concrete path
 }
 
 auto PathSpace::grabDataName(ConcreteName const &concreteName,
@@ -128,10 +126,24 @@ auto PathSpace::grabDataName(ConcreteName const &concreteName,
                              void *obj,
                              Capabilities const &capabilities) -> Expected<int> {
     this->nodeDataMap.modify_if(concreteName, [&](auto &nodePair){
-        // if type matches
         inputMetadata.deserializePop(obj, std::get<NodeData>(nodePair.second).data);
     });
-    return 0;
+    return 1;
+}
+
+auto PathSpace::grabConcretePathComponent(ConcretePathIteratorStringView const &nextIter,
+                                          ConcretePathIteratorStringView const &end,
+                                          ConcreteName const &concreteName,
+                                          InputMetadata const &inputMetadata,
+                                          void *obj,
+                                          Capabilities const &capabilities) -> Expected<int> {
+    Expected<int> expected;
+    this->nodeDataMap.if_contains(concreteName, [&](auto const &nodePair){
+        expected = std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second) ?
+            std::get<std::unique_ptr<PathSpace>>(nodePair.second)->grabInternal(nextIter, end, inputMetadata, obj, capabilities) :
+            std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
+    });
+    return expected;
 }
 
 auto PathSpace::toJSON(bool const isHumanReadable) const -> std::string {

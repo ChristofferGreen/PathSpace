@@ -123,6 +123,12 @@ private:
                       InputMetadata const &inputMetadata,
                       void *obj,
                       Capabilities const &capabilities) -> Expected<int>;
+    auto grabConcretePathComponent(ConcretePathIteratorStringView const &nextIter,
+                                   ConcretePathIteratorStringView const &end,
+                                   ConcreteName const &concreteName,
+                                   InputMetadata const &inputMetadata,
+                                   void *obj,
+                                   Capabilities const &capabilities) -> Expected<int>;
     NodeDataHashMap nodeDataMap;
 };
 /*
