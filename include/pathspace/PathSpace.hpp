@@ -9,7 +9,6 @@
 #include "type/Helper.hpp"
 
 #include <chrono>
-#include <expected>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -18,9 +17,6 @@
 #include <vector>
 
 namespace SP {
-
-template<typename T>
-using Expected = std::expected<T, Error>;
 
 struct PathSpace {
     template<typename T>

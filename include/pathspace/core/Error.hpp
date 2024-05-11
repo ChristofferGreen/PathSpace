@@ -1,4 +1,5 @@
 #pragma once
+#include <expected>
 #include <string>
 #include <optional>
 
@@ -24,5 +25,8 @@ struct Error {
 
     Error(Code c, std::string m) : code(c), message(std::move(m)) {}
 };
+
+template<typename T>
+using Expected = std::expected<T, Error>;
 
 }

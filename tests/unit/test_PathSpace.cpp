@@ -78,4 +78,20 @@ TEST_CASE("PathSpace Grab") {
         CHECK(ret2.has_value());
         CHECK(ret2.value()==58);
     }
+
+    SUBCASE("Deeper PathSpace Grab Different Types") {
+        PathSpace pspace;
+        pspace.insert("/test1/test2", 56.45f);
+        pspace.insert("/test1/test2", 'a');
+        pspace.insert("/test1/test2", 34.5f);
+        auto ret = pspace.grab<float>("/test1/test2");
+        CHECK(ret.has_value());
+        CHECK(ret.value()==56.45f);
+        auto ret2 = pspace.grab<char>("/test1/test2");
+        CHECK(ret2.has_value());
+        CHECK(ret2.value()=='a');
+        auto ret3 = pspace.grab<float>("/test1/test2");
+        CHECK(ret3.has_value());
+        CHECK(ret3.value()==34.5f);
+    }
 }

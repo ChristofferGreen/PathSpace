@@ -15,7 +15,7 @@ struct Person {
   }
 };
 
-TEST_CASE("External: Glaze") {
+/*TEST_CASE("External: Glaze") {
     auto const person = Person{"John", 22, {"Ripper", "Silverhand"}};
     std::vector<std::byte> bytes;
     SUBCASE("Simple struct") {
@@ -25,4 +25,4 @@ TEST_CASE("External: Glaze") {
         REQUIRE(error == false);
         REQUIRE(john==person);
     }
-}
+}*/

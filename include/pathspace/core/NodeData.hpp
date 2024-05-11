@@ -1,5 +1,6 @@
 #pragma once
 #include "pathspace/type/InputData.hpp"
+#include "pathspace/core/Error.hpp"
 
 #include <utility>
 #include <vector>
@@ -16,7 +17,10 @@ struct NodeData {
             this->types.push_back(std::make_pair(inputData.metadata.id, 1));
     }
 
-    auto deserialize() -> void {}
+    auto deserialize(InputData const &inputData) -> Expected<int> {
+        inputData.deserialize(this->data);
+        return 1;
+    }
 
     auto deserializePop() -> void {}
 
