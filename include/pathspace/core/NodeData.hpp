@@ -17,12 +17,15 @@ struct NodeData {
             this->types.push_back(std::make_pair(inputData.metadata.id, 1));
     }
 
-    auto deserialize(InputData const &inputData) -> Expected<int> {
-        inputData.deserialize(this->data);
+    auto deserialize(void *obj, InputMetadata const &inputMetadata) const -> Expected<int> {
+        inputMetadata.deserialize(obj, this->data);
         return 1;
     }
 
-    auto deserializePop() -> void {}
+    auto deserializePop(void *obj, InputMetadata const &inputMetadata) -> Expected<int> {
+        inputMetadata.deserializePop(obj, this->data);
+        return 1;
+    }
 
 //private:
     std::vector<SERIALIZATION_TYPE> data;

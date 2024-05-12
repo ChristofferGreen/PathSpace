@@ -87,8 +87,7 @@ auto PathSpace::readDataName(ConcreteName const &concreteName,
                              Capabilities const &capabilities) const -> Expected<int> {
     Expected<int> expected;
     this->nodeDataMap.if_contains(concreteName, [&](auto const &nodePair){
-        inputMetadata.deserialize(obj, std::get<NodeData>(nodePair.second).data);
-        expected = 1;
+        expected = std::get<NodeData>(nodePair.second).deserialize(obj, inputMetadata);
     });
     return expected;
 }
@@ -126,8 +125,9 @@ auto PathSpace::grabDataName(ConcreteName const &concreteName,
                              InputMetadata const &inputMetadata,
                              void *obj,
                              Capabilities const &capabilities) -> Expected<int> {
+    Expected<int> expected;
     this->nodeDataMap.modify_if(concreteName, [&](auto &nodePair){
-        inputMetadata.deserializePop(obj, std::get<NodeData>(nodePair.second).data);
+        expected = std::get<NodeData>(nodePair.second).deserializePop(obj, inputMetadata);
     });
     return 1;
 }
