@@ -18,8 +18,11 @@ struct NodeData {
     }
 
     auto deserialize(void *obj, InputMetadata const &inputMetadata) const -> Expected<int> {
-        inputMetadata.deserialize(obj, this->data);
-        return 1;
+        if(this->types.size() && this->types.end()->first==inputMetadata.id) {
+            inputMetadata.deserialize(obj, this->data);
+            return 1;
+        }
+        return 0;
     }
 
     auto deserializePop(void *obj, InputMetadata const &inputMetadata) -> Expected<int> {

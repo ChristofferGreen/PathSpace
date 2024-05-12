@@ -23,7 +23,7 @@ auto PathSpace::insertDataName(ConcreteName const &concreteName,
                                Capabilities const &capabilities,
                                TimeToLive const &ttl) -> Expected<int> {
     auto const appendDataIfNameExists = [&inputData](auto &nodePair){
-        inputData.serialize(std::get<NodeData>(nodePair.second).data);
+        std::get<NodeData>(nodePair.second).serialize(inputData);
     };
     auto const createNodeDataAndAppendDataToItIfNameDoesNotExists = [&concreteName, &inputData](NodeDataHashMap::constructor const &constructor){
         NodeData nodeData{};
