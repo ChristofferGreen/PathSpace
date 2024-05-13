@@ -10,15 +10,15 @@ namespace SP {
 
 struct NodeData {
     auto serialize(InputData const &inputData) -> void {
-        inputData.serialize(this->data);
-        if(this->types.size() && this->types.end()->first==inputData.metadata.id)
-            this->types.end()->second++;
+        inputData.metadata.serialize(inputData.obj, this->data);
+        if(this->types.size() && (this->types.back().first==inputData.metadata.id))
+            this->types.back().second++;
         else
-            this->types.push_back(std::make_pair(inputData.metadata.id, 1));
+            this->types.emplace_back(inputData.metadata.id, 1);
     }
 
     auto deserialize(void *obj, InputMetadata const &inputMetadata) const -> Expected<int> {
-        if(this->types.size() && this->types.end()->first==inputMetadata.id) {
+        if(this->types.size() && (this->types.back().first==inputMetadata.id)) {
             inputMetadata.deserialize(obj, this->data);
             return 1;
         }
