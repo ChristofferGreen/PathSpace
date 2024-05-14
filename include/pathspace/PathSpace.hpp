@@ -78,6 +78,10 @@ private:
                         InputData const &inputData,
                         Capabilities const &capabilities,
                         TimeToLive const &ttl) -> Expected<int>;
+    auto insertDataName(GlobName const &globName,
+                        InputData const &inputData,
+                        Capabilities const &capabilities,
+                        TimeToLive const &ttl) -> Expected<int>;
     auto insertConcretePathComponent(GlobPathIteratorStringView const &iter,
                                      GlobPathIteratorStringView const &end,
                                      ConcreteName const &name,
