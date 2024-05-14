@@ -4,7 +4,7 @@
 
 using namespace SP;
 
-TEST_CASE("PathSpace Construction") {
+TEST_CASE("PathSpace Insert") {
     PathSpace pspace;
     SUBCASE("Simple PathSpace Construction") {
         CHECK(pspace.insert("/test", 54).value_or(0) == 1);
@@ -25,6 +25,16 @@ TEST_CASE("PathSpace Construction") {
     SUBCASE("PathSpace Multi-Component Path") {
         CHECK(pspace.insert("/test1/test2/data", 56).value_or(0) == 1);
         //CHECK(pspace.toJSON(false) == R"({"PathSpace": {"value0": {"test3": {"index": 1,"data": {"ptr_wrapper": {"valid": 1,"data": {"value0": {"test": {"index": 1,"data": {"ptr_wrapper": {"valid": 1,"data": {"value0": {"data": {"index": 0,"data": {"value0": {"container": [56,0,0,0]}}}}}}}}}}}}}}})" );
+    }
+}
+
+TEST_CASE("PathSpace Insert Glob") {
+    PathSpace pspace;
+    SUBCASE("Simple PathSpace Glob Construction") {
+        CHECK(pspace.insert("/test1", 1).value_or(0) == 1);
+        CHECK(pspace.insert("/test2", 2).value_or(0) == 1);
+        CHECK(pspace.insert("/tast1", 3).value_or(0) == 1);
+        CHECK(pspace.insert("/test*", 4).value_or(0) == 2);
     }
 }
 

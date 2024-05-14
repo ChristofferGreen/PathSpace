@@ -11,8 +11,22 @@ auto PathSpace::insertInternal(GlobPathIteratorStringView const &iter,
                                TimeToLive const &ttl) -> Expected<int> {
     auto const nextIter = std::next(iter);
     auto const pathComponent = *iter;
-    if(nextIter == end) // This is the end of the path, attempt to insert the data
-        return this->insertDataName(pathComponent.getName(), inputData, capabilities, ttl);
+    if(nextIter == end) {// This is the end of the path, attempt to insert the data
+        Expected<int> expected;
+        if(pathComponent.isGlob()) {
+            for (auto const &val : this->nodeDataMap) {
+                if(std::get<0>(pathComponent.match(val.first))) {
+                    auto const result = this->insertDataName(pathComponent.getName(), inputData, capabilities, ttl);
+                    if(result.has_value())
+                        expected.value() += result.value();
+                    else
+                        expected.error() = result.error();
+                }
+            }
+        } else
+            expected = this->insertDataName(pathComponent.getName(), inputData, capabilities, ttl);
+        return expected;
+    }
     else if(pathComponent.isGlob()) // Send along down the line to all matching the glob expression
         return this->insertGlobPathComponent(iter, end, pathComponent, inputData, capabilities, ttl);
     return this->insertConcretePathComponent(iter, end, pathComponent.getName(), inputData, capabilities, ttl); // This sub-component is a concrete path

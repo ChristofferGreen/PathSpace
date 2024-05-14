@@ -22,7 +22,7 @@ struct NodeData {
             inputMetadata.deserialize(obj, this->data);
             return 1;
         }
-        return 0;
+        return std::unexpected(Error{Error::Code::InvalidType, "The next element is of another type then what was requested."});
     }
 
     auto deserializePop(void *obj, InputMetadata const &inputMetadata) -> Expected<int> {

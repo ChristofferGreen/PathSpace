@@ -127,48 +127,5 @@ private:
                                    Capabilities const &capabilities) -> Expected<int>;
     NodeDataHashMap nodeDataMap;
 };
-/*
-inline void to_json(nlohmann::json &json, PathSpace const &space) {
-    //j = json{{"name", p.name}, {"address", p.address}, {"age", p.age}};
-    //json = nlohmann::json{{"name", p.name}};
+
 }
-
-inline void from_json(nlohmann::json const &j, PathSpace &space) {
-    //j.at("name").get_to(p.name);
-    //j.at("address").get_to(p.address);
-    //j.at("age").get_to(p.age);
-}*/
-
-} // namespace SP
-
-
-
-        /*else if(pathComponent.isGlob()) { // Send along down the line to all matching the glob expression
-            for(auto &nodePair : this->nodes) {
-                if(pathComponent == nodePair.first) {
-                    auto returnedValue = nodePair.second->insertInternal(nextIter, end, inputData, capabilities, ttl); //bugbug multithread write while readlock
-                    if(!returnedValue.has_value())
-                        return std::unexpected(returnedValue.error());
-                    nbrInserted += returnedValue.value();
-                }
-            }
-        } else { // If any local name matches, send down the line to that one
-            auto const concreteName = ConcreteName{pathComponent.getName()};
-            auto const updateIfExists = [&](auto &nodePair){
-                auto returnedValue = nodePair.second->insertInternal(nextIter, end, inputData, capabilities, ttl);
-                if(!returnedValue.has_value())
-                    return std::unexpected(returnedValue.error());
-                nbrInserted += returnedValue.value();
-            };
-            auto const emplaceIfNotExists = [&concreteName](const NodeHashMap::constructor& ctor){
-                ctor(concreteName, std::make_unique<PathSpace>());
-            };
-            if(this->nodes.lazy_emplace_l(concreteName, updateIfExists, emplaceIfNotExists)) {
-                this->nodes.if_contains(concreteName, [&](auto &nodePair){
-                    auto returnedValue = nodePair.second->insertInternal(nextIter, end, inputData, capabilities, ttl);
-                    if(!returnedValue.has_value())
-                        return std::unexpected(returnedValue.error());
-                    nbrInserted += returnedValue.value();
-                });
-            }
-        }*/
