@@ -1,6 +1,5 @@
 #pragma once
 #include "pathspace/type/InputMetadata.hpp"
-#include "pathspace/utils/ByteQueue.hpp"
 
 #include <utility>
 

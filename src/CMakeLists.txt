@@ -26,7 +26,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glaze)
 
-include(FetchContent)
 FetchContent_Declare(
     alpaca
     GIT_TAG 6bed0a0
