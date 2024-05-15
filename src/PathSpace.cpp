@@ -37,6 +37,18 @@ auto PathSpace::insertConcreteDataName(ConcreteName const &concreteName,
     return 1;
 }
 
+static auto parse_result(Expected<int> &expected, Expected<int> const &result) -> Expected<int> {
+    assert(expected.has_value());
+    if(result.has_value()) {
+        expected.value() += result.value();
+        return true;
+    }    
+    else {
+        expected = result; // No support for multiple errors
+        return false;
+    }
+}
+
 auto PathSpace::insertGlobDataName(GlobName const &globName,
                                InputData const &inputData,
                                Capabilities const &capabilities,
@@ -44,13 +56,8 @@ auto PathSpace::insertGlobDataName(GlobName const &globName,
     Expected<int> expected;
     for (auto const &val : this->nodeDataMap) {
         if(std::get<0>(globName.match(val.first))) {
-            auto const result = this->insertConcreteDataName(globName.getName(), inputData, capabilities, ttl);
-            if(result.has_value() && expected.has_value())
-                expected.value() += result.value();
-            else {
-                expected.error() = result.error(); // No support for multiple errors
-                break;
-            }
+            if(!parse_result(expected, this->insertConcreteDataName(globName.getName(), inputData, capabilities, ttl)))
+                return expected; // Early exit due to error
         }
     }
     return expected;
@@ -66,13 +73,8 @@ auto PathSpace::insertGlobPathComponent(GlobPathIteratorStringView const &iter,
     for (auto const &val : this->nodeDataMap) {
         if(std::get<0>(globName.match(val.first))) {
             if(std::holds_alternative<std::unique_ptr<PathSpace>>(val.second)) {
-                auto const result = std::get<std::unique_ptr<PathSpace>>(val.second)->insertInternal(std::next(iter), end, inputData, capabilities, ttl);
-                if(result.has_value() && expected.has_value())
-                    expected.value() += result.value();
-                else {
-                    expected.error() = result.error(); // No support for multiple errors
-                    break;
-                }
+                if(!parse_result(expected, std::get<std::unique_ptr<PathSpace>>(val.second)->insertInternal(std::next(iter), end, inputData, capabilities, ttl)))
+                    return expected; // Early exit due to error
             }
         }
     }
