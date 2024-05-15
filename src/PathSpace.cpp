@@ -49,6 +49,10 @@ static auto parse_result(Expected<int> &expected, Expected<int> const &result) -
     }
 }
 
+/*
+The behaviour of only inserting partially when an error happens is a bit crap.
+Perhaps better to insert as many as possible and also report how many could not be inserted due to error as well as which could not be inserted (path).
+*/
 auto PathSpace::insertGlobDataName(GlobName const &globName,
                                InputData const &inputData,
                                Capabilities const &capabilities,
