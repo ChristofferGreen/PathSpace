@@ -47,8 +47,10 @@ auto PathSpace::insertGlobDataName(GlobName const &globName,
             auto const result = this->insertConcreteDataName(globName.getName(), inputData, capabilities, ttl);
             if(result.has_value() && expected.has_value())
                 expected.value() += result.value();
-            else
+            else {
                 expected.error() = result.error(); // No support for multiple errors
+                break;
+            }
         }
     }
     return expected;
@@ -67,8 +69,10 @@ auto PathSpace::insertGlobPathComponent(GlobPathIteratorStringView const &iter,
                 auto const result = std::get<std::unique_ptr<PathSpace>>(val.second)->insertInternal(std::next(iter), end, inputData, capabilities, ttl);
                 if(result.has_value() && expected.has_value())
                     expected.value() += result.value();
-                else
+                else {
                     expected.error() = result.error(); // No support for multiple errors
+                    break;
+                }
             }
         }
     }
