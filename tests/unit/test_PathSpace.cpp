@@ -36,6 +36,14 @@ TEST_CASE("PathSpace Insert Glob") {
         CHECK(pspace.insert("/tast1", 3).value_or(0) == 1);
         CHECK(pspace.insert("/test*", 4).value_or(0) == 2);
     }
+
+    SUBCASE("Middle PathSpace Glob Construction") {
+        CHECK(pspace.insert("/test1/test", 1).value_or(0) == 1);
+        CHECK(pspace.insert("/test2/test", 2).value_or(0) == 1);
+        CHECK(pspace.insert("/test3/test", 3).value_or(0) == 1);
+        CHECK(pspace.insert("/tast1", 4).value_or(0) == 1);
+        CHECK(pspace.insert("/test*/moo", 5).value_or(0) == 3);
+    }
 }
 
 TEST_CASE("PathSpace Read") {

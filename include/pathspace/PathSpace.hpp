@@ -74,11 +74,11 @@ private:
                         InputData const &inputData,
                         Capabilities const &capabilities,
                         TimeToLive const &ttl) -> Expected<int>;
-    auto insertDataName(ConcreteName const &name,
+    auto insertConcreteDataName(ConcreteName const &name,
                         InputData const &inputData,
                         Capabilities const &capabilities,
                         TimeToLive const &ttl) -> Expected<int>;
-    auto insertDataName(GlobName const &globName,
+    auto insertGlobDataName(GlobName const &globName,
                         InputData const &inputData,
                         Capabilities const &capabilities,
                         TimeToLive const &ttl) -> Expected<int>;
