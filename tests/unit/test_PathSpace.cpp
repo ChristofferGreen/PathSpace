@@ -49,8 +49,8 @@ TEST_CASE("PathSpace Insert Glob") {
 TEST_CASE("PathSpace Read") {
     SUBCASE("Simple PathSpace Read") {
         PathSpace pspace;
-        pspace.insert("/test", 56);
-        pspace.insert("/test", 58);
+        CHECK(pspace.insert("/test", 56));
+        CHECK(pspace.insert("/test", 58));
         auto ret = pspace.read<int>("/test");
         CHECK(ret.has_value());
         CHECK(ret.value()==56);
@@ -61,8 +61,8 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("Deeper PathSpace Read") {
         PathSpace pspace;
-        pspace.insert("/test1/test2", 56);
-        pspace.insert("/test1/test2", 58);
+        CHECK(pspace.insert("/test1/test2", 56).has_value());
+        CHECK(pspace.insert("/test1/test2", 58).has_value());
         auto ret = pspace.read<int>("/test1/test2");
         CHECK(ret.has_value());
         CHECK(ret.value()==56);
@@ -75,8 +75,8 @@ TEST_CASE("PathSpace Read") {
 TEST_CASE("PathSpace Grab") {
     SUBCASE("Simple PathSpace Grab") {
         PathSpace pspace;
-        pspace.insert("/test", 56);
-        pspace.insert("/test", 58);
+        CHECK(pspace.insert("/test", 56));
+        CHECK(pspace.insert("/test", 58));
         auto ret = pspace.grab<int>("/test");
         CHECK(ret.has_value());
         CHECK(ret.value()==56);
@@ -87,8 +87,8 @@ TEST_CASE("PathSpace Grab") {
 
     SUBCASE("Deeper PathSpace Grab") {
         PathSpace pspace;
-        pspace.insert("/test1/test2", 56);
-        pspace.insert("/test1/test2", 58);
+        CHECK(pspace.insert("/test1/test2", 56));
+        CHECK(pspace.insert("/test1/test2", 58));
         auto ret = pspace.grab<int>("/test1/test2");
         CHECK(ret.has_value());
         CHECK(ret.value()==56);
@@ -99,9 +99,9 @@ TEST_CASE("PathSpace Grab") {
 
     SUBCASE("Deeper PathSpace Grab Different Types") {
         PathSpace pspace;
-        pspace.insert("/test1/test2", 56.45f);
-        pspace.insert("/test1/test2", 'a');
-        pspace.insert("/test1/test2", 34.5f);
+        CHECK(pspace.insert("/test1/test2", 56.45f));
+        CHECK(pspace.insert("/test1/test2", 'a'));
+        CHECK(pspace.insert("/test1/test2", 34.5f));
         auto ret = pspace.grab<float>("/test1/test2");
         CHECK(ret.has_value());
         CHECK(ret.value()==56.45f);

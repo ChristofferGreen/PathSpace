@@ -3,18 +3,11 @@
 #include "core/Error.hpp"
 #include "core/Capabilities.hpp"
 #include "core/TimeToLive.hpp"
-#include "core/ExecutionOptions.hpp"
 #include "type/InputData.hpp"
-#include "core/NodeData.hpp"
 #include "type/Helper.hpp"
 
-#include <chrono>
 #include <functional>
-#include <iterator>
-#include <memory>
-#include <queue>
 #include <string>
-#include <vector>
 
 namespace SP {
 
