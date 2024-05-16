@@ -3,6 +3,8 @@
 #include "core/Error.hpp"
 #include "core/Capabilities.hpp"
 #include "core/TimeToLive.hpp"
+#include "core/InsertOptions.hpp"
+#include "core/InsertReturn.hpp"
 #include "type/InputData.hpp"
 #include "type/Helper.hpp"
 
@@ -15,13 +17,12 @@ struct PathSpace {
     template<typename T>
     auto insert(GlobPathStringView const &path,
                 T const &data,
-                Capabilities const &capabilities = Capabilities::All(),
-                TimeToLive const &ttl = {}) -> Expected<int> {
+                InsertOptions const &options = {}) -> Expected<int> {
         // Check if path is valid.
         // Check if path actually has a final name subcomponent
         // Check capabilities
         // Implement TTL functionality
-        return this->insertInternal(path.begin(), path.end(), InputData{data}, capabilities, ttl);
+        return this->insertInternal(path.begin(), path.end(), InputData{data}, options);
     }
 
     template<typename T>
@@ -65,28 +66,23 @@ private:
     auto insertInternal(GlobPathIteratorStringView const &iter,
                         GlobPathIteratorStringView const &end,
                         InputData const &inputData,
-                        Capabilities const &capabilities,
-                        TimeToLive const &ttl) -> Expected<int>;
+                        InsertOptions const &options) -> Expected<int>;
     auto insertConcreteDataName(ConcreteName const &name,
                         InputData const &inputData,
-                        Capabilities const &capabilities,
-                        TimeToLive const &ttl) -> Expected<int>;
+                        InsertOptions const &options) -> Expected<int>;
     auto insertGlobDataName(GlobName const &globName,
                         InputData const &inputData,
-                        Capabilities const &capabilities,
-                        TimeToLive const &ttl) -> Expected<int>;
+                        InsertOptions const &options) -> Expected<int>;
     auto insertConcretePathComponent(GlobPathIteratorStringView const &iter,
                                      GlobPathIteratorStringView const &end,
                                      ConcreteName const &name,
                                      InputData const &inputData,
-                                     Capabilities const &capabilities,
-                                     TimeToLive const &ttl) -> Expected<int>;
+                                     InsertOptions const &options) -> Expected<int>;
     auto insertGlobPathComponent(GlobPathIteratorStringView const &iter,
                                  GlobPathIteratorStringView const &end,
                                  GlobName const &name,
                                  InputData const &inputData,
-                                 Capabilities const &capabilities,
-                                 TimeToLive const &ttl) -> Expected<int>;
+                                 InsertOptions const &options) -> Expected<int>;
 
     auto readInternal(ConcretePathIteratorStringView const &iter,
                       ConcretePathIteratorStringView const &end,
