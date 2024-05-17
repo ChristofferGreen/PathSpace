@@ -11,18 +11,20 @@ namespace SP {
 auto PathSpace::insertInternal(GlobPathIteratorStringView const &iter,
                                GlobPathIteratorStringView const &end,
                                InputData const &inputData,
-                               InsertOptions const &options) -> Expected<int> {
+                               InsertOptions const &options,
+                               InsertReturn &ret) -> void {
     auto const pathComponent = *iter;
     if(std::next(iter) == end) // This is the end of the path, attempt to insert the data
-        return pathComponent.isGlob() ? this->insertGlobDataName(pathComponent, inputData, options) :
-                                        this->insertConcreteDataName(pathComponent.getName(), inputData, options);
-    return pathComponent.isGlob() ? this->insertGlobPathComponent(iter, end, pathComponent, inputData, options) : // Send along down the line to all matching the glob expression
-                                    this->insertConcretePathComponent(iter, end, pathComponent.getName(), inputData, options); // This sub-component is a concrete path
+        return pathComponent.isGlob() ? this->insertGlobDataName(pathComponent, inputData, options, ret) :
+                                        this->insertConcreteDataName(pathComponent.getName(), inputData, options, ret);
+    return pathComponent.isGlob() ? this->insertGlobPathComponent(iter, end, pathComponent, inputData, options, ret) : // Send along down the line to all matching the glob expression
+                                    this->insertConcretePathComponent(iter, end, pathComponent.getName(), inputData, options, ret); // This sub-component is a concrete path
 }
 
 auto PathSpace::insertConcreteDataName(ConcreteName const &concreteName,
                                InputData const &inputData,
-                               InsertOptions const &options) -> Expected<int> {
+                               InsertOptions const &options,
+                               InsertReturn &ret) -> void {
     auto const appendDataIfNameExists = [&inputData](auto &nodePair){
         std::get<NodeData>(nodePair.second).serialize(inputData);
     };
@@ -32,19 +34,7 @@ auto PathSpace::insertConcreteDataName(ConcreteName const &concreteName,
         constructor(concreteName, std::move(nodeData));
     };
     this->nodeDataMap.lazy_emplace_l(concreteName, appendDataIfNameExists, createNodeDataAndAppendDataToItIfNameDoesNotExists);
-    return 1;
-}
-
-static auto parse_result(Expected<int> &expected, Expected<int> const &result) -> Expected<int> {
-    assert(expected.has_value());
-    if(result.has_value()) {
-        expected.value() += result.value();
-        return true;
-    }    
-    else {
-        expected = result; // No support for multiple errors
-        return false;
-    }
+    ret.nbrValuesInserted++;
 }
 
 /*
@@ -53,53 +43,46 @@ Perhaps better to insert as many as possible and also report how many could not 
 */
 auto PathSpace::insertGlobDataName(GlobName const &globName,
                                    InputData const &inputData,
-                                   InsertOptions const &options) -> Expected<int> {
-    Expected<int> expected;
-    for (auto const &val : this->nodeDataMap) {
-        if(std::get<0>(globName.match(val.first))) {
-            if(!parse_result(expected, this->insertConcreteDataName(val.first, inputData, options)))
-                return expected; // Early exit due to error
-        }
-    }
-    return expected;
+                                   InsertOptions const &options,
+                                   InsertReturn &ret) -> void {
+    for (auto const &val : this->nodeDataMap)
+        if(std::get<0>(globName.match(val.first)))
+            this->insertConcreteDataName(val.first, inputData, options, ret);
 }
 
 auto PathSpace::insertGlobPathComponent(GlobPathIteratorStringView const &iter,
                                         GlobPathIteratorStringView const &end,
                                         GlobName const &globName,
                                         InputData const &inputData,
-                                        InsertOptions const &options) -> Expected<int> {
-    Expected<int> expected;
-    for (auto const &val : this->nodeDataMap) {
-        if(std::get<0>(globName.match(val.first))) {
-            if(std::holds_alternative<std::unique_ptr<PathSpace>>(val.second)) {
-                if(!parse_result(expected, std::get<std::unique_ptr<PathSpace>>(val.second)->insertInternal(std::next(iter), end, inputData, options)))
-                    return expected; // Early exit due to error
-            }
-        }
-    }
-    return expected;
+                                        InsertOptions const &options,
+                                        InsertReturn &ret) -> void {
+    InsertReturn expected;
+    for (auto const &val : this->nodeDataMap)
+        if(std::get<0>(globName.match(val.first)))
+            if(std::holds_alternative<std::unique_ptr<PathSpace>>(val.second))
+                std::get<std::unique_ptr<PathSpace>>(val.second)->insertInternal(std::next(iter), end, inputData, options, ret);
 }
 
 auto PathSpace::insertConcretePathComponent(GlobPathIteratorStringView const &iter,
                                             GlobPathIteratorStringView const &end,
                                             ConcreteName const &concreteName,
                                             InputData const &inputData,
-                                            InsertOptions const &options) -> Expected<int> {
+                                            InsertOptions const &options,
+                                            InsertReturn &ret) -> void {
     auto const nextIter = std::next(iter);
-    Expected<int> expected;
     auto const appendDataIfNameExists = [&](auto &nodePair){
-        expected = std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second) ?
-            std::get<std::unique_ptr<PathSpace>>(nodePair.second)->insertInternal(nextIter, end, inputData, options) :
-            std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
+        if(std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second))
+            std::get<std::unique_ptr<PathSpace>>(nodePair.second)->insertInternal(nextIter, end, inputData, options, ret);
+        else
+            ret.errors.push_back(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
     };
     auto const createNodeDataAndAppendDataToItIfNameDoesNotExists = [&](NodeDataHashMap::constructor const &constructor){
         auto space = std::make_unique<PathSpace>();
-        expected = space->insertInternal(nextIter, end, inputData, options);
+        space->insertInternal(nextIter, end, inputData, options, ret);
         constructor(concreteName, std::move(space));
+        ret.nbrSpacesInserted++;
     };
     this->nodeDataMap.lazy_emplace_l(concreteName, appendDataIfNameExists, createNodeDataAndAppendDataToItIfNameDoesNotExists);
-    return expected;
 }
 
 /************************************************

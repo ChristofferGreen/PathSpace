@@ -7,7 +7,7 @@ using namespace SP;
 TEST_CASE("PathSpace Insert") {
     PathSpace pspace;
     SUBCASE("Simple PathSpace Construction") {
-        CHECK(pspace.insert("/test", 54).value_or(0) == 1);
+        CHECK(pspace.insert("/test", 54).nbrValuesInserted == 1);
     }
 
     /*SUBCASE("Simple PathSpace Construction JSON") {
@@ -16,14 +16,15 @@ TEST_CASE("PathSpace Insert") {
     }*/
 
     SUBCASE("Simple PathSpace Path Into Data") {
-        CHECK(pspace.insert("/test", 54).value_or(0) == 1);
+        CHECK(pspace.insert("/test", 54).nbrValuesInserted == 1);
         auto const val = pspace.insert("/test/data", 55);
-        CHECK(!val.has_value());
-        CHECK(val.error().code==Error::Code::InvalidPathSubcomponent);
+        CHECK(val.nbrValuesInserted==0);
+        CHECK(val.errors.size()==1);
+        CHECK(val.errors[0].code==Error::Code::InvalidPathSubcomponent);
     }
 
     SUBCASE("PathSpace Multi-Component Path") {
-        CHECK(pspace.insert("/test1/test2/data", 56).value_or(0) == 1);
+        CHECK(pspace.insert("/test1/test2/data", 56).nbrValuesInserted == 1);
         //CHECK(pspace.toJSON(false) == R"({"PathSpace": {"value0": {"test3": {"index": 1,"data": {"ptr_wrapper": {"valid": 1,"data": {"value0": {"test": {"index": 1,"data": {"ptr_wrapper": {"valid": 1,"data": {"value0": {"data": {"index": 0,"data": {"value0": {"container": [56,0,0,0]}}}}}}}}}}}}}}})" );
     }
 }
@@ -31,26 +32,26 @@ TEST_CASE("PathSpace Insert") {
 TEST_CASE("PathSpace Insert Glob") {
     PathSpace pspace;
     SUBCASE("Simple PathSpace Glob Construction") {
-        CHECK(pspace.insert("/test1", 1).value_or(0) == 1);
-        CHECK(pspace.insert("/test2", 2).value_or(0) == 1);
-        CHECK(pspace.insert("/tast1", 3).value_or(0) == 1);
-        CHECK(pspace.insert("/test*", 4).value_or(0) == 2);
+        CHECK(pspace.insert("/test1", 1).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/test2", 2).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/tast1", 3).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/test*", 4).nbrValuesInserted == 2);
     }
 
     SUBCASE("Middle PathSpace Glob Construction") {
-        CHECK(pspace.insert("/test1/test", 1).value_or(0) == 1);
-        CHECK(pspace.insert("/test2/test", 2).value_or(0) == 1);
-        CHECK(pspace.insert("/test3/test", 3).value_or(0) == 1);
-        CHECK(pspace.insert("/tast1", 4).value_or(0) == 1);
-        CHECK(pspace.insert("/test*/moo", 5).value_or(0) == 3);
+        CHECK(pspace.insert("/test1/test", 1).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/test2/test", 2).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/test3/test", 3).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/tast1", 4).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/test*/moo", 5).nbrValuesInserted == 3);
     }
 }
 
 TEST_CASE("PathSpace Read") {
     SUBCASE("Simple PathSpace Read") {
         PathSpace pspace;
-        CHECK(pspace.insert("/test", 56));
-        CHECK(pspace.insert("/test", 58));
+        CHECK(pspace.insert("/test", 56).nbrValuesInserted==1);
+        CHECK(pspace.insert("/test", 58).nbrValuesInserted==1);
         auto ret = pspace.read<int>("/test");
         CHECK(ret.has_value());
         CHECK(ret.value()==56);
@@ -61,8 +62,8 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("Deeper PathSpace Read") {
         PathSpace pspace;
-        CHECK(pspace.insert("/test1/test2", 56).has_value());
-        CHECK(pspace.insert("/test1/test2", 58).has_value());
+        CHECK(pspace.insert("/test1/test2", 56).nbrValuesInserted==1);
+        CHECK(pspace.insert("/test1/test2", 58).nbrValuesInserted==1);
         auto ret = pspace.read<int>("/test1/test2");
         CHECK(ret.has_value());
         CHECK(ret.value()==56);
@@ -75,8 +76,8 @@ TEST_CASE("PathSpace Read") {
 TEST_CASE("PathSpace Grab") {
     SUBCASE("Simple PathSpace Grab") {
         PathSpace pspace;
-        CHECK(pspace.insert("/test", 56));
-        CHECK(pspace.insert("/test", 58));
+        CHECK(pspace.insert("/test", 56).nbrValuesInserted==1);
+        CHECK(pspace.insert("/test", 58).nbrValuesInserted==1);
         auto ret = pspace.grab<int>("/test");
         CHECK(ret.has_value());
         CHECK(ret.value()==56);
@@ -87,8 +88,8 @@ TEST_CASE("PathSpace Grab") {
 
     SUBCASE("Deeper PathSpace Grab") {
         PathSpace pspace;
-        CHECK(pspace.insert("/test1/test2", 56));
-        CHECK(pspace.insert("/test1/test2", 58));
+        CHECK(pspace.insert("/test1/test2", 56).nbrValuesInserted==1);
+        CHECK(pspace.insert("/test1/test2", 58).nbrValuesInserted==1);
         auto ret = pspace.grab<int>("/test1/test2");
         CHECK(ret.has_value());
         CHECK(ret.value()==56);
@@ -99,9 +100,9 @@ TEST_CASE("PathSpace Grab") {
 
     SUBCASE("Deeper PathSpace Grab Different Types") {
         PathSpace pspace;
-        CHECK(pspace.insert("/test1/test2", 56.45f));
-        CHECK(pspace.insert("/test1/test2", 'a'));
-        CHECK(pspace.insert("/test1/test2", 34.5f));
+        CHECK(pspace.insert("/test1/test2", 56.45f).nbrValuesInserted==1);
+        CHECK(pspace.insert("/test1/test2", 'a').nbrValuesInserted==1);
+        CHECK(pspace.insert("/test1/test2", 34.5f).nbrValuesInserted==1);
         auto ret = pspace.grab<float>("/test1/test2");
         CHECK(ret.has_value());
         CHECK(ret.value()==56.45f);

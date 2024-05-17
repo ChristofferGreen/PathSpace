@@ -17,12 +17,14 @@ struct PathSpace {
     template<typename T>
     auto insert(GlobPathStringView const &path,
                 T const &data,
-                InsertOptions const &options = {}) -> Expected<int> {
+                InsertOptions const &options = {}) -> InsertReturn {
         // Check if path is valid.
         // Check if path actually has a final name subcomponent
         // Check capabilities
         // Implement TTL functionality
-        return this->insertInternal(path.begin(), path.end(), InputData{data}, options);
+        InsertReturn ret;
+        this->insertInternal(path.begin(), path.end(), InputData{data}, options, ret);
+        return ret;
     }
 
     template<typename T>
@@ -66,23 +68,28 @@ private:
     auto insertInternal(GlobPathIteratorStringView const &iter,
                         GlobPathIteratorStringView const &end,
                         InputData const &inputData,
-                        InsertOptions const &options) -> Expected<int>;
+                        InsertOptions const &options,
+                        InsertReturn &ret) -> void;
     auto insertConcreteDataName(ConcreteName const &name,
-                        InputData const &inputData,
-                        InsertOptions const &options) -> Expected<int>;
+                                InputData const &inputData,
+                                InsertOptions const &options,
+                                InsertReturn &ret) -> void;
     auto insertGlobDataName(GlobName const &globName,
-                        InputData const &inputData,
-                        InsertOptions const &options) -> Expected<int>;
+                                InputData const &inputData,
+                                InsertOptions const &options,
+                                InsertReturn &ret) -> void;
     auto insertConcretePathComponent(GlobPathIteratorStringView const &iter,
                                      GlobPathIteratorStringView const &end,
                                      ConcreteName const &name,
                                      InputData const &inputData,
-                                     InsertOptions const &options) -> Expected<int>;
+                                     InsertOptions const &options,
+                                     InsertReturn &ret) -> void;
     auto insertGlobPathComponent(GlobPathIteratorStringView const &iter,
                                  GlobPathIteratorStringView const &end,
                                  GlobName const &name,
                                  InputData const &inputData,
-                                 InsertOptions const &options) -> Expected<int>;
+                                 InsertOptions const &options,
+                                 InsertReturn &ret) -> void;
 
     auto readInternal(ConcretePathIteratorStringView const &iter,
                       ConcretePathIteratorStringView const &end,
