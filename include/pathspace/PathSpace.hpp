@@ -18,12 +18,13 @@ struct PathSpace {
     auto insert(GlobPathStringView const &path,
                 T const &data,
                 InsertOptions const &options = {}) -> InsertReturn {
-        // Check if path is valid.
-        // Check if path actually has a final name subcomponent
         // Check capabilities
         // Implement TTL functionality
         InsertReturn ret;
-        this->insertInternal(path.begin(), path.end(), InputData{data}, options, ret);
+        if(!path.isValid())
+            ret.errors.emplace_back(Error::Code::InvalidPath, std::string("The path was not valid: ").append(path.getPath()));
+        else
+            this->insertInternal(path.begin(), path.end(), InputData{data}, options, ret);
         return ret;
     }
 

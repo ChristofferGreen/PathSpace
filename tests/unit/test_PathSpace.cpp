@@ -47,6 +47,25 @@ TEST_CASE("PathSpace Insert Glob") {
     }
 }
 
+// lambdas should come from a central database in order to support serialization to remote computer
+/*TEST_CASE("PathSpace Insert Lambda") {
+    PathSpace pspace;
+    SUBCASE("Simple PathSpace Lambda Insert") {
+        CHECK(pspace.insert("/test1", [](){}).nbrValuesInserted == 1);
+    }
+}*/
+
+auto moof() -> void {
+
+}
+
+TEST_CASE("PathSpace Insert Function Pointer") {
+    PathSpace pspace;
+    SUBCASE("Simple PathSpace Function Pointer Insert") {
+        CHECK(pspace.insert("/test1", &moof).nbrValuesInserted == 1);
+    }
+}
+
 TEST_CASE("PathSpace Read") {
     SUBCASE("Simple PathSpace Read") {
         PathSpace pspace;

@@ -70,6 +70,35 @@ static auto deserialize_fundamental(void *objPtr, std::vector<uint8_t> &bytes) -
     bytes.erase(bytes.begin(), bytes.begin() + sizeof(T));
 }
 
+static auto serialize_function_pointer(void const *objPtr, std::vector<uint8_t> &bytes) -> void {
+    auto funcPtr = *static_cast<void(**)()>(const_cast<void *>(objPtr));
+    auto funcPtrInt = reinterpret_cast<std::uintptr_t>(funcPtr);
+    auto const *begin = reinterpret_cast<uint8_t const *>(&funcPtrInt);
+    auto const *end = begin + sizeof(funcPtrInt);
+    bytes.insert(bytes.end(), begin, end);
+}
+
+static auto deserialize_function_pointer(void *objPtr, std::vector<uint8_t> &bytes) -> void {
+    if (bytes.size() < sizeof(std::uintptr_t)) {
+        return;
+    }
+    std::uintptr_t funcPtrInt;
+    std::copy(bytes.begin(), bytes.begin() + sizeof(std::uintptr_t), reinterpret_cast<uint8_t*>(&funcPtrInt));
+    auto funcPtr = reinterpret_cast<void(*)()>(funcPtrInt);
+    *static_cast<void(**)()>(objPtr) = funcPtr;
+    bytes.erase(bytes.begin(), bytes.begin() + sizeof(std::uintptr_t));
+}
+
+static auto deserialize_function_pointer_const(void *objPtr, std::vector<uint8_t> const &bytes) -> void {
+    if (bytes.size() < sizeof(std::uintptr_t)) {
+        return;
+    }
+    std::uintptr_t funcPtrInt;
+    std::copy(bytes.begin(), bytes.begin() + sizeof(std::uintptr_t), reinterpret_cast<uint8_t*>(&funcPtrInt));
+    auto funcPtr = reinterpret_cast<void(*)()>(funcPtrInt);
+    *static_cast<void(**)()>(objPtr) = funcPtr;
+}
+
 template<typename CVRefT>
 struct InputMetadataT {
     using T = std::remove_cvref_t<CVRefT>;
@@ -81,6 +110,8 @@ struct InputMetadataT {
                 return &serialize_fundamental<T>;
             } else if constexpr (AlpacaCompatible<T>) {
                 return &serialize_alpaca<T>;
+            } else if constexpr (std::is_same_v<T, void(*)()>) {
+                return &serialize_function_pointer;
             } else {
                 return nullptr;
             }
@@ -92,6 +123,8 @@ struct InputMetadataT {
                 return &deserialize_fundamental<T>;
             } else if constexpr (AlpacaCompatible<T>) {
                 return &deserialize_alpaca<T>;
+            } else if constexpr (std::is_same_v<T, void(*)()>) {
+                return &deserialize_function_pointer;
             } else {
                 return nullptr;
             }
@@ -103,6 +136,8 @@ struct InputMetadataT {
                 return &deserialize_fundamental_const<T>;
             } else if constexpr (AlpacaCompatible<T>) {
                 return &deserialize_alpaca_const<T>;
+            } else if constexpr (std::is_same_v<T, void(*)()>) {
+                return &deserialize_function_pointer_const;
             } else {
                 return nullptr;
             }

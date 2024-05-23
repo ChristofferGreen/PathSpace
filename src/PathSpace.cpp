@@ -31,6 +31,7 @@ auto PathSpace::insertConcreteDataName(ConcreteName const &concreteName,
     auto const createNodeDataAndAppendDataToItIfNameDoesNotExists = [&concreteName, &inputData](NodeDataHashMap::constructor const &constructor){
         NodeData nodeData{};
         nodeData.serialize(inputData);
+        assert(inputData.metadata.serialize != nullptr);
         constructor(concreteName, std::move(nodeData));
     };
     this->nodeDataMap.lazy_emplace_l(concreteName, appendDataIfNameExists, createNodeDataAndAppendDataToItIfNameDoesNotExists);
@@ -74,7 +75,7 @@ auto PathSpace::insertConcretePathComponent(GlobPathIteratorStringView const &it
         if(std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second))
             std::get<std::unique_ptr<PathSpace>>(nodePair.second)->insertInternal(nextIter, end, inputData, options, ret);
         else
-            ret.errors.push_back(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
+            ret.errors.emplace_back(Error::Code::InvalidPathSubcomponent, std::string("Sub-component name is data for ").append(concreteName.getName()));
     };
     auto const createNodeDataAndAppendDataToItIfNameDoesNotExists = [&](NodeDataHashMap::constructor const &constructor){
         auto space = std::make_unique<PathSpace>();
