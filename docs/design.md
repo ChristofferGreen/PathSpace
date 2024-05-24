@@ -78,13 +78,12 @@ The operations in the base language are insert/read/grab, they are implemented a
 	* Syntax:
 		* std::expected<T, Error> PathSpace::grab<T>(ConcretePath, Block, optional<GrabOptions> const &options={})
 
-**## 
-**
-**## Blocking**## 
+
+## Blocking 
 
 It’s possible to send a blocking object to insert/read/grab instructing it to wait a certain amount of time for data to arrive if it is currently empty or non-existent.
 
-**## Capability**
+## Capability
 The capability functionality enables PathSpaces to have fine grained control over inserting/modifying or reading data in a PathSpace. If for example executions/lambdas can be inserted or if data at a specific path can be read. The capabilities are glob path based, controlling access over what parts of the tree can be accessed for what. A capability object can have control over multiple glob paths inside of it. 
 The following capabilities exist:
 * Read
@@ -92,14 +91,14 @@ The following capabilities exist:
 * Mutate
 * Execute
 
-**## Data Storage**
+## Data Storage
 A normal PathSpace will store data by serialising it to a std::vector<std::byte>. That vector can contain data of different types and a separate vector storing std::type_id pointers together with how many objects or that type are in a row will be used to determine what parts of the data vector has what type. Std::function objects will be stored in their own vector as well since they can not be serialised. Insert will append serialised data to this vector. Grab will not necessarily erase from the front of the vector since this would be too costly, a pointer to the front element will instead be stored and its position changed forward when a grab is issued. At first the serialisation will be done via the alpaca library but when a compiler supporting the C++26 serialisation functionality it will be rewritten to use that instead.
 
-**## Glob Expressions**## 
+## Glob Expressions
 
 Paths can be glob expressions for the insert operation, the data will be copied and inserted in any matching path. A glob expression in insert cannot create paths since they have nothing to match against.
 
-**## JSON Serialisation**## 
+## JSON Serialisation
 
 Serialisation will be supported out from the PathSpace into JSON in order to enable to do introspection and visualisation of the internal data of the path space or for export of performance data. For example to show a filesystem view of the tree in a GUI where individual data can be viewed. Will also support deserialisation for loading old state. Binary serialisation can also be done to for example create a state of the path space that can be serialised later for example for typical save/load functionality. This is achieved by specifying a json data type for read or grab, example: space.read<std::string>(“/test”, ReadOptions{.toJSON=true})
 
@@ -196,7 +195,6 @@ The extendability of a PathSpace can be used to create a reactive data flow, for
 Another specialisation is to create a PathSpace child that can replicate a space over several computers over the network. Duplicating data where needed. May use Asia for networking. Like a live object.
 
 ## Example Use Cases
-
 * Scene Graph - Objects to be displayed by a 3d renderer. Mainly takes care of seamlessly interacting with the renderer to upload and display objects in the graph. Could also support data oriented design by having composable objects that store their properties in a list instead of objects in a list.
 * Vulcan Render - A renderer that integrates with the GPU via Vulcan. Makes it easy to upload and use meshes and shaders.
 * ISO Surface Generator - Just in time generation of geometry to display, taking LOD into account. It can have an internal path like …/generate/x_y_y that can be read to start the generation.
