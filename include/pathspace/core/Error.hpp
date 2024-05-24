@@ -17,7 +17,8 @@ struct Error {
         MemoryAllocationFailed,
         MalformedInput,
         UnmatchedQuotes,
-        UnknownError
+        UnknownError,
+        UnserializableType
     };
 
     Code code;

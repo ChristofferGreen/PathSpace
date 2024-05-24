@@ -27,10 +27,7 @@ TEST_CASE("PathSpace Insert") {
         CHECK(pspace.insert("/test1/test2/data", 56).nbrValuesInserted == 1);
         //CHECK(pspace.toJSON(false) == R"({"PathSpace": {"value0": {"test3": {"index": 1,"data": {"ptr_wrapper": {"valid": 1,"data": {"value0": {"test": {"index": 1,"data": {"ptr_wrapper": {"valid": 1,"data": {"value0": {"data": {"index": 0,"data": {"value0": {"container": [56,0,0,0]}}}}}}}}}}}}}}})" );
     }
-}
 
-TEST_CASE("PathSpace Insert Glob") {
-    PathSpace pspace;
     SUBCASE("Simple PathSpace Glob Construction") {
         CHECK(pspace.insert("/test1", 1).nbrValuesInserted == 1);
         CHECK(pspace.insert("/test2", 2).nbrValuesInserted == 1);
@@ -45,6 +42,10 @@ TEST_CASE("PathSpace Insert Glob") {
         CHECK(pspace.insert("/tast1", 4).nbrValuesInserted == 1);
         CHECK(pspace.insert("/test*/moo", 5).nbrValuesInserted == 3);
     }
+
+    SUBCASE("Simple PathSpace Insert Lambda") {
+        CHECK(pspace.insert("/test1", [](ConcretePathString const &path, PathSpace &space, std::atomic<bool> &alive) -> int { return 367; }).nbrValuesInserted == 1);
+    }
 }
 
 // lambdas should come from a central database in order to support serialization to remote computer
@@ -54,17 +55,6 @@ TEST_CASE("PathSpace Insert Glob") {
         CHECK(pspace.insert("/test1", [](){}).nbrValuesInserted == 1);
     }
 }*/
-
-auto moof() -> void {
-
-}
-
-TEST_CASE("PathSpace Insert Function Pointer") {
-    PathSpace pspace;
-    SUBCASE("Simple PathSpace Function Pointer Insert") {
-        CHECK(pspace.insert("/test1", &moof).nbrValuesInserted == 1);
-    }
-}
 
 TEST_CASE("PathSpace Read") {
     SUBCASE("Simple PathSpace Read") {

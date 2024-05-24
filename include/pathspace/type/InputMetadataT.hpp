@@ -1,4 +1,6 @@
 #pragma once
+#include "pathspace/path/ConcretePath.hpp"
+#include <atomic>
 #include <functional>
 #include <cassert>
 
@@ -10,6 +12,15 @@
 #include <alpaca/alpaca.h>
 
 namespace SP {
+
+struct PathSpace;
+
+template<typename T>
+struct is_path_lambda : std::false_type {};
+
+// Specialization for the specific lambda type
+template<>
+struct is_path_lambda<std::function<void(ConcretePathString const&, PathSpace&, std::atomic<bool>&)>> : std::true_type {};
 
 template<typename T>
 concept AlpacaCompatible = !std::is_same_v<T, std::function<void()>> && 
@@ -99,6 +110,9 @@ static auto deserialize_function_pointer_const(void *objPtr, std::vector<uint8_t
     *static_cast<void(**)()>(objPtr) = funcPtr;
 }
 
+static auto serialize_path_lambda(void const *objPtr, std::vector<uint8_t> &bytes) -> void {
+}
+
 template<typename CVRefT>
 struct InputMetadataT {
     using T = std::remove_cvref_t<CVRefT>;
@@ -112,6 +126,8 @@ struct InputMetadataT {
                 return &serialize_alpaca<T>;
             } else if constexpr (std::is_same_v<T, void(*)()>) {
                 return &serialize_function_pointer;
+            } else if constexpr (is_path_lambda<std::function<T>>::value) {
+                return &serialize_path_lambda;
             } else {
                 return nullptr;
             }

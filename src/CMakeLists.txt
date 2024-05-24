@@ -33,6 +33,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(alpaca)
 
+FetchContent_Declare(
+  foonathan_memory
+    GIT_TAG 016c9fb
+    GIT_REPOSITORY https://github.com/foonathan/memory
+)
+FetchContent_MakeAvailable(foonathan_memory)
+
 # Indicate that we only want to compile source files into a library
 add_library(PathSpace
     path/ConcretePath.cpp
@@ -42,6 +49,7 @@ add_library(PathSpace
     path/GlobPathIterator.cpp
     path/GlobName.cpp
     path/Path.cpp
+    task/TaskManager.cpp
     PathSpace.cpp
     type/InputData.cpp
 )
@@ -57,11 +65,13 @@ PUBLIC
     ${glaze_SOURCE_DIR}/include
     ${cista_SOURCE_DIR}/include
     ${alpaca_SOURCE_DIR}/include
+    ${foonathan_memory_SOURCE_DIR}/include
 )
 
 target_link_libraries(PathSpace
 PRIVATE
     glaze::glaze
+    foonathan_memory
 )
 
 set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "../include/PathSpace.hpp")

@@ -1,7 +1,5 @@
 #include "pathspace/PathSpace.hpp"
 
-#include <sstream>
-
 namespace SP {
 
 /************************************************
