@@ -1,4 +1,4 @@
-#include "pathspace/task/TaskManager.hpp"
+#include "TaskManager.hpp"
 #include "pathspace/PathSpace.hpp"
 #include "pathspace/path/ConcretePath.hpp"
 

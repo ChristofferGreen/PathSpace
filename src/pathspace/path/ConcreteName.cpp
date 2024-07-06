@@ -1,4 +1,4 @@
-#include "pathspace/path/ConcreteName.hpp"
+#include "ConcreteName.hpp"
 
 namespace SP {
 

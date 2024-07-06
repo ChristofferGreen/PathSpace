@@ -51,13 +51,13 @@ add_library(PathSpace
     path/Path.cpp
     task/TaskManager.cpp
     PathSpace.cpp
-    type/InputData.cpp
 )
 
 target_compile_options(PathSpace PUBLIC "-Wno-deprecated")
 
 target_include_directories(PathSpace
 PUBLIC
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/include
     ${parallelhashmap_SOURCE_DIR}
     ${nlohmann_SOURCE_DIR}/include
@@ -74,7 +74,7 @@ PRIVATE
     foonathan_memory
 )
 
-set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "../../include/PathSpace.hpp")
+set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "PathSpace.hpp")
 
 install(TARGETS PathSpace
     ARCHIVE DESTINATION lib

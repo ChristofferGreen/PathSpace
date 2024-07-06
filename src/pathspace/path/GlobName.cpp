@@ -1,4 +1,4 @@
-#include "pathspace/path/GlobName.hpp"
+#include "GlobName.hpp"
 
 namespace SP {
 

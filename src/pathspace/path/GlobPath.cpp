@@ -1,4 +1,4 @@
-#include "pathspace/path/GlobPath.hpp"
+#include "GlobPath.hpp"
 
 namespace SP {
 template<typename T>

@@ -1,4 +1,4 @@
-#include "pathspace/path/ConcretePath.hpp"
+#include "ConcretePath.hpp"
 
 namespace SP {
 template<typename T>

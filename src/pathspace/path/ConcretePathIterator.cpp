@@ -1,4 +1,4 @@
-#include "pathspace/path/ConcretePathIterator.hpp"
+#include "ConcretePathIterator.hpp"
 
 namespace SP {
 template<typename T>

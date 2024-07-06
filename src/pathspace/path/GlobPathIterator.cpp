@@ -1,4 +1,4 @@
-#include "pathspace/path/GlobPathIterator.hpp"
+#include "GlobPathIterator.hpp"
 
 namespace SP {
 template<typename T>
