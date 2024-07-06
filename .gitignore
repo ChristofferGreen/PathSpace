@@ -1,2 +1,6 @@
 build/
 .cache
+myenv/
+prompt.txt
+compile_commands.json
+output.txt
