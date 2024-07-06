@@ -14,5 +14,5 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 enable_testing()
-add_subdirectory(src)
+add_subdirectory(src/pathspace)
 add_subdirectory(tests)

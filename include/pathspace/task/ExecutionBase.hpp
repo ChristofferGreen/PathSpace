@@ -1,6 +1,8 @@
 #pragma once
 #include "pathspace/path/ConcretePath.hpp"
 
+#include <atomic>
+
 namespace SP {
 
 struct PathSpace;

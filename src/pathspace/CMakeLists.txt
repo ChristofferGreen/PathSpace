@@ -74,7 +74,7 @@ PRIVATE
     foonathan_memory
 )
 
-set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "../include/PathSpace.hpp")
+set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "../../include/PathSpace.hpp")
 
 install(TARGETS PathSpace
     ARCHIVE DESTINATION lib

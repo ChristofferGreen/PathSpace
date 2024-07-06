@@ -3,8 +3,11 @@
 #include "pathspace/task/Task.hpp"
 #include "pathspace/task/ExecutionBase.hpp"
 #include "pathspace/task/MemoryPool.hpp"
+
+#include <condition_variable>
 #include <mutex>
 #include <thread>
+#include <queue>
 
 namespace SP {
 

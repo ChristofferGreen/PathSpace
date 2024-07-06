@@ -3,6 +3,8 @@
 #include "pathspace/task/ExecutionBase.hpp"
 #include "pathspace/task/PoolDeleter.hpp"
 
+#include <memory>
+
 struct PathSpace;
 
 namespace SP {
