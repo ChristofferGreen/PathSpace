@@ -6,8 +6,8 @@
 #include <vector>
 #include <algorithm>
 
-#include "pathspace/path/GlobPath.hpp"
-#include "pathspace/path/ConcretePath.hpp"
+#include "path/GlobPath.hpp"
+#include "path/ConcretePath.hpp"
 
 namespace SP {
 

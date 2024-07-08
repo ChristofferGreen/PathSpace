@@ -57,7 +57,8 @@ target_compile_options(PathSpace PUBLIC "-Wno-deprecated")
 
 target_include_directories(PathSpace
 PUBLIC
-    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/pathspace
+    ${CMAKE_SOURCE_DIR}/src/
     ${CMAKE_SOURCE_DIR}/include
     ${parallelhashmap_SOURCE_DIR}
     ${nlohmann_SOURCE_DIR}/include

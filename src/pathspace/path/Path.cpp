@@ -1,7 +1,7 @@
 #include <string>
 #include <string_view>
 
-#include "pathspace/path/Path.hpp"
+#include "path/Path.hpp"
 
 namespace SP {
 template<typename T>

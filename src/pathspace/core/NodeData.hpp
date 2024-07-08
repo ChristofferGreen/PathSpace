@@ -22,6 +22,9 @@ struct NodeData {
 
     auto deserialize(void *obj, InputMetadata const &inputMetadata) const -> Expected<int> {
         if(inputMetadata.deserialize) {
+            // if if function pointer
+            // then execute function pointer and assign to obj
+            // inputMetadata.execFunctionPointer(obj, this->data);
             if(this->types.size() && (this->types.back().first==inputMetadata.id)) {
                 inputMetadata.deserialize(obj, this->data);
                 return 1;
