@@ -8,15 +8,14 @@
 #include <typeinfo>
 
 namespace SP {
-
 struct NodeData {
     auto serialize(InputData const &inputData) -> void {
-        if(inputData.metadata.serialize) {
-            inputData.metadata.serialize(inputData.obj, this->data);
-            if(this->types.size() && (this->types.back().first==inputData.metadata.id))
-                this->types.back().second++;
-            else
-                this->types.emplace_back(inputData.metadata.id, 1);
+        if (inputData.metadata.serialize) {
+            if (inputData.metadata.isFunctionPointer) {
+                serializeFunctionPointer(*this, inputData);
+            } else {
+                serializeRegularData(*this, inputData);
+            }
         }
     }
 
@@ -43,8 +42,26 @@ struct NodeData {
 
 //private:
     std::vector<SERIALIZATION_TYPE> data;
-    std::vector<std::function<void(ConcretePathString const&, PathSpace&, std::atomic<bool>&, void*)>> executions;
     std::vector<std::pair<std::type_info const * const, uint32_t>> types;
+
+    auto serializeFunctionPointer(NodeData& nodeData, InputData const& inputData) -> void {
+        //nodeData.executions.emplace_back(inputData.metadata.executeFunctionPointer);
+        if (!nodeData.types.empty() && nodeData.types.back().first == nullptr) {
+            nodeData.types.back().second++;
+        } else {
+            nodeData.types.emplace_back(nullptr, 1);
+        }
+    }
+
+    // Function to serialize regular data
+    auto serializeRegularData(NodeData& nodeData, InputData const& inputData) -> void {
+        inputData.metadata.serialize(inputData.obj, nodeData.data);
+        if (nodeData.types.size() && (nodeData.types.back().first == inputData.metadata.id)) {
+            nodeData.types.back().second++;
+        } else {
+            nodeData.types.emplace_back(inputData.metadata.id, 1);
+        }
+    }
 };
 
 }

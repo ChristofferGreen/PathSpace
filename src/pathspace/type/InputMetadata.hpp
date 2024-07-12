@@ -16,6 +16,7 @@ struct InputMetadata {
           deserialize(obj.deserialize)
           {}
     std::type_info const *id = nullptr;
+    bool isFunctionPointer = false;
     void (*serialize)(void const *obj, std::vector<SERIALIZATION_TYPE>&) = nullptr;
     void (*deserialize)(void *obj, std::vector<SERIALIZATION_TYPE> const&) = nullptr;
     void (*deserializePop)(void *obj, std::vector<SERIALIZATION_TYPE>&) = nullptr;
