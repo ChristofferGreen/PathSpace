@@ -97,6 +97,9 @@
         "ranges": "cpp",
         "cfenv": "cpp",
         "coroutine": "cpp",
-        "stdfloat": "cpp"
+        "stdfloat": "cpp",
+        "execution": "cpp",
+        "print": "cpp",
+        "stack": "cpp"
     }
 }

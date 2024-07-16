@@ -69,4 +69,18 @@ SUBCASE("Multiple Int/Double Serialize and Deserialize") {
         REQUIRE_EQ(sss, s2);
         REQUIRE_EQ(bytes.size(), 0);
     }
-}
+    SUBCASE("Function Pointer") {
+        using TestFuncPtr = void(*)(int);
+        TestFuncPtr testFunc = [](int x) {};
+        InputMetadata im(InputMetadataT<TestFuncPtr>{});
+
+        REQUIRE(im.id == MetadataID::FunctionPointer);
+    }
+
+    SUBCASE("Function Execution Pointer") {
+        using TestFuncPtr = int(*)(ConcretePathString const&, PathSpace&, std::atomic<bool> const&);
+        TestFuncPtr testFunc = [](ConcretePathString const&, PathSpace&, std::atomic<bool> const&) ->int { return 23; };
+        InputMetadata im(InputMetadataT<TestFuncPtr>{});
+
+        REQUIRE(im.id == MetadataID::ExecutionFunctionPointer);
+    }}

@@ -1,8 +1,10 @@
 #pragma once
 #include "pathspace/path/ConcretePath.hpp"
+#include "MetadataID.hpp"
 #include <atomic>
 #include <functional>
 #include <cassert>
+#include <type_traits>
 
 //#define USE_GLAZE
 #define USE_ALPACA
@@ -113,10 +115,41 @@ static auto deserialize_function_pointer_const(void *objPtr, std::vector<uint8_t
 static auto serialize_path_lambda(void const *objPtr, std::vector<uint8_t> &bytes) -> void {
 }
 
+class PathSpace;
+
+template<typename T>
+concept FunctionPointer = requires {
+    requires std::is_pointer_v<T>;
+    requires std::is_function_v<std::remove_pointer_t<T>>;
+};
+
+template<typename T>
+concept ExecutionFunctionPointer = requires {
+    requires FunctionPointer<T>;
+    requires std::same_as <
+        T,
+        std::invoke_result_t<T, ConcretePathString const&, PathSpace&, std::atomic<bool> const&>(*)(ConcretePathString const&, PathSpace&, std::atomic<bool> const&)
+    >;
+};
+
+template <typename T>
+constexpr bool is_function_pointer_v = std::is_pointer_v<T> && std::is_function_v<std::remove_pointer_t<T>>;
+
+
 template<typename CVRefT>
 struct InputMetadataT {
     using T = std::remove_cvref_t<CVRefT>;
     InputMetadataT() = default;
+
+    static constexpr MetadataID const id = []() {
+            if constexpr (ExecutionFunctionPointer<T>) {
+                return MetadataID::ExecutionFunctionPointer;
+            } else if constexpr (FunctionPointer<T>) {
+                return MetadataID::FunctionPointer;
+            } else {
+                return MetadataID::None;
+            }
+        }();
 
     static constexpr auto serialize = 
         []() {
@@ -124,7 +157,7 @@ struct InputMetadataT {
                 return &serialize_fundamental<T>;
             } else if constexpr (AlpacaCompatible<T>) {
                 return &serialize_alpaca<T>;
-            } else if constexpr (std::is_same_v<T, void(*)()>) {
+            } else if constexpr (is_function_pointer_v<T>) {
                 return &serialize_function_pointer;
             } else if constexpr (is_path_lambda<std::function<T>>::value) {
                 return &serialize_path_lambda;
@@ -139,7 +172,7 @@ struct InputMetadataT {
                 return &deserialize_fundamental<T>;
             } else if constexpr (AlpacaCompatible<T>) {
                 return &deserialize_alpaca<T>;
-            } else if constexpr (std::is_same_v<T, void(*)()>) {
+            } else if constexpr (is_function_pointer_v<T>) {
                 return &deserialize_function_pointer;
             } else {
                 return nullptr;
@@ -152,7 +185,7 @@ struct InputMetadataT {
                 return &deserialize_fundamental_const<T>;
             } else if constexpr (AlpacaCompatible<T>) {
                 return &deserialize_alpaca_const<T>;
-            } else if constexpr (std::is_same_v<T, void(*)()>) {
+            } else if constexpr (is_function_pointer_v<T>) {
                 return &deserialize_function_pointer_const;
             } else {
                 return nullptr;

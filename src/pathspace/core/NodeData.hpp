@@ -11,7 +11,7 @@ namespace SP {
 struct NodeData {
     auto serialize(InputData const &inputData) -> void {
         if (inputData.metadata.serialize) {
-            if (inputData.metadata.isFunctionPointer) {
+            if (inputData.metadata.id==MetadataID::ExecutionFunctionPointer) {
                 serializeFunctionPointer(*this, inputData);
             } else {
                 serializeRegularData(*this, inputData);
@@ -24,7 +24,7 @@ struct NodeData {
             // if if function pointer
             // then execute function pointer and assign to obj
             // inputMetadata.execFunctionPointer(obj, this->data);
-            if(this->types.size() && (this->types.back().first==inputMetadata.id)) {
+            if(this->types.size() && (this->types.back().first==to_type_info(inputMetadata.id))) {
                 inputMetadata.deserialize(obj, this->data);
                 return 1;
             }
@@ -56,10 +56,10 @@ struct NodeData {
     // Function to serialize regular data
     auto serializeRegularData(NodeData& nodeData, InputData const& inputData) -> void {
         inputData.metadata.serialize(inputData.obj, nodeData.data);
-        if (nodeData.types.size() && (nodeData.types.back().first == inputData.metadata.id)) {
+        if (nodeData.types.size() && (nodeData.types.back().first == to_type_info(inputData.metadata.id))) {
             nodeData.types.back().second++;
         } else {
-            nodeData.types.emplace_back(inputData.metadata.id, 1);
+            nodeData.types.emplace_back(to_type_info(inputData.metadata.id), 1);
         }
     }
 };
