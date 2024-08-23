@@ -4,62 +4,78 @@
 #include "InsertOptions.hpp"
 #include "pathspace/type/InputData.hpp"
 
+#include <expected>
 #include <typeinfo>
-#include <utility>
 #include <vector>
 
 namespace SP {
-struct NodeData {
-    auto serialize(InputData const& inputData, InsertOptions const& options) -> void {
-        if (inputData.metadata.serialize) {
-            if (inputData.metadata.id == MetadataID::ExecutionFunctionPointer) {
-                if (options.execution.has_value() &&
-                    options.execution.value().executionTime == ExecutionOptions::ExecutionTime::OnRead) {
-                    switch (options.execution.value().executionTime) {
-                        case ExecutionOptions::ExecutionTime::OnRead:
-                        default:
-                            serialize(*this, inputData);
-                            break;
-                    }
-                }
-            } else {
-                serialize(*this, inputData);
-            }
+
+class NodeData {
+public:
+    void serialize(const InputData& inputData, const InsertOptions& options) {
+        if (!inputData.metadata.serialize) {
+            return;
+        }
+
+        if (inputData.metadata.id == MetadataID::ExecutionFunctionPointer && options.execution &&
+            options.execution->executionTime == ExecutionOptions::ExecutionTime::OnRead) {
+            // Handle function pointer serialization
+            serializeExecutionFunctionPointer(inputData);
+        } else {
+            serializeData(inputData);
         }
     }
 
-    auto deserialize(void* obj, InputMetadata const& inputMetadata) const -> Expected<int> {
-        if (inputMetadata.deserialize) {
-            // if if function pointer
-            // then execute function pointer and assign to obj
-            // inputMetadata.execFunctionPointer(obj, this->data);
-            if (this->types.size() && (this->types.back().typeInfo == to_type_info(inputMetadata.id))) {
-                inputMetadata.deserialize(obj, this->data);
-                return 1;
-            }
+    std::expected<int, Error> deserialize(void* obj, const InputMetadata& inputMetadata) const {
+        if (!inputMetadata.deserialize) {
+            return std::unexpected(Error{Error::Code::UnserializableType, "No deserialization function provided."});
         }
-        return std::unexpected(Error{Error::Code::UnserializableType, "The type can not be deserialised for reading."});
+
+        if (types.empty() || types.back().typeInfo != to_type_info(inputMetadata.id)) {
+            return std::unexpected(Error{Error::Code::UnserializableType, "Type mismatch during deserialization."});
+        }
+
+        inputMetadata.deserialize(obj, data);
+        return 1;
     }
 
-    auto deserializePop(void* obj, InputMetadata const& inputMetadata) -> Expected<int> {
-        if (inputMetadata.deserializePop) {
-            inputMetadata.deserializePop(obj, this->data);
-            return 1;
+    std::expected<int, Error> deserializePop(void* obj, const InputMetadata& inputMetadata) {
+        if (!inputMetadata.deserializePop) {
+            return std::unexpected(Error{Error::Code::UnserializableType, "No pop deserialization function provided."});
         }
-        return std::unexpected(
-                Error{Error::Code::UnserializableType, "The type can not be deserialised for grabbing."});
+
+        inputMetadata.deserializePop(obj, data);
+        updateTypesAfterPop();
+        return 1;
     }
 
 private:
     std::vector<SERIALIZATION_TYPE> data;
     std::vector<ElementType> types;
 
-    auto serialize(NodeData& nodeData, InputData const& inputData) -> void {
-        inputData.metadata.serialize(inputData.obj, nodeData.data);
-        if (nodeData.types.size() && (nodeData.types.back().typeInfo == to_type_info(inputData.metadata.id))) {
-            nodeData.types.back().elements++;
+    void serializeData(const InputData& inputData) {
+        inputData.metadata.serialize(inputData.obj, data);
+        updateTypes(inputData.metadata.id);
+    }
+
+    void serializeExecutionFunctionPointer(const InputData& inputData) {
+        // Implement function pointer serialization logic here
+        // This is a placeholder and should be implemented based on your specific requirements
+    }
+
+    void updateTypes(MetadataID id) {
+        if (!types.empty() && types.back().typeInfo == to_type_info(id)) {
+            types.back().elements++;
         } else {
-            nodeData.types.emplace_back(to_type_info(inputData.metadata.id), 1);
+            types.emplace_back(to_type_info(id), 1);
+        }
+    }
+
+    void updateTypesAfterPop() {
+        if (!types.empty()) {
+            if (--types.back().elements == 0) {
+                types.pop_back();
+            }
         }
     }
 };
