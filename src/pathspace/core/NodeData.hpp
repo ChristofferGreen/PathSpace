@@ -2,6 +2,7 @@
 #include "ElementType.hpp"
 #include "Error.hpp"
 #include "InsertOptions.hpp"
+#include "pathspace/type/DataCategory.hpp"
 #include "pathspace/type/InputData.hpp"
 
 #include <expected>
@@ -17,12 +18,13 @@ public:
             return;
         }
 
-        if (inputData.metadata.id == MetadataID::ExecutionFunctionPointer && options.execution &&
+        inputData.metadata.serialize(inputData.obj, data);
+        updateTypes(inputData.metadata.category);
+        if (inputData.metadata.category == DataCategory::FunctionPointer && options.execution &&
             options.execution->executionTime == ExecutionOptions::ExecutionTime::OnRead) {
             // Handle function pointer serialization
-            serializeExecutionFunctionPointer(inputData);
+            // serializeExecutionFunctionPointer(inputData);
         } else {
-            serializeData(inputData);
         }
     }
 
@@ -31,7 +33,7 @@ public:
             return std::unexpected(Error{Error::Code::UnserializableType, "No deserialization function provided."});
         }
 
-        if (types.empty() || types.back().typeInfo != to_type_info(inputMetadata.id)) {
+        if (types.empty() || types.back().typeInfo != inputMetadata.typeInfo) {
             return std::unexpected(Error{Error::Code::UnserializableType, "Type mismatch during deserialization."});
         }
 
@@ -53,22 +55,15 @@ private:
     std::vector<SERIALIZATION_TYPE> data;
     std::vector<ElementType> types;
 
-    void serializeData(const InputData& inputData) {
-        inputData.metadata.serialize(inputData.obj, data);
-        updateTypes(inputData.metadata.id);
-    }
-
-    void serializeExecutionFunctionPointer(const InputData& inputData) {
-        // Implement function pointer serialization logic here
-        // This is a placeholder and should be implemented based on your specific requirements
-    }
-
-    void updateTypes(MetadataID id) {
-        if (!types.empty() && types.back().typeInfo == to_type_info(id)) {
-            types.back().elements++;
+    void updateTypes(DataCategory const& category) {
+        /*if (!types.empty()) {
+            if (types.back().typeInfo == to_type_info(id)) {
+                types.back().elements++;
+            } else if (types.back().typeInfo == to_type_info(id)) {
+            }
         } else {
             types.emplace_back(to_type_info(id), 1);
-        }
+        }*/
     }
 
     void updateTypesAfterPop() {

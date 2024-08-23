@@ -43,7 +43,7 @@ TEST_CASE("InputMetadata Fundamental") {
         REQUIRE_EQ(sss, s2);
         REQUIRE_EQ(bytes.size(), 0);
     }
-SUBCASE("Multiple Int/Double Serialize and Deserialize") {
+    SUBCASE("Multiple Int/Double Serialize and Deserialize") {
         using ST = int;
         ST s{5};
         ST ss{6};
@@ -70,26 +70,27 @@ SUBCASE("Multiple Int/Double Serialize and Deserialize") {
         REQUIRE_EQ(bytes.size(), 0);
     }
     SUBCASE("Function Pointer") {
-        using TestFuncPtr = void(*)(int);
+        using TestFuncPtr = void (*)(int);
         TestFuncPtr testFunc = [](int x) {};
         InputMetadata im(InputMetadataT<TestFuncPtr>{});
 
-        REQUIRE(im.id == MetadataID::FunctionPointer);
+        REQUIRE(im.category == DataCategory::FunctionPointer);
     }
 
     SUBCASE("Function Execution Pointer") {
-        using TestFuncPtr = int(*)(ConcretePathString const&, PathSpace&, std::atomic<bool> const&);
+        using TestFuncPtr = int (*)(ConcretePathString const&, PathSpace&, std::atomic<bool> const&);
         InputMetadata im(InputMetadataT<TestFuncPtr>{});
 
-        REQUIRE(im.id == MetadataID::ExecutionFunctionPointer);
+        REQUIRE(im.category == DataCategory::ExecutionFunctionPointer);
 
-        using TestFuncPtr2 = int(*)(int const&, PathSpace&, std::atomic<bool> const&);
+        using TestFuncPtr2 = int (*)(int const&, PathSpace&, std::atomic<bool> const&);
         InputMetadata im2(InputMetadataT<TestFuncPtr2>{});
 
-        REQUIRE(im2.id == MetadataID::FunctionPointer);
+        REQUIRE(im2.category == DataCategory::FunctionPointer);
 
         using TestPtr = int*;
         InputMetadata im3(InputMetadataT<TestPtr>{});
 
-        REQUIRE(im3.id == MetadataID::None);
-    }}
+        REQUIRE(im3.category == DataCategory::None);
+    }
+}
