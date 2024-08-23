@@ -4,19 +4,16 @@
 namespace SP {
 
 struct ExecutionOptions {
-    enum class Priority {
-        Low,
-        Medium,
-        High
+    enum class ExecutionTime {
+        Immediate,
+        OnRead,
+        Periodic
     };
 
-    bool executeImmediately;
-    std::chrono::milliseconds executionInterval;
-    Priority priority;
-
-    ExecutionOptions() = default;
-    ExecutionOptions(bool executeImmediately, std::chrono::milliseconds interval, Priority prio)
-        : executeImmediately(executeImmediately), executionInterval(interval), priority(prio) {}
+    ExecutionTime executionTime = ExecutionTime::OnRead;
+    std::optional<std::chrono::milliseconds> updateInterval;
+    std::optional<int> maxExecutions;
+    // bool cacheResult = false; // how to do this?
 };
 
-}
+} // namespace SP

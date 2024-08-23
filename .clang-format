@@ -7,13 +7,13 @@ IndentWidth: 4                                   # Set indentation to 4 spaces f
 TabWidth: 4                                      # Define tab width as 4 spaces for consistency
 UseTab: Never                                    # Use spaces instead of tabs for consistent formatting
 AccessModifierOffset: -4                         # Align access modifiers with class declaration
-ContinuationIndentWidth: 4                       # Maintain consistent indentation for line continuations
+ContinuationIndentWidth: 8                       # Increase continuation indent for enum values and other continuations
 NamespaceIndentation: None                       # Keep namespaces unindented to reduce nesting
 
 # Line Breaking and Wrapping
-ColumnLimit: 0                                   # Disable hard wrapping for flexible line lengths
+ColumnLimit: 120                                 # Set a reasonable column limit
 AlignAfterOpenBracket: Align                     # Align parameters after open bracket
-AllowAllParametersOfDeclarationOnNextLine: true  # Enable wrapping of function parameters
+AllowAllParametersOfDeclarationOnNextLine: false # Keep parameters on the same line when possible
 AllowShortBlocksOnASingleLine: false             # Keep blocks on separate lines
 AllowShortCaseLabelsOnASingleLine: false         # Place case labels on separate lines
 AllowShortFunctionsOnASingleLine: None           # Keep all functions on multiple lines
@@ -28,10 +28,9 @@ AlwaysBreakTemplateDeclarations: Yes             # Break after template declarat
 AlignConsecutiveAssignments: false               # Avoid aligning consecutive assignments
 AlignConsecutiveDeclarations: false              # Avoid aligning consecutive declarations
 AlignEscapedNewlines: Left                       # Align escaped newlines to the left
-AlignOperands: AlignAfterOperator                # Align operands after the operator
+AlignOperands: Align                             # Align operands of binary and ternary expressions
 AlignTrailingComments: true                      # Align trailing comments
 BreakBeforeBinaryOperators: None                 # Keep binary operators at end of line
-BreakBeforeBraces: Attach                        # Use attached braces style
 BreakBeforeInheritanceComma: false               # Keep inheritance list compact
 BreakInheritanceList: BeforeColon                # Break before colon in inheritance list
 BreakBeforeTernaryOperators: true                # Break before ternary operators
@@ -39,6 +38,23 @@ BreakConstructorInitializersBeforeComma: false   # Keep constructor initializers
 BreakConstructorInitializers: BeforeColon        # Break constructor initializers before colons
 BreakAfterJavaFieldAnnotations: false            # Keep Java field annotations on same line
 BreakStringLiterals: true                        # Allow breaking of long string literals
+
+# Enum Formatting
+AllowShortEnumsOnASingleLine: false              # Prevent short enums from being on a single line
+
+# Braces and Indentation
+BreakBeforeBraces: Custom                        # Use custom brace breaking rules
+BraceWrapping:
+  AfterEnum: false                               # Keep enum opening brace on the same line
+  AfterClass: false                              # Keep class opening brace on the same line
+  AfterControlStatement: false                   # Keep control statement opening brace on the same line
+  AfterFunction: false                           # Keep function opening brace on the same line
+  AfterNamespace: false                          # Keep namespace opening brace on the same line
+  AfterStruct: false                             # Keep struct opening brace on the same line
+  AfterUnion: false                              # Keep union opening brace on the same line
+  BeforeCatch: false                             # Keep catch opening brace on the same line
+  BeforeElse: false                              # Keep else opening brace on the same line
+  IndentBraces: false                            # Don't indent braces
 
 # Spacing
 SpaceAfterCStyleCast: false                      # No space after C-style cast
@@ -91,3 +107,6 @@ IndentPPDirectives: None                         # Keep preprocessor directives 
 
 # Comment Formatting
 CommentPragmas: '^ IWYU pragma:'                 # Regex for comments treated as pragmas
+
+# Additional Settings for Specific Indentation
+IndentCaseLabels: true                           # Indent case labels inside switch statements

@@ -1,30 +1,39 @@
 #pragma once
+#include "Error.hpp"
+#include "InsertOptions.hpp"
 #include "pathspace/type/InputData.hpp"
-#include "pathspace/core/Error.hpp"
 
 #include <functional>
+#include <typeinfo>
 #include <utility>
 #include <vector>
-#include <typeinfo>
 
 namespace SP {
 struct NodeData {
-    auto serialize(InputData const &inputData) -> void {
+    auto serialize(InputData const& inputData, InsertOptions const& options) -> void {
         if (inputData.metadata.serialize) {
-            if (inputData.metadata.id==MetadataID::ExecutionFunctionPointer) {
-                serializeFunctionPointer(*this, inputData);
+            if (inputData.metadata.id == MetadataID::ExecutionFunctionPointer) {
+                if (options.execution.has_value() &&
+                    options.execution.value().executionTime == ExecutionOptions::ExecutionTime::OnRead) {
+                    switch (options.execution.value().executionTime) {
+                        case ExecutionOptions::ExecutionTime::OnRead:
+                        default:
+                            serializeFunctionPointer(*this, inputData);
+                            break;
+                    }
+                }
             } else {
                 serializeRegularData(*this, inputData);
             }
         }
     }
 
-    auto deserialize(void *obj, InputMetadata const &inputMetadata) const -> Expected<int> {
-        if(inputMetadata.deserialize) {
+    auto deserialize(void* obj, InputMetadata const& inputMetadata) const -> Expected<int> {
+        if (inputMetadata.deserialize) {
             // if if function pointer
             // then execute function pointer and assign to obj
             // inputMetadata.execFunctionPointer(obj, this->data);
-            if(this->types.size() && (this->types.back().first==to_type_info(inputMetadata.id))) {
+            if (this->types.size() && (this->types.back().first == to_type_info(inputMetadata.id))) {
                 inputMetadata.deserialize(obj, this->data);
                 return 1;
             }
@@ -32,20 +41,21 @@ struct NodeData {
         return std::unexpected(Error{Error::Code::UnserializableType, "The type can not be deserialised for reading."});
     }
 
-    auto deserializePop(void *obj, InputMetadata const &inputMetadata) -> Expected<int> {
-        if(inputMetadata.deserializePop) {
+    auto deserializePop(void* obj, InputMetadata const& inputMetadata) -> Expected<int> {
+        if (inputMetadata.deserializePop) {
             inputMetadata.deserializePop(obj, this->data);
             return 1;
         }
-        return std::unexpected(Error{Error::Code::UnserializableType, "The type can not be deserialised for grabbing."});
+        return std::unexpected(
+                Error{Error::Code::UnserializableType, "The type can not be deserialised for grabbing."});
     }
 
-//private:
+private:
     std::vector<SERIALIZATION_TYPE> data;
-    std::vector<std::pair<std::type_info const * const, uint32_t>> types;
+    std::vector<std::pair<std::type_info const* const, uint32_t>> types;
 
     auto serializeFunctionPointer(NodeData& nodeData, InputData const& inputData) -> void {
-        //nodeData.executions.emplace_back(inputData.metadata.executeFunctionPointer);
+        // nodeData.executions.emplace_back(inputData.metadata.executeFunctionPointer);
         if (!nodeData.types.empty() && nodeData.types.back().first == nullptr) {
             nodeData.types.back().second++;
         } else {
@@ -64,4 +74,4 @@ struct NodeData {
     }
 };
 
-}
+} // namespace SP
