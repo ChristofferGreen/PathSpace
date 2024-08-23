@@ -24,7 +24,25 @@
                     "ignoreFailures": true
                 }
             ]
+        },
+        {
+            "name": "Launch LLDB",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/tests/PathSpaceTests",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/tests/",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for lldb",
+                    "text": "settings set target.print-object-description true",
+                    "ignoreFailures": true
+                }
+            ]
         }
-
     ]
 }

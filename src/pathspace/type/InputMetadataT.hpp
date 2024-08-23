@@ -18,13 +18,6 @@ namespace SP {
 struct PathSpace;
 
 template<typename T>
-struct is_path_lambda : std::false_type {};
-
-// Specialization for the specific lambda type
-template<>
-struct is_path_lambda<std::function<void(ConcretePathString const&, PathSpace&, std::atomic<bool>&)>> : std::true_type {};
-
-template<typename T>
 concept AlpacaCompatible = !std::is_same_v<T, std::function<void()>> && 
                                         !std::is_same_v<T, void(*)()> &&
                                         !std::is_pointer<T>::value &&
@@ -132,10 +125,6 @@ concept ExecutionFunctionPointer = requires {
     >;
 };
 
-template <typename T>
-constexpr bool is_function_pointer_v = std::is_pointer_v<T> && std::is_function_v<std::remove_pointer_t<T>>;
-
-
 template<typename CVRefT>
 struct InputMetadataT {
     using T = std::remove_cvref_t<CVRefT>;
@@ -157,10 +146,10 @@ struct InputMetadataT {
                 return &serialize_fundamental<T>;
             } else if constexpr (AlpacaCompatible<T>) {
                 return &serialize_alpaca<T>;
-            } else if constexpr (is_function_pointer_v<T>) {
+            } else if constexpr (ExecutionFunctionPointer<T>) {
+                return nullptr;
+            } else if constexpr (FunctionPointer<T>) {
                 return &serialize_function_pointer;
-            } else if constexpr (is_path_lambda<std::function<T>>::value) {
-                return &serialize_path_lambda;
             } else {
                 return nullptr;
             }
@@ -172,7 +161,9 @@ struct InputMetadataT {
                 return &deserialize_fundamental<T>;
             } else if constexpr (AlpacaCompatible<T>) {
                 return &deserialize_alpaca<T>;
-            } else if constexpr (is_function_pointer_v<T>) {
+            } else if constexpr (ExecutionFunctionPointer<T>) {
+                return nullptr;
+            } else if constexpr (FunctionPointer<T>) {
                 return &deserialize_function_pointer;
             } else {
                 return nullptr;
@@ -185,7 +176,9 @@ struct InputMetadataT {
                 return &deserialize_fundamental_const<T>;
             } else if constexpr (AlpacaCompatible<T>) {
                 return &deserialize_alpaca_const<T>;
-            } else if constexpr (is_function_pointer_v<T>) {
+            } else if constexpr (ExecutionFunctionPointer<T>) {
+                return nullptr;
+            } else if constexpr (FunctionPointer<T>) {
                 return &deserialize_function_pointer_const;
             } else {
                 return nullptr;

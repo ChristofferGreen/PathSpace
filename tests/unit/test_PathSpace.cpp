@@ -43,6 +43,12 @@ TEST_CASE("PathSpace Insert") {
         CHECK(pspace.insert("/test*/moo", 5).nbrValuesInserted == 3);
     }
 
+    SUBCASE("Simple PathSpace Insert Function Pointer") {
+        using TestFuncPtr = int(*)(ConcretePathString const&, PathSpace&, std::atomic<bool> const&);
+        auto f = [](ConcretePathString const &path, PathSpace &space, std::atomic<bool> const &alive) -> int{ return 58; };
+        CHECK(pspace.insert("/f", f).nbrValuesInserted == 1);
+    }
+
     SUBCASE("Simple PathSpace Insert Lambda") {
         //CHECK(pspace.insert("/test1", [](ConcretePathString const &path, PathSpace &space, std::atomic<bool> &alive) -> int { return 367; }).nbrValuesInserted == 1);
     }
