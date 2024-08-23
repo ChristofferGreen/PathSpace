@@ -1,9 +1,9 @@
 #pragma once
+#include "ElementType.hpp"
 #include "Error.hpp"
 #include "InsertOptions.hpp"
 #include "pathspace/type/InputData.hpp"
 
-#include <functional>
 #include <typeinfo>
 #include <utility>
 #include <vector>
@@ -18,12 +18,12 @@ struct NodeData {
                     switch (options.execution.value().executionTime) {
                         case ExecutionOptions::ExecutionTime::OnRead:
                         default:
-                            serializeFunctionPointer(*this, inputData);
+                            serialize(*this, inputData);
                             break;
                     }
                 }
             } else {
-                serializeRegularData(*this, inputData);
+                serialize(*this, inputData);
             }
         }
     }
@@ -33,7 +33,7 @@ struct NodeData {
             // if if function pointer
             // then execute function pointer and assign to obj
             // inputMetadata.execFunctionPointer(obj, this->data);
-            if (this->types.size() && (this->types.back().first == to_type_info(inputMetadata.id))) {
+            if (this->types.size() && (this->types.back().typeInfo == to_type_info(inputMetadata.id))) {
                 inputMetadata.deserialize(obj, this->data);
                 return 1;
             }
@@ -52,22 +52,12 @@ struct NodeData {
 
 private:
     std::vector<SERIALIZATION_TYPE> data;
-    std::vector<std::pair<std::type_info const* const, uint32_t>> types;
+    std::vector<ElementType> types;
 
-    auto serializeFunctionPointer(NodeData& nodeData, InputData const& inputData) -> void {
-        // nodeData.executions.emplace_back(inputData.metadata.executeFunctionPointer);
-        if (!nodeData.types.empty() && nodeData.types.back().first == nullptr) {
-            nodeData.types.back().second++;
-        } else {
-            nodeData.types.emplace_back(nullptr, 1);
-        }
-    }
-
-    // Function to serialize regular data
-    auto serializeRegularData(NodeData& nodeData, InputData const& inputData) -> void {
+    auto serialize(NodeData& nodeData, InputData const& inputData) -> void {
         inputData.metadata.serialize(inputData.obj, nodeData.data);
-        if (nodeData.types.size() && (nodeData.types.back().first == to_type_info(inputData.metadata.id))) {
-            nodeData.types.back().second++;
+        if (nodeData.types.size() && (nodeData.types.back().typeInfo == to_type_info(inputData.metadata.id))) {
+            nodeData.types.back().elements++;
         } else {
             nodeData.types.emplace_back(to_type_info(inputData.metadata.id), 1);
         }

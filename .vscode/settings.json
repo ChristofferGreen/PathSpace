@@ -101,5 +101,7 @@
         "execution": "cpp",
         "print": "cpp",
         "stack": "cpp"
-    }
+    },
+    "cpp.testing.defaultTestFramework": "none",
+    "cpp.testing.provider": "none"
 }
