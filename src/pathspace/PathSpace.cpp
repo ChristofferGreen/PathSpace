@@ -21,9 +21,9 @@ auto PathSpace::insertInternal(GlobPathIteratorStringView const &iter,
 }
 
 auto PathSpace::insertConcreteDataName(ConcreteName const &concreteName,
-                               InputData const &inputData,
-                               InsertOptions const &options,
-                               InsertReturn &ret) -> void {
+                                       InputData const &inputData,
+                                       InsertOptions const &options,
+                                       InsertReturn &ret) -> void {
     auto const appendDataIfNameExists = [&inputData](auto &nodePair){
         std::get<NodeData>(nodePair.second).serialize(inputData);
     };

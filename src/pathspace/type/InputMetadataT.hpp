@@ -76,6 +76,9 @@ static auto deserialize_fundamental(void *objPtr, std::vector<uint8_t> &bytes) -
     bytes.erase(bytes.begin(), bytes.begin() + sizeof(T));
 }
 
+static auto serialize_execution_function_pointer(void const *objPtr, std::vector<uint8_t> &bytes) -> void {
+}
+
 static auto serialize_function_pointer(void const *objPtr, std::vector<uint8_t> &bytes) -> void {
     auto funcPtr = *static_cast<void(**)()>(const_cast<void *>(objPtr));
     auto funcPtrInt = reinterpret_cast<std::uintptr_t>(funcPtr);
@@ -147,7 +150,7 @@ struct InputMetadataT {
             } else if constexpr (AlpacaCompatible<T>) {
                 return &serialize_alpaca<T>;
             } else if constexpr (ExecutionFunctionPointer<T>) {
-                return nullptr;
+                return &serialize_execution_function_pointer;
             } else if constexpr (FunctionPointer<T>) {
                 return &serialize_function_pointer;
             } else {

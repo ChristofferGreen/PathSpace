@@ -1,0 +1,93 @@
+---
+Language: Cpp
+BasedOnStyle: LLVM
+
+# Indentation and Spacing
+IndentWidth: 4                                   # Set indentation to 4 spaces for better readability
+TabWidth: 4                                      # Define tab width as 4 spaces for consistency
+UseTab: Never                                    # Use spaces instead of tabs for consistent formatting
+AccessModifierOffset: -4                         # Align access modifiers with class declaration
+ContinuationIndentWidth: 4                       # Maintain consistent indentation for line continuations
+NamespaceIndentation: None                       # Keep namespaces unindented to reduce nesting
+
+# Line Breaking and Wrapping
+ColumnLimit: 0                                   # Disable hard wrapping for flexible line lengths
+AlignAfterOpenBracket: Align                     # Align parameters after open bracket
+AllowAllParametersOfDeclarationOnNextLine: true  # Enable wrapping of function parameters
+AllowShortBlocksOnASingleLine: false             # Keep blocks on separate lines
+AllowShortCaseLabelsOnASingleLine: false         # Place case labels on separate lines
+AllowShortFunctionsOnASingleLine: None           # Keep all functions on multiple lines
+AllowShortIfStatementsOnASingleLine: false       # Maintain multi-line format for if statements
+AllowShortLoopsOnASingleLine: false              # Keep all loops on multiple lines
+AlwaysBreakAfterDefinitionReturnType: None       # Keep return type on same line as function definition
+AlwaysBreakAfterReturnType: None                 # Keep return type on same line as function declaration
+AlwaysBreakBeforeMultilineStrings: false         # Allow flexible formatting of multiline strings
+AlwaysBreakTemplateDeclarations: Yes             # Break after template declarations
+
+# Alignment and Formatting
+AlignConsecutiveAssignments: false               # Avoid aligning consecutive assignments
+AlignConsecutiveDeclarations: false              # Avoid aligning consecutive declarations
+AlignEscapedNewlines: Left                       # Align escaped newlines to the left
+AlignOperands: AlignAfterOperator                # Align operands after the operator
+AlignTrailingComments: true                      # Align trailing comments
+BreakBeforeBinaryOperators: None                 # Keep binary operators at end of line
+BreakBeforeBraces: Attach                        # Use attached braces style
+BreakBeforeInheritanceComma: false               # Keep inheritance list compact
+BreakInheritanceList: BeforeColon                # Break before colon in inheritance list
+BreakBeforeTernaryOperators: true                # Break before ternary operators
+BreakConstructorInitializersBeforeComma: false   # Keep constructor initializers compact
+BreakConstructorInitializers: BeforeColon        # Break constructor initializers before colons
+BreakAfterJavaFieldAnnotations: false            # Keep Java field annotations on same line
+BreakStringLiterals: true                        # Allow breaking of long string literals
+
+# Spacing
+SpaceAfterCStyleCast: false                      # No space after C-style cast
+SpaceAfterTemplateKeyword: true                  # Space after template keyword
+SpaceBeforeAssignmentOperators: true             # Space before assignment operators
+SpaceBeforeCpp11BracedList: false                # No space before C++11 braced lists
+SpaceBeforeCtorInitializerColon: true            # Space before constructor initializer colon
+SpaceBeforeInheritanceColon: true                # Space before inheritance colon
+SpaceBeforeParens: ControlStatements             # Space before parentheses in control statements
+SpaceBeforeRangeBasedForLoopColon: true          # Space before range-based for loop colon
+SpaceInEmptyParentheses: false                   # No space in empty parentheses
+SpacesBeforeTrailingComments: 1                  # One space before trailing comments
+SpacesInAngles: false                            # No spaces inside angle brackets
+SpacesInContainerLiterals: true                  # Spaces inside container literals
+SpacesInCStyleCastParentheses: false             # No spaces in C-style cast parentheses
+SpacesInParentheses: false                       # No spaces in regular parentheses
+SpacesInSquareBrackets: false                    # No spaces in square brackets
+
+# Other Formatting Options
+Cpp11BracedListStyle: true                       # Use C++11 braced list style
+FixNamespaceComments: true                       # Add or fix namespace comments
+MaxEmptyLinesToKeep: 1                           # Limit consecutive empty lines
+PointerAlignment: Left                           # Align pointers to the left
+ReflowComments: true                             # Reformat comments to fit within column limit
+SortIncludes: true                               # Sort include statements
+SortUsingDeclarations: true                      # Sort using declarations
+
+# Penalty Settings
+PenaltyBreakAssignment: 2                        # Low penalty for breaking after assignment
+PenaltyBreakBeforeFirstCallParameter: 19         # Moderate penalty for breaking before first call
+PenaltyBreakComment: 300                         # High penalty to avoid breaking comments
+PenaltyBreakFirstLessLess: 120                   # Moderate penalty for breaking before first '<<'
+PenaltyBreakString: 1000                         # High penalty to avoid breaking string literals
+PenaltyBreakTemplateDeclaration: 10              # Low penalty for breaking after template declarations
+PenaltyExcessCharacter: 1000000                  # Very high penalty for exceeding column limit
+PenaltyReturnTypeOnItsOwnLine: 60                # Moderate penalty for return type on own line
+
+# Advanced Options
+ExperimentalAutoDetectBinPacking: false          # Disable experimental features
+AllowAllArgumentsOnNextLine: false               # Keep arguments on same line when possible
+BinPackArguments: false                          # Avoid bin-packing arguments
+BinPackParameters: false                         # Avoid bin-packing parameters
+AllowShortLambdasOnASingleLine: All              # Allow concise formatting of short lambdas
+
+# Include Formatting
+IncludeBlocks: Preserve                          # Maintain original include block structure
+
+# Macro Formatting
+IndentPPDirectives: None                         # Keep preprocessor directives at column 0
+
+# Comment Formatting
+CommentPragmas: '^ IWYU pragma:'                 # Regex for comments treated as pragmas
