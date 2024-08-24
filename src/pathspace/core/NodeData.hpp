@@ -4,6 +4,7 @@
 #include "InsertOptions.hpp"
 #include "pathspace/type/DataCategory.hpp"
 #include "pathspace/type/InputData.hpp"
+#include "type/InputMetadata.hpp"
 
 #include <expected>
 #include <typeinfo>
@@ -19,7 +20,7 @@ public:
         }
 
         inputData.metadata.serialize(inputData.obj, data);
-        updateTypes(inputData.metadata.category);
+        updateTypes(inputData.metadata);
         if (inputData.metadata.category == DataCategory::FunctionPointer && options.execution &&
             options.execution->executionTime == ExecutionOptions::ExecutionTime::OnRead) {
             // Handle function pointer serialization
@@ -55,15 +56,15 @@ private:
     std::vector<SERIALIZATION_TYPE> data;
     std::vector<ElementType> types;
 
-    void updateTypes(DataCategory const& category) {
-        /*if (!types.empty()) {
-            if (types.back().typeInfo == to_type_info(id)) {
+    void updateTypes(InputMetadata const& meta) {
+        if (!types.empty()) {
+            if (types.back().typeInfo == meta.typeInfo) {
                 types.back().elements++;
-            } else if (types.back().typeInfo == to_type_info(id)) {
-            }
+            } /*else if (types.back().typeInfo == to_type_info(id)) {
+            }*/
         } else {
-            types.emplace_back(to_type_info(id), 1);
-        }*/
+            types.emplace_back(meta.typeInfo, 1, DataCategory::SerializedData);
+        }
     }
 
     void updateTypesAfterPop() {
