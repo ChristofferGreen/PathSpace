@@ -19,6 +19,7 @@ struct InputMetadata {
     void (*serialize)(void const* obj, std::vector<SERIALIZATION_TYPE>&) = nullptr;
     void (*deserialize)(void* obj, std::vector<SERIALIZATION_TYPE> const&) = nullptr;
     void (*deserializePop)(void* obj, std::vector<SERIALIZATION_TYPE>&) = nullptr;
+    void (*executeFunctionPointer)(void const* const functionPointer, void const* const returnData) = nullptr;
 };
 
 } // namespace SP

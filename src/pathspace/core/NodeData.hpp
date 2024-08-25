@@ -34,11 +34,22 @@ public:
             return std::unexpected(Error{Error::Code::UnserializableType, "No deserialization function provided."});
         }
 
-        if (types.empty() || types.back().typeInfo != inputMetadata.typeInfo) {
+        if (types.empty()) {
+            return std::unexpected(Error{Error::Code::UnserializableType, "No type information found."});
+        }
+
+        if (types.back().typeInfo != inputMetadata.typeInfo &&
+            types.back().category != DataCategory::ExecutionFunctionPointer) {
             return std::unexpected(Error{Error::Code::UnserializableType, "Type mismatch during deserialization."});
         }
 
-        inputMetadata.deserialize(obj, data);
+        if (types.back().category == DataCategory::ExecutionFunctionPointer) {
+            void* funPtr;
+            inputMetadata.deserialize(&funPtr, data);
+            inputMetadata.executeFunctionPointer(funPtr, obj);
+        } else {
+            inputMetadata.deserialize(obj, data);
+        }
         return 1;
     }
 
@@ -60,10 +71,9 @@ private:
         if (!types.empty()) {
             if (types.back().typeInfo == meta.typeInfo) {
                 types.back().elements++;
-            } /*else if (types.back().typeInfo == to_type_info(id)) {
-            }*/
+            }
         } else {
-            types.emplace_back(meta.typeInfo, 1, DataCategory::SerializedData);
+            types.emplace_back(meta.typeInfo, 1, meta.category);
         }
     }
 

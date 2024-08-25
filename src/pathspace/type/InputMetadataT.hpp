@@ -74,9 +74,6 @@ static auto deserialize_fundamental(void* objPtr, std::vector<uint8_t>& bytes) -
     bytes.erase(bytes.begin(), bytes.begin() + sizeof(T));
 }
 
-static auto serialize_execution_function_pointer(void const* objPtr, std::vector<uint8_t>& bytes) -> void {
-}
-
 static auto serialize_function_pointer(void const* objPtr, std::vector<uint8_t>& bytes) -> void {
     auto funcPtr = *static_cast<void (**)()>(const_cast<void*>(objPtr));
     auto funcPtrInt = reinterpret_cast<std::uintptr_t>(funcPtr);
@@ -104,9 +101,6 @@ static auto deserialize_function_pointer_const(void* objPtr, std::vector<uint8_t
     std::copy(bytes.begin(), bytes.begin() + sizeof(std::uintptr_t), reinterpret_cast<uint8_t*>(&funcPtrInt));
     auto funcPtr = reinterpret_cast<void (*)()>(funcPtrInt);
     *static_cast<void (**)()>(objPtr) = funcPtr;
-}
-
-static auto serialize_path_lambda(void const* objPtr, std::vector<uint8_t>& bytes) -> void {
 }
 
 class PathSpace;
@@ -150,7 +144,7 @@ struct InputMetadataT {
         } else if constexpr (AlpacaCompatible<T>) {
             return &serialize_alpaca<T>;
         } else if constexpr (ExecutionFunctionPointer<T>) {
-            return &serialize_execution_function_pointer;
+            return &serialize_function_pointer;
         } else if constexpr (FunctionPointer<T>) {
             return &serialize_function_pointer;
         } else {
@@ -164,7 +158,7 @@ struct InputMetadataT {
         } else if constexpr (AlpacaCompatible<T>) {
             return &deserialize_alpaca<T>;
         } else if constexpr (ExecutionFunctionPointer<T>) {
-            return nullptr;
+            return deserialize_function_pointer;
         } else if constexpr (FunctionPointer<T>) {
             return &deserialize_function_pointer;
         } else {
@@ -178,7 +172,7 @@ struct InputMetadataT {
         } else if constexpr (AlpacaCompatible<T>) {
             return &deserialize_alpaca_const<T>;
         } else if constexpr (ExecutionFunctionPointer<T>) {
-            return nullptr;
+            return deserialize_function_pointer_const;
         } else if constexpr (FunctionPointer<T>) {
             return &deserialize_function_pointer_const;
         } else {
