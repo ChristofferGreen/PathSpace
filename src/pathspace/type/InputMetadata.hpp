@@ -12,7 +12,7 @@ struct InputMetadata {
     template <typename CVRefT, typename T = std::remove_cvref_t<CVRefT>>
     InputMetadata(InputMetadataT<CVRefT> const& obj)
         : category(obj.category), typeInfo(obj.typeInfo), serialize(obj.serialize), deserializePop(obj.deserializePop),
-          deserialize(obj.deserialize) {
+          deserialize(obj.deserialize), executeFunctionPointer(obj.executeFunctionPointer) {
     }
     DataCategory category;
     std::type_info const* typeInfo = nullptr;

@@ -80,7 +80,6 @@ The operations in the base language are insert/read/grab, they are implemented a
 
 
 ## Blocking 
-
 It’s possible to send a blocking object to insert/read/grab instructing it to wait a certain amount of time for data to arrive if it is currently empty or non-existent.
 
 ## Capability
@@ -95,18 +94,24 @@ The following capabilities exist:
 A normal PathSpace will store data by serialising it to a std::vector<std::byte>. That vector can contain data of different types and a separate vector storing std::type_id pointers together with how many objects or that type are in a row will be used to determine what parts of the data vector has what type. Std::function objects will be stored in their own vector as well since they can not be serialised. Insert will append serialised data to this vector. Grab will not necessarily erase from the front of the vector since this would be too costly, a pointer to the front element will instead be stored and its position changed forward when a grab is issued. At first the serialisation will be done via the alpaca library but when a compiler supporting the C++26 serialisation functionality it will be rewritten to use that instead.
 
 ## Glob Expressions
-
 Paths can be glob expressions for the insert operation, the data will be copied and inserted in any matching path. A glob expression in insert cannot create paths since they have nothing to match against.
 
 ## JSON Serialisation
-
 Serialisation will be supported out from the PathSpace into JSON in order to enable to do introspection and visualisation of the internal data of the path space or for export of performance data. For example to show a filesystem view of the tree in a GUI where individual data can be viewed. Will also support deserialisation for loading old state. Binary serialisation can also be done to for example create a state of the path space that can be serialised later for example for typical save/load functionality. This is achieved by specifying a json data type for read or grab, example: space.read<std::string>(“/test”, ReadOptions{.toJSON=true})
 
 ## Multi-threading
-All the PathSpace operations will be thread safe. The threading will be done with a thread pool. Much of the heavy lifting insuring thread safety will be done via the phmap::parallel_flat_hash_map library.
+All the PathSpace operations will be thread safe. The threading will be done with a thread pool. Much of the heavy lifting insuring thread safety will be done via the phmap::parallel_flat_hash_map library. The possible executabler objects that can be inserted into a PathSpace is:
+* Function pointers
+* std::function
+* Functor object
+All of these can take an optional ExecutionOptions parameter when launched. That struct will give information on:
+* What PathSpace the executions is from.
+* What path the execution was inserted into.
+* If the PathSpace is still alive or being destroyed.
+This functionality will be added to a TaskPool class which will be available either as a non-copyable normal object or as a Singleton which was created before main. It will create threads as needed and will be pushing tasks on to a task queue that the threads can queue on for recieving more work.
 
 ## Memory
-In order to avoid memory allocation calls to the operating system the PathSpace could have a pre-allocated pool of memory from the start. Perhaps some PathSpace tuple data could be marked as non essential somehow, if an out of memory situation occurs such data could be erased or flushed to disk.
+In order to avoid memory allocation calls to the operating system the PathSpace could have a pre-allocated pool of memory from the start. Perhaps some PathSpace tuple data could be marked as non essential somehow, if an out of memory situation occurs such data could be erased or flushed to disk. The alpha version of PathSpace will not contain this feature and will allocate all memory via std standard allocators.
 
 ## Unit Testing
 Unit testing will be done by using the C++ doctest library. A test driven development method will be used.

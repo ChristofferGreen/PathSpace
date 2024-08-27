@@ -103,6 +103,9 @@ static auto deserialize_function_pointer_const(void* objPtr, std::vector<uint8_t
     *static_cast<void (**)()>(objPtr) = funcPtr;
 }
 
+static auto execute_function_pointer(void const* const functionPointer, void const* const returnData) {
+}
+
 class PathSpace;
 
 template <typename T>
@@ -179,6 +182,8 @@ struct InputMetadataT {
             return nullptr;
         }
     }();
+
+    static constexpr auto executeFunctionPointer = &execute_function_pointer;
 };
 
 } // namespace SP

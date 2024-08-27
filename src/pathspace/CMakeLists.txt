@@ -49,7 +49,7 @@ add_library(PathSpace
     path/GlobPathIterator.cpp
     path/GlobName.cpp
     path/Path.cpp
-    task/TaskManager.cpp
+    taskpool/TaskPool.cpp
     PathSpace.cpp
 )
 

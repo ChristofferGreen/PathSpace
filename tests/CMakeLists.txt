@@ -13,6 +13,7 @@ add_executable(PathSpaceTests
   #unit/utils/test_ByteQueue.cpp
   unit/ext/test_msgpack.cpp
   unit/ext/test_alpaca.cpp
+  unit/taskpool/test_TaskPool.cpp
   #unit/ext/test_glaze.cpp
   unit/test_PathSpace.cpp
   test_main.cpp
