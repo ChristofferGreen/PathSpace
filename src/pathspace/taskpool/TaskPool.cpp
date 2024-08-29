@@ -18,4 +18,10 @@ TaskPool::~TaskPool() {
     // this->shutdown();
 }
 
+auto TaskPool::add(void (*executionWrapper)(void* const functionPointer, void* returnData),
+                   void* const functionPointer,
+                   void* returnData) -> void {
+    executionWrapper(functionPointer, returnData);
+}
+
 } // namespace SP

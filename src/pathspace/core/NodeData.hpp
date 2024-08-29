@@ -21,15 +21,14 @@ public:
 
         inputData.metadata.serialize(inputData.obj, data);
         updateTypes(inputData.metadata);
-        if (inputData.metadata.category == DataCategory::FunctionPointer && options.execution &&
-            options.execution->executionTime == ExecutionOptions::ExecutionTime::OnRead) {
+        if (inputData.metadata.category == DataCategory::FunctionPointer && options.execution && options.execution->executionTime == ExecutionOptions::ExecutionTime::OnRead) {
             // Handle function pointer serialization
             // serializeExecutionFunctionPointer(inputData);
         } else {
         }
     }
 
-    std::expected<int, Error> deserialize(void* obj, const InputMetadata& inputMetadata) const {
+    std::expected<int, Error> deserialize(void* obj, const InputMetadata& inputMetadata, TaskPool* pool) const {
         if (!inputMetadata.deserialize) {
             return std::unexpected(Error{Error::Code::UnserializableType, "No deserialization function provided."});
         }
@@ -38,15 +37,16 @@ public:
             return std::unexpected(Error{Error::Code::UnserializableType, "No type information found."});
         }
 
-        if (types.back().typeInfo != inputMetadata.typeInfo &&
-            types.back().category != DataCategory::ExecutionFunctionPointer) {
+        if (types.front().typeInfo != inputMetadata.typeInfo && types.front().category != DataCategory::ExecutionFunctionPointer) {
             return std::unexpected(Error{Error::Code::UnserializableType, "Type mismatch during deserialization."});
         }
 
-        if (types.back().category == DataCategory::ExecutionFunctionPointer) {
-            void* funPtr;
-            inputMetadata.deserialize(&funPtr, data);
-            inputMetadata.executeFunctionPointer(funPtr, obj);
+        if (types.front().category == DataCategory::ExecutionFunctionPointer) {
+            void* funPtr = nullptr;
+            assert(inputMetadata.deserializeFunctionPointer);
+            inputMetadata.deserializeFunctionPointer(&funPtr, data);
+            assert(inputMetadata.executeFunctionPointer != nullptr);
+            inputMetadata.executeFunctionPointer(funPtr, obj, pool);
         } else {
             inputMetadata.deserialize(obj, data);
         }

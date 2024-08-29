@@ -78,15 +78,10 @@ TEST_CASE("InputMetadata Fundamental") {
     }
 
     SUBCASE("Function Execution Pointer") {
-        using TestFuncPtr = int (*)(ConcretePathString const&, PathSpace&, std::atomic<bool> const&);
+        using TestFuncPtr = int (*)();
         InputMetadata im(InputMetadataT<TestFuncPtr>{});
 
         REQUIRE(im.category == DataCategory::ExecutionFunctionPointer);
-
-        using TestFuncPtr2 = int (*)(int const&, PathSpace&, std::atomic<bool> const&);
-        InputMetadata im2(InputMetadataT<TestFuncPtr2>{});
-
-        REQUIRE(im2.category == DataCategory::FunctionPointer);
 
         using TestPtr = int*;
         InputMetadata im3(InputMetadataT<TestPtr>{});

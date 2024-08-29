@@ -11,15 +11,16 @@ struct InputMetadata {
     InputMetadata() = default;
     template <typename CVRefT, typename T = std::remove_cvref_t<CVRefT>>
     InputMetadata(InputMetadataT<CVRefT> const& obj)
-        : category(obj.category), typeInfo(obj.typeInfo), serialize(obj.serialize), deserializePop(obj.deserializePop),
-          deserialize(obj.deserialize), executeFunctionPointer(obj.executeFunctionPointer) {
+        : category(obj.category), typeInfo(obj.typeInfo), serialize(obj.serialize), deserializePop(obj.deserializePop), deserialize(obj.deserialize),
+          deserializeFunctionPointer(obj.deserializeFunctionPointer), executeFunctionPointer(obj.executeFunctionPointer) {
     }
     DataCategory category;
     std::type_info const* typeInfo = nullptr;
     void (*serialize)(void const* obj, std::vector<SERIALIZATION_TYPE>&) = nullptr;
     void (*deserialize)(void* obj, std::vector<SERIALIZATION_TYPE> const&) = nullptr;
     void (*deserializePop)(void* obj, std::vector<SERIALIZATION_TYPE>&) = nullptr;
-    void (*executeFunctionPointer)(void const* const functionPointer, void const* const returnData) = nullptr;
+    void (*deserializeFunctionPointer)(void* obj, std::vector<SERIALIZATION_TYPE> const&) = nullptr;
+    void (*executeFunctionPointer)(void* const functionPointer, void* returnData, TaskPool* pool) = nullptr;
 };
 
 } // namespace SP
