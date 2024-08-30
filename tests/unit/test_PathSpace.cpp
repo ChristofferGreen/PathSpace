@@ -48,9 +48,7 @@ TEST_CASE("PathSpace Insert") {
 
     SUBCASE("Simple PathSpace Insert Function Pointer") {
         using TestFuncPtr = int (*)(ConcretePathString const&, PathSpace&, std::atomic<bool> const&);
-        TestFuncPtr f = [](ConcretePathString const& path, PathSpace& space, std::atomic<bool> const& alive) -> int {
-            return 58;
-        };
+        TestFuncPtr f = [](ConcretePathString const& path, PathSpace& space, std::atomic<bool> const& alive) -> int { return 58; };
         CHECK(pspace.insert("/f", f).nbrValuesInserted == 1);
     }
 
@@ -95,9 +93,12 @@ TEST_CASE("PathSpace Read") {
     SUBCASE("Simple PathSpace Read Function Pointer Execution") {
         using TestFuncPtr = int (*)();
         TestFuncPtr f = []() -> int { return 58; };
+        TestFuncPtr f2 = []() -> int { return 25; };
         CHECK(pspace.insert("/f", f).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/f2", f2).nbrValuesInserted == 1);
         CHECK(pspace.read<int>("/f").value() == 58);
         CHECK(pspace.read<int>("/f").value() == 58);
+        CHECK(pspace.read<int>("/f2").value() == 25);
     }
 }
 

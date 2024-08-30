@@ -114,15 +114,16 @@ static auto deserialize_function_pointer_ret(void* objPtr, std::vector<uint8_t> 
 
 template <typename T>
 static auto execute_function_pointer(void* const functionPointer, void* returnData, TaskPool* pool) {
-    assert(pool != nullptr);
-    pool->add(
-            [](void* const functionPointer, void* returnData) -> void {
-                T* ret = static_cast<T*>(returnData);
-                auto funcPtr = reinterpret_cast<T (*)()>(functionPointer);
-                *ret = funcPtr();
-            },
-            functionPointer,
-            returnData);
+    auto exec = [](void* const functionPointer, void* returnData) -> void {
+        T* ret = static_cast<T*>(returnData);
+        auto funcPtr = reinterpret_cast<T (*)()>(functionPointer);
+        *ret = funcPtr();
+    };
+    if (pool == nullptr) { // Execute in caller thread
+        exec(functionPointer, returnData);
+    } else {
+        pool->add(exec, functionPointer, returnData);
+    }
 }
 
 class PathSpace;

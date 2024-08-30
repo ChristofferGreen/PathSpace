@@ -2,6 +2,7 @@
 #include "ElementType.hpp"
 #include "Error.hpp"
 #include "InsertOptions.hpp"
+#include "core/ExecutionOptions.hpp"
 #include "pathspace/type/DataCategory.hpp"
 #include "pathspace/type/InputData.hpp"
 #include "type/InputMetadata.hpp"
@@ -21,14 +22,9 @@ public:
 
         inputData.metadata.serialize(inputData.obj, data);
         updateTypes(inputData.metadata);
-        if (inputData.metadata.category == DataCategory::FunctionPointer && options.execution && options.execution->executionTime == ExecutionOptions::ExecutionTime::OnRead) {
-            // Handle function pointer serialization
-            // serializeExecutionFunctionPointer(inputData);
-        } else {
-        }
     }
 
-    std::expected<int, Error> deserialize(void* obj, const InputMetadata& inputMetadata, TaskPool* pool) const {
+    std::expected<int, Error> deserialize(void* obj, const InputMetadata& inputMetadata, TaskPool* pool, std::optional<ExecutionOptions> const& execution) const {
         if (!inputMetadata.deserialize) {
             return std::unexpected(Error{Error::Code::UnserializableType, "No deserialization function provided."});
         }
@@ -42,11 +38,15 @@ public:
         }
 
         if (types.front().category == DataCategory::ExecutionFunctionPointer) {
-            void* funPtr = nullptr;
-            assert(inputMetadata.deserializeFunctionPointer);
-            inputMetadata.deserializeFunctionPointer(&funPtr, data);
-            assert(inputMetadata.executeFunctionPointer != nullptr);
-            inputMetadata.executeFunctionPointer(funPtr, obj, pool);
+            // ToDo: If execution is marked to happen in a different thread then do that instead
+            if (!execution.has_value() || (execution.has_value() && execution.value().category == ExecutionOptions::Category::OnReadOrGrab) ||
+                (execution.has_value() && execution.value().category == ExecutionOptions::Category::Immediate)) {
+                void* funPtr = nullptr;
+                assert(inputMetadata.deserializeFunctionPointer);
+                inputMetadata.deserializeFunctionPointer(&funPtr, data);
+                assert(inputMetadata.executeFunctionPointer != nullptr);
+                inputMetadata.executeFunctionPointer(funPtr, obj, nullptr);
+            }
         } else {
             inputMetadata.deserialize(obj, data);
         }

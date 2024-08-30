@@ -4,16 +4,23 @@
 namespace SP {
 
 struct ExecutionOptions {
-    enum class ExecutionTime {
+    enum class Category {
         Immediate,
-        OnRead,
-        Periodic
+        OnReadOrGrab,
+        PeriodicImmidiate,
+        PeriodicOnRead,
+        Never
+    };
+    enum class ThreadChoice {
+        Any,
+        Main
     };
 
-    ExecutionTime executionTime = ExecutionTime::OnRead;
+    Category category = Category::OnReadOrGrab;
     std::optional<std::chrono::milliseconds> updateInterval;
-    std::optional<int> maxExecutions;
-    // bool cacheResult = false; // how to do this?
+    std::optional<uint32_t> maxNbrExecutions;
+    ThreadChoice threadChoice = ThreadChoice::Any;
+    bool cacheResult = false; // Converts function pointer/object to stored value for future read/grab operations
 };
 
 } // namespace SP
