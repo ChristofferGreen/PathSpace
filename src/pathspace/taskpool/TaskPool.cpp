@@ -24,7 +24,15 @@ TaskPool::~TaskPool() {
 void TaskPool::addTask(std::function<void()> task) {
     {
         std::unique_lock<std::mutex> lock(queueMutex);
-        tasks.push(std::move(task));
+        tasks.emplace(Task{std::move(task)});
+    }
+    condition.notify_one();
+}
+
+void TaskPool::addTask(FunctionPointerTask task, void* const functionPointer, void* returnData) {
+    {
+        std::unique_lock<std::mutex> lock(queueMutex);
+        tasks.emplace(Task{task, functionPointer, returnData});
     }
     condition.notify_one();
 }
@@ -43,7 +51,8 @@ void TaskPool::shutdown() {
 }
 
 void TaskPool::resize(size_t newSize) {
-    if (newSize == workers.size()) return;
+    if (newSize == workers.size())
+        return;
 
     if (newSize < workers.size()) {
         // Reduce the number of threads
@@ -66,7 +75,7 @@ size_t TaskPool::size() const {
 
 void TaskPool::workerFunction() {
     while (true) {
-        std::function<void()> task;
+        Task task;
         {
             std::unique_lock<std::mutex> lock(queueMutex);
             condition.wait(lock, [this]() { return stop || !tasks.empty(); });
@@ -77,7 +86,12 @@ void TaskPool::workerFunction() {
             tasks.pop();
         }
         try {
-            task();
+            if (std::holds_alternative<std::function<void()>>(task.callable)) {
+                std::get<std::function<void()>>(task.callable)();
+            } else if (std::holds_alternative<FunctionPointerTask>(task.callable)) {
+                auto functionPointerTask = std::get<FunctionPointerTask>(task.callable);
+                functionPointerTask(task.functionPointer, task.returnData);
+            }
         } catch (const std::runtime_error& e) {
             if (std::string(e.what()) == "Thread removal") {
                 return;

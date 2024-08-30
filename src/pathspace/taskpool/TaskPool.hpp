@@ -1,16 +1,25 @@
 #pragma once
+#include <atomic>
+#include <condition_variable>
+#include <functional>
 #include <mutex>
 #include <queue>
 #include <thread>
+#include <variant>
 #include <vector>
-#include <functional>
-#include <condition_variable>
-#include <atomic>
 
 namespace SP {
 
 class TaskPool {
 public:
+    using FunctionPointerTask = void (*)(void* const, void*);
+
+    struct Task {
+        std::variant<std::function<void()>, FunctionPointerTask> callable;
+        void* functionPointer = nullptr;
+        void* returnData = nullptr;
+    };
+
     // Get the singleton instance of TaskPool
     static TaskPool& Instance();
 
@@ -20,6 +29,7 @@ public:
 
     // Add a task to the pool
     void addTask(std::function<void()> task);
+    void addTask(FunctionPointerTask task, void* const functionPointer, void* returnData);
 
     // Shutdown the task pool
     void shutdown();
@@ -37,7 +47,7 @@ private:
     void workerFunction();
 
     std::vector<std::thread> workers;
-    std::queue<std::function<void()>> tasks;
+    std::queue<Task> tasks;
     std::mutex queueMutex;
     std::condition_variable condition;
     std::atomic<bool> stop;

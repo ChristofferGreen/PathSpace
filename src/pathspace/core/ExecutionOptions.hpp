@@ -11,15 +11,21 @@ struct ExecutionOptions {
         PeriodicOnRead,
         Never
     };
-    enum class ThreadChoice {
+    enum class Location {
         Any,
-        Main
+        MainThread
+    };
+    enum class Priority {
+        Low,
+        Middle,
+        High
     };
 
-    Category category = Category::OnReadOrGrab;
+    Category category = Category::Immediate;
+    Location location = Location::Any;
+    Priority priority = Priority::Middle;
     std::optional<std::chrono::milliseconds> updateInterval;
     std::optional<uint32_t> maxNbrExecutions;
-    ThreadChoice threadChoice = ThreadChoice::Any;
     bool cacheResult = false; // Converts function pointer/object to stored value for future read/grab operations
 };
 
