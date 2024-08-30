@@ -122,7 +122,7 @@ static auto execute_function_pointer(void* const functionPointer, void* returnDa
     if (pool == nullptr) { // Execute in caller thread
         exec(functionPointer, returnData);
     } else {
-        pool->add(exec, functionPointer, returnData);
+        //pool->addTask(exec, functionPointer, returnData);
     }
 }
 

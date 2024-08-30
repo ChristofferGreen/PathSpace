@@ -44,64 +44,10 @@ write_metadata() {
 
 # Function to generate and write file structure
 write_file_structure() {
-    local output_file=$1
-    log_verbose "Generating file structure"
-    {
-        echo "<file_structure>"
-        echo "# [D] Directory, [F] File"
-        echo "# |-- indicates a file or directory"
-        echo "# |   indicates a continuation of the parent directory"
-        echo ""
-
-        (
-            cd .. || { echo "Error: Failed to change directory" >&2; return 1; }
-            
-            find . -type d \( -name ".git" -o -name "build" -o -name "ext" -o -name "tests" -o -name ".cache" \) -prune -o \( -type d -o -type f \) -print 2>/dev/null | sort | awk '
-            BEGIN {
-                prev_depth = 0
-                stack[prev_depth] = 0
-            }
-            {
-                path = $0
-                sub(/^\.\//, "", path)
-                split(path, parts, "/")
-                depth = length(parts) - 1
-                
-                # Close previous directories if needed
-                while (depth < prev_depth) {
-                    prev_depth--
-                    stack[prev_depth] = 0
-                }
-                
-                # Print indentation
-                for (i = 0; i < depth; i++) {
-                    printf("%s", (stack[i] ? "│   " : "    "))
-                }
-                
-                is_dir = system("test -d \"" $0 "\"") == 0
-                is_last = (depth == prev_depth && !stack[depth])
-                symbol = is_last ? "└── " : "├── "
-                type = is_dir ? "[D]" : "[F]"
-                name = parts[length(parts)]
-                
-                printf("%s%s %s\n", symbol, type, name)
-                
-                stack[depth] = !is_last
-                prev_depth = depth
-            }
-            '
-        )
-
-        echo "</file_structure>"
-        echo ""
-    } >> "$output_file" 2>&1
-
-    if [[ $? -ne 0 ]]; then
-        echo "Error: Failed to write file structure" >&2
-        return 1
-    fi
-
-    log_verbose "File structure generated successfully"
+    local output_file="$1"
+    echo "<project_structure>" >> "$output_file"
+    tree -P "*.cpp|*.hpp|*.h|*.md" --prune -I ".*|build|ext|myenv" ../ >> "$output_file"
+    echo "</project_structure>" >> "$output_file"
 }
 
 # Function to write a file's contents to the output file
@@ -125,7 +71,7 @@ write_file_contents() {
 process_files() {
     local output_file=$1
     log_verbose "Searching for C++, HPP, H, and MD files"
-    find .. -type f \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.md" \) | while read -r file; do
+    find .. -type f \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "CMakeList.txt" -o -name "*.md" \) | while read -r file; do
         if [[ "$file" == *"/build/"* || "$file" == *"/ext/"* || "$file" == *"/tests/"* ]]; then
             log_verbose "Skipping file in excluded directory: $file"
             continue

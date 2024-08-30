@@ -9,7 +9,7 @@ void a() {
 
 TEST_CASE("Task Pool") {
     PathSpace pspace;
-    TaskPool tpool;
+    //TaskPool tpool;
     SUBCASE("Simple Task Pool") {
         // tpool.scheduleTask(a);
     }

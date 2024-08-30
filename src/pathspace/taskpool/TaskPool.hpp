@@ -2,29 +2,45 @@
 #include <mutex>
 #include <queue>
 #include <thread>
+#include <vector>
+#include <functional>
+#include <condition_variable>
+#include <atomic>
 
 namespace SP {
 
-struct PathSpace;
-
-struct TaskPool {
-    TaskPool();
-    ~TaskPool();
-
+class TaskPool {
+public:
+    // Get the singleton instance of TaskPool
     static TaskPool& Instance();
 
+    // Delete copy constructor and assignment operator
     TaskPool(TaskPool const&) = delete;
-    auto operator=(TaskPool const&) -> void = delete;
+    auto operator=(TaskPool const&) -> TaskPool& = delete;
 
-    auto add(void (*executionWrapper)(void* const functionPointer, void* returnData),
-             void* const functionPointer,
-             void* returnData) -> void;
+    // Add a task to the pool
+    void addTask(std::function<void()> task);
+
+    // Shutdown the task pool
+    void shutdown();
+
+    // Resize the thread pool
+    void resize(size_t newSize);
+
+    // Get the current size of the thread pool
+    size_t size() const;
 
 private:
-    // std::queue<std::unique_ptr<Task, PoolDeleter<Task>>> taskQueue;
-    std::vector<std::thread> workerThreads;
-    std::mutex taskQueueMutex;
-    bool shuttingDown = false;
+    TaskPool(size_t threadCount = 0);
+    ~TaskPool();
+
+    void workerFunction();
+
+    std::vector<std::thread> workers;
+    std::queue<std::function<void()>> tasks;
+    std::mutex queueMutex;
+    std::condition_variable condition;
+    std::atomic<bool> stop;
 };
 
 } // namespace SP

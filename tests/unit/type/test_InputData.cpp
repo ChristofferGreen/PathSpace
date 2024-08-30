@@ -13,7 +13,7 @@ struct MyStruct {
 TEST_CASE("InputData") {
     SUBCASE("Simple Construction") {
         int a{};
-        InputData data{a    };
+        InputData data{a};
     }
 
     /*SUBCASE("Simple Serialization/Deserialization") {
