@@ -10,8 +10,10 @@
 
 namespace SP {
 
-class TaskPool {
-public:
+struct TaskPool {
+    TaskPool(size_t threadCount = 0);
+    ~TaskPool();
+
     using FunctionPointerTask = void (*)(void* const, void*);
 
     struct Task {
@@ -41,9 +43,6 @@ public:
     size_t size() const;
 
 private:
-    TaskPool(size_t threadCount = 0);
-    ~TaskPool();
-
     void workerFunction();
 
     std::vector<std::thread> workers;

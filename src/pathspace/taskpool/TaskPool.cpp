@@ -1,4 +1,5 @@
 #include "TaskPool.hpp"
+#include <cstddef>
 #include <stdexcept>
 
 namespace SP {
