@@ -3,6 +3,9 @@
 
 namespace SP {
 
+PathSpace::PathSpace(TaskPool* pool_) : pool(pool_ == nullptr ? &TaskPool::Instance() : pool_) {
+}
+
 /************************************************
 ******************** Insert *********************
 *************************************************/
@@ -13,40 +16,55 @@ auto PathSpace::insertInternal(GlobPathIteratorStringView const& iter,
                                InsertOptions const& options,
                                InsertReturn& ret) -> void {
     auto const pathComponent = *iter;
-    if (std::next(iter) == end) // This is the end of the path, attempt to insert the data
-        return pathComponent.isGlob() ? this->insertGlobDataName(pathComponent, inputData, options, ret)
-                                      : this->insertConcreteDataName(pathComponent.getName(), inputData, options, ret);
-    return pathComponent.isGlob() ? this->insertGlobPathComponent(iter, end, pathComponent, inputData, options, ret)
-                                  : // Send along down the line to all matching the glob expression
-                   this->insertConcretePathComponent(iter,
-                                                     end,
-                                                     pathComponent.getName(),
-                                                     inputData,
-                                                     options,
-                                                     ret); // This sub-component is a concrete path
+    if (std::next(iter) == end) {
+        insertFinalComponent(pathComponent, inputData, options, ret);
+    } else {
+        insertIntermediateComponent(iter, end, pathComponent, inputData, options, ret);
+    }
+}
+
+auto PathSpace::insertFinalComponent(GlobName const& pathComponent, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void {
+    if (pathComponent.isGlob()) {
+        insertGlobDataName(pathComponent, inputData, options, ret);
+    } else {
+        insertConcreteDataName(pathComponent.getName(), inputData, options, ret);
+    }
+}
+
+auto PathSpace::insertIntermediateComponent(GlobPathIteratorStringView const& iter,
+                                            GlobPathIteratorStringView const& end,
+                                            GlobName const& pathComponent,
+                                            InputData const& inputData,
+                                            InsertOptions const& options,
+                                            InsertReturn& ret) -> void {
+    if (pathComponent.isGlob()) {
+        insertGlobPathComponent(iter, end, pathComponent, inputData, options, ret);
+    } else {
+        insertConcretePathComponent(iter, end, pathComponent.getName(), inputData, options, ret);
+    }
 }
 
 auto PathSpace::insertConcreteDataName(ConcreteName const& concreteName, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void {
     auto const appendDataIfNameExists = [&inputData, &options](auto& nodePair) { std::get<NodeData>(nodePair.second).serialize(inputData, options); };
-    auto const createNodeDataAndAppendDataToItIfNameDoesNotExists = [&concreteName, &inputData, &options](NodeDataHashMap::constructor const& constructor) {
+    auto const createNodeDataAndAppendDataToItIfNameDoesNotExists = [&concreteName, &inputData, &options, &ret](NodeDataHashMap::constructor const& constructor) {
         NodeData nodeData{};
         nodeData.serialize(inputData, options);
-        assert(inputData.metadata.serialize != nullptr);
+        if (inputData.metadata.serialize == nullptr) {
+            ret.errors.emplace_back(Error::Code::UnserializableType, "Serialization function is null");
+            return;
+        }
         constructor(concreteName, std::move(nodeData));
     };
     this->nodeDataMap.lazy_emplace_l(concreteName, appendDataIfNameExists, createNodeDataAndAppendDataToItIfNameDoesNotExists);
     ret.nbrValuesInserted++;
 }
 
-/*
-The behaviour of only inserting partially when an error happens is a bit crap.
-Perhaps better to insert as many as possible and also report how many could not be inserted due to error as well as
-which could not be inserted (path).
-*/
 auto PathSpace::insertGlobDataName(GlobName const& globName, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void {
-    for (auto const& val : this->nodeDataMap)
-        if (std::get<0>(globName.match(val.first)))
-            this->insertConcreteDataName(val.first, inputData, options, ret);
+    for (auto const& val : this->nodeDataMap) {
+        if (std::get<0>(globName.match(val.first))) {
+            insertConcreteDataName(val.first, inputData, options, ret);
+        }
+    }
 }
 
 auto PathSpace::insertGlobPathComponent(GlobPathIteratorStringView const& iter,
@@ -55,11 +73,13 @@ auto PathSpace::insertGlobPathComponent(GlobPathIteratorStringView const& iter,
                                         InputData const& inputData,
                                         InsertOptions const& options,
                                         InsertReturn& ret) -> void {
-    InsertReturn expected;
-    for (auto const& val : this->nodeDataMap)
-        if (std::get<0>(globName.match(val.first)))
-            if (std::holds_alternative<std::unique_ptr<PathSpace>>(val.second))
+    for (auto const& val : this->nodeDataMap) {
+        if (std::get<0>(globName.match(val.first))) {
+            if (std::holds_alternative<std::unique_ptr<PathSpace>>(val.second)) {
                 std::get<std::unique_ptr<PathSpace>>(val.second)->insertInternal(std::next(iter), end, inputData, options, ret);
+            }
+        }
+    }
 }
 
 auto PathSpace::insertConcretePathComponent(GlobPathIteratorStringView const& iter,
@@ -70,10 +90,11 @@ auto PathSpace::insertConcretePathComponent(GlobPathIteratorStringView const& it
                                             InsertReturn& ret) -> void {
     auto const nextIter = std::next(iter);
     auto const appendDataIfNameExists = [&](auto& nodePair) {
-        if (std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second))
+        if (std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second)) {
             std::get<std::unique_ptr<PathSpace>>(nodePair.second)->insertInternal(nextIter, end, inputData, options, ret);
-        else
+        } else {
             ret.errors.emplace_back(Error::Code::InvalidPathSubcomponent, std::string("Sub-component name is data for ").append(concreteName.getName()));
+        }
     };
     auto const createNodeDataAndAppendDataToItIfNameDoesNotExists = [&](NodeDataHashMap::constructor const& constructor) {
         auto space = std::make_unique<PathSpace>();
@@ -95,10 +116,10 @@ auto PathSpace::readInternal(ConcretePathIteratorStringView const& iter,
                              ReadOptions const& options) const -> Expected<int> {
     auto const nextIter = std::next(iter);
     auto const pathComponent = *iter;
-    if (nextIter == end) // This is the end of the path, attempt to insert the data
-        return this->readDataName(pathComponent, nextIter, end, inputMetadata, obj, options);
-    return this->readConcretePathComponent(nextIter, end, pathComponent.getName(), inputMetadata, obj,
-                                           options); // This sub-component is a concrete path
+    if (nextIter == end) {
+        return readDataName(pathComponent, nextIter, end, inputMetadata, obj, options);
+    }
+    return readConcretePathComponent(nextIter, end, pathComponent.getName(), inputMetadata, obj, options);
 }
 
 auto PathSpace::readDataName(ConcreteName const& concreteName,
@@ -107,7 +128,7 @@ auto PathSpace::readDataName(ConcreteName const& concreteName,
                              InputMetadata const& inputMetadata,
                              void* obj,
                              ReadOptions const& options) const -> Expected<int> {
-    Expected<int> expected;
+    Expected<int> expected = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     this->nodeDataMap.if_contains(concreteName,
                                   [&](auto const& nodePair) { expected = std::get<NodeData>(nodePair.second).deserialize(obj, inputMetadata, this->pool, options.execution); });
     return expected;
@@ -119,7 +140,7 @@ auto PathSpace::readConcretePathComponent(ConcretePathIteratorStringView const& 
                                           InputMetadata const& inputMetadata,
                                           void* obj,
                                           ReadOptions const& options) const -> Expected<int> {
-    Expected<int> expected;
+    Expected<int> expected = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     this->nodeDataMap.if_contains(concreteName, [&](auto const& nodePair) {
         expected = std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second)
                            ? std::get<std::unique_ptr<PathSpace>>(nodePair.second)->readInternal(nextIter, end, inputMetadata, obj, options)
@@ -139,10 +160,10 @@ auto PathSpace::grabInternal(ConcretePathIteratorStringView const& iter,
                              Capabilities const& capabilities) -> Expected<int> {
     auto const nextIter = std::next(iter);
     auto const pathComponent = *iter;
-    if (nextIter == end) // This is the end of the path, attempt to insert the data
-        return this->grabDataName(pathComponent, nextIter, end, inputMetadata, obj, capabilities);
-    return this->grabConcretePathComponent(nextIter, end, pathComponent.getName(), inputMetadata, obj,
-                                           capabilities); // This sub-component is a concrete path
+    if (nextIter == end) {
+        return grabDataName(pathComponent, nextIter, end, inputMetadata, obj, capabilities);
+    }
+    return grabConcretePathComponent(nextIter, end, pathComponent.getName(), inputMetadata, obj, capabilities);
 }
 
 auto PathSpace::grabDataName(ConcreteName const& concreteName,
@@ -151,9 +172,9 @@ auto PathSpace::grabDataName(ConcreteName const& concreteName,
                              InputMetadata const& inputMetadata,
                              void* obj,
                              Capabilities const& capabilities) -> Expected<int> {
-    Expected<int> expected;
+    Expected<int> expected = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     this->nodeDataMap.modify_if(concreteName, [&](auto& nodePair) { expected = std::get<NodeData>(nodePair.second).deserializePop(obj, inputMetadata); });
-    return 1;
+    return expected;
 }
 
 auto PathSpace::grabConcretePathComponent(ConcretePathIteratorStringView const& nextIter,
@@ -162,7 +183,7 @@ auto PathSpace::grabConcretePathComponent(ConcretePathIteratorStringView const& 
                                           InputMetadata const& inputMetadata,
                                           void* obj,
                                           Capabilities const& capabilities) -> Expected<int> {
-    Expected<int> expected;
+    Expected<int> expected = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     this->nodeDataMap.if_contains(concreteName, [&](auto const& nodePair) {
         expected = std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second)
                            ? std::get<std::unique_ptr<PathSpace>>(nodePair.second)->grabInternal(nextIter, end, inputMetadata, obj, capabilities)
@@ -171,8 +192,20 @@ auto PathSpace::grabConcretePathComponent(ConcretePathIteratorStringView const& 
     return expected;
 }
 
+auto PathSpace::subscribe(GlobPathStringView const& path, std::function<void(const GlobPathStringView&)> callback, Capabilities const& capabilities) -> Expected<void> {
+    // TODO: Implement subscription logic
+    return std::unexpected(Error{Error::Code::UnknownError, "Subscription not implemented yet"});
+}
+
+template <typename DataType>
+auto PathSpace::visit(GlobPathStringView const& path, std::function<void(DataType&)> visitor, Capabilities const& capabilities) -> Expected<void> {
+    // TODO: Implement visitation logic
+    return std::unexpected(Error{Error::Code::UnknownError, "Visitation not implemented yet"});
+}
+
 auto PathSpace::toJSON(bool const isHumanReadable) const -> std::string {
-    return "";
+    // TODO: Implement JSON conversion
+    return "{}"; // Return empty JSON object for now
 }
 
 } // namespace SP
