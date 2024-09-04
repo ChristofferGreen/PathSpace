@@ -1,5 +1,4 @@
 #include "TaskPool.hpp"
-#include <cstddef>
 #include <stdexcept>
 
 namespace SP {
@@ -9,7 +8,7 @@ TaskPool& TaskPool::Instance() {
     return instance;
 }
 
-TaskPool::TaskPool(size_t threadCount) : stop(false) {
+TaskPool::TaskPool(size_t threadCount) : stop(false), availableThreads(0) {
     if (threadCount == 0) {
         threadCount = std::thread::hardware_concurrency();
     }
@@ -24,26 +23,37 @@ TaskPool::~TaskPool() {
 
 void TaskPool::addTask(std::function<void()> task) {
     {
-        std::unique_lock<std::mutex> lock(queueMutex);
+        std::lock_guard<std::mutex> lock(taskMutex);
         tasks.emplace(Task{std::move(task)});
     }
-    condition.notify_one();
+    taskCV.notify_one();
 }
 
 void TaskPool::addTask(FunctionPointerTask task, void* const functionPointer, void* returnData) {
     {
-        std::unique_lock<std::mutex> lock(queueMutex);
+        std::lock_guard<std::mutex> lock(taskMutex);
         tasks.emplace(Task{task, functionPointer, returnData});
     }
-    condition.notify_one();
+    taskCV.notify_one();
+}
+
+void TaskPool::addFunctionPointerTaskDirect(FunctionPointerTask task, void* const functionPointer, void* returnData) {
+    std::unique_lock<std::mutex> lock(taskMutex);
+    if (availableThreads > 0) {
+        immediateTask = Task{task, functionPointer, returnData};
+    } else {
+        tasks.emplace(Task{task, functionPointer, returnData});
+    }
+    lock.unlock();
+    taskCV.notify_one();
 }
 
 void TaskPool::shutdown() {
     {
-        std::unique_lock<std::mutex> lock(queueMutex);
+        std::unique_lock<std::mutex> lock(taskMutex);
         stop = true;
     }
-    condition.notify_all();
+    taskCV.notify_all();
     for (std::thread& worker : workers) {
         if (worker.joinable()) {
             worker.join();
@@ -78,14 +88,26 @@ void TaskPool::workerFunction() {
     while (true) {
         Task task;
         {
-            std::unique_lock<std::mutex> lock(queueMutex);
-            condition.wait(lock, [this]() { return stop || !tasks.empty(); });
-            if (stop && tasks.empty()) {
+            std::unique_lock<std::mutex> lock(taskMutex);
+            availableThreads++;
+            taskCV.wait(lock, [this]() { return stop || !tasks.empty() || immediateTask.has_value(); });
+
+            if (stop && tasks.empty() && !immediateTask.has_value()) {
+                availableThreads--;
                 return;
             }
-            task = std::move(tasks.front());
-            tasks.pop();
+
+            if (immediateTask.has_value()) {
+                task = std::move(*immediateTask);
+                immediateTask.reset();
+            } else if (!tasks.empty()) {
+                task = std::move(tasks.front());
+                tasks.pop();
+            }
+            availableThreads--;
         }
+
+        // Execute the task
         try {
             if (std::holds_alternative<std::function<void()>>(task.callable)) {
                 std::get<std::function<void()>>(task.callable)();

@@ -17,6 +17,7 @@ struct InputMetadata {
     DataCategory category;
     std::type_info const* typeInfo = nullptr;
     void (*serialize)(void const* obj, std::vector<SERIALIZATION_TYPE>&) = nullptr;
+    void (*serializeFunctionPointer)(void const* obj, std::vector<SERIALIZATION_TYPE>&, std::optional<ExecutionOptions> const& executionOptions) = nullptr;
     void (*deserialize)(void* obj, std::vector<SERIALIZATION_TYPE> const&) = nullptr;
     void (*deserializePop)(void* obj, std::vector<SERIALIZATION_TYPE>&) = nullptr;
     void (*deserializeFunctionPointer)(void* obj, std::vector<SERIALIZATION_TYPE> const&) = nullptr;

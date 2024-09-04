@@ -1,5 +1,6 @@
 #pragma once
 #include "DataCategory.hpp"
+#include "core/ExecutionOptions.hpp"
 #include "pathspace/taskpool/TaskPool.hpp"
 #include <cassert>
 #include <functional>
@@ -102,6 +103,35 @@ static auto deserialize_function_pointer_const(void* objPtr, std::vector<uint8_t
 }
 
 template <typename T>
+static auto serialize_function_pointer_ret(void* objPtr, std::vector<uint8_t>& bytes, std::optional<ExecutionOptions> const& executionOptions) -> void {
+    constexpr size_t ptrSize = sizeof(std::uintptr_t);
+    constexpr size_t retSize = sizeof(std::invoke_result_t<T>);
+    constexpr size_t allocSize = ptrSize + retSize; // We'll store both pointer and return value
+
+    // Remember the original size of the bytes vector
+    size_t const originalSize = bytes.size();
+
+    // Resize the vector to accommodate the new data
+    bytes.resize(originalSize + allocSize);
+
+    // Get the function pointer from objPtr
+    T* funcPtrPtr = static_cast<T*>(objPtr);
+    std::uintptr_t const funcPtrInt = reinterpret_cast<std::uintptr_t>(*funcPtrPtr);
+
+    // Serialize the function pointer
+    std::memcpy(bytes.data() + originalSize, &funcPtrInt, ptrSize);
+
+    // Serialize the return value (if it exists)
+    if constexpr (retSize > 0) {
+        void* retValuePtr = static_cast<char*>(objPtr) + ptrSize;
+        std::memcpy(bytes.data() + originalSize + ptrSize, retValuePtr, retSize);
+    }
+
+    if (executionOptions.has_value() && executionOptions.value().category == ExecutionOptions::Category::Immediate) {
+    }
+}
+
+template <typename T>
 static auto deserialize_function_pointer_ret(void* objPtr, std::vector<uint8_t> const& bytes) -> void {
     if (bytes.size() < sizeof(std::uintptr_t)) {
         return;
@@ -122,7 +152,7 @@ static auto execute_function_pointer(void* const functionPointer, void* returnDa
     if (pool == nullptr) { // Execute in caller thread
         exec(functionPointer, returnData);
     } else {
-        //pool->addTask(exec, functionPointer, returnData);
+        // pool->addTask(exec, functionPointer, returnData);
     }
 }
 
@@ -199,6 +229,13 @@ struct InputMetadataT {
         }
     }();
 
+    static constexpr auto serializeFunctionPointer = []() {
+        if constexpr (ExecutionFunctionPointer<T>) {
+            return &serialize_function_pointer_ret<T>;
+        } else {
+            return nullptr;
+        }
+    }();
     static constexpr auto deserializeFunctionPointer = &deserialize_function_pointer_ret<T>;
     static constexpr auto executeFunctionPointer = &execute_function_pointer<T>;
 };

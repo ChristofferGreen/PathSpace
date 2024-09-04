@@ -181,8 +181,10 @@ An actor system could be implemented with PathSpace by having executions within 
 ## Default Paths
 TBD
 
-## Benchmarks
-Linda like tuple spaces have traditionally been seen as slow. To some degree this is due to the pattern matching required to extract data from a tuple. In PathSpace the slowest part will be traversing the path hierarchy. Potentially this could be sped up if the user could manually lock an internal PathSpace from being erased and returning a pointer to it so that the path would not need to be traversed in order to perform operations on it and then unlocking it when done, perhaps via RAII. But this is a bit heavy handed, undecided.
+## Bottlenecks
+Linda like tuple spaces have traditionally been seen as slow. To some degree this is due to the pattern matching required to extract data from a tuple. 
+### Path Caching
+In PathSpace the slowest part will be traversing the path hierarchy. Potentially this could be sped up if we provide a cache of the most recent lookups of paths for insert/read/grab. Could be done as a hashmap from a ConcretePath to a PathSpace*. Would need to clear the cache on grab, or other PathSpace removals.
 
 ### Version Migration Utilities
 TBD

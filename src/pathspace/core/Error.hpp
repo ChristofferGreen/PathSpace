@@ -1,6 +1,5 @@
 #pragma once
 #include <expected>
-#include <string>
 #include <optional>
 #include <string>
 
@@ -19,16 +18,18 @@ struct Error {
         MalformedInput,
         UnmatchedQuotes,
         UnknownError,
+        SerializationFunctionMissing,
         UnserializableType
     };
 
     Code code;
     std::optional<std::string> message;
 
-    Error(Code c, std::string m) : code(c), message(std::move(m)) {}
+    Error(Code c, std::string m) : code(c), message(std::move(m)) {
+    }
 };
 
-template<typename T>
+template <typename T>
 using Expected = std::expected<T, Error>;
 
-}
+} // namespace SP

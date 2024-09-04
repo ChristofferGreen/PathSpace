@@ -5,6 +5,7 @@
 #include "core/InsertOptions.hpp"
 #include "core/InsertReturn.hpp"
 #include "core/ReadOptions.hpp"
+#include "path/ConstructiblePath.hpp"
 #include "taskpool/TaskPool.hpp"
 #include "type/Helper.hpp"
 #include "type/InputData.hpp"
@@ -49,7 +50,7 @@ public:
         if (!path.isValid()) {
             ret.errors.emplace_back(Error::Code::InvalidPath, std::string("The path was not valid: ").append(path.getPath()));
         } else {
-            this->insertInternal(path.begin(), path.end(), InputData{data}, options, ret);
+            this->insertInternal(path.isConcrete() ? ConstructiblePath{path} : ConstructiblePath{}, path.begin(), path.end(), InputData{data}, options, ret);
         }
         return ret;
     }
@@ -131,217 +132,72 @@ public:
     }
 
 private:
-    /**
-     * @brief Internal method for inserting data into the PathSpace.
-     *
-     * @param iter Iterator to the current path component.
-     * @param end Iterator to the end of the path.
-     * @param inputData The data to be inserted.
-     * @param options Insertion options.
-     * @param ret InsertReturn object to store the result of the operation.
-     */
-    auto insertInternal(GlobPathIteratorStringView const& iter, GlobPathIteratorStringView const& end, InputData const& inputData, InsertOptions const& options, InsertReturn& ret)
-            -> void;
-
-    /**
-     * @brief Inserts data at the final component of a path.
-     *
-     * @param pathComponent The final path component.
-     * @param inputData The data to be inserted.
-     * @param options Insertion options.
-     * @param ret InsertReturn object to store the result of the operation.
-     */
-    auto insertFinalComponent(GlobName const& pathComponent, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void;
-
-    /**
-     * @brief Inserts data at an intermediate component of a path.
-     *
-     * @param iter Iterator to the current path component.
-     * @param end Iterator to the end of the path.
-     * @param pathComponent The current path component.
-     * @param inputData The data to be inserted.
-     * @param options Insertion options.
-     * @param ret InsertReturn object to store the result of the operation.
-     */
-    auto insertIntermediateComponent(GlobPathIteratorStringView const& iter,
+    auto insertInternal(ConstructiblePath const& path,
+                        GlobPathIteratorStringView const& iter,
+                        GlobPathIteratorStringView const& end,
+                        InputData const& inputData,
+                        InsertOptions const& options,
+                        InsertReturn& ret) -> void;
+    auto insertFinalComponent(ConstructiblePath const& path, GlobName const& pathComponent, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void;
+    auto insertIntermediateComponent(ConstructiblePath const& path,
+                                     GlobPathIteratorStringView const& iter,
                                      GlobPathIteratorStringView const& end,
                                      GlobName const& pathComponent,
                                      InputData const& inputData,
                                      InsertOptions const& options,
                                      InsertReturn& ret) -> void;
-
-    /**
-     * @brief Inserts data at a concrete (non-glob) path component.
-     *
-     * @param concreteName The concrete path component.
-     * @param inputData The data to be inserted.
-     * @param options Insertion options.
-     * @param ret InsertReturn object to store the result of the operation.
-     */
-    auto insertConcreteDataName(ConcreteName const& concreteName, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void;
-
-    /**
-     * @brief Inserts data at a glob path component.
-     *
-     * @param globName The glob path component.
-     * @param inputData The data to be inserted.
-     * @param options Insertion options.
-     * @param ret InsertReturn object to store the result of the operation.
-     */
-    auto insertGlobDataName(GlobName const& globName, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void;
-
-    /**
-     * @brief Inserts data at a glob path component for intermediate path components.
-     *
-     * @param iter Iterator to the current path component.
-     * @param end Iterator to the end of the path.
-     * @param globName The glob path component.
-     * @param inputData The data to be inserted.
-     * @param options Insertion options.
-     * @param ret InsertReturn object to store the result of the operation.
-     */
-    auto insertGlobPathComponent(GlobPathIteratorStringView const& iter,
+    auto
+    insertConcreteDataName(ConstructiblePath const& path, ConcreteName const& concreteName, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void;
+    auto insertGlobDataName(ConstructiblePath const& path, GlobName const& globName, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void;
+    auto insertGlobPathComponent(ConstructiblePath const& path,
+                                 GlobPathIteratorStringView const& iter,
                                  GlobPathIteratorStringView const& end,
                                  GlobName const& globName,
                                  InputData const& inputData,
                                  InsertOptions const& options,
                                  InsertReturn& ret) -> void;
-
-    /**
-     * @brief Inserts data at a concrete path component for intermediate path components.
-     *
-     * @param iter Iterator to the current path component.
-     * @param end Iterator to the end of the path.
-     * @param concreteName The concrete path component.
-     * @param inputData The data to be inserted.
-     * @param options Insertion options.
-     * @param ret InsertReturn object to store the result of the operation.
-     */
-    auto insertConcretePathComponent(GlobPathIteratorStringView const& iter,
+    auto insertConcretePathComponent(ConstructiblePath const& path,
+                                     GlobPathIteratorStringView const& iter,
                                      GlobPathIteratorStringView const& end,
                                      ConcreteName const& concreteName,
                                      InputData const& inputData,
                                      InsertOptions const& options,
                                      InsertReturn& ret) -> void;
-
-    /**
-     * @brief Internal method for reading data from the PathSpace.
-     *
-     * @param iter Iterator to the current path component.
-     * @param end Iterator to the end of the path.
-     * @param inputMetadata Metadata about the input type.
-     * @param obj Pointer to the object where the read data will be stored.
-     * @param options Read options.
-     * @return Expected<int> indicating success or an error.
-     */
     auto readInternal(ConcretePathIteratorStringView const& iter,
                       ConcretePathIteratorStringView const& end,
                       InputMetadata const& inputMetadata,
                       void* obj,
                       ReadOptions const& options) const -> Expected<int>;
-
-    /**
-     * @brief Reads data from a concrete path component.
-     *
-     * @param concreteName The concrete path component.
-     * @param nextIter Iterator to the next path component.
-     * @param end Iterator to the end of the path.
-     * @param inputMetadata Metadata about the input type.
-     * @param obj Pointer to the object where the read data will be stored.
-     * @param options Read options.
-     * @return Expected<int> indicating success or an error.
-     */
     auto readDataName(ConcreteName const& concreteName,
                       ConcretePathIteratorStringView const& nextIter,
                       ConcretePathIteratorStringView const& end,
                       InputMetadata const& inputMetadata,
                       void* obj,
                       ReadOptions const& options) const -> Expected<int>;
-
-    /**
-     * @brief Reads data from a concrete path component for intermediate path components.
-     *
-     * @param nextIter Iterator to the next path component.
-     * @param end Iterator to the end of the path.
-     * @param concreteName The concrete path component.
-     * @param inputMetadata Metadata about the input type.
-     * @param obj Pointer to the object where the read data will be stored.
-     * @param options Read options.
-     * @return Expected<int> indicating success or an error.
-     */
     auto readConcretePathComponent(ConcretePathIteratorStringView const& nextIter,
                                    ConcretePathIteratorStringView const& end,
                                    ConcreteName const& concreteName,
                                    InputMetadata const& inputMetadata,
                                    void* obj,
                                    ReadOptions const& options) const -> Expected<int>;
-
-    /**
-     * @brief Internal method for grabbing (reading and removing) data from the PathSpace.
-     *
-     * @param iter Iterator to the current path component.
-     * @param end Iterator to the end of the path.
-     * @param inputMetadata Metadata about the input type.
-     * @param obj Pointer to the object where the grabbed data will be stored.
-     * @param capabilities Capabilities controlling access to the data.
-     * @return Expected<int> indicating success or an error.
-     */
     auto grabInternal(ConcretePathIteratorStringView const& iter,
                       ConcretePathIteratorStringView const& end,
                       InputMetadata const& inputMetadata,
                       void* obj,
                       Capabilities const& capabilities) -> Expected<int>;
-
-    /**
-     * @brief Grabs data from a concrete path component.
-     *
-     * @param concreteName The concrete path component.
-     * @param nextIter Iterator to the next path component.
-     * @param end Iterator to the end of the path.
-     * @param inputMetadata Metadata about the input type.
-     * @param obj Pointer to the object where the grabbed data will be stored.
-     * @param capabilities Capabilities controlling access to the data.
-     * @return Expected<int> indicating success or an error.
-     */
     auto grabDataName(ConcreteName const& concreteName,
                       ConcretePathIteratorStringView const& nextIter,
                       ConcretePathIteratorStringView const& end,
                       InputMetadata const& inputMetadata,
                       void* obj,
                       Capabilities const& capabilities) -> Expected<int>;
-
-    /**
-     * @brief Grabs data from a concrete path component for intermediate path components.
-     *
-     * @param nextIter Iterator to the next path component.
-     * @param end Iterator to the end of the path.
-     * @param concreteName The concrete path component.
-     * @param inputMetadata Metadata about the input type.
-     * @param obj Pointer to the object where the grabbed data will be stored.
-     * @param capabilities Capabilities controlling access to the data.
-     * @return Expected<int> indicating success or an error.
-     */
     auto grabConcretePathComponent(ConcretePathIteratorStringView const& nextIter,
                                    ConcretePathIteratorStringView const& end,
                                    ConcreteName const& concreteName,
                                    InputMetadata const& inputMetadata,
                                    void* obj,
                                    Capabilities const& capabilities) -> Expected<int>;
-
-    /**
-     * @brief The main data structure holding the PathSpace hierarchy.
-     *
-     * This hash map stores the hierarchical structure of the PathSpace,
-     * with ConcreteName as keys and either NodeData or nested PathSpaces as values.
-     */
     NodeDataHashMap nodeDataMap;
-
-    /**
-     * @brief Pointer to the TaskPool used for managing asynchronous operations.
-     *
-     * This TaskPool is used for executing asynchronous tasks related to the PathSpace,
-     * such as delayed insertions or background processing.
-     */
     TaskPool* pool;
 };
 
