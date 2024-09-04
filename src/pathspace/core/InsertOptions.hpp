@@ -14,7 +14,7 @@ struct InsertOptions {
     std::optional<ExecutionOptions> execution;
     std::optional<BlockOptions> block;
     std::optional<int> maxInsertionsForBlob;
-    bool waitForLocks = false;
+    bool createDirectoriesAlongPath = true;
 };
 
 } // namespace SP
