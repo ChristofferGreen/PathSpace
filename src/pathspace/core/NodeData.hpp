@@ -16,7 +16,7 @@ namespace SP {
 
 class NodeData {
 public:
-    auto serialize(const InputData& inputData, const InsertOptions& options, TaskPool* pool, std::optional<ExecutionOptions> const& executionOptions) -> std::optional<Error> {
+    auto serialize(const InputData& inputData, const InsertOptions& options, TaskPool* pool) -> std::optional<Error> {
         if (!inputData.metadata.serialize)
             return Error{Error::Code::SerializationFunctionMissing, "Serialization function is missing."};
 
@@ -25,7 +25,7 @@ public:
             // If the function returns a value, the return type will be stored in the allocated space after execution.
             // Execute the function and store the result in the allocated space when the function returns, use pool to execute the function.
             // If the function returns a void, the function pointer will be stored in the allocated space.
-            inputData.metadata.serializeFunctionPointer(inputData.obj, data, executionOptions);
+            inputData.metadata.serializeFunctionPointer(inputData.obj, data, options.execution);
 
             // ToDo: Figure out optimization for this usecase:
             // space.insert("/fun", [](){ return 32; });
@@ -55,8 +55,7 @@ public:
 
         if (types.front().category == DataCategory::ExecutionFunctionPointer) {
             // ToDo: If execution is marked to happen in a different thread then do that instead
-            if (!execution.has_value() || (execution.has_value() && execution.value().category == ExecutionOptions::Category::OnReadOrGrab) ||
-                (execution.has_value() && execution.value().category == ExecutionOptions::Category::Immediate)) {
+            if (!execution.has_value() || (execution.has_value() && execution.value().category == ExecutionOptions::Category::OnReadOrGrab) || (execution.has_value() && execution.value().category == ExecutionOptions::Category::Immediate)) {
                 void* funPtr = nullptr;
                 assert(inputMetadata.deserializeFunctionPointer);
                 inputMetadata.deserializeFunctionPointer(&funPtr, data);

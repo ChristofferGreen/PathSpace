@@ -11,7 +11,7 @@ ContinuationIndentWidth: 8                       # Increase continuation indent 
 NamespaceIndentation: None                       # Keep namespaces unindented to reduce nesting
 
 # Line Breaking and Wrapping
-ColumnLimit: 180                                 # Set a reasonable column limit
+ColumnLimit:   0                                 # No column limit
 AlignAfterOpenBracket: Align                     # Align parameters after open bracket
 AllowAllParametersOfDeclarationOnNextLine: false # Keep parameters on the same line when possible
 AllowShortBlocksOnASingleLine: false             # Keep blocks on separate lines
@@ -30,7 +30,7 @@ AlignConsecutiveDeclarations: false              # Avoid aligning consecutive de
 AlignEscapedNewlines: Left                       # Align escaped newlines to the left
 AlignOperands: Align                             # Align operands of binary and ternary expressions
 AlignTrailingComments: true                      # Align trailing comments
-BreakBeforeBinaryOperators: None                 # Keep binary operators at end of line
+BreakBeforeBinaryOperators: All                  # Wrap binary operators
 BreakBeforeInheritanceComma: false               # Keep inheritance list compact
 BreakInheritanceList: BeforeColon                # Break before colon in inheritance list
 BreakBeforeTernaryOperators: true                # Break before ternary operators
@@ -84,13 +84,13 @@ SortUsingDeclarations: true                      # Sort using declarations
 
 # Penalty Settings
 PenaltyBreakAssignment: 2                        # Low penalty for breaking after assignment
-PenaltyBreakBeforeFirstCallParameter: 19         # Moderate penalty for breaking before first call
 PenaltyBreakComment: 300                         # High penalty to avoid breaking comments
 PenaltyBreakFirstLessLess: 120                   # Moderate penalty for breaking before first '<<'
 PenaltyBreakString: 1000                         # High penalty to avoid breaking string literals
 PenaltyBreakTemplateDeclaration: 10              # Low penalty for breaking after template declarations
 PenaltyExcessCharacter: 1000000                  # Very high penalty for exceeding column limit
 PenaltyReturnTypeOnItsOwnLine: 60                # Moderate penalty for return type on own line
+PenaltyBreakBeforeFirstCallParameter: 1
 
 # Advanced Options
 ExperimentalAutoDetectBinPacking: false          # Disable experimental features

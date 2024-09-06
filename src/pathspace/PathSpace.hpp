@@ -50,7 +50,10 @@ public:
         if (!path.isValid()) {
             ret.errors.emplace_back(Error::Code::InvalidPath, std::string("The path was not valid: ").append(path.getPath()));
         } else {
-            this->insertInternal(path.isConcrete() ? ConstructiblePath{path} : ConstructiblePath{}, path.begin(), path.end(), InputData{data}, options, ret);
+            auto constructedPath = path.isConcrete()
+                                           ? ConstructiblePath{path}
+                                           : ConstructiblePath{};
+            this->insertInternal(constructedPath, path.begin(), path.end(), InputData{data}, options, ret);
         }
         return ret;
     }
@@ -132,14 +135,14 @@ public:
     }
 
 private:
-    auto insertInternal(ConstructiblePath const& path,
+    auto insertInternal(ConstructiblePath& path,
                         GlobPathIteratorStringView const& iter,
                         GlobPathIteratorStringView const& end,
                         InputData const& inputData,
                         InsertOptions const& options,
                         InsertReturn& ret) -> void;
-    auto insertFinalComponent(ConstructiblePath const& path, GlobName const& pathComponent, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void;
-    auto insertIntermediateComponent(ConstructiblePath const& path,
+    auto insertFinalComponent(ConstructiblePath& path, GlobName const& pathComponent, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void;
+    auto insertIntermediateComponent(ConstructiblePath& path,
                                      GlobPathIteratorStringView const& iter,
                                      GlobPathIteratorStringView const& end,
                                      GlobName const& pathComponent,
@@ -147,16 +150,16 @@ private:
                                      InsertOptions const& options,
                                      InsertReturn& ret) -> void;
     auto
-    insertConcreteDataName(ConstructiblePath const& path, ConcreteName const& concreteName, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void;
-    auto insertGlobDataName(ConstructiblePath const& path, GlobName const& globName, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void;
-    auto insertGlobPathComponent(ConstructiblePath const& path,
+    insertConcreteDataName(ConstructiblePath& path, ConcreteName const& concreteName, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void;
+    auto insertGlobDataName(ConstructiblePath& path, GlobName const& globName, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void;
+    auto insertGlobPathComponent(ConstructiblePath& path,
                                  GlobPathIteratorStringView const& iter,
                                  GlobPathIteratorStringView const& end,
                                  GlobName const& globName,
                                  InputData const& inputData,
                                  InsertOptions const& options,
                                  InsertReturn& ret) -> void;
-    auto insertConcretePathComponent(ConstructiblePath const& path,
+    auto insertConcretePathComponent(ConstructiblePath& path,
                                      GlobPathIteratorStringView const& iter,
                                      GlobPathIteratorStringView const& end,
                                      ConcreteName const& concreteName,

@@ -4,67 +4,73 @@
 
 namespace SP {
 
-PathSpace::PathSpace(TaskPool* pool_) : pool(pool_ == nullptr ? &TaskPool::Instance() : pool_) {
+PathSpace::PathSpace(TaskPool* pool_)
+    : pool(pool_ == nullptr ? &TaskPool::Instance() : pool_) {
 }
 
 /************************************************
 ******************** Insert *********************
 *************************************************/
 
-auto PathSpace::insertInternal(ConstructiblePath const& path,
+auto PathSpace::insertInternal(ConstructiblePath& path,
                                GlobPathIteratorStringView const& iter,
                                GlobPathIteratorStringView const& end,
                                InputData const& inputData,
                                InsertOptions const& options,
                                InsertReturn& ret) -> void {
-    auto const pathComponent = *iter;
-    std::next(iter) == end ? insertFinalComponent(path, pathComponent, inputData, options, ret)
-                           : insertIntermediateComponent(path, iter, end, pathComponent, inputData, options, ret);
+    std::next(iter) == end
+            ? insertFinalComponent(path, *iter, inputData, options, ret)
+            : insertIntermediateComponent(path, iter, end, *iter, inputData, options, ret);
 }
 
-auto PathSpace::insertFinalComponent(ConstructiblePath const& path, GlobName const& pathComponent, InputData const& inputData, InsertOptions const& options, InsertReturn& ret)
+auto PathSpace::insertFinalComponent(ConstructiblePath& path, GlobName const& pathComponent, InputData const& inputData, InsertOptions const& options, InsertReturn& ret)
         -> void {
-    pathComponent.isGlob() ? insertGlobDataName(path, pathComponent, inputData, options, ret) : insertConcreteDataName(path, pathComponent.getName(), inputData, options, ret);
+    path.append(pathComponent.getName());
+    pathComponent.isGlob()
+            ? insertGlobDataName(path, pathComponent, inputData, options, ret)
+            : insertConcreteDataName(path, pathComponent.getName(), inputData, options, ret);
 }
 
-auto PathSpace::insertIntermediateComponent(ConstructiblePath const& path,
+auto PathSpace::insertIntermediateComponent(ConstructiblePath& path,
                                             GlobPathIteratorStringView const& iter,
                                             GlobPathIteratorStringView const& end,
                                             GlobName const& pathComponent,
                                             InputData const& inputData,
                                             InsertOptions const& options,
                                             InsertReturn& ret) -> void {
-    pathComponent.isGlob() ? insertGlobPathComponent(path, iter, end, pathComponent, inputData, options, ret)
-                           : insertConcretePathComponent(path, iter, end, pathComponent.getName(), inputData, options, ret);
+    path.append(pathComponent.getName());
+    pathComponent.isGlob()
+            ? insertGlobPathComponent(path, iter, end, pathComponent, inputData, options, ret)
+            : insertConcretePathComponent(path, iter, end, pathComponent.getName(), inputData, options, ret);
 }
 
-auto PathSpace::insertConcreteDataName(ConstructiblePath const& path, ConcreteName const& concreteName, InputData const& inputData, InsertOptions const& options, InsertReturn& ret)
+auto PathSpace::insertConcreteDataName(ConstructiblePath& path, ConcreteName const& concreteName, InputData const& inputData, InsertOptions const& options, InsertReturn& ret)
         -> void {
-    auto const appendDataIfNameExists = [&inputData, &options, this](auto& nodePair) {
-        std::get<NodeData>(nodePair.second).serialize(inputData, options, this->pool, options.execution);
+    path.append(concreteName.getName());
+    auto const appendDataIfNameExists = [&inputData, &options, &ret, this](auto& nodePair) {
+        if (auto const error = std::get<NodeData>(nodePair.second).serialize(inputData, options, this->pool); error.has_value())
+            ret.errors.emplace_back(error.value());
     };
     auto const createNodeDataAndAppendDataToItIfNameDoesNotExists = [&concreteName, &inputData, &options, &ret, this](NodeDataHashMap::constructor const& constructor) {
         NodeData nodeData{};
-        nodeData.serialize(inputData, options, this->pool, options.execution);
-        if (inputData.metadata.serialize == nullptr) {
-            ret.errors.emplace_back(Error::Code::UnserializableType, "Serialization function is null");
-            return;
-        }
+        if (auto const error = nodeData.serialize(inputData, options, this->pool); error.has_value())
+            ret.errors.emplace_back(error.value());
         constructor(concreteName, std::move(nodeData));
     };
     this->nodeDataMap.lazy_emplace_l(concreteName, appendDataIfNameExists, createNodeDataAndAppendDataToItIfNameDoesNotExists);
     ret.nbrValuesInserted++;
 }
 
-auto PathSpace::insertGlobDataName(ConstructiblePath const& path, GlobName const& globName, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void {
+auto PathSpace::insertGlobDataName(ConstructiblePath& path, GlobName const& globName, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void {
     for (auto const& val : this->nodeDataMap) {
         if (std::get<0>(globName.match(val.first))) {
-            insertConcreteDataName(path, val.first, inputData, options, ret);
+            ConstructiblePath path2 = path;
+            insertConcreteDataName(path2, val.first, inputData, options, ret);
         }
     }
 }
 
-auto PathSpace::insertGlobPathComponent(ConstructiblePath const& path,
+auto PathSpace::insertGlobPathComponent(ConstructiblePath& path,
                                         GlobPathIteratorStringView const& iter,
                                         GlobPathIteratorStringView const& end,
                                         GlobName const& globName,
@@ -74,13 +80,16 @@ auto PathSpace::insertGlobPathComponent(ConstructiblePath const& path,
     for (auto const& val : this->nodeDataMap) {
         if (std::get<0>(globName.match(val.first))) {
             if (std::holds_alternative<std::unique_ptr<PathSpace>>(val.second)) {
-                std::get<std::unique_ptr<PathSpace>>(val.second)->insertInternal(path, std::next(iter), end, inputData, options, ret);
+                ConstructiblePath path2 = path;
+                path2.append(val.first.getName());
+                std::get<std::unique_ptr<PathSpace>>(val.second)
+                        ->insertInternal(path2, std::next(iter), end, inputData, options, ret);
             }
         }
     }
 }
 
-auto PathSpace::insertConcretePathComponent(ConstructiblePath const& path,
+auto PathSpace::insertConcretePathComponent(ConstructiblePath& path,
                                             GlobPathIteratorStringView const& iter,
                                             GlobPathIteratorStringView const& end,
                                             ConcreteName const& concreteName,
@@ -88,12 +97,12 @@ auto PathSpace::insertConcretePathComponent(ConstructiblePath const& path,
                                             InsertOptions const& options,
                                             InsertReturn& ret) -> void {
     auto const nextIter = std::next(iter);
+    path.append(concreteName.getName());
     auto const appendDataIfNameExists = [&](auto& nodePair) {
-        if (std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second)) {
+        if (std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second))
             std::get<std::unique_ptr<PathSpace>>(nodePair.second)->insertInternal(path, nextIter, end, inputData, options, ret);
-        } else {
+        else
             ret.errors.emplace_back(Error::Code::InvalidPathSubcomponent, std::string("Sub-component name is data for ").append(concreteName.getName()));
-        }
     };
     auto const createNodeDataAndAppendDataToItIfNameDoesNotExists = [&](NodeDataHashMap::constructor const& constructor) {
         auto space = std::make_unique<PathSpace>(this->pool);
@@ -141,9 +150,7 @@ auto PathSpace::readConcretePathComponent(ConcretePathIteratorStringView const& 
                                           ReadOptions const& options) const -> Expected<int> {
     Expected<int> expected = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     this->nodeDataMap.if_contains(concreteName, [&](auto const& nodePair) {
-        expected = std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second)
-                           ? std::get<std::unique_ptr<PathSpace>>(nodePair.second)->readInternal(nextIter, end, inputMetadata, obj, options)
-                           : std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
+        expected = std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second) ? std::get<std::unique_ptr<PathSpace>>(nodePair.second)->readInternal(nextIter, end, inputMetadata, obj, options) : std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
     });
     return expected;
 }
@@ -184,9 +191,7 @@ auto PathSpace::grabConcretePathComponent(ConcretePathIteratorStringView const& 
                                           Capabilities const& capabilities) -> Expected<int> {
     Expected<int> expected = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     this->nodeDataMap.if_contains(concreteName, [&](auto const& nodePair) {
-        expected = std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second)
-                           ? std::get<std::unique_ptr<PathSpace>>(nodePair.second)->grabInternal(nextIter, end, inputMetadata, obj, capabilities)
-                           : std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
+        expected = std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second) ? std::get<std::unique_ptr<PathSpace>>(nodePair.second)->grabInternal(nextIter, end, inputMetadata, obj, capabilities) : std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
     });
     return expected;
 }
