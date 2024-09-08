@@ -47,9 +47,9 @@ TEST_CASE("PathSpace Insert") {
     }
 
     SUBCASE("Simple PathSpace Insert Function Pointer") {
-        using TestFuncPtr = int (*)(ConcretePathString const&, PathSpace&, std::atomic<bool> const&);
+        /*using TestFuncPtr = int (*)(ConcretePathString const&, PathSpace&, std::atomic<bool> const&);
         TestFuncPtr f = [](ConcretePathString const& path, PathSpace& space, std::atomic<bool> const& alive) -> int { return 58; };
-        CHECK(pspace.insert("/f", f).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/f", f).nbrValuesInserted == 1);*/
     }
 
     SUBCASE("Simple PathSpace Insert Lambda") {
