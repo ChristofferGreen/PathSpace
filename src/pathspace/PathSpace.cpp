@@ -48,12 +48,12 @@ auto PathSpace::insertConcreteDataName(ConstructiblePath& path, ConcreteName con
         -> void {
     path.append(concreteName.getName());
     auto const appendDataIfNameExists = [&inputData, &options, &ret, this](auto& nodePair) {
-        if (auto const error = std::get<NodeData>(nodePair.second).serialize(inputData, options, this->pool); error.has_value())
+        if (auto const error = std::get<NodeData>(nodePair.second).serialize(inputData, options, this->pool, ret); error.has_value())
             ret.errors.emplace_back(error.value());
     };
     auto const createNodeDataAndAppendDataToItIfNameDoesNotExists = [&concreteName, &inputData, &options, &ret, this](NodeDataHashMap::constructor const& constructor) {
         NodeData nodeData{};
-        if (auto const error = nodeData.serialize(inputData, options, this->pool); error.has_value())
+        if (auto const error = nodeData.serialize(inputData, options, this->pool, ret); error.has_value())
             ret.errors.emplace_back(error.value());
         constructor(concreteName, std::move(nodeData));
     };

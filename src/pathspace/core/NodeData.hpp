@@ -16,7 +16,7 @@ namespace SP {
 
 class NodeData {
 public:
-    auto serialize(const InputData& inputData, const InsertOptions& options, TaskPool* pool) -> std::optional<Error> {
+    auto serialize(const InputData& inputData, const InsertOptions& options, TaskPool* pool, InsertReturn& ret) -> std::optional<Error> {
         if (!inputData.metadata.serialize)
             return Error{Error::Code::SerializationFunctionMissing, "Serialization function is missing."};
 

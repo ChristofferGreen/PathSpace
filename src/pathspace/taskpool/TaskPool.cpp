@@ -8,7 +8,8 @@ TaskPool& TaskPool::Instance() {
     return instance;
 }
 
-TaskPool::TaskPool(size_t threadCount) : stop(false), availableThreads(0) {
+TaskPool::TaskPool(size_t threadCount)
+    : stop(false), availableThreads(0) {
     if (threadCount == 0) {
         threadCount = std::thread::hardware_concurrency();
     }
@@ -29,15 +30,15 @@ void TaskPool::addTask(std::function<void()> task) {
     taskCV.notify_one();
 }
 
-void TaskPool::addTask(FunctionPointerTask task, void* const functionPointer, void* returnData) {
+auto TaskPool::addTask(FunctionPointerTask task, void* const functionPointer, void* returnData, ConcretePathString const& path, PathSpace const& space) -> void {
     {
         std::lock_guard<std::mutex> lock(taskMutex);
         tasks.emplace(Task{task, functionPointer, returnData});
     }
     taskCV.notify_one();
 }
-
-void TaskPool::addFunctionPointerTaskDirect(FunctionPointerTask task, void* const functionPointer, void* returnData) {
+/*
+auto TaskPool::addFunctionPointerTaskDirect(FunctionPointerTask task, void* const functionPointer, void* returnData) -> void {
     std::unique_lock<std::mutex> lock(taskMutex);
     if (availableThreads > 0) {
         immediateTask = Task{task, functionPointer, returnData};
@@ -46,7 +47,7 @@ void TaskPool::addFunctionPointerTaskDirect(FunctionPointerTask task, void* cons
     }
     lock.unlock();
     taskCV.notify_one();
-}
+}*/
 
 void TaskPool::shutdown() {
     {

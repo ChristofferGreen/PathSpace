@@ -25,6 +25,6 @@ TEST_CASE("Task Pool") {
         pool.paths.insert("/DoesNotExist");
         PathSpace space(&pool);
         space.insert("/a/b/c", &a);
-        // CHECK(pool.paths.contains(ConcretePathString{"/a/b/c"}));
+        CHECK(pool.paths.contains("/a/b/c"));
     }
 }

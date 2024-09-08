@@ -1,5 +1,6 @@
 #pragma once
 #include "Task.hpp"
+#include "path/ConcretePath.hpp"
 
 #include <atomic>
 #include <condition_variable>
@@ -12,6 +13,8 @@
 
 namespace SP {
 
+struct PathSpace;
+
 class TaskPool {
 public:
     TaskPool(size_t threadCount = 0);
@@ -22,16 +25,15 @@ public:
     TaskPool(TaskPool const&) = delete;
     auto operator=(TaskPool const&) -> TaskPool& = delete;
 
-    void addTask(std::function<void()> task);
-    void addTask(FunctionPointerTask task, void* const functionPointer, void* returnData);
-    void addFunctionPointerTaskDirect(FunctionPointerTask task, void* const functionPointer, void* returnData);
+    auto addTask(std::function<void()> task) -> void;
+    auto addTask(FunctionPointerTask task, void* const functionPointer, void* returnData, ConcretePathString const& path, PathSpace const& space) -> void;
 
-    void shutdown();
-    void resize(size_t newSize);
-    size_t size() const;
+    auto shutdown() -> void;
+    auto resize(size_t newSize) -> void;
+    auto size() const -> size_t;
 
 private:
-    void workerFunction();
+    auto workerFunction() -> void;
 
     std::vector<std::thread> workers;
     std::queue<Task> tasks;
