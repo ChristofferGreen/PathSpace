@@ -22,6 +22,15 @@ TaskPool::~TaskPool() {
     shutdown();
 }
 
+auto TaskPool::addTask(Task const& task) -> void {
+    std::lock_guard<std::mutex> lock(taskMutex);
+    if (task.executionOptions.location == ExecutionOptions::Location::MainThread)
+        tasksMainThread.emplace(task);
+    else
+        tasks.emplace(task);
+    taskCV.notify_one();
+}
+
 void TaskPool::addTask(std::function<void()> task) {
     {
         std::lock_guard<std::mutex> lock(taskMutex);
@@ -33,7 +42,7 @@ void TaskPool::addTask(std::function<void()> task) {
 auto TaskPool::addTask(FunctionPointerTask task, void* const functionPointer, void* returnData, ConcretePathString const& path, PathSpace const& space) -> void {
     {
         std::lock_guard<std::mutex> lock(taskMutex);
-        tasks.emplace(Task{task, functionPointer, returnData});
+        tasks.emplace(Task{task, functionPointer});
     }
     taskCV.notify_one();
 }
@@ -91,9 +100,9 @@ void TaskPool::workerFunction() {
         {
             std::unique_lock<std::mutex> lock(taskMutex);
             availableThreads++;
-            taskCV.wait(lock, [this]() { return stop || !tasks.empty() || immediateTask.has_value(); });
+            taskCV.wait(lock, [this]() { return this->stop || !this->tasks.empty() || this->immediateTask.has_value(); });
 
-            if (stop && tasks.empty() && !immediateTask.has_value()) {
+            if (this->stop && this->tasks.empty() && !this->immediateTask.has_value()) {
                 availableThreads--;
                 return;
             }
@@ -108,21 +117,11 @@ void TaskPool::workerFunction() {
             availableThreads--;
         }
 
-        // Execute the task
-        try {
-            if (std::holds_alternative<std::function<void()>>(task.callable)) {
-                std::get<std::function<void()>>(task.callable)();
-            } else if (std::holds_alternative<FunctionPointerTask>(task.callable)) {
-                auto functionPointerTask = std::get<FunctionPointerTask>(task.callable);
-                functionPointerTask(task.functionPointer, task.returnData);
-            }
-        } catch (const std::runtime_error& e) {
-            if (std::string(e.what()) == "Thread removal") {
-                return;
-            }
-            // Handle or log other exceptions
-        } catch (...) {
-            // Handle or log unknown exceptions
+        if (std::holds_alternative<std::function<void()>>(task.callable)) {
+            std::get<std::function<void()>>(task.callable)();
+        } else if (std::holds_alternative<FunctionPointerTask>(task.callable)) {
+            auto functionPointerTask = std::get<FunctionPointerTask>(task.callable);
+            functionPointerTask(task.functionPointer);
         }
     }
 }

@@ -47,13 +47,13 @@ auto PathSpace::insertIntermediateComponent(ConstructiblePath& path,
 auto PathSpace::insertConcreteDataName(ConstructiblePath& path, ConcreteName const& concreteName, InputData const& inputData, InsertOptions const& options, InsertReturn& ret)
         -> void {
     path.append(concreteName.getName());
-    auto const appendDataIfNameExists = [&inputData, &options, &ret, this](auto& nodePair) {
-        if (auto const error = std::get<NodeData>(nodePair.second).serialize(inputData, options, this->pool, ret); error.has_value())
+    auto const appendDataIfNameExists = [&inputData, &options, &ret, path, this](auto& nodePair) {
+        if (auto const error = std::get<NodeData>(nodePair.second).serialize(path, inputData, options, this->pool, ret); error.has_value())
             ret.errors.emplace_back(error.value());
     };
-    auto const createNodeDataAndAppendDataToItIfNameDoesNotExists = [&concreteName, &inputData, &options, &ret, this](NodeDataHashMap::constructor const& constructor) {
+    auto const createNodeDataAndAppendDataToItIfNameDoesNotExists = [&concreteName, &inputData, &options, &ret, &path, this](NodeDataHashMap::constructor const& constructor) {
         NodeData nodeData{};
-        if (auto const error = nodeData.serialize(inputData, options, this->pool, ret); error.has_value())
+        if (auto const error = nodeData.serialize(path, inputData, options, this->pool, ret); error.has_value())
             ret.errors.emplace_back(error.value());
         constructor(concreteName, std::move(nodeData));
     };

@@ -3,8 +3,11 @@
 #include "Error.hpp"
 #include "InsertOptions.hpp"
 #include "core/ExecutionOptions.hpp"
+#include "core/InsertReturn.hpp"
+#include "path/ConstructiblePath.hpp"
 #include "pathspace/type/DataCategory.hpp"
 #include "pathspace/type/InputData.hpp"
+#include "taskpool/Task.hpp"
 #include "taskpool/TaskPool.hpp"
 #include "type/InputMetadata.hpp"
 
@@ -16,16 +19,20 @@ namespace SP {
 
 class NodeData {
 public:
-    auto serialize(const InputData& inputData, const InsertOptions& options, TaskPool* pool, InsertReturn& ret) -> std::optional<Error> {
+    auto serialize(ConstructiblePath const& path, const InputData& inputData, const InsertOptions& options, TaskPool* pool, InsertReturn& ret) -> std::optional<Error> {
         if (!inputData.metadata.serialize)
             return Error{Error::Code::SerializationFunctionMissing, "Serialization function is missing."};
 
         if (inputData.metadata.category == DataCategory::FunctionPointer && options.execution->category == ExecutionOptions::Category::Immediate) {
-            // Allocate enough space to store a return type or a function pointer.
-            // If the function returns a value, the return type will be stored in the allocated space after execution.
-            // Execute the function and store the result in the allocated space when the function returns, use pool to execute the function.
-            // If the function returns a void, the function pointer will be stored in the allocated space.
-            inputData.metadata.serializeFunctionPointer(inputData.obj, data, options.execution);
+            // Send the function over to the ThreadPool for execution. The return type should be reinserted to the space at
+            // the right path. But will be stored in a std::vector<std::any>.
+            // inputData.metadata.serializeFunctionPointer(inputData.obj, data, options.execution);
+            pool->addTask({.callable = [](void* const functionPointer) -> void {
+
+                           },
+                           .functionPointer = inputData.obj,
+                           .path = path,
+                           .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{}});
 
             // ToDo: Figure out optimization for this usecase:
             // space.insert("/fun", [](){ return 32; });

@@ -25,6 +25,7 @@ public:
     TaskPool(TaskPool const&) = delete;
     auto operator=(TaskPool const&) -> TaskPool& = delete;
 
+    auto addTask(Task const& task) -> void;
     auto addTask(std::function<void()> task) -> void;
     auto addTask(FunctionPointerTask task, void* const functionPointer, void* returnData, ConcretePathString const& path, PathSpace const& space) -> void;
 
@@ -37,6 +38,7 @@ private:
 
     std::vector<std::thread> workers;
     std::queue<Task> tasks;
+    std::queue<Task> tasksMainThread;
     std::mutex taskMutex;
     std::condition_variable taskCV;
     std::atomic<bool> stop;

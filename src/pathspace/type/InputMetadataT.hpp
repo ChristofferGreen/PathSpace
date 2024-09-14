@@ -104,7 +104,30 @@ static auto deserialize_function_pointer_const(void* objPtr, std::vector<uint8_t
 
 template <typename T>
 static auto serialize_function_pointer_ret(void* objPtr, std::vector<uint8_t>& bytes, std::optional<ExecutionOptions> const& executionOptions) -> void {
-    constexpr size_t ptrSize = sizeof(std::uintptr_t);
+    /*
+    Send the function over to the ThreadPool for execution. The return type should be reinserted to the space at
+    the right path. But will be stored in a std::vector<std::any>.
+    */
+    /*
+        We wont be writing the return value into the bytes right away since the return value does not yet exist.
+        We will instead create a Task object with the PathSpace, path and tag and send to the task pool.
+        When the task is executed, the return value will be inserted into the path space. It cannot be
+        inserted into the normal bytes array since the size is not known at compile time. Instead
+        we insert it to a unordered map using a unique key.
+    */
+    /*
+       Allocate room for the return value
+       Create a Task object with the PathSpace, path and tag.
+       Send the function pointer to the task pool
+       ----
+       The TaskPool will create athe return value and insert it.
+       If the sub pathspace still exists then there will be a matching tag we can use to place the return value
+       in the correct place.
+    */
+    // get metadata of return type of T:
+    // constexpr size_t returnTypeSize = sizeof(std::invoke_result_t<T>);
+    // InputMetadataT templated with return type of T, not size or sizeof
+    /*constexpr size_t ptrSize = sizeof(std::uintptr_t);
     constexpr size_t retSize = sizeof(std::invoke_result_t<T>);
     constexpr size_t allocSize = ptrSize + retSize; // We'll store both pointer and return value
 
@@ -121,14 +144,16 @@ static auto serialize_function_pointer_ret(void* objPtr, std::vector<uint8_t>& b
     // Serialize the function pointer
     std::memcpy(bytes.data() + originalSize, &funcPtrInt, ptrSize);
 
-    // Serialize the return value (if it exists)
+    // ToDo: Allocate  memory for the return value and serialize it using another InputMetadataT
     if constexpr (retSize > 0) {
         void* retValuePtr = static_cast<char*>(objPtr) + ptrSize;
         std::memcpy(bytes.data() + originalSize + ptrSize, retValuePtr, retSize);
     }
 
     if (executionOptions.has_value() && executionOptions.value().category == ExecutionOptions::Category::Immediate) {
-    }
+        T* ret = static_cast<T*>(objPtr);
+        *ret = (*funcPtrPtr)();
+    }*/
 }
 
 template <typename T>
