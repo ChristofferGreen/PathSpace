@@ -2,6 +2,7 @@
 
 #include "core/Capabilities.hpp"
 #include "core/Error.hpp"
+#include "core/ExtractOptions.hpp"
 #include "core/InsertOptions.hpp"
 #include "core/InsertReturn.hpp"
 #include "core/ReadOptions.hpp"
@@ -85,9 +86,9 @@ public:
      * @return Expected<DataType> containing the extractbed data if successful, or an error if not.
      */
     template <typename DataType>
-    auto extract(ConcretePathStringView const& path, Capabilities const& capabilities = Capabilities::All()) -> Expected<DataType> {
+    auto extract(ConcretePathStringView const& path, ExtractOptions const& options = {}, Capabilities const& capabilities = Capabilities::All()) -> Expected<DataType> {
         DataType obj;
-        if (auto ret = this->extractInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, capabilities); !ret) {
+        if (auto ret = this->extractInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities); !ret) {
             return std::unexpected(ret.error());
         }
         return obj;
@@ -214,18 +215,21 @@ private:
                          ConcretePathIteratorStringView const& end,
                          InputMetadata const& inputMetadata,
                          void* obj,
+                         ExtractOptions const& options,
                          Capabilities const& capabilities) -> Expected<int>;
     auto extractDataName(ConcreteName const& concreteName,
                          ConcretePathIteratorStringView const& nextIter,
                          ConcretePathIteratorStringView const& end,
                          InputMetadata const& inputMetadata,
                          void* obj,
+                         ExtractOptions const& options,
                          Capabilities const& capabilities) -> Expected<int>;
     auto extractConcretePathComponent(ConcretePathIteratorStringView const& nextIter,
                                       ConcretePathIteratorStringView const& end,
                                       ConcreteName const& concreteName,
                                       InputMetadata const& inputMetadata,
                                       void* obj,
+                                      ExtractOptions const& options,
                                       Capabilities const& capabilities) -> Expected<int>;
     NodeDataHashMap nodeDataMap;
     TaskPool* pool;

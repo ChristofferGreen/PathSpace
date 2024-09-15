@@ -163,13 +163,14 @@ auto PathSpace::extractInternal(ConcretePathIteratorStringView const& iter,
                                 ConcretePathIteratorStringView const& end,
                                 InputMetadata const& inputMetadata,
                                 void* obj,
+                                ExtractOptions const& options,
                                 Capabilities const& capabilities) -> Expected<int> {
     auto const nextIter = std::next(iter);
     auto const pathComponent = *iter;
     if (nextIter == end) {
-        return extractDataName(pathComponent, nextIter, end, inputMetadata, obj, capabilities);
+        return extractDataName(pathComponent, nextIter, end, inputMetadata, obj, options, capabilities);
     }
-    return extractConcretePathComponent(nextIter, end, pathComponent.getName(), inputMetadata, obj, capabilities);
+    return extractConcretePathComponent(nextIter, end, pathComponent.getName(), inputMetadata, obj, options, capabilities);
 }
 
 auto PathSpace::extractDataName(ConcreteName const& concreteName,
@@ -177,6 +178,7 @@ auto PathSpace::extractDataName(ConcreteName const& concreteName,
                                 ConcretePathIteratorStringView const& end,
                                 InputMetadata const& inputMetadata,
                                 void* obj,
+                                ExtractOptions const& options,
                                 Capabilities const& capabilities) -> Expected<int> {
     Expected<int> expected = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     this->nodeDataMap.modify_if(concreteName, [&](auto& nodePair) { expected = std::get<NodeData>(nodePair.second).deserializePop(obj, inputMetadata); });
@@ -188,10 +190,11 @@ auto PathSpace::extractConcretePathComponent(ConcretePathIteratorStringView cons
                                              ConcreteName const& concreteName,
                                              InputMetadata const& inputMetadata,
                                              void* obj,
+                                             ExtractOptions const& options,
                                              Capabilities const& capabilities) -> Expected<int> {
     Expected<int> expected = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     this->nodeDataMap.if_contains(concreteName, [&](auto const& nodePair) {
-        expected = std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second) ? std::get<std::unique_ptr<PathSpace>>(nodePair.second)->extractInternal(nextIter, end, inputMetadata, obj, capabilities) : std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
+        expected = std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second) ? std::get<std::unique_ptr<PathSpace>>(nodePair.second)->extractInternal(nextIter, end, inputMetadata, obj, options, capabilities) : std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
     });
     return expected;
 }
