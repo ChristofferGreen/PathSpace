@@ -156,42 +156,42 @@ auto PathSpace::readConcretePathComponent(ConcretePathIteratorStringView const& 
 }
 
 /************************************************
-******************** Grab ***********************
+******************** Extract ***********************
 *************************************************/
 
-auto PathSpace::grabInternal(ConcretePathIteratorStringView const& iter,
-                             ConcretePathIteratorStringView const& end,
-                             InputMetadata const& inputMetadata,
-                             void* obj,
-                             Capabilities const& capabilities) -> Expected<int> {
+auto PathSpace::extractInternal(ConcretePathIteratorStringView const& iter,
+                                ConcretePathIteratorStringView const& end,
+                                InputMetadata const& inputMetadata,
+                                void* obj,
+                                Capabilities const& capabilities) -> Expected<int> {
     auto const nextIter = std::next(iter);
     auto const pathComponent = *iter;
     if (nextIter == end) {
-        return grabDataName(pathComponent, nextIter, end, inputMetadata, obj, capabilities);
+        return extractDataName(pathComponent, nextIter, end, inputMetadata, obj, capabilities);
     }
-    return grabConcretePathComponent(nextIter, end, pathComponent.getName(), inputMetadata, obj, capabilities);
+    return extractConcretePathComponent(nextIter, end, pathComponent.getName(), inputMetadata, obj, capabilities);
 }
 
-auto PathSpace::grabDataName(ConcreteName const& concreteName,
-                             ConcretePathIteratorStringView const& nextIter,
-                             ConcretePathIteratorStringView const& end,
-                             InputMetadata const& inputMetadata,
-                             void* obj,
-                             Capabilities const& capabilities) -> Expected<int> {
+auto PathSpace::extractDataName(ConcreteName const& concreteName,
+                                ConcretePathIteratorStringView const& nextIter,
+                                ConcretePathIteratorStringView const& end,
+                                InputMetadata const& inputMetadata,
+                                void* obj,
+                                Capabilities const& capabilities) -> Expected<int> {
     Expected<int> expected = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     this->nodeDataMap.modify_if(concreteName, [&](auto& nodePair) { expected = std::get<NodeData>(nodePair.second).deserializePop(obj, inputMetadata); });
     return expected;
 }
 
-auto PathSpace::grabConcretePathComponent(ConcretePathIteratorStringView const& nextIter,
-                                          ConcretePathIteratorStringView const& end,
-                                          ConcreteName const& concreteName,
-                                          InputMetadata const& inputMetadata,
-                                          void* obj,
-                                          Capabilities const& capabilities) -> Expected<int> {
+auto PathSpace::extractConcretePathComponent(ConcretePathIteratorStringView const& nextIter,
+                                             ConcretePathIteratorStringView const& end,
+                                             ConcreteName const& concreteName,
+                                             InputMetadata const& inputMetadata,
+                                             void* obj,
+                                             Capabilities const& capabilities) -> Expected<int> {
     Expected<int> expected = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     this->nodeDataMap.if_contains(concreteName, [&](auto const& nodePair) {
-        expected = std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second) ? std::get<std::unique_ptr<PathSpace>>(nodePair.second)->grabInternal(nextIter, end, inputMetadata, obj, capabilities) : std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
+        expected = std::holds_alternative<std::unique_ptr<PathSpace>>(nodePair.second) ? std::get<std::unique_ptr<PathSpace>>(nodePair.second)->extractInternal(nextIter, end, inputMetadata, obj, capabilities) : std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
     });
     return expected;
 }

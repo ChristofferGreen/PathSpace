@@ -27,7 +27,7 @@ It's intended to be a multi-platform library supporting at least Windows, Linux,
 
 1. **Insert**: Add data or a PathSpace to one or more paths
 2. **Read**: Retrieve a copy of the value at a specified path
-3. **Grab**: Similar to read, but removes the data from the PathSpace
+3. **Extract**: Similar to read, but removes the data from the PathSpace
 
 ## Advanced Features
 

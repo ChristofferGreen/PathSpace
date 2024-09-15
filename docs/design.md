@@ -15,7 +15,7 @@ A PathSpace class can act as a parent class to a user supplied child class which
 PathSpace will by default create child path spaces of the same type as the parent. They are implemented via std::unique_ptr<PathSpace> which means they can override the base class methods with their own implementation. 
 
 ## Operations
-The operations in the base language are insert/read/grab, they are implemented as member functions of the PathSpace class.
+The operations in the base language are insert/read/extract, they are implemented as member functions of the PathSpace class.
 * **Insert**: 
 	* Insert data or a PathSpace to one or more paths. If the path does not exist it will be created.
 	* The given path can be a concrete path in which case at most one object will be inserted or a glob expression path which could potentially insert multiple values.
@@ -24,7 +24,7 @@ The operations in the base language are insert/read/grab, they are implemented a
 		* Optional capability object to determine if the PathSpace is allowed to insert at the specified path.
 		* Optional Time To Live (TTL) that specifies how long the data will exist before being deleted. By default they live forever.
 		* Optional Execution object that describes how to execute the data (if the data is a lambda or function):
-			* Execute immediately or when the user requests the data via read/grab.
+			* Execute immediately or when the user requests the data via read/extract.
 			* If the data should be cached and updated every n milliseconds.
 			* If the execution should be from the globally registered executions database via a supplied ID.
 			* How many times the function should be executed.
@@ -73,31 +73,31 @@ The operations in the base language are insert/read/grab, they are implemented a
 		* std::expected<T, Error> val = space.read<int>(“/test”, ReadOptions{.block=true, Capabilities{“/**”}); // Has a capacity that allows reading any data, block forever waiting for the data, or until the PathSpace destructor is called
 		* std::expected<PathSpace::json, Error> val = space.read<PathSpace::json>(“/test”); // Reads “/test” and it’s children back as a json object, if there are user objects that do not support conversion to json they become empty objects in the json.
 		* std::expected<std::shared_ptr<PathSpace>, Error> val = space.read<std::shared_ptr<PathSpace>>(“/test”); // returns a shared_ptr to a PathSpace at path “/test”
-* **Grab**: 
+* **Extract**: 
 	* Same as read but pops the data instead of just returning a copy.
 	* Syntax:
-		* std::expected<T, Error> PathSpace::grab<T>(ConcretePath, Block, optional<GrabOptions> const &options={})
+		* std::expected<T, Error> PathSpace::extract<T>(ConcretePath, Block, optional<ExtractOptions> const &options={})
 
 
 ## Blocking 
-It’s possible to send a blocking object to insert/read/grab instructing it to wait a certain amount of time for data to arrive if it is currently empty or non-existent.
+It’s possible to send a blocking object to insert/read/extract instructing it to wait a certain amount of time for data to arrive if it is currently empty or non-existent.
 
 ## Capability
 The capability functionality enables PathSpaces to have fine grained control over inserting/modifying or reading data in a PathSpace. If for example executions/lambdas can be inserted or if data at a specific path can be read. The capabilities are glob path based, controlling access over what parts of the tree can be accessed for what. A capability object can have control over multiple glob paths inside of it. 
 The following capabilities exist:
 * Read
-* Grab
+* Extract
 * Mutate
 * Execute
 
 ## Data Storage
-A normal PathSpace will store data by serialising it to a std::vector<std::byte>. That vector can contain data of different types and a separate vector storing std::type_id pointers together with how many objects or that type are in a row will be used to determine what parts of the data vector has what type. Std::function objects will be stored in their own vector as well since they can not be serialised. Insert will append serialised data to this vector. Grab will not necessarily erase from the front of the vector since this would be too costly, a pointer to the front element will instead be stored and its position changed forward when a grab is issued. At first the serialisation will be done via the alpaca library but when a compiler supporting the C++26 serialisation functionality it will be rewritten to use that instead.
+A normal PathSpace will store data by serialising it to a std::vector<std::byte>. That vector can contain data of different types and a separate vector storing std::type_id pointers together with how many objects or that type are in a row will be used to determine what parts of the data vector has what type. Std::function objects will be stored in their own vector as well since they can not be serialised. Insert will append serialised data to this vector. Extract will not necessarily erase from the front of the vector since this would be too costly, a pointer to the front element will instead be stored and its position changed forward when a extract is issued. At first the serialisation will be done via the alpaca library but when a compiler supporting the C++26 serialisation functionality it will be rewritten to use that instead.
 
 ## Glob Expressions
 Paths can be glob expressions for the insert operation, the data will be copied and inserted in any matching path. A glob expression in insert cannot create paths since they have nothing to match against.
 
 ## JSON Serialisation
-Serialisation will be supported out from the PathSpace into JSON in order to enable to do introspection and visualisation of the internal data of the path space or for export of performance data. For example to show a filesystem view of the tree in a GUI where individual data can be viewed. Will also support deserialisation for loading old state. Binary serialisation can also be done to for example create a state of the path space that can be serialised later for example for typical save/load functionality. This is achieved by specifying a json data type for read or grab, example: space.read<std::string>(“/test”, ReadOptions{.toJSON=true})
+Serialisation will be supported out from the PathSpace into JSON in order to enable to do introspection and visualisation of the internal data of the path space or for export of performance data. For example to show a filesystem view of the tree in a GUI where individual data can be viewed. Will also support deserialisation for loading old state. Binary serialisation can also be done to for example create a state of the path space that can be serialised later for example for typical save/load functionality. This is achieved by specifying a json data type for read or extract, example: space.read<std::string>(“/test”, ReadOptions{.toJSON=true})
 
 ## Multi-threading
 All the PathSpace operations will be thread safe. The threading will be done with a thread pool. Much of the heavy lifting insuring thread safety will be done via the phmap::parallel_flat_hash_map library. The possible executabler objects that can be inserted into a PathSpace is:
@@ -184,7 +184,7 @@ TBD
 ## Bottlenecks
 Linda like tuple spaces have traditionally been seen as slow. To some degree this is due to the pattern matching required to extract data from a tuple. 
 ### Path Caching
-In PathSpace the slowest part will be traversing the path hierarchy. Potentially this could be sped up if we provide a cache of the most recent lookups of paths for insert/read/grab. Could be done as a hashmap from a ConcretePath to a PathSpace*. Would need to clear the cache on grab, or other PathSpace removals.
+In PathSpace the slowest part will be traversing the path hierarchy. Potentially this could be sped up if we provide a cache of the most recent lookups of paths for insert/read/extract. Could be done as a hashmap from a ConcretePath to a PathSpace*. Would need to clear the cache on extract, or other PathSpace removals.
 
 ### Version Migration Utilities
 TBD
@@ -196,7 +196,7 @@ Will be possible to collect metrics on the data for the paths, how often they ar
 Especially for the networking part some checking for data consistency will be needed.
 
 ### Reactive programming
-The extendability of a PathSpace can be used to create a reactive data flow, for example by creating a child PathSpace that takes n other PathSpace paths as input and combines their values by grabbing from them or a PathSpace that performs a transformation on any data from n other paths. Each tuple can be seen as a data stream as long as they are alive, when they run out of items the stream dies. One example could be a lambda within the space that waits for the left mouse button to be pressed via space.read<int>(“/system/mouse/button_down”, ReadOptions{.block=true}).
+The extendability of a PathSpace can be used to create a reactive data flow, for example by creating a child PathSpace that takes n other PathSpace paths as input and combines their values by extractbing from them or a PathSpace that performs a transformation on any data from n other paths. Each tuple can be seen as a data stream as long as they are alive, when they run out of items the stream dies. One example could be a lambda within the space that waits for the left mouse button to be pressed via space.read<int>(“/system/mouse/button_down”, ReadOptions{.block=true}).
 
 ### Distributed Data
 Another specialisation is to create a PathSpace child that can replicate a space over several computers over the network. Duplicating data where needed. May use Asia for networking. Like a live object.
@@ -219,7 +219,7 @@ There will be support for manipulating a PathSpace through lua. Issuing an opera
 Using a live script interpreter a command line can be written.
 
 ### Compression
-Compresses the input data seamlessly behind the scene on insert and decompresses it on read/grab.
+Compresses the input data seamlessly behind the scene on insert and decompresses it on read/extract.
 
 ### Out-of-core
 Similar to compression but can store the data on the hard drive instead of in RAM.

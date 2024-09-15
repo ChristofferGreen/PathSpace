@@ -37,7 +37,7 @@ public:
 
             // ToDo: Figure out optimization for this usecase:
             // space.insert("/fun", [](){ return 32; });
-            // space.grab<int>("/fun");
+            // space.extract<int>("/fun");
             // The above will create an unnecessary serialize/deserialize for the returned value.
             // Not sure if avoiding the serialize/deserialize is possible.
         } else {
@@ -63,7 +63,7 @@ public:
 
         if (types.front().category == DataCategory::ExecutionFunctionPointer) {
             // ToDo: If execution is marked to happen in a different thread then do that instead
-            if (!execution.has_value() || (execution.has_value() && execution.value().category == ExecutionOptions::Category::OnReadOrGrab) || (execution.has_value() && execution.value().category == ExecutionOptions::Category::Immediate)) {
+            if (!execution.has_value() || (execution.has_value() && execution.value().category == ExecutionOptions::Category::OnReadOrExtract) || (execution.has_value() && execution.value().category == ExecutionOptions::Category::Immediate)) {
                 void* funPtr = nullptr;
                 assert(inputMetadata.deserializeFunctionPointer);
                 inputMetadata.deserializeFunctionPointer(&funPtr, data);

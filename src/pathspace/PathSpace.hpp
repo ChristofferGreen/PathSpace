@@ -19,7 +19,7 @@ namespace SP {
  * @brief Represents a hierarchical space for storing and managing data.
  *
  * PathSpace provides a tree-like structure for organizing and accessing data,
- * supporting operations like insert, read, and grab with path-based access.
+ * supporting operations like insert, read, and extract with path-based access.
  * It allows for flexible data storage and retrieval using glob-style paths.
  *
  * The class is designed to be thread-safe and efficient, using a TaskPool
@@ -79,15 +79,15 @@ public:
     /**
      * @brief Reads and removes data from the PathSpace at the specified path.
      *
-     * @tparam DataType The type of data to be grabbed.
-     * @param path The concrete path from which to grab the data.
+     * @tparam DataType The type of data to be extractbed.
+     * @param path The concrete path from which to extract the data.
      * @param capabilities Capabilities controlling access to the data.
-     * @return Expected<DataType> containing the grabbed data if successful, or an error if not.
+     * @return Expected<DataType> containing the extractbed data if successful, or an error if not.
      */
     template <typename DataType>
-    auto grab(ConcretePathStringView const& path, Capabilities const& capabilities = Capabilities::All()) -> Expected<DataType> {
+    auto extract(ConcretePathStringView const& path, Capabilities const& capabilities = Capabilities::All()) -> Expected<DataType> {
         DataType obj;
-        if (auto ret = this->grabInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, capabilities); !ret) {
+        if (auto ret = this->extractInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, capabilities); !ret) {
             return std::unexpected(ret.error());
         }
         return obj;
@@ -210,23 +210,23 @@ private:
                                    InputMetadata const& inputMetadata,
                                    void* obj,
                                    ReadOptions const& options) const -> Expected<int>;
-    auto grabInternal(ConcretePathIteratorStringView const& iter,
-                      ConcretePathIteratorStringView const& end,
-                      InputMetadata const& inputMetadata,
-                      void* obj,
-                      Capabilities const& capabilities) -> Expected<int>;
-    auto grabDataName(ConcreteName const& concreteName,
-                      ConcretePathIteratorStringView const& nextIter,
-                      ConcretePathIteratorStringView const& end,
-                      InputMetadata const& inputMetadata,
-                      void* obj,
-                      Capabilities const& capabilities) -> Expected<int>;
-    auto grabConcretePathComponent(ConcretePathIteratorStringView const& nextIter,
-                                   ConcretePathIteratorStringView const& end,
-                                   ConcreteName const& concreteName,
-                                   InputMetadata const& inputMetadata,
-                                   void* obj,
-                                   Capabilities const& capabilities) -> Expected<int>;
+    auto extractInternal(ConcretePathIteratorStringView const& iter,
+                         ConcretePathIteratorStringView const& end,
+                         InputMetadata const& inputMetadata,
+                         void* obj,
+                         Capabilities const& capabilities) -> Expected<int>;
+    auto extractDataName(ConcreteName const& concreteName,
+                         ConcretePathIteratorStringView const& nextIter,
+                         ConcretePathIteratorStringView const& end,
+                         InputMetadata const& inputMetadata,
+                         void* obj,
+                         Capabilities const& capabilities) -> Expected<int>;
+    auto extractConcretePathComponent(ConcretePathIteratorStringView const& nextIter,
+                                      ConcretePathIteratorStringView const& end,
+                                      ConcreteName const& concreteName,
+                                      InputMetadata const& inputMetadata,
+                                      void* obj,
+                                      Capabilities const& capabilities) -> Expected<int>;
     NodeDataHashMap nodeDataMap;
     TaskPool* pool;
 };

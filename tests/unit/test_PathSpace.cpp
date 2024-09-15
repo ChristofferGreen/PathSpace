@@ -102,43 +102,43 @@ TEST_CASE("PathSpace Read") {
     }
 }
 
-TEST_CASE("PathSpace Grab") {
-    SUBCASE("Simple PathSpace Grab") {
+TEST_CASE("PathSpace Extract") {
+    SUBCASE("Simple PathSpace Extract") {
         PathSpace pspace;
         CHECK(pspace.insert("/test", 56).nbrValuesInserted == 1);
         CHECK(pspace.insert("/test", 58).nbrValuesInserted == 1);
-        auto ret = pspace.grab<int>("/test");
+        auto ret = pspace.extract<int>("/test");
         CHECK(ret.has_value());
         CHECK(ret.value() == 56);
-        auto ret2 = pspace.grab<int>("/test");
+        auto ret2 = pspace.extract<int>("/test");
         CHECK(ret2.has_value());
         CHECK(ret2.value() == 58);
     }
 
-    SUBCASE("Deeper PathSpace Grab") {
+    SUBCASE("Deeper PathSpace Extract") {
         PathSpace pspace;
         CHECK(pspace.insert("/test1/test2", 56).nbrValuesInserted == 1);
         CHECK(pspace.insert("/test1/test2", 58).nbrValuesInserted == 1);
-        auto ret = pspace.grab<int>("/test1/test2");
+        auto ret = pspace.extract<int>("/test1/test2");
         CHECK(ret.has_value());
         CHECK(ret.value() == 56);
-        auto ret2 = pspace.grab<int>("/test1/test2");
+        auto ret2 = pspace.extract<int>("/test1/test2");
         CHECK(ret2.has_value());
         CHECK(ret2.value() == 58);
     }
 
-    SUBCASE("Deeper PathSpace Grab Different Types") {
+    SUBCASE("Deeper PathSpace Extract Different Types") {
         PathSpace pspace;
         CHECK(pspace.insert("/test1/test2", 56.45f).nbrValuesInserted == 1);
         CHECK(pspace.insert("/test1/test2", 'a').nbrValuesInserted == 1);
         CHECK(pspace.insert("/test1/test2", 34.5f).nbrValuesInserted == 1);
-        auto ret = pspace.grab<float>("/test1/test2");
+        auto ret = pspace.extract<float>("/test1/test2");
         CHECK(ret.has_value());
         CHECK(ret.value() == 56.45f);
-        auto ret2 = pspace.grab<char>("/test1/test2");
+        auto ret2 = pspace.extract<char>("/test1/test2");
         CHECK(ret2.has_value());
         CHECK(ret2.value() == 'a');
-        auto ret3 = pspace.grab<float>("/test1/test2");
+        auto ret3 = pspace.extract<float>("/test1/test2");
         CHECK(ret3.has_value());
         CHECK(ret3.value() == 34.5f);
     }
