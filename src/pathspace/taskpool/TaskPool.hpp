@@ -26,11 +26,9 @@ public:
     auto operator=(TaskPool const&) -> TaskPool& = delete;
 
     auto addTask(Task const& task) -> void;
-    auto addTask(std::function<void()> task) -> void;
-    auto addTask(FunctionPointerTask task, void* const functionPointer, void* returnData, ConcretePathString const& path, PathSpace const& space) -> void;
+    // auto addTask(std::function<void()> task) -> void;
 
     auto shutdown() -> void;
-    auto resize(size_t newSize) -> void;
     auto size() const -> size_t;
 
 private:

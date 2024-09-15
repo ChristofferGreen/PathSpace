@@ -27,12 +27,13 @@ public:
             // Send the function over to the ThreadPool for execution. The return type should be reinserted to the space at
             // the right path. But will be stored in a std::vector<std::any>.
             // inputData.metadata.serializeFunctionPointer(inputData.obj, data, options.execution);
-            pool->addTask({.callable = [](void* const functionPointer) -> void {
+
+            /*pool->addTask({.callable = [](void* const functionPointer) -> void {
 
                            },
                            .functionPointer = inputData.obj,
                            .path = path,
-                           .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{}});
+                           .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{}});*/
 
             // ToDo: Figure out optimization for this usecase:
             // space.insert("/fun", [](){ return 32; });

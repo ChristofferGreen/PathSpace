@@ -1,17 +1,26 @@
 #pragma once
 #include "core/ExecutionOptions.hpp"
 #include "path/ConstructiblePath.hpp"
+#include <cassert>
 #include <functional>
 #include <variant>
 
 namespace SP {
-using FunctionPointerTask = void (*)(void* const functionPointer);
+struct PathSpace;
+using FunctionPointerTask = void (*)(PathSpace* space, ConstructiblePath const& path, ExecutionOptions const& executionOptions, void* userSuppliedFunction);
 
 struct Task {
-    std::variant<std::function<void()>, FunctionPointerTask> callable; // FunctionPointerTask is a wrapper
-    void* functionPointer = nullptr;                                   // User function
+    void* userSuppliedFunction = nullptr;
+    FunctionPointerTask wrapperFunction = nullptr;
+    PathSpace* space = nullptr;
     ConstructiblePath path;
     ExecutionOptions executionOptions;
+
+    auto execute() -> void {
+        assert(this->userSuppliedFunction != nullptr);
+        assert(this->space != nullptr);
+        this->wrapperFunction(this->space, this->path, this->executionOptions, this->userSuppliedFunction);
+    }
 };
 
 } // namespace SP

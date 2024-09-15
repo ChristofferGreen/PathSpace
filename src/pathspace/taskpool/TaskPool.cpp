@@ -31,21 +31,14 @@ auto TaskPool::addTask(Task const& task) -> void {
     taskCV.notify_one();
 }
 
-void TaskPool::addTask(std::function<void()> task) {
+/*void TaskPool::addTask(std::function<void()> task) {
     {
         std::lock_guard<std::mutex> lock(taskMutex);
         tasks.emplace(Task{std::move(task)});
     }
     taskCV.notify_one();
-}
+}*/
 
-auto TaskPool::addTask(FunctionPointerTask task, void* const functionPointer, void* returnData, ConcretePathString const& path, PathSpace const& space) -> void {
-    {
-        std::lock_guard<std::mutex> lock(taskMutex);
-        tasks.emplace(Task{task, functionPointer});
-    }
-    taskCV.notify_one();
-}
 /*
 auto TaskPool::addFunctionPointerTaskDirect(FunctionPointerTask task, void* const functionPointer, void* returnData) -> void {
     std::unique_lock<std::mutex> lock(taskMutex);
@@ -67,25 +60,6 @@ void TaskPool::shutdown() {
     for (std::thread& worker : workers) {
         if (worker.joinable()) {
             worker.join();
-        }
-    }
-}
-
-void TaskPool::resize(size_t newSize) {
-    if (newSize == workers.size())
-        return;
-
-    if (newSize < workers.size()) {
-        // Reduce the number of threads
-        size_t threadsToRemove = workers.size() - newSize;
-        for (size_t i = 0; i < threadsToRemove; ++i) {
-            addTask([this]() { throw std::runtime_error("Thread removal"); });
-        }
-    } else {
-        // Increase the number of threads
-        size_t threadsToAdd = newSize - workers.size();
-        for (size_t i = 0; i < threadsToAdd; ++i) {
-            workers.emplace_back(&TaskPool::workerFunction, this);
         }
     }
 }
@@ -117,12 +91,13 @@ void TaskPool::workerFunction() {
             availableThreads--;
         }
 
-        if (std::holds_alternative<std::function<void()>>(task.callable)) {
+        /*if (std::holds_alternative<std::function<void()>>(task.callable)) {
             std::get<std::function<void()>>(task.callable)();
         } else if (std::holds_alternative<FunctionPointerTask>(task.callable)) {
             auto functionPointerTask = std::get<FunctionPointerTask>(task.callable);
             functionPointerTask(task.functionPointer);
-        }
+        }*/
+        task.execute();
     }
 }
 

@@ -14,7 +14,6 @@
 #include <string>
 
 namespace SP {
-
 /**
  * @class PathSpace
  * @brief Represents a hierarchical space for storing and managing data.
@@ -49,12 +48,14 @@ public:
         InsertReturn ret;
         if (!path.isValid()) {
             ret.errors.emplace_back(Error::Code::InvalidPath, std::string("The path was not valid: ").append(path.getPath()));
-        } else {
-            auto constructedPath = path.isConcrete()
-                                           ? ConstructiblePath{path}
-                                           : ConstructiblePath{};
-            this->insertInternal(constructedPath, path.begin(), path.end(), InputData{data}, options, ret);
+            return ret;
         }
+        bool const isConcretePath = path.isConcrete();
+        auto constructedPath = isConcretePath
+                                       ? ConstructiblePath{path}
+                                       : ConstructiblePath{};
+        if (!this->insertFunctionPointer(isConcretePath, constructedPath, data, options))
+            this->insertInternal(constructedPath, path.begin(), path.end(), InputData{data}, options, ret);
         return ret;
     }
 
@@ -135,6 +136,32 @@ public:
     }
 
 private:
+    template <typename DataType>
+    auto insertFunctionPointer(bool const isConcretePath, ConstructiblePath const& constructedPath, DataType const& data, InsertOptions const& options) -> bool {
+        bool const isFunctionPointer = (InputData{data}.metadata.category == DataCategory::ExecutionFunctionPointer);
+        bool const isImmediateExecution = (options.execution.has_value() && options.execution.value().category == ExecutionOptions::Category::Immediate);
+        if (isConcretePath && isFunctionPointer && isImmediateExecution) {
+            FunctionPointerTask task = [](PathSpace* space, ConstructiblePath const& path, ExecutionOptions const& executionOptions, void* userSuppliedFunction) {
+                assert(userSuppliedFunction != nullptr);
+                if constexpr (std::is_function_v<std::remove_pointer_t<DataType>>) {
+                    space->insert(path.getPath(), reinterpret_cast<std::invoke_result_t<DataType> (*)()>(userSuppliedFunction)());
+                }
+            };
+            void* fun = nullptr;
+            if constexpr (std::is_function_v<std::remove_pointer_t<decltype(data)>>) {
+                fun = static_cast<void*>(data);
+            }
+            pool->addTask({
+                    .userSuppliedFunction = fun,
+                    .wrapperFunction = task,
+                    .space = this,
+                    .path = constructedPath,
+                    .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
+            });
+            return true;
+        }
+        return false;
+    }
     auto insertInternal(ConstructiblePath& path,
                         GlobPathIteratorStringView const& iter,
                         GlobPathIteratorStringView const& end,
