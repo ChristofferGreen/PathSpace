@@ -52,9 +52,7 @@ public:
             return ret;
         }
         bool const isConcretePath = path.isConcrete();
-        auto constructedPath = isConcretePath
-                                       ? ConstructiblePath{path}
-                                       : ConstructiblePath{};
+        auto constructedPath = isConcretePath ? ConstructiblePath{path} : ConstructiblePath{};
         if (!this->insertFunctionPointer(isConcretePath, constructedPath, data, options))
             this->insertInternal(constructedPath, path.begin(), path.end(), InputData{data}, options, ret);
         return ret;
@@ -86,7 +84,9 @@ public:
      * @return Expected<DataType> containing the extractbed data if successful, or an error if not.
      */
     template <typename DataType>
-    auto extract(ConcretePathStringView const& path, ExtractOptions const& options = {}, Capabilities const& capabilities = Capabilities::All()) -> Expected<DataType> {
+    auto extract(ConcretePathStringView const& path,
+                 ExtractOptions const& options = {},
+                 Capabilities const& capabilities = Capabilities::All()) -> Expected<DataType> {
         DataType obj;
         if (auto ret = this->extractInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities); !ret) {
             return std::unexpected(ret.error());
@@ -94,55 +94,20 @@ public:
         return obj;
     }
 
-    /**
-     * @brief Subscribes to changes at the specified path.
-     *
-     * @param path The glob-style path to subscribe to.
-     * @param callback Function to be called when changes occur.
-     * @param capabilities Capabilities controlling access to the data.
-     * @return Expected<void> indicating success or an error.
-     */
-    auto
-    subscribe(GlobPathStringView const& path, std::function<void(const GlobPathStringView&)> callback, Capabilities const& capabilities = Capabilities::All()) -> Expected<void>;
-
-    /**
-     * @brief Visits and potentially modifies data at the specified path.
-     *
-     * @tparam DataType The type of data to be visited.
-     * @param path The glob-style path to visit.
-     * @param visitor Function to be called for each matching item.
-     * @param capabilities Capabilities controlling access to the data.
-     * @return Expected<void> indicating success or an error.
-     */
-    template <typename DataType>
-    auto visit(GlobPathStringView const& path, std::function<void(DataType&)> visitor, Capabilities const& capabilities = Capabilities::All()) -> Expected<void>;
-
-    /**
-     * @brief Converts the PathSpace to a JSON representation.
-     *
-     * @param isHumanReadable If true, formats the JSON for human readability.
-     * @return String containing the JSON representation of the PathSpace.
-     */
-    auto toJSON(bool const isHumanReadable) const -> std::string;
-
-    /**
-     * @brief Serializes the PathSpace.
-     *
-     * @tparam Archive The type of archive to serialize to.
-     * @param ar The archive object to serialize to.
-     */
-    template <class Archive>
-    void serialize(Archive& ar) {
-        ar(this->nodeDataMap);
-    }
-
 private:
     template <typename DataType>
-    auto insertFunctionPointer(bool const isConcretePath, ConstructiblePath const& constructedPath, DataType const& data, InsertOptions const& options) -> bool {
+    auto insertFunctionPointer(bool const isConcretePath,
+                               ConstructiblePath const& constructedPath,
+                               DataType const& data,
+                               InsertOptions const& options) -> bool {
         bool const isFunctionPointer = (InputData{data}.metadata.category == DataCategory::ExecutionFunctionPointer);
-        bool const isImmediateExecution = (options.execution.has_value() && options.execution.value().category == ExecutionOptions::Category::Immediate);
+        bool const isImmediateExecution
+                = (options.execution.has_value() && options.execution.value().category == ExecutionOptions::Category::Immediate);
         if (isConcretePath && isFunctionPointer && isImmediateExecution) {
-            FunctionPointerTask task = [](PathSpace* space, ConstructiblePath const& path, ExecutionOptions const& executionOptions, void* userSuppliedFunction) {
+            FunctionPointerTask task = [](PathSpace* space,
+                                          ConstructiblePath const& path,
+                                          ExecutionOptions const& executionOptions,
+                                          void* userSuppliedFunction) {
                 assert(userSuppliedFunction != nullptr);
                 if constexpr (std::is_function_v<std::remove_pointer_t<DataType>>) {
                     space->insert(path.getPath(), reinterpret_cast<std::invoke_result_t<DataType> (*)()>(userSuppliedFunction)());
@@ -169,7 +134,11 @@ private:
                         InputData const& inputData,
                         InsertOptions const& options,
                         InsertReturn& ret) -> void;
-    auto insertFinalComponent(ConstructiblePath& path, GlobName const& pathComponent, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void;
+    auto insertFinalComponent(ConstructiblePath& path,
+                              GlobName const& pathComponent,
+                              InputData const& inputData,
+                              InsertOptions const& options,
+                              InsertReturn& ret) -> void;
     auto insertIntermediateComponent(ConstructiblePath& path,
                                      GlobPathIteratorStringView const& iter,
                                      GlobPathIteratorStringView const& end,
@@ -177,9 +146,16 @@ private:
                                      InputData const& inputData,
                                      InsertOptions const& options,
                                      InsertReturn& ret) -> void;
-    auto
-    insertConcreteDataName(ConstructiblePath& path, ConcreteName const& concreteName, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void;
-    auto insertGlobDataName(ConstructiblePath& path, GlobName const& globName, InputData const& inputData, InsertOptions const& options, InsertReturn& ret) -> void;
+    auto insertConcreteDataName(ConstructiblePath& path,
+                                ConcreteName const& concreteName,
+                                InputData const& inputData,
+                                InsertOptions const& options,
+                                InsertReturn& ret) -> void;
+    auto insertGlobDataName(ConstructiblePath& path,
+                            GlobName const& globName,
+                            InputData const& inputData,
+                            InsertOptions const& options,
+                            InsertReturn& ret) -> void;
     auto insertGlobPathComponent(ConstructiblePath& path,
                                  GlobPathIteratorStringView const& iter,
                                  GlobPathIteratorStringView const& end,
