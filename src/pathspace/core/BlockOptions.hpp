@@ -4,13 +4,13 @@
 #include <optional>
 
 struct BlockOptions {
-    enum class BlockBehavior {
+    enum class Behavior {
         DontWait,
         WaitForExecution,
         WaitForExistence,
-        WaitForExecutionAndExistence
+        Wait
     };
 
-    BlockBehavior behavior = BlockBehavior::DontWait;
+    Behavior behavior = Behavior::DontWait;
     std::optional<std::chrono::milliseconds> timeout;
 };

@@ -75,6 +75,17 @@ public:
         return obj;
     }
 
+    template <typename DataType>
+    auto readBlock(ConcretePathStringView const& path,
+                   OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}, .doPop = false},
+                   Capabilities const& capabilities = Capabilities::All()) -> Expected<DataType> {
+        DataType obj;
+        if (auto ret = this->extractInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities); !ret) {
+            return std::unexpected(ret.error());
+        }
+        return obj;
+    }
+
     /**
      * @brief Reads and removes data from the PathSpace at the specified path.
      *
@@ -86,6 +97,17 @@ public:
     template <typename DataType>
     auto extract(ConcretePathStringView const& path, OutOptions const& options = {}, Capabilities const& capabilities = Capabilities::All())
             -> Expected<DataType> {
+        DataType obj;
+        if (auto ret = this->extractInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities); !ret) {
+            return std::unexpected(ret.error());
+        }
+        return obj;
+    }
+
+    template <typename DataType>
+    auto extractBlock(ConcretePathStringView const& path,
+                      OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}},
+                      Capabilities const& capabilities = Capabilities::All()) -> Expected<DataType> {
         DataType obj;
         if (auto ret = this->extractInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities); !ret) {
             return std::unexpected(ret.error());

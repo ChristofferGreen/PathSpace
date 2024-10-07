@@ -1,5 +1,4 @@
 #include "PathSpace.hpp"
-#include "path/ConcretePath.hpp"
 #include "pathspace/type/InputData.hpp"
 
 namespace SP {
