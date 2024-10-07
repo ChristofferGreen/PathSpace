@@ -7,8 +7,9 @@
 
 namespace SP {
 
-struct ExtractOptions {
+struct OutOptions {
     std::optional<Capabilities> capabilities;
+    std::optional<ExecutionOptions> execution;
     std::optional<BlockOptions> block;
     std::optional<int> maxReadsForBlob;
     bool doPop = true;

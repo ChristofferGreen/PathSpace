@@ -1,7 +1,7 @@
 #pragma once
 #include "ElementType.hpp"
 #include "Error.hpp"
-#include "InsertOptions.hpp"
+#include "InOptions.hpp"
 #include "core/ExecutionOptions.hpp"
 #include "core/InsertReturn.hpp"
 #include "path/ConstructiblePath.hpp"
@@ -19,8 +19,7 @@ namespace SP {
 
 class NodeData {
 public:
-    auto
-    serialize(ConstructiblePath const& path, const InputData& inputData, const InsertOptions& options, TaskPool* pool, InsertReturn& ret)
+    auto serialize(ConstructiblePath const& path, const InputData& inputData, const InOptions& options, TaskPool* pool, InsertReturn& ret)
             -> std::optional<Error> {
         if (!inputData.metadata.serialize)
             return Error{Error::Code::SerializationFunctionMissing, "Serialization function is missing."};

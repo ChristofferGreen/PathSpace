@@ -20,7 +20,7 @@ The operations in the base language are insert/read/extract, they are implemente
 	* Insert data or a PathSpace to one or more paths. If the path does not exist it will be created.
 	* The given path can be a concrete path in which case at most one object will be inserted or a glob expression path which could potentially insert multiple values.
 	* Supports batch operations by inserting an initialiser list
-	* Takes an optional InsertOptions which has the following properties:
+	* Takes an optional InOptions which has the following properties:
 		* Optional capability object to determine if the PathSpace is allowed to insert at the specified path.
 		* Optional Time To Live (TTL) that specifies how long the data will exist before being deleted. By default they live forever.
 		* Optional Execution object that describes how to execute the data (if the data is a lambda or function):
@@ -38,7 +38,7 @@ The operations in the base language are insert/read/extract, they are implemente
 			* Lambda
 			* Function pointer
 			* std::function
-			* Preregistered global executions of the above types tagged with an ID, this method supports serialisation/deserialisation over the network. This is specified in the InsertOptions and renders the input data meaningless.
+			* Preregistered global executions of the above types tagged with an ID, this method supports serialisation/deserialisation over the network. This is specified in the InOptions and renders the input data meaningless.
 		* Data
 			* Fundamental types
 			* Standard library containers if serialisable
@@ -47,7 +47,7 @@ The operations in the base language are insert/read/extract, they are implemente
 		* How many items were inserted.
 		* What errors occurred during insertion.
 	* Syntax:
-		* InsertReturn PathSpace::insert<T>(GlobPath const &path, T const &value, optional<InsertOptions> const &options={})
+		* InsertReturn PathSpace::insert<T>(GlobPath const &path, T const &value, optional<InOptions> const &options={})
 	* Example:
 		* InsertReturn val = space.insert("/test", 5); // insert 5 to “/test”
 		* InsertReturn val = space.insert(“/*/abc”, 34); // insert 34 to, for example, “/test/abc” and “/second/abc”.
@@ -76,7 +76,7 @@ The operations in the base language are insert/read/extract, they are implemente
 * **Extract**: 
 	* Same as read but pops the data instead of just returning a copy.
 	* Syntax:
-		* std::expected<T, Error> PathSpace::extract<T>(ConcretePath, Block, optional<ExtractOptions> const &options={})
+		* std::expected<T, Error> PathSpace::extract<T>(ConcretePath, Block, optional<OutOptions> const &options={})
 
 
 ## Blocking 
