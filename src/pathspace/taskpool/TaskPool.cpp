@@ -8,8 +8,7 @@ TaskPool& TaskPool::Instance() {
     return instance;
 }
 
-TaskPool::TaskPool(size_t threadCount)
-    : stop(false), availableThreads(0) {
+TaskPool::TaskPool(size_t threadCount) : stop(false), availableThreads(0) {
     if (threadCount == 0) {
         threadCount = std::thread::hardware_concurrency();
     }
@@ -97,7 +96,7 @@ void TaskPool::workerFunction() {
             auto functionPointerTask = std::get<FunctionPointerTask>(task.callable);
             functionPointerTask(task.functionPointer);
         }*/
-        task.execute();
+        task.taskExecutor(task);
     }
 }
 

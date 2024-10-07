@@ -18,10 +18,11 @@ namespace SP {
 struct PathSpace;
 
 template <typename T>
-concept AlpacaCompatible = !std::is_same_v<T, std::function<void()>> && !std::is_same_v<T, void (*)()> && !std::is_pointer<T>::value && requires(T t, std::vector<uint8_t>& v) {
-    { serialize_alpaca<T>(&t, v) };
-    { deserialize_alpaca<T>(&t, v) };
-};
+concept AlpacaCompatible = !std::is_same_v<T, std::function<void()>> && !std::is_same_v<T, void (*)()> && !std::is_pointer<T>::value
+                           && requires(T t, std::vector<uint8_t>& v) {
+                                  { serialize_alpaca<T>(&t, v) };
+                                  { deserialize_alpaca<T>(&t, v) };
+                              };
 
 template <typename T>
 static auto serialize_alpaca(void const* objPtr, std::vector<uint8_t>& bytes) -> void {
@@ -73,6 +74,9 @@ static auto deserialize_fundamental(void* objPtr, std::vector<uint8_t>& bytes) -
     bytes.erase(bytes.begin(), bytes.begin() + sizeof(T));
 }
 
+static auto serialize_std_function(void const* objPtr, std::vector<uint8_t>& bytes) -> void {
+}
+
 static auto serialize_function_pointer(void const* objPtr, std::vector<uint8_t>& bytes) -> void {
     auto funcPtr = *static_cast<void (**)()>(const_cast<void*>(objPtr));
     auto funcPtrInt = reinterpret_cast<std::uintptr_t>(funcPtr);
@@ -102,8 +106,15 @@ static auto deserialize_function_pointer_const(void* objPtr, std::vector<uint8_t
     *static_cast<void (**)()>(objPtr) = funcPtr;
 }
 
+static auto deserialize_std_function(void* objPtr, std::vector<uint8_t>& bytes) -> void {
+}
+
+static auto deserialize_std_function_const(void* objPtr, std::vector<uint8_t>& bytes) -> void {
+}
+
 template <typename T>
-static auto serialize_function_pointer_ret(void* objPtr, std::vector<uint8_t>& bytes, std::optional<ExecutionOptions> const& executionOptions) -> void {
+static auto
+serialize_function_pointer_ret(void* objPtr, std::vector<uint8_t>& bytes, std::optional<ExecutionOptions> const& executionOptions) -> void {
     /*
     Send the function over to the ThreadPool for execution. The return type should be reinserted to the space at
     the right path. But will be stored in a std::vector<std::any>.
@@ -181,6 +192,10 @@ static auto execute_function_pointer(void* const functionPointer, void* returnDa
     }
 }
 
+template <typename T>
+static auto execute_std_function(void* const function, void* returnData, TaskPool* pool) {
+}
+
 class PathSpace;
 
 template <typename T>
@@ -195,6 +210,13 @@ concept ExecutionFunctionPointer = requires {
     requires std::is_invocable_v<std::remove_pointer_t<T>>;
 };
 
+template <typename T>
+concept ExecutionStdFunction = requires(T f) {
+    requires std::is_invocable_v<T>;
+    requires !std::is_pointer_v<T>;               // Exclude raw function pointers
+    requires !std::is_same_v<std::decay_t<T>, T>; // Exclude objects with operator()
+};
+
 template <typename CVRefT>
 struct InputMetadataT {
     using T = std::remove_cvref_t<CVRefT>;
@@ -207,6 +229,8 @@ struct InputMetadataT {
             return DataCategory::ExecutionFunctionPointer;
         } else if constexpr (FunctionPointer<T>) {
             return DataCategory::FunctionPointer;
+        } else if constexpr (ExecutionStdFunction<T>) {
+            return DataCategory::ExecutionStdFunction;
         } else {
             return DataCategory::None;
         }
@@ -217,6 +241,8 @@ struct InputMetadataT {
             return &serialize_function_pointer;
         } else if constexpr (FunctionPointer<T>) {
             return &serialize_function_pointer;
+        } else if constexpr (ExecutionStdFunction<T>) {
+            return &serialize_std_function;
         } else if constexpr (std::is_fundamental<T>::value) {
             return &serialize_fundamental<T>;
         } else if constexpr (AlpacaCompatible<T>) {
@@ -231,6 +257,8 @@ struct InputMetadataT {
             return deserialize_function_pointer;
         } else if constexpr (FunctionPointer<T>) {
             return &deserialize_function_pointer;
+        } else if constexpr (ExecutionStdFunction<T>) {
+            return &deserialize_std_function;
         } else if constexpr (std::is_fundamental<T>::value) {
             return &deserialize_fundamental<T>;
         } else if constexpr (AlpacaCompatible<T>) {
@@ -245,6 +273,8 @@ struct InputMetadataT {
             return deserialize_function_pointer_const;
         } else if constexpr (FunctionPointer<T>) {
             return &deserialize_function_pointer_const;
+        } else if constexpr (ExecutionStdFunction<T>) {
+            return &deserialize_std_function_const;
         } else if constexpr (std::is_fundamental<T>::value) {
             return &deserialize_fundamental_const<T>;
         } else if constexpr (AlpacaCompatible<T>) {
@@ -263,6 +293,16 @@ struct InputMetadataT {
     }();
     static constexpr auto deserializeFunctionPointer = &deserialize_function_pointer_ret<T>;
     static constexpr auto executeFunctionPointer = &execute_function_pointer<T>;
+
+    static constexpr auto serializeStdFunction = []() {
+        if constexpr (ExecutionFunctionPointer<T>) {
+            return &serialize_function_pointer_ret<T>;
+        } else {
+            return nullptr;
+        }
+    }();
+    // static constexpr auto deserializeStdFunction = &deserialize_std_function<T>;
+    // static constexpr auto executeStdFunction = &execute_std_function<T>;
 };
 
 } // namespace SP

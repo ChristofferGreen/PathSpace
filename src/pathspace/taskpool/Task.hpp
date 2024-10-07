@@ -7,20 +7,22 @@
 
 namespace SP {
 struct PathSpace;
-using FunctionPointerTask = void (*)(PathSpace* space, ConstructiblePath const& path, ExecutionOptions const& executionOptions, void* userSuppliedFunction);
 
 struct Task {
-    void* userSuppliedFunction = nullptr;
-    FunctionPointerTask wrapperFunction = nullptr;
-    PathSpace* space = nullptr;
-    ConstructiblePath path;
+    void* userSuppliedFunctionPointer = nullptr; // Function pointer inserted by the user (it has no arguments).
+    PathSpace* space = nullptr;                  // Returned values from the execution will be inserted here
+    ConstructiblePath pathToInsertReturnValueTo; // On this path, the return value will be inserted.
     ExecutionOptions executionOptions;
 
-    auto execute() -> void {
-        assert(this->userSuppliedFunction != nullptr);
-        assert(this->space != nullptr);
-        this->wrapperFunction(this->space, this->path, this->executionOptions, this->userSuppliedFunction);
-    }
+    void (*taskExecutor)(Task const& task) = nullptr;
 };
-
+/*
+template <typename T>
+auto task_executor(Task const& task) -> void {
+    assert(task.space);
+    if (task.userSuppliedFunctionPointer != nullptr) {
+        task.space->insert(task.pathToInsertReturnValueTo, reinterpret_cast<T (*)()>(task.userSuppliedFunctionPointer)());
+    }
+}
+*/
 } // namespace SP

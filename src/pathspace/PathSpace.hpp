@@ -123,28 +123,23 @@ private:
                                InOptions const& options) -> bool {
         bool const isFunctionPointer = (InputData{data}.metadata.category == DataCategory::ExecutionFunctionPointer);
         bool const isImmediateExecution
-                = (options.execution.has_value() && options.execution.value().category == ExecutionOptions::Category::Immediate);
+                = (!options.execution.has_value()
+                   || (options.execution.has_value() && options.execution.value().category == ExecutionOptions::Category::Immediate));
         if (isConcretePath && isFunctionPointer && isImmediateExecution) {
-            FunctionPointerTask task = [](PathSpace* space,
-                                          ConstructiblePath const& path,
-                                          ExecutionOptions const& executionOptions,
-                                          void* userSuppliedFunction) {
-                assert(userSuppliedFunction != nullptr);
-                if constexpr (std::is_function_v<std::remove_pointer_t<DataType>>) {
-                    space->insert(path.getPath(), reinterpret_cast<std::invoke_result_t<DataType> (*)()>(userSuppliedFunction)());
-                }
-            };
-            void* fun = nullptr;
-            if constexpr (std::is_function_v<std::remove_pointer_t<decltype(data)>>) {
-                fun = static_cast<void*>(data);
+            if constexpr (std::is_function_v<std::remove_pointer_t<DataType>>) {
+                pool->addTask({.userSuppliedFunctionPointer = reinterpret_cast<void*>(data),
+                               .space = this,
+                               .pathToInsertReturnValueTo = constructedPath,
+                               .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
+                               .taskExecutor = [](Task const& task) {
+                                   assert(task.space);
+                                   if (task.userSuppliedFunctionPointer != nullptr) {
+                                       auto const fun
+                                               = reinterpret_cast<std::invoke_result_t<DataType> (*)()>(task.userSuppliedFunctionPointer);
+                                       task.space->insert(task.pathToInsertReturnValueTo.getPath(), fun());
+                                   }
+                               }});
             }
-            pool->addTask({
-                    .userSuppliedFunction = fun,
-                    .wrapperFunction = task,
-                    .space = this,
-                    .path = constructedPath,
-                    .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
-            });
             return true;
         }
         return false;

@@ -55,8 +55,10 @@ auto PathSpace::insertConcreteDataName(ConstructiblePath& path,
     auto const createNodeDataAndAppendDataToItIfNameDoesNotExists
             = [&concreteName, &inputData, &options, &ret, &path, this](NodeDataHashMap::constructor const& constructor) {
                   NodeData nodeData{};
-                  if (auto const error = nodeData.serialize(path, inputData, options, this->pool, ret); error.has_value())
+                  if (auto const error = nodeData.serialize(path, inputData, options, this->pool, ret); error.has_value()) {
                       ret.errors.emplace_back(error.value());
+                      return;
+                  }
                   constructor(concreteName, std::move(nodeData));
               };
     this->nodeDataMap.lazy_emplace_l(concreteName, appendDataIfNameExists, createNodeDataAndAppendDataToItIfNameDoesNotExists);
