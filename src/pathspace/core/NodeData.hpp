@@ -19,11 +19,14 @@ namespace SP {
 
 class NodeData {
 public:
-    auto serialize(ConstructiblePath const& path, const InputData& inputData, const InsertOptions& options, TaskPool* pool, InsertReturn& ret) -> std::optional<Error> {
+    auto
+    serialize(ConstructiblePath const& path, const InputData& inputData, const InsertOptions& options, TaskPool* pool, InsertReturn& ret)
+            -> std::optional<Error> {
         if (!inputData.metadata.serialize)
             return Error{Error::Code::SerializationFunctionMissing, "Serialization function is missing."};
 
-        if (inputData.metadata.category == DataCategory::FunctionPointer && options.execution->category == ExecutionOptions::Category::Immediate) {
+        if (inputData.metadata.category == DataCategory::FunctionPointer
+            && options.execution->category == ExecutionOptions::Category::Immediate) {
             // Send the function over to the ThreadPool for execution. The return type should be reinserted to the space at
             // the right path. But will be stored in a std::vector<std::any>.
             // inputData.metadata.serializeFunctionPointer(inputData.obj, data, options.execution);
@@ -48,7 +51,8 @@ public:
         return std::nullopt;
     }
 
-    auto deserialize(void* obj, const InputMetadata& inputMetadata, TaskPool* pool, std::optional<ExecutionOptions> const& execution) const -> std::expected<int, Error> {
+    auto deserialize(void* obj, const InputMetadata& inputMetadata, TaskPool* pool, std::optional<ExecutionOptions> const& execution) const
+            -> Expected<int> {
         if (!inputMetadata.deserialize) {
             return std::unexpected(Error{Error::Code::UnserializableType, "No deserialization function provided."});
         }
@@ -63,7 +67,9 @@ public:
 
         if (types.front().category == DataCategory::ExecutionFunctionPointer) {
             // ToDo: If execution is marked to happen in a different thread then do that instead
-            if (!execution.has_value() || (execution.has_value() && execution.value().category == ExecutionOptions::Category::OnReadOrExtract) || (execution.has_value() && execution.value().category == ExecutionOptions::Category::Immediate)) {
+            if (!execution.has_value()
+                || (execution.has_value() && execution.value().category == ExecutionOptions::Category::OnReadOrExtract)
+                || (execution.has_value() && execution.value().category == ExecutionOptions::Category::Immediate)) {
                 void* funPtr = nullptr;
                 assert(inputMetadata.deserializeFunctionPointer);
                 inputMetadata.deserializeFunctionPointer(&funPtr, data);
@@ -76,7 +82,7 @@ public:
         return 1;
     }
 
-    std::expected<int, Error> deserializePop(void* obj, const InputMetadata& inputMetadata) {
+    Expected<int> deserializePop(void* obj, const InputMetadata& inputMetadata) {
         if (!inputMetadata.deserializePop) {
             return std::unexpected(Error{Error::Code::UnserializableType, "No pop deserialization function provided."});
         }

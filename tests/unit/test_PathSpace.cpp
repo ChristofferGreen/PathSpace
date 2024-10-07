@@ -3,6 +3,7 @@
 #include <pathspace/core/Capabilities.hpp>
 
 using namespace SP;
+int aert = 5;
 
 TEST_CASE("PathSpace Insert") {
     PathSpace pspace;
@@ -47,9 +48,8 @@ TEST_CASE("PathSpace Insert") {
     }
 
     SUBCASE("Simple PathSpace Insert Function Pointer") {
-        /*using TestFuncPtr = int (*)(ConcretePathString const&, PathSpace&, std::atomic<bool> const&);
-        TestFuncPtr f = [](ConcretePathString const& path, PathSpace& space, std::atomic<bool> const& alive) -> int { return 58; };
-        CHECK(pspace.insert("/f", f).nbrValuesInserted == 1);*/
+        int (*f)() = []() -> int { return 58; };
+        CHECK(pspace.insert("/f", f).nbrValuesInserted == 1);
     }
 
     SUBCASE("Simple PathSpace Insert Lambda") {
@@ -65,7 +65,7 @@ TEST_CASE("PathSpace Insert") {
         CHECK(pspace.insert("/test1", [](){}).nbrValuesInserted == 1);
     }
 }*/
-
+static PathSpace pspaceg;
 TEST_CASE("PathSpace Read") {
     PathSpace pspace;
     SUBCASE("Simple PathSpace Read") {
@@ -99,6 +99,16 @@ TEST_CASE("PathSpace Read") {
         CHECK(pspace.read<int>("/f").value() == 58);
         CHECK(pspace.read<int>("/f").value() == 58);
         CHECK(pspace.read<int>("/f2").value() == 25);
+    }
+
+    SUBCASE("PathSpace Read Function Pointer Execution Blocking") {
+        int (*f1)() = []() -> int { return pspaceg.read<int>("/f3").value() + 10; };
+        int (*f2)() = []() -> int { return pspaceg.read<int>("/f3").value() + 10; };
+        int (*f3)() = []() -> int { return 10; };
+
+        CHECK(pspace.insert("/f1", f1).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/f2", f2).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/f3", f3).nbrValuesInserted == 1);
     }
 }
 
