@@ -52,6 +52,7 @@ add_library(PathSpace
     taskpool/Task.cpp
     taskpool/TaskPool.cpp
     PathSpace.cpp
+    PathSpaceLeaf.cpp
 )
 
 target_compile_options(PathSpace PUBLIC "-Wno-deprecated")

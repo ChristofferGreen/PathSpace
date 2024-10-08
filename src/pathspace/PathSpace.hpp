@@ -50,7 +50,7 @@ protected:
         bool const isConcretePath = path.isConcrete();
         auto constructedPath = isConcretePath ? ConstructiblePath{path} : ConstructiblePath{};
         if (!this->inFunctionPointer(isConcretePath, constructedPath, data, options))
-            this->inInternal(constructedPath, path.begin(), path.end(), InputData{data}, options, ret);
+            this->root.inInternal(constructedPath, path.begin(), path.end(), InputData{data}, options, ret);
         return ret;
     };
 
@@ -60,10 +60,11 @@ protected:
                                   Capabilities const& capabilities,
                                   void* obj) const override {
         // ToDo: Make sure options.doPop is set to false
-        return const_cast<PathSpace*>(this)->outInternal(path.begin(), path.end(), inputMetadata, obj, options, capabilities);
+        return const_cast<PathSpaceLeaf*>(&this->root)->outInternal(path.begin(), path.end(), inputMetadata, obj, options, capabilities);
     }
 
     TaskPool* pool;
+    PathSpaceLeaf root;
 };
 
 } // namespace SP
