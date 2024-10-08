@@ -51,8 +51,8 @@ public:
         }
         bool const isConcretePath = path.isConcrete();
         auto constructedPath = isConcretePath ? ConstructiblePath{path} : ConstructiblePath{};
-        if (!this->insertFunctionPointer(isConcretePath, constructedPath, data, options))
-            this->insertInternal(constructedPath, path.begin(), path.end(), InputData{data}, options, ret);
+        if (!this->inFunctionPointer(isConcretePath, constructedPath, data, options))
+            this->inInternal(constructedPath, path.begin(), path.end(), InputData{data}, options, ret);
         return ret;
     }
 
@@ -69,8 +69,9 @@ public:
               OutOptions const& options = {.doPop = false},
               Capabilities const& capabilities = Capabilities::All()) const -> Expected<DataType> {
         DataType obj;
-        if (auto ret = const_cast<PathSpace*>(this)
-                               ->extractInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities);
+        // ToDo: Make sure options.doPop is set to false
+        if (auto ret
+            = const_cast<PathSpace*>(this)->outInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities);
             !ret) {
             return std::unexpected(ret.error());
         }
@@ -82,8 +83,9 @@ public:
                    OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}, .doPop = false},
                    Capabilities const& capabilities = Capabilities::All()) const -> Expected<DataType> {
         DataType obj;
-        if (auto ret = const_cast<PathSpace*>(this)
-                               ->extractInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities);
+        // ToDo: Make sure options.doPop is set to false
+        if (auto ret
+            = const_cast<PathSpace*>(this)->outInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities);
             !ret) {
             return std::unexpected(ret.error());
         }
@@ -102,7 +104,7 @@ public:
     auto extract(ConcretePathStringView const& path, OutOptions const& options = {}, Capabilities const& capabilities = Capabilities::All())
             -> Expected<DataType> {
         DataType obj;
-        if (auto ret = this->extractInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities); !ret) {
+        if (auto ret = this->outInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities); !ret) {
             return std::unexpected(ret.error());
         }
         return obj;
@@ -113,7 +115,7 @@ public:
                       OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}},
                       Capabilities const& capabilities = Capabilities::All()) -> Expected<DataType> {
         DataType obj;
-        if (auto ret = this->extractInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities); !ret) {
+        if (auto ret = this->outInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities); !ret) {
             return std::unexpected(ret.error());
         }
         return obj;
@@ -121,10 +123,9 @@ public:
 
 private:
     template <typename DataType>
-    auto insertFunctionPointer(bool const isConcretePath,
-                               ConstructiblePath const& constructedPath,
-                               DataType const& data,
-                               InOptions const& options) -> bool {
+    auto
+    inFunctionPointer(bool const isConcretePath, ConstructiblePath const& constructedPath, DataType const& data, InOptions const& options)
+            -> bool {
         bool const isFunctionPointer = (InputData{data}.metadata.category == DataCategory::ExecutionFunctionPointer);
         bool const isImmediateExecution
                 = (!options.execution.has_value()
@@ -148,68 +149,68 @@ private:
         }
         return false;
     }
-    auto insertInternal(ConstructiblePath& path,
-                        GlobPathIteratorStringView const& iter,
-                        GlobPathIteratorStringView const& end,
-                        InputData const& inputData,
-                        InOptions const& options,
-                        InsertReturn& ret) -> void;
-    auto insertFinalComponent(ConstructiblePath& path,
-                              GlobName const& pathComponent,
-                              InputData const& inputData,
-                              InOptions const& options,
-                              InsertReturn& ret) -> void;
-    auto insertIntermediateComponent(ConstructiblePath& path,
-                                     GlobPathIteratorStringView const& iter,
-                                     GlobPathIteratorStringView const& end,
-                                     GlobName const& pathComponent,
-                                     InputData const& inputData,
-                                     InOptions const& options,
-                                     InsertReturn& ret) -> void;
-    auto insertConcreteDataName(ConstructiblePath& path,
-                                ConcreteName const& concreteName,
-                                InputData const& inputData,
-                                InOptions const& options,
-                                InsertReturn& ret) -> void;
-    auto insertGlobDataName(ConstructiblePath& path,
-                            GlobName const& globName,
-                            InputData const& inputData,
-                            InOptions const& options,
-                            InsertReturn& ret) -> void;
-    auto insertGlobPathComponent(ConstructiblePath& path,
+    auto inInternal(ConstructiblePath& path,
+                    GlobPathIteratorStringView const& iter,
+                    GlobPathIteratorStringView const& end,
+                    InputData const& inputData,
+                    InOptions const& options,
+                    InsertReturn& ret) -> void;
+    auto inFinalComponent(ConstructiblePath& path,
+                          GlobName const& pathComponent,
+                          InputData const& inputData,
+                          InOptions const& options,
+                          InsertReturn& ret) -> void;
+    auto inIntermediateComponent(ConstructiblePath& path,
                                  GlobPathIteratorStringView const& iter,
                                  GlobPathIteratorStringView const& end,
-                                 GlobName const& globName,
+                                 GlobName const& pathComponent,
                                  InputData const& inputData,
                                  InOptions const& options,
                                  InsertReturn& ret) -> void;
-    auto insertConcretePathComponent(ConstructiblePath& path,
-                                     GlobPathIteratorStringView const& iter,
-                                     GlobPathIteratorStringView const& end,
-                                     ConcreteName const& concreteName,
-                                     InputData const& inputData,
-                                     InOptions const& options,
-                                     InsertReturn& ret) -> void;
-    auto extractInternal(ConcretePathIteratorStringView const& iter,
-                         ConcretePathIteratorStringView const& end,
-                         InputMetadata const& inputMetadata,
-                         void* obj,
-                         OutOptions const& options,
-                         Capabilities const& capabilities) -> Expected<int>;
-    auto extractDataName(ConcreteName const& concreteName,
-                         ConcretePathIteratorStringView const& nextIter,
-                         ConcretePathIteratorStringView const& end,
-                         InputMetadata const& inputMetadata,
-                         void* obj,
-                         OutOptions const& options,
-                         Capabilities const& capabilities) -> Expected<int>;
-    auto extractConcretePathComponent(ConcretePathIteratorStringView const& nextIter,
-                                      ConcretePathIteratorStringView const& end,
-                                      ConcreteName const& concreteName,
-                                      InputMetadata const& inputMetadata,
-                                      void* obj,
-                                      OutOptions const& options,
-                                      Capabilities const& capabilities) -> Expected<int>;
+    auto inConcreteDataName(ConstructiblePath& path,
+                            ConcreteName const& concreteName,
+                            InputData const& inputData,
+                            InOptions const& options,
+                            InsertReturn& ret) -> void;
+    auto inGlobDataName(ConstructiblePath& path,
+                        GlobName const& globName,
+                        InputData const& inputData,
+                        InOptions const& options,
+                        InsertReturn& ret) -> void;
+    auto inGlobPathComponent(ConstructiblePath& path,
+                             GlobPathIteratorStringView const& iter,
+                             GlobPathIteratorStringView const& end,
+                             GlobName const& globName,
+                             InputData const& inputData,
+                             InOptions const& options,
+                             InsertReturn& ret) -> void;
+    auto inConcretePathComponent(ConstructiblePath& path,
+                                 GlobPathIteratorStringView const& iter,
+                                 GlobPathIteratorStringView const& end,
+                                 ConcreteName const& concreteName,
+                                 InputData const& inputData,
+                                 InOptions const& options,
+                                 InsertReturn& ret) -> void;
+    auto outInternal(ConcretePathIteratorStringView const& iter,
+                     ConcretePathIteratorStringView const& end,
+                     InputMetadata const& inputMetadata,
+                     void* obj,
+                     OutOptions const& options,
+                     Capabilities const& capabilities) -> Expected<int>;
+    auto outDataName(ConcreteName const& concreteName,
+                     ConcretePathIteratorStringView const& nextIter,
+                     ConcretePathIteratorStringView const& end,
+                     InputMetadata const& inputMetadata,
+                     void* obj,
+                     OutOptions const& options,
+                     Capabilities const& capabilities) -> Expected<int>;
+    auto outConcretePathComponent(ConcretePathIteratorStringView const& nextIter,
+                                  ConcretePathIteratorStringView const& end,
+                                  ConcreteName const& concreteName,
+                                  InputMetadata const& inputMetadata,
+                                  void* obj,
+                                  OutOptions const& options,
+                                  Capabilities const& capabilities) -> Expected<int>;
     NodeDataHashMap nodeDataMap;
     TaskPool* pool;
     // std::unique_ptr<Root> root; // If this is the root node we store extra data
