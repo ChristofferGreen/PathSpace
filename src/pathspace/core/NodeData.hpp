@@ -7,7 +7,6 @@
 #include "path/ConstructiblePath.hpp"
 #include "pathspace/type/DataCategory.hpp"
 #include "pathspace/type/InputData.hpp"
-#include "taskpool/Task.hpp"
 #include "taskpool/TaskPool.hpp"
 #include "type/InputMetadata.hpp"
 

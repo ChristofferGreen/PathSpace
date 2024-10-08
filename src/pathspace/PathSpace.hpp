@@ -208,6 +208,9 @@ private:
                                       Capabilities const& capabilities) -> Expected<int>;
     NodeDataHashMap nodeDataMap;
     TaskPool* pool;
+    // std::unique_ptr<Root> root; // If this is the root node we store extra data
+    // Need to add blocking functionality per path
+    // std::map<ConcretePath, std::mutex> pathMutexMap;
 };
 
 } // namespace SP
