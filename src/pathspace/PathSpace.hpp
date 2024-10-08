@@ -19,6 +19,15 @@ protected:
             this->inInternal(constructedPath, path.begin(), path.end(), InputData{data}, options, ret);
         return ret;
     };
+
+    virtual auto readImpl(ConcretePathStringView const& path,
+                          InputMetadata const& inputMetadata,
+                          OutOptions const& options,
+                          Capabilities const& capabilities,
+                          void* obj) const -> Expected<int> {
+        // ToDo: Make sure options.doPop is set to false
+        return const_cast<PathSpace*>(this)->outInternal(path.begin(), path.end(), inputMetadata, obj, options, capabilities);
+    }
 };
 
 } // namespace SP

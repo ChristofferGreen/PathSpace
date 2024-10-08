@@ -60,12 +60,8 @@ public:
               OutOptions const& options = {.doPop = false},
               Capabilities const& capabilities = Capabilities::All()) const -> Expected<DataType> {
         DataType obj;
-        // ToDo: Make sure options.doPop is set to false
-        if (auto ret = const_cast<PathSpaceBase*>(this)
-                               ->outInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities);
-            !ret) {
+        if (auto ret = this->readImpl(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
             return std::unexpected(ret.error());
-        }
         return obj;
     }
 
@@ -115,7 +111,15 @@ public:
 protected:
     virtual auto insertImpl(GlobPathStringView const& path, InputData const& data, InOptions const& options) -> InsertReturn {
         return {};
-    };
+    }
+    virtual auto readImpl(ConcretePathStringView const& path,
+                          InputMetadata const& inputMetadata,
+                          OutOptions const& options,
+                          Capabilities const& capabilities,
+                          void* obj) const -> Expected<int> {
+        return {};
+    }
+
     template <typename DataType>
     auto
     inFunctionPointer(bool const isConcretePath, ConstructiblePath const& constructedPath, DataType const& data, InOptions const& options)
