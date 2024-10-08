@@ -6,11 +6,11 @@
 #include <variant>
 
 namespace SP {
-struct PathSpace;
+struct PathSpaceBase;
 
 struct Task {
     void* userSuppliedFunctionPointer = nullptr; // Function pointer inserted by the user (it has no arguments).
-    PathSpace* space = nullptr;                  // Returned values from the execution will be inserted here
+    PathSpaceBase* space = nullptr;              // Returned values from the execution will be inserted here
     ConstructiblePath pathToInsertReturnValueTo; // On this path, the return value will be inserted.
     ExecutionOptions executionOptions;
 
