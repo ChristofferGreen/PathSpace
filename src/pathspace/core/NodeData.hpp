@@ -18,7 +18,7 @@ namespace SP {
 
 class NodeData {
 public:
-    auto serialize(ConstructiblePath const& path, const InputData& inputData, const InOptions& options, TaskPool* pool, InsertReturn& ret)
+    auto serialize(ConstructiblePath const& path, const InputData& inputData, const InOptions& options, InsertReturn& ret)
             -> std::optional<Error> {
         if (!inputData.metadata.serialize)
             return Error{Error::Code::SerializationFunctionMissing, "Serialization function is missing."};
@@ -56,7 +56,7 @@ public:
         return std::nullopt;
     }
 
-    auto deserialize(void* obj, const InputMetadata& inputMetadata, TaskPool* pool, std::optional<ExecutionOptions> const& execution) const
+    auto deserialize(void* obj, const InputMetadata& inputMetadata, std::optional<ExecutionOptions> const& execution) const
             -> Expected<int> {
         if (!inputMetadata.deserialize) {
             return std::unexpected(Error{Error::Code::UnserializableType, "No deserialization function provided."});

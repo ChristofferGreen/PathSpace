@@ -4,9 +4,6 @@
 
 namespace SP {
 
-PathSpaceBase::PathSpaceBase(TaskPool* pool_) : pool(pool_ == nullptr ? &TaskPool::Instance() : pool_) {
-}
-
 /************************************************
 ******************** Insert *********************
 *************************************************/
@@ -50,13 +47,13 @@ auto PathSpaceBase::inConcreteDataName(ConstructiblePath& path,
                                        InsertReturn& ret) -> void {
     path.append(concreteName.getName());
     auto const appendDataIfNameExists = [&inputData, &options, &ret, path, this](auto& nodePair) {
-        if (auto const error = std::get<NodeData>(nodePair.second).serialize(path, inputData, options, this->pool, ret); error.has_value())
+        if (auto const error = std::get<NodeData>(nodePair.second).serialize(path, inputData, options, ret); error.has_value())
             ret.errors.emplace_back(error.value());
     };
     auto const createNodeDataAndAppendDataToItIfNameDoesNotExists
             = [&concreteName, &inputData, &options, &ret, &path, this](NodeDataHashMap::constructor const& constructor) {
                   NodeData nodeData{};
-                  if (auto const error = nodeData.serialize(path, inputData, options, this->pool, ret); error.has_value()) {
+                  if (auto const error = nodeData.serialize(path, inputData, options, ret); error.has_value()) {
                       ret.errors.emplace_back(error.value());
                       return;
                   }
@@ -114,7 +111,7 @@ auto PathSpaceBase::inConcretePathComponent(ConstructiblePath& path,
                                     std::string("Sub-component name is data for ").append(concreteName.getName()));
     };
     auto const createNodeDataAndAppendDataToItIfNameDoesNotExists = [&](NodeDataHashMap::constructor const& constructor) {
-        auto space = std::make_unique<PathSpaceLeaf>(this->pool);
+        auto space = std::make_unique<PathSpaceLeaf>();
         space->inInternal(path, nextIter, end, inputData, options, ret);
         constructor(concreteName, std::move(space));
         ret.nbrSpacesInserted++;
@@ -152,7 +149,7 @@ auto PathSpaceBase::outDataName(ConcreteName const& concreteName,
         });
     } else {
         this->nodeDataMap.if_contains(concreteName, [&](auto const& nodePair) {
-            expected = std::get<NodeData>(nodePair.second).deserialize(obj, inputMetadata, this->pool, options.execution);
+            expected = std::get<NodeData>(nodePair.second).deserialize(obj, inputMetadata, options.execution);
         });
     }
     return expected;

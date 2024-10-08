@@ -28,12 +28,6 @@ namespace SP {
 class PathSpaceBase {
 public:
     /**
-     * @brief Constructs a PathSpace object.
-     * @param pool Pointer to a TaskPool for managing asynchronous operations. If nullptr, uses the global instance.
-     */
-    explicit PathSpaceBase(TaskPool* pool = nullptr);
-
-    /**
      * @brief Inserts data into the PathSpace at the specified path.
      *
      * @tparam DataType The type of data being inserted.
@@ -44,7 +38,7 @@ public:
      */
     template <typename DataType>
     auto insert(GlobPathStringView const& path, DataType const& data, InOptions const& options = {}) -> InsertReturn {
-        return this->insertImpl(path, InputData{data}, options);
+        return this->inImpl(path, InputData{data}, options);
     }
 
     /**
@@ -60,7 +54,7 @@ public:
               OutOptions const& options = {.doPop = false},
               Capabilities const& capabilities = Capabilities::All()) const -> Expected<DataType> {
         DataType obj;
-        if (auto ret = this->readImpl(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
+        if (auto ret = this->outImpl(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
             return std::unexpected(ret.error());
         return obj;
     }
@@ -70,12 +64,8 @@ public:
                    OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}, .doPop = false},
                    Capabilities const& capabilities = Capabilities::All()) const -> Expected<DataType> {
         DataType obj;
-        // ToDo: Make sure options.doPop is set to false
-        if (auto ret = const_cast<PathSpaceBase*>(this)
-                               ->outInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities);
-            !ret) {
+        if (auto ret = this->outImpl(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
             return std::unexpected(ret.error());
-        }
         return obj;
     }
 
@@ -91,9 +81,8 @@ public:
     auto extract(ConcretePathStringView const& path, OutOptions const& options = {}, Capabilities const& capabilities = Capabilities::All())
             -> Expected<DataType> {
         DataType obj;
-        if (auto ret = this->outInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities); !ret) {
+        if (auto ret = this->outImpl(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
             return std::unexpected(ret.error());
-        }
         return obj;
     }
 
@@ -102,51 +91,23 @@ public:
                       OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}},
                       Capabilities const& capabilities = Capabilities::All()) -> Expected<DataType> {
         DataType obj;
-        if (auto ret = this->outInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities); !ret) {
+        if (auto ret = this->outImpl(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
             return std::unexpected(ret.error());
-        }
         return obj;
     }
 
 protected:
-    virtual auto insertImpl(GlobPathStringView const& path, InputData const& data, InOptions const& options) -> InsertReturn {
+    virtual auto inImpl(GlobPathStringView const& path, InputData const& data, InOptions const& options) -> InsertReturn {
         return {};
     }
-    virtual auto readImpl(ConcretePathStringView const& path,
-                          InputMetadata const& inputMetadata,
-                          OutOptions const& options,
-                          Capabilities const& capabilities,
-                          void* obj) const -> Expected<int> {
+    virtual auto outImpl(ConcretePathStringView const& path,
+                         InputMetadata const& inputMetadata,
+                         OutOptions const& options,
+                         Capabilities const& capabilities,
+                         void* obj) const -> Expected<int> {
         return {};
     }
 
-    template <typename DataType>
-    auto
-    inFunctionPointer(bool const isConcretePath, ConstructiblePath const& constructedPath, DataType const& data, InOptions const& options)
-            -> bool {
-        bool const isFunctionPointer = (InputData{data}.metadata.category == DataCategory::ExecutionFunctionPointer);
-        bool const isImmediateExecution
-                = (!options.execution.has_value()
-                   || (options.execution.has_value() && options.execution.value().category == ExecutionOptions::Category::Immediate));
-        if (isConcretePath && isFunctionPointer && isImmediateExecution) {
-            if constexpr (std::is_function_v<std::remove_pointer_t<DataType>>) {
-                pool->addTask({.userSuppliedFunctionPointer = reinterpret_cast<void*>(data),
-                               .space = this,
-                               .pathToInsertReturnValueTo = constructedPath,
-                               .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
-                               .taskExecutor = [](Task const& task) {
-                                   assert(task.space);
-                                   if (task.userSuppliedFunctionPointer != nullptr) {
-                                       auto const fun
-                                               = reinterpret_cast<std::invoke_result_t<DataType> (*)()>(task.userSuppliedFunctionPointer);
-                                       task.space->insert(task.pathToInsertReturnValueTo.getPath(), fun());
-                                   }
-                               }});
-            }
-            return true;
-        }
-        return false;
-    }
     auto inInternal(ConstructiblePath& path,
                     GlobPathIteratorStringView const& iter,
                     GlobPathIteratorStringView const& end,
@@ -210,7 +171,6 @@ protected:
                                   OutOptions const& options,
                                   Capabilities const& capabilities) -> Expected<int>;
     NodeDataHashMap nodeDataMap;
-    TaskPool* pool;
     // std::unique_ptr<Root> root; // If this is the root node we store extra data
     // Need to add blocking functionality per path
     // std::map<ConcretePath, std::mutex> pathMutexMap;
