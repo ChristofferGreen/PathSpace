@@ -67,9 +67,11 @@ public:
     template <typename DataType>
     auto read(ConcretePathStringView const& path,
               OutOptions const& options = {.doPop = false},
-              Capabilities const& capabilities = Capabilities::All()) -> Expected<DataType> {
+              Capabilities const& capabilities = Capabilities::All()) const -> Expected<DataType> {
         DataType obj;
-        if (auto ret = this->extractInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities); !ret) {
+        if (auto ret = const_cast<PathSpace*>(this)
+                               ->extractInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities);
+            !ret) {
             return std::unexpected(ret.error());
         }
         return obj;
@@ -78,9 +80,11 @@ public:
     template <typename DataType>
     auto readBlock(ConcretePathStringView const& path,
                    OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}, .doPop = false},
-                   Capabilities const& capabilities = Capabilities::All()) -> Expected<DataType> {
+                   Capabilities const& capabilities = Capabilities::All()) const -> Expected<DataType> {
         DataType obj;
-        if (auto ret = this->extractInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities); !ret) {
+        if (auto ret = const_cast<PathSpace*>(this)
+                               ->extractInternal(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, capabilities);
+            !ret) {
             return std::unexpected(ret.error());
         }
         return obj;
