@@ -1,10 +1,17 @@
 #pragma once
 
-#include "PathSpaceBase.hpp"
+#include "core/Capabilities.hpp"
+#include "core/Error.hpp"
+#include "core/InOptions.hpp"
+#include "core/InsertReturn.hpp"
+#include "core/OutOptions.hpp"
+#include "path/ConstructiblePath.hpp"
+#include "type/Helper.hpp"
+#include "type/InputData.hpp"
 
 namespace SP {
 
-class PathSpaceLeaf : public PathSpaceBase {
+class PathSpaceLeaf {
 public:
     auto inInternal(ConstructiblePath& path,
                     GlobPathIteratorStringView const& iter,
