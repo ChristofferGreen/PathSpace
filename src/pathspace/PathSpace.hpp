@@ -79,10 +79,6 @@ public:
         return obj;
     }
 
-    // std::unique_ptr<Root> root; // If this is the root node we store extra data
-    // Need to add blocking functionality per path
-    // std::map<ConcretePath, std::mutex> pathMutexMap;
-
 protected:
     template <typename DataType>
     auto
@@ -136,6 +132,7 @@ protected:
 
     TaskPool* pool;
     PathSpaceLeaf root;
+    // std::function<std::unique_ptr<PathSpaceLeaf>(ConcretePathStringView const&)> leafFactory;
 };
 
 } // namespace SP
