@@ -19,7 +19,8 @@ struct Error {
         UnmatchedQuotes,
         UnknownError,
         SerializationFunctionMissing,
-        UnserializableType
+        UnserializableType,
+        PopInRead
     };
 
     Code code;

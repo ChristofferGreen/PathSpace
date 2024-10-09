@@ -36,8 +36,10 @@ public:
     auto read(ConcretePathStringView const& path,
               OutOptions const& options = {.doPop = false},
               Capabilities const& capabilities = Capabilities::All()) const -> Expected<DataType> {
+        if (options.doPop)
+            return std::unexpected(Error{Error::Code::PopInRead, std::string("read does not support doPop: ").append(path.getPath())});
         DataType obj;
-        if (auto ret = this->outImpl(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
+        if (auto ret = const_cast<PathSpace*>(this)->outImpl(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
             return std::unexpected(ret.error());
         return obj;
     }
@@ -46,8 +48,10 @@ public:
     auto readBlock(ConcretePathStringView const& path,
                    OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}, .doPop = false},
                    Capabilities const& capabilities = Capabilities::All()) const -> Expected<DataType> {
+        if (options.doPop)
+            return std::unexpected(Error{Error::Code::PopInRead, std::string("readBlock does not support doPop: ").append(path.getPath())});
         DataType obj;
-        if (auto ret = this->outImpl(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
+        if (auto ret = const_cast<PathSpace*>(this)->outImpl(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
             return std::unexpected(ret.error());
         return obj;
     }
@@ -125,9 +129,8 @@ protected:
                                   InputMetadata const& inputMetadata,
                                   OutOptions const& options,
                                   Capabilities const& capabilities,
-                                  void* obj) const {
-        // ToDo: Make sure options.doPop is set to false
-        return const_cast<PathSpaceLeaf*>(&this->root)->outInternal(path.begin(), path.end(), inputMetadata, obj, options, capabilities);
+                                  void* obj) {
+        return this->root.outInternal(path.begin(), path.end(), inputMetadata, obj, options, capabilities);
     }
 
     TaskPool* pool;
