@@ -1,24 +1,30 @@
 #pragma once
-
-#include "core/Capabilities.hpp"
-#include "core/Error.hpp"
-#include "core/InOptions.hpp"
-#include "core/InsertReturn.hpp"
-#include "core/OutOptions.hpp"
-#include "path/ConstructiblePath.hpp"
 #include "type/Helper.hpp"
-#include "type/InputData.hpp"
 
 namespace SP {
+struct Capabilities;
+struct Error;
+struct InOptions;
+struct InsertReturn;
+struct InputData;
+struct OutOptions;
+struct ConstructiblePath;
 
 class PathSpaceLeaf {
 public:
-    auto inInternal(ConstructiblePath& path,
-                    GlobPathIteratorStringView const& iter,
-                    GlobPathIteratorStringView const& end,
-                    InputData const& inputData,
-                    InOptions const& options,
-                    InsertReturn& ret) -> void;
+    auto in(ConstructiblePath& path,
+            GlobPathIteratorStringView const& iter,
+            GlobPathIteratorStringView const& end,
+            InputData const& inputData,
+            InOptions const& options,
+            InsertReturn& ret) -> void;
+    auto out(ConcretePathIteratorStringView const& iter,
+             ConcretePathIteratorStringView const& end,
+             InputMetadata const& inputMetadata,
+             void* obj,
+             OutOptions const& options,
+             Capabilities const& capabilities) -> Expected<int>;
+private:
     auto inFinalComponent(ConstructiblePath& path,
                           GlobName const& pathComponent,
                           InputData const& inputData,
@@ -55,12 +61,7 @@ public:
                                  InputData const& inputData,
                                  InOptions const& options,
                                  InsertReturn& ret) -> void;
-    auto outInternal(ConcretePathIteratorStringView const& iter,
-                     ConcretePathIteratorStringView const& end,
-                     InputMetadata const& inputMetadata,
-                     void* obj,
-                     OutOptions const& options,
-                     Capabilities const& capabilities) -> Expected<int>;
+
     auto outDataName(ConcreteName const& concreteName,
                      ConcretePathIteratorStringView const& nextIter,
                      ConcretePathIteratorStringView const& end,

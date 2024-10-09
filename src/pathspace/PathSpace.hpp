@@ -1,5 +1,6 @@
 #pragma once
 #include "PathSpaceLeaf.hpp"
+#include "core/OutOptions.hpp"
 
 namespace SP {
 class PathSpace {
@@ -121,7 +122,7 @@ protected:
         bool const isConcretePath = path.isConcrete();
         auto constructedPath = isConcretePath ? ConstructiblePath{path} : ConstructiblePath{};
         if (!this->inFunctionPointer(isConcretePath, constructedPath, data, options))
-            this->root.inInternal(constructedPath, path.begin(), path.end(), InputData{data}, options, ret);
+            this->root.in(constructedPath, path.begin(), path.end(), InputData{data}, options, ret);
         return ret;
     };
 
@@ -130,7 +131,7 @@ protected:
                                   OutOptions const& options,
                                   Capabilities const& capabilities,
                                   void* obj) {
-        return this->root.outInternal(path.begin(), path.end(), inputMetadata, obj, options, capabilities);
+        return this->root.out(path.begin(), path.end(), inputMetadata, obj, options, capabilities);
     }
 
     TaskPool* pool;

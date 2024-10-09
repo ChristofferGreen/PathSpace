@@ -3,6 +3,7 @@
 #include "type/DataCategory.hpp"
 
 #include <typeinfo>
+#include <stdint.h>
 
 namespace SP {
 

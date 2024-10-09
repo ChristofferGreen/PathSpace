@@ -1,13 +1,16 @@
 #include "PathSpaceLeaf.hpp"
 #include "pathspace/type/InputData.hpp"
+#include "core/Capabilities.hpp"
+#include "core/Error.hpp"
+#include "core/InOptions.hpp"
+#include "core/InsertReturn.hpp"
+#include "core/OutOptions.hpp"
+#include "type/InputData.hpp"
+#include "path/ConstructiblePath.hpp"
 
 namespace SP {
 
-/************************************************
-******************** Insert *********************
-*************************************************/
-
-auto PathSpaceLeaf::inInternal(ConstructiblePath& path,
+auto PathSpaceLeaf::in(ConstructiblePath& path,
                                GlobPathIteratorStringView const& iter,
                                GlobPathIteratorStringView const& end,
                                InputData const& inputData,
@@ -15,6 +18,18 @@ auto PathSpaceLeaf::inInternal(ConstructiblePath& path,
                                InsertReturn& ret) -> void {
     std::next(iter) == end ? inFinalComponent(path, *iter, inputData, options, ret)
                            : inIntermediateComponent(path, iter, end, *iter, inputData, options, ret);
+}
+
+auto PathSpaceLeaf::out(ConcretePathIteratorStringView const& iter,
+                                ConcretePathIteratorStringView const& end,
+                                InputMetadata const& inputMetadata,
+                                void* obj,
+                                OutOptions const& options,
+                                Capabilities const& capabilities) -> Expected<int> {
+    auto const nextIter = std::next(iter);
+    auto const pathComponent = *iter;
+    return nextIter == end ? outDataName(pathComponent, nextIter, end, inputMetadata, obj, options, capabilities)
+                           : outConcretePathComponent(nextIter, end, pathComponent.getName(), inputMetadata, obj, options, capabilities);
 }
 
 auto PathSpaceLeaf::inFinalComponent(ConstructiblePath& path,
@@ -69,8 +84,8 @@ auto PathSpaceLeaf::inGlobDataName(ConstructiblePath& path,
                                    InsertReturn& ret) -> void {
     for (auto const& val : this->nodeDataMap) {
         if (std::get<0>(globName.match(val.first))) {
-            ConstructiblePath path2 = path;
-            inConcreteDataName(path2, val.first, inputData, options, ret);
+            ConstructiblePath pathCopy = path;
+            inConcreteDataName(pathCopy, val.first, inputData, options, ret);
         }
     }
 }
@@ -82,12 +97,13 @@ auto PathSpaceLeaf::inGlobPathComponent(ConstructiblePath& path,
                                         InputData const& inputData,
                                         InOptions const& options,
                                         InsertReturn& ret) -> void {
+    auto const nextIter = std::next(iter);
     for (auto const& val : this->nodeDataMap) {
         if (std::get<0>(globName.match(val.first))) {
             if (std::holds_alternative<std::unique_ptr<PathSpaceLeaf>>(val.second)) {
-                ConstructiblePath path2 = path;
-                path2.append(val.first.getName());
-                std::get<std::unique_ptr<PathSpaceLeaf>>(val.second)->inInternal(path2, std::next(iter), end, inputData, options, ret);
+                ConstructiblePath pathCopy = path;
+                pathCopy.append(val.first.getName());
+                std::get<std::unique_ptr<PathSpaceLeaf>>(val.second)->in(pathCopy, nextIter, end, inputData, options, ret);
             }
         }
     }
@@ -104,34 +120,18 @@ auto PathSpaceLeaf::inConcretePathComponent(ConstructiblePath& path,
     path.append(concreteName.getName());
     auto const appendDataIfNameExists = [&](auto& nodePair) {
         if (std::holds_alternative<std::unique_ptr<PathSpaceLeaf>>(nodePair.second))
-            std::get<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)->inInternal(path, nextIter, end, inputData, options, ret);
+            std::get<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)->in(path, nextIter, end, inputData, options, ret);
         else
             ret.errors.emplace_back(Error::Code::InvalidPathSubcomponent,
                                     std::string("Sub-component name is data for ").append(concreteName.getName()));
     };
     auto const createNodeDataAndAppendDataToItIfNameDoesNotExists = [&](NodeDataHashMap::constructor const& constructor) {
         auto space = std::make_unique<PathSpaceLeaf>();
-        space->inInternal(path, nextIter, end, inputData, options, ret);
+        space->in(path, nextIter, end, inputData, options, ret);
         constructor(concreteName, std::move(space));
         ret.nbrSpacesInserted++;
     };
     this->nodeDataMap.lazy_emplace_l(concreteName, appendDataIfNameExists, createNodeDataAndAppendDataToItIfNameDoesNotExists);
-}
-
-/************************************************
-******************** Extract ********************
-*************************************************/
-
-auto PathSpaceLeaf::outInternal(ConcretePathIteratorStringView const& iter,
-                                ConcretePathIteratorStringView const& end,
-                                InputMetadata const& inputMetadata,
-                                void* obj,
-                                OutOptions const& options,
-                                Capabilities const& capabilities) -> Expected<int> {
-    auto const nextIter = std::next(iter);
-    auto const pathComponent = *iter;
-    return nextIter == end ? outDataName(pathComponent, nextIter, end, inputMetadata, obj, options, capabilities)
-                           : outConcretePathComponent(nextIter, end, pathComponent.getName(), inputMetadata, obj, options, capabilities);
 }
 
 auto PathSpaceLeaf::outDataName(ConcreteName const& concreteName,
@@ -162,21 +162,12 @@ auto PathSpaceLeaf::outConcretePathComponent(ConcretePathIteratorStringView cons
                                              OutOptions const& options,
                                              Capabilities const& capabilities) -> Expected<int> {
     Expected<int> expected = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
-    if (options.doPop) {
-        this->nodeDataMap.if_contains(concreteName, [&](auto const& nodePair) {
-            expected = std::holds_alternative<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)
-                               ? std::get<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)
-                                         ->outInternal(nextIter, end, inputMetadata, obj, options, capabilities)
-                               : std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
-        });
-    } else {
-        this->nodeDataMap.if_contains(concreteName, [&](auto const& nodePair) {
-            expected = std::holds_alternative<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)
-                               ? std::get<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)
-                                         ->outInternal(nextIter, end, inputMetadata, obj, options, capabilities)
-                               : std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
-        });
-    }
+    this->nodeDataMap.if_contains(concreteName, [&](auto const& nodePair) {
+        expected = std::holds_alternative<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)
+                            ? std::get<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)
+                                        ->out(nextIter, end, inputMetadata, obj, options, capabilities)
+                            : std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
+    });
     return expected;
 }
 
