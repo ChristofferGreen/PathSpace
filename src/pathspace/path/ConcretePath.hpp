@@ -3,6 +3,7 @@
 #include "Path.hpp"
 
 #include <compare>
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -77,3 +78,12 @@ using ConcretePathString = ConcretePath<std::string>;
 using ConcretePathStringView = ConcretePath<std::string_view>;
 
 } // namespace SP
+
+namespace std {
+template <typename T>
+struct hash<SP::ConcretePath<T>> {
+    size_t operator()(const SP::ConcretePath<T>& path) const noexcept {
+        return hash<string_view>{}(static_cast<string_view>(path));
+    }
+};
+} // namespace std

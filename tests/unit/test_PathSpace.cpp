@@ -112,6 +112,23 @@ TEST_CASE("PathSpace Read") {
         CHECK(pspace.insert("/f2", f2).nbrValuesInserted == 1);
         CHECK(pspace.insert("/f3", f3).nbrValuesInserted == 1);*/
     }
+
+    SUBCASE("PathSpace Read Block") {
+        pspace.insert("/i", 46);
+        auto const val = pspace.readBlock<int>("/i");
+        CHECK(val.has_value());
+        CHECK(val.value() == 46);
+    }
+
+    SUBCASE("PathSpace Read Block Delayed") {
+        pspace.insert("/i", [] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            return 46;
+        });
+        auto const val = pspace.readBlock<int>("/i");
+        CHECK(val.has_value());
+        CHECK(val.value() == 46);
+    }
 }
 
 TEST_CASE("PathSpace Extract") {

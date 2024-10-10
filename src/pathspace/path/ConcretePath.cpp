@@ -13,13 +13,11 @@ auto ConcretePath<T>::end() const -> ConcretePathIterator<T> {
 }
 
 template <typename T>
-ConcretePath<T>::ConcretePath(T const& t)
-    : Path<T>(t) {
+ConcretePath<T>::ConcretePath(T const& t) : Path<T>(t) {
 }
 
 template <typename T>
-ConcretePath<T>::ConcretePath(char const* const t)
-    : Path<T>(t) {
+ConcretePath<T>::ConcretePath(char const* const t) : Path<T>(t) {
 }
 
 template <typename T>

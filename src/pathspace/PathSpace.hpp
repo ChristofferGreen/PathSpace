@@ -1,6 +1,7 @@
 #pragma once
 #include "PathSpaceLeaf.hpp"
 #include "core/OutOptions.hpp"
+#include "utils/WaitEntry.hpp"
 
 namespace SP {
 class PathSpace {
@@ -122,7 +123,7 @@ protected:
         bool const isConcretePath = path.isConcrete();
         auto constructedPath = isConcretePath ? ConstructiblePath{path} : ConstructiblePath{};
         if (!this->inFunctionPointer(isConcretePath, constructedPath, data, options))
-            this->root.in(constructedPath, path.begin(), path.end(), InputData{data}, options, ret);
+            this->root.in(constructedPath, path.begin(), path.end(), InputData{data}, options, ret, this->waitMap);
         return ret;
     };
 
@@ -131,12 +132,40 @@ protected:
                                   OutOptions const& options,
                                   Capabilities const& capabilities,
                                   void* obj) {
-        return this->root.out(path.begin(), path.end(), inputMetadata, obj, options, capabilities);
+        while (true) {
+            auto const ret = this->root.out(path.begin(), path.end(), inputMetadata, obj, options, capabilities, this->waitMap);
+            if (ret.has_value())
+                return ret;
+            if (options.block.has_value() && options.block.value().behavior != BlockOptions::Behavior::DontWait
+                && ret.error().code == Error::Code::NoSuchPath) {
+                /*auto const& waitPair = this->waitList.find(path);
+                if (waitPair == this->waitList.end()) {
+                    this->waitList.emplace(path, std::make_unique<WaitEntry>(path));
+                }
+                waitPair->second->cv.wait(std::unique_lock{waitPair->second->mutex});*/
+                auto [it, inserted] = this->waitMap.try_emplace(path, std::make_unique<WaitEntry>());
+                auto& entry = *it->second;
+                std::unique_lock<std::mutex> lock(entry.mutex);
+                if (inserted) {
+                    // We've just created this entry, so we need to check again if the data has arrived
+                    // before we start waiting. This prevents a race condition.
+                    lock.unlock();
+                    continue; // Go back to the start of the while loop
+                }
+            } else {
+                return ret;
+            }
+        }
+        // return this->root.out(path.begin(), path.end(), inputMetadata, obj, options, capabilities);
+    }
+
+    void notifyAllWaiters(const ConcretePathStringView& path) {
+        this->waitMap.if_contains(path, [&](auto const& waitPair) { waitPair.second->cv.notify_all(); });
     }
 
     TaskPool* pool;
+    WaitMap waitMap;
     PathSpaceLeaf root;
-    // std::function<std::unique_ptr<PathSpaceLeaf>(ConcretePathStringView const&)> leafFactory;
 };
 
 } // namespace SP
