@@ -126,10 +126,15 @@ TEST_CASE("PathSpace Read") {
     }
 
     SUBCASE("PathSpace Read Block Delayed") {
-        /*pspace.insert("/i", fpause);
+        pspace.insert(
+                "/i",
+                +[] {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    return 46;
+                });
         auto const val = pspace.readBlock<int>("/i");
         CHECK(val.has_value());
-        CHECK(val.value() == 46);*/
+        CHECK(val.value() == 46);
     }
 }
 

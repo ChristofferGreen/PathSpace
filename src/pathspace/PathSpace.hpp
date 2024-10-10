@@ -131,7 +131,7 @@ protected:
             return ret;
         }
         this->root.in(constructedPath, path.begin(), path.end(), InputData{data}, options, ret);
-        if (ret.nbrSpacesInserted > 0)
+        if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0)
             this->cv.notify_all();
         return ret;
     };
