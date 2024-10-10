@@ -6,10 +6,11 @@
 namespace SP {
 
 struct InputData {
-    template<typename T>
-    InputData(T&& obj) : obj(const_cast<void*>(static_cast<const void*>(&obj))), metadata(InputMetadataT<T>{}) {}
+    template <typename T>
+    InputData(T&& obj) : obj(const_cast<void*>(static_cast<const void*>(&obj))), metadata(InputMetadataT<T>{}) {
+    }
 
-    void *obj = nullptr;
+    void* obj = nullptr;
     InputMetadata metadata;
 };
 

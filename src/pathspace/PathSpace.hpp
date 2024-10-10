@@ -1,7 +1,7 @@
 #pragma once
 #include "PathSpaceLeaf.hpp"
 #include "core/OutOptions.hpp"
-#include "utils/WaitEntry.hpp"
+#include "taskpool/TaskPool.hpp"
 
 namespace SP {
 class PathSpace {
@@ -10,7 +10,10 @@ public:
      * @brief Constructs a PathSpace object.
      * @param pool Pointer to a TaskPool for managing asynchronous operations. If nullptr, uses the global instance.
      */
-    explicit PathSpace(TaskPool* pool = nullptr) : pool(pool) {};
+    explicit PathSpace(TaskPool* pool = nullptr) {
+        if (this->pool == nullptr)
+            this->pool = &TaskPool::Instance();
+    };
 
     /**
      * @brief Inserts data into the PathSpace at the specified path.
@@ -23,7 +26,13 @@ public:
      */
     template <typename DataType>
     auto insert(GlobPathStringView const& path, DataType const& data, InOptions const& options = {}) -> InsertReturn {
-        return this->inImpl(path, InputData{data}, options);
+        InputData const inputData{data};
+        ConstructiblePath constructedPath = path.isConcrete() ? ConstructiblePath{path} : ConstructiblePath{};
+        if (std::optional<Task> task = this->createTask(constructedPath, data, inputData, options)) {
+            this->pool->addTask(std::move(task.value()));
+            return {.nbrTasksCreated = 1};
+        } else
+            return this->inImpl(constructedPath, path, inputData, options);
     }
 
     /**
@@ -87,43 +96,43 @@ public:
 
 protected:
     template <typename DataType>
-    auto
-    inFunctionPointer(bool const isConcretePath, ConstructiblePath const& constructedPath, DataType const& data, InOptions const& options)
-            -> bool {
-        bool const isFunctionPointer = (InputData{data}.metadata.category == DataCategory::ExecutionFunctionPointer);
+    auto createTask(ConstructiblePath const& constructedPath, DataType const& data, InputData const& inputData, InOptions const& options)
+            -> std::optional<Task> {
+        bool const isFunctionPointer = (inputData.metadata.category == DataCategory::ExecutionFunctionPointer);
         bool const isImmediateExecution
                 = (!options.execution.has_value()
-                   || (options.execution.has_value() && options.execution.value().category == ExecutionOptions::Category::Immediate));
-        if (isConcretePath && isFunctionPointer && isImmediateExecution) {
-            if constexpr (std::is_function_v<std::remove_pointer_t<DataType>>) {
-                pool->addTask({.userSuppliedFunctionPointer = reinterpret_cast<void*>(data),
-                               .space = this,
-                               .pathToInsertReturnValueTo = constructedPath,
-                               .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
-                               .taskExecutor = [](Task const& task) {
-                                   assert(task.space);
-                                   if (task.userSuppliedFunctionPointer != nullptr) {
-                                       auto const fun
-                                               = reinterpret_cast<std::invoke_result_t<DataType> (*)()>(task.userSuppliedFunctionPointer);
-                                       task.space->insert(task.pathToInsertReturnValueTo.getPath(), fun());
-                                   }
-                               }});
+                   || (options.execution.has_value()
+                       && options.execution.value().category
+                                  == ExecutionOptions::Category::Immediate)); // ToDo: Add support for lazy executions
+        if constexpr (ExecutionFunctionPointer<DataType>) {
+            if (isFunctionPointer && isImmediateExecution) { // ToDo:: Add support for glob based executions
+                auto fun = [](Task const& task) {
+                    assert(task.space);
+                    if (task.userSuppliedFunctionPointer != nullptr) {
+                        auto userFunction = reinterpret_cast<std::invoke_result_t<DataType> (*)()>(task.userSuppliedFunctionPointer);
+                        task.space->insert(task.pathToInsertReturnValueTo.getPath(), userFunction());
+                    }
+                };
+                return Task{.userSuppliedFunctionPointer = inputData.obj,
+                            .space = this,
+                            .pathToInsertReturnValueTo = constructedPath,
+                            .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
+                            .taskExecutor = fun};
             }
-            return true;
         }
-        return false;
+        return std::nullopt;
     }
 
-    virtual InsertReturn inImpl(GlobPathStringView const& path, InputData const& data, InOptions const& options) {
+    virtual InsertReturn
+    inImpl(ConstructiblePath& constructedPath, GlobPathStringView const& path, InputData const& data, InOptions const& options) {
         InsertReturn ret;
         if (!path.isValid()) {
             ret.errors.emplace_back(Error::Code::InvalidPath, std::string("The path was not valid: ").append(path.getPath()));
             return ret;
         }
-        bool const isConcretePath = path.isConcrete();
-        auto constructedPath = isConcretePath ? ConstructiblePath{path} : ConstructiblePath{};
-        if (!this->inFunctionPointer(isConcretePath, constructedPath, data, options))
-            this->root.in(constructedPath, path.begin(), path.end(), InputData{data}, options, ret, this->waitMap);
+        this->root.in(constructedPath, path.begin(), path.end(), InputData{data}, options, ret);
+        if (ret.nbrSpacesInserted > 0)
+            this->cv.notify_all();
         return ret;
     };
 
@@ -132,39 +141,25 @@ protected:
                                   OutOptions const& options,
                                   Capabilities const& capabilities,
                                   void* obj) {
-        while (true) {
-            auto const ret = this->root.out(path.begin(), path.end(), inputMetadata, obj, options, capabilities, this->waitMap);
-            if (ret.has_value())
-                return ret;
-            if (options.block.has_value() && options.block.value().behavior != BlockOptions::Behavior::DontWait
-                && ret.error().code == Error::Code::NoSuchPath) {
-                /*auto const& waitPair = this->waitList.find(path);
-                if (waitPair == this->waitList.end()) {
-                    this->waitList.emplace(path, std::make_unique<WaitEntry>(path));
-                }
-                waitPair->second->cv.wait(std::unique_lock{waitPair->second->mutex});*/
-                auto [it, inserted] = this->waitMap.try_emplace(path, std::make_unique<WaitEntry>());
-                auto& entry = *it->second;
-                std::unique_lock<std::mutex> lock(entry.mutex);
-                if (inserted) {
-                    // We've just created this entry, so we need to check again if the data has arrived
-                    // before we start waiting. This prevents a race condition.
-                    lock.unlock();
-                    continue; // Go back to the start of the while loop
-                }
-            } else {
-                return ret;
+        auto const ret = this->root.out(path.begin(), path.end(), inputMetadata, obj, options, capabilities);
+        if (ret.has_value())
+            return ret;
+        if (options.block.has_value() && options.block.value().behavior != BlockOptions::Behavior::DontWait
+            && ret.error().code == Error::Code::NoSuchPath) {
+            while (true) {
+                std::unique_lock<std::mutex> lock(this->mutex);
+                auto const ret = this->root.out(path.begin(), path.end(), inputMetadata, obj, options, capabilities);
+                if (ret.has_value())
+                    return ret;
+                this->cv.wait(lock);
             }
         }
-        // return this->root.out(path.begin(), path.end(), inputMetadata, obj, options, capabilities);
-    }
-
-    void notifyAllWaiters(const ConcretePathStringView& path) {
-        this->waitMap.if_contains(path, [&](auto const& waitPair) { waitPair.second->cv.notify_all(); });
+        return ret;
     }
 
     TaskPool* pool;
-    WaitMap waitMap;
+    std::condition_variable cv;
+    std::mutex mutex;
     PathSpaceLeaf root;
 };
 

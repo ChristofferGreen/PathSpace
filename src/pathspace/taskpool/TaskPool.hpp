@@ -25,7 +25,7 @@ public:
     TaskPool(TaskPool const&) = delete;
     auto operator=(TaskPool const&) -> TaskPool& = delete;
 
-    auto addTask(Task const& task) -> void;
+    auto addTask(Task&& task) -> void;
     // auto addTask(std::function<void()> task) -> void;
 
     auto shutdown() -> void;

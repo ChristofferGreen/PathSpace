@@ -21,12 +21,12 @@ TaskPool::~TaskPool() {
     shutdown();
 }
 
-auto TaskPool::addTask(Task const& task) -> void {
+auto TaskPool::addTask(Task&& task) -> void {
     std::lock_guard<std::mutex> lock(taskMutex);
     if (task.executionOptions.location == ExecutionOptions::Location::MainThread)
         tasksMainThread.emplace(task);
     else
-        tasks.emplace(task);
+        tasks.emplace(std::move(task));
     taskCV.notify_one();
 }
 

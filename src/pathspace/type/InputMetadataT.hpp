@@ -205,9 +205,9 @@ concept FunctionPointer = requires {
 };
 
 template <typename T>
-concept ExecutionFunctionPointer = requires {
-    requires FunctionPointer<T>;
-    requires std::is_invocable_v<std::remove_pointer_t<T>>;
+concept ExecutionFunctionPointer = std::is_function_v<std::remove_pointer_t<T>> || requires(T& t) {
+    +t;  // Unary plus operator, which attempts to convert to function pointer
+    t(); // Can be called with no arguments
 };
 
 template <typename T>
