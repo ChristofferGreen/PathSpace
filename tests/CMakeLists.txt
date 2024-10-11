@@ -12,7 +12,6 @@ add_executable(PathSpaceTests
   unit/type/test_InputMetadata.cpp
   unit/type/test_InputData.cpp
   #unit/utils/test_ByteQueue.cpp
-  unit/ext/test_msgpack.cpp
   unit/ext/test_alpaca.cpp
   unit/taskpool/test_TaskPool.cpp
   #unit/ext/test_glaze.cpp

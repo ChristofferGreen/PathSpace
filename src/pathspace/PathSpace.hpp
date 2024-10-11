@@ -25,8 +25,8 @@ public:
      * @return InsertReturn object containing information about the insertion operation, including any errors.
      */
     template <typename DataType>
-    auto insert(GlobPathStringView const& path, DataType const& data, InOptions const& options = {}) -> InsertReturn {
-        InputData const inputData{data};
+    auto insert(GlobPathStringView const& path, DataType&& data, InOptions const& options = {}) -> InsertReturn {
+        InputData const inputData{std::forward<DataType>(data)};
         ConstructiblePath constructedPath = path.isConcrete() ? ConstructiblePath{path} : ConstructiblePath{};
         if (std::optional<Task> task = this->createTask(constructedPath, data, inputData, options)) {
             this->pool->addTask(std::move(task.value()));
