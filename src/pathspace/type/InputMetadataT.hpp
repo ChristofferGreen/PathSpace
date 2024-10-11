@@ -207,10 +207,12 @@ concept FunctionPointer = requires {
 };
 
 template <typename T>
-concept ExecutionFunctionPointer = std::is_function_v<std::remove_pointer_t<T>> || requires(T& t) {
-    +t;  // Unary plus operator, which attempts to convert to function pointer
-    t(); // Can be called with no arguments
-};
+concept ExecutionFunctionPointer
+        = (std::is_function_v<std::remove_pointer_t<T>> || std::is_member_function_pointer_v<T> || requires(T& t) { +t; })
+          && // Unary plus operator, which attempts to convert to function pointer
+          requires(T t) {
+              t(); // Can be called with no arguments
+          };
 
 template <typename T>
 concept ExecutionStdFunction = requires(T f) {
