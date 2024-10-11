@@ -129,7 +129,7 @@ TEST_CASE("PathSpace Read") {
         pspace.insert(
                 "/i",
                 +[] {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
                     return 46;
                 });
         auto const val = pspace.readBlock<int>("/i");

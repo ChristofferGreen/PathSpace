@@ -16,9 +16,10 @@ auto PathSpaceLeaf::in(ConstructiblePath& path,
                        GlobPathIteratorStringView const& end,
                        InputData const& inputData,
                        InOptions const& options,
-                       InsertReturn& ret) -> void {
-    std::next(iter) == end ? inFinalComponent(path, *iter, inputData, options, ret)
-                           : inIntermediateComponent(path, iter, end, *iter, inputData, options, ret);
+                       InsertReturn& ret,
+                       std::mutex& mutex) -> void {
+    std::next(iter) == end ? inFinalComponent(path, *iter, inputData, options, ret, mutex)
+                           : inIntermediateComponent(path, iter, end, *iter, inputData, options, ret, mutex);
 }
 
 auto PathSpaceLeaf::out(ConcretePathIteratorStringView const& iter,
@@ -37,10 +38,11 @@ auto PathSpaceLeaf::inFinalComponent(ConstructiblePath& path,
                                      GlobName const& pathComponent,
                                      InputData const& inputData,
                                      InOptions const& options,
-                                     InsertReturn& ret) -> void {
+                                     InsertReturn& ret,
+                                     std::mutex& mutex) -> void {
     path.append(pathComponent.getName());
-    pathComponent.isGlob() ? inGlobDataName(path, pathComponent, inputData, options, ret)
-                           : inConcreteDataName(path, pathComponent.getName(), inputData, options, ret);
+    pathComponent.isGlob() ? inGlobDataName(path, pathComponent, inputData, options, ret, mutex)
+                           : inConcreteDataName(path, pathComponent.getName(), inputData, options, ret, mutex);
 }
 
 auto PathSpaceLeaf::inIntermediateComponent(ConstructiblePath& path,
@@ -49,17 +51,19 @@ auto PathSpaceLeaf::inIntermediateComponent(ConstructiblePath& path,
                                             GlobName const& pathComponent,
                                             InputData const& inputData,
                                             InOptions const& options,
-                                            InsertReturn& ret) -> void {
+                                            InsertReturn& ret,
+                                            std::mutex& mutex) -> void {
     path.append(pathComponent.getName());
-    pathComponent.isGlob() ? inGlobPathComponent(path, iter, end, pathComponent, inputData, options, ret)
-                           : inConcretePathComponent(path, iter, end, pathComponent.getName(), inputData, options, ret);
+    pathComponent.isGlob() ? inGlobPathComponent(path, iter, end, pathComponent, inputData, options, ret, mutex)
+                           : inConcretePathComponent(path, iter, end, pathComponent.getName(), inputData, options, ret, mutex);
 }
 
 auto PathSpaceLeaf::inConcreteDataName(ConstructiblePath& path,
                                        ConcreteNameStringView const& concreteName,
                                        InputData const& inputData,
                                        InOptions const& options,
-                                       InsertReturn& ret) -> void {
+                                       InsertReturn& ret,
+                                       std::mutex& mutex) -> void {
     path.append(concreteName.getName());
     auto const appendDataIfNameExists = [&inputData, &options, &ret, path, this](auto& nodePair) {
         if (auto const error = std::get<NodeData>(nodePair.second).serialize(path, inputData, options, ret); error.has_value())
@@ -75,6 +79,7 @@ auto PathSpaceLeaf::inConcreteDataName(ConstructiblePath& path,
                   }
                   constructor(concreteName.getName(), std::move(nodeData));
               };
+    std::unique_lock<std::mutex> lock(mutex);
     this->nodeDataMap.lazy_emplace_l(concreteName.getName(), appendDataIfNameExists, createNodeDataAndAppendDataToItIfNameDoesNotExists);
     ret.nbrValuesInserted++;
 }
@@ -83,11 +88,12 @@ auto PathSpaceLeaf::inGlobDataName(ConstructiblePath& path,
                                    GlobName const& globName,
                                    InputData const& inputData,
                                    InOptions const& options,
-                                   InsertReturn& ret) -> void {
+                                   InsertReturn& ret,
+                                   std::mutex& mutex) -> void {
     for (auto const& val : this->nodeDataMap) {
         if (std::get<0>(globName.match(val.first))) {
             ConstructiblePath pathCopy = path;
-            inConcreteDataName(pathCopy, val.first.getName(), inputData, options, ret);
+            inConcreteDataName(pathCopy, val.first.getName(), inputData, options, ret, mutex);
         }
     }
 }
@@ -98,14 +104,15 @@ auto PathSpaceLeaf::inGlobPathComponent(ConstructiblePath& path,
                                         GlobName const& globName,
                                         InputData const& inputData,
                                         InOptions const& options,
-                                        InsertReturn& ret) -> void {
+                                        InsertReturn& ret,
+                                        std::mutex& mutex) -> void {
     auto const nextIter = std::next(iter);
     for (auto const& val : this->nodeDataMap) {
         if (std::get<0>(globName.match(val.first))) {
             if (std::holds_alternative<std::unique_ptr<PathSpaceLeaf>>(val.second)) {
                 ConstructiblePath pathCopy = path;
                 pathCopy.append(val.first.getName());
-                std::get<std::unique_ptr<PathSpaceLeaf>>(val.second)->in(pathCopy, nextIter, end, inputData, options, ret);
+                std::get<std::unique_ptr<PathSpaceLeaf>>(val.second)->in(pathCopy, nextIter, end, inputData, options, ret, mutex);
             }
         }
     }
@@ -117,19 +124,20 @@ auto PathSpaceLeaf::inConcretePathComponent(ConstructiblePath& path,
                                             ConcreteNameStringView const& concreteName,
                                             InputData const& inputData,
                                             InOptions const& options,
-                                            InsertReturn& ret) -> void {
+                                            InsertReturn& ret,
+                                            std::mutex& mutex) -> void {
     auto const nextIter = std::next(iter);
     path.append(concreteName.getName());
     auto const appendDataIfNameExists = [&](auto& nodePair) {
         if (std::holds_alternative<std::unique_ptr<PathSpaceLeaf>>(nodePair.second))
-            std::get<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)->in(path, nextIter, end, inputData, options, ret);
+            std::get<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)->in(path, nextIter, end, inputData, options, ret, mutex);
         else
             ret.errors.emplace_back(Error::Code::InvalidPathSubcomponent,
                                     std::string("Sub-component name is data for ").append(concreteName.getName()));
     };
     auto const createNodeDataAndAppendDataToItIfNameDoesNotExists = [&](NodeDataHashMap::constructor const& constructor) {
         auto space = std::make_unique<PathSpaceLeaf>();
-        space->in(path, nextIter, end, inputData, options, ret);
+        space->in(path, nextIter, end, inputData, options, ret, mutex);
         constructor(concreteName.getName(), std::move(space));
         ret.nbrSpacesInserted++;
     };
