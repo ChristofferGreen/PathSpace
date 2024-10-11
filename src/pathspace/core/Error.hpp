@@ -20,7 +20,8 @@ struct Error {
         UnknownError,
         SerializationFunctionMissing,
         UnserializableType,
-        PopInRead
+        PopInRead,
+        Shutdown
     };
 
     Code code;

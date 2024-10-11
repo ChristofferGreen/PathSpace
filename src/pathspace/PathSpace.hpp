@@ -141,26 +141,38 @@ protected:
                                   OutOptions const& options,
                                   Capabilities const& capabilities,
                                   void* obj) {
-        auto const ret = this->root.out(path.begin(), path.end(), inputMetadata, obj, options, capabilities);
-        if (ret.has_value())
-            return ret;
-        if (options.block.has_value() && options.block.value().behavior != BlockOptions::Behavior::DontWait
-            && ret.error().code == Error::Code::NoSuchPath) {
-            while (true) {
-                std::unique_lock<std::mutex> lock(this->mutex);
-                auto const ret = this->root.out(path.begin(), path.end(), inputMetadata, obj, options, capabilities);
-                if (ret.has_value())
-                    return ret;
-                this->cv.wait(lock);
-            }
+        auto checkAndRead
+                = [&]() -> Expected<int> { return this->root.out(path.begin(), path.end(), inputMetadata, obj, options, capabilities); };
+
+        auto result = checkAndRead();
+        if (result.has_value() || options.block.value().behavior == BlockOptions::Behavior::DontWait) {
+            return result;
         }
-        return ret;
+
+        std::unique_lock<std::mutex> lock(this->mutex);
+        this->cv.wait(lock, [&]() {
+            result = checkAndRead();
+            return result.has_value() || this->shuttingDown;
+        });
+
+        if (this->shuttingDown) {
+            return std::unexpected(Error{Error::Code::Shutdown, "PathSpace is shutting down"});
+        }
+
+        return result;
+    }
+
+    void shutdown() {
+        std::unique_lock<std::mutex> lock(this->mutex);
+        this->shuttingDown = true;
+        this->cv.notify_all();
     }
 
     TaskPool* pool;
     std::condition_variable cv;
     std::mutex mutex;
     PathSpaceLeaf root;
+    std::atomic<bool> shuttingDown{false};
 };
 
 } // namespace SP

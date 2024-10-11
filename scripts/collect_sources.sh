@@ -20,7 +20,7 @@ get_relative_path() {
 # Function to read and write header
 write_header() {
     local output_file=$1
-    local header_file="header.txt"
+    local header_file="scripts/header.txt"
     
     if [[ -f "$header_file" ]]; then
         log_verbose "Adding header from $header_file"
@@ -31,22 +31,11 @@ write_header() {
     fi
 }
 
-# Function to write metadata to the output file
-write_metadata() {
-    local output_file=$1
-    log_verbose "Writing metadata"
-    {
-        echo "<!-- Project Files -->"
-        echo "<!-- Generated on: $(date) -->"
-        echo ""
-    } >> "$output_file" || return 1
-}
-
 # Function to generate and write file structure
 write_file_structure() {
     local output_file="$1"
     echo "<project_structure>" >> "$output_file"
-    tree -P "*.cpp|*.hpp|*.h|*.md" --prune -I ".*|build|ext|myenv" ../ >> "$output_file"
+    tree -P "*.cpp|*.hpp|*.h|*.md" --prune -I ".*|build|ext|myenv" . >> "$output_file"
     echo "</project_structure>" >> "$output_file"
 }
 
@@ -71,9 +60,9 @@ write_file_contents() {
 process_files() {
     local output_file=$1
     log_verbose "Searching for C++, HPP, H, and MD files"
-    find .. -type f \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "CMakeList.txt" -o -name "*.md" \) | while read -r file; do
-        if [[ "$file" == *"/build/"* || "$file" == *"/ext/"* || "$file" == *"/tests/"* ]]; then
-            log_verbose "Skipping file in excluded directory: $file"
+    find . -type f \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "CMakeList.txt" -o -name "*.md" \) | while read -r file; do
+        if [[ "$file" == *"/build/"* || "$file" == *"/ext/"* ]]; then
+            #log_verbose "Skipping file in excluded directory: $file"
             continue
         fi
         write_file_contents "$file" "$output_file" || return 1
@@ -107,7 +96,6 @@ main() {
     > "$output_file"
     
     write_header "$output_file" || { echo "Error: Failed to write header" >&2; exit 1; }
-    write_metadata "$output_file" || { echo "Error: Failed to write metadata" >&2; exit 1; }
     write_file_structure "$output_file" || { echo "Error: Failed to write file structure" >&2; exit 1; }
     process_files "$output_file" || { echo "Error: Failed to process files" >&2; exit 1; }
 

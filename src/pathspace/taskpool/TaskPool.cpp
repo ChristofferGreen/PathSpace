@@ -71,11 +71,16 @@ void TaskPool::workerFunction() {
     while (true) {
         Task task;
         {
-            std::unique_lock<std::mutex> lock(taskMutex);
+            std::unique_lock<std::mutex> counterLock(availableThreadsMutex);
             availableThreads++;
+        }
+
+        {
+            std::unique_lock<std::mutex> lock(taskMutex);
             taskCV.wait(lock, [this]() { return this->stop || !this->tasks.empty() || this->immediateTask.has_value(); });
 
             if (this->stop && this->tasks.empty() && !this->immediateTask.has_value()) {
+                std::unique_lock<std::mutex> counterLock(availableThreadsMutex);
                 availableThreads--;
                 return;
             }
@@ -87,15 +92,13 @@ void TaskPool::workerFunction() {
                 task = std::move(tasks.front());
                 tasks.pop();
             }
+        }
+
+        {
+            std::unique_lock<std::mutex> counterLock(availableThreadsMutex);
             availableThreads--;
         }
 
-        /*if (std::holds_alternative<std::function<void()>>(task.callable)) {
-            std::get<std::function<void()>>(task.callable)();
-        } else if (std::holds_alternative<FunctionPointerTask>(task.callable)) {
-            auto functionPointerTask = std::get<FunctionPointerTask>(task.callable);
-            functionPointerTask(task.functionPointer);
-        }*/
         task.taskExecutor(task);
     }
 }

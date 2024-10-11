@@ -37,7 +37,7 @@ private:
     std::vector<std::thread> workers;
     std::queue<Task> tasks;
     std::queue<Task> tasksMainThread;
-    std::mutex taskMutex;
+    std::mutex taskMutex, availableThreadsMutex;
     std::condition_variable taskCV;
     std::atomic<bool> stop;
     std::atomic<size_t> availableThreads;
