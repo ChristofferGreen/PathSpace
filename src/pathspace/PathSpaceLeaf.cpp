@@ -30,7 +30,7 @@ auto PathSpaceLeaf::out(ConcretePathIteratorStringView const& iter,
     auto const nextIter = std::next(iter);
     auto const pathComponent = *iter;
     return nextIter == end ? outDataName(pathComponent, nextIter, end, inputMetadata, obj, options, capabilities)
-                           : outConcretePathComponent(nextIter, end, pathComponent.getName(), inputMetadata, obj, options, capabilities);
+                           : outConcretePathComponent(nextIter, end, pathComponent, inputMetadata, obj, options, capabilities);
 }
 
 auto PathSpaceLeaf::inFinalComponent(ConstructiblePath& path,
@@ -56,7 +56,7 @@ auto PathSpaceLeaf::inIntermediateComponent(ConstructiblePath& path,
 }
 
 auto PathSpaceLeaf::inConcreteDataName(ConstructiblePath& path,
-                                       ConcreteName const& concreteName,
+                                       ConcreteNameStringView const& concreteName,
                                        InputData const& inputData,
                                        InOptions const& options,
                                        InsertReturn& ret) -> void {
@@ -73,9 +73,9 @@ auto PathSpaceLeaf::inConcreteDataName(ConstructiblePath& path,
                       ret.errors.emplace_back(error.value());
                       return;
                   }
-                  constructor(concreteName, std::move(nodeData));
+                  constructor(concreteName.getName(), std::move(nodeData));
               };
-    this->nodeDataMap.lazy_emplace_l(concreteName, appendDataIfNameExists, createNodeDataAndAppendDataToItIfNameDoesNotExists);
+    this->nodeDataMap.lazy_emplace_l(concreteName.getName(), appendDataIfNameExists, createNodeDataAndAppendDataToItIfNameDoesNotExists);
     ret.nbrValuesInserted++;
 }
 
@@ -87,7 +87,7 @@ auto PathSpaceLeaf::inGlobDataName(ConstructiblePath& path,
     for (auto const& val : this->nodeDataMap) {
         if (std::get<0>(globName.match(val.first))) {
             ConstructiblePath pathCopy = path;
-            inConcreteDataName(pathCopy, val.first, inputData, options, ret);
+            inConcreteDataName(pathCopy, val.first.getName(), inputData, options, ret);
         }
     }
 }
@@ -114,7 +114,7 @@ auto PathSpaceLeaf::inGlobPathComponent(ConstructiblePath& path,
 auto PathSpaceLeaf::inConcretePathComponent(ConstructiblePath& path,
                                             GlobPathIteratorStringView const& iter,
                                             GlobPathIteratorStringView const& end,
-                                            ConcreteName const& concreteName,
+                                            ConcreteNameStringView const& concreteName,
                                             InputData const& inputData,
                                             InOptions const& options,
                                             InsertReturn& ret) -> void {
@@ -130,13 +130,13 @@ auto PathSpaceLeaf::inConcretePathComponent(ConstructiblePath& path,
     auto const createNodeDataAndAppendDataToItIfNameDoesNotExists = [&](NodeDataHashMap::constructor const& constructor) {
         auto space = std::make_unique<PathSpaceLeaf>();
         space->in(path, nextIter, end, inputData, options, ret);
-        constructor(concreteName, std::move(space));
+        constructor(concreteName.getName(), std::move(space));
         ret.nbrSpacesInserted++;
     };
-    this->nodeDataMap.lazy_emplace_l(concreteName, appendDataIfNameExists, createNodeDataAndAppendDataToItIfNameDoesNotExists);
+    this->nodeDataMap.lazy_emplace_l(concreteName.getName(), appendDataIfNameExists, createNodeDataAndAppendDataToItIfNameDoesNotExists);
 }
 
-auto PathSpaceLeaf::outDataName(ConcreteName const& concreteName,
+auto PathSpaceLeaf::outDataName(ConcreteNameStringView const& concreteName,
                                 ConcretePathIteratorStringView const& nextIter,
                                 ConcretePathIteratorStringView const& end,
                                 InputMetadata const& inputMetadata,
@@ -145,33 +145,26 @@ auto PathSpaceLeaf::outDataName(ConcreteName const& concreteName,
                                 Capabilities const& capabilities) -> Expected<int> {
     Expected<int> expected = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     if (options.doPop) { // ToDo: If it's the last item then should we erase the whole final path component (erase_if)?
-        this->nodeDataMap.modify_if(concreteName, [&](auto& nodePair) {
+        this->nodeDataMap.modify_if(concreteName.getName(), [&](auto& nodePair) {
             expected = std::get<NodeData>(nodePair.second).deserializePop(obj, inputMetadata);
         });
     } else {
-        this->nodeDataMap.if_contains(concreteName, [&](auto const& nodePair) {
+        this->nodeDataMap.if_contains(concreteName.getName(), [&](auto const& nodePair) {
             expected = std::get<NodeData>(nodePair.second).deserialize(obj, inputMetadata, options.execution);
         });
-    }
-    if (!expected.has_value() && options.block.has_value()
-        && options.block.value().behavior != BlockOptions::Behavior::DontWait) { // ToDo: More fine grained waiting options
-        /*std::unique_ptr<WaitEntry> entry = std::make_unique<WaitEntry>();
-        entry->active_threads++;
-        entry->mutex.lock();
-        waitMap.emplace(std::make_pair(path, std::move(entry)));*/
     }
     return expected;
 }
 
 auto PathSpaceLeaf::outConcretePathComponent(ConcretePathIteratorStringView const& nextIter,
                                              ConcretePathIteratorStringView const& end,
-                                             ConcreteName const& concreteName,
+                                             ConcreteNameStringView const& concreteName,
                                              InputMetadata const& inputMetadata,
                                              void* obj,
                                              OutOptions const& options,
                                              Capabilities const& capabilities) -> Expected<int> {
     Expected<int> expected = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
-    this->nodeDataMap.if_contains(concreteName, [&](auto const& nodePair) {
+    this->nodeDataMap.if_contains(concreteName.getName(), [&](auto const& nodePair) {
         expected = std::holds_alternative<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)
                            ? std::get<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)
                                      ->out(nextIter, end, inputMetadata, obj, options, capabilities)

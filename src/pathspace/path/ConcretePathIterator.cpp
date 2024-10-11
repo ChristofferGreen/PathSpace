@@ -20,7 +20,7 @@ auto ConcretePathIterator<T>::operator==(const ConcretePathIterator<T>& other) c
 }
 
 template <typename T>
-auto ConcretePathIterator<T>::operator*() const -> ConcreteName {
+auto ConcretePathIterator<T>::operator*() const -> ConcreteNameStringView {
     auto startSub = this->current;
     auto currentSub = this->current;
 

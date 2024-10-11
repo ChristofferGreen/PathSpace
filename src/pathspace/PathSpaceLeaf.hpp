@@ -40,7 +40,7 @@ private:
                                  InOptions const& options,
                                  InsertReturn& ret) -> void;
     auto inConcreteDataName(ConstructiblePath& path,
-                            ConcreteName const& concreteName,
+                            ConcreteNameStringView const& concreteName,
                             InputData const& inputData,
                             InOptions const& options,
                             InsertReturn& ret) -> void;
@@ -59,12 +59,12 @@ private:
     auto inConcretePathComponent(ConstructiblePath& path,
                                  GlobPathIteratorStringView const& iter,
                                  GlobPathIteratorStringView const& end,
-                                 ConcreteName const& concreteName,
+                                 ConcreteNameStringView const& concreteName,
                                  InputData const& inputData,
                                  InOptions const& options,
                                  InsertReturn& ret) -> void;
 
-    auto outDataName(ConcreteName const& concreteName,
+    auto outDataName(ConcreteNameStringView const& concreteName,
                      ConcretePathIteratorStringView const& nextIter,
                      ConcretePathIteratorStringView const& end,
                      InputMetadata const& inputMetadata,
@@ -73,7 +73,7 @@ private:
                      Capabilities const& capabilities) -> Expected<int>;
     auto outConcretePathComponent(ConcretePathIteratorStringView const& nextIter,
                                   ConcretePathIteratorStringView const& end,
-                                  ConcreteName const& concreteName,
+                                  ConcreteNameStringView const& concreteName,
                                   InputMetadata const& inputMetadata,
                                   void* obj,
                                   OutOptions const& options,

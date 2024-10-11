@@ -2,9 +2,11 @@
 #include "DataCategory.hpp"
 #include "core/ExecutionOptions.hpp"
 #include "pathspace/taskpool/TaskPool.hpp"
+#include "type/helpers/ReturnType.h"
 #include <cassert>
 #include <functional>
 #include <type_traits>
+#include <typeinfo>
 
 // #define USE_GLAZE
 #define USE_ALPACA
@@ -223,6 +225,7 @@ struct InputMetadataT {
     InputMetadataT() = default;
 
     std::type_info const* typeInfo = &typeid(T);
+    std::type_info const* returnTypeInfo = ReturnTypeInfo<T>;
 
     static constexpr DataCategory const category = []() {
         if constexpr (ExecutionFunctionPointer<T>) {
@@ -231,6 +234,8 @@ struct InputMetadataT {
             return DataCategory::FunctionPointer;
         } else if constexpr (ExecutionStdFunction<T>) {
             return DataCategory::ExecutionStdFunction;
+        } else if constexpr (std::is_fundamental<T>::value) {
+            return DataCategory::Fundamental;
         } else {
             return DataCategory::None;
         }

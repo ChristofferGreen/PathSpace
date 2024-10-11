@@ -8,7 +8,8 @@ enum struct DataCategory {
     SerializedData,
     ExecutionFunctionPointer,
     FunctionPointer,
-    ExecutionStdFunction
+    ExecutionStdFunction,
+    Fundamental
 };
 
 } // namespace SP

@@ -2,7 +2,7 @@
 
 namespace SP {
 
-auto is_glob(std::string_view const &strv) -> bool {
+auto is_glob(std::string_view const& strv) -> bool {
     bool previousCharWasEscape = false;
     for (auto const& ch : strv) {
         if (ch == '\\' && !previousCharWasEscape) {
@@ -20,26 +20,29 @@ auto is_glob(std::string_view const &strv) -> bool {
     return false;
 }
 
-GlobName::GlobName(char const * const ptr) : name(ptr) {}
-
-GlobName::GlobName(std::string::const_iterator const &iter, std::string::const_iterator const &endIter) : name(iter, endIter) {}
-
-GlobName::GlobName(std::string_view::const_iterator const &iter, std::string_view::const_iterator const &endIter) : name(iter, endIter) {}
-
-auto GlobName::operator<=>(GlobName const &other) const -> std::strong_ordering {
-    return this->name<=>other.name;
+GlobName::GlobName(char const* const ptr) : name(ptr) {
 }
 
-auto GlobName::operator==(GlobName const &other) const -> bool {
-    return this->name==other.name;
+GlobName::GlobName(std::string::const_iterator const& iter, std::string::const_iterator const& endIter) : name(iter, endIter) {
 }
 
-auto GlobName::operator==(ConcreteName const &other) const -> bool {
-    return this->name==other.name;
+GlobName::GlobName(std::string_view::const_iterator const& iter, std::string_view::const_iterator const& endIter) : name(iter, endIter) {
 }
 
-auto GlobName::operator==(char const * const other) const -> bool {
-    return this->name==other;
+auto GlobName::operator<=>(GlobName const& other) const -> std::strong_ordering {
+    return this->name <=> other.name;
+}
+
+auto GlobName::operator==(GlobName const& other) const -> bool {
+    return this->name == other.name;
+}
+
+auto GlobName::operator==(ConcreteNameStringView const& other) const -> bool {
+    return this->name == other.name;
+}
+
+auto GlobName::operator==(char const* const other) const -> bool {
+    return this->name == other;
 }
 
 auto GlobName::match(const std::string_view& str) const -> std::tuple<bool /*match*/, bool /*supermatch*/> {
@@ -49,7 +52,7 @@ auto GlobName::match(const std::string_view& str) const -> std::tuple<bool /*mat
     while (strIdx < str.size()) {
         if (this->name[globIdx] == '\\') {
             // Handle escape character
-            globIdx++;  // Skip backslash
+            globIdx++; // Skip backslash
             if (globIdx < this->name.size() && this->name[globIdx] == str[strIdx]) {
                 // Match the escaped character literally
                 ++strIdx;
@@ -137,8 +140,12 @@ auto GlobName::match(const std::string_view& str) const -> std::tuple<bool /*mat
     return {globIdx == this->name.size() && strIdx == str.size(), false};
 }
 
-auto GlobName::match(const ConcreteName& str) const -> std::tuple<bool /*match*/, bool /*supermatch*/> {
+auto GlobName::match(const ConcreteNameStringView& str) const -> std::tuple<bool /*match*/, bool /*supermatch*/> {
     return this->match(str.name);
+}
+
+auto GlobName::match(const ConcreteNameString& str) const -> std::tuple<bool /*match*/, bool /*supermatch*/> {
+    return this->match(str.getName());
 }
 
 auto GlobName::isConcrete() const -> bool {

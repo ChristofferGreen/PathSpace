@@ -131,6 +131,7 @@ protected:
             return ret;
         }
         this->root.in(constructedPath, path.begin(), path.end(), InputData{data}, options, ret);
+        std::cout << "notify, values:" << ret.nbrValuesInserted << std::endl;
         if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0)
             this->cv.notify_all();
         return ret;
@@ -149,9 +150,12 @@ protected:
             while (true) {
                 std::unique_lock<std::mutex> lock(this->mutex);
                 auto const ret = this->root.out(path.begin(), path.end(), inputMetadata, obj, options, capabilities);
+                std::cout << "data: " << ret.has_value() << std::endl;
                 if (ret.has_value())
                     return ret;
+                std::cout << "wait" << std::endl;
                 this->cv.wait(lock);
+                std::cout << "waked up" << std::endl;
             }
         }
         return ret;
