@@ -7,7 +7,6 @@
 #include "path/ConstructiblePath.hpp"
 #include "pathspace/type/DataCategory.hpp"
 #include "pathspace/type/InputData.hpp"
-#include "taskpool/TaskPool.hpp"
 #include "type/InputMetadata.hpp"
 
 #include <expected>
@@ -23,35 +22,7 @@ public:
         if (!inputData.metadata.serialize)
             return Error{Error::Code::SerializationFunctionMissing, "Serialization function is missing."};
 
-        if (inputData.metadata.category == DataCategory::ExecutionFunctionPointer) {
-            if (!options.execution.has_value()
-                || (options.execution.has_value() && options.execution->category == ExecutionOptions::Category::Immediate)) {
-                /*pool->addTask({.callable = [](void* const functionPointer) -> void {},
-                               .functionPointer = inputData.obj,
-                               .path = path,
-                               .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{}});*/
-
-                // Send the function over to the ThreadPool for execution. The return type should be reinserted to the space at
-                // the right path. But will be stored in a std::vector<std::any>.
-                // inputData.metadata.serializeFunctionPointer(inputData.obj, data, options.execution);
-
-                /*pool->addTask({.callable = [](void* const functionPointer) -> void {
-
-                               },
-                               .functionPointer = inputData.obj,
-                               .path = path,
-                               .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{}});*/
-
-                // ToDo: Figure out optimization for this usecase:
-                // space.insert("/fun", [](){ return 32; });
-                // space.extract<int>("/fun");
-                // The above will create an unnecessary serialize/deserialize for the returned value.
-                // Not sure if avoiding the serialize/deserialize is possible.
-            }
-        } else {
-            inputData.metadata.serialize(inputData.obj, data);
-        }
-
+        inputData.metadata.serialize(inputData.obj, data);
         updateTypes(inputData.metadata);
         return std::nullopt;
     }

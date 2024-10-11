@@ -16,13 +16,5 @@ struct Task {
 
     void (*taskExecutor)(Task const& task) = nullptr;
 };
-/*
-template <typename T>
-auto task_executor(Task const& task) -> void {
-    assert(task.space);
-    if (task.userSuppliedFunctionPointer != nullptr) {
-        task.space->insert(task.pathToInsertReturnValueTo, reinterpret_cast<T (*)()>(task.userSuppliedFunctionPointer)());
-    }
-}
-*/
+
 } // namespace SP
