@@ -8,6 +8,7 @@ PathSpace::PathSpace(TaskPool* pool) {
 };
 
 PathSpace::~PathSpace() {
+    this->shutdown();
 }
 
 auto PathSpace::shutdown() -> void {
