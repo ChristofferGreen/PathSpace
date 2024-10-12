@@ -132,7 +132,7 @@ protected:
 
     auto shutdown() -> void;
 
-    TaskPool* pool;
+    TaskPool* pool = nullptr;
     std::condition_variable cv;
     std::mutex mutex;
     PathSpaceLeaf root;
