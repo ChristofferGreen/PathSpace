@@ -112,12 +112,8 @@ concept ExecutionFunctionPointer
               t(); // Can be called with no arguments
           };
 
-template <typename T>
-concept ExecutionStdFunction = requires(T f) {
-    requires std::is_invocable_v<T>;
-    requires !std::is_pointer_v<T>;               // Exclude raw function pointers
-    requires !std::is_same_v<std::decay_t<T>, T>; // Exclude objects with operator()
-};
+template <typename T, typename R = void>
+concept ExecutionStdFunction = requires(T f) { requires std::is_convertible_v<T, std::function<R()>>; };
 
 template <typename CVRefT>
 struct InputMetadataT {

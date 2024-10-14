@@ -15,6 +15,7 @@ struct Task {
     ExecutionOptions executionOptions;
 
     void (*taskExecutor)(Task const& task) = nullptr;
+    std::function<void(Task const& task)> taskExecutorF;
 };
 
 } // namespace SP

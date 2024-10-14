@@ -28,10 +28,9 @@ public:
         log("Insert", "Function Called");
         InputData const inputData{std::forward<DataType>(data)};
         ConstructiblePath constructedPath = path.isConcrete() ? ConstructiblePath{path} : ConstructiblePath{};
-        if (std::optional<Task> task = this->createTask(constructedPath, data, inputData, options)) {
-            this->pool->addTask(std::move(task.value()));
+        if (this->createTask(constructedPath, std::forward<DataType>(data), inputData, options))
             return {.nbrTasksCreated = 1};
-        } else
+        else
             return this->in(constructedPath, path, inputData, options);
     }
 
@@ -103,31 +102,47 @@ public:
 protected:
     template <typename DataType>
     auto createTask(ConstructiblePath const& constructedPath, DataType const& data, InputData const& inputData, InOptions const& options)
-            -> std::optional<Task> {
+            -> bool {
         log("CreateTask", "Function Called");
-        bool const isFunctionPointer = (inputData.metadata.category == DataCategory::ExecutionFunctionPointer);
+        bool const isFunctionPointerExecution = (inputData.metadata.category == DataCategory::ExecutionFunctionPointer);
+        bool const isStdFunctionExecution = (inputData.metadata.category == DataCategory::ExecutionStdFunction);
         bool const isImmediateExecution
                 = (!options.execution.has_value()
                    || (options.execution.has_value()
                        && options.execution.value().category
                                   == ExecutionOptions::Category::Immediate)); // ToDo: Add support for lazy executions
-        if constexpr (ExecutionFunctionPointer<DataType>) {
-            if (isFunctionPointer && isImmediateExecution) { // ToDo:: Add support for glob based executions
-                auto fun = [](Task const& task) {
-                    assert(task.space);
-                    if (task.userSuppliedFunctionPointer != nullptr) {
-                        auto userFunction = reinterpret_cast<std::invoke_result_t<DataType> (*)()>(task.userSuppliedFunctionPointer);
+        if constexpr (ExecutionFunctionPointer<DataType> || ExecutionStdFunction<DataType>) {
+            if (isImmediateExecution) { // ToDo:: Add support for glob based executions
+                if (isFunctionPointerExecution) {
+                    auto fun = [](Task const& task) {
+                        assert(task.space);
+                        if (task.userSuppliedFunctionPointer != nullptr) {
+                            auto userFunction = reinterpret_cast<std::invoke_result_t<DataType> (*)()>(task.userSuppliedFunctionPointer);
+                            task.space->insert(task.pathToInsertReturnValueTo.getPath(), userFunction());
+                        }
+                    };
+                    this->pool->addTask(
+                            Task{.userSuppliedFunctionPointer = inputData.obj,
+                                 .space = this,
+                                 .pathToInsertReturnValueTo = constructedPath,
+                                 .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
+                                 .taskExecutor = fun});
+                    return true;
+                } else if (isStdFunctionExecution) {
+                    auto fun = [userFunction = std::move(data)](Task const& task) {
+                        assert(task.space);
                         task.space->insert(task.pathToInsertReturnValueTo.getPath(), userFunction());
-                    }
-                };
-                return Task{.userSuppliedFunctionPointer = inputData.obj,
-                            .space = this,
-                            .pathToInsertReturnValueTo = constructedPath,
-                            .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
-                            .taskExecutor = fun};
+                    };
+                    this->pool->addTask(
+                            Task{.space = this,
+                                 .pathToInsertReturnValueTo = constructedPath,
+                                 .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
+                                 .taskExecutorF = fun});
+                    return true;
+                }
             }
         }
-        return std::nullopt;
+        return false;
     }
 
     virtual auto in(ConstructiblePath& constructedPath, GlobPathStringView const& path, InputData const& data, InOptions const& options)

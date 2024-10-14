@@ -1,9 +1,10 @@
 #pragma once
 #include "pathspace/type/InputMetadata.hpp"
 
-#include <utility>
+#include <functional>
 
 namespace SP {
+struct Task;
 
 struct InputData {
     template <typename T>
@@ -16,6 +17,7 @@ struct InputData {
     }
 
     void* obj = nullptr;
+    std::function<void(Task const& task)> taskExecutor;
     InputMetadata metadata;
 };
 

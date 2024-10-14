@@ -30,26 +30,6 @@ auto TaskPool::addTask(Task&& task) -> void {
     taskCV.notify_one();
 }
 
-/*void TaskPool::addTask(std::function<void()> task) {
-    {
-        std::lock_guard<std::mutex> lock(taskMutex);
-        tasks.emplace(Task{std::move(task)});
-    }
-    taskCV.notify_one();
-}*/
-
-/*
-auto TaskPool::addFunctionPointerTaskDirect(FunctionPointerTask task, void* const functionPointer, void* returnData) -> void {
-    std::unique_lock<std::mutex> lock(taskMutex);
-    if (availableThreads > 0) {
-        immediateTask = Task{task, functionPointer, returnData};
-    } else {
-        tasks.emplace(Task{task, functionPointer, returnData});
-    }
-    lock.unlock();
-    taskCV.notify_one();
-}*/
-
 void TaskPool::shutdown() {
     {
         std::unique_lock<std::mutex> lock(taskMutex);
@@ -99,7 +79,10 @@ void TaskPool::workerFunction() {
             availableThreads--;
         }
 
-        task.taskExecutor(task);
+        if (task.taskExecutor != nullptr)
+            task.taskExecutor(task);
+        else if (task.taskExecutorF)
+            task.taskExecutorF(task);
     }
 }
 
