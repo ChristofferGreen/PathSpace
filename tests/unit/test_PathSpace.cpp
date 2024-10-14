@@ -73,6 +73,120 @@ TEST_CASE("PathSpace Insert") {
     }
 }*/
 
+TEST_CASE("PathSpace Function Insertion and Execution") {
+    PathSpace pspace;
+
+    SUBCASE("Simple Function Pointer Insertion and Execution") {
+        int (*simpleFunc)() = []() -> int { return 42; };
+        CHECK(pspace.insert("/simple", simpleFunc).errors.size() == 0);
+        auto result = pspace.readBlock<int>("/simple");
+        CHECK(result.has_value());
+        CHECK(result.value() == 42);
+    }
+
+    SUBCASE("std::function Insertion and Execution") {
+        std::function<int()> stdFunc = []() -> int { return 100; };
+        CHECK(pspace.insert("/std", stdFunc).errors.size() == 0);
+        auto result = pspace.readBlock<int>("/std");
+        CHECK(result.has_value());
+        CHECK(result.value() == 100);
+    }
+
+    SUBCASE("Nested Function Calls with Different Types") {
+        auto f1 = [&pspace]() -> double {
+            auto val = pspace.readBlock<int>("/f2").value();
+            return val * 1.5;
+        };
+        auto f2 = [&pspace]() -> int {
+            auto val = pspace.readBlock<std::string>("/f3").value();
+            return std::stoi(val);
+        };
+        std::function<std::string()> f3 = []() -> std::string { return "50"; };
+
+        CHECK(pspace.insert("/f1", f1).errors.size() == 0);
+        CHECK(pspace.insert("/f2", f2).errors.size() == 0);
+        CHECK(pspace.insert("/f3", f3).errors.size() == 0);
+
+        auto result = pspace.readBlock<double>("/f1");
+        CHECK(result.has_value());
+        CHECK(result.value() == 75.0);
+    }
+
+    SUBCASE("Function Overwriting") {
+        int (*func1)() = []() -> int { return 1; };
+        int (*func2)() = []() -> int { return 2; };
+
+        CHECK(pspace.insert(SP::GlobPathStringView{"/overwrite"}, func1).errors.size() == 0);
+        CHECK(pspace.insert(SP::GlobPathStringView{"/overwrite"}, func2).errors.size() == 0);
+
+        auto result = pspace.readBlock<int>(SP::ConcretePathStringView{"/overwrite"});
+        CHECK(result.has_value());
+        CHECK(result.value() == 2);
+    }
+
+    SUBCASE("Circular Dependency Detection") {
+        auto f1 = [&pspace]() -> int { return pspace.readBlock<int>(SP::ConcretePathStringView{"/f2"}).value() + 1; };
+        auto f2 = [&pspace]() -> int { return pspace.readBlock<int>(SP::ConcretePathStringView{"/f1"}).value() + 1; };
+
+        CHECK(pspace.insert(SP::GlobPathStringView{"/f1"}, f1).errors.size() == 0);
+        CHECK(pspace.insert(SP::GlobPathStringView{"/f2"}, f2).errors.size() == 0);
+
+        auto result = pspace.readBlock<int>(SP::ConcretePathStringView{"/f1"});
+        // Expecting an error or timeout due to circular dependency
+        CHECK(!result.has_value());
+    }
+
+    SUBCASE("Exception Handling in Functions") {
+        auto throwingFunc = []() -> int { throw std::runtime_error("Test exception"); };
+
+        CHECK(pspace.insert(SP::GlobPathStringView{"/throwing"}, throwingFunc).errors.size() == 0);
+
+        auto result = pspace.readBlock<int>(SP::ConcretePathStringView{"/throwing"});
+        CHECK(!result.has_value());
+        // Check for appropriate error handling
+        // The exact error checking depends on how PathSpace handles exceptions
+    }
+
+    SUBCASE("Large Number of Nested Calls") {
+        const int DEPTH = 1000;
+        for (int i = 0; i < DEPTH; ++i) {
+            auto func = [i, &pspace]() -> int {
+                if (i == 0)
+                    return 1;
+                return pspace.readBlock<int>(SP::ConcretePathStringView{"/func" + std::to_string(i - 1)}).value() + 1;
+            };
+            CHECK(pspace.insert(SP::GlobPathStringView{"/func" + std::to_string(i)}, func).errors.size() == 0);
+        }
+
+        auto result = pspace.readBlock<int>(SP::ConcretePathStringView{"/func" + std::to_string(DEPTH - 1)});
+        CHECK(result.has_value());
+        CHECK(result.value() == DEPTH);
+    }
+
+    SUBCASE("Concurrent Function Execution") {
+        std::atomic<int> counter(0);
+        auto incrementFunc = [&counter]() -> int {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            return ++counter;
+        };
+
+        for (int i = 0; i < 100; ++i) {
+            CHECK(pspace.insert(SP::GlobPathStringView{"/concurrent" + std::to_string(i)}, incrementFunc).errors.size() == 0);
+        }
+
+        std::vector<std::thread> threads;
+        for (int i = 0; i < 100; ++i) {
+            threads.emplace_back([&pspace, i]() { pspace.readBlock<int>(SP::ConcretePathStringView{"/concurrent" + std::to_string(i)}); });
+        }
+
+        for (auto& t : threads) {
+            t.join();
+        }
+
+        CHECK(counter == 100);
+    }
+}
+
 TEST_CASE("PathSpace Read") {
     PathSpace pspace;
     SUBCASE("Simple PathSpace Read") {
