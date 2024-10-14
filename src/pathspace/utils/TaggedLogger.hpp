@@ -52,6 +52,8 @@
  * }
  */
 
+#ifdef SP_LOG_DEBUG
+
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -63,8 +65,9 @@
 #include <string>
 #include <thread>
 #include <vector>
-
+#endif // SP_LOG_DEBUG
 namespace SP {
+#ifdef SP_LOG_DEBUG
 
 class TaggedLogger {
 public:
@@ -147,21 +150,19 @@ private:
     }
 };
 
-// Global logger instance
-inline auto getLogger() -> TaggedLogger& {
+inline auto logger() -> TaggedLogger& {
     static TaggedLogger logger;
     return logger;
 }
 
-#ifdef SP_LOG_DEBUG
 template <typename... Args>
 inline void log(Args&&... args) {
-    getLogger().log(std::forward<Args>(args)...);
+    logger().log(std::forward<Args>(args)...);
 }
 
 template <typename... Args>
 inline void logf(Args&&... args) {
-    getLogger().logf(std::forward<Args>(args)...);
+    logger().logf(std::forward<Args>(args)...);
 }
 #else
 template <typename... Args>
@@ -171,6 +172,6 @@ inline void log(Args&&...) {
 template <typename... Args>
 inline void logf(Args&&...) {
 }
-#endif
+#endif // SP_LOG_DEBUG
 
 } // namespace SP
