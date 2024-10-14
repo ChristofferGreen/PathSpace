@@ -37,24 +37,7 @@ public:
             return std::unexpected(Error{Error::Code::UnserializableType, "No type information found."});
         }
 
-        if (types.front().typeInfo != inputMetadata.typeInfo && types.front().category != DataCategory::ExecutionFunctionPointer) {
-            return std::unexpected(Error{Error::Code::UnserializableType, "Type mismatch during deserialization."});
-        }
-
-        if (types.front().category == DataCategory::ExecutionFunctionPointer) {
-            // ToDo: If execution is marked to happen in a different thread then do that instead
-            if (!execution.has_value()
-                || (execution.has_value() && execution.value().category == ExecutionOptions::Category::OnReadOrExtract)
-                || (execution.has_value() && execution.value().category == ExecutionOptions::Category::Immediate)) {
-                void* funPtr = nullptr;
-                assert(inputMetadata.deserializeFunctionPointer);
-                inputMetadata.deserializeFunctionPointer(&funPtr, data);
-                assert(inputMetadata.executeFunctionPointer != nullptr);
-                inputMetadata.executeFunctionPointer(funPtr, obj, nullptr);
-            }
-        } else {
-            inputMetadata.deserialize(obj, data);
-        }
+        inputMetadata.deserialize(obj, data);
         return 1;
     }
 
