@@ -11,7 +11,13 @@ PathSpace::~PathSpace() {
     this->shutdown();
 }
 
+auto PathSpace::clear() -> void {
+    std::unique_lock<std::mutex> lock(this->mutex);
+    this->root.clear();
+}
+
 auto PathSpace::shutdown() -> void {
+    log("PathSpace::shutdown", "Function Called");
     std::unique_lock<std::mutex> lock(this->mutex);
     this->shuttingDown = true;
     this->cv.notify_all();
@@ -19,6 +25,7 @@ auto PathSpace::shutdown() -> void {
 
 auto PathSpace::in(ConstructiblePath& constructedPath, GlobPathStringView const& path, InputData const& data, InOptions const& options)
         -> InsertReturn {
+    log("PathSpace::in", "Function Called");
     InsertReturn ret;
     if (!path.isValid()) {
         ret.errors.emplace_back(Error::Code::InvalidPath, std::string("The path was not valid: ").append(path.getPath()));
@@ -35,11 +42,13 @@ auto PathSpace::out(ConcretePathStringView const& path,
                     OutOptions const& options,
                     Capabilities const& capabilities,
                     void* obj) -> Expected<int> {
+    log("PathSpace::out", "Function Called");
     auto checkAndRead
             = [&]() -> Expected<int> { return this->root.out(path.begin(), path.end(), inputMetadata, obj, options, capabilities); };
 
     auto result = checkAndRead();
     if (result.has_value() || options.block.value().behavior == BlockOptions::Behavior::DontWait) {
+        log(std::format("PathSpace::out early result values: {}", result.has_value()), "Function Called");
         return result;
     }
 
@@ -52,7 +61,7 @@ auto PathSpace::out(ConcretePathStringView const& path,
     if (this->shuttingDown) {
         return std::unexpected(Error{Error::Code::Shutdown, "PathSpace is shutting down"});
     }
-
+    log(std::format("PathSpace::out late result values: {}", result.has_value()), "Function Called");
     return result;
 }
 

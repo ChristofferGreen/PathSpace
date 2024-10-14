@@ -79,6 +79,10 @@ PRIVATE
 
 set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "PathSpace.hpp")
 
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_definitions(PathSpace PRIVATE SP_LOG_DEBUG)
+endif()
+
 install(TARGETS PathSpace
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib

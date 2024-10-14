@@ -11,6 +11,10 @@
 
 namespace SP {
 
+auto PathSpaceLeaf::clear() -> void {
+    this->nodeDataMap.clear();
+}
+
 auto PathSpaceLeaf::in(ConstructiblePath& path,
                        GlobPathIteratorStringView const& iter,
                        GlobPathIteratorStringView const& end,

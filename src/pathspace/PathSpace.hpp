@@ -47,6 +47,7 @@ public:
     auto read(ConcretePathStringView const& path,
               OutOptions const& options = {.doPop = false},
               Capabilities const& capabilities = Capabilities::All()) const -> Expected<DataType> {
+        log("Read", "Function Called");
         if (options.doPop)
             return std::unexpected(Error{Error::Code::PopInRead, std::string("read does not support doPop: ").append(path.getPath())});
         DataType obj;
@@ -59,6 +60,7 @@ public:
     auto readBlock(ConcretePathStringView const& path,
                    OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}, .doPop = false},
                    Capabilities const& capabilities = Capabilities::All()) const -> Expected<DataType> {
+        log("ReadBlock", "Function Called");
         if (options.doPop)
             return std::unexpected(Error{Error::Code::PopInRead, std::string("readBlock does not support doPop: ").append(path.getPath())});
         DataType obj;
@@ -78,6 +80,7 @@ public:
     template <typename DataType>
     auto extract(ConcretePathStringView const& path, OutOptions const& options = {}, Capabilities const& capabilities = Capabilities::All())
             -> Expected<DataType> {
+        log("Extract", "Function Called");
         DataType obj;
         if (auto ret = this->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
             return std::unexpected(ret.error());
@@ -88,16 +91,20 @@ public:
     auto extractBlock(ConcretePathStringView const& path,
                       OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}},
                       Capabilities const& capabilities = Capabilities::All()) -> Expected<DataType> {
+        log("ExtractBlock", "Function Called");
         DataType obj;
         if (auto ret = this->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
             return std::unexpected(ret.error());
         return obj;
     }
 
+    auto clear() -> void;
+
 protected:
     template <typename DataType>
     auto createTask(ConstructiblePath const& constructedPath, DataType const& data, InputData const& inputData, InOptions const& options)
             -> std::optional<Task> {
+        log("CreateTask", "Function Called");
         bool const isFunctionPointer = (inputData.metadata.category == DataCategory::ExecutionFunctionPointer);
         bool const isImmediateExecution
                 = (!options.execution.has_value()

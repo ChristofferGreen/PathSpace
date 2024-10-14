@@ -27,6 +27,8 @@ public:
              OutOptions const& options,
              Capabilities const& capabilities) -> Expected<int>;
 
+    auto clear() -> void;
+
 private:
     auto inFinalComponent(ConstructiblePath& path,
                           GlobName const& pathComponent,

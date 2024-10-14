@@ -2,7 +2,7 @@
 
 /**
  * @file TaggedLogger.hpp
- * @brief A header-only, thread-safe logging library with tag-based filtering.
+ * @brief A header-only, thread-safe logging library with tag-based filtering and test discovery compatibility.
  *
  * Design Overview:
  * ----------------
@@ -14,39 +14,52 @@
  * 3. Millisecond precision timestamps for each log entry.
  * 4. Conditional compilation for zero overhead in release builds.
  * 5. Header-only design for easy integration into existing projects.
+ * 6. Thread naming support for better multi-threading debugging.
+ * 7. Ability to temporarily disable logging for test discovery compatibility.
  *
  * Usage:
  * ------
  * 1. Include this header in your source code.
- * 2. Use SP::log() for simple logging:
- *    SP::log("Your message here", "TAG1", "TAG2");
  *
- * 3. Use SP::logf() for formatted logging:
- *    SP::logf("Formatted message: ", some_variable, " ", another_variable, "TAG1", "TAG2");
- *
- * 4. To enable logging, define SP_LOG_DEBUG before including this header:
+ * 2. To enable logging, define SP_LOG_DEBUG before including this header:
  *    #define SP_LOG_DEBUG
  *    #include "TaggedLogger.hpp"
  *
- * 5. To disable logging (e.g., in release builds), simply don't define SP_LOG_DEBUG.
+ * 3. Use SP::log() for logging:
+ *    SP::log("Your message here", "TAG1", "TAG2");
+ *
+ * 4. For formatted logging, use your preferred formatting method (e.g., std::format):
+ *    SP::log(std::format("User {} logged in", username), "INFO", "AUTH");
+ *
+ * 5. To name a thread, use SP::setThreadName():
+ *    SP::setThreadName("WorkerThread");
+ *
+ * 6. To disable logging (e.g., in release builds), simply don't define SP_LOG_DEBUG.
+ *
+ * 7. To temporarily disable logging (e.g., during test discovery):
+ *    SP::setLoggingEnabled(false);
+ *    // ... test discovery or other operations ...
+ *    SP::setLoggingEnabled(true);
  *
  * Example:
  * --------
  * #define SP_LOG_DEBUG
  * #include "TaggedLogger.hpp"
+ * #include <format>
  *
  * int main() {
+ *     SP::setThreadName("MainThread");
  *     SP::log("Application started", "INFO", "STARTUP");
  *
  *     int user_count = 42;
- *     SP::logf("Current user count: ", user_count, "INFO", "USERS");
+ *     SP::log(std::format("Current user count: {}", user_count), "INFO", "USERS");
  *
- *     try {
- *         // Some operation that might throw
- *     } catch (const std::exception& e) {
- *         SP::logf("Error occurred: ", e.what(), "ERROR", "EXCEPTION");
- *     }
+ *     std::thread worker([]() {
+ *         SP::setThreadName("Worker");
+ *         SP::log("Worker thread started", "INFO", "WORKER");
+ *     });
  *
+ *     worker.join();
  *     SP::log("Application shutting down", "INFO", "SHUTDOWN");
  *     return 0;
  * }
@@ -64,10 +77,10 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
-#endif // SP_LOG_DEBUG
+
 namespace SP {
-#ifdef SP_LOG_DEBUG
 
 class TaggedLogger {
 public:
@@ -75,9 +88,10 @@ public:
         std::chrono::system_clock::time_point timestamp;
         std::vector<std::string> tags;
         std::string message;
+        std::string threadName;
     };
 
-    TaggedLogger() : running(true) {
+    TaggedLogger() : running(true), nextThreadNumber(0), loggingEnabled(true) {
         this->workerThread = std::thread(&TaggedLogger::processQueue, this);
     }
 
@@ -91,9 +105,13 @@ public:
 
     template <typename... Tags>
     auto log(const std::string_view message, Tags&&... tags) -> void {
+        if (!loggingEnabled)
+            return;
+
         const auto logMessage = LogMessage{.timestamp = std::chrono::system_clock::now(),
                                            .tags = {std::forward<Tags>(tags)...},
-                                           .message = std::string(message)};
+                                           .message = std::string(message),
+                                           .threadName = getThreadName(std::this_thread::get_id())};
 
         {
             const std::lock_guard<std::mutex> lock(this->queueMutex);
@@ -102,11 +120,14 @@ public:
         this->cv.notify_one();
     }
 
-    template <typename... Args>
-    auto logf(Args&&... args) -> void {
-        std::ostringstream oss;
-        (oss << ... << std::forward<Args>(args));
-        this->log(oss.str());
+    auto setThreadName(const std::string& name) -> void {
+        const auto threadId = std::this_thread::get_id();
+        std::lock_guard<std::mutex> lock(threadNamesMutex);
+        threadNames[threadId] = name;
+    }
+
+    auto setLoggingEnabled(bool enabled) -> void {
+        loggingEnabled.store(enabled, std::memory_order_relaxed);
     }
 
 private:
@@ -115,6 +136,11 @@ private:
     std::condition_variable cv;
     std::thread workerThread;
     std::atomic<bool> running;
+    std::atomic<bool> loggingEnabled;
+
+    std::unordered_map<std::thread::id, std::string> threadNames;
+    mutable std::mutex threadNamesMutex;
+    std::atomic<int> nextThreadNumber;
 
     auto processQueue() -> void {
         while (this->running) {
@@ -144,9 +170,24 @@ private:
                 oss << "][";
             oss << msg.tags[i];
         }
-        oss << "] " << msg.message << '\n';
+        oss << "] ";
+
+        oss << "[" << msg.threadName << "] ";
+        oss << msg.message << '\n';
 
         std::cerr << oss.str();
+    }
+
+    auto getThreadName(const std::thread::id& id) -> std::string {
+        std::lock_guard<std::mutex> lock(threadNamesMutex);
+        auto it = threadNames.find(id);
+        if (it != threadNames.end()) {
+            return it->second;
+        } else {
+            std::string name = "Thread " + std::to_string(nextThreadNumber++);
+            threadNames[id] = name;
+            return name;
+        }
     }
 };
 
@@ -160,18 +201,30 @@ inline void log(Args&&... args) {
     logger().log(std::forward<Args>(args)...);
 }
 
-template <typename... Args>
-inline void logf(Args&&... args) {
-    logger().logf(std::forward<Args>(args)...);
+inline void set_thread_name(const std::string& name) {
+    logger().setThreadName(name);
 }
-#else
+
+inline void set_logging_enabled(bool enabled) {
+    logger().setLoggingEnabled(enabled);
+}
+
+} // namespace SP
+
+#else // SP_LOG_DEBUG not defined
+
+namespace SP {
+
 template <typename... Args>
 inline void log(Args&&...) {
 }
 
-template <typename... Args>
-inline void logf(Args&&...) {
+inline void setThreadName(const std::string&) {
 }
-#endif // SP_LOG_DEBUG
+
+inline void setLoggingEnabled(bool) {
+}
 
 } // namespace SP
+
+#endif // SP_LOG_DEBUG
