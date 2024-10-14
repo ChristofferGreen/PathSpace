@@ -2,6 +2,7 @@
 #include "PathSpaceLeaf.hpp"
 #include "core/OutOptions.hpp"
 #include "taskpool/TaskPool.hpp"
+#include "utils/TaggedLogger.hpp"
 
 namespace SP {
 class PathSpace {
@@ -24,13 +25,14 @@ public:
      */
     template <typename DataType>
     auto insert(GlobPathStringView const& path, DataType&& data, InOptions const& options = {}) -> InsertReturn {
+        log("Insert", "Function Called");
         InputData const inputData{std::forward<DataType>(data)};
         ConstructiblePath constructedPath = path.isConcrete() ? ConstructiblePath{path} : ConstructiblePath{};
         if (std::optional<Task> task = this->createTask(constructedPath, data, inputData, options)) {
             this->pool->addTask(std::move(task.value()));
             return {.nbrTasksCreated = 1};
         } else
-            return this->inImpl(constructedPath, path, inputData, options);
+            return this->in(constructedPath, path, inputData, options);
     }
 
     /**
@@ -48,7 +50,7 @@ public:
         if (options.doPop)
             return std::unexpected(Error{Error::Code::PopInRead, std::string("read does not support doPop: ").append(path.getPath())});
         DataType obj;
-        if (auto ret = const_cast<PathSpace*>(this)->outImpl(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
+        if (auto ret = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
             return std::unexpected(ret.error());
         return obj;
     }
@@ -60,7 +62,7 @@ public:
         if (options.doPop)
             return std::unexpected(Error{Error::Code::PopInRead, std::string("readBlock does not support doPop: ").append(path.getPath())});
         DataType obj;
-        if (auto ret = const_cast<PathSpace*>(this)->outImpl(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
+        if (auto ret = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
             return std::unexpected(ret.error());
         return obj;
     }
@@ -77,7 +79,7 @@ public:
     auto extract(ConcretePathStringView const& path, OutOptions const& options = {}, Capabilities const& capabilities = Capabilities::All())
             -> Expected<DataType> {
         DataType obj;
-        if (auto ret = this->outImpl(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
+        if (auto ret = this->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
             return std::unexpected(ret.error());
         return obj;
     }
@@ -87,7 +89,7 @@ public:
                       OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}},
                       Capabilities const& capabilities = Capabilities::All()) -> Expected<DataType> {
         DataType obj;
-        if (auto ret = this->outImpl(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
+        if (auto ret = this->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
             return std::unexpected(ret.error());
         return obj;
     }
@@ -121,14 +123,14 @@ protected:
         return std::nullopt;
     }
 
-    virtual auto inImpl(ConstructiblePath& constructedPath, GlobPathStringView const& path, InputData const& data, InOptions const& options)
+    virtual auto in(ConstructiblePath& constructedPath, GlobPathStringView const& path, InputData const& data, InOptions const& options)
             -> InsertReturn;
 
-    virtual auto outImpl(ConcretePathStringView const& path,
-                         InputMetadata const& inputMetadata,
-                         OutOptions const& options,
-                         Capabilities const& capabilities,
-                         void* obj) -> Expected<int>;
+    virtual auto out(ConcretePathStringView const& path,
+                     InputMetadata const& inputMetadata,
+                     OutOptions const& options,
+                     Capabilities const& capabilities,
+                     void* obj) -> Expected<int>;
 
     auto shutdown() -> void;
 

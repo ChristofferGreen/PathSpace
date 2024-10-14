@@ -17,7 +17,7 @@ auto PathSpace::shutdown() -> void {
     this->cv.notify_all();
 }
 
-auto PathSpace::inImpl(ConstructiblePath& constructedPath, GlobPathStringView const& path, InputData const& data, InOptions const& options)
+auto PathSpace::in(ConstructiblePath& constructedPath, GlobPathStringView const& path, InputData const& data, InOptions const& options)
         -> InsertReturn {
     InsertReturn ret;
     if (!path.isValid()) {
@@ -30,11 +30,11 @@ auto PathSpace::inImpl(ConstructiblePath& constructedPath, GlobPathStringView co
     return ret;
 };
 
-auto PathSpace::outImpl(ConcretePathStringView const& path,
-                        InputMetadata const& inputMetadata,
-                        OutOptions const& options,
-                        Capabilities const& capabilities,
-                        void* obj) -> Expected<int> {
+auto PathSpace::out(ConcretePathStringView const& path,
+                    InputMetadata const& inputMetadata,
+                    OutOptions const& options,
+                    Capabilities const& capabilities,
+                    void* obj) -> Expected<int> {
     auto checkAndRead
             = [&]() -> Expected<int> { return this->root.out(path.begin(), path.end(), inputMetadata, obj, options, capabilities); };
 

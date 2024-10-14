@@ -108,14 +108,30 @@ TEST_CASE("PathSpace Read") {
         CHECK(pspace.read<int>("/f2").value() == 25);*/
     }
 
-    SUBCASE("PathSpace Read Function Pointer Execution Blocking") {
-        int (*f1)() = []() -> int { return pspaceg.read<int>("/f3").value() + 10; };
-        int (*f2)() = []() -> int { return pspaceg.read<int>("/f3").value() + 10; };
-        int (*f3)() = []() -> int { return 10; };
+    SUBCASE("PathSpace Read Function Pointer Execution Blocking Simple") {
+        /*int (*f1)() = +[]() -> int { return pspaceg.readBlock<int>("/f2").value() + 11; };
+        int (*f2)() = +[]() -> int { return 10; };
 
-        /*CHECK(pspace.insert("/f1", f1).nbrValuesInserted == 1);
-        CHECK(pspace.insert("/f2", f2).nbrValuesInserted == 1);
-        CHECK(pspace.insert("/f3", f3).nbrValuesInserted == 1);*/
+        CHECK(pspace.insert("/f1", f1).errors.size() == 0);
+        CHECK(pspace.insert("/f2", f2).errors.size() == 0);
+
+        auto const val = pspaceg.readBlock<int>("/f1");
+        CHECK(val.has_value() == true);
+        CHECK(val.value() == 33);*/
+    }
+
+    SUBCASE("PathSpace Read Function Pointer Execution Blocking") {
+        /*int (*f1)() = +[]() -> int { return pspaceg.readBlock<int>("/f2").value() + 12; };
+        int (*f2)() = +[]() -> int { return pspaceg.readBlock<int>("/f3").value() + 11; };
+        int (*f3)() = +[]() -> int { return 10; };
+
+        CHECK(pspace.insert("/f1", f1).errors.size() == 0);
+        CHECK(pspace.insert("/f2", f2).errors.size() == 0);
+        CHECK(pspace.insert("/f3", f3).errors.size() == 0);
+
+        auto const val = pspaceg.readBlock<int>("/f1");
+        CHECK(val.has_value() == true);
+        CHECK(val.value() == 33);*/
     }
 
     SUBCASE("PathSpace Read Block") {
