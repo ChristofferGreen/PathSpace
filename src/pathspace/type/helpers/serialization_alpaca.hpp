@@ -3,8 +3,14 @@
 #include "taskpool/TaskPool.hpp"
 #include "type/DataCategory.hpp"
 #include "type/helpers/return_type.hpp"
+#include "utils/TaggedLogger.hpp"
 
 #include <cassert>
+#include <cstdint>
+#include <cstring>
+#include <stdexcept>
+#include <type_traits>
+#include <vector>
 
 #define SERIALIZATION_TYPE uint8_t
 #include <alpaca/alpaca.h>
@@ -12,37 +18,112 @@
 namespace SP {
 struct PathSpace;
 
-template <typename T>
-concept AlpacaCompatible = !std::is_same_v<T, std::function<void()>> && !std::is_same_v<T, void (*)()> && !std::is_pointer<T>::value
-                           && requires(T t, std::vector<uint8_t>& v) {
-                                  { serialize_alpaca<T>(&t, v) };
-                                  { deserialize_alpaca_const<T>(&t, v) };
-                              };
+// ########### Alpaca Serialization ###########
 
 template <typename T>
 static auto serialize_alpaca(void const* objPtr, std::vector<uint8_t>& bytes) -> void {
-    T const& obj = *static_cast<T const*>(objPtr);
-    alpaca::serialize(obj, bytes);
-}
+    struct Wrapper {
+        T wrappedObject;
+    };
+    Wrapper wrapper{*static_cast<T const*>(objPtr)};
 
-template <typename T>
-static auto deserialize_alpaca_pop(void* objPtr, std::vector<uint8_t>& bytes) -> void {
-    T& obj = *static_cast<T*>(objPtr);
-    std::error_code ec;
-    auto nbrBytesRead = alpaca::deserialize<T>(obj, bytes, ec);
-    if (!ec) {
-        if (nbrBytesRead <= bytes.size()) {
-            bytes.erase(bytes.begin(), bytes.begin() + nbrBytesRead);
-        }
+    try {
+        // Serialize the object
+        std::vector<uint8_t> tempBytes;
+        size_t bytesWritten = alpaca::serialize<Wrapper, 1>(wrapper, tempBytes);
+
+        // Store the size of the serialized data
+        uint32_t size = static_cast<uint32_t>(bytesWritten);
+        bytes.insert(bytes.end(), reinterpret_cast<const uint8_t*>(&size), reinterpret_cast<const uint8_t*>(&size) + sizeof(size));
+
+        // Append the serialized data
+        bytes.insert(bytes.end(), tempBytes.begin(), tempBytes.begin() + bytesWritten);
+
+        log("Object serialized successfully", "INFO");
+    } catch (const std::exception& e) {
+        log("Serialization failed: " + std::string(e.what()), "ERROR");
+        throw;
     }
 }
 
 template <typename T>
-static auto deserialize_alpaca_const(void* objPtr, std::vector<uint8_t> const& bytes) -> void {
-    T& obj = *static_cast<T*>(objPtr);
+static auto deserialize_alpaca_pop(void* objPtr, std::vector<uint8_t>& bytes) -> void {
+    if (bytes.size() < sizeof(uint32_t)) {
+        log("Not enough data to read size", "ERROR");
+        throw std::runtime_error("Not enough data to read size");
+    }
+
+    uint32_t size;
+    std::memcpy(&size, bytes.data(), sizeof(uint32_t));
+
+    if (bytes.size() < sizeof(uint32_t) + size) {
+        log("Not enough data to deserialize object", "ERROR");
+        throw std::runtime_error("Not enough data to deserialize object");
+    }
+
+    struct Wrapper {
+        T wrappedObject;
+    };
+
     std::error_code ec;
-    alpaca::deserialize<T>(obj, bytes, ec);
+    std::vector<uint8_t> deserializeBytes(bytes.begin() + sizeof(uint32_t), bytes.begin() + sizeof(uint32_t) + size);
+    auto wrapper = alpaca::deserialize<Wrapper, 1>(deserializeBytes, ec);
+
+    if (ec) {
+        log("Deserialization failed: " + ec.message(), "ERROR");
+        throw std::runtime_error("Deserialization failed: " + ec.message());
+    }
+
+    // Copy the deserialized object to the output
+    *static_cast<T*>(objPtr) = std::move(wrapper.wrappedObject);
+
+    // Remove the read data from the input vector
+    bytes.erase(bytes.begin(), bytes.begin() + sizeof(uint32_t) + size);
+
+    log("Object deserialized successfully", "INFO");
 }
+
+template <typename T>
+static auto deserialize_alpaca_const(void* objPtr, std::vector<uint8_t> const& bytes) -> void {
+    if (bytes.size() < sizeof(uint32_t)) {
+        log("Not enough data to read size", "ERROR");
+        throw std::runtime_error("Not enough data to read size");
+    }
+
+    uint32_t size;
+    std::memcpy(&size, bytes.data(), sizeof(uint32_t));
+
+    if (bytes.size() < sizeof(uint32_t) + size) {
+        log("Not enough data to deserialize object", "ERROR");
+        throw std::runtime_error("Not enough data to deserialize object");
+    }
+
+    struct Wrapper {
+        T wrappedObject;
+    };
+
+    std::error_code ec;
+    std::vector<uint8_t> deserializeBytes(bytes.begin() + sizeof(uint32_t), bytes.begin() + sizeof(uint32_t) + size);
+    auto wrapper = alpaca::deserialize<Wrapper, 1>(deserializeBytes, ec);
+
+    if (ec) {
+        log("Deserialization failed: " + ec.message(), "ERROR");
+        throw std::runtime_error("Deserialization failed: " + ec.message());
+    }
+
+    // Copy the deserialized object to the output
+    *static_cast<T*>(objPtr) = std::move(wrapper.wrappedObject);
+
+    log("Object deserialized successfully", "INFO");
+}
+
+template <typename T>
+concept AlpacaCompatible = !std::is_pointer_v<T> && requires(T t, std::vector<uint8_t>& v) {
+    { serialize_alpaca<T>(static_cast<void const*>(&t), v) };
+    { deserialize_alpaca_const<T>(static_cast<void*>(&t), v) };
+};
+
+// ########### Fundamental Datatype Serialization ###########
 
 template <typename T>
 static auto serialize_fundamental(void const* objPtr, std::vector<uint8_t>& bytes) -> void {
@@ -141,6 +222,8 @@ struct InputMetadataT {
     static constexpr auto serialize = []() {
         if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
             return &serialize_function_pointer;
+        } else if constexpr (ExecutionStdFunction<T>) {
+            return nullptr;
         } else if constexpr (std::is_fundamental<T>::value) {
             return &serialize_fundamental<T>;
         } else if constexpr (AlpacaCompatible<T>) {
@@ -153,6 +236,8 @@ struct InputMetadataT {
     static constexpr auto deserialize = []() {
         if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
             return deserialize_function_pointer_const;
+        } else if constexpr (ExecutionStdFunction<T>) {
+            return nullptr;
         } else if constexpr (FunctionPointer<T>) {
             return &deserialize_function_pointer_const;
         } else if constexpr (std::is_fundamental<T>::value) {
@@ -167,6 +252,10 @@ struct InputMetadataT {
     static constexpr auto deserializePop = []() {
         if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
             return &deserialize_function_pointer_pop;
+        } else if constexpr (ExecutionStdFunction<T>) {
+            return nullptr;
+        } else if constexpr (FunctionPointer<T>) {
+            return nullptr;
         } else if constexpr (std::is_fundamental<T>::value) {
             return &deserialize_fundamental_pop<T>;
         } else if constexpr (AlpacaCompatible<T>) {
