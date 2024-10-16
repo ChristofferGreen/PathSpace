@@ -1,14 +1,16 @@
 #pragma once
+
 #include "ElementType.hpp"
 #include "Error.hpp"
+#include "ExecutionOptions.hpp"
 #include "InOptions.hpp"
-#include "core/ExecutionOptions.hpp"
-#include "core/InsertReturn.hpp"
+#include "InsertReturn.hpp"
 #include "path/ConstructiblePath.hpp"
-#include "pathspace/type/DataCategory.hpp"
-#include "pathspace/type/InputData.hpp"
+#include "type/DataCategory.hpp"
+#include "type/InputData.hpp"
 #include "type/InputMetadata.hpp"
 
+#include <cassert>
 #include <expected>
 #include <optional>
 #include <vector>
@@ -33,55 +35,51 @@ public:
 
     auto deserialize(void* obj, const InputMetadata& inputMetadata, std::optional<ExecutionOptions> const& execution) const
             -> Expected<int> {
-        if (types.empty())
-            return 0;
-
-        if (this->types.front().category == DataCategory::ExecutionFunctionPointer
-            || this->types.front().category == DataCategory::ExecutionStdFunction) {
-            if (this->types.front().typeInfo == inputMetadata.typeInfo) {
-                assert(this->tasks.size() > 0);
-                this->tasks.front().taskExecutorStdFunction(this->tasks.front(), obj);
-                return 1;
-            }
-            return 0;
-        }
-
-        if (!inputMetadata.deserialize) {
-            return std::unexpected(Error{Error::Code::UnserializableType, "No deserialization function provided."});
-        }
-
-        inputMetadata.deserialize(obj, data);
-        return 1;
+        return const_cast<NodeData*>(this)->deserializeImpl(obj, inputMetadata, execution, false);
     }
 
-    Expected<int> deserializePop(void* obj, const InputMetadata& inputMetadata) {
-        if (types.empty())
-            return 0;
-
-        if (this->types.front().category == DataCategory::ExecutionFunctionPointer
-            || this->types.front().category == DataCategory::ExecutionStdFunction) {
-            if (this->types.front().typeInfo == inputMetadata.typeInfo) {
-                assert(this->tasks.size() > 0);
-                this->tasks.front().taskExecutorStdFunction(this->tasks.front(), obj);
-                this->tasks.erase(this->tasks.begin());
-                popType();
-                return 1;
-            }
-            return 0;
-        }
-
-        if (!inputMetadata.deserializePop)
-            return std::unexpected(Error{Error::Code::UnserializableType, "No deserialization function provided."});
-
-        inputMetadata.deserializePop(obj, data);
-        popType();
-        return 1;
+    auto deserializePop(void* obj, const InputMetadata& inputMetadata) -> Expected<int> {
+        return deserializeImpl(obj, inputMetadata, std::nullopt, true);
     }
 
 private:
     std::vector<SERIALIZATION_TYPE> data;
     std::vector<Task> tasks;
     std::vector<ElementType> types;
+
+    auto deserializeImpl(void* obj, const InputMetadata& inputMetadata, std::optional<ExecutionOptions> const& execution, bool shouldPop)
+            -> Expected<int> {
+        if (types.empty())
+            return 0;
+
+        if (this->types.front().category == DataCategory::ExecutionFunctionPointer
+            || this->types.front().category == DataCategory::ExecutionStdFunction) {
+            if (this->types.front().typeInfo == inputMetadata.typeInfo) {
+                assert(!this->tasks.empty());
+                this->tasks.front().taskExecutorStdFunction(this->tasks.front(), obj);
+                if (shouldPop) {
+                    this->tasks.erase(this->tasks.begin());
+                    popType();
+                }
+                return 1;
+            }
+            return 0;
+        }
+
+        if (shouldPop) {
+            if (!inputMetadata.deserializePop) {
+                return std::unexpected(Error{Error::Code::UnserializableType, "No pop deserialization function provided."});
+            }
+            inputMetadata.deserializePop(obj, data);
+            popType();
+        } else {
+            if (!inputMetadata.deserialize) {
+                return std::unexpected(Error{Error::Code::UnserializableType, "No deserialization function provided."});
+            }
+            inputMetadata.deserialize(obj, data);
+        }
+        return 1;
+    }
 
     auto pushType(InputMetadata const& meta) -> void {
         if (!types.empty()) {
