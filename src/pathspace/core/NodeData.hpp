@@ -11,9 +11,9 @@
 #include "type/InputMetadata.hpp"
 
 #include <cassert>
+#include <deque>
 #include <expected>
 #include <optional>
-#include <vector>
 
 namespace SP {
 
@@ -44,8 +44,8 @@ public:
 
 private:
     std::vector<SERIALIZATION_TYPE> data;
-    std::vector<Task> tasks;
-    std::vector<ElementType> types;
+    std::deque<Task> tasks;
+    std::deque<ElementType> types;
 
     auto deserializeImpl(void* obj, const InputMetadata& inputMetadata, std::optional<ExecutionOptions> const& execution, bool shouldPop)
             -> Expected<int> {
@@ -58,7 +58,7 @@ private:
                 assert(!this->tasks.empty());
                 this->tasks.front().taskExecutorStdFunction(this->tasks.front(), obj);
                 if (shouldPop) {
-                    this->tasks.erase(this->tasks.begin());
+                    this->tasks.pop_front();
                     popType();
                 }
                 return 1;

@@ -16,7 +16,9 @@ add_executable(PathSpaceTests
   unit/ext/test_alpaca.cpp
   unit/taskpool/test_TaskPool.cpp
   #unit/ext/test_glaze.cpp
-  unit/test_PathSpace.cpp
+  unit/test_PathSpace_read.cpp
+  unit/test_PathSpace_extract.cpp
+  unit/test_PathSpace_insert.cpp
   test_main.cpp
 )
 
