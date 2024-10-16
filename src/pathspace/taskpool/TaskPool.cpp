@@ -79,10 +79,10 @@ void TaskPool::workerFunction() {
             availableThreads--;
         }
 
-        if (task.taskExecutor != nullptr)
-            task.taskExecutor(task);
-        else if (task.taskExecutorF)
-            task.taskExecutorF(task);
+        if (task.taskExecutorFunctionPointer != nullptr)
+            task.taskExecutorFunctionPointer(task);
+        else if (task.taskExecutorStdFunction)
+            task.taskExecutorStdFunction(task, nullptr);
     }
 }
 

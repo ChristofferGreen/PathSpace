@@ -19,16 +19,30 @@ class NodeData {
 public:
     auto serialize(ConstructiblePath const& path, const InputData& inputData, const InOptions& options, InsertReturn& ret)
             -> std::optional<Error> {
-        if (!inputData.metadata.serialize)
-            return Error{Error::Code::SerializationFunctionMissing, "Serialization function is missing."};
-
-        inputData.metadata.serialize(inputData.obj, data);
+        if (inputData.task.has_value()) {
+            this->tasks.push_back(std::move(inputData.task.value()));
+            ret.nbrTasksCreated++;
+        } else {
+            if (!inputData.metadata.serialize)
+                return Error{Error::Code::SerializationFunctionMissing, "Serialization function is missing."};
+            inputData.metadata.serialize(inputData.obj, data);
+        }
         updateTypes(inputData.metadata);
         return std::nullopt;
     }
 
     auto deserialize(void* obj, const InputMetadata& inputMetadata, std::optional<ExecutionOptions> const& execution) const
             -> Expected<int> {
+        if (this->types.front().category == DataCategory::ExecutionFunctionPointer
+            || this->types.front().category == DataCategory::ExecutionStdFunction) {
+            if (this->types.front().typeInfo == inputMetadata.typeInfo) {
+                assert(this->tasks.size() > 0);
+                this->tasks.front().taskExecutorStdFunction(this->tasks.front(), obj);
+                return 1;
+            }
+            return 0;
+        }
+
         if (!inputMetadata.deserialize) {
             return std::unexpected(Error{Error::Code::UnserializableType, "No deserialization function provided."});
         }
@@ -53,6 +67,7 @@ public:
 
 private:
     std::vector<SERIALIZATION_TYPE> data;
+    std::vector<Task> tasks;
     std::vector<ElementType> types;
 
     auto updateTypes(InputMetadata const& meta) -> void {

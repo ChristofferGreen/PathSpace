@@ -155,7 +155,7 @@ TEST_CASE("PathSpace Function Insertion and Execution") {
     SUBCASE("Concurrent Function Execution") {
         std::atomic<int> counter(0);
         auto incrementFunc = [&counter]() -> int {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
             return ++counter;
         };
 
@@ -204,11 +204,19 @@ TEST_CASE("PathSpace Read") {
         using TestFuncPtr = int (*)();
         TestFuncPtr f = []() -> int { return 58; };
         TestFuncPtr f2 = []() -> int { return 25; };
-        /*CHECK(pspace.insert("/f", f).nbrValuesInserted == 1);
-        CHECK(pspace.insert("/f2", f2).nbrValuesInserted == 1);
-        CHECK(pspace.read<int>("/f").value() == 58);
-        CHECK(pspace.read<int>("/f").value() == 58);
-        CHECK(pspace.read<int>("/f2").value() == 25);*/
+        CHECK(pspace.insert("/f", f).nbrTasksCreated == 1);
+        CHECK(pspace.insert("/f2", f2).nbrTasksCreated == 1);
+        CHECK(pspace.readBlock<int>("/f").value() == 58);
+        CHECK(pspace.readBlock<int>("/f").value() == 58);
+        CHECK(pspace.readBlock<int>("/f2").value() == 25);
+    }
+
+    SUBCASE("Simple PathSpace Execution Non-Immidiate") {
+        std::function<int()> f = []() -> int { return 58; };
+        CHECK(pspace.insert("/f", f, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::OnReadOrExtract}})
+                      .nbrTasksCreated
+              == 1);
+        CHECK(pspace.readBlock<int>("/f").value() == 58);
     }
 
     SUBCASE("PathSpace Read Function Pointer Execution Blocking Simple") {

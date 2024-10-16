@@ -17,7 +17,7 @@ struct InputData {
     }
 
     void* obj = nullptr;
-    std::function<void(Task const& task)> taskExecutor;
+    std::optional<Task> task;
     InputMetadata metadata;
 };
 

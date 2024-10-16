@@ -201,7 +201,12 @@ struct InputMetadataT {
     using T = std::remove_cvref_t<CVRefT>;
     InputMetadataT() = default;
 
-    std::type_info const* typeInfo = &typeid(T);
+    static constexpr std::type_info const* typeInfo = []() {
+        if constexpr (ExecutionFunctionPointer<T> || ExecutionStdFunction<T>) {
+            return &typeid(std::invoke_result_t<T>);
+        }
+        return &typeid(T);
+    }();
 
     static constexpr DataCategory const category = []() {
         if constexpr (ExecutionFunctionPointer<T>) {
