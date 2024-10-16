@@ -15,7 +15,7 @@ ConcreteName<T>::ConcreteName(std::string::const_iterator const& iter, std::stri
 }
 
 template <typename T>
-ConcreteName<T>::ConcreteName(std::string const& str) {
+ConcreteName<T>::ConcreteName(std::string const& str) : name(str) {
 }
 
 template <typename T>

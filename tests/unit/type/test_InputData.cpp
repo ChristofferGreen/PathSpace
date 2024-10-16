@@ -5,12 +5,14 @@ using namespace SP;
 
 struct MyStruct {
     template <typename A>
-    void serialize(A &ar) {ar(data);}
-    
+    void serialize(A& ar) {
+        ar(data);
+    }
+
     int data = 5;
 };
 
-TEST_CASE("InputData") {
+TEST_CASE("Type InputData") {
     SUBCASE("Simple Construction") {
         int a{};
         InputData data{a};

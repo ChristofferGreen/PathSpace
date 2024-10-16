@@ -5,7 +5,7 @@
 
 using namespace SP;
 
-TEST_CASE("ConstructiblePath") {
+TEST_CASE("Path ConstructiblePath") {
     SUBCASE("Default Constructor") {
         ConstructiblePath path;
         CHECK(path.getPath() == "/");

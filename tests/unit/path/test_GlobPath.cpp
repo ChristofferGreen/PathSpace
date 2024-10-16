@@ -5,7 +5,7 @@
 
 using namespace SP;
 
-TEST_CASE("GlobPath") {
+TEST_CASE("Path GlobPath") {
     SUBCASE("Basic Iterator Begin") {
         GlobPathStringView path{"/a/b/c"};
         REQUIRE(*path.begin() == "a");

@@ -7,6 +7,7 @@ namespace SP {
 
 template <typename T>
 struct ConcreteName {
+    ConcreteName() = default;
     ConcreteName(char const* const ptr);
     ConcreteName(std::string const& str);
     ConcreteName(std::string_view const& name);

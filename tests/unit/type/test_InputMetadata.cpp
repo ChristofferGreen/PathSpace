@@ -3,7 +3,7 @@
 
 using namespace SP;
 
-TEST_CASE("InputMetadata Fundamental") {
+TEST_CASE("Type InputMetadata Fundamental") {
     SUBCASE("Int Serialize and Deserialize") {
         using ST = int;
         ST s{5};

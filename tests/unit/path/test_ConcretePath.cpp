@@ -8,7 +8,7 @@
 
 using namespace SP;
 
-TEST_CASE("ConcretePath") {
+TEST_CASE("Path ConcretePath") {
     SUBCASE("Default Construction") {
         ConcretePathString path;
         REQUIRE(!path.isValid());
@@ -187,10 +187,7 @@ TEST_CASE("ConcretePath") {
     }
 
     SUBCASE("Sorting") {
-        std::vector<ConcretePathString> paths = {
-                ConcretePathString("/c"),
-                ConcretePathString("/a"),
-                ConcretePathString("/b")};
+        std::vector<ConcretePathString> paths = {ConcretePathString("/c"), ConcretePathString("/a"), ConcretePathString("/b")};
         std::sort(paths.begin(), paths.end());
 
         CHECK(paths[0] == ConcretePathString("/a"));

@@ -6,7 +6,7 @@
 
 using namespace SP;
 
-TEST_CASE("ConcretePathIterator") {
+TEST_CASE("Path ConcretePathIterator") {
     SUBCASE("Basic Iterator Begin") {
         ConcretePathStringView path{"/a/b/c"};
         REQUIRE(*path.begin() == "a");
