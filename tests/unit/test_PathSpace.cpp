@@ -351,3 +351,156 @@ TEST_CASE("PathSpace Extract") {
         CHECK(!pspace.extractBlock<int>("/f").has_value());
     }
 }
+
+TEST_CASE("Extended PathSpace Extract Tests") {
+    PathSpace pspace;
+
+    SUBCASE("Extract std::string") {
+        pspace.insert("/str", std::string("hello world"));
+        auto ret = pspace.extract<std::string>("/str");
+        REQUIRE(ret.has_value());
+        CHECK(ret.value() == "hello world");
+    }
+
+    SUBCASE("Extract std::vector") {
+        std::vector<int> vec = {1, 2, 3, 4, 5};
+        pspace.insert("/vec", vec);
+        auto ret = pspace.extract<std::vector<int>>("/vec");
+        REQUIRE(ret.has_value());
+        CHECK(ret.value() == vec);
+    }
+
+    SUBCASE("Extract std::map") {
+        std::map<std::string, int> map = {{"one", 1}, {"two", 2}, {"three", 3}};
+        pspace.insert("/map", map);
+        auto ret = pspace.extract<std::map<std::string, int>>("/map");
+        REQUIRE(ret.has_value());
+        CHECK(ret.value() == map);
+    }
+
+    SUBCASE("Extract custom struct") {
+        struct CustomStruct {
+            int x;
+            std::string y;
+            bool operator==(const CustomStruct& other) const {
+                return x == other.x && y == other.y;
+            }
+        };
+        CustomStruct cs{42, "test"};
+        pspace.insert("/custom", cs);
+        auto ret = pspace.extract<CustomStruct>("/custom");
+        REQUIRE(ret.has_value());
+        CHECK(ret.value() == cs);
+    }
+
+    SUBCASE("Extract from non-existent path") {
+        auto ret = pspace.extract<int>("/non_existent");
+        CHECK_FALSE(ret.has_value());
+    }
+
+    SUBCASE("Extract with type mismatch") {
+        pspace.insert("/int", 42);
+        auto ret = pspace.extract<std::string>("/int");
+        CHECK_FALSE(ret.has_value());
+    }
+
+    SUBCASE("Extract multiple times") {
+        pspace.insert("/multi", 1);
+        pspace.insert("/multi", 2);
+        pspace.insert("/multi", 3);
+
+        auto ret1 = pspace.extract<int>("/multi");
+        auto ret2 = pspace.extract<int>("/multi");
+        auto ret3 = pspace.extract<int>("/multi");
+        auto ret4 = pspace.extract<int>("/multi");
+
+        REQUIRE(ret1.has_value());
+        REQUIRE(ret2.has_value());
+        REQUIRE(ret3.has_value());
+        CHECK_FALSE(ret4.has_value());
+
+        CHECK(ret1.value() == 1);
+        CHECK(ret2.value() == 2);
+        CHECK(ret3.value() == 3);
+    }
+
+    SUBCASE("Extract with deep path") {
+        pspace.insert("/deep/nested/path", 42);
+        auto ret = pspace.extract<int>("/deep/nested/path");
+        REQUIRE(ret.has_value());
+        CHECK(ret.value() == 42);
+    }
+
+    SUBCASE("Extract lambda function") {
+        auto lambda = []() -> int { return 42; };
+        pspace.insert("/lambda", lambda);
+        auto ret = pspace.extract<std::function<int()>>("/lambda");
+        REQUIRE(ret.has_value());
+        CHECK(ret.value()() == 42);
+    }
+
+    SUBCASE("Extract with capabilities") {
+        Capabilities caps;
+        caps.addCapability("/test", Capabilities::Type::READ);
+
+        pspace.insert("/test", 42);
+        auto ret = pspace.extract<int>("/test", OutOptions{}, caps);
+        REQUIRE(ret.has_value());
+        CHECK(ret.value() == 42);
+    }
+
+    SUBCASE("Extract with incorrect capabilities") {
+        Capabilities caps;
+        caps.addCapability("/other", Capabilities::Type::READ);
+
+        pspace.insert("/test", 42);
+        auto ret = pspace.extract<int>("/test", OutOptions{}, caps);
+        CHECK_FALSE(ret.has_value());
+    }
+
+    SUBCASE("Extract with blocking") {
+        std::thread t([&]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            pspace.insert("/delayed", 42);
+        });
+
+        auto ret = pspace.extractBlock<int>("/delayed");
+        REQUIRE(ret.has_value());
+        CHECK(ret.value() == 42);
+
+        t.join();
+    }
+
+    SUBCASE("Extract with timeout") {
+        auto ret = pspace.extractBlock<int>(
+                "/timeout",
+                OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+        CHECK_FALSE(ret.has_value());
+    }
+
+    SUBCASE("Extract after clear") {
+        pspace.insert("/clear_test", 42);
+        pspace.clear();
+        auto ret = pspace.extract<int>("/clear_test");
+        CHECK_FALSE(ret.has_value());
+    }
+
+    SUBCASE("Extract with periodic execution") {
+        int counter = 0;
+        auto periodic_func = [&counter]() -> int { return ++counter; };
+        pspace.insert("/periodic",
+                      periodic_func,
+                      InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::PeriodicOnRead,
+                                                              .updateInterval = std::chrono::milliseconds(50)}});
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+        auto ret1 = pspace.extract<int>("/periodic");
+        auto ret2 = pspace.extract<int>("/periodic");
+
+        REQUIRE(ret1.has_value());
+        REQUIRE(ret2.has_value());
+        CHECK(ret1.value() > 0);
+        CHECK(ret2.value() > ret1.value());
+    }
+}
