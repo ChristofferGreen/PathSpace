@@ -47,7 +47,8 @@ auto PathSpace::out(ConcretePathStringView const& path,
             = [&]() -> Expected<int> { return this->root.out(path.begin(), path.end(), inputMetadata, obj, options, capabilities); };
 
     auto result = checkAndRead();
-    if (result.has_value() || options.block.value().behavior == BlockOptions::Behavior::DontWait) {
+    if (result.has_value() || !options.block.has_value()
+        || (options.block.has_value() && (options.block.value().behavior == BlockOptions::Behavior::DontWait))) {
         log(std::format("PathSpace::out early result values: {}", result.has_value()), "Function Called");
         return result;
     }

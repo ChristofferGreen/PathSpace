@@ -137,10 +137,10 @@ TEST_CASE("PathSpace Extract Extended Tests") {
         CHECK(ret.value() == cs);
     }
 
-    /*SUBCASE("Extract from non-existent path") {
+    SUBCASE("Extract from non-existent path") {
         auto ret = pspace.extract<int>("/non_existent");
         CHECK_FALSE(ret.has_value());
-    }*/
+    }
 
     /*SUBCASE("Extract with type mismatch") {
         pspace.insert("/int", 42);
