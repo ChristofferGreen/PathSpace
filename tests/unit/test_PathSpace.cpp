@@ -282,8 +282,8 @@ TEST_CASE("PathSpace Read Std Datastructure") {
 }
 
 TEST_CASE("PathSpace Extract") {
+    PathSpace pspace;
     SUBCASE("Simple PathSpace Extract") {
-        PathSpace pspace;
         CHECK(pspace.insert("/test", 56).nbrValuesInserted == 1);
         CHECK(pspace.insert("/test", 58).nbrValuesInserted == 1);
         auto ret = pspace.extract<int>("/test");
@@ -294,8 +294,29 @@ TEST_CASE("PathSpace Extract") {
         CHECK(ret2.value() == 58);
     }
 
+    SUBCASE("Extract Different Types") {
+        CHECK(pspace.insert("/test1", 56.45f).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/test2", std::string("hello")).nbrValuesInserted == 1);
+        auto ret = pspace.extract<float>("/test1");
+        CHECK(ret.has_value());
+        CHECK(ret.value() == 56.45f);
+        auto ret2 = pspace.extract<std::string>("/test2");
+        CHECK(ret2.has_value());
+        CHECK(ret2.value() == "hello");
+    }
+
+    SUBCASE("Extract Different Types Same Place") {
+        CHECK(pspace.insert("/test", 56.45f).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/test", std::string("hello")).nbrValuesInserted == 1);
+        auto ret = pspace.extract<float>("/test");
+        CHECK(ret.has_value());
+        CHECK(ret.value() == 56.45f);
+        auto ret2 = pspace.extract<std::string>("/test");
+        CHECK(ret2.has_value());
+        CHECK(ret2.value() == "hello");
+    }
+
     SUBCASE("Deeper PathSpace Extract") {
-        PathSpace pspace;
         CHECK(pspace.insert("/test1/test2", 56).nbrValuesInserted == 1);
         CHECK(pspace.insert("/test1/test2", 58).nbrValuesInserted == 1);
         auto ret = pspace.extract<int>("/test1/test2");
@@ -307,7 +328,6 @@ TEST_CASE("PathSpace Extract") {
     }
 
     SUBCASE("Deeper PathSpace Extract Different Types") {
-        PathSpace pspace;
         CHECK(pspace.insert("/test1/test2", 56.45f).nbrValuesInserted == 1);
         CHECK(pspace.insert("/test1/test2", 'a').nbrValuesInserted == 1);
         CHECK(pspace.insert("/test1/test2", 34.5f).nbrValuesInserted == 1);
@@ -320,5 +340,14 @@ TEST_CASE("PathSpace Extract") {
         auto ret3 = pspace.extract<float>("/test1/test2");
         CHECK(ret3.has_value());
         CHECK(ret3.value() == 34.5f);
+    }
+
+    SUBCASE("Simple PathSpace Execution Non-Immediate") {
+        std::function<int()> f = []() -> int { return 58; };
+        CHECK(pspace.insert("/f", f, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::OnReadOrExtract}})
+                      .nbrTasksCreated
+              == 1);
+        CHECK(pspace.extractBlock<int>("/f").value() == 58);
+        CHECK(!pspace.extractBlock<int>("/f").has_value());
     }
 }

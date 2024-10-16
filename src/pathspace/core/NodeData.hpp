@@ -27,12 +27,15 @@ public:
                 return Error{Error::Code::SerializationFunctionMissing, "Serialization function is missing."};
             inputData.metadata.serialize(inputData.obj, data);
         }
-        updateTypes(inputData.metadata);
+        pushType(inputData.metadata);
         return std::nullopt;
     }
 
     auto deserialize(void* obj, const InputMetadata& inputMetadata, std::optional<ExecutionOptions> const& execution) const
             -> Expected<int> {
+        if (types.empty())
+            return 0;
+
         if (this->types.front().category == DataCategory::ExecutionFunctionPointer
             || this->types.front().category == DataCategory::ExecutionStdFunction) {
             if (this->types.front().typeInfo == inputMetadata.typeInfo) {
@@ -47,21 +50,31 @@ public:
             return std::unexpected(Error{Error::Code::UnserializableType, "No deserialization function provided."});
         }
 
-        if (types.empty()) {
-            return std::unexpected(Error{Error::Code::UnserializableType, "No type information found."});
-        }
-
         inputMetadata.deserialize(obj, data);
         return 1;
     }
 
     Expected<int> deserializePop(void* obj, const InputMetadata& inputMetadata) {
-        if (!inputMetadata.deserializePop) {
-            return std::unexpected(Error{Error::Code::UnserializableType, "No pop deserialization function provided."});
+        if (types.empty())
+            return 0;
+
+        if (this->types.front().category == DataCategory::ExecutionFunctionPointer
+            || this->types.front().category == DataCategory::ExecutionStdFunction) {
+            if (this->types.front().typeInfo == inputMetadata.typeInfo) {
+                assert(this->tasks.size() > 0);
+                this->tasks.front().taskExecutorStdFunction(this->tasks.front(), obj);
+                this->tasks.erase(this->tasks.begin());
+                popType();
+                return 1;
+            }
+            return 0;
         }
 
+        if (!inputMetadata.deserializePop)
+            return std::unexpected(Error{Error::Code::UnserializableType, "No deserialization function provided."});
+
         inputMetadata.deserializePop(obj, data);
-        updateTypesAfterPop();
+        popType();
         return 1;
     }
 
@@ -70,20 +83,21 @@ private:
     std::vector<Task> tasks;
     std::vector<ElementType> types;
 
-    auto updateTypes(InputMetadata const& meta) -> void {
+    auto pushType(InputMetadata const& meta) -> void {
         if (!types.empty()) {
-            if (types.back().typeInfo == meta.typeInfo) {
+            if (types.back().typeInfo == meta.typeInfo)
                 types.back().elements++;
-            }
+            else
+                types.emplace_back(meta.typeInfo, 1, meta.category);
         } else {
             types.emplace_back(meta.typeInfo, 1, meta.category);
         }
     }
 
-    auto updateTypesAfterPop() -> void {
-        if (!types.empty()) {
-            if (--types.back().elements == 0) {
-                types.pop_back();
+    auto popType() -> void {
+        if (!this->types.empty()) {
+            if (--this->types.front().elements == 0) {
+                this->types.erase(this->types.begin());
             }
         }
     }

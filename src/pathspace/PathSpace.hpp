@@ -96,8 +96,11 @@ public:
             -> Expected<DataType> {
         log("Extract", "Function Called");
         DataType obj;
-        if (auto ret = this->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
+        auto const ret = this->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj);
+        if (!ret)
             return std::unexpected(ret.error());
+        if (ret.has_value() && (ret.value() == 0))
+            return std::unexpected(Error{Error::Code::NoObjectFound, std::string("Object not found at: ").append(path.getPath())});
         return obj;
     }
 
@@ -107,8 +110,11 @@ public:
                       Capabilities const& capabilities = Capabilities::All()) -> Expected<DataType> {
         log("ExtractBlock", "Function Called");
         DataType obj;
-        if (auto ret = this->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
+        auto const ret = this->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj);
+        if (!ret)
             return std::unexpected(ret.error());
+        if (ret.has_value() && (ret.value() == 0))
+            return std::unexpected(Error{Error::Code::NoObjectFound, std::string("Object not found at: ").append(path.getPath())});
         return obj;
     }
 
