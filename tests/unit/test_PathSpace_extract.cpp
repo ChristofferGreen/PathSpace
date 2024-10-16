@@ -142,11 +142,11 @@ TEST_CASE("PathSpace Extract Extended Tests") {
         CHECK_FALSE(ret.has_value());
     }
 
-    /*SUBCASE("Extract with type mismatch") {
+    SUBCASE("Extract with type mismatch") {
         pspace.insert("/int", 42);
         auto ret = pspace.extract<std::string>("/int");
         CHECK_FALSE(ret.has_value());
-    }*/
+    }
 
     SUBCASE("Extract multiple times") {
         pspace.insert("/multi", 1);

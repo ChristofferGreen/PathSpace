@@ -52,18 +52,18 @@ private:
         if (types.empty())
             return 0;
 
+        if (this->types.front().typeInfo != inputMetadata.typeInfo)
+            return 0;
+
         if (this->types.front().category == DataCategory::ExecutionFunctionPointer
             || this->types.front().category == DataCategory::ExecutionStdFunction) {
-            if (this->types.front().typeInfo == inputMetadata.typeInfo) {
-                assert(!this->tasks.empty());
-                this->tasks.front().taskExecutorStdFunction(this->tasks.front(), obj);
-                if (shouldPop) {
-                    this->tasks.pop_front();
-                    popType();
-                }
-                return 1;
+            assert(!this->tasks.empty());
+            this->tasks.front().taskExecutorStdFunction(this->tasks.front(), obj);
+            if (shouldPop) {
+                this->tasks.pop_front();
+                popType();
             }
-            return 0;
+            return 1;
         }
 
         if (shouldPop) {
