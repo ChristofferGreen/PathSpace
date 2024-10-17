@@ -14,7 +14,8 @@ struct GlobPath : public Path<T> {
     auto end() const -> GlobPathIterator<T>;
 
     GlobPath() = default;
-    GlobPath(T const& t);
+    GlobPath(std::string_view const& sv);
+    GlobPath(std::string const& s);
     GlobPath(char const* path);
 
     auto operator<=>(GlobPath<T> const& other) const -> std::strong_ordering;

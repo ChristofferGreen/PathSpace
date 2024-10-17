@@ -13,7 +13,11 @@ auto ConcretePath<T>::end() const -> ConcretePathIterator<T> {
 }
 
 template <typename T>
-ConcretePath<T>::ConcretePath(T const& t) : Path<T>(t) {
+ConcretePath<T>::ConcretePath(std::string_view const& sv) : Path<T>(std::is_same_v<T, std::string> ? T(std::string(sv)) : T(sv)) {
+}
+
+template <typename T>
+ConcretePath<T>::ConcretePath(std::string const& s) : Path<T>(s) {
 }
 
 template <typename T>

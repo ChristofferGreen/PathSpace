@@ -12,7 +12,11 @@ auto GlobPath<T>::end() const -> GlobPathIterator<T> {
 }
 
 template <typename T>
-GlobPath<T>::GlobPath(T const& t) : Path<T>(t) {
+GlobPath<T>::GlobPath(std::string_view const& sv) : Path<T>(std::is_same_v<T, std::string> ? T(std::string(sv)) : T(sv)) {
+}
+
+template <typename T>
+GlobPath<T>::GlobPath(std::string const& s) : Path<T>(s) {
 }
 
 template <typename T>

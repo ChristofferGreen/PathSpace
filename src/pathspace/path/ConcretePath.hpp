@@ -17,7 +17,8 @@ struct ConcretePath : public Path<T> {
     auto end() const -> ConcretePathIterator<T>;
 
     ConcretePath() = default;
-    ConcretePath(T const& t);
+    ConcretePath(std::string_view const& sv);
+    ConcretePath(std::string const& s);
     ConcretePath(char const* const t);
 
     // Existing comparison operators
