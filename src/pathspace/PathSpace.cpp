@@ -1,4 +1,5 @@
 #include "PathSpace.hpp"
+#include "core/BlockOptions.hpp"
 
 namespace SP {
 
@@ -54,7 +55,9 @@ auto PathSpace::out(ConcretePathStringView const& path,
     }
 
     std::unique_lock<std::mutex> lock(this->mutex);
-    this->cv.wait(lock, [&]() {
+    auto const timeout = (options.block && options.block->timeout) ? std::chrono::system_clock::now() + *options.block->timeout
+                                                                   : std::chrono::system_clock::time_point::max();
+    this->cv.wait_until(lock, timeout, [&]() {
         result = checkAndRead();
         return result.has_value() || this->shuttingDown;
     });

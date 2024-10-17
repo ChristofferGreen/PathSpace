@@ -215,19 +215,19 @@ TEST_CASE("PathSpace Extract Extended Tests") {
         t.join();
     }
 
-    /*SUBCASE("Extract with timeout") {
+    SUBCASE("Extract with timeout") {
         auto ret = pspace.extractBlock<int>(
                 "/timeout",
                 OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
         CHECK_FALSE(ret.has_value());
-    }*/
+    }
 
-    /*SUBCASE("Extract after clear") {
+    SUBCASE("Extract after clear") {
         pspace.insert("/clear_test", 42);
         pspace.clear();
         auto ret = pspace.extract<int>("/clear_test");
         CHECK_FALSE(ret.has_value());
-    }*/
+    }
 
     /*SUBCASE("Extract with periodic execution") {
         int counter = 0;
