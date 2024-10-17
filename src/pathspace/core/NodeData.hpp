@@ -58,7 +58,10 @@ private:
         if (this->types.front().category == DataCategory::ExecutionFunctionPointer
             || this->types.front().category == DataCategory::ExecutionStdFunction) {
             assert(!this->tasks.empty());
-            this->tasks.front().function(this->tasks.front(), obj);
+            if (inputMetadata.category == DataCategory::ExecutionStdFunction)
+                this->tasks.front().function(this->tasks.front(), obj, true);
+            else
+                this->tasks.front().function(this->tasks.front(), obj, false);
             if (shouldPop) {
                 this->tasks.pop_front();
                 popType();

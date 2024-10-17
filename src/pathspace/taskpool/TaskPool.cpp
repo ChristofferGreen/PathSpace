@@ -80,7 +80,7 @@ void TaskPool::workerFunction() {
         }
 
         if (task.function)
-            task.function(task, nullptr);
+            task.function(task, nullptr, false);
     }
 }
 

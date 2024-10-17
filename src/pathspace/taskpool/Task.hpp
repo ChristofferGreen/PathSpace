@@ -13,7 +13,7 @@ struct Task {
     ConstructiblePath pathToInsertReturnValueTo; // On this path, the return value will be inserted.
     ExecutionOptions executionOptions;
 
-    std::function<void(Task const& task, void* obj)> function;
+    std::function<void(Task const& task, void* obj, bool extractFunction)> function;
 };
 
 } // namespace SP

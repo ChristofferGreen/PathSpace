@@ -126,12 +126,16 @@ protected:
             -> std::optional<Task> { // ToDo:: Add support for glob based executions
         log("CreateTask", "Function Called");
         if constexpr (ExecutionFunctionPointer<DataType> || ExecutionStdFunction<DataType>) {
-            auto function = [userFunction = std::move(data)](Task const& task, void* obj) {
-                if (obj == nullptr) {
-                    assert(task.space != nullptr);
-                    task.space->insert(task.pathToInsertReturnValueTo.getPath(), userFunction());
+            auto function = [userFunction = std::move(data)](Task const& task, void* obj, bool extractFunction) {
+                if (extractFunction) {
+                    *static_cast<std::function<std::invoke_result_t<DataType>()>*>(obj) = userFunction;
                 } else {
-                    *static_cast<std::invoke_result_t<DataType>*>(obj) = userFunction();
+                    if (obj == nullptr) {
+                        assert(task.space != nullptr);
+                        task.space->insert(task.pathToInsertReturnValueTo.getPath(), userFunction());
+                    } else {
+                        *static_cast<std::invoke_result_t<DataType>*>(obj) = userFunction();
+                    }
                 }
             };
             return Task{.space = this,
