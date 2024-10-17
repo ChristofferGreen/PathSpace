@@ -125,62 +125,19 @@ protected:
     auto createTask(ConstructiblePath const& constructedPath, DataType const& data, InputData const& inputData, InOptions const& options)
             -> std::optional<Task> { // ToDo:: Add support for glob based executions
         log("CreateTask", "Function Called");
-        bool const isFunctionPointerExecution = (inputData.metadata.category == DataCategory::ExecutionFunctionPointer);
-        bool const isStdFunctionExecution = (inputData.metadata.category == DataCategory::ExecutionStdFunction);
-        bool const isImmediateExecution
-                = (!options.execution.has_value()
-                   || (options.execution.has_value()
-                       && options.execution.value().category
-                                  == ExecutionOptions::Category::Immediate)); // ToDo: Add support for lazy executions
         if constexpr (ExecutionFunctionPointer<DataType> || ExecutionStdFunction<DataType>) {
-            if (isImmediateExecution) {
-                if (isFunctionPointerExecution) {
-                    auto fun = [](Task const& task) {
-                        assert(task.space);
-                        if (task.userSuppliedFunctionPointer != nullptr) {
-                            auto userFunction = reinterpret_cast<std::invoke_result_t<DataType> (*)()>(task.userSuppliedFunctionPointer);
-                            task.space->insert(task.pathToInsertReturnValueTo.getPath(), userFunction());
-                        }
-                    };
-                    return Task{.userSuppliedFunctionPointer = inputData.obj,
-                                .space = this,
-                                .pathToInsertReturnValueTo = constructedPath,
-                                .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
-                                .taskExecutorFunctionPointer = fun};
-                } else if (isStdFunctionExecution) {
-                    auto fun = [userFunction = std::move(data)](Task const& task, void* obj) {
-                        assert(task.space);
-                        task.space->insert(task.pathToInsertReturnValueTo.getPath(), userFunction());
-                    };
-                    return Task{.space = this,
-                                .pathToInsertReturnValueTo = constructedPath,
-                                .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
-                                .taskExecutorStdFunction = fun};
+            auto function = [userFunction = std::move(data)](Task const& task, void* obj) {
+                if (obj == nullptr) {
+                    assert(task.space != nullptr);
+                    task.space->insert(task.pathToInsertReturnValueTo.getPath(), userFunction());
+                } else {
+                    *static_cast<std::invoke_result_t<DataType>*>(obj) = userFunction();
                 }
-            } else {
-                if (isFunctionPointerExecution) {
-                    auto const fun = [](Task const& task) {
-                        assert(task.space);
-                        if (task.userSuppliedFunctionPointer != nullptr) {
-                            auto userFunction = reinterpret_cast<std::invoke_result_t<DataType> (*)()>(task.userSuppliedFunctionPointer);
-                            task.space->insert(task.pathToInsertReturnValueTo.getPath(), userFunction());
-                        }
-                    };
-                    return Task{.userSuppliedFunctionPointer = inputData.obj,
-                                .space = this,
-                                .pathToInsertReturnValueTo = constructedPath,
-                                .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
-                                .taskExecutorFunctionPointer = fun};
-                } else if (isStdFunctionExecution) {
-                    auto fun = [userFunction = std::move(data)](Task const& task, void* obj) {
-                        *static_cast<std::invoke_result_t<DataType>*>(obj) = userFunction();
-                    };
-                    return Task{.space = this,
-                                .pathToInsertReturnValueTo = constructedPath,
-                                .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
-                                .taskExecutorStdFunction = fun};
-                }
-            }
+            };
+            return Task{.space = this,
+                        .pathToInsertReturnValueTo = constructedPath,
+                        .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
+                        .function = std::move(function)};
         }
         return std::nullopt;
     }

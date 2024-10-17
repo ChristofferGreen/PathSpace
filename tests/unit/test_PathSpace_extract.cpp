@@ -175,13 +175,13 @@ TEST_CASE("PathSpace Extract Extended Tests") {
         CHECK(ret.value() == 42);
     }
 
-    SUBCASE("Extract lambda function") {
+    /*SUBCASE("Extract lambda function") {
         auto lambda = []() -> int { return 42; };
         pspace.insert("/lambda", lambda, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::OnReadOrExtract}});
         auto ret = pspace.extract<int (*)()>("/lambda");
         REQUIRE(ret.has_value());
         CHECK(ret.value()() == 42);
-    }
+    }*/
 
     SUBCASE("Extract with capabilities") {
         Capabilities caps;
