@@ -8,6 +8,6 @@ namespace SP {
 class PathSpaceLeaf;
 class PathSpace;
 using NodeDataHashMap
-        = phmap::parallel_flat_hash_map<SP::ConcreteNameString, std::variant<SP::NodeData, std::unique_ptr<SP::PathSpaceLeaf>>>;
+        = phmap::parallel_node_hash_map<SP::ConcreteNameString, std::variant<SP::NodeData, std::unique_ptr<SP::PathSpaceLeaf>>>;
 
 } // namespace SP
