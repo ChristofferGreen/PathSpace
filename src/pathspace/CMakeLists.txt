@@ -51,6 +51,7 @@ add_library(PathSpace
     path/Path.cpp
     taskpool/Task.cpp
     taskpool/TaskPool.cpp
+    utils/TaggedLogger.cpp
     PathSpace.cpp
     PathSpaceLeaf.cpp
 )

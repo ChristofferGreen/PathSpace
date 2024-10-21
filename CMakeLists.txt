@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Add options for sanitizers
-option(ENABLE_THREAD_SANITIZER "Enable Thread Sanitizer" OFF)
+option(ENABLE_THREAD_SANITIZER "Enable Thread Sanitizer" ON)
 option(ENABLE_ADDRESS_SANITIZER "Enable Address Sanitizer" OFF)
 option(ENABLE_UNDEFINED_SANITIZER "Enable Undefined Behavior Sanitizer" OFF)
 

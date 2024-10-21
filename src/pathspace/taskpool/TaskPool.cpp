@@ -24,7 +24,7 @@ TaskPool::~TaskPool() {
 auto TaskPool::addTask(Task&& task) -> void {
     std::lock_guard<std::mutex> lock(taskMutex);
     if (task.executionOptions.location == ExecutionOptions::Location::MainThread)
-        tasksMainThread.emplace(task);
+        tasksMainThread.emplace(std::move(task));
     else
         tasks.emplace(std::move(task));
     taskCV.notify_one();
@@ -34,8 +34,8 @@ void TaskPool::shutdown() {
     {
         std::unique_lock<std::mutex> lock(taskMutex);
         stop = true;
+        taskCV.notify_all();
     }
-    taskCV.notify_all();
     for (std::thread& worker : workers) {
         if (worker.joinable()) {
             worker.join();
@@ -51,18 +51,11 @@ void TaskPool::workerFunction() {
     while (true) {
         Task task;
         {
-            std::unique_lock<std::mutex> counterLock(availableThreadsMutex);
-            availableThreads++;
-        }
-
-        {
             std::unique_lock<std::mutex> lock(taskMutex);
             taskCV.wait(lock, [this]() { return this->stop || !this->tasks.empty() || this->immediateTask.has_value(); });
 
             if (this->stop && this->tasks.empty() && !this->immediateTask.has_value()) {
-                std::unique_lock<std::mutex> counterLock(availableThreadsMutex);
-                availableThreads--;
-                return;
+                break;
             }
 
             if (immediateTask.has_value()) {
@@ -71,16 +64,24 @@ void TaskPool::workerFunction() {
             } else if (!tasks.empty()) {
                 task = std::move(tasks.front());
                 tasks.pop();
+            } else {
+                continue;
             }
+        }
+
+        {
+            std::unique_lock<std::mutex> counterLock(availableThreadsMutex);
+            availableThreads++;
+        }
+
+        if (task.function) {
+            task.function(task, nullptr, false);
         }
 
         {
             std::unique_lock<std::mutex> counterLock(availableThreadsMutex);
             availableThreads--;
         }
-
-        if (task.function)
-            task.function(task, nullptr, false);
     }
 }
 
