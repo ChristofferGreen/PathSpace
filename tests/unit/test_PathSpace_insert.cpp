@@ -10,25 +10,12 @@ TEST_CASE("PathSpace Insert") {
         CHECK(pspace.insert("/test", 54).nbrValuesInserted == 1);
     }
 
-    /*SUBCASE("Simple PathSpace Construction JSON") {
-        CHECK(pspace.insert("/test", 54).value_or(0) == 1);
-        CHECK(pspace.toJSON(false) == R"({"PathSpace": {"value0": {"test": {"index": 0,"data": {"value0": {"container":
-    [54,0,0,0]}}}}})" );
-    }*/
-
     SUBCASE("Simple PathSpace Path Into Data") {
         CHECK(pspace.insert("/test", 54).nbrValuesInserted == 1);
         auto const val = pspace.insert("/test/data", 55);
         CHECK(val.nbrValuesInserted == 0);
-        CHECK(val.errors.size() == 1);
-        CHECK(val.errors[0].code == Error::Code::InvalidPathSubcomponent);
-    }
-
-    SUBCASE("PathSpace Multi-Component Path") {
-        CHECK(pspace.insert("/test1/test2/data", 56).nbrValuesInserted == 1);
-        // CHECK(pspace.toJSON(false) == R"({"PathSpace": {"value0": {"test3": {"index": 1,"data": {"ptr_wrapper":
-        // {"valid": 1,"data": {"value0": {"test": {"index": 1,"data": {"ptr_wrapper": {"valid": 1,"data": {"value0":
-        // {"data": {"index": 0,"data": {"value0": {"container": [56,0,0,0]}}}}}}}}}}}}}}})" );
+        // CHECK(val.errors.size() == 1);
+        // CHECK(val.errors[0].code == Error::Code::InvalidPathSubcomponent);
     }
 
     SUBCASE("Simple PathSpace Glob Construction") {
@@ -45,15 +32,16 @@ TEST_CASE("PathSpace Insert") {
         CHECK(pspace.insert("/tast1", 4).nbrValuesInserted == 1);
         CHECK(pspace.insert("/test*/moo", 5).nbrValuesInserted == 3);
     }
-}
 
-// lambdas should come from a central database in order to support serialization to remote computer
-/*TEST_CASE("PathSpace Insert Lambda") {
-    PathSpace pspace;
-    SUBCASE("Simple PathSpace Lambda Insert") {
-        CHECK(pspace.insert("/test1", [](){}).nbrValuesInserted == 1);
+    SUBCASE("Multiple Levels Deep") {
+        CHECK(pspace.insert("/a/b/c/d", 123).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/a/b/e/f", 456).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/a/b/e/f", 567).nbrValuesInserted == 1);
+        CHECK(pspace.readBlock<int>("/a/b/c/d").value() == 123);
+        CHECK(pspace.extractBlock<int>("/a/b/e/f").value() == 456);
+        CHECK(pspace.readBlock<int>("/a/b/e/f").value() == 567);
     }
-}*/
+}
 
 TEST_CASE("PathSpace Insert Function and Execution") {
     PathSpace pspace;

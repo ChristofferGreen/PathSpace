@@ -62,6 +62,50 @@ auto PathSpaceLeaf::inIntermediateComponent(ConstructiblePath& path,
                            : inConcretePathComponent(path, iter, end, pathComponent.getName(), inputData, options, ret, mutex);
 }
 
+/*
+auto PathSpaceLeaf::inIntermediateComponent(ConstructiblePath& path,
+                                            GlobPathIteratorStringView const& iter,
+                                            GlobPathIteratorStringView const& end,
+                                            GlobName const& pathComponent,
+                                            InputData const& inputData,
+                                            InOptions const& options,
+                                            InsertReturn& ret) -> void {
+    path.append(pathComponent.getName());
+    auto nextIter = std::next(iter);
+
+    if (pathComponent.isGlob()) {
+        nodeDataMap.for_each([&](const auto& item) {
+            const auto& key = item.first;
+            if (std::get<0>(pathComponent.match(key))) {
+                if (const auto* leaf = std::get_if<std::unique_ptr<PathSpaceLeaf>>(&item.second)) {
+                    (*leaf)->in(path, nextIter, end, inputData, options, ret);
+                }
+            }
+        });
+    } else {
+        auto [it, inserted] = nodeDataMap.try_emplace(pathComponent.getName(), std::make_unique<PathSpaceLeaf>());
+        if (auto* leaf = std::get_if<std::unique_ptr<PathSpaceLeaf>>(&it->second)) {
+            (*leaf)->in(path, nextIter, end, inputData, options, ret);
+        }
+    }
+}
+*/
+
+auto PathSpaceLeaf::inConcretePathComponent(ConstructiblePath& path,
+                                            GlobPathIteratorStringView const& iter,
+                                            GlobPathIteratorStringView const& end,
+                                            ConcreteNameStringView const& concreteName,
+                                            InputData const& inputData,
+                                            InOptions const& options,
+                                            InsertReturn& ret,
+                                            std::mutex& mutex) -> void {
+    auto const nextIter = std::next(iter);
+    auto [it, inserted] = nodeDataMap.try_emplace(concreteName.getName(), std::make_unique<PathSpaceLeaf>());
+    if (auto* leaf = std::get_if<std::unique_ptr<PathSpaceLeaf>>(&it->second)) {
+        (*leaf)->in(path, nextIter, end, inputData, options, ret, mutex);
+    }
+}
+
 auto PathSpaceLeaf::inConcreteDataName(ConstructiblePath& path,
                                        ConcreteNameStringView const& concreteName,
                                        InputData const& inputData,
@@ -88,6 +132,37 @@ auto PathSpaceLeaf::inConcreteDataName(ConstructiblePath& path,
     ret.nbrValuesInserted++;
 }
 
+/*
+auto PathSpaceLeaf::inFinalComponent(ConstructiblePath& path,
+                                     GlobName const& pathComponent,
+                                     InputData const& inputData,
+                                     InOptions const& options,
+                                     InsertReturn& ret) -> void {
+    path.append(pathComponent.getName());
+    if (pathComponent.isGlob()) {
+        nodeDataMap.for_each([&](const auto& item) {
+            const auto& key = item.first;
+            if (std::get<0>(pathComponent.match(key))) {
+                if (const auto* nodeData = std::get_if<NodeData>(&item.second)) {
+                    if (auto error = const_cast<NodeData*>(nodeData)->serialize(path, inputData, options, ret); error.has_value()) {
+                        ret.errors.emplace_back(error.value());
+                    }
+                    ret.nbrValuesInserted++;
+                }
+            }
+        });
+    } else {
+        auto [it, inserted] = nodeDataMap.try_emplace(pathComponent.getName(), NodeData{});
+        if (auto* nodeData = std::get_if<NodeData>(&it->second)) {
+            if (auto error = nodeData->serialize(path, inputData, options, ret); error.has_value()) {
+                ret.errors.emplace_back(error.value());
+            }
+            ret.nbrValuesInserted++;
+        }
+    }
+}
+*/
+
 auto PathSpaceLeaf::inGlobDataName(ConstructiblePath& path,
                                    GlobName const& globName,
                                    InputData const& inputData,
@@ -110,7 +185,7 @@ auto PathSpaceLeaf::inGlobPathComponent(ConstructiblePath& path,
                                         InOptions const& options,
                                         InsertReturn& ret,
                                         std::mutex& mutex) -> void {
-    auto const nextIter = std::next(iter);
+    /*auto const nextIter = std::next(iter);
     for (auto const& val : this->nodeDataMap) {
         if (std::get<0>(globName.match(val.first))) {
             if (std::holds_alternative<std::unique_ptr<PathSpaceLeaf>>(val.second)) {
@@ -119,33 +194,16 @@ auto PathSpaceLeaf::inGlobPathComponent(ConstructiblePath& path,
                 std::get<std::unique_ptr<PathSpaceLeaf>>(val.second)->in(pathCopy, nextIter, end, inputData, options, ret, mutex);
             }
         }
-    }
-}
-
-auto PathSpaceLeaf::inConcretePathComponent(ConstructiblePath& path,
-                                            GlobPathIteratorStringView const& iter,
-                                            GlobPathIteratorStringView const& end,
-                                            ConcreteNameStringView const& concreteName,
-                                            InputData const& inputData,
-                                            InOptions const& options,
-                                            InsertReturn& ret,
-                                            std::mutex& mutex) -> void {
+    }*/
     auto const nextIter = std::next(iter);
-    path.append(concreteName.getName());
-    auto const appendDataIfNameExists = [&](auto& nodePair) {
-        if (std::holds_alternative<std::unique_ptr<PathSpaceLeaf>>(nodePair.second))
-            std::get<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)->in(path, nextIter, end, inputData, options, ret, mutex);
-        else
-            ret.errors.emplace_back(Error::Code::InvalidPathSubcomponent,
-                                    std::string("Sub-component name is data for ").append(concreteName.getName()));
-    };
-    auto const createNodeDataAndAppendDataToItIfNameDoesNotExists = [&](NodeDataHashMap::constructor const& constructor) {
-        auto space = std::make_unique<PathSpaceLeaf>();
-        space->in(path, nextIter, end, inputData, options, ret, mutex);
-        constructor(concreteName.getName(), std::move(space));
-        ret.nbrSpacesInserted++;
-    };
-    this->nodeDataMap.lazy_emplace_l(concreteName.getName(), appendDataIfNameExists, createNodeDataAndAppendDataToItIfNameDoesNotExists);
+    nodeDataMap.for_each([&](const auto& item) {
+        const auto& key = item.first;
+        if (std::get<0>(globName.match(key))) {
+            if (const auto* leaf = std::get_if<std::unique_ptr<PathSpaceLeaf>>(&item.second)) {
+                (*leaf)->in(path, nextIter, end, inputData, options, ret, mutex);
+            }
+        }
+    });
 }
 
 auto PathSpaceLeaf::outDataName(ConcreteNameStringView const& concreteName,

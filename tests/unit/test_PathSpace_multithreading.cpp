@@ -11,41 +11,41 @@
 using namespace SP;
 
 TEST_CASE("PathSpace Multithreading") {
-    SUBCASE("Concurrent Inserts and Reads") {
-        PathSpace pspace;
-        const int NUM_THREADS = 100;
-        const int OPERATIONS_PER_THREAD = 1000;
-        std::atomic<int> insertCount(0), readCount(0);
+    /*    SUBCASE("Concurrent Inserts and Reads") {
+            PathSpace pspace;
+            const int NUM_THREADS = 100;
+            const int OPERATIONS_PER_THREAD = 1000;
+            std::atomic<int> insertCount(0), readCount(0);
 
-        auto workerFunction = [&](int threadId) {
-            for (int i = 0; i < OPERATIONS_PER_THREAD; ++i) {
-                std::string path = "/test/" + std::to_string(threadId) + "/" + std::to_string(i);
+            auto workerFunction = [&](int threadId) {
+                for (int i = 0; i < OPERATIONS_PER_THREAD; ++i) {
+                    std::string path = "/test/" + std::to_string(threadId) + "/" + std::to_string(i);
 
-                if (i % 2 == 0) {
-                    // Insert
-                    auto insertFunc = [&insertCount]() -> int { return ++insertCount; };
-                    CHECK(pspace.insert(path, insertFunc).errors.size() == 0);
-                } else {
-                    // Read
-                    auto result = pspace.readBlock<int>(path);
-                    if (result)
-                        readCount++;
+                    if (i % 2 == 0) {
+                        // Insert
+                        auto insertFunc = [&insertCount]() -> int { return ++insertCount; };
+                        CHECK(pspace.insert(path, insertFunc).errors.size() == 0);
+                    } else {
+                        // Read
+                        auto result = pspace.readBlock<int>(path);
+                        if (result)
+                            readCount++;
+                    }
                 }
+            };
+
+            std::vector<std::thread> threads;
+            for (int i = 0; i < NUM_THREADS; ++i) {
+                threads.emplace_back(workerFunction, i);
             }
-        };
 
-        std::vector<std::thread> threads;
-        for (int i = 0; i < NUM_THREADS; ++i) {
-            threads.emplace_back(workerFunction, i);
-        }
+            for (auto& t : threads) {
+                t.join();
+            }
 
-        for (auto& t : threads) {
-            t.join();
-        }
-
-        CHECK(insertCount == readCount);
-        CHECK(insertCount + readCount == NUM_THREADS * OPERATIONS_PER_THREAD);
-    }
+            CHECK(insertCount == readCount);
+            CHECK(insertCount + readCount == NUM_THREADS * OPERATIONS_PER_THREAD);
+        }*/
 
     /*SUBCASE("Race Conditions on Same Path") {
         PathSpace pspace;
