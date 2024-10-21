@@ -114,10 +114,10 @@ public:
                                            .threadName = getThreadName(std::this_thread::get_id())};
 
         {
-            const std::lock_guard<std::mutex> lock(this->queueMutex);
+            std::unique_lock<std::mutex> lock(this->queueMutex);
             this->messageQueue.push(std::move(logMessage));
+            this->cv.notify_one(); // Move this inside the lock
         }
-        this->cv.notify_one();
     }
 
     auto setThreadName(const std::string& name) -> void {
