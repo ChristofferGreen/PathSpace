@@ -33,8 +33,10 @@ auto PathSpace::in(ConstructiblePath& constructedPath, GlobPathStringView const&
         return ret;
     }
     this->root.in(constructedPath, path.begin(), path.end(), InputData{data}, options, ret, this->mutex);
-    if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0)
+    if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0) {
+        std::unique_lock<std::mutex> lock(this->mutex);
         this->cv.notify_all();
+    }
     return ret;
 };
 
