@@ -7,6 +7,12 @@ project(PathSpaceTests LANGUAGES CXX)
 # Define the C++ standard to use
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Add options for sanitizers
+option(ENABLE_THREAD_SANITIZER "Enable Thread Sanitizer" OFF)
+option(ENABLE_ADDRESS_SANITIZER "Enable Address Sanitizer" OFF)
+option(ENABLE_UNDEFINED_SANITIZER "Enable Undefined Behavior Sanitizer" OFF)
+
 # Check if Clang is used, set it to use libc++
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   #add_compile_options(-D__cpp_concepts=202002L)
@@ -15,6 +21,18 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   #add_link_options(-stdlib=libc++)
   #add_link_options(-lc++abi)
   #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=lld")
+endif()
+
+# Apply sanitizer flags if enabled
+if(ENABLE_THREAD_SANITIZER)
+  add_compile_options(-fsanitize=thread)
+  add_link_options(-fsanitize=thread)
+elseif(ENABLE_ADDRESS_SANITIZER)
+  add_compile_options(-fsanitize=address)
+  add_link_options(-fsanitize=address)
+elseif(ENABLE_UNDEFINED_SANITIZER)
+  add_compile_options(-fsanitize=undefined)
+  add_link_options(-fsanitize=undefined)
 endif()
 
 enable_testing()

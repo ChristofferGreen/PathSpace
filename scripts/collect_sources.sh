@@ -35,7 +35,7 @@ write_header() {
 write_file_structure() {
     local output_file="$1"
     echo "<project_structure>" >> "$output_file"
-    tree -P "*.cpp|*.hpp|*.h|*.md" --prune -I ".*|build|ext|myenv" . >> "$output_file"
+    tree -P "*.cpp|*.hpp|*.h|*.md|CMakeLists.txt" --prune -I ".*|build|ext|myenv" . >> "$output_file"
     echo "</project_structure>" >> "$output_file"
 }
 
@@ -59,8 +59,8 @@ write_file_contents() {
 # Function to process files
 process_files() {
     local output_file=$1
-    log_verbose "Searching for C++, HPP, H, and MD files"
-    find . -type f \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "CMakeList.txt" -o -name "*.md" \) | while read -r file; do
+    log_verbose "Searching for C++, HPP, H, CMake and MD files"
+    find . -type f \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "CMakeLists.txt" -o -name "*.md" \) | while read -r file; do
         if [[ "$file" == *"/build/"* || "$file" == *"/ext/"* ]]; then
             #log_verbose "Skipping file in excluded directory: $file"
             continue

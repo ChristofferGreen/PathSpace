@@ -104,7 +104,7 @@ public:
     }
 
     template <typename... Tags>
-    auto log(const std::string_view message, Tags&&... tags) -> void {
+    auto log(const std::string message, Tags&&... tags) -> void {
         if (!loggingEnabled)
             return;
 

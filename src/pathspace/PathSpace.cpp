@@ -58,6 +58,7 @@ auto PathSpace::out(ConcretePathStringView const& path,
     auto const timeout = (options.block && options.block->timeout) ? std::chrono::system_clock::now() + *options.block->timeout
                                                                    : std::chrono::system_clock::time_point::max();
     this->cv.wait_until(lock, timeout, [&]() {
+        log("PathSpace::out predicate", "Function Called");
         result = checkAndRead();
         return result.has_value() || this->shuttingDown;
     });
