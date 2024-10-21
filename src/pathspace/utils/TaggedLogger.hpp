@@ -198,7 +198,7 @@ inline auto logger() -> TaggedLogger& {
 
 template <typename... Args>
 inline void log(Args&&... args) {
-    logger().log(std::forward<Args>(args)...);
+    // logger().log(std::forward<Args>(args)...);
 }
 
 inline void set_thread_name(const std::string& name) {
