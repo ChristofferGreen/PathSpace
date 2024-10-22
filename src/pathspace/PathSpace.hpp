@@ -75,13 +75,38 @@ public:
     auto readBlock(ConcretePathStringView const& path,
                    OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}, .doPop = false},
                    Capabilities const& capabilities = Capabilities::All()) const -> Expected<DataType> {
-        log("ReadBlock", "Function Called");
-        if (options.doPop)
-            return std::unexpected(Error{Error::Code::PopInRead, std::string("readBlock does not support doPop: ").append(path.getPath())});
         DataType obj;
-        if (auto ret = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
-            return std::unexpected(ret.error());
-        return obj;
+        auto result = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj);
+
+        if (result.has_value() || !options.block.has_value()
+            || (options.block.has_value() && options.block.value().behavior == BlockOptions::Behavior::DontWait)) {
+            if (result.has_value() && result.value() > 0) {
+                return obj;
+            }
+            std::unexpected(result.error());
+        }
+
+        auto const timeout = (options.block && options.block->timeout) ? std::chrono::system_clock::now() + *options.block->timeout
+                                                                       : std::chrono::system_clock::time_point::max();
+
+        auto guard = waitMap.wait(path);
+
+        while (!result.has_value() && !this->shuttingDown) {
+            if (guard.wait_until(timeout, [&]() {
+                    result = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj);
+                    return (result.has_value() && result.value() > 0) || this->shuttingDown;
+                }))
+                break;
+        }
+
+        if (this->shuttingDown) {
+            return std::unexpected(Error{Error::Code::Shutdown, "PathSpace is shutting down"});
+        }
+
+        if (result.has_value() && result.value() > 0) {
+            return obj;
+        }
+        return std::unexpected(result.error());
     }
 
     /**
@@ -109,14 +134,38 @@ public:
     auto extractBlock(ConcretePathStringView const& path,
                       OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}},
                       Capabilities const& capabilities = Capabilities::All()) -> Expected<DataType> {
-        log("ExtractBlock", "Function Called");
         DataType obj;
-        auto const ret = this->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj);
-        if (!ret)
-            return std::unexpected(ret.error());
-        if (ret.has_value() && (ret.value() == 0))
-            return std::unexpected(Error{Error::Code::NoObjectFound, std::string("Object not found at: ").append(path.getPath())});
-        return obj;
+        auto result = this->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj);
+
+        if (result.has_value() || !options.block.has_value()
+            || (options.block.has_value() && options.block.value().behavior == BlockOptions::Behavior::DontWait)) {
+            if (result.has_value() && result.value() > 0) {
+                return obj;
+            }
+            return std::unexpected(result.error());
+        }
+
+        auto const timeout = (options.block && options.block->timeout) ? std::chrono::system_clock::now() + *options.block->timeout
+                                                                       : std::chrono::system_clock::time_point::max();
+
+        auto guard = waitMap.wait(path);
+
+        while (!result.has_value() && !this->shuttingDown) {
+            if (guard.wait_until(timeout, [&]() {
+                    result = this->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj);
+                    return (result.has_value() && result.value() > 0) || this->shuttingDown;
+                }))
+                break;
+        }
+
+        if (this->shuttingDown) {
+            return std::unexpected(Error{Error::Code::Shutdown, "PathSpace is shutting down"});
+        }
+
+        if (result.has_value() && result.value() > 0) {
+            return obj;
+        }
+        return std::unexpected(result.error());
     }
 
     auto clear() -> void;
@@ -159,10 +208,9 @@ protected:
     auto shutdown() -> void;
 
     TaskPool* pool = nullptr;
-    std::condition_variable cv;
-    std::mutex mutex;
     PathSpaceLeaf root;
     std::atomic<bool> shuttingDown{false};
+    mutable WaitMap waitMap;
 };
 
 } // namespace SP

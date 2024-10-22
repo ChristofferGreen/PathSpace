@@ -43,6 +43,11 @@ struct WaitMap {
         }
     }
 
+    auto clear() -> void {
+        std::lock_guard<std::mutex> lock(mutex);
+        cvMap.clear();
+    }
+
 private:
     friend struct Guard;
 
