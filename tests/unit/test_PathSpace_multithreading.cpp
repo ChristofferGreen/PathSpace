@@ -677,7 +677,7 @@ TEST_CASE("PathSpace Multithreading") {
         }
     }
 
-    /*SUBCASE("Blocking Operations") {
+    SUBCASE("Blocking Operations") {
         PathSpace pspace;
         const int NUM_PRODUCERS = 10;
         const int NUM_CONSUMERS = 10;
@@ -724,39 +724,76 @@ TEST_CASE("PathSpace Multithreading") {
     }
 
     SUBCASE("Task Execution Order") {
-        PathSpace pspace;
-        const int NUM_TASKS = 1000;
-        std::atomic<int> lastExecuted(0);
+        // This test verifies that tasks are executed in a consistent order,
+        // even when run concurrently across multiple threads.
+        const std::vector<int> TASK_COUNTS = {10, 100, 1000}; // Test with different scales
+        for (int NUM_TASKS : TASK_COUNTS) {
+            PathSpace pspace;
+            std::atomic<int> tasksCompleted(0);
+            std::vector<int> executionOrder;
+            std::mutex orderMutex;
+            std::condition_variable cv;
 
-        for (int i = 0; i < NUM_TASKS; ++i) {
-            auto task = [i, &lastExecuted]() -> int {
-                int expected = i - 1;
-                while (!lastExecuted.compare_exchange_weak(expected, i)) {
-                    expected = i - 1;
-                    std::this_thread::yield();
+            auto start_time = std::chrono::steady_clock::now();
+            auto timeout = std::chrono::seconds(30); // Global timeout for the entire test
+
+            for (int i = 0; i < NUM_TASKS; ++i) {
+                auto task = [i, &tasksCompleted, &executionOrder, &orderMutex, &cv]() -> int {
+                    std::unique_lock<std::mutex> lock(orderMutex);
+                    cv.wait_for(lock, std::chrono::milliseconds(100), [&tasksCompleted, i]() { return tasksCompleted.load() == i; });
+
+                    executionOrder.push_back(i);
+                    tasksCompleted.fetch_add(1);
+                    cv.notify_all();
+                    return i;
+                };
+                CHECK(pspace.insert("/ordered/" + std::to_string(i), task).errors.size() == 0);
+            }
+
+            std::vector<std::thread> threads;
+            std::atomic<bool> anyThreadFailed(false);
+            for (int i = 0; i < NUM_TASKS; ++i) {
+                threads.emplace_back([&pspace, i, &anyThreadFailed]() {
+                    try {
+                        auto result = pspace.readBlock<int>("/ordered/" + std::to_string(i));
+                        CHECK(result.has_value());
+                        CHECK(result.value() == i);
+                    } catch (const std::exception& e) {
+                        anyThreadFailed.store(true);
+                        FAIL("Thread " << i << " failed: " << e.what());
+                    }
+                });
+            }
+
+            // Join threads with timeout
+            for (auto& t : threads) {
+                if (std::chrono::steady_clock::now() - start_time > timeout) {
+                    FAIL("Test timed out after " << timeout.count() << " seconds");
                 }
-                return i;
-            };
-            CHECK(pspace.insert("/ordered/" + std::to_string(i), task).errors.size() == 0);
-        }
+                if (t.joinable())
+                    t.join();
+            }
 
-        std::vector<std::thread> threads;
-        for (int i = 0; i < NUM_TASKS; ++i) {
-            threads.emplace_back([&pspace, i]() {
-                auto result = pspace.readBlock<int>("/ordered/" + std::to_string(i));
-                CHECK(result.has_value());
-                CHECK(result.value() == i);
-            });
-        }
+            CHECK(tasksCompleted == NUM_TASKS);
+            CHECK_FALSE(anyThreadFailed);
 
-        for (auto& t : threads) {
-            t.join();
+            // Verify execution order
+            CHECK(executionOrder.size() == NUM_TASKS);
+            bool is_sorted = std::is_sorted(executionOrder.begin(), executionOrder.end());
+            if (!is_sorted) {
+                // Log the actual order for debugging
+                std::stringstream ss;
+                ss << "Execution order: ";
+                for (int i : executionOrder) {
+                    ss << i << " ";
+                }
+                INFO(ss.str());
+            }
+            CHECK(is_sorted);
         }
-
-        CHECK(lastExecuted == NUM_TASKS - 1);
     }
 
-    SUBCASE("Stress Testing") {
+    /*SUBCASE("Stress Testing") {
         PathSpace pspace;
         const int NUM_THREADS = 1000;
         const int OPERATIONS_PER_THREAD = 100;
