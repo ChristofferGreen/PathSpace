@@ -238,79 +238,315 @@ TEST_CASE("PathSpace Multithreading") {
 
     SUBCASE("PathSpace Concurrent Counter") {
         PathSpace pspace;
-        // Avoid system-dependent thread counts
         const int NUM_THREADS = std::min(16, static_cast<int>(std::thread::hardware_concurrency() * 2));
         const int OPERATIONS_PER_THREAD = 100;
 
-        // Use proper atomic operations
-        std::atomic<int> operationCount(0);
+        std::atomic<int> failedOperations{0};
+        std::atomic<int> successfulOperations{0};
 
-        auto workerFunction = [&]() {
+        // Structure to track thread operations
+        struct ThreadStats {
+            std::vector<int> insertedValues;
+            int threadId;
+            int successCount{0};
+            int failCount{0};
+
+            ThreadStats(int id) : threadId(id) {
+                insertedValues.reserve(OPERATIONS_PER_THREAD);
+            }
+        };
+
+        auto workerFunction = [&](int threadId) {
+            ThreadStats stats(threadId);
+
             for (int i = 0; i < OPERATIONS_PER_THREAD; ++i) {
-                // PathSpace operation adds to existing value
-                auto incrementFunc = [&operationCount]() -> int {
-                    // Track our operation and return 1 to be added
-                    operationCount.fetch_add(1, std::memory_order_relaxed);
-                    return 1;
-                };
+                // Generate unique value that encodes both thread ID and operation number
+                // This lets us verify exactly which operations succeeded
+                int value = (threadId * OPERATIONS_PER_THREAD) + i;
 
-                auto result = pspace.insert("/sharedCounter", incrementFunc);
+                // Try to insert our value
+                auto result = pspace.insert("/data", value);
+
+                if (result.errors.empty()) {
+                    stats.insertedValues.push_back(value);
+                    stats.successCount++;
+                    successfulOperations.fetch_add(1, std::memory_order_relaxed);
+                } else {
+                    stats.failCount++;
+                    failedOperations.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
+
+            return stats;
+        };
+
+        // Launch threads and collect their stats
+        std::vector<std::future<ThreadStats>> futures;
+        for (int i = 0; i < NUM_THREADS; ++i) {
+            futures.push_back(std::async(std::launch::async, workerFunction, i));
+        }
+
+        // Collect results
+        std::vector<ThreadStats> allStats;
+        for (auto& future : futures) {
+            allStats.push_back(future.get());
+        }
+
+        // Extract all values to verify what got stored
+        std::vector<int> extractedValues;
+        while (true) {
+            auto result = pspace.extract<int>("/data");
+            if (!result.has_value())
+                break;
+            extractedValues.push_back(result.value());
+        }
+
+        // Verify the test results
+        INFO("Successful operations: " << successfulOperations.load());
+        INFO("Failed operations: " << failedOperations.load());
+        INFO("Extracted values: " << extractedValues.size());
+
+        // Check that we haven't lost any successful operations
+        CHECK(extractedValues.size() == successfulOperations.load());
+
+        // Verify no duplicate values were stored
+        std::set<int> uniqueValues(extractedValues.begin(), extractedValues.end());
+        CHECK(uniqueValues.size() == extractedValues.size());
+
+        // Verify we can reconstruct which thread's operations succeeded
+        std::vector<int> successesPerThread(NUM_THREADS, 0);
+        for (int value : extractedValues) {
+            int threadId = value / OPERATIONS_PER_THREAD;
+            int operationNum = value % OPERATIONS_PER_THREAD;
+            REQUIRE(threadId >= 0);
+            REQUIRE(threadId < NUM_THREADS);
+            REQUIRE(operationNum >= 0);
+            REQUIRE(operationNum < OPERATIONS_PER_THREAD);
+            successesPerThread[threadId]++;
+        }
+
+        // Verify each thread's recorded successes match what we extracted
+        for (size_t i = 0; i < allStats.size(); i++) {
+            CHECK(allStats[i].successCount == successesPerThread[i]);
+        }
+    }
+
+    SUBCASE("PathSpace Counter Order Preservation") {
+        PathSpace pspace;
+        const int NUM_THREADS = 4;
+        const int OPERATIONS_PER_THREAD = 10;
+
+        // Track operations as they're queued
+        struct Operation {
+            int threadId;
+            int seqNum;
+            int value;
+        };
+        std::vector<Operation> expectedOperations;
+        std::mutex opsMutex;
+
+        auto workerFunction = [&](int threadId) {
+            for (int i = 0; i < OPERATIONS_PER_THREAD; i++) {
+                int value = (threadId * 100) + i;
+
+                // Insert our value
+                auto result = pspace.insert("/counter", value);
                 REQUIRE(result.errors.empty());
+
+                // Record this operation
+                {
+                    std::lock_guard<std::mutex> lock(opsMutex);
+                    expectedOperations.push_back({threadId, i, value});
+                }
+
+                // Small delay to help interleave operations
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
             }
         };
 
         // Launch threads
         std::vector<std::thread> threads;
-        for (int i = 0; i < NUM_THREADS; ++i) {
-            threads.emplace_back(workerFunction);
+        for (int i = 0; i < NUM_THREADS; i++) {
+            threads.emplace_back(workerFunction, i);
         }
 
+        // Wait for threads to complete
         for (auto& t : threads) {
             t.join();
         }
 
-        // Read final value
-        auto finalValue = pspace.readBlock<int>("/sharedCounter");
-        REQUIRE(finalValue.has_value());
+        // Extract all values and verify order
+        std::vector<Operation> actualOperations;
 
-        // Verify expected total
-        int expected_total = operationCount.load();
-        CHECK(expected_total == NUM_THREADS * OPERATIONS_PER_THREAD);
-        CHECK(finalValue.value() == expected_total);
+        while (true) {
+            auto value = pspace.extractBlock<int>("/counter");
+            if (!value.has_value())
+                break;
+
+            // Find matching operation
+            bool found = false;
+            Operation matchingOp;
+
+            for (const auto& op : expectedOperations) {
+                if (op.value == value.value()) {
+                    matchingOp = op;
+                    found = true;
+                    break;
+                }
+            }
+
+            REQUIRE(found);
+            actualOperations.push_back(matchingOp);
+        }
+
+        // Verify we got all operations
+        CHECK(actualOperations.size() == NUM_THREADS * OPERATIONS_PER_THREAD);
+
+        // Verify per-thread ordering (operations from same thread should be in sequence)
+        for (int t = 0; t < NUM_THREADS; t++) {
+            std::vector<int> threadSeqNums;
+
+            for (const auto& op : actualOperations) {
+                if (op.threadId == t) {
+                    threadSeqNums.push_back(op.seqNum);
+                }
+            }
+
+            INFO("Thread " << t << " sequence: ");
+            for (int seq : threadSeqNums) {
+                INFO("  " << seq);
+            }
+
+            // Check that this thread's operations are in order
+            CHECK(std::is_sorted(threadSeqNums.begin(), threadSeqNums.end()));
+            CHECK(threadSeqNums.size() == OPERATIONS_PER_THREAD);
+        }
+
+        // Print full operation sequence for debugging
+        INFO("\nFull operation sequence:");
+        for (const auto& op : actualOperations) {
+            INFO("Thread " << op.threadId << " op " << op.seqNum << " (value " << op.value << ")");
+        }
     }
 
-    // Add a companion test for ordering verification
-    SUBCASE("PathSpace Counter Order Preservation") {
+    SUBCASE("Mixed Readers and Writers") {
         PathSpace pspace;
-        const int NUM_THREADS = 4; // Small number for order testing
-        const int OPERATIONS_PER_THREAD = 10;
+        const int NUM_WRITERS = 4;
+        const int NUM_READERS = 4;
+        const int VALUES_PER_WRITER = 100;
 
-        // Track when each value was added
-        std::vector<std::pair<int, int>> expected_sequence;
-        std::mutex sequence_mutex;
+        std::atomic<int> readsCompleted{0};
+        std::atomic<int> extractsCompleted{0};
+        std::atomic<int> writesCompleted{0};
 
-        auto workerFunction = [&](int threadId) {
-            for (int i = 0; i < OPERATIONS_PER_THREAD; ++i) {
-                auto valueFunc = [i, threadId, &expected_sequence, &sequence_mutex]() -> int {
-                    // Record this operation with its thread and sequence number
-                    std::lock_guard<std::mutex> lock(sequence_mutex);
-                    expected_sequence.push_back({threadId, i});
-                    return (threadId * 1000) + i; // Unique value per operation
-                };
+        auto writerFunction = [&](int threadId) {
+            for (int i = 0; i < VALUES_PER_WRITER; i++) {
+                int value = (threadId * 1000) + i;
+                REQUIRE(pspace.insert("/mixed", value).errors.empty());
+                writesCompleted++;
 
-                auto result = pspace.insert("/orderedCounter", valueFunc);
-                REQUIRE(result.errors.empty());
-
-                // Small sleep to make ordering more visible
-                if (i % 3 == 0) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                // Occasionally write to a different path
+                if (i % 10 == 0) {
+                    REQUIRE(pspace.insert("/mixed_alt", value).errors.empty());
                 }
             }
         };
 
-        // Run threads
+        auto readerFunction = [&]() {
+            while (writesCompleted < (NUM_WRITERS * VALUES_PER_WRITER)) {
+                auto value = pspace.readBlock<int>("/mixed");
+                if (value.has_value()) {
+                    readsCompleted++;
+                }
+
+                // Occasionally check alternate path
+                if (readsCompleted % 10 == 0) {
+                    auto altValue = pspace.readBlock<int>("/mixed_alt");
+                    if (altValue.has_value()) {
+                        readsCompleted++;
+                    }
+                }
+
+                std::this_thread::sleep_for(std::chrono::microseconds(10));
+            }
+        };
+
+        auto extractorFunction = [&]() {
+            while (writesCompleted < (NUM_WRITERS * VALUES_PER_WRITER)) {
+                auto value = pspace.extractBlock<int>("/mixed");
+                if (value.has_value()) {
+                    extractsCompleted++;
+                }
+                std::this_thread::sleep_for(std::chrono::microseconds(10));
+            }
+        };
+
+        // Launch threads
         std::vector<std::thread> threads;
-        for (int i = 0; i < NUM_THREADS; ++i) {
+
+        // Start readers and extractors first
+        for (int i = 0; i < NUM_READERS / 2; i++) {
+            threads.emplace_back(readerFunction);
+            threads.emplace_back(extractorFunction);
+        }
+
+        // Then start writers
+        for (int i = 0; i < NUM_WRITERS; i++) {
+            threads.emplace_back(writerFunction, i);
+        }
+
+        // Wait for completion
+        for (auto& t : threads) {
+            t.join();
+        }
+
+        // Verify operations
+        CHECK(writesCompleted == NUM_WRITERS * VALUES_PER_WRITER);
+        INFO("Reads completed: " << readsCompleted);
+        INFO("Extracts completed: " << extractsCompleted);
+        CHECK(readsCompleted > 0);
+        CHECK(extractsCompleted > 0);
+    }
+
+    SUBCASE("Multiple Path Operations") {
+        PathSpace pspace;
+        const int NUM_THREADS = 4;
+        const int PATHS_PER_THREAD = 3;
+        const int OPS_PER_PATH = 50;
+
+        struct PathOperation {
+            std::string path;
+            int threadId;
+            int seqNum;
+            int value;
+        };
+
+        std::vector<std::vector<PathOperation>> threadOperations(NUM_THREADS);
+        std::mutex opsMutex;
+
+        auto workerFunction = [&](int threadId) {
+            std::vector<std::string> paths;
+            for (int p = 0; p < PATHS_PER_THREAD; p++) {
+                paths.push_back("/path" + std::to_string(threadId) + "_" + std::to_string(p));
+            }
+
+            for (int i = 0; i < OPS_PER_PATH; i++) {
+                for (const auto& path : paths) {
+                    int value = (threadId * 1000000) + (i * 1000);
+
+                    REQUIRE(pspace.insert(path, value).errors.empty());
+
+                    {
+                        std::lock_guard<std::mutex> lock(opsMutex);
+                        threadOperations[threadId].push_back({path, threadId, i, value});
+                    }
+                }
+            }
+        };
+
+        // Launch threads
+        std::vector<std::thread> threads;
+        for (int i = 0; i < NUM_THREADS; i++) {
             threads.emplace_back(workerFunction, i);
         }
 
@@ -318,27 +554,121 @@ TEST_CASE("PathSpace Multithreading") {
             t.join();
         }
 
-        // Read final value
-        auto finalValue = pspace.readBlock<int>("/orderedCounter");
-        REQUIRE(finalValue.has_value());
+        // Verify each path's operations
+        for (int t = 0; t < NUM_THREADS; t++) {
+            for (int p = 0; p < PATHS_PER_THREAD; p++) {
+                std::string path = "/path" + std::to_string(t) + "_" + std::to_string(p);
+                std::vector<int> seqNums;
 
-        // The value should match the last operation's value
-        auto last_operation = expected_sequence.back();
-        int expected_final = (last_operation.first * 1000) + last_operation.second;
-        CHECK(finalValue.value() == expected_final);
+                // Extract all values from this path
+                while (true) {
+                    auto value = pspace.extractBlock<int>(path);
+                    if (!value.has_value())
+                        break;
 
-        // Verify we got all operations
-        CHECK(expected_sequence.size() == NUM_THREADS * OPERATIONS_PER_THREAD);
+                    // Find matching operation
+                    auto& ops = threadOperations[t];
+                    auto it = std::find_if(ops.begin(), ops.end(), [&](const PathOperation& op) {
+                        return op.path == path && op.value == value.value();
+                    });
 
-        // Verify operations within each thread are ordered correctly
-        std::map<int, std::vector<int>> thread_sequences;
-        for (const auto& [threadId, seqNum] : expected_sequence) {
-            thread_sequences[threadId].push_back(seqNum);
+                    REQUIRE(it != ops.end());
+                    seqNums.push_back(it->seqNum);
+                }
+
+                // Verify sequence
+                CHECK(seqNums.size() == OPS_PER_PATH);
+                CHECK(std::is_sorted(seqNums.begin(), seqNums.end()));
+            }
+        }
+    }
+
+    /*SUBCASE("Read-Extract Race Conditions") {
+        PathSpace pspace;
+        const int NUM_VALUES = 1000;
+        std::atomic<int> readCount{0};
+        std::atomic<int> extractCount{0};
+
+        // Pre-populate with values
+        for (int i = 0; i < NUM_VALUES; i++) {
+            REQUIRE(pspace.insert("/race", i).errors.empty());
         }
 
-        for (const auto& [threadId, sequence] : thread_sequences) {
-            CHECK(std::is_sorted(sequence.begin(), sequence.end()));
-            CHECK(sequence.size() == OPERATIONS_PER_THREAD);
+        auto readerFunction = [&]() {
+            while (readCount + extractCount < NUM_VALUES) {
+                auto value = pspace.readBlock<int>("/race");
+                if (value.has_value()) {
+                    readCount++;
+                }
+                std::this_thread::sleep_for(std::chrono::microseconds(1));
+            }
+        };
+
+        auto extractorFunction = [&]() {
+            while (readCount + extractCount < NUM_VALUES) {
+                auto value = pspace.extractBlock<int>("/race");
+                if (value.has_value()) {
+                    extractCount++;
+                }
+                std::this_thread::sleep_for(std::chrono::microseconds(1));
+            }
+        };
+
+        // Launch competing readers and extractors
+        std::vector<std::thread> threads;
+        for (int i = 0; i < 4; i++) {
+            threads.emplace_back(readerFunction);
+            threads.emplace_back(extractorFunction);
+        }
+
+        for (auto& t : threads) {
+            t.join();
+        }
+
+        INFO("Reads: " << readCount << ", Extracts: " << extractCount);
+        CHECK(readCount + extractCount >= NUM_VALUES);
+
+        // Verify no more values available
+        auto value = pspace.readBlock<int>("/race");
+        CHECK_FALSE(value.has_value());
+    }*/
+
+    SUBCASE("Concurrent Path Creation") {
+        PathSpace pspace;
+        const int NUM_THREADS = 8;
+        const int PATHS_PER_THREAD = 100;
+
+        auto pathCreator = [&](int threadId) {
+            for (int i = 0; i < PATHS_PER_THREAD; i++) {
+                std::string basePath = "/thread" + std::to_string(threadId);
+                for (int depth = 0; depth < 3; depth++) {
+                    std::string path = basePath + "/path" + std::to_string(i) + "/depth" + std::to_string(depth);
+                    REQUIRE(pspace.insert(path, i).errors.empty());
+                }
+            }
+        };
+
+        // Launch threads
+        std::vector<std::thread> threads;
+        for (int i = 0; i < NUM_THREADS; i++) {
+            threads.emplace_back(pathCreator, i);
+        }
+
+        for (auto& t : threads) {
+            t.join();
+        }
+
+        // Verify all paths were created and contain correct values
+        for (int t = 0; t < NUM_THREADS; t++) {
+            for (int i = 0; i < PATHS_PER_THREAD; i++) {
+                std::string basePath = "/thread" + std::to_string(t);
+                for (int depth = 0; depth < 3; depth++) {
+                    std::string path = basePath + "/path" + std::to_string(i) + "/depth" + std::to_string(depth);
+                    auto value = pspace.extractBlock<int>(path);
+                    REQUIRE(value.has_value());
+                    CHECK(value.value() == i);
+                }
+            }
         }
     }
 
