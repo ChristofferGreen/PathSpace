@@ -638,7 +638,7 @@ TEST_CASE("PathSpace Multithreading") {
         CHECK_FALSE(finalExtract.has_value());
     }
 
-    SUBCASE("Concurrent Path Creation") {
+    SUBCASE("Concurrent Path Creation") { // ToDo: This crashed once, unknown why.
         PathSpace pspace;
         const int NUM_THREADS = 8;
         const int PATHS_PER_THREAD = 100;
@@ -978,7 +978,7 @@ TEST_CASE("PathSpace Multithreading") {
         CHECK(cancelledTasks + completedTasks == NUM_TASKS);
     }
 
-    /*SUBCASE("Thread Pool Behavior") {
+    SUBCASE("Thread Pool Behavior") {
         PathSpace pspace;
         const int NUM_TASKS = 1000;
         std::atomic<int> executedTasks(0);
@@ -1005,30 +1005,50 @@ TEST_CASE("PathSpace Multithreading") {
 
     SUBCASE("Memory Management") {
         PathSpace pspace;
-        const int NUM_THREADS = 100;
+        const int NUM_THREADS = 4;
         const int OPERATIONS_PER_THREAD = 1000;
-        std::atomic<int> allocCount(0), deallocCount(0);
+        std::atomic<int> successfulOperations(0);
+        std::atomic<int> failedInserts(0);
+        std::atomic<int> failedReads(0);
+        std::atomic<int> failedExtracts(0);
+        std::atomic<bool> shouldStop(false);
+        std::atomic<int> completedThreads(0);
 
         auto workerFunction = [&](int threadId) {
             for (int i = 0; i < OPERATIONS_PER_THREAD; ++i) {
+                if (shouldStop.load() && i % 100 == 0) {
+                    log("Thread " + std::to_string(threadId) + " stopping at operation " + std::to_string(i));
+                    break;
+                }
+
                 std::string path = "/memory/" + std::to_string(threadId) + "/" + std::to_string(i);
 
-                if (i % 2 == 0) {
-                    // Allocate memory
-                    auto allocTask = [&allocCount]() -> int* {
-                        allocCount++;
-                        return new int(42);
-                    };
-                    CHECK(pspace.insert(path, allocTask).errors.size() == 0);
-                } else {
-                    // Deallocate memory
-                    auto result = pspace.extractBlock<int*>(path);
-                    if (result) {
-                        delete *result;
-                        deallocCount++;
+                // Insert an integer
+                auto insertResult = pspace.insert(path, i);
+                if (insertResult.errors.empty()) {
+                    // Try to immediately read it back
+                    auto readResult = pspace.readBlock<int>(path);
+                    if (readResult.has_value() && readResult.value() == i) {
+                        // If successful, remove it
+                        auto extractResult = pspace.extractBlock<int>(path);
+                        if (extractResult.has_value() && extractResult.value() == i) {
+                            successfulOperations++;
+                        } else {
+                            failedExtracts++;
+                        }
+                    } else {
+                        failedReads++;
                     }
+                } else {
+                    failedInserts++;
+                }
+
+                if (i % 100 == 0) {
+                    log("Thread " + std::to_string(threadId) + " completed " + std::to_string(i) + " operations");
                 }
             }
+            completedThreads++;
+            log("Thread " + std::to_string(threadId) + " completed all operations");
         };
 
         std::vector<std::thread> threads;
@@ -1036,11 +1056,58 @@ TEST_CASE("PathSpace Multithreading") {
             threads.emplace_back(workerFunction, i);
         }
 
+        // Add a timeout for the entire test
+        std::thread timeoutThread([&]() {
+            for (int i = 0; i < 120 && !shouldStop; ++i) { // 120 * 1 second = 2 minutes total
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                log("Time elapsed: " + std::to_string(i) + " seconds");
+                log("Successful operations: " + std::to_string(successfulOperations.load()));
+                if (completedThreads.load() == NUM_THREADS) {
+                    log("All threads completed");
+                    return;
+                }
+            }
+            shouldStop.store(true);
+            log("Test timed out after 2 minutes");
+        });
+
         for (auto& t : threads) {
             t.join();
         }
+        timeoutThread.join();
 
-        CHECK(allocCount == deallocCount);
+        int totalOperations = NUM_THREADS * OPERATIONS_PER_THREAD;
+        int successfulOps = successfulOperations.load();
+
+        log("Successful operations: " + std::to_string(successfulOps) + " out of " + std::to_string(totalOperations));
+        log("Failed inserts: " + std::to_string(failedInserts.load()));
+        log("Failed reads: " + std::to_string(failedReads.load()));
+        log("Failed extracts: " + std::to_string(failedExtracts.load()));
+
+        // Check if any items remain in the PathSpace
+        int remainingItems = 0;
+        for (int t = 0; t < NUM_THREADS; ++t) {
+            for (int i = 0; i < OPERATIONS_PER_THREAD; ++i) {
+                std::string path = "/memory/" + std::to_string(t) + "/" + std::to_string(i);
+                auto result = pspace.readBlock<int>(path);
+                if (result.has_value()) {
+                    remainingItems++;
+                    if (remainingItems <= 10) { // Log the first 10 remaining items
+                        log("Remaining item: " + path + " = " + std::to_string(result.value()));
+                    }
+                }
+            }
+        }
+
+        log("Remaining items: " + std::to_string(remainingItems));
+
+        // We expect a high percentage of operations to be successful and few items to remain
+        double successRate = static_cast<double>(successfulOps) / totalOperations;
+        log("Success rate: " + std::to_string(successRate));
+
+        CHECK(successRate > 0.95);                      // Expect at least 95% success rate
+        CHECK(remainingItems < totalOperations * 0.01); // Expect less than 1% of items to remain
+        CHECK(completedThreads.load() == NUM_THREADS);  // All threads should complete
     }
 
     SUBCASE("Deadlock Detection and Prevention") {
@@ -1092,131 +1159,85 @@ TEST_CASE("PathSpace Multithreading") {
 
     SUBCASE("Performance Testing") {
         PathSpace pspace;
-        const int NUM_THREADS = 100;
-        const int OPERATIONS_PER_THREAD = 10000;
+        const int NUM_THREADS = std::thread::hardware_concurrency();
+        const int OPERATIONS_PER_THREAD = 1000;             // Reduced from 10000
+        const int NUM_PATHS = 100;                          // Reduced from 1000
+        const auto TEST_DURATION = std::chrono::seconds(1); // Reduced from 5 seconds
+        const int NUM_ITERATIONS = 2;                       // Reduced from 3
 
         auto performanceTest = [&](int concurrency) {
-            std::atomic<int> completedOperations(0);
-
-            auto workerFunction = [&]() {
-                for (int i = 0; i < OPERATIONS_PER_THREAD; ++i) {
-                    std::string path = "/perf/" + std::to_string(rand());
-                    if (i % 2 == 0) {
-                        auto task = []() -> int { return 42; };
-                        pspace.insert(path, task);
-                    } else {
-                        pspace.readBlock<int>(path);
-                    }
-                    completedOperations++;
-                }
+            struct Result {
+                double ops;
+                double duration;
             };
 
-            auto start = std::chrono::high_resolution_clock::now();
+            auto runIteration = [&]() -> Result {
+                std::atomic<int> completedOperations(0);
+                std::atomic<bool> shouldStop(false);
 
-            std::vector<std::thread> threads;
-            for (int i = 0; i < concurrency; ++i) {
-                threads.emplace_back(workerFunction);
+                auto workerFunction = [&]() {
+                    for (int i = 0; i < OPERATIONS_PER_THREAD && !shouldStop.load(std::memory_order_relaxed); ++i) {
+                        std::string path = std::format("/perf/{}", i % NUM_PATHS);
+                        auto task = []() -> int { return 42; };
+                        pspace.insert(path, task);
+                        auto result
+                                = pspace.readBlock<int>(path, OutOptions{.block = BlockOptions{.timeout = std::chrono::milliseconds(10)}});
+                        if (result.has_value()) {
+                            completedOperations.fetch_add(1, std::memory_order_relaxed);
+                        }
+                    }
+                };
+
+                auto start = std::chrono::steady_clock::now();
+
+                std::vector<std::jthread> threads;
+                threads.reserve(concurrency);
+                for (int i = 0; i < concurrency; ++i) {
+                    threads.emplace_back(workerFunction);
+                }
+
+                std::jthread timeoutThread([&shouldStop, TEST_DURATION](std::stop_token stoken) {
+                    std::this_thread::sleep_for(TEST_DURATION);
+                    shouldStop.store(true, std::memory_order_relaxed);
+                });
+
+                for (auto& t : threads) {
+                    t.join();
+                }
+
+                auto end = std::chrono::steady_clock::now();
+                auto duration = std::chrono::duration<double>(end - start);
+
+                return {static_cast<double>(completedOperations), duration.count()};
+            };
+
+            Result totalResult{0.0, 0.0};
+            for (int i = 0; i < NUM_ITERATIONS; ++i) {
+                auto result = runIteration();
+                totalResult.ops += result.ops;
+                totalResult.duration += result.duration;
+                pspace.clear();
             }
 
-            for (auto& t : threads) {
-                t.join();
-            }
-
-            auto end = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-
-            return std::make_pair(completedOperations.load(), duration.count());
+            return Result{totalResult.ops / NUM_ITERATIONS, totalResult.duration / NUM_ITERATIONS};
         };
 
         auto singleThreadResult = performanceTest(1);
         auto multiThreadResult = performanceTest(NUM_THREADS);
 
-        // Check that multi-threaded performance is better than single-threaded
-        CHECK(multiThreadResult.second < singleThreadResult.second);
-
         // Calculate operations per second
-        double singleThreadedOps = static_cast<double>(singleThreadResult.first) / singleThreadResult.second * 1000.0;
-        double multiThreadedOps = static_cast<double>(multiThreadResult.first) / multiThreadResult.second * 1000.0;
+        double singleThreadedOps = singleThreadResult.ops / singleThreadResult.duration;
+        double multiThreadedOps = multiThreadResult.ops / multiThreadResult.duration;
 
         // Log the results
-        std::cout << "Single-threaded performance: " << singleThreadedOps << " ops/sec" << std::endl;
-        std::cout << "Multi-threaded performance: " << multiThreadedOps << " ops/sec" << std::endl;
-        std::cout << "Performance improvement: " << (multiThreadedOps / singleThreadedOps) << "x" << std::endl;
+        std::cout << std::format("Single-threaded performance: {:.2f} ops/sec\n", singleThreadedOps);
+        std::cout << std::format("Multi-threaded performance: {:.2f} ops/sec\n", multiThreadedOps);
+        std::cout << std::format("Performance improvement: {:.2f}x\n", multiThreadedOps / singleThreadedOps);
 
-        // We expect at least some performance improvement with multi-threading
-        CHECK(multiThreadedOps > singleThreadedOps);
+        // Check for performance improvement with a tolerance
+        constexpr double IMPROVEMENT_THRESHOLD = 1.2; // Expect at least 20% improvement
+        constexpr double TOLERANCE = 0.1;             // 10% tolerance
+
+        CHECK((multiThreadedOps / singleThreadedOps) > (IMPROVEMENT_THRESHOLD - TOLERANCE));
     }
-
-    SUBCASE("Concurrent Capabilities Testing") {
-        PathSpace pspace;
-        const int NUM_THREADS = 100;
-        const int OPERATIONS_PER_THREAD = 100;
-        std::atomic<int> successfulOperations(0), failedOperations(0);
-
-        // Set up capabilities
-        Capabilities readCap, writeCap, fullCap;
-        readCap.addCapability("/read", Capabilities::Type::READ);
-        writeCap.addCapability("/write", Capabilities::Type::WRITE);
-        fullCap.addCapability("/full", Capabilities::Type::READ);
-        fullCap.addCapability("/full", Capabilities::Type::WRITE);
-
-        auto workerFunction = [&](int threadId) {
-            std::random_device rd;
-            std::mt19937 gen(rd());
-            std::uniform_int_distribution<> dis(0, 2);
-
-            for (int i = 0; i < OPERATIONS_PER_THREAD; ++i) {
-                int operation = dis(gen);
-                std::string path;
-                Capabilities cap;
-
-                switch (operation) {
-                    case 0: // Read operation
-                        path = "/read/data";
-                        cap = readCap;
-                        break;
-                    case 1: // Write operation
-                        path = "/write/data";
-                        cap = writeCap;
-                        break;
-                    case 2: // Full access operation
-                        path = "/full/data";
-                        cap = fullCap;
-                        break;
-                }
-
-                if (operation == 1 || operation == 2) {
-                    // Insert operation
-                    auto insertFunc = []() -> int { return 42; };
-                    auto result = pspace.insert(path, insertFunc, InOptions{.capabilities = cap});
-                    if (result.errors.empty()) {
-                        successfulOperations++;
-                    } else {
-                        failedOperations++;
-                    }
-                } else {
-                    // Read operation
-                    auto result = pspace.readBlock<int>(path, OutOptions{.capabilities = cap});
-                    if (result.has_value()) {
-                        successfulOperations++;
-                    } else {
-                        failedOperations++;
-                    }
-                }
-            }
-        };
-
-        std::vector<std::thread> threads;
-        for (int i = 0; i < NUM_THREADS; ++i) {
-            threads.emplace_back(workerFunction, i);
-        }
-
-        for (auto& t : threads) {
-            t.join();
-        }
-
-        CHECK(successfulOperations > 0);
-        CHECK(failedOperations > 0);
-        CHECK(successfulOperations + failedOperations == NUM_THREADS * OPERATIONS_PER_THREAD);
-    }*/
 }
