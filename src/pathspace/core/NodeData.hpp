@@ -5,7 +5,6 @@
 #include "ExecutionOptions.hpp"
 #include "InOptions.hpp"
 #include "InsertReturn.hpp"
-#include "path/ConstructiblePath.hpp"
 #include "type/DataCategory.hpp"
 #include "type/InputData.hpp"
 #include "type/InputMetadata.hpp"
@@ -17,10 +16,13 @@
 
 namespace SP {
 
-class NodeData {
-public:
-    auto serialize(ConstructiblePath const& path, const InputData& inputData, const InOptions& options, InsertReturn& ret)
-            -> std::optional<Error> {
+struct NodeData {
+    NodeData() = default;
+    NodeData(InputData const& inputData, InOptions const& options, InsertReturn& ret) {
+        this->serialize(inputData, options, ret);
+    }
+
+    auto serialize(const InputData& inputData, const InOptions& options, InsertReturn& ret) -> std::optional<Error> {
         if (inputData.task.has_value()) {
             this->tasks.push_back(std::move(inputData.task.value()));
             ret.nbrTasksCreated++;

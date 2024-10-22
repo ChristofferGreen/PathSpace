@@ -35,26 +35,44 @@ auto PathSpaceLeaf::inFinalComponent(ConstructiblePath& path,
                                      InOptions const& options,
                                      InsertReturn& ret) -> void {
     path.append(pathComponent.getName());
+
     if (pathComponent.isGlob()) {
-        nodeDataMap.for_each([&](const auto& item) {
+        // Create a vector to store the keys that match before modification
+        std::vector<ConcreteNameString> matchingKeys;
+
+        // First pass: Collect all matching keys without holding locks
+        nodeDataMap.for_each([&](auto& item) {
             const auto& key = item.first;
             if (std::get<0>(pathComponent.match(key))) {
-                if (const auto* nodeData = std::get_if<NodeData>(&item.second)) {
-                    if (auto error = const_cast<NodeData*>(nodeData)->serialize(path, inputData, options, ret); error.has_value()) {
+                matchingKeys.push_back(key);
+            }
+        });
+
+        // Second pass: Modify matching nodes with proper locking
+        for (const auto& key : matchingKeys) {
+            nodeDataMap.modify_if(key, [&](auto& nodePair) {
+                if (auto* nodeData = std::get_if<NodeData>(&nodePair.second)) {
+                    if (auto error = nodeData->serialize(inputData, options, ret); error.has_value()) {
                         ret.errors.emplace_back(error.value());
                     }
                     ret.nbrValuesInserted++;
+                    return true; // Indicate that modification occurred
                 }
-            }
-        });
-    } else {
-        auto [it, inserted] = nodeDataMap.try_emplace(pathComponent.getName(), NodeData{});
-        if (auto* nodeData = std::get_if<NodeData>(&it->second)) {
-            if (auto error = nodeData->serialize(path, inputData, options, ret); error.has_value()) {
-                ret.errors.emplace_back(error.value());
-            }
-            ret.nbrValuesInserted++;
+                return false; // No modification if it's not a NodeData
+            });
         }
+    } else {
+        nodeDataMap.try_emplace_l(
+                pathComponent.getName(),
+                [&](auto& value) {
+                    if (auto* nodeData = std::get_if<NodeData>(&value.second)) {
+                        if (auto error = nodeData->serialize(inputData, options, ret); error.has_value()) {
+                            ret.errors.emplace_back(error.value());
+                        }
+                    }
+                },
+                NodeData{inputData, options, ret});
+        ret.nbrValuesInserted++;
     }
 }
 
@@ -108,17 +126,21 @@ auto PathSpaceLeaf::outDataName(ConcreteNameStringView const& concreteName,
                                 void* obj,
                                 OutOptions const& options,
                                 Capabilities const& capabilities) -> Expected<int> {
-    Expected<int> expected = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
-    if (options.doPop) { // ToDo: If it's the last item then should we erase the whole final path component (erase_if)?
-        this->nodeDataMap.modify_if(concreteName.getName(), [&](auto& nodePair) {
-            expected = std::get<NodeData>(nodePair.second).deserializePop(obj, inputMetadata);
-        });
-    } else {
-        this->nodeDataMap.if_contains(concreteName.getName(), [&](auto const& nodePair) {
-            expected = std::get<NodeData>(nodePair.second).deserialize(obj, inputMetadata, options.execution);
-        });
-    }
-    return expected;
+    Expected<int> result = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
+
+    nodeDataMap.modify_if(concreteName.getName(), [&](auto& nodePair) {
+        if (auto* nodeData = std::get_if<NodeData>(&nodePair.second)) {
+            if (options.doPop) {
+                result = nodeData->deserializePop(obj, inputMetadata);
+            } else {
+                result = nodeData->deserialize(obj, inputMetadata, options.execution);
+            }
+            return options.doPop; // Only modify (remove) if it's a pop operation
+        }
+        return false;
+    });
+
+    return result;
 }
 
 auto PathSpaceLeaf::outConcretePathComponent(ConcretePathIteratorStringView const& nextIter,

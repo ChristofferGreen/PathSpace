@@ -34,5 +34,3 @@ TEST_CASE("Capabilities") {
         REQUIRE(caps.hasCapability("write", Path("/different/path")));*/
     }
 }
-
-// ... Additional test cases to cover more functionality and edge cases

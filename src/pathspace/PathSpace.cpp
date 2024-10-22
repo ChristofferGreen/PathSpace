@@ -36,7 +36,7 @@ auto PathSpace::in(ConstructiblePath& constructedPath, GlobPathStringView const&
 
     this->root.in(constructedPath, path.begin(), path.end(), data, options, ret);
 
-    if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0) {
+    if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0 || ret.nbrTasksCreated) {
         waitMap.notify(path.getPath()); // ToDo:: Fix glob path situation
     }
     return ret;
