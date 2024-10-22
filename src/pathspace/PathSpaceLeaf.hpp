@@ -1,6 +1,5 @@
 #pragma once
 #include "type/Helper.hpp"
-#include "utils/WaitEntry.hpp"
 
 namespace SP {
 struct Capabilities;

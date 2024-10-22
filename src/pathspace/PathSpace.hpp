@@ -3,6 +3,7 @@
 #include "core/OutOptions.hpp"
 #include "taskpool/TaskPool.hpp"
 #include "utils/TaggedLogger.hpp"
+#include "utils/WaitMap.hpp"
 
 namespace SP {
 class PathSpace {
