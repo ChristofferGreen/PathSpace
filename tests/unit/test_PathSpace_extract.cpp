@@ -247,6 +247,134 @@ TEST_CASE("PathSpace Extract Extended Tests") {
         CHECK(ret1.value() > 0);
         CHECK(ret2.value() > ret1.value());
     }*/
+
+    SUBCASE("Basic Extract Behavior") {
+        PathSpace pspace;
+
+        // Test 1: Single value insert and extract
+        INFO("Testing single value extract");
+        REQUIRE(pspace.insert("/test1", 42).errors.empty());
+
+        {
+            auto readVal = pspace.readBlock<int>("/test1");
+            REQUIRE(readVal.has_value());
+            CHECK(readVal.value() == 42);
+
+            auto extractVal = pspace.extractBlock<int>("/test1");
+            REQUIRE(extractVal.has_value());
+            CHECK(extractVal.value() == 42);
+
+            // Verify value is gone
+            auto readAfterExtract = pspace.readBlock<int>("/test1");
+            CHECK_FALSE(readAfterExtract.has_value());
+        }
+
+        // Test 2: Multiple values in sequence
+        INFO("Testing sequential extracts");
+        REQUIRE(pspace.insert("/test2", 1).errors.empty());
+        REQUIRE(pspace.insert("/test2", 2).errors.empty());
+        REQUIRE(pspace.insert("/test2", 3).errors.empty());
+
+        {
+            // Should extract in FIFO order
+            auto val1 = pspace.extractBlock<int>("/test2");
+            REQUIRE(val1.has_value());
+            CHECK(val1.value() == 1);
+
+            auto val2 = pspace.extractBlock<int>("/test2");
+            REQUIRE(val2.has_value());
+            CHECK(val2.value() == 2);
+
+            auto val3 = pspace.extractBlock<int>("/test2");
+            REQUIRE(val3.has_value());
+            CHECK(val3.value() == 3);
+
+            // Should be empty now
+            auto val4 = pspace.extractBlock<int>("/test2");
+            CHECK_FALSE(val4.has_value());
+        }
+
+        // Test 3: Mix of reads and extracts
+        INFO("Testing read/extract mix");
+        REQUIRE(pspace.insert("/test3", 100).errors.empty());
+        REQUIRE(pspace.insert("/test3", 200).errors.empty());
+
+        {
+            // Read first value (shouldn't remove it)
+            auto read1 = pspace.readBlock<int>("/test3");
+            REQUIRE(read1.has_value());
+            CHECK(read1.value() == 100);
+
+            // Extract first value (should remove it)
+            auto extract1 = pspace.extractBlock<int>("/test3");
+            REQUIRE(extract1.has_value());
+            CHECK(extract1.value() == 100);
+
+            // Read second value
+            auto read2 = pspace.readBlock<int>("/test3");
+            REQUIRE(read2.has_value());
+            CHECK(read2.value() == 200);
+
+            // Extract second value
+            auto extract2 = pspace.extractBlock<int>("/test3");
+            REQUIRE(extract2.has_value());
+            CHECK(extract2.value() == 200);
+
+            // Should be empty
+            auto read3 = pspace.readBlock<int>("/test3");
+            CHECK_FALSE(read3.has_value());
+            auto extract3 = pspace.extractBlock<int>("/test3");
+            CHECK_FALSE(extract3.has_value());
+        }
+
+        // Test 4: Extract all with while loop
+        INFO("Testing extract all loop");
+        REQUIRE(pspace.insert("/test4", 1).errors.empty());
+        REQUIRE(pspace.insert("/test4", 2).errors.empty());
+        REQUIRE(pspace.insert("/test4", 3).errors.empty());
+
+        {
+            std::vector<int> extracted;
+            while (auto val = pspace.extractBlock<int>("/test4")) {
+                extracted.push_back(val.value());
+            }
+
+            REQUIRE(extracted.size() == 3);
+            CHECK(extracted[0] == 1);
+            CHECK(extracted[1] == 2);
+            CHECK(extracted[2] == 3);
+
+            // Verify really empty
+            auto read = pspace.readBlock<int>("/test4");
+            CHECK_FALSE(read.has_value());
+        }
+
+        // Test 5: Different paths shouldn't interfere
+        INFO("Testing path isolation");
+        REQUIRE(pspace.insert("/test5a", 10).errors.empty());
+        REQUIRE(pspace.insert("/test5b", 20).errors.empty());
+
+        {
+            // Extract from first path
+            auto extract1 = pspace.extractBlock<int>("/test5a");
+            REQUIRE(extract1.has_value());
+            CHECK(extract1.value() == 10);
+
+            // Second path should still have its value
+            auto read2 = pspace.readBlock<int>("/test5b");
+            REQUIRE(read2.has_value());
+            CHECK(read2.value() == 20);
+
+            // Extract from second path
+            auto extract2 = pspace.extractBlock<int>("/test5b");
+            REQUIRE(extract2.has_value());
+            CHECK(extract2.value() == 20);
+
+            // Both should be empty
+            CHECK_FALSE(pspace.readBlock<int>("/test5a").has_value());
+            CHECK_FALSE(pspace.readBlock<int>("/test5b").has_value());
+        }
+    }
 }
 
 TEST_CASE("PathSpace Extract Std Datastructure") {

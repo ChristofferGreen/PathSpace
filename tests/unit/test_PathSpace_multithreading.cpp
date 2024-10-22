@@ -583,55 +583,60 @@ TEST_CASE("PathSpace Multithreading") {
         }
     }
 
-    /*SUBCASE("Read-Extract Race Conditions") {
+    SUBCASE("Read-Extract Race Conditions") {
         PathSpace pspace;
-        const int NUM_VALUES = 1000;
-        std::atomic<int> readCount{0};
-        std::atomic<int> extractCount{0};
+        const int NUM_VALUES = 100; // Smaller number for clearer testing
 
-        // Pre-populate with values
+        // Pre-populate with known values
         for (int i = 0; i < NUM_VALUES; i++) {
             REQUIRE(pspace.insert("/race", i).errors.empty());
         }
 
-        auto readerFunction = [&]() {
-            while (readCount + extractCount < NUM_VALUES) {
-                auto value = pspace.readBlock<int>("/race");
+        std::vector<int> extractedValues;
+        std::mutex extractMutex;
+
+        // Just two threads - one reader, one extractor
+        std::thread readerThread([&]() {
+            int readCount = 0;
+            while (readCount < NUM_VALUES * 100) { // Allow more reads than values
+                auto value = pspace.read<int>("/race");
                 if (value.has_value()) {
                     readCount++;
+                    INFO("Read value: " << value.value());
                 }
                 std::this_thread::sleep_for(std::chrono::microseconds(1));
             }
-        };
+        });
 
-        auto extractorFunction = [&]() {
-            while (readCount + extractCount < NUM_VALUES) {
+        std::thread extractorThread([&]() {
+            while (true) {
                 auto value = pspace.extractBlock<int>("/race");
-                if (value.has_value()) {
-                    extractCount++;
-                }
-                std::this_thread::sleep_for(std::chrono::microseconds(1));
+                if (!value.has_value())
+                    break;
+
+                std::lock_guard<std::mutex> lock(extractMutex);
+                extractedValues.push_back(value.value());
             }
-        };
+        });
 
-        // Launch competing readers and extractors
-        std::vector<std::thread> threads;
-        for (int i = 0; i < 4; i++) {
-            threads.emplace_back(readerFunction);
-            threads.emplace_back(extractorFunction);
+        readerThread.join();
+        extractorThread.join();
+
+        // Verify results
+        std::sort(extractedValues.begin(), extractedValues.end());
+        INFO("Number of values extracted: " << extractedValues.size());
+
+        CHECK(extractedValues.size() == NUM_VALUES);
+        for (int i = 0; i < NUM_VALUES; i++) {
+            CHECK(extractedValues[i] == i);
         }
 
-        for (auto& t : threads) {
-            t.join();
-        }
-
-        INFO("Reads: " << readCount << ", Extracts: " << extractCount);
-        CHECK(readCount + extractCount >= NUM_VALUES);
-
-        // Verify no more values available
-        auto value = pspace.readBlock<int>("/race");
-        CHECK_FALSE(value.has_value());
-    }*/
+        // Verify queue is empty
+        auto finalRead = pspace.readBlock<int>("/race");
+        CHECK_FALSE(finalRead.has_value());
+        auto finalExtract = pspace.extractBlock<int>("/race");
+        CHECK_FALSE(finalExtract.has_value());
+    }
 
     SUBCASE("Concurrent Path Creation") {
         PathSpace pspace;
