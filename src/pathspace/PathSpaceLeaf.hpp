@@ -18,8 +18,7 @@ public:
             GlobPathIteratorStringView const& end,
             InputData const& inputData,
             InOptions const& options,
-            InsertReturn& ret,
-            std::mutex& mutex) -> void;
+            InsertReturn& ret) -> void;
     auto out(ConcretePathIteratorStringView const& iter,
              ConcretePathIteratorStringView const& end,
              InputMetadata const& inputMetadata,
@@ -34,44 +33,14 @@ private:
                           GlobName const& pathComponent,
                           InputData const& inputData,
                           InOptions const& options,
-                          InsertReturn& ret,
-                          std::mutex& mutex) -> void;
+                          InsertReturn& ret) -> void;
     auto inIntermediateComponent(ConstructiblePath& path,
                                  GlobPathIteratorStringView const& iter,
                                  GlobPathIteratorStringView const& end,
                                  GlobName const& pathComponent,
                                  InputData const& inputData,
                                  InOptions const& options,
-                                 InsertReturn& ret,
-                                 std::mutex& mutex) -> void;
-    auto inConcreteDataName(ConstructiblePath& path,
-                            ConcreteNameStringView const& concreteName,
-                            InputData const& inputData,
-                            InOptions const& options,
-                            InsertReturn& ret,
-                            std::mutex& mutex) -> void;
-    auto inGlobDataName(ConstructiblePath& path,
-                        GlobName const& globName,
-                        InputData const& inputData,
-                        InOptions const& options,
-                        InsertReturn& ret,
-                        std::mutex& mutex) -> void;
-    auto inGlobPathComponent(ConstructiblePath& path,
-                             GlobPathIteratorStringView const& iter,
-                             GlobPathIteratorStringView const& end,
-                             GlobName const& globName,
-                             InputData const& inputData,
-                             InOptions const& options,
-                             InsertReturn& ret,
-                             std::mutex& mutex) -> void;
-    auto inConcretePathComponent(ConstructiblePath& path,
-                                 GlobPathIteratorStringView const& iter,
-                                 GlobPathIteratorStringView const& end,
-                                 ConcreteNameStringView const& concreteName,
-                                 InputData const& inputData,
-                                 InOptions const& options,
-                                 InsertReturn& ret,
-                                 std::mutex& mutex) -> void;
+                                 InsertReturn& ret) -> void;
 
     auto outDataName(ConcreteNameStringView const& concreteName,
                      ConcretePathIteratorStringView const& nextIter,
