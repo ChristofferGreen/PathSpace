@@ -11,22 +11,76 @@
 using namespace SP;
 
 TEST_CASE("PathSpace Multithreading") {
-    struct Operation {
-        enum class Type {
-            Insert,
-            Read,
-            Extract
-        };
-        Type type = Type::Insert; // Default values for all members
-        int threadId = -1;
-        int operationId = -1;
-        int value = 0;
-        bool success = false;
-        std::string path;
-        Error::Code error = Error::Code::NoSuchPath; // Changed from errorCode and given default
-    };
-
+    /**
+     * Tests PathSpace's thread-safety and concurrent operation capabilities.
+     *
+     * Test Structure:
+     * - Creates 8 threads total (NUM_THREADS)
+     * - Half are writers, half are readers
+     * - Each thread performs 100 operations (OPERATIONS_PER_THREAD)
+     * - Uses 3 shared paths that all threads can access
+     *
+     * Thread Behaviors:
+     * 1. Writer Threads
+     *    - Alternates between shared paths (50%) and thread-specific paths (50%)
+     *    - Each write has a unique value (threadId * 1000 + i)
+     *    - Adds random delays to increase race condition chances
+     *    - Tracks success/failure of each insert
+     *
+     * 2. Reader Threads
+     *    - Accesses shared paths (33%) and random thread paths (66%)
+     *    - Randomly chooses between read and extract operations
+     *    - Uses 50ms timeout to prevent deadlocks
+     *    - Tracks success/failure and values read
+     *
+     * Verification Aspects:
+     * 1. Operation Counts
+     *    - Verifies total operations match expectations
+     *    - Checks insert/read/extract ratios
+     *
+     * 2. Data Consistency
+     *    - Groups operations by path
+     *    - Verifies each read value matches a previous insert
+     *    - Ensures readers never see invalid data
+     *
+     * 3. Shared Path Contention
+     *    - Verifies shared paths are accessed concurrently
+     *    - Checks each shared path has sufficient concurrent access
+     *
+     * 4. Error Analysis
+     *    - Verifies only expected error types occur (Timeout, NoSuchPath)
+     *    - Ensures error counts are reasonable
+     *    - Checks timeout frequency
+     *
+     * 5. Success Rate
+     *    - Ensures overall operation success rate >50%
+     *
+     * Race Conditions Tested:
+     * - Read-Write races (concurrent access to shared paths)
+     * - Extract-Write races (data removal during writes)
+     * - Path contention (multiple threads accessing shared paths)
+     * - Timing variations (random sleeps and timeouts)
+     *
+     * Thread Safety Aspects Verified:
+     * - Data integrity (valid values, no duplicates, no corruption)
+     * - Concurrency control (shared access, deadlock prevention)
+     * - Error handling (appropriate errors, timeout behavior)
+     */
     SUBCASE("Basic Concurrent Operations") {
+        struct Operation {
+            enum class Type {
+                Insert,
+                Read,
+                Extract
+            };
+            Type type = Type::Insert; // Default values for all members
+            int threadId = -1;
+            int operationId = -1;
+            int value = 0;
+            bool success = false;
+            std::string path;
+            Error::Code error = Error::Code::NoSuchPath; // Changed from errorCode and given default
+        };
         PathSpace pspace;
         const int NUM_THREADS = 8;
         const int OPERATIONS_PER_THREAD = 100;
@@ -182,23 +236,30 @@ TEST_CASE("PathSpace Multithreading") {
         }
     }
 
-    /*SUBCASE("Race Conditions on Same Path") {
+    SUBCASE("PathSpace Concurrent Counter") {
         PathSpace pspace;
-        const int NUM_THREADS = 100;
-        const int OPERATIONS_PER_THREAD = 1000;
-        std::atomic<int> expectedSum(0);
+        // Avoid system-dependent thread counts
+        const int NUM_THREADS = std::min(16, static_cast<int>(std::thread::hardware_concurrency() * 2));
+        const int OPERATIONS_PER_THREAD = 100;
+
+        // Use proper atomic operations
+        std::atomic<int> operationCount(0);
 
         auto workerFunction = [&]() {
             for (int i = 0; i < OPERATIONS_PER_THREAD; ++i) {
-                auto incrementFunc = [&expectedSum]() -> int {
-                    int current = expectedSum.load();
-                    expectedSum.store(current + 1);
-                    return current + 1;
+                // PathSpace operation adds to existing value
+                auto incrementFunc = [&operationCount]() -> int {
+                    // Track our operation and return 1 to be added
+                    operationCount.fetch_add(1, std::memory_order_relaxed);
+                    return 1;
                 };
-                CHECK(pspace.insert("/sharedCounter", incrementFunc).errors.size() == 0);
+
+                auto result = pspace.insert("/sharedCounter", incrementFunc);
+                REQUIRE(result.errors.empty());
             }
         };
 
+        // Launch threads
         std::vector<std::thread> threads;
         for (int i = 0; i < NUM_THREADS; ++i) {
             threads.emplace_back(workerFunction);
@@ -208,13 +269,80 @@ TEST_CASE("PathSpace Multithreading") {
             t.join();
         }
 
+        // Read final value
         auto finalValue = pspace.readBlock<int>("/sharedCounter");
-        CHECK(finalValue.has_value());
-        CHECK(finalValue.value() == expectedSum);
-        CHECK(finalValue.value() == NUM_THREADS * OPERATIONS_PER_THREAD);
+        REQUIRE(finalValue.has_value());
+
+        // Verify expected total
+        int expected_total = operationCount.load();
+        CHECK(expected_total == NUM_THREADS * OPERATIONS_PER_THREAD);
+        CHECK(finalValue.value() == expected_total);
     }
 
-    SUBCASE("Blocking Operations") {
+    // Add a companion test for ordering verification
+    SUBCASE("PathSpace Counter Order Preservation") {
+        PathSpace pspace;
+        const int NUM_THREADS = 4; // Small number for order testing
+        const int OPERATIONS_PER_THREAD = 10;
+
+        // Track when each value was added
+        std::vector<std::pair<int, int>> expected_sequence;
+        std::mutex sequence_mutex;
+
+        auto workerFunction = [&](int threadId) {
+            for (int i = 0; i < OPERATIONS_PER_THREAD; ++i) {
+                auto valueFunc = [i, threadId, &expected_sequence, &sequence_mutex]() -> int {
+                    // Record this operation with its thread and sequence number
+                    std::lock_guard<std::mutex> lock(sequence_mutex);
+                    expected_sequence.push_back({threadId, i});
+                    return (threadId * 1000) + i; // Unique value per operation
+                };
+
+                auto result = pspace.insert("/orderedCounter", valueFunc);
+                REQUIRE(result.errors.empty());
+
+                // Small sleep to make ordering more visible
+                if (i % 3 == 0) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+            }
+        };
+
+        // Run threads
+        std::vector<std::thread> threads;
+        for (int i = 0; i < NUM_THREADS; ++i) {
+            threads.emplace_back(workerFunction, i);
+        }
+
+        for (auto& t : threads) {
+            t.join();
+        }
+
+        // Read final value
+        auto finalValue = pspace.readBlock<int>("/orderedCounter");
+        REQUIRE(finalValue.has_value());
+
+        // The value should match the last operation's value
+        auto last_operation = expected_sequence.back();
+        int expected_final = (last_operation.first * 1000) + last_operation.second;
+        CHECK(finalValue.value() == expected_final);
+
+        // Verify we got all operations
+        CHECK(expected_sequence.size() == NUM_THREADS * OPERATIONS_PER_THREAD);
+
+        // Verify operations within each thread are ordered correctly
+        std::map<int, std::vector<int>> thread_sequences;
+        for (const auto& [threadId, seqNum] : expected_sequence) {
+            thread_sequences[threadId].push_back(seqNum);
+        }
+
+        for (const auto& [threadId, sequence] : thread_sequences) {
+            CHECK(std::is_sorted(sequence.begin(), sequence.end()));
+            CHECK(sequence.size() == OPERATIONS_PER_THREAD);
+        }
+    }
+
+    /*SUBCASE("Blocking Operations") {
         PathSpace pspace;
         const int NUM_PRODUCERS = 10;
         const int NUM_CONSUMERS = 10;
