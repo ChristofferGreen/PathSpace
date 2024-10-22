@@ -86,16 +86,18 @@ public:
             std::unexpected(result.error());
         }
 
+        bool const exitLoopAfterFirstRun = options.block && options.block->timeout;
         auto const timeout = (options.block && options.block->timeout) ? std::chrono::system_clock::now() + *options.block->timeout
                                                                        : std::chrono::system_clock::time_point::max();
-
         auto guard = waitMap.wait(path);
-
         while (!result.has_value() && !this->shuttingDown) {
             if (guard.wait_until(timeout, [&]() {
                     result = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj);
                     return (result.has_value() && result.value() > 0) || this->shuttingDown;
-                }))
+                })) {
+                break;
+            }
+            if (exitLoopAfterFirstRun)
                 break;
         }
 
@@ -134,6 +136,7 @@ public:
     auto extractBlock(ConcretePathStringView const& path,
                       OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}},
                       Capabilities const& capabilities = Capabilities::All()) -> Expected<DataType> {
+        log("PathSpace::extractBlock", "Function Called");
         DataType obj;
         auto result = this->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj);
 
@@ -145,16 +148,18 @@ public:
             return std::unexpected(result.error());
         }
 
+        bool const exitLoopAfterFirstRun = options.block && options.block->timeout;
         auto const timeout = (options.block && options.block->timeout) ? std::chrono::system_clock::now() + *options.block->timeout
                                                                        : std::chrono::system_clock::time_point::max();
-
         auto guard = waitMap.wait(path);
-
         while (!result.has_value() && !this->shuttingDown) {
             if (guard.wait_until(timeout, [&]() {
                     result = this->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj);
                     return (result.has_value() && result.value() > 0) || this->shuttingDown;
-                }))
+                })) {
+                break;
+            }
+            if (exitLoopAfterFirstRun)
                 break;
         }
 

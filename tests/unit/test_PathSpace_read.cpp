@@ -121,6 +121,13 @@ TEST_CASE("PathSpace Read") {
         CHECK(val.has_value());
         CHECK(val.value() == 46);
     }
+
+    SUBCASE("Read with timeout") {
+        auto ret = pspace.readBlock<int>(
+                "/timeout",
+                OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+        CHECK_FALSE(ret.has_value());
+    }
 }
 TEST_CASE("PathSpace Read Std Datastructure") {
     PathSpace pspace;
