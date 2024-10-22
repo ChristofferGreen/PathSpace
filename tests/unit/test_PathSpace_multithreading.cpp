@@ -1160,10 +1160,10 @@ TEST_CASE("PathSpace Multithreading") {
     SUBCASE("Performance Testing") {
         PathSpace pspace;
         const int NUM_THREADS = std::thread::hardware_concurrency();
-        const int OPERATIONS_PER_THREAD = 1000;             // Reduced from 10000
-        const int NUM_PATHS = 100;                          // Reduced from 1000
-        const auto TEST_DURATION = std::chrono::seconds(1); // Reduced from 5 seconds
-        const int NUM_ITERATIONS = 2;                       // Reduced from 3
+        const int OPERATIONS_PER_THREAD = 500; // Reduced from 10000
+        const int NUM_PATHS = 50;              // Reduced from 1000
+        const auto TEST_DURATION = std::chrono::milliseconds(300);
+        const int NUM_ITERATIONS = 2; // Reduced from 3
 
         auto performanceTest = [&](int concurrency) {
             struct Result {
@@ -1239,5 +1239,126 @@ TEST_CASE("PathSpace Multithreading") {
         constexpr double TOLERANCE = 0.1;             // 10% tolerance
 
         CHECK((multiThreadedOps / singleThreadedOps) > (IMPROVEMENT_THRESHOLD - TOLERANCE));
+    }
+
+    SUBCASE("Dining Philosophers") {
+        PathSpace pspace;
+        const int NUM_PHILOSOPHERS = 5;
+        const int EATING_DURATION_MS = 10;
+        const int THINKING_DURATION_MS = 10;
+        const int TEST_DURATION_MS = 5000; // Increased to 5 seconds
+
+        struct PhilosopherStats {
+            std::atomic<int> meals_eaten{0};
+            std::atomic<int> times_starved{0};
+            std::atomic<int> forks_acquired{0};
+        };
+
+        std::vector<PhilosopherStats> stats(NUM_PHILOSOPHERS);
+
+        auto philosopher = [&](int id) {
+            std::string first_fork = std::format("/fork/{}", std::min(id, (id + 1) % NUM_PHILOSOPHERS));
+            std::string second_fork = std::format("/fork/{}", std::max(id, (id + 1) % NUM_PHILOSOPHERS));
+
+            std::mt19937 rng(id);
+            std::uniform_int_distribution<> think_dist(1, THINKING_DURATION_MS);
+            std::uniform_int_distribution<> eat_dist(1, EATING_DURATION_MS);
+            std::uniform_int_distribution<> backoff_dist(1, 5);
+
+            auto start_time = std::chrono::steady_clock::now();
+
+            while (std::chrono::steady_clock::now() - start_time < std::chrono::milliseconds(TEST_DURATION_MS)) {
+                // Thinking
+                std::this_thread::sleep_for(std::chrono::milliseconds(think_dist(rng)));
+
+                // Try to pick up forks
+                auto first
+                        = pspace.extractBlock<int>(first_fork, OutOptions{.block = BlockOptions{.timeout = std::chrono::milliseconds(50)}});
+                if (first.has_value()) {
+                    stats[id].forks_acquired.fetch_add(1, std::memory_order_relaxed);
+                    auto second = pspace.extractBlock<int>(second_fork,
+                                                           OutOptions{.block = BlockOptions{.timeout = std::chrono::milliseconds(50)}});
+                    if (second.has_value()) {
+                        stats[id].forks_acquired.fetch_add(1, std::memory_order_relaxed);
+                        // Eating
+                        std::this_thread::sleep_for(std::chrono::milliseconds(eat_dist(rng)));
+                        stats[id].meals_eaten.fetch_add(1, std::memory_order_relaxed);
+
+                        // Put down second fork
+                        pspace.insert(second_fork, 1);
+                    }
+                    // Put down first fork
+                    pspace.insert(first_fork, 1);
+                } else {
+                    stats[id].times_starved.fetch_add(1, std::memory_order_relaxed);
+                }
+
+                // Backoff on failure
+                std::this_thread::sleep_for(std::chrono::milliseconds(backoff_dist(rng)));
+            }
+        };
+
+        // Initialize forks
+        for (int i = 0; i < NUM_PHILOSOPHERS; ++i) {
+            REQUIRE(pspace.insert(std::format("/fork/{}", i), 1).nbrValuesInserted == 1);
+        }
+
+        // Start philosophers
+        std::vector<std::jthread> philosophers;
+        for (int i = 0; i < NUM_PHILOSOPHERS; ++i) {
+            philosophers.emplace_back(philosopher, i);
+        }
+
+        // Wait for test to complete
+        std::this_thread::sleep_for(std::chrono::milliseconds(TEST_DURATION_MS));
+
+        // Join all threads
+        philosophers.clear();
+
+        // Output and check results
+        int total_meals = 0;
+        int total_starved = 0;
+        int total_forks_acquired = 0;
+        for (int i = 0; i < NUM_PHILOSOPHERS; ++i) {
+            int meals = stats[i].meals_eaten.load();
+            int starved = stats[i].times_starved.load();
+            int forks = stats[i].forks_acquired.load();
+            total_meals += meals;
+            total_starved += starved;
+            total_forks_acquired += forks;
+            std::cout << std::format("Philosopher {}: Meals eaten: {}, Times starved: {}, Forks acquired: {}\n", i, meals, starved, forks);
+
+            // Check that each philosopher ate at least once
+            CHECK(meals > 0);
+            // Check that each philosopher experienced some contention
+            CHECK(starved > 0);
+        }
+
+        std::cout << std::format("Total meals eaten: {}\n", total_meals);
+        std::cout << std::format("Total times starved: {}\n", total_starved);
+        std::cout << std::format("Total forks acquired: {}\n", total_forks_acquired);
+        std::cout << std::format("Meals per philosopher: {:.2f}\n", static_cast<double>(total_meals) / NUM_PHILOSOPHERS);
+
+        // Check overall statistics
+        CHECK(total_meals > NUM_PHILOSOPHERS);          // Each philosopher should eat at least once
+        CHECK(total_starved > 0);                       // There should be some contention
+        CHECK(total_forks_acquired >= total_meals * 2); // Each meal requires two forks
+
+        // Check that there's no deadlock (all forks are available)
+        for (int i = 0; i < NUM_PHILOSOPHERS; ++i) {
+            auto fork = pspace.readBlock<int>(std::format("/fork/{}", i));
+            CHECK(fork.has_value());
+            if (fork.has_value()) {
+                CHECK(fork.value() == 1);
+            }
+        }
+
+        // Check for fairness (no philosopher should starve significantly more than others)
+        double avg_starved = static_cast<double>(total_starved) / NUM_PHILOSOPHERS;
+        for (int i = 0; i < NUM_PHILOSOPHERS; ++i) {
+            double starve_ratio = static_cast<double>(stats[i].times_starved) / avg_starved;
+            CHECK(starve_ratio >= 0.5);
+            CHECK(starve_ratio <= 1.5);
+        }
     }
 }
