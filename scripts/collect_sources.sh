@@ -46,7 +46,7 @@ write_file_contents() {
     local relative_path=$(get_relative_path "$file")
     local filename=$(basename "$file")
 
-    log_verbose "Processing file: $relative_path"
+    log_verbose "Processing file: $relative_path" 
     {
         echo "<!-- === $relative_path === -->"
         echo "<$filename>"
@@ -59,10 +59,14 @@ write_file_contents() {
 # Function to process files
 process_files() {
     local output_file=$1
+    local include_tests=$2
+
     log_verbose "Searching for C++, HPP, H, CMake and MD files"
     find . -type f \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "CMakeLists.txt" -o -name "*.md" \) | while read -r file; do
         if [[ "$file" == *"/build/"* || "$file" == *"/ext/"* ]]; then
-            #log_verbose "Skipping file in excluded directory: $file"
+            continue
+        fi
+        if [[ "$include_tests" = false && "$file" == *"/tests/"* ]]; then
             continue
         fi
         write_file_contents "$file" "$output_file" || return 1
@@ -71,9 +75,11 @@ process_files() {
 
 # Function to parse command line arguments
 parse_arguments() {
+    local -n include_tests_ref=$1
     while [[ "$#" -gt 0 ]]; do
         case $1 in
-            --verbose) VERBOSE=true ;;
+            --verbose) VERBOSE=true ;; 
+            --add-tests) include_tests=true ;;
             *) OUTPUT_FILE="$1" ;;
         esac
         shift
@@ -82,24 +88,25 @@ parse_arguments() {
 
 # Main function
 main() {
-    parse_arguments "$@"
+    local include_tests=false
+    parse_arguments include_tests "$@"  # Call parse_arguments without capturing output
     local output_file="${OUTPUT_FILE:-output.txt}"
 
-    log_verbose "Starting script execution"
-    log_verbose "Output file: $output_file"
+    log_verbose "Starting script execution" 
+    log_verbose "Output file: $output_file"  
 
     if ! touch "$output_file"; then
         echo "Error: Unable to create or write to $output_file" >&2
         exit 1
     fi
 
-    > "$output_file"
+    > "$output_file"  # Clear the output file
     
     write_header "$output_file" || { echo "Error: Failed to write header" >&2; exit 1; }
     write_file_structure "$output_file" || { echo "Error: Failed to write file structure" >&2; exit 1; }
-    process_files "$output_file" || { echo "Error: Failed to process files" >&2; exit 1; }
+    process_files "$output_file" "$include_tests" || { echo "Error: Failed to process files" >&2; exit 1; } 
 
-    log_verbose "Script execution completed"
+    log_verbose "Script execution completed" 
     echo "Project file contents have been written to $output_file"
 }
 

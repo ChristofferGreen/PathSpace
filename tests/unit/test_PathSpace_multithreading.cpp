@@ -1,18 +1,28 @@
 #include <pathspace/PathSpace.hpp>
+#include <pathspace/core/Error.hpp>
+#include <pathspace/core/ExecutionOptions.hpp>
+#include <pathspace/core/InOptions.hpp>
+#include <pathspace/core/OutOptions.hpp>
 
 #include "ext/doctest.h"
 
 #include <atomic>
 #include <barrier>
 #include <chrono>
+#include <condition_variable>
+#include <deque>
+#include <format>
 #include <future>
 #include <latch>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <random>
+#include <set>
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 using namespace SP;
@@ -996,231 +1006,67 @@ TEST_CASE("PathSpace Multithreading") {
         CHECK(shortTasksCompleted == NUM_SHORT_TASKS);
     }
 
-    /*SUBCASE("Task Cancellation") {
-        class TaskController {
-        public:
-            enum class TaskState {
-                Created,
-                Running,
-                Cancelling,
-                Completed,
-                Cancelled
-            };
-
-            struct TaskStats {
-                std::atomic<int> totalTasks{0};
-                std::atomic<int> cancelledTasks{0};
-                std::atomic<int> completedTasks{0};
-                std::atomic<int> runningTasks{0};
-            };
-
-        private:
-            std::atomic<bool> shouldCancel{false};
-            std::atomic<bool> isShuttingDown{false};
-            TaskStats stats;
-
-            struct TaskInfo {
-                std::atomic<TaskState> state{TaskState::Created};
-                std::chrono::steady_clock::time_point startTime;
-                std::string taskId;
-            };
-
-            mutable std::mutex taskMapMutex;
-            std::unordered_map<std::string, std::shared_ptr<TaskInfo>> taskMap;
-
-        public:
-            TaskController() = default;
-            ~TaskController() {
-                shutdown();
-            }
-
-            // Non-copyable
-            TaskController(const TaskController&) = delete;
-            TaskController& operator=(const TaskController&) = delete;
-
-            void signalCancellation() {
-                shouldCancel.store(true, std::memory_order_release);
-            }
-
-            bool isCancelled() const {
-                return shouldCancel.load(std::memory_order_acquire);
-            }
-
-            void shutdown() {
-                isShuttingDown.store(true, std::memory_order_release);
-                signalCancellation();
-            }
-
-            void registerTask(const std::string& taskId) {
-                std::lock_guard<std::mutex> lock(taskMapMutex);
-                auto taskInfo = std::make_shared<TaskInfo>();
-                taskInfo->taskId = taskId;
-                taskMap[taskId] = taskInfo;
-                stats.totalTasks.fetch_add(1, std::memory_order_relaxed);
-            }
-
-            void startTask(const std::string& taskId) {
-                std::lock_guard<std::mutex> lock(taskMapMutex);
-                if (auto it = taskMap.find(taskId); it != taskMap.end()) {
-                    it->second->state.store(TaskState::Running, std::memory_order_release);
-                    it->second->startTime = std::chrono::steady_clock::now();
-                    stats.runningTasks.fetch_add(1, std::memory_order_relaxed);
-                }
-            }
-
-            void completeTask(const std::string& taskId) {
-                std::lock_guard<std::mutex> lock(taskMapMutex);
-                if (auto it = taskMap.find(taskId); it != taskMap.end()) {
-                    TaskState expected = TaskState::Running;
-                    if (it->second->state.compare_exchange_strong(expected, TaskState::Completed, std::memory_order_acq_rel)) {
-                        stats.completedTasks.fetch_add(1, std::memory_order_relaxed);
-                        stats.runningTasks.fetch_sub(1, std::memory_order_relaxed);
-                    }
-                }
-            }
-
-            void cancelTask(const std::string& taskId) {
-                std::lock_guard<std::mutex> lock(taskMapMutex);
-                if (auto it = taskMap.find(taskId); it != taskMap.end()) {
-                    TaskState expected = TaskState::Running;
-                    if (it->second->state.compare_exchange_strong(expected, TaskState::Cancelled, std::memory_order_acq_rel)) {
-                        stats.cancelledTasks.fetch_add(1, std::memory_order_relaxed);
-                        stats.runningTasks.fetch_sub(1, std::memory_order_relaxed);
-                    }
-                }
-            }
-
-            const TaskStats& getStats() const {
-                return stats;
-            }
-
-            TaskState getTaskState(const std::string& taskId) const {
-                std::lock_guard<std::mutex> lock(taskMapMutex);
-                if (auto it = taskMap.find(taskId); it != taskMap.end()) {
-                    return it->second->state.load(std::memory_order_acquire);
-                }
-                return TaskState::Created;
-            }
-        };
+    SUBCASE("Task Cancellation with Enhanced Control") {
         PathSpace pspace;
-        const int NUM_TASKS = 100;
-        const auto TASK_TIMEOUT = std::chrono::seconds(5);
-        auto controller = std::make_shared<TaskController>();
 
-        // Synchronization primitives
-        std::latch taskSetup(NUM_TASKS);
-        std::barrier taskStart(NUM_TASKS + 1); // +1 for main thread
+        // Shared state
+        std::atomic<int> completed{0};
+        std::atomic<bool> cancel_flag{false};
 
-        // Task definition
-        auto createTask = [controller](int taskId) {
-            return [controller, taskId]() -> int {
-                std::string taskPath = "/cancellable/" + std::to_string(taskId);
-                controller->startTask(taskPath);
+        // Create and submit short tasks that should complete
+        const int SHORT_TASKS = 3;
+        const int LONG_TASKS = 3;
 
-                try {
-                    // First 10 tasks complete quickly
-                    if (taskId < 10) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(taskId % 10));
-                        controller->completeTask(taskPath);
-                        return taskId;
-                    }
-
-                    // Longer running tasks with cancellation checks
-                    for (int i = 0; i < 100 && !controller->isCancelled(); ++i) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                    }
-
-                    if (controller->isCancelled()) {
-                        controller->cancelTask(taskPath);
-                        return -1;
-                    }
-
-                    controller->completeTask(taskPath);
-                    return taskId;
-                } catch (...) {
-                    controller->cancelTask(taskPath);
-                    throw;
-                }
+        // Submit short tasks that should complete quickly
+        for (int i = 0; i < SHORT_TASKS; i++) {
+            auto task = [i, &completed]() -> int {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                completed.fetch_add(1, std::memory_order_release);
+                return i;
             };
-        };
 
-        // Launch tasks
-        std::vector<std::future<void>> futures;
-        INFO("Launching " << NUM_TASKS << " tasks");
-
-        for (int i = 0; i < NUM_TASKS; ++i) {
-            std::string taskPath = "/cancellable/" + std::to_string(i);
-            controller->registerTask(taskPath);
-
-            futures.push_back(std::async(std::launch::async, [&, i, taskPath]() {
-                auto task = createTask(i);
-
-                // Signal task setup complete
-                taskSetup.count_down();
-                taskStart.arrive_and_wait();
-
-                auto result = pspace.insert(taskPath,
-                                            task,
-                                            InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Immediate}});
-
-                CHECK(result.errors.empty());
-            }));
+            CHECK(pspace.insert("/short/" + std::to_string(i), task).errors.empty());
         }
 
-        // Wait for all tasks to be set up
-        taskSetup.wait();
-        INFO("All tasks set up");
+        // Wait briefly for short tasks to complete
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-        // Start all tasks simultaneously
-        taskStart.arrive_and_wait();
-        INFO("All tasks started");
+        // Set cancellation flag
+        cancel_flag.store(true, std::memory_order_release);
+        std::atomic_thread_fence(std::memory_order_seq_cst);
 
-        // Allow some tasks to make progress
+        // Submit longer tasks that should check cancellation
+        for (int i = 0; i < LONG_TASKS; i++) {
+            auto task = [i, &completed, &cancel_flag]() -> int {
+                if (cancel_flag.load(std::memory_order_acquire)) {
+                    return -1;
+                }
+
+                // Simulate longer work
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+                // Check cancellation again before completing
+                if (!cancel_flag.load(std::memory_order_acquire)) {
+                    completed.fetch_add(1, std::memory_order_release);
+                    return i;
+                }
+                return -1;
+            };
+
+            // Use ExecutionOptions::Immediate to ensure the task runs right away
+            CHECK(pspace.insert("/long/" + std::to_string(i), task).errors.empty());
+        }
+
+        // Wait briefly to ensure all tasks have been picked up
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-        // Signal cancellation
-        INFO("Signaling task cancellation");
-        controller->signalCancellation();
+        // Check results
+        int final_completed = completed.load(std::memory_order_acquire);
+        INFO("Tasks completed: " << final_completed);
 
-        // Wait for all tasks with timeout
-        INFO("Waiting for task completion");
-        auto waitStart = std::chrono::steady_clock::now();
-        bool allCompleted = true;
-
-        for (auto& future : futures) {
-            if (future.wait_for(TASK_TIMEOUT) == std::future_status::timeout) {
-                INFO("Task timeout detected");
-                allCompleted = false;
-                break;
-            }
-        }
-
-        auto stats = controller->getStats();
-
-        // Verify results
-        REQUIRE(allCompleted);
-        CHECK(stats.completedTasks.load() >= 10); // At least first 10 tasks should complete
-        CHECK(stats.cancelledTasks.load() > 0);   // Some tasks should be cancelled
-        CHECK(stats.completedTasks.load() + stats.cancelledTasks.load() == NUM_TASKS);
-
-        // No tasks should be running
-        CHECK(stats.runningTasks.load() == 0);
-
-        INFO("Completed tasks: " << stats.completedTasks.load());
-        INFO("Cancelled tasks: " << stats.cancelledTasks.load());
-        INFO("Total tasks: " << stats.totalTasks.load());
-
-        // Verify task states
-        for (int i = 0; i < NUM_TASKS; ++i) {
-            std::string taskPath = "/cancellable/" + std::to_string(i);
-            auto state = controller->getTaskState(taskPath);
-            CHECK((state == TaskController::TaskState::Completed || state == TaskController::TaskState::Cancelled));
-        }
-
-        // Clean up
-        pspace.clear();
-        controller->shutdown();
-    }*/
+        // Only the short tasks should have completed
+        CHECK(final_completed == SHORT_TASKS);
+    }
 
     SUBCASE("Thread Pool Behavior") {
         PathSpace pspace;

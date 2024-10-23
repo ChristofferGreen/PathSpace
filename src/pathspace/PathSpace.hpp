@@ -90,10 +90,10 @@ public:
         auto const timeout = (options.block && options.block->timeout) ? std::chrono::system_clock::now() + *options.block->timeout
                                                                        : std::chrono::system_clock::time_point::max();
         auto guard = waitMap.wait(path);
-        while (!result.has_value() && !this->shuttingDown) {
+        while (!result.has_value() && !this->shuttingDown.load()) {
             if (guard.wait_until(timeout, [&]() {
                     result = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj);
-                    return (result.has_value() && result.value() > 0) || this->shuttingDown;
+                    return (result.has_value() && result.value() > 0) || this->shuttingDown.load();
                 })) {
                 break;
             }
@@ -101,7 +101,7 @@ public:
                 break;
         }
 
-        if (this->shuttingDown) {
+        if (this->shuttingDown.load()) {
             return std::unexpected(Error{Error::Code::Shutdown, "PathSpace is shutting down"});
         }
 
@@ -149,10 +149,10 @@ public:
         auto const timeout = (options.block && options.block->timeout) ? std::chrono::system_clock::now() + *options.block->timeout
                                                                        : std::chrono::system_clock::time_point::max();
         auto guard = waitMap.wait(path);
-        while (!result.has_value() && !this->shuttingDown) {
+        while (!result.has_value() && !this->shuttingDown.load()) {
             if (guard.wait_until(timeout, [&]() {
                     result = this->out(path, InputMetadataT<DataType>{}, options, &obj);
-                    return (result.has_value() && result.value() > 0) || this->shuttingDown;
+                    return (result.has_value() && result.value() > 0) || this->shuttingDown.load();
                 })) {
                 break;
             }
@@ -160,7 +160,7 @@ public:
                 break;
         }
 
-        if (this->shuttingDown) {
+        if (this->shuttingDown.load()) {
             return std::unexpected(Error{Error::Code::Shutdown, "PathSpace is shutting down"});
         }
 

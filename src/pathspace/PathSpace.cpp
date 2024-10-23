@@ -22,7 +22,7 @@ auto PathSpace::clear() -> void {
 
 auto PathSpace::shutdown() -> void {
     log("PathSpace::shutdown", "Function Called");
-    this->shuttingDown = true;
+    this->shuttingDown.exchange(true);
     this->waitMap.notifyAll();
 }
 
