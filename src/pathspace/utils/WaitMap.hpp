@@ -56,7 +56,7 @@ private:
     }
 
     mutable std::mutex mutex;
-    mutable std::unordered_map<ConcretePathString, std::condition_variable> cvMap;
+    std::unordered_map<ConcretePathString, std::condition_variable> cvMap;
 };
 
 } // namespace SP

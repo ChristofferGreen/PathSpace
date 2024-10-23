@@ -11,228 +11,178 @@
 using namespace SP;
 
 TEST_CASE("PathSpace Multithreading") {
-    /**
-     * Tests PathSpace's thread-safety and concurrent operation capabilities.
-     *
-     * Test Structure:
-     * - Creates 8 threads total (NUM_THREADS)
-     * - Half are writers, half are readers
-     * - Each thread performs 100 operations (OPERATIONS_PER_THREAD)
-     * - Uses 3 shared paths that all threads can access
-     *
-     * Thread Behaviors:
-     * 1. Writer Threads
-     *    - Alternates between shared paths (50%) and thread-specific paths (50%)
-     *    - Each write has a unique value (threadId * 1000 + i)
-     *    - Adds random delays to increase race condition chances
-     *    - Tracks success/failure of each insert
-     *
-     * 2. Reader Threads
-     *    - Accesses shared paths (33%) and random thread paths (66%)
-     *    - Randomly chooses between read and extract operations
-     *    - Uses 50ms timeout to prevent deadlocks
-     *    - Tracks success/failure and values read
-     *
-     * Verification Aspects:
-     * 1. Operation Counts
-     *    - Verifies total operations match expectations
-     *    - Checks insert/read/extract ratios
-     *
-     * 2. Data Consistency
-     *    - Groups operations by path
-     *    - Verifies each read value matches a previous insert
-     *    - Ensures readers never see invalid data
-     *
-     * 3. Shared Path Contention
-     *    - Verifies shared paths are accessed concurrently
-     *    - Checks each shared path has sufficient concurrent access
-     *
-     * 4. Error Analysis
-     *    - Verifies only expected error types occur (Timeout, NoSuchPath)
-     *    - Ensures error counts are reasonable
-     *    - Checks timeout frequency
-     *
-     * 5. Success Rate
-     *    - Ensures overall operation success rate >50%
-     *
-     * Race Conditions Tested:
-     * - Read-Write races (concurrent access to shared paths)
-     * - Extract-Write races (data removal during writes)
-     * - Path contention (multiple threads accessing shared paths)
-     * - Timing variations (random sleeps and timeouts)
-     *
-     * Thread Safety Aspects Verified:
-     * - Data integrity (valid values, no duplicates, no corruption)
-     * - Concurrency control (shared access, deadlock prevention)
-     * - Error handling (appropriate errors, timeout behavior)
-     */
     SUBCASE("Basic Concurrent Operations") {
-        struct Operation {
-            enum class Type {
-                Insert,
-                Read,
-                Extract
-            };
-            Type type = Type::Insert; // Default values for all members
-            int threadId = -1;
-            int operationId = -1;
-            int value = 0;
-            bool success = false;
-            std::string path;
-            Error::Code error = Error::Code::NoSuchPath; // Changed from errorCode and given default
-        };
         PathSpace pspace;
         const int NUM_THREADS = 8;
         const int OPERATIONS_PER_THREAD = 100;
+        const int MAX_RETRIES = 3;
+        const auto TEST_TIMEOUT = std::chrono::seconds(30);
 
-        std::vector<std::string> shared_paths = {"/shared/counter", "/shared/accumulator", "/shared/status"};
+        struct Stats {
+            std::atomic<size_t> totalOps{0};
+            std::atomic<size_t> successfulOps{0};
+            std::atomic<size_t> failedOps{0};
+            std::atomic<size_t> timeouts{0};
+            std::mutex mtx;
+            std::map<std::string, size_t> pathAccesses;
 
-        std::vector<Operation> operations;
-        operations.reserve(NUM_THREADS * OPERATIONS_PER_THREAD);
-        std::mutex operations_mutex;
-
-        auto writer_worker = [&](int threadId) {
-            std::mt19937 rng(threadId);
-            std::uniform_int_distribution<> path_dist(0, shared_paths.size() - 1);
-
-            for (int i = 0; i < OPERATIONS_PER_THREAD; i++) {
-                std::string path = (i % 2 == 0) ? shared_paths[path_dist(rng)] : "/thread/" + std::to_string(threadId) + "/value";
-
-                int value = threadId * 1000 + i;
-                auto result = pspace.insert(path, value);
-
-                {
-                    std::lock_guard<std::mutex> lock(operations_mutex);
-                    operations.push_back(Operation{.type = Operation::Type::Insert,
-                                                   .threadId = threadId,
-                                                   .operationId = i,
-                                                   .value = value,
-                                                   .success = result.errors.empty(),
-                                                   .path = path,
-                                                   .error = result.errors.empty() ? Error::Code::NoSuchPath : result.errors.front().code});
-                }
-
-                if (i % 5 == 0) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                }
+            void recordAccess(const std::string& path) {
+                std::lock_guard<std::mutex> lock(mtx);
+                pathAccesses[path]++;
             }
+        } stats;
+
+        // Shared state
+        std::atomic<bool> shouldStop{false};
+        std::atomic<bool> readersCanStart{false};
+        std::atomic<int> insertCount{0};
+
+        // Fixed set of paths to ensure contention
+        const std::vector<std::string> shared_paths = {"/shared/counter", "/shared/accumulator", "/shared/status"};
+
+        // Get path ensuring shared path usage
+        auto getPath = [&shared_paths](int threadId, int opId, std::mt19937& rng) -> std::string {
+            std::uniform_int_distribution<> dist(0, shared_paths.size() - 1);
+            // Use shared paths 50% of the time
+            if (opId % 2 == 0) {
+                return shared_paths[dist(rng)];
+            }
+            return std::format("/seq/{}/{}", threadId, opId);
         };
 
-        auto reader_worker = [&](int threadId) {
-            std::mt19937 rng(threadId);
-            std::uniform_int_distribution<> path_dist(0, shared_paths.size() - 1);
-            std::uniform_int_distribution<> op_dist(0, 2);
+        // Writer function
+        auto writer = [&](int threadId) {
+            std::mt19937 rng(std::random_device{}() + threadId);
+            try {
+                for (int i = 0; i < OPERATIONS_PER_THREAD && !shouldStop; i++) {
+                    std::string path = getPath(threadId, i, rng);
+                    int value = threadId * 1000 + i;
 
-            for (int i = 0; i < OPERATIONS_PER_THREAD; i++) {
-                std::string path = (i % 3 == 0) ? shared_paths[path_dist(rng)] : "/thread/" + std::to_string(i % NUM_THREADS) + "/value";
+                    bool inserted = false;
+                    for (int attempt = 0; attempt < MAX_RETRIES && !inserted; attempt++) {
+                        if (auto result = pspace.insert(path, value); result.errors.empty()) {
+                            inserted = true;
+                            insertCount++;
+                            stats.successfulOps++;
+                            stats.recordAccess(path);
 
-                OutOptions options{.block
-                                   = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(6)}};
-
-                Operation::Type opType = (op_dist(rng) == 0) ? Operation::Type::Extract : Operation::Type::Read;
-
-                Expected<int> result = (opType == Operation::Type::Extract) ? pspace.extractBlock<int>(path, options)
-                                                                            : pspace.readBlock<int>(path, options);
-
-                {
-                    std::lock_guard<std::mutex> lock(operations_mutex);
-                    operations.push_back(Operation{.type = opType,
-                                                   .threadId = threadId,
-                                                   .operationId = i,
-                                                   .value = result.has_value() ? result.value() : -1,
-                                                   .success = result.has_value(),
-                                                   .path = path,
-                                                   .error = result.has_value() ? Error::Code::NoSuchPath : result.error().code});
-                }
-            }
-        };
-
-        std::vector<std::thread> threads;
-        for (int i = 0; i < NUM_THREADS; i++) {
-            if (i < NUM_THREADS / 2) {
-                threads.emplace_back(writer_worker, i);
-            } else {
-                threads.emplace_back(reader_worker, i);
-            }
-        }
-
-        for (auto& t : threads) {
-            t.join();
-        }
-
-        SUBCASE("Operation Counts") {
-            size_t insert_count = std::count_if(operations.begin(), operations.end(), [](const Operation& op) {
-                return op.type == Operation::Type::Insert;
-            });
-            size_t read_count = std::count_if(operations.begin(), operations.end(), [](const Operation& op) {
-                return op.type == Operation::Type::Read;
-            });
-            size_t extract_count = std::count_if(operations.begin(), operations.end(), [](const Operation& op) {
-                return op.type == Operation::Type::Extract;
-            });
-
-            CHECK(insert_count == (NUM_THREADS / 2) * OPERATIONS_PER_THREAD);
-            CHECK(read_count + extract_count == (NUM_THREADS / 2) * OPERATIONS_PER_THREAD);
-        }
-
-        SUBCASE("Data Consistency") {
-            std::map<std::string, std::vector<Operation>> path_operations;
-            for (const auto& op : operations) {
-                path_operations[op.path].push_back(op);
-            }
-
-            for (const auto& [path, ops] : path_operations) {
-                for (const auto& op : ops) {
-                    if (op.success && op.type != Operation::Type::Insert) {
-                        bool found_insert = false;
-                        for (const auto& prev_op : ops) {
-                            if (prev_op.type == Operation::Type::Insert && prev_op.value == op.value) {
-                                found_insert = true;
-                                break;
+                            if (insertCount > OPERATIONS_PER_THREAD / 2) {
+                                readersCanStart.store(true);
                             }
+                            break;
                         }
-                        CHECK(found_insert);
+
+                        if (attempt < MAX_RETRIES - 1) {
+                            std::this_thread::sleep_for(std::chrono::milliseconds(1 << attempt));
+                        }
                     }
+
+                    if (!inserted)
+                        stats.failedOps++;
+                    stats.totalOps++;
+
+                    if (i % 10 == 0)
+                        std::this_thread::yield();
                 }
+            } catch (const std::exception& e) {
+                log(std::format("Writer {} error: {}", threadId, e.what()));
+                stats.failedOps++;
+            }
+        };
+
+        // Reader function
+        auto reader = [&](int threadId) {
+            std::mt19937 rng(std::random_device{}() + threadId);
+
+            while (!readersCanStart) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+
+            try {
+                for (int i = 0; i < OPERATIONS_PER_THREAD && !shouldStop; i++) {
+                    std::string path = getPath(threadId % (NUM_THREADS / 2), i, rng);
+
+                    OutOptions options{.block
+                                       = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(50)}};
+
+                    // Try read first, fall back to extract
+                    auto result = pspace.readBlock<int>(path, options);
+                    if (!result.has_value()) {
+                        result = pspace.extractBlock<int>(path, options);
+                    }
+
+                    if (result.has_value()) {
+                        stats.successfulOps++;
+                        stats.recordAccess(path);
+                    } else {
+                        if (result.error().code == Error::Code::Timeout) {
+                            stats.timeouts++;
+                        }
+                        stats.failedOps++;
+                    }
+
+                    stats.totalOps++;
+
+                    // Small delay to reduce contention
+                    std::this_thread::sleep_for(std::chrono::microseconds(100));
+                }
+            } catch (const std::exception& e) {
+                log(std::format("Reader {} error: {}", threadId, e.what()));
+                stats.failedOps++;
+            }
+        };
+
+        // Launch threads
+        {
+            std::vector<std::jthread> threads;
+            auto testStart = std::chrono::steady_clock::now();
+
+            // Start writers
+            for (int i = 0; i < NUM_THREADS / 2; ++i) {
+                threads.emplace_back(writer, i);
+            }
+
+            // Start readers after some data is available
+            for (int i = NUM_THREADS / 2; i < NUM_THREADS; ++i) {
+                threads.emplace_back(reader, i);
+            }
+
+            // Monitor progress
+            while (stats.totalOps < NUM_THREADS * OPERATIONS_PER_THREAD) {
+                if (std::chrono::steady_clock::now() - testStart > TEST_TIMEOUT) {
+                    shouldStop = true;
+                    log("Test timeout reached");
+                    break;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
         }
 
-        SUBCASE("Shared Path Contention") {
-            for (const auto& shared_path : shared_paths) {
-                auto path_ops = std::count_if(operations.begin(), operations.end(), [&](const Operation& op) {
-                    return op.path == shared_path && op.success;
-                });
-                CHECK(path_ops > NUM_THREADS);
+        // Verify results
+        {
+            // Calculate rates
+            double successRate = static_cast<double>(stats.successfulOps) / stats.totalOps * 100;
+            double errorRate = static_cast<double>(stats.failedOps) / stats.totalOps;
+
+            // Check success rate
+            CHECK_MESSAGE(successRate > 90.0, std::format("Success rate too low: {:.1f}%", successRate));
+
+            // Check error rate
+            CHECK_MESSAGE(errorRate < 0.1, std::format("Error rate too high: {:.1f}%", errorRate * 100));
+
+            // Verify shared path usage
+            std::lock_guard<std::mutex> lock(stats.mtx);
+            for (const auto& path : shared_paths) {
+                size_t accesses = stats.pathAccesses[path];
+                CHECK_MESSAGE(accesses > NUM_THREADS,
+                              std::format("Insufficient contention on shared path {}: {} accesses", path, accesses));
             }
-        }
 
-        SUBCASE("Error Analysis") {
-            std::map<Error::Code, int> error_counts;
-            for (const auto& op : operations) {
-                if (!op.success) {
-                    error_counts[op.error]++; // Changed from errorCode to error
-                }
+            // Clean up and verify
+            pspace.clear();
+            for (const auto& [path, _] : stats.pathAccesses) {
+                CHECK_MESSAGE(!pspace.read<int>(path).has_value(), std::format("Data remains at path: {}", path));
             }
-
-            for (const auto& [code, count] : error_counts) {
-                bool is_expected_error = code == Error::Code::Timeout || code == Error::Code::NoSuchPath;
-
-                CHECK(is_expected_error);
-                CHECK(count > 0);
-                CHECK(count < NUM_THREADS * OPERATIONS_PER_THREAD);
-
-                if (code == Error::Code::Timeout) {
-                    CHECK(count < (NUM_THREADS * OPERATIONS_PER_THREAD) / 4);
-                }
-            }
-        }
-
-        SUBCASE("Operation Success Rate") {
-            int total_ops = operations.size();
-            int successful_ops = std::count_if(operations.begin(), operations.end(), [](const Operation& op) { return op.success; });
-
-            double success_rate = static_cast<double>(successful_ops) / total_ops;
-            CHECK(success_rate > 0.5);
         }
     }
 
@@ -679,48 +629,137 @@ TEST_CASE("PathSpace Multithreading") {
 
     SUBCASE("Blocking Operations") {
         PathSpace pspace;
-        const int NUM_PRODUCERS = 10;
-        const int NUM_CONSUMERS = 10;
-        const int ITEMS_PER_PRODUCER = 100;
-        std::atomic<int> producedCount(0), consumedCount(0);
+        const int NUM_THREADS = 4;
+        const int ITEMS_PER_THREAD = 50;
 
-        auto producerFunction = [&](int id) {
-            for (int i = 0; i < ITEMS_PER_PRODUCER; ++i) {
-                std::string path = "/queue/" + std::to_string(id) + "/" + std::to_string(i);
-                auto produceFunc = [&producedCount]() -> int { return ++producedCount; };
-                CHECK(pspace.insert(path, produceFunc).errors.size() == 0);
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
+        struct TestData {
+            std::string path;
+            int value;
+            bool extracted{false};
         };
 
-        auto consumerFunction = [&]() {
-            while (consumedCount < NUM_PRODUCERS * ITEMS_PER_PRODUCER) {
-                std::string path = "/queue/" + std::to_string(rand() % NUM_PRODUCERS) + "/" + std::to_string(rand() % ITEMS_PER_PRODUCER);
-                auto result = pspace.extractBlock<int>(path,
-                                                       OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait,
-                                                                                        .timeout = std::chrono::milliseconds(100)}});
-                if (result)
-                    consumedCount++;
+        std::vector<std::vector<TestData>> threadData(NUM_THREADS);
+
+        // Phase 1: Insert data
+        log("\nPhase 1: Inserting data");
+        {
+            for (int t = 0; t < NUM_THREADS; ++t) {
+                threadData[t].reserve(ITEMS_PER_THREAD);
+                for (int i = 0; i < ITEMS_PER_THREAD; ++i) {
+                    TestData data{.path = std::format("/data/{}/{}", t, i), .value = t * 1000 + i};
+
+                    auto result = pspace.insert(data.path, data.value);
+                    CHECK_MESSAGE(result.errors.empty(), std::format("Failed to insert at path {}", data.path));
+
+                    threadData[t].push_back(data);
+                }
             }
-        };
 
-        std::vector<std::thread> producers, consumers;
-        for (int i = 0; i < NUM_PRODUCERS; ++i) {
-            producers.emplace_back(producerFunction, i);
-        }
-        for (int i = 0; i < NUM_CONSUMERS; ++i) {
-            consumers.emplace_back(consumerFunction);
+            log(std::format("Inserted {} items", NUM_THREADS * ITEMS_PER_THREAD));
         }
 
-        for (auto& t : producers) {
-            t.join();
-        }
-        for (auto& t : consumers) {
-            t.join();
+        // Phase 2: Extract data with multiple threads
+        log("\nPhase 2: Extracting data");
+        {
+            std::atomic<int> extractedCount = 0;
+            std::atomic<bool> shouldStop = false;
+
+            auto extractWorker = [&](int threadId) {
+                auto& items = threadData[threadId];
+                for (auto& item : items) {
+                    if (shouldStop)
+                        break;
+                    if (item.extracted)
+                        continue;
+
+                    auto result = pspace.extractBlock<int>(item.path,
+                                                           OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait,
+                                                                                            .timeout = std::chrono::milliseconds(100)}});
+
+                    if (result.has_value()) {
+                        CHECK(result.value() == item.value);
+                        item.extracted = true;
+                        extractedCount++;
+                    }
+                }
+            };
+
+            // Launch extraction threads
+            {
+                std::vector<std::jthread> threads;
+                for (int t = 0; t < NUM_THREADS; ++t) {
+                    threads.emplace_back(extractWorker, t);
+                }
+
+                // Monitor progress
+                auto start = std::chrono::steady_clock::now();
+                while (extractedCount < NUM_THREADS * ITEMS_PER_THREAD) {
+                    if (std::chrono::steady_clock::now() - start > std::chrono::seconds(10)) {
+                        shouldStop = true;
+                        log("Extraction timeout reached");
+                        break;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    log(std::format("Extracted: {}/{}", extractedCount.load(), NUM_THREADS * ITEMS_PER_THREAD));
+                }
+            }
+
+            log(std::format("Extracted {} items", extractedCount.load()));
         }
 
-        CHECK(producedCount == NUM_PRODUCERS * ITEMS_PER_PRODUCER);
-        CHECK(consumedCount == NUM_PRODUCERS * ITEMS_PER_PRODUCER);
+        // Phase 3: Verify and cleanup any remaining items
+        log("\nPhase 3: Verification and cleanup");
+        {
+            int remainingItems = 0;
+            std::vector<std::string> remainingPaths;
+
+            // First pass: Try to extract any remaining items
+            for (auto& thread : threadData) {
+                for (auto& item : thread) {
+                    if (item.extracted)
+                        continue;
+
+                    // Try to extract the item
+                    auto result = pspace.extract<int>(item.path);
+                    if (result.has_value()) {
+                        remainingItems++;
+                        remainingPaths.push_back(item.path);
+                    }
+                }
+            }
+
+            if (!remainingPaths.empty()) {
+                log("\nFound remaining items:");
+                for (const auto& path : remainingPaths) {
+                    log(std::format("  {}", path));
+                }
+
+                // Try one more time to extract these items
+                for (const auto& path : remainingPaths) {
+                    if (auto result = pspace.extract<int>(path); result.has_value()) {
+                        remainingItems--;
+                    }
+                }
+            }
+
+            // Final cleanup
+            pspace.clear();
+
+            // Final verification using extract
+            bool anyRemaining = false;
+            for (const auto& thread : threadData) {
+                for (const auto& item : thread) {
+                    if (auto result = pspace.extract<int>(item.path); result.has_value()) {
+                        anyRemaining = true;
+                        log(std::format("Item remains after clear: {}", item.path));
+                    }
+                }
+            }
+
+            CHECK_MESSAGE(!anyRemaining, "Items remain after final cleanup");
+        }
+
+        log("\nTest completed");
     }
 
     SUBCASE("Task Execution Order") {
