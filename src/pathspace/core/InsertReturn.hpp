@@ -1,6 +1,7 @@
 #pragma once
 #include "Error.hpp"
 
+#include <cstdint>
 #include <vector>
 
 namespace SP {
