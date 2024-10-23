@@ -21,7 +21,6 @@ It's intended to be a multi-platform library supporting at least Windows, Linux,
 - **Glob Expressions**: Supports glob-style path matching for flexible data access
 - **JSON Serialization**: Built-in support for JSON serialization and deserialization
 - **Capability-based Access Control**: Fine-grained control over data access and operations
-- **Time-To-Live (TTL) Support**: Automatic data expiration management
 
 ## Core Operations
 

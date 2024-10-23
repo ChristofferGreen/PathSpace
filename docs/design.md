@@ -49,7 +49,6 @@ The operations in the base language are insert/read/extract, they are implemente
 	* The given path can be a concrete path in which case at most one object will be inserted or a glob expression path which could potentially insert multiple values.
 	* Supports batch operations by inserting an initialiser list
 	* Takes an optional InOptions which has the following properties:
-		* Optional Time To Live (TTL) that specifies how long the data will exist before being deleted. By default they live forever.
 		* Optional Execution object that describes how to execute the data (if the data is a lambda or function):
 			* Execute immediately or when the user requests the data via read/extract.
 			* If the data should be cached and updated every n milliseconds.
