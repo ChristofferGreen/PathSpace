@@ -52,16 +52,13 @@ void TaskPool::workerFunction() {
         Task task;
         {
             std::unique_lock<std::mutex> lock(taskMutex);
-            taskCV.wait(lock, [this]() { return this->stop || !this->tasks.empty() || this->immediateTask.has_value(); });
+            taskCV.wait(lock, [this]() { return this->stop || !this->tasks.empty(); });
 
-            if (this->stop && this->tasks.empty() && !this->immediateTask.has_value()) {
+            if (this->stop && this->tasks.empty()) {
                 break;
             }
 
-            if (immediateTask.has_value()) {
-                task = std::move(*immediateTask);
-                immediateTask.reset();
-            } else if (!tasks.empty()) {
+            if (!tasks.empty()) {
                 task = std::move(tasks.front());
                 tasks.pop();
             } else {

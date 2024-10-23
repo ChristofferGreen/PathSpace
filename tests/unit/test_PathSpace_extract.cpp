@@ -1,6 +1,5 @@
 #include "ext/doctest.h"
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/core/Capabilities.hpp>
 
 // Standard library containers
 #include <array>
@@ -182,25 +181,6 @@ TEST_CASE("PathSpace Extract Extended Tests") {
         REQUIRE(ret.has_value());
         CHECK(ret.value()() == 42);
     }
-
-    SUBCASE("Extract with capabilities") {
-        Capabilities caps;
-        caps.addCapability("/test", Capabilities::Type::READ);
-
-        pspace.insert("/test", 42);
-        auto ret = pspace.extract<int>("/test", OutOptions{}, caps);
-        REQUIRE(ret.has_value());
-        CHECK(ret.value() == 42);
-    }
-
-    /*SUBCASE("Extract with incorrect capabilities") {
-        Capabilities caps;
-        caps.addCapability("/other", Capabilities::Type::READ);
-
-        pspace.insert("/test", 42);
-        auto ret = pspace.extract<int>("/test", OutOptions{}, caps);
-        CHECK_FALSE(ret.has_value());
-    }*/
 
     SUBCASE("Extract with blocking") {
         std::thread t([&]() {

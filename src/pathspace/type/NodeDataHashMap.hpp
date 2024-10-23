@@ -13,7 +13,7 @@ using NodeDataHashMap = phmap::parallel_node_hash_map<
         std::hash<SP::ConcreteNameString>,
         std::equal_to<SP::ConcreteNameString>,
         std::allocator<std::pair<const SP::ConcreteNameString, std::variant<SP::NodeData, std::unique_ptr<SP::PathSpaceLeaf>>>>,
-        4, // Number of submaps
+        12, // Number of submaps
         std::mutex>;
 
 } // namespace SP

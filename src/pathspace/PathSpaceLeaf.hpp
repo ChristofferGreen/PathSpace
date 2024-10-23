@@ -1,8 +1,9 @@
 #pragma once
-#include "type/Helper.hpp"
+#include "path/ConcretePathIterator.hpp"
+#include "path/GlobPathIterator.hpp"
+#include "type/NodeDataHashMap.hpp"
 
 namespace SP {
-struct Capabilities;
 struct Error;
 struct InOptions;
 struct InsertReturn;
@@ -22,8 +23,7 @@ public:
              ConcretePathIteratorStringView const& end,
              InputMetadata const& inputMetadata,
              void* obj,
-             OutOptions const& options,
-             Capabilities const& capabilities) -> Expected<int>;
+             OutOptions const& options) -> Expected<int>;
 
     auto clear() -> void;
 
@@ -46,15 +46,13 @@ private:
                      ConcretePathIteratorStringView const& end,
                      InputMetadata const& inputMetadata,
                      void* obj,
-                     OutOptions const& options,
-                     Capabilities const& capabilities) -> Expected<int>;
+                     OutOptions const& options) -> Expected<int>;
     auto outConcretePathComponent(ConcretePathIteratorStringView const& nextIter,
                                   ConcretePathIteratorStringView const& end,
                                   ConcreteNameStringView const& concreteName,
                                   InputMetadata const& inputMetadata,
                                   void* obj,
-                                  OutOptions const& options,
-                                  Capabilities const& capabilities) -> Expected<int>;
+                                  OutOptions const& options) -> Expected<int>;
     NodeDataHashMap nodeDataMap;
 };
 

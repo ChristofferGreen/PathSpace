@@ -1,6 +1,7 @@
 #pragma once
 #include "PathSpaceLeaf.hpp"
 #include "core/OutOptions.hpp"
+#include "path/GlobPath.hpp"
 #include "taskpool/TaskPool.hpp"
 #include "utils/TaggedLogger.hpp"
 #include "utils/WaitMap.hpp"
@@ -26,7 +27,7 @@ public:
      */
     template <typename DataType>
     auto insert(GlobPathStringView const& path, DataType&& data, InOptions const& options = {}) -> InsertReturn {
-        log("Insert", "Function Called");
+        log("PathSpace::insert", "Function Called");
         InputData inputData{std::forward<DataType>(data)};
         ConstructiblePath constructedPath = path.isConcrete() ? ConstructiblePath{path} : ConstructiblePath{};
 
@@ -59,24 +60,23 @@ public:
      * @return Expected<DataType> containing the read data if successful, or an error if not.
      */
     template <typename DataType>
-    auto read(ConcretePathStringView const& path,
-              OutOptions const& options = {.doPop = false},
-              Capabilities const& capabilities = Capabilities::All()) const -> Expected<DataType> {
-        log("Read", "Function Called");
+    auto read(ConcretePathStringView const& path, OutOptions const& options = {.doPop = false}) const -> Expected<DataType> {
+        log("PathSpace::read", "Function Called");
         if (options.doPop)
             return std::unexpected(Error{Error::Code::PopInRead, std::string("read does not support doPop: ").append(path.getPath())});
         DataType obj;
-        if (auto ret = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj); !ret)
+        if (auto ret = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj); !ret)
             return std::unexpected(ret.error());
         return obj;
     }
 
     template <typename DataType>
     auto readBlock(ConcretePathStringView const& path,
-                   OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}, .doPop = false},
-                   Capabilities const& capabilities = Capabilities::All()) const -> Expected<DataType> {
+                   OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}, .doPop = false}) const
+            -> Expected<DataType> {
+        log("PathSpace::readBlock", "Function Called");
         DataType obj;
-        auto result = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj);
+        auto result = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj);
 
         if (result.has_value() || !options.block.has_value()
             || (options.block.has_value() && options.block.value().behavior == BlockOptions::Behavior::DontWait)) {
@@ -92,7 +92,7 @@ public:
         auto guard = waitMap.wait(path);
         while (!result.has_value() && !this->shuttingDown) {
             if (guard.wait_until(timeout, [&]() {
-                    result = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj);
+                    result = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj);
                     return (result.has_value() && result.value() > 0) || this->shuttingDown;
                 })) {
                 break;
@@ -116,15 +116,13 @@ public:
      *
      * @tparam DataType The type of data to be extractbed.
      * @param path The concrete path from which to extract the data.
-     * @param capabilities Capabilities controlling access to the data.
      * @return Expected<DataType> containing the extractbed data if successful, or an error if not.
      */
     template <typename DataType>
-    auto extract(ConcretePathStringView const& path, OutOptions const& options = {}, Capabilities const& capabilities = Capabilities::All())
-            -> Expected<DataType> {
-        log("Extract", "Function Called");
+    auto extract(ConcretePathStringView const& path, OutOptions const& options = {}) -> Expected<DataType> {
+        log("PathSpace::extract", "Function Called");
         DataType obj;
-        auto const ret = this->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj);
+        auto const ret = this->out(path, InputMetadataT<DataType>{}, options, &obj);
         if (!ret)
             return std::unexpected(ret.error());
         if (ret.has_value() && (ret.value() == 0))
@@ -133,12 +131,11 @@ public:
     }
 
     template <typename DataType>
-    auto extractBlock(ConcretePathStringView const& path,
-                      OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}},
-                      Capabilities const& capabilities = Capabilities::All()) -> Expected<DataType> {
+    auto extractBlock(ConcretePathStringView const& path, OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}})
+            -> Expected<DataType> {
         log("PathSpace::extractBlock", "Function Called");
         DataType obj;
-        auto result = this->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj);
+        auto result = this->out(path, InputMetadataT<DataType>{}, options, &obj);
 
         if (result.has_value() || !options.block.has_value()
             || (options.block.has_value() && options.block.value().behavior == BlockOptions::Behavior::DontWait)) {
@@ -154,7 +151,7 @@ public:
         auto guard = waitMap.wait(path);
         while (!result.has_value() && !this->shuttingDown) {
             if (guard.wait_until(timeout, [&]() {
-                    result = this->out(path, InputMetadataT<DataType>{}, options, capabilities, &obj);
+                    result = this->out(path, InputMetadataT<DataType>{}, options, &obj);
                     return (result.has_value() && result.value() > 0) || this->shuttingDown;
                 })) {
                 break;
@@ -179,7 +176,7 @@ protected:
     template <typename DataType>
     auto createTask(ConstructiblePath const& constructedPath, DataType const& data, InputData const& inputData, InOptions const& options)
             -> std::optional<Task> { // ToDo:: Add support for glob based executions
-        log("CreateTask", "Function Called");
+        log("PathSpace::createTask", "Function Called");
         if constexpr (ExecutionFunctionPointer<DataType> || ExecutionStdFunction<DataType>) {
             auto function = [userFunction = std::move(data)](Task const& task, void* obj, bool isOut) {
                 if (isOut) {
@@ -204,11 +201,8 @@ protected:
     virtual auto in(ConstructiblePath& constructedPath, GlobPathStringView const& path, InputData const& data, InOptions const& options)
             -> InsertReturn;
 
-    virtual auto out(ConcretePathStringView const& path,
-                     InputMetadata const& inputMetadata,
-                     OutOptions const& options,
-                     Capabilities const& capabilities,
-                     void* obj) -> Expected<int>;
+    virtual auto out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, OutOptions const& options, void* obj)
+            -> Expected<int>;
 
     auto shutdown() -> void;
 

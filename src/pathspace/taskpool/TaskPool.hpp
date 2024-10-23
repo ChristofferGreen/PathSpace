@@ -1,10 +1,8 @@
 #pragma once
 #include "Task.hpp"
-#include "path/ConcretePath.hpp"
 
 #include <atomic>
 #include <condition_variable>
-#include <functional>
 #include <mutex>
 #include <optional>
 #include <queue>
@@ -26,7 +24,6 @@ public:
     auto operator=(TaskPool const&) -> TaskPool& = delete;
 
     auto addTask(Task&& task) -> void;
-    // auto addTask(std::function<void()> task) -> void;
 
     auto shutdown() -> void;
     auto size() const -> size_t;
@@ -41,7 +38,6 @@ private:
     std::condition_variable taskCV;
     std::atomic<bool> stop;
     std::atomic<size_t> availableThreads;
-    std::optional<Task> immediateTask;
 };
 
 } // namespace SP

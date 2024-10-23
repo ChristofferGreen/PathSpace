@@ -3,7 +3,6 @@
 #include <chrono>
 #include <future>
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/core/Capabilities.hpp>
 #include <random>
 #include <thread>
 #include <vector>

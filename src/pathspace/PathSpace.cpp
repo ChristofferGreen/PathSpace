@@ -28,6 +28,7 @@ auto PathSpace::shutdown() -> void {
 
 auto PathSpace::in(ConstructiblePath& constructedPath, GlobPathStringView const& path, InputData const& data, InOptions const& options)
         -> InsertReturn {
+    log("PathSpace::in", "Function Called");
     InsertReturn ret;
     if (!path.isValid()) {
         ret.errors.emplace_back(Error::Code::InvalidPath, std::string("The path was not valid: ").append(path.getPath()));
@@ -42,12 +43,10 @@ auto PathSpace::in(ConstructiblePath& constructedPath, GlobPathStringView const&
     return ret;
 }
 
-auto PathSpace::out(ConcretePathStringView const& path,
-                    InputMetadata const& inputMetadata,
-                    OutOptions const& options,
-                    Capabilities const& capabilities,
-                    void* obj) -> Expected<int> {
-    return this->root.out(path.begin(), path.end(), inputMetadata, obj, options, capabilities);
+auto PathSpace::out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, OutOptions const& options, void* obj)
+        -> Expected<int> {
+    log("PathSpace::out", "Function Called");
+    return this->root.out(path.begin(), path.end(), inputMetadata, obj, options);
 }
 
 } // namespace SP

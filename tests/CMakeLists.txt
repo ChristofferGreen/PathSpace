@@ -4,7 +4,6 @@ project(PathSpaceTests VERSION 1.0)
 
 
 add_executable(PathSpaceTests
-  unit/core/test_Capabilities.cpp
   unit/path/test_ConcretePath.cpp
   unit/path/test_ConcreteName.cpp
   unit/path/test_GlobPath.cpp
@@ -12,7 +11,6 @@ add_executable(PathSpaceTests
   unit/path/test_ConstructiblePath.cpp
   unit/type/test_InputMetadata.cpp
   unit/type/test_InputData.cpp
-  #unit/utils/test_ByteQueue.cpp
   unit/ext/test_alpaca.cpp
   unit/taskpool/test_TaskPool.cpp
   #unit/ext/test_glaze.cpp

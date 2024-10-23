@@ -1,6 +1,5 @@
 #include "ext/doctest.h"
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/core/Capabilities.hpp>
 
 // Standard library containers
 #include <array>
