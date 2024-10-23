@@ -1,0 +1,1 @@
+find ./src/pathspace \( -name "*.cpp" -o -name "*.c" -o -name "*.hpp" -o -name "*.h" \) -exec wc -l {} \; | awk '{total += $1} END {print total}'
