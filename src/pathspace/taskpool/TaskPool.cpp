@@ -1,4 +1,8 @@
 #include "TaskPool.hpp"
+#include "core/TaskRegistration.hpp"
+#include "core/TaskToken.hpp"
+#include "utils/TaggedLogger.hpp"
+
 #include <stdexcept>
 
 namespace SP {
@@ -33,14 +37,28 @@ auto TaskPool::addTask(Task&& task) -> void {
 void TaskPool::shutdown() {
     {
         std::unique_lock<std::mutex> lock(taskMutex);
+        if (stop)
+            return; // Prevent multiple shutdowns
         stop = true;
         taskCV.notify_all();
     }
+
+    // Clear remaining tasks
+    {
+        std::unique_lock<std::mutex> lock(taskMutex);
+        while (!tasks.empty())
+            tasks.pop();
+        while (!tasksMainThread.empty())
+            tasksMainThread.pop();
+    }
+
+    // Join threads
     for (std::thread& worker : workers) {
         if (worker.joinable()) {
             worker.join();
         }
     }
+    workers.clear();
 }
 
 size_t TaskPool::size() const {
@@ -72,7 +90,17 @@ void TaskPool::workerFunction() {
         }
 
         if (task.function) {
-            task.function(task, nullptr, false);
+            try {
+                if (!task.token || !task.token->isValid()) {
+                    continue;
+                }
+                TaskRegistration registration(task.token);
+                task.function(task, nullptr, false);
+            } catch (const std::exception& e) {
+                log("Task execution failed: " + std::string(e.what()), "ERROR");
+            } catch (...) {
+                log("Task execution failed with unknown error", "ERROR");
+            }
         }
 
         {

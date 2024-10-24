@@ -91,7 +91,7 @@ TEST_CASE("PathSpace Extract") {
                       .nbrTasksCreated
               == 1);
         CHECK(pspace.extractBlock<int>("/f").value() == 58);
-        CHECK(!pspace.extractBlock<int>("/f").has_value());
+        CHECK(!pspace.extract<int>("/f").has_value());
     }
 }
 

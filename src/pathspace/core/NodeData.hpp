@@ -5,6 +5,7 @@
 #include "ExecutionOptions.hpp"
 #include "InOptions.hpp"
 #include "InsertReturn.hpp"
+#include "core/TaskRegistration.hpp"
 #include "type/DataCategory.hpp"
 #include "type/InputData.hpp"
 #include "type/InputMetadata.hpp"
@@ -60,10 +61,22 @@ private:
         if (this->types.front().category == DataCategory::ExecutionFunctionPointer
             || this->types.front().category == DataCategory::ExecutionStdFunction) {
             assert(!this->tasks.empty());
-            if (inputMetadata.category == DataCategory::ExecutionStdFunction)
-                this->tasks.front().function(this->tasks.front(), obj, true);
-            else
-                this->tasks.front().function(this->tasks.front(), obj, false);
+
+            bool isOnReadOrExtract = this->tasks.front().executionOptions.category == ExecutionOptions::Category::OnReadOrExtract;
+            auto result = 0;
+            {
+                std::optional<TaskRegistration> registration;
+                if (isOnReadOrExtract && this->tasks.front().token) {
+                    registration.emplace(this->tasks.front().token);
+                }
+
+                if (inputMetadata.category == DataCategory::ExecutionStdFunction)
+                    this->tasks.front().function(this->tasks.front(), obj, true);
+                else
+                    this->tasks.front().function(this->tasks.front(), obj, false);
+                result = 1;
+            }
+
             if (shouldPop) {
                 this->tasks.pop_front();
                 popType();

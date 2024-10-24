@@ -1,10 +1,11 @@
 #pragma once
 #include "PathSpaceLeaf.hpp"
 #include "core/OutOptions.hpp"
+#include "core/TaskToken.hpp"
+#include "core/WaitMap.hpp"
 #include "path/GlobPath.hpp"
 #include "taskpool/TaskPool.hpp"
 #include "utils/TaggedLogger.hpp"
-#include "utils/WaitMap.hpp"
 
 namespace SP {
 class PathSpace {
@@ -90,19 +91,15 @@ public:
         auto const timeout = (options.block && options.block->timeout) ? std::chrono::system_clock::now() + *options.block->timeout
                                                                        : std::chrono::system_clock::time_point::max();
         auto guard = waitMap.wait(path);
-        while (!result.has_value() && !this->shuttingDown.load()) {
+        while (!result.has_value()) {
             if (guard.wait_until(timeout, [&]() {
                     result = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj);
-                    return (result.has_value() && result.value() > 0) || this->shuttingDown.load();
+                    return (result.has_value() && result.value() > 0);
                 })) {
                 break;
             }
             if (exitLoopAfterFirstRun)
                 break;
-        }
-
-        if (this->shuttingDown.load()) {
-            return std::unexpected(Error{Error::Code::Shutdown, "PathSpace is shutting down"});
         }
 
         if (result.has_value() && result.value() > 0) {
@@ -149,19 +146,15 @@ public:
         auto const timeout = (options.block && options.block->timeout) ? std::chrono::system_clock::now() + *options.block->timeout
                                                                        : std::chrono::system_clock::time_point::max();
         auto guard = waitMap.wait(path);
-        while (!result.has_value() && !this->shuttingDown.load()) {
+        while (!result.has_value()) {
             if (guard.wait_until(timeout, [&]() {
                     result = this->out(path, InputMetadataT<DataType>{}, options, &obj);
-                    return (result.has_value() && result.value() > 0) || this->shuttingDown.load();
+                    return (result.has_value() && result.value() > 0);
                 })) {
                 break;
             }
             if (exitLoopAfterFirstRun)
                 break;
-        }
-
-        if (this->shuttingDown.load()) {
-            return std::unexpected(Error{Error::Code::Shutdown, "PathSpace is shutting down"});
         }
 
         if (result.has_value() && result.value() > 0) {
@@ -177,20 +170,40 @@ protected:
     auto createTask(ConstructiblePath const& constructedPath, DataType const& data, InputData const& inputData, InOptions const& options)
             -> std::optional<Task> { // ToDo:: Add support for glob based executions
         log("PathSpace::createTask", "Function Called");
+        if (!this->taskToken.isValid()) {
+            return std::nullopt;
+        }
+        bool const shouldRegisterNow
+                = !options.execution.has_value()
+                  || (options.execution.has_value() && options.execution.value().category == ExecutionOptions::Category::Immediate);
+
+        if (shouldRegisterNow) {
+            this->taskToken.registerTask();
+        }
         if constexpr (ExecutionFunctionPointer<DataType> || ExecutionStdFunction<DataType>) {
             auto function = [userFunction = std::move(data)](Task const& task, void* obj, bool isOut) {
-                if (isOut) {
-                    *static_cast<std::function<std::invoke_result_t<DataType>()>*>(obj) = userFunction;
-                } else {
-                    if (obj == nullptr) {
-                        assert(task.space != nullptr);
-                        task.space->insert(task.pathToInsertReturnValueTo.getPath(), userFunction());
+                if (!task.token || !task.token->isValid()) {
+                    return;
+                }
+                try {
+                    if (isOut) {
+                        *static_cast<std::function<std::invoke_result_t<DataType>()>*>(obj) = userFunction;
                     } else {
-                        *static_cast<std::invoke_result_t<DataType>*>(obj) = userFunction();
+                        if (obj == nullptr) {
+                            assert(task.space != nullptr);
+                            task.space->insert(task.pathToInsertReturnValueTo.getPath(), userFunction());
+                        } else {
+                            *static_cast<std::invoke_result_t<DataType>*>(obj) = userFunction();
+                        }
                     }
+                } catch (...) {
+                    if (task.token)
+                        task.token->unregisterTask();
+                    throw;
                 }
             };
             return Task{.space = this,
+                        .token = &taskToken,
                         .pathToInsertReturnValueTo = constructedPath,
                         .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
                         .function = std::move(function)};
@@ -207,8 +220,8 @@ protected:
     auto shutdown() -> void;
 
     TaskPool* pool = nullptr;
+    TaskToken taskToken;
     PathSpaceLeaf root;
-    std::atomic<bool> shuttingDown{false};
     mutable WaitMap waitMap;
 };
 
