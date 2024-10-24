@@ -85,16 +85,16 @@ TEST_CASE("PathSpace Read") {
     SUBCASE("PathSpace Read Function Pointer Execution Blocking") {
         auto const f1 = [&pspace]() -> int {
             auto val = pspace.readBlock<int>("/f2").value();
-            log(std::format("f1 returning {} + 1 = {} from f2.", val, val + 1));
+            log(std::format("f1 returning {} + 1 = {} from f2.", val, val + 1), "INFO");
             return val + 1;
         };
         auto const f2 = [&pspace]() -> int {
             auto val = pspace.readBlock<int>("/f3").value();
-            log(std::format("f2 returning {} + 10 = {} from f3.", val, val + 10));
+            log(std::format("f2 returning {} + 10 = {} from f3.", val, val + 10), "INFO");
             return val + 10;
         };
         int (*f3)() = []() -> int {
-            log("f3 returning 100.");
+            log("f3 returning 100.", "INFO");
             return 100;
         };
 

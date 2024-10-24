@@ -1,5 +1,11 @@
 #include "TaggedLogger.hpp"
 
+#include <ranges>
+#include <sstream>
+#include <string_view>
+
+using namespace std::string_view_literals;
+
 namespace SP {
 
 std::mutex TaggedLogger::coutMutex;
@@ -49,6 +55,9 @@ auto TaggedLogger::processQueue() -> void {
 }
 
 auto TaggedLogger::writeToStderr(const LogMessage& msg) const -> void {
+    for (auto const& skipTag : this->skipTags)
+        if (msg.tags.contains(skipTag))
+            return;
     const auto now = msg.timestamp;
     const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
     const auto nowTimeT = std::chrono::system_clock::to_time_t(now);
@@ -57,13 +66,7 @@ auto TaggedLogger::writeToStderr(const LogMessage& msg) const -> void {
     std::ostringstream oss;
     oss << std::put_time(nowTm, "%Y-%m-%d %H:%M:%S") << '.' << std::setfill('0') << std::setw(3) << nowMs.count() << ' ';
 
-    oss << '[';
-    for (size_t i = 0; i < msg.tags.size(); ++i) {
-        if (i > 0)
-            oss << "][";
-        oss << msg.tags[i];
-    }
-    oss << "] ";
+    oss << '[' << (std::views::join_with(msg.tags, std::string("][")) | std::ranges::to<std::string>()) << ']' << ' ';
 
     oss << "[" << msg.threadName << "] ";
     oss << msg.message << '\n';

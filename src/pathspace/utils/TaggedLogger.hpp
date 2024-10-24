@@ -1,17 +1,14 @@
 #pragma once
-
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
-#include <iomanip>
 #include <iostream>
 #include <mutex>
 #include <queue>
-#include <sstream>
+#include <set>
 #include <string>
 #include <thread>
 #include <unordered_map>
-#include <vector>
 
 namespace SP {
 
@@ -19,7 +16,7 @@ class TaggedLogger {
 public:
     struct LogMessage {
         std::chrono::system_clock::time_point timestamp;
-        std::vector<std::string> tags;
+        std::set<std::string> tags;
         std::string message;
         std::string threadName;
     };
@@ -47,6 +44,7 @@ private:
     std::thread workerThread;
     std::atomic<bool> running;
     std::atomic<bool> loggingEnabled;
+    std::set<std::string> skipTags{"Function Called", "INFO"};
 
     std::unordered_map<std::thread::id, std::string> threadNames;
     mutable std::mutex threadNamesMutex;
@@ -83,7 +81,7 @@ auto TaggedLogger::log(const std::string& message, Tags&&... tags) -> void {
 
 template <typename... Args>
 inline void log(Args&&... args) {
-    // logger().log(std::forward<Args>(args)...);
+    logger().log(std::forward<Args>(args)...);
 }
 
 inline void set_thread_name(const std::string& name) {
