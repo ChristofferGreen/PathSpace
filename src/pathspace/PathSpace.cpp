@@ -5,27 +5,27 @@
 namespace SP {
 
 PathSpace::PathSpace(TaskPool* pool) {
-    log("PathSpace::PathSpace", "Function Called");
+    sp_log("PathSpace::PathSpace", "Function Called");
     if (this->pool == nullptr)
         this->pool = &TaskPool::Instance();
 };
 
 PathSpace::~PathSpace() {
-    log("PathSpace::~PathSpace", "Function Called");
+    sp_log("PathSpace::~PathSpace", "Function Called");
     this->shutdown();
 }
 
 auto PathSpace::clear() -> void {
-    log("PathSpace::clear", "Function Called");
+    sp_log("PathSpace::clear", "Function Called");
     this->root.clear();
     this->waitMap.clear();
 }
 
 auto PathSpace::shutdown() -> void {
-    log("PathSpace::shutdown", "Function Called");
+    sp_log("PathSpace::shutdown", "Function Called");
     size_t count = this->taskToken.getTaskCount();
     if (count > 0) {
-        log("PathSpace::shutdown Warning: Found " + std::to_string(count) + " uncleaned tasks at shutdown", "Warning");
+        sp_log("PathSpace::shutdown Warning: Found " + std::to_string(count) + " uncleaned tasks at shutdown", "Warning");
     }
     if (this->taskToken.wasEverUsed()) {
         this->taskToken.invalidate(); // Prevent new tasks
@@ -35,7 +35,7 @@ auto PathSpace::shutdown() -> void {
         // Double check after clear
         count = this->taskToken.getTaskCount();
         if (count > 0) {
-            log("PathSpace::shutdown Error: Still have " + std::to_string(count) + " tasks after clear", "Error");
+            sp_log("PathSpace::shutdown Error: Still have " + std::to_string(count) + " tasks after clear", "Error");
         }
 
         auto waitResult = std::async(std::launch::async, [this]() {
@@ -52,7 +52,7 @@ auto PathSpace::shutdown() -> void {
         });
 
         if (waitResult.wait_for(std::chrono::milliseconds(100)) == std::future_status::timeout) {
-            log("PathSpace::shutdown Warning: Shutdown timed out waiting for tasks", "Warning");
+            sp_log("PathSpace::shutdown Warning: Shutdown timed out waiting for tasks", "Warning");
             // Force cleanup
             while (this->taskToken.getTaskCount() > 0) {
                 this->taskToken.unregisterTask();
@@ -63,7 +63,7 @@ auto PathSpace::shutdown() -> void {
 
 auto PathSpace::in(ConstructiblePath& constructedPath, GlobPathStringView const& path, InputData const& data, InOptions const& options)
         -> InsertReturn {
-    log("PathSpace::in", "Function Called");
+    sp_log("PathSpace::in", "Function Called");
     InsertReturn ret;
     if (!path.isValid()) {
         ret.errors.emplace_back(Error::Code::InvalidPath, std::string("The path was not valid: ").append(path.getPath()));
@@ -80,7 +80,7 @@ auto PathSpace::in(ConstructiblePath& constructedPath, GlobPathStringView const&
 
 auto PathSpace::out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, OutOptions const& options, void* obj)
         -> Expected<int> {
-    log("PathSpace::out", "Function Called");
+    sp_log("PathSpace::out", "Function Called");
     return this->root.out(path.begin(), path.end(), inputMetadata, obj, options);
 }
 

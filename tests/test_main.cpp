@@ -22,16 +22,16 @@ int main(int argc, char** argv) {
 
     // Enable logging for normal test execution
     SP::set_logging_enabled(true);
-    SP::log("Starting test execution", "TEST", "INFO");
+    SP::sp_log("Starting test execution", "TEST", "INFO");
 
     // Run the tests
     int res = context.run();
 
     // Log the test results
     if (res == 0) {
-        SP::log("All tests passed successfully", "TEST", "SUCCESS");
+        SP::sp_log("All tests passed successfully", "TEST", "SUCCESS");
     } else {
-        SP::log("Some tests failed", "TEST", "FAILURE");
+        SP::sp_log("Some tests failed", "TEST", "FAILURE");
     }
 
     return res;

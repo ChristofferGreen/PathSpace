@@ -130,7 +130,7 @@ TEST_CASE("PathSpace Multithreading") {
                     }
                 }
             } catch (const std::exception& e) {
-                log(std::format("Writer {} error: {}", threadId, e.what()), "INFO");
+                sp_log(std::format("Writer {} error: {}", threadId, e.what()), "INFO");
                 state.stats.failedOps.fetch_add(1, std::memory_order_release);
             }
         };
@@ -176,7 +176,7 @@ TEST_CASE("PathSpace Multithreading") {
                     std::this_thread::sleep_for(std::chrono::microseconds(100));
                 }
             } catch (const std::exception& e) {
-                log(std::format("Reader {} error: {}", threadId, e.what()), "INFO");
+                sp_log(std::format("Reader {} error: {}", threadId, e.what()), "INFO");
                 state.stats.failedOps.fetch_add(1, std::memory_order_release);
             }
         };
@@ -698,7 +698,7 @@ TEST_CASE("PathSpace Multithreading") {
         std::vector<std::vector<TestData>> threadData(NUM_THREADS);
 
         // Phase 1: Insert data
-        log("Phase 1: Inserting data", "INFO");
+        sp_log("Phase 1: Inserting data", "INFO");
         {
             for (int t = 0; t < NUM_THREADS; ++t) {
                 threadData[t].reserve(ITEMS_PER_THREAD);
@@ -712,11 +712,11 @@ TEST_CASE("PathSpace Multithreading") {
                 }
             }
 
-            log(std::format("Inserted {} items", NUM_THREADS * ITEMS_PER_THREAD), "INFO");
+            sp_log(std::format("Inserted {} items", NUM_THREADS * ITEMS_PER_THREAD), "INFO");
         }
 
         // Phase 2: Extract data with multiple threads
-        log("Phase 2: Extracting data", "INFO");
+        sp_log("Phase 2: Extracting data", "INFO");
         {
             std::atomic<int> extractedCount = 0;
             std::atomic<bool> shouldStop = false;
@@ -753,19 +753,19 @@ TEST_CASE("PathSpace Multithreading") {
                 while (extractedCount < NUM_THREADS * ITEMS_PER_THREAD) {
                     if (std::chrono::steady_clock::now() - start > std::chrono::seconds(10)) {
                         shouldStop = true;
-                        log("Extraction timeout reached", "INFO");
+                        sp_log("Extraction timeout reached", "INFO");
                         break;
                     }
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                    log(std::format("Extracted: {}/{}", extractedCount.load(), NUM_THREADS * ITEMS_PER_THREAD), "INFO");
+                    sp_log(std::format("Extracted: {}/{}", extractedCount.load(), NUM_THREADS * ITEMS_PER_THREAD), "INFO");
                 }
             }
 
-            log(std::format("Extracted {} items", extractedCount.load()), "INFO");
+            sp_log(std::format("Extracted {} items", extractedCount.load()), "INFO");
         }
 
         // Phase 3: Verify and cleanup any remaining items
-        log("Phase 3: Verification and cleanup", "INFO");
+        sp_log("Phase 3: Verification and cleanup", "INFO");
         {
             int remainingItems = 0;
             std::vector<std::string> remainingPaths;
@@ -786,9 +786,9 @@ TEST_CASE("PathSpace Multithreading") {
             }
 
             if (!remainingPaths.empty()) {
-                log("Found remaining items:", "INFO");
+                sp_log("Found remaining items:", "INFO");
                 for (const auto& path : remainingPaths) {
-                    log(std::format("  {}", path), "INFO");
+                    sp_log(std::format("  {}", path), "INFO");
                 }
 
                 // Try one more time to extract these items
@@ -808,7 +808,7 @@ TEST_CASE("PathSpace Multithreading") {
                 for (const auto& item : thread) {
                     if (auto result = pspace.extract<int>(item.path); result.has_value()) {
                         anyRemaining = true;
-                        log(std::format("Item remains after clear: {}", item.path), "INFO");
+                        sp_log(std::format("Item remains after clear: {}", item.path), "INFO");
                     }
                 }
             }
@@ -816,7 +816,7 @@ TEST_CASE("PathSpace Multithreading") {
             CHECK_MESSAGE(!anyRemaining, "Items remain after final cleanup");
         }
 
-        log("Test completed", "INFO");
+        sp_log("Test completed", "INFO");
     }
 
     SUBCASE("Task Execution Order") {
@@ -941,9 +941,9 @@ TEST_CASE("PathSpace Multithreading") {
         auto endTime = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
-        log(std::string("Test completed in ") + std::to_string(duration.count()) + "ms", "INFO");
-        log(std::string("Total operations: ") + std::to_string(totalOperations.load()), "INFO");
-        log(std::string("Successful operations: ") + std::to_string(successfulOperations.load()), "INFO");
+        sp_log(std::string("Test completed in ") + std::to_string(duration.count()) + "ms", "INFO");
+        sp_log(std::string("Total operations: ") + std::to_string(totalOperations.load()), "INFO");
+        sp_log(std::string("Successful operations: ") + std::to_string(successfulOperations.load()), "INFO");
 
         CHECK(totalOperations > 0);
         CHECK(successfulOperations > 0);
@@ -1107,7 +1107,7 @@ TEST_CASE("PathSpace Multithreading") {
         auto workerFunction = [&](int threadId) {
             try {
                 // Log thread start
-                log("Thread " + std::to_string(threadId) + " starting", "INFO");
+                sp_log("Thread " + std::to_string(threadId) + " starting", "INFO");
 
                 for (int i = 0; i < OPERATIONS_PER_THREAD && !shouldStop.load(std::memory_order_acquire); ++i) {
                     std::string path = "/memory/" + std::to_string(threadId) + "/" + std::to_string(i);
@@ -1118,9 +1118,9 @@ TEST_CASE("PathSpace Multithreading") {
                     if (!insertResult.errors.empty()) {
                         failedInserts.fetch_add(1, std::memory_order_relaxed);
                         if (!operationLogged) {
-                            log("Thread " + std::to_string(threadId) + " insert failed at " + path
-                                        + " with error: " + insertResult.errors[0].message.value_or("Unknown error"),
-                                "INFO");
+                            sp_log("Thread " + std::to_string(threadId) + " insert failed at " + path
+                                           + " with error: " + insertResult.errors[0].message.value_or("Unknown error"),
+                                   "INFO");
                             operationLogged = true;
                         }
                         continue;
@@ -1131,7 +1131,7 @@ TEST_CASE("PathSpace Multithreading") {
                     if (!readResult.has_value()) {
                         failedReads.fetch_add(1, std::memory_order_relaxed);
                         if (!operationLogged) {
-                            log("Thread " + std::to_string(threadId) + " read failed at " + path, "INFO");
+                            sp_log("Thread " + std::to_string(threadId) + " read failed at " + path, "INFO");
                             operationLogged = true;
                         }
                         continue;
@@ -1140,9 +1140,9 @@ TEST_CASE("PathSpace Multithreading") {
                     if (readResult.value() != i) {
                         failedReads.fetch_add(1, std::memory_order_relaxed);
                         if (!operationLogged) {
-                            log("Thread " + std::to_string(threadId) + " read value mismatch at " + path + ": expected " + std::to_string(i)
-                                        + " got " + std::to_string(readResult.value()),
-                                "INFO");
+                            sp_log("Thread " + std::to_string(threadId) + " read value mismatch at " + path + ": expected "
+                                           + std::to_string(i) + " got " + std::to_string(readResult.value()),
+                                   "INFO");
                             operationLogged = true;
                         }
                         continue;
@@ -1153,7 +1153,7 @@ TEST_CASE("PathSpace Multithreading") {
                     if (!extractResult.has_value()) {
                         failedExtracts.fetch_add(1, std::memory_order_relaxed);
                         if (!operationLogged) {
-                            log("Thread " + std::to_string(threadId) + " extract failed at " + path, "INFO");
+                            sp_log("Thread " + std::to_string(threadId) + " extract failed at " + path, "INFO");
                             operationLogged = true;
                         }
                         continue;
@@ -1164,28 +1164,28 @@ TEST_CASE("PathSpace Multithreading") {
                     } else {
                         failedExtracts.fetch_add(1, std::memory_order_relaxed);
                         if (!operationLogged) {
-                            log("Thread " + std::to_string(threadId) + " extract value mismatch at " + path + ": expected "
-                                        + std::to_string(i) + " got " + std::to_string(extractResult.value()),
-                                "INFO");
+                            sp_log("Thread " + std::to_string(threadId) + " extract value mismatch at " + path + ": expected "
+                                           + std::to_string(i) + " got " + std::to_string(extractResult.value()),
+                                   "INFO");
                         }
                     }
 
                     // Log progress every 100 operations
                     if (i % 100 == 0) {
-                        log("Thread " + std::to_string(threadId) + " progress: " + std::to_string(i) + "/"
-                                    + std::to_string(OPERATIONS_PER_THREAD) + " (successful: " + std::to_string(successfulOperations.load())
-                                    + ")",
-                            "INFO");
+                        sp_log("Thread " + std::to_string(threadId) + " progress: " + std::to_string(i) + "/"
+                                       + std::to_string(OPERATIONS_PER_THREAD)
+                                       + " (successful: " + std::to_string(successfulOperations.load()) + ")",
+                               "INFO");
                     }
                 }
             } catch (const std::exception& e) {
-                log("Thread " + std::to_string(threadId) + " exception: " + e.what(), "INFO");
+                sp_log("Thread " + std::to_string(threadId) + " exception: " + e.what(), "INFO");
             } catch (...) {
-                log("Thread " + std::to_string(threadId) + " unknown exception", "INFO");
+                sp_log("Thread " + std::to_string(threadId) + " unknown exception", "INFO");
             }
 
             completedThreads.fetch_add(1, std::memory_order_release);
-            log("Thread " + std::to_string(threadId) + " completed", "INFO");
+            sp_log("Thread " + std::to_string(threadId) + " completed", "INFO");
         };
 
         // Monitor thread with more frequent updates
@@ -1201,19 +1201,19 @@ TEST_CASE("PathSpace Multithreading") {
                 int failed_r = failedReads.load(std::memory_order_relaxed);
                 int failed_e = failedExtracts.load(std::memory_order_relaxed);
 
-                log("Status at " + std::to_string(i) + "s:", "INFO");
-                log("- Completed threads: " + std::to_string(completed) + "/" + std::to_string(NUM_THREADS), "INFO");
-                log("- Successful ops: " + std::to_string(successful), "INFO");
-                log("- Failed inserts: " + std::to_string(failed_i), "INFO");
-                log("- Failed reads: " + std::to_string(failed_r), "INFO");
-                log("- Failed extracts: " + std::to_string(failed_e), "INFO");
+                sp_log("Status at " + std::to_string(i) + "s:", "INFO");
+                sp_log("- Completed threads: " + std::to_string(completed) + "/" + std::to_string(NUM_THREADS), "INFO");
+                sp_log("- Successful ops: " + std::to_string(successful), "INFO");
+                sp_log("- Failed inserts: " + std::to_string(failed_i), "INFO");
+                sp_log("- Failed reads: " + std::to_string(failed_r), "INFO");
+                sp_log("- Failed extracts: " + std::to_string(failed_e), "INFO");
 
                 if (completed == NUM_THREADS) {
-                    log("All threads completed successfully", "INFO");
+                    sp_log("All threads completed successfully", "INFO");
                     return;
                 }
             }
-            log("Test timed out", "INFO");
+            sp_log("Test timed out", "INFO");
             shouldStop.store(true, std::memory_order_release);
         });
 
@@ -1238,13 +1238,13 @@ TEST_CASE("PathSpace Multithreading") {
         double successRate = static_cast<double>(successfulOps) / totalOperations;
 
         // Log final statistics
-        log("Final Statistics:", "INFO");
-        log("Total operations attempted: " + std::to_string(totalOperations), "INFO");
-        log("Successful operations: " + std::to_string(successfulOps), "INFO");
-        log("Success rate: " + std::to_string(successRate), "INFO");
-        log("Failed inserts: " + std::to_string(failedInserts.load(std::memory_order_relaxed)), "INFO");
-        log("Failed reads: " + std::to_string(failedReads.load(std::memory_order_relaxed)), "INFO");
-        log("Failed extracts: " + std::to_string(failedExtracts.load(std::memory_order_relaxed)), "INFO");
+        sp_log("Final Statistics:", "INFO");
+        sp_log("Total operations attempted: " + std::to_string(totalOperations), "INFO");
+        sp_log("Successful operations: " + std::to_string(successfulOps), "INFO");
+        sp_log("Success rate: " + std::to_string(successRate), "INFO");
+        sp_log("Failed inserts: " + std::to_string(failedInserts.load(std::memory_order_relaxed)), "INFO");
+        sp_log("Failed reads: " + std::to_string(failedReads.load(std::memory_order_relaxed)), "INFO");
+        sp_log("Failed extracts: " + std::to_string(failedExtracts.load(std::memory_order_relaxed)), "INFO");
 
         // Cleanup
         pspace.clear();
@@ -1378,9 +1378,9 @@ TEST_CASE("PathSpace Multithreading") {
         double multiThreadedOps = multiThreadResult.ops / multiThreadResult.duration;
 
         // Log the results
-        log(std::format("Single-threaded performance: {:.2f} ops/sec\n", singleThreadedOps), "INFO");
-        log(std::format("Multi-threaded performance: {:.2f} ops/sec\n", multiThreadedOps), "INFO");
-        log(std::format("Performance improvement: {:.2f}x\n", multiThreadedOps / singleThreadedOps), "INFO");
+        sp_log(std::format("Single-threaded performance: {:.2f} ops/sec\n", singleThreadedOps), "INFO");
+        sp_log(std::format("Multi-threaded performance: {:.2f} ops/sec\n", multiThreadedOps), "INFO");
+        sp_log(std::format("Performance improvement: {:.2f}x\n", multiThreadedOps / singleThreadedOps), "INFO");
 
         // Check for performance improvement with a tolerance
         constexpr double IMPROVEMENT_THRESHOLD = 1.2; // Expect at least 20% improvement
@@ -1474,7 +1474,8 @@ TEST_CASE("PathSpace Multithreading") {
             total_meals += meals;
             total_starved += starved;
             total_forks_acquired += forks;
-            log(std::format("Philosopher {}: Meals eaten: {}, Times starved: {}, Forks acquired: {}\n", i, meals, starved, forks), "INFO");
+            sp_log(std::format("Philosopher {}: Meals eaten: {}, Times starved: {}, Forks acquired: {}\n", i, meals, starved, forks),
+                   "INFO");
 
             // Check that each philosopher ate at least once
             CHECK(meals > 0);
@@ -1482,10 +1483,10 @@ TEST_CASE("PathSpace Multithreading") {
             CHECK(starved > 0);
         }
 
-        log(std::format("Total meals eaten: {}\n", total_meals), "INFO");
-        log(std::format("Total times starved: {}\n", total_starved), "INFO");
-        log(std::format("Total forks acquired: {}\n", total_forks_acquired), "INFO");
-        log(std::format("Meals per philosopher: {:.2f}\n", static_cast<double>(total_meals) / NUM_PHILOSOPHERS), "INFO");
+        sp_log(std::format("Total meals eaten: {}\n", total_meals), "INFO");
+        sp_log(std::format("Total times starved: {}\n", total_starved), "INFO");
+        sp_log(std::format("Total forks acquired: {}\n", total_forks_acquired), "INFO");
+        sp_log(std::format("Meals per philosopher: {:.2f}\n", static_cast<double>(total_meals) / NUM_PHILOSOPHERS), "INFO");
 
         // Check overall statistics
         CHECK(total_meals > NUM_PHILOSOPHERS);          // Each philosopher should eat at least once

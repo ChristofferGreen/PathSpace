@@ -28,7 +28,7 @@ public:
      */
     template <typename DataType>
     auto insert(GlobPathStringView const& path, DataType&& data, InOptions const& options = {}) -> InsertReturn {
-        log("PathSpace::insert", "Function Called");
+        sp_log("PathSpace::insert", "Function Called");
         InputData inputData{std::forward<DataType>(data)};
         ConstructiblePath constructedPath = path.isConcrete() ? ConstructiblePath{path} : ConstructiblePath{};
 
@@ -62,7 +62,7 @@ public:
      */
     template <typename DataType>
     auto read(ConcretePathStringView const& path, OutOptions const& options = {.doPop = false}) const -> Expected<DataType> {
-        log("PathSpace::read", "Function Called");
+        sp_log("PathSpace::read", "Function Called");
         if (options.doPop)
             return std::unexpected(Error{Error::Code::PopInRead, std::string("read does not support doPop: ").append(path.getPath())});
         DataType obj;
@@ -75,7 +75,7 @@ public:
     auto readBlock(ConcretePathStringView const& path,
                    OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}, .doPop = false}) const
             -> Expected<DataType> {
-        log("PathSpace::readBlock", "Function Called");
+        sp_log("PathSpace::readBlock", "Function Called");
         DataType obj;
         auto result = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj);
 
@@ -117,7 +117,7 @@ public:
      */
     template <typename DataType>
     auto extract(ConcretePathStringView const& path, OutOptions const& options = {}) -> Expected<DataType> {
-        log("PathSpace::extract", "Function Called");
+        sp_log("PathSpace::extract", "Function Called");
         DataType obj;
         auto const ret = this->out(path, InputMetadataT<DataType>{}, options, &obj);
         if (!ret)
@@ -130,7 +130,7 @@ public:
     template <typename DataType>
     auto extractBlock(ConcretePathStringView const& path, OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}})
             -> Expected<DataType> {
-        log("PathSpace::extractBlock", "Function Called");
+        sp_log("PathSpace::extractBlock", "Function Called");
         DataType obj;
         auto result = this->out(path, InputMetadataT<DataType>{}, options, &obj);
 
@@ -169,7 +169,7 @@ protected:
     template <typename DataType>
     auto createTask(ConstructiblePath const& constructedPath, DataType const& data, InputData const& inputData, InOptions const& options)
             -> std::optional<Task> { // ToDo:: Add support for glob based executions
-        log("PathSpace::createTask", "Function Called");
+        sp_log("PathSpace::createTask", "Function Called");
         if (!this->taskToken.isValid()) {
             return std::nullopt;
         }

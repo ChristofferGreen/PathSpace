@@ -39,9 +39,9 @@ static auto serialize_alpaca(void const* objPtr, std::vector<uint8_t>& bytes) ->
         // Append the serialized data
         bytes.insert(bytes.end(), tempBytes.begin(), tempBytes.begin() + bytesWritten);
 
-        log("Object serialized successfully", "INFO");
+        sp_log("Object serialized successfully", "INFO");
     } catch (const std::exception& e) {
-        log("Serialization failed: " + std::string(e.what()), "ERROR");
+        sp_log("Serialization failed: " + std::string(e.what()), "ERROR");
         throw;
     }
 }
@@ -49,7 +49,7 @@ static auto serialize_alpaca(void const* objPtr, std::vector<uint8_t>& bytes) ->
 template <typename T>
 static auto deserialize_alpaca_pop(void* objPtr, std::vector<uint8_t>& bytes) -> void {
     if (bytes.size() < sizeof(uint32_t)) {
-        log("Not enough data to read size", "ERROR");
+        sp_log("Not enough data to read size", "ERROR");
         throw std::runtime_error("Not enough data to read size");
     }
 
@@ -57,7 +57,7 @@ static auto deserialize_alpaca_pop(void* objPtr, std::vector<uint8_t>& bytes) ->
     std::memcpy(&size, bytes.data(), sizeof(uint32_t));
 
     if (bytes.size() < sizeof(uint32_t) + size) {
-        log("Not enough data to deserialize object", "ERROR");
+        sp_log("Not enough data to deserialize object", "ERROR");
         throw std::runtime_error("Not enough data to deserialize object");
     }
 
@@ -70,7 +70,7 @@ static auto deserialize_alpaca_pop(void* objPtr, std::vector<uint8_t>& bytes) ->
     auto wrapper = alpaca::deserialize<Wrapper, 1>(deserializeBytes, ec);
 
     if (ec) {
-        log("Deserialization failed: " + ec.message(), "ERROR");
+        sp_log("Deserialization failed: " + ec.message(), "ERROR");
         throw std::runtime_error("Deserialization failed: " + ec.message());
     }
 
@@ -80,13 +80,13 @@ static auto deserialize_alpaca_pop(void* objPtr, std::vector<uint8_t>& bytes) ->
     // Remove the read data from the input vector
     bytes.erase(bytes.begin(), bytes.begin() + sizeof(uint32_t) + size);
 
-    log("Object deserialized successfully", "INFO");
+    sp_log("Object deserialized successfully", "INFO");
 }
 
 template <typename T>
 static auto deserialize_alpaca_const(void* objPtr, std::vector<uint8_t> const& bytes) -> void {
     if (bytes.size() < sizeof(uint32_t)) {
-        log("Not enough data to read size", "ERROR");
+        sp_log("Not enough data to read size", "ERROR");
         throw std::runtime_error("Not enough data to read size");
     }
 
@@ -94,7 +94,7 @@ static auto deserialize_alpaca_const(void* objPtr, std::vector<uint8_t> const& b
     std::memcpy(&size, bytes.data(), sizeof(uint32_t));
 
     if (bytes.size() < sizeof(uint32_t) + size) {
-        log("Not enough data to deserialize object", "ERROR");
+        sp_log("Not enough data to deserialize object", "ERROR");
         throw std::runtime_error("Not enough data to deserialize object");
     }
 
@@ -107,14 +107,14 @@ static auto deserialize_alpaca_const(void* objPtr, std::vector<uint8_t> const& b
     auto wrapper = alpaca::deserialize<Wrapper, 1>(deserializeBytes, ec);
 
     if (ec) {
-        log("Deserialization failed: " + ec.message(), "ERROR");
+        sp_log("Deserialization failed: " + ec.message(), "ERROR");
         throw std::runtime_error("Deserialization failed: " + ec.message());
     }
 
     // Copy the deserialized object to the output
     *static_cast<T*>(objPtr) = std::move(wrapper.wrappedObject);
 
-    log("Object deserialized successfully", "INFO");
+    sp_log("Object deserialized successfully", "INFO");
 }
 
 template <typename T>

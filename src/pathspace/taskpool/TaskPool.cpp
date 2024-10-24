@@ -97,9 +97,9 @@ void TaskPool::workerFunction() {
                 TaskRegistration registration(task.token);
                 task.function(task, nullptr, false);
             } catch (const std::exception& e) {
-                log("Task execution failed: " + std::string(e.what()), "ERROR");
+                sp_log("Task execution failed: " + std::string(e.what()), "ERROR");
             } catch (...) {
-                log("Task execution failed with unknown error", "ERROR");
+                sp_log("Task execution failed with unknown error", "ERROR");
             }
         }
 

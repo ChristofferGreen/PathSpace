@@ -2,10 +2,13 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <filesystem>
+#include <iomanip>
 #include <iostream>
 #include <mutex>
 #include <queue>
 #include <set>
+#include <source_location>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -19,6 +22,7 @@ public:
         std::set<std::string> tags;
         std::string message;
         std::string threadName;
+        std::source_location location;
     };
 
     TaggedLogger();
@@ -30,7 +34,7 @@ public:
     TaggedLogger& operator=(TaggedLogger&&) = delete;
 
     template <typename... Tags>
-    auto log(const std::string& message, Tags&&... tags) -> void;
+    auto log_impl(const std::string& message, const std::source_location& location, Tags&&... tags) -> void;
 
     auto setThreadName(const std::string& name) -> void;
     auto setLoggingEnabled(bool enabled) -> void;
@@ -53,9 +57,8 @@ private:
     auto processQueue() -> void;
     auto writeToStderr(const LogMessage& msg) const -> void;
     auto getThreadName(const std::thread::id& id) -> std::string;
+    static auto getShortPath(const char* filepath) -> std::string;
 };
-
-// Inline function definitions
 
 inline TaggedLogger& logger() {
     static TaggedLogger instance;
@@ -63,14 +66,15 @@ inline TaggedLogger& logger() {
 }
 
 template <typename... Tags>
-auto TaggedLogger::log(const std::string& message, Tags&&... tags) -> void {
+auto TaggedLogger::log_impl(const std::string& message, const std::source_location& location, Tags&&... tags) -> void {
     if (!loggingEnabled)
         return;
 
     const auto logMessage = LogMessage{.timestamp = std::chrono::system_clock::now(),
                                        .tags = {std::forward<Tags>(tags)...},
                                        .message = message,
-                                       .threadName = getThreadName(std::this_thread::get_id())};
+                                       .threadName = getThreadName(std::this_thread::get_id()),
+                                       .location = location};
 
     {
         std::unique_lock<std::mutex> lock(this->queueMutex);
@@ -79,10 +83,7 @@ auto TaggedLogger::log(const std::string& message, Tags&&... tags) -> void {
     }
 }
 
-template <typename... Args>
-inline void log(Args&&... args) {
-    logger().log(std::forward<Args>(args)...);
-}
+#define sp_log(message, ...) logger().log_impl(message, std::source_location::current(), ##__VA_ARGS__)
 
 inline void set_thread_name(const std::string& name) {
     logger().setThreadName(name);

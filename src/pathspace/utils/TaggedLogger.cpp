@@ -54,7 +54,17 @@ auto TaggedLogger::processQueue() -> void {
     }
 }
 
-auto TaggedLogger::writeToStderr(const LogMessage& msg) const -> void {
+inline auto SP::TaggedLogger::getShortPath(const char* filepath) -> std::string {
+    namespace fs = std::filesystem;
+    fs::path p{filepath};
+    if (p.has_parent_path()) {
+        auto parent = p.parent_path().filename();
+        return (parent / p.filename()).string();
+    }
+    return p.filename().string();
+}
+
+inline auto SP::TaggedLogger::writeToStderr(const LogMessage& msg) const -> void {
     for (auto const& skipTag : this->skipTags)
         if (msg.tags.contains(skipTag))
             return;
@@ -69,6 +79,7 @@ auto TaggedLogger::writeToStderr(const LogMessage& msg) const -> void {
     oss << '[' << (std::views::join_with(msg.tags, std::string("][")) | std::ranges::to<std::string>()) << ']' << ' ';
 
     oss << "[" << msg.threadName << "] ";
+    oss << "[" << getShortPath(msg.location.file_name()) << ":" << msg.location.line() << "] ";
     oss << msg.message << '\n';
 
     std::lock_guard<std::mutex> lock(coutMutex);
