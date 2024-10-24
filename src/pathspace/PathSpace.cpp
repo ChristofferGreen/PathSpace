@@ -23,39 +23,39 @@ auto PathSpace::clear() -> void {
 
 auto PathSpace::shutdown() -> void {
     sp_log("PathSpace::shutdown", "Function Called");
-    size_t count = this->taskToken.getTaskCount();
-    if (count > 0) {
-        sp_log("PathSpace::shutdown Warning: Found " + std::to_string(count) + " uncleaned tasks at shutdown", "Warning");
-    }
     if (this->taskToken.wasEverUsed()) {
         this->taskToken.invalidate(); // Prevent new tasks
         this->waitMap.notifyAll();
-        this->root.clear();
 
-        // Double check after clear
-        count = this->taskToken.getTaskCount();
-        if (count > 0) {
-            sp_log("PathSpace::shutdown Error: Still have " + std::to_string(count) + " tasks after clear", "Error");
-        }
+        // Wait for tasks with exponential backoff
+        auto waitForTasks = [this](std::chrono::milliseconds maxWait) -> bool {
+            auto start = std::chrono::steady_clock::now();
+            std::chrono::microseconds wait{100};
 
-        auto waitResult = std::async(std::launch::async, [this]() {
-            auto start = std::chrono::system_clock::now();
             while (true) {
                 if (this->taskToken.getTaskCount() == 0) {
                     return true;
                 }
-                if (std::chrono::system_clock::now() - start > std::chrono::milliseconds(100)) {
+                if (std::chrono::steady_clock::now() - start > maxWait) {
                     return false;
                 }
-                std::this_thread::sleep_for(std::chrono::microseconds(100));
+                std::this_thread::sleep_for(wait);
+                wait *= 2; // Exponential backoff
             }
-        });
+        };
 
-        if (waitResult.wait_for(std::chrono::milliseconds(100)) == std::future_status::timeout) {
-            sp_log("PathSpace::shutdown Warning: Shutdown timed out waiting for tasks", "Warning");
-            // Force cleanup
-            while (this->taskToken.getTaskCount() > 0) {
-                this->taskToken.unregisterTask();
+        // Try graceful shutdown
+        if (!waitForTasks(std::chrono::milliseconds(500))) {
+            sp_log("PathSpace::shutdown", "Warning: Extended wait for task completion");
+            this->root.clear(); // Force cleanup data structures
+
+            // Final wait with logging
+            if (!waitForTasks(std::chrono::milliseconds(100))) {
+                sp_log("PathSpace::shutdown", "Error: Failed to clean up all tasks");
+                // Force cleanup remaining tasks
+                while (this->taskToken.getTaskCount() > 0) {
+                    this->taskToken.unregisterTask();
+                }
             }
         }
     }

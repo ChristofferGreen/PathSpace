@@ -5,39 +5,48 @@ namespace SP {
 
 class PathSpace;
 
+// In TaskRegistration.hpp
 class TaskRegistration {
 public:
     explicit TaskRegistration(TaskToken* t) : token(t) {
-        if (token)
+        if (token) {
             token->registerTask();
+            registered = true;
+        }
     }
 
-    // Non-copyable
-    TaskRegistration(const TaskRegistration&) = delete;
-    TaskRegistration& operator=(const TaskRegistration&) = delete;
+    ~TaskRegistration() {
+        if (token && registered) {
+            token->unregisterTask();
+        }
+    }
 
-    // Moveable
-    TaskRegistration(TaskRegistration&& other) noexcept : token(other.token) {
+    // Add move operations
+    TaskRegistration(TaskRegistration&& other) noexcept : token(other.token), registered(other.registered) {
         other.token = nullptr;
+        other.registered = false;
     }
 
     TaskRegistration& operator=(TaskRegistration&& other) noexcept {
         if (this != &other) {
-            if (token)
+            if (token && registered) {
                 token->unregisterTask();
+            }
             token = other.token;
+            registered = other.registered;
             other.token = nullptr;
+            other.registered = false;
         }
         return *this;
     }
 
-    ~TaskRegistration() {
-        if (token)
-            token->unregisterTask();
-    }
+    // Prevent copies
+    TaskRegistration(const TaskRegistration&) = delete;
+    TaskRegistration& operator=(const TaskRegistration&) = delete;
 
 private:
     TaskToken* token;
+    bool registered = false;
 };
 
 } // namespace SP

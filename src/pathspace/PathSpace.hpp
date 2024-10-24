@@ -197,8 +197,6 @@ protected:
                         }
                     }
                 } catch (...) {
-                    if (task.token)
-                        task.token->unregisterTask();
                     throw;
                 }
             };
