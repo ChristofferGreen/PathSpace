@@ -6,6 +6,7 @@
 #include "path/GlobPath.hpp"
 #include "taskpool/TaskPool.hpp"
 #include "utils/TaggedLogger.hpp"
+#include <memory>
 
 namespace SP {
 class PathSpace {
@@ -202,6 +203,32 @@ protected:
             };
             return Task{.space = this,
                         .token = &taskToken,
+                        .pathToInsertReturnValueTo = constructedPath,
+                        .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
+                        .function = std::move(function)};
+        }
+        return std::nullopt;
+    }
+    template <typename DataType>
+    auto createTask2(ConstructiblePath const& constructedPath, DataType const& data, InputData const& inputData, InOptions const& options)
+            -> std::optional<Task> { // ToDo:: Add support for glob based executions
+        sp_log("PathSpace::createTask", "Function Called");
+        if constexpr (ExecutionFunctionPointer<DataType> || ExecutionStdFunction<DataType>) {
+            auto function = [userFunction = std::move(data)](std::weak_ptr<Task> const& taskWeakPtr, void* obj, bool isOut) {
+                if (auto task = taskWeakPtr.lock()) {
+                    if (isOut) {
+                        *static_cast<std::function<std::invoke_result_t<DataType>()>*>(obj) = userFunction;
+                    } else {
+                        if (obj == nullptr) {
+                            assert(task->space != nullptr);
+                            task->space->insert(task->pathToInsertReturnValueTo.getPath(), userFunction());
+                        } else {
+                            *static_cast<std::invoke_result_t<DataType>*>(obj) = userFunction();
+                        }
+                    }
+                }
+            };
+            return Task{.space = this,
                         .pathToInsertReturnValueTo = constructedPath,
                         .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
                         .function = std::move(function)};
