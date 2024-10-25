@@ -1,7 +1,6 @@
 #pragma once
 #include "PathSpaceLeaf.hpp"
 #include "core/OutOptions.hpp"
-#include "core/TaskToken.hpp"
 #include "core/WaitMap.hpp"
 #include "path/GlobPath.hpp"
 #include "taskpool/TaskPool.hpp"
@@ -204,9 +203,7 @@ protected:
     auto shutdown() -> void;
 
     TaskStorage storage;
-
     TaskPool* pool = nullptr;
-    TaskToken taskToken;
     PathSpaceLeaf root;
     mutable WaitMap waitMap;
 };

@@ -9,7 +9,6 @@
 
 namespace SP {
 struct PathSpace;
-struct TaskToken;
 
 struct Task {
     PathSpace* space = nullptr;                  // Returned values from the execution will be inserted here
