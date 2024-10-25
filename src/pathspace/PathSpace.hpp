@@ -5,6 +5,7 @@
 #include "core/WaitMap.hpp"
 #include "path/GlobPath.hpp"
 #include "taskpool/TaskPool.hpp"
+#include "taskpool/TaskStorage.hpp"
 #include "utils/TaggedLogger.hpp"
 #include <memory>
 
@@ -40,12 +41,13 @@ public:
                       || (options.execution.has_value() && options.execution.value().category == ExecutionOptions::Category::Immediate);
             bool const isOnReadOrExtract
                     = options.execution.has_value() && options.execution.value().category == ExecutionOptions::Category::OnReadOrExtract;
-            if (std::optional<Task> task = this->createTask(constructedPath, std::forward<DataType>(data), inputData, options)) {
+            if (std::shared_ptr<Task> Task = this->createTask(constructedPath, std::forward<DataType>(data), inputData, options)) {
                 if (isImmidiate) {
-                    this->pool->addTask(std::move(task.value()));
+                    this->pool->addTask(Task);
+                    this->storage.store(std::move(Task));
                     return {.nbrTasksCreated = 1};
                 } else if (isOnReadOrExtract) {
-                    inputData.task = std::move(task);
+                    inputData.task = Task;
                 }
             }
         }
@@ -169,71 +171,28 @@ public:
 protected:
     template <typename DataType>
     auto createTask(ConstructiblePath const& constructedPath, DataType const& data, InputData const& inputData, InOptions const& options)
-            -> std::optional<Task> { // ToDo:: Add support for glob based executions
+            -> std::shared_ptr<Task> { // ToDo:: Add support for glob based executions
         sp_log("PathSpace::createTask", "Function Called");
-        if (!this->taskToken.isValid()) {
-            return std::nullopt;
-        }
-        bool const shouldRegisterNow
-                = !options.execution.has_value()
-                  || (options.execution.has_value() && options.execution.value().category == ExecutionOptions::Category::Immediate);
-
-        if (shouldRegisterNow) {
-            this->taskToken.registerTask();
-        }
         if constexpr (ExecutionFunctionPointer<DataType> || ExecutionStdFunction<DataType>) {
             auto function = [userFunction = std::move(data)](Task const& task, void* obj, bool isOut) {
-                if (!task.token || !task.token->isValid()) {
-                    return;
-                }
-                try {
-                    if (isOut) {
-                        *static_cast<std::function<std::invoke_result_t<DataType>()>*>(obj) = userFunction;
+                if (isOut) {
+                    *static_cast<std::function<std::invoke_result_t<DataType>()>*>(obj) = userFunction;
+                } else {
+                    if (obj == nullptr) {
+                        assert(task.space != nullptr);
+                        task.space->insert(task.pathToInsertReturnValueTo.getPath(), userFunction());
                     } else {
-                        if (obj == nullptr) {
-                            assert(task.space != nullptr);
-                            task.space->insert(task.pathToInsertReturnValueTo.getPath(), userFunction());
-                        } else {
-                            *static_cast<std::invoke_result_t<DataType>*>(obj) = userFunction();
-                        }
-                    }
-                } catch (...) {
-                    throw;
-                }
-            };
-            return Task{.space = this,
-                        .token = &taskToken,
-                        .pathToInsertReturnValueTo = constructedPath,
-                        .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
-                        .function = std::move(function)};
-        }
-        return std::nullopt;
-    }
-    template <typename DataType>
-    auto createTask2(ConstructiblePath const& constructedPath, DataType const& data, InputData const& inputData, InOptions const& options)
-            -> std::optional<Task> { // ToDo:: Add support for glob based executions
-        sp_log("PathSpace::createTask", "Function Called");
-        if constexpr (ExecutionFunctionPointer<DataType> || ExecutionStdFunction<DataType>) {
-            auto function = [userFunction = std::move(data)](std::weak_ptr<Task> const& taskWeakPtr, void* obj, bool isOut) {
-                if (auto task = taskWeakPtr.lock()) {
-                    if (isOut) {
-                        *static_cast<std::function<std::invoke_result_t<DataType>()>*>(obj) = userFunction;
-                    } else {
-                        if (obj == nullptr) {
-                            assert(task->space != nullptr);
-                            task->space->insert(task->pathToInsertReturnValueTo.getPath(), userFunction());
-                        } else {
-                            *static_cast<std::invoke_result_t<DataType>*>(obj) = userFunction();
-                        }
+                        *static_cast<std::invoke_result_t<DataType>*>(obj) = userFunction();
                     }
                 }
             };
-            return Task{.space = this,
-                        .pathToInsertReturnValueTo = constructedPath,
-                        .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
-                        .function = std::move(function)};
+            return std::make_shared<Task>(
+                    Task{.space = this,
+                         .pathToInsertReturnValueTo = constructedPath,
+                         .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
+                         .function = std::move(function)});
         }
-        return std::nullopt;
+        return {};
     }
 
     virtual auto in(ConstructiblePath& constructedPath, GlobPathStringView const& path, InputData const& data, InOptions const& options)
@@ -243,6 +202,8 @@ protected:
             -> Expected<int>;
 
     auto shutdown() -> void;
+
+    TaskStorage storage;
 
     TaskPool* pool = nullptr;
     TaskToken taskToken;

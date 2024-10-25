@@ -1,7 +1,7 @@
 #pragma once
-#include "pathspace/type/InputMetadata.hpp"
+#include "type/InputMetadata.hpp"
 
-#include <functional>
+#include <memory>
 
 namespace SP {
 struct Task;
@@ -17,7 +17,7 @@ struct InputData {
     }
 
     void* obj = nullptr;
-    std::optional<Task> task;
+    std::shared_ptr<Task> task;
     InputMetadata metadata;
 };
 

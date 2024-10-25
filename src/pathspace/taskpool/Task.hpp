@@ -13,7 +13,6 @@ struct TaskToken;
 
 struct Task {
     PathSpace* space = nullptr;                  // Returned values from the execution will be inserted here
-    TaskToken* token = nullptr;                  // Token for validation
     ConstructiblePath pathToInsertReturnValueTo; // On this path, the return value will be inserted.
     ExecutionOptions executionOptions;
 

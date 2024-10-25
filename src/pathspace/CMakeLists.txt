@@ -50,9 +50,7 @@ add_library(PathSpace
     path/GlobName.cpp
     path/Path.cpp
     taskpool/Task.cpp
-    taskpool/Task2.cpp
     taskpool/TaskPool.cpp
-    taskpool/TaskPool2.cpp
     utils/TaggedLogger.cpp
     PathSpace.cpp
     PathSpaceLeaf.cpp

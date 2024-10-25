@@ -4,7 +4,6 @@
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
-#include <optional>
 #include <queue>
 #include <thread>
 #include <vector>
@@ -15,7 +14,7 @@ struct PathSpace;
 
 class TaskPool {
 public:
-    TaskPool(size_t threadCount = 0);
+    TaskPool(size_t threadCount = std::thread::hardware_concurrency());
     ~TaskPool();
 
     static TaskPool& Instance();
@@ -23,7 +22,7 @@ public:
     TaskPool(TaskPool const&) = delete;
     auto operator=(TaskPool const&) -> TaskPool& = delete;
 
-    auto addTask(Task&& task) -> void;
+    auto addTask(std::weak_ptr<Task>&& task) -> void;
 
     auto shutdown() -> void;
     auto size() const -> size_t;
@@ -31,13 +30,11 @@ public:
 private:
     auto workerFunction() -> void;
 
-    std::vector<std::thread> workers;
-    std::queue<Task> tasks;
-    std::queue<Task> tasksMainThread;
-    std::mutex taskMutex, availableThreadsMutex;
+    std::vector<std::jthread> workers;
+    std::queue<std::weak_ptr<Task>> tasks;
+    mutable std::mutex mutex;
     std::condition_variable taskCV;
     std::atomic<bool> stop;
-    std::atomic<size_t> availableThreads;
 };
 
 } // namespace SP

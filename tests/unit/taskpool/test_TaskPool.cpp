@@ -2,7 +2,6 @@
 #include "path/ConcretePath.hpp"
 #include "pathspace/PathSpace.hpp"
 #include "pathspace/taskpool/TaskPool.hpp"
-#include "pathspace/taskpool/TaskPool2.hpp"
 
 using namespace SP;
 
@@ -48,8 +47,8 @@ private:
 class TaskGenerator {
 public:
     static auto createVariableDurationTask(TestSync& sync, std::atomic<int>& counter) {
-        auto task = std::make_shared<Task2>();
-        task->function = [&sync, &counter](Task2 const&, void*, bool) {
+        auto task = std::make_shared<Task>();
+        task->function = [&sync, &counter](Task const&, void*, bool) {
             // Create local random number generator
             thread_local std::random_device rd;
             thread_local std::mt19937 gen(rd());
@@ -65,12 +64,12 @@ public:
 
 TEST_CASE("Task TaskPool Suite") {
     SUBCASE("Basic task execution") {
-        TaskPool2 pool(2);
+        TaskPool pool(2);
         std::atomic<int> counter{0};
         TestSync sync;
 
-        auto task = std::make_shared<Task2>();
-        task->function = [&counter, &sync](Task2 const&, void*, bool) {
+        auto task = std::make_shared<Task>();
+        task->function = [&counter, &sync](Task const&, void*, bool) {
             counter++;
             sync.notify();
         };
@@ -81,14 +80,14 @@ TEST_CASE("Task TaskPool Suite") {
     }
 
     SUBCASE("Multiple tasks execution") {
-        TaskPool2 pool(4);
+        TaskPool pool(4);
         std::atomic<int> counter{0};
         TestSync sync;
 
         const int NUM_TASKS = 100;
         for (int i = 0; i < NUM_TASKS; ++i) {
-            auto task = std::make_shared<Task2>();
-            task->function = [&counter, &sync](Task2 const&, void*, bool) {
+            auto task = std::make_shared<Task>();
+            task->function = [&counter, &sync](Task const&, void*, bool) {
                 counter++;
                 sync.notify();
             };
@@ -102,19 +101,19 @@ TEST_CASE("Task TaskPool Suite") {
 
     SUBCASE("Shutdown behavior") {
         SUBCASE("Clean shutdown with no tasks") {
-            TaskPool2 pool(2);
+            TaskPool pool(2);
             pool.shutdown();
             CHECK(pool.size() == 0);
         }
 
         SUBCASE("Shutdown with pending tasks") {
-            TaskPool2 pool(2);
+            TaskPool pool(2);
             std::atomic<int> counter{0};
 
             // Add some long-running tasks
             for (int i = 0; i < 10; ++i) {
-                auto task = std::make_shared<Task2>();
-                task->function = [&counter](Task2 const&, void*, bool) {
+                auto task = std::make_shared<Task>();
+                task->function = [&counter](Task const&, void*, bool) {
                     std::this_thread::sleep_for(100ms);
                     counter++;
                 };
@@ -130,7 +129,7 @@ TEST_CASE("Task TaskPool Suite") {
         }
 
         SUBCASE("Double shutdown safety") {
-            TaskPool2 pool(2);
+            TaskPool pool(2);
             pool.shutdown();
             // Should not crash or throw
             pool.shutdown();
@@ -139,16 +138,16 @@ TEST_CASE("Task TaskPool Suite") {
     }
 
     SUBCASE("Task lifetime and weak_ptr behavior") {
-        TaskPool2 pool(2);
+        TaskPool pool(2);
         std::atomic<bool> taskExecuted{false};
-        std::weak_ptr<Task2> weakTask;
+        std::weak_ptr<Task> weakTask;
         TestSync sync;
 
         // Create and queue the task while ensuring it lives long enough to be queued
         {
-            auto task = std::make_shared<Task2>();
+            auto task = std::make_shared<Task>();
             weakTask = task;
-            task->function = [&taskExecuted, &sync](Task2 const&, void*, bool) {
+            task->function = [&taskExecuted, &sync](Task const&, void*, bool) {
                 taskExecuted = true;
                 sync.notify();
             };
@@ -171,11 +170,11 @@ TEST_CASE("Task TaskPool Suite") {
     }
 
     SUBCASE("Task cancellation through task destruction") {
-        TaskPool2 pool(2);
+        TaskPool pool(2);
         std::atomic<bool> taskExecuted{false};
 
-        auto task = std::make_shared<Task2>();
-        task->function = [&taskExecuted](Task2 const&, void*, bool) {
+        auto task = std::make_shared<Task>();
+        task->function = [&taskExecuted](Task const&, void*, bool) {
             std::this_thread::sleep_for(500ms);
             taskExecuted = true;
         };
@@ -190,14 +189,14 @@ TEST_CASE("Task TaskPool Suite") {
     SUBCASE("Stress test with rapid task addition and shutdown") {
         const int NUM_ITERATIONS = 10;
         for (int i = 0; i < NUM_ITERATIONS; ++i) {
-            TaskPool2 pool(4);
+            TaskPool pool(4);
             std::atomic<int> counter{0};
 
             // Rapidly add tasks while shutting down
             std::thread task_adder([&]() {
                 for (int j = 0; j < 1000; ++j) {
-                    auto task = std::make_shared<Task2>();
-                    task->function = [&counter](Task2 const&, void*, bool) { counter++; };
+                    auto task = std::make_shared<Task>();
+                    task->function = [&counter](Task const&, void*, bool) { counter++; };
                     pool.addTask(task);
                 }
             });
@@ -214,12 +213,12 @@ TEST_CASE("Task TaskPool Suite") {
     }
 
     SUBCASE("Task exception handling") {
-        TaskPool2 pool(2);
+        TaskPool pool(2);
         std::atomic<bool> exceptionCaught{false};
         TestSync sync;
 
-        auto task = std::make_shared<Task2>();
-        task->function = [&exceptionCaught, &sync](Task2 const&, void*, bool) {
+        auto task = std::make_shared<Task>();
+        task->function = [&exceptionCaught, &sync](Task const&, void*, bool) {
             try {
                 throw std::runtime_error("Test exception");
             } catch (...) {
@@ -236,23 +235,23 @@ TEST_CASE("Task TaskPool Suite") {
 
     SUBCASE("Complex task interactions") {
         SUBCASE("Task chain execution") {
-            TaskPool2 pool(2);
+            TaskPool pool(2);
             std::atomic<int> counter{0};
             TestSync sync;
             const int CHAIN_LENGTH = 5;
 
             // Create all tasks first
-            std::vector<std::shared_ptr<Task2>> tasks;
+            std::vector<std::shared_ptr<Task>> tasks;
             tasks.reserve(CHAIN_LENGTH);
 
             // First create all the task objects
             for (int i = 0; i < CHAIN_LENGTH; ++i) {
-                tasks.push_back(std::make_shared<Task2>());
+                tasks.push_back(std::make_shared<Task>());
             }
 
             // Then set up their functions with proper dependencies
             for (int i = 0; i < CHAIN_LENGTH; ++i) {
-                tasks[i]->function = [&counter, &sync, i, last = (i == CHAIN_LENGTH - 1)](Task2 const&, void*, bool) {
+                tasks[i]->function = [&counter, &sync, i, last = (i == CHAIN_LENGTH - 1)](Task const&, void*, bool) {
                     counter++;
                     if (last) {
                         sync.notify();
@@ -271,7 +270,7 @@ TEST_CASE("Task TaskPool Suite") {
         }
 
         SUBCASE("Parallel task groups") {
-            TaskPool2 pool(4);
+            TaskPool pool(4);
             std::atomic<int> counter{0};
             TestSync sync;
             const int GROUPS = 3;
@@ -280,13 +279,13 @@ TEST_CASE("Task TaskPool Suite") {
             std::atomic<int> completions{0};
 
             // Create all tasks first
-            std::vector<std::shared_ptr<Task2>> tasks;
+            std::vector<std::shared_ptr<Task>> tasks;
             tasks.reserve(TOTAL_TASKS);
 
             for (int g = 0; g < GROUPS; ++g) {
                 for (int t = 0; t < TASKS_PER_GROUP; ++t) {
-                    auto task = std::make_shared<Task2>();
-                    task->function = [&counter, &completions, &sync, TOTAL_TASKS](Task2 const&, void*, bool) {
+                    auto task = std::make_shared<Task>();
+                    task->function = [&counter, &completions, &sync, TOTAL_TASKS](Task const&, void*, bool) {
                         // Simulate variable work
                         thread_local std::random_device rd;
                         thread_local std::mt19937 gen(rd());
@@ -323,7 +322,7 @@ TEST_CASE("Task TaskPool Suite") {
         const int NUM_BATCHES = 50;
         const int TOTAL_TASKS = TASKS_PER_BATCH * NUM_BATCHES;
 
-        TaskPool2 pool(THREAD_COUNT);
+        TaskPool pool(THREAD_COUNT);
         std::atomic<int> queued{0};
         std::atomic<int> started{0};
         std::atomic<int> completed{0};
@@ -332,14 +331,14 @@ TEST_CASE("Task TaskPool Suite") {
         sp_log("Starting memory usage test", "TEST", "SETUP");
 
         // Store task objects to keep them alive
-        std::vector<std::shared_ptr<Task2>> tasks;
+        std::vector<std::shared_ptr<Task>> tasks;
         tasks.reserve(TOTAL_TASKS);
 
         // Create and queue tasks
         for (int batch = 0; batch < NUM_BATCHES; ++batch) {
             for (int i = 0; i < TASKS_PER_BATCH; ++i) {
-                auto task = std::make_shared<Task2>();
-                task->function = [&started, &completed, &completion_sync, TOTAL_TASKS](Task2 const&, void*, bool) {
+                auto task = std::make_shared<Task>();
+                task->function = [&started, &completed, &completion_sync, TOTAL_TASKS](Task const&, void*, bool) {
                     started++;
                     if (completed.fetch_add(1) + 1 == TOTAL_TASKS) {
                         sp_log("All tasks completed, notifying", "TEST", "COMPLETION");
@@ -384,7 +383,7 @@ TEST_CASE("Task TaskPool Suite") {
     }
 
     SUBCASE("Mixed task durations") {
-        TaskPool2 pool(4);
+        TaskPool pool(4);
         std::atomic<int> counter{0};
         TestSync sync;
         const int TOTAL_TASKS = 100;
@@ -394,8 +393,8 @@ TEST_CASE("Task TaskPool Suite") {
         std::uniform_int_distribution<> durationDist(1, 100);
 
         for (int i = 0; i < TOTAL_TASKS; ++i) {
-            auto task = std::make_shared<Task2>();
-            task->function = [&counter, &sync, duration = durationDist(gen)](Task2 const&, void*, bool) {
+            auto task = std::make_shared<Task>();
+            task->function = [&counter, &sync, duration = durationDist(gen)](Task const&, void*, bool) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(duration));
                 counter++;
                 sync.notify();

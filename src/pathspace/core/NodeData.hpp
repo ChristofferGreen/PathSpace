@@ -5,7 +5,7 @@
 #include "ExecutionOptions.hpp"
 #include "InOptions.hpp"
 #include "InsertReturn.hpp"
-#include "core/TaskRegistration.hpp"
+#include "taskpool/Task.hpp"
 #include "type/DataCategory.hpp"
 #include "type/InputData.hpp"
 #include "type/InputMetadata.hpp"
@@ -24,8 +24,8 @@ struct NodeData {
     }
 
     auto serialize(const InputData& inputData, const InOptions& options, InsertReturn& ret) -> std::optional<Error> {
-        if (inputData.task.has_value()) {
-            this->tasks.push_back(std::move(inputData.task.value()));
+        if (inputData.task) {
+            this->tasks2.push_back(std::move(inputData.task));
             ret.nbrTasksCreated++;
         } else {
             if (!inputData.metadata.serialize)
@@ -47,12 +47,12 @@ struct NodeData {
 
 private:
     std::vector<SERIALIZATION_TYPE> data;
-    std::deque<Task> tasks;
+    std::deque<std::shared_ptr<Task>> tasks2;
     std::deque<ElementType> types;
 
     auto deserializeImpl(void* obj, const InputMetadata& inputMetadata, std::optional<ExecutionOptions> const& execution, bool shouldPop)
             -> Expected<int> {
-        if (types.empty())
+        if (this->types.empty())
             return 0;
 
         if (this->types.front().typeInfo != inputMetadata.typeInfo)
@@ -60,25 +60,15 @@ private:
 
         if (this->types.front().category == DataCategory::ExecutionFunctionPointer
             || this->types.front().category == DataCategory::ExecutionStdFunction) {
-            assert(!this->tasks.empty());
+            assert(!this->tasks2.empty());
 
-            bool isOnReadOrExtract = this->tasks.front().executionOptions.category == ExecutionOptions::Category::OnReadOrExtract;
-            auto result = 0;
-            {
-                std::optional<TaskRegistration> registration;
-                if (isOnReadOrExtract && this->tasks.front().token) {
-                    registration.emplace(this->tasks.front().token);
-                }
-
-                if (inputMetadata.category == DataCategory::ExecutionStdFunction)
-                    this->tasks.front().function(this->tasks.front(), obj, true);
-                else
-                    this->tasks.front().function(this->tasks.front(), obj, false);
-                result = 1;
-            }
+            if (inputMetadata.category == DataCategory::ExecutionStdFunction)
+                this->tasks2.front()->function(*this->tasks2.front().get(), obj, true);
+            else
+                this->tasks2.front()->function(*this->tasks2.front().get(), obj, false);
 
             if (shouldPop) {
-                this->tasks.pop_front();
+                this->tasks2.pop_front();
                 popType();
             }
             return 1;
