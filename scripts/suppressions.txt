@@ -1,0 +1,76 @@
+{
+   <insert_a_suppression_name_here>
+   Helgrind:Misc
+   fun:_ZL19DOCTEST_ANON_FUNC_2v
+   fun:_ZN7doctest7Context3runEv
+   fun:main
+}
+{
+   <insert_a_suppression_name_here>
+   Helgrind:Misc
+   fun:_ZL19DOCTEST_ANON_FUNC_2v
+   fun:_ZN7doctest7Context3runEv
+   fun:main
+}
+{
+   <insert_a_suppression_name_here>
+   Helgrind:Race
+   fun:store
+   fun:_ZNSt13__atomic_baseIbEaSEb
+   fun:_ZNSt6atomicIbEaSEb
+   fun:_ZZL19DOCTEST_ANON_FUNC_2vENKUlRKN2SP4TaskEPvbE_clES2_S3_b
+   fun:_ZSt13__invoke_implIvRZL19DOCTEST_ANON_FUNC_2vEUlRKN2SP4TaskEPvbE_JS3_S4_bEET_St14__invoke_otherOT0_DpOT1_
+   fun:_ZSt10__invoke_rIvRZL19DOCTEST_ANON_FUNC_2vEUlRKN2SP4TaskEPvbE_JS3_S4_bEENSt9enable_ifIX16is_invocable_r_vIT_T0_JDpT1_EEES8_E4typeEOS9_DpOSA_
+   fun:_ZNSt17_Function_handlerIFvRKN2SP4TaskEPvbEZL19DOCTEST_ANON_FUNC_2vEUlS3_S4_bE_E9_M_invokeERKSt9_Any_dataS3_OS4_Ob
+   fun:_ZNKSt8functionIFvRKN2SP4TaskEPvbEEclES3_S4_b
+   fun:_ZN2SP8TaskPool14workerFunctionEv
+   fun:_ZSt13__invoke_implIvMN2SP8TaskPoolEFvvEPS1_JEET_St21__invoke_memfun_derefOT0_OT1_DpOT2_
+   fun:_ZSt8__invokeIMN2SP8TaskPoolEFvvEJPS1_EENSt15__invoke_resultIT_JDpT0_EE4typeEOS6_DpOS7_
+   fun:_ZNSt6thread8_InvokerISt5tupleIJMN2SP8TaskPoolEFvvEPS3_EEE9_M_invokeIJLm0ELm1EEEEvSt12_Index_tupleIJXspT_EEE
+   fun:_ZNSt6thread8_InvokerISt5tupleIJMN2SP8TaskPoolEFvvEPS3_EEEclEv
+}
+{
+   <insert_a_suppression_name_here>
+   Helgrind:Race
+   fun:load
+   fun:_ZNKSt6atomicIbEcvbEv
+   fun:_ZL19DOCTEST_ANON_FUNC_2v
+   fun:_ZN7doctest7Context3runEv
+   fun:main
+}
+{
+   <insert_a_suppression_name_here>
+   Helgrind:Race
+   fun:_ZNSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE10_M_releaseEv
+   fun:_ZNSt14__shared_countILN9__gnu_cxx12_Lock_policyE2EED1Ev
+   fun:_ZNSt12__shared_ptrIN2SP4TaskELN9__gnu_cxx12_Lock_policyE2EED1Ev
+   fun:_ZNSt12__shared_ptrIN2SP4TaskELN9__gnu_cxx12_Lock_policyE2EE5resetEv
+   fun:_ZL19DOCTEST_ANON_FUNC_2v
+   fun:_ZN7doctest7Context3runEv
+   fun:main
+}
+{
+   <insert_a_suppression_name_here>
+   Helgrind:Race
+   fun:_ZNSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE10_M_releaseEv
+   fun:_ZNSt14__shared_countILN9__gnu_cxx12_Lock_policyE2EED1Ev
+   fun:_ZNSt12__shared_ptrIN2SP4TaskELN9__gnu_cxx12_Lock_policyE2EED1Ev
+   fun:_ZNSt12__shared_ptrIN2SP4TaskELN9__gnu_cxx12_Lock_policyE2EE5resetEv
+   fun:_ZL19DOCTEST_ANON_FUNC_2v
+   fun:_ZN7doctest7Context3runEv
+   fun:main
+}
+{
+   <insert_a_suppression_name_here>
+   Helgrind:Misc
+   fun:_ZL19DOCTEST_ANON_FUNC_2v
+   fun:_ZN7doctest7Context3runEv
+   fun:main
+}
+{
+   <insert_a_suppression_name_here>
+   Helgrind:Misc
+   fun:_ZL19DOCTEST_ANON_FUNC_2v
+   fun:_ZN7doctest7Context3runEv
+   fun:main
+}

@@ -2,6 +2,39 @@
 #include "ext/doctest.h"
 #include "utils/TaggedLogger.hpp"
 
+struct ShowTestStart : public doctest::IReporter {
+    ShowTestStart(const doctest::ContextOptions& /* in */) {
+    }
+    void test_case_start(const doctest::TestCaseData& in) override {
+        std::cout << "Test: " << in.m_name << std::endl;
+    }
+    void report_query(const doctest::QueryData&) override {
+    }
+    void test_run_start() override {
+    }
+    void test_run_end(const doctest::TestRunStats&) override {
+    }
+    void test_case_reenter(const doctest::TestCaseData&) override {
+    }
+    void test_case_end(const doctest::CurrentTestCaseStats&) override {
+    }
+    void test_case_exception(const doctest::TestCaseException&) override {
+    }
+    void subcase_start(const doctest::SubcaseSignature& in) override {
+        std::cout << "\tSubcase: " << in.m_name << std::endl;
+    }
+    void subcase_end() override {
+    }
+    void log_assert(const doctest::AssertData&) override {
+    }
+    void log_message(const doctest::MessageData&) override {
+    }
+    void test_case_skipped(const doctest::TestCaseData&) override {
+    }
+};
+
+REGISTER_LISTENER("test_start", 1, ShowTestStart);
+
 int main(int argc, char** argv) {
     // Start with logging disabled
     SP::set_logging_enabled(false);
