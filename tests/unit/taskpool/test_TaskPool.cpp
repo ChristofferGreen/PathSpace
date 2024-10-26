@@ -127,61 +127,31 @@ TEST_CASE("Task TaskPool Suite") {
         }
     }
 
-    SUBCASE("Task lifetime and weak_ptr behavior") {
-        // Manager focused on weak_ptr lifetime verification
-        class TaskLifetimeManager {
-            struct Impl {
-                std::shared_ptr<Task> task;
-                std::mutex mutex;
-                std::condition_variable cv;
-                bool completed = false;
-            };
-            std::shared_ptr<Impl> impl = std::make_shared<Impl>();
-
-        public:
-            void createTask(std::function<void(Task const&, void*, bool)> fn) {
-                std::lock_guard<std::mutex> lock(impl->mutex);
-                impl->task = std::make_shared<Task>();
-                auto weakImpl = std::weak_ptr<Impl>(impl);
-
-                impl->task->function = [weakImpl, fn = std::move(fn)](Task const& t, void* v, bool b) {
-                    if (auto implPtr = weakImpl.lock()) {
-                        fn(t, v, b);
-                        std::lock_guard<std::mutex> lock(implPtr->mutex);
-                        implPtr->completed = true;
-                        implPtr->cv.notify_one();
-                    }
-                };
-            }
-
-            void waitForCompletion() {
-                std::unique_lock<std::mutex> lock(impl->mutex);
-                impl->cv.wait(lock, [this] { return impl->completed; });
-                impl->task.reset();
-            }
-
-            std::weak_ptr<Task> getWeakPtr() const {
-                std::lock_guard<std::mutex> lock(impl->mutex);
-                return impl->task;
-            }
-        };
-
-        TaskPool pool(2);
+    SUBCASE("Task lifetime and cleanup with timeout") {
+        TaskPool pool(1);
         std::atomic<bool> taskExecuted{false};
         std::weak_ptr<Task> weakTask;
-        TestSync sync;
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool completed = false;
 
         {
-            TaskLifetimeManager manager;
-            manager.createTask([&taskExecuted, &sync](Task const&, void*, bool) {
-                taskExecuted = true;
-                sync.notify();
-            });
+            auto task = std::make_shared<Task>();
+            weakTask = task;
 
-            weakTask = manager.getWeakPtr();
-            pool.addTask(manager.getWeakPtr());
-            sync.wait();
-            manager.waitForCompletion();
+            task->function = [&](Task const&, void*, bool) {
+                taskExecuted = true;
+                std::lock_guard<std::mutex> lock(mutex);
+                completed = true;
+                cv.notify_one();
+            };
+
+            pool.addTask(task);
+
+            std::unique_lock<std::mutex> lock(mutex);
+            bool waitResult = cv.wait_for(lock, std::chrono::seconds(5), [&] { return completed; });
+
+            REQUIRE(waitResult); // Ensure we didn't timeout
         }
 
         CHECK(taskExecuted);
