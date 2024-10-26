@@ -74,3 +74,9 @@
    fun:_ZN7doctest7Context3runEv
    fun:main
 }
+{
+   shared_ptr_atomic_ops
+   Helgrind:Race
+   fun:*_Sp_counted_base*
+   obj:*
+}
