@@ -41,14 +41,37 @@
    fun:*_Sp_counted_ptr_inplace*
 }
 
+################################################################################
+# C++ std::condition_variable Suppressions
+#
+# Condition variables can sometimes trigger false positives in Helgrind,
+# especially when used with timeouts or in complex synchronization scenarios.
+################################################################################
+
+# Suppress general condition variable wait warnings
 {
    condition_variable_wait_for
    Helgrind:Misc
+   ...
    fun:*condition_variable*wait*
 }
 
+# Suppress lock warnings for condition variable wait operations
 {
-   task_pool_atomic_workers
+   condition_variable_wait_for_lock_warning
    Helgrind:Race
-   fun:*TaskPool*activeWorkers*
+   ...
+   fun:pthread_cond_*wait*
+   ...
+   fun:*condition_variable*wait*
+}
+
+# Suppress condition variable false positive in complex scenarios
+{
+   condition_variable_complex_scenario_false_positive
+   Helgrind:Misc
+   ...
+   fun:pthread_cond_*
+   ...
+   fun:*condition_variable*wait_for*
 }

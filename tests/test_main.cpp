@@ -6,6 +6,7 @@ struct ShowTestStart : public doctest::IReporter {
     ShowTestStart(const doctest::ContextOptions& /* in */) {
     }
     void test_case_start(const doctest::TestCaseData& in) override {
+        std::lock_guard<std::mutex> lock(SP::logger().coutMutex);
         std::cout << "Test: " << in.m_name << std::endl;
     }
     void report_query(const doctest::QueryData&) override {
@@ -21,6 +22,7 @@ struct ShowTestStart : public doctest::IReporter {
     void test_case_exception(const doctest::TestCaseException&) override {
     }
     void subcase_start(const doctest::SubcaseSignature& in) override {
+        std::lock_guard<std::mutex> lock(SP::logger().coutMutex);
         std::cout << "\tSubcase: " << in.m_name << std::endl;
     }
     void subcase_end() override {

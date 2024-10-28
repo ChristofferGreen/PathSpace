@@ -453,58 +453,74 @@ TEST_CASE("Task TaskPool Suite") {
         }
 
         SUBCASE("Basic parallel tasks") {
-            TaskPool pool(2);
+            TaskPool pool(2); // Create pool with 2 threads
 
-            struct {
+            std::atomic<int> completedTasks{0};
+
+            // Thread-safe map to track unique thread IDs
+            struct ThreadTracker {
                 std::mutex mutex;
-                std::condition_variable cv;
-                std::set<std::thread::id> threadIds;
-                int tasksStarted{0};
-                int tasksCompleted{0};
-            } state;
+                std::unordered_set<std::thread::id> threads;
+                std::atomic<int> uniqueThreadCount{0}; // Moved inside the struct
+
+                void addThread() {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    if (threads.insert(std::this_thread::get_id()).second) {
+                        // Only increment if this was a new thread ID
+                        uniqueThreadCount++;
+                    }
+                }
+
+                int getUniqueThreadCount() const {
+                    return uniqueThreadCount.load();
+                }
+
+                ~ThreadTracker() {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    threads.clear();
+                }
+            };
+
+            auto tracker = std::make_shared<ThreadTracker>();
 
             constexpr int TASK_COUNT = 4;
             std::vector<std::shared_ptr<Task>> tasks;
+            tasks.reserve(TASK_COUNT);
 
+            // Create and add tasks
             for (int i = 0; i < TASK_COUNT; i++) {
                 auto task = std::make_shared<Task>();
-                task->function = [&state](Task const&, void*, bool) {
-                    // Signal task start
-                    {
-                        std::lock_guard<std::mutex> lock(state.mutex);
-                        state.threadIds.insert(std::this_thread::get_id());
-                        state.tasksStarted++;
-                        state.cv.notify_all();
-                    }
+                task->function = [tracker, &completedTasks](Task const&, void*, bool) {
+                    // Record thread ID in a thread-safe way
+                    tracker->addThread();
 
-                    // Wait for all tasks to start - ensures overlap
-                    {
-                        std::unique_lock<std::mutex> lock(state.mutex);
-                        state.cv.wait_for(lock, std::chrono::seconds(1), [&state] { return state.tasksStarted == TASK_COUNT; });
-                    }
+                    // Simulate some work
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-                    // Signal completion
-                    {
-                        std::lock_guard<std::mutex> lock(state.mutex);
-                        state.tasksCompleted++;
-                        state.cv.notify_one();
-                    }
+                    completedTasks++;
                 };
+
                 tasks.push_back(task);
-                pool.addTask(std::weak_ptr<Task>(tasks.back()));
+                pool.addTask(task);
             }
 
-            // Wait for completion
-            {
-                std::unique_lock<std::mutex> lock(state.mutex);
-                bool completed = state.cv.wait_for(lock,
-                                                   std::chrono::seconds(2), // Increased timeout a bit
-                                                   [&state] { return state.tasksCompleted == TASK_COUNT; });
-
-                REQUIRE(completed);
-                CHECK(state.threadIds.size() > 1); // Should now reliably verify parallel execution
-                CHECK(state.tasksCompleted == TASK_COUNT);
+            // Wait for completion (with timeout)
+            auto start = std::chrono::steady_clock::now();
+            while (completedTasks < TASK_COUNT) {
+                if (std::chrono::steady_clock::now() - start > std::chrono::seconds(2)) {
+                    MESSAGE("Completed tasks: ", completedTasks.load(), "/", TASK_COUNT);
+                    MESSAGE("Unique threads: ", tracker->getUniqueThreadCount());
+                    FAIL("Timeout waiting for tasks to complete");
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
+
+            // Ensure all tasks are done before checking results
+            pool.shutdown();
+
+            // Verify results
+            CHECK(completedTasks == TASK_COUNT);
+            CHECK(tracker->getUniqueThreadCount() > 1); // Verify parallel execution
         }
 
         // Add simple focused tests for other goals
