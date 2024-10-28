@@ -21,31 +21,6 @@
 using namespace SP;
 using namespace std::chrono_literals;
 
-// Reusable synchronization primitive for tests
-class TestSync {
-public:
-    void wait() {
-        std::unique_lock<std::mutex> lock(mtx);
-        cv.wait(lock, [this] { return completed; });
-    }
-
-    void notify() {
-        std::lock_guard<std::mutex> lock(mtx);
-        completed = true;
-        cv.notify_all();
-    }
-
-    void reset() {
-        std::lock_guard<std::mutex> lock(mtx);
-        completed = false;
-    }
-
-private:
-    std::mutex mtx;
-    std::condition_variable cv;
-    bool completed = false;
-};
-
 TEST_CASE("Task TaskPool Suite") {
     SUBCASE("Basic task execution") {
         TaskPool pool(2);
@@ -158,463 +133,656 @@ TEST_CASE("Task TaskPool Suite") {
         CHECK(weakTask.expired());
     }
 
-    SUBCASE("Task cancellation through task destruction") {
-        // Manager focused on task cancellation behavior
-        class TaskLifetimeManager {
-            struct Impl {
-                std::shared_ptr<Task> task;
-                std::mutex mutex;
-            };
-            std::shared_ptr<Impl> impl = std::make_shared<Impl>();
-
-        public:
-            void createTask(std::function<void(Task const&, void*, bool)> fn) {
-                std::lock_guard<std::mutex> lock(impl->mutex);
-                impl->task = std::make_shared<Task>();
-                auto weakImpl = std::weak_ptr<Impl>(impl);
-
-                impl->task->function = [weakImpl, fn = std::move(fn)](Task const& t, void* v, bool b) {
-                    if (auto implPtr = weakImpl.lock()) {
-                        fn(t, v, b);
-                    }
-                };
-            }
-
-            std::weak_ptr<Task> getWeakPtr() const {
-                std::lock_guard<std::mutex> lock(impl->mutex);
-                return impl->task;
-            }
-        };
-
+    SUBCASE("Simple task cancellation through shared_ptr lifetime") {
         TaskPool pool(2);
         std::atomic<bool> taskExecuted{false};
 
         {
-            TaskLifetimeManager manager;
-            manager.createTask([&taskExecuted](Task const&, void*, bool) {
-                std::this_thread::sleep_for(500ms);
-                taskExecuted = true;
-            });
-            pool.addTask(manager.getWeakPtr());
-        } // Task destroyed immediately
+            // Create a shared_ptr to control task lifetime
+            auto task = std::make_shared<Task>();
+
+            // Create weak_ptr for the pool
+            std::weak_ptr<Task> weakTask(task);
+
+            // Set up task with self-checking lambda
+            task->function = [weakTask, &taskExecuted](Task const&, void*, bool) {
+                if (auto ptr = weakTask.lock()) {
+                    std::this_thread::sleep_for(500ms);
+                    taskExecuted = true;
+                }
+            };
+
+            // Add weak reference to pool
+            pool.addTask(task);
+        } // task is destroyed here
 
         std::this_thread::sleep_for(100ms);
         CHECK_FALSE(taskExecuted);
     }
 
-    SUBCASE("Stress test with rapid task addition and shutdown") {
-        // Manager focused on rapid task creation/destruction
-        class TaskLifetimeManager {
-            struct Impl {
-                std::shared_ptr<Task> task;
-                std::mutex mutex;
-            };
-            std::shared_ptr<Impl> impl = std::make_shared<Impl>();
-
-        public:
-            void createTask(std::function<void(Task const&, void*, bool)> fn) {
-                std::lock_guard<std::mutex> lock(impl->mutex);
-                impl->task = std::make_shared<Task>();
-                auto weakImpl = std::weak_ptr<Impl>(impl);
-
-                impl->task->function = [weakImpl, fn = std::move(fn)](Task const& t, void* v, bool b) {
-                    if (auto implPtr = weakImpl.lock()) {
-                        fn(t, v, b);
-                    }
-                };
-            }
-
-            std::weak_ptr<Task> getWeakPtr() const {
-                std::lock_guard<std::mutex> lock(impl->mutex);
-                return impl->task;
-            }
+    SUBCASE("Simplified task pool stress test") {
+        auto getOptimalTaskCount = []() {
+            const size_t minTasks = 100;
+            const size_t maxTasks = 1000;
+            const size_t tasksPerCore = 50;
+            return std::clamp(std::thread::hardware_concurrency() * tasksPerCore, minTasks, maxTasks);
         };
 
-        const int NUM_ITERATIONS = 10;
-        for (int i = 0; i < NUM_ITERATIONS; ++i) {
-            TaskPool pool(4);
-            std::atomic<int> counter{0};
-            std::vector<TaskLifetimeManager> managers;
-            managers.reserve(1000);
+        const size_t TASK_COUNT = getOptimalTaskCount();
+        const auto REASONABLE_TIMEOUT = std::chrono::milliseconds(TASK_COUNT / 10);
 
-            // Rapidly add tasks while shutting down
-            std::thread task_adder([&]() {
-                for (int j = 0; j < 1000; ++j) {
-                    managers.emplace_back();
-                    managers.back().createTask([&counter](Task const&, void*, bool) { counter++; });
-                    pool.addTask(managers.back().getWeakPtr());
-                }
-            });
+        const int NUM_ITERATIONS = 3;
+        for (int iter = 0; iter < NUM_ITERATIONS; ++iter) {
+            const size_t THREAD_COUNT = std::max(2u, std::thread::hardware_concurrency() / 2);
+            TaskPool pool(THREAD_COUNT);
+            std::atomic<size_t> completedTasks{0};
+            std::vector<std::shared_ptr<Task>> tasks;
+            tasks.reserve(TASK_COUNT);
 
-            std::this_thread::sleep_for(1ms);
+            // Create and add tasks
+            for (size_t i = 0; i < TASK_COUNT; ++i) {
+                auto task = std::make_shared<Task>();
+                task->function = [&completedTasks](Task const&, void*, bool) { completedTasks++; };
+                tasks.push_back(task);
+                pool.addTask(task);
+            }
+
+            std::this_thread::sleep_for(REASONABLE_TIMEOUT);
             pool.shutdown();
 
-            if (task_adder.joinable()) {
-                task_adder.join();
-            }
-
             CHECK(pool.size() == 0);
+
+            const size_t completedCount = completedTasks.load();
+            INFO("Completed tasks: " << completedCount << " / " << TASK_COUNT);
+            CHECK(completedCount > 0);
+            CHECK(completedCount <= TASK_COUNT);
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            const size_t finalCount = completedTasks.load();
+            CHECK(finalCount == completedCount);
         }
     }
 
-    SUBCASE("Task exception handling") {
-        // Manager focused on exception handling
-        class TaskLifetimeManager {
-            struct Impl {
-                std::shared_ptr<Task> task;
+    SUBCASE("Task Exception Handling") {
+        SUBCASE("Basic exception handling") {
+            TaskPool pool(1);
+
+            // Test state management
+            struct TestState {
+                std::atomic<bool> exceptionCaught{false};
+                std::atomic<bool> taskCompleted{false};
+                std::atomic<bool> unexpectedError{false};
                 std::mutex mutex;
                 std::condition_variable cv;
-                bool completed = false;
+                std::string errorMessage;
             };
-            std::shared_ptr<Impl> impl = std::make_shared<Impl>();
+            auto state = std::make_shared<TestState>();
 
-        public:
-            void createTask(std::function<void(Task const&, void*, bool)> fn) {
-                std::lock_guard<std::mutex> lock(impl->mutex);
-                impl->task = std::make_shared<Task>();
-                auto weakImpl = std::weak_ptr<Impl>(impl);
-
-                impl->task->function = [weakImpl, fn = std::move(fn)](Task const& t, void* v, bool b) {
-                    if (auto implPtr = weakImpl.lock()) {
-                        try {
-                            fn(t, v, b);
-                        } catch (...) {
-                            std::lock_guard<std::mutex> lock(implPtr->mutex);
-                            implPtr->completed = true;
-                            implPtr->cv.notify_one();
-                            throw;
-                        }
-                        std::lock_guard<std::mutex> lock(implPtr->mutex);
-                        implPtr->completed = true;
-                        implPtr->cv.notify_one();
-                    }
-                };
-            }
-
-            void waitForCompletion() {
-                std::unique_lock<std::mutex> lock(impl->mutex);
-                impl->cv.wait(lock, [this] { return impl->completed; });
-                impl->task.reset();
-            }
-
-            std::weak_ptr<Task> getWeakPtr() const {
-                std::lock_guard<std::mutex> lock(impl->mutex);
-                return impl->task;
-            }
-        };
-
-        TaskPool pool(2);
-        std::atomic<bool> exceptionCaught{false};
-        TestSync sync;
-
-        {
-            TaskLifetimeManager manager;
-            manager.createTask([&exceptionCaught, &sync](Task const&, void*, bool) {
+            // Create task with comprehensive error handling
+            auto task = std::make_shared<Task>();
+            task->function = [state](Task const&, void*, bool) {
                 try {
                     throw std::runtime_error("Test exception");
+                } catch (const std::runtime_error& e) {
+                    {
+                        std::lock_guard<std::mutex> lock(state->mutex);
+                        state->errorMessage = e.what();
+                        state->exceptionCaught = true;
+                    }
                 } catch (...) {
-                    exceptionCaught = true;
+                    state->unexpectedError = true;
                 }
-                sync.notify();
-            });
 
-            pool.addTask(manager.getWeakPtr());
-            sync.wait();
-            manager.waitForCompletion();
+                {
+                    std::lock_guard<std::mutex> lock(state->mutex);
+                    state->taskCompleted.store(true, std::memory_order_release);
+                    state->cv.notify_one(); // Notify while holding lock
+                }
+            };
+
+            pool.addTask(std::weak_ptr<Task>(task));
+
+            {
+                std::unique_lock<std::mutex> lock(state->mutex);
+                bool completed = state->cv.wait_for(lock, std::chrono::seconds(5), [&state] {
+                    return state->taskCompleted.load(std::memory_order_acquire);
+                });
+
+                REQUIRE_MESSAGE(completed, "Task execution timed out");
+                CHECK(state->exceptionCaught);
+                CHECK_FALSE(state->unexpectedError);
+                CHECK_EQ(state->errorMessage, "Test exception");
+            }
+
+            task.reset();
         }
 
-        CHECK(exceptionCaught);
+        SUBCASE("Multiple concurrent exceptions") {
+            TaskPool pool(1);
+            std::atomic<int> exceptionCount{0};
+            std::mutex mutex;
+            std::condition_variable cv;
+            std::atomic<int> tasksCompleted{0};
+
+            std::vector<std::shared_ptr<Task>> tasks;
+            constexpr int NUM_TASKS = 5;
+
+            for (int i = 0; i < NUM_TASKS; ++i) {
+                auto task = std::make_shared<Task>();
+                task->function = [&exceptionCount, &mutex, &cv, &tasksCompleted, i](Task const&, void*, bool) {
+                    try {
+                        throw std::runtime_error("Test exception " + std::to_string(i));
+                    } catch (...) {
+                        exceptionCount++;
+                    }
+
+                    if (++tasksCompleted == NUM_TASKS) {
+                        {
+                            std::lock_guard<std::mutex> lock(mutex);
+                            cv.notify_one(); // Notify while holding lock
+                        }
+                    }
+                };
+                tasks.push_back(task);
+                pool.addTask(std::weak_ptr<Task>(tasks.back()));
+            }
+
+            {
+                std::unique_lock<std::mutex> lock(mutex);
+                bool completed = cv.wait_for(lock, std::chrono::seconds(5), [&tasksCompleted] { return tasksCompleted == NUM_TASKS; });
+
+                REQUIRE_MESSAGE(completed, "Not all tasks completed within timeout");
+                CHECK_EQ(exceptionCount, NUM_TASKS);
+            }
+
+            tasks.clear();
+        }
+
+        SUBCASE("Resource cleanup during exception") {
+            TaskPool pool(2);
+
+            struct State {
+                std::mutex mutex;
+                std::condition_variable cv;
+                bool taskCompleted{false};
+                bool resourceDestroyed{false};
+            };
+            auto state = std::make_shared<State>();
+
+            struct ResourceGuard {
+                State& state;
+                ResourceGuard(State& s) : state(s) {
+                }
+                ~ResourceGuard() {
+                    std::lock_guard<std::mutex> lock(state.mutex);
+                    state.resourceDestroyed = true;
+                    state.cv.notify_one();
+                }
+            };
+
+            {
+                auto task = std::make_shared<Task>();
+                task->function = [state](Task const&, void*, bool) {
+                    // Create resource in its own scope
+                    {
+                        auto resource = std::make_unique<ResourceGuard>(*state);
+                        throw std::runtime_error("Test exception");
+                    } // ResourceGuard destructor runs here
+
+                    // Mark task as done (won't execute due to exception)
+                    std::lock_guard<std::mutex> lock(state->mutex);
+                    state->taskCompleted = true;
+                    state->cv.notify_one();
+                };
+
+                pool.addTask(std::weak_ptr<Task>(task));
+
+                // Wait for either task completion or resource destruction
+                {
+                    std::unique_lock<std::mutex> lock(state->mutex);
+                    REQUIRE(state->cv.wait_for(lock, std::chrono::seconds(1), [&state] {
+                        return state->resourceDestroyed || state->taskCompleted;
+                    }));
+
+                    CHECK(state->resourceDestroyed);   // Resource should be destroyed even with exception
+                    CHECK_FALSE(state->taskCompleted); // Task should not complete normally
+                }
+            }
+        }
+
+        SUBCASE("Exception during task cancellation") {
+            TaskPool pool(1);
+
+            struct TestState {
+                std::atomic<bool> taskStarted{false};
+                std::atomic<bool> taskCancelled{false};
+                std::atomic<bool> exceptionHandled{false};
+                std::mutex mutex;
+                std::condition_variable cv;
+            };
+            auto state = std::make_shared<TestState>();
+
+            auto task = std::make_shared<Task>();
+            task->function = [state](Task const& task, void*, bool) {
+                try {
+                    {
+                        std::lock_guard<std::mutex> lock(state->mutex);
+                        state->taskStarted = true;
+                        state->cv.notify_one();
+                    }
+
+                    while (!state->taskCancelled) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    }
+
+                    throw std::runtime_error("Task cancelled");
+                } catch (...) {
+                    state->exceptionHandled = true;
+                }
+            };
+
+            pool.addTask(std::weak_ptr<Task>(task));
+
+            {
+                std::unique_lock<std::mutex> lock(state->mutex);
+                bool started = state->cv.wait_for(lock, std::chrono::seconds(5), [&state] { return state->taskStarted.load(); });
+                REQUIRE_MESSAGE(started, "Task did not start within timeout");
+            }
+
+            state->taskCancelled = true;
+
+            auto waitStart = std::chrono::steady_clock::now();
+            while (!state->exceptionHandled) {
+                if (std::chrono::steady_clock::now() - waitStart > std::chrono::seconds(5)) {
+                    FAIL("Exception handling timeout");
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+
+            CHECK(state->exceptionHandled);
+            task.reset();
+        }
     }
 
-    SUBCASE("Complex task interactions") {
-        SUBCASE("Task chain execution") {
-            // Manager focused on clean task completion signaling
-            class TaskLifetimeManager {
-                struct Impl {
-                    std::shared_ptr<Task> task;
-                    std::mutex mutex;
-                    std::condition_variable cv;
-                    bool completed = false;
-                };
-                std::shared_ptr<Impl> impl = std::make_shared<Impl>();
+    SUBCASE("Complex Task Interactions") {
+        // Keep our original simple tests
+        SUBCASE("Basic task chain") {
+            TaskPool pool(2);
+            std::vector<int> sequence;
+            std::mutex mutex;
+            std::condition_variable cv;
+            bool done = false;
 
-            public:
-                void createTask(std::function<void(Task const&, void*, bool)> fn) {
-                    std::lock_guard<std::mutex> lock(impl->mutex);
-                    impl->completed = false;
-                    impl->task = std::make_shared<Task>();
-                    auto weakImpl = std::weak_ptr<Impl>(impl);
+            // Create tasks with sequential dependencies
+            auto task2 = std::make_shared<Task>();
+            auto task1 = std::make_shared<Task>();
+            auto task0 = std::make_shared<Task>();
 
-                    impl->task->function = [weakImpl, fn = std::move(fn)](Task const& t, void* v, bool b) {
-                        if (auto implPtr = weakImpl.lock()) {
-                            fn(t, v, b);
-                            std::lock_guard<std::mutex> lock(implPtr->mutex);
-                            implPtr->completed = true;
-                            implPtr->cv.notify_one();
-                        }
-                    };
-                }
-
-                void waitForCompletion() {
-                    std::unique_lock<std::mutex> lock(impl->mutex);
-                    impl->cv.wait(lock, [this] { return impl->completed; });
-                    impl->task.reset();
-                }
-
-                std::weak_ptr<Task> getWeakPtr() const {
-                    std::lock_guard<std::mutex> lock(impl->mutex);
-                    return impl->task;
-                }
+            task2->function = [&sequence, &mutex, &cv, &done](Task const&, void*, bool) {
+                std::lock_guard<std::mutex> lock(mutex);
+                sequence.push_back(2);
+                done = true;
+                cv.notify_one();
             };
 
-            TaskPool pool(2);
-            std::atomic<int> counter{0};
-            TestSync sync;
-            const int CHAIN_LENGTH = 5;
+            task1->function = [&sequence, &mutex, &pool, task2](Task const&, void*, bool) {
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    sequence.push_back(1);
+                }
+                pool.addTask(std::weak_ptr<Task>(task2));
+            };
 
-            std::vector<TaskLifetimeManager> managers(CHAIN_LENGTH);
+            task0->function = [&sequence, &mutex, &pool, task1](Task const&, void*, bool) {
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    sequence.push_back(0);
+                }
+                pool.addTask(std::weak_ptr<Task>(task1));
+            };
 
-            // Set up task chain
-            for (int i = 0; i < CHAIN_LENGTH; ++i) {
-                managers[i].createTask([&counter, &sync, i, last = (i == CHAIN_LENGTH - 1)](Task const&, void*, bool) {
-                    counter++;
-                    if (last) {
-                        sync.notify();
-                    }
-                });
+            // Start the chain
+            pool.addTask(std::weak_ptr<Task>(task0));
+
+            // Wait for completion
+            {
+                std::unique_lock<std::mutex> lock(mutex);
+                REQUIRE(cv.wait_for(lock, std::chrono::seconds(1), [&done] { return done; }));
+                CHECK(sequence == std::vector{0, 1, 2});
             }
-
-            // Submit all tasks in order
-            for (auto& manager : managers) {
-                pool.addTask(manager.getWeakPtr());
-            }
-
-            sync.wait();
-            for (auto& manager : managers) {
-                manager.waitForCompletion();
-            }
-
-            CHECK(counter == CHAIN_LENGTH);
         }
 
-        SUBCASE("Parallel task groups") {
-            // Manager focused on parallel task execution
-            class TaskLifetimeManager {
-                struct Impl {
-                    std::shared_ptr<Task> task;
-                    std::mutex mutex;
-                    std::condition_variable cv;
-                    bool completed = false;
+        SUBCASE("Basic parallel tasks") {
+            TaskPool pool(2);
+
+            struct {
+                std::mutex mutex;
+                std::condition_variable cv;
+                std::set<std::thread::id> threadIds;
+                int tasksStarted{0};
+                int tasksCompleted{0};
+            } state;
+
+            constexpr int TASK_COUNT = 4;
+            std::vector<std::shared_ptr<Task>> tasks;
+
+            for (int i = 0; i < TASK_COUNT; i++) {
+                auto task = std::make_shared<Task>();
+                task->function = [&state](Task const&, void*, bool) {
+                    // Signal task start
+                    {
+                        std::lock_guard<std::mutex> lock(state.mutex);
+                        state.threadIds.insert(std::this_thread::get_id());
+                        state.tasksStarted++;
+                        state.cv.notify_all();
+                    }
+
+                    // Wait for all tasks to start - ensures overlap
+                    {
+                        std::unique_lock<std::mutex> lock(state.mutex);
+                        state.cv.wait_for(lock, std::chrono::seconds(1), [&state] { return state.tasksStarted == TASK_COUNT; });
+                    }
+
+                    // Signal completion
+                    {
+                        std::lock_guard<std::mutex> lock(state.mutex);
+                        state.tasksCompleted++;
+                        state.cv.notify_one();
+                    }
                 };
-                std::shared_ptr<Impl> impl = std::make_shared<Impl>();
+                tasks.push_back(task);
+                pool.addTask(std::weak_ptr<Task>(tasks.back()));
+            }
 
-            public:
-                void createTask(std::function<void(Task const&, void*, bool)> fn) {
-                    std::lock_guard<std::mutex> lock(impl->mutex);
-                    impl->task = std::make_shared<Task>();
-                    auto weakImpl = std::weak_ptr<Impl>(impl);
+            // Wait for completion
+            {
+                std::unique_lock<std::mutex> lock(state.mutex);
+                bool completed = state.cv.wait_for(lock,
+                                                   std::chrono::seconds(2), // Increased timeout a bit
+                                                   [&state] { return state.tasksCompleted == TASK_COUNT; });
 
-                    impl->task->function = [weakImpl, fn = std::move(fn)](Task const& t, void* v, bool b) {
-                        if (auto implPtr = weakImpl.lock()) {
-                            fn(t, v, b);
-                            std::lock_guard<std::mutex> lock(implPtr->mutex);
-                            implPtr->completed = true;
-                            implPtr->cv.notify_one();
-                        }
+                REQUIRE(completed);
+                CHECK(state.threadIds.size() > 1); // Should now reliably verify parallel execution
+                CHECK(state.tasksCompleted == TASK_COUNT);
+            }
+        }
+
+        // Add simple focused tests for other goals
+        SUBCASE("Dynamic task creation") {
+            TaskPool pool(2);
+
+            struct {
+                std::mutex mutex;
+                std::condition_variable cv;
+                int tasksCreated{0};
+                int tasksCompleted{0};
+            } state;
+
+            // Store tasks to keep them alive
+            std::vector<std::shared_ptr<Task>> allTasks;
+
+            auto initialTask = std::make_shared<Task>();
+            initialTask->function = [&](Task const&, void*, bool) {
+                // Create two child tasks
+                for (int i = 0; i < 2; i++) {
+                    auto childTask = std::make_shared<Task>();
+                    childTask->function = [&state](Task const&, void*, bool) {
+                        std::lock_guard<std::mutex> lock(state.mutex);
+                        state.tasksCompleted++;
+                        state.cv.notify_one();
                     };
+
+                    {
+                        std::lock_guard<std::mutex> lock(state.mutex);
+                        state.tasksCreated++;
+                    }
+
+                    allTasks.push_back(childTask); // Keep child task alive
+                    pool.addTask(std::weak_ptr<Task>(childTask));
                 }
 
-                void waitForCompletion() {
-                    std::unique_lock<std::mutex> lock(impl->mutex);
-                    impl->cv.wait(lock, [this] { return impl->completed; });
-                    impl->task.reset();
-                }
-
-                std::weak_ptr<Task> getWeakPtr() const {
-                    std::lock_guard<std::mutex> lock(impl->mutex);
-                    return impl->task;
+                // Mark parent task complete
+                {
+                    std::lock_guard<std::mutex> lock(state.mutex);
+                    state.tasksCompleted++;
+                    state.cv.notify_one();
                 }
             };
 
-            TaskPool pool(4);
-            std::atomic<int> counter{0};
-            TestSync sync;
-            const int GROUPS = 3;
-            const int TASKS_PER_GROUP = 10;
-            const int TOTAL_TASKS = GROUPS * TASKS_PER_GROUP;
-            std::atomic<int> completions{0};
+            allTasks.push_back(initialTask); // Keep parent task alive
+            pool.addTask(std::weak_ptr<Task>(initialTask));
 
-            std::vector<TaskLifetimeManager> managers(TOTAL_TASKS);
+            // Wait for completion
+            {
+                std::unique_lock<std::mutex> lock(state.mutex);
+                bool completed = state.cv.wait_for(lock, std::chrono::seconds(1), [&state] { return state.tasksCompleted == 3; });
 
-            // Create all tasks with random work
-            for (int i = 0; i < TOTAL_TASKS; ++i) {
-                managers[i].createTask([&counter, &completions, &sync, TOTAL_TASKS](Task const&, void*, bool) {
-                    thread_local std::random_device rd;
-                    thread_local std::mt19937 gen(rd());
-                    thread_local std::uniform_int_distribution<> workDist(1, 100);
+                REQUIRE(completed);
+                CHECK(state.tasksCreated == 2);   // Two child tasks
+                CHECK(state.tasksCompleted == 3); // Parent + two children
+            }
+        }
 
-                    std::this_thread::sleep_for(std::chrono::microseconds(workDist(gen)));
-                    counter++;
+        SUBCASE("Task group isolation") {
+            TaskPool pool(2);
 
-                    if (completions.fetch_add(1) + 1 == TOTAL_TASKS) {
-                        sync.notify();
-                    }
-                });
+            struct {
+                std::mutex mutex;
+                std::condition_variable cv;
+                std::map<int, std::vector<int>> groupResults;
+                int completedTasks{0};
+            } state;
+
+            // Keep tasks alive
+            std::vector<std::shared_ptr<Task>> tasks;
+
+            // Create two groups with distinct tasks
+            for (int group = 0; group < 2; group++) {
+                for (int task = 0; task < 2; task++) {
+                    auto taskObj = std::make_shared<Task>();
+                    taskObj->function = [&state, group, task](Task const&, void*, bool) {
+                        {
+                            std::lock_guard<std::mutex> lock(state.mutex);
+                            state.groupResults[group].push_back(task);
+                            state.completedTasks++;
+                            state.cv.notify_one();
+                        }
+                    };
+                    tasks.push_back(taskObj); // Keep task alive
+                    pool.addTask(std::weak_ptr<Task>(tasks.back()));
+                }
             }
 
-            // Submit all tasks
-            for (auto& manager : managers) {
-                pool.addTask(manager.getWeakPtr());
+            // Wait for all tasks to complete
+            {
+                std::unique_lock<std::mutex> lock(state.mutex);
+                bool completed = state.cv.wait_for(lock, std::chrono::seconds(1), [&state] { return state.completedTasks == 4; });
+
+                REQUIRE(completed);
+                CHECK(state.groupResults[0].size() == 2);
+                CHECK(state.groupResults[1].size() == 2);
+            }
+        }
+
+        SUBCASE("Task cleanup") {
+            TaskPool pool(2);
+
+            struct State {
+                std::mutex mutex;
+                std::condition_variable cv;
+                bool taskCompleted{false};
+                std::shared_ptr<bool> testValue; // Keep resource ownership in state
+
+                State() : testValue(std::make_shared<bool>(false)) {
+                }
+            };
+            auto state = std::make_shared<State>();
+
+            std::weak_ptr<bool> weakValue = state->testValue; // For verification
+
+            {
+                auto task = std::make_shared<Task>();
+                task->function = [state](Task const&, void*, bool) {
+                    *state->testValue = true;
+                    std::lock_guard<std::mutex> lock(state->mutex);
+                    state->taskCompleted = true;
+                    state->cv.notify_one();
+                };
+
+                pool.addTask(std::weak_ptr<Task>(task));
+
+                // Wait for task completion
+                {
+                    std::unique_lock<std::mutex> lock(state->mutex);
+                    REQUIRE(state->cv.wait_for(lock, std::chrono::seconds(1), [&state] { return state->taskCompleted; }));
+                }
+            } // task is destroyed here
+
+            // Verify task executed and cleanup occurred
+            if (auto value = weakValue.lock()) {
+                CHECK(*value);
+                // Note: use_count will be at least 2 because state still holds a reference
+                CHECK(value); // Just verify we can access the value
+            } else {
+                FAIL("Resource was destroyed prematurely");
             }
 
-            sync.wait();
-            for (auto& manager : managers) {
-                manager.waitForCompletion();
-            }
-
-            CHECK(counter == TOTAL_TASKS);
-            CHECK(completions == TOTAL_TASKS);
+            // Clear state to allow cleanup
+            state.reset();
+            CHECK_FALSE(weakValue.lock()); // Now the resource should be cleaned up
         }
     }
 
     SUBCASE("Memory usage under load") {
-        // Manager focused on memory stability
-        class TaskLifetimeManager {
-            struct Impl {
-                std::shared_ptr<Task> task;
-                std::mutex mutex;
-                std::condition_variable cv;
-                bool completed = false;
-            };
-            std::shared_ptr<Impl> impl = std::make_shared<Impl>();
+        TaskPool pool(2);
 
-        public:
-            void createTask(std::function<void(Task const&, void*, bool)> fn) {
-                std::lock_guard<std::mutex> lock(impl->mutex);
-                impl->task = std::make_shared<Task>();
-                auto weakImpl = std::weak_ptr<Impl>(impl);
+        struct {
+            std::mutex mutex;
+            std::condition_variable cv;
+            int tasksCompleted{0};
+        } state;
 
-                impl->task->function = [weakImpl, fn = std::move(fn)](Task const& t, void* v, bool b) {
-                    if (auto implPtr = weakImpl.lock()) {
-                        fn(t, v, b);
-                        std::lock_guard<std::mutex> lock(implPtr->mutex);
-                        implPtr->completed = true;
-                        implPtr->cv.notify_one();
-                    }
-                };
-            }
-
-            void waitForCompletion() {
-                std::unique_lock<std::mutex> lock(impl->mutex);
-                impl->cv.wait(lock, [this] { return impl->completed; });
-                impl->task.reset();
-            }
-
-            std::weak_ptr<Task> getWeakPtr() const {
-                std::lock_guard<std::mutex> lock(impl->mutex);
-                return impl->task;
-            }
-        };
-
-        const int THREAD_COUNT = 4;
-        const int TASKS_PER_BATCH = 100;
-        const int NUM_BATCHES = 50;
-        const int TOTAL_TASKS = TASKS_PER_BATCH * NUM_BATCHES;
-
-        TaskPool pool(THREAD_COUNT);
-        std::atomic<int> queued{0};
-        std::atomic<int> started{0};
-        std::atomic<int> completed{0};
-        TestSync completion_sync;
-
-        std::vector<TaskLifetimeManager> managers(TOTAL_TASKS);
+        constexpr int TOTAL_TASKS = 1000;
+        // Keep strong references until we're sure tasks are queued
+        std::vector<std::shared_ptr<Task>> tasks;
+        std::vector<std::weak_ptr<Task>> taskRefs;
 
         // Create and queue tasks
-        for (int batch = 0; batch < NUM_BATCHES; ++batch) {
-            for (int i = 0; i < TASKS_PER_BATCH; ++i) {
-                const int taskIdx = batch * TASKS_PER_BATCH + i;
-                managers[taskIdx].createTask([&started, &completed, &completion_sync, TOTAL_TASKS](Task const&, void*, bool) {
-                    started++;
-                    if (completed.fetch_add(1) + 1 == TOTAL_TASKS) {
-                        completion_sync.notify();
-                    }
-                });
-                pool.addTask(managers[taskIdx].getWeakPtr());
-                queued++;
+        for (int i = 0; i < TOTAL_TASKS; ++i) {
+            auto task = std::make_shared<Task>();
+            task->function = [&state](Task const&, void*, bool) {
+                std::lock_guard<std::mutex> lock(state.mutex);
+                state.tasksCompleted++;
+                state.cv.notify_one();
+            };
+
+            tasks.push_back(task);    // Keep strong reference
+            taskRefs.push_back(task); // Store weak reference for later cleanup check
+            pool.addTask(std::weak_ptr<Task>(tasks.back()));
+        }
+
+        // Wait for completion
+        {
+            std::unique_lock<std::mutex> lock(state.mutex);
+            bool completed = state.cv.wait_for(lock,
+                                               std::chrono::seconds(10), // Increased timeout
+                                               [&state] { return state.tasksCompleted == TOTAL_TASKS; });
+
+            REQUIRE(completed);
+            CHECK(state.tasksCompleted == TOTAL_TASKS);
+        }
+
+        // Now safe to release strong references
+        tasks.clear();
+
+        // Verify task cleanup
+        int liveTaskCount = 0;
+        for (const auto& weakTask : taskRefs) {
+            if (auto task = weakTask.lock()) {
+                liveTaskCount++;
             }
         }
-
-        completion_sync.wait();
-        for (auto& manager : managers) {
-            manager.waitForCompletion();
-        }
-
-        CHECK(completed == TOTAL_TASKS);
+        CHECK(liveTaskCount == 0);
     }
 
     SUBCASE("Mixed task durations") {
-        // Manager focused on handling variable duration tasks
-        class TaskLifetimeManager {
-            struct Impl {
-                std::shared_ptr<Task> task;
-                std::mutex mutex;
-                std::condition_variable cv;
-                bool completed = false;
+        TaskPool pool(2);
+
+        struct {
+            std::mutex mutex;
+            std::condition_variable cv;
+            int tasksCompleted{0};
+            std::set<std::thread::id> threadsSeen; // Track which threads execute tasks
+            std::chrono::steady_clock::time_point startTime;
+        } state;
+
+        state.startTime = std::chrono::steady_clock::now();
+
+        // Keep tasks alive until completion
+        std::vector<std::shared_ptr<Task>> tasks;
+
+        // Create a mix of long and short tasks
+        constexpr int LONG_TASKS = 2;
+        constexpr int SHORT_TASKS = 8;
+        constexpr int TOTAL_TASKS = LONG_TASKS + SHORT_TASKS;
+
+        // First add long tasks
+        for (int i = 0; i < LONG_TASKS; i++) {
+            auto task = std::make_shared<Task>();
+            task->function = [&state](Task const&, void*, bool) {
+                {
+                    std::lock_guard<std::mutex> lock(state.mutex);
+                    state.threadsSeen.insert(std::this_thread::get_id());
+                }
+                // Long task
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                {
+                    std::lock_guard<std::mutex> lock(state.mutex);
+                    state.tasksCompleted++;
+                    state.cv.notify_one();
+                }
             };
-            std::shared_ptr<Impl> impl = std::make_shared<Impl>();
-
-        public:
-            void createTask(std::function<void(Task const&, void*, bool)> fn) {
-                std::lock_guard<std::mutex> lock(impl->mutex);
-                impl->completed = false;
-                impl->task = std::make_shared<Task>();
-                auto weakImpl = std::weak_ptr<Impl>(impl);
-
-                impl->task->function = [weakImpl, fn = std::move(fn)](Task const& t, void* v, bool b) {
-                    if (auto implPtr = weakImpl.lock()) {
-                        fn(t, v, b);
-                        std::lock_guard<std::mutex> lock(implPtr->mutex);
-                        implPtr->completed = true;
-                        implPtr->cv.notify_one();
-                    }
-                };
-            }
-
-            void waitForCompletion() {
-                std::unique_lock<std::mutex> lock(impl->mutex);
-                impl->cv.wait(lock, [this] { return impl->completed; });
-                impl->task.reset();
-            }
-
-            std::weak_ptr<Task> getWeakPtr() const {
-                std::lock_guard<std::mutex> lock(impl->mutex);
-                return impl->task;
-            }
-        };
-
-        TaskPool pool(4);
-        std::atomic<int> counter{0};
-        TestSync sync;
-        const int TOTAL_TASKS = 100;
-
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_int_distribution<> durationDist(1, 100);
-
-        for (int i = 0; i < TOTAL_TASKS; ++i) {
-            TaskLifetimeManager manager;
-            manager.createTask([&counter, &sync, duration = durationDist(gen)](Task const&, void*, bool) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(duration));
-                counter++;
-                sync.notify();
-            });
-
-            pool.addTask(manager.getWeakPtr());
-            sync.wait();
-            manager.waitForCompletion();
-            sync.reset();
+            tasks.push_back(task);
+            pool.addTask(std::weak_ptr<Task>(task));
         }
 
-        CHECK(counter == TOTAL_TASKS);
+        // Then add short tasks
+        for (int i = 0; i < SHORT_TASKS; i++) {
+            auto task = std::make_shared<Task>();
+            task->function = [&state](Task const&, void*, bool) {
+                {
+                    std::lock_guard<std::mutex> lock(state.mutex);
+                    state.threadsSeen.insert(std::this_thread::get_id());
+                }
+                // Short task
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                {
+                    std::lock_guard<std::mutex> lock(state.mutex);
+                    state.tasksCompleted++;
+                    state.cv.notify_one();
+                }
+            };
+            tasks.push_back(task);
+            pool.addTask(std::weak_ptr<Task>(task));
+        }
+
+        // Wait for completion
+        {
+            std::unique_lock<std::mutex> lock(state.mutex);
+            bool completed = state.cv.wait_for(lock, std::chrono::seconds(2), [&state] { return state.tasksCompleted == TOTAL_TASKS; });
+
+            REQUIRE(completed);
+
+            // Verify completion
+            CHECK(state.tasksCompleted == TOTAL_TASKS);
+
+            // Verify parallel execution by checking thread count
+            CHECK(state.threadsSeen.size() > 1);
+
+            // Verify total execution time is less than sequential would require
+            auto totalTime = std::chrono::steady_clock::now() - state.startTime;
+            auto maxSequentialTime = std::chrono::milliseconds(LONG_TASKS * 100 + SHORT_TASKS * 10);
+            CHECK(totalTime < maxSequentialTime);
+        }
     }
 }

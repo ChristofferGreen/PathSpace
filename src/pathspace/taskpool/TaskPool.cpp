@@ -1,4 +1,5 @@
 #include "TaskPool.hpp"
+#include "utils/TaggedLogger.hpp"
 
 namespace SP {
 
@@ -8,6 +9,7 @@ TaskPool& TaskPool::Instance() {
 }
 
 TaskPool::TaskPool(size_t threadCount) {
+    activeWorkers = threadCount;
     for (size_t i = 0; i < threadCount; ++i) {
         workers.emplace_back(&TaskPool::workerFunction, this);
     }
@@ -18,67 +20,72 @@ TaskPool::~TaskPool() {
 }
 
 auto TaskPool::addTask(std::weak_ptr<Task>&& task) -> void {
-    std::lock_guard<std::mutex> lock(mutex);
-    if (!stop) {
-        tasks.push(std::move(task));
-        taskCV.notify_one();
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (!shuttingDown) {
+            tasks.push(std::move(task));
+            taskCV.notify_one();
+        }
     }
 }
 
-void TaskPool::shutdown() {
+auto TaskPool::shutdown() -> void {
+    // Signal shutdown
     {
-        std::lock_guard<std::mutex> lock(mutex);
-        if (stop) {
+        std::lock_guard<std::mutex> lock(this->mutex);
+        if (this->shuttingDown) {
             return;
         }
-        stop = true;
-        taskCV.notify_all();
+        this->shuttingDown = true;
+        this->taskCV.notify_all();
     }
 
-    // Wait for active tasks to complete
-    while (activeWorkers.load(std::memory_order_acquire) > 0) {
+    // Wait for workers to finish
+    while (this->activeWorkers > 0) {
         std::this_thread::yield();
     }
 
-    workers.clear();
+    // Clear workers and remaining tasks
+    this->workers.clear();
+    std::lock_guard<std::mutex> lock(this->mutex);
+    while (!this->tasks.empty()) {
+        this->tasks.pop();
+    }
 }
 
-size_t TaskPool::size() const {
-    return workers.size();
+auto TaskPool::size() const -> size_t {
+    return this->workers.size();
 }
 
-void TaskPool::workerFunction() {
-    activeWorkers.fetch_add(1, std::memory_order_release);
-
+auto TaskPool::workerFunction() -> void {
     while (true) {
-        std::weak_ptr<Task> weakTask;
+        std::weak_ptr<Task> task;
         {
             std::unique_lock<std::mutex> lock(mutex);
-            taskCV.wait(lock, [this]() { return stop || !tasks.empty(); });
+            taskCV.wait(lock, [this] { return this->shuttingDown || !this->tasks.empty(); });
 
-            if (stop && tasks.empty()) {
+            if (this->shuttingDown && this->tasks.empty()) {
                 break;
             }
 
-            if (!tasks.empty()) {
-                weakTask = std::move(tasks.front());
+            if (!this->tasks.empty()) {
+                task = std::move(tasks.front());
                 tasks.pop();
             }
         }
 
-        // Lock the weak_ptr and copy the function to prevent races
-        if (auto task = weakTask.lock()) {
-            if (auto fn = task->function) {
+        if (auto strongTask = task.lock()) {
+            if (auto fn = strongTask->function) {
                 try {
-                    fn(*task, nullptr, false);
+                    fn(*strongTask, nullptr, false);
                 } catch (...) {
-                    // Log error but continue processing
+                    sp_log("Exception in running Task", "Error", "Exception");
                 }
             }
         }
     }
 
-    activeWorkers.fetch_sub(1, std::memory_order_release);
+    --activeWorkers;
 }
 
 } // namespace SP

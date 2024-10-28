@@ -28,9 +28,9 @@ private:
 
     std::vector<std::jthread> workers;
     std::queue<std::weak_ptr<Task>> tasks;
-    mutable std::mutex mutex;
+    std::mutex mutex;
     std::condition_variable taskCV;
-    std::atomic<bool> stop{false};
+    std::atomic<bool> shuttingDown{false};
     std::atomic<size_t> activeWorkers{0};
 };
 

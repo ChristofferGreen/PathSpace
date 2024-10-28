@@ -23,11 +23,14 @@ trap cleanup EXIT
 
 # Check for --save and --suppress flags and remove them from args
 save_output=false
+copy_output=false
 use_suppressions=false
 args=()
 for arg in "$@"; do
     if [ "$arg" == "--save" ]; then
         save_output=true
+    elif [ "$arg" == "--copy" ]; then
+        copy_output=true
     elif [ "$arg" == "--suppress" ]; then
         use_suppressions=true
     else
@@ -84,12 +87,14 @@ if [ "$save_output" = true ]; then
         exit 1
     fi
     
-    echo "Copying to $OUTPUT_DIR..."
-    if ! sudo cp valgrind.txt "$OUTPUT_DIR/"; then
-        echo "Error: Failed to copy output file"
-        exit 1
+    if [ "$copy_output" = true ]; then
+        echo "Copying to $OUTPUT_DIR..."
+        if ! sudo cp valgrind.txt "$OUTPUT_DIR/"; then
+            echo "Error: Failed to copy output file"
+            exit 1
+        fi
+        echo "Test output saved to $OUTPUT_DIR/valgrind.txt"
     fi
-    echo "Test output saved to $OUTPUT_DIR/valgrind.txt"
 else
     # Run directly with output to terminal
     if ! "${valgrind_cmd[@]}"; then
