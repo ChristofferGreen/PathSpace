@@ -1,9 +1,0 @@
-==79111== Helgrind, a thread error detector
-==79111== Copyright (C) 2007-2024, and GNU GPL'd, by OpenWorks LLP et al.
-==79111== Using Valgrind-3.23.0 and LibVEX; rerun with -h for copyright info
-==79111== Command: /home/green/PathSpace/build/tests/PathSpaceTests --test-case=PathSpace\ Multithreading
-==79111== 
-[doctest] doctest version is "2.4.11"
-[doctest] run with "--help" for options
-Test: PathSpace Multithreading
-	Subcase: PathSpace Basic Concurrent Operations

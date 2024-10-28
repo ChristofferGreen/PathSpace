@@ -63,23 +63,22 @@ public:
      * @return Expected<DataType> containing the read data if successful, or an error if not.
      */
     template <typename DataType>
-    auto read(ConcretePathStringView const& path, OutOptions const& options = {.doPop = false}) const -> Expected<DataType> {
+    auto read(ConcretePathStringView const& path, OutOptions const& options = {}) const -> Expected<DataType> {
         sp_log("PathSpace::read", "Function Called");
-        if (options.doPop)
-            return std::unexpected(Error{Error::Code::PopInRead, std::string("read does not support doPop: ").append(path.getPath())});
         DataType obj;
-        if (auto ret = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj); !ret)
+        bool const doPop = false;
+        if (auto ret = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj, doPop); !ret)
             return std::unexpected(ret.error());
         return obj;
     }
 
     template <typename DataType>
     auto readBlock(ConcretePathStringView const& path,
-                   OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}, .doPop = false}) const
-            -> Expected<DataType> {
+                   OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}}) const -> Expected<DataType> {
         sp_log("PathSpace::readBlock", "Function Called");
         DataType obj;
-        auto result = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj);
+        bool const doPop = false;
+        auto result = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj, doPop);
 
         if (result.has_value() || !options.block.has_value()
             || (options.block.has_value() && options.block.value().behavior == BlockOptions::Behavior::DontWait)) {
@@ -95,7 +94,7 @@ public:
         auto guard = waitMap.wait(path);
         while (!result.has_value()) {
             if (guard.wait_until(timeout, [&]() {
-                    result = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj);
+                    result = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj, doPop);
                     return (result.has_value() && result.value() > 0);
                 })) {
                 break;
@@ -121,7 +120,8 @@ public:
     auto extract(ConcretePathStringView const& path, OutOptions const& options = {}) -> Expected<DataType> {
         sp_log("PathSpace::extract", "Function Called");
         DataType obj;
-        auto const ret = this->out(path, InputMetadataT<DataType>{}, options, &obj);
+        bool const doPop = true;
+        auto const ret = this->out(path, InputMetadataT<DataType>{}, options, &obj, doPop);
         if (!ret)
             return std::unexpected(ret.error());
         if (ret.has_value() && (ret.value() == 0))
@@ -134,7 +134,8 @@ public:
             -> Expected<DataType> {
         sp_log("PathSpace::extractBlock", "Function Called");
         DataType obj;
-        auto result = this->out(path, InputMetadataT<DataType>{}, options, &obj);
+        bool const doPop = true;
+        auto result = this->out(path, InputMetadataT<DataType>{}, options, &obj, doPop);
 
         if (result.has_value() || !options.block.has_value()
             || (options.block.has_value() && options.block.value().behavior == BlockOptions::Behavior::DontWait)) {
@@ -150,7 +151,7 @@ public:
         auto guard = waitMap.wait(path);
         while (!result.has_value()) {
             if (guard.wait_until(timeout, [&]() {
-                    result = this->out(path, InputMetadataT<DataType>{}, options, &obj);
+                    result = this->out(path, InputMetadataT<DataType>{}, options, &obj, doPop);
                     return (result.has_value() && result.value() > 0);
                 })) {
                 break;
@@ -197,7 +198,8 @@ protected:
     virtual auto in(ConstructiblePath& constructedPath, GlobPathStringView const& path, InputData const& data, InOptions const& options)
             -> InsertReturn;
 
-    virtual auto out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, OutOptions const& options, void* obj)
+    virtual auto
+    out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, OutOptions const& options, void* obj, bool const doPop)
             -> Expected<int>;
 
     auto shutdown() -> void;

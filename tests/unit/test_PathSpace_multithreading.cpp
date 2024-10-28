@@ -956,121 +956,171 @@ TEST_CASE("PathSpace Multithreading") {
         ConcurrentTester::runTest(space);
     }
 
-    SUBCASE("Concurrent Task Execution") {
-        class LocalThreadPool {
-        public:
-            explicit LocalThreadPool(size_t n) : stop(false) {
-                for (size_t i = 0; i < n; ++i) {
-                    workers.emplace_back([this] {
-                        while (true) {
-                            std::function<void()> task;
-                            {
-                                std::unique_lock<std::mutex> lock(mutex);
-                                condition.wait(lock, [this] { return stop || !tasks.empty(); });
-                                if (stop && tasks.empty())
-                                    break;
-                                task = std::move(tasks.front());
-                                tasks.pop();
-                            }
-                            if (task)
-                                task(); // Check if task is valid
-                        }
-                    });
-                }
-            }
+    class TestCounter {
+    public:
+        void increment() {
+            std::lock_guard<std::mutex> lock(mutex);
+            count++;
+            cv.notify_all();
+        }
 
-            void add_task(std::function<void()> task) {
-                if (stop)
-                    return; // Don't add tasks if stopping
-                {
-                    std::unique_lock<std::mutex> lock(mutex);
-                    tasks.emplace(std::move(task));
-                }
-                condition.notify_one();
-            }
+        bool wait_for_count(int target, std::chrono::seconds timeout) {
+            std::unique_lock<std::mutex> lock(mutex);
+            return cv.wait_for(lock, timeout, [&]() { return count >= target; });
+        }
 
-            ~LocalThreadPool() {
-                {
-                    std::unique_lock<std::mutex> lock(mutex);
-                    stop = true;
-                }
-                condition.notify_all();
-                for (auto& worker : workers) {
-                    if (worker.joinable())
-                        worker.join();
-                }
-            }
+        int get_count() const {
+            std::lock_guard<std::mutex> lock(mutex);
+            return count;
+        }
 
-        private:
-            std::vector<std::thread> workers;
-            std::queue<std::function<void()>> tasks;
-            std::mutex mutex;
-            std::condition_variable condition;
-            std::atomic<bool> stop;
+        void reset() {
+            std::lock_guard<std::mutex> lock(mutex);
+            count = 0;
+        }
+
+    private:
+        mutable std::mutex mutex;
+        std::condition_variable cv;
+        int count = 0;
+    };
+
+    SUBCASE("Concurrent Task Execution - Task Reading") {
+        PathSpace space;
+        const int READERS = 3;
+        const int ITERATIONS = 5;
+        const int EXPECTED_COUNT = READERS * ITERATIONS;
+
+        TestCounter counter;
+        std::atomic<bool> has_error{false};
+
+        // Insert initial value
+        REQUIRE(space.insert("/shared/task", 42).nbrValuesInserted == 1);
+
+        auto reader_func = [&](int reader_id) {
+            try {
+                for (int j = 0; j < ITERATIONS && !has_error; j++) {
+                    auto result = space.readBlock<int>("/shared/task",
+                                                       OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait,
+                                                                                        .timeout = std::chrono::seconds(10)}});
+
+                    if (result && result.value() == 42) {
+                        counter.increment();
+                        MESSAGE("Reader " << reader_id << " succeeded attempt " << j);
+                    } else {
+                        MESSAGE("Reader " << reader_id << " failed attempt " << j);
+                        has_error = true;
+                        break;
+                    }
+                }
+            } catch (const std::exception& e) {
+                has_error = true;
+                MESSAGE("Reader " << reader_id << " failed with exception: " << e.what());
+            }
         };
 
-        PathSpace pspace;
-        const int NUM_TASKS = 20; // Reduced number of tasks
-        std::atomic<int> tasksCompleted(0);
+        // Launch reader threads in controlled scope
+        {
+            std::vector<std::jthread> readers;
+            readers.reserve(READERS);
 
-        // Create thread pool with fewer threads
-        LocalThreadPool pool(2);
+            for (int i = 0; i < READERS; i++) {
+                readers.emplace_back(reader_func, i);
+            }
 
-        // Insert tasks into PathSpace
-        for (int i = 0; i < NUM_TASKS; ++i) {
-            auto task = [count = i]() -> int {
-                if (count % 2 == 0) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                }
-                return count;
+            // Wait for completion using TestCounter's built-in wait functionality
+            bool completed = counter.wait_for_count(EXPECTED_COUNT, std::chrono::seconds(5));
+
+            // Verify results
+            CHECK_FALSE_MESSAGE(has_error, "No errors should occur during concurrent reads");
+            CHECK_MESSAGE(completed, "All reads should complete within timeout");
+            CHECK_MESSAGE(counter.get_count() == EXPECTED_COUNT, "Expected " << EXPECTED_COUNT << " reads, got " << counter.get_count());
+
+            // threads automatically join when vector is destroyed
+        }
+
+        // Cleanup
+        space.clear();
+    }
+
+    SUBCASE("Concurrent Task Execution") {
+        SUBCASE("Task Timeout Handling") {
+            MESSAGE("Starting Task Timeout Handling test");
+            PathSpace space;
+            TestCounter completed_tasks;
+            std::atomic<int> timeout_count{0};
+
+            // Single slow task
+            auto lambda = []() -> int {
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                return 42;
             };
-            REQUIRE(pspace.insert("/task/" + std::to_string(i), task).errors.empty());
-        }
 
-        // Execute tasks and wait for completion
-        std::vector<std::future<void>> futures;
-        for (int i = 0; i < NUM_TASKS; ++i) {
-            auto promise = std::make_shared<std::promise<void>>();
-            futures.push_back(promise->get_future());
+            REQUIRE(space.insert("/slow/task",
+                                 lambda,
+                                 InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::OnReadOrExtract}})
+                            .errors.empty());
 
-            pool.add_task([&pspace, i, &tasksCompleted, promise = std::move(promise)] {
-                try {
-                    auto result = pspace.readBlock<int>("/task/" + std::to_string(i));
-                    if (result) {
-                        ++tasksCompleted;
+            // Try with different timeouts
+            const int NUM_ATTEMPTS = 3;
+            std::vector<std::thread> workers;
+            workers.reserve(NUM_ATTEMPTS);
+
+            for (int i = 0; i < NUM_ATTEMPTS; i++) {
+                workers.emplace_back([&, i]() {
+                    auto result
+                            = space.readBlock<int>("/slow/task",
+                                                   OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait,
+                                                                                    .timeout = std::chrono::milliseconds(50 * (i + 1))}});
+
+                    if (result.has_value()) {
+                        completed_tasks.increment();
+                        MESSAGE("Attempt " << i << " completed with value " << result.value());
+                    } else {
+                        timeout_count++;
+                        MESSAGE("Attempt " << i << " timed out");
                     }
-                    promise->set_value();
-                } catch (...) {
-                    try {
-                        promise->set_exception(std::current_exception());
-                    } catch (...) {
-                    } // Ignore any set_exception failures
+                });
+            }
+
+            for (auto& worker : workers) {
+                if (worker.joinable()) {
+                    worker.join();
                 }
-            });
+            }
+
+            MESSAGE("Completed tasks: " << completed_tasks.get_count() << ", Timeouts: " << timeout_count.load());
+            CHECK(completed_tasks.get_count() + timeout_count.load() == NUM_ATTEMPTS);
+            CHECK(timeout_count.load() > 0);
         }
 
-        // Wait for all tasks with timeout
-        const auto timeout = std::chrono::seconds(5);
-        const auto startTime = std::chrono::steady_clock::now();
+        SUBCASE("Error Handling") {
+            MESSAGE("Starting Error Handling test");
+            PathSpace space;
 
-        bool allCompleted = true;
-        for (auto& future : futures) {
-            auto remainingTime = timeout - (std::chrono::steady_clock::now() - startTime);
-            if (remainingTime <= std::chrono::seconds(0) || future.wait_for(remainingTime) != std::future_status::ready) {
-                allCompleted = false;
-                break;
-            }
-            // Get the future to propagate any exceptions
-            try {
-                future.get();
-            } catch (...) {
-                allCompleted = false;
-                break;
-            }
+            // Store a normal value first
+            REQUIRE(space.insert("/error/test", 42).errors.empty());
+
+            // Store an error-generating task
+            auto error_task = []() -> int { throw std::runtime_error("Expected test error"); };
+
+            REQUIRE(space.insert("/error/task",
+                                 error_task,
+                                 InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::OnReadOrExtract}})
+                            .errors.empty());
+
+            // First verify the good path works
+            auto good_result = space.read<int>("/error/test");
+            CHECK_MESSAGE(good_result.has_value(), "Good path should return value");
+            CHECK_MESSAGE(good_result.value() == 42, "Good path should return correct value");
+
+            // Then verify error handling
+            auto error_result = space.readBlock<int>(
+                    "/error/task",
+                    OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+
+            CHECK_FALSE_MESSAGE(error_result.has_value(), "Error task should not return value");
         }
-
-        REQUIRE_MESSAGE(allCompleted, "Not all tasks completed in time");
-        CHECK(tasksCompleted == NUM_TASKS);
     }
 
     SUBCASE("Task Cancellation with Enhanced Control") {

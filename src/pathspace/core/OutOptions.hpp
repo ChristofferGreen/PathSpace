@@ -10,7 +10,6 @@ struct OutOptions {
     std::optional<ExecutionOptions> execution;
     std::optional<BlockOptions> block;
     std::optional<int> maxReadsForBlob;
-    bool doPop = true;
 };
 
 } // namespace SP

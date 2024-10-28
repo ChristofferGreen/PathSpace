@@ -44,10 +44,13 @@ auto PathSpace::in(ConstructiblePath& constructedPath, GlobPathStringView const&
     return ret;
 }
 
-auto PathSpace::out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, OutOptions const& options, void* obj)
-        -> Expected<int> {
+auto PathSpace::out(ConcretePathStringView const& path,
+                    InputMetadata const& inputMetadata,
+                    OutOptions const& options,
+                    void* obj,
+                    bool const doPop) -> Expected<int> {
     sp_log("PathSpace::out", "Function Called");
-    return this->root.out(path.begin(), path.end(), inputMetadata, obj, options);
+    return this->root.out(path.begin(), path.end(), inputMetadata, obj, options, doPop);
 }
 
 } // namespace SP
