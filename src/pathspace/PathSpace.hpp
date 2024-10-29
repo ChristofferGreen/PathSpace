@@ -66,8 +66,8 @@ public:
     auto read(ConcretePathStringView const& path, OutOptions const& options = {}) const -> Expected<DataType> {
         sp_log("PathSpace::read", "Function Called");
         DataType obj;
-        bool const doPop = false;
-        if (auto ret = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj, doPop); !ret)
+        bool const isExtract = false;
+        if (auto ret = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj, isExtract); !ret)
             return std::unexpected(ret.error());
         return obj;
     }
@@ -76,37 +76,8 @@ public:
     auto readBlock(ConcretePathStringView const& path,
                    OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}}) const -> Expected<DataType> {
         sp_log("PathSpace::readBlock", "Function Called");
-        DataType obj;
-        bool const doPop = false;
-        auto result = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj, doPop);
-
-        if (result.has_value() || !options.block.has_value()
-            || (options.block.has_value() && options.block.value().behavior == BlockOptions::Behavior::DontWait)) {
-            if (result.has_value() && result.value() > 0) {
-                return obj;
-            }
-            std::unexpected(result.error());
-        }
-
-        bool const exitLoopAfterFirstRun = options.block && options.block->timeout;
-        auto const timeout = (options.block && options.block->timeout) ? std::chrono::system_clock::now() + *options.block->timeout
-                                                                       : std::chrono::system_clock::time_point::max();
-        auto guard = waitMap.wait(path);
-        while (!result.has_value()) {
-            if (guard.wait_until(timeout, [&]() {
-                    result = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj, doPop);
-                    return (result.has_value() && result.value() > 0);
-                })) {
-                break;
-            }
-            if (exitLoopAfterFirstRun)
-                break;
-        }
-
-        if (result.has_value() && result.value() > 0) {
-            return obj;
-        }
-        return std::unexpected(result.error());
+        bool const isExtract = false;
+        return const_cast<PathSpace*>(this)->outBlock<DataType>(path, options, isExtract);
     }
 
     /**
@@ -120,8 +91,8 @@ public:
     auto extract(ConcretePathStringView const& path, OutOptions const& options = {}) -> Expected<DataType> {
         sp_log("PathSpace::extract", "Function Called");
         DataType obj;
-        bool const doPop = true;
-        auto const ret = this->out(path, InputMetadataT<DataType>{}, options, &obj, doPop);
+        bool const isExtract = true;
+        auto const ret = this->out(path, InputMetadataT<DataType>{}, options, &obj, isExtract);
         if (!ret)
             return std::unexpected(ret.error());
         if (ret.has_value() && (ret.value() == 0))
@@ -133,9 +104,19 @@ public:
     auto extractBlock(ConcretePathStringView const& path, OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}})
             -> Expected<DataType> {
         sp_log("PathSpace::extractBlock", "Function Called");
+        bool const isExtract = true;
+        return this->outBlock<DataType>(path, options, isExtract);
+    }
+
+    auto clear() -> void;
+
+protected:
+    template <typename DataType>
+    auto outBlock(ConcretePathStringView const& path, OutOptions const& options, bool const isExtract) -> Expected<DataType> {
+        sp_log("PathSpace::outBlock", "Function Called");
+        // const_cast<OutOptions&>(options).block = BlockOptions{.behavior = BlockOptions::Behavior::Wait};
         DataType obj;
-        bool const doPop = true;
-        auto result = this->out(path, InputMetadataT<DataType>{}, options, &obj, doPop);
+        auto result = this->out(path, InputMetadataT<DataType>{}, options, &obj, isExtract);
 
         if (result.has_value() || !options.block.has_value()
             || (options.block.has_value() && options.block.value().behavior == BlockOptions::Behavior::DontWait)) {
@@ -151,7 +132,7 @@ public:
         auto guard = waitMap.wait(path);
         while (!result.has_value()) {
             if (guard.wait_until(timeout, [&]() {
-                    result = this->out(path, InputMetadataT<DataType>{}, options, &obj, doPop);
+                    result = this->out(path, InputMetadataT<DataType>{}, options, &obj, isExtract);
                     return (result.has_value() && result.value() > 0);
                 })) {
                 break;
@@ -166,9 +147,6 @@ public:
         return std::unexpected(result.error());
     }
 
-    auto clear() -> void;
-
-protected:
     template <typename DataType>
     auto createTask(ConstructiblePath const& constructedPath, DataType const& data, InputData const& inputData, InOptions const& options)
             -> std::shared_ptr<Task> { // ToDo:: Add support for glob based executions
