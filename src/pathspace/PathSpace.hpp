@@ -35,19 +35,18 @@ public:
 
         if (inputData.metadata.category == DataCategory::ExecutionFunctionPointer
             || inputData.metadata.category == DataCategory::ExecutionStdFunction) {
-            bool const isImmidiate
+            bool const isImmediate
                     = (!options.execution.has_value())
                       || (options.execution.has_value() && options.execution.value().category == ExecutionOptions::Category::Immediate);
             bool const isOnReadOrExtract
                     = options.execution.has_value() && options.execution.value().category == ExecutionOptions::Category::OnReadOrExtract;
             if (std::shared_ptr<Task> Task = this->createTask(constructedPath, std::forward<DataType>(data), inputData, options)) {
-                if (isImmidiate) {
+                if (isImmediate) {
                     this->pool->addTask(Task);
                     this->storage.store(std::move(Task));
                     return {.nbrTasksCreated = 1};
-                } else if (isOnReadOrExtract) {
-                    inputData.task = Task;
                 }
+                inputData.task = Task;
             }
         }
 
@@ -115,8 +114,22 @@ protected:
     auto outBlock(ConcretePathStringView const& path, OutOptions const& options, bool const isExtract) -> Expected<DataType> {
         sp_log("PathSpace::outBlock", "Function Called");
 
+        bool const hasTimeout = options.block && options.block->timeout;
+
+        auto const inputMetaData = InputMetadataT<DataType>{};
+        DataCategory const category = inputMetaData.category;
+        bool const isAsync
+                = hasTimeout && (category == DataCategory::ExecutionFunctionPointer || category == DataCategory::ExecutionStdFunction);
+
+        if (isAsync) {
+            if (options.execution.has_value())
+                const_cast<OutOptions&>(options).execution.value().category = ExecutionOptions::Category::Async;
+            else
+                const_cast<OutOptions&>(options).execution = ExecutionOptions{.category = ExecutionOptions::Category::Async};
+        }
+
         DataType obj;
-        auto result = this->out(path, InputMetadataT<DataType>{}, options, &obj, isExtract);
+        auto result = this->out(path, inputMetaData, options, &obj, isExtract);
 
         // If we got a value or shouldn't block, return immediately
         if (result.has_value() || !options.block.has_value()
@@ -128,15 +141,12 @@ protected:
             return std::unexpected(result.error());
         }
 
-        // Setup timeout parameters
-        bool const hasTimeout = options.block && options.block->timeout;
+        auto guard = waitMap.wait(path);
         auto const timeout
                 = hasTimeout ? std::chrono::system_clock::now() + *options.block->timeout : std::chrono::system_clock::time_point::max();
-
-        auto guard = waitMap.wait(path);
         while (true) {
             if (guard.wait_until(timeout, [&]() {
-                    result = this->out(path, InputMetadataT<DataType>{}, options, &obj, isExtract);
+                    result = this->out(path, inputMetaData, options, &obj, isExtract);
                     return (result.has_value() && result.value() > 0);
                 })) {
                 break;
@@ -193,6 +203,9 @@ protected:
                              *static_cast<std::invoke_result_t<DataType>*>(to) = *static_cast<std::invoke_result_t<DataType> const*>(from);
                          }});
             task->resultPtr = std::any_cast<std::invoke_result_t<DataType>*>(&task->resultStorage);
+            if (hasTimeout && task->executionOptions.category == ExecutionOptions::Category::Immediate) {
+                task->executionOptions.category = ExecutionOptions::Category::Async;
+            }
             return std::move(task);
         }
         return {};

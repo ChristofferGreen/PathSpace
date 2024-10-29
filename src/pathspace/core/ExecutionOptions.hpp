@@ -9,6 +9,7 @@ struct ExecutionOptions {
         OnReadOrExtract,
         PeriodicImmidiate,
         PeriodicOnRead,
+        Async,
         Never
     };
     enum class Location {

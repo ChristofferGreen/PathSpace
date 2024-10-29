@@ -1,22 +1,14 @@
 #include "ext/doctest.h"
-#include "path/ConcretePath.hpp"
-#include "pathspace/PathSpace.hpp"
 #include "pathspace/taskpool/TaskPool.hpp"
-
-#ifdef __GNUG__
-#include <valgrind/helgrind.h>
-#else
-// Define dummy macros that take the same parameters as the real ones
-#define VALGRIND_HG_DISABLE_CHECKING(_qzz_start, _qzz_len) ((void)0)
-#define VALGRIND_HG_ENABLE_CHECKING(_qzz_start, _qzz_len) ((void)0)
-#endif
 
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <map>
 #include <mutex>
-#include <random> // Add this for random number generation
+#include <set>
 #include <thread>
+#include <unordered_set>
 
 using namespace SP;
 using namespace std::chrono_literals;

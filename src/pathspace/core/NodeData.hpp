@@ -65,14 +65,17 @@ struct NodeData {
             assert(!this->tasks.empty());
 
             auto& task = this->tasks.front();
-            bool const isImmediateExecution
-                    = (!execution.has_value()
-                       || (execution.has_value() && execution.value().category == ExecutionOptions::Category::Immediate));
+            bool isImmediateExecution = task->executionOptions.category == ExecutionOptions::Category::Immediate;
+            if (execution.has_value())
+                isImmediateExecution = execution.has_value() && execution.value().category == ExecutionOptions::Category::Immediate;
+            bool isAsyncExecution = task->executionOptions.category == ExecutionOptions::Category::Async;
+            if (execution.has_value())
+                isAsyncExecution = execution.has_value() && execution.value().category == ExecutionOptions::Category::Async;
 
             if (isImmediateExecution) {
                 // Execute immediately in the current thread
                 task->function(*task.get(), obj, inputMetadata.category == DataCategory::ExecutionStdFunction);
-            } else {
+            } else if (isAsyncExecution) {
                 // Handle async execution
                 if (!task->executionFuture) {
                     // Launch async task using task's storage
