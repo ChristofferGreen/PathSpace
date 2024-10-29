@@ -114,37 +114,78 @@ protected:
     template <typename DataType>
     auto outBlock(ConcretePathStringView const& path, OutOptions const& options, bool const isExtract) -> Expected<DataType> {
         sp_log("PathSpace::outBlock", "Function Called");
-        // const_cast<OutOptions&>(options).block = BlockOptions{.behavior = BlockOptions::Behavior::Wait};
+
+        // Initial attempt to get data
         DataType obj;
         auto result = this->out(path, InputMetadataT<DataType>{}, options, &obj, isExtract);
 
-        if (result.has_value() || !options.block.has_value()
-            || (options.block.has_value() && options.block.value().behavior == BlockOptions::Behavior::DontWait)) {
-            if (result.has_value() && result.value() > 0) {
-                return obj;
-            }
-            return std::unexpected(result.error());
-        }
-
-        bool const exitLoopAfterFirstRun = options.block && options.block->timeout;
-        auto const timeout = (options.block && options.block->timeout) ? std::chrono::system_clock::now() + *options.block->timeout
-                                                                       : std::chrono::system_clock::time_point::max();
-        auto guard = waitMap.wait(path);
-        while (!result.has_value()) {
-            if (guard.wait_until(timeout, [&]() {
-                    result = this->out(path, InputMetadataT<DataType>{}, options, &obj, isExtract);
-                    return (result.has_value() && result.value() > 0);
-                })) {
-                break;
-            }
-            if (exitLoopAfterFirstRun)
-                break;
-        }
-
+        // Early success case - we got the data immediately
         if (result.has_value() && result.value() > 0) {
+            sp_log("PathSpace::outBlock", "Immediate success", "INFO");
             return obj;
         }
-        return std::unexpected(result.error());
+
+        // Check if we should block at all
+        if (!options.block.has_value() || options.block.value().behavior == BlockOptions::Behavior::DontWait) {
+            sp_log("PathSpace::outBlock", "Non-blocking return", "INFO");
+            if (!result.has_value()) {
+                return std::unexpected(result.error());
+            }
+            return std::unexpected(Error{Error::Code::NoObjectFound, std::string("Object not found at path: ").append(path.getPath())});
+        }
+
+        // Handle different blocking behaviors
+        auto const behavior = options.block.value().behavior;
+
+        // If we're only waiting for existence verification, check once and return
+        if (behavior == BlockOptions::Behavior::WaitForExistence) {
+            if (!result.has_value()) {
+                return std::unexpected(result.error());
+            }
+            return std::unexpected(Error{Error::Code::NoObjectFound, "Path exists but no object found"});
+        }
+
+        // Setup timeout parameters
+        auto const hasTimeout = options.block && options.block->timeout;
+        auto const timeout
+                = hasTimeout ? std::chrono::system_clock::now() + *options.block->timeout : std::chrono::system_clock::time_point::max();
+
+        // Only proceed with waiting if we're supposed to wait for data
+        if (behavior != BlockOptions::Behavior::Wait && behavior != BlockOptions::Behavior::WaitForExecution) {
+            return std::unexpected(Error{Error::Code::NoObjectFound, "No data found and not waiting"});
+        }
+
+        // Acquire wait guard for the path
+        auto guard = waitMap.wait(path);
+
+        // Main wait loop
+        while (true) {
+            bool const dataReceived = guard.wait_until(timeout, [&]() {
+                result = this->out(path, InputMetadataT<DataType>{}, options, &obj, isExtract);
+                return (result.has_value() && result.value() > 0);
+            });
+
+            if (dataReceived) {
+                return obj;
+            }
+
+            // Check timeout
+            if (hasTimeout && std::chrono::system_clock::now() >= timeout) {
+                return std::unexpected(
+                        Error{Error::Code::Timeout, std::string("Operation timed out waiting for data at path: ").append(path.getPath())});
+            }
+
+            // If we got an error that's not just "no data found", propagate it
+            if (!result.has_value() && result.error().code != Error::Code::NoObjectFound
+                && result.error().code != Error::Code::NoSuchPath) {
+                return std::unexpected(result.error());
+            }
+
+            // For infinite wait, continue
+            if (!hasTimeout) {
+                continue;
+            }
+        }
     }
 
     template <typename DataType>
@@ -177,7 +218,7 @@ protected:
             -> InsertReturn;
 
     virtual auto
-    out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, OutOptions const& options, void* obj, bool const doPop)
+    out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, OutOptions const& options, void* obj, bool const isExtract)
             -> Expected<int>;
 
     auto shutdown() -> void;

@@ -1102,8 +1102,6 @@ TEST_CASE("PathSpace Multithreading") {
     }
 
     SUBCASE("Concurrent Task Execution - Timeout Handling") {
-        MESSAGE("Starting Task Timeout Handling test");
-        return;
         PathSpace space;
         TestCounter completed_tasks;
         std::atomic<int> timeout_count{0};

@@ -111,11 +111,11 @@ auto PathSpaceLeaf::out(ConcretePathIteratorStringView const& iter,
                         InputMetadata const& inputMetadata,
                         void* obj,
                         OutOptions const& options,
-                        bool const doPop) -> Expected<int> {
+                        bool const isExtract) -> Expected<int> {
     auto const nextIter = std::next(iter);
     auto const pathComponent = *iter;
-    return nextIter == end ? outDataName(pathComponent, nextIter, end, inputMetadata, obj, options, doPop)
-                           : outConcretePathComponent(nextIter, end, pathComponent, inputMetadata, obj, options, doPop);
+    return nextIter == end ? outDataName(pathComponent, nextIter, end, inputMetadata, obj, options, isExtract)
+                           : outConcretePathComponent(nextIter, end, pathComponent, inputMetadata, obj, options, isExtract);
 }
 
 auto PathSpaceLeaf::outDataName(ConcreteNameStringView const& concreteName,
@@ -126,18 +126,26 @@ auto PathSpaceLeaf::outDataName(ConcreteNameStringView const& concreteName,
                                 OutOptions const& options,
                                 bool const doPop) -> Expected<int> {
     Expected<int> result = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
+    bool shouldErase = false;
 
+    // First pass: modify data and check if we need to erase
     nodeDataMap.modify_if(concreteName.getName(), [&](auto& nodePair) {
         if (auto* nodeData = std::get_if<NodeData>(&nodePair.second)) {
             if (doPop) {
                 result = nodeData->deserializePop(obj, inputMetadata);
+                shouldErase = nodeData->types.empty();
             } else {
                 result = nodeData->deserialize(obj, inputMetadata, options.execution);
             }
-            return doPop; // Only modify (remove) if it's a pop operation
+            return true; // modification was successful
         }
-        return false;
+        return false; // no modification needed
     });
+
+    // Second pass: if needed, erase the empty node
+    if (shouldErase) {
+        nodeDataMap.erase(concreteName.getName());
+    }
 
     return result;
 }
@@ -148,12 +156,12 @@ auto PathSpaceLeaf::outConcretePathComponent(ConcretePathIteratorStringView cons
                                              InputMetadata const& inputMetadata,
                                              void* obj,
                                              OutOptions const& options,
-                                             bool const doPop) -> Expected<int> {
+                                             bool const isExtract) -> Expected<int> {
     Expected<int> expected = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     this->nodeDataMap.if_contains(concreteName.getName(), [&](auto const& nodePair) {
         expected = std::holds_alternative<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)
                            ? std::get<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)
-                                     ->out(nextIter, end, inputMetadata, obj, options, doPop)
+                                     ->out(nextIter, end, inputMetadata, obj, options, isExtract)
                            : std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
     });
     return expected;

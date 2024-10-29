@@ -24,7 +24,7 @@ public:
              InputMetadata const& inputMetadata,
              void* obj,
              OutOptions const& options,
-             bool const doPop) -> Expected<int>;
+             bool const isExtract) -> Expected<int>;
 
     auto clear() -> void;
 
@@ -48,14 +48,14 @@ private:
                      InputMetadata const& inputMetadata,
                      void* obj,
                      OutOptions const& options,
-                     bool const doPop) -> Expected<int>;
+                     bool const isExtract) -> Expected<int>;
     auto outConcretePathComponent(ConcretePathIteratorStringView const& nextIter,
                                   ConcretePathIteratorStringView const& end,
                                   ConcreteNameStringView const& concreteName,
                                   InputMetadata const& inputMetadata,
                                   void* obj,
                                   OutOptions const& options,
-                                  bool const doPop) -> Expected<int>;
+                                  bool const isExtract) -> Expected<int>;
     NodeDataHashMap nodeDataMap;
 };
 

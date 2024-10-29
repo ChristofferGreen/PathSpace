@@ -48,9 +48,9 @@ auto PathSpace::out(ConcretePathStringView const& path,
                     InputMetadata const& inputMetadata,
                     OutOptions const& options,
                     void* obj,
-                    bool const doPop) -> Expected<int> {
+                    bool const isExtract) -> Expected<int> {
     sp_log("PathSpace::out", "Function Called");
-    return this->root.out(path.begin(), path.end(), inputMetadata, obj, options, doPop);
+    return this->root.out(path.begin(), path.end(), inputMetadata, obj, options, isExtract);
 }
 
 } // namespace SP
