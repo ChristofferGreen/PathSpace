@@ -2,10 +2,9 @@
 #include "core/ExecutionOptions.hpp"
 #include "path/ConstructiblePath.hpp"
 
-#include <atomic>
 #include <cassert>
 #include <functional>
-#include <memory>
+#include <future>
 
 namespace SP {
 struct PathSpace;
@@ -16,6 +15,8 @@ struct Task {
     ExecutionOptions executionOptions;
 
     std::function<void(Task const& task, void* obj, bool isOut)> function;
+    mutable std::shared_ptr<std::future<void>> executionFuture;
+    mutable std::vector<uint8_t> resultStorage;
 };
 
 } // namespace SP

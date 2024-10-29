@@ -1399,6 +1399,57 @@ TEST_CASE("PathSpace Multithreading") {
         space.clear();
     }
 
+    SUBCASE("Concurrent Task Execution - Tasks should both complete and timeout Execution") {
+        return;
+        PathSpace space;
+
+        // Insert a fast task that should complete
+        auto fast_insert = space.insert(
+                "/fast_task",
+                []() {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                    return 23;
+                },
+                InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::OnReadOrExtract}});
+        REQUIRE_MESSAGE(fast_insert.errors.empty(), "Failed to insert fast task");
+        auto slow_insert = space.insert(
+                "/slow_task",
+                []() {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(30000));
+                    return 24;
+                },
+                InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::OnReadOrExtract}});
+        REQUIRE_MESSAGE(slow_insert.errors.empty(), "Failed to insert fast task");
+
+        // Read fast task - should complete
+        auto fast_result = space.readBlock<int>(
+                "/fast_task",
+                OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(200)}});
+
+        CHECK_MESSAGE(fast_result.has_value(), "Fast task should complete but got timeout");
+
+        if (fast_result.has_value()) {
+            CHECK_MESSAGE(fast_result.value() == 23, "Fast task returned wrong value: ", fast_result.value());
+        }
+
+        // Now try reading from a non-existent path - should timeout
+        auto timeout_result = space.readBlock<int>(
+                "/slow_task",
+                OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+
+        CHECK_MESSAGE(!timeout_result.has_value(),
+                      std::format("Expected timeout for slow task, result has value: {}", timeout_result.value()));
+
+        if (!timeout_result.has_value()) {
+            CHECK_MESSAGE(timeout_result.error().code == Error::Code::Timeout,
+                          "Expected timeout error but got: ",
+                          static_cast<int>(timeout_result.error().code));
+        }
+
+        // Clean up
+        space.clear();
+    }
+
     SUBCASE("Concurrent Task Execution - Error Handling") {
         return;
         MESSAGE("Starting Error Handling test");

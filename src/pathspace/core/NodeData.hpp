@@ -49,37 +49,77 @@ struct NodeData {
     std::deque<std::shared_ptr<Task>> tasks;
     std::deque<ElementType> types;
 
-    auto deserializeImpl(void* obj, const InputMetadata& inputMetadata, std::optional<ExecutionOptions> const& execution, bool shouldPop)
+    auto deserializeImpl(void* obj, const InputMetadata& inputMetadata, std::optional<ExecutionOptions> const& execution, bool isExtract)
             -> Expected<int> {
+        // Check if there's any data to process
         if (this->types.empty())
             return 0;
 
+        // Validate type matches
         if (this->types.front().typeInfo != inputMetadata.typeInfo)
             return 0;
 
+        // Handle execution types (function pointers and std::function)
         if (this->types.front().category == DataCategory::ExecutionFunctionPointer
             || this->types.front().category == DataCategory::ExecutionStdFunction) {
             assert(!this->tasks.empty());
 
-            if (inputMetadata.category == DataCategory::ExecutionStdFunction)
-                this->tasks.front()->function(*this->tasks.front().get(), obj, true);
-            else
-                this->tasks.front()->function(*this->tasks.front().get(), obj, false);
+            auto& task = this->tasks.front();
+            bool const isImmediateExecution
+                    = (!execution.has_value()
+                       || (execution.has_value() && execution.value().category == ExecutionOptions::Category::Immediate));
 
-            if (shouldPop) {
+            if (isImmediateExecution) {
+                // Execute immediately in the current thread
+                task->function(*task.get(), obj, inputMetadata.category == DataCategory::ExecutionStdFunction);
+            } else {
+                // Handle async execution
+                if (!task->executionFuture) {
+                    // Ensure we have storage for the result
+                    task->resultStorage.resize(64); // Size needs to be appropriate for your data types
+
+                    // Launch async task using task's storage
+                    task->executionFuture = std::make_shared<std::future<void>>(
+                            std::async(std::launch::async, [task, isOut = inputMetadata.category == DataCategory::ExecutionStdFunction]() {
+                                task->function(*task.get(), task->resultStorage.data(), isOut);
+                            }));
+                    return std::unexpected(Error{Error::Code::NoObjectFound, "Task started but not complete"});
+                }
+
+                // Check if existing execution is complete
+                auto status = task->executionFuture->wait_for(std::chrono::milliseconds(0));
+                if (status != std::future_status::ready) {
+                    return std::unexpected(Error{Error::Code::NoObjectFound, "Task still executing"});
+                }
+
+                // Get result and handle any exceptions
+                try {
+                    task->executionFuture->get();
+                    // Copy result from task's storage to caller's memory
+                    std::memcpy(obj, task->resultStorage.data(), task->resultStorage.size());
+                } catch (const std::exception& e) {
+                    return std::unexpected(Error{Error::Code::UnknownError, e.what()});
+                }
+            }
+
+            // Handle extraction if requested
+            if (isExtract) {
                 this->tasks.pop_front();
                 popType();
             }
             return 1;
         }
 
-        if (shouldPop) {
+        // Handle regular data types
+        if (isExtract) {
+            // Handle extraction of data
             if (!inputMetadata.deserializePop) {
                 return std::unexpected(Error{Error::Code::UnserializableType, "No pop deserialization function provided."});
             }
             inputMetadata.deserializePop(obj, data);
             popType();
         } else {
+            // Handle reading of data
             if (!inputMetadata.deserialize) {
                 return std::unexpected(Error{Error::Code::UnserializableType, "No deserialization function provided."});
             }
