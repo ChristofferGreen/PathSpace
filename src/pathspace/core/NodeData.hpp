@@ -75,14 +75,12 @@ struct NodeData {
             } else {
                 // Handle async execution
                 if (!task->executionFuture) {
-                    // Ensure we have storage for the result
-                    task->resultStorage.resize(64); // Size needs to be appropriate for your data types
-
                     // Launch async task using task's storage
                     task->executionFuture = std::make_shared<std::future<void>>(
-                            std::async(std::launch::async, [task, isOut = inputMetadata.category == DataCategory::ExecutionStdFunction]() {
-                                task->function(*task.get(), task->resultStorage.data(), isOut);
-                            }));
+                            std::async(std::launch::async,
+                                       [task, isExtract = inputMetadata.category == DataCategory::ExecutionStdFunction]() {
+                                           task->function(*task.get(), task->resultPtr, isExtract);
+                                       }));
                     return std::unexpected(Error{Error::Code::NoObjectFound, "Task started but not complete"});
                 }
 
@@ -96,7 +94,7 @@ struct NodeData {
                 try {
                     task->executionFuture->get();
                     // Copy result from task's storage to caller's memory
-                    std::memcpy(obj, task->resultStorage.data(), task->resultStorage.size());
+                    // std::memcpy(obj, task->resultPtr, task->resultPtr);
                 } catch (const std::exception& e) {
                     return std::unexpected(Error{Error::Code::UnknownError, e.what()});
                 }

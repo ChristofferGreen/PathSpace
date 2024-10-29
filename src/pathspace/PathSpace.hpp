@@ -182,11 +182,18 @@ protected:
                     }
                 }
             };
-            return std::make_shared<Task>(
+            bool const hasTimeout = options.block.has_value() && options.block->timeout.has_value();
+            auto task = std::make_shared<Task>(
                     Task{.space = this,
                          .pathToInsertReturnValueTo = constructedPath,
                          .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
-                         .function = std::move(function)});
+                         .function = std::move(function),
+                         .resultStorage = hasTimeout ? std::invoke_result_t<DataType>() : std::any(),
+                         .resultCopy = [](void const* const from, void* const to) {
+                             *static_cast<std::invoke_result_t<DataType>*>(to) = *static_cast<std::invoke_result_t<DataType> const*>(from);
+                         }});
+            task->resultPtr = std::any_cast<std::invoke_result_t<DataType>*>(&task->resultStorage);
+            return std::move(task);
         }
         return {};
     }

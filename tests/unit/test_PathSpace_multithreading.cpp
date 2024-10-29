@@ -1400,7 +1400,6 @@ TEST_CASE("PathSpace Multithreading") {
     }
 
     SUBCASE("Concurrent Task Execution - Tasks should both complete and timeout Execution") {
-        return;
         PathSpace space;
 
         // Insert a fast task that should complete
@@ -1432,7 +1431,7 @@ TEST_CASE("PathSpace Multithreading") {
             CHECK_MESSAGE(fast_result.value() == 23, "Fast task returned wrong value: ", fast_result.value());
         }
 
-        // Now try reading from a non-existent path - should timeout
+        // Now try reading from a slow execution- should timeout
         auto timeout_result = space.readBlock<int>(
                 "/slow_task",
                 OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
