@@ -1043,57 +1043,109 @@ TEST_CASE("PathSpace Multithreading") {
         space.clear();
     }
 
-    SUBCASE("Concurrent Task Execution") {
-        SUBCASE("Task Timeout Handling") {
-            MESSAGE("Starting Task Timeout Handling test");
-            PathSpace space;
-            TestCounter completed_tasks;
-            std::atomic<int> timeout_count{0};
+    SUBCASE("Concurrent Task Execution - Task Reading") {
+        PathSpace space;
+        const int READERS = 3;
+        const int ITERATIONS = 5;
+        const int EXPECTED_COUNT = READERS * ITERATIONS;
 
-            // Single slow task
-            auto lambda = []() -> int {
-                std::this_thread::sleep_for(std::chrono::milliseconds(200));
-                return 42;
-            };
+        TestCounter counter;
+        std::atomic<bool> has_error{false};
 
-            REQUIRE(space.insert("/slow/task",
-                                 lambda,
-                                 InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::OnReadOrExtract}})
-                            .errors.empty());
+        // Insert initial value
+        REQUIRE(space.insert("/shared/task", 42).nbrValuesInserted == 1);
 
-            // Try with different timeouts
-            const int NUM_ATTEMPTS = 3;
-            std::vector<std::thread> workers;
-            workers.reserve(NUM_ATTEMPTS);
+        auto reader_func = [&](int reader_id) {
+            try {
+                for (int j = 0; j < ITERATIONS && !has_error; j++) {
+                    auto result = space.readBlock<int>("/shared/task",
+                                                       OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait,
+                                                                                        .timeout = std::chrono::seconds(10)}});
 
-            for (int i = 0; i < NUM_ATTEMPTS; i++) {
-                workers.emplace_back([&, i]() {
-                    auto result
-                            = space.readBlock<int>("/slow/task",
-                                                   OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait,
-                                                                                    .timeout = std::chrono::milliseconds(50 * (i + 1))}});
-
-                    if (result.has_value()) {
-                        completed_tasks.increment();
-                        MESSAGE("Attempt " << i << " completed with value " << result.value());
+                    if (result && result.value() == 42) {
+                        counter.increment();
+                        MESSAGE("Reader " << reader_id << " succeeded attempt " << j);
                     } else {
-                        timeout_count++;
-                        MESSAGE("Attempt " << i << " timed out");
+                        MESSAGE("Reader " << reader_id << " failed attempt " << j);
+                        has_error = true;
+                        break;
                     }
-                });
-            }
-
-            for (auto& worker : workers) {
-                if (worker.joinable()) {
-                    worker.join();
                 }
+            } catch (const std::exception& e) {
+                has_error = true;
+                MESSAGE("Reader " << reader_id << " failed with exception: " << e.what());
+            }
+        };
+
+        // Launch reader threads in controlled scope
+        {
+            std::vector<std::jthread> readers;
+            readers.reserve(READERS);
+
+            for (int i = 0; i < READERS; i++) {
+                readers.emplace_back(reader_func, i);
             }
 
-            MESSAGE("Completed tasks: " << completed_tasks.get_count() << ", Timeouts: " << timeout_count.load());
-            CHECK(completed_tasks.get_count() + timeout_count.load() == NUM_ATTEMPTS);
-            CHECK(timeout_count.load() > 0);
+            // Wait for completion using TestCounter's built-in wait functionality
+            bool completed = counter.wait_for_count(EXPECTED_COUNT, std::chrono::seconds(5));
+
+            // Verify results
+            CHECK_FALSE_MESSAGE(has_error, "No errors should occur during concurrent reads");
+            CHECK_MESSAGE(completed, "All reads should complete within timeout");
+            CHECK_MESSAGE(counter.get_count() == EXPECTED_COUNT, "Expected " << EXPECTED_COUNT << " reads, got " << counter.get_count());
+
+            // threads automatically join when vector is destroyed
         }
 
+        // Cleanup
+        space.clear();
+    }
+
+    SUBCASE("Concurrent Task Execution - Timeout Handling") {
+        MESSAGE("Starting Task Timeout Handling test");
+        PathSpace space;
+        TestCounter completed_tasks;
+        std::atomic<int> timeout_count{0};
+
+        // Single slow task
+        auto lambda = []() -> int {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            return 43;
+        };
+
+        REQUIRE(space.insert("/slow/task",
+                             lambda,
+                             InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::OnReadOrExtract}})
+                        .errors.empty());
+
+        // Try with different timeouts
+        const int NUM_ATTEMPTS = 20;
+        std::vector<std::jthread> workers(NUM_ATTEMPTS);
+
+        for (int i = 0; i < NUM_ATTEMPTS; i++) {
+            workers.emplace_back([&, i]() {
+                auto result = space.readBlock<int>("/slow/task",
+                                                   OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait,
+                                                                                    .timeout = std::chrono::milliseconds(10 * (i + 1))}});
+
+                if (result.has_value() && result.value() == 43) {
+                    completed_tasks.increment();
+                    MESSAGE("Attempt " << i << " completed with value " << result.value());
+                } else {
+                    timeout_count++;
+                    MESSAGE("Attempt " << i << " timed out");
+                }
+            });
+        }
+
+        workers.clear();
+
+        MESSAGE("Completed tasks: " << completed_tasks.get_count() << ", Timeouts: " << timeout_count.load());
+        CHECK(completed_tasks.get_count() + timeout_count.load() == NUM_ATTEMPTS);
+        CHECK(timeout_count.load() > 0);
+    }
+
+    SUBCASE("Concurrent Task Execution") {
         SUBCASE("Error Handling") {
             MESSAGE("Starting Error Handling test");
             PathSpace space;

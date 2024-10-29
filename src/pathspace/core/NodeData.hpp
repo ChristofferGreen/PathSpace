@@ -25,7 +25,7 @@ struct NodeData {
 
     auto serialize(const InputData& inputData, const InOptions& options, InsertReturn& ret) -> std::optional<Error> {
         if (inputData.task) {
-            this->tasks2.push_back(std::move(inputData.task));
+            this->tasks.push_back(std::move(inputData.task));
             ret.nbrTasksCreated++;
         } else {
             if (!inputData.metadata.serialize)
@@ -45,9 +45,8 @@ struct NodeData {
         return deserializeImpl(obj, inputMetadata, std::nullopt, true);
     }
 
-private:
     std::vector<SERIALIZATION_TYPE> data;
-    std::deque<std::shared_ptr<Task>> tasks2;
+    std::deque<std::shared_ptr<Task>> tasks;
     std::deque<ElementType> types;
 
     auto deserializeImpl(void* obj, const InputMetadata& inputMetadata, std::optional<ExecutionOptions> const& execution, bool shouldPop)
@@ -60,15 +59,15 @@ private:
 
         if (this->types.front().category == DataCategory::ExecutionFunctionPointer
             || this->types.front().category == DataCategory::ExecutionStdFunction) {
-            assert(!this->tasks2.empty());
+            assert(!this->tasks.empty());
 
             if (inputMetadata.category == DataCategory::ExecutionStdFunction)
-                this->tasks2.front()->function(*this->tasks2.front().get(), obj, true);
+                this->tasks.front()->function(*this->tasks.front().get(), obj, true);
             else
-                this->tasks2.front()->function(*this->tasks2.front().get(), obj, false);
+                this->tasks.front()->function(*this->tasks.front().get(), obj, false);
 
             if (shouldPop) {
-                this->tasks2.pop_front();
+                this->tasks.pop_front();
                 popType();
             }
             return 1;
