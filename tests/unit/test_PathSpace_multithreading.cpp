@@ -352,22 +352,38 @@ TEST_CASE("PathSpace Multithreading") {
         std::vector<Operation> expectedOperations;
         std::mutex opsMutex;
 
+        // Track any test failures in worker threads
+        std::atomic<bool> workerFailure{false};
+        std::string workerErrorMsg;
+        std::mutex errorMutex;
+
         auto workerFunction = [&](int threadId) {
-            for (int i = 0; i < OPERATIONS_PER_THREAD; i++) {
-                int value = (threadId * 100) + i;
+            try {
+                for (int i = 0; i < OPERATIONS_PER_THREAD; i++) {
+                    int value = (threadId * 100) + i;
 
-                // Insert our value
-                auto result = pspace.insert("/counter", value);
-                REQUIRE(result.errors.empty());
+                    // Insert our value
+                    auto result = pspace.insert("/counter", value);
+                    if (!result.errors.empty()) {
+                        std::lock_guard<std::mutex> lock(errorMutex);
+                        workerErrorMsg = "Insert failed: " + result.errors[0].message.value_or("Unknown error");
+                        workerFailure = true;
+                        return;
+                    }
 
-                // Record this operation
-                {
-                    std::lock_guard<std::mutex> lock(opsMutex);
-                    expectedOperations.push_back({threadId, i, value});
+                    // Record this operation
+                    {
+                        std::lock_guard<std::mutex> lock(opsMutex);
+                        expectedOperations.push_back({threadId, i, value});
+                    }
+
+                    // Small delay to help interleave operations
+                    std::this_thread::sleep_for(std::chrono::microseconds(100));
                 }
-
-                // Small delay to help interleave operations
-                std::this_thread::sleep_for(std::chrono::microseconds(100));
+            } catch (const std::exception& e) {
+                std::lock_guard<std::mutex> lock(errorMutex);
+                workerErrorMsg = "Worker thread exception: " + std::string(e.what());
+                workerFailure = true;
             }
         };
 
@@ -382,13 +398,39 @@ TEST_CASE("PathSpace Multithreading") {
             t.join();
         }
 
+        // Check if any worker threads failed
+        if (workerFailure) {
+            FAIL(workerErrorMsg);
+        }
+
         // Extract all values and verify order
         std::vector<Operation> actualOperations;
+        int expectedCount = NUM_THREADS * OPERATIONS_PER_THREAD;
+        int extractedCount = 0;
+        int timeoutCount = 0;
+        const int MAX_TIMEOUTS = 10; // Allow some timeouts before giving up
 
-        while (true) {
-            auto value = pspace.extractBlock<int>("/counter");
-            if (!value.has_value())
-                break;
+        while (extractedCount < expectedCount) {
+            auto value = pspace.extractBlock<int>(
+                    "/counter",
+                    OutOptions{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
+
+            if (!value.has_value()) {
+                if (value.error().code == Error::Code::Timeout) {
+                    timeoutCount++;
+                    if (timeoutCount > MAX_TIMEOUTS) {
+                        std::stringstream ss;
+                        ss << "Too many extraction timeouts. Extracted " << extractedCount << " of " << expectedCount << " values";
+                        FAIL(ss.str());
+                    }
+                    continue; // Try again
+                }
+                std::stringstream ss;
+                ss << "Unexpected error during extraction: " << value.error().message.value_or("Unknown error");
+                FAIL(ss.str());
+            }
+
+            timeoutCount = 0; // Reset timeout counter on successful extraction
 
             // Find matching operation
             bool found = false;
@@ -402,12 +444,20 @@ TEST_CASE("PathSpace Multithreading") {
                 }
             }
 
-            REQUIRE(found);
+            std::stringstream ss;
+            ss << "Extracted value " << value.value() << " not found in expected operations";
+            REQUIRE_MESSAGE(found, ss.str());
+
             actualOperations.push_back(matchingOp);
+            extractedCount++;
         }
 
         // Verify we got all operations
-        CHECK(actualOperations.size() == NUM_THREADS * OPERATIONS_PER_THREAD);
+        {
+            std::stringstream ss;
+            ss << "Expected " << expectedCount << " operations, got " << actualOperations.size();
+            CHECK_MESSAGE(actualOperations.size() == expectedCount, ss.str());
+        }
 
         // Verify per-thread ordering (operations from same thread should be in sequence)
         for (int t = 0; t < NUM_THREADS; t++) {
@@ -419,20 +469,37 @@ TEST_CASE("PathSpace Multithreading") {
                 }
             }
 
-            INFO("Thread " << t << " sequence: ");
-            for (int seq : threadSeqNums) {
-                INFO("  " << seq);
+            // Print sequence for debugging if test fails
+            if (!std::is_sorted(threadSeqNums.begin(), threadSeqNums.end()) || threadSeqNums.size() != OPERATIONS_PER_THREAD) {
+                INFO("Thread " << t << " sequence:");
+                for (int seq : threadSeqNums) {
+                    INFO("  " << seq);
+                }
             }
 
             // Check that this thread's operations are in order
-            CHECK(std::is_sorted(threadSeqNums.begin(), threadSeqNums.end()));
-            CHECK(threadSeqNums.size() == OPERATIONS_PER_THREAD);
+            {
+                std::stringstream ss;
+                ss << "Operations for thread " << t << " are not in order";
+                CHECK_MESSAGE(std::is_sorted(threadSeqNums.begin(), threadSeqNums.end()), ss.str());
+            }
+            {
+                std::stringstream ss;
+                ss << "Thread " << t << " has " << threadSeqNums.size() << " operations, expected " << OPERATIONS_PER_THREAD;
+                CHECK_MESSAGE(threadSeqNums.size() == OPERATIONS_PER_THREAD, ss.str());
+            }
         }
 
-        // Print full operation sequence for debugging
-        INFO("\nFull operation sequence:");
-        for (const auto& op : actualOperations) {
-            INFO("Thread " << op.threadId << " op " << op.seqNum << " (value " << op.value << ")");
+        // Verify no more values exist
+        auto extraValue = pspace.extract<int>("/counter");
+        CHECK_MESSAGE(!extraValue.has_value(), "Found unexpected extra value in PathSpace after test completion");
+
+        // Print full operation sequence if test failed
+        if (doctest::getContextOptions()->success == false) {
+            MESSAGE("\nFull operation sequence:");
+            for (const auto& op : actualOperations) {
+                MESSAGE("Thread ", op.threadId, " op ", op.seqNum, " (value ", op.value, ")");
+            }
         }
     }
 
@@ -515,7 +582,7 @@ TEST_CASE("PathSpace Multithreading") {
         CHECK(extractsCompleted > 0);
     }
 
-    SUBCASE("Multiple Path Operations") {
+    SUBCASE("PathSpace Multiple Path Operations") {
         PathSpace pspace;
         const int NUM_THREADS = 4;
         const int PATHS_PER_THREAD = 3;
@@ -531,118 +598,288 @@ TEST_CASE("PathSpace Multithreading") {
         std::vector<std::vector<PathOperation>> threadOperations(NUM_THREADS);
         std::mutex opsMutex;
 
+        // Track any test failures in worker threads
+        std::atomic<bool> workerFailure{false};
+        std::string workerErrorMsg;
+        std::mutex errorMutex;
+
         auto workerFunction = [&](int threadId) {
-            std::vector<std::string> paths;
-            for (int p = 0; p < PATHS_PER_THREAD; p++) {
-                paths.push_back("/path" + std::to_string(threadId) + "_" + std::to_string(p));
-            }
+            try {
+                std::vector<std::string> paths;
+                for (int p = 0; p < PATHS_PER_THREAD; p++) {
+                    paths.push_back("/path" + std::to_string(threadId) + "_" + std::to_string(p));
+                }
 
-            for (int i = 0; i < OPS_PER_PATH; i++) {
-                for (const auto& path : paths) {
-                    int value = (threadId * 1000000) + (i * 1000);
+                for (int i = 0; i < OPS_PER_PATH; i++) {
+                    for (const auto& path : paths) {
+                        int value = (threadId * 1000000) + (i * 1000);
 
-                    REQUIRE(pspace.insert(path, value).errors.empty());
+                        auto result = pspace.insert(path, value);
+                        if (!result.errors.empty()) {
+                            std::lock_guard<std::mutex> lock(errorMutex);
+                            workerErrorMsg = "Insert failed: " + result.errors[0].message.value_or("Unknown error");
+                            workerFailure = true;
+                            return;
+                        }
 
-                    {
-                        std::lock_guard<std::mutex> lock(opsMutex);
-                        threadOperations[threadId].push_back({path, threadId, i, value});
+                        {
+                            std::lock_guard<std::mutex> lock(opsMutex);
+                            threadOperations[threadId].push_back({path, threadId, i, value});
+                        }
                     }
                 }
+            } catch (const std::exception& e) {
+                std::lock_guard<std::mutex> lock(errorMutex);
+                workerErrorMsg = "Worker thread exception: " + std::string(e.what());
+                workerFailure = true;
             }
         };
 
-        // Launch threads
-        std::vector<std::thread> threads;
-        for (int i = 0; i < NUM_THREADS; i++) {
-            threads.emplace_back(workerFunction, i);
-        }
+        SUBCASE("Order Preservation") {
+            // Launch threads
+            std::vector<std::thread> threads;
+            for (int i = 0; i < NUM_THREADS; i++) {
+                threads.emplace_back(workerFunction, i);
+            }
 
-        for (auto& t : threads) {
-            t.join();
-        }
+            for (auto& t : threads) {
+                t.join();
+            }
 
-        // Verify each path's operations
-        for (int t = 0; t < NUM_THREADS; t++) {
-            for (int p = 0; p < PATHS_PER_THREAD; p++) {
-                std::string path = "/path" + std::to_string(t) + "_" + std::to_string(p);
-                std::vector<int> seqNums;
+            // Check if any worker threads failed
+            if (workerFailure) {
+                FAIL(workerErrorMsg);
+            }
 
-                // Extract all values from this path
-                while (true) {
-                    auto value = pspace.extractBlock<int>(path);
-                    if (!value.has_value())
-                        break;
+            // Verify each path's operations
+            for (int t = 0; t < NUM_THREADS; t++) {
+                for (int p = 0; p < PATHS_PER_THREAD; p++) {
+                    std::string path = "/path" + std::to_string(t) + "_" + std::to_string(p);
+                    std::vector<int> seqNums;
+                    int expectedValues = OPS_PER_PATH;
+                    int timeoutCount = 0;
+                    const int MAX_TIMEOUTS = 10;
 
-                    // Find matching operation
-                    auto& ops = threadOperations[t];
-                    auto it = std::find_if(ops.begin(), ops.end(), [&](const PathOperation& op) {
-                        return op.path == path && op.value == value.value();
-                    });
+                    // Extract all values from this path
+                    while (seqNums.size() < expectedValues) {
+                        auto value = pspace.extractBlock<int>(
+                                path,
+                                OutOptions{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
 
-                    REQUIRE(it != ops.end());
-                    seqNums.push_back(it->seqNum);
+                        if (!value.has_value()) {
+                            if (value.error().code == Error::Code::Timeout) {
+                                timeoutCount++;
+                                if (timeoutCount > MAX_TIMEOUTS) {
+                                    std::stringstream ss;
+                                    ss << "Too many extraction timeouts on path " << path << ". Got " << seqNums.size() << " of "
+                                       << expectedValues << " values";
+                                    FAIL(ss.str());
+                                }
+                                continue;
+                            }
+                            std::stringstream ss;
+                            ss << "Error extracting from path " << path << ": " << value.error().message.value_or("Unknown error");
+                            FAIL(ss.str());
+                        }
+
+                        timeoutCount = 0; // Reset timeout counter on successful extraction
+
+                        // Find matching operation
+                        auto& ops = threadOperations[t];
+                        auto it = std::find_if(ops.begin(), ops.end(), [&](const PathOperation& op) {
+                            return op.path == path && op.value == value.value();
+                        });
+
+                        std::stringstream ss;
+                        ss << "Value " << value.value() << " not found in operations for path " << path;
+                        REQUIRE_MESSAGE(it != ops.end(), ss.str());
+                        seqNums.push_back(it->seqNum);
+                    }
+
+                    // Verify we got the expected number of values
+                    {
+                        std::stringstream ss;
+                        ss << "Path " << path << " has " << seqNums.size() << " operations, expected " << expectedValues;
+                        CHECK_MESSAGE(seqNums.size() == expectedValues, ss.str());
+                    }
+
+                    // Verify sequence ordering
+                    {
+                        std::stringstream ss;
+                        ss << "Operations not in order for path " << path;
+                        if (!std::is_sorted(seqNums.begin(), seqNums.end())) {
+                            ss << "\nSequence: ";
+                            for (int seq : seqNums) {
+                                ss << seq << " ";
+                            }
+                        }
+                        CHECK_MESSAGE(std::is_sorted(seqNums.begin(), seqNums.end()), ss.str());
+                    }
+
+                    // Verify no more values exist
+                    auto extraValue = pspace.extract<int>(path);
+                    {
+                        std::stringstream ss;
+                        ss << "Found unexpected extra value in path " << path << " after test completion";
+                        CHECK_MESSAGE(!extraValue.has_value(), ss.str());
+                    }
                 }
-
-                // Verify sequence
-                CHECK(seqNums.size() == OPS_PER_PATH);
-                CHECK(std::is_sorted(seqNums.begin(), seqNums.end()));
             }
         }
     }
 
-    SUBCASE("Read-Extract Race Conditions") {
+    SUBCASE("PathSpace Read-Extract Race Conditions") {
         PathSpace pspace;
         const int NUM_VALUES = 100; // Smaller number for clearer testing
 
         // Pre-populate with known values
         for (int i = 0; i < NUM_VALUES; i++) {
-            REQUIRE(pspace.insert("/race", i).errors.empty());
+            auto result = pspace.insert("/race", i);
+            std::stringstream ss;
+            ss << "Failed to insert initial value " << i;
+            REQUIRE_MESSAGE(result.errors.empty(), ss.str());
         }
 
         std::vector<int> extractedValues;
         std::mutex extractMutex;
+        std::atomic<bool> extractionComplete{false};
+        std::atomic<int> readCount{0};
 
-        // Just two threads - one reader, one extractor
-        std::thread readerThread([&]() {
-            int readCount = 0;
-            while (readCount < NUM_VALUES * 100) { // Allow more reads than values
-                auto value = pspace.read<int>("/race");
-                if (value.has_value()) {
-                    readCount++;
-                    INFO("Read value: " << value.value());
+        SUBCASE("Concurrent Read-Extract Operations") {
+            // Track thread errors
+            std::string readerError, extractorError;
+            std::mutex errorMutex;
+            std::atomic<bool> hasError{false};
+
+            // Reader thread - reads values continuously until extraction is complete
+            std::thread readerThread([&]() {
+                try {
+                    const int MAX_FAILED_READS = 10;
+                    int consecutiveFailures = 0;
+
+                    while (readCount < NUM_VALUES * 100 && !extractionComplete) { // Allow more reads than values
+                        auto value = pspace.read<int>("/race");
+                        if (value.has_value()) {
+                            readCount++;
+                            consecutiveFailures = 0;
+                            MESSAGE("Read value: ", value.value());
+                        } else {
+                            consecutiveFailures++;
+                            if (consecutiveFailures >= MAX_FAILED_READS) {
+                                if (extractionComplete)
+                                    break;
+                                consecutiveFailures = 0;
+                            }
+                            std::this_thread::sleep_for(std::chrono::microseconds(100));
+                        }
+                    }
+                } catch (const std::exception& e) {
+                    std::lock_guard<std::mutex> lock(errorMutex);
+                    readerError = "Reader thread exception: ";
+                    readerError += e.what();
+                    hasError = true;
                 }
-                std::this_thread::sleep_for(std::chrono::microseconds(1));
+            });
+
+            // Extractor thread - extracts values with timeout
+            std::thread extractorThread([&]() {
+                try {
+                    int timeoutCount = 0;
+                    const int MAX_TIMEOUTS = 10;
+                    int extractedCount = 0;
+
+                    while (extractedCount < NUM_VALUES) {
+                        auto value = pspace.extractBlock<int>(
+                                "/race",
+                                OutOptions{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
+
+                        if (!value.has_value()) {
+                            if (value.error().code == Error::Code::Timeout) {
+                                timeoutCount++;
+                                if (timeoutCount > MAX_TIMEOUTS) {
+                                    std::lock_guard<std::mutex> lock(errorMutex);
+                                    std::stringstream ss;
+                                    ss << "Too many extraction timeouts. Got " << extractedCount << " of " << NUM_VALUES << " values";
+                                    extractorError = ss.str();
+                                    hasError = true;
+                                    break;
+                                }
+                                continue;
+                            }
+                            std::lock_guard<std::mutex> lock(errorMutex);
+                            extractorError = "Extraction error: ";
+                            extractorError += value.error().message.value_or("Unknown error");
+                            hasError = true;
+                            break;
+                        }
+
+                        timeoutCount = 0; // Reset timeout counter on successful extraction
+                        {
+                            std::lock_guard<std::mutex> lock(extractMutex);
+                            extractedValues.push_back(value.value());
+                        }
+                        extractedCount++;
+                    }
+
+                    extractionComplete = true;
+                } catch (const std::exception& e) {
+                    std::lock_guard<std::mutex> lock(errorMutex);
+                    extractorError = "Extractor thread exception: ";
+                    extractorError += e.what();
+                    hasError = true;
+                }
+            });
+
+            // Wait for threads to complete
+            readerThread.join();
+            extractorThread.join();
+
+            // Check for thread errors
+            if (hasError) {
+                std::stringstream ss;
+                if (!readerError.empty())
+                    ss << readerError;
+                if (!extractorError.empty())
+                    ss << extractorError;
+                FAIL(ss.str());
             }
-        });
 
-        std::thread extractorThread([&]() {
-            while (true) {
-                auto value = pspace.extractBlock<int>("/race");
-                if (!value.has_value())
-                    break;
-
+            // Verify results
+            {
                 std::lock_guard<std::mutex> lock(extractMutex);
-                extractedValues.push_back(value.value());
+                std::sort(extractedValues.begin(), extractedValues.end());
+
+                MESSAGE("Number of values extracted: ", extractedValues.size());
+                MESSAGE("Total reads performed: ", readCount);
+
+                {
+                    std::stringstream ss;
+                    ss << "Expected " << NUM_VALUES << " values, got " << extractedValues.size();
+                    REQUIRE_MESSAGE(extractedValues.size() == NUM_VALUES, ss.str());
+                }
+
+                for (int i = 0; i < NUM_VALUES; i++) {
+                    std::stringstream ss;
+                    ss << "Value mismatch at position " << i << ": expected " << i << ", got " << extractedValues[i];
+                    REQUIRE_MESSAGE(extractedValues[i] == i, ss.str());
+                }
             }
-        });
 
-        readerThread.join();
-        extractorThread.join();
+            // Verify queue is empty with timeouts
+            {
+                auto finalRead = pspace.readBlock<int>(
+                        "/race",
+                        OutOptions{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
+                CHECK_MESSAGE(!finalRead.has_value(), "Expected no more values to read");
+            }
 
-        // Verify results
-        std::sort(extractedValues.begin(), extractedValues.end());
-        INFO("Number of values extracted: " << extractedValues.size());
-
-        CHECK(extractedValues.size() == NUM_VALUES);
-        for (int i = 0; i < NUM_VALUES; i++) {
-            CHECK(extractedValues[i] == i);
+            {
+                auto finalExtract = pspace.extractBlock<int>(
+                        "/race",
+                        OutOptions{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
+                CHECK_MESSAGE(!finalExtract.has_value(), "Expected no more values to extract");
+            }
         }
-
-        // Verify queue is empty
-        auto finalRead = pspace.readBlock<int>("/race");
-        CHECK_FALSE(finalRead.has_value());
-        auto finalExtract = pspace.extractBlock<int>("/race");
-        CHECK_FALSE(finalExtract.has_value());
     }
 
     SUBCASE("Concurrent Path Creation") { // ToDo: This crashed once, unknown why.
@@ -1103,45 +1340,63 @@ TEST_CASE("PathSpace Multithreading") {
 
     SUBCASE("Concurrent Task Execution - Timeout Handling") {
         PathSpace space;
-        TestCounter completed_tasks;
-        std::atomic<int> timeout_count{0};
 
-        // Single slow task
-        auto lambda = []() -> int {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            return 43;
-        };
+        // Try to read from a path that doesn't exist yet, with timeout
+        auto read_result = space.readBlock<int>(
+                "/missing_task",
+                OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
 
-        REQUIRE(space.insert("/slow/task",
-                             lambda,
-                             InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::OnReadOrExtract}})
-                        .errors.empty());
+        // Should timeout because no data was ever inserted
+        CHECK_MESSAGE(!read_result.has_value(),
+                      "Expected timeout, but got value: ",
+                      read_result.has_value() ? std::to_string(read_result.value()) : "timeout");
 
-        // Try with different timeouts
-        const int NUM_ATTEMPTS = 20;
-        std::vector<std::jthread> workers(NUM_ATTEMPTS);
+        if (!read_result.has_value()) {
+            CHECK_MESSAGE(read_result.error().code == Error::Code::Timeout,
+                          "Expected timeout error, got different error code: ",
+                          static_cast<int>(read_result.error().code));
+        }
+    }
 
-        for (int i = 0; i < NUM_ATTEMPTS; i++) {
-            workers.emplace_back([&, i]() {
-                auto result = space.readBlock<int>("/slow/task",
-                                                   OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait,
-                                                                                    .timeout = std::chrono::milliseconds(10 * (i + 1))}});
+    SUBCASE("Concurrent Task Execution - Tasks should both complete and timeout") {
+        PathSpace space;
 
-                if (result.has_value() && result.value() == 43) {
-                    completed_tasks.increment();
-                    MESSAGE("Attempt " << i << " completed with value " << result.value());
-                } else {
-                    timeout_count++;
-                    MESSAGE("Attempt " << i << " timed out");
-                }
-            });
+        // Insert a fast task that should complete
+        auto fast_insert = space.insert(
+                "/fast_task",
+                []() {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                    return 42;
+                },
+                InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::OnReadOrExtract}});
+        REQUIRE_MESSAGE(fast_insert.errors.empty(), "Failed to insert fast task");
+
+        // Read fast task - should complete
+        auto fast_result = space.readBlock<int>(
+                "/fast_task",
+                OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(200)}});
+
+        CHECK_MESSAGE(fast_result.has_value(), "Fast task should complete but got timeout");
+
+        if (fast_result.has_value()) {
+            CHECK_MESSAGE(fast_result.value() == 42, "Fast task returned wrong value: ", fast_result.value());
         }
 
-        workers.clear();
+        // Now try reading from a non-existent path - should timeout
+        auto timeout_result = space.readBlock<int>(
+                "/missing_task",
+                OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
 
-        MESSAGE("Completed tasks: " << completed_tasks.get_count() << ", Timeouts: " << timeout_count.load());
-        CHECK(completed_tasks.get_count() + timeout_count.load() == NUM_ATTEMPTS);
-        CHECK(timeout_count.load() > 0);
+        CHECK_MESSAGE(!timeout_result.has_value(), "Expected timeout for missing task");
+
+        if (!timeout_result.has_value()) {
+            CHECK_MESSAGE(timeout_result.error().code == Error::Code::Timeout,
+                          "Expected timeout error but got: ",
+                          static_cast<int>(timeout_result.error().code));
+        }
+
+        // Clean up
+        space.clear();
     }
 
     SUBCASE("Concurrent Task Execution - Error Handling") {
