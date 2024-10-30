@@ -33,13 +33,10 @@ public:
         InputData inputData{std::forward<DataType>(data)};
         ConstructiblePath constructedPath = path.isConcrete() ? ConstructiblePath{path} : ConstructiblePath{};
 
-        if (inputData.metadata.category == DataCategory::ExecutionFunctionPointer
-            || inputData.metadata.category == DataCategory::ExecutionStdFunction) {
+        if (inputData.metadata.dataCategory == DataCategory::Execution) {
             bool const isImmediate
                     = (!options.execution.has_value())
                       || (options.execution.has_value() && options.execution.value().category == ExecutionOptions::Category::Immediate);
-            bool const isOnReadOrExtract
-                    = options.execution.has_value() && options.execution.value().category == ExecutionOptions::Category::OnReadOrExtract;
             if (std::shared_ptr<Task> Task = this->createTask(constructedPath, std::forward<DataType>(data), inputData, options)) {
                 if (isImmediate) {
                     this->pool->addTask(Task);
@@ -117,15 +114,14 @@ protected:
         bool const hasTimeout = options.block && options.block->timeout;
 
         auto const inputMetaData = InputMetadataT<DataType>{};
-        DataCategory const category = inputMetaData.category;
-        bool const isAsync
-                = hasTimeout && (category == DataCategory::ExecutionFunctionPointer || category == DataCategory::ExecutionStdFunction);
+        DataCategory const category = inputMetaData.dataCategory;
+        bool const isLazyWithTimeout = hasTimeout && (category == DataCategory::Execution);
 
-        if (isAsync) {
+        if (isLazyWithTimeout) {
             if (options.execution.has_value())
-                const_cast<OutOptions&>(options).execution.value().category = ExecutionOptions::Category::Async;
+                const_cast<OutOptions&>(options).execution.value().category = ExecutionOptions::Category::Lazy;
             else
-                const_cast<OutOptions&>(options).execution = ExecutionOptions{.category = ExecutionOptions::Category::Async};
+                const_cast<OutOptions&>(options).execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy};
         }
 
         DataType obj;
@@ -177,18 +173,20 @@ protected:
 
     template <typename DataType>
     auto createTask(ConstructiblePath const& constructedPath, DataType const& data, InputData const& inputData, InOptions const& options)
-            -> std::shared_ptr<Task> { // ToDo:: Add support for glob based executions
+            -> std::shared_ptr<Task> {
         sp_log("PathSpace::createTask", "Function Called");
         if constexpr (ExecutionFunctionPointer<DataType> || ExecutionStdFunction<DataType>) {
-            auto function = [userFunction = std::move(data)](Task const& task, void* obj, bool isOut) {
-                if (isOut) {
-                    *static_cast<std::function<std::invoke_result_t<DataType>()>*>(obj) = userFunction;
+            using ResultType = std::invoke_result_t<DataType>;
+
+            auto function = [userFunctionOrData = std::move(data)](Task const& task, void* obj, bool const objIsData) {
+                if (objIsData) {
+                    *static_cast<std::function<std::invoke_result_t<DataType>()>*>(obj) = userFunctionOrData;
                 } else {
                     if (obj == nullptr) {
                         assert(task.space != nullptr);
-                        task.space->insert(task.pathToInsertReturnValueTo.getPath(), userFunction());
+                        task.space->insert(task.pathToInsertReturnValueTo.getPath(), userFunctionOrData());
                     } else {
-                        *static_cast<std::invoke_result_t<DataType>*>(obj) = userFunction();
+                        *static_cast<std::invoke_result_t<DataType>*>(obj) = userFunctionOrData();
                     }
                 }
             };
@@ -198,14 +196,12 @@ protected:
                          .pathToInsertReturnValueTo = constructedPath,
                          .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
                          .function = std::move(function),
-                         .resultStorage = hasTimeout ? std::invoke_result_t<DataType>() : std::any(),
+                         .resultStorage = std::invoke_result_t<DataType>{},
                          .resultCopy = [](void const* const from, void* const to) {
                              *static_cast<std::invoke_result_t<DataType>*>(to) = *static_cast<std::invoke_result_t<DataType> const*>(from);
                          }});
-            task->resultPtr = std::any_cast<std::invoke_result_t<DataType>*>(&task->resultStorage);
-            if (hasTimeout && task->executionOptions.category == ExecutionOptions::Category::Immediate) {
-                task->executionOptions.category = ExecutionOptions::Category::Async;
-            }
+            if (task->resultStorage.has_value())
+                task->resultPtr = std::any_cast<std::invoke_result_t<DataType>>(&task->resultStorage);
             return std::move(task);
         }
         return {};

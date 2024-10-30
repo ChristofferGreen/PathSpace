@@ -1,4 +1,5 @@
 #pragma once
+#include "TaskState.hpp"
 #include "core/ExecutionOptions.hpp"
 #include "path/ConstructiblePath.hpp"
 
@@ -11,11 +12,13 @@ namespace SP {
 struct PathSpace;
 
 struct Task {
+    TaskStateAtomic state;
+
     PathSpace* space = nullptr;                  // Returned values from the execution will be inserted here
     ConstructiblePath pathToInsertReturnValueTo; // On this path, the return value will be inserted.
     ExecutionOptions executionOptions;
 
-    std::function<void(Task const& task, void* obj, bool isOut)> function;
+    std::function<void(Task const& task, void* obj, bool const objIsData)> function;
     mutable std::shared_ptr<std::future<void>> executionFuture;
 
     // When using a timeout on a ReadExtract execution we need a safe space to store the value.

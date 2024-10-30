@@ -6,11 +6,7 @@ namespace SP {
 struct ExecutionOptions {
     enum class Category {
         Immediate,
-        OnReadOrExtract,
-        PeriodicImmidiate,
-        PeriodicOnRead,
-        Async,
-        Never
+        Lazy
     };
     enum class Location {
         Any,

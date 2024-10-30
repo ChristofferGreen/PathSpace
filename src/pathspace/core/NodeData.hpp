@@ -2,9 +2,11 @@
 
 #include "ElementType.hpp"
 #include "Error.hpp"
-#include "ExecutionOptions.hpp"
 #include "InOptions.hpp"
 #include "InsertReturn.hpp"
+#include "core/BlockOptions.hpp"
+#include "core/ExecutionOptions.hpp"
+#include "core/OutOptions.hpp"
 #include "taskpool/Task.hpp"
 #include "type/DataCategory.hpp"
 #include "type/InputData.hpp"
@@ -36,9 +38,8 @@ struct NodeData {
         return std::nullopt;
     }
 
-    auto deserialize(void* obj, const InputMetadata& inputMetadata, std::optional<ExecutionOptions> const& execution) const
-            -> Expected<int> {
-        return const_cast<NodeData*>(this)->deserializeImpl(obj, inputMetadata, execution, false);
+    auto deserialize(void* obj, const InputMetadata& inputMetadata, std::optional<OutOptions> const& options) const -> Expected<int> {
+        return const_cast<NodeData*>(this)->deserializeImpl(obj, inputMetadata, options, false);
     }
 
     auto deserializePop(void* obj, const InputMetadata& inputMetadata) -> Expected<int> {
@@ -49,9 +50,9 @@ struct NodeData {
     std::deque<std::shared_ptr<Task>> tasks;
     std::deque<ElementType> types;
 
-    auto deserializeImpl(void* obj, const InputMetadata& inputMetadata, std::optional<ExecutionOptions> const& execution, bool isExtract)
+    auto deserializeImpl(void* obj, const InputMetadata& inputMetadata, std::optional<OutOptions> const& options, bool isExtract)
             -> Expected<int> {
-        // Check if there's any data to process
+        // Early return if there's no data to process
         if (this->types.empty())
             return 0;
 
@@ -59,70 +60,116 @@ struct NodeData {
         if (this->types.front().typeInfo != inputMetadata.typeInfo)
             return 0;
 
-        // Handle execution types (function pointers and std::function)
-        if (this->types.front().category == DataCategory::ExecutionFunctionPointer
-            || this->types.front().category == DataCategory::ExecutionStdFunction) {
+        // Handle execution type (functions, lambdas, etc.)
+        if (this->types.front().category == DataCategory::Execution) {
             assert(!this->tasks.empty());
-
             auto& task = this->tasks.front();
-            bool isImmediateExecution = task->executionOptions.category == ExecutionOptions::Category::Immediate;
-            if (execution.has_value())
-                isImmediateExecution = execution.has_value() && execution.value().category == ExecutionOptions::Category::Immediate;
-            bool isAsyncExecution = task->executionOptions.category == ExecutionOptions::Category::Async;
-            if (execution.has_value())
-                isAsyncExecution = execution.has_value() && execution.value().category == ExecutionOptions::Category::Async;
 
-            if (isImmediateExecution) {
-                // Execute immediately in the current thread
-                task->function(*task.get(), obj, inputMetadata.category == DataCategory::ExecutionStdFunction);
-            } else if (isAsyncExecution) {
-                // Handle async execution
-                if (!task->executionFuture) {
-                    // Launch async task using task's storage
+            // Extract execution options
+            std::optional<ExecutionOptions> const execution = options.value_or(OutOptions{}).execution;
+            bool const isImmediateExecution = execution.value_or(task->executionOptions).category == ExecutionOptions::Category::Immediate;
+            bool const isLazyExecution = execution.value_or(task->executionOptions).category == ExecutionOptions::Category::Lazy;
+            bool const hasTimeout
+                    = options.has_value() && options.value().block.has_value() && options.value().block.value().timeout.has_value();
+
+            // Handle lazy execution
+            if (isLazyExecution) {
+                // Try to start the task if it hasn't been started
+                if (task->state.tryStart()) {
                     task->executionFuture = std::make_shared<std::future<void>>(
                             std::async(std::launch::async,
-                                       [task, isExtract = inputMetadata.category == DataCategory::ExecutionStdFunction]() {
-                                           task->function(*task.get(), task->resultPtr, isExtract);
+                                       [task, isExtract = inputMetadata.executionCategory == ExecutionCategory::StdFunction]() {
+                                           // Attempt to transition to running state
+                                           if (task->state.transitionToRunning()) {
+                                               try {
+                                                   // Execute the task function
+                                                   task->function(*task.get(), task->resultPtr, false);
+                                                   task->state.markCompleted();
+                                               } catch (...) {
+                                                   // Handle any exceptions during execution
+                                                   task->state.markFailed();
+                                                   throw; // Re-throw to be caught by future
+                                               }
+                                           }
                                        }));
-                    return std::unexpected(Error{Error::Code::NoObjectFound, "Task started but not complete"});
                 }
 
-                // Check if existing execution is complete
-                auto status = task->executionFuture->wait_for(std::chrono::milliseconds(0));
-                if (status != std::future_status::ready) {
-                    return std::unexpected(Error{Error::Code::NoObjectFound, "Task still executing"});
-                }
-
-                // Get result and handle any exceptions
+                // Handle timeout vs non-timeout cases
                 try {
-                    task->executionFuture->get();
-                    // Copy result from task's storage to caller's memory
-                    // std::memcpy(obj, task->resultPtr, task->resultPtr);
-                } catch (const std::exception& e) {
-                    return std::unexpected(Error{Error::Code::UnknownError, e.what()});
-                }
-            }
+                    if (hasTimeout) {
+                        // With timeout - wait for specified duration
+                        auto const timeout = options.value().block.value().timeout.value();
+                        auto status = task->executionFuture->wait_for(timeout);
 
-            // Handle extraction if requested
-            if (isExtract) {
-                this->tasks.pop_front();
-                popType();
+                        if (status != std::future_status::ready) {
+                            return std::unexpected(Error{Error::Code::Timeout,
+                                                         "Task execution timed out after " + std::to_string(timeout.count()) + "ms"});
+                        }
+                    } else {
+                        // No timeout - wait indefinitely
+                        task->executionFuture->wait();
+                    }
+
+                    // Get future result to propagate any exceptions
+                    task->executionFuture->get();
+                } catch (const std::exception& e) {
+                    return std::unexpected(Error{Error::Code::UnknownError, std::string("Task execution failed with error: ") + e.what()});
+                }
+
+                // Check final state after waiting
+                TaskState finalState = task->state.get();
+                if (finalState == TaskState::Failed) {
+                    return std::unexpected(Error{Error::Code::UnknownError, "Task execution failed"});
+                } else if (finalState != TaskState::Completed) {
+                    return std::unexpected(Error{Error::Code::NoObjectFound,
+                                                 std::string("Task in unexpected state: ") + std::string(taskStateToString(finalState))});
+                }
+
+                // Task completed successfully, copy the result
+                task->resultCopy(task->resultPtr, obj);
+
+                // Handle extraction if requested
+                if (isExtract) {
+                    this->tasks.pop_front();
+                    popType();
+                }
+                return 1;
+            } else {
+                // Handle immediate execution
+                if (task->state.tryStart() && task->state.transitionToRunning()) {
+                    try {
+                        bool const objIsData = inputMetadata.executionCategory == ExecutionCategory::StdFunction;
+                        task->function(*task.get(), obj, objIsData);
+                        task->state.markCompleted();
+                    } catch (const std::exception& e) {
+                        task->state.markFailed();
+                        return std::unexpected(Error{Error::Code::UnknownError, std::string("Immediate execution failed: ") + e.what()});
+                    } catch (...) {
+                        task->state.markFailed();
+                        return std::unexpected(Error{Error::Code::UnknownError, "Immediate execution failed with unknown error"});
+                    }
+                } else {
+                    return std::unexpected(Error{Error::Code::NoObjectFound, "Failed to start immediate execution"});
+                }
+
+                if (isExtract) {
+                    this->tasks.pop_front();
+                    popType();
+                }
+                return 1;
             }
-            return 1;
         }
 
-        // Handle regular data types
+        // Handle non-execution types
         if (isExtract) {
-            // Handle extraction of data
             if (!inputMetadata.deserializePop) {
-                return std::unexpected(Error{Error::Code::UnserializableType, "No pop deserialization function provided."});
+                return std::unexpected(Error{Error::Code::UnserializableType, "No pop deserialization function provided"});
             }
             inputMetadata.deserializePop(obj, data);
             popType();
         } else {
-            // Handle reading of data
             if (!inputMetadata.deserialize) {
-                return std::unexpected(Error{Error::Code::UnserializableType, "No deserialization function provided."});
+                return std::unexpected(Error{Error::Code::UnserializableType, "No deserialization function provided"});
             }
             inputMetadata.deserialize(obj, data);
         }
@@ -134,9 +181,9 @@ struct NodeData {
             if (types.back().typeInfo == meta.typeInfo)
                 types.back().elements++;
             else
-                types.emplace_back(meta.typeInfo, 1, meta.category);
+                types.emplace_back(meta.typeInfo, 1, meta.dataCategory);
         } else {
-            types.emplace_back(meta.typeInfo, 1, meta.category);
+            types.emplace_back(meta.typeInfo, 1, meta.dataCategory);
         }
     }
 

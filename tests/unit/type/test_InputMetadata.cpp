@@ -74,18 +74,18 @@ TEST_CASE("Type InputMetadata Fundamental") {
         TestFuncPtr testFunc = [](int x) {};
         InputMetadata im(InputMetadataT<TestFuncPtr>{});
 
-        REQUIRE(im.category == DataCategory::FunctionPointer);
+        REQUIRE(im.dataCategory == DataCategory::FunctionPointer);
     }
 
     SUBCASE("Function Execution Pointer") {
         using TestFuncPtr = int (*)();
         InputMetadata im(InputMetadataT<TestFuncPtr>{});
 
-        REQUIRE(im.category == DataCategory::ExecutionFunctionPointer);
+        REQUIRE(im.executionCategory == ExecutionCategory::FunctionPointer);
 
         using TestPtr = int*;
         InputMetadata im3(InputMetadataT<TestPtr>{});
 
-        REQUIRE(im3.category == DataCategory::None);
+        REQUIRE(im3.executionCategory == ExecutionCategory::None);
     }
 }

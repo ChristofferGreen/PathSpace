@@ -62,10 +62,9 @@ TEST_CASE("PathSpace Read") {
         CHECK(pspace.readBlock<int>("/f2").value() == 25);
     }
 
-    SUBCASE("Simple PathSpace Execution Non-Immidiate") {
+    SUBCASE("Simple PathSpace Execution Lazy") {
         std::function<int()> f = []() -> int { return 58; };
-        CHECK(pspace.insert("/f", f, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::OnReadOrExtract}})
-                      .nbrTasksCreated
+        CHECK(pspace.insert("/f", f, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}}).nbrTasksCreated
               == 1);
         CHECK(pspace.readBlock<int>("/f").value() == 58);
     }

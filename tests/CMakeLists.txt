@@ -18,6 +18,7 @@ add_executable(PathSpaceTests
   unit/test_PathSpace_extract.cpp
   unit/test_PathSpace_insert.cpp
   unit/test_PathSpace_multithreading.cpp
+  unit/test_PathSpace_execution.cpp
   test_main.cpp
 )
 

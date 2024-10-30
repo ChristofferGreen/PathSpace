@@ -6,9 +6,8 @@ namespace SP {
 enum struct DataCategory {
     None = 0,
     SerializedData,
-    ExecutionFunctionPointer,
+    Execution,
     FunctionPointer,
-    ExecutionStdFunction,
     Fundamental,
     SerializationLibraryCompatible
 };

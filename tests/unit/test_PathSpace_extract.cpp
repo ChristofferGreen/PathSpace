@@ -85,10 +85,9 @@ TEST_CASE("PathSpace Extract") {
         CHECK(ret3.value() == 34.5f);
     }
 
-    SUBCASE("Simple PathSpace Execution Non-Immediate") {
+    SUBCASE("Simple PathSpace Execution Lazy") {
         std::function<int()> f = []() -> int { return 58; };
-        CHECK(pspace.insert("/f", f, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::OnReadOrExtract}})
-                      .nbrTasksCreated
+        CHECK(pspace.insert("/f", f, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}}).nbrTasksCreated
               == 1);
         CHECK(pspace.extractBlock<int>("/f").value() == 58);
         CHECK(!pspace.extract<int>("/f").has_value());
@@ -176,7 +175,7 @@ TEST_CASE("PathSpace Extract Extended Tests") {
 
     SUBCASE("Extract lambda function") {
         auto lambda = []() -> int { return 42; };
-        pspace.insert("/lambda", lambda, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::OnReadOrExtract}});
+        pspace.insert("/lambda", lambda, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
         auto ret = pspace.extractBlock<std::function<int()>>("/lambda");
         REQUIRE(ret.has_value());
         CHECK(ret.value()() == 42);

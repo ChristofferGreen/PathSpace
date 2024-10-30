@@ -2,6 +2,7 @@
 #include "core/ExecutionOptions.hpp"
 #include "taskpool/TaskPool.hpp"
 #include "type/DataCategory.hpp"
+#include "type/ExecutionCategory.hpp"
 #include "type/helpers/return_type.hpp"
 #include "utils/TaggedLogger.hpp"
 
@@ -208,19 +209,29 @@ struct InputMetadataT {
         return &typeid(T);
     }();
 
-    static constexpr DataCategory const category = []() {
+    static constexpr DataCategory const dataCategory = []() {
         if constexpr (ExecutionFunctionPointer<T>) {
-            return DataCategory::ExecutionFunctionPointer;
+            return DataCategory::Execution;
         } else if constexpr (FunctionPointer<T>) {
             return DataCategory::FunctionPointer;
         } else if constexpr (ExecutionStdFunction<T>) {
-            return DataCategory::ExecutionStdFunction;
+            return DataCategory::Execution;
         } else if constexpr (std::is_fundamental<T>::value) {
             return DataCategory::Fundamental;
         } else if constexpr (AlpacaCompatible<T>) {
             return DataCategory::SerializationLibraryCompatible;
         } else {
             return DataCategory::None;
+        }
+    }();
+
+    static constexpr ExecutionCategory const executionCategory = []() {
+        if constexpr (ExecutionFunctionPointer<T>) {
+            return ExecutionCategory::FunctionPointer;
+        } else if constexpr (ExecutionStdFunction<T>) {
+            return ExecutionCategory::StdFunction;
+        } else {
+            return ExecutionCategory::None;
         }
     }();
 

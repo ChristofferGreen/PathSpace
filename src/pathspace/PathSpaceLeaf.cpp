@@ -135,7 +135,7 @@ auto PathSpaceLeaf::outDataName(ConcreteNameStringView const& concreteName,
                 result = nodeData->deserializePop(obj, inputMetadata);
                 shouldErase = nodeData->types.empty();
             } else {
-                result = nodeData->deserialize(obj, inputMetadata, options.execution);
+                result = nodeData->deserialize(obj, inputMetadata, options);
             }
             return true; // modification was successful
         }
