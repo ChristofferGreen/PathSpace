@@ -165,7 +165,6 @@ auto NodeData::copyTaskResult(std::shared_ptr<Task>& task, void* obj) -> Expecte
         return std::unexpected(
                 Error{Error::Code::NoObjectFound, std::string("Task in unexpected state: ") + std::string(taskStateToString(finalState))});
     }
-
     task->resultCopy(task->resultPtr, obj);
     return 1;
 }

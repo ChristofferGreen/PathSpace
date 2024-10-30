@@ -19,7 +19,7 @@ struct Task {
     std::optional<ExecutionOptions> executionOptions;
 
     std::function<void(Task const& task, void* obj, bool const objIsData)> function;
-    mutable std::shared_ptr<std::future<void>> executionFuture;
+    std::shared_ptr<std::future<void>> executionFuture;
 
     // When using a timeout on a ReadExtract execution we need a safe space to store the value.
     std::any resultStorage;
