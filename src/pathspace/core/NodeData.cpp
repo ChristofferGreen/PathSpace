@@ -1,4 +1,5 @@
 #include "NodeData.hpp"
+#include "core/ExecutionOptions.hpp"
 
 namespace SP {
 
@@ -64,7 +65,8 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
     auto& task = this->tasks.front();
 
     std::optional<ExecutionOptions> const execution = options.execution;
-    bool const isImmediateExecution = execution.value_or(task->executionOptions).category == ExecutionOptions::Category::Immediate;
+    bool const isImmediateExecution
+            = execution.value_or(task->executionOptions.value_or(ExecutionOptions{})).category == ExecutionOptions::Category::Immediate;
 
     Expected<int> result
             = isImmediateExecution ? handleImmediateExecution(task, isExtract, obj) : handleLazyExecution(task, options, isExtract, obj);

@@ -14,9 +14,9 @@ struct PathSpace;
 struct Task {
     TaskStateAtomic state;
 
-    PathSpace* space = nullptr;                  // Returned values from the execution will be inserted here
+    PathSpace* space = nullptr;                  // Returned values from lazy executions will be inserted here
     ConstructiblePath pathToInsertReturnValueTo; // On this path, the return value will be inserted.
-    ExecutionOptions executionOptions;
+    std::optional<ExecutionOptions> executionOptions;
 
     std::function<void(Task const& task, void* obj, bool const objIsData)> function;
     mutable std::shared_ptr<std::future<void>> executionFuture;
