@@ -129,11 +129,11 @@ auto PathSpaceLeaf::outDataName(ConcreteNameStringView const& concreteName,
     bool shouldErase = false;
 
     // First pass: modify data and check if we need to erase
-    nodeDataMap.modify_if(concreteName.getName(), [&](auto& nodePair) {
+    this->nodeDataMap.modify_if(concreteName.getName(), [&](auto& nodePair) {
         if (auto* nodeData = std::get_if<NodeData>(&nodePair.second)) {
             if (doPop) {
                 result = nodeData->deserializePop(obj, inputMetadata);
-                shouldErase = nodeData->types.empty();
+                shouldErase = nodeData->empty();
             } else {
                 result = nodeData->deserialize(obj, inputMetadata, options);
             }
@@ -144,7 +144,7 @@ auto PathSpaceLeaf::outDataName(ConcreteNameStringView const& concreteName,
 
     // Second pass: if needed, erase the empty node
     if (shouldErase) {
-        nodeDataMap.erase(concreteName.getName());
+        this->nodeDataMap.erase(concreteName.getName());
     }
 
     return result;

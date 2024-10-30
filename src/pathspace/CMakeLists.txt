@@ -49,6 +49,7 @@ add_library(PathSpace
     path/GlobPathIterator.cpp
     path/GlobName.cpp
     path/Path.cpp
+    core/NodeData.cpp
     taskpool/Task.cpp
     taskpool/TaskPool.cpp
     utils/TaggedLogger.cpp
