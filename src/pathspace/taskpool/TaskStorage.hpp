@@ -6,6 +6,8 @@
 
 namespace SP {
 
+// ToDo: Get rid of this class, shuffly the task inot the NodeData instead.
+// Every once in a while clear the task from completed or failed tasks.
 struct TaskStorage {
     TaskStorage() = default;
 

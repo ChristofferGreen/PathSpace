@@ -220,7 +220,7 @@ protected:
 
     auto shutdown() -> void;
 
-    TaskStorage storage;
+    TaskStorage storage; // ToDo:: Make sure to erase old tasks
     TaskPool* pool = nullptr;
     PathSpaceLeaf root;
     mutable WaitMap waitMap;
