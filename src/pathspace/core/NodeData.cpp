@@ -89,7 +89,8 @@ auto NodeData::handleLazyExecution(std::shared_ptr<Task>& task, const OutOptions
         }
 
         // Create the future only when we successfully start the task
-        task->executionFuture = std::make_shared<std::future<void>>(std::async(std::launch::async, [this, task, isExtract]() {
+        assert(task->asyncTask.has_value());
+        task->asyncTask->executionFuture = std::make_shared<std::future<void>>(std::async(std::launch::async, [this, task, isExtract]() {
             if (task->state.transitionToRunning()) {
                 if (auto result = executeTask(task); !result) {
                     task->state.markFailed();
@@ -108,8 +109,8 @@ auto NodeData::handleLazyExecution(std::shared_ptr<Task>& task, const OutOptions
         }
     } else {
         // Make sure we have a future before waiting
-        if (task->executionFuture) {
-            task->executionFuture->wait();
+        if (task->asyncTask.has_value() && task->asyncTask->executionFuture) {
+            task->asyncTask->executionFuture->wait();
         } else {
             return std::unexpected(Error{Error::Code::UnknownError, "Task future not initialized"});
         }
@@ -139,13 +140,15 @@ auto NodeData::handleImmediateExecution(std::shared_ptr<Task>& task, bool isExtr
 auto NodeData::handleTaskTimeout(std::shared_ptr<Task>& task, std::chrono::milliseconds timeout) -> Expected<void> {
     sp_log("NodeData::handleTaskTimeout", "Function Called");
 
-    auto status = task->executionFuture->wait_for(timeout);
+    assert(task->asyncTask.has_value());
+    assert(task->asyncTask.has_value());
+    auto status = task->asyncTask->executionFuture->wait_for(timeout);
     if (status != std::future_status::ready) {
         return std::unexpected(Error{Error::Code::Timeout, "Task execution timed out after " + std::to_string(timeout.count()) + "ms"});
     }
 
     try {
-        task->executionFuture->get();
+        task->asyncTask->executionFuture->get();
     } catch (const std::exception& e) {
         return std::unexpected(Error{Error::Code::UnknownError, std::string("Task execution failed: ") + e.what()});
     }
@@ -165,7 +168,8 @@ auto NodeData::copyTaskResult(std::shared_ptr<Task>& task, void* obj) -> Expecte
         return std::unexpected(
                 Error{Error::Code::NoObjectFound, std::string("Task in unexpected state: ") + std::string(taskStateToString(finalState))});
     }
-    task->resultCopy(task->resultPtr, obj);
+    assert(task->asyncTask.has_value());
+    task->asyncTask->resultCopy(task->asyncTask->resultPtr, obj);
     return 1;
 }
 
@@ -191,7 +195,8 @@ auto NodeData::executeTask(std::shared_ptr<Task> const& task) -> Expected<void> 
     sp_log("NodeData::executeTask", "Function Called");
 
     try {
-        task->function(*task.get(), task->resultPtr, false);
+        assert(task->asyncTask.has_value());
+        task->function(*task.get(), task->asyncTask->resultPtr, false);
         return {};
     } catch (const std::exception& e) {
         return std::unexpected(Error{Error::Code::UnknownError, std::string("Task execution failed: ") + e.what()});

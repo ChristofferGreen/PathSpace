@@ -191,17 +191,21 @@ protected:
                 }
             };
             bool const hasTimeout = options.block.has_value() && options.block->timeout.has_value();
+            std::optional<TaskAsyncOptions> asyncTask;
+            if (options.execution.has_value() && options.execution->category == ExecutionOptions::Category::Lazy) {
+                asyncTask = TaskAsyncOptions{.resultStorage = std::invoke_result_t<DataType>{},
+                                             .resultCopy = [](void const* const from, void* const to) {
+                                                 *static_cast<std::invoke_result_t<DataType>*>(to)
+                                                         = *static_cast<std::invoke_result_t<DataType> const*>(from);
+                                             }};
+                asyncTask->resultPtr = std::any_cast<std::invoke_result_t<DataType>>(&asyncTask->resultStorage);
+            }
             auto task = std::make_shared<Task>(
                     Task{.space = this,
                          .pathToInsertReturnValueTo = constructedPath,
-                         .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
                          .function = std::move(function),
-                         .resultStorage = std::invoke_result_t<DataType>{},
-                         .resultCopy = [](void const* const from, void* const to) {
-                             *static_cast<std::invoke_result_t<DataType>*>(to) = *static_cast<std::invoke_result_t<DataType> const*>(from);
-                         }});
-            if (task->resultStorage.has_value())
-                task->resultPtr = std::any_cast<std::invoke_result_t<DataType>>(&task->resultStorage);
+                         .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
+                         .asyncTask = asyncTask});
             return std::move(task);
         }
         return {};
