@@ -31,19 +31,8 @@ public:
         sp_log("PathSpace::insert", "Function Called");
         InputData inputData{std::forward<DataType>(data)};
 
-        if (inputData.metadata.dataCategory == DataCategory::Execution) {
-            bool const isImmediate
-                    = (!options.execution.has_value())
-                      || (options.execution.has_value() && options.execution.value().category == ExecutionOptions::Category::Immediate);
-            if (std::shared_ptr<Task> task = this->createTask(path.getPath(), std::forward<DataType>(data), inputData, options)) {
-                if (isImmediate) {
-                    this->pool->addTask(task);
-                    // this->storage.store(std::move(Task));
-                    // return {.nbrTasksCreated = 1};
-                }
-                inputData.task = task;
-            }
-        }
+        if (inputData.metadata.dataCategory == DataCategory::Execution)
+            inputData.task = this->createTask(path.getPath(), std::forward<DataType>(data), inputData, options);
 
         return this->in(path, inputData, options);
     }

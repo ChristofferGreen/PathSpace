@@ -13,7 +13,7 @@
 using namespace SP;
 using namespace std::chrono_literals;
 
-TEST_CASE("Task TaskPool Suite") {
+TEST_CASE("TaskPool Misc") {
     SUBCASE("Basic task execution") {
         TaskPool pool(2);
         std::atomic<int> counter{0};

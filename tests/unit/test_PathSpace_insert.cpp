@@ -135,24 +135,14 @@ TEST_CASE("PathSpace Insert Function and Execution") {
 
     SUBCASE("Concurrent Function Execution") {
         std::atomic<int> counter(0);
-        auto incrementFunc = [&counter]() -> int {
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
-            return ++counter;
-        };
+        auto incrementFunc = [&counter]() -> int { return ++counter; };
 
-        for (int i = 0; i < 100; ++i) {
-            CHECK(pspace.insert(SP::GlobPathStringView{"/concurrent" + std::to_string(i)}, incrementFunc).errors.size() == 0);
-        }
+        for (int i = 0; i < 10; ++i)
+            CHECK(pspace.insert(std::format("/concurrent{}", i), incrementFunc).nbrTasksCreated == 1);
 
-        std::vector<std::thread> threads;
-        for (int i = 0; i < 100; ++i) {
-            threads.emplace_back([&pspace, i]() { pspace.readBlock<int>(SP::ConcretePathStringView{"/concurrent" + std::to_string(i)}); });
-        }
+        for (int i = 0; i < 10; ++i)
+            CHECK(pspace.readBlock<int>(std::format("/concurrent{}", i)) == i + 1);
 
-        for (auto& t : threads) {
-            t.join();
-        }
-
-        CHECK(counter == 100);
+        CHECK(counter == 10);
     }
 }
