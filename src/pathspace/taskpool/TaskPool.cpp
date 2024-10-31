@@ -1,4 +1,5 @@
 #include "TaskPool.hpp"
+#include "PathSpace.hpp"
 #include "utils/TaggedLogger.hpp"
 
 namespace SP {
@@ -23,6 +24,7 @@ auto TaskPool::addTask(std::weak_ptr<Task>&& task) -> void {
     {
         std::lock_guard<std::mutex> lock(mutex);
         if (!shuttingDown) {
+            task.lock()->state.tryStart();
             tasks.push(std::move(task));
             taskCV.notify_one();
         }
@@ -77,7 +79,10 @@ auto TaskPool::workerFunction() -> void {
         if (auto strongTask = task.lock()) {
             if (auto fn = strongTask->function) {
                 try {
-                    fn(*strongTask, nullptr, false);
+                    strongTask->state.transitionToRunning();
+                    fn(*strongTask, false);
+                    strongTask->state.markCompleted();
+                    strongTask->space->waitMap.notify(strongTask->notificationPath);
                 } catch (...) {
                     sp_log("Exception in running Task", "Error", "Exception");
                 }

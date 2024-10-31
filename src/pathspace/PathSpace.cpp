@@ -27,8 +27,7 @@ auto PathSpace::shutdown() -> void {
     this->root.clear();
 }
 
-auto PathSpace::in(ConstructiblePath& constructedPath, GlobPathStringView const& path, InputData const& data, InOptions const& options)
-        -> InsertReturn {
+auto PathSpace::in(GlobPathStringView const& path, InputData const& data, InOptions const& options) -> InsertReturn {
     sp_log("PathSpace::in", "Function Called");
     InsertReturn ret;
     if (!path.isValid()) {
@@ -36,10 +35,10 @@ auto PathSpace::in(ConstructiblePath& constructedPath, GlobPathStringView const&
         return ret;
     }
 
-    this->root.in(constructedPath, path.begin(), path.end(), data, options, ret);
+    this->root.in(path.begin(), path.end(), data, options, ret);
 
     if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0 || ret.nbrTasksCreated) {
-        waitMap.notify(path.getPath()); // ToDo:: Fix glob path situation
+        waitMap.notify(path); // ToDo:: Fix glob path situation
     }
     return ret;
 }

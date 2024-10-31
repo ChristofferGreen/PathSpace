@@ -4,7 +4,6 @@
 #include "core/WaitMap.hpp"
 #include "path/GlobPath.hpp"
 #include "taskpool/TaskPool.hpp"
-#include "taskpool/TaskStorage.hpp"
 #include "utils/TaggedLogger.hpp"
 #include <memory>
 
@@ -31,23 +30,22 @@ public:
     auto insert(GlobPathStringView const& path, DataType&& data, InOptions const& options = {}) -> InsertReturn {
         sp_log("PathSpace::insert", "Function Called");
         InputData inputData{std::forward<DataType>(data)};
-        ConstructiblePath constructedPath = path.isConcrete() ? ConstructiblePath{path} : ConstructiblePath{};
 
         if (inputData.metadata.dataCategory == DataCategory::Execution) {
             bool const isImmediate
                     = (!options.execution.has_value())
                       || (options.execution.has_value() && options.execution.value().category == ExecutionOptions::Category::Immediate);
-            if (std::shared_ptr<Task> Task = this->createTask(constructedPath, std::forward<DataType>(data), inputData, options)) {
+            if (std::shared_ptr<Task> task = this->createTask(path.getPath(), std::forward<DataType>(data), inputData, options)) {
                 if (isImmediate) {
-                    this->pool->addTask(Task);
-                    this->storage.store(std::move(Task));
-                    return {.nbrTasksCreated = 1};
+                    this->pool->addTask(task);
+                    // this->storage.store(std::move(Task));
+                    // return {.nbrTasksCreated = 1};
                 }
-                inputData.task = Task;
+                inputData.task = task;
             }
         }
 
-        return this->in(constructedPath, path, inputData, options);
+        return this->in(path, inputData, options);
     }
 
     /**
@@ -107,6 +105,8 @@ public:
     auto clear() -> void;
 
 protected:
+    friend class TaskPool;
+
     template <typename DataType>
     auto outBlock(ConcretePathStringView const& path, OutOptions const& options, bool const isExtract) -> Expected<DataType> {
         sp_log("PathSpace::outBlock", "Function Called");
@@ -127,15 +127,8 @@ protected:
         DataType obj;
         auto result = this->out(path, inputMetaData, options, &obj, isExtract);
 
-        // If we got a value or shouldn't block, return immediately
-        if (result.has_value() || !options.block.has_value()
-            || (options.block.has_value() && options.block.value().behavior == BlockOptions::Behavior::DontWait)) {
-            if (result.has_value() && result.value() > 0) {
-                return obj;
-            }
-            // For non-blocking calls, return the original error
-            return std::unexpected(result.error());
-        }
+        if (result.has_value() && result.value() > 0)
+            return obj;
 
         auto guard = waitMap.wait(path);
         auto const timeout
@@ -172,55 +165,37 @@ protected:
     }
 
     template <typename DataType>
-    auto createTask(ConstructiblePath const& constructedPath, DataType const& data, InputData const& inputData, InOptions const& options)
+    auto createTask(ConcretePathString const& notificationPath, DataType const& data, InputData const& inputData, InOptions const& options)
             -> std::shared_ptr<Task> {
         sp_log("PathSpace::createTask", "Function Called");
         if constexpr (ExecutionFunctionPointer<DataType> || ExecutionStdFunction<DataType>) {
-            using ResultType = std::invoke_result_t<DataType>;
-
-            auto function = [userFunctionOrData = std::move(data)](Task const& task, void* obj, bool const objIsData) {
-                if (objIsData) {
-                    *static_cast<std::function<std::invoke_result_t<DataType>()>*>(obj) = userFunctionOrData;
-                } else {
-                    if (obj == nullptr) {
-                        assert(task.space != nullptr);
-                        task.space->insert(task.pathToInsertReturnValueTo.getPath(), userFunctionOrData());
-                    } else {
-                        *static_cast<std::invoke_result_t<DataType>*>(obj) = userFunctionOrData();
-                    }
-                }
-            };
-            bool const hasTimeout = options.block.has_value() && options.block->timeout.has_value();
-            std::optional<TaskAsyncOptions> asyncTask;
-            if (options.execution.has_value() && options.execution->category == ExecutionOptions::Category::Lazy) {
-                asyncTask = TaskAsyncOptions{.resultStorage = std::invoke_result_t<DataType>{},
-                                             .resultCopy = [](void const* const from, void* const to) {
-                                                 *static_cast<std::invoke_result_t<DataType>*>(to)
-                                                         = *static_cast<std::invoke_result_t<DataType> const*>(from);
-                                             }};
-                asyncTask->resultPtr = std::any_cast<std::invoke_result_t<DataType>>(&asyncTask->resultStorage);
-            }
-            auto task = std::make_shared<Task>(
-                    Task{.space = this,
-                         .pathToInsertReturnValueTo = constructedPath,
-                         .function = std::move(function),
-                         .executionOptions = options.execution.has_value() ? options.execution.value() : ExecutionOptions{},
-                         .asyncTask = asyncTask});
-            return std::move(task);
+            return std::make_shared<Task>(Task{.space = this,
+                                               .function =
+                                                       [userFunctionOrData = std::move(data)](Task& task, bool const objIsData) {
+                                                           /*if (objIsData)
+                                                               *static_cast<std::function<std::invoke_result_t<DataType>()>*>(obj) =
+                                                           userFunctionOrData; else *static_cast<std::invoke_result_t<DataType>*>(obj) =
+                                                           userFunctionOrData();*/
+                                                           task.result = userFunctionOrData();
+                                                       },
+                                               .notificationPath = notificationPath,
+                                               .resultCopy =
+                                                       [](std::any const& from, void* const to) {
+                                                           *static_cast<std::invoke_result_t<DataType>*>(to)
+                                                                   = *std::any_cast<std::invoke_result_t<DataType>>(&from);
+                                                       },
+                                               .executionOptions = options.execution});
         }
         return {};
     }
 
-    virtual auto in(ConstructiblePath& constructedPath, GlobPathStringView const& path, InputData const& data, InOptions const& options)
-            -> InsertReturn;
-
+    virtual auto in(GlobPathStringView const& path, InputData const& data, InOptions const& options) -> InsertReturn;
     virtual auto
     out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, OutOptions const& options, void* obj, bool const doPop)
             -> Expected<int>;
 
     auto shutdown() -> void;
 
-    TaskStorage storage; // ToDo:: Make sure to erase old tasks
     TaskPool* pool = nullptr;
     PathSpaceLeaf root;
     mutable WaitMap waitMap;

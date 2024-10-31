@@ -1,5 +1,6 @@
 #pragma once
 #include "path/ConcretePath.hpp"
+#include "path/GlobPath.hpp"
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
@@ -29,11 +30,23 @@ struct WaitMap {
     }
 
     auto notify(ConcretePathStringView const& path) -> void {
+        this->notify(ConcretePathString{path.getPath()});
+    }
+
+    auto notify(ConcretePathString const& path) -> void {
         std::lock_guard<std::mutex> lock(mutex);
-        auto it = cvMap.find(ConcretePathString{path.getPath()});
+        auto it = cvMap.find(path);
         if (it != cvMap.end()) {
             it->second.notify_all();
         }
+    }
+
+    auto notify(GlobPathStringView const& path) -> void {
+        this->notify(ConcretePathString{path.getPath()});
+    }
+
+    auto notify(GlobPathString const& path) -> void { // ToDo: Fix glob path situation
+        this->notify(ConcretePathString{path.getPath()});
     }
 
     auto notifyAll() -> void {

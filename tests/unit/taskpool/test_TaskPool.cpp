@@ -21,7 +21,7 @@ TEST_CASE("Task TaskPool Suite") {
 
         {
             std::shared_ptr<Task> task = std::make_shared<Task>();
-            task->function = [&counter, &done](Task const&, void*, bool) {
+            task->function = [&counter, &done](Task const&, bool) {
                 counter++;
                 done = true;
             };
@@ -46,7 +46,7 @@ TEST_CASE("Task TaskPool Suite") {
         // Create and submit all tasks
         for (int i = 0; i < NUM_TASKS; ++i) {
             auto task = std::make_shared<Task>();
-            task->function = [&counter](Task const&, void*, bool) { counter++; };
+            task->function = [&counter](Task const&, bool) { counter++; };
             tasks.push_back(task);
             pool.addTask(task);
         }
@@ -73,7 +73,7 @@ TEST_CASE("Task TaskPool Suite") {
 
             // Add several quick tasks
             for (int i = 0; i < 10; ++i) {
-                tasks.push_back(std::make_shared<Task>(Task{.function = [&counter](Task const&, void*, bool) {
+                tasks.push_back(std::make_shared<Task>(Task{.function = [&counter](Task const&, bool) {
                     std::this_thread::sleep_for(10ms);
                     counter++;
                 }}));
@@ -106,7 +106,7 @@ TEST_CASE("Task TaskPool Suite") {
             auto task = std::make_shared<Task>();
             weakTask = task;
 
-            task->function = [&](Task const&, void*, bool) {
+            task->function = [&](Task const&, bool) {
                 taskExecuted = true;
                 std::lock_guard<std::mutex> lock(mutex);
                 completed = true;
@@ -137,7 +137,7 @@ TEST_CASE("Task TaskPool Suite") {
             std::weak_ptr<Task> weakTask(task);
 
             // Set up task with self-checking lambda
-            task->function = [weakTask, &taskExecuted](Task const&, void*, bool) {
+            task->function = [weakTask, &taskExecuted](Task const&, bool) {
                 if (auto ptr = weakTask.lock()) {
                     std::this_thread::sleep_for(500ms);
                     taskExecuted = true;
@@ -174,7 +174,7 @@ TEST_CASE("Task TaskPool Suite") {
             // Create and add tasks
             for (size_t i = 0; i < TASK_COUNT; ++i) {
                 auto task = std::make_shared<Task>();
-                task->function = [&completedTasks](Task const&, void*, bool) { completedTasks++; };
+                task->function = [&completedTasks](Task const&, bool) { completedTasks++; };
                 tasks.push_back(task);
                 pool.addTask(task);
             }
@@ -212,7 +212,7 @@ TEST_CASE("Task TaskPool Suite") {
 
             // Create task with comprehensive error handling
             auto task = std::make_shared<Task>();
-            task->function = [state](Task const&, void*, bool) {
+            task->function = [state](Task const&, bool) {
                 try {
                     throw std::runtime_error("Test exception");
                 } catch (const std::runtime_error& e) {
@@ -261,7 +261,7 @@ TEST_CASE("Task TaskPool Suite") {
 
             for (int i = 0; i < NUM_TASKS; ++i) {
                 auto task = std::make_shared<Task>();
-                task->function = [&exceptionCount, &mutex, &cv, &tasksCompleted, i](Task const&, void*, bool) {
+                task->function = [&exceptionCount, &mutex, &cv, &tasksCompleted, i](Task const&, bool) {
                     try {
                         throw std::runtime_error("Test exception " + std::to_string(i));
                     } catch (...) {
@@ -314,7 +314,7 @@ TEST_CASE("Task TaskPool Suite") {
 
             {
                 auto task = std::make_shared<Task>();
-                task->function = [state](Task const&, void*, bool) {
+                task->function = [state](Task const&, bool) {
                     // Create resource in its own scope
                     {
                         auto resource = std::make_unique<ResourceGuard>(*state);
@@ -355,7 +355,7 @@ TEST_CASE("Task TaskPool Suite") {
             auto state = std::make_shared<TestState>();
 
             auto task = std::make_shared<Task>();
-            task->function = [state](Task const& task, void*, bool) {
+            task->function = [state](Task const& task, bool) {
                 try {
                     {
                         std::lock_guard<std::mutex> lock(state->mutex);
@@ -410,14 +410,14 @@ TEST_CASE("Task TaskPool Suite") {
             auto task1 = std::make_shared<Task>();
             auto task0 = std::make_shared<Task>();
 
-            task2->function = [&sequence, &mutex, &cv, &done](Task const&, void*, bool) {
+            task2->function = [&sequence, &mutex, &cv, &done](Task const&, bool) {
                 std::lock_guard<std::mutex> lock(mutex);
                 sequence.push_back(2);
                 done = true;
                 cv.notify_one();
             };
 
-            task1->function = [&sequence, &mutex, &pool, task2](Task const&, void*, bool) {
+            task1->function = [&sequence, &mutex, &pool, task2](Task const&, bool) {
                 {
                     std::lock_guard<std::mutex> lock(mutex);
                     sequence.push_back(1);
@@ -425,7 +425,7 @@ TEST_CASE("Task TaskPool Suite") {
                 pool.addTask(std::weak_ptr<Task>(task2));
             };
 
-            task0->function = [&sequence, &mutex, &pool, task1](Task const&, void*, bool) {
+            task0->function = [&sequence, &mutex, &pool, task1](Task const&, bool) {
                 {
                     std::lock_guard<std::mutex> lock(mutex);
                     sequence.push_back(0);
@@ -482,7 +482,7 @@ TEST_CASE("Task TaskPool Suite") {
             // Create and add tasks
             for (int i = 0; i < TASK_COUNT; i++) {
                 auto task = std::make_shared<Task>();
-                task->function = [tracker, &completedTasks](Task const&, void*, bool) {
+                task->function = [tracker, &completedTasks](Task const&, bool) {
                     // Record thread ID in a thread-safe way
                     tracker->addThread();
 
@@ -530,11 +530,11 @@ TEST_CASE("Task TaskPool Suite") {
             std::vector<std::shared_ptr<Task>> allTasks;
 
             auto initialTask = std::make_shared<Task>();
-            initialTask->function = [&](Task const&, void*, bool) {
+            initialTask->function = [&](Task const&, bool) {
                 // Create two child tasks
                 for (int i = 0; i < 2; i++) {
                     auto childTask = std::make_shared<Task>();
-                    childTask->function = [&state](Task const&, void*, bool) {
+                    childTask->function = [&state](Task const&, bool) {
                         std::lock_guard<std::mutex> lock(state.mutex);
                         state.tasksCompleted++;
                         state.cv.notify_one();
@@ -588,7 +588,7 @@ TEST_CASE("Task TaskPool Suite") {
             for (int group = 0; group < 2; group++) {
                 for (int task = 0; task < 2; task++) {
                     auto taskObj = std::make_shared<Task>();
-                    taskObj->function = [&state, group, task](Task const&, void*, bool) {
+                    taskObj->function = [&state, group, task](Task const&, bool) {
                         {
                             std::lock_guard<std::mutex> lock(state.mutex);
                             state.groupResults[group].push_back(task);
@@ -630,7 +630,7 @@ TEST_CASE("Task TaskPool Suite") {
 
             {
                 auto task = std::make_shared<Task>();
-                task->function = [state](Task const&, void*, bool) {
+                task->function = [state](Task const&, bool) {
                     *state->testValue = true;
                     std::lock_guard<std::mutex> lock(state->mutex);
                     state->taskCompleted = true;
@@ -678,7 +678,7 @@ TEST_CASE("Task TaskPool Suite") {
         // Create and queue tasks
         for (int i = 0; i < TOTAL_TASKS; ++i) {
             auto task = std::make_shared<Task>();
-            task->function = [&state](Task const&, void*, bool) {
+            task->function = [&state](Task const&, bool) {
                 std::lock_guard<std::mutex> lock(state.mutex);
                 state.tasksCompleted++;
                 state.cv.notify_one();
@@ -737,7 +737,7 @@ TEST_CASE("Task TaskPool Suite") {
         // First add long tasks
         for (int i = 0; i < LONG_TASKS; i++) {
             auto task = std::make_shared<Task>();
-            task->function = [&state](Task const&, void*, bool) {
+            task->function = [&state](Task const&, bool) {
                 {
                     std::lock_guard<std::mutex> lock(state.mutex);
                     state.threadsSeen.insert(std::this_thread::get_id());
@@ -757,7 +757,7 @@ TEST_CASE("Task TaskPool Suite") {
         // Then add short tasks
         for (int i = 0; i < SHORT_TASKS; i++) {
             auto task = std::make_shared<Task>();
-            task->function = [&state](Task const&, void*, bool) {
+            task->function = [&state](Task const&, bool) {
                 {
                     std::lock_guard<std::mutex> lock(state.mutex);
                     state.threadsSeen.insert(std::this_thread::get_id());

@@ -13,8 +13,7 @@ struct ConstructiblePath;
 
 class PathSpaceLeaf {
 public:
-    auto in(ConstructiblePath& path,
-            GlobPathIteratorStringView const& iter,
+    auto in(GlobPathIteratorStringView const& iter,
             GlobPathIteratorStringView const& end,
             InputData const& inputData,
             InOptions const& options,
@@ -29,13 +28,8 @@ public:
     auto clear() -> void;
 
 private:
-    auto inFinalComponent(ConstructiblePath& path,
-                          GlobName const& pathComponent,
-                          InputData const& inputData,
-                          InOptions const& options,
-                          InsertReturn& ret) -> void;
-    auto inIntermediateComponent(ConstructiblePath& path,
-                                 GlobPathIteratorStringView const& iter,
+    auto inFinalComponent(GlobName const& pathComponent, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void;
+    auto inIntermediateComponent(GlobPathIteratorStringView const& iter,
                                  GlobPathIteratorStringView const& end,
                                  GlobName const& pathComponent,
                                  InputData const& inputData,
@@ -43,7 +37,6 @@ private:
                                  InsertReturn& ret) -> void;
 
     auto outDataName(ConcreteNameStringView const& concreteName,
-                     ConcretePathIteratorStringView const& nextIter,
                      ConcretePathIteratorStringView const& end,
                      InputMetadata const& inputMetadata,
                      void* obj,

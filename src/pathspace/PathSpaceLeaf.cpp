@@ -18,23 +18,17 @@ auto PathSpaceLeaf::clear() -> void {
     ############# In #############
 */
 
-auto PathSpaceLeaf::in(ConstructiblePath& path,
-                       GlobPathIteratorStringView const& iter,
+auto PathSpaceLeaf::in(GlobPathIteratorStringView const& iter,
                        GlobPathIteratorStringView const& end,
                        InputData const& inputData,
                        InOptions const& options,
                        InsertReturn& ret) -> void {
-    std::next(iter) == end ? inFinalComponent(path, *iter, inputData, options, ret)
-                           : inIntermediateComponent(path, iter, end, *iter, inputData, options, ret);
+    std::next(iter) == end ? inFinalComponent(*iter, inputData, options, ret)
+                           : inIntermediateComponent(iter, end, *iter, inputData, options, ret);
 }
 
-auto PathSpaceLeaf::inFinalComponent(ConstructiblePath& path,
-                                     GlobName const& pathComponent,
-                                     InputData const& inputData,
-                                     InOptions const& options,
-                                     InsertReturn& ret) -> void {
-    path.append(pathComponent.getName());
-
+auto PathSpaceLeaf::inFinalComponent(GlobName const& pathComponent, InputData const& inputData, InOptions const& options, InsertReturn& ret)
+        -> void {
     if (pathComponent.isGlob()) {
         // Create a vector to store the keys that match before modification. ToDo: Memory allocation
         std::vector<ConcreteNameString> matchingKeys;
@@ -75,14 +69,12 @@ auto PathSpaceLeaf::inFinalComponent(ConstructiblePath& path,
     }
 }
 
-auto PathSpaceLeaf::inIntermediateComponent(ConstructiblePath& path,
-                                            GlobPathIteratorStringView const& iter,
+auto PathSpaceLeaf::inIntermediateComponent(GlobPathIteratorStringView const& iter,
                                             GlobPathIteratorStringView const& end,
                                             GlobName const& pathComponent,
                                             InputData const& inputData,
                                             InOptions const& options,
                                             InsertReturn& ret) -> void {
-    path.append(pathComponent.getName());
     auto nextIter = std::next(iter);
 
     if (pathComponent.isGlob()) {
@@ -90,14 +82,14 @@ auto PathSpaceLeaf::inIntermediateComponent(ConstructiblePath& path,
             const auto& key = item.first;
             if (std::get<0>(pathComponent.match(key))) {
                 if (const auto* leaf = std::get_if<std::unique_ptr<PathSpaceLeaf>>(&item.second)) {
-                    (*leaf)->in(path, nextIter, end, inputData, options, ret);
+                    (*leaf)->in(nextIter, end, inputData, options, ret);
                 }
             }
         });
     } else {
         auto [it, inserted] = nodeDataMap.try_emplace(pathComponent.getName(), std::make_unique<PathSpaceLeaf>());
         if (auto* leaf = std::get_if<std::unique_ptr<PathSpaceLeaf>>(&it->second)) {
-            (*leaf)->in(path, nextIter, end, inputData, options, ret);
+            (*leaf)->in(nextIter, end, inputData, options, ret);
         }
     }
 }
@@ -114,12 +106,11 @@ auto PathSpaceLeaf::out(ConcretePathIteratorStringView const& iter,
                         bool const isExtract) -> Expected<int> {
     auto const nextIter = std::next(iter);
     auto const pathComponent = *iter;
-    return nextIter == end ? outDataName(pathComponent, nextIter, end, inputMetadata, obj, options, isExtract)
+    return nextIter == end ? outDataName(pathComponent, end, inputMetadata, obj, options, isExtract)
                            : outConcretePathComponent(nextIter, end, pathComponent, inputMetadata, obj, options, isExtract);
 }
 
 auto PathSpaceLeaf::outDataName(ConcreteNameStringView const& concreteName,
-                                ConcretePathIteratorStringView const& nextIter,
                                 ConcretePathIteratorStringView const& end,
                                 InputMetadata const& inputMetadata,
                                 void* obj,

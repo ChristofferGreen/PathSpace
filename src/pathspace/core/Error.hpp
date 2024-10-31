@@ -18,6 +18,7 @@ struct Error {
         MalformedInput,
         UnmatchedQuotes,
         UnknownError,
+        TaskFailed,
         SerializationFunctionMissing,
         UnserializableType,
         NoObjectFound,
