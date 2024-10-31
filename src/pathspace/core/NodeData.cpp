@@ -80,11 +80,6 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
     Expected<int> result
             = isImmediateExecution ? handleImmediateExecution(task, isExtract, obj) : handleLazyExecution(task, options, isExtract, obj);
 
-    if (result && isExtract) {
-        this->tasks.pop_front();
-        popType();
-    }
-
     return result;
 }
 
@@ -130,6 +125,10 @@ auto NodeData::handleLazyExecution(std::shared_ptr<Task>& task, const OutOptions
 
     if (task->state.isCompleted()) {
         task->resultCopy(task->result, obj);
+        if (isExtract) {
+            this->tasks.pop_front();
+            popType();
+        }
         return 1;
     }
 
@@ -144,6 +143,10 @@ auto NodeData::handleImmediateExecution(std::shared_ptr<Task>& task, bool isExtr
 
     if (task->state.isCompleted()) {
         task->resultCopy(task->result, obj);
+        if (isExtract) {
+            this->tasks.pop_front();
+            popType();
+        }
         return 1;
     }
 
