@@ -24,7 +24,6 @@ auto TaskPool::addTask(std::weak_ptr<Task>&& task) -> void {
     {
         std::lock_guard<std::mutex> lock(mutex);
         if (!shuttingDown) {
-            task.lock()->state.tryStart();
             tasks.push(std::move(task));
             taskCV.notify_one();
         }

@@ -14,8 +14,10 @@ auto NodeData::serialize(const InputData& inputData, const InOptions& options, I
         std::optional<ExecutionOptions> const execution = options.execution;
         this->tasks.push_back(std::move(inputData.task));
         if (bool const isImmediateExecution = execution.value_or(inputData.task->executionOptions.value_or(ExecutionOptions{})).category
-                                              == ExecutionOptions::Category::Immediate)
+                                              == ExecutionOptions::Category::Immediate) {
+            this->tasks.back()->state.tryStart();
             TaskPool::Instance().addTask(this->tasks.back());
+        }
         ret.nbrTasksCreated++;
     } else {
         if (!inputData.metadata.serialize)
@@ -94,9 +96,10 @@ auto NodeData::handleLazyExecution(std::shared_ptr<Task>& task, const OutOptions
         if (!task->state.tryStart()) {
             return std::unexpected(Error{Error::Code::UnknownError, "Failed to start lazy execution"});
         }
+        TaskPool::Instance().addTask(task);
 
         // Create the future only when we successfully start the task
-        task->executionFuture = std::make_shared<std::future<void>>(std::async(std::launch::async, [this, task, isExtract]() {
+        /*task->executionFuture = std::make_shared<std::future<void>>(std::async(std::launch::async, [this, task, isExtract]() {
             if (task->state.transitionToRunning()) {
                 if (auto result = executeTask(task); !result) {
                     task->state.markFailed();
@@ -104,11 +107,11 @@ auto NodeData::handleLazyExecution(std::shared_ptr<Task>& task, const OutOptions
                 }
                 task->state.markCompleted();
             }
-        }));
+        }));*/
     }
 
     // Handle timeout and wait for completion
-    bool const hasTimeout = options.block && options.block->timeout;
+    /*bool const hasTimeout = options.block && options.block->timeout;
     if (hasTimeout) {
         if (auto timeoutResult = handleTaskTimeout(task, *options.block->timeout); !timeoutResult) {
             return std::unexpected(timeoutResult.error());
@@ -121,7 +124,16 @@ auto NodeData::handleLazyExecution(std::shared_ptr<Task>& task, const OutOptions
             return std::unexpected(Error{Error::Code::UnknownError, "Task future not initialized"});
     }
 
-    return copyTaskResult(task, obj);
+    return copyTaskResult(task, obj);*/
+    if (task->state.isFailed())
+        return std::unexpected(Error{Error::Code::TaskFailed, "Task failed to execute"});
+
+    if (task->state.isCompleted()) {
+        task->resultCopy(task->result, obj);
+        return 1;
+    }
+
+    return 0;
 }
 
 auto NodeData::handleImmediateExecution(std::shared_ptr<Task>& task, bool isExtract, void* obj) -> Expected<int> {
@@ -132,33 +144,10 @@ auto NodeData::handleImmediateExecution(std::shared_ptr<Task>& task, bool isExtr
 
     if (task->state.isCompleted()) {
         task->resultCopy(task->result, obj);
-        // task->space->waitMap.notify(path.getPath());
         return 1;
     }
 
-    /*if (task->state.isTerminal()) {
-        if (task->state.isFailed())
-            return std::unexpected(Error{Error::Code::UnknownError, "Task is in terminal state"});
-        else if (task->state.isCompleted()) {
-            // task->asyncTask->resultCopy(task->asyncTask->resultPtr, obj);
-            return 1;
-        }
-    }*/
     return 0;
-
-    /*if (!task->state.tryStart() || !task->state.transitionToRunning()) {
-        return std::unexpected(Error{Error::Code::UnknownError, "Failed to start immediate execution"});
-    }
-
-    try {
-        bool const isStdFunction = true; // This should come from metadata
-        task->function(*task.get(), obj, isStdFunction);
-        task->state.markCompleted();
-        return 1;
-    } catch (const std::exception& e) {
-        task->state.markFailed();
-        return std::unexpected(Error{Error::Code::UnknownError, std::string("Immediate execution failed: ") + e.what()});
-    }*/
 }
 
 auto NodeData::handleTaskTimeout(std::shared_ptr<Task>& task, std::chrono::milliseconds timeout) -> Expected<void> {

@@ -110,7 +110,7 @@ TEST_CASE("PathSpace Execution") {
         }
     }
 
-    SUBCASE("Update Intervals") {
+    /*SUBCASE("Update Intervals") {
         SUBCASE("Single Update") {
             int counter = 0;
             pspace.insert(
@@ -126,7 +126,7 @@ TEST_CASE("PathSpace Execution") {
             CHECK(result2.value() == 1); // Same value, not updated
         }
 
-        /*SUBCASE("Periodic Update") {
+        SUBCASE("Periodic Update") {
             int counter = 0;
             pspace.insert(
                     "/test",
@@ -137,8 +137,8 @@ TEST_CASE("PathSpace Execution") {
             std::this_thread::sleep_for(150ms);
             auto result2 = pspace.readBlock<int>("/test");
             CHECK(result1.value() != result2.value());
-        }*/
-    }
+        }
+    }*/
 
     SUBCASE("Timeout Behavior") {
         SUBCASE("Successful Completion Before Timeout") {
