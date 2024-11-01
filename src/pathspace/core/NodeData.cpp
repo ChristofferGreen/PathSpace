@@ -4,10 +4,12 @@
 namespace SP {
 
 NodeData::NodeData(InputData const& inputData, InOptions const& options, InsertReturn& ret) {
+    sp_log("NodeData::NodeData", "Function Called");
     this->serialize(inputData, options, ret);
 }
 
 auto NodeData::serialize(const InputData& inputData, const InOptions& options, InsertReturn& ret) -> std::optional<Error> {
+    sp_log("NodeData::serialize", "Function Called");
     if (inputData.task) {
         this->tasks.push_back(std::move(inputData.task));
         if (bool const isImmediateExecution
@@ -28,10 +30,12 @@ auto NodeData::serialize(const InputData& inputData, const InOptions& options, I
 }
 
 auto NodeData::deserialize(void* obj, const InputMetadata& inputMetadata, std::optional<OutOptions> const& options) const -> Expected<int> {
+    sp_log("NodeData::deserialize", "Function Called");
     return const_cast<NodeData*>(this)->deserializeImpl(obj, inputMetadata, options, false);
 }
 
 auto NodeData::deserializePop(void* obj, const InputMetadata& inputMetadata) -> Expected<int> {
+    sp_log("NodeData::deserializePop", "Function Called");
     return this->deserializeImpl(obj, inputMetadata, std::nullopt, true);
 }
 
@@ -110,10 +114,12 @@ auto NodeData::deserializeData(void* obj, const InputMetadata& inputMetadata, bo
 }
 
 auto NodeData::empty() const -> bool {
+    sp_log("NodeData::empty", "Function Called");
     return this->types.empty();
 }
 
 auto NodeData::pushType(InputMetadata const& meta) -> void {
+    sp_log("NodeData::pushType", "Function Called");
     if (!types.empty()) {
         if (types.back().typeInfo == meta.typeInfo)
             types.back().elements++;
@@ -125,6 +131,7 @@ auto NodeData::pushType(InputMetadata const& meta) -> void {
 }
 
 auto NodeData::popType() -> void {
+    sp_log("NodeData::popType", "Function Called");
     if (!this->types.empty())
         if (--this->types.front().elements == 0)
             this->types.erase(this->types.begin());
