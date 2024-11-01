@@ -73,11 +73,20 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
 
     auto& task = this->tasks.front();
 
-    std::optional<ExecutionOptions> const execution = options.execution;
-    bool const isImmediateExecution
-            = execution.value_or(task->executionOptions.value_or(ExecutionOptions{})).category == ExecutionOptions::Category::Immediate;
+    // If task hasn't started, start it
+    if (!task->state.hasStarted()) {
+        std::optional<ExecutionOptions> const execution = options.execution;
+        bool const isImmediateExecution
+                = execution.value_or(task->executionOptions.value_or(ExecutionOptions{})).category == ExecutionOptions::Category::Immediate;
 
-    Expected<int> result = isImmediateExecution ? 0 : handleLazyExecution(task, options, isExtract, obj);
+        if (!isImmediateExecution) {
+            if (auto ret = TaskPool::Instance().addTask(task); ret) {
+                return std::unexpected(ret.value());
+            }
+        }
+    }
+
+    // If completed, return result
     if (task->state.isCompleted()) {
         task->resultCopy(task->result, obj);
         if (isExtract) {
@@ -86,7 +95,9 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
         }
         return 1;
     }
-    return result;
+
+    // Task running but not completed
+    return 0;
 }
 
 auto NodeData::handleLazyExecution(std::shared_ptr<Task>& task, const OutOptions& options, bool isExtract, void* obj) -> Expected<int> {

@@ -133,16 +133,57 @@ TEST_CASE("PathSpace Insert Function and Execution") {
         CHECK(result.value() == DEPTH);
     }
 
-    SUBCASE("Concurrent Function Execution") {
-        std::atomic<int> counter(0);
-        auto incrementFunc = [&counter]() -> int { return ++counter; };
+    SUBCASE("Sequential vs Immediate Function Execution") {
+        SUBCASE("Sequential (Lazy) Execution") {
+            std::atomic<int> counter(0);
+            auto incrementFunc = [&counter]() -> int { return ++counter; };
 
-        for (int i = 0; i < 10; ++i)
-            CHECK(pspace.insert(std::format("/concurrent{}", i), incrementFunc).nbrTasksCreated == 1);
+            // Insert with lazy execution - functions won't run until read
+            for (int i = 0; i < 1000; ++i)
+                CHECK(pspace.insert(std::format("/concurrent{}", i),
+                                    incrementFunc,
+                                    InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}})
+                              .nbrTasksCreated
+                      == 1);
 
-        for (int i = 0; i < 10; ++i)
-            CHECK(pspace.readBlock<int>(std::format("/concurrent{}", i)) == i + 1);
+            // Reading triggers execution in sequence
+            for (int i = 0; i < 1000; ++i)
+                CHECK(pspace.readBlock<int>(std::format("/concurrent{}", i)) == i + 1);
 
-        CHECK(counter == 10);
+            CHECK(counter == 1000);
+        }
+
+        SUBCASE("Immediate (Parallel) Execution") {
+            std::atomic<int> counter(0);
+            auto incrementFunc = [&counter]() -> int { return ++counter; };
+
+            // Insert with immediate execution - functions run right away in parallel
+            for (int i = 0; i < 1000; ++i)
+                CHECK(pspace.insert(std::format("/concurrent{}", i),
+                                    incrementFunc,
+                                    InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Immediate}})
+                              .nbrTasksCreated
+                      == 1);
+
+            // Read the results - they'll be in non-deterministic order
+            std::set<int> results;
+            for (int i = 0; i < 1000; ++i) {
+                auto result = pspace.readBlock<int>(std::format("/concurrent{}", i));
+                REQUIRE(result.has_value());
+                auto value = result.value();
+                CHECK(value > 0);     // Separate checks
+                CHECK(value <= 1000); // instead of compound condition
+                results.insert(value);
+            }
+
+            // All values should be unique
+            CHECK(results.size() == 1000);
+            // Counter should reach 1000
+            CHECK(counter == 1000);
+            // First value should be >= 1
+            CHECK(*results.begin() >= 1);
+            // Last value should be <= 1000
+            CHECK(*results.rbegin() <= 1000);
+        }
     }
 }

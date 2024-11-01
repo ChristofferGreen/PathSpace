@@ -100,57 +100,60 @@ protected:
     auto outBlock(ConcretePathStringView const& path, OutOptions const& options, bool const isExtract) -> Expected<DataType> {
         sp_log("PathSpace::outBlock", "Function Called");
 
-        bool const hasTimeout = options.block && options.block->timeout;
-
+        // Handle lazy execution with timeout
+        auto modifiedOptions = options;
         auto const inputMetaData = InputMetadataT<DataType>{};
         DataCategory const category = inputMetaData.dataCategory;
-        bool const isLazyWithTimeout = hasTimeout && (category == DataCategory::Execution);
+        bool const isLazyWithTimeout = options.block && options.block->timeout && (category == DataCategory::Execution);
 
         if (isLazyWithTimeout) {
-            if (options.execution.has_value())
-                const_cast<OutOptions&>(options).execution.value().category = ExecutionOptions::Category::Lazy;
-            else
-                const_cast<OutOptions&>(options).execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy};
+            if (modifiedOptions.execution.has_value()) {
+                modifiedOptions.execution.value().category = ExecutionOptions::Category::Lazy;
+            } else {
+                modifiedOptions.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy};
+            }
         }
 
         DataType obj;
-        auto result = this->out(path, inputMetaData, options, &obj, isExtract);
 
-        if (result.has_value() && result.value() > 0)
-            return obj;
+        // Calculate absolute deadline once at the start
+        auto const deadline = options.block && options.block->timeout ? std::chrono::system_clock::now() + *options.block->timeout
+                                                                      : std::chrono::system_clock::time_point::max();
 
-        auto guard = waitMap.wait(path);
-        auto const timeout
-                = hasTimeout ? std::chrono::system_clock::now() + *options.block->timeout : std::chrono::system_clock::time_point::max();
+        // Add retry loop
         while (true) {
-            if (guard.wait_until(timeout, [&]() {
-                    result = this->out(path, inputMetaData, options, &obj, isExtract);
-                    return (result.has_value() && result.value() > 0);
-                })) {
-                break;
+            // First try without waiting
+            auto result = this->out(path, inputMetaData, modifiedOptions, &obj, isExtract);
+            if (result.has_value() && result.value() > 0) {
+                return obj;
             }
 
-            // Check for timeout
-            if (hasTimeout && std::chrono::system_clock::now() >= timeout) {
+            // Check if we're already past deadline
+            auto now = std::chrono::system_clock::now();
+            if (now >= deadline) {
                 return std::unexpected(
                         Error{Error::Code::Timeout, "Operation timed out waiting for data at path: " + std::string(path.getPath())});
             }
 
-            // If we have a timeout set, only try once
-            if (hasTimeout)
-                break;
-        }
+            // Wait for data with proper timeout
+            auto guard = waitMap.wait(path);
+            bool success = guard.wait_until(deadline, [&]() {
+                result = this->out(path, inputMetaData, modifiedOptions, &obj, isExtract);
+                return (result.has_value() && result.value() > 0);
+            });
 
-        // Final timeout check before returning
-        if (hasTimeout && std::chrono::system_clock::now() >= timeout) {
-            return std::unexpected(
-                    Error{Error::Code::Timeout, "Operation timed out waiting for data at path: " + std::string(path.getPath())});
-        }
+            if (success && result.has_value() && result.value() > 0) {
+                return obj;
+            }
 
-        if (result.has_value() && result.value() > 0) {
-            return obj;
+            // If we timed out, return error
+            if (std::chrono::system_clock::now() >= deadline) {
+                return std::unexpected(
+                        Error{Error::Code::Timeout, "Operation timed out waiting for data at path: " + std::string(path.getPath())});
+            }
+
+            // Loop continues if we wake up but someone else got the data
         }
-        return std::unexpected(result.error());
     }
 
     template <typename DataType>
