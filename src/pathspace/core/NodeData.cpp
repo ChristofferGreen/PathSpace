@@ -1,7 +1,5 @@
 #include "NodeData.hpp"
-#include "PathSPace.hpp"
-#include "core/ExecutionOptions.hpp"
-#include "path/ConstructiblePath.hpp"
+#include "taskpool/TaskPool.hpp"
 
 namespace SP {
 
@@ -11,10 +9,10 @@ NodeData::NodeData(InputData const& inputData, InOptions const& options, InsertR
 
 auto NodeData::serialize(const InputData& inputData, const InOptions& options, InsertReturn& ret) -> std::optional<Error> {
     if (inputData.task) {
-        std::optional<ExecutionOptions> const execution = options.execution;
         this->tasks.push_back(std::move(inputData.task));
-        if (bool const isImmediateExecution = execution.value_or(inputData.task->executionOptions.value_or(ExecutionOptions{})).category
-                                              == ExecutionOptions::Category::Immediate) {
+        if (bool const isImmediateExecution
+            = options.execution.value_or(inputData.task->executionOptions.value_or(ExecutionOptions{})).category
+              == ExecutionOptions::Category::Immediate) {
             if (auto const ret = TaskPool::Instance().addTask(this->tasks.back()); ret)
                 return ret;
         }
@@ -34,35 +32,32 @@ auto NodeData::deserialize(void* obj, const InputMetadata& inputMetadata, std::o
 }
 
 auto NodeData::deserializePop(void* obj, const InputMetadata& inputMetadata) -> Expected<int> {
-    return deserializeImpl(obj, inputMetadata, std::nullopt, true);
+    return this->deserializeImpl(obj, inputMetadata, std::nullopt, true);
 }
 
 auto NodeData::deserializeImpl(void* obj, const InputMetadata& inputMetadata, std::optional<OutOptions> const& options, bool isExtract)
         -> Expected<int> {
     sp_log("NodeData::deserializeImpl", "Function Called");
 
-    if (auto validationResult = validateInputs(inputMetadata); !validationResult) {
+    if (auto validationResult = validateInputs(inputMetadata); !validationResult)
         return std::unexpected(validationResult.error());
-    }
 
     if (this->types.front().category == DataCategory::Execution) {
         assert(!this->tasks.empty());
-        return deserializeExecution(obj, inputMetadata, options.value_or(OutOptions{}), isExtract);
+        return this->deserializeExecution(obj, inputMetadata, options.value_or(OutOptions{}), isExtract);
     } else {
-        return deserializeData(obj, inputMetadata, isExtract);
+        return this->deserializeData(obj, inputMetadata, isExtract);
     }
 }
 
 auto NodeData::validateInputs(const InputMetadata& inputMetadata) -> Expected<void> {
     sp_log("NodeData::validateInputs", "Function Called");
 
-    if (this->types.empty()) {
+    if (this->types.empty())
         return std::unexpected(Error{Error::Code::NoObjectFound, "No data available for deserialization"});
-    }
 
-    if (!this->types.empty() && this->types.front().typeInfo != inputMetadata.typeInfo) {
+    if (!this->types.empty() && this->types.front().typeInfo != inputMetadata.typeInfo)
         return std::unexpected(Error{Error::Code::InvalidType, "Type mismatch during deserialization"});
-    }
 
     return {};
 }
@@ -73,17 +68,15 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
 
     auto& task = this->tasks.front();
 
-    // If task hasn't started, start it
+    // If task hasn't started and is lazy, start it
     if (!task->state.hasStarted()) {
         std::optional<ExecutionOptions> const execution = options.execution;
-        bool const isImmediateExecution
-                = execution.value_or(task->executionOptions.value_or(ExecutionOptions{})).category == ExecutionOptions::Category::Immediate;
+        bool const isLazyExecution
+                = execution.value_or(task->executionOptions.value_or(ExecutionOptions{})).category == ExecutionOptions::Category::Lazy;
 
-        if (!isImmediateExecution) {
-            if (auto ret = TaskPool::Instance().addTask(task); ret) {
+        if (isLazyExecution)
+            if (auto ret = TaskPool::Instance().addTask(task); ret)
                 return std::unexpected(ret.value());
-            }
-        }
     }
 
     // If completed, return result
@@ -100,74 +93,20 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
     return 0;
 }
 
-auto NodeData::handleLazyExecution(std::shared_ptr<Task>& task, const OutOptions& options, bool isExtract, void* obj) -> Expected<int> {
-    sp_log("NodeData::handleLazyExecution", "Function Called");
-
-    if (!task->state.hasStarted())
-        if (auto ret = TaskPool::Instance().addTask(task); ret)
-            return std::unexpected(ret.value());
-    return 0;
-}
-
-auto NodeData::handleTaskTimeout(std::shared_ptr<Task>& task, std::chrono::milliseconds timeout) -> Expected<void> {
-    sp_log("NodeData::handleTaskTimeout", "Function Called");
-
-    auto status = task->executionFuture->wait_for(timeout);
-    if (status != std::future_status::ready)
-        return std::unexpected(Error{Error::Code::Timeout, "Task execution timed out after " + std::to_string(timeout.count()) + "ms"});
-
-    try {
-        task->executionFuture->get();
-    } catch (const std::exception& e) {
-        return std::unexpected(Error{Error::Code::UnknownError, std::string("Task execution failed: ") + e.what()});
-    }
-
-    return {};
-}
-
-auto NodeData::copyTaskResult(std::shared_ptr<Task>& task, void* obj) -> Expected<int> {
-    sp_log("NodeData::copyTaskResult", "Function Called");
-
-    TaskState finalState = task->state.get();
-    if (finalState == TaskState::Failed) {
-        return std::unexpected(Error{Error::Code::UnknownError, "Task execution failed"});
-    }
-
-    if (finalState != TaskState::Completed) {
-        return std::unexpected(
-                Error{Error::Code::NoObjectFound, std::string("Task in unexpected state: ") + std::string(taskStateToString(finalState))});
-    }
-    // task->resultCopy(task->asyncTask->resultPtr, obj);
-    return 1;
-}
-
 auto NodeData::deserializeData(void* obj, const InputMetadata& inputMetadata, bool isExtract) -> Expected<int> {
     sp_log("NodeData::deserializeData", "Function Called");
 
     if (isExtract) {
-        if (!inputMetadata.deserializePop) {
+        if (!inputMetadata.deserializePop)
             return std::unexpected(Error{Error::Code::UnserializableType, "No pop deserialization function provided"});
-        }
         inputMetadata.deserializePop(obj, data);
         popType();
     } else {
-        if (!inputMetadata.deserialize) {
+        if (!inputMetadata.deserialize)
             return std::unexpected(Error{Error::Code::UnserializableType, "No deserialization function provided"});
-        }
         inputMetadata.deserialize(obj, data);
     }
     return 1;
-}
-
-auto NodeData::executeTask(std::shared_ptr<Task> const& task) -> Expected<void> {
-    sp_log("NodeData::executeTask", "Function Called");
-
-    try {
-        task->function(*task.get(), false);
-        return {};
-    } catch (const std::exception& e) {
-        return std::unexpected(Error{Error::Code::UnknownError, std::string("Task execution failed: ") + e.what()});
-    }
 }
 
 auto NodeData::empty() const -> bool {
@@ -186,11 +125,9 @@ auto NodeData::pushType(InputMetadata const& meta) -> void {
 }
 
 auto NodeData::popType() -> void {
-    if (!this->types.empty()) {
-        if (--this->types.front().elements == 0) {
+    if (!this->types.empty())
+        if (--this->types.front().elements == 0)
             this->types.erase(this->types.begin());
-        }
-    }
 }
 
 } // namespace SP

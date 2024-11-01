@@ -4,11 +4,8 @@
 #include "Error.hpp"
 #include "InOptions.hpp"
 #include "InsertReturn.hpp"
-#include "core/BlockOptions.hpp"
-#include "core/ExecutionOptions.hpp"
 #include "core/OutOptions.hpp"
 #include "taskpool/Task.hpp"
-#include "type/DataCategory.hpp"
 #include "type/InputData.hpp"
 #include "type/InputMetadata.hpp"
 
@@ -35,11 +32,7 @@ private:
             -> Expected<int>;
     auto validateInputs(const InputMetadata& inputMetadata) -> Expected<void>;
     auto deserializeExecution(void* obj, const InputMetadata& inputMetadata, const OutOptions& options, bool isExtract) -> Expected<int>;
-    auto handleLazyExecution(std::shared_ptr<Task>& task, const OutOptions& options, bool isExtract, void* obj) -> Expected<int>;
-    auto handleTaskTimeout(std::shared_ptr<Task>& task, std::chrono::milliseconds timeout) -> Expected<void>;
-    auto copyTaskResult(std::shared_ptr<Task>& task, void* obj) -> Expected<int>;
     auto deserializeData(void* obj, const InputMetadata& inputMetadata, bool isExtract) -> Expected<int>;
-    auto executeTask(std::shared_ptr<Task> const& task) -> Expected<void>;
 
     std::vector<SERIALIZATION_TYPE> data;
     std::deque<std::shared_ptr<Task>> tasks;

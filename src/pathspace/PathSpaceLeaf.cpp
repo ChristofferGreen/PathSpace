@@ -1,10 +1,8 @@
 #include "PathSpaceLeaf.hpp"
-#include "core/BlockOptions.hpp"
 #include "core/Error.hpp"
 #include "core/InOptions.hpp"
 #include "core/InsertReturn.hpp"
 #include "core/OutOptions.hpp"
-#include "path/ConstructiblePath.hpp"
 #include "pathspace/type/InputData.hpp"
 #include "type/InputData.hpp"
 
@@ -115,14 +113,14 @@ auto PathSpaceLeaf::outDataName(ConcreteNameStringView const& concreteName,
                                 InputMetadata const& inputMetadata,
                                 void* obj,
                                 OutOptions const& options,
-                                bool const doPop) -> Expected<int> {
+                                bool const isExtract) -> Expected<int> {
     Expected<int> result = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     bool shouldErase = false;
 
     // First pass: modify data and check if we need to erase
     this->nodeDataMap.modify_if(concreteName.getName(), [&](auto& nodePair) {
         if (auto* nodeData = std::get_if<NodeData>(&nodePair.second)) {
-            if (doPop) {
+            if (isExtract) {
                 result = nodeData->deserializePop(obj, inputMetadata);
                 shouldErase = nodeData->empty();
             } else {
@@ -134,9 +132,8 @@ auto PathSpaceLeaf::outDataName(ConcreteNameStringView const& concreteName,
     });
 
     // Second pass: if needed, erase the empty node
-    if (shouldErase) {
+    if (shouldErase)
         this->nodeDataMap.erase(concreteName.getName());
-    }
 
     return result;
 }

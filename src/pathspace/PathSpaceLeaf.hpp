@@ -24,7 +24,6 @@ public:
              void* obj,
              OutOptions const& options,
              bool const isExtract) -> Expected<int>;
-
     auto clear() -> void;
 
 private:
@@ -35,7 +34,6 @@ private:
                                  InputData const& inputData,
                                  InOptions const& options,
                                  InsertReturn& ret) -> void;
-
     auto outDataName(ConcreteNameStringView const& concreteName,
                      ConcretePathIteratorStringView const& end,
                      InputMetadata const& inputMetadata,
