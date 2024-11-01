@@ -1413,7 +1413,7 @@ TEST_CASE("PathSpace Multithreading") {
         auto slow_insert = space.insert(
                 "/slow_task",
                 []() {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(30000));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(250));
                     return 24;
                 },
                 InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
@@ -1443,9 +1443,6 @@ TEST_CASE("PathSpace Multithreading") {
                           "Expected timeout error but got: ",
                           static_cast<int>(timeout_result.error().code));
         }
-
-        // Clean up
-        space.clear();
     }
 
     SUBCASE("Concurrent Task Execution - Error Handling") {
