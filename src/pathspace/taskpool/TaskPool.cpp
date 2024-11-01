@@ -81,7 +81,8 @@ auto TaskPool::workerFunction() -> void {
                     strongTask->state.transitionToRunning();
                     fn(*strongTask, false);
                     strongTask->state.markCompleted();
-                    strongTask->space->waitMap.notify(strongTask->notificationPath);
+                    if (!strongTask->notificationPath.empty())
+                        strongTask->space->waitMap.notify(strongTask->notificationPath);
                 } catch (...) {
                     sp_log("Exception in running Task", "Error", "Exception");
                 }
