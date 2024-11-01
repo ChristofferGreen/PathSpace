@@ -9,6 +9,7 @@
 #include <vector>
 
 namespace SP {
+struct Task;
 
 class TaskPool {
 public:

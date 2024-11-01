@@ -32,7 +32,7 @@ public:
         InputData inputData{std::forward<DataType>(data)};
 
         if (inputData.metadata.dataCategory == DataCategory::Execution)
-            inputData.task = this->createTask(path.getPath(), std::forward<DataType>(data), inputData, options);
+            inputData.task = Task::Create(this, path.getPath(), std::forward<DataType>(data), inputData, options);
 
         return this->in(path, inputData, options);
     }
@@ -100,30 +100,14 @@ protected:
     auto outBlock(ConcretePathStringView const& path, OutOptions const& options, bool const isExtract) -> Expected<DataType> {
         sp_log("PathSpace::outBlock", "Function Called");
 
-        // Handle lazy execution with timeout
-        auto modifiedOptions = options;
-        auto const inputMetaData = InputMetadataT<DataType>{};
-        DataCategory const category = inputMetaData.dataCategory;
-        bool const isLazyWithTimeout = options.block && options.block->timeout && (category == DataCategory::Execution);
-
-        if (isLazyWithTimeout) {
-            if (modifiedOptions.execution.has_value()) {
-                modifiedOptions.execution.value().category = ExecutionOptions::Category::Lazy;
-            } else {
-                modifiedOptions.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy};
-            }
-        }
-
         DataType obj;
-
-        // Calculate absolute deadline once at the start
+        auto const inputMetaData = InputMetadataT<DataType>{};
         auto const deadline = options.block && options.block->timeout ? std::chrono::system_clock::now() + *options.block->timeout
                                                                       : std::chrono::system_clock::time_point::max();
-
-        // Add retry loop
+        // Retry loop
         while (true) {
             // First try without waiting
-            auto result = this->out(path, inputMetaData, modifiedOptions, &obj, isExtract);
+            auto result = this->out(path, inputMetaData, options, &obj, isExtract);
             if (result.has_value() && result.value() > 0) {
                 return obj;
             }
@@ -138,7 +122,7 @@ protected:
             // Wait for data with proper timeout
             auto guard = waitMap.wait(path);
             bool success = guard.wait_until(deadline, [&]() {
-                result = this->out(path, inputMetaData, modifiedOptions, &obj, isExtract);
+                result = this->out(path, inputMetaData, options, &obj, isExtract);
                 return (result.has_value() && result.value() > 0);
             });
 
@@ -149,48 +133,21 @@ protected:
             // If we timed out, return error
             if (std::chrono::system_clock::now() >= deadline) {
                 return std::unexpected(
-                        Error{Error::Code::Timeout, "Operation timed out waiting for data at path: " + std::string(path.getPath())});
+                        Error{Error::Code::Timeout,
+                              "Operation timed out after waking from guard, waiting for data at path: " + std::string(path.getPath())});
             }
-
-            // Loop continues if we wake up but someone else got the data
         }
-    }
-
-    template <typename DataType>
-    auto createTask(ConcretePathString const& notificationPath, DataType const& data, InputData const& inputData, InOptions const& options)
-            -> std::shared_ptr<Task> {
-        sp_log("PathSpace::createTask", "Function Called");
-        if constexpr (ExecutionFunctionPointer<DataType> || ExecutionStdFunction<DataType>) {
-            return std::make_shared<Task>(Task{.space = this,
-                                               .function =
-                                                       [userFunctionOrData = std::move(data)](Task& task, bool const objIsData) {
-                                                           /*if (objIsData)
-                                                               *static_cast<std::function<std::invoke_result_t<DataType>()>*>(obj) =
-                                                           userFunctionOrData; else *static_cast<std::invoke_result_t<DataType>*>(obj) =
-                                                           userFunctionOrData();*/
-                                                           task.result = userFunctionOrData();
-                                                       },
-                                               .notificationPath = notificationPath,
-                                               .resultCopy =
-                                                       [](std::any const& from, void* const to) {
-                                                           *static_cast<std::invoke_result_t<DataType>*>(to)
-                                                                   = *std::any_cast<std::invoke_result_t<DataType>>(&from);
-                                                       },
-                                               .executionOptions = options.execution});
-        }
-        return {};
     }
 
     virtual auto in(GlobPathStringView const& path, InputData const& data, InOptions const& options) -> InsertReturn;
     virtual auto
-    out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, OutOptions const& options, void* obj, bool const doPop)
+    out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, OutOptions const& options, void* obj, bool const isExtract)
             -> Expected<int>;
-
     auto shutdown() -> void;
 
     TaskPool* pool = nullptr;
     PathSpaceLeaf root;
-    mutable WaitMap waitMap;
+    WaitMap waitMap;
 };
 
 } // namespace SP

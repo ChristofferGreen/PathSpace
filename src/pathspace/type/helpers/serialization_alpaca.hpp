@@ -1,14 +1,12 @@
 #pragma once
-#include "core/ExecutionOptions.hpp"
-#include "taskpool/TaskPool.hpp"
 #include "type/DataCategory.hpp"
 #include "type/ExecutionCategory.hpp"
-#include "type/helpers/return_type.hpp"
 #include "utils/TaggedLogger.hpp"
 
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <stdexcept>
 #include <type_traits>
 #include <vector>
