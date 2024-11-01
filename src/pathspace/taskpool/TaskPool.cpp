@@ -20,14 +20,17 @@ TaskPool::~TaskPool() {
     shutdown();
 }
 
-auto TaskPool::addTask(std::weak_ptr<Task>&& task) -> void {
+auto TaskPool::addTask(std::weak_ptr<Task>&& task) -> std::optional<Error> {
     {
         std::lock_guard<std::mutex> lock(mutex);
         if (!shuttingDown) {
+            if (!task.lock()->state.tryStart())
+                return Error{Error::Code::UnknownError, "Failed to start lazy execution"};
             tasks.push(std::move(task));
             taskCV.notify_one();
         }
     }
+    return std::nullopt;
 }
 
 auto TaskPool::shutdown() -> void {

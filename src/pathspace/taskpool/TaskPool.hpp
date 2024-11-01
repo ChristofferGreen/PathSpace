@@ -1,5 +1,6 @@
 #pragma once
 #include "Task.hpp"
+#include "core/Error.hpp"
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
@@ -19,7 +20,7 @@ public:
     TaskPool(TaskPool const&) = delete;
     auto operator=(TaskPool const&) -> TaskPool& = delete;
 
-    auto addTask(std::weak_ptr<Task>&& task) -> void;
+    auto addTask(std::weak_ptr<Task>&& task) -> std::optional<Error>;
     auto shutdown() -> void;
     auto size() const -> size_t;
 

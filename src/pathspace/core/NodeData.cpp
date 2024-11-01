@@ -15,8 +15,8 @@ auto NodeData::serialize(const InputData& inputData, const InOptions& options, I
         this->tasks.push_back(std::move(inputData.task));
         if (bool const isImmediateExecution = execution.value_or(inputData.task->executionOptions.value_or(ExecutionOptions{})).category
                                               == ExecutionOptions::Category::Immediate) {
-            this->tasks.back()->state.tryStart();
-            TaskPool::Instance().addTask(this->tasks.back());
+            if (auto const ret = TaskPool::Instance().addTask(this->tasks.back()); ret)
+                return ret;
         }
         ret.nbrTasksCreated++;
     } else {
@@ -77,79 +77,24 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
     bool const isImmediateExecution
             = execution.value_or(task->executionOptions.value_or(ExecutionOptions{})).category == ExecutionOptions::Category::Immediate;
 
-    Expected<int> result
-            = isImmediateExecution ? handleImmediateExecution(task, isExtract, obj) : handleLazyExecution(task, options, isExtract, obj);
-
+    Expected<int> result = isImmediateExecution ? 0 : handleLazyExecution(task, options, isExtract, obj);
+    if (task->state.isCompleted()) {
+        task->resultCopy(task->result, obj);
+        if (isExtract) {
+            this->tasks.pop_front();
+            popType();
+        }
+        return 1;
+    }
     return result;
 }
 
 auto NodeData::handleLazyExecution(std::shared_ptr<Task>& task, const OutOptions& options, bool isExtract, void* obj) -> Expected<int> {
     sp_log("NodeData::handleLazyExecution", "Function Called");
 
-    // Only try to start if not already started
-    if (!task->state.hasStarted()) {
-        if (!task->state.tryStart()) {
-            return std::unexpected(Error{Error::Code::UnknownError, "Failed to start lazy execution"});
-        }
-        TaskPool::Instance().addTask(task);
-
-        // Create the future only when we successfully start the task
-        /*task->executionFuture = std::make_shared<std::future<void>>(std::async(std::launch::async, [this, task, isExtract]() {
-            if (task->state.transitionToRunning()) {
-                if (auto result = executeTask(task); !result) {
-                    task->state.markFailed();
-                    throw std::runtime_error(result.error().message.value_or("Task execution failed"));
-                }
-                task->state.markCompleted();
-            }
-        }));*/
-    }
-
-    // Handle timeout and wait for completion
-    /*bool const hasTimeout = options.block && options.block->timeout;
-    if (hasTimeout) {
-        if (auto timeoutResult = handleTaskTimeout(task, *options.block->timeout); !timeoutResult) {
-            return std::unexpected(timeoutResult.error());
-        }
-    } else {
-        // Make sure we have a future before waiting
-        if (task->executionFuture)
-            task->executionFuture->wait();
-        else
-            return std::unexpected(Error{Error::Code::UnknownError, "Task future not initialized"});
-    }
-
-    return copyTaskResult(task, obj);*/
-    if (task->state.isFailed())
-        return std::unexpected(Error{Error::Code::TaskFailed, "Task failed to execute"});
-
-    if (task->state.isCompleted()) {
-        task->resultCopy(task->result, obj);
-        if (isExtract) {
-            this->tasks.pop_front();
-            popType();
-        }
-        return 1;
-    }
-
-    return 0;
-}
-
-auto NodeData::handleImmediateExecution(std::shared_ptr<Task>& task, bool isExtract, void* obj) -> Expected<int> {
-    sp_log("NodeData::handleImmediateExecution", "Function Called");
-
-    if (task->state.isFailed())
-        return std::unexpected(Error{Error::Code::TaskFailed, "Task failed to execute"});
-
-    if (task->state.isCompleted()) {
-        task->resultCopy(task->result, obj);
-        if (isExtract) {
-            this->tasks.pop_front();
-            popType();
-        }
-        return 1;
-    }
-
+    if (!task->state.hasStarted())
+        if (auto ret = TaskPool::Instance().addTask(task); ret)
+            return std::unexpected(ret.value());
     return 0;
 }
 

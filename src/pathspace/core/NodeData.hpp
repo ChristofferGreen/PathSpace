@@ -36,7 +36,6 @@ private:
     auto validateInputs(const InputMetadata& inputMetadata) -> Expected<void>;
     auto deserializeExecution(void* obj, const InputMetadata& inputMetadata, const OutOptions& options, bool isExtract) -> Expected<int>;
     auto handleLazyExecution(std::shared_ptr<Task>& task, const OutOptions& options, bool isExtract, void* obj) -> Expected<int>;
-    auto handleImmediateExecution(std::shared_ptr<Task>& task, bool isExtract, void* obj) -> Expected<int>;
     auto handleTaskTimeout(std::shared_ptr<Task>& task, std::chrono::milliseconds timeout) -> Expected<void>;
     auto copyTaskResult(std::shared_ptr<Task>& task, void* obj) -> Expected<int>;
     auto deserializeData(void* obj, const InputMetadata& inputMetadata, bool isExtract) -> Expected<int>;
