@@ -11,6 +11,7 @@ add_executable(PathSpaceTests
   unit/path/test_ConstructiblePath.cpp
   unit/type/test_InputMetadata.cpp
   unit/type/test_InputData.cpp
+  unit/type/test_SlidingBuffer.cpp
   unit/ext/test_alpaca.cpp
   unit/taskpool/test_TaskPool.cpp
   #unit/ext/test_glaze.cpp
