@@ -11,6 +11,11 @@ struct TestStruct {
     float y;
 };
 
+struct TestComplexStruct {
+    std::string name;
+    std::vector<TestStruct> structs;
+};
+
 TEST_CASE("SlidingBuffer") {
     SUBCASE("Basic Buffer Operations") {
         SP::SlidingBuffer buffer;
@@ -70,6 +75,52 @@ TEST_CASE("SlidingBuffer") {
                 CHECK(result->x == original.x);
                 CHECK(result->y == original.y);
             }
+
+            SUBCASE("complex struct") {
+                TestComplexStruct original{.name = "test", .structs = {{1, 1.1f}, {2, 2.2f}, {3, 3.3f}}};
+
+                CHECK(!SP::Serializer<TestComplexStruct>::serialize(original, buffer));
+
+                auto result = SP::Serializer<TestComplexStruct>::deserialize(buffer);
+                REQUIRE(result);
+                CHECK(result->name == original.name);
+                CHECK(result->structs.size() == original.structs.size());
+                for (size_t i = 0; i < result->structs.size(); i++) {
+                    CHECK(result->structs[i].x == original.structs[i].x);
+                    CHECK(result->structs[i].y == original.structs[i].y);
+                }
+            }
+        }
+    }
+
+    SUBCASE("Error Handling") {
+        SP::SlidingBuffer buffer;
+
+        SUBCASE("empty buffer") {
+            auto result = SP::Serializer<TestStruct>::deserialize(buffer);
+            CHECK(!result);
+        }
+
+        SUBCASE("corrupted header") {
+            TestStruct original{42, 3.14f};
+            CHECK(!SP::Serializer<TestStruct>::serialize(original, buffer));
+
+            // Corrupt the header
+            buffer.data[0] = 0xFF;
+
+            auto result = SP::Serializer<TestStruct>::deserialize(buffer);
+            CHECK(!result);
+        }
+
+        SUBCASE("truncated data") {
+            TestStruct original{42, 3.14f};
+            CHECK(!SP::Serializer<TestStruct>::serialize(original, buffer));
+
+            // Truncate the buffer
+            buffer.data.resize(buffer.data.size() - 1);
+
+            auto result = SP::Serializer<TestStruct>::deserialize(buffer);
+            CHECK(!result);
         }
     }
 }
