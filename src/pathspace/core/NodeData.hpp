@@ -8,6 +8,7 @@
 #include "taskpool/Task.hpp"
 #include "type/InputData.hpp"
 #include "type/InputMetadata.hpp"
+#include "type/SlidingBuffer.hpp"
 
 #include <cassert>
 #include <deque>
@@ -35,6 +36,7 @@ private:
     auto deserializeData(void* obj, const InputMetadata& inputMetadata, bool isExtract) -> Expected<int>;
 
     std::vector<SERIALIZATION_TYPE> data;
+    SP::SlidingBuffer data2;
     std::deque<std::shared_ptr<Task>> tasks;
     std::deque<ElementType> types;
 };

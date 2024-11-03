@@ -1,5 +1,6 @@
 #include "ext/doctest.h"
 
+#include <pathspace/type/Serializer.hpp>
 #include <pathspace/type/SlidingBuffer.hpp>
 
 #include <cstring>

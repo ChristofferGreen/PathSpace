@@ -1,6 +1,8 @@
 #pragma once
 #include "type/DataCategory.hpp"
 #include "type/ExecutionCategory.hpp"
+#include "type/Serializer.hpp"
+#include "type/SlidingBuffer.hpp"
 #include "utils/TaggedLogger.hpp"
 
 #include <cassert>
@@ -38,6 +40,17 @@ static auto serialize_alpaca(void const* objPtr, std::vector<uint8_t>& bytes) ->
         // Append the serialized data
         bytes.insert(bytes.end(), tempBytes.begin(), tempBytes.begin() + bytesWritten);
 
+        sp_log("Object serialized successfully", "INFO");
+    } catch (const std::exception& e) {
+        sp_log("Serialization failed: " + std::string(e.what()), "ERROR");
+        throw;
+    }
+}
+
+template <typename T>
+static auto serialize_alpaca2(void const* objPtr, SP::SlidingBuffer& buffer) -> void {
+    try {
+        SP::Serializer<T>::serialize(*static_cast<T const*>(objPtr), buffer);
         sp_log("Object serialized successfully", "INFO");
     } catch (const std::exception& e) {
         sp_log("Serialization failed: " + std::string(e.what()), "ERROR");
@@ -242,6 +255,20 @@ struct InputMetadataT {
             return &serialize_fundamental<T>;
         } else if constexpr (AlpacaCompatible<T>) {
             return &serialize_alpaca<T>;
+        } else {
+            return nullptr;
+        }
+    }();
+
+    static constexpr auto serialize2 = []() {
+        if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
+            return &serialize_function_pointer;
+        } else if constexpr (ExecutionStdFunction<T>) {
+            return nullptr;
+        } else if constexpr (std::is_fundamental<T>::value) {
+            return &serialize_fundamental<T>;
+        } else if constexpr (AlpacaCompatible<T>) {
+            return &serialize_alpaca2<T>;
         } else {
             return nullptr;
         }
