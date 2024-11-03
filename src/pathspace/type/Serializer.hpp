@@ -45,7 +45,7 @@ public:
         }
     }
 
-    static Expected<T> deserialize(SlidingBuffer& buffer) {
+    static auto deserialize(SlidingBuffer const& buffer) -> Expected<T> {
         try {
             if (buffer.remaining_size() < sizeof(Header)) {
                 return std::unexpected(Error{Error::Code::MalformedInput, "Buffer too small for header"});
@@ -65,15 +65,20 @@ public:
             std::error_code ec;
             // T obj = alpaca::deserialize<T>(tempBuffer, ec);
             auto const wrapper = alpaca::deserialize<Wrapper, 1>(tempBuffer, ec);
-            if (ec) {
+            if (ec)
                 return std::unexpected(Error{Error::Code::UnserializableType, ec.message()});
-            }
 
-            buffer.advance(sizeof(header) + header.size);
             return wrapper.obj;
         } catch (const std::exception& e) {
             return std::unexpected(Error{Error::Code::UnserializableType, std::string("Deserialization failed: ") + e.what()});
         }
+    }
+
+    static auto deserializePop(SlidingBuffer& buffer) -> Expected<T> {
+        auto expected = deserialize(buffer);
+        Header header;
+        buffer.advance(sizeof(header) + header.size);
+        return expected;
     }
 };
 

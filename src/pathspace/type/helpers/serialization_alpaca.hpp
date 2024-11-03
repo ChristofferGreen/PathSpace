@@ -59,6 +59,16 @@ static auto serialize_alpaca2(void const* objPtr, SP::SlidingBuffer& buffer) -> 
 }
 
 template <typename T>
+static auto deserialize_alpaca_pop2(void* objPtr, SP::SlidingBuffer& buffer) -> void {
+    bool const doPop = true;
+    auto expected = SP::Serializer<T>::deserializePop(buffer);
+    if (expected.has_value())
+        *static_cast<T*>(objPtr) = std::move(expected.value());
+    else
+        sp_log("Deserialization failed: " + expected.error().message.value_or(""), "ERROR");
+}
+
+template <typename T>
 static auto deserialize_alpaca_pop(void* objPtr, std::vector<uint8_t>& bytes) -> void {
     if (bytes.size() < sizeof(uint32_t)) {
         sp_log("Not enough data to read size", "ERROR");
@@ -93,6 +103,15 @@ static auto deserialize_alpaca_pop(void* objPtr, std::vector<uint8_t>& bytes) ->
     bytes.erase(bytes.begin(), bytes.begin() + sizeof(uint32_t) + size);
 
     sp_log("Object deserialized successfully", "INFO");
+}
+
+template <typename T>
+static auto deserialize_alpaca_const2(void* objPtr, SP::SlidingBuffer const& buffer) -> void {
+    auto expected = SP::Serializer<T>::deserialize(buffer);
+    if (expected.has_value())
+        *static_cast<T*>(objPtr) = std::move(expected.value());
+    else
+        sp_log("Deserialization failed: " + expected.error().message.value_or(""), "ERROR");
 }
 
 template <typename T>
@@ -290,6 +309,22 @@ struct InputMetadataT {
         }
     }();
 
+    static constexpr auto deserialize2 = []() {
+        if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
+            return deserialize_function_pointer_const;
+        } else if constexpr (ExecutionStdFunction<T>) {
+            return nullptr;
+        } else if constexpr (FunctionPointer<T>) {
+            return &deserialize_function_pointer_const;
+        } else if constexpr (std::is_fundamental<T>::value) {
+            return &deserialize_fundamental_const<T>;
+        } else if constexpr (AlpacaCompatible<T>) {
+            return &deserialize_alpaca_const2<T>;
+        } else {
+            return nullptr;
+        }
+    }();
+
     static constexpr auto deserializePop = []() {
         if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
             return &deserialize_function_pointer_pop;
@@ -301,6 +336,22 @@ struct InputMetadataT {
             return &deserialize_fundamental_pop<T>;
         } else if constexpr (AlpacaCompatible<T>) {
             return &deserialize_alpaca_pop<T>;
+        } else {
+            return nullptr;
+        }
+    }();
+
+    static constexpr auto deserializePop2 = []() {
+        if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
+            return &deserialize_function_pointer_pop;
+        } else if constexpr (ExecutionStdFunction<T>) {
+            return nullptr;
+        } else if constexpr (FunctionPointer<T>) {
+            return nullptr;
+        } else if constexpr (std::is_fundamental<T>::value) {
+            return &deserialize_fundamental_pop<T>;
+        } else if constexpr (AlpacaCompatible<T>) {
+            return &deserialize_alpaca_pop2<T>;
         } else {
             return nullptr;
         }
