@@ -166,6 +166,16 @@ static auto serialize_fundamental(void const* objPtr, std::vector<uint8_t>& byte
 }
 
 template <typename T>
+static auto serialize_fundamental2(void const* objPtr, SP::SlidingBuffer& bytes) -> void {
+    static_assert(std::is_fundamental_v<T>, "T must be a fundamental type");
+    T const& obj = *static_cast<T const*>(objPtr);
+    auto const* begin = reinterpret_cast<uint8_t const*>(&obj);
+    auto const* end = begin + sizeof(T);
+    // bytes.insert(bytes.end(), begin, end);
+    bytes.append(begin, sizeof(T));
+}
+
+template <typename T>
 static auto deserialize_fundamental_const(void* objPtr, std::vector<uint8_t> const& bytes) -> void {
     static_assert(std::is_fundamental_v<T>, "T must be a fundamental type");
     if (bytes.size() < sizeof(T)) {
@@ -187,6 +197,12 @@ static auto serialize_function_pointer(void const* objPtr, std::vector<uint8_t>&
     auto const* begin = reinterpret_cast<uint8_t const*>(&funcPtrInt);
     auto const* end = begin + sizeof(funcPtrInt);
     bytes.insert(bytes.end(), begin, end);
+}
+
+static auto serialize_function_pointer2(void const* objPtr, SP::SlidingBuffer& bytes) -> void {
+    auto funcPtr = *static_cast<void (**)()>(const_cast<void*>(objPtr));
+    auto funcPtrInt = reinterpret_cast<std::uintptr_t>(funcPtr);
+    bytes.append(reinterpret_cast<uint8_t const*>(&funcPtrInt), sizeof(funcPtrInt));
 }
 
 static auto deserialize_function_pointer_pop(void* objPtr, std::vector<uint8_t>& bytes) -> void {
@@ -281,11 +297,11 @@ struct InputMetadataT {
 
     static constexpr auto serialize2 = []() {
         if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
-            return &serialize_function_pointer;
+            return &serialize_function_pointer2;
         } else if constexpr (ExecutionStdFunction<T>) {
             return nullptr;
         } else if constexpr (std::is_fundamental<T>::value) {
-            return &serialize_fundamental<T>;
+            return &serialize_fundamental2<T>;
         } else if constexpr (AlpacaCompatible<T>) {
             return &serialize_alpaca2<T>;
         } else {
@@ -309,7 +325,7 @@ struct InputMetadataT {
         }
     }();
 
-    static constexpr auto deserialize2 = []() {
+    static constexpr auto deserialize2 = []() -> void (*)(void* obj, SP::SlidingBuffer const&) {
         if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
             return deserialize_function_pointer_const;
         } else if constexpr (ExecutionStdFunction<T>) {

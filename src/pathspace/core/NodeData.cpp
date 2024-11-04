@@ -22,7 +22,7 @@ auto NodeData::serialize(const InputData& inputData, const InOptions& options, I
     } else {
         if (!inputData.metadata.serialize)
             return Error{Error::Code::SerializationFunctionMissing, "Serialization function is missing."};
-        inputData.metadata.serialize(inputData.obj, data);
+        inputData.metadata.serialize2(inputData.obj, data2);
     }
 
     pushType(inputData.metadata);
