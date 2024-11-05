@@ -35,8 +35,7 @@ private:
     auto deserializeExecution(void* obj, const InputMetadata& inputMetadata, const OutOptions& options, bool isExtract) -> Expected<int>;
     auto deserializeData(void* obj, const InputMetadata& inputMetadata, bool isExtract) -> Expected<int>;
 
-    std::vector<SERIALIZATION_TYPE> data;
-    SP::SlidingBuffer data2;
+    SP::SlidingBuffer data;
     std::deque<std::shared_ptr<Task>> tasks;
     std::deque<ElementType> types;
 };

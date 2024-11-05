@@ -22,7 +22,7 @@ struct PathSpace;
 // ########### Alpaca Serialization ###########
 
 template <typename T>
-static auto serialize_alpaca2(void const* objPtr, SP::SlidingBuffer& buffer) -> void {
+static auto serialize_alpaca(void const* objPtr, SP::SlidingBuffer& buffer) -> void {
     try {
         SP::Serializer<T>::serialize(*static_cast<T const*>(objPtr), buffer);
         sp_log("Object serialized successfully", "INFO");
@@ -33,7 +33,7 @@ static auto serialize_alpaca2(void const* objPtr, SP::SlidingBuffer& buffer) -> 
 }
 
 template <typename T>
-static auto deserialize_alpaca_pop2(void* objPtr, SP::SlidingBuffer& buffer) -> void {
+static auto deserialize_alpaca_pop(void* objPtr, SP::SlidingBuffer& buffer) -> void {
     bool const doPop = true;
     auto expected = SP::Serializer<T>::deserializePop(buffer);
     if (expected.has_value())
@@ -43,7 +43,7 @@ static auto deserialize_alpaca_pop2(void* objPtr, SP::SlidingBuffer& buffer) -> 
 }
 
 template <typename T>
-static auto deserialize_alpaca_const2(void* objPtr, SP::SlidingBuffer const& buffer) -> void {
+static auto deserialize_alpaca_const(void* objPtr, SP::SlidingBuffer const& buffer) -> void {
     auto expected = SP::Serializer<T>::deserialize(buffer);
     if (expected.has_value())
         *static_cast<T*>(objPtr) = std::move(expected.value());
@@ -53,14 +53,14 @@ static auto deserialize_alpaca_const2(void* objPtr, SP::SlidingBuffer const& buf
 
 template <typename T>
 concept AlpacaCompatible = !std::is_pointer_v<T> && requires(T t, SP::SlidingBuffer& v) {
-    { serialize_alpaca2<T>(static_cast<void const*>(&t), v) };
-    { deserialize_alpaca_const2<T>(static_cast<void*>(&t), v) };
+    { serialize_alpaca<T>(static_cast<void const*>(&t), v) };
+    { deserialize_alpaca_const<T>(static_cast<void*>(&t), v) };
 };
 
 // ########### Fundamental Datatype Serialization ###########
 
 template <typename T>
-static auto serialize_fundamental2(void const* objPtr, SP::SlidingBuffer& bytes) -> void {
+static auto serialize_fundamental(void const* objPtr, SP::SlidingBuffer& bytes) -> void {
     static_assert(std::is_fundamental_v<T>, "T must be a fundamental type");
     T const& obj = *static_cast<T const*>(objPtr);
     auto const* begin = reinterpret_cast<uint8_t const*>(&obj);
@@ -70,7 +70,7 @@ static auto serialize_fundamental2(void const* objPtr, SP::SlidingBuffer& bytes)
 }
 
 template <typename T>
-static auto deserialize_fundamental_const2(void* objPtr, SP::SlidingBuffer const& bytes) -> void {
+static auto deserialize_fundamental_const(void* objPtr, SP::SlidingBuffer const& bytes) -> void {
     static_assert(std::is_fundamental_v<T>, "T must be a fundamental type");
     if (bytes.size() < sizeof(T)) {
         return;
@@ -80,18 +80,18 @@ static auto deserialize_fundamental_const2(void* objPtr, SP::SlidingBuffer const
 }
 
 template <typename T>
-static auto deserialize_fundamental_pop2(void* objPtr, SP::SlidingBuffer& bytes) -> void {
-    deserialize_fundamental_const2<T>(objPtr, bytes);
+static auto deserialize_fundamental_pop(void* objPtr, SP::SlidingBuffer& bytes) -> void {
+    deserialize_fundamental_const<T>(objPtr, bytes);
     bytes.advance(sizeof(T));
 }
 
-static auto serialize_function_pointer2(void const* objPtr, SP::SlidingBuffer& bytes) -> void {
+static auto serialize_function_pointer(void const* objPtr, SP::SlidingBuffer& bytes) -> void {
     auto funcPtr = *static_cast<void (**)()>(const_cast<void*>(objPtr));
     auto funcPtrInt = reinterpret_cast<std::uintptr_t>(funcPtr);
     bytes.append(reinterpret_cast<uint8_t const*>(&funcPtrInt), sizeof(funcPtrInt));
 }
 
-static auto deserialize_function_pointer_pop2(void* objPtr, SP::SlidingBuffer& bytes) -> void {
+static auto deserialize_function_pointer_pop(void* objPtr, SP::SlidingBuffer& bytes) -> void {
     if (bytes.size() < sizeof(std::uintptr_t)) {
         return;
     }
@@ -102,7 +102,7 @@ static auto deserialize_function_pointer_pop2(void* objPtr, SP::SlidingBuffer& b
     bytes.advance(sizeof(std::uintptr_t));
 }
 
-static auto deserialize_function_pointer_const2(void* objPtr, SP::SlidingBuffer const& bytes) -> void {
+static auto deserialize_function_pointer_const(void* objPtr, SP::SlidingBuffer const& bytes) -> void {
     if (bytes.size() < sizeof(std::uintptr_t)) {
         return;
     }
@@ -169,13 +169,13 @@ struct InputMetadataT {
 
     static constexpr auto serialize = []() {
         if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
-            return &serialize_function_pointer2;
+            return &serialize_function_pointer;
         } else if constexpr (ExecutionStdFunction<T>) {
             return nullptr;
         } else if constexpr (std::is_fundamental<T>::value) {
-            return &serialize_fundamental2<T>;
+            return &serialize_fundamental<T>;
         } else if constexpr (AlpacaCompatible<T>) {
-            return &serialize_alpaca2<T>;
+            return &serialize_alpaca<T>;
         } else {
             return nullptr;
         }
@@ -183,15 +183,15 @@ struct InputMetadataT {
 
     static constexpr auto deserialize = []() -> void (*)(void* obj, SP::SlidingBuffer const&) {
         if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
-            return deserialize_function_pointer_const2;
+            return deserialize_function_pointer_const;
         } else if constexpr (ExecutionStdFunction<T>) {
             return nullptr;
         } else if constexpr (FunctionPointer<T>) {
-            return &deserialize_function_pointer_const2;
+            return &deserialize_function_pointer_const;
         } else if constexpr (std::is_fundamental<T>::value) {
-            return &deserialize_fundamental_const2<T>;
+            return &deserialize_fundamental_const<T>;
         } else if constexpr (AlpacaCompatible<T>) {
-            return &deserialize_alpaca_const2<T>;
+            return &deserialize_alpaca_const<T>;
         } else {
             return nullptr;
         }
@@ -199,15 +199,15 @@ struct InputMetadataT {
 
     static constexpr auto deserializePop = []() {
         if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
-            return &deserialize_function_pointer_pop2;
+            return &deserialize_function_pointer_pop;
         } else if constexpr (ExecutionStdFunction<T>) {
             return nullptr;
         } else if constexpr (FunctionPointer<T>) {
             return nullptr;
         } else if constexpr (std::is_fundamental<T>::value) {
-            return &deserialize_fundamental_pop2<T>;
+            return &deserialize_fundamental_pop<T>;
         } else if constexpr (AlpacaCompatible<T>) {
-            return &deserialize_alpaca_pop2<T>;
+            return &deserialize_alpaca_pop<T>;
         } else {
             return nullptr;
         }
