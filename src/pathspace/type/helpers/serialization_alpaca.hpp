@@ -320,20 +320,6 @@ struct InputMetadataT {
 
     static constexpr auto serialize = []() {
         if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
-            return &serialize_function_pointer;
-        } else if constexpr (ExecutionStdFunction<T>) {
-            return nullptr;
-        } else if constexpr (std::is_fundamental<T>::value) {
-            return &serialize_fundamental<T>;
-        } else if constexpr (AlpacaCompatible<T>) {
-            return &serialize_alpaca<T>;
-        } else {
-            return nullptr;
-        }
-    }();
-
-    static constexpr auto serialize2 = []() {
-        if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
             return &serialize_function_pointer2;
         } else if constexpr (ExecutionStdFunction<T>) {
             return nullptr;
@@ -346,23 +332,7 @@ struct InputMetadataT {
         }
     }();
 
-    static constexpr auto deserialize = []() {
-        if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
-            return deserialize_function_pointer_const;
-        } else if constexpr (ExecutionStdFunction<T>) {
-            return nullptr;
-        } else if constexpr (FunctionPointer<T>) {
-            return &deserialize_function_pointer_const;
-        } else if constexpr (std::is_fundamental<T>::value) {
-            return &deserialize_fundamental_const<T>;
-        } else if constexpr (AlpacaCompatible<T>) {
-            return &deserialize_alpaca_const<T>;
-        } else {
-            return nullptr;
-        }
-    }();
-
-    static constexpr auto deserialize2 = []() -> void (*)(void* obj, SP::SlidingBuffer const&) {
+    static constexpr auto deserialize = []() -> void (*)(void* obj, SP::SlidingBuffer const&) {
         if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
             return deserialize_function_pointer_const2;
         } else if constexpr (ExecutionStdFunction<T>) {
@@ -379,22 +349,6 @@ struct InputMetadataT {
     }();
 
     static constexpr auto deserializePop = []() {
-        if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
-            return &deserialize_function_pointer_pop;
-        } else if constexpr (ExecutionStdFunction<T>) {
-            return nullptr;
-        } else if constexpr (FunctionPointer<T>) {
-            return nullptr;
-        } else if constexpr (std::is_fundamental<T>::value) {
-            return &deserialize_fundamental_pop<T>;
-        } else if constexpr (AlpacaCompatible<T>) {
-            return &deserialize_alpaca_pop<T>;
-        } else {
-            return nullptr;
-        }
-    }();
-
-    static constexpr auto deserializePop2 = []() {
         if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
             return &deserialize_function_pointer_pop2;
         } else if constexpr (ExecutionStdFunction<T>) {

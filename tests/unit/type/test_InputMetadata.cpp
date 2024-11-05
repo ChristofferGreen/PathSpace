@@ -10,8 +10,8 @@ TEST_CASE("Type InputMetadata Fundamental") {
         InputMetadata imeta(InputMetadataT<ST>{});
         ST s2{57};
         SlidingBuffer bytes;
-        imeta.serialize2(&s, bytes);
-        imeta.deserializePop2(&s2, bytes);
+        imeta.serialize(&s, bytes);
+        imeta.deserializePop(&s2, bytes);
         REQUIRE_EQ(s, s2);
     }
     SUBCASE("Double Serialize and Deserialize") {
@@ -20,8 +20,8 @@ TEST_CASE("Type InputMetadata Fundamental") {
         InputMetadata imeta(InputMetadataT<ST>{});
         ST s2{57.98};
         SlidingBuffer bytes;
-        imeta.serialize2(&s, bytes);
-        imeta.deserializePop2(&s2, bytes);
+        imeta.serialize(&s, bytes);
+        imeta.deserializePop(&s2, bytes);
         REQUIRE_EQ(s, s2);
     }
     SUBCASE("Multiple Int Serialize and Deserialize") {
@@ -32,14 +32,14 @@ TEST_CASE("Type InputMetadata Fundamental") {
         InputMetadata imeta(InputMetadataT<ST>{});
         ST s2{57};
         SlidingBuffer bytes;
-        imeta.serialize2(&s, bytes);
-        imeta.serialize2(&ss, bytes);
-        imeta.serialize2(&sss, bytes);
-        imeta.deserializePop2(&s2, bytes);
+        imeta.serialize(&s, bytes);
+        imeta.serialize(&ss, bytes);
+        imeta.serialize(&sss, bytes);
+        imeta.deserializePop(&s2, bytes);
         REQUIRE_EQ(s, s2);
-        imeta.deserializePop2(&s2, bytes);
+        imeta.deserializePop(&s2, bytes);
         REQUIRE_EQ(ss, s2);
-        imeta.deserializePop2(&s2, bytes);
+        imeta.deserializePop(&s2, bytes);
         REQUIRE_EQ(sss, s2);
         REQUIRE_EQ(bytes.size(), 0);
     }
@@ -54,18 +54,18 @@ TEST_CASE("Type InputMetadata Fundamental") {
         InputMetadata imeta(InputMetadataT<ST>{});
         ST s2{57};
         SlidingBuffer bytes;
-        imeta.serialize2(&s, bytes);
-        imeta.serialize2(&ss, bytes);
-        imeta2.serialize2(&ss2, bytes);
-        imeta.serialize2(&sss, bytes);
+        imeta.serialize(&s, bytes);
+        imeta.serialize(&ss, bytes);
+        imeta2.serialize(&ss2, bytes);
+        imeta.serialize(&sss, bytes);
 
-        imeta.deserializePop2(&s2, bytes);
+        imeta.deserializePop(&s2, bytes);
         REQUIRE_EQ(s, s2);
-        imeta.deserializePop2(&s2, bytes);
+        imeta.deserializePop(&s2, bytes);
         REQUIRE_EQ(ss, s2);
-        imeta2.deserializePop2(&ss3, bytes);
+        imeta2.deserializePop(&ss3, bytes);
         REQUIRE_EQ(ss3, ss2);
-        imeta.deserializePop2(&s2, bytes);
+        imeta.deserializePop(&s2, bytes);
         REQUIRE_EQ(sss, s2);
         REQUIRE_EQ(bytes.size(), 0);
     }
