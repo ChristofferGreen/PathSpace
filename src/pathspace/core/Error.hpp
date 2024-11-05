@@ -7,6 +7,7 @@ namespace SP {
 
 struct Error {
     enum class Code {
+        InvalidError = 0,
         NoSuchPath,
         InvalidPath,
         InvalidPathSubcomponent,
