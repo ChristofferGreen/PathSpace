@@ -22,7 +22,7 @@ auto NodeData::serialize(const InputData& inputData, const InOptions& options, I
     } else {
         if (!inputData.metadata.serialize)
             return Error{Error::Code::SerializationFunctionMissing, "Serialization function is missing."};
-        inputData.metadata.serialize(inputData.obj, data);
+        inputData.metadata.serialize2(inputData.obj, data2);
     }
 
     pushType(inputData.metadata);
@@ -101,14 +101,14 @@ auto NodeData::deserializeData(void* obj, const InputMetadata& inputMetadata, bo
     sp_log("NodeData::deserializeData", "Function Called");
 
     if (isExtract) {
-        if (!inputMetadata.deserializePop)
+        if (!inputMetadata.deserializePop2)
             return std::unexpected(Error{Error::Code::UnserializableType, "No pop deserialization function provided"});
-        inputMetadata.deserializePop(obj, data);
+        inputMetadata.deserializePop2(obj, data2);
         popType();
     } else {
-        if (!inputMetadata.deserialize)
+        if (!inputMetadata.deserialize2)
             return std::unexpected(Error{Error::Code::UnserializableType, "No deserialization function provided"});
-        inputMetadata.deserialize(obj, data);
+        inputMetadata.deserialize2(obj, data2);
     }
     return 1;
 }
