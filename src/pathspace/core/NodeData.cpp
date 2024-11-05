@@ -20,7 +20,7 @@ auto NodeData::serialize(const InputData& inputData, const InOptions& options, I
         }
         ret.nbrTasksCreated++;
     } else {
-        if (!inputData.metadata.serialize)
+        if (!inputData.metadata.serialize2)
             return Error{Error::Code::SerializationFunctionMissing, "Serialization function is missing."};
         inputData.metadata.serialize2(inputData.obj, data2);
     }
