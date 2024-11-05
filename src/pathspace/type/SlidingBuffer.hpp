@@ -73,6 +73,20 @@ struct SlidingBuffer {
         return self.data_.end();
     }
 
+    [[nodiscard]] auto at(size_t index) & -> uint8_t& {
+        if (index >= this->size()) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        return (*this)[index];
+    }
+
+    [[nodiscard]] auto at(size_t index) const& -> uint8_t const& {
+        if (index >= this->size()) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        return (*this)[index];
+    }
+
     auto resize(size_t newSize) -> void {
         this->compact(); // Always ensure data starts at 0
         this->data_.resize(newSize);
