@@ -3,13 +3,27 @@
 
 #include "alpaca/alpaca.h"
 
+#include <cstdint>
 #include <cstring>
 #include <expected>
+#include <span>
 #include <vector>
 
 namespace SP {
 
+#include <cstdint>
+#include <cstring>
+#include <span>
+#include <vector>
+
 struct SlidingBuffer {
+    // Don't trigger compaction if data size is below 64 bytes (typical CPU cache line size).
+    // This avoids the overhead of memmove for small buffers where:
+    // 1. The memory savings would be minimal
+    // 2. The entire operation likely fits in a single cache line anyway
+    // 3. The cost of cache line invalidation + memmove would exceed the benefit
+    static constexpr auto COMPACT_THRESHOLD = 64uz;
+
     [[nodiscard]] auto data() const -> uint8_t const* {
         return this->data_.data() + this->virtualFront_;
     }
@@ -22,7 +36,7 @@ struct SlidingBuffer {
         return this->data_.size();
     }
 
-    [[nodiscard]] auto empty() const -> size_t {
+    [[nodiscard]] auto empty() const -> bool {
         return this->data_.empty();
     }
 
@@ -30,69 +44,76 @@ struct SlidingBuffer {
         return this->virtualFront_;
     }
 
-    [[nodiscard]] auto operator[](size_t index) const -> uint8_t {
+    [[nodiscard]] auto operator[](size_t index) & -> uint8_t& {
         return this->data_[this->virtualFront_ + index];
     }
 
-    [[nodiscard]] auto operator[](size_t index) -> uint8_t& {
+    [[nodiscard]] auto operator[](size_t index) const& -> uint8_t const& {
         return this->data_[this->virtualFront_ + index];
     }
 
-    [[nodiscard]] auto begin() -> std::vector<uint8_t>::iterator {
-        return this->data_.begin() + this->virtualFront_;
+    [[nodiscard]] auto operator[](size_t index) && -> uint8_t&& {
+        return std::move(this->data_[this->virtualFront_ + index]);
     }
 
-    [[nodiscard]] auto end() -> std::vector<uint8_t>::iterator {
-        return this->data_.end();
+    // Deducing this for iterators
+    [[nodiscard]] auto begin(this auto&& self) {
+        return self.data_.begin() + self.virtualFront_;
     }
 
-    [[nodiscard]] auto begin() const -> std::vector<uint8_t>::const_iterator {
-        return this->data_.begin() + this->virtualFront_;
+    [[nodiscard]] auto end(this auto&& self) {
+        return self.data_.end();
     }
 
-    [[nodiscard]] auto end() const -> std::vector<uint8_t>::const_iterator {
-        return this->data_.end();
+    [[nodiscard]] auto rawBegin(this auto&& self) {
+        return self.data_.begin();
     }
 
-    [[nodiscard]] auto rawBegin() -> std::vector<uint8_t>::iterator {
-        return this->data_.begin();
-    }
-
-    [[nodiscard]] auto rawEnd() -> std::vector<uint8_t>::iterator {
-        return this->data_.end();
-    }
-
-    [[nodiscard]] auto rawBegin() const -> std::vector<uint8_t>::const_iterator {
-        return this->data_.begin();
-    }
-
-    [[nodiscard]] auto rawEnd() const -> std::vector<uint8_t>::const_iterator {
-        return this->data_.end();
+    [[nodiscard]] auto rawEnd(this auto&& self) {
+        return self.data_.end();
     }
 
     auto resize(size_t newSize) -> void {
-        compact();
-        this->data_.resize(newSize);
+        if (this->virtualFront_ > 0) {
+            if (this->data_.size() >= COMPACT_THRESHOLD) {
+                this->compact();
+                this->data_.resize(newSize);
+            } else {
+                // For small sizes, just reset virtualFront_ without moving data
+                // since the overhead of memmove would exceed the memory savings
+                this->data_.resize(this->virtualFront_ + newSize);
+            }
+        } else {
+            // Buffer is already compact, just resize
+            this->data_.resize(newSize);
+        }
     }
 
-    auto append(const uint8_t* bytes, size_t count) -> void {
-        this->data_.insert(this->data_.end(), bytes, bytes + count);
+    // Modern span-based append
+    auto append(std::span<uint8_t const> bytes) -> void {
+        this->data_.insert(this->data_.end(), bytes.begin(), bytes.end());
+    }
+
+    // Keep the C-style version for compatibility
+    auto append(uint8_t const* bytes, size_t count) -> void {
+        this->append(std::span<uint8_t const>(bytes, count));
     }
 
     auto advance(size_t bytes) -> void {
         this->virtualFront_ += bytes;
-        if (this->virtualFront_ > this->data_.size() / 2) {
-            compact();
+        if (this->virtualFront_ > this->data_.size() / 2 && this->data_.size() >= COMPACT_THRESHOLD) {
+            this->compact(); // Only trigger compaction for larger buffers
         }
     }
 
 private:
     std::vector<uint8_t> data_;
-    size_t virtualFront_ = 0;
+    size_t virtualFront_ = 0uz;
 
-    void compact() {
-        if (this->virtualFront_ == 0)
+    auto compact() -> void {
+        if (this->virtualFront_ == 0uz) {
             return;
+        }
 
         if (this->virtualFront_ < this->data_.size()) {
             std::memmove(this->data_.data(), this->data_.data() + this->virtualFront_, this->data_.size() - this->virtualFront_);
@@ -100,7 +121,7 @@ private:
         } else {
             this->data_.clear();
         }
-        this->virtualFront_ = 0;
+        this->virtualFront_ = 0uz;
     }
 };
 
