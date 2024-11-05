@@ -22,32 +22,6 @@ struct PathSpace;
 // ########### Alpaca Serialization ###########
 
 template <typename T>
-static auto serialize_alpaca(void const* objPtr, std::vector<uint8_t>& bytes) -> void {
-    struct Wrapper {
-        T wrappedObject;
-    };
-    Wrapper wrapper{*static_cast<T const*>(objPtr)};
-
-    try {
-        // Serialize the object
-        std::vector<uint8_t> tempBytes;
-        size_t bytesWritten = alpaca::serialize<Wrapper, 1>(wrapper, tempBytes);
-
-        // Store the size of the serialized data
-        uint32_t size = static_cast<uint32_t>(bytesWritten);
-        bytes.insert(bytes.end(), reinterpret_cast<const uint8_t*>(&size), reinterpret_cast<const uint8_t*>(&size) + sizeof(size));
-
-        // Append the serialized data
-        bytes.insert(bytes.end(), tempBytes.begin(), tempBytes.begin() + bytesWritten);
-
-        sp_log("Object serialized successfully", "INFO");
-    } catch (const std::exception& e) {
-        sp_log("Serialization failed: " + std::string(e.what()), "ERROR");
-        throw;
-    }
-}
-
-template <typename T>
 static auto serialize_alpaca2(void const* objPtr, SP::SlidingBuffer& buffer) -> void {
     try {
         SP::Serializer<T>::serialize(*static_cast<T const*>(objPtr), buffer);
@@ -69,43 +43,6 @@ static auto deserialize_alpaca_pop2(void* objPtr, SP::SlidingBuffer& buffer) -> 
 }
 
 template <typename T>
-static auto deserialize_alpaca_pop(void* objPtr, std::vector<uint8_t>& bytes) -> void {
-    if (bytes.size() < sizeof(uint32_t)) {
-        sp_log("Not enough data to read size", "ERROR");
-        throw std::runtime_error("Not enough data to read size");
-    }
-
-    uint32_t size;
-    std::memcpy(&size, bytes.data(), sizeof(uint32_t));
-
-    if (bytes.size() < sizeof(uint32_t) + size) {
-        sp_log("Not enough data to deserialize object", "ERROR");
-        throw std::runtime_error("Not enough data to deserialize object");
-    }
-
-    struct Wrapper {
-        T wrappedObject;
-    };
-
-    std::error_code ec;
-    std::vector<uint8_t> deserializeBytes(bytes.begin() + sizeof(uint32_t), bytes.begin() + sizeof(uint32_t) + size);
-    auto wrapper = alpaca::deserialize<Wrapper, 1>(deserializeBytes, ec);
-
-    if (ec) {
-        sp_log("Deserialization failed: " + ec.message(), "ERROR");
-        throw std::runtime_error("Deserialization failed: " + ec.message());
-    }
-
-    // Copy the deserialized object to the output
-    *static_cast<T*>(objPtr) = std::move(wrapper.wrappedObject);
-
-    // Remove the read data from the input vector
-    bytes.erase(bytes.begin(), bytes.begin() + sizeof(uint32_t) + size);
-
-    sp_log("Object deserialized successfully", "INFO");
-}
-
-template <typename T>
 static auto deserialize_alpaca_const2(void* objPtr, SP::SlidingBuffer const& buffer) -> void {
     auto expected = SP::Serializer<T>::deserialize(buffer);
     if (expected.has_value())
@@ -115,43 +52,9 @@ static auto deserialize_alpaca_const2(void* objPtr, SP::SlidingBuffer const& buf
 }
 
 template <typename T>
-static auto deserialize_alpaca_const(void* objPtr, std::vector<uint8_t> const& bytes) -> void {
-    if (bytes.size() < sizeof(uint32_t)) {
-        sp_log("Not enough data to read size", "ERROR");
-        throw std::runtime_error("Not enough data to read size");
-    }
-
-    uint32_t size;
-    std::memcpy(&size, bytes.data(), sizeof(uint32_t));
-
-    if (bytes.size() < sizeof(uint32_t) + size) {
-        sp_log("Not enough data to deserialize object", "ERROR");
-        throw std::runtime_error("Not enough data to deserialize object");
-    }
-
-    struct Wrapper {
-        T wrappedObject;
-    };
-
-    std::error_code ec;
-    std::vector<uint8_t> deserializeBytes(bytes.begin() + sizeof(uint32_t), bytes.begin() + sizeof(uint32_t) + size);
-    auto wrapper = alpaca::deserialize<Wrapper, 1>(deserializeBytes, ec);
-
-    if (ec) {
-        sp_log("Deserialization failed: " + ec.message(), "ERROR");
-        throw std::runtime_error("Deserialization failed: " + ec.message());
-    }
-
-    // Copy the deserialized object to the output
-    *static_cast<T*>(objPtr) = std::move(wrapper.wrappedObject);
-
-    sp_log("Object deserialized successfully", "INFO");
-}
-
-template <typename T>
-concept AlpacaCompatible = !std::is_pointer_v<T> && requires(T t, std::vector<uint8_t>& v) {
-    { serialize_alpaca<T>(static_cast<void const*>(&t), v) };
-    { deserialize_alpaca_const<T>(static_cast<void*>(&t), v) };
+concept AlpacaCompatible = !std::is_pointer_v<T> && requires(T t, SP::SlidingBuffer& v) {
+    { serialize_alpaca2<T>(static_cast<void const*>(&t), v) };
+    { deserialize_alpaca_const2<T>(static_cast<void*>(&t), v) };
 };
 
 // ########### Fundamental Datatype Serialization ###########
