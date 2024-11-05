@@ -74,19 +74,8 @@ struct SlidingBuffer {
     }
 
     auto resize(size_t newSize) -> void {
-        if (this->virtualFront_ > 0) {
-            if (this->data_.size() >= COMPACT_THRESHOLD) {
-                this->compact();
-                this->data_.resize(newSize);
-            } else {
-                // For small sizes, just reset virtualFront_ without moving data
-                // since the overhead of memmove would exceed the memory savings
-                this->data_.resize(this->virtualFront_ + newSize);
-            }
-        } else {
-            // Buffer is already compact, just resize
-            this->data_.resize(newSize);
-        }
+        this->compact(); // Always ensure data starts at 0
+        this->data_.resize(newSize);
     }
 
     // Modern span-based append
