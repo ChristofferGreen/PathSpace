@@ -18,7 +18,7 @@ struct SlidingBuffer {
         return this->data_.size() - this->virtualFront_;
     }
 
-    [[nodiscard]] auto sizeFull() const -> size_t {
+    [[nodiscard]] auto rawSize() const -> size_t {
         return this->data_.size();
     }
 
@@ -38,8 +38,40 @@ struct SlidingBuffer {
         return this->data_[this->virtualFront_ + index];
     }
 
+    [[nodiscard]] auto begin() -> std::vector<uint8_t>::iterator {
+        return this->data_.begin() + this->virtualFront_;
+    }
+
+    [[nodiscard]] auto end() -> std::vector<uint8_t>::iterator {
+        return this->data_.end();
+    }
+
+    [[nodiscard]] auto begin() const -> std::vector<uint8_t>::const_iterator {
+        return this->data_.begin() + this->virtualFront_;
+    }
+
+    [[nodiscard]] auto end() const -> std::vector<uint8_t>::const_iterator {
+        return this->data_.end();
+    }
+
+    [[nodiscard]] auto rawBegin() -> std::vector<uint8_t>::iterator {
+        return this->data_.begin();
+    }
+
+    [[nodiscard]] auto rawEnd() -> std::vector<uint8_t>::iterator {
+        return this->data_.end();
+    }
+
+    [[nodiscard]] auto rawBegin() const -> std::vector<uint8_t>::const_iterator {
+        return this->data_.begin();
+    }
+
+    [[nodiscard]] auto rawEnd() const -> std::vector<uint8_t>::const_iterator {
+        return this->data_.end();
+    }
+
     auto resize(size_t newSize) -> void {
-        compact(); // Move all data to front and reset virtualFront_ to 0
+        compact();
         this->data_.resize(newSize);
     }
 

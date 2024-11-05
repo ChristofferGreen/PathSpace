@@ -49,12 +49,12 @@ TEST_CASE("SlidingBuffer") {
             // Read half - should not compact
             buffer.advance(50);
             CHECK(buffer.virtualFront() == 50);
-            CHECK(buffer.sizeFull() == 100);
+            CHECK(buffer.rawSize() == 100);
 
             // Read one more byte - should trigger compaction
             buffer.advance(1);
             CHECK(buffer.virtualFront() == 0);
-            CHECK(buffer.sizeFull() == 49);
+            CHECK(buffer.rawSize() == 49);
 
             // Verify data survived compaction
             for (size_t i = 0; i < buffer.size(); i++) {
