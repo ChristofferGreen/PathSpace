@@ -22,44 +22,43 @@ TEST_CASE("SlidingBuffer") {
         SP::SlidingBuffer buffer;
 
         SUBCASE("initial state") {
-            CHECK(buffer.remaining_size() == 0);
-            CHECK(buffer.data.empty());
-            CHECK(buffer.virtualFront == 0);
+            CHECK(buffer.size() == 0);
+            CHECK(buffer.empty());
+            CHECK(buffer.virtualFront() == 0);
         }
 
         SUBCASE("adding and reading data") {
             std::vector<uint8_t> testData = {1, 2, 3, 4, 5};
             buffer.append(testData.data(), testData.size());
 
-            CHECK(buffer.remaining_size() == 5);
-            CHECK(buffer.current_data()[0] == 1);
+            CHECK(buffer.size() == 5);
+            CHECK(buffer.data()[0] == 1);
 
             buffer.advance(2);
-            CHECK(buffer.remaining_size() == 3);
-            CHECK(buffer.current_data()[0] == 3);
+            CHECK(buffer.size() == 3);
+            CHECK(buffer.data()[0] == 3);
         }
 
         SUBCASE("compaction behavior") {
             // Fill buffer with test pattern
             std::vector<uint8_t> pattern(100);
-            for (int i = 0; i < 100; i++) {
+            for (int i = 0; i < 100; i++)
                 pattern[i] = i;
-            }
             buffer.append(pattern.data(), pattern.size());
 
             // Read half - should not compact
             buffer.advance(50);
-            CHECK(buffer.virtualFront == 50);
-            CHECK(buffer.data.size() == 100);
+            CHECK(buffer.virtualFront() == 50);
+            CHECK(buffer.sizeFull() == 100);
 
             // Read one more byte - should trigger compaction
             buffer.advance(1);
-            CHECK(buffer.virtualFront == 0);
-            CHECK(buffer.data.size() == 49);
+            CHECK(buffer.virtualFront() == 0);
+            CHECK(buffer.sizeFull() == 49);
 
             // Verify data survived compaction
-            for (size_t i = 0; i < buffer.data.size(); i++) {
-                CHECK(buffer.data[i] == i + 51);
+            for (size_t i = 0; i < buffer.size(); i++) {
+                CHECK(buffer[i] == i + 51);
             }
         }
 
@@ -107,7 +106,7 @@ TEST_CASE("SlidingBuffer") {
             CHECK(!SP::Serializer<TestStruct>::serialize(original, buffer));
 
             // Corrupt the header
-            buffer.data[0] = 0xFF;
+            buffer[0] = 0xFF;
 
             auto result = SP::Serializer<TestStruct>::deserialize(buffer);
             CHECK(!result);
@@ -118,7 +117,7 @@ TEST_CASE("SlidingBuffer") {
             CHECK(!SP::Serializer<TestStruct>::serialize(original, buffer));
 
             // Truncate the buffer
-            buffer.data.resize(buffer.data.size() - 1);
+            buffer.resize(buffer.size() - 1);
 
             auto result = SP::Serializer<TestStruct>::deserialize(buffer);
             CHECK(!result);

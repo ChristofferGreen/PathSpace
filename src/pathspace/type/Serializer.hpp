@@ -47,20 +47,20 @@ public:
 
     static auto deserialize(SlidingBuffer const& buffer) -> Expected<T> {
         try {
-            if (buffer.remaining_size() < sizeof(Header)) {
+            if (buffer.size() < sizeof(Header)) {
                 return std::unexpected(Error{Error::Code::MalformedInput, "Buffer too small for header"});
             }
 
             // Read header
             Header header;
-            std::memcpy(&header, buffer.current_data(), sizeof(header));
+            std::memcpy(&header, buffer.data(), sizeof(header));
 
-            if (buffer.remaining_size() < sizeof(header) + header.size) {
+            if (buffer.size() < sizeof(header) + header.size) {
                 return std::unexpected(Error{Error::Code::MalformedInput, "Buffer too small for data"});
             }
 
             // Deserialize data
-            std::vector<uint8_t> tempBuffer(buffer.current_data() + sizeof(header), buffer.current_data() + sizeof(header) + header.size);
+            std::vector<uint8_t> tempBuffer(buffer.data() + sizeof(header), buffer.data() + sizeof(header) + header.size);
 
             std::error_code ec;
             // T obj = alpaca::deserialize<T>(tempBuffer, ec);

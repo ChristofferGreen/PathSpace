@@ -188,11 +188,11 @@ static auto deserialize_fundamental_const(void* objPtr, std::vector<uint8_t> con
 template <typename T>
 static auto deserialize_fundamental_const2(void* objPtr, SP::SlidingBuffer const& bytes) -> void {
     static_assert(std::is_fundamental_v<T>, "T must be a fundamental type");
-    if (bytes.remaining_size() < sizeof(T)) {
+    if (bytes.size() < sizeof(T)) {
         return;
     }
     T* obj = static_cast<T*>(objPtr);
-    std::copy(bytes.current_data(), bytes.current_data() + sizeof(T), reinterpret_cast<uint8_t*>(obj));
+    std::copy(bytes.data(), bytes.data() + sizeof(T), reinterpret_cast<uint8_t*>(obj));
 }
 
 template <typename T>
@@ -233,11 +233,11 @@ static auto deserialize_function_pointer_pop(void* objPtr, std::vector<uint8_t>&
 }
 
 static auto deserialize_function_pointer_pop2(void* objPtr, SP::SlidingBuffer& bytes) -> void {
-    if (bytes.remaining_size() < sizeof(std::uintptr_t)) {
+    if (bytes.size() < sizeof(std::uintptr_t)) {
         return;
     }
     std::uintptr_t funcPtrInt;
-    std::copy(bytes.current_data(), bytes.current_data() + sizeof(std::uintptr_t), reinterpret_cast<uint8_t*>(&funcPtrInt));
+    std::copy(bytes.data(), bytes.data() + sizeof(std::uintptr_t), reinterpret_cast<uint8_t*>(&funcPtrInt));
     auto funcPtr = reinterpret_cast<void (*)()>(funcPtrInt);
     *static_cast<void (**)()>(objPtr) = funcPtr;
     bytes.advance(sizeof(std::uintptr_t));
@@ -254,11 +254,11 @@ static auto deserialize_function_pointer_const(void* objPtr, std::vector<uint8_t
 }
 
 static auto deserialize_function_pointer_const2(void* objPtr, SP::SlidingBuffer const& bytes) -> void {
-    if (bytes.remaining_size() < sizeof(std::uintptr_t)) {
+    if (bytes.size() < sizeof(std::uintptr_t)) {
         return;
     }
     std::uintptr_t funcPtrInt;
-    std::copy(bytes.current_data(), bytes.current_data() + sizeof(std::uintptr_t), reinterpret_cast<uint8_t*>(&funcPtrInt));
+    std::copy(bytes.data(), bytes.data() + sizeof(std::uintptr_t), reinterpret_cast<uint8_t*>(&funcPtrInt));
     auto funcPtr = reinterpret_cast<void (*)()>(funcPtrInt);
     *static_cast<void (**)()>(objPtr) = funcPtr;
 }
