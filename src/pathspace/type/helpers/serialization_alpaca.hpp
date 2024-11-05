@@ -157,15 +157,6 @@ concept AlpacaCompatible = !std::is_pointer_v<T> && requires(T t, std::vector<ui
 // ########### Fundamental Datatype Serialization ###########
 
 template <typename T>
-static auto serialize_fundamental(void const* objPtr, std::vector<uint8_t>& bytes) -> void {
-    static_assert(std::is_fundamental_v<T>, "T must be a fundamental type");
-    T const& obj = *static_cast<T const*>(objPtr);
-    auto const* begin = reinterpret_cast<uint8_t const*>(&obj);
-    auto const* end = begin + sizeof(T);
-    bytes.insert(bytes.end(), begin, end);
-}
-
-template <typename T>
 static auto serialize_fundamental2(void const* objPtr, SP::SlidingBuffer& bytes) -> void {
     static_assert(std::is_fundamental_v<T>, "T must be a fundamental type");
     T const& obj = *static_cast<T const*>(objPtr);
@@ -173,16 +164,6 @@ static auto serialize_fundamental2(void const* objPtr, SP::SlidingBuffer& bytes)
     auto const* end = begin + sizeof(T);
     // bytes.insert(bytes.end(), begin, end);
     bytes.append(begin, sizeof(T));
-}
-
-template <typename T>
-static auto deserialize_fundamental_const(void* objPtr, std::vector<uint8_t> const& bytes) -> void {
-    static_assert(std::is_fundamental_v<T>, "T must be a fundamental type");
-    if (bytes.size() < sizeof(T)) {
-        return;
-    }
-    T* obj = static_cast<T*>(objPtr);
-    std::copy(bytes.begin(), bytes.begin() + sizeof(T), reinterpret_cast<uint8_t*>(obj));
 }
 
 template <typename T>
@@ -196,40 +177,15 @@ static auto deserialize_fundamental_const2(void* objPtr, SP::SlidingBuffer const
 }
 
 template <typename T>
-static auto deserialize_fundamental_pop(void* objPtr, std::vector<uint8_t>& bytes) -> void {
-    deserialize_fundamental_const<T>(objPtr, bytes);
-    bytes.erase(bytes.begin(), bytes.begin() + sizeof(T));
-}
-
-template <typename T>
 static auto deserialize_fundamental_pop2(void* objPtr, SP::SlidingBuffer& bytes) -> void {
     deserialize_fundamental_const2<T>(objPtr, bytes);
     bytes.advance(sizeof(T));
-}
-
-static auto serialize_function_pointer(void const* objPtr, std::vector<uint8_t>& bytes) -> void {
-    auto funcPtr = *static_cast<void (**)()>(const_cast<void*>(objPtr));
-    auto funcPtrInt = reinterpret_cast<std::uintptr_t>(funcPtr);
-    auto const* begin = reinterpret_cast<uint8_t const*>(&funcPtrInt);
-    auto const* end = begin + sizeof(funcPtrInt);
-    bytes.insert(bytes.end(), begin, end);
 }
 
 static auto serialize_function_pointer2(void const* objPtr, SP::SlidingBuffer& bytes) -> void {
     auto funcPtr = *static_cast<void (**)()>(const_cast<void*>(objPtr));
     auto funcPtrInt = reinterpret_cast<std::uintptr_t>(funcPtr);
     bytes.append(reinterpret_cast<uint8_t const*>(&funcPtrInt), sizeof(funcPtrInt));
-}
-
-static auto deserialize_function_pointer_pop(void* objPtr, std::vector<uint8_t>& bytes) -> void {
-    if (bytes.size() < sizeof(std::uintptr_t)) {
-        return;
-    }
-    std::uintptr_t funcPtrInt;
-    std::copy(bytes.begin(), bytes.begin() + sizeof(std::uintptr_t), reinterpret_cast<uint8_t*>(&funcPtrInt));
-    auto funcPtr = reinterpret_cast<void (*)()>(funcPtrInt);
-    *static_cast<void (**)()>(objPtr) = funcPtr;
-    bytes.erase(bytes.begin(), bytes.begin() + sizeof(std::uintptr_t));
 }
 
 static auto deserialize_function_pointer_pop2(void* objPtr, SP::SlidingBuffer& bytes) -> void {
@@ -241,16 +197,6 @@ static auto deserialize_function_pointer_pop2(void* objPtr, SP::SlidingBuffer& b
     auto funcPtr = reinterpret_cast<void (*)()>(funcPtrInt);
     *static_cast<void (**)()>(objPtr) = funcPtr;
     bytes.advance(sizeof(std::uintptr_t));
-}
-
-static auto deserialize_function_pointer_const(void* objPtr, std::vector<uint8_t> const& bytes) -> void {
-    if (bytes.size() < sizeof(std::uintptr_t)) {
-        return;
-    }
-    std::uintptr_t funcPtrInt;
-    std::copy(bytes.begin(), bytes.begin() + sizeof(std::uintptr_t), reinterpret_cast<uint8_t*>(&funcPtrInt));
-    auto funcPtr = reinterpret_cast<void (*)()>(funcPtrInt);
-    *static_cast<void (**)()>(objPtr) = funcPtr;
 }
 
 static auto deserialize_function_pointer_const2(void* objPtr, SP::SlidingBuffer const& bytes) -> void {
