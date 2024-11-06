@@ -1,8 +1,8 @@
 #pragma once
 #include "type/DataCategory.hpp"
 #include "type/ExecutionCategory.hpp"
-#include "type/Serializer.hpp"
 #include "type/SlidingBuffer.hpp"
+#include "type/serialization.hpp"
 #include "utils/TaggedLogger.hpp"
 
 #include <cassert>
@@ -24,7 +24,7 @@ struct PathSpace;
 template <typename T>
 static auto serialize_alpaca(void const* objPtr, SP::SlidingBuffer& buffer) -> void {
     try {
-        SP::Serializer<T>::serialize(*static_cast<T const*>(objPtr), buffer);
+        SP::serialize<T>(*static_cast<T const*>(objPtr), buffer);
         sp_log("Object serialized successfully", "INFO");
     } catch (const std::exception& e) {
         sp_log("Serialization failed: " + std::string(e.what()), "ERROR");
@@ -35,7 +35,7 @@ static auto serialize_alpaca(void const* objPtr, SP::SlidingBuffer& buffer) -> v
 template <typename T>
 static auto deserialize_alpaca_pop(void* objPtr, SP::SlidingBuffer& buffer) -> void {
     bool const doPop = true;
-    auto expected = SP::Serializer<T>::deserializePop(buffer);
+    auto expected = SP::deserialize_pop<T>(buffer);
     if (expected.has_value())
         *static_cast<T*>(objPtr) = std::move(expected.value());
     else
@@ -44,7 +44,7 @@ static auto deserialize_alpaca_pop(void* objPtr, SP::SlidingBuffer& buffer) -> v
 
 template <typename T>
 static auto deserialize_alpaca_const(void* objPtr, SP::SlidingBuffer const& buffer) -> void {
-    auto expected = SP::Serializer<T>::deserialize(buffer);
+    auto expected = SP::deserialize<T>(buffer);
     if (expected.has_value())
         *static_cast<T*>(objPtr) = std::move(expected.value());
     else

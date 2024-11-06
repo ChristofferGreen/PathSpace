@@ -1,7 +1,7 @@
 #include "ext/doctest.h"
 
-#include <pathspace/type/Serializer.hpp>
 #include <pathspace/type/SlidingBuffer.hpp>
+#include <pathspace/type/serialization.hpp>
 
 #include <array>
 #include <cstring>
@@ -176,10 +176,10 @@ TEST_CASE("SlidingBuffer") {
 
         SUBCASE("Simple struct") {
             TestStruct original{42, 3.14f};
-            auto val = SP::Serializer<TestStruct>::serialize(original, buffer);
+            auto val = SP::serialize<TestStruct>(original, buffer);
             CHECK(!val.has_value());
 
-            auto result = SP::Serializer<TestStruct>::deserialize(buffer);
+            auto result = SP::deserialize<TestStruct>(buffer);
             REQUIRE(result);
             CHECK(result->x == original.x);
             CHECK(result->y == original.y);
@@ -188,9 +188,9 @@ TEST_CASE("SlidingBuffer") {
         SUBCASE("complex struct") {
             TestComplexStruct original{.name = "test", .structs = {{1, 1.1f}, {2, 2.2f}, {3, 3.3f}}};
 
-            CHECK(!SP::Serializer<TestComplexStruct>::serialize(original, buffer));
+            CHECK(!SP::serialize<TestComplexStruct>(original, buffer));
 
-            auto result = SP::Serializer<TestComplexStruct>::deserialize(buffer);
+            auto result = SP::deserialize<TestComplexStruct>(buffer);
             REQUIRE(result);
             CHECK(result->name == original.name);
             CHECK(result->structs.size() == original.structs.size());
@@ -205,27 +205,27 @@ TEST_CASE("SlidingBuffer") {
         SP::SlidingBuffer buffer;
 
         SUBCASE("empty buffer") {
-            auto result = SP::Serializer<TestStruct>::deserialize(buffer);
+            auto result = SP::deserialize<TestStruct>(buffer);
             CHECK(!result);
         }
 
         SUBCASE("corrupted header") {
             TestStruct original{42, 3.14f};
-            CHECK(!SP::Serializer<TestStruct>::serialize(original, buffer));
+            CHECK(!SP::serialize<TestStruct>(original, buffer));
 
             buffer.at(0) = 0xFF; // Using at() instead of operator[]
 
-            auto result = SP::Serializer<TestStruct>::deserialize(buffer);
+            auto result = SP::deserialize<TestStruct>(buffer);
             CHECK(!result);
         }
 
         SUBCASE("truncated data") {
             TestStruct original{42, 3.14f};
-            CHECK(!SP::Serializer<TestStruct>::serialize(original, buffer));
+            CHECK(!SP::serialize<TestStruct>(original, buffer));
 
             buffer.resize(buffer.size() - 1);
 
-            auto result = SP::Serializer<TestStruct>::deserialize(buffer);
+            auto result = SP::deserialize<TestStruct>(buffer);
             CHECK(!result);
         }
     }
