@@ -73,10 +73,11 @@ TEST_CASE("TaskPool Misc") {
 
             // Add several quick tasks
             for (int i = 0; i < 10; ++i) {
-                tasks.push_back(std::make_shared<Task>(Task{.function = [&counter](Task const&, bool) {
+                auto fun = [&counter](Task const&, bool) {
                     std::this_thread::sleep_for(10ms);
                     counter++;
-                }}));
+                };
+                tasks.push_back(Task::Create(fun));
                 pool.addTask(tasks.back());
             }
 

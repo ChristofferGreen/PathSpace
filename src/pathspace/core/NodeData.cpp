@@ -73,7 +73,7 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
     auto& task = this->tasks.front();
 
     // If task hasn't started and is lazy, start it
-    if (!task->state.hasStarted()) {
+    if (!task->hasStarted()) {
         std::optional<ExecutionOptions> const execution = options.execution;
         bool const isLazyExecution
                 = execution.value_or(task->executionOptions.value_or(ExecutionOptions{})).category == ExecutionOptions::Category::Lazy;
@@ -84,7 +84,7 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
     }
 
     // If completed, return result
-    if (task->state.isCompleted()) {
+    if (task->isCompleted()) {
         task->resultCopy(task->result, obj);
         if (isExtract) {
             this->tasks.pop_front();

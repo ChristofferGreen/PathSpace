@@ -16,6 +16,12 @@ struct PathSpace;
 
 // Represents a task to be executed within PathSpace, possibly via TaskPool
 struct Task {
+    template <typename FunctionType>
+    static auto Create(FunctionType&& fun) -> std::shared_ptr<Task> {
+        auto task = std::shared_ptr<Task>(new Task{});
+        task->function = fun;
+        return task;
+    }
     template <typename DataType>
     static auto Create(PathSpace* space,
                        ConcretePathString const& notificationPath,
@@ -49,7 +55,26 @@ struct Task {
         }
     }
 
-    TaskStateAtomic state;      // Atomic state of the task
+    // Helper methods for task management
+    bool isCompleted() const {
+        return this->state.isCompleted();
+    }
+    bool hasStarted() const {
+        return this->state.hasStarted();
+    }
+    bool tryStart() {
+        return this->state.tryStart();
+    }
+    bool transitionToRunning() {
+        return this->state.transitionToRunning();
+    }
+    void markCompleted() {
+        this->state.markCompleted();
+    }
+    void markFailed() {
+        this->state.markFailed();
+    }
+
     PathSpace* space = nullptr; // Pointer to a PathSpace where the return values from lazy executions will be inserted
     std::function<void(Task& task, bool const objIsData)> function; // Function to be executed by the task
     ConcretePathString notificationPath;
@@ -58,6 +83,8 @@ struct Task {
     std::any result;                                                      // Result of the task execution
 
     std::optional<ExecutionOptions> executionOptions; // Optional execution options for the task
+private:
+    TaskStateAtomic state; // Atomic state of the task
 };
 
 } // namespace SP

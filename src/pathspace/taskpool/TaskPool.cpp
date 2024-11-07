@@ -24,7 +24,7 @@ auto TaskPool::addTask(std::weak_ptr<Task>&& task) -> std::optional<Error> {
     {
         std::lock_guard<std::mutex> lock(mutex);
         if (!shuttingDown) {
-            if (!task.lock()->state.tryStart())
+            if (!task.lock()->tryStart())
                 return Error{Error::Code::UnknownError, "Failed to start lazy execution"};
             tasks.push(std::move(task));
             taskCV.notify_one();
@@ -81,9 +81,9 @@ auto TaskPool::workerFunction() -> void {
         if (auto strongTask = task.lock()) {
             if (auto fn = strongTask->function) {
                 try {
-                    strongTask->state.transitionToRunning();
+                    strongTask->transitionToRunning();
                     fn(*strongTask, false);
-                    strongTask->state.markCompleted();
+                    strongTask->markCompleted();
                     if (!strongTask->notificationPath.empty())
                         strongTask->space->waitMap.notify(strongTask->notificationPath);
                 } catch (...) {
