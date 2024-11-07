@@ -22,20 +22,31 @@ struct Task {
                        DataType const& data,
                        InputData const& inputData,
                        InOptions const& options) -> std::shared_ptr<Task> {
-        sp_log("PathSpace::createTask", "Function Called");
-        if constexpr (ExecutionFunctionPointer<DataType> || ExecutionStdFunction<DataType>) {
-            return std::make_shared<Task>(Task{
-                    .space = space,
-                    .function
-                    = [userFunctionOrData = std::move(data)](Task& task, bool const objIsData) { task.result = userFunctionOrData(); },
-                    .notificationPath = notificationPath,
-                    .resultCopy =
-                            [](std::any const& from, void* const to) {
-                                *static_cast<std::invoke_result_t<DataType>*>(to) = *std::any_cast<std::invoke_result_t<DataType>>(&from);
-                            },
-                    .executionOptions = options.execution});
+        sp_log("Task::Create", "Function Called");
+
+        // For any callable type (lambda, function pointer, etc)
+        if constexpr (requires { typename std::invoke_result_t<DataType>; }) {
+            using ResultType = std::invoke_result_t<DataType>;
+
+            auto task = std::shared_ptr<Task>(new Task{});
+            task->space = space;
+            task->notificationPath = notificationPath;
+            task->executionOptions = options.execution;
+            task->function = [userFunction = data](Task& task, bool const) {
+                sp_log("Task lambda execution", "DEBUG");
+                task.result = userFunction();
+                sp_log("Task lambda completed", "DEBUG");
+            };
+            task->resultCopy = [](std::any const& from, void* const to) {
+                sp_log("Task copying result", "DEBUG");
+                *static_cast<ResultType*>(to) = std::any_cast<ResultType>(from);
+            };
+
+            return task;
+        } else {
+            sp_log("Task::Create - Invalid callable type", "ERROR");
+            return nullptr;
         }
-        return {};
     }
 
     TaskStateAtomic state;      // Atomic state of the task
