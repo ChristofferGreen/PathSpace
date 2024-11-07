@@ -31,15 +31,13 @@ template <typename T, typename R = void>
 concept ExecutionStdFunction = requires(T f) { requires std::is_convertible_v<T, std::function<R()>>; };
 
 template <typename T>
-concept ExecutionFunctionPointer
-        = (std::is_function_v<std::remove_pointer_t<T>> || std::is_member_function_pointer_v<T> || requires(T& t) { +t; })
-          && // Unary plus operator, which attempts to convert to function pointer
-          requires(T t) {
-              t(); // Can be called with no arguments
-          };
+concept ExecutionFunctionPointer = requires(T t) {
+    requires(std::is_function_v<std::remove_pointer_t<T>> || std::is_member_function_pointer_v<T> || requires(T& x) { +x; });
+    t();
+};
 
 template <typename T>
-concept Execution = requires { requires ExecutionFunctionPointer<T> || ExecutionStdFunction<T>; };
+concept Execution = ExecutionFunctionPointer<T> || ExecutionStdFunction<T>;
 
 template <typename T>
 concept FundamentalType = std::is_fundamental_v<T>;
@@ -53,11 +51,7 @@ template <typename T>
 struct ValueSerializationHelper {
     static auto Serialize(void const* objPtr, SP::SlidingBuffer& bytes) -> void {
         if constexpr (FundamentalType<T>) {
-            T const& obj = *static_cast<T const*>(objPtr);
-            auto const* begin = reinterpret_cast<uint8_t const*>(&obj);
-            auto const* end = begin + sizeof(T);
-            // bytes.insert(bytes.end(), begin, end);
-            bytes.append(begin, sizeof(T));
+            bytes.append(reinterpret_cast<const uint8_t*>(objPtr), sizeof(T));
         } else if constexpr (AlpacaCompatible<T>) {
             SP::serialize<T>(*static_cast<T const*>(objPtr), bytes);
         }
@@ -66,10 +60,9 @@ struct ValueSerializationHelper {
     static auto Deserialize(void* objPtr, SP::SlidingBuffer const& bytes) -> void {
         if constexpr (FundamentalType<T>) {
             if (bytes.size() < sizeof(T)) {
-                return;
+                throw std::runtime_error("Buffer too small");
             }
-            T* obj = static_cast<T*>(objPtr);
-            std::copy(bytes.data(), bytes.data() + sizeof(T), reinterpret_cast<uint8_t*>(obj));
+            std::memcpy(objPtr, bytes.data(), sizeof(T));
         } else if constexpr (AlpacaCompatible<T>) {
             auto expected = SP::deserialize<T>(bytes);
             if (expected.has_value())
@@ -90,36 +83,6 @@ struct ValueSerializationHelper {
             else
                 sp_log("Deserialization failed: " + expected.error().message.value_or(""), "ERROR");
         }
-    }
-};
-
-template <typename T>
-struct FunctionSerializationHelper {
-    static auto Serialize(void const* objPtr, SP::SlidingBuffer& bytes) -> void {
-        auto funcPtr = *static_cast<void (**)()>(const_cast<void*>(objPtr));
-        auto funcPtrInt = reinterpret_cast<std::uintptr_t>(funcPtr);
-        bytes.append(reinterpret_cast<uint8_t const*>(&funcPtrInt), sizeof(funcPtrInt));
-    }
-
-    static auto DeserializePop(void* objPtr, SP::SlidingBuffer& bytes) -> void {
-        if (bytes.size() < sizeof(std::uintptr_t)) {
-            return;
-        }
-        std::uintptr_t funcPtrInt;
-        std::copy(bytes.data(), bytes.data() + sizeof(std::uintptr_t), reinterpret_cast<uint8_t*>(&funcPtrInt));
-        auto funcPtr = reinterpret_cast<void (*)()>(funcPtrInt);
-        *static_cast<void (**)()>(objPtr) = funcPtr;
-        bytes.advance(sizeof(std::uintptr_t));
-    }
-
-    static auto Deserialize(void* objPtr, SP::SlidingBuffer const& bytes) -> void {
-        if (bytes.size() < sizeof(std::uintptr_t)) {
-            return;
-        }
-        std::uintptr_t funcPtrInt;
-        std::copy(bytes.data(), bytes.data() + sizeof(std::uintptr_t), reinterpret_cast<uint8_t*>(&funcPtrInt));
-        auto funcPtr = reinterpret_cast<void (*)()>(funcPtrInt);
-        *static_cast<void (**)()>(objPtr) = funcPtr;
     }
 };
 
@@ -163,9 +126,7 @@ struct AlpacaSerializationTraits {
     }();
 
     static constexpr auto serialize = []() {
-        if constexpr (Execution<T>) {
-            return &FunctionSerializationHelper<T>::Serialize;
-        } else if constexpr (ExecutionStdFunction<T>) {
+        if constexpr (ExecutionStdFunction<T>) {
             return nullptr;
         } else if constexpr (std::is_fundamental<T>::value) {
             return &ValueSerializationHelper<T>::Serialize;
@@ -177,9 +138,7 @@ struct AlpacaSerializationTraits {
     }();
 
     static constexpr auto deserialize = []() -> void (*)(void* obj, SP::SlidingBuffer const&) {
-        if constexpr (Execution<T>) {
-            return FunctionSerializationHelper<T>::Deserialize;
-        } else if constexpr (ExecutionStdFunction<T>) {
+        if constexpr (ExecutionStdFunction<T>) {
             return nullptr;
         } else if constexpr (std::is_fundamental<T>::value) {
             return &ValueSerializationHelper<T>::Deserialize;
@@ -191,9 +150,7 @@ struct AlpacaSerializationTraits {
     }();
 
     static constexpr auto deserializePop = []() {
-        if constexpr (Execution<T>) {
-            return &FunctionSerializationHelper<T>::DeserializePop;
-        } else if constexpr (ExecutionStdFunction<T>) {
+        if constexpr (ExecutionStdFunction<T>) {
             return nullptr;
         } else if constexpr (FunctionPointer<T>) {
             return nullptr;
