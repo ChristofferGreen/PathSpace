@@ -19,11 +19,16 @@
 namespace SP {
 struct PathSpace;
 
+// ########### Type Detection Concepts ###########
+
 template <typename T>
 concept FunctionPointer = requires {
     requires std::is_pointer_v<T>;
     requires std::is_function_v<std::remove_pointer_t<T>>;
 };
+
+template <typename T, typename R = void>
+concept ExecutionStdFunction = requires(T f) { requires std::is_convertible_v<T, std::function<R()>>; };
 
 template <typename T>
 concept ExecutionFunctionPointer
@@ -33,21 +38,16 @@ concept ExecutionFunctionPointer
               t(); // Can be called with no arguments
           };
 
-template <typename T, typename R = void>
-concept ExecutionStdFunction = requires(T f) { requires std::is_convertible_v<T, std::function<R()>>; };
-
-// ########### Type Detection Concepts ###########
+template <typename T>
+concept Execution = requires { requires ExecutionFunctionPointer<T> || ExecutionStdFunction<T>; };
 
 template <typename T>
 concept FundamentalType = std::is_fundamental_v<T>;
 
-// ########### Serialization Helpers ###########
-
 template <typename T>
 concept AlpacaCompatible = !std::is_pointer_v<T> && requires(T t, SlidingBuffer& buffer) { SP::serialize<T>(t, buffer); };
 
-template <typename T>
-struct PointerSerializationHelper {};
+// ########### Serialization Helpers ###########
 
 template <typename T>
 struct ValueSerializationHelper {
@@ -130,7 +130,7 @@ struct AlpacaSerializationTraits {
     AlpacaSerializationTraits() = default;
 
     static constexpr std::type_info const* typeInfo = []() {
-        if constexpr (ExecutionFunctionPointer<T> || ExecutionStdFunction<T>) {
+        if constexpr (Execution<T>) {
             return &typeid(std::invoke_result_t<T>);
         }
         return &typeid(T);
@@ -163,7 +163,7 @@ struct AlpacaSerializationTraits {
     }();
 
     static constexpr auto serialize = []() {
-        if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
+        if constexpr (Execution<T>) {
             return &FunctionSerializationHelper<T>::Serialize;
         } else if constexpr (ExecutionStdFunction<T>) {
             return nullptr;
@@ -177,7 +177,7 @@ struct AlpacaSerializationTraits {
     }();
 
     static constexpr auto deserialize = []() -> void (*)(void* obj, SP::SlidingBuffer const&) {
-        if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
+        if constexpr (Execution<T>) {
             return FunctionSerializationHelper<T>::Deserialize;
         } else if constexpr (ExecutionStdFunction<T>) {
             return nullptr;
@@ -191,7 +191,7 @@ struct AlpacaSerializationTraits {
     }();
 
     static constexpr auto deserializePop = []() {
-        if constexpr (ExecutionFunctionPointer<T> || FunctionPointer<T>) {
+        if constexpr (Execution<T>) {
             return &FunctionSerializationHelper<T>::DeserializePop;
         } else if constexpr (ExecutionStdFunction<T>) {
             return nullptr;
