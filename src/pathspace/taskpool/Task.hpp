@@ -43,7 +43,7 @@ struct Task {
                 task.result = userFunction();
                 sp_log("Task lambda completed", "DEBUG");
             };
-            task->resultCopy = [](std::any const& from, void* const to) {
+            task->resultCopy_ = [](std::any const& from, void* const to) {
                 sp_log("Task copying result", "DEBUG");
                 *static_cast<ResultType*>(to) = std::any_cast<ResultType>(from);
             };
@@ -75,16 +75,39 @@ struct Task {
         this->state.markFailed();
     }
 
+    auto category() const -> std::optional<ExecutionOptions::Category> {
+        if (!this->executionOptions.has_value())
+            return std::nullopt;
+        return this->executionOptions.value().category;
+    }
+
+    auto resultCopy(auto b) -> void {
+        this->resultCopy_(this->result, b);
+    }
+
+private:
+    friend class TaskPool;
+
+    // Private constructor - use Create()
+    Task() = default;
+
+    // Non-copyable
+    Task(const Task&) = delete;
+    Task& operator=(const Task&) = delete;
+
+    // Non-movable (since we use shared_ptr)
+    Task(Task&&) = delete;
+    Task& operator=(Task&&) = delete;
+
     PathSpace* space = nullptr; // Pointer to a PathSpace where the return values from lazy executions will be inserted
+    TaskStateAtomic state;      // Atomic state of the task
     std::function<void(Task& task, bool const objIsData)> function; // Function to be executed by the task
     ConcretePathString notificationPath;
-    std::shared_ptr<std::future<void>> executionFuture;                   // Future for the asynchronous execution
-    std::function<void(std::any const& from, void* const to)> resultCopy; // Function to copy the result
-    std::any result;                                                      // Result of the task execution
+    std::shared_ptr<std::future<void>> executionFuture;                    // Future for the asynchronous execution
+    std::function<void(std::any const& from, void* const to)> resultCopy_; // Function to copy the result
+    std::any result;                                                       // Result of the task execution
 
     std::optional<ExecutionOptions> executionOptions; // Optional execution options for the task
-private:
-    TaskStateAtomic state; // Atomic state of the task
 };
 
 } // namespace SP

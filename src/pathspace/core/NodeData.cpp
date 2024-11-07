@@ -12,9 +12,12 @@ auto NodeData::serialize(const InputData& inputData, const InOptions& options, I
     sp_log("NodeData::serialize", "Function Called");
     if (inputData.task) {
         this->tasks.push_back(std::move(inputData.task));
-        if (bool const isImmediateExecution
-            = options.execution.value_or(inputData.task->executionOptions.value_or(ExecutionOptions{})).category
-              == ExecutionOptions::Category::Immediate) {
+        std::optional<ExecutionOptions::Category> const optionsExecutionCategory
+                = options.execution.has_value() ? std::optional<ExecutionOptions::Category>(options.execution.value().category)
+                                                : std::nullopt;
+        bool const isImmediateExecution
+                = optionsExecutionCategory.value_or(ExecutionOptions{}.category) == ExecutionOptions::Category::Immediate;
+        if (isImmediateExecution) {
             if (auto const ret = TaskPool::Instance().addTask(this->tasks.back()); ret)
                 return ret;
         }
@@ -74,9 +77,12 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
 
     // If task hasn't started and is lazy, start it
     if (!task->hasStarted()) {
-        std::optional<ExecutionOptions> const execution = options.execution;
-        bool const isLazyExecution
-                = execution.value_or(task->executionOptions.value_or(ExecutionOptions{})).category == ExecutionOptions::Category::Lazy;
+        std::optional<ExecutionOptions::Category> const optionsExecutionCategory
+                = options.execution.has_value() ? std::optional<ExecutionOptions::Category>(options.execution.value().category)
+                                                : std::nullopt;
+        std::optional<ExecutionOptions::Category> const taskExecutionCategory = task->category();
+        bool const isLazyExecution = optionsExecutionCategory.value_or(taskExecutionCategory.value_or(ExecutionOptions{}.category))
+                                     == ExecutionOptions::Category::Lazy;
 
         if (isLazyExecution)
             if (auto ret = TaskPool::Instance().addTask(task); ret)
@@ -85,7 +91,7 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
 
     // If completed, return result
     if (task->isCompleted()) {
-        task->resultCopy(task->result, obj);
+        task->resultCopy(obj);
         if (isExtract) {
             this->tasks.pop_front();
             popType();
