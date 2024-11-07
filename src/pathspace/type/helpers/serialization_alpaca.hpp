@@ -129,10 +129,9 @@ concept ExecutionFunctionPointer
 template <typename T, typename R = void>
 concept ExecutionStdFunction = requires(T f) { requires std::is_convertible_v<T, std::function<R()>>; };
 
-template <typename CVRefT>
-struct InputMetadataT {
-    using T = std::remove_cvref_t<CVRefT>;
-    InputMetadataT() = default;
+template <typename T>
+struct AlpacaSerializationTraits {
+    AlpacaSerializationTraits() = default;
 
     static constexpr std::type_info const* typeInfo = []() {
         if constexpr (ExecutionFunctionPointer<T> || ExecutionStdFunction<T>) {
@@ -141,7 +140,7 @@ struct InputMetadataT {
         return &typeid(T);
     }();
 
-    static constexpr DataCategory const dataCategory = []() {
+    static constexpr DataCategory const category = []() {
         if constexpr (ExecutionFunctionPointer<T>) {
             return DataCategory::Execution;
         } else if constexpr (FunctionPointer<T>) {
@@ -212,6 +211,20 @@ struct InputMetadataT {
             return nullptr;
         }
     }();
+};
+
+template <typename CVRefT>
+struct InputMetadataT {
+    using T = std::remove_cvref_t<CVRefT>;
+    using Traits = AlpacaSerializationTraits<T>;
+
+    static constexpr DataCategory dataCategory = Traits::category;
+    static constexpr ExecutionCategory executionCategory = Traits::executionCategory;
+    static constexpr std::type_info const* typeInfo = Traits::typeInfo;
+
+    static constexpr auto serialize = Traits::serialize;
+    static constexpr auto deserialize = Traits::deserialize;
+    static constexpr auto deserializePop = Traits::deserializePop;
 };
 
 } // namespace SP
