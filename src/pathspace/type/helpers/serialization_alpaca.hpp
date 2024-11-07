@@ -19,44 +19,6 @@
 namespace SP {
 struct PathSpace;
 
-// ########### Alpaca Serialization ###########
-
-template <typename T>
-static auto serialize_alpaca(void const* objPtr, SP::SlidingBuffer& buffer) -> void {
-    try {
-        SP::serialize<T>(*static_cast<T const*>(objPtr), buffer);
-        sp_log("Object serialized successfully", "INFO");
-    } catch (const std::exception& e) {
-        sp_log("Serialization failed: " + std::string(e.what()), "ERROR");
-        throw;
-    }
-}
-
-template <typename T>
-static auto deserialize_alpaca_pop(void* objPtr, SP::SlidingBuffer& buffer) -> void {
-    bool const doPop = true;
-    auto expected = SP::deserialize_pop<T>(buffer);
-    if (expected.has_value())
-        *static_cast<T*>(objPtr) = std::move(expected.value());
-    else
-        sp_log("Deserialization failed: " + expected.error().message.value_or(""), "ERROR");
-}
-
-template <typename T>
-static auto deserialize_alpaca_const(void* objPtr, SP::SlidingBuffer const& buffer) -> void {
-    auto expected = SP::deserialize<T>(buffer);
-    if (expected.has_value())
-        *static_cast<T*>(objPtr) = std::move(expected.value());
-    else
-        sp_log("Deserialization failed: " + expected.error().message.value_or(""), "ERROR");
-}
-
-template <typename T>
-concept AlpacaCompatible = !std::is_pointer_v<T> && requires(T t, SP::SlidingBuffer& v) {
-    { serialize_alpaca<T>(static_cast<void const*>(&t), v) };
-    { deserialize_alpaca_const<T>(static_cast<void*>(&t), v) };
-};
-
 template <typename T>
 concept FunctionPointer = requires {
     requires std::is_pointer_v<T>;
@@ -74,7 +36,15 @@ concept ExecutionFunctionPointer
 template <typename T, typename R = void>
 concept ExecutionStdFunction = requires(T f) { requires std::is_convertible_v<T, std::function<R()>>; };
 
+// ########### Type Detection Concepts ###########
+
+template <typename T>
+concept FundamentalType = std::is_fundamental_v<T>;
+
 // ########### Serialization Helpers ###########
+
+template <typename T>
+concept AlpacaCompatible = !std::is_pointer_v<T> && requires(T t, SlidingBuffer& buffer) { SP::serialize<T>(t, buffer); };
 
 template <typename T>
 struct PointerSerializationHelper {};
@@ -82,26 +52,44 @@ struct PointerSerializationHelper {};
 template <typename T>
 struct ValueSerializationHelper {
     static auto Serialize(void const* objPtr, SP::SlidingBuffer& bytes) -> void {
-        static_assert(std::is_fundamental_v<T>, "T must be a fundamental type");
-        T const& obj = *static_cast<T const*>(objPtr);
-        auto const* begin = reinterpret_cast<uint8_t const*>(&obj);
-        auto const* end = begin + sizeof(T);
-        // bytes.insert(bytes.end(), begin, end);
-        bytes.append(begin, sizeof(T));
+        if constexpr (FundamentalType<T>) {
+            T const& obj = *static_cast<T const*>(objPtr);
+            auto const* begin = reinterpret_cast<uint8_t const*>(&obj);
+            auto const* end = begin + sizeof(T);
+            // bytes.insert(bytes.end(), begin, end);
+            bytes.append(begin, sizeof(T));
+        } else if constexpr (AlpacaCompatible<T>) {
+            SP::serialize<T>(*static_cast<T const*>(objPtr), bytes);
+        }
     }
 
     static auto Deserialize(void* objPtr, SP::SlidingBuffer const& bytes) -> void {
-        static_assert(std::is_fundamental_v<T>, "T must be a fundamental type");
-        if (bytes.size() < sizeof(T)) {
-            return;
+        if constexpr (FundamentalType<T>) {
+            if (bytes.size() < sizeof(T)) {
+                return;
+            }
+            T* obj = static_cast<T*>(objPtr);
+            std::copy(bytes.data(), bytes.data() + sizeof(T), reinterpret_cast<uint8_t*>(obj));
+        } else if constexpr (AlpacaCompatible<T>) {
+            auto expected = SP::deserialize<T>(bytes);
+            if (expected.has_value())
+                *static_cast<T*>(objPtr) = std::move(expected.value());
+            else
+                sp_log("Deserialization failed: " + expected.error().message.value_or(""), "ERROR");
         }
-        T* obj = static_cast<T*>(objPtr);
-        std::copy(bytes.data(), bytes.data() + sizeof(T), reinterpret_cast<uint8_t*>(obj));
     }
 
     static auto DeserializePop(void* objPtr, SP::SlidingBuffer& bytes) -> void {
-        ValueSerializationHelper<T>::Deserialize(objPtr, bytes);
-        bytes.advance(sizeof(T));
+        if constexpr (FundamentalType<T>) {
+            ValueSerializationHelper<T>::Deserialize(objPtr, bytes);
+            bytes.advance(sizeof(T));
+        } else if constexpr (AlpacaCompatible<T>) {
+            auto expected = SP::deserialize_pop<T>(bytes);
+            if (expected.has_value())
+                *static_cast<T*>(objPtr) = std::move(expected.value());
+            else
+                sp_log("Deserialization failed: " + expected.error().message.value_or(""), "ERROR");
+        }
     }
 };
 
@@ -182,7 +170,7 @@ struct AlpacaSerializationTraits {
         } else if constexpr (std::is_fundamental<T>::value) {
             return &ValueSerializationHelper<T>::Serialize;
         } else if constexpr (AlpacaCompatible<T>) {
-            return &serialize_alpaca<T>;
+            return &ValueSerializationHelper<T>::Serialize;
         } else {
             return nullptr;
         }
@@ -196,7 +184,7 @@ struct AlpacaSerializationTraits {
         } else if constexpr (std::is_fundamental<T>::value) {
             return &ValueSerializationHelper<T>::Deserialize;
         } else if constexpr (AlpacaCompatible<T>) {
-            return &deserialize_alpaca_const<T>;
+            return &ValueSerializationHelper<T>::Deserialize;
         } else {
             return nullptr;
         }
@@ -212,7 +200,7 @@ struct AlpacaSerializationTraits {
         } else if constexpr (std::is_fundamental<T>::value) {
             return &ValueSerializationHelper<T>::DeserializePop;
         } else if constexpr (AlpacaCompatible<T>) {
-            return &deserialize_alpaca_pop<T>;
+            return &ValueSerializationHelper<T>::DeserializePop;
         } else {
             return nullptr;
         }
