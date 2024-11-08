@@ -3,11 +3,10 @@
 #include "core/OutOptions.hpp"
 #include "core/WaitMap.hpp"
 #include "path/GlobPath.hpp"
-#include "taskpool/TaskPool.hpp"
 #include "utils/TaggedLogger.hpp"
-#include <memory>
 
 namespace SP {
+struct TaskPool;
 class PathSpace {
 public:
     /**

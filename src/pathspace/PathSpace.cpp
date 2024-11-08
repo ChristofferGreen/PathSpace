@@ -1,6 +1,5 @@
 #include "PathSpace.hpp"
-#include "core/BlockOptions.hpp"
-#include <future>
+#include "TaskPool/TaskPool.hpp"
 
 namespace SP {
 
