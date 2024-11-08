@@ -17,6 +17,8 @@ struct GlobPath : public Path<T> {
     GlobPath(std::string_view const& sv);
     GlobPath(std::string const& s);
     GlobPath(char const* path);
+    GlobPath(ConcretePathString const& path);
+    GlobPath(ConcretePathStringView const& path);
 
     auto operator<=>(GlobPath<T> const& other) const -> std::strong_ordering;
     auto operator==(std::string_view const& other) const -> bool;

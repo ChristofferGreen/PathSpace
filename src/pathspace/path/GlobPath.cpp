@@ -24,6 +24,14 @@ GlobPath<T>::GlobPath(char const* path) : Path<T>(path) {
 }
 
 template <typename T>
+GlobPath<T>::GlobPath(ConcretePathString const& path) : Path<T>(path.getPath()) {
+}
+
+template <typename T>
+GlobPath<T>::GlobPath(ConcretePathStringView const& path) : Path<T>(std::string(path.getPath())) {
+}
+
+template <typename T>
 auto GlobPath<T>::operator<=>(GlobPath<T> const& other) const -> std::strong_ordering {
     return this->path <=> other.path;
 }

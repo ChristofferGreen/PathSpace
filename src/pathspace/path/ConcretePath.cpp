@@ -25,6 +25,14 @@ ConcretePath<T>::ConcretePath(char const* const t) : Path<T>(t) {
 }
 
 template <typename T>
+ConcretePath<T>::ConcretePath(ConcretePath<std::string_view> const& other) : Path<T>(std::string(other.getPath())) {
+}
+
+template <typename T>
+ConcretePath<T>::ConcretePath(ConcretePath<std::string> const& other) : Path<T>(other.getPath()) {
+}
+
+template <typename T>
 auto ConcretePath<T>::operator==(std::string_view const& otherView) const -> bool {
     ConcretePathStringView const other{otherView};
     if (!this->isValid() || !other.isValid())

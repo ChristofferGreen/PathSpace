@@ -20,6 +20,8 @@ struct ConcretePath : public Path<T> {
     ConcretePath(std::string_view const& sv);
     ConcretePath(std::string const& s);
     ConcretePath(char const* const t);
+    ConcretePath(ConcretePath<std::string_view> const& other);
+    ConcretePath(ConcretePath<std::string> const& other);
 
     // Existing comparison operators
     auto operator==(char const* const other) const -> bool;

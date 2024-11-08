@@ -1,5 +1,6 @@
 #pragma once
 #include "PathSpaceLeaf.hpp"
+#include "cache/SimpleCache.hpp"
 #include "core/OutOptions.hpp"
 #include "core/WaitMap.hpp"
 #include "path/GlobPath.hpp"
@@ -147,6 +148,7 @@ protected:
     TaskPool* pool = nullptr;
     PathSpaceLeaf root;
     WaitMap waitMap;
+    SimpleCache cache;
 };
 
 } // namespace SP
