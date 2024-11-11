@@ -155,4 +155,34 @@ auto PathSpaceLeaf::outConcretePathComponent(ConcretePathIteratorStringView cons
     return expected;
 }
 
+auto PathSpaceLeaf::getLeafNode(ConcretePathIteratorStringView const& iter, ConcretePathIteratorStringView const& end)
+        -> Expected<PathSpaceLeaf*> {
+    return this->getLeafNodeImpl(iter, end);
+}
+
+auto PathSpaceLeaf::getLeafNode(ConcretePathIteratorStringView const& iter, ConcretePathIteratorStringView const& end) const
+        -> Expected<PathSpaceLeaf const*> {
+    return this->getLeafNodeImpl(iter, end);
+}
+
+auto PathSpaceLeaf::getLeafNodeImpl(ConcretePathIteratorStringView const& iter, ConcretePathIteratorStringView const& end) const
+        -> Expected<PathSpaceLeaf*> {
+    auto nextIter = std::next(iter);
+    if (nextIter == end)
+        return const_cast<PathSpaceLeaf*>(this);
+
+    auto const& pathComponent = *iter;
+
+    Expected<PathSpaceLeaf*> result = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
+
+    nodeDataMap.if_contains(pathComponent.getName(), [&](auto const& nodePair) {
+        if (auto const* leaf = std::get_if<std::unique_ptr<PathSpaceLeaf>>(&nodePair.second))
+            result = (*leaf)->template getLeafNodeImpl(nextIter, end);
+        else
+            result = std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Path component is data, not a leaf"});
+    });
+
+    return result;
+}
+
 } // namespace SP

@@ -26,6 +26,10 @@ public:
              bool const isExtract) -> Expected<int>;
     auto clear() -> void;
 
+    auto getLeafNode(ConcretePathIteratorStringView const& iter, ConcretePathIteratorStringView const& end) -> Expected<PathSpaceLeaf*>;
+    auto getLeafNode(ConcretePathIteratorStringView const& iter, ConcretePathIteratorStringView const& end) const
+            -> Expected<PathSpaceLeaf const*>;
+
 private:
     auto inFinalComponent(GlobName const& pathComponent, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void;
     auto inIntermediateComponent(GlobPathIteratorStringView const& iter,
@@ -47,6 +51,9 @@ private:
                                   void* obj,
                                   OutOptions const& options,
                                   bool const isExtract) -> Expected<int>;
+    auto getLeafNodeImpl(ConcretePathIteratorStringView const& iter, ConcretePathIteratorStringView const& end) const
+            -> Expected<PathSpaceLeaf*>;
+
     NodeDataHashMap nodeDataMap;
 };
 

@@ -22,10 +22,8 @@ auto ConcretePathIterator<T>::operator==(const ConcretePathIterator<T>& other) c
 template <typename T>
 auto ConcretePathIterator<T>::operator*() const -> ConcreteNameStringView {
     auto startSub = this->current;
-    auto currentSub = this->current;
-
-    this->skipSlashes(startSub);   // Will only happen at beginning
-    this->skipSlashes(currentSub); // Will only happen at beginning
+    this->skipSlashes(startSub); // Will only happen at beginning
+    auto currentSub = startSub;
     this->skipNonSlashes(currentSub);
     return {startSub, currentSub};
 }

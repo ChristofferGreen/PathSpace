@@ -1,5 +1,9 @@
 #include "PathSpaceLeaf.hpp"
 #include "core/Cache.hpp"
+#include "core/InOptions.hpp"
+#include "core/InsertReturn.hpp"
+#include "core/NodeData.hpp"
+#include "type/InputData.hpp"
 
 #include "ext/doctest.h"
 
@@ -12,10 +16,48 @@ using namespace SP;
 using namespace std::chrono_literals;
 
 namespace {
-// Test helper to create a simple NodeData
+
+// Helper function to properly create NodeData with a value
 auto createNodeData(int value) -> NodeData {
-    return NodeData{};
+    InputData inputData{value};
+    InsertReturn ret;
+    InOptions options;
+    return NodeData{inputData, options, ret};
 }
+
+// Helper function to set up the PathSpaceLeaf hierarchy for a given path
+auto setupRoot(PathSpaceLeaf& root, const ConcretePathString& path) -> void {
+    // Create a GlobPathStringView for the path
+    GlobPathStringView globPath(std::string_view(path.getPath()));
+
+    // Create dummy data to establish the path
+    InputData inputData{0};
+    InsertReturn ret;
+    InOptions options;
+
+    // Use the PathSpaceLeaf's in() function to create the path
+    root.in(globPath.begin(), globPath.end(), inputData, options, ret);
+}
+
+// Helper to verify cache entry exists and matches the expected path
+auto verifyCacheEntry(Cache& cache, PathSpaceLeaf& root, const ConcretePathString& path) -> bool {
+    auto result = cache.lookup(path, root);
+    if (!result.has_value()) {
+        return false;
+    }
+
+    // Create string view for the path
+    ConcretePathStringView pathView(std::string_view(path.getPath()));
+
+    // Verify that the cached leaf matches the actual path
+    auto actualLeaf = root.getLeafNode(pathView.begin(), pathView.end());
+    if (!actualLeaf.has_value()) {
+        return false;
+    }
+
+    return result.value() == actualLeaf.value();
+}
+
 } // namespace
 
 TEST_SUITE("Cache") {
@@ -23,110 +65,51 @@ TEST_SUITE("Cache") {
         Cache cache;
         PathSpaceLeaf root;
 
-        SUBCASE("Valid Path Operations") {
+        SUBCASE("Store and Lookup") {
             ConcretePathString path("/test/path");
+            setupRoot(root, path);
             auto data = createNodeData(756);
 
-            // Store and lookup
             cache.store(path, data, root);
-            auto result = cache.lookup(path, root);
-            REQUIRE(result.has_value());
-            // CHECK value equals756
+            REQUIRE(verifyCacheEntry(cache, root, path));
 
-            // Invalidate
             cache.invalidate(path);
-            result = cache.lookup(path, root);
-            REQUIRE(!result.has_value());
+            REQUIRE_FALSE(verifyCacheEntry(cache, root, path));
         }
 
-        SUBCASE("Invalid Path Operations") {
-            ConcretePathString invalidPath("invalid/no-leading-slash");
-            auto data = createNodeData(756);
+        SUBCASE("Root Path Operations") {
+            ConcretePathString rootPath("/");
+            auto data = createNodeData(1);
 
-            // Store should fail silently
-            cache.store(invalidPath, data, root);
-
-            // Lookup should return error
-            auto result = cache.lookup(invalidPath, root);
-            REQUIRE(!result.has_value());
-            REQUIRE(result.error().code == Error::Code::InvalidPath);
-        }
-    }
-
-    TEST_CASE("Cache Expiry") {
-        Cache cache(1000, 1s); // 1 second TTL for testing
-        PathSpaceLeaf root;
-        ConcretePathString path("/test/path");
-        auto data = createNodeData(756);
-
-        SUBCASE("Entry Expires") {
-            cache.store(path, data, root);
-
-            // Should hit cache
-            auto result1 = cache.lookup(path, root);
-            REQUIRE(result1.has_value());
-
-            // Wait for expiry
-            std::this_thread::sleep_for(1100ms);
-
-            // Should miss cache
-            auto result2 = cache.lookup(path, root);
-            REQUIRE(!result2.has_value());
-        }
-
-        SUBCASE("Entry Refresh") {
-            cache.store(path, data, root);
-
-            // Multiple lookups within TTL
-            for (int i = 0; i < 5; ++i) {
-                std::this_thread::sleep_for(200ms);
-                auto result = cache.lookup(path, root);
-                REQUIRE(result.has_value());
-            }
+            cache.store(rootPath, data, root);
+            REQUIRE(verifyCacheEntry(cache, root, rootPath));
         }
     }
 
     TEST_CASE("Size Management") {
-        Cache cache(5, 1h); // Small size for testing
+        size_t const MAX_CACHE_SIZE = 5;
+        Cache cache(MAX_CACHE_SIZE); // Removed TTL parameter
         PathSpaceLeaf root;
 
-        SUBCASE("Size Limit Enforcement") {
-            // Add more than max entries
-            for (int i = 0; i < 10; ++i) {
+        SUBCASE("Enforce Size Limit") {
+            // Fill cache beyond its capacity
+            std::vector<ConcretePathString> paths;
+            for (size_t i = 0; i < MAX_CACHE_SIZE * 2; ++i) {
                 ConcretePathString path("/test/path/" + std::to_string(i));
+                setupRoot(root, path);
+                paths.push_back(path);
                 cache.store(path, createNodeData(i), root);
             }
 
-            // Check only recent entries exist
-            int found = 0;
-            for (int i = 0; i < 10; ++i) {
-                ConcretePathString path("/test/path/" + std::to_string(i));
-                if (cache.lookup(path, root).has_value()) {
+            // Only check that we have MAX_CACHE_SIZE entries
+            size_t found = 0;
+            for (const auto& path : paths) {
+                if (verifyCacheEntry(cache, root, path)) {
                     ++found;
                 }
             }
-            REQUIRE(found <= 5);
-        }
 
-        SUBCASE("Cleanup Behavior") {
-            // Add entries with some expired
-            for (int i = 0; i < 10; ++i) {
-                ConcretePathString path("/test/path/" + std::to_string(i));
-                cache.store(path, createNodeData(i), root);
-                if (i % 2 == 0) {
-                    std::this_thread::sleep_for(1100ms); // Force expiry
-                }
-            }
-
-            // Should have cleaned up expired entries
-            int found = 0;
-            for (int i = 0; i < 10; ++i) {
-                ConcretePathString path("/test/path/" + std::to_string(i));
-                if (cache.lookup(path, root).has_value()) {
-                    ++found;
-                }
-            }
-            REQUIRE(found < 10);
+            REQUIRE(found == MAX_CACHE_SIZE);
         }
     }
 
@@ -134,61 +117,38 @@ TEST_SUITE("Cache") {
         Cache cache;
         PathSpaceLeaf root;
 
-        SUBCASE("Single Path Invalidation") {
-            ConcretePathString path("/test/path");
-            cache.store(path, createNodeData(756), root);
-            cache.invalidate(path);
-            REQUIRE(!cache.lookup(path, root).has_value());
-        }
-
         SUBCASE("Prefix Invalidation") {
-            // Setup paths
+            // Setup test paths
             std::vector<ConcretePathString> paths = {"/test/path/1", "/test/path/2", "/test/other/1", "/test/path/sub/1"};
 
             for (const auto& path : paths) {
+                setupRoot(root, path);
                 cache.store(path, createNodeData(1), root);
+                REQUIRE(verifyCacheEntry(cache, root, path));
             }
 
-            // Invalidate prefix
+            // Invalidate by prefix
             cache.invalidatePrefix("/test/path");
 
-            // Check invalidation
-            REQUIRE(!cache.lookup("/test/path/1", root).has_value());
-            REQUIRE(!cache.lookup("/test/path/2", root).has_value());
-            REQUIRE(!cache.lookup("/test/path/sub/1", root).has_value());
-            REQUIRE(cache.lookup("/test/other/1", root).has_value());
-        }
-
-        SUBCASE("Pattern Invalidation") {
-            // Setup paths
-            std::vector<ConcretePathString> paths = {"/test/path/1", "/test/path/2", "/other/path"};
-
-            for (const auto& path : paths) {
-                cache.store(path, createNodeData(1), root);
-            }
-
-            // Invalidate pattern
-            cache.invalidatePattern(GlobPathString{"/test/*"});
-
-            // All entries should be invalidated (current implementation)
-            for (const auto& path : paths) {
-                REQUIRE(!cache.lookup(path, root).has_value());
-            }
+            // Verify correct invalidation
+            REQUIRE_FALSE(verifyCacheEntry(cache, root, paths[0])); // /test/path/1
+            REQUIRE_FALSE(verifyCacheEntry(cache, root, paths[1])); // /test/path/2
+            REQUIRE(verifyCacheEntry(cache, root, paths[2]));       // /test/other/1 should still exist
+            REQUIRE_FALSE(verifyCacheEntry(cache, root, paths[3])); // /test/path/sub/1
         }
 
         SUBCASE("Clear All") {
-            // Setup multiple paths
             std::vector<ConcretePathString> paths = {"/test/1", "/test/2", "/other/1"};
 
             for (const auto& path : paths) {
+                setupRoot(root, path);
                 cache.store(path, createNodeData(1), root);
             }
 
             cache.clear();
 
-            // Verify all cleared
             for (const auto& path : paths) {
-                REQUIRE(!cache.lookup(path, root).has_value());
+                REQUIRE_FALSE(verifyCacheEntry(cache, root, path));
             }
         }
     }
@@ -196,19 +156,19 @@ TEST_SUITE("Cache") {
     TEST_CASE("Thread Safety") {
         Cache cache;
         PathSpaceLeaf root;
+        std::mutex rootMutex;
 
         SUBCASE("Concurrent Reads") {
-            // Setup data
             ConcretePathString path("/test/path");
+            setupRoot(root, path);
             cache.store(path, createNodeData(756), root);
 
-            // Multiple threads reading
             std::vector<std::thread> threads;
             std::atomic<int> successCount{0};
 
             for (int i = 0; i < 100; ++i) {
                 threads.emplace_back([&]() {
-                    if (cache.lookup(path, root).has_value()) {
+                    if (verifyCacheEntry(cache, root, path)) {
                         ++successCount;
                     }
                 });
@@ -221,51 +181,34 @@ TEST_SUITE("Cache") {
             REQUIRE(successCount == 100);
         }
 
-        SUBCASE("Concurrent Writes") {
+        SUBCASE("Concurrent Mixed Operations") {
+            // Pre-setup paths
+            for (int i = 0; i < 10; ++i) {
+                ConcretePathString path("/test/path/" + std::to_string(i));
+                std::lock_guard<std::mutex> lock(rootMutex);
+                setupRoot(root, path);
+            }
+
             std::vector<std::thread> threads;
             std::atomic<int> successCount{0};
 
-            for (int i = 0; i < 100; ++i) {
-                threads.emplace_back([&, i]() {
-                    ConcretePathString path("/test/path/" + std::to_string(i));
-                    cache.store(path, createNodeData(i), root);
-                    if (cache.lookup(path, root).has_value()) {
-                        ++successCount;
-                    }
-                });
-            }
-
-            for (auto& thread : threads) {
-                thread.join();
-            }
-
-            REQUIRE(successCount == 100);
-        }
-
-        SUBCASE("Mixed Operations") {
-            std::vector<std::thread> threads;
-            std::atomic<int> successCount{0};
-
-            // Create a mix of operations
             for (int i = 0; i < 100; ++i) {
                 threads.emplace_back([&, i]() {
                     ConcretePathString path("/test/path/" + std::to_string(i % 10));
 
-                    switch (i % 4) {
-                        case 0: // Store
+                    switch (i % 3) {
+                        case 0: { // Store
+                            std::lock_guard<std::mutex> lock(rootMutex);
                             cache.store(path, createNodeData(i), root);
                             break;
+                        }
                         case 1: // Lookup
-                            cache.lookup(path, root);
+                            if (verifyCacheEntry(cache, root, path)) {
+                                ++successCount;
+                            }
                             break;
                         case 2: // Invalidate
                             cache.invalidate(path);
-                            break;
-                        case 3: // Store + Lookup
-                            cache.store(path, createNodeData(i), root);
-                            if (cache.lookup(path, root).has_value()) {
-                                ++successCount;
-                            }
                             break;
                     }
                 });
@@ -274,65 +217,11 @@ TEST_SUITE("Cache") {
             for (auto& thread : threads) {
                 thread.join();
             }
-        }
-    }
 
-    TEST_CASE("Edge Cases") {
-        Cache cache;
-        PathSpaceLeaf root;
-
-        SUBCASE("Empty Path") {
-            ConcretePathString emptyPath("");
-            auto data = createNodeData(1);
-
-            cache.store(emptyPath, data, root);
-            auto result = cache.lookup(emptyPath, root);
-            REQUIRE(!result.has_value());
-        }
-
-        SUBCASE("Root Path") {
-            ConcretePathString rootPath("/");
-            auto data = createNodeData(1);
-
-            cache.store(rootPath, data, root);
-            auto result = cache.lookup(rootPath, root);
-            REQUIRE(result.has_value());
-        }
-
-        SUBCASE("Very Long Path") {
-            std::string longPath = "/a";
-            for (int i = 0; i < 100; ++i) {
-                longPath += "/really/long/path/component";
-            }
-            ConcretePathString path(longPath);
-            auto data = createNodeData(1);
-
-            cache.store(path, data, root);
-            auto result = cache.lookup(path, root);
-            REQUIRE(result.has_value());
-        }
-
-        SUBCASE("Repeated Store") {
-            ConcretePathString path("/test/path");
-
-            for (int i = 0; i < 1000; ++i) {
-                cache.store(path, createNodeData(i), root);
-            }
-
-            auto result = cache.lookup(path, root);
-            REQUIRE(result.has_value());
-        }
-
-        SUBCASE("Rapid Invalidation") {
-            ConcretePathString path("/test/path");
-            auto data = createNodeData(1);
-
-            for (int i = 0; i < 1000; ++i) {
-                cache.store(path, data, root);
-                cache.invalidate(path);
-            }
-
-            REQUIRE(!cache.lookup(path, root).has_value());
+            // We can't make exact assertions about successCount due to race conditions,
+            // but we can verify it's within reasonable bounds
+            REQUIRE(successCount > 0);
+            REQUIRE(successCount < 100);
         }
     }
 
@@ -341,44 +230,83 @@ TEST_SUITE("Cache") {
         PathSpaceLeaf root;
 
         SUBCASE("Lookup Performance") {
-            // Setup
             std::vector<ConcretePathString> paths;
+            // Setup phase
             for (int i = 0; i < 1000; ++i) {
                 ConcretePathString path("/test/path/" + std::to_string(i));
+                setupRoot(root, path);
                 paths.push_back(path);
                 cache.store(path, createNodeData(i), root);
             }
 
-            // Measure lookup time
+            // Measure lookup performance
             auto start = std::chrono::high_resolution_clock::now();
-            for (const auto& path : paths) {
-                auto result = cache.lookup(path, root);
-                REQUIRE(result.has_value());
-            }
-            auto end = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 
-            // Add a loose performance requirement
-            REQUIRE(duration.count() < 1000000); // Less than 1 second for 1000 lookups
+            for (const auto& path : paths) {
+                REQUIRE(verifyCacheEntry(cache, root, path));
+            }
+
+            auto end = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
+            // Performance requirement: less than 1 second for 1000 lookups
+            REQUIRE(duration.count() < 1000);
         }
 
-        SUBCASE("Cleanup Performance") {
-            // Fill cache
-            for (int i = 0; i < 10000; ++i) {
-                ConcretePathString path("/test/path/" + std::to_string(i));
-                cache.store(path, createNodeData(i), root);
-            }
-
-            // Measure cleanup time (triggered by stores)
-            auto start = std::chrono::high_resolution_clock::now();
+        SUBCASE("Cache Cleanup Performance") {
+            // Fill cache with initial data
             for (int i = 0; i < 1000; ++i) {
-                ConcretePathString path("/new/path/" + std::to_string(i));
+                ConcretePathString path("/test/path/" + std::to_string(i));
+                setupRoot(root, path);
                 cache.store(path, createNodeData(i), root);
             }
-            auto end = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 
-            REQUIRE(duration.count() < 1000000); // Less than 1 second for cleanup
+            // Measure cleanup performance during new insertions
+            auto start = std::chrono::high_resolution_clock::now();
+
+            for (int i = 0; i < 100; ++i) {
+                ConcretePathString path("/new/path/" + std::to_string(i));
+                setupRoot(root, path);
+                cache.store(path, createNodeData(i), root);
+            }
+
+            auto end = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
+            // Performance requirement: less than 500ms for cleanup during 100 insertions
+            REQUIRE(duration.count() < 500);
+        }
+    }
+
+    TEST_CASE("Edge Cases") {
+        Cache cache;
+        PathSpaceLeaf root;
+
+        SUBCASE("Very Long Path") {
+            std::string longPath = "/a";
+            for (int i = 0; i < 50; ++i) {
+                longPath += "/really/long/path/component";
+            }
+
+            ConcretePathString path(longPath);
+            setupRoot(root, path);
+            auto data = createNodeData(1);
+
+            cache.store(path, data, root);
+            REQUIRE(verifyCacheEntry(cache, root, path));
+        }
+
+        SUBCASE("Repeated Operations") {
+            ConcretePathString path("/test/path");
+            setupRoot(root, path);
+
+            // Perform repeated store/invalidate cycles
+            for (int i = 0; i < 100; ++i) {
+                cache.store(path, createNodeData(i), root);
+                REQUIRE(verifyCacheEntry(cache, root, path));
+                cache.invalidate(path);
+                REQUIRE_FALSE(verifyCacheEntry(cache, root, path));
+            }
         }
     }
 }

@@ -25,7 +25,7 @@ public:
      * @param maxSize Maximum number of entries to store
      * @param ttl Time-to-live for cache entries
      */
-    explicit Cache(size_t maxSize = 1000, std::chrono::seconds ttl = std::chrono::seconds(300));
+    explicit Cache(size_t maxSize = 1000);
 
     /**
      * @brief Looks up a PathSpaceLeaf in the cache
@@ -49,7 +49,7 @@ public:
      * @param data The data being stored
      * @param root The root storage containing the data's leaf node
      */
-    auto store(ConcretePathString const& path, NodeData const& data, PathSpaceLeaf& root) -> void;
+    auto store(ConcretePathStringView const& path, NodeData const& data, PathSpaceLeaf& root) -> void;
 
     /**
      * @brief Invalidates a single path in the cache
@@ -76,7 +76,6 @@ public:
 private:
     struct CacheEntry {
         PathSpaceLeaf* leaf;
-        std::chrono::steady_clock::time_point expiry;
     };
 
     /**
@@ -96,7 +95,6 @@ private:
 
     CacheMap entries;
     const size_t maxSize;
-    const std::chrono::seconds ttl;
     std::atomic<size_t> cleanupCounter{0};
 };
 

@@ -153,4 +153,53 @@ TEST_CASE("Path ConcretePathIterator") {
             ++iter;
         }
     }
+
+    SUBCASE("operator* edge cases") {
+        // Empty path components
+        ConcretePathStringView pathWithEmpty{"/a//c"};
+        auto iter = pathWithEmpty.begin();
+        REQUIRE(*iter == "a");
+        ++iter;
+        REQUIRE(*iter == "c");
+
+        // Path with trailing slash
+        ConcretePathStringView pathWithTrailing{"/a/b/"};
+        iter = pathWithTrailing.begin();
+        REQUIRE(*iter == "a");
+        ++iter;
+        REQUIRE(*iter == "b");
+        ++iter;
+        REQUIRE(iter == pathWithTrailing.end());
+
+        // Multiple consecutive slashes
+        ConcretePathStringView pathWithMultiSlash{"///a////b///c//"};
+        iter = pathWithMultiSlash.begin();
+        REQUIRE(*iter == "a");
+        ++iter;
+        REQUIRE(*iter == "b");
+        ++iter;
+        REQUIRE(*iter == "c");
+    }
+
+    SUBCASE("operator* with special characters") {
+        // Path components with special characters
+        ConcretePathStringView path{"/test@/path#/$data/"};
+        auto iter = path.begin();
+        REQUIRE(*iter == "test@");
+        ++iter;
+        REQUIRE(*iter == "path#");
+        ++iter;
+        REQUIRE(*iter == "$data");
+    }
+
+    SUBCASE("operator* with unicode characters") {
+        // Path components with unicode characters
+        ConcretePathStringView path{"/路径/名称/文件"};
+        auto iter = path.begin();
+        REQUIRE(*iter == "路径");
+        ++iter;
+        REQUIRE(*iter == "名称");
+        ++iter;
+        REQUIRE(*iter == "文件");
+    }
 }
