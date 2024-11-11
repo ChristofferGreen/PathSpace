@@ -19,6 +19,7 @@ add_executable(PathSpaceTests
   unit/core/test_Cache.cpp
   unit/test_PathSpace_extract.cpp
   unit/test_PathSpace_insert.cpp
+  unit/test_PathSpace_cache.cpp
   unit/test_PathSpace_multithreading.cpp
   unit/test_PathSpace_execution.cpp
   test_main.cpp

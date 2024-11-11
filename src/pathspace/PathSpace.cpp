@@ -3,11 +3,12 @@
 
 namespace SP {
 
-PathSpace::PathSpace(TaskPool* pool) {
+PathSpace::PathSpace(size_t cacheSize, TaskPool* pool) : cache(cacheSize), pool(pool) {
     sp_log("PathSpace::PathSpace", "Function Called");
-    if (this->pool == nullptr)
+    if (this->pool == nullptr) {
         this->pool = &TaskPool::Instance();
-};
+    }
+}
 
 PathSpace::~PathSpace() {
     sp_log("PathSpace::~PathSpace", "Function Called");
@@ -17,12 +18,14 @@ PathSpace::~PathSpace() {
 auto PathSpace::clear() -> void {
     sp_log("PathSpace::clear", "Function Called");
     this->root.clear();
+    this->cache.clear(); // Clear cache when clearing root
     this->waitMap.clear();
 }
 
 auto PathSpace::shutdown() -> void {
     sp_log("PathSpace::shutdown", "Function Called");
     this->waitMap.notifyAll();
+    this->cache.clear(); // Clear cache on shutdown
     this->root.clear();
 }
 
@@ -37,7 +40,7 @@ auto PathSpace::in(GlobPathStringView const& path, InputData const& data, InOpti
     this->root.in(path.begin(), path.end(), data, options, ret);
 
     if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0 || ret.nbrTasksCreated) {
-        waitMap.notify(path); // ToDo:: Fix glob path situation
+        waitMap.notify(path);
     }
     return ret;
 }

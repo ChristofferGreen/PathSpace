@@ -8,51 +8,58 @@
 
 namespace SP {
 struct TaskPool;
+
 class PathSpace {
 public:
-    /**
-     * @brief Constructs a PathSpace object.
-     * @param pool Pointer to a TaskPool for managing asynchronous operations. If nullptr, uses the global instance.
-     */
-    explicit PathSpace(TaskPool* pool = nullptr);
+    // Updated constructor to accept cache size
+    explicit PathSpace(size_t cacheSize = 1000, TaskPool* pool = nullptr);
     ~PathSpace();
 
-    /**
-     * @brief Inserts data into the PathSpace at the specified path.
-     *
-     * @tparam DataType The type of data being inserted.
-     * @param path The glob-style path where the data should be inserted.
-     * @param data The data to be inserted.
-     * @param options Options controlling the insertion behavior, such as overwrite policies.
-     * @return InsertReturn object containing information about the insertion operation, including any errors.
-     */
     template <typename DataType>
     auto insert(GlobPathStringView const& path, DataType&& data, InOptions const& options = {}) -> InsertReturn {
         sp_log("PathSpace::insert", "Function Called");
         InputData inputData{std::forward<DataType>(data)};
 
-        if (inputData.metadata.dataCategory == DataCategory::Execution)
+        if (inputData.metadata.dataCategory == DataCategory::Execution) {
             inputData.task = Task::Create(this, path.getPath(), std::forward<DataType>(data), inputData, options);
+        }
 
-        return this->in(path, inputData, options);
+        auto ret = this->in(path, inputData, options);
+
+        // Invalidate cache after insert
+        if (path.isGlob()) {
+            cache.invalidatePattern(path.getPath());
+        } else {
+            cache.invalidatePrefix(path.getPath());
+        }
+
+        return ret;
     }
 
-    /**
-     * @brief Reads data from the PathSpace at the specified path.
-     *
-     * @tparam DataType The type of data to be read.
-     * @param path The concrete path from which to read the data.
-     * @param options Options controlling the read behavior, such as blocking policies.
-     * @return Expected<DataType> containing the read data if successful, or an error if not.
-     */
     template <typename DataType>
     auto read(ConcretePathStringView const& path, OutOptions const& options = {}) const -> Expected<DataType> {
         sp_log("PathSpace::read", "Function Called");
-        DataType obj;
-        bool const isExtract = false;
-        if (auto ret = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj, isExtract); !ret)
-            return std::unexpected(ret.error());
-        return obj;
+
+        // Skip cache if bypass requested
+        if (options.bypassCache) {
+            return readDirect<DataType>(path, options);
+        }
+
+        // Check cache first
+        if (auto cachedLeaf = cache.lookup(ConcretePathString{path}, root)) {
+            DataType obj;
+            bool const isExtract = false;
+            if (auto ret = cachedLeaf.value()->out(path.begin(), path.end(), InputMetadataT<DataType>{}, &obj, options, isExtract); ret) {
+                return obj;
+            }
+        }
+
+        // Cache miss - do direct read and cache result
+        auto result = readDirect<DataType>(path, options);
+        if (result) {
+            cache.store(path, const_cast<PathSpaceLeaf&>(root));
+        }
+        return result;
     }
 
     template <typename DataType>
@@ -63,23 +70,22 @@ public:
         return const_cast<PathSpace*>(this)->outBlock<DataType>(path, options, isExtract);
     }
 
-    /**
-     * @brief Reads and removes data from the PathSpace at the specified path.
-     *
-     * @tparam DataType The type of data to be extractbed.
-     * @param path The concrete path from which to extract the data.
-     * @return Expected<DataType> containing the extractbed data if successful, or an error if not.
-     */
     template <typename DataType>
     auto extract(ConcretePathStringView const& path, OutOptions const& options = {}) -> Expected<DataType> {
         sp_log("PathSpace::extract", "Function Called");
+
+        // Always invalidate cache for extracts since they modify data
+        cache.invalidate(ConcretePathString{path});
+
         DataType obj;
         bool const isExtract = true;
         auto const ret = this->out(path, InputMetadataT<DataType>{}, options, &obj, isExtract);
-        if (!ret)
+        if (!ret) {
             return std::unexpected(ret.error());
-        if (ret.has_value() && (ret.value() == 0))
+        }
+        if (ret.value() == 0) {
             return std::unexpected(Error{Error::Code::NoObjectFound, std::string("Object not found at: ").append(path.getPath())});
+        }
         return obj;
     }
 
@@ -92,6 +98,19 @@ public:
     }
 
     auto clear() -> void;
+
+    // Cache control methods
+    auto getCacheStats() const -> const CacheStats {
+        return cache.getStats();
+    }
+
+    auto resetCacheStats() -> void {
+        cache.resetStats();
+    }
+
+    auto resizeCache(size_t newSize) -> void {
+        cache.resize(newSize);
+    }
 
 protected:
     friend class TaskPool;
@@ -143,12 +162,23 @@ protected:
     virtual auto
     out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, OutOptions const& options, void* obj, bool const isExtract)
             -> Expected<int>;
+
     auto shutdown() -> void;
+
+    template <typename DataType>
+    auto readDirect(ConcretePathStringView const& path, OutOptions const& options) const -> Expected<DataType> {
+        DataType obj;
+        bool const isExtract = false;
+        if (auto ret = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj, isExtract); !ret) {
+            return std::unexpected(ret.error());
+        }
+        return obj;
+    }
 
     TaskPool* pool = nullptr;
     PathSpaceLeaf root;
     WaitMap waitMap;
-    Cache cache;
+    mutable Cache cache;
 };
 
 } // namespace SP

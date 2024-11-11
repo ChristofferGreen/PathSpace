@@ -13,6 +13,7 @@ auto Cache::lookup(ConcretePathString const& path, PathSpaceLeaf const& root) co
     sp_log("Cache::lookup", "Function Called");
 
     if (!path.isValid()) {
+        incrementMisses();
         return std::unexpected(Error{Error::Code::InvalidPath, "Invalid path in cache lookup"});
     }
 
@@ -21,14 +22,16 @@ auto Cache::lookup(ConcretePathString const& path, PathSpaceLeaf const& root) co
 
     if (found && result) {
         sp_log("Cache::lookup - Cache hit", "DEBUG");
+        incrementHits();
         return result;
     }
 
     sp_log("Cache::lookup - Cache miss", "DEBUG");
+    incrementMisses();
     return std::unexpected(Error{Error::Code::NoSuchPath, "Path not found in cache"});
 }
 
-auto Cache::store(ConcretePathStringView const& path, NodeData const& data, PathSpaceLeaf& root) -> void {
+auto Cache::store(ConcretePathStringView const& path, PathSpaceLeaf& root) -> void {
     sp_log("Cache::store", "Function Called");
 
     if (!path.isValid()) {
@@ -47,7 +50,6 @@ auto Cache::store(ConcretePathStringView const& path, NodeData const& data, Path
         }
     }
 
-    // Get the specific leaf node instead of storing root
     auto leafResult = root.getLeafNode(path.begin(), path.end());
     if (!leafResult.has_value()) {
         sp_log("Cache::store - Failed to get leaf node", "WARNING");
@@ -59,34 +61,67 @@ auto Cache::store(ConcretePathStringView const& path, NodeData const& data, Path
 
 auto Cache::invalidate(ConcretePathString const& path) -> void {
     sp_log("Cache::invalidate", "Function Called");
-    entries.erase(path);
+    if (entries.erase(path) > 0) {
+        incrementInvalidations();
+    }
 }
 
 auto Cache::invalidatePrefix(ConcretePathString const& path) -> void {
     sp_log("Cache::invalidatePrefix", "Function Called");
-
     auto prefix = path.getPath();
-    std::vector<ConcretePathString> to_remove;
+    size_t count = 0;
 
+    std::vector<ConcretePathString> to_remove;
     entries.for_each([&](const auto& pair) {
         if (pair.first.getPath().starts_with(prefix)) {
             to_remove.push_back(pair.first);
+            count++;
         }
     });
 
     for (const auto& key : to_remove) {
         entries.erase(key);
     }
+
+    if (count > 0) {
+        auto current = stats.load(std::memory_order_relaxed);
+        current.invalidations += count;
+        stats.store(current, std::memory_order_relaxed);
+    }
 }
 
 auto Cache::invalidatePattern(GlobPathString const& pattern) -> void {
     sp_log("Cache::invalidatePattern", "Function Called");
-    clear();
+
+    // Count entries that will be invalidated
+    size_t count = 0;
+    entries.for_each([&](const auto&) { count++; });
+
+    if (count > 0) {
+        auto current = stats.load(std::memory_order_relaxed);
+        current.invalidations += count;
+        stats.store(current, std::memory_order_relaxed);
+        entries.clear();
+    }
 }
 
 auto Cache::clear() -> void {
     sp_log("Cache::clear", "Function Called");
     entries.clear();
+}
+
+auto Cache::getStats() const -> CacheStats {
+    return stats.load(std::memory_order_relaxed);
+}
+
+auto Cache::resetStats() -> void {
+    stats.store(CacheStats{}, std::memory_order_relaxed);
+}
+
+auto Cache::resize(size_t newSize) -> void {
+    sp_log("Cache::resize", "Function Called");
+    maxSize = newSize;
+    cleanup(); // Force cleanup to match new size
 }
 
 auto Cache::cleanup() -> void {

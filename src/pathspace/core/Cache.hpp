@@ -1,101 +1,79 @@
 #pragma once
-#include "core/Error.hpp"
-#include "path/ConcretePath.hpp"
+#include "PathSpaceLeaf.hpp"
+#include "path/ConcretePathIterator.hpp"
 #include "path/GlobPath.hpp"
-#include <chrono>
-#include <parallel_hashmap/phmap.h>
+#include "path/GlobPathIterator.hpp"
+#include "type/NodeDataHashMap.hpp"
 
 namespace SP {
 
-class PathSpaceLeaf;
-class NodeData;
+struct Error;
+struct InOptions;
+struct InsertReturn;
+struct InputData;
+struct OutOptions;
+struct ConstructiblePath;
 
-/**
- * @brief L1-style cache for PathSpace operations
- *
- * Provides a fast lookup layer in front of PathSpaceLeaf storage. Returns raw
- * pointers to PathSpaceLeaf nodes owned by the main storage. The cache does not
- * own any PathSpaceLeaf instances - it just provides faster lookups to existing ones.
- */
+struct CacheStats {
+    size_t hits{0};
+    size_t misses{0};
+    size_t invalidations{0};
+};
+
 class Cache {
 public:
-    /**
-     * @brief Constructs a new Cache
-     *
-     * @param maxSize Maximum number of entries to store
-     * @param ttl Time-to-live for cache entries
-     */
     explicit Cache(size_t maxSize = 1000);
 
-    /**
-     * @brief Looks up a PathSpaceLeaf in the cache
-     *
-     * Thread-safe method that returns a pointer to the cached PathSpaceLeaf if found
-     * and not expired. The pointer is owned by the main storage, not the cache.
-     *
-     * @param path The path to look up
-     * @param root The root storage for verification
-     * @return Expected<PathSpaceLeaf*> containing pointer to leaf if found
-     */
     auto lookup(ConcretePathString const& path, PathSpaceLeaf const& root) const -> Expected<PathSpaceLeaf*>;
-
-    /**
-     * @brief Stores data in the cache
-     *
-     * Thread-safe method to cache data at a path. Will store the data's leaf node
-     * from the root storage.
-     *
-     * @param path The path where the data is stored
-     * @param data The data being stored
-     * @param root The root storage containing the data's leaf node
-     */
-    auto store(ConcretePathStringView const& path, NodeData const& data, PathSpaceLeaf& root) -> void;
-
-    /**
-     * @brief Invalidates a single path in the cache
-     */
+    auto store(ConcretePathStringView const& path, PathSpaceLeaf& root) -> void;
     auto invalidate(ConcretePathString const& path) -> void;
-
-    /**
-     * @brief Invalidates all paths with the given prefix
-     */
     auto invalidatePrefix(ConcretePathString const& path) -> void;
-
-    /**
-     * @brief Invalidates all paths matching a pattern
-     *
-     * Currently implements a conservative approach by clearing the entire cache.
-     */
     auto invalidatePattern(GlobPathString const& pattern) -> void;
-
-    /**
-     * @brief Clears all entries from the cache
-     */
     auto clear() -> void;
+
+    // Cache control methods
+    auto resize(size_t newSize) -> void;
+    auto getStats() const -> CacheStats;
+    auto resetStats() -> void;
 
 private:
     struct CacheEntry {
         PathSpaceLeaf* leaf;
     };
 
-    /**
-     * @brief Removes expired entries and enforces size limits
-     */
     auto cleanup() -> void;
-
-    static constexpr size_t CLEANUP_FREQUENCY = 100;
 
     using CacheMap = phmap::parallel_flat_hash_map<ConcretePathString,
                                                    CacheEntry,
                                                    std::hash<ConcretePathString>,
                                                    std::equal_to<ConcretePathString>,
                                                    std::allocator<std::pair<const ConcretePathString, CacheEntry>>,
-                                                   8,
+                                                   8, // Number of submaps for concurrent access
                                                    std::shared_mutex>;
 
+    auto incrementHits() const -> void {
+        auto current = stats.load(std::memory_order_relaxed);
+        current.hits++;
+        stats.store(current, std::memory_order_relaxed);
+    }
+
+    auto incrementMisses() const -> void {
+        auto current = stats.load(std::memory_order_relaxed);
+        current.misses++;
+        stats.store(current, std::memory_order_relaxed);
+    }
+
+    auto incrementInvalidations() const -> void {
+        auto current = stats.load(std::memory_order_relaxed);
+        current.invalidations++;
+        stats.store(current, std::memory_order_relaxed);
+    }
+
     CacheMap entries;
-    const size_t maxSize;
+    size_t maxSize;
     std::atomic<size_t> cleanupCounter{0};
+    mutable std::atomic<CacheStats> stats{};
+    static constexpr size_t CLEANUP_FREQUENCY = 100;
 };
 
 } // namespace SP

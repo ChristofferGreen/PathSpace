@@ -70,7 +70,7 @@ TEST_SUITE("Cache") {
             setupRoot(root, path);
             auto data = createNodeData(756);
 
-            cache.store(path, data, root);
+            cache.store(path, root);
             REQUIRE(verifyCacheEntry(cache, root, path));
 
             cache.invalidate(path);
@@ -81,7 +81,7 @@ TEST_SUITE("Cache") {
             ConcretePathString rootPath("/");
             auto data = createNodeData(1);
 
-            cache.store(rootPath, data, root);
+            cache.store(rootPath, root);
             REQUIRE(verifyCacheEntry(cache, root, rootPath));
         }
     }
@@ -98,7 +98,7 @@ TEST_SUITE("Cache") {
                 ConcretePathString path("/test/path/" + std::to_string(i));
                 setupRoot(root, path);
                 paths.push_back(path);
-                cache.store(path, createNodeData(i), root);
+                cache.store(path, root);
             }
 
             // Only check that we have MAX_CACHE_SIZE entries
@@ -123,7 +123,7 @@ TEST_SUITE("Cache") {
 
             for (const auto& path : paths) {
                 setupRoot(root, path);
-                cache.store(path, createNodeData(1), root);
+                cache.store(path, root);
                 REQUIRE(verifyCacheEntry(cache, root, path));
             }
 
@@ -142,7 +142,7 @@ TEST_SUITE("Cache") {
 
             for (const auto& path : paths) {
                 setupRoot(root, path);
-                cache.store(path, createNodeData(1), root);
+                cache.store(path, root);
             }
 
             cache.clear();
@@ -161,7 +161,7 @@ TEST_SUITE("Cache") {
         SUBCASE("Concurrent Reads") {
             ConcretePathString path("/test/path");
             setupRoot(root, path);
-            cache.store(path, createNodeData(756), root);
+            cache.store(path, root);
 
             std::vector<std::thread> threads;
             std::atomic<int> successCount{0};
@@ -199,7 +199,7 @@ TEST_SUITE("Cache") {
                     switch (i % 3) {
                         case 0: { // Store
                             std::lock_guard<std::mutex> lock(rootMutex);
-                            cache.store(path, createNodeData(i), root);
+                            cache.store(path, root);
                             break;
                         }
                         case 1: // Lookup
@@ -236,7 +236,7 @@ TEST_SUITE("Cache") {
                 ConcretePathString path("/test/path/" + std::to_string(i));
                 setupRoot(root, path);
                 paths.push_back(path);
-                cache.store(path, createNodeData(i), root);
+                cache.store(path, root);
             }
 
             // Measure lookup performance
@@ -258,7 +258,7 @@ TEST_SUITE("Cache") {
             for (int i = 0; i < 1000; ++i) {
                 ConcretePathString path("/test/path/" + std::to_string(i));
                 setupRoot(root, path);
-                cache.store(path, createNodeData(i), root);
+                cache.store(path, root);
             }
 
             // Measure cleanup performance during new insertions
@@ -267,7 +267,7 @@ TEST_SUITE("Cache") {
             for (int i = 0; i < 100; ++i) {
                 ConcretePathString path("/new/path/" + std::to_string(i));
                 setupRoot(root, path);
-                cache.store(path, createNodeData(i), root);
+                cache.store(path, root);
             }
 
             auto end = std::chrono::high_resolution_clock::now();
@@ -292,7 +292,7 @@ TEST_SUITE("Cache") {
             setupRoot(root, path);
             auto data = createNodeData(1);
 
-            cache.store(path, data, root);
+            cache.store(path, root);
             REQUIRE(verifyCacheEntry(cache, root, path));
         }
 
@@ -302,7 +302,7 @@ TEST_SUITE("Cache") {
 
             // Perform repeated store/invalidate cycles
             for (int i = 0; i < 100; ++i) {
-                cache.store(path, createNodeData(i), root);
+                cache.store(path, root);
                 REQUIRE(verifyCacheEntry(cache, root, path));
                 cache.invalidate(path);
                 REQUIRE_FALSE(verifyCacheEntry(cache, root, path));
