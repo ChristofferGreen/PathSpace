@@ -4,12 +4,12 @@
 
 include(FetchContent)
 
-FetchContent_Declare(
-  nlohmann
-  GIT_REPOSITORY https://github.com/nlohmann/json.git
-  GIT_TAG v3.11.3
-)
-FetchContent_MakeAvailable(nlohmann)
+#FetchContent_Declare(
+#  nlohmann
+#  GIT_REPOSITORY https://github.com/nlohmann/json.git
+#  GIT_TAG v3.11.3
+#)
+#FetchContent_MakeAvailable(nlohmann)
 
 FetchContent_Declare(
   ParallelHashmap
@@ -18,13 +18,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(ParallelHashmap)
 
-FetchContent_Declare(
-  glaze
-  GIT_REPOSITORY https://github.com/stephenberry/glaze.git
-  GIT_TAG main
-  GIT_SHALLOW TRUE
-)
-FetchContent_MakeAvailable(glaze)
+#FetchContent_Declare(
+#  glaze
+#  GIT_REPOSITORY https://github.com/stephenberry/glaze.git
+#  GIT_TAG main
+#  GIT_SHALLOW TRUE
+#)
+#FetchContent_MakeAvailable(glaze)
 
 FetchContent_Declare(
     alpaca
@@ -33,12 +33,12 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(alpaca)
 
-FetchContent_Declare(
-  foonathan_memory
-    GIT_TAG 016c9fb
-    GIT_REPOSITORY https://github.com/foonathan/memory
-)
-FetchContent_MakeAvailable(foonathan_memory)
+#FetchContent_Declare(
+#  foonathan_memory
+#    GIT_TAG 016c9fb
+#    GIT_REPOSITORY https://github.com/foonathan/memory
+#)
+#FetchContent_MakeAvailable(foonathan_memory)
 
 # Indicate that we only want to compile source files into a library
 add_library(PathSpace
@@ -75,8 +75,8 @@ PUBLIC
 
 target_link_libraries(PathSpace
 PRIVATE
-    glaze::glaze
-    foonathan_memory
+    #glaze::glaze
+    #foonathan_memory
 )
 
 set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "PathSpace.hpp")
