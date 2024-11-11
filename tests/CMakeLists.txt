@@ -16,7 +16,7 @@ add_executable(PathSpaceTests
   unit/taskpool/test_TaskPool.cpp
   #unit/ext/test_glaze.cpp
   unit/test_PathSpace_read.cpp
-  unit/test_PathSpace_cache.cpp
+  unit/core/test_Cache.cpp
   unit/test_PathSpace_extract.cpp
   unit/test_PathSpace_insert.cpp
   unit/test_PathSpace_multithreading.cpp

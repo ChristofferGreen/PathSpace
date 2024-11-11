@@ -186,7 +186,7 @@ TEST_CASE("PathSpace Read Std Datastructure") {
     }
 
     SUBCASE("PathSpace Read std::pair") {
-        std::pair<int, std::string> pair = {42, "answer"};
+        std::pair<int, std::string> pair = {756, "answer"};
         pspace.insert("/pair", pair);
         auto const val = pspace.read<std::pair<int, std::string>>("/pair");
         CHECK(val.has_value());
@@ -202,7 +202,7 @@ TEST_CASE("PathSpace Read Std Datastructure") {
     }
 
     SUBCASE("PathSpace Read std::optional") {
-        std::optional<int> opt = 42;
+        std::optional<int> opt = 756;
         pspace.insert("/optional", opt);
         auto const val = pspace.read<std::optional<int>>("/optional");
         CHECK(val.has_value());

@@ -1,6 +1,7 @@
-#include "ext/doctest.h"
-#include <chrono>
 #include <pathspace/PathSpace.hpp>
+
+#include "ext/doctest.h"
+
 #include <thread>
 
 using namespace SP;
@@ -38,21 +39,21 @@ TEST_CASE("PathSpace Execution") {
         SUBCASE("Immediate Execution") {
             pspace.insert(
                     "/test",
-                    []() -> int { return 42; },
+                    []() -> int { return 756; },
                     InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Immediate}});
             auto result = pspace.readBlock<int>("/test");
             CHECK(result.has_value());
-            CHECK(result.value() == 42);
+            CHECK(result.value() == 756);
         }
 
         SUBCASE("Lazy Execution") {
             pspace.insert(
                     "/test",
-                    []() -> int { return 42; },
+                    []() -> int { return 756; },
                     InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
             auto result = pspace.readBlock<int>("/test");
             CHECK(result.has_value());
-            CHECK(result.value() == 42);
+            CHECK(result.value() == 756);
         }
     }
 
@@ -60,21 +61,21 @@ TEST_CASE("PathSpace Execution") {
         SUBCASE("Any Location") {
             pspace.insert(
                     "/test",
-                    []() -> int { return 42; },
+                    []() -> int { return 756; },
                     InOptions{.execution = ExecutionOptions{.location = ExecutionOptions::Location::Any}});
             auto result = pspace.readBlock<int>("/test");
             CHECK(result.has_value());
-            CHECK(result.value() == 42);
+            CHECK(result.value() == 756);
         }
 
         SUBCASE("Main Thread") {
             pspace.insert(
                     "/test",
-                    []() -> int { return 42; },
+                    []() -> int { return 756; },
                     InOptions{.execution = ExecutionOptions{.location = ExecutionOptions::Location::MainThread}});
             auto result = pspace.readBlock<int>("/test");
             CHECK(result.has_value());
-            CHECK(result.value() == 42);
+            CHECK(result.value() == 756);
         }
     }
 
@@ -82,31 +83,31 @@ TEST_CASE("PathSpace Execution") {
         SUBCASE("Low Priority") {
             pspace.insert(
                     "/test",
-                    []() -> int { return 42; },
+                    []() -> int { return 756; },
                     InOptions{.execution = ExecutionOptions{.priority = ExecutionOptions::Priority::Low}});
             auto result = pspace.readBlock<int>("/test");
             CHECK(result.has_value());
-            CHECK(result.value() == 42);
+            CHECK(result.value() == 756);
         }
 
         SUBCASE("Middle Priority") {
             pspace.insert(
                     "/test",
-                    []() -> int { return 42; },
+                    []() -> int { return 756; },
                     InOptions{.execution = ExecutionOptions{.priority = ExecutionOptions::Priority::Middle}});
             auto result = pspace.readBlock<int>("/test");
             CHECK(result.has_value());
-            CHECK(result.value() == 42);
+            CHECK(result.value() == 756);
         }
 
         SUBCASE("High Priority") {
             pspace.insert(
                     "/test",
-                    []() -> int { return 42; },
+                    []() -> int { return 756; },
                     InOptions{.execution = ExecutionOptions{.priority = ExecutionOptions::Priority::High}});
             auto result = pspace.readBlock<int>("/test");
             CHECK(result.has_value());
-            CHECK(result.value() == 42);
+            CHECK(result.value() == 756);
         }
     }
 
@@ -146,7 +147,7 @@ TEST_CASE("PathSpace Execution") {
                     "/test",
                     []() -> int {
                         std::this_thread::sleep_for(50ms);
-                        return 42;
+                        return 756;
                     },
                     InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
 
@@ -154,7 +155,7 @@ TEST_CASE("PathSpace Execution") {
                     = pspace.readBlock<int>("/test",
                                             OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = 200ms}});
             CHECK(result.has_value());
-            CHECK(result.value() == 42);
+            CHECK(result.value() == 756);
         }
 
         SUBCASE("Timeout Before Completion") {
@@ -162,7 +163,7 @@ TEST_CASE("PathSpace Execution") {
                     "/test",
                     []() -> int {
                         std::this_thread::sleep_for(200ms);
-                        return 42;
+                        return 756;
                     },
                     InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
 
@@ -223,15 +224,15 @@ TEST_CASE("PathSpace Execution") {
 
     SUBCASE("Multiple Operations") {
         SUBCASE("Read Then Extract") {
-            pspace.insert("/test", []() -> int { return 42; });
+            pspace.insert("/test", []() -> int { return 756; });
 
             auto read_result = pspace.readBlock<int>("/test");
             CHECK(read_result.has_value());
-            CHECK(read_result.value() == 42);
+            CHECK(read_result.value() == 756);
 
             auto extract_result = pspace.extractBlock<int>("/test");
             CHECK(extract_result.has_value());
-            CHECK(extract_result.value() == 42);
+            CHECK(extract_result.value() == 756);
 
             auto final_read = pspace.read<int>("/test");
             CHECK(!final_read.has_value());
@@ -270,7 +271,7 @@ TEST_CASE("PathSpace Execution") {
                     "/test",
                     []() -> int {
                         std::this_thread::sleep_for(100ms);
-                        return 42;
+                        return 756;
                     },
                     InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
 
@@ -281,19 +282,19 @@ TEST_CASE("PathSpace Execution") {
         SUBCASE("Wait For Execution") {
             pspace.insert(
                     "/test",
-                    []() -> int { return 42; },
+                    []() -> int { return 756; },
                     InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
 
             auto result = pspace.readBlock<int>("/test",
                                                 OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::WaitForExecution}});
             CHECK(result.has_value());
-            CHECK(result.value() == 42);
+            CHECK(result.value() == 756);
         }
 
         SUBCASE("Wait For Existence") {
             std::thread inserter([&pspace]() {
                 std::this_thread::sleep_for(50ms);
-                pspace.insert("/test", 42);
+                pspace.insert("/test", 756);
             });
 
             auto result = pspace.readBlock<int>("/test",
@@ -301,7 +302,7 @@ TEST_CASE("PathSpace Execution") {
 
             inserter.join();
             CHECK(result.has_value());
-            CHECK(result.value() == 42);
+            CHECK(result.value() == 756);
         }
     }
 }

@@ -128,7 +128,7 @@ TEST_CASE("PathSpace Extract Extended Tests") {
                 return x == other.x && y == other.y;
             }
         };
-        CustomStruct cs{42, "test"};
+        CustomStruct cs{756, "test"};
         pspace.insert("/custom", cs);
         auto ret = pspace.extract<CustomStruct>("/custom");
         REQUIRE(ret.has_value());
@@ -141,7 +141,7 @@ TEST_CASE("PathSpace Extract Extended Tests") {
     }
 
     SUBCASE("Extract with type mismatch") {
-        pspace.insert("/int", 42);
+        pspace.insert("/int", 756);
         auto ret = pspace.extract<std::string>("/int");
         CHECK_FALSE(ret.has_value());
     }
@@ -167,21 +167,21 @@ TEST_CASE("PathSpace Extract Extended Tests") {
     }
 
     SUBCASE("Extract with deep path") {
-        pspace.insert("/deep/nested/path", 42);
+        pspace.insert("/deep/nested/path", 756);
         auto ret = pspace.extract<int>("/deep/nested/path");
         REQUIRE(ret.has_value());
-        CHECK(ret.value() == 42);
+        CHECK(ret.value() == 756);
     }
 
     SUBCASE("Extract with blocking") {
         std::thread t([&]() {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            pspace.insert("/delayed", 42);
+            pspace.insert("/delayed", 756);
         });
 
         auto ret = pspace.extractBlock<int>("/delayed");
         REQUIRE(ret.has_value());
-        CHECK(ret.value() == 42);
+        CHECK(ret.value() == 756);
 
         t.join();
     }
@@ -194,7 +194,7 @@ TEST_CASE("PathSpace Extract Extended Tests") {
     }
 
     SUBCASE("Extract after clear") {
-        pspace.insert("/clear_test", 42);
+        pspace.insert("/clear_test", 756);
         pspace.clear();
         auto ret = pspace.extract<int>("/clear_test");
         CHECK_FALSE(ret.has_value());
@@ -222,18 +222,18 @@ TEST_CASE("PathSpace Extract Extended Tests") {
     SUBCASE("PathSpace Extract Behavior") {
         SUBCASE("Debug Single Value Lifecycle") {
             PathSpace pspace;
-            REQUIRE(pspace.insert("/test", 42).errors.empty());
+            REQUIRE(pspace.insert("/test", 756).errors.empty());
 
             // Verify read doesn't remove value
             auto readVal = pspace.readBlock<int>("/test");
             REQUIRE(readVal.has_value());
-            CHECK(readVal.value() == 42);
+            CHECK(readVal.value() == 756);
             MESSAGE("After initial read: value=" << readVal.value());
 
             // Extract should remove value
             auto extractVal = pspace.extractBlock<int>("/test");
             REQUIRE(extractVal.has_value());
-            CHECK(extractVal.value() == 42);
+            CHECK(extractVal.value() == 756);
             MESSAGE("After extract: value=" << extractVal.value());
 
             // Verify value is gone using non-blocking read
@@ -375,7 +375,7 @@ TEST_CASE("PathSpace Extract Std Datastructure") {
     }
 
     SUBCASE("PathSpace Extract std::pair") {
-        std::pair<int, std::string> pair = {42, "answer"};
+        std::pair<int, std::string> pair = {756, "answer"};
         pspace.insert("/pair", pair);
         auto val = pspace.extract<std::pair<int, std::string>>("/pair");
         CHECK(val.has_value());
@@ -395,7 +395,7 @@ TEST_CASE("PathSpace Extract Std Datastructure") {
     }
 
     SUBCASE("PathSpace Extract std::optional") {
-        std::optional<int> opt = 42;
+        std::optional<int> opt = 756;
         pspace.insert("/optional", opt);
         auto val = pspace.extract<std::optional<int>>("/optional");
         CHECK(val.has_value());

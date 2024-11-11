@@ -46,11 +46,11 @@ TEST_CASE("PathSpace Insert Function and Execution") {
     PathSpace pspace;
 
     SUBCASE("Simple Function Pointer Insertion and Execution") {
-        int (*simpleFunc)() = []() -> int { return 42; };
+        int (*simpleFunc)() = []() -> int { return 756; };
         CHECK(pspace.insert("/simple", simpleFunc).errors.size() == 0);
         auto result = pspace.readBlock<int>("/simple");
         CHECK(result.has_value());
-        CHECK(result.value() == 42);
+        CHECK(result.value() == 756);
     }
 
     SUBCASE("std::function Insertion and Execution") {

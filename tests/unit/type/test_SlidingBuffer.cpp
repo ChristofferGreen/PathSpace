@@ -175,7 +175,7 @@ TEST_CASE("SlidingBuffer") {
         SP::SlidingBuffer buffer;
 
         SUBCASE("Simple struct") {
-            TestStruct original{42, 3.14f};
+            TestStruct original{756, 3.14f};
             auto val = SP::serialize<TestStruct>(original, buffer);
             CHECK(!val.has_value());
 
@@ -210,7 +210,7 @@ TEST_CASE("SlidingBuffer") {
         }
 
         SUBCASE("corrupted header") {
-            TestStruct original{42, 3.14f};
+            TestStruct original{756, 3.14f};
             CHECK(!SP::serialize<TestStruct>(original, buffer));
 
             buffer.at(0) = 0xFF; // Using at() instead of operator[]
@@ -220,7 +220,7 @@ TEST_CASE("SlidingBuffer") {
         }
 
         SUBCASE("truncated data") {
-            TestStruct original{42, 3.14f};
+            TestStruct original{756, 3.14f};
             CHECK(!SP::serialize<TestStruct>(original, buffer));
 
             buffer.resize(buffer.size() - 1);

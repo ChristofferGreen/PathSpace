@@ -1231,7 +1231,7 @@ TEST_CASE("PathSpace Multithreading") {
         std::atomic<bool> has_error{false};
 
         // Insert initial value
-        REQUIRE(space.insert("/shared/task", 42).nbrValuesInserted == 1);
+        REQUIRE(space.insert("/shared/task", 756).nbrValuesInserted == 1);
 
         auto reader_func = [&](int reader_id) {
             try {
@@ -1240,7 +1240,7 @@ TEST_CASE("PathSpace Multithreading") {
                                                        OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait,
                                                                                         .timeout = std::chrono::seconds(10)}});
 
-                    if (result && result.value() == 42) {
+                    if (result && result.value() == 756) {
                         counter.increment();
                         MESSAGE("Reader " << reader_id << " succeeded attempt " << j);
                     } else {
@@ -1289,7 +1289,7 @@ TEST_CASE("PathSpace Multithreading") {
         std::atomic<bool> has_error{false};
 
         // Insert initial value
-        REQUIRE(space.insert("/shared/task", 42).nbrValuesInserted == 1);
+        REQUIRE(space.insert("/shared/task", 756).nbrValuesInserted == 1);
 
         auto reader_func = [&](int reader_id) {
             try {
@@ -1298,7 +1298,7 @@ TEST_CASE("PathSpace Multithreading") {
                                                        OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait,
                                                                                         .timeout = std::chrono::seconds(10)}});
 
-                    if (result && result.value() == 42) {
+                    if (result && result.value() == 756) {
                         counter.increment();
                         MESSAGE("Reader " << reader_id << " succeeded attempt " << j);
                     } else {
@@ -1365,7 +1365,7 @@ TEST_CASE("PathSpace Multithreading") {
                 "/fast_task",
                 []() {
                     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-                    return 42;
+                    return 756;
                 },
                 InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
         REQUIRE_MESSAGE(fast_insert.errors.empty(), "Failed to insert fast task");
@@ -1378,7 +1378,7 @@ TEST_CASE("PathSpace Multithreading") {
         CHECK_MESSAGE(fast_result.has_value(), "Fast task should complete but got timeout");
 
         if (fast_result.has_value()) {
-            CHECK_MESSAGE(fast_result.value() == 42, "Fast task returned wrong value: ", fast_result.value());
+            CHECK_MESSAGE(fast_result.value() == 756, "Fast task returned wrong value: ", fast_result.value());
         }
 
         // Now try reading from a non-existent path - should timeout
@@ -1451,7 +1451,7 @@ TEST_CASE("PathSpace Multithreading") {
         PathSpace space;
 
         // Store a normal value first
-        REQUIRE(space.insert("/error/test", 42).errors.empty());
+        REQUIRE(space.insert("/error/test", 756).errors.empty());
 
         // Store an error-generating task
         auto error_task = []() -> int { throw std::runtime_error("Expected test error"); };
@@ -1464,7 +1464,7 @@ TEST_CASE("PathSpace Multithreading") {
         // First verify the good path works
         auto good_result = space.read<int>("/error/test");
         CHECK_MESSAGE(good_result.has_value(), "Good path should return value");
-        CHECK_MESSAGE(good_result.value() == 42, "Good path should return correct value");
+        CHECK_MESSAGE(good_result.value() == 756, "Good path should return correct value");
 
         // Then verify error handling
         auto error_result = space.readBlock<int>(
@@ -1797,7 +1797,7 @@ TEST_CASE("PathSpace Multithreading") {
                 auto workerFunction = [&]() {
                     for (int i = 0; i < OPERATIONS_PER_THREAD && !shouldStop.load(std::memory_order_relaxed); ++i) {
                         std::string path = std::format("/perf/{}", i % NUM_PATHS);
-                        auto task = []() -> int { return 42; };
+                        auto task = []() -> int { return 756; };
                         pspace.insert(path, task);
                         auto result
                                 = pspace.readBlock<int>(path, OutOptions{.block = BlockOptions{.timeout = std::chrono::milliseconds(10)}});
