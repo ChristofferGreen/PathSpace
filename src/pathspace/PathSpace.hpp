@@ -98,19 +98,8 @@ public:
     }
 
     auto clear() -> void;
-
-    // Cache control methods
-    auto getCacheStats() const -> const CacheStats {
-        return cache.getStats();
-    }
-
-    auto resetCacheStats() -> void {
-        cache.resetStats();
-    }
-
-    auto resizeCache(size_t newSize) -> void {
-        cache.resize(newSize);
-    }
+    auto getCacheStats() const -> const CacheStats;
+    auto resetCacheStats() -> void;
 
 protected:
     friend class TaskPool;

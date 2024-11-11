@@ -45,6 +45,14 @@ auto PathSpace::in(GlobPathStringView const& path, InputData const& data, InOpti
     return ret;
 }
 
+auto PathSpace::getCacheStats() const -> const CacheStats {
+    return cache.getStats();
+}
+
+auto PathSpace::resetCacheStats() -> void {
+    cache.resetStats();
+}
+
 auto PathSpace::out(ConcretePathStringView const& path,
                     InputMetadata const& inputMetadata,
                     OutOptions const& options,
