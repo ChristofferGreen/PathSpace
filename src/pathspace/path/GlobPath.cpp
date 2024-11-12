@@ -12,16 +12,13 @@ auto GlobPath<T>::end() const -> GlobPathIterator<T> {
 }
 
 template <typename T>
-GlobPath<T>::GlobPath(std::string_view const& sv) : Path<T>(std::is_same_v<T, std::string> ? T(std::string(sv)) : T(sv)) {
-}
+GlobPath<T>::GlobPath(std::string_view const& sv) : Path<T>(std::is_same_v<T, std::string> ? T(std::string(sv)) : T(sv)) {}
 
 template <typename T>
-GlobPath<T>::GlobPath(std::string const& s) : Path<T>(s) {
-}
+GlobPath<T>::GlobPath(std::string const& s) : Path<T>(s) {}
 
 template <typename T>
-GlobPath<T>::GlobPath(char const* path) : Path<T>(path) {
-}
+GlobPath<T>::GlobPath(char const* path) : Path<T>(path) {}
 
 template <typename T>
 auto GlobPath<T>::operator<=>(GlobPath<T> const& other) const -> std::strong_ordering {

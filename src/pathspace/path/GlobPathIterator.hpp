@@ -9,11 +9,11 @@ namespace SP {
 template <typename T>
 struct GlobPathIterator {
     using iterator_category = std::forward_iterator_tag;
-    using value_type = GlobName;
-    using difference_type = std::ptrdiff_t;
-    using pointer = const GlobName*;
-    using reference = const GlobName&;
-    using SIterator = T::const_iterator;
+    using value_type        = GlobName;
+    using difference_type   = std::ptrdiff_t;
+    using pointer           = const GlobName*;
+    using reference         = const GlobName&;
+    using SIterator         = T::const_iterator;
 
     GlobPathIterator(SIterator const& iter, SIterator const& endIter);
 
@@ -26,13 +26,13 @@ struct GlobPathIterator {
     auto fullPath() const -> std::string_view;
 
 private:
-    auto skipSlashes(SIterator& iter) const -> void;
-    auto skipNonSlashes(SIterator& iter) const -> void;
+    auto      skipSlashes(SIterator& iter) const -> void;
+    auto      skipNonSlashes(SIterator& iter) const -> void;
     SIterator begin;
     SIterator current;
     SIterator end;
 };
-using GlobPathIteratorString = GlobPathIterator<std::string>;
+using GlobPathIteratorString     = GlobPathIterator<std::string>;
 using GlobPathIteratorStringView = GlobPathIterator<std::string_view>;
 
 } // namespace SP

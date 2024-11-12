@@ -2,9 +2,7 @@
 
 namespace SP {
 template <typename T>
-GlobPathIterator<T>::GlobPathIterator(T::const_iterator const& iter, T::const_iterator const& endIter)
-    : begin(iter), current(iter), end(endIter) {
-}
+GlobPathIterator<T>::GlobPathIterator(T::const_iterator const& iter, T::const_iterator const& endIter) : begin(iter), current(iter), end(endIter) {}
 
 template <typename T>
 auto GlobPathIterator<T>::operator++() -> GlobPathIterator<T>& {
@@ -28,7 +26,7 @@ auto GlobPathIterator<T>::operator==(const GlobPathIterator<T>& other) const -> 
 
 template <typename T>
 auto GlobPathIterator<T>::operator*() const -> GlobName {
-    auto startSub = this->current;
+    auto startSub   = this->current;
     auto currentSub = this->current;
 
     this->skipSlashes(startSub);   // Will only happen at beginning

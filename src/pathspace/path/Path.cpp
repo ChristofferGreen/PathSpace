@@ -5,8 +5,7 @@
 
 namespace SP {
 template <typename T>
-Path<T>::Path(T const& path) : path(path) {
-}
+Path<T>::Path(T const& path) : path(path) {}
 
 template <typename T>
 auto Path<T>::isValid() const -> bool {

@@ -26,11 +26,6 @@ struct GlobName {
     auto isGlob() const -> bool;
     auto getName() const -> std::string_view const&;
 
-    template <class Archive>
-    void serialize(Archive& ar) {
-        ar(std::string{this->name});
-    }
-
 private:
     std::string_view name;
 };

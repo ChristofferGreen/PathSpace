@@ -24,33 +24,31 @@ public:
     ~ConstructiblePath()                                       = default;
 
     auto operator<=>(const ConstructiblePath&) const = default;
-    bool operator==(std::string_view other) const;
-    bool operator==(const ConstructiblePath& other) const;
+    auto operator==(std::string_view other) const -> bool;
+    auto operator==(const ConstructiblePath& other) const -> bool;
     template <typename T>
-    bool operator==(const Path<T>& other) const {
+    auto operator==(const Path<T>& other) const -> bool {
         return path == other.getPath();
     }
     explicit operator std::string_view() const noexcept;
 
-    ConstructiblePath& append(std::string_view str);
-
-    std::string_view getPath() const noexcept;
-    bool             isCompleted() const noexcept;
-    void             markComplete() noexcept;
-    void             reset();
+    auto append(std::string_view str) -> ConstructiblePath&;
+    auto getPath() const noexcept -> std::string_view;
+    auto isCompleted() const noexcept -> bool;
+    auto markComplete() noexcept -> void;
+    auto reset() -> void;
 
 private:
     std::string path;
     bool        isComplete = false;
 };
 
-// Non-member comparison functions
-inline bool operator==(std::string_view lhs, const ConstructiblePath& rhs) {
+inline auto operator==(std::string_view lhs, const ConstructiblePath& rhs) -> bool {
     return lhs == rhs.getPath();
 }
 
 template <typename T>
-inline bool operator==(const Path<T>& lhs, const ConstructiblePath& rhs) {
+inline auto operator==(const Path<T>& lhs, const ConstructiblePath& rhs) -> bool {
     return lhs.getPath() == rhs.getPath();
 }
 
