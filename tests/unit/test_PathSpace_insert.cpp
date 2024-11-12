@@ -143,7 +143,7 @@ TEST_CASE("PathSpace Insert Function and Execution") {
                 CHECK(pspace.insert(std::format("/concurrent{}", i),
                                     incrementFunc,
                                     InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}})
-                              .nbrTasksCreated
+                              .nbrTasksInserted
                       == 1);
 
             // Reading triggers execution in sequence
@@ -162,7 +162,7 @@ TEST_CASE("PathSpace Insert Function and Execution") {
                 CHECK(pspace.insert(std::format("/concurrent{}", i),
                                     incrementFunc,
                                     InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Immediate}})
-                              .nbrTasksCreated
+                              .nbrTasksInserted
                       == 1);
 
             // Read the results - they'll be in non-deterministic order

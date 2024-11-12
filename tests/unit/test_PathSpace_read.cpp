@@ -55,8 +55,8 @@ TEST_CASE("PathSpace Read") {
         using TestFuncPtr = int (*)();
         TestFuncPtr f = []() -> int { return 58; };
         TestFuncPtr f2 = []() -> int { return 25; };
-        CHECK(pspace.insert("/f", f).nbrTasksCreated == 1);
-        CHECK(pspace.insert("/f2", f2).nbrTasksCreated == 1);
+        CHECK(pspace.insert("/f", f).nbrTasksInserted == 1);
+        CHECK(pspace.insert("/f2", f2).nbrTasksInserted == 1);
         CHECK(pspace.readBlock<int>("/f").value() == 58);
         CHECK(pspace.readBlock<int>("/f").value() == 58);
         CHECK(pspace.readBlock<int>("/f2").value() == 25);
@@ -64,7 +64,8 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("Simple PathSpace Execution Lazy") {
         std::function<int()> f = []() -> int { return 58; };
-        CHECK(pspace.insert("/f", f, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}}).nbrTasksCreated
+        CHECK(pspace.insert("/f", f, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}})
+                      .nbrTasksInserted
               == 1);
         CHECK(pspace.readBlock<int>("/f").value() == 58);
     }

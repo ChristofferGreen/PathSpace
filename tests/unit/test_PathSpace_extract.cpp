@@ -87,7 +87,8 @@ TEST_CASE("PathSpace Extract") {
 
     SUBCASE("Simple PathSpace Execution Lazy") {
         std::function<int()> f = []() -> int { return 58; };
-        CHECK(pspace.insert("/f", f, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}}).nbrTasksCreated
+        CHECK(pspace.insert("/f", f, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}})
+                      .nbrTasksInserted
               == 1);
         CHECK(pspace.extractBlock<int>("/f").value() == 58);
         CHECK(!pspace.extract<int>("/f").has_value());

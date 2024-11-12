@@ -1,6 +1,7 @@
 #pragma once
 #include "path/ConcretePath.hpp"
 #include "path/GlobPath.hpp"
+
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
@@ -10,9 +11,7 @@ namespace SP {
 
 struct WaitMap {
     struct Guard {
-        Guard(WaitMap& waitMap, ConcretePathString const& path, std::unique_lock<std::mutex> lock)
-            : waitMap(waitMap), path(path), lock(std::move(lock)) {
-        }
+        Guard(WaitMap& waitMap, ConcretePathString const& path, std::unique_lock<std::mutex> lock);
 
         template <typename Pred>
         bool wait_until(std::chrono::time_point<std::chrono::system_clock> timeout, Pred pred) {
@@ -20,55 +19,24 @@ struct WaitMap {
         }
 
     private:
-        WaitMap& waitMap;
-        ConcretePathString path;
+        WaitMap&                     waitMap;
+        ConcretePathString           path;
         std::unique_lock<std::mutex> lock;
     };
 
-    auto wait(ConcretePathStringView const& path) -> Guard {
-        return Guard(*this, ConcretePathString{path.getPath()}, std::unique_lock<std::mutex>(mutex));
-    }
-
-    auto notify(ConcretePathStringView const& path) -> void {
-        this->notify(ConcretePathString{path.getPath()});
-    }
-
-    auto notify(ConcretePathString const& path) -> void {
-        std::lock_guard<std::mutex> lock(mutex);
-        auto it = cvMap.find(path);
-        if (it != cvMap.end()) {
-            it->second.notify_all();
-        }
-    }
-
-    auto notify(GlobPathStringView const& path) -> void {
-        this->notify(ConcretePathString{path.getPath()});
-    }
-
-    auto notify(GlobPathString const& path) -> void { // ToDo: Fix glob path situation
-        this->notify(ConcretePathString{path.getPath()});
-    }
-
-    auto notifyAll() -> void {
-        std::lock_guard<std::mutex> lock(mutex);
-        for (auto& [_, cv] : cvMap) {
-            cv.notify_all();
-        }
-    }
-
-    auto clear() -> void {
-        std::lock_guard<std::mutex> lock(mutex);
-        cvMap.clear();
-    }
+    auto wait(ConcretePathStringView const& path) -> Guard;
+    auto notify(ConcretePathStringView const& path) -> void;
+    auto notify(ConcretePathString const& path) -> void;
+    auto notify(GlobPathStringView const& path) -> void;
+    auto notify(GlobPathString const& path) -> void;
+    auto notifyAll() -> void;
+    auto clear() -> void;
 
 private:
     friend struct Guard;
+    auto getCv(ConcretePathString const& path) -> std::condition_variable&;
 
-    auto getCv(ConcretePathString const& path) -> std::condition_variable& {
-        return cvMap[path];
-    }
-
-    mutable std::mutex mutex;
+    mutable std::mutex                                              mutex;
     std::unordered_map<ConcretePathString, std::condition_variable> cvMap;
 };
 

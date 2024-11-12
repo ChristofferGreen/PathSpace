@@ -1,8 +1,11 @@
 #pragma once
 #include "PathSpaceLeaf.hpp"
+#include "core/InsertReturn.hpp"
 #include "core/OutOptions.hpp"
 #include "core/WaitMap.hpp"
 #include "path/GlobPath.hpp"
+#include "task/Task.hpp"
+#include "type/InputData.hpp"
 #include "utils/TaggedLogger.hpp"
 
 namespace SP {

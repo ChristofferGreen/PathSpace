@@ -8,8 +8,7 @@ namespace SP {
 
 struct OutOptions {
     std::optional<ExecutionOptions> execution;
-    std::optional<BlockOptions> block;
-    std::optional<int> maxReadsForBlob;
+    std::optional<BlockOptions>     block;
 };
 
 } // namespace SP

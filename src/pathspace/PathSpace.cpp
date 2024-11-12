@@ -1,5 +1,5 @@
 #include "PathSpace.hpp"
-#include "TaskPool/TaskPool.hpp"
+#include "task/TaskPool.hpp"
 
 namespace SP {
 
@@ -36,7 +36,7 @@ auto PathSpace::in(GlobPathStringView const& path, InputData const& data, InOpti
 
     this->root.in(path.begin(), path.end(), data, options, ret);
 
-    if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0 || ret.nbrTasksCreated) {
+    if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0 || ret.nbrTasksInserted) {
         waitMap.notify(path); // ToDo:: Fix glob path situation
     }
     return ret;

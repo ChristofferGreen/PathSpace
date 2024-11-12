@@ -1,5 +1,7 @@
 #include "NodeData.hpp"
-#include "taskpool/TaskPool.hpp"
+#include "core/InsertReturn.hpp"
+#include "core/OutOptions.hpp"
+#include "task/TaskPool.hpp"
 
 namespace SP {
 
@@ -13,15 +15,13 @@ auto NodeData::serialize(const InputData& inputData, const InOptions& options, I
     if (inputData.task) {
         this->tasks.push_back(std::move(inputData.task));
         std::optional<ExecutionOptions::Category> const optionsExecutionCategory
-                = options.execution.has_value() ? std::optional<ExecutionOptions::Category>(options.execution.value().category)
-                                                : std::nullopt;
-        bool const isImmediateExecution
-                = optionsExecutionCategory.value_or(ExecutionOptions{}.category) == ExecutionOptions::Category::Immediate;
+                = options.execution.has_value() ? std::optional<ExecutionOptions::Category>(options.execution.value().category) : std::nullopt;
+        bool const isImmediateExecution = optionsExecutionCategory.value_or(ExecutionOptions{}.category) == ExecutionOptions::Category::Immediate;
         if (isImmediateExecution) {
             if (auto const ret = TaskPool::Instance().addTask(this->tasks.back()); ret)
                 return ret;
         }
-        ret.nbrTasksCreated++;
+        ret.nbrTasksInserted++;
     } else {
         if (!inputData.metadata.serialize)
             return Error{Error::Code::SerializationFunctionMissing, "Serialization function is missing."};
@@ -42,8 +42,7 @@ auto NodeData::deserializePop(void* obj, const InputMetadata& inputMetadata) -> 
     return this->deserializeImpl(obj, inputMetadata, std::nullopt, true);
 }
 
-auto NodeData::deserializeImpl(void* obj, const InputMetadata& inputMetadata, std::optional<OutOptions> const& options, bool isExtract)
-        -> Expected<int> {
+auto NodeData::deserializeImpl(void* obj, const InputMetadata& inputMetadata, std::optional<OutOptions> const& options, bool isExtract) -> Expected<int> {
     sp_log("NodeData::deserializeImpl", "Function Called");
 
     if (auto validationResult = validateInputs(inputMetadata); !validationResult)
@@ -69,8 +68,7 @@ auto NodeData::validateInputs(const InputMetadata& inputMetadata) -> Expected<vo
     return {};
 }
 
-auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadata, const OutOptions& options, bool isExtract)
-        -> Expected<int> {
+auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadata, const OutOptions& options, bool isExtract) -> Expected<int> {
     sp_log("NodeData::deserializeExecution", "Function Called");
 
     auto& task = this->tasks.front();
@@ -78,11 +76,9 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
     // If task hasn't started and is lazy, start it
     if (!task->hasStarted()) {
         std::optional<ExecutionOptions::Category> const optionsExecutionCategory
-                = options.execution.has_value() ? std::optional<ExecutionOptions::Category>(options.execution.value().category)
-                                                : std::nullopt;
+                = options.execution.has_value() ? std::optional<ExecutionOptions::Category>(options.execution.value().category) : std::nullopt;
         std::optional<ExecutionOptions::Category> const taskExecutionCategory = task->category();
-        bool const isLazyExecution = optionsExecutionCategory.value_or(taskExecutionCategory.value_or(ExecutionOptions{}.category))
-                                     == ExecutionOptions::Category::Lazy;
+        bool const isLazyExecution = optionsExecutionCategory.value_or(taskExecutionCategory.value_or(ExecutionOptions{}.category)) == ExecutionOptions::Category::Lazy;
 
         if (isLazyExecution)
             if (auto ret = TaskPool::Instance().addTask(task); ret)

@@ -8,30 +8,22 @@ namespace SP {
 struct Error {
     enum class Code {
         InvalidError = 0,
+        UnknownError,
         NoSuchPath,
         InvalidPath,
         InvalidPathSubcomponent,
         InvalidType,
         Timeout,
-        CapabilityMismatch,
-        CapabilityWriteMissing,
-        MemoryAllocationFailed,
         MalformedInput,
-        UnmatchedQuotes,
-        UnknownError,
-        TaskFailed,
         SerializationFunctionMissing,
         UnserializableType,
-        NoObjectFound,
-        PopInRead,
-        Shutdown
+        NoObjectFound
     };
 
-    Code code;
-    std::optional<std::string> message;
+    Error(Code c, std::string m) : code(c), message(std::move(m)) {}
 
-    Error(Code c, std::string m) : code(c), message(std::move(m)) {
-    }
+    Code                       code;
+    std::optional<std::string> message;
 };
 
 template <typename T>

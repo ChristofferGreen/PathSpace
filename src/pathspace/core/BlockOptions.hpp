@@ -6,11 +6,9 @@
 struct BlockOptions {
     enum class Behavior {
         DontWait,
-        WaitForExecution,
-        WaitForExistence,
         Wait
     };
 
-    Behavior behavior = Behavior::DontWait;
+    Behavior                                 behavior = Behavior::DontWait;
     std::optional<std::chrono::milliseconds> timeout;
 };

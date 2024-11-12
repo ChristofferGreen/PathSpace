@@ -174,34 +174,6 @@ TEST_CASE("PathSpace Execution") {
         }
     }
 
-    /*SUBCASE("Result Caching") {
-        SUBCASE("Cache Enabled") {
-            int counter = 0;
-            pspace.insert(
-                    "/test",
-                    [&counter]() -> int { return ++counter; },
-                    InOptions{.execution = ExecutionOptions{.cacheResult = true}});
-
-            auto result1 = pspace.readBlock<int>("/test");
-            auto result2 = pspace.readBlock<int>("/test");
-            CHECK(result1.value() == result2.value());
-            CHECK(counter == 1); // Function only called once
-        }
-
-        SUBCASE("Cache Disabled") {
-            int counter = 0;
-            pspace.insert(
-                    "/test",
-                    [&counter]() -> int { return ++counter; },
-                    InOptions{.execution = ExecutionOptions{.cacheResult = false}});
-
-            auto result1 = pspace.readBlock<int>("/test");
-            auto result2 = pspace.readBlock<int>("/test");
-            CHECK(result1.value() != result2.value());
-            CHECK(counter == 2); // Function called twice
-        }
-    }*/
-
     /*SUBCASE("Error Handling") {
         SUBCASE("Function Throws") {
             pspace.insert(
@@ -284,8 +256,7 @@ TEST_CASE("PathSpace Execution") {
                     []() -> int { return 42; },
                     InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
 
-            auto result = pspace.readBlock<int>("/test",
-                                                OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::WaitForExecution}});
+            auto result = pspace.readBlock<int>("/test", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait}});
             CHECK(result.has_value());
             CHECK(result.value() == 42);
         }
@@ -296,8 +267,7 @@ TEST_CASE("PathSpace Execution") {
                 pspace.insert("/test", 42);
             });
 
-            auto result = pspace.readBlock<int>("/test",
-                                                OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::WaitForExistence}});
+            auto result = pspace.readBlock<int>("/test", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait}});
 
             inserter.join();
             CHECK(result.has_value());

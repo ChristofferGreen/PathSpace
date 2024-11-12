@@ -8,9 +8,7 @@ namespace SP {
 
 struct InOptions {
     std::optional<ExecutionOptions> execution;
-    std::optional<BlockOptions> block;
-    std::optional<int> maxInsertionsForBlob;
-    bool createDirectoriesAlongPath = true;
+    std::optional<BlockOptions>     block;
 };
 
 } // namespace SP

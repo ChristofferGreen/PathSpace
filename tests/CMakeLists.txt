@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.15)
 
 project(PathSpaceTests VERSION 1.0)
 
-
 add_executable(PathSpaceTests
   unit/path/test_ConcretePath.cpp
   unit/path/test_ConcreteName.cpp
@@ -13,8 +12,7 @@ add_executable(PathSpaceTests
   unit/type/test_InputData.cpp
   unit/type/test_SlidingBuffer.cpp
   unit/ext/test_alpaca.cpp
-  unit/taskpool/test_TaskPool.cpp
-  #unit/ext/test_glaze.cpp
+  unit/task/test_TaskPool.cpp
   unit/test_PathSpace_read.cpp
   unit/test_PathSpace_extract.cpp
   unit/test_PathSpace_insert.cpp
@@ -24,12 +22,12 @@ add_executable(PathSpaceTests
 )
 
 target_link_libraries(PathSpaceTests
-PRIVATE
+  PRIVATE
   PathSpace
 )
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_compile_definitions(PathSpaceTests PRIVATE SP_LOG_DEBUG)
+  target_compile_definitions(PathSpaceTests PRIVATE SP_LOG_DEBUG)
 endif()
 
 include(CTest)

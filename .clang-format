@@ -11,12 +11,12 @@ ContinuationIndentWidth: 8                       # Increase continuation indent 
 NamespaceIndentation: None                       # Keep namespaces unindented to reduce nesting
 
 # Line Breaking and Wrapping
-ColumnLimit: 140                                 # No column limit
+ColumnLimit: 200                                 # No column limit
 AlignAfterOpenBracket: Align                     # Align parameters after open bracket
 AllowAllParametersOfDeclarationOnNextLine: false # Keep parameters on the same line when possible
 AllowShortBlocksOnASingleLine: false             # Keep blocks on separate lines
 AllowShortCaseLabelsOnASingleLine: false         # Place case labels on separate lines
-AllowShortFunctionsOnASingleLine: None           # Keep all functions on multiple lines
+AllowShortFunctionsOnASingleLine: Empty          # Allow empty functions on a single line
 AllowShortIfStatementsOnASingleLine: false       # Maintain multi-line format for if statements
 AllowShortLoopsOnASingleLine: false              # Keep all loops on multiple lines
 AlwaysBreakAfterDefinitionReturnType: None       # Keep return type on same line as function definition
@@ -25,8 +25,8 @@ AlwaysBreakBeforeMultilineStrings: false         # Allow flexible formatting of 
 AlwaysBreakTemplateDeclarations: Yes             # Break after template declarations
 
 # Alignment and Formatting
-AlignConsecutiveAssignments: false               # Avoid aligning consecutive assignments
-AlignConsecutiveDeclarations: false              # Avoid aligning consecutive declarations
+AlignConsecutiveAssignments: true                # Avoid aligning consecutive assignments
+AlignConsecutiveDeclarations: true               # Align consecutive variable/member declarations
 AlignEscapedNewlines: Left                       # Align escaped newlines to the left
 AlignOperands: Align                             # Align operands of binary and ternary expressions
 AlignTrailingComments: true                      # Align trailing comments

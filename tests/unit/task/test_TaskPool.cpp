@@ -1,5 +1,5 @@
 #include "ext/doctest.h"
-#include "pathspace/taskpool/TaskPool.hpp"
+#include "pathspace/task/TaskPool.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -295,8 +295,7 @@ TEST_CASE("TaskPool Misc") {
 
             struct ResourceGuard {
                 State& state;
-                ResourceGuard(State& s) : state(s) {
-                }
+                ResourceGuard(State& s) : state(s) {}
                 ~ResourceGuard() {
                     std::lock_guard<std::mutex> lock(state.mutex);
                     state.resourceDestroyed = true;
@@ -601,8 +600,7 @@ TEST_CASE("TaskPool Misc") {
                 bool taskCompleted{false};
                 std::shared_ptr<bool> testValue; // Keep resource ownership in state
 
-                State() : testValue(std::make_shared<bool>(false)) {
-                }
+                State() : testValue(std::make_shared<bool>(false)) {}
             };
             auto state = std::make_shared<State>();
 
