@@ -10,6 +10,8 @@
 #include <cstring>
 #include <functional>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 #include <type_traits>
 
 #define SERIALIZATION_TYPE uint8_t
@@ -40,6 +42,12 @@ concept Execution = ExecutionFunctionPointer<T> || ExecutionStdFunction<T>;
 
 template <typename T>
 concept FundamentalType = std::is_fundamental_v<T>;
+
+template <typename T>
+concept StringLiteral = std::is_array_v<std::remove_reference_t<T>> && std::is_same_v<std::remove_all_extents_t<std::remove_reference_t<T>>, char>;
+
+template <typename T>
+concept StringType = std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view>;
 
 template <typename T>
 concept AlpacaCompatible = !std::is_pointer_v<T> && requires(T t, SlidingBuffer& buffer) { SP::serialize<T>(t, buffer); };
@@ -85,6 +93,46 @@ struct ValueSerializationHelper {
     }
 };
 
+template <typename T>
+struct StringSerializationHelper {
+    static auto Serialize(void const* objPtr, SP::SlidingBuffer& bytes) -> void {
+        std::string_view str;
+        if constexpr (StringLiteral<T>) {
+            str = static_cast<const char*>(objPtr);
+        } else if constexpr (StringType<T>) {
+            str = *static_cast<T const*>(objPtr);
+        }
+        uint32_t size = str.size();
+        bytes.append(reinterpret_cast<const uint8_t*>(&size), sizeof(size));
+        bytes.append(reinterpret_cast<const uint8_t*>(str.data()), size);
+    }
+
+    static auto Deserialize(void* objPtr, SP::SlidingBuffer const& bytes) -> void {
+        if (bytes.size() < sizeof(uint32_t)) {
+            throw std::runtime_error("Buffer too small for string size");
+        }
+
+        uint32_t size;
+        std::memcpy(&size, bytes.data(), sizeof(size));
+
+        if (bytes.size() < sizeof(size) + size) {
+            throw std::runtime_error("Buffer too small for string data");
+        }
+
+        if constexpr (std::is_same_v<T, std::string>) {
+            auto& str = *static_cast<std::string*>(objPtr);
+            str.assign(reinterpret_cast<const char*>(bytes.data() + sizeof(size)), size);
+        } else {
+            throw std::runtime_error("Can only deserialize to std::string");
+        }
+    }
+
+    static auto DeserializePop(void* objPtr, SP::SlidingBuffer& bytes) -> void {
+        StringSerializationHelper<T>::Deserialize(objPtr, bytes);
+        bytes.advance(sizeof(uint32_t) + *reinterpret_cast<const uint32_t*>(bytes.data()));
+    }
+};
+
 // ########### Serialization Traits ###########
 
 template <typename T>
@@ -94,7 +142,10 @@ struct AlpacaSerializationTraits {
     static constexpr std::type_info const* typeInfo = []() {
         if constexpr (Execution<T>)
             return &typeid(std::invoke_result_t<T>);
-        return &typeid(T);
+        else if constexpr (StringLiteral<T> || StringType<T>)
+            return &typeid(std::string); // Map all string types to std::string
+        else
+            return &typeid(T);
     }();
 
     static constexpr DataCategory const category = []() {
@@ -104,6 +155,8 @@ struct AlpacaSerializationTraits {
             return DataCategory::FunctionPointer;
         else if constexpr (FundamentalType<T>)
             return DataCategory::Fundamental;
+        else if constexpr (StringLiteral<T> || StringType<T>)
+            return DataCategory::SerializedData;
         else if constexpr (AlpacaCompatible<T>)
             return DataCategory::SerializationLibraryCompatible;
         else
@@ -122,6 +175,8 @@ struct AlpacaSerializationTraits {
     static constexpr auto serialize = []() {
         if constexpr (Execution<T>)
             return nullptr;
+        else if constexpr (StringLiteral<T> || StringType<T>)
+            return &StringSerializationHelper<T>::Serialize;
         else if constexpr (FundamentalType<T> || AlpacaCompatible<T>)
             return &ValueSerializationHelper<T>::Serialize;
         else
@@ -131,6 +186,8 @@ struct AlpacaSerializationTraits {
     static constexpr auto deserialize = []() -> void (*)(void* obj, SP::SlidingBuffer const&) {
         if constexpr (Execution<T>)
             return nullptr;
+        else if constexpr (std::is_same_v<T, std::string>) // Only allow deserialization to std::string
+            return &StringSerializationHelper<T>::Deserialize;
         else if constexpr (FundamentalType<T> || AlpacaCompatible<T>)
             return &ValueSerializationHelper<T>::Deserialize;
         else
@@ -140,6 +197,8 @@ struct AlpacaSerializationTraits {
     static constexpr auto deserializePop = []() {
         if constexpr (Execution<T>)
             return nullptr;
+        else if constexpr (std::is_same_v<T, std::string>) // Only allow deserialization to std::string
+            return &StringSerializationHelper<T>::DeserializePop;
         else if constexpr (FundamentalType<T> || AlpacaCompatible<T>)
             return &ValueSerializationHelper<T>::DeserializePop;
         else

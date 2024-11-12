@@ -87,9 +87,7 @@ TEST_CASE("PathSpace Extract") {
 
     SUBCASE("Simple PathSpace Execution Lazy") {
         std::function<int()> f = []() -> int { return 58; };
-        CHECK(pspace.insert("/f", f, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}})
-                      .nbrTasksInserted
-              == 1);
+        CHECK(pspace.insert("/f", f, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}}).nbrTasksInserted == 1);
         CHECK(pspace.extractBlock<int>("/f").value() == 58);
         CHECK(!pspace.extract<int>("/f").has_value());
     }
@@ -123,9 +121,9 @@ TEST_CASE("PathSpace Extract Extended Tests") {
 
     SUBCASE("Extract custom struct") {
         struct CustomStruct {
-            int x;
+            int         x;
             std::string y;
-            bool operator==(const CustomStruct& other) const {
+            bool        operator==(const CustomStruct& other) const {
                 return x == other.x && y == other.y;
             }
         };
@@ -188,9 +186,7 @@ TEST_CASE("PathSpace Extract Extended Tests") {
     }
 
     SUBCASE("Extract with timeout") {
-        auto ret = pspace.extractBlock<int>(
-                "/timeout",
-                OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+        auto ret = pspace.extractBlock<int>("/timeout", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
         CHECK_FALSE(ret.has_value());
     }
 
@@ -443,5 +439,507 @@ TEST_CASE("PathSpace Extract Std Datastructure") {
         CHECK(val.value() == lst);
         auto val2 = pspace.extract<std::list<std::string>>("/list");
         CHECK_FALSE(val2.has_value());
+    }
+}
+
+using namespace std::chrono_literals;
+
+TEST_CASE("PathSpace Glob Operations") {
+    PathSpace pspace;
+
+    SUBCASE("Basic Glob Insert and Read") {
+        // Insert values to multiple paths
+        CHECK(pspace.insert("/test/a", 1).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/test/b", 2).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/test/c", 3).nbrValuesInserted == 1);
+
+        // Insert to all matching paths using glob
+        CHECK(pspace.insert("/test/*", 10).nbrValuesInserted == 3);
+
+        // Verify values were appended in order
+        auto val1 = pspace.extract<int>("/test/a");
+        CHECK(val1.has_value());
+        CHECK(val1.value() == 1);
+        val1 = pspace.extract<int>("/test/a");
+        CHECK(val1.has_value());
+        CHECK(val1.value() == 10);
+
+        auto val2 = pspace.extract<int>("/test/b");
+        CHECK(val2.has_value());
+        CHECK(val2.value() == 2);
+        val2 = pspace.extract<int>("/test/b");
+        CHECK(val2.has_value());
+        CHECK(val2.value() == 10);
+
+        auto val3 = pspace.extract<int>("/test/c");
+        CHECK(val3.has_value());
+        CHECK(val3.value() == 3);
+        val3 = pspace.extract<int>("/test/c");
+        CHECK(val3.has_value());
+        CHECK(val3.value() == 10);
+    }
+
+    SUBCASE("Glob Insert with Different Data Types") {
+        // Insert different types to different paths
+        CHECK(pspace.insert("/data/int", 42).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/data/float", 3.14f).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/data/string", std::string("hello")).nbrValuesInserted == 1);
+
+        // Insert to all using glob
+        CHECK(pspace.insert("/data/*", 100).nbrValuesInserted == 3);
+
+        // Verify original values can be extracted
+        auto intVal = pspace.extract<int>("/data/int");
+        CHECK(intVal.has_value());
+        CHECK(intVal.value() == 42);
+
+        auto floatVal = pspace.extract<float>("/data/float");
+        CHECK(floatVal.has_value());
+        CHECK(floatVal.value() == 3.14f);
+
+        auto strVal = pspace.extract<std::string>("/data/string");
+        CHECK(strVal.has_value());
+        CHECK(strVal.value() == "hello");
+
+        // Verify glob-inserted values
+        intVal = pspace.extract<int>("/data/int");
+        CHECK(intVal.has_value());
+        CHECK(intVal.value() == 100);
+
+        intVal = pspace.extract<int>("/data/float");
+        CHECK(intVal.has_value());
+        CHECK(intVal.value() == 100);
+
+        intVal = pspace.extract<int>("/data/string");
+        CHECK(intVal.has_value());
+        CHECK(intVal.value() == 100);
+    }
+
+    SUBCASE("Nested Glob Patterns") {
+        // Create nested structure
+        CHECK(pspace.insert("/root/a/1", 1).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/root/a/2", 2).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/root/b/1", 3).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/root/b/2", 4).nbrValuesInserted == 1);
+
+        // Insert using nested glob
+        CHECK(pspace.insert("/root/*/1", 10).nbrValuesInserted == 2);
+
+        // Verify values
+        auto val1 = pspace.extract<int>("/root/a/1");
+        CHECK(val1.has_value());
+        CHECK(val1.value() == 1);
+        val1 = pspace.extract<int>("/root/a/1");
+        CHECK(val1.has_value());
+        CHECK(val1.value() == 10);
+
+        auto val2 = pspace.extract<int>("/root/b/1");
+        CHECK(val2.has_value());
+        CHECK(val2.value() == 3);
+        val2 = pspace.extract<int>("/root/b/1");
+        CHECK(val2.has_value());
+        CHECK(val2.value() == 10);
+
+        // Verify unaffected paths
+        auto val3 = pspace.extract<int>("/root/a/2");
+        CHECK(val3.has_value());
+        CHECK(val3.value() == 2);
+
+        auto val4 = pspace.extract<int>("/root/b/2");
+        CHECK(val4.has_value());
+        CHECK(val4.value() == 4);
+    }
+
+    SUBCASE("Glob with Lazy Executions") {
+        std::atomic<int> execution_count{0};
+
+        // Insert functions to multiple paths
+        auto func = [&execution_count](int ret) {
+            return [&execution_count, ret]() -> int {
+                execution_count++;
+                return ret;
+            };
+        };
+
+        // Insert lazy executions
+        InOptions options{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}};
+        CHECK(pspace.insert("/exec/a", func(1), options).nbrTasksInserted == 1);
+        CHECK(pspace.insert("/exec/b", func(2), options).nbrTasksInserted == 1);
+        CHECK(pspace.insert("/exec/c", func(3), options).nbrTasksInserted == 1);
+
+        // Insert to all matching paths using glob
+        CHECK(pspace.insert("/exec/*", func(10), options).nbrTasksInserted == 3);
+
+        // Verify executions happen in order
+        auto val1 = pspace.readBlock<int>("/exec/a");
+        CHECK(val1.has_value());
+        CHECK(val1.value() == 1);
+        val1 = pspace.readBlock<int>("/exec/a");
+        CHECK(val1.has_value());
+        CHECK(val1.value() == 10);
+
+        auto val2 = pspace.readBlock<int>("/exec/b");
+        CHECK(val2.has_value());
+        CHECK(val2.value() == 2);
+        val2 = pspace.readBlock<int>("/exec/b");
+        CHECK(val2.has_value());
+        CHECK(val2.value() == 10);
+
+        auto val3 = pspace.readBlock<int>("/exec/c");
+        CHECK(val3.has_value());
+        CHECK(val3.value() == 3);
+        val3 = pspace.readBlock<int>("/exec/c");
+        CHECK(val3.has_value());
+        CHECK(val3.value() == 10);
+
+        CHECK(execution_count == 6); // All executions should have run
+    }
+
+    SUBCASE("Complex Glob Patterns") {
+        // Setup test paths
+        CHECK(pspace.insert("/test/foo/data1", 1).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/test/foo/data2", 2).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/test/bar/data1", 3).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/test/bar/data2", 4).nbrValuesInserted == 1);
+
+        // Test different glob patterns
+        SUBCASE("Multiple wildcards") {
+            CHECK(pspace.insert("/test/*/data*", 10).nbrValuesInserted == 4);
+
+            // Verify all paths were affected
+            auto val = pspace.extract<int>("/test/foo/data1");
+            CHECK(val.has_value());
+            CHECK(val.value() == 1);
+            val = pspace.extract<int>("/test/foo/data1");
+            CHECK(val.has_value());
+            CHECK(val.value() == 10);
+
+            val = pspace.extract<int>("/test/bar/data2");
+            CHECK(val.has_value());
+            CHECK(val.value() == 4);
+            val = pspace.extract<int>("/test/bar/data2");
+            CHECK(val.has_value());
+            CHECK(val.value() == 10);
+        }
+
+        SUBCASE("Specific suffix pattern") {
+            CHECK(pspace.insert("/test/*/data1", 20).nbrValuesInserted == 2);
+
+            // Verify only data1 paths were affected
+            auto val = pspace.extract<int>("/test/foo/data1");
+            CHECK(val.has_value());
+            CHECK(val.value() == 1);
+            val = pspace.extract<int>("/test/foo/data1");
+            CHECK(val.has_value());
+            CHECK(val.value() == 20);
+
+            // data2 paths should be unaffected
+            val = pspace.extract<int>("/test/foo/data2");
+            CHECK(val.has_value());
+            CHECK(val.value() == 2);
+        }
+
+        SUBCASE("Specific prefix pattern") {
+            CHECK(pspace.insert("/test/foo/*", 30).nbrValuesInserted == 2);
+
+            // Verify only foo paths were affected
+            auto val = pspace.extract<int>("/test/foo/data1");
+            CHECK(val.has_value());
+            CHECK(val.value() == 1);
+            val = pspace.extract<int>("/test/foo/data1");
+            CHECK(val.has_value());
+            CHECK(val.value() == 30);
+
+            // bar paths should be unaffected
+            val = pspace.extract<int>("/test/bar/data1");
+            CHECK(val.has_value());
+            CHECK(val.value() == 3);
+        }
+    }
+
+    SUBCASE("Glob Pattern Edge Cases") {
+        SUBCASE("Empty paths") {
+            CHECK(pspace.insert("/*", 1).errors.size() > 0);
+            CHECK(pspace.insert("/", 1).nbrValuesInserted == 1);
+        }
+
+        SUBCASE("Invalid glob patterns") {
+            CHECK(pspace.insert("/test/[", 1).errors.size() > 0);
+            CHECK(pspace.insert("/test/]", 1).errors.size() > 0);
+        }
+
+        SUBCASE("Escaped wildcards") {
+            CHECK(pspace.insert("/test/a*b", 1).nbrValuesInserted == 1);
+            CHECK(pspace.insert("/test/a\\*b", 2).nbrValuesInserted == 1);
+
+            // Verify they're treated as different paths
+            auto val = pspace.extract<int>("/test/a*b");
+            CHECK(val.has_value());
+            CHECK(val.value() == 1);
+
+            val = pspace.extract<int>("/test/a*b");
+            CHECK(!val.has_value()); // Should be empty now
+
+            val = pspace.extract<int>("/test/a\\*b");
+            CHECK(val.has_value());
+            CHECK(val.value() == 2);
+        }
+    }
+}
+
+TEST_CASE("PathSpace String Operations") {
+    PathSpace pspace;
+
+    SUBCASE("Basic String Operations") {
+        // Test inserting various string types
+        SUBCASE("String Literal") {
+            CHECK(pspace.insert("/lit1", "hello").nbrValuesInserted == 1);
+
+            auto val1 = pspace.read<std::string>("/lit1");
+            CHECK(val1.has_value());
+            CHECK(val1.value() == "hello");
+        }
+
+        SUBCASE("String Literals") {
+            CHECK(pspace.insert("/strings/lit1", "hello").nbrValuesInserted == 1);
+            CHECK(pspace.insert("/strings/lit2", "world").nbrValuesInserted == 1);
+
+            auto val1 = pspace.read<std::string>("/strings/lit1");
+            CHECK(val1.has_value());
+            CHECK(val1.value() == "hello");
+
+            auto val2 = pspace.extract<std::string>("/strings/lit2");
+            CHECK(val2.has_value());
+            CHECK(val2.value() == "world");
+        }
+
+        SUBCASE("std::string") {
+            std::string str1 = "test string 1";
+            std::string str2 = "test string 2";
+
+            CHECK(pspace.insert("/strings/std1", str1).nbrValuesInserted == 1);
+            CHECK(pspace.insert("/strings/std2", str2).nbrValuesInserted == 1);
+
+            auto val1 = pspace.read<std::string>("/strings/std1");
+            CHECK(val1.has_value());
+            CHECK(val1.value() == str1);
+
+            auto val2 = pspace.extract<std::string>("/strings/std2");
+            CHECK(val2.has_value());
+            CHECK(val2.value() == str2);
+        }
+
+        SUBCASE("Empty Strings") {
+            std::string empty;
+            CHECK(pspace.insert("/strings/empty1", empty).nbrValuesInserted == 1);
+            CHECK(pspace.insert("/strings/empty2", "").nbrValuesInserted == 1);
+
+            auto val1 = pspace.read<std::string>("/strings/empty1");
+            CHECK(val1.has_value());
+            CHECK(val1.value().empty());
+
+            auto val2 = pspace.read<std::string>("/strings/empty2");
+            CHECK(val2.has_value());
+            CHECK(val2.value().empty());
+        }
+    }
+
+    SUBCASE("String Concatenation and Multiple Values") {
+        // Test appending multiple strings to same path
+        CHECK(pspace.insert("/concat", "Hello").nbrValuesInserted == 1);
+        CHECK(pspace.insert("/concat", " ").nbrValuesInserted == 1);
+        CHECK(pspace.insert("/concat", "World").nbrValuesInserted == 1);
+
+        auto val1 = pspace.extract<std::string>("/concat");
+        CHECK(val1.has_value());
+        CHECK(val1.value() == "Hello");
+
+        auto val2 = pspace.extract<std::string>("/concat");
+        CHECK(val2.has_value());
+        CHECK(val2.value() == " ");
+
+        auto val3 = pspace.extract<std::string>("/concat");
+        CHECK(val3.has_value());
+        CHECK(val3.value() == "World");
+
+        // Should be empty now
+        auto val4 = pspace.read<std::string>("/concat");
+        CHECK_FALSE(val4.has_value());
+    }
+
+    SUBCASE("Mixed Data Types with Strings") {
+        SUBCASE("Basic Mixed Types") {
+            // Insert different types to same path
+            CHECK(pspace.insert("/mixed", "hello").nbrValuesInserted == 1);
+            CHECK(pspace.insert("/mixed", 42).nbrValuesInserted == 1);
+            CHECK(pspace.insert("/mixed", 3.14f).nbrValuesInserted == 1);
+            CHECK(pspace.insert("/mixed", "world").nbrValuesInserted == 1);
+
+            // Extract in order
+            auto str1 = pspace.extract<std::string>("/mixed");
+            CHECK(str1.has_value());
+            CHECK(str1.value() == "hello");
+
+            auto num = pspace.extract<int>("/mixed");
+            CHECK(num.has_value());
+            CHECK(num.value() == 42);
+
+            auto flt = pspace.extract<float>("/mixed");
+            CHECK(flt.has_value());
+            CHECK(flt.value() == 3.14f);
+
+            auto str2 = pspace.extract<std::string>("/mixed");
+            CHECK(str2.has_value());
+            CHECK(str2.value() == "world");
+        }
+
+        SUBCASE("Complex Data Structures with Strings") {
+            // Vector of strings
+            std::vector<std::string> vec = {"one", "two", "three"};
+            CHECK(pspace.insert("/complex/vector", vec).nbrValuesInserted == 1);
+
+            auto vec_result = pspace.read<std::vector<std::string>>("/complex/vector");
+            CHECK(vec_result.has_value());
+            CHECK(vec_result.value() == vec);
+
+            // Map with string keys/values
+            std::map<std::string, std::string> map = {{"key1", "value1"}, {"key2", "value2"}};
+            CHECK(pspace.insert("/complex/map", map).nbrValuesInserted == 1);
+
+            auto map_result = pspace.read<std::map<std::string, std::string>>("/complex/map");
+            CHECK(map_result.has_value());
+            CHECK(map_result.value() == map);
+        }
+
+        SUBCASE("String with Functions") {
+            // Function returning string
+            auto str_func = []() -> std::string { return "generated string"; };
+            CHECK(pspace.insert("/func/str", str_func).nbrTasksInserted == 1);
+
+            auto str_result = pspace.readBlock<std::string>("/func/str");
+            CHECK(str_result.has_value());
+            CHECK(str_result.value() == "generated string");
+
+            // Mixed function returns
+            CHECK(pspace.insert("/func/mixed", "static string").nbrValuesInserted == 1);
+            CHECK(pspace.insert("/func/mixed", []() -> int { return 42; }).nbrTasksInserted == 1);
+            CHECK(pspace.insert("/func/mixed", []() -> std::string { return "dynamic string"; }).nbrTasksInserted == 1);
+
+            auto static_str = pspace.extract<std::string>("/func/mixed");
+            CHECK(static_str.has_value());
+            CHECK(static_str.value() == "static string");
+
+            auto num = pspace.readBlock<int>("/func/mixed");
+            CHECK(num.has_value());
+            CHECK(num.value() == 42);
+
+            auto dynamic_str = pspace.readBlock<std::string>("/func/mixed");
+            CHECK(dynamic_str.has_value());
+            CHECK(dynamic_str.value() == "dynamic string");
+        }
+    }
+
+    SUBCASE("String Glob Operations") {
+        // Setup multiple string paths
+        CHECK(pspace.insert("/glob/str1", "first").nbrValuesInserted == 1);
+        CHECK(pspace.insert("/glob/str2", "second").nbrValuesInserted == 1);
+        CHECK(pspace.insert("/glob/str3", "third").nbrValuesInserted == 1);
+
+        // Insert to all paths using glob
+        CHECK(pspace.insert("/glob/*", "glob append").nbrValuesInserted == 3);
+
+        // Verify original values
+        auto val1 = pspace.extract<std::string>("/glob/str1");
+        CHECK(val1.has_value());
+        CHECK(val1.value() == "first");
+
+        auto val2 = pspace.extract<std::string>("/glob/str2");
+        CHECK(val2.has_value());
+        CHECK(val2.value() == "second");
+
+        auto val3 = pspace.extract<std::string>("/glob/str3");
+        CHECK(val3.has_value());
+        CHECK(val3.value() == "third");
+
+        // Verify appended values
+        val1 = pspace.extract<std::string>("/glob/str1");
+        CHECK(val1.has_value());
+        CHECK(val1.value() == "glob append");
+
+        val2 = pspace.extract<std::string>("/glob/str2");
+        CHECK(val2.has_value());
+        CHECK(val2.value() == "glob append");
+
+        val3 = pspace.extract<std::string>("/glob/str3");
+        CHECK(val3.has_value());
+        CHECK(val3.value() == "glob append");
+    }
+
+    SUBCASE("String Edge Cases") {
+        SUBCASE("Special Characters") {
+            std::string special = "!@#$%^&*()_+\n\t\r";
+            CHECK(pspace.insert("/special", special).nbrValuesInserted == 1);
+
+            auto result = pspace.read<std::string>("/special");
+            CHECK(result.has_value());
+            CHECK(result.value() == special);
+        }
+
+        SUBCASE("Very Long Strings") {
+            std::string long_str(1000000, 'a'); // 1MB string
+            CHECK(pspace.insert("/long", long_str).nbrValuesInserted == 1);
+
+            auto result = pspace.read<std::string>("/long");
+            CHECK(result.has_value());
+            CHECK(result.value() == long_str);
+        }
+
+        SUBCASE("Unicode Strings") {
+            std::string unicode = "Hello, 世界! 🌍 привет";
+            CHECK(pspace.insert("/unicode", unicode).nbrValuesInserted == 1);
+
+            auto result = pspace.read<std::string>("/unicode");
+            CHECK(result.has_value());
+            CHECK(result.value() == unicode);
+        }
+    }
+
+    SUBCASE("String Concurrent Operations") {
+        std::atomic<int> counter{0};
+        const int        NUM_THREADS    = 4;
+        const int        OPS_PER_THREAD = 100;
+
+        // Create multiple threads appending strings
+        std::vector<std::thread> threads;
+        for (int i = 0; i < NUM_THREADS; ++i) {
+            threads.emplace_back([&, i]() {
+                for (int j = 0; j < OPS_PER_THREAD; ++j) {
+                    std::string value = "Thread" + std::to_string(i) + "_" + std::to_string(j);
+                    CHECK(pspace.insert("/concurrent", value).nbrValuesInserted == 1);
+                    counter++;
+                }
+            });
+        }
+
+        // Join threads
+        for (auto& t : threads) {
+            t.join();
+        }
+
+        // Verify all strings were inserted
+        CHECK(counter == NUM_THREADS * OPS_PER_THREAD);
+
+        // Extract all values and verify they're valid strings
+        std::set<std::string> extracted_values;
+        while (true) {
+            auto val = pspace.extract<std::string>("/concurrent");
+            if (!val.has_value())
+                break;
+            CHECK(val.value().substr(0, 6) == "Thread");
+            extracted_values.insert(val.value());
+        }
+
+        // Verify we got the expected number of unique strings
+        CHECK(extracted_values.size() == NUM_THREADS * OPS_PER_THREAD);
     }
 }
