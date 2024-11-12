@@ -1,5 +1,5 @@
 #pragma once
-#include "TaskState.hpp"
+#include "TaskStateAtomic.hpp"
 #include "core/ExecutionOptions.hpp"
 #include "core/InOptions.hpp"
 #include "path/ConcretePath.hpp"

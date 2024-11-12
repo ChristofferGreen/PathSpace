@@ -52,7 +52,7 @@ add_library(PathSpace
     core/WaitMap.cpp
     task/Task.cpp
     task/TaskPool.cpp
-    task/TaskState.cpp
+    task/TaskStateAtomic.cpp
     type/SlidingBuffer.cpp
     utils/TaggedLogger.cpp
     PathSpace.cpp
