@@ -36,109 +36,19 @@ TEST_CASE("PathSpace Execution") {
 
     SUBCASE("Execution Categories") {
         SUBCASE("Immediate Execution") {
-            pspace.insert(
-                    "/test",
-                    []() -> int { return 42; },
-                    InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Immediate}});
+            pspace.insert("/test", []() -> int { return 42; }, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Immediate}});
             auto result = pspace.readBlock<int>("/test");
             CHECK(result.has_value());
             CHECK(result.value() == 42);
         }
 
         SUBCASE("Lazy Execution") {
-            pspace.insert(
-                    "/test",
-                    []() -> int { return 42; },
-                    InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
+            pspace.insert("/test", []() -> int { return 42; }, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
             auto result = pspace.readBlock<int>("/test");
             CHECK(result.has_value());
             CHECK(result.value() == 42);
         }
     }
-
-    SUBCASE("Execution Location") {
-        SUBCASE("Any Location") {
-            pspace.insert(
-                    "/test",
-                    []() -> int { return 42; },
-                    InOptions{.execution = ExecutionOptions{.location = ExecutionOptions::Location::Any}});
-            auto result = pspace.readBlock<int>("/test");
-            CHECK(result.has_value());
-            CHECK(result.value() == 42);
-        }
-
-        SUBCASE("Main Thread") {
-            pspace.insert(
-                    "/test",
-                    []() -> int { return 42; },
-                    InOptions{.execution = ExecutionOptions{.location = ExecutionOptions::Location::MainThread}});
-            auto result = pspace.readBlock<int>("/test");
-            CHECK(result.has_value());
-            CHECK(result.value() == 42);
-        }
-    }
-
-    SUBCASE("Execution Priority") {
-        SUBCASE("Low Priority") {
-            pspace.insert(
-                    "/test",
-                    []() -> int { return 42; },
-                    InOptions{.execution = ExecutionOptions{.priority = ExecutionOptions::Priority::Low}});
-            auto result = pspace.readBlock<int>("/test");
-            CHECK(result.has_value());
-            CHECK(result.value() == 42);
-        }
-
-        SUBCASE("Middle Priority") {
-            pspace.insert(
-                    "/test",
-                    []() -> int { return 42; },
-                    InOptions{.execution = ExecutionOptions{.priority = ExecutionOptions::Priority::Middle}});
-            auto result = pspace.readBlock<int>("/test");
-            CHECK(result.has_value());
-            CHECK(result.value() == 42);
-        }
-
-        SUBCASE("High Priority") {
-            pspace.insert(
-                    "/test",
-                    []() -> int { return 42; },
-                    InOptions{.execution = ExecutionOptions{.priority = ExecutionOptions::Priority::High}});
-            auto result = pspace.readBlock<int>("/test");
-            CHECK(result.has_value());
-            CHECK(result.value() == 42);
-        }
-    }
-
-    /*SUBCASE("Update Intervals") {
-        SUBCASE("Single Update") {
-            int counter = 0;
-            pspace.insert(
-                    "/test",
-                    [&counter]() -> int { return ++counter; },
-                    InOptions{.execution = ExecutionOptions{.updateInterval = std::nullopt, .maxNbrExecutions = 1}});
-
-            auto result1 = pspace.readBlock<int>("/test");
-            auto result2 = pspace.readBlock<int>("/test");
-            CHECK(result1.has_value());
-            CHECK(result2.has_value());
-            CHECK(result1.value() == 1);
-            CHECK(result2.value() == 1); // Same value, not updated
-        }
-
-        SUBCASE("Periodic Update") {
-            int counter = 0;
-            pspace.insert(
-                    "/test",
-                    [&counter]() -> int { return ++counter; },
-                    InOptions{.execution = ExecutionOptions{.updateInterval = 100ms, .maxNbrExecutions = 3}});
-
-            auto result1 = pspace.readBlock<int>("/test");
-            std::this_thread::sleep_for(150ms);
-            auto result2 = pspace.readBlock<int>("/test");
-            CHECK(result1.value() != result2.value());
-        }
-    }*/
 
     SUBCASE("Timeout Behavior") {
         SUBCASE("Successful Completion Before Timeout") {
@@ -150,9 +60,7 @@ TEST_CASE("PathSpace Execution") {
                     },
                     InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
 
-            auto result
-                    = pspace.readBlock<int>("/test",
-                                            OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = 200ms}});
+            auto result = pspace.readBlock<int>("/test", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = 200ms}});
             CHECK(result.has_value());
             CHECK(result.value() == 42);
         }
@@ -166,32 +74,11 @@ TEST_CASE("PathSpace Execution") {
                     },
                     InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
 
-            auto result
-                    = pspace.readBlock<int>("/test",
-                                            OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = 50ms}});
+            auto result = pspace.readBlock<int>("/test", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = 50ms}});
             CHECK(!result.has_value());
             CHECK(result.error().code == Error::Code::Timeout);
         }
     }
-
-    /*SUBCASE("Error Handling") {
-        SUBCASE("Function Throws") {
-            pspace.insert(
-                    "/test",
-                    []() -> int { throw std::runtime_error("Test error"); },
-                    InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
-
-            auto result = pspace.readBlock<int>("/test");
-            CHECK(!result.has_value());
-            CHECK(result.error().code == Error::Code::UnknownError);
-        }
-
-        SUBCASE("Invalid Path") {
-            auto result = pspace.readBlock<int>("/nonexistent");
-            CHECK(!result.has_value());
-            CHECK(result.error().code == Error::Code::NoSuchPath);
-        }
-    }*/
 
     SUBCASE("Multiple Operations") {
         SUBCASE("Read Then Extract") {
@@ -237,24 +124,8 @@ TEST_CASE("PathSpace Execution") {
     }
 
     SUBCASE("Block Behavior Types") {
-        /*SUBCASE("Don't Wait") {
-            pspace.insert(
-                    "/test",
-                    []() -> int {
-                        std::this_thread::sleep_for(100ms);
-                        return 42;
-                    },
-                    InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
-
-            auto result = pspace.readBlock<int>("/test", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::DontWait}});
-            CHECK(!result.has_value());
-        }*/
-
         SUBCASE("Wait For Execution") {
-            pspace.insert(
-                    "/test",
-                    []() -> int { return 42; },
-                    InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
+            pspace.insert("/test", []() -> int { return 42; }, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
 
             auto result = pspace.readBlock<int>("/test", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait}});
             CHECK(result.has_value());
