@@ -13,6 +13,10 @@ struct WaitMap {
     struct Guard {
         Guard(WaitMap& waitMap, ConcretePathString const& path, std::unique_lock<std::mutex> lock);
 
+        auto wait_until(std::chrono::time_point<std::chrono::system_clock> timeout) {
+            return waitMap.getCv(path).wait_until(lock, timeout);
+        }
+
         template <typename Pred>
         bool wait_until(std::chrono::time_point<std::chrono::system_clock> timeout, Pred pred) {
             return waitMap.getCv(path).wait_until(lock, timeout, std::move(pred));
@@ -31,6 +35,11 @@ struct WaitMap {
     auto notify(GlobPathString const& path) -> void;
     auto notifyAll() -> void;
     auto clear() -> void;
+
+    auto hasWaiters() const -> bool {
+        std::lock_guard<std::mutex> lock(mutex);
+        return !cvMap.empty();
+    }
 
 private:
     friend struct Guard;
