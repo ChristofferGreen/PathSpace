@@ -5,6 +5,7 @@
 #include "type/SlidingBuffer.hpp"
 
 #include <deque>
+#include <memory>
 #include <optional>
 
 namespace SP {

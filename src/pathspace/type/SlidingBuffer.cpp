@@ -1,4 +1,6 @@
 #include "SlidingBuffer.hpp"
+#include <cstring>
+#include <stdexcept>
 
 namespace SP {
 
@@ -49,12 +51,16 @@ auto SlidingBuffer::at(size_t index) const& -> uint8_t const& {
 }
 
 auto SlidingBuffer::resize(size_t newSize) -> void {
-    this->compact(); // Always ensure data starts at 0
+    this->compact(); // Ensure data starts at 0
     this->data_.resize(newSize);
 }
 
 auto SlidingBuffer::append(std::span<uint8_t const> bytes) -> void {
-    this->data_.insert(this->data_.end(), bytes.begin(), bytes.end());
+    if (!bytes.empty()) {
+        size_t oldSize = this->data_.size();
+        this->data_.resize(oldSize + bytes.size());
+        std::memcpy(this->data_.data() + oldSize, bytes.data(), bytes.size());
+    }
 }
 
 auto SlidingBuffer::append(uint8_t const* bytes, size_t count) -> void {
@@ -64,7 +70,7 @@ auto SlidingBuffer::append(uint8_t const* bytes, size_t count) -> void {
 auto SlidingBuffer::advance(size_t bytes) -> void {
     this->virtualFront_ += bytes;
     if (this->virtualFront_ > this->data_.size() / 2 && this->data_.size() >= COMPACT_THRESHOLD) {
-        this->compact(); // Only trigger compaction for larger buffers
+        this->compact();
     }
 }
 
@@ -74,8 +80,9 @@ auto SlidingBuffer::compact() -> void {
     }
 
     if (this->virtualFront_ < this->data_.size()) {
-        std::memmove(this->data_.data(), this->data_.data() + this->virtualFront_, this->data_.size() - this->virtualFront_);
-        this->data_.resize(this->data_.size() - this->virtualFront_);
+        size_t remaining = this->data_.size() - this->virtualFront_;
+        std::memmove(this->data_.data(), this->data_.data() + this->virtualFront_, remaining);
+        this->data_.resize(remaining);
     } else {
         this->data_.clear();
     }
