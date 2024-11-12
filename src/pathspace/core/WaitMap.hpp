@@ -13,10 +13,7 @@ struct WaitMap {
     struct Guard {
         Guard(WaitMap& waitMap, ConcretePathString const& path, std::unique_lock<std::mutex> lock);
 
-        auto wait_until(std::chrono::time_point<std::chrono::system_clock> timeout) {
-            return waitMap.getCv(path).wait_until(lock, timeout);
-        }
-
+        auto wait_until(std::chrono::time_point<std::chrono::system_clock> timeout) -> std::cv_status;
         template <typename Pred>
         bool wait_until(std::chrono::time_point<std::chrono::system_clock> timeout, Pred pred) {
             return waitMap.getCv(path).wait_until(lock, timeout, std::move(pred));

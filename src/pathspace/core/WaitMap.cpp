@@ -5,6 +5,10 @@ namespace SP {
 
 WaitMap::Guard::Guard(WaitMap& waitMap, ConcretePathString const& path, std::unique_lock<std::mutex> lock) : waitMap(waitMap), path(path), lock(std::move(lock)) {}
 
+auto WaitMap::Guard::wait_until(std::chrono::time_point<std::chrono::system_clock> timeout) -> std::cv_status {
+    return this->waitMap.getCv(path).wait_until(lock, timeout);
+}
+
 auto WaitMap::wait(ConcretePathStringView const& path) -> Guard {
     sp_log("WaitMap::wait for path: " + std::string(path.getPath()), "DEBUG");
     return Guard(*this, ConcretePathString{path.getPath()}, std::unique_lock<std::mutex>(mutex));

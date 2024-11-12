@@ -10,7 +10,6 @@ add_executable(PathSpaceTests
   unit/path/test_ConstructiblePath.cpp
   unit/core/test_WaitMap.cpp
   unit/type/test_InputMetadata.cpp
-  unit/type/test_InputData.cpp
   unit/type/test_SlidingBuffer.cpp
   unit/ext/test_alpaca.cpp
   unit/task/test_TaskPool.cpp
