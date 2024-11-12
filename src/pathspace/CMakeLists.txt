@@ -43,6 +43,7 @@ add_library(PathSpace
     path/ConcretePath.cpp
     path/ConcreteName.cpp
     path/ConcretePathIterator.cpp
+    path/ConstructiblePath.cpp
     path/GlobPath.cpp
     path/GlobPathIterator.cpp
     path/GlobName.cpp

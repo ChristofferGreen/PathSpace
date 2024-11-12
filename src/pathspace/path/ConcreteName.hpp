@@ -1,5 +1,4 @@
 #pragma once
-#include <functional>
 #include <string>
 #include <string_view>
 
@@ -20,11 +19,6 @@ struct ConcreteName {
 
     auto getName() const -> std::string_view const;
 
-    template <class Archive>
-    void serialize(Archive& ar) {
-        ar(std::string{this->name});
-    }
-
     friend struct GlobName;
 
 private:
@@ -32,7 +26,7 @@ private:
 };
 
 using ConcreteNameStringView = ConcreteName<std::string_view>;
-using ConcreteNameString = ConcreteName<std::string>;
+using ConcreteNameString     = ConcreteName<std::string>;
 
 } // namespace SP
 

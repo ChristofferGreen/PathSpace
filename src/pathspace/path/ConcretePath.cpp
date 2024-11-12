@@ -13,15 +13,42 @@ auto ConcretePath<T>::end() const -> ConcretePathIterator<T> {
 }
 
 template <typename T>
-ConcretePath<T>::ConcretePath(std::string_view const& sv) : Path<T>(std::is_same_v<T, std::string> ? T(std::string(sv)) : T(sv)) {
+ConcretePath<T>::ConcretePath(std::string_view const& sv) : Path<T>(std::is_same_v<T, std::string> ? T(std::string(sv)) : T(sv)) {}
+
+template <typename T>
+ConcretePath<T>::ConcretePath(std::string const& s) : Path<T>(s) {}
+
+template <typename T>
+ConcretePath<T>::ConcretePath(char const* const t) : Path<T>(t) {}
+
+template <typename T>
+auto ConcretePath<T>::operator<=>(std::string_view other) const -> std::strong_ordering {
+    return this->path <=> other;
 }
 
 template <typename T>
-ConcretePath<T>::ConcretePath(std::string const& s) : Path<T>(s) {
+auto ConcretePath<T>::operator<=>(const ConcretePath<std::string>& other) const -> std::strong_ordering {
+    return std::string_view(this->path) <=> std::string_view(other.getPath());
 }
 
 template <typename T>
-ConcretePath<T>::ConcretePath(char const* const t) : Path<T>(t) {
+auto ConcretePath<T>::operator<=>(const ConcretePath<std::string_view>& other) const -> std::strong_ordering {
+    return std::string_view(this->path) <=> std::string_view(other.getPath());
+}
+
+template <typename T>
+auto ConcretePath<T>::operator==(char const* const other) const -> bool {
+    return this->operator==(std::string_view{other});
+}
+
+template <typename T>
+auto ConcretePath<T>::operator==(const ConcretePath<std::string_view>& other) const -> bool {
+    return this->operator==(std::string_view{other.getPath()});
+}
+
+template <typename T>
+auto ConcretePath<T>::operator==(const ConcretePath<std::string>& other) const -> bool {
+    return this->operator==(std::string_view{other.getPath()});
 }
 
 template <typename T>
@@ -41,13 +68,8 @@ auto ConcretePath<T>::operator==(std::string_view const& otherView) const -> boo
 }
 
 template <typename T>
-auto ConcretePath<T>::operator==(ConcretePath<T> const& other) const -> bool {
-    return this->operator==(std::string_view{other.getPath()});
-}
-
-template <typename T>
-auto ConcretePath<T>::operator==(char const* const other) const -> bool {
-    return this->operator==(std::string_view{other});
+ConcretePath<T>::operator std::string_view() const noexcept {
+    return this->path;
 }
 
 // Explicit instantiations
@@ -59,16 +81,5 @@ template auto operator<=>(std::string_view, ConcretePath<std::string> const&) ->
 template auto operator==(std::string_view, ConcretePath<std::string> const&) -> bool;
 template auto operator<=>(std::string_view, ConcretePath<std::string_view> const&) -> std::strong_ordering;
 template auto operator==(std::string_view, ConcretePath<std::string_view> const&) -> bool;
-
-// New explicit instantiations for mixed ConcretePath comparisons
-template auto ConcretePath<std::string>::operator<=>(const ConcretePath<std::string_view>&) const -> std::strong_ordering;
-template auto ConcretePath<std::string>::operator==(const ConcretePath<std::string_view>&) const -> bool;
-template auto ConcretePath<std::string_view>::operator<=>(const ConcretePath<std::string>&) const -> std::strong_ordering;
-template auto ConcretePath<std::string_view>::operator==(const ConcretePath<std::string>&) const -> bool;
-
-template auto operator<=>(const ConcretePath<std::string>&, const ConcretePath<std::string_view>&) -> std::strong_ordering;
-template auto operator==(const ConcretePath<std::string>&, const ConcretePath<std::string_view>&) -> bool;
-template auto operator<=>(const ConcretePath<std::string_view>&, const ConcretePath<std::string>&) -> std::strong_ordering;
-template auto operator==(const ConcretePath<std::string_view>&, const ConcretePath<std::string>&) -> bool;
 
 } // namespace SP

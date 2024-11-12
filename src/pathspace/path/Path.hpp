@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 namespace SP {
 
 template <typename T>
