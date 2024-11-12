@@ -50,7 +50,7 @@ public:
     template <typename DataType>
     auto read(ConcretePathStringView const& path, OutOptions const& options = {}) const -> Expected<DataType> {
         sp_log("PathSpace::read", "Function Called");
-        DataType obj;
+        DataType   obj;
         bool const isExtract = false;
         if (auto ret = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj, isExtract); !ret)
             return std::unexpected(ret.error());
@@ -58,8 +58,7 @@ public:
     }
 
     template <typename DataType>
-    auto readBlock(ConcretePathStringView const& path,
-                   OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}}) const -> Expected<DataType> {
+    auto readBlock(ConcretePathStringView const& path, OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}}) const -> Expected<DataType> {
         sp_log("PathSpace::readBlock", "Function Called");
         bool const isExtract = false;
         return const_cast<PathSpace*>(this)->outBlock<DataType>(path, options, isExtract);
@@ -75,9 +74,9 @@ public:
     template <typename DataType>
     auto extract(ConcretePathStringView const& path, OutOptions const& options = {}) -> Expected<DataType> {
         sp_log("PathSpace::extract", "Function Called");
-        DataType obj;
+        DataType   obj;
         bool const isExtract = true;
-        auto const ret = this->out(path, InputMetadataT<DataType>{}, options, &obj, isExtract);
+        auto const ret       = this->out(path, InputMetadataT<DataType>{}, options, &obj, isExtract);
         if (!ret)
             return std::unexpected(ret.error());
         if (ret.has_value() && (ret.value() == 0))
@@ -86,8 +85,7 @@ public:
     }
 
     template <typename DataType>
-    auto extractBlock(ConcretePathStringView const& path, OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}})
-            -> Expected<DataType> {
+    auto extractBlock(ConcretePathStringView const& path, OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}}) -> Expected<DataType> {
         sp_log("PathSpace::extractBlock", "Function Called");
         bool const isExtract = true;
         return this->outBlock<DataType>(path, options, isExtract);
@@ -102,10 +100,9 @@ protected:
     auto outBlock(ConcretePathStringView const& path, OutOptions const& options, bool const isExtract) -> Expected<DataType> {
         sp_log("PathSpace::outBlock", "Function Called");
 
-        DataType obj;
+        DataType   obj;
         auto const inputMetaData = InputMetadataT<DataType>{};
-        auto const deadline = options.block && options.block->timeout ? std::chrono::system_clock::now() + *options.block->timeout
-                                                                      : std::chrono::system_clock::time_point::max();
+        auto const deadline      = options.block && options.block->timeout ? std::chrono::system_clock::now() + *options.block->timeout : std::chrono::system_clock::time_point::max();
         // Retry loop
         while (true) {
             // First try without waiting
@@ -117,12 +114,11 @@ protected:
             // Check if we're already past deadline
             auto now = std::chrono::system_clock::now();
             if (now >= deadline) {
-                return std::unexpected(
-                        Error{Error::Code::Timeout, "Operation timed out waiting for data at path: " + std::string(path.getPath())});
+                return std::unexpected(Error{Error::Code::Timeout, "Operation timed out waiting for data at path: " + std::string(path.getPath())});
             }
 
             // Wait for data with proper timeout
-            auto guard = waitMap.wait(path);
+            auto guard   = waitMap.wait(path);
             bool success = guard.wait_until(deadline, [&]() {
                 result = this->out(path, inputMetaData, options, &obj, isExtract);
                 return (result.has_value() && result.value() > 0);
@@ -134,22 +130,18 @@ protected:
 
             // If we timed out, return error
             if (std::chrono::system_clock::now() >= deadline) {
-                return std::unexpected(
-                        Error{Error::Code::Timeout,
-                              "Operation timed out after waking from guard, waiting for data at path: " + std::string(path.getPath())});
+                return std::unexpected(Error{Error::Code::Timeout, "Operation timed out after waking from guard, waiting for data at path: " + std::string(path.getPath())});
             }
         }
     }
 
     virtual auto in(GlobPathStringView const& path, InputData const& data, InOptions const& options) -> InsertReturn;
-    virtual auto
-    out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, OutOptions const& options, void* obj, bool const isExtract)
-            -> Expected<int>;
-    auto shutdown() -> void;
+    virtual auto out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, OutOptions const& options, void* obj, bool const isExtract) -> Expected<int>;
+    auto         shutdown() -> void;
 
-    TaskPool* pool = nullptr;
+    TaskPool*     pool = nullptr;
     PathSpaceLeaf root;
-    WaitMap waitMap;
+    WaitMap       waitMap;
 };
 
 } // namespace SP

@@ -11,7 +11,7 @@ ContinuationIndentWidth: 8                       # Increase continuation indent 
 NamespaceIndentation: None                       # Keep namespaces unindented to reduce nesting
 
 # Line Breaking and Wrapping
-ColumnLimit: 200                                 # No column limit
+ColumnLimit: 250                                 # No column limit
 AlignAfterOpenBracket: Align                     # Align parameters after open bracket
 AllowAllParametersOfDeclarationOnNextLine: false # Keep parameters on the same line when possible
 AllowShortBlocksOnASingleLine: false             # Keep blocks on separate lines

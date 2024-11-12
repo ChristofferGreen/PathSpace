@@ -42,11 +42,7 @@ auto PathSpace::in(GlobPathStringView const& path, InputData const& data, InOpti
     return ret;
 }
 
-auto PathSpace::out(ConcretePathStringView const& path,
-                    InputMetadata const& inputMetadata,
-                    OutOptions const& options,
-                    void* obj,
-                    bool const isExtract) -> Expected<int> {
+auto PathSpace::out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, OutOptions const& options, void* obj, bool const isExtract) -> Expected<int> {
     sp_log("PathSpace::out", "Function Called");
     return this->root.out(path.begin(), path.end(), inputMetadata, obj, options, isExtract);
 }

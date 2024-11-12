@@ -16,17 +16,11 @@ auto PathSpaceLeaf::clear() -> void {
     ############# In #############
 */
 
-auto PathSpaceLeaf::in(GlobPathIteratorStringView const& iter,
-                       GlobPathIteratorStringView const& end,
-                       InputData const& inputData,
-                       InOptions const& options,
-                       InsertReturn& ret) -> void {
-    std::next(iter) == end ? inFinalComponent(*iter, inputData, options, ret)
-                           : inIntermediateComponent(iter, end, *iter, inputData, options, ret);
+auto PathSpaceLeaf::in(GlobPathIteratorStringView const& iter, GlobPathIteratorStringView const& end, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void {
+    std::next(iter) == end ? inFinalComponent(*iter, inputData, options, ret) : inIntermediateComponent(iter, end, *iter, inputData, options, ret);
 }
 
-auto PathSpaceLeaf::inFinalComponent(GlobName const& pathComponent, InputData const& inputData, InOptions const& options, InsertReturn& ret)
-        -> void {
+auto PathSpaceLeaf::inFinalComponent(GlobName const& pathComponent, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void {
     if (pathComponent.isGlob()) {
         // Create a vector to store the keys that match before modification. ToDo: Memory allocation
         std::vector<ConcreteNameString> matchingKeys;
@@ -67,12 +61,7 @@ auto PathSpaceLeaf::inFinalComponent(GlobName const& pathComponent, InputData co
     }
 }
 
-auto PathSpaceLeaf::inIntermediateComponent(GlobPathIteratorStringView const& iter,
-                                            GlobPathIteratorStringView const& end,
-                                            GlobName const& pathComponent,
-                                            InputData const& inputData,
-                                            InOptions const& options,
-                                            InsertReturn& ret) -> void {
+auto PathSpaceLeaf::inIntermediateComponent(GlobPathIteratorStringView const& iter, GlobPathIteratorStringView const& end, GlobName const& pathComponent, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void {
     auto nextIter = std::next(iter);
 
     if (pathComponent.isGlob()) {
@@ -96,32 +85,21 @@ auto PathSpaceLeaf::inIntermediateComponent(GlobPathIteratorStringView const& it
     ############# Out #############
 */
 
-auto PathSpaceLeaf::out(ConcretePathIteratorStringView const& iter,
-                        ConcretePathIteratorStringView const& end,
-                        InputMetadata const& inputMetadata,
-                        void* obj,
-                        OutOptions const& options,
-                        bool const isExtract) -> Expected<int> {
-    auto const nextIter = std::next(iter);
+auto PathSpaceLeaf::out(ConcretePathIteratorStringView const& iter, ConcretePathIteratorStringView const& end, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const isExtract) -> Expected<int> {
+    auto const nextIter      = std::next(iter);
     auto const pathComponent = *iter;
-    return nextIter == end ? outDataName(pathComponent, end, inputMetadata, obj, options, isExtract)
-                           : outConcretePathComponent(nextIter, end, pathComponent, inputMetadata, obj, options, isExtract);
+    return nextIter == end ? outDataName(pathComponent, end, inputMetadata, obj, options, isExtract) : outConcretePathComponent(nextIter, end, pathComponent, inputMetadata, obj, options, isExtract);
 }
 
-auto PathSpaceLeaf::outDataName(ConcreteNameStringView const& concreteName,
-                                ConcretePathIteratorStringView const& end,
-                                InputMetadata const& inputMetadata,
-                                void* obj,
-                                OutOptions const& options,
-                                bool const isExtract) -> Expected<int> {
-    Expected<int> result = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
-    bool shouldErase = false;
+auto PathSpaceLeaf::outDataName(ConcreteNameStringView const& concreteName, ConcretePathIteratorStringView const& end, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const isExtract) -> Expected<int> {
+    Expected<int> result      = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
+    bool          shouldErase = false;
 
     // First pass: modify data and check if we need to erase
     this->nodeDataMap.modify_if(concreteName.getName(), [&](auto& nodePair) {
         if (auto* nodeData = std::get_if<NodeData>(&nodePair.second)) {
             if (isExtract) {
-                result = nodeData->deserializePop(obj, inputMetadata);
+                result      = nodeData->deserializePop(obj, inputMetadata);
                 shouldErase = nodeData->empty();
             } else {
                 result = nodeData->deserialize(obj, inputMetadata, options);
@@ -140,17 +118,15 @@ auto PathSpaceLeaf::outDataName(ConcreteNameStringView const& concreteName,
 
 auto PathSpaceLeaf::outConcretePathComponent(ConcretePathIteratorStringView const& nextIter,
                                              ConcretePathIteratorStringView const& end,
-                                             ConcreteNameStringView const& concreteName,
-                                             InputMetadata const& inputMetadata,
-                                             void* obj,
-                                             OutOptions const& options,
-                                             bool const isExtract) -> Expected<int> {
+                                             ConcreteNameStringView const&         concreteName,
+                                             InputMetadata const&                  inputMetadata,
+                                             void*                                 obj,
+                                             OutOptions const&                     options,
+                                             bool const                            isExtract) -> Expected<int> {
     Expected<int> expected = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     this->nodeDataMap.if_contains(concreteName.getName(), [&](auto const& nodePair) {
-        expected = std::holds_alternative<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)
-                           ? std::get<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)
-                                     ->out(nextIter, end, inputMetadata, obj, options, isExtract)
-                           : std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
+        expected = std::holds_alternative<std::unique_ptr<PathSpaceLeaf>>(nodePair.second) ? std::get<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)->out(nextIter, end, inputMetadata, obj, options, isExtract)
+                                                                                           : std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
     });
     return expected;
 }
