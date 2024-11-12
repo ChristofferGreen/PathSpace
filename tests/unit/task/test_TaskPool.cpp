@@ -15,8 +15,8 @@ using namespace std::chrono_literals;
 
 TEST_CASE("TaskPool Misc") {
     SUBCASE("Basic task execution") {
-        TaskPool pool(2);
-        std::atomic<int> counter{0};
+        TaskPool          pool(2);
+        std::atomic<int>  counter{0};
         std::atomic<bool> done{false};
 
         {
@@ -35,9 +35,9 @@ TEST_CASE("TaskPool Misc") {
     }
 
     SUBCASE("Multiple tasks execution") {
-        TaskPool pool(4);
+        TaskPool         pool(4);
         std::atomic<int> counter{0};
-        const int NUM_TASKS = 100;
+        const int        NUM_TASKS = 100;
 
         std::vector<std::shared_ptr<Task>> tasks;
         tasks.reserve(NUM_TASKS);
@@ -65,8 +65,8 @@ TEST_CASE("TaskPool Misc") {
         }
 
         SUBCASE("Shutdown with pending tasks") {
-            TaskPool pool(2);
-            std::atomic<int> counter{0};
+            TaskPool                           pool(2);
+            std::atomic<int>                   counter{0};
             std::vector<std::shared_ptr<Task>> tasks;
 
             // Add several quick tasks
@@ -93,13 +93,13 @@ TEST_CASE("TaskPool Misc") {
         }
     }
 
-    SUBCASE("Task lifetime and cleanup with timeout") { // ToDo: Crashed once
-        TaskPool pool(1);
-        std::atomic<bool> taskExecuted{false};
-        std::weak_ptr<Task> weakTask;
-        std::mutex mutex;
+    SUBCASE("Task lifetime and cleanup with timeout") {
+        TaskPool                pool(1);
+        std::atomic<bool>       taskExecuted{false};
+        std::weak_ptr<Task>     weakTask;
+        std::mutex              mutex;
         std::condition_variable cv;
-        bool completed = false;
+        bool                    completed = false;
 
         {
             auto task = Task::Create([&](Task const&, bool) {
@@ -108,12 +108,12 @@ TEST_CASE("TaskPool Misc") {
                 completed = true;
                 cv.notify_one();
             });
-            weakTask = task;
+            weakTask  = task;
 
             pool.addTask(task);
 
             std::unique_lock<std::mutex> lock(mutex);
-            bool waitResult = cv.wait_for(lock, std::chrono::seconds(5), [&] { return completed; });
+            bool                         waitResult = cv.wait_for(lock, std::chrono::seconds(5), [&] { return completed; });
 
             REQUIRE(waitResult); // Ensure we didn't timeout
         }
@@ -123,7 +123,7 @@ TEST_CASE("TaskPool Misc") {
     }
 
     SUBCASE("Simple task cancellation through shared_ptr lifetime") {
-        TaskPool pool(2);
+        TaskPool          pool(2);
         std::atomic<bool> taskExecuted{false};
 
         {
@@ -149,20 +149,20 @@ TEST_CASE("TaskPool Misc") {
 
     SUBCASE("Simplified task pool stress test") {
         auto getOptimalTaskCount = []() {
-            const size_t minTasks = 100;
-            const size_t maxTasks = 1000;
+            const size_t minTasks     = 100;
+            const size_t maxTasks     = 1000;
             const size_t tasksPerCore = 50;
             return std::clamp(std::thread::hardware_concurrency() * tasksPerCore, minTasks, maxTasks);
         };
 
-        const size_t TASK_COUNT = getOptimalTaskCount();
-        const auto REASONABLE_TIMEOUT = std::chrono::milliseconds(TASK_COUNT / 10);
+        const size_t TASK_COUNT         = getOptimalTaskCount();
+        const auto   REASONABLE_TIMEOUT = std::chrono::milliseconds(TASK_COUNT / 10);
 
         const int NUM_ITERATIONS = 3;
         for (int iter = 0; iter < NUM_ITERATIONS; ++iter) {
-            const size_t THREAD_COUNT = std::max(2u, std::thread::hardware_concurrency() / 2);
-            TaskPool pool(THREAD_COUNT);
-            std::atomic<size_t> completedTasks{0};
+            const size_t                       THREAD_COUNT = std::max(2u, std::thread::hardware_concurrency() / 2);
+            TaskPool                           pool(THREAD_COUNT);
+            std::atomic<size_t>                completedTasks{0};
             std::vector<std::shared_ptr<Task>> tasks;
             tasks.reserve(TASK_COUNT);
 
@@ -195,12 +195,12 @@ TEST_CASE("TaskPool Misc") {
 
             // Test state management
             struct TestState {
-                std::atomic<bool> exceptionCaught{false};
-                std::atomic<bool> taskCompleted{false};
-                std::atomic<bool> unexpectedError{false};
-                std::mutex mutex;
+                std::atomic<bool>       exceptionCaught{false};
+                std::atomic<bool>       taskCompleted{false};
+                std::atomic<bool>       unexpectedError{false};
+                std::mutex              mutex;
                 std::condition_variable cv;
-                std::string errorMessage;
+                std::string             errorMessage;
             };
             auto state = std::make_shared<TestState>();
 
@@ -211,7 +211,7 @@ TEST_CASE("TaskPool Misc") {
                 } catch (const std::runtime_error& e) {
                     {
                         std::lock_guard<std::mutex> lock(state->mutex);
-                        state->errorMessage = e.what();
+                        state->errorMessage    = e.what();
                         state->exceptionCaught = true;
                     }
                 } catch (...) {
@@ -229,9 +229,7 @@ TEST_CASE("TaskPool Misc") {
 
             {
                 std::unique_lock<std::mutex> lock(state->mutex);
-                bool completed = state->cv.wait_for(lock, std::chrono::seconds(5), [&state] {
-                    return state->taskCompleted.load(std::memory_order_acquire);
-                });
+                bool                         completed = state->cv.wait_for(lock, std::chrono::seconds(5), [&state] { return state->taskCompleted.load(std::memory_order_acquire); });
 
                 REQUIRE_MESSAGE(completed, "Task execution timed out");
                 CHECK(state->exceptionCaught);
@@ -243,14 +241,14 @@ TEST_CASE("TaskPool Misc") {
         }
 
         SUBCASE("Multiple concurrent exceptions") {
-            TaskPool pool(1);
-            std::atomic<int> exceptionCount{0};
-            std::mutex mutex;
+            TaskPool                pool(1);
+            std::atomic<int>        exceptionCount{0};
+            std::mutex              mutex;
             std::condition_variable cv;
-            std::atomic<int> tasksCompleted{0};
+            std::atomic<int>        tasksCompleted{0};
 
             std::vector<std::shared_ptr<Task>> tasks;
-            constexpr int NUM_TASKS = 5;
+            constexpr int                      NUM_TASKS = 5;
 
             for (int i = 0; i < NUM_TASKS; ++i) {
                 auto task = Task::Create([&exceptionCount, &mutex, &cv, &tasksCompleted, i](Task const&, bool) {
@@ -273,7 +271,7 @@ TEST_CASE("TaskPool Misc") {
 
             {
                 std::unique_lock<std::mutex> lock(mutex);
-                bool completed = cv.wait_for(lock, std::chrono::seconds(5), [&tasksCompleted] { return tasksCompleted == NUM_TASKS; });
+                bool                         completed = cv.wait_for(lock, std::chrono::seconds(5), [&tasksCompleted] { return tasksCompleted == NUM_TASKS; });
 
                 REQUIRE_MESSAGE(completed, "Not all tasks completed within timeout");
                 CHECK_EQ(exceptionCount, NUM_TASKS);
@@ -286,10 +284,10 @@ TEST_CASE("TaskPool Misc") {
             TaskPool pool(2);
 
             struct State {
-                std::mutex mutex;
+                std::mutex              mutex;
                 std::condition_variable cv;
-                bool taskCompleted{false};
-                bool resourceDestroyed{false};
+                bool                    taskCompleted{false};
+                bool                    resourceDestroyed{false};
             };
             auto state = std::make_shared<State>();
 
@@ -322,9 +320,7 @@ TEST_CASE("TaskPool Misc") {
                 // Wait for either task completion or resource destruction
                 {
                     std::unique_lock<std::mutex> lock(state->mutex);
-                    REQUIRE(state->cv.wait_for(lock, std::chrono::seconds(1), [&state] {
-                        return state->resourceDestroyed || state->taskCompleted;
-                    }));
+                    REQUIRE(state->cv.wait_for(lock, std::chrono::seconds(1), [&state] { return state->resourceDestroyed || state->taskCompleted; }));
 
                     CHECK(state->resourceDestroyed);   // Resource should be destroyed even with exception
                     CHECK_FALSE(state->taskCompleted); // Task should not complete normally
@@ -336,10 +332,10 @@ TEST_CASE("TaskPool Misc") {
             TaskPool pool(1);
 
             struct TestState {
-                std::atomic<bool> taskStarted{false};
-                std::atomic<bool> taskCancelled{false};
-                std::atomic<bool> exceptionHandled{false};
-                std::mutex mutex;
+                std::atomic<bool>       taskStarted{false};
+                std::atomic<bool>       taskCancelled{false};
+                std::atomic<bool>       exceptionHandled{false};
+                std::mutex              mutex;
                 std::condition_variable cv;
             };
             auto state = std::make_shared<TestState>();
@@ -366,7 +362,7 @@ TEST_CASE("TaskPool Misc") {
 
             {
                 std::unique_lock<std::mutex> lock(state->mutex);
-                bool started = state->cv.wait_for(lock, std::chrono::seconds(5), [&state] { return state->taskStarted.load(); });
+                bool                         started = state->cv.wait_for(lock, std::chrono::seconds(5), [&state] { return state->taskStarted.load(); });
                 REQUIRE_MESSAGE(started, "Task did not start within timeout");
             }
 
@@ -388,11 +384,11 @@ TEST_CASE("TaskPool Misc") {
     SUBCASE("Complex Task Interactions") {
         // Keep our original simple tests
         SUBCASE("Basic task chain") {
-            TaskPool pool(2);
-            std::vector<int> sequence;
-            std::mutex mutex;
+            TaskPool                pool(2);
+            std::vector<int>        sequence;
+            std::mutex              mutex;
             std::condition_variable cv;
-            bool done = false;
+            bool                    done = false;
 
             // Create tasks with sequential dependencies
             auto task2 = Task::Create([&sequence, &mutex, &cv, &done](Task const&, bool) {
@@ -434,9 +430,9 @@ TEST_CASE("TaskPool Misc") {
 
             // Thread-safe map to track unique thread IDs
             struct ThreadTracker {
-                std::mutex mutex;
+                std::mutex                          mutex;
                 std::unordered_set<std::thread::id> threads;
-                std::atomic<int> uniqueThreadCount{0}; // Moved inside the struct
+                std::atomic<int>                    uniqueThreadCount{0}; // Moved inside the struct
 
                 void addThread() {
                     std::lock_guard<std::mutex> lock(mutex);
@@ -458,7 +454,7 @@ TEST_CASE("TaskPool Misc") {
 
             auto tracker = std::make_shared<ThreadTracker>();
 
-            constexpr int TASK_COUNT = 4;
+            constexpr int                      TASK_COUNT = 4;
             std::vector<std::shared_ptr<Task>> tasks;
             tasks.reserve(TASK_COUNT);
 
@@ -502,10 +498,10 @@ TEST_CASE("TaskPool Misc") {
             TaskPool pool(2);
 
             struct {
-                std::mutex mutex;
+                std::mutex              mutex;
                 std::condition_variable cv;
-                int tasksCreated{0};
-                int tasksCompleted{0};
+                int                     tasksCreated{0};
+                int                     tasksCompleted{0};
             } state;
 
             // Store tasks to keep them alive
@@ -543,7 +539,7 @@ TEST_CASE("TaskPool Misc") {
             // Wait for completion
             {
                 std::unique_lock<std::mutex> lock(state.mutex);
-                bool completed = state.cv.wait_for(lock, std::chrono::seconds(1), [&state] { return state.tasksCompleted == 3; });
+                bool                         completed = state.cv.wait_for(lock, std::chrono::seconds(1), [&state] { return state.tasksCompleted == 3; });
 
                 REQUIRE(completed);
                 CHECK(state.tasksCreated == 2);   // Two child tasks
@@ -555,10 +551,10 @@ TEST_CASE("TaskPool Misc") {
             TaskPool pool(2);
 
             struct {
-                std::mutex mutex;
-                std::condition_variable cv;
+                std::mutex                      mutex;
+                std::condition_variable         cv;
                 std::map<int, std::vector<int>> groupResults;
-                int completedTasks{0};
+                int                             completedTasks{0};
             } state;
 
             // Keep tasks alive
@@ -583,7 +579,7 @@ TEST_CASE("TaskPool Misc") {
             // Wait for all tasks to complete
             {
                 std::unique_lock<std::mutex> lock(state.mutex);
-                bool completed = state.cv.wait_for(lock, std::chrono::seconds(1), [&state] { return state.completedTasks == 4; });
+                bool                         completed = state.cv.wait_for(lock, std::chrono::seconds(1), [&state] { return state.completedTasks == 4; });
 
                 REQUIRE(completed);
                 CHECK(state.groupResults[0].size() == 2);
@@ -591,14 +587,14 @@ TEST_CASE("TaskPool Misc") {
             }
         }
 
-        SUBCASE("Task cleanup") { // ToDo: Crashed once
+        SUBCASE("Task cleanup") {
             TaskPool pool(2);
 
             struct State {
-                std::mutex mutex;
+                std::mutex              mutex;
                 std::condition_variable cv;
-                bool taskCompleted{false};
-                std::shared_ptr<bool> testValue; // Keep resource ownership in state
+                bool                    taskCompleted{false};
+                std::shared_ptr<bool>   testValue; // Keep resource ownership in state
 
                 State() : testValue(std::make_shared<bool>(false)) {}
             };
@@ -642,15 +638,15 @@ TEST_CASE("TaskPool Misc") {
         TaskPool pool(2);
 
         struct {
-            std::mutex mutex;
+            std::mutex              mutex;
             std::condition_variable cv;
-            int tasksCompleted{0};
+            int                     tasksCompleted{0};
         } state;
 
         constexpr int TOTAL_TASKS = 1000;
         // Keep strong references until we're sure tasks are queued
         std::vector<std::shared_ptr<Task>> tasks;
-        std::vector<std::weak_ptr<Task>> taskRefs;
+        std::vector<std::weak_ptr<Task>>   taskRefs;
 
         // Create and queue tasks
         for (int i = 0; i < TOTAL_TASKS; ++i) {
@@ -668,7 +664,7 @@ TEST_CASE("TaskPool Misc") {
         // Wait for completion
         {
             std::unique_lock<std::mutex> lock(state.mutex);
-            bool completed = state.cv.wait_for(lock,
+            bool                         completed = state.cv.wait_for(lock,
                                                std::chrono::seconds(10), // Increased timeout
                                                [&state] { return state.tasksCompleted == TOTAL_TASKS; });
 
@@ -693,10 +689,10 @@ TEST_CASE("TaskPool Misc") {
         TaskPool pool(2);
 
         struct {
-            std::mutex mutex;
-            std::condition_variable cv;
-            int tasksCompleted{0};
-            std::set<std::thread::id> threadsSeen; // Track which threads execute tasks
+            std::mutex                            mutex;
+            std::condition_variable               cv;
+            int                                   tasksCompleted{0};
+            std::set<std::thread::id>             threadsSeen; // Track which threads execute tasks
             std::chrono::steady_clock::time_point startTime;
         } state;
 
@@ -706,7 +702,7 @@ TEST_CASE("TaskPool Misc") {
         std::vector<std::shared_ptr<Task>> tasks;
 
         // Create a mix of long and short tasks
-        constexpr int LONG_TASKS = 2;
+        constexpr int LONG_TASKS  = 2;
         constexpr int SHORT_TASKS = 8;
         constexpr int TOTAL_TASKS = LONG_TASKS + SHORT_TASKS;
 
@@ -751,7 +747,7 @@ TEST_CASE("TaskPool Misc") {
         // Wait for completion
         {
             std::unique_lock<std::mutex> lock(state.mutex);
-            bool completed = state.cv.wait_for(lock, std::chrono::seconds(2), [&state] { return state.tasksCompleted == TOTAL_TASKS; });
+            bool                         completed = state.cv.wait_for(lock, std::chrono::seconds(2), [&state] { return state.tasksCompleted == TOTAL_TASKS; });
 
             REQUIRE(completed);
 
@@ -762,7 +758,7 @@ TEST_CASE("TaskPool Misc") {
             CHECK(state.threadsSeen.size() > 1);
 
             // Verify total execution time is less than sequential would require
-            auto totalTime = std::chrono::steady_clock::now() - state.startTime;
+            auto totalTime         = std::chrono::steady_clock::now() - state.startTime;
             auto maxSequentialTime = std::chrono::milliseconds(LONG_TASKS * 100 + SHORT_TASKS * 10);
             CHECK(totalTime < maxSequentialTime);
         }

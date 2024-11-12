@@ -81,42 +81,6 @@ TEST_CASE("PathSpace Insert Function and Execution") {
         CHECK(result.value() == 75.0);
     }
 
-    SUBCASE("Function Overwriting") {
-        /*int (*func1)() = []() -> int { return 1; };
-        int (*func2)() = []() -> int { return 2; };
-
-        CHECK(pspace.insert(SP::GlobPathStringView{"/overwrite"}, func1).errors.size() == 0);
-        CHECK(pspace.insert(SP::GlobPathStringView{"/overwrite"}, func2).errors.size() == 0);
-
-        auto result = pspace.readBlock<int>(SP::ConcretePathStringView{"/overwrite"});
-        CHECK(result.has_value());
-        CHECK(result.value() == 2);*/
-    }
-
-    SUBCASE("Circular Dependency Detection") {
-        // ToDo : Implement circular dependency detection
-        /*auto f1 = [&pspace]() -> int { return pspace.readBlock<int>(SP::ConcretePathStringView{"/f2"}).value() + 1; };
-        auto f2 = [&pspace]() -> int { return pspace.readBlock<int>(SP::ConcretePathStringView{"/f1"}).value() + 1; };
-
-        CHECK(pspace.insert(SP::GlobPathStringView{"/f1"}, f1).errors.size() == 0);
-        CHECK(pspace.insert(SP::GlobPathStringView{"/f2"}, f2).errors.size() == 0);
-
-        auto result = pspace.readBlock<int>(SP::ConcretePathStringView{"/f1"});
-        // Expecting an error or timeout due to circular dependency
-        CHECK(!result.has_value());*/
-    }
-
-    SUBCASE("Exception Handling in Functions") {
-        /*auto throwingFunc = []() -> int { throw std::runtime_error("Test exception"); };
-
-        CHECK(pspace.insert(SP::GlobPathStringView{"/throwing"}, throwingFunc).errors.size() == 0);
-
-        auto result = pspace.readBlock<int>(SP::ConcretePathStringView{"/throwing"});
-        CHECK(!result.has_value());*/
-        // ToDo: Check for appropriate error handling
-        // The exact error checking depends on how PathSpace handles exceptions
-    }
-
     SUBCASE("Large Number of Nested Calls") {
         const int DEPTH = 1000;
         for (int i = 0; i < DEPTH; ++i) {
@@ -136,15 +100,11 @@ TEST_CASE("PathSpace Insert Function and Execution") {
     SUBCASE("Sequential vs Immediate Function Execution") {
         SUBCASE("Sequential (Lazy) Execution") {
             std::atomic<int> counter(0);
-            auto incrementFunc = [&counter]() -> int { return ++counter; };
+            auto             incrementFunc = [&counter]() -> int { return ++counter; };
 
             // Insert with lazy execution - functions won't run until read
             for (int i = 0; i < 1000; ++i)
-                CHECK(pspace.insert(std::format("/concurrent{}", i),
-                                    incrementFunc,
-                                    InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}})
-                              .nbrTasksInserted
-                      == 1);
+                CHECK(pspace.insert(std::format("/concurrent{}", i), incrementFunc, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}}).nbrTasksInserted == 1);
 
             // Reading triggers execution in sequence
             for (int i = 0; i < 1000; ++i)
@@ -155,15 +115,11 @@ TEST_CASE("PathSpace Insert Function and Execution") {
 
         SUBCASE("Immediate (Parallel) Execution") {
             std::atomic<int> counter(0);
-            auto incrementFunc = [&counter]() -> int { return ++counter; };
+            auto             incrementFunc = [&counter]() -> int { return ++counter; };
 
             // Insert with immediate execution - functions run right away in parallel
             for (int i = 0; i < 1000; ++i)
-                CHECK(pspace.insert(std::format("/concurrent{}", i),
-                                    incrementFunc,
-                                    InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Immediate}})
-                              .nbrTasksInserted
-                      == 1);
+                CHECK(pspace.insert(std::format("/concurrent{}", i), incrementFunc, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Immediate}}).nbrTasksInserted == 1);
 
             // Read the results - they'll be in non-deterministic order
             std::set<int> results;

@@ -24,18 +24,18 @@ using namespace SP;
 
 TEST_CASE("PathSpace Multithreading") {
     SUBCASE("PathSpace Basic Concurrent Operations") {
-        PathSpace pspace;
-        const int NUM_THREADS = 8;
-        const int OPERATIONS_PER_THREAD = 100;
-        const int MAX_RETRIES = 3;
-        const auto TEST_TIMEOUT = std::chrono::seconds(30);
+        PathSpace  pspace;
+        const int  NUM_THREADS           = 8;
+        const int  OPERATIONS_PER_THREAD = 100;
+        const int  MAX_RETRIES           = 3;
+        const auto TEST_TIMEOUT          = std::chrono::seconds(30);
 
         struct Stats {
-            std::atomic<size_t> totalOps{0};
-            std::atomic<size_t> successfulOps{0};
-            std::atomic<size_t> failedOps{0};
-            std::atomic<size_t> timeouts{0};
-            mutable std::mutex mtx;
+            std::atomic<size_t>           totalOps{0};
+            std::atomic<size_t>           successfulOps{0};
+            std::atomic<size_t>           failedOps{0};
+            std::atomic<size_t>           timeouts{0};
+            mutable std::mutex            mtx;
             std::map<std::string, size_t> pathAccesses;
 
             void recordAccess(const std::string& path) {
@@ -45,21 +45,17 @@ TEST_CASE("PathSpace Multithreading") {
 
             auto getStats() const {
                 std::lock_guard<std::mutex> lock(mtx);
-                return std::make_tuple(totalOps.load(std::memory_order_acquire),
-                                       successfulOps.load(std::memory_order_acquire),
-                                       failedOps.load(std::memory_order_acquire),
-                                       timeouts.load(std::memory_order_acquire),
-                                       pathAccesses);
+                return std::make_tuple(totalOps.load(std::memory_order_acquire), successfulOps.load(std::memory_order_acquire), failedOps.load(std::memory_order_acquire), timeouts.load(std::memory_order_acquire), pathAccesses);
             }
         };
 
         // Shared state with proper synchronization
         struct SharedState {
-            Stats stats;
-            std::atomic<bool> shouldStop{false};
-            std::atomic<bool> readersCanStart{false};
-            std::atomic<int> insertCount{0};
-            std::mutex cvMutex;
+            Stats                   stats;
+            std::atomic<bool>       shouldStop{false};
+            std::atomic<bool>       readersCanStart{false};
+            std::atomic<int>        insertCount{0};
+            std::mutex              cvMutex;
             std::condition_variable readerStartCV;
 
             void signalReadersToStart() {
@@ -98,8 +94,8 @@ TEST_CASE("PathSpace Multithreading") {
             std::mt19937 rng(std::random_device{}() + threadId);
             try {
                 for (int i = 0; i < OPERATIONS_PER_THREAD && state.shouldContinue(); i++) {
-                    std::string path = getPath(threadId, i, rng);
-                    int value = threadId * 1000 + i;
+                    std::string path  = getPath(threadId, i, rng);
+                    int         value = threadId * 1000 + i;
 
                     bool inserted = false;
                     for (int attempt = 0; attempt < MAX_RETRIES && !inserted && state.shouldContinue(); attempt++) {
@@ -142,17 +138,14 @@ TEST_CASE("PathSpace Multithreading") {
             // Wait for writers to populate data
             {
                 std::unique_lock<std::mutex> lock(state.cvMutex);
-                state.readerStartCV.wait(lock, [&]() {
-                    return state.readersCanStart.load(std::memory_order_acquire) || state.shouldStop.load(std::memory_order_acquire);
-                });
+                state.readerStartCV.wait(lock, [&]() { return state.readersCanStart.load(std::memory_order_acquire) || state.shouldStop.load(std::memory_order_acquire); });
             }
 
             try {
                 for (int i = 0; i < OPERATIONS_PER_THREAD && state.shouldContinue(); i++) {
                     std::string path = getPath(threadId % (NUM_THREADS / 2), i, rng);
 
-                    OutOptions options{.block
-                                       = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(50)}};
+                    OutOptions options{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(50)}};
 
                     // Try read first, fall back to extract
                     auto result = pspace.readBlock<int>(path, options);
@@ -184,7 +177,7 @@ TEST_CASE("PathSpace Multithreading") {
         // Launch threads with proper cleanup
         {
             std::vector<std::jthread> threads;
-            auto testStart = std::chrono::steady_clock::now();
+            auto                      testStart = std::chrono::steady_clock::now();
 
             // Start writers
             for (int i = 0; i < NUM_THREADS / 2; ++i) {
@@ -215,7 +208,7 @@ TEST_CASE("PathSpace Multithreading") {
 
         // Calculate rates
         double successRate = static_cast<double>(successfulOps) / totalOps * 100;
-        double errorRate = static_cast<double>(failedOps) / totalOps;
+        double errorRate   = static_cast<double>(failedOps) / totalOps;
 
         // Output statistics for debugging
         INFO("Total operations: " << totalOps);
@@ -245,7 +238,7 @@ TEST_CASE("PathSpace Multithreading") {
 
     SUBCASE("PathSpace Concurrent Counter") {
         PathSpace pspace;
-        const int NUM_THREADS = std::min(16, static_cast<int>(std::thread::hardware_concurrency() * 2));
+        const int NUM_THREADS           = std::min(16, static_cast<int>(std::thread::hardware_concurrency() * 2));
         const int OPERATIONS_PER_THREAD = 100;
 
         std::atomic<int> failedOperations{0};
@@ -254,9 +247,9 @@ TEST_CASE("PathSpace Multithreading") {
         // Structure to track thread operations
         struct ThreadStats {
             std::vector<int> insertedValues;
-            int threadId;
-            int successCount{0};
-            int failCount{0};
+            int              threadId;
+            int              successCount{0};
+            int              failCount{0};
 
             ThreadStats(int id) : threadId(id) {
                 insertedValues.reserve(OPERATIONS_PER_THREAD);
@@ -323,7 +316,7 @@ TEST_CASE("PathSpace Multithreading") {
         // Verify we can reconstruct which thread's operations succeeded
         std::vector<int> successesPerThread(NUM_THREADS, 0);
         for (int value : extractedValues) {
-            int threadId = value / OPERATIONS_PER_THREAD;
+            int threadId     = value / OPERATIONS_PER_THREAD;
             int operationNum = value % OPERATIONS_PER_THREAD;
             REQUIRE(threadId >= 0);
             REQUIRE(threadId < NUM_THREADS);
@@ -340,7 +333,7 @@ TEST_CASE("PathSpace Multithreading") {
 
     SUBCASE("PathSpace Counter Order Preservation") {
         PathSpace pspace;
-        const int NUM_THREADS = 4;
+        const int NUM_THREADS           = 4;
         const int OPERATIONS_PER_THREAD = 10;
 
         // Track operations as they're queued
@@ -350,12 +343,12 @@ TEST_CASE("PathSpace Multithreading") {
             int value;
         };
         std::vector<Operation> expectedOperations;
-        std::mutex opsMutex;
+        std::mutex             opsMutex;
 
         // Track any test failures in worker threads
         std::atomic<bool> workerFailure{false};
-        std::string workerErrorMsg;
-        std::mutex errorMutex;
+        std::string       workerErrorMsg;
+        std::mutex        errorMutex;
 
         auto workerFunction = [&](int threadId) {
             try {
@@ -367,7 +360,7 @@ TEST_CASE("PathSpace Multithreading") {
                     if (!result.errors.empty()) {
                         std::lock_guard<std::mutex> lock(errorMutex);
                         workerErrorMsg = "Insert failed: " + result.errors[0].message.value_or("Unknown error");
-                        workerFailure = true;
+                        workerFailure  = true;
                         return;
                     }
 
@@ -383,7 +376,7 @@ TEST_CASE("PathSpace Multithreading") {
             } catch (const std::exception& e) {
                 std::lock_guard<std::mutex> lock(errorMutex);
                 workerErrorMsg = "Worker thread exception: " + std::string(e.what());
-                workerFailure = true;
+                workerFailure  = true;
             }
         };
 
@@ -405,15 +398,13 @@ TEST_CASE("PathSpace Multithreading") {
 
         // Extract all values and verify order
         std::vector<Operation> actualOperations;
-        int expectedCount = NUM_THREADS * OPERATIONS_PER_THREAD;
-        int extractedCount = 0;
-        int timeoutCount = 0;
-        const int MAX_TIMEOUTS = 10; // Allow some timeouts before giving up
+        int                    expectedCount  = NUM_THREADS * OPERATIONS_PER_THREAD;
+        int                    extractedCount = 0;
+        int                    timeoutCount   = 0;
+        const int              MAX_TIMEOUTS   = 10; // Allow some timeouts before giving up
 
         while (extractedCount < expectedCount) {
-            auto value = pspace.extractBlock<int>(
-                    "/counter",
-                    OutOptions{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
+            auto value = pspace.extractBlock<int>("/counter", OutOptions{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
 
             if (!value.has_value()) {
                 if (value.error().code == Error::Code::Timeout) {
@@ -433,13 +424,13 @@ TEST_CASE("PathSpace Multithreading") {
             timeoutCount = 0; // Reset timeout counter on successful extraction
 
             // Find matching operation
-            bool found = false;
+            bool      found = false;
             Operation matchingOp;
 
             for (const auto& op : expectedOperations) {
                 if (op.value == value.value()) {
                     matchingOp = op;
-                    found = true;
+                    found      = true;
                     break;
                 }
             }
@@ -505,8 +496,8 @@ TEST_CASE("PathSpace Multithreading") {
 
     SUBCASE("Mixed Readers and Writers") {
         PathSpace pspace;
-        const int NUM_WRITERS = 4;
-        const int NUM_READERS = 4;
+        const int NUM_WRITERS       = 4;
+        const int NUM_READERS       = 4;
         const int VALUES_PER_WRITER = 100;
 
         std::atomic<int> readsCompleted{0};
@@ -584,24 +575,24 @@ TEST_CASE("PathSpace Multithreading") {
 
     SUBCASE("PathSpace Multiple Path Operations") {
         PathSpace pspace;
-        const int NUM_THREADS = 4;
+        const int NUM_THREADS      = 4;
         const int PATHS_PER_THREAD = 3;
-        const int OPS_PER_PATH = 50;
+        const int OPS_PER_PATH     = 50;
 
         struct PathOperation {
             std::string path;
-            int threadId;
-            int seqNum;
-            int value;
+            int         threadId;
+            int         seqNum;
+            int         value;
         };
 
         std::vector<std::vector<PathOperation>> threadOperations(NUM_THREADS);
-        std::mutex opsMutex;
+        std::mutex                              opsMutex;
 
         // Track any test failures in worker threads
         std::atomic<bool> workerFailure{false};
-        std::string workerErrorMsg;
-        std::mutex errorMutex;
+        std::string       workerErrorMsg;
+        std::mutex        errorMutex;
 
         auto workerFunction = [&](int threadId) {
             try {
@@ -618,7 +609,7 @@ TEST_CASE("PathSpace Multithreading") {
                         if (!result.errors.empty()) {
                             std::lock_guard<std::mutex> lock(errorMutex);
                             workerErrorMsg = "Insert failed: " + result.errors[0].message.value_or("Unknown error");
-                            workerFailure = true;
+                            workerFailure  = true;
                             return;
                         }
 
@@ -631,7 +622,7 @@ TEST_CASE("PathSpace Multithreading") {
             } catch (const std::exception& e) {
                 std::lock_guard<std::mutex> lock(errorMutex);
                 workerErrorMsg = "Worker thread exception: " + std::string(e.what());
-                workerFailure = true;
+                workerFailure  = true;
             }
         };
 
@@ -654,25 +645,22 @@ TEST_CASE("PathSpace Multithreading") {
             // Verify each path's operations
             for (int t = 0; t < NUM_THREADS; t++) {
                 for (int p = 0; p < PATHS_PER_THREAD; p++) {
-                    std::string path = "/path" + std::to_string(t) + "_" + std::to_string(p);
+                    std::string      path = "/path" + std::to_string(t) + "_" + std::to_string(p);
                     std::vector<int> seqNums;
-                    int expectedValues = OPS_PER_PATH;
-                    int timeoutCount = 0;
-                    const int MAX_TIMEOUTS = 10;
+                    int              expectedValues = OPS_PER_PATH;
+                    int              timeoutCount   = 0;
+                    const int        MAX_TIMEOUTS   = 10;
 
                     // Extract all values from this path
                     while (seqNums.size() < expectedValues) {
-                        auto value = pspace.extractBlock<int>(
-                                path,
-                                OutOptions{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
+                        auto value = pspace.extractBlock<int>(path, OutOptions{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
 
                         if (!value.has_value()) {
                             if (value.error().code == Error::Code::Timeout) {
                                 timeoutCount++;
                                 if (timeoutCount > MAX_TIMEOUTS) {
                                     std::stringstream ss;
-                                    ss << "Too many extraction timeouts on path " << path << ". Got " << seqNums.size() << " of "
-                                       << expectedValues << " values";
+                                    ss << "Too many extraction timeouts on path " << path << ". Got " << seqNums.size() << " of " << expectedValues << " values";
                                     FAIL(ss.str());
                                 }
                                 continue;
@@ -686,9 +674,7 @@ TEST_CASE("PathSpace Multithreading") {
 
                         // Find matching operation
                         auto& ops = threadOperations[t];
-                        auto it = std::find_if(ops.begin(), ops.end(), [&](const PathOperation& op) {
-                            return op.path == path && op.value == value.value();
-                        });
+                        auto  it  = std::find_if(ops.begin(), ops.end(), [&](const PathOperation& op) { return op.path == path && op.value == value.value(); });
 
                         std::stringstream ss;
                         ss << "Value " << value.value() << " not found in operations for path " << path;
@@ -734,28 +720,28 @@ TEST_CASE("PathSpace Multithreading") {
 
         // Pre-populate with known values
         for (int i = 0; i < NUM_VALUES; i++) {
-            auto result = pspace.insert("/race", i);
+            auto              result = pspace.insert("/race", i);
             std::stringstream ss;
             ss << "Failed to insert initial value " << i;
             REQUIRE_MESSAGE(result.errors.empty(), ss.str());
         }
 
-        std::vector<int> extractedValues;
-        std::mutex extractMutex;
+        std::vector<int>  extractedValues;
+        std::mutex        extractMutex;
         std::atomic<bool> extractionComplete{false};
-        std::atomic<int> readCount{0};
+        std::atomic<int>  readCount{0};
 
         SUBCASE("Concurrent Read-Extract Operations") {
             // Track thread errors
-            std::string readerError, extractorError;
-            std::mutex errorMutex;
+            std::string       readerError, extractorError;
+            std::mutex        errorMutex;
             std::atomic<bool> hasError{false};
 
             // Reader thread - reads values continuously until extraction is complete
             std::thread readerThread([&]() {
                 try {
-                    const int MAX_FAILED_READS = 10;
-                    int consecutiveFailures = 0;
+                    const int MAX_FAILED_READS    = 10;
+                    int       consecutiveFailures = 0;
 
                     while (readCount < NUM_VALUES * 100 && !extractionComplete) { // Allow more reads than values
                         auto value = pspace.read<int>("/race");
@@ -784,24 +770,22 @@ TEST_CASE("PathSpace Multithreading") {
             // Extractor thread - extracts values with timeout
             std::thread extractorThread([&]() {
                 try {
-                    int timeoutCount = 0;
-                    const int MAX_TIMEOUTS = 10;
-                    int extractedCount = 0;
+                    int       timeoutCount   = 0;
+                    const int MAX_TIMEOUTS   = 10;
+                    int       extractedCount = 0;
 
                     while (extractedCount < NUM_VALUES) {
-                        auto value = pspace.extractBlock<int>(
-                                "/race",
-                                OutOptions{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
+                        auto value = pspace.extractBlock<int>("/race", OutOptions{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
 
                         if (!value.has_value()) {
                             if (value.error().code == Error::Code::Timeout) {
                                 timeoutCount++;
                                 if (timeoutCount > MAX_TIMEOUTS) {
                                     std::lock_guard<std::mutex> lock(errorMutex);
-                                    std::stringstream ss;
+                                    std::stringstream           ss;
                                     ss << "Too many extraction timeouts. Got " << extractedCount << " of " << NUM_VALUES << " values";
                                     extractorError = ss.str();
-                                    hasError = true;
+                                    hasError       = true;
                                     break;
                                 }
                                 continue;
@@ -867,24 +851,20 @@ TEST_CASE("PathSpace Multithreading") {
 
             // Verify queue is empty with timeouts
             {
-                auto finalRead = pspace.readBlock<int>(
-                        "/race",
-                        OutOptions{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
+                auto finalRead = pspace.readBlock<int>("/race", OutOptions{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
                 CHECK_MESSAGE(!finalRead.has_value(), "Expected no more values to read");
             }
 
             {
-                auto finalExtract = pspace.extractBlock<int>(
-                        "/race",
-                        OutOptions{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
+                auto finalExtract = pspace.extractBlock<int>("/race", OutOptions{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
                 CHECK_MESSAGE(!finalExtract.has_value(), "Expected no more values to extract");
             }
         }
     }
 
-    SUBCASE("Concurrent Path Creation") { // ToDo: This crashed once, unknown why.
+    SUBCASE("Concurrent Path Creation") {
         PathSpace pspace;
-        const int NUM_THREADS = 8;
+        const int NUM_THREADS      = 8;
         const int PATHS_PER_THREAD = 100;
 
         auto pathCreator = [&](int threadId) {
@@ -912,8 +892,8 @@ TEST_CASE("PathSpace Multithreading") {
             for (int i = 0; i < PATHS_PER_THREAD; i++) {
                 std::string basePath = "/thread" + std::to_string(t);
                 for (int depth = 0; depth < 3; depth++) {
-                    std::string path = basePath + "/path" + std::to_string(i) + "/depth" + std::to_string(depth);
-                    auto value = pspace.extractBlock<int>(path);
+                    std::string path  = basePath + "/path" + std::to_string(i) + "/depth" + std::to_string(depth);
+                    auto        value = pspace.extractBlock<int>(path);
                     REQUIRE(value.has_value());
                     CHECK(value.value() == i);
                 }
@@ -923,13 +903,13 @@ TEST_CASE("PathSpace Multithreading") {
 
     SUBCASE("Blocking Operations") {
         PathSpace pspace;
-        const int NUM_THREADS = 4;
+        const int NUM_THREADS      = 4;
         const int ITEMS_PER_THREAD = 50;
 
         struct TestData {
             std::string path;
-            int value;
-            bool extracted{false};
+            int         value;
+            bool        extracted{false};
         };
 
         std::vector<std::vector<TestData>> threadData(NUM_THREADS);
@@ -955,8 +935,8 @@ TEST_CASE("PathSpace Multithreading") {
         // Phase 2: Extract data with multiple threads
         sp_log("Phase 2: Extracting data", "INFO");
         {
-            std::atomic<int> extractedCount = 0;
-            std::atomic<bool> shouldStop = false;
+            std::atomic<int>  extractedCount = 0;
+            std::atomic<bool> shouldStop     = false;
 
             auto extractWorker = [&](int threadId) {
                 auto& items = threadData[threadId];
@@ -966,9 +946,7 @@ TEST_CASE("PathSpace Multithreading") {
                     if (item.extracted)
                         continue;
 
-                    auto result = pspace.extractBlock<int>(item.path,
-                                                           OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait,
-                                                                                            .timeout = std::chrono::milliseconds(100)}});
+                    auto result = pspace.extractBlock<int>(item.path, OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
 
                     if (result.has_value()) {
                         CHECK(result.value() == item.value);
@@ -1004,7 +982,7 @@ TEST_CASE("PathSpace Multithreading") {
         // Phase 3: Verify and cleanup any remaining items
         sp_log("Phase 3: Verification and cleanup", "INFO");
         {
-            int remainingItems = 0;
+            int                      remainingItems = 0;
             std::vector<std::string> remainingPaths;
 
             // First pass: Try to extract any remaining items
@@ -1057,12 +1035,12 @@ TEST_CASE("PathSpace Multithreading") {
     }
 
     SUBCASE("Task Execution Order") {
-        const int NUM_TASKS = 5;
-        SP::PathSpace pspace;
-        std::vector<int> executionOrder;
-        std::mutex mutex;
+        const int               NUM_TASKS = 5;
+        SP::PathSpace           pspace;
+        std::vector<int>        executionOrder;
+        std::mutex              mutex;
         std::condition_variable cv;
-        std::atomic<int> tasksCompleted{0};
+        std::atomic<int>        tasksCompleted{0};
 
         INFO("Starting test with ", NUM_TASKS, " tasks");
 
@@ -1081,10 +1059,7 @@ TEST_CASE("PathSpace Multithreading") {
                 return i;
             };
 
-            REQUIRE(pspace.insert("/task/" + std::to_string(i),
-                                  task,
-                                  SP::InOptions{.execution = SP::ExecutionOptions{.category = SP::ExecutionOptions::Category::Lazy}})
-                            .errors.empty());
+            REQUIRE(pspace.insert("/task/" + std::to_string(i), task, SP::InOptions{.execution = SP::ExecutionOptions{.category = SP::ExecutionOptions::Category::Lazy}}).errors.empty());
         }
 
         // Execute tasks in sequence
@@ -1106,12 +1081,12 @@ TEST_CASE("PathSpace Multithreading") {
         public:
             static void runTest(PathSpace& space) {
                 // Configuration - smaller numbers but still sufficient for testing
-                const int NUM_THREADS = 4;
-                const int OPS_PER_THREAD = 100;
-                const auto TIMEOUT = std::chrono::seconds(5);
+                const int  NUM_THREADS    = 4;
+                const int  OPS_PER_THREAD = 100;
+                const auto TIMEOUT        = std::chrono::seconds(5);
 
-                std::atomic<int> success_count{0};
-                std::atomic<bool> has_error{false};
+                std::atomic<int>         success_count{0};
+                std::atomic<bool>        has_error{false};
                 std::vector<std::thread> threads;
 
                 // Launch worker threads
@@ -1134,18 +1109,14 @@ TEST_CASE("PathSpace Multithreading") {
                                     }
                                     case 1: {
                                         // Read with short timeout
-                                        auto result = space.readBlock<int>(
-                                                path,
-                                                OutOptions{.block = BlockOptions{.timeout = std::chrono::milliseconds(10)}});
+                                        auto result = space.readBlock<int>(path, OutOptions{.block = BlockOptions{.timeout = std::chrono::milliseconds(10)}});
                                         if (result)
                                             success_count++;
                                         break;
                                     }
                                     case 2: {
                                         // Extract with short timeout
-                                        auto result = space.extractBlock<int>(
-                                                path,
-                                                OutOptions{.block = BlockOptions{.timeout = std::chrono::milliseconds(10)}});
+                                        auto result = space.extractBlock<int>(path, OutOptions{.block = BlockOptions{.timeout = std::chrono::milliseconds(10)}});
                                         if (result)
                                             success_count++;
                                         break;
@@ -1216,18 +1187,18 @@ TEST_CASE("PathSpace Multithreading") {
         }
 
     private:
-        mutable std::mutex mutex;
+        mutable std::mutex      mutex;
         std::condition_variable cv;
-        int count = 0;
+        int                     count = 0;
     };
 
     SUBCASE("Concurrent Task Execution - Task Reading") {
         PathSpace space;
-        const int READERS = 3;
-        const int ITERATIONS = 5;
+        const int READERS        = 3;
+        const int ITERATIONS     = 5;
         const int EXPECTED_COUNT = READERS * ITERATIONS;
 
-        TestCounter counter;
+        TestCounter       counter;
         std::atomic<bool> has_error{false};
 
         // Insert initial value
@@ -1236,9 +1207,7 @@ TEST_CASE("PathSpace Multithreading") {
         auto reader_func = [&](int reader_id) {
             try {
                 for (int j = 0; j < ITERATIONS && !has_error; j++) {
-                    auto result = space.readBlock<int>("/shared/task",
-                                                       OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait,
-                                                                                        .timeout = std::chrono::seconds(10)}});
+                    auto result = space.readBlock<int>("/shared/task", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::seconds(10)}});
 
                     if (result && result.value() == 42) {
                         counter.increment();
@@ -1281,11 +1250,11 @@ TEST_CASE("PathSpace Multithreading") {
 
     SUBCASE("Concurrent Task Execution - Task Reading") {
         PathSpace space;
-        const int READERS = 3;
-        const int ITERATIONS = 5;
+        const int READERS        = 3;
+        const int ITERATIONS     = 5;
         const int EXPECTED_COUNT = READERS * ITERATIONS;
 
-        TestCounter counter;
+        TestCounter       counter;
         std::atomic<bool> has_error{false};
 
         // Insert initial value
@@ -1294,9 +1263,7 @@ TEST_CASE("PathSpace Multithreading") {
         auto reader_func = [&](int reader_id) {
             try {
                 for (int j = 0; j < ITERATIONS && !has_error; j++) {
-                    auto result = space.readBlock<int>("/shared/task",
-                                                       OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait,
-                                                                                        .timeout = std::chrono::seconds(10)}});
+                    auto result = space.readBlock<int>("/shared/task", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::seconds(10)}});
 
                     if (result && result.value() == 42) {
                         counter.increment();
@@ -1341,19 +1308,13 @@ TEST_CASE("PathSpace Multithreading") {
         PathSpace space;
 
         // Try to read from a path that doesn't exist yet, with timeout
-        auto read_result = space.readBlock<int>(
-                "/missing_task",
-                OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+        auto read_result = space.readBlock<int>("/missing_task", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
 
         // Should timeout because no data was ever inserted
-        CHECK_MESSAGE(!read_result.has_value(),
-                      "Expected timeout, but got value: ",
-                      read_result.has_value() ? std::to_string(read_result.value()) : "timeout");
+        CHECK_MESSAGE(!read_result.has_value(), "Expected timeout, but got value: ", read_result.has_value() ? std::to_string(read_result.value()) : "timeout");
 
         if (!read_result.has_value()) {
-            CHECK_MESSAGE(read_result.error().code == Error::Code::Timeout,
-                          "Expected timeout error, got different error code: ",
-                          static_cast<int>(read_result.error().code));
+            CHECK_MESSAGE(read_result.error().code == Error::Code::Timeout, "Expected timeout error, got different error code: ", static_cast<int>(read_result.error().code));
         }
     }
 
@@ -1371,9 +1332,7 @@ TEST_CASE("PathSpace Multithreading") {
         REQUIRE_MESSAGE(fast_insert.errors.empty(), "Failed to insert fast task");
 
         // Read fast task - should complete
-        auto fast_result = space.readBlock<int>(
-                "/fast_task",
-                OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(200)}});
+        auto fast_result = space.readBlock<int>("/fast_task", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(200)}});
 
         CHECK_MESSAGE(fast_result.has_value(), "Fast task should complete but got timeout");
 
@@ -1382,16 +1341,12 @@ TEST_CASE("PathSpace Multithreading") {
         }
 
         // Now try reading from a non-existent path - should timeout
-        auto timeout_result = space.readBlock<int>(
-                "/missing_task",
-                OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+        auto timeout_result = space.readBlock<int>("/missing_task", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
 
         CHECK_MESSAGE(!timeout_result.has_value(), "Expected timeout for missing task");
 
         if (!timeout_result.has_value()) {
-            CHECK_MESSAGE(timeout_result.error().code == Error::Code::Timeout,
-                          "Expected timeout error but got: ",
-                          static_cast<int>(timeout_result.error().code));
+            CHECK_MESSAGE(timeout_result.error().code == Error::Code::Timeout, "Expected timeout error but got: ", static_cast<int>(timeout_result.error().code));
         }
 
         // Clean up
@@ -1420,9 +1375,7 @@ TEST_CASE("PathSpace Multithreading") {
         REQUIRE_MESSAGE(slow_insert.errors.empty(), "Failed to insert fast task");
 
         // Read fast task - should complete
-        auto fast_result = space.readBlock<int>(
-                "/fast_task",
-                OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(200)}});
+        auto fast_result = space.readBlock<int>("/fast_task", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(200)}});
 
         CHECK_MESSAGE(fast_result.has_value(), "Fast task should complete but got timeout");
 
@@ -1431,17 +1384,12 @@ TEST_CASE("PathSpace Multithreading") {
         }
 
         // Now try reading from a slow execution- should timeout
-        auto timeout_result = space.readBlock<int>(
-                "/slow_task",
-                OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+        auto timeout_result = space.readBlock<int>("/slow_task", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
 
-        CHECK_MESSAGE(!timeout_result.has_value(),
-                      std::format("Expected timeout for slow task, result has value: {}", timeout_result.value()));
+        CHECK_MESSAGE(!timeout_result.has_value(), std::format("Expected timeout for slow task, result has value: {}", timeout_result.value()));
 
         if (!timeout_result.has_value()) {
-            CHECK_MESSAGE(timeout_result.error().code == Error::Code::Timeout,
-                          "Expected timeout error but got: ",
-                          static_cast<int>(timeout_result.error().code));
+            CHECK_MESSAGE(timeout_result.error().code == Error::Code::Timeout, "Expected timeout error but got: ", static_cast<int>(timeout_result.error().code));
         }
     }
 
@@ -1456,10 +1404,7 @@ TEST_CASE("PathSpace Multithreading") {
         // Store an error-generating task
         auto error_task = []() -> int { throw std::runtime_error("Expected test error"); };
 
-        REQUIRE(space.insert("/error/task",
-                             error_task,
-                             InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}})
-                        .errors.empty());
+        REQUIRE(space.insert("/error/task", error_task, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}}).errors.empty());
 
         // First verify the good path works
         auto good_result = space.read<int>("/error/test");
@@ -1467,21 +1412,19 @@ TEST_CASE("PathSpace Multithreading") {
         CHECK_MESSAGE(good_result.value() == 42, "Good path should return correct value");
 
         // Then verify error handling
-        auto error_result = space.readBlock<int>(
-                "/error/task",
-                OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+        auto error_result = space.readBlock<int>("/error/task", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
     }
 
     SUBCASE("Task Cancellation with Enhanced Control") {
         PathSpace pspace;
 
         // Shared state
-        std::atomic<int> completed{0};
+        std::atomic<int>  completed{0};
         std::atomic<bool> cancel_flag{false};
 
         // Create and submit short tasks that should complete
         const int SHORT_TASKS = 3;
-        const int LONG_TASKS = 3;
+        const int LONG_TASKS  = 3;
 
         // Submit short tasks that should complete quickly
         for (int i = 0; i < SHORT_TASKS; i++) {
@@ -1535,8 +1478,8 @@ TEST_CASE("PathSpace Multithreading") {
     }
 
     SUBCASE("Thread Pool Behavior") {
-        PathSpace pspace;
-        const int NUM_TASKS = 1000;
+        PathSpace        pspace;
+        const int        NUM_TASKS = 1000;
         std::atomic<int> executedTasks(0);
 
         for (int i = 0; i < NUM_TASKS; ++i) {
@@ -1560,15 +1503,15 @@ TEST_CASE("PathSpace Multithreading") {
     }
 
     SUBCASE("Memory Management") {
-        PathSpace pspace;
-        const int NUM_THREADS = 4;
-        const int OPERATIONS_PER_THREAD = 1000;
-        std::atomic<int> successfulOperations(0);
-        std::atomic<int> failedInserts(0);
-        std::atomic<int> failedReads(0);
-        std::atomic<int> failedExtracts(0);
+        PathSpace         pspace;
+        const int         NUM_THREADS           = 4;
+        const int         OPERATIONS_PER_THREAD = 1000;
+        std::atomic<int>  successfulOperations(0);
+        std::atomic<int>  failedInserts(0);
+        std::atomic<int>  failedReads(0);
+        std::atomic<int>  failedExtracts(0);
         std::atomic<bool> shouldStop(false);
-        std::atomic<int> completedThreads(0);
+        std::atomic<int>  completedThreads(0);
 
         // Add more detailed error tracking
         std::atomic<int> insertTimeouts(0);
@@ -1581,17 +1524,15 @@ TEST_CASE("PathSpace Multithreading") {
                 sp_log("Thread " + std::to_string(threadId) + " starting", "INFO");
 
                 for (int i = 0; i < OPERATIONS_PER_THREAD && !shouldStop.load(std::memory_order_acquire); ++i) {
-                    std::string path = "/memory/" + std::to_string(threadId) + "/" + std::to_string(i);
-                    bool operationLogged = false;
+                    std::string path            = "/memory/" + std::to_string(threadId) + "/" + std::to_string(i);
+                    bool        operationLogged = false;
 
                     // Insert operation
                     auto insertResult = pspace.insert(path, i);
                     if (!insertResult.errors.empty()) {
                         failedInserts.fetch_add(1, std::memory_order_relaxed);
                         if (!operationLogged) {
-                            sp_log("Thread " + std::to_string(threadId) + " insert failed at " + path
-                                           + " with error: " + insertResult.errors[0].message.value_or("Unknown error"),
-                                   "INFO");
+                            sp_log("Thread " + std::to_string(threadId) + " insert failed at " + path + " with error: " + insertResult.errors[0].message.value_or("Unknown error"), "INFO");
                             operationLogged = true;
                         }
                         continue;
@@ -1611,9 +1552,7 @@ TEST_CASE("PathSpace Multithreading") {
                     if (readResult.value() != i) {
                         failedReads.fetch_add(1, std::memory_order_relaxed);
                         if (!operationLogged) {
-                            sp_log("Thread " + std::to_string(threadId) + " read value mismatch at " + path + ": expected "
-                                           + std::to_string(i) + " got " + std::to_string(readResult.value()),
-                                   "INFO");
+                            sp_log("Thread " + std::to_string(threadId) + " read value mismatch at " + path + ": expected " + std::to_string(i) + " got " + std::to_string(readResult.value()), "INFO");
                             operationLogged = true;
                         }
                         continue;
@@ -1635,18 +1574,13 @@ TEST_CASE("PathSpace Multithreading") {
                     } else {
                         failedExtracts.fetch_add(1, std::memory_order_relaxed);
                         if (!operationLogged) {
-                            sp_log("Thread " + std::to_string(threadId) + " extract value mismatch at " + path + ": expected "
-                                           + std::to_string(i) + " got " + std::to_string(extractResult.value()),
-                                   "INFO");
+                            sp_log("Thread " + std::to_string(threadId) + " extract value mismatch at " + path + ": expected " + std::to_string(i) + " got " + std::to_string(extractResult.value()), "INFO");
                         }
                     }
 
                     // Log progress every 100 operations
                     if (i % 100 == 0) {
-                        sp_log("Thread " + std::to_string(threadId) + " progress: " + std::to_string(i) + "/"
-                                       + std::to_string(OPERATIONS_PER_THREAD)
-                                       + " (successful: " + std::to_string(successfulOperations.load()) + ")",
-                               "INFO");
+                        sp_log("Thread " + std::to_string(threadId) + " progress: " + std::to_string(i) + "/" + std::to_string(OPERATIONS_PER_THREAD) + " (successful: " + std::to_string(successfulOperations.load()) + ")", "INFO");
                     }
                 }
             } catch (const std::exception& e) {
@@ -1666,11 +1600,11 @@ TEST_CASE("PathSpace Multithreading") {
                 std::this_thread::sleep_for(std::chrono::seconds(1));
 
                 // Log detailed status every second
-                int completed = completedThreads.load(std::memory_order_acquire);
+                int completed  = completedThreads.load(std::memory_order_acquire);
                 int successful = successfulOperations.load(std::memory_order_relaxed);
-                int failed_i = failedInserts.load(std::memory_order_relaxed);
-                int failed_r = failedReads.load(std::memory_order_relaxed);
-                int failed_e = failedExtracts.load(std::memory_order_relaxed);
+                int failed_i   = failedInserts.load(std::memory_order_relaxed);
+                int failed_r   = failedReads.load(std::memory_order_relaxed);
+                int failed_e   = failedExtracts.load(std::memory_order_relaxed);
 
                 sp_log("Status at " + std::to_string(i) + "s:", "INFO");
                 sp_log("- Completed threads: " + std::to_string(completed) + "/" + std::to_string(NUM_THREADS), "INFO");
@@ -1704,9 +1638,9 @@ TEST_CASE("PathSpace Multithreading") {
             monitorThread.join();
 
         // Calculate results
-        int totalOperations = NUM_THREADS * OPERATIONS_PER_THREAD;
-        int successfulOps = successfulOperations.load(std::memory_order_relaxed);
-        double successRate = static_cast<double>(successfulOps) / totalOperations;
+        int    totalOperations = NUM_THREADS * OPERATIONS_PER_THREAD;
+        int    successfulOps   = successfulOperations.load(std::memory_order_relaxed);
+        double successRate     = static_cast<double>(successfulOps) / totalOperations;
 
         // Log final statistics
         sp_log("Final Statistics:", "INFO");
@@ -1730,8 +1664,8 @@ TEST_CASE("PathSpace Multithreading") {
     }
 
     SUBCASE("Deadlock Detection and Prevention") {
-        PathSpace pspace;
-        const int NUM_THREADS = 10;
+        PathSpace        pspace;
+        const int        NUM_THREADS = 10;
         std::atomic<int> deadlockCount(0);
 
         auto resourceA = []() -> int { return 1; };
@@ -1745,18 +1679,14 @@ TEST_CASE("PathSpace Multithreading") {
                 // Even threads try to acquire A then B
                 auto resultA = pspace.readBlock<int>("/resourceA");
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                auto resultB = pspace.readBlock<int>("/resourceB",
-                                                     OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait,
-                                                                                      .timeout = std::chrono::milliseconds(100)}});
+                auto resultB = pspace.readBlock<int>("/resourceB", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
                 if (!resultB)
                     deadlockCount++;
             } else {
                 // Odd threads try to acquire B then A
                 auto resultB = pspace.readBlock<int>("/resourceB");
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                auto resultA = pspace.readBlock<int>("/resourceA",
-                                                     OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait,
-                                                                                      .timeout = std::chrono::milliseconds(100)}});
+                auto resultA = pspace.readBlock<int>("/resourceA", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
                 if (!resultA)
                     deadlockCount++;
             }
@@ -1777,12 +1707,12 @@ TEST_CASE("PathSpace Multithreading") {
     }
 
     SUBCASE("Performance Testing") {
-        PathSpace pspace;
-        const int NUM_THREADS = std::thread::hardware_concurrency();
-        const int OPERATIONS_PER_THREAD = 500; // Reduced from 10000
-        const int NUM_PATHS = 50;              // Reduced from 1000
-        const auto TEST_DURATION = std::chrono::milliseconds(300);
-        const int NUM_ITERATIONS = 2; // Reduced from 3
+        PathSpace  pspace;
+        const int  NUM_THREADS           = std::thread::hardware_concurrency();
+        const int  OPERATIONS_PER_THREAD = 500; // Reduced from 10000
+        const int  NUM_PATHS             = 50;  // Reduced from 1000
+        const auto TEST_DURATION         = std::chrono::milliseconds(300);
+        const int  NUM_ITERATIONS        = 2; // Reduced from 3
 
         auto performanceTest = [&](int concurrency) {
             struct Result {
@@ -1791,16 +1721,15 @@ TEST_CASE("PathSpace Multithreading") {
             };
 
             auto runIteration = [&]() -> Result {
-                std::atomic<int> completedOperations(0);
+                std::atomic<int>  completedOperations(0);
                 std::atomic<bool> shouldStop(false);
 
                 auto workerFunction = [&]() {
                     for (int i = 0; i < OPERATIONS_PER_THREAD && !shouldStop.load(std::memory_order_relaxed); ++i) {
                         std::string path = std::format("/perf/{}", i % NUM_PATHS);
-                        auto task = []() -> int { return 42; };
+                        auto        task = []() -> int { return 42; };
                         pspace.insert(path, task);
-                        auto result
-                                = pspace.readBlock<int>(path, OutOptions{.block = BlockOptions{.timeout = std::chrono::milliseconds(10)}});
+                        auto result = pspace.readBlock<int>(path, OutOptions{.block = BlockOptions{.timeout = std::chrono::milliseconds(10)}});
                         if (result.has_value()) {
                             completedOperations.fetch_add(1, std::memory_order_relaxed);
                         }
@@ -1824,7 +1753,7 @@ TEST_CASE("PathSpace Multithreading") {
                     t.join();
                 }
 
-                auto end = std::chrono::steady_clock::now();
+                auto end      = std::chrono::steady_clock::now();
                 auto duration = std::chrono::duration<double>(end - start);
 
                 return {static_cast<double>(completedOperations), duration.count()};
@@ -1842,11 +1771,11 @@ TEST_CASE("PathSpace Multithreading") {
         };
 
         auto singleThreadResult = performanceTest(1);
-        auto multiThreadResult = performanceTest(NUM_THREADS);
+        auto multiThreadResult  = performanceTest(NUM_THREADS);
 
         // Calculate operations per second
         double singleThreadedOps = singleThreadResult.ops / singleThreadResult.duration;
-        double multiThreadedOps = multiThreadResult.ops / multiThreadResult.duration;
+        double multiThreadedOps  = multiThreadResult.ops / multiThreadResult.duration;
 
         // Log the results
         sp_log(std::format("Single-threaded performance: {:.2f} ops/sec\n", singleThreadedOps), "INFO");
@@ -1855,17 +1784,17 @@ TEST_CASE("PathSpace Multithreading") {
 
         // Check for performance improvement with a tolerance
         constexpr double IMPROVEMENT_THRESHOLD = 1.2; // Expect at least 20% improvement
-        constexpr double TOLERANCE = 0.1;             // 10% tolerance
+        constexpr double TOLERANCE             = 0.1; // 10% tolerance
 
         CHECK((multiThreadedOps / singleThreadedOps) > (IMPROVEMENT_THRESHOLD - TOLERANCE));
     }
 
     SUBCASE("Dining Philosophers") {
         PathSpace pspace;
-        const int NUM_PHILOSOPHERS = 5;
-        const int EATING_DURATION_MS = 10;
+        const int NUM_PHILOSOPHERS     = 5;
+        const int EATING_DURATION_MS   = 10;
         const int THINKING_DURATION_MS = 10;
-        const int TEST_DURATION_MS = 5000; // Increased to 5 seconds
+        const int TEST_DURATION_MS     = 5000; // Increased to 5 seconds
 
         struct PhilosopherStats {
             std::atomic<int> meals_eaten{0};
@@ -1876,10 +1805,10 @@ TEST_CASE("PathSpace Multithreading") {
         std::vector<PhilosopherStats> stats(NUM_PHILOSOPHERS);
 
         auto philosopher = [&](int id) {
-            std::string first_fork = std::format("/fork/{}", std::min(id, (id + 1) % NUM_PHILOSOPHERS));
+            std::string first_fork  = std::format("/fork/{}", std::min(id, (id + 1) % NUM_PHILOSOPHERS));
             std::string second_fork = std::format("/fork/{}", std::max(id, (id + 1) % NUM_PHILOSOPHERS));
 
-            std::mt19937 rng(id);
+            std::mt19937                    rng(id);
             std::uniform_int_distribution<> think_dist(1, THINKING_DURATION_MS);
             std::uniform_int_distribution<> eat_dist(1, EATING_DURATION_MS);
             std::uniform_int_distribution<> backoff_dist(1, 5);
@@ -1891,12 +1820,10 @@ TEST_CASE("PathSpace Multithreading") {
                 std::this_thread::sleep_for(std::chrono::milliseconds(think_dist(rng)));
 
                 // Try to pick up forks
-                auto first
-                        = pspace.extractBlock<int>(first_fork, OutOptions{.block = BlockOptions{.timeout = std::chrono::milliseconds(50)}});
+                auto first = pspace.extractBlock<int>(first_fork, OutOptions{.block = BlockOptions{.timeout = std::chrono::milliseconds(50)}});
                 if (first.has_value()) {
                     stats[id].forks_acquired.fetch_add(1, std::memory_order_relaxed);
-                    auto second = pspace.extractBlock<int>(second_fork,
-                                                           OutOptions{.block = BlockOptions{.timeout = std::chrono::milliseconds(50)}});
+                    auto second = pspace.extractBlock<int>(second_fork, OutOptions{.block = BlockOptions{.timeout = std::chrono::milliseconds(50)}});
                     if (second.has_value()) {
                         stats[id].forks_acquired.fetch_add(1, std::memory_order_relaxed);
                         // Eating
@@ -1935,18 +1862,17 @@ TEST_CASE("PathSpace Multithreading") {
         philosophers.clear();
 
         // Output and check results
-        int total_meals = 0;
-        int total_starved = 0;
+        int total_meals          = 0;
+        int total_starved        = 0;
         int total_forks_acquired = 0;
         for (int i = 0; i < NUM_PHILOSOPHERS; ++i) {
-            int meals = stats[i].meals_eaten.load();
+            int meals   = stats[i].meals_eaten.load();
             int starved = stats[i].times_starved.load();
-            int forks = stats[i].forks_acquired.load();
+            int forks   = stats[i].forks_acquired.load();
             total_meals += meals;
             total_starved += starved;
             total_forks_acquired += forks;
-            sp_log(std::format("Philosopher {}: Meals eaten: {}, Times starved: {}, Forks acquired: {}\n", i, meals, starved, forks),
-                   "INFO");
+            sp_log(std::format("Philosopher {}: Meals eaten: {}, Times starved: {}, Forks acquired: {}\n", i, meals, starved, forks), "INFO");
 
             // Check that each philosopher ate at least once
             CHECK(meals > 0);

@@ -22,7 +22,7 @@ auto PathSpaceLeaf::in(GlobPathIteratorStringView const& iter, GlobPathIteratorS
 
 auto PathSpaceLeaf::inFinalComponent(GlobName const& pathComponent, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void {
     if (pathComponent.isGlob()) {
-        // Create a vector to store the keys that match before modification. ToDo: Memory allocation
+        // Create a vector to store the keys that match before modification.
         std::vector<ConcreteNameString> matchingKeys;
 
         // First pass: Collect all matching keys without holding write locks

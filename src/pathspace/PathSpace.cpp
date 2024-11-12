@@ -36,9 +36,8 @@ auto PathSpace::in(GlobPathStringView const& path, InputData const& data, InOpti
 
     this->root.in(path.begin(), path.end(), data, options, ret);
 
-    if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0 || ret.nbrTasksInserted) {
-        waitMap.notify(path); // ToDo:: Fix glob path situation
-    }
+    if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0 || ret.nbrTasksInserted > 0)
+        waitMap.notify(path);
     return ret;
 }
 
