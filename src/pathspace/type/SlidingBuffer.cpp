@@ -1,27 +1,33 @@
 #include "SlidingBuffer.hpp"
+#include <algorithm>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 
 namespace SP {
 
-auto SlidingBuffer::data() const -> uint8_t const* {
+auto SlidingBuffer::data() const noexcept -> uint8_t const* {
     return this->data_.data() + this->virtualFront_;
 }
 
-auto SlidingBuffer::size() const -> size_t {
+auto SlidingBuffer::size() const noexcept -> size_t {
     return this->data_.size() - this->virtualFront_;
 }
 
-auto SlidingBuffer::rawSize() const -> size_t {
+auto SlidingBuffer::rawSize() const noexcept -> size_t {
     return this->data_.size();
 }
 
-auto SlidingBuffer::empty() const -> bool {
+auto SlidingBuffer::empty() const noexcept -> bool {
     return this->data_.empty();
 }
 
-auto SlidingBuffer::virtualFront() const -> size_t {
+auto SlidingBuffer::virtualFront() const noexcept -> size_t {
     return this->virtualFront_;
+}
+
+auto SlidingBuffer::capacity() const noexcept -> size_t {
+    return this->data_.capacity();
 }
 
 auto SlidingBuffer::operator[](size_t index) & -> uint8_t& {
@@ -50,15 +56,33 @@ auto SlidingBuffer::at(size_t index) const& -> uint8_t const& {
     return (*this)[index];
 }
 
+auto SlidingBuffer::calculateGrowth(size_t required) noexcept -> size_t {
+    const size_t maximum = (std::numeric_limits<size_t>::max)();
+    if (required > maximum / 2) {
+        return maximum; // Avoid overflow
+    }
+    return std::max(required * 2, INITIAL_CAPACITY);
+}
+
 auto SlidingBuffer::resize(size_t newSize) -> void {
     this->compact(); // Ensure data starts at 0
+    size_t newCapacity = calculateGrowth(newSize);
+    data_.reserve(newCapacity);
     this->data_.resize(newSize);
 }
 
 auto SlidingBuffer::append(std::span<uint8_t const> bytes) -> void {
     if (!bytes.empty()) {
         size_t oldSize = this->data_.size();
-        this->data_.resize(oldSize + bytes.size());
+        size_t newSize = oldSize + bytes.size();
+
+        // Calculate new capacity if needed
+        if (newSize > this->data_.capacity()) {
+            size_t newCapacity = calculateGrowth(newSize);
+            this->data_.reserve(newCapacity);
+        }
+
+        this->data_.resize(newSize);
         std::memcpy(this->data_.data() + oldSize, bytes.data(), bytes.size());
     }
 }

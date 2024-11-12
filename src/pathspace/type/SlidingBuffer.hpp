@@ -13,11 +13,20 @@ struct SlidingBuffer {
     // 3. The cost of cache line invalidation + memmove would exceed the benefit
     static constexpr auto COMPACT_THRESHOLD = 64uz;
 
-    [[nodiscard]] auto data() const -> uint8_t const*;
-    [[nodiscard]] auto size() const -> size_t;
-    [[nodiscard]] auto rawSize() const -> size_t;
-    [[nodiscard]] auto empty() const -> bool;
-    [[nodiscard]] auto virtualFront() const -> size_t;
+    // Initial capacity to reduce early reallocations
+    static constexpr auto INITIAL_CAPACITY = 128uz;
+
+    // Constructor with pre-allocation
+    SlidingBuffer() {
+        data_.reserve(INITIAL_CAPACITY);
+    }
+
+    [[nodiscard]] auto data() const noexcept -> uint8_t const*;
+    [[nodiscard]] auto size() const noexcept -> size_t;
+    [[nodiscard]] auto rawSize() const noexcept -> size_t;
+    [[nodiscard]] auto empty() const noexcept -> bool;
+    [[nodiscard]] auto virtualFront() const noexcept -> size_t;
+    [[nodiscard]] auto capacity() const noexcept -> size_t;
 
     [[nodiscard]] auto operator[](size_t index) & -> uint8_t&;
     [[nodiscard]] auto operator[](size_t index) const& -> uint8_t const&;
@@ -52,7 +61,9 @@ private:
     std::vector<uint8_t> data_;
     size_t               virtualFront_ = 0uz;
 
-    auto compact() -> void;
+    // Calculate appropriate growth for capacity
+    [[nodiscard]] static auto calculateGrowth(size_t required) noexcept -> size_t;
+    auto                      compact() -> void;
 };
 
 } // namespace SP
