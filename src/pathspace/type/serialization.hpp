@@ -25,7 +25,7 @@ static auto serialize(T const& obj, SlidingBuffer& buffer) -> std::optional<Erro
         Wrapper<T> wrapper{static_cast<T const&>(obj)};
         // Serialize to temporary buffer
         std::vector<uint8_t> tempBuffer;
-        std::error_code ec;
+        std::error_code      ec;
 
         size_t const bytesWritten = alpaca::serialize<Wrapper<T>, 1>(wrapper, tempBuffer);
         if (ec)
@@ -63,7 +63,7 @@ static auto deserialize(SlidingBuffer const& buffer) -> Expected<T> {
         std::vector<uint8_t> tempBuffer(buffer.data() + sizeof(header), buffer.data() + sizeof(header) + header.size);
 
         std::error_code ec;
-        auto const wrapper = alpaca::deserialize<Wrapper<T>, 1>(tempBuffer, ec);
+        auto const      wrapper = alpaca::deserialize<Wrapper<T>, 1>(tempBuffer, ec);
         if (ec)
             return std::unexpected(Error{Error::Code::UnserializableType, ec.message()});
 
@@ -75,7 +75,7 @@ static auto deserialize(SlidingBuffer const& buffer) -> Expected<T> {
 
 template <typename T>
 static auto deserialize_pop(SlidingBuffer& buffer) -> Expected<T> {
-    auto expected = deserialize<T>(buffer);
+    auto   expected = deserialize<T>(buffer);
     Header header;
     buffer.advance(sizeof(header) + header.size);
     return expected;

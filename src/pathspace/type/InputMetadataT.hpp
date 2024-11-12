@@ -11,7 +11,6 @@
 #include <functional>
 #include <stdexcept>
 #include <type_traits>
-#include <vector>
 
 #define SERIALIZATION_TYPE uint8_t
 #include <alpaca/alpaca.h>
@@ -150,15 +149,15 @@ struct AlpacaSerializationTraits {
 
 template <typename CVRefT>
 struct InputMetadataT {
-    using T = std::remove_cvref_t<CVRefT>;
+    using T      = std::remove_cvref_t<CVRefT>;
     using Traits = AlpacaSerializationTraits<T>;
 
-    static constexpr DataCategory dataCategory = Traits::category;
-    static constexpr ExecutionCategory executionCategory = Traits::executionCategory;
-    static constexpr std::type_info const* typeInfo = Traits::typeInfo;
+    static constexpr DataCategory          dataCategory      = Traits::category;
+    static constexpr ExecutionCategory     executionCategory = Traits::executionCategory;
+    static constexpr std::type_info const* typeInfo          = Traits::typeInfo;
 
-    static constexpr auto serialize = Traits::serialize;
-    static constexpr auto deserialize = Traits::deserialize;
+    static constexpr auto serialize      = Traits::serialize;
+    static constexpr auto deserialize    = Traits::deserialize;
     static constexpr auto deserializePop = Traits::deserializePop;
 };
 

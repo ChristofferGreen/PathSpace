@@ -16,9 +16,9 @@ struct InputData {
         }
     }
 
-    void* obj = nullptr;
+    void*                 obj = nullptr;
     std::shared_ptr<Task> task;
-    InputMetadata metadata;
+    InputMetadata         metadata;
 };
 
 } // namespace SP

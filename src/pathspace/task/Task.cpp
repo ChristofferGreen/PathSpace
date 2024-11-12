@@ -2,27 +2,27 @@
 
 namespace SP {
 
-bool Task::isCompleted() const {
+auto Task::isCompleted() const -> bool {
     return this->state.isCompleted();
 }
 
-bool Task::hasStarted() const {
+auto Task::hasStarted() const -> bool {
     return this->state.hasStarted();
 }
 
-bool Task::tryStart() {
+auto Task::tryStart() -> bool {
     return this->state.tryStart();
 }
 
-bool Task::transitionToRunning() {
+auto Task::transitionToRunning() -> bool {
     return this->state.transitionToRunning();
 }
 
-void Task::markCompleted() {
+auto Task::markCompleted() -> void {
     this->state.markCompleted();
 }
 
-void Task::markFailed() {
+auto Task::markFailed() -> void {
     this->state.markFailed();
 }
 
