@@ -5,22 +5,21 @@
 
 namespace SP {
 
-NodeData::NodeData(InputData const& inputData, InOptions const& options, InsertReturn& ret) {
+NodeData::NodeData(InputData const& inputData, InOptions const& options) {
     sp_log("NodeData::NodeData", "Function Called");
-    this->serialize(inputData, options, ret);
+    this->serialize(inputData, options);
 }
 
-auto NodeData::serialize(const InputData& inputData, const InOptions& options, InsertReturn& ret) -> std::optional<Error> {
+auto NodeData::serialize(const InputData& inputData, const InOptions& options) -> std::optional<Error> {
     sp_log("NodeData::serialize", "Function Called");
-    if (inputData.task) {
-        this->tasks.push_back(std::move(inputData.task));
+    if (inputData.taskCreator) {
+        this->tasks.push_back(inputData.taskCreator());
         std::optional<ExecutionOptions::Category> const optionsExecutionCategory = options.execution.has_value() ? std::optional<ExecutionOptions::Category>(options.execution.value().category) : std::nullopt;
         bool const                                      isImmediateExecution     = optionsExecutionCategory.value_or(ExecutionOptions{}.category) == ExecutionOptions::Category::Immediate;
         if (isImmediateExecution) {
             if (auto const ret = TaskPool::Instance().addTask(this->tasks.back()); ret)
                 return ret;
         }
-        ret.nbrTasksInserted++;
     } else {
         if (!inputData.metadata.serialize)
             return Error{Error::Code::SerializationFunctionMissing, "Serialization function is missing."};

@@ -18,9 +18,9 @@ class Task;
 
 struct NodeData {
     NodeData() = default;
-    NodeData(InputData const& inputData, InOptions const& options, InsertReturn& ret);
+    NodeData(InputData const& inputData, InOptions const& options);
 
-    auto serialize(const InputData& inputData, const InOptions& options, InsertReturn& ret) -> std::optional<Error>;
+    auto serialize(const InputData& inputData, const InOptions& options) -> std::optional<Error>;
     auto deserialize(void* obj, const InputMetadata& inputMetadata, std::optional<OutOptions> const& options) const -> Expected<int>;
     auto deserializePop(void* obj, const InputMetadata& inputMetadata) -> Expected<int>;
     auto empty() const -> bool;

@@ -47,6 +47,7 @@ private:
     std::atomic<bool>       running;
     std::atomic<bool>       loggingEnabled;
     std::set<std::string>   skipTags{"Function Called", "INFO"};
+    std::set<std::string>   enabledTags{"TaskPool", "PathSpaceShutdown"};
 
     std::unordered_map<std::thread::id, std::string> threadNames;
     mutable std::mutex                               threadNamesMutex;
@@ -65,11 +66,7 @@ auto TaggedLogger::log_impl(const std::string& message, const std::source_locati
     if (!loggingEnabled)
         return;
 
-    const auto logMessage = LogMessage{.timestamp  = std::chrono::system_clock::now(),
-                                       .tags       = {std::forward<Tags>(tags)...},
-                                       .message    = message,
-                                       .threadName = getThreadName(std::this_thread::get_id()),
-                                       .location   = location};
+    const auto logMessage = LogMessage{.timestamp = std::chrono::system_clock::now(), .tags = {std::forward<Tags>(tags)...}, .message = message, .threadName = getThreadName(std::this_thread::get_id()), .location = location};
 
     {
         std::unique_lock<std::mutex> lock(this->queueMutex);

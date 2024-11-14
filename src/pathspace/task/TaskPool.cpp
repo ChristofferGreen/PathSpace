@@ -79,6 +79,7 @@ auto TaskPool::workerFunction() -> void {
         }
 
         if (auto strongTask = task.lock()) {
+            sp_log("TaskPool::workerFunction Task locked successfully", "TaskPool");
             if (auto fn = strongTask->function) {
                 try {
                     strongTask->transitionToRunning();
@@ -90,6 +91,8 @@ auto TaskPool::workerFunction() -> void {
                     sp_log("Exception in running Task", "Error", "Exception");
                 }
             }
+        } else {
+            sp_log("TaskPool::workerFunction Failed to lock task - references lost", "TaskPool");
         }
     }
 

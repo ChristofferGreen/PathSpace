@@ -28,36 +28,36 @@ auto PathSpaceLeaf::inFinalComponent(GlobName const& pathComponent, InputData co
         // First pass: Collect all matching keys without holding write locks
         nodeDataMap.for_each([&](auto& item) {
             const auto& key = item.first;
-            if (std::get<0>(pathComponent.match(key))) {
+            if (std::get<0>(pathComponent.match(key)))
                 matchingKeys.push_back(key);
-            }
         });
 
         // Second pass: Modify matching nodes with proper locking
         for (const auto& key : matchingKeys) {
             nodeDataMap.modify_if(key, [&](auto& nodePair) {
                 if (auto* nodeData = std::get_if<NodeData>(&nodePair.second)) {
-                    if (auto error = nodeData->serialize(inputData, options, ret); error.has_value()) {
+                    if (auto error = nodeData->serialize(inputData, options); error.has_value())
                         ret.errors.emplace_back(error.value());
-                    }
-                    ret.nbrValuesInserted++;
-                    return true; // Indicate that modification occurred
+                    if (inputData.taskCreator)
+                        ret.nbrTasksInserted++;
+                    else
+                        ret.nbrValuesInserted++;
                 }
-                return false; // No modification if it's not a NodeData
             });
         }
     } else {
         nodeDataMap.try_emplace_l(
                 pathComponent.getName(),
                 [&](auto& value) {
-                    if (auto* nodeData = std::get_if<NodeData>(&value.second)) {
-                        if (auto error = nodeData->serialize(inputData, options, ret); error.has_value()) {
+                    if (auto* nodeData = std::get_if<NodeData>(&value.second))
+                        if (auto error = nodeData->serialize(inputData, options); error.has_value())
                             ret.errors.emplace_back(error.value());
-                        }
-                    }
                 },
-                NodeData{inputData, options, ret});
-        ret.nbrValuesInserted++;
+                NodeData{inputData, options});
+        if (inputData.taskCreator)
+            ret.nbrTasksInserted++;
+        else
+            ret.nbrValuesInserted++;
     }
 }
 

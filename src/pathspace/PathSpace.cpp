@@ -22,8 +22,11 @@ auto PathSpace::clear() -> void {
 
 auto PathSpace::shutdown() -> void {
     sp_log("PathSpace::shutdown", "Function Called");
+    sp_log("PathSpace::shutdown Starting shutdown", "PathSpaceShutdown");
     this->waitMap.notifyAll();
+    sp_log("PathSpace::shutdown Notified all waiters", "PathSpaceShutdown");
     this->root.clear();
+    sp_log("PathSpace::shutdown Cleared paths", "PathSpaceShutdown");
 }
 
 auto PathSpace::in(GlobPathStringView const& path, InputData const& data, InOptions const& options) -> InsertReturn {

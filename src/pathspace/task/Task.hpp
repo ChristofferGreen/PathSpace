@@ -21,7 +21,7 @@ struct Task {
         return task;
     }
     template <typename DataType>
-    static auto Create(PathSpace* space, ConcretePathString const& notificationPath, DataType const& data, InputData const& inputData, InOptions const& options) -> std::shared_ptr<Task> {
+    static auto Create(PathSpace* space, ConcretePathString const& notificationPath, DataType const& userFunction, InputData const& inputData, InOptions const& options) -> std::shared_ptr<Task> {
         sp_log("Task::Create", "Function Called");
 
         // For any callable type (lambda, function pointer, etc)
@@ -32,7 +32,7 @@ struct Task {
             task->space            = space;
             task->notificationPath = notificationPath;
             task->executionOptions = options.execution;
-            task->function         = [userFunction = data](Task& task, bool const) {
+            task->function         = [userFunction](Task& task, bool const) {
                 sp_log("Task lambda execution", "DEBUG");
                 task.result = userFunction();
                 sp_log("Task lambda completed", "DEBUG");

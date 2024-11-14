@@ -550,6 +550,23 @@ TEST_CASE("PathSpace Glob Operations") {
         CHECK(val4.value() == 4);
     }
 
+    SUBCASE("Glob with Lazy Executions loop") {
+        std::atomic<int> execution_count{0};
+
+        auto func = [&execution_count](int ret) {
+            return [&execution_count, ret]() -> int {
+                execution_count++;
+                return ret;
+            };
+        };
+
+        InOptions options{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}};
+        CHECK(pspace.insert("/exec/a", func(1), options).nbrTasksInserted == 1);
+        CHECK(pspace.insert("/exec/a", func(10), options).nbrTasksInserted == 1);
+        auto val1 = pspace.extractBlock<int>("/exec/a");
+        val1      = pspace.readBlock<int>("/exec/a");
+    }
+
     SUBCASE("Glob with Lazy Executions") {
         std::atomic<int> execution_count{0};
 
@@ -571,28 +588,29 @@ TEST_CASE("PathSpace Glob Operations") {
         CHECK(pspace.insert("/exec/*", func(10), options).nbrTasksInserted == 3);
 
         // Verify executions happen in order
-        auto val1 = pspace.readBlock<int>("/exec/a");
+        auto val1 = pspace.extractBlock<int>("/exec/a");
         CHECK(val1.has_value());
         CHECK(val1.value() == 1);
         val1 = pspace.readBlock<int>("/exec/a");
         CHECK(val1.has_value());
         CHECK(val1.value() == 10);
 
-        auto val2 = pspace.readBlock<int>("/exec/b");
+        auto val2 = pspace.extractBlock<int>("/exec/b");
         CHECK(val2.has_value());
         CHECK(val2.value() == 2);
         val2 = pspace.readBlock<int>("/exec/b");
         CHECK(val2.has_value());
         CHECK(val2.value() == 10);
 
-        auto val3 = pspace.readBlock<int>("/exec/c");
+        auto val3 = pspace.extractBlock<int>("/exec/c");
         CHECK(val3.has_value());
         CHECK(val3.value() == 3);
         val3 = pspace.readBlock<int>("/exec/c");
         CHECK(val3.has_value());
         CHECK(val3.value() == 10);
 
-        CHECK(execution_count == 6); // All executions should have run
+        int e = execution_count.load();
+        CHECK(e == 6); // All executions should have run
     }
 
     SUBCASE("Complex Glob Patterns") {
