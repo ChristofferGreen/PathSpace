@@ -47,7 +47,7 @@ private:
     std::atomic<bool>       running;
     std::atomic<bool>       loggingEnabled;
     std::set<std::string>   skipTags{"Function Called", "INFO"};
-    std::set<std::string>   enabledTags{"TaskPool", "PathSpaceShutdown"};
+    std::set<std::string>   enabledTags{"TaskPool", "PathSpaceShutdown", "PathSpaceLeaf", "WaitMap"};
 
     std::unordered_map<std::thread::id, std::string> threadNames;
     mutable std::mutex                               threadNamesMutex;

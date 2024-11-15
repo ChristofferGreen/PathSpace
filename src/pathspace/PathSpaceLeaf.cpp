@@ -17,6 +17,7 @@ auto PathSpaceLeaf::clear() -> void {
 */
 
 auto PathSpaceLeaf::in(GlobPathIteratorStringView const& iter, GlobPathIteratorStringView const& end, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void {
+    sp_log("PathSpaceLeaf::in Processing path component: " + std::string((*iter).getName()), "PathSpaceLeaf");
     std::next(iter) == end ? inFinalComponent(*iter, inputData, options, ret) : inIntermediateComponent(iter, end, *iter, inputData, options, ret);
 }
 

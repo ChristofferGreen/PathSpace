@@ -34,6 +34,7 @@ private:
     std::condition_variable         taskCV;
     std::atomic<bool>               shuttingDown{false};
     std::atomic<size_t>             activeWorkers{0};
+    std::atomic<size_t>             activeTasks{0};
 };
 
 } // namespace SP

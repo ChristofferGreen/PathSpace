@@ -80,17 +80,23 @@ auto TaskPool::workerFunction() -> void {
 
         if (auto strongTask = task.lock()) {
             sp_log("TaskPool::workerFunction Task locked successfully", "TaskPool");
-            if (auto fn = strongTask->function) {
-                try {
-                    strongTask->transitionToRunning();
-                    fn(*strongTask, false);
-                    strongTask->markCompleted();
-                    if (!strongTask->notificationPath.empty())
-                        strongTask->space->waitMap.notify(strongTask->notificationPath);
-                } catch (...) {
-                    sp_log("Exception in running Task", "Error", "Exception");
+
+            ++activeTasks;
+            try {
+                sp_log("Transitioning to running", "TaskPool");
+                strongTask->transitionToRunning();
+                sp_log("Executing task function", "TaskPool");
+                strongTask->function(*strongTask, false);
+                sp_log("Marking task completed", "TaskPool");
+                strongTask->markCompleted();
+                if (!strongTask->notificationPath.empty()) {
+                    sp_log("Notifying path: " + std::string(strongTask->notificationPath.getPath()), "TaskPool");
+                    strongTask->space->waitMap.notify(strongTask->notificationPath);
                 }
+            } catch (...) {
+                sp_log("Exception in running Task", "Error", "Exception");
             }
+            --activeTasks;
         } else {
             sp_log("TaskPool::workerFunction Failed to lock task - references lost", "TaskPool");
         }

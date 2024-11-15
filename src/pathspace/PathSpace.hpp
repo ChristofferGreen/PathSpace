@@ -34,7 +34,7 @@ public:
         InputData inputData{std::forward<DataType>(data)};
 
         if (inputData.metadata.dataCategory == DataCategory::Execution)
-            inputData.taskCreator = [&]() -> std::shared_ptr<Task> { return Task::Create(this, path.getPath(), std::forward<DataType>(data), inputData, options); };
+            inputData.taskCreator = [&, pathStr = std::string(path.getPath())]() -> std::shared_ptr<Task> { return Task::Create(this, pathStr, std::forward<DataType>(data), inputData, options); };
 
         return this->in(path, inputData, options);
     }
