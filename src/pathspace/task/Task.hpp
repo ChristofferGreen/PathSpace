@@ -56,8 +56,11 @@ struct Task {
     auto markCompleted() -> void;
     auto markFailed() -> void;
     auto category() const -> std::optional<ExecutionOptions::Category>;
-    auto resultCopy(auto b) -> void {
-        this->resultCopy_(this->result, b);
+    auto resultCopy(void* dest) -> void {
+        // Wait for result to be ready before copying
+        while (!this->state.isCompleted())
+            std::this_thread::yield();
+        resultCopy_(result, dest);
     }
 
 private:

@@ -63,6 +63,8 @@ auto TaskPool::size() const -> size_t {
 
 auto TaskPool::workerFunction() -> void {
     while (true) {
+        ConcretePathString  notificationPath;
+        PathSpace*          space = nullptr;
         std::weak_ptr<Task> task;
         {
             std::unique_lock<std::mutex> lock(mutex);
@@ -80,6 +82,8 @@ auto TaskPool::workerFunction() -> void {
 
         if (auto strongTask = task.lock()) {
             sp_log("TaskPool::workerFunction Task locked successfully", "TaskPool");
+            notificationPath = strongTask->notificationPath;
+            space            = strongTask->space;
 
             ++activeTasks;
             try {
@@ -89,16 +93,16 @@ auto TaskPool::workerFunction() -> void {
                 strongTask->function(*strongTask, false);
                 sp_log("Marking task completed", "TaskPool");
                 strongTask->markCompleted();
-                if (!strongTask->notificationPath.empty()) {
-                    sp_log("Notifying path: " + std::string(strongTask->notificationPath.getPath()), "TaskPool");
-                    strongTask->space->waitMap.notify(strongTask->notificationPath);
-                }
             } catch (...) {
                 sp_log("Exception in running Task", "Error", "Exception");
             }
             --activeTasks;
         } else {
             sp_log("TaskPool::workerFunction Failed to lock task - references lost", "TaskPool");
+        }
+        if (!notificationPath.empty()) {
+            sp_log("Notifying path: " + std::string(notificationPath.getPath()), "TaskPool");
+            space->waitMap.notify(notificationPath);
         }
     }
 

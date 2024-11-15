@@ -100,35 +100,40 @@ protected:
     auto outBlock(ConcretePathStringView const& path, OutOptions const& options, bool const isExtract) -> Expected<DataType> {
         sp_log("PathSpace::outBlock", "Function Called");
 
-        DataType   obj;
-        auto const inputMetaData = InputMetadataT<DataType>{};
-        auto const deadline      = options.block && options.block->timeout ? std::chrono::system_clock::now() + *options.block->timeout : std::chrono::system_clock::time_point::max();
-        // Retry loop
-        while (true) {
-            // First try without waiting
-            auto result = this->out(path, inputMetaData, options, &obj, isExtract);
+        DataType      obj;
+        Expected<int> result; // Moved outside to be accessible in all scopes
+        auto const    inputMetaData = InputMetadataT<DataType>{};
+        auto const    deadline      = options.block && options.block->timeout ? std::chrono::system_clock::now() + *options.block->timeout : std::chrono::system_clock::time_point::max();
+
+        // First try entirely outside the loop to minimize lock time
+        {
+            result = this->out(path, inputMetaData, options, &obj, isExtract);
             if (result.has_value() && result.value() > 0) {
                 return obj;
             }
+        }
 
-            // Check if we're already past deadline
+        while (true) {
+            // Check deadline first
             auto now = std::chrono::system_clock::now();
             if (now >= deadline) {
                 return std::unexpected(Error{Error::Code::Timeout, "Operation timed out waiting for data at path: " + std::string(path.getPath())});
             }
 
-            // Wait for data with proper timeout
-            auto guard   = waitMap.wait(path);
-            bool success = guard.wait_until(deadline, [&]() {
-                result = this->out(path, inputMetaData, options, &obj, isExtract);
-                return (result.has_value() && result.value() > 0);
-            });
+            // Wait with minimal scope
+            auto guard = waitMap.wait(path);
+            {
+                bool success = guard.wait_until(deadline, [&]() {
+                    result          = this->out(path, inputMetaData, options, &obj, isExtract);
+                    bool haveResult = (result.has_value() && result.value() > 0);
+                    return haveResult;
+                });
 
-            if (success && result.has_value() && result.value() > 0) {
-                return obj;
+                if (success && result.has_value() && result.value() > 0) {
+                    return obj;
+                }
             }
 
-            // If we timed out, return error
             if (std::chrono::system_clock::now() >= deadline) {
                 return std::unexpected(Error{Error::Code::Timeout, "Operation timed out after waking from guard, waiting for data at path: " + std::string(path.getPath())});
             }

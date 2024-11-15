@@ -67,11 +67,12 @@ auto NodeData::validateInputs(const InputMetadata& inputMetadata) -> Expected<vo
 }
 
 auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadata, const OutOptions& options, bool isExtract) -> Expected<int> {
-    sp_log("NodeData::deserializeExecution", "Function Called");
+    if (this->tasks.empty())
+        return std::unexpected(Error{Error::Code::NoObjectFound, "No task available"});
 
-    auto& task = this->tasks.front();
+    // Make a copy instead of taking a reference
+    auto task = this->tasks.front();
 
-    // If task hasn't started and is lazy, start it
     if (!task->hasStarted()) {
         std::optional<ExecutionOptions::Category> const optionsExecutionCategory = options.execution.has_value() ? std::optional<ExecutionOptions::Category>(options.execution.value().category) : std::nullopt;
         std::optional<ExecutionOptions::Category> const taskExecutionCategory    = task->category();
@@ -82,7 +83,6 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
                 return std::unexpected(ret.value());
     }
 
-    // If completed, return result
     if (task->isCompleted()) {
         task->resultCopy(obj);
         if (isExtract) {
@@ -92,7 +92,6 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
         return 1;
     }
 
-    // Task running but not completed
     return 0;
 }
 
