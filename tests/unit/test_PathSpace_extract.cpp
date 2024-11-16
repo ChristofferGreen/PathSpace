@@ -586,6 +586,28 @@ TEST_CASE("PathSpace Glob Operations") {
         val1      = pspace.readBlock<int>("/exec/a");
     }
 
+    SUBCASE("Glob with Lazy Executions3") {
+        sp_log("Testcase starts", "Testcase");
+        std::atomic<int> execution_count{0};
+
+        auto func = [&execution_count](int ret) {
+            return [&execution_count, ret]() -> int {
+                execution_count++;
+                return ret;
+            };
+        };
+
+        InOptions options{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}};
+        CHECK(pspace.insert("/exec/a", func(1), options).nbrTasksInserted == 1);
+        CHECK(pspace.insert("/exec/*", func(10), options).nbrTasksInserted == 1);
+
+        sp_log("Testcase starting final extractBlock", "Testcase");
+        auto val1 = pspace.extractBlock<int>("/exec/a");
+        sp_log("Testcase starting final readBlock", "Testcase");
+        val1 = pspace.readBlock<int>("/exec/a");
+        sp_log("Testcase ends", "Testcase");
+    }
+
     SUBCASE("Glob with Lazy Executions") {
         std::atomic<int> execution_count{0};
 

@@ -2,7 +2,7 @@
 #include "TaskStateAtomic.hpp"
 #include "core/ExecutionOptions.hpp"
 #include "core/InOptions.hpp"
-#include "path/ConcretePath.hpp"
+#include "path/GlobPath.hpp"
 #include "type/InputData.hpp"
 #include "utils/TaggedLogger.hpp"
 
@@ -21,7 +21,7 @@ struct Task {
         return task;
     }
     template <typename DataType>
-    static auto Create(PathSpace* space, ConcretePathString const& notificationPath, DataType const& userFunction, InputData const& inputData, InOptions const& options) -> std::shared_ptr<Task> {
+    static auto Create(PathSpace* space, GlobPathString const& notificationPath, DataType const& userFunction, InputData const& inputData, InOptions const& options) -> std::shared_ptr<Task> {
         sp_log("Task::Create", "Function Called");
 
         // For any callable type (lambda, function pointer, etc)
@@ -78,7 +78,7 @@ private:
     std::function<void(std::any const& from, void* const to)> resultCopy_;      // Function to copy the result
     std::any                                                  result;           // Result of the task execution
     std::optional<ExecutionOptions>                           executionOptions; // Optional execution options for the task
-    ConcretePathString                                        notificationPath;
+    GlobPathString                                            notificationPath;
 };
 
 } // namespace SP

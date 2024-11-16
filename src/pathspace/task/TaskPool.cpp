@@ -17,6 +17,7 @@ TaskPool::TaskPool(size_t threadCount) {
 }
 
 TaskPool::~TaskPool() {
+    sp_log("TaskPool::~TaskPool", "TaskPool");
     shutdown();
 }
 
@@ -34,6 +35,7 @@ auto TaskPool::addTask(std::weak_ptr<Task>&& task) -> std::optional<Error> {
 }
 
 auto TaskPool::shutdown() -> void {
+    sp_log("TaskPool::shutdown", "TaskPool");
     // Signal shutdown
     {
         std::lock_guard<std::mutex> lock(this->mutex);
@@ -55,6 +57,7 @@ auto TaskPool::shutdown() -> void {
     while (!this->tasks.empty()) {
         this->tasks.pop();
     }
+    sp_log("TaskPool::shutdown ends", "TaskPool");
 }
 
 auto TaskPool::size() const -> size_t {
@@ -63,7 +66,7 @@ auto TaskPool::size() const -> size_t {
 
 auto TaskPool::workerFunction() -> void {
     while (true) {
-        ConcretePathString  notificationPath;
+        GlobPathString      notificationPath;
         PathSpace*          space = nullptr;
         std::weak_ptr<Task> task;
         {
