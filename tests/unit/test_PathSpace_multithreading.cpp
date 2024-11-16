@@ -484,14 +484,6 @@ TEST_CASE("PathSpace Multithreading") {
         // Verify no more values exist
         auto extraValue = pspace.extract<int>("/counter");
         CHECK_MESSAGE(!extraValue.has_value(), "Found unexpected extra value in PathSpace after test completion");
-
-        // Print full operation sequence if test failed
-        if (doctest::getContextOptions()->success == false) {
-            MESSAGE("\nFull operation sequence:");
-            for (const auto& op : actualOperations) {
-                MESSAGE("Thread ", op.threadId, " op ", op.seqNum, " (value ", op.value, ")");
-            }
-        }
     }
 
     SUBCASE("Mixed Readers and Writers") {
@@ -748,7 +740,6 @@ TEST_CASE("PathSpace Multithreading") {
                         if (value.has_value()) {
                             readCount++;
                             consecutiveFailures = 0;
-                            MESSAGE("Read value: ", value.value());
                         } else {
                             consecutiveFailures++;
                             if (consecutiveFailures >= MAX_FAILED_READS) {
@@ -1211,16 +1202,13 @@ TEST_CASE("PathSpace Multithreading") {
 
                     if (result && result.value() == 42) {
                         counter.increment();
-                        MESSAGE("Reader " << reader_id << " succeeded attempt " << j);
                     } else {
-                        MESSAGE("Reader " << reader_id << " failed attempt " << j);
                         has_error = true;
                         break;
                     }
                 }
             } catch (const std::exception& e) {
                 has_error = true;
-                MESSAGE("Reader " << reader_id << " failed with exception: " << e.what());
             }
         };
 
@@ -1267,16 +1255,13 @@ TEST_CASE("PathSpace Multithreading") {
 
                     if (result && result.value() == 42) {
                         counter.increment();
-                        MESSAGE("Reader " << reader_id << " succeeded attempt " << j);
                     } else {
-                        MESSAGE("Reader " << reader_id << " failed attempt " << j);
                         has_error = true;
                         break;
                     }
                 }
             } catch (const std::exception& e) {
                 has_error = true;
-                MESSAGE("Reader " << reader_id << " failed with exception: " << e.what());
             }
         };
 

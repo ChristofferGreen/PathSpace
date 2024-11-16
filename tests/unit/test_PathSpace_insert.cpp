@@ -40,10 +40,6 @@ TEST_CASE("PathSpace Insert") {
         CHECK(pspace.extractBlock<int>("/a/b/e/f").value() == 456);
         CHECK(pspace.readBlock<int>("/a/b/e/f").value() == 567);
     }
-}
-
-TEST_CASE("PathSpace Insert Function and Execution") {
-    PathSpace pspace;
 
     SUBCASE("Simple Function Pointer Insertion and Execution") {
         int (*simpleFunc)() = []() -> int { return 42; };

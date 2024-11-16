@@ -115,7 +115,6 @@ TEST_SUITE("WaitMap") {
             std::this_thread::sleep_for(50ms);
 
             // Try to notify using glob pattern
-            MESSAGE("Notifying with glob pattern /test/match/*");
             waitMap.notify(GlobPathStringView("/test/match/*"));
 
             waiter.join();
@@ -139,7 +138,6 @@ TEST_SUITE("WaitMap") {
             std::this_thread::sleep_for(50ms);
 
             // Try to notify using exact same path
-            MESSAGE("Notifying with exact path /test/match/1");
             waitMap.notify(ConcretePathStringView(path_str));
 
             waiter.join();
@@ -152,12 +150,7 @@ TEST_SUITE("WaitMap") {
             GlobPathStringView     glob_pattern("/test/match/*");
             ConcretePathStringView concrete_path(path_str);
 
-            MESSAGE("Checking if glob pattern matches path:");
-            MESSAGE("  Pattern: " << glob_pattern.getPath());
-            MESSAGE("  Path: " << concrete_path.getPath());
-
             bool matches = (glob_pattern == concrete_path);
-            MESSAGE("  Direct comparison result: " << matches);
 
             // Check pattern matching segment by segment
             auto patternIter = glob_pattern.begin();
@@ -165,13 +158,9 @@ TEST_SUITE("WaitMap") {
 
             while (patternIter != glob_pattern.end() && pathIter != concrete_path.end()) {
                 auto [isMatch, isSupermatch] = (*patternIter).match((*pathIter).getName());
-                MESSAGE("  Segment match: " << (*pathIter).getName() << " against pattern: " << (*patternIter).getName() << " -> match=" << isMatch << ", supermatch=" << isSupermatch);
                 ++patternIter;
                 ++pathIter;
             }
-
-            MESSAGE("  Pattern at end: " << (patternIter == glob_pattern.end()));
-            MESSAGE("  Path at end: " << (pathIter == concrete_path.end()));
         }
 
         SUBCASE("Glob Pattern Notification") {
@@ -208,15 +197,11 @@ TEST_SUITE("WaitMap") {
             ConcretePathStringView path1("/test/match/1");
             ConcretePathStringView path2("/test/nomatch/1");
 
-            MESSAGE("Testing pattern: " << pattern.getPath());
-
             // Test first path
-            MESSAGE("Testing against path: " << path1.getPath());
             auto patternIter1 = pattern.begin();
             auto pathIter1    = path1.begin();
             while (patternIter1 != pattern.end() && pathIter1 != path1.end()) {
                 auto [isMatch, isSuper] = (*patternIter1).match((*pathIter1).getName());
-                MESSAGE("  Segment match: '" << (*pathIter1).getName() << "' against '" << (*patternIter1).getName() << "' -> " << isMatch << ", " << isSuper);
                 CHECK(isMatch);
                 ++patternIter1;
                 ++pathIter1;
@@ -225,12 +210,10 @@ TEST_SUITE("WaitMap") {
             CHECK(pathIter1 == path1.end());
 
             // Test second path
-            MESSAGE("Testing against path: " << path2.getPath());
             auto patternIter2 = pattern.begin();
             auto pathIter2    = path2.begin();
             while (patternIter2 != pattern.end() && pathIter2 != path2.end()) {
                 auto [isMatch, isSuper] = (*patternIter2).match((*pathIter2).getName());
-                MESSAGE("  Segment match: '" << (*pathIter2).getName() << "' against '" << (*patternIter2).getName() << "' -> " << isMatch << ", " << isSuper);
                 if (!isMatch)
                     break;
                 ++patternIter2;
@@ -253,53 +236,33 @@ TEST_SUITE("WaitMap") {
             std::string nomatch_path = "/test/nomatch/1";
             std::string pattern      = "/test/match/*";
 
-            MESSAGE("Starting test with paths:");
-            MESSAGE("  Match path: " << match_path);
-            MESSAGE("  No-match path: " << nomatch_path);
-            MESSAGE("  Pattern: " << pattern);
-
             // First waiter - should be notified
             waiters.emplace_back([&]() {
-                MESSAGE("Match waiter starting");
                 auto guard            = waitMap.wait(match_path);
                 bool was_notified     = guard.wait_until(std::chrono::system_clock::now() + 300ms) == std::cv_status::no_timeout;
                 match_waiter_notified = was_notified;
                 match_waiter_done     = true;
-                MESSAGE("Match waiter finished - was_notified: " << was_notified);
             });
 
             // Second waiter - should not be notified
             waiters.emplace_back([&]() {
-                MESSAGE("No-match waiter starting");
                 auto guard              = waitMap.wait(nomatch_path);
                 bool was_notified       = guard.wait_until(std::chrono::system_clock::now() + 300ms) == std::cv_status::no_timeout;
                 nomatch_waiter_notified = was_notified;
                 nomatch_waiter_done     = true;
-                MESSAGE("No-match waiter finished - was_notified: " << was_notified);
             });
 
             // Wait for waiters to be ready
-            MESSAGE("Waiting for waiters to be ready");
             while (!waitMap.hasWaiters()) {
                 std::this_thread::yield();
             }
             std::this_thread::sleep_for(50ms);
 
             // Send notification
-            MESSAGE("Sending notification with pattern: " << pattern);
             waitMap.notify(GlobPathStringView(pattern));
             notification_sent = true;
-            MESSAGE("Notification sent");
 
             waiters.clear(); // Clear waiters
-            MESSAGE("All waiters completed");
-
-            // Verify results
-            MESSAGE("Final state:");
-            MESSAGE("  Match waiter done: " << match_waiter_done.load());
-            MESSAGE("  No-match waiter done: " << nomatch_waiter_done.load());
-            MESSAGE("  Match waiter notified: " << match_waiter_notified.load());
-            MESSAGE("  No-match waiter notified: " << nomatch_waiter_notified.load());
 
             CHECK(match_waiter_notified);         // Should be notified
             CHECK_FALSE(nomatch_waiter_notified); // Should not be notified

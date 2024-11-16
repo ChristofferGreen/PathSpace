@@ -53,8 +53,8 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("Simple PathSpace Read Function Pointer Execution") {
         using TestFuncPtr = int (*)();
-        TestFuncPtr f = []() -> int { return 58; };
-        TestFuncPtr f2 = []() -> int { return 25; };
+        TestFuncPtr f     = []() -> int { return 58; };
+        TestFuncPtr f2    = []() -> int { return 25; };
         CHECK(pspace.insert("/f", f).nbrTasksInserted == 1);
         CHECK(pspace.insert("/f2", f2).nbrTasksInserted == 1);
         CHECK(pspace.readBlock<int>("/f").value() == 58);
@@ -64,15 +64,13 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("Simple PathSpace Execution Lazy") {
         std::function<int()> f = []() -> int { return 58; };
-        CHECK(pspace.insert("/f", f, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}})
-                      .nbrTasksInserted
-              == 1);
+        CHECK(pspace.insert("/f", f, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}}).nbrTasksInserted == 1);
         CHECK(pspace.readBlock<int>("/f").value() == 58);
     }
 
     SUBCASE("PathSpace Read Function Pointer Execution Blocking Simple") {
         auto const f1 = [&pspace]() -> int { return pspace.readBlock<int>("/f2").value() + 11; };
-        int (*f2)() = []() -> int { return 10; };
+        int (*f2)()   = []() -> int { return 10; };
 
         CHECK(pspace.insert("/f1", f1).errors.size() == 0);
         CHECK(pspace.insert("/f2", f2).errors.size() == 0);
@@ -122,14 +120,9 @@ TEST_CASE("PathSpace Read") {
     }
 
     SUBCASE("Read with timeout") {
-        auto ret = pspace.readBlock<int>(
-                "/timeout",
-                OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+        auto ret = pspace.readBlock<int>("/timeout", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
         CHECK_FALSE(ret.has_value());
     }
-}
-TEST_CASE("PathSpace Read Std Datastructure") {
-    PathSpace pspace;
 
     SUBCASE("PathSpace Read std::string") {
         pspace.insert("/string", std::string("hello"));

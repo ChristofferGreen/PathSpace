@@ -91,10 +91,6 @@ TEST_CASE("PathSpace Extract") {
         CHECK(pspace.extractBlock<int>("/f").value() == 58);
         CHECK(!pspace.extract<int>("/f").has_value());
     }
-}
-
-TEST_CASE("PathSpace Extract Extended Tests") {
-    PathSpace pspace;
 
     SUBCASE("Extract std::string") {
         pspace.insert("/str", std::string("hello world"));
@@ -225,20 +221,14 @@ TEST_CASE("PathSpace Extract Extended Tests") {
             auto readVal = pspace.readBlock<int>("/test");
             REQUIRE(readVal.has_value());
             CHECK(readVal.value() == 42);
-            MESSAGE("After initial read: value=" << readVal.value());
 
             // Extract should remove value
             auto extractVal = pspace.extractBlock<int>("/test");
             REQUIRE(extractVal.has_value());
             CHECK(extractVal.value() == 42);
-            MESSAGE("After extract: value=" << extractVal.value());
 
             // Verify value is gone using non-blocking read
             auto readAfterExtract = pspace.read<int>("/test");
-            MESSAGE("After final read: has_value=" << readAfterExtract.has_value());
-            if (readAfterExtract.has_value()) {
-                MESSAGE("Unexpected value still present: " << readAfterExtract.value());
-            }
             CHECK_FALSE(readAfterExtract.has_value());
         }
 
@@ -297,10 +287,6 @@ TEST_CASE("PathSpace Extract Extended Tests") {
             CHECK_FALSE(check3.has_value());
         }
     }
-}
-
-TEST_CASE("PathSpace Extract Std Datastructure") {
-    PathSpace pspace;
 
     SUBCASE("PathSpace Extract std::string") {
         pspace.insert("/string", std::string("hello"));
@@ -444,7 +430,7 @@ TEST_CASE("PathSpace Extract Std Datastructure") {
 
 using namespace std::chrono_literals;
 
-TEST_CASE("PathSpace Glob Operations") {
+TEST_CASE("PathSpace Glob") {
     PathSpace pspace;
 
     SUBCASE("Basic Glob Insert and Read") {
@@ -741,7 +727,7 @@ TEST_CASE("PathSpace Glob Operations") {
     }
 }
 
-TEST_CASE("PathSpace String Operations") {
+TEST_CASE("PathSpace String") {
     PathSpace pspace;
 
     SUBCASE("Basic String Operations") {
