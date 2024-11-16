@@ -97,15 +97,18 @@ auto TaskPool::workerFunction() -> void {
                 sp_log("Marking task completed", "TaskPool");
                 strongTask->markCompleted();
             } catch (...) {
+                strongTask->markFailed();
                 sp_log("Exception in running Task", "Error", "Exception");
             }
             --activeTasks;
         } else {
             sp_log("TaskPool::workerFunction Failed to lock task - references lost", "TaskPool");
         }
-        if (!notificationPath.empty()) {
+        if (!notificationPath.empty() && space) {
+            std::lock_guard<std::mutex> lock(mutex);
             sp_log("Notifying path: " + std::string(notificationPath.getPath()), "TaskPool");
-            space->waitMap.notify(notificationPath);
+            if (!shuttingDown)
+                space->waitMap.notify(notificationPath);
         }
     }
 

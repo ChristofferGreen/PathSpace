@@ -631,6 +631,7 @@ TEST_CASE("TaskPool Misc") {
 
             // Clear state to allow cleanup
             state.reset();
+            std::this_thread::sleep_for(20ms);
             CHECK_FALSE(weakValue.lock()); // Now the resource should be cleaned up
         }
     }
