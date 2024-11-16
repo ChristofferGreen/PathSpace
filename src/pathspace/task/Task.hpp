@@ -33,12 +33,12 @@ struct Task {
             task->notificationPath = notificationPath;
             task->executionOptions = options.execution;
             task->function         = [userFunction](Task& task, bool const) {
-                sp_log("Task lambda execution", "DEBUG");
+                sp_log("Task lambda execution", "Task");
                 task.result = userFunction();
-                sp_log("Task lambda completed", "DEBUG");
+                sp_log("Task lambda completed", "Task");
             };
             task->resultCopy_ = [](std::any const& from, void* const to) {
-                sp_log("Task copying result", "DEBUG");
+                sp_log("Task copying result", "Task");
                 *static_cast<ResultType*>(to) = std::any_cast<ResultType>(from);
             };
 

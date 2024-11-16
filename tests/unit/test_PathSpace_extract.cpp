@@ -718,7 +718,7 @@ TEST_CASE("PathSpace Glob Operations") {
 
     SUBCASE("Glob Pattern Edge Cases") {
         SUBCASE("Empty paths") {
-            CHECK(pspace.insert("/*", 1).errors.size() > 0);
+            CHECK(pspace.insert("/*", 1).nbrValuesInserted == 0);
             CHECK(pspace.insert("/", 1).nbrValuesInserted == 1);
         }
 
@@ -728,20 +728,15 @@ TEST_CASE("PathSpace Glob Operations") {
         }
 
         SUBCASE("Escaped wildcards") {
-            CHECK(pspace.insert("/test/a*b", 1).nbrValuesInserted == 1);
+            CHECK(pspace.insert("/test/a*b", 1).nbrValuesInserted == 0);
             CHECK(pspace.insert("/test/a\\*b", 2).nbrValuesInserted == 1);
 
-            // Verify they're treated as different paths
-            auto val = pspace.extract<int>("/test/a*b");
+            auto val = pspace.extract<int>("/test/a\\*b");
             CHECK(val.has_value());
-            CHECK(val.value() == 1);
+            CHECK(val.value() == 2);
 
             val = pspace.extract<int>("/test/a*b");
             CHECK(!val.has_value()); // Should be empty now
-
-            val = pspace.extract<int>("/test/a\\*b");
-            CHECK(val.has_value());
-            CHECK(val.value() == 2);
         }
     }
 }

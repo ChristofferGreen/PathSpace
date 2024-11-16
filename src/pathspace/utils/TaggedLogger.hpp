@@ -46,8 +46,8 @@ private:
     std::thread             workerThread;
     std::atomic<bool>       running;
     std::atomic<bool>       loggingEnabled;
-    std::set<std::string>   skipTags{};
-    // std::set<std::string>   skipTags{"Function Called", "INFO"};
+    // std::set<std::string>   skipTags{};
+    std::set<std::string> skipTags{"Function Called", "INFO", "WaitMap", "PathSpaceLeaf", "ThreadPool", "TaskPool", "PathSpaceShutdown", "Testcase", "Task", "Task lambda execution", "Task lambda completed", "Task copying result", "ERROR"};
     std::set<std::string> enabledTags{};
     // std::set<std::string>   enabledTags{"TaskPool", "PathSpaceShutdown", "PathSpaceLeaf", "WaitMap", "Testcase"};
 

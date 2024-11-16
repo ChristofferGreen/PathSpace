@@ -8,8 +8,8 @@ template <typename T>
 Path<T>::Path(T const& path) : path(path) {}
 
 template <typename T>
-auto Path<T>::isValid() const -> bool {
-    if (this->path.size() < 1) // Must start with / and have at least one name.
+auto Path<T>::isValid() const -> bool { // ToDo:: Make compile time
+    if (this->path.size() < 1)          // Must start with /
         return false;
 
     if (this->path[0] != '/')
@@ -17,6 +17,12 @@ auto Path<T>::isValid() const -> bool {
 
     // Check for relative paths like '.', '..', etc. Names not allowed to start with .
     if (this->path.contains("/."))
+        return false;
+
+    // find [ character, if found we have to find a ] before finding a /
+    if (this->path.contains("[") && !this->path.contains("]")) // ToDo:: Really should be per sub-component
+        return false;
+    if (this->path.contains("]") && !this->path.contains("[")) // ToDo:: Really should be per sub-component
         return false;
 
     return true;

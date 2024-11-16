@@ -10,7 +10,7 @@ auto WaitMap::Guard::wait_until(std::chrono::time_point<std::chrono::system_cloc
 }
 
 auto WaitMap::wait(ConcretePathStringView const& path) -> Guard {
-    sp_log("WaitMap::wait for path: " + std::string(path.getPath()), "DEBUG");
+    sp_log("WaitMap::wait for path: " + std::string(path.getPath()), "WaitMap");
     return Guard(*this, ConcretePathString{path.getPath()}, std::unique_lock<std::mutex>(mutex));
 }
 

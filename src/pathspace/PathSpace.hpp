@@ -31,6 +31,8 @@ public:
     template <typename DataType>
     auto insert(GlobPathStringView const& path, DataType&& data, InOptions const& options = {}) -> InsertReturn {
         sp_log("PathSpace::insert", "Function Called");
+        if (!path.isValid())
+            return InsertReturn{.errors = {Error{Error::Code::InvalidPath, "Invalid path: " + std::string(path.getPath())}}};
         InputData inputData{std::forward<DataType>(data)};
 
         if (inputData.metadata.dataCategory == DataCategory::Execution)

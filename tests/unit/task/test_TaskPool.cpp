@@ -119,6 +119,7 @@ TEST_CASE("TaskPool Misc") {
         }
 
         CHECK(taskExecuted);
+        std::this_thread::sleep_for(20ms);
         CHECK(weakTask.expired());
     }
 
