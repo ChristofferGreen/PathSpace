@@ -824,9 +824,6 @@ TEST_CASE("PathSpace Multithreading") {
                 std::lock_guard<std::mutex> lock(extractMutex);
                 std::sort(extractedValues.begin(), extractedValues.end());
 
-                MESSAGE("Number of values extracted: ", extractedValues.size());
-                MESSAGE("Total reads performed: ", readCount);
-
                 {
                     std::stringstream ss;
                     ss << "Expected " << NUM_VALUES << " values, got " << extractedValues.size();
