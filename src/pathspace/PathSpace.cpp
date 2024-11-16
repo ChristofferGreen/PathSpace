@@ -37,7 +37,7 @@ auto PathSpace::in(GlobPathStringView const& path, InputData const& data, InOpti
         return ret;
     }
 
-    this->root.in(path.begin(), path.end(), data, options, ret);
+    this->root.in(PathViewGlob(path.begin(), path.end()), data, options, ret);
 
     if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0 || ret.nbrTasksInserted > 0)
         waitMap.notify(path);

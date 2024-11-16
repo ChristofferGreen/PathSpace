@@ -3,6 +3,7 @@
 #include "core/InOptions.hpp"
 #include "core/InsertReturn.hpp"
 #include "core/OutOptions.hpp"
+#include "path/PathView.hpp"
 #include "pathspace/type/InputData.hpp"
 #include "type/InputData.hpp"
 
@@ -16,9 +17,12 @@ auto PathSpaceLeaf::clear() -> void {
     ############# In #############
 */
 
-auto PathSpaceLeaf::in(GlobPathIteratorStringView const& iter, GlobPathIteratorStringView const& end, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void {
-    sp_log("PathSpaceLeaf::in Processing path component: " + std::string((*iter).getName()), "PathSpaceLeaf");
-    std::next(iter) == end ? inFinalComponent(*iter, inputData, options, ret) : inIntermediateComponent(iter, end, *iter, inputData, options, ret);
+auto PathSpaceLeaf::in(PathViewGlob const& iter, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void {
+    sp_log("PathSpaceLeaf::in Processing path component: " + std::string(iter.currentComponent().getName()), "PathSpaceLeaf");
+    if (iter.isFinalComponent())
+        inFinalComponent(iter.currentComponent(), inputData, options, ret);
+    else
+        inIntermediateComponent(iter.current(), iter.end(), iter.currentComponent(), inputData, options, ret);
 }
 
 auto PathSpaceLeaf::inFinalComponent(GlobName const& pathComponent, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void {
@@ -70,14 +74,14 @@ auto PathSpaceLeaf::inIntermediateComponent(GlobPathIteratorStringView const& it
             const auto& key = item.first;
             if (std::get<0>(pathComponent.match(key))) {
                 if (const auto* leaf = std::get_if<std::unique_ptr<PathSpaceLeaf>>(&item.second)) {
-                    (*leaf)->in(nextIter, end, inputData, options, ret);
+                    (*leaf)->in(PathViewGlob(nextIter, end), inputData, options, ret);
                 }
             }
         });
     } else {
         auto [it, inserted] = nodeDataMap.try_emplace(pathComponent.getName(), std::make_unique<PathSpaceLeaf>());
         if (auto* leaf = std::get_if<std::unique_ptr<PathSpaceLeaf>>(&it->second)) {
-            (*leaf)->in(nextIter, end, inputData, options, ret);
+            (*leaf)->in(PathViewGlob(nextIter, end), inputData, options, ret);
         }
     }
 }

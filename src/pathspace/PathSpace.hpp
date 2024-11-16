@@ -4,6 +4,7 @@
 #include "core/OutOptions.hpp"
 #include "core/WaitMap.hpp"
 #include "path/GlobPath.hpp"
+#include "path/PathView.hpp"
 #include "task/Task.hpp"
 #include "type/InputData.hpp"
 #include "utils/TaggedLogger.hpp"
