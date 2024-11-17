@@ -16,7 +16,6 @@ auto PathSpaceLeaf::clear() -> void {
 /*
     ############# In #############
 */
-
 auto PathSpaceLeaf::in(PathViewGlob const& iter, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void {
     sp_log("PathSpaceLeaf::in Processing path component: " + std::string(iter.currentComponent().getName()), "PathSpaceLeaf");
     if (iter.isFinalComponent())
@@ -69,7 +68,6 @@ auto PathSpaceLeaf::inFinalComponent(PathViewGlob const& iter, InputData const& 
 
 auto PathSpaceLeaf::inIntermediateComponent(PathViewGlob const& iter, GlobName const& pathComponent, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void {
     auto const nextIter = iter.next();
-
     if (pathComponent.isGlob()) {
         nodeDataMap.for_each([&](const auto& item) {
             const auto& key = item.first;
@@ -90,15 +88,14 @@ auto PathSpaceLeaf::inIntermediateComponent(PathViewGlob const& iter, GlobName c
 /*
     ############# Out #############
 */
-
-auto PathSpaceLeaf::out(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const isExtract) -> Expected<int> {
+auto PathSpaceLeaf::out(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const doExtract) -> Expected<int> {
     if (iter.isFinalComponent())
-        return outFinalComponent(iter, inputMetadata, obj, options, isExtract);
+        return outFinalComponent(iter, inputMetadata, obj, options, doExtract);
     else
-        return outIntermediateComponent(iter, inputMetadata, obj, options, isExtract);
+        return outIntermediateComponent(iter, inputMetadata, obj, options, doExtract);
 }
 
-auto PathSpaceLeaf::outFinalComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const isExtract) -> Expected<int> {
+auto PathSpaceLeaf::outFinalComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const doExtract) -> Expected<int> {
     Expected<int> result       = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     bool          shouldErase  = false;
     auto const    concreteName = iter.currentComponent();
@@ -106,7 +103,7 @@ auto PathSpaceLeaf::outFinalComponent(PathViewConcrete const& iter, InputMetadat
     // First pass: modify data and check if we need to erase
     this->nodeDataMap.modify_if(concreteName.getName(), [&](auto& nodePair) {
         if (auto* nodeData = std::get_if<NodeData>(&nodePair.second)) {
-            if (isExtract) {
+            if (doExtract) {
                 result      = nodeData->deserializePop(obj, inputMetadata);
                 shouldErase = nodeData->empty();
             } else {
@@ -124,12 +121,12 @@ auto PathSpaceLeaf::outFinalComponent(PathViewConcrete const& iter, InputMetadat
     return result;
 }
 
-auto PathSpaceLeaf::outIntermediateComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const isExtract) -> Expected<int> {
+auto PathSpaceLeaf::outIntermediateComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const doExtract) -> Expected<int> {
     Expected<int> expected = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     this->nodeDataMap.if_contains(iter.currentComponent().getName(), [&](auto const& nodePair) {
         bool const isLeaf = std::holds_alternative<std::unique_ptr<PathSpaceLeaf>>(nodePair.second);
         expected          = isLeaf
-                                    ? std::get<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)->out(iter.next(), inputMetadata, obj, options, isExtract)
+                                    ? std::get<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)->out(iter.next(), inputMetadata, obj, options, doExtract)
                                     : std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
     });
     return expected;

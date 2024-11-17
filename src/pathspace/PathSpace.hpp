@@ -54,8 +54,8 @@ public:
     auto read(ConcretePathStringView const& path, OutOptions const& options = {}) const -> Expected<DataType> {
         sp_log("PathSpace::read", "Function Called");
         DataType   obj;
-        bool const isExtract = false;
-        if (auto ret = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj, isExtract); !ret)
+        bool const doExtract = false;
+        if (auto ret = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj, doExtract); !ret)
             return std::unexpected(ret.error());
         return obj;
     }
@@ -63,8 +63,8 @@ public:
     template <typename DataType>
     auto readBlock(ConcretePathStringView const& path, OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}}) const -> Expected<DataType> {
         sp_log("PathSpace::readBlock", "Function Called");
-        bool const isExtract = false;
-        return const_cast<PathSpace*>(this)->outBlock<DataType>(path, options, isExtract);
+        bool const doExtract = false;
+        return const_cast<PathSpace*>(this)->outBlock<DataType>(path, options, doExtract);
     }
 
     /**
@@ -78,8 +78,8 @@ public:
     auto extract(ConcretePathStringView const& path, OutOptions const& options = {}) -> Expected<DataType> {
         sp_log("PathSpace::extract", "Function Called");
         DataType   obj;
-        bool const isExtract = true;
-        auto const ret       = this->out(path, InputMetadataT<DataType>{}, options, &obj, isExtract);
+        bool const doExtract = true;
+        auto const ret       = this->out(path, InputMetadataT<DataType>{}, options, &obj, doExtract);
         if (!ret)
             return std::unexpected(ret.error());
         if (ret.has_value() && (ret.value() == 0))
@@ -90,8 +90,8 @@ public:
     template <typename DataType>
     auto extractBlock(ConcretePathStringView const& path, OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}}) -> Expected<DataType> {
         sp_log("PathSpace::extractBlock", "Function Called");
-        bool const isExtract = true;
-        return this->outBlock<DataType>(path, options, isExtract);
+        bool const doExtract = true;
+        return this->outBlock<DataType>(path, options, doExtract);
     }
 
     auto clear() -> void;
@@ -100,7 +100,7 @@ protected:
     friend class TaskPool;
 
     template <typename DataType>
-    auto outBlock(ConcretePathStringView const& path, OutOptions const& options, bool const isExtract) -> Expected<DataType> {
+    auto outBlock(ConcretePathStringView const& path, OutOptions const& options, bool const doExtract) -> Expected<DataType> {
         sp_log("PathSpace::outBlock", "Function Called");
 
         DataType      obj;
@@ -110,7 +110,7 @@ protected:
 
         // First try entirely outside the loop to minimize lock time
         {
-            result = this->out(path, inputMetaData, options, &obj, isExtract);
+            result = this->out(path, inputMetaData, options, &obj, doExtract);
             if (result.has_value() && result.value() > 0) {
                 return obj;
             }
@@ -127,7 +127,7 @@ protected:
             auto guard = waitMap.wait(path);
             {
                 bool success = guard.wait_until(deadline, [&]() {
-                    result          = this->out(path, inputMetaData, options, &obj, isExtract);
+                    result          = this->out(path, inputMetaData, options, &obj, doExtract);
                     bool haveResult = (result.has_value() && result.value() > 0);
                     return haveResult;
                 });
@@ -144,7 +144,7 @@ protected:
     }
 
     virtual auto in(GlobPathStringView const& path, InputData const& data, InOptions const& options) -> InsertReturn;
-    virtual auto out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, OutOptions const& options, void* obj, bool const isExtract) -> Expected<int>;
+    virtual auto out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, OutOptions const& options, void* obj, bool const doExtract) -> Expected<int>;
     auto         shutdown() -> void;
 
     TaskPool*     pool = nullptr;
