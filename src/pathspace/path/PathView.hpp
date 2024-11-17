@@ -22,6 +22,11 @@ struct PathViewGlob {
         return *this;
     }
 
+    auto next() const -> PathViewGlob {
+        PathViewGlob p = *this;
+        return p.advance();
+    }
+
     auto current() const {
         return current_;
     }
@@ -48,6 +53,11 @@ struct PathViewConcrete {
     auto advance() -> PathViewConcrete& {
         ++current_;
         return *this;
+    }
+
+    auto next() const -> PathViewConcrete {
+        PathViewConcrete p = *this;
+        return p.advance();
     }
 
     auto current() const {

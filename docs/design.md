@@ -4,6 +4,171 @@
 ## Introduction
 PathSpace is a coordination language that enables insertion and extractions from paths in a thread safe datastructure. The data structure supports views of the paths similar to Plan 9. The data attached to the paths are more like a JSON datastructure than files though. The data supported is standard C++ data types and data structures from the standard library, user created structs/classes as well as function pointers, std::function or function objects for storing executions that generate values to be inserted at a path.
 
+## Path System
+
+### Path Types
+
+#### Concrete Paths
+Concrete paths represent exact locations in the PathSpace hierarchy. They follow these rules:
+- Must start with a forward slash (/)
+- Components are separated by forward slashes
+- Cannot contain relative path components (. or ..)
+- Names cannot start with dots
+- Components cannot be empty (// is normalized to /)
+
+Example:
+```cpp
+"/data/sensors/temperature"
+"/system/status/current"
+```
+
+#### Glob Paths
+Glob paths extend concrete paths with pattern matching capabilities. They support:
+- `*` - Matches any sequence of characters within a component
+- `**` - Matches zero or more components (super-matcher)
+- `?` - Matches any single character
+- `[abc]` - Matches any character in the set
+- `[a-z]` - Matches any character in the range
+- `\` - Escapes special characters
+
+Example patterns:
+```cpp
+"/data/*/temperature"    // Matches any sensor's temperature
+"/data/**/status"       // Matches status at any depth
+"/sensor-[0-9]/*"       // Matches numbered sensors
+"/data/temp-?"          // Matches single character variations
+```
+
+### Path Implementation
+
+#### Core Classes
+```cpp
+// Base path template
+template <typename T>
+struct Path {
+    T path;  // string or string_view storage
+    bool isValid() const;
+    T const& getPath() const;
+};
+
+// Concrete path types
+using ConcretePathString = ConcretePath<std::string>;
+using ConcretePathStringView = ConcretePath<std::string_view>;
+
+// Glob path types
+using GlobPathString = GlobPath<std::string>;
+using GlobPathStringView = GlobPath<std::string_view>;
+```
+
+#### Path Component Iteration
+The system provides iterators to traverse path components:
+```cpp
+template <typename T>
+struct ConcretePathIterator {
+    ConcreteNameStringView operator*() const;  // Current component
+    bool isAtStart() const;                    // Check if at first component
+    std::string_view fullPath() const;         // Full path string
+};
+
+template <typename T>
+struct GlobPathIterator {
+    GlobName operator*() const;  // Current component with pattern matching
+    bool isAtStart() const;      // Check if at first component
+    std::string_view fullPath() const;  // Full path string
+};
+```
+
+#### Pattern Matching
+Pattern matching can handle various glob patterns:
+
+```cpp
+struct GlobName {
+    // Returns match status and super-match flag
+    auto match(const std::string_view& str) const 
+        -> std::tuple<bool /*match*/, bool /*supermatch*/>;
+    
+    bool isConcrete() const;  // Check if contains patterns
+    bool isGlob() const;      // Check for glob characters
+};
+```
+
+Pattern matching behaviors:
+- `*` matches within component boundaries
+- `**` provides super-matching across components
+- Character classes support ranges and sets
+- Escaped characters are handled literally
+- Empty components are normalized
+
+### Path Usage Examples
+
+#### Basic Path Operations
+```cpp
+PathSpace space;
+
+// Insert at concrete path
+space.insert("/sensors/temp1/value", 23.5);
+
+// Insert using pattern
+space.insert("/sensors/*/value", 0.0);  // Reset all sensor values
+
+// Read with exact path
+auto value = space.read<float>("/sensors/temp1/value");
+
+// Read with pattern
+auto values = space.read<float>("/sensors/*/value");
+```
+
+#### Pattern Matching Examples
+```cpp
+// Match any sensor
+"/sensors/*"
+
+// Match sensors with numeric IDs
+"/sensors/[0-9]*"
+
+// Match any depth under sensors
+"/sensors/**/value"
+
+// Match specific character variations
+"/sensor-?"
+
+// Match range of sensors
+"/sensors/[1-5]"
+```
+
+### Path Performance Considerations
+
+#### Path Storage
+- Uses `string_view` for read-only operations to avoid copies
+- Maintains string ownership where needed for modifications
+- Caches path components for efficient iteration
+
+#### Pattern Matching Optimization
+- Early termination for non-matching patterns
+- Efficient character class evaluation
+- Optimized super-matcher (`**`) handling
+- Component-wise matching to minimize string operations
+
+#### Memory Efficiency
+- Shared path component storage
+- Lazy evaluation of pattern matches
+- Efficient string views for immutable paths
+
+### Path Thread Safety
+The path system provides thread-safe operations through:
+- Immutable path objects
+- Synchronized pattern matching
+- Thread-safe path resolution
+- Atomic path operations
+
+### Path Error Handling
+Comprehensive error handling for path operations:
+- Path validation errors
+- Pattern syntax errors
+- Resolution failures
+- Type mismatches
+- Timeout conditions
+
 ## Internal Data
 PathSpace can be seen as a map between a path and a vector of data. Inserting more data to the path will append it to the end. Reading data from the path will return a copy of the front data. Extracting data from a path will pop and return the front data of the vector for the path.
 
@@ -40,7 +205,6 @@ assert(space.extract<int>("/collection/numbers_more").value() == 2);
 
 ## Blocking
 It's possible to send a blocking object to insert/read/extract instructing it to wait a certain amount of time for data to arrive if it is currently empty or non-existent.
-
 
 ## Operations
 The operations in the base language are insert/read/extract, they are implemented as member functions of the PathSpace class.
@@ -121,7 +285,7 @@ Could be done as a hashmap from a ConcretePath to a PathSpace*. Would need to cl
 ### Reactive programming
 The extendability of a PathSpace can be used to create a reactive data flow, for example by creating a child PathSpace that takes n other PathSpace paths as input and combines their
 values by extractbing from them or a PathSpace that performs a transformation on any data from n other paths. Each tuple can be seen as a data stream as long as they are alive, when
-they run out of items the stream dies. One example could be a lambda within the space that waits for the left mouse button to be pressed via space.read<int>(“/system/mouse/button_down”,
+they run out of items the stream dies. One example could be a lambda within the space that waits for the left mouse button to be pressed via space.read<int>("/system/mouse/button_down",
 ReadOptions{.block=true}).
 
 ## Example Use Cases
@@ -138,7 +302,7 @@ ReadOptions{.block=true}).
 Will not write out any data for state saving and if a user logs out all their created data will be deleted. Will usually be at /tmp, with user dirs as /tmp/username.
 
 ### Scripting
-There will be support for manipulating a PathSpace through lua. Issuing an operator can then be done without having to reference a space object, like so: insert(“/a”, 5).
+There will be support for manipulating a PathSpace through lua. Issuing an operator can then be done without having to reference a space object, like so: insert("/a", 5).
 But separate space objects could be created as variables in the script and could be used by the normal space_name.insert(… usage.
 
 ### Command line

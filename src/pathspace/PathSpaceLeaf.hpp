@@ -15,20 +15,14 @@ struct ConstructiblePath;
 class PathSpaceLeaf {
 public:
     auto in(PathViewGlob const& iter, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void;
-    auto out(ConcretePathIteratorStringView const& iter, ConcretePathIteratorStringView const& end, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const isExtract) -> Expected<int>;
+    auto out(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const isExtract) -> Expected<int>;
     auto clear() -> void;
 
 private:
-    auto inFinalComponent(GlobName const& pathComponent, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void;
-    auto inIntermediateComponent(GlobPathIteratorStringView const& iter, GlobPathIteratorStringView const& end, GlobName const& pathComponent, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void;
-    auto outDataName(ConcreteNameStringView const& concreteName, ConcretePathIteratorStringView const& end, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const isExtract) -> Expected<int>;
-    auto outConcretePathComponent(ConcretePathIteratorStringView const& nextIter,
-                                  ConcretePathIteratorStringView const& end,
-                                  ConcreteNameStringView const&         concreteName,
-                                  InputMetadata const&                  inputMetadata,
-                                  void*                                 obj,
-                                  OutOptions const&                     options,
-                                  bool const                            isExtract) -> Expected<int>;
+    auto inFinalComponent(PathViewGlob const& iter, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void;
+    auto inIntermediateComponent(PathViewGlob const& iter, GlobName const& pathComponent, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void;
+    auto outFinalComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const isExtract) -> Expected<int>;
+    auto outIntermediateComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const isExtract) -> Expected<int>;
 
     NodeDataHashMap nodeDataMap;
 };
