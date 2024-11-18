@@ -56,6 +56,7 @@ struct Path {
                 char next = this->path[pos + 1];
                 if (next == '*' || next == '?' || next == '[' || next == ']' || next == '\\') {
                     pos++; // Skip next character as it's escaped
+                    prev_slash = false;
                     continue;
                 }
                 // Otherwise, treat backslash as a normal character
