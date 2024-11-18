@@ -11,26 +11,14 @@ using namespace SP;
 TEST_CASE("Path ConcretePath") {
     SUBCASE("Default Construction") {
         ConcretePathString path;
-        REQUIRE(!path.isValid());
+        REQUIRE(path.validate().has_value());
         ConcretePathStringView path2;
-        REQUIRE(!path2.isValid());
-    }
-
-    SUBCASE("Default Construction Invalid") {
-        ConcretePathStringView path;
-        REQUIRE(path != "");
-        REQUIRE(!path.isValid());
-    }
-
-    SUBCASE("Construction With Empty String Is Invalid") {
-        ConcretePathStringView path{""};
-        REQUIRE(path != "");
-        REQUIRE(!path.isValid());
+        REQUIRE(path2.validate().has_value());
     }
 
     SUBCASE("Construction Path With Only Slashes") {
         ConcretePathString slashesPath{"///"};
-        REQUIRE(slashesPath.isValid());
+        REQUIRE(slashesPath.validate().has_value());
         REQUIRE(slashesPath == "/");
     }
 
@@ -51,9 +39,9 @@ TEST_CASE("Path ConcretePath") {
     }
 
     SUBCASE("Construction Long Path") {
-        std::string const longPath = "/a/" + std::string(1000, 'b') + "/c";
+        std::string const  longPath = "/a/" + std::string(1000, 'b') + "/c";
         ConcretePathString path(longPath);
-        REQUIRE(path.isValid());
+        REQUIRE(!path.validate().has_value());
     }
 
     SUBCASE("Construction With initial path") {
@@ -69,7 +57,7 @@ TEST_CASE("Path ConcretePath") {
     }
 
     SUBCASE("Copy and Move Semantics") {
-        ConcretePathString originalPath{"/a/b"};
+        ConcretePathString       originalPath{"/a/b"};
         ConcretePathString const copiedPath = originalPath; // Copy
         REQUIRE(copiedPath == originalPath);
 
@@ -79,7 +67,7 @@ TEST_CASE("Path ConcretePath") {
     }
 
     SUBCASE("Assignment Operations") {
-        ConcretePathString path1{"/a/b"};
+        ConcretePathString       path1{"/a/b"};
         ConcretePathString const path2("/c/d");
         path1 = path2;
         REQUIRE(path1 == path2);
@@ -91,32 +79,32 @@ TEST_CASE("Path ConcretePath") {
 
     SUBCASE("Relative Paths") {
         ConcretePathString relativePath{"./a/b"};
-        REQUIRE(!relativePath.isValid());
+        REQUIRE(relativePath.validate().has_value());
     }
 
     SUBCASE("Paths with Special Characters") {
         ConcretePathString const path{"/path/with special@chars#"};
-        REQUIRE(path.isValid());
+        REQUIRE(!path.validate().has_value());
     }
 
     SUBCASE("Mixed Slash Types") {
         ConcretePathString path{"/path\\with/mixed/slashes\\"};
-        REQUIRE(path.isValid());
+        REQUIRE(!path.validate().has_value());
     }
 
     SUBCASE("Multiple Consecutive Slashes") {
         ConcretePathString path{"/path//with///multiple/slashes"};
-        REQUIRE(path.isValid());
+        REQUIRE(path.validate().has_value());
     }
 
     SUBCASE("Trailing Slashes") {
         ConcretePathString path{"/path/with/trailing/slash/"};
-        REQUIRE(path.isValid());
+        REQUIRE(path.validate().has_value());
     }
 
     SUBCASE("Unicode Characters in Path") {
         ConcretePathString path{"/路径/含有/非ASCII字符"};
-        REQUIRE(path.isValid());
+        REQUIRE(!path.validate().has_value());
         REQUIRE(path == "/路径/含有/非ASCII字符");
         auto iter = path.begin();
         REQUIRE(*iter == "路径");
@@ -130,19 +118,14 @@ TEST_CASE("Path ConcretePath") {
 
     SUBCASE("Empty Components in Path") {
         ConcretePathString path{"/a/b//c/d/"};
-        REQUIRE(path.isValid());
-        REQUIRE(path == "/a/b/c/d/");
-        REQUIRE(path == "/a/b/c/d/");
-        REQUIRE(path == "/a//b/c////d/");
-        REQUIRE(path != "/a//b/c////e/");
+        REQUIRE(path.validate().has_value());
     }
 
     SUBCASE("Path Normalization") {
         ConcretePathString path{"/a/./b/../c/"};
-        REQUIRE(!path.isValid());
+        REQUIRE(path.validate().has_value());
         REQUIRE(path != "/a/c");
         REQUIRE(path != "/a/b/c");
-        REQUIRE(path != "/a/./b/../c/");
     }
 
     SUBCASE("Path Comparison Case Sensitivity") {
@@ -165,8 +148,8 @@ TEST_CASE("Path ConcretePath") {
 
     SUBCASE("Comparison with string_view") {
         ConcretePathString path("/foo/bar");
-        std::string_view sv1 = "/foo/bar";
-        std::string_view sv2 = "/foo/baz";
+        std::string_view   sv1 = "/foo/bar";
+        std::string_view   sv2 = "/foo/baz";
 
         CHECK(path == sv1);
         CHECK(path != sv2);
@@ -205,7 +188,7 @@ TEST_CASE("Path ConcretePath") {
     }
 
     SUBCASE("Mixed comparisons") {
-        ConcretePathString pathString("/foo/bar");
+        ConcretePathString     pathString("/foo/bar");
         ConcretePathStringView pathView("/foo/bar");
 
         CHECK(pathString == pathView);
@@ -216,7 +199,7 @@ TEST_CASE("Path ConcretePath") {
 
     SUBCASE("Conversion to string_view") {
         ConcretePathString path("/foo/bar");
-        std::string_view sv = static_cast<std::string_view>(path);
+        std::string_view   sv = static_cast<std::string_view>(path);
 
         CHECK(sv == "/foo/bar");
     }

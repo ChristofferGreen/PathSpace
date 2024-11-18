@@ -32,10 +32,6 @@ auto PathSpace::shutdown() -> void {
 auto PathSpace::in(GlobPathStringView const& path, InputData const& data, InOptions const& options) -> InsertReturn {
     sp_log("PathSpace::in", "Function Called");
     InsertReturn ret;
-    if (!path.isValid()) {
-        ret.errors.emplace_back(Error::Code::InvalidPath, std::string("The path was not valid: ").append(path.getPath()));
-        return ret;
-    }
 
     this->root.in(PathViewGlob(path.begin(), path.end()), data, options, ret);
 

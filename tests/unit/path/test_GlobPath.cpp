@@ -18,7 +18,7 @@ TEST_CASE("Path GlobPath") {
 
     SUBCASE("Path Foreach") {
         GlobPathStringView path{"/wooo/fooo/dooo"};
-        int i{};
+        int                i{};
         for (auto const p : path) {
             if (i == 0)
                 REQUIRE(p == "wooo");
@@ -34,7 +34,7 @@ TEST_CASE("Path GlobPath") {
 
     SUBCASE("Path Foreach Short") {
         GlobPathStringView path{"/a/b/c"};
-        int i{};
+        int                i{};
         for (auto const p : path) {
             if (i == 0)
                 REQUIRE(p == "a");
@@ -50,7 +50,7 @@ TEST_CASE("Path GlobPath") {
 
     SUBCASE("Path Iterator End") {
         GlobPathStringView path{"/a/b/c"};
-        auto iter = path.begin();
+        auto               iter = path.begin();
         REQUIRE(iter != path.end());
         ++iter;
         REQUIRE(iter != path.end());
@@ -60,14 +60,9 @@ TEST_CASE("Path GlobPath") {
         REQUIRE(iter == path.end());
     }
 
-    SUBCASE("Default construction Invalid") {
-        GlobPathStringView path;
-        REQUIRE(path != "");
-    }
-
     SUBCASE("Default construction") {
         GlobPathStringView path{"/"};
-        bool a = path == "/";
+        bool               a = path == "/";
         REQUIRE(path == "/");
     }
 
@@ -81,7 +76,7 @@ TEST_CASE("Path GlobPath") {
         REQUIRE(sp != "/path/to/another_node");
     }
 
-    GlobPathStringView wildcardPath("/root/*");
+    GlobPathStringView     wildcardPath("/root/*");
     ConcretePathStringView exactPath("/root/child");
     ConcretePathStringView differentPath("/root/otherChild");
 
@@ -102,18 +97,18 @@ TEST_CASE("Path GlobPath") {
     }
 
     SUBCASE("Single Wildcard Match") {
-        GlobPathStringView sp1{"/a/*/c"};
+        GlobPathStringView     sp1{"/a/*/c"};
         ConcretePathStringView sp2{"/a/b/c"};
         REQUIRE(sp1 == sp2);
     }
 
     SUBCASE("Double Wildcard Match") {
-        GlobPathStringView sp1{"/a/**"};
+        GlobPathStringView     sp1{"/a/**"};
         ConcretePathStringView sp2{"/a/b/c"};
-        bool b = sp1 == sp2;
+        bool                   b = sp1 == sp2;
         REQUIRE(sp1 == sp2);
 
-        GlobPathStringView sp3{"/a/**/c"};
+        GlobPathStringView     sp3{"/a/**/c"};
         ConcretePathStringView sp4{"/a/b/d/c"};
         REQUIRE(sp3 == sp4);
     }
@@ -131,7 +126,7 @@ TEST_CASE("Path GlobPath") {
     }
 
     SUBCASE("Glob Match with Special Characters") {
-        GlobPathStringView sp1{"/a/*/c?d"};
+        GlobPathStringView     sp1{"/a/*/c?d"};
         ConcretePathStringView sp2{"/a/b/cxd"};
         REQUIRE(sp1 == sp2);
         GlobPathStringView sp3{"/a/b/c"};
@@ -139,7 +134,7 @@ TEST_CASE("Path GlobPath") {
     }
 
     SUBCASE("Name Containing Wildcard") {
-        GlobPathStringView sp1{"/a/test*"};
+        GlobPathStringView     sp1{"/a/test*"};
         ConcretePathStringView sp2{"/a/testbaab"};
         ConcretePathStringView sp3{"/a/test*"};
         REQUIRE(sp1 == sp2);
@@ -150,8 +145,8 @@ TEST_CASE("Path GlobPath") {
     }
 
     SUBCASE("Name Containing Wildcard Exact Match") {
-        const GlobPathStringView sp1{"/a/test\\*"};
-        const GlobPathStringView sp2{"/a/testbaab"};
+        const GlobPathStringView     sp1{"/a/test\\*"};
+        const GlobPathStringView     sp2{"/a/testbaab"};
         const ConcretePathStringView sp3{"/a/test*"};
         REQUIRE(sp1 != sp2);
         REQUIRE(sp2 != sp3);

@@ -32,8 +32,9 @@ public:
     template <typename DataType>
     auto insert(GlobPathStringView const& path, DataType&& data, InOptions const& options = {}) -> InsertReturn {
         sp_log("PathSpace::insert", "Function Called");
-        if (!path.isValid())
-            return InsertReturn{.errors = {Error{Error::Code::InvalidPath, "Invalid path: " + std::string(path.getPath())}}};
+        if (auto error = path.validate())
+            return InsertReturn{.errors = {*error}};
+        // return InsertReturn{.errors = {*error}};
         InputData inputData{std::forward<DataType>(data)};
 
         if (inputData.metadata.dataCategory == DataCategory::Execution)
@@ -53,6 +54,8 @@ public:
     template <typename DataType>
     auto read(ConcretePathStringView const& path, OutOptions const& options = {}) const -> Expected<DataType> {
         sp_log("PathSpace::read", "Function Called");
+        if (auto error = path.validate())
+            return std::unexpected(*error);
         DataType   obj;
         bool const doExtract = false;
         if (auto ret = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj, doExtract); !ret)
@@ -63,6 +66,8 @@ public:
     template <typename DataType>
     auto readBlock(ConcretePathStringView const& path, OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}}) const -> Expected<DataType> {
         sp_log("PathSpace::readBlock", "Function Called");
+        if (auto error = path.validate())
+            return std::unexpected(*error);
         bool const doExtract = false;
         return const_cast<PathSpace*>(this)->outBlock<DataType>(path, options, doExtract);
     }
@@ -77,6 +82,8 @@ public:
     template <typename DataType>
     auto extract(ConcretePathStringView const& path, OutOptions const& options = {}) -> Expected<DataType> {
         sp_log("PathSpace::extract", "Function Called");
+        if (auto error = path.validate())
+            return std::unexpected(*error);
         DataType   obj;
         bool const doExtract = true;
         auto const ret       = this->out(path, InputMetadataT<DataType>{}, options, &obj, doExtract);
@@ -90,6 +97,8 @@ public:
     template <typename DataType>
     auto extractBlock(ConcretePathStringView const& path, OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}}) -> Expected<DataType> {
         sp_log("PathSpace::extractBlock", "Function Called");
+        if (auto error = path.validate())
+            return std::unexpected(*error);
         bool const doExtract = true;
         return this->outBlock<DataType>(path, options, doExtract);
     }

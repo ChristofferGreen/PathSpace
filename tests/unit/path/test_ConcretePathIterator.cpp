@@ -14,7 +14,7 @@ TEST_CASE("Path ConcretePathIterator") {
 
     SUBCASE("ForEach Name Iteration Short") {
         ConcretePathStringView path{"/a/b/c"};
-        REQUIRE(path.isValid());
+        REQUIRE(!path.validate().has_value());
         int i{};
         for (auto const p : path) {
             if (i == 0)
@@ -31,7 +31,7 @@ TEST_CASE("Path ConcretePathIterator") {
 
     SUBCASE("ForEach Name Iteration Long") {
         ConcretePathStringView const path{"/woo/Foo/dOoO"};
-        REQUIRE(path.isValid());
+        REQUIRE(!path.validate().has_value());
         int i{};
         for (auto const p : path) {
             if (i == 0)
