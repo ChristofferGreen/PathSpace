@@ -24,6 +24,13 @@ TEST_CASE("PathSpace Insert") {
         CHECK(pspace.insert("/test*", 4).nbrValuesInserted == 2);
     }
 
+    SUBCASE("Simple PathSpace Insert Compiletime Check") {
+        CHECK(pspace.insert<"/test1">(1).nbrValuesInserted == 1);
+        CHECK(pspace.insert<"/test2">(2).nbrValuesInserted == 1);
+        CHECK(pspace.insert<"/test3">(3).nbrValuesInserted == 1);
+        CHECK(pspace.insert<"/test*">(4).nbrValuesInserted == 3);
+    }
+
     SUBCASE("Middle PathSpace Glob Construction") {
         CHECK(pspace.insert("/test1/test", 1).nbrValuesInserted == 1);
         CHECK(pspace.insert("/test2/test", 2).nbrValuesInserted == 1);

@@ -4,7 +4,7 @@
 #include "core/OutOptions.hpp"
 #include "core/WaitMap.hpp"
 #include "path/GlobPath.hpp"
-#include "path/PathView.hpp"
+#include "path/validation.hpp"
 #include "task/Task.hpp"
 #include "type/InputData.hpp"
 #include "utils/TaggedLogger.hpp"
@@ -34,11 +34,31 @@ public:
         sp_log("PathSpace::insert", "Function Called");
         if (auto error = path.validate())
             return InsertReturn{.errors = {*error}};
-        // return InsertReturn{.errors = {*error}};
+
         InputData inputData{std::forward<DataType>(data)};
 
-        if (inputData.metadata.dataCategory == DataCategory::Execution)
-            inputData.taskCreator = [&, pathStr = std::string(path.getPath())]() -> std::shared_ptr<Task> { return Task::Create(this, pathStr, std::forward<DataType>(data), inputData, options); };
+        if (inputData.metadata.dataCategory == DataCategory::Execution) {
+            inputData.taskCreator = [&, pathStr = std::string(path.getPath())]() -> std::shared_ptr<Task> {
+                return Task::Create(this, pathStr, std::forward<DataType>(data), inputData, options);
+            };
+        }
+
+        return this->in(path, inputData, options);
+    }
+
+    template <fixed_string pathIn, typename DataType>
+        requires(validate_path(pathIn))
+    auto insert(DataType&& data, InOptions const& options = {}) -> InsertReturn {
+        sp_log("PathSpace::insert", "Function Called");
+        GlobPathStringView const& path{pathIn};
+
+        InputData inputData{std::forward<DataType>(data)};
+
+        if (inputData.metadata.dataCategory == DataCategory::Execution) {
+            inputData.taskCreator = [&, pathStr = std::string(path.getPath())]() -> std::shared_ptr<Task> {
+                return Task::Create(this, pathStr, std::forward<DataType>(data), inputData, options);
+            };
+        }
 
         return this->in(path, inputData, options);
     }
