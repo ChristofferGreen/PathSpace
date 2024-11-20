@@ -4,14 +4,20 @@
 
 namespace SP {
 
+enum struct ValidationLevel {
+    None = 0,
+    Basic,
+    Full
+};
+
 static consteval bool error(const char*) {
     return false;
 }
 
 template <size_t N>
-struct fixed_string {
+struct FixedString {
     char str[N]{};
-    constexpr fixed_string(const char (&s)[N]) {
+    constexpr FixedString(const char (&s)[N]) {
         for (size_t i = 0; i < N; ++i)
             str[i] = s[i];
     }
@@ -21,7 +27,7 @@ struct fixed_string {
 };
 
 template <size_t N>
-fixed_string(const char (&)[N]) -> fixed_string<N>;
+FixedString(const char (&)[N]) -> FixedString<N>;
 
 consteval bool validate_path(std::string_view str) {
     if (str.size() <= 1)
