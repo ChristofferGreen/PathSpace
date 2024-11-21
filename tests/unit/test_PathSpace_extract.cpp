@@ -1,4 +1,5 @@
 #include "ext/doctest.h"
+#include "path/validation.hpp"
 #include <pathspace/PathSpace.hpp>
 
 // Standard library containers
@@ -709,8 +710,8 @@ TEST_CASE("PathSpace Glob") {
         }
 
         SUBCASE("Invalid glob patterns") {
-            CHECK(pspace.insert("/test/[", 1).errors.size() > 0);
-            CHECK(pspace.insert("/test/]", 1).errors.size() > 0);
+            CHECK(pspace.insert("/test/[", 1, {.validationLevel = ValidationLevel::Full}).errors.size() > 0);
+            CHECK(pspace.insert("/test/]", 1, {.validationLevel = ValidationLevel::Full}).errors.size() > 0);
         }
 
         SUBCASE("Escaped wildcards") {

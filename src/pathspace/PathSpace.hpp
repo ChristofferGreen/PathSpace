@@ -32,9 +32,8 @@ public:
     template <typename DataType>
     auto insert(GlobPathStringView const& path, DataType&& data, InOptions const& options = {}) -> InsertReturn {
         sp_log("PathSpace::insert", "Function Called");
-        if (options.validationLevel >= ValidationLevel::Basic)
-            if (auto error = path.validate())
-                return InsertReturn{.errors = {*error}};
+        if (auto error = path.validate(options.validationLevel))
+            return InsertReturn{.errors = {*error}};
 
         InputData inputData{std::forward<DataType>(data)};
 
@@ -48,7 +47,7 @@ public:
     }
 
     template <FixedString pathIn, typename DataType>
-        requires(validate_path(pathIn))
+        requires(validate_path(pathIn) == true)
     auto insert(DataType&& data, InOptions const& options = {}) -> InsertReturn {
         sp_log("PathSpace::insert", "Function Called");
         const_cast<InOptions&>(options).validationLevel = ValidationLevel::None;
@@ -66,9 +65,8 @@ public:
     template <typename DataType>
     auto read(ConcretePathStringView const& path, OutOptions const& options = {}) const -> Expected<DataType> {
         sp_log("PathSpace::read", "Function Called");
-        if (options.validationLevel >= ValidationLevel::Basic)
-            if (auto error = path.validate())
-                return std::unexpected(*error);
+        if (auto error = path.validate(options.validationLevel))
+            return std::unexpected(*error);
         DataType   obj;
         bool const doExtract = false;
         if (auto ret = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj, doExtract); !ret)
@@ -135,9 +133,8 @@ public:
     template <typename DataType>
     auto extractBlock(ConcretePathStringView const& path, OutOptions const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}}) -> Expected<DataType> {
         sp_log("PathSpace::extractBlock", "Function Called");
-        if (options.validationLevel >= ValidationLevel::Basic)
-            if (auto error = path.validate())
-                return std::unexpected(*error);
+        if (auto error = path.validate(options.validationLevel))
+            return std::unexpected(*error);
         bool const doExtract = true;
         return this->outBlock<DataType>(path, options, doExtract);
     }

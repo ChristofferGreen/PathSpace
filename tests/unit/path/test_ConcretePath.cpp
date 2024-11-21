@@ -94,7 +94,7 @@ TEST_CASE("Path ConcretePath") {
 
     SUBCASE("Multiple Consecutive Slashes") {
         ConcretePathString path{"/path//with///multiple/slashes"};
-        REQUIRE(path.validate().has_value());
+        REQUIRE(path.validate(SP::ValidationLevel::Full).has_value());
     }
 
     SUBCASE("Trailing Slashes") {

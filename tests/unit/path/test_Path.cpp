@@ -1,4 +1,5 @@
 #include "ext/doctest.h"
+#include "path/validation.hpp"
 #include <pathspace/PathSpace.hpp>
 
 TEST_CASE("Path Validation") {
@@ -39,22 +40,22 @@ TEST_CASE("Path Validation") {
     SUBCASE("Component Validation") {
         // Invalid components
         {
-            auto error = SP::Path<std::string>("//").validate();
+            auto error = SP::Path<std::string>("//").validate(SP::ValidationLevel::Full);
+            REQUIRE(error.has_value());
+            CHECK(error->message->find("Path ends with slash") != std::string::npos);
+        }
+        {
+            auto error = SP::Path<std::string>("/path//other").validate(SP::ValidationLevel::Full);
             REQUIRE(error.has_value());
             CHECK(error->message->find("Empty path component") != std::string::npos);
         }
         {
-            auto error = SP::Path<std::string>("/path//other").validate();
-            REQUIRE(error.has_value());
-            CHECK(error->message->find("Empty path component") != std::string::npos);
-        }
-        {
-            auto error = SP::Path<std::string>("/path/.").validate();
+            auto error = SP::Path<std::string>("/path/.").validate(SP::ValidationLevel::Full);
             REQUIRE(error.has_value());
             CHECK(error->message->find("Relative paths not allowed") != std::string::npos);
         }
         {
-            auto error = SP::Path<std::string>("/path/..").validate();
+            auto error = SP::Path<std::string>("/path/..").validate(SP::ValidationLevel::Full);
             REQUIRE(error.has_value());
             CHECK(error->message->find("Relative paths not allowed") != std::string::npos);
         }
@@ -73,27 +74,27 @@ TEST_CASE("Path Validation") {
 
         // Invalid patterns
         {
-            auto error = SP::Path<std::string>("/path/[").validate();
+            auto error = SP::Path<std::string>("/path/[").validate(SP::ValidationLevel::Full);
             REQUIRE(error.has_value());
             CHECK(error->message->find("Unclosed bracket") != std::string::npos);
         }
         {
-            auto error = SP::Path<std::string>("/path/]").validate();
+            auto error = SP::Path<std::string>("/path/]").validate(SP::ValidationLevel::Full);
             REQUIRE(error.has_value());
             CHECK(error->message->find("Unmatched closing bracket") != std::string::npos);
         }
         {
-            auto error = SP::Path<std::string>("/path/[a-]").validate();
+            auto error = SP::Path<std::string>("/path/[a-]").validate(SP::ValidationLevel::Full);
             REQUIRE(error.has_value());
             CHECK(error->message->find("Invalid character range") != std::string::npos);
         }
         {
-            auto error = SP::Path<std::string>("/path/[-a]").validate();
+            auto error = SP::Path<std::string>("/path/[-a]").validate(SP::ValidationLevel::Full);
             REQUIRE(error.has_value());
             CHECK(error->message->find("Invalid character range") != std::string::npos);
         }
         {
-            auto error = SP::Path<std::string>("/path/[z-a]").validate();
+            auto error = SP::Path<std::string>("/path/[z-a]").validate(SP::ValidationLevel::Full);
             REQUIRE(error.has_value());
             CHECK(error->message->find("Invalid character range") != std::string::npos);
         }
@@ -115,16 +116,16 @@ TEST_CASE("Path Validation") {
         CHECK_FALSE(SP::Path<std::string>("/**/[a-z]/*/[0-9]").validate().has_value());
 
         // Escaped patterns in brackets
-        CHECK(SP::Path<std::string>("/path/[\\[-\\]]").validate().has_value());
-        CHECK_FALSE(SP::Path<std::string>("/path/[\\*\\?]").validate().has_value());
+        CHECK(SP::Path<std::string>("/path/[\\[-\\]]").validate(SP::ValidationLevel::Full).has_value());
+        CHECK_FALSE(SP::Path<std::string>("/path/[\\*\\?]").validate(SP::ValidationLevel::Full).has_value());
 
         // Complex combinations
-        CHECK_FALSE(SP::Path<std::string>("/[a-z]*/[0-9]?/*").validate().has_value());
-        CHECK_FALSE(SP::Path<std::string>("/path/[!a-z][0-9]/*").validate().has_value());
+        CHECK_FALSE(SP::Path<std::string>("/[a-z]*/[0-9]?/*").validate(SP::ValidationLevel::Full).has_value());
+        CHECK_FALSE(SP::Path<std::string>("/path/[!a-z][0-9]/*").validate(SP::ValidationLevel::Full).has_value());
 
         // Invalid combinations
         {
-            auto error = SP::Path<std::string>("/path/[[a-z]]").validate();
+            auto error = SP::Path<std::string>("/path/[[a-z]]").validate(SP::ValidationLevel::Full);
             REQUIRE(error.has_value());
             CHECK(error->message->find("Nested brackets") != std::string::npos);
         }
