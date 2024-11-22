@@ -386,36 +386,33 @@ TEST_CASE("PathSpace Integration") {
         std::atomic<int> successCount{0};
         std::atomic<int> failureCount{0};
 
-        // Create threads performing mixed operations
-        std::vector<std::thread> threads;
-        for (int i = 0; i < NUM_THREADS; ++i) {
-            threads.emplace_back([&, i]() {
-                try {
-                    // Insert operations
-                    pspace.insert("/data/" + std::to_string(i) + "/value", i);
-                    pspace.insert("/data/" + std::to_string(i) + "/status", "active");
+        {
+            std::vector<std::jthread> threads;
+            for (int i = 0; i < NUM_THREADS; ++i) {
+                threads.emplace_back([&, i]() {
+                    try {
+                        // Insert operations
+                        pspace.insert("/data/" + std::to_string(i) + "/value", i);
+                        pspace.insert("/data/" + std::to_string(i) + "/status", "active");
 
-                    // Read operations
-                    auto value = pspace.readBlock<int>("/data/" + std::to_string(i) + "/value");
-                    if (value)
-                        successCount++;
+                        // Read operations
+                        auto value = pspace.readBlock<int>("/data/" + std::to_string(i) + "/value");
+                        if (value)
+                            successCount++;
 
-                    // Extract operations
-                    auto status = pspace.extract<std::string>("/data/" + std::to_string(i) + "/status");
-                    if (status)
-                        successCount++;
+                        // Extract operations
+                        auto status = pspace.extract<std::string>("/data/" + std::to_string(i) + "/status");
+                        if (status)
+                            successCount++;
 
-                    // Glob operations
-                    pspace.insert("/data/*/value", 100);
-
-                } catch (const std::exception& e) {
-                    failureCount++;
-                }
-            });
+                        // Glob operations
+                        pspace.insert("/data/*/value", 100);
+                    } catch (const std::exception& e) {
+                        failureCount++;
+                    }
+                });
+            }
         }
-
-        for (auto& t : threads)
-            t.join();
 
         // Verify results
         CHECK(successCount > 0);
@@ -424,7 +421,12 @@ TEST_CASE("PathSpace Integration") {
         // Check final state
         bool allUpdated = true;
         for (int i = 0; i < NUM_THREADS; ++i) {
-            auto value = pspace.read<int>("/data/" + std::to_string(i) + "/value");
+            auto value = pspace.extract<int>("/data/" + std::to_string(i) + "/value");
+            if (!value.has_value() || value.value() != i) {
+                allUpdated = false;
+                break;
+            }
+            value = pspace.read<int>("/data/" + std::to_string(i) + "/value");
             if (!value.has_value() || value.value() != 100) {
                 allUpdated = false;
                 break;
