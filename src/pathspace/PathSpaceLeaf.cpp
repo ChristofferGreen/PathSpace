@@ -33,7 +33,7 @@ auto PathSpaceLeaf::inFinalComponent(PathViewGlob const& iter, InputData const& 
         // First pass: Collect all matching keys without holding write locks
         nodeDataMap.for_each([&](auto& item) {
             const auto& key = item.first;
-            if (std::get<0>(pathComponent.match(key)))
+            if (pathComponent.match(key))
                 matchingKeys.push_back(key);
         });
 
@@ -72,7 +72,7 @@ auto PathSpaceLeaf::inIntermediateComponent(PathViewGlob const& iter, InputData 
     if (pathComponent.isGlob()) {
         nodeDataMap.for_each([&](const auto& item) {
             const auto& key = item.first;
-            if (std::get<0>(pathComponent.match(key))) {
+            if (pathComponent.match(key)) {
                 if (const auto* leaf = std::get_if<std::unique_ptr<PathSpaceLeaf>>(&item.second)) {
                     (*leaf)->in(nextIter, inputData, options, ret);
                 }

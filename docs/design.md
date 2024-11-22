@@ -83,9 +83,9 @@ Pattern matching can handle various glob patterns:
 
 ```cpp
 struct GlobName {
-    // Returns match status and super-match flag
+    // Returns match status
     auto match(const std::string_view& str) const 
-        -> std::tuple<bool /*match*/, bool /*supermatch*/>;
+        -> bool /*match*/;
     
     bool isConcrete() const;  // Check if contains patterns
     bool isGlob() const;      // Check for glob characters
@@ -94,7 +94,6 @@ struct GlobName {
 
 Pattern matching behaviors:
 - `*` matches within component boundaries
-- `**` provides super-matching across components
 - Character classes support ranges and sets
 - Escaped characters are handled literally
 - Empty components are normalized

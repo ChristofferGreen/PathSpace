@@ -144,25 +144,6 @@ TEST_SUITE("WaitMap") {
             CHECK(waiterNotified);
         }
 
-        // Add diagnostic test for the glob matching logic
-        SUBCASE("Glob Pattern Match Diagnostic") {
-            std::string            path_str = "/test/match/1";
-            GlobPathStringView     glob_pattern("/test/match/*");
-            ConcretePathStringView concrete_path(path_str);
-
-            bool matches = (glob_pattern == concrete_path);
-
-            // Check pattern matching segment by segment
-            auto patternIter = glob_pattern.begin();
-            auto pathIter    = concrete_path.begin();
-
-            while (patternIter != glob_pattern.end() && pathIter != concrete_path.end()) {
-                auto [isMatch, isSupermatch] = (*patternIter).match((*pathIter).getName());
-                ++patternIter;
-                ++pathIter;
-            }
-        }
-
         SUBCASE("Glob Pattern Notification") {
             std::atomic<int>         counter{0};
             const int                NUM_PATHS = 3;
@@ -201,7 +182,7 @@ TEST_SUITE("WaitMap") {
             auto patternIter1 = pattern.begin();
             auto pathIter1    = path1.begin();
             while (patternIter1 != pattern.end() && pathIter1 != path1.end()) {
-                auto [isMatch, isSuper] = (*patternIter1).match((*pathIter1).getName());
+                auto isMatch = (*patternIter1).match((*pathIter1).getName());
                 CHECK(isMatch);
                 ++patternIter1;
                 ++pathIter1;
@@ -213,7 +194,7 @@ TEST_SUITE("WaitMap") {
             auto patternIter2 = pattern.begin();
             auto pathIter2    = path2.begin();
             while (patternIter2 != pattern.end() && pathIter2 != path2.end()) {
-                auto [isMatch, isSuper] = (*patternIter2).match((*pathIter2).getName());
+                auto isMatch = (*patternIter2).match((*pathIter2).getName());
                 if (!isMatch)
                     break;
                 ++patternIter2;

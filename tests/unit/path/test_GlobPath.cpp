@@ -168,37 +168,37 @@ TEST_CASE("Path GlobPath") {
 
     SUBCASE("GlobName with Numerical Range") {
         GlobName name{"0[1-2]"};
-        CHECK(std::get<0>(name.match("01"sv)));
-        CHECK(std::get<0>(name.match("02"sv)));
-        CHECK(!std::get<0>(name.match("03"sv)));
+        CHECK(name.match("01"sv));
+        CHECK(name.match("02"sv));
+        CHECK(!name.match("03"sv));
     }
 
     SUBCASE("Basic Matching") {
         GlobName glob{"simple"};
-        CHECK(std::get<0>(glob.match("simple"sv)));
-        CHECK_FALSE(std::get<0>(glob.match("other"sv)));
+        CHECK(glob.match("simple"sv));
+        CHECK_FALSE(glob.match("other"sv));
     }
 
     SUBCASE("Single Character Wildcard") {
         GlobName glob{"t?st"};
-        CHECK(std::get<0>(glob.match("test"sv)));
-        CHECK(std::get<0>(glob.match("tast"sv)));
-        CHECK_FALSE(std::get<0>(glob.match("tests"sv)));
+        CHECK(glob.match("test"sv));
+        CHECK(glob.match("tast"sv));
+        CHECK_FALSE(glob.match("tests"sv));
     }
 
     SUBCASE("Multi Character Wildcard") {
         GlobName glob{"test*"};
-        CHECK(std::get<0>(glob.match("test"sv)));
-        CHECK(std::get<0>(glob.match("tests"sv)));
-        CHECK(std::get<0>(glob.match("testing"sv)));
-        CHECK_FALSE(std::get<0>(glob.match("tes"sv)));
+        CHECK(glob.match("test"sv));
+        CHECK(glob.match("tests"sv));
+        CHECK(glob.match("testing"sv));
+        CHECK_FALSE(glob.match("tes"sv));
     }
 
     SUBCASE("Character Range") {
         GlobName glob{"[a-c]at"};
-        CHECK(std::get<0>(glob.match("bat"sv)));
-        CHECK(std::get<0>(glob.match("cat"sv)));
-        CHECK_FALSE(std::get<0>(glob.match("dat"sv)));
+        CHECK(glob.match("bat"sv));
+        CHECK(glob.match("cat"sv));
+        CHECK_FALSE(glob.match("dat"sv));
     }
 
     SUBCASE("Numerical Range") {
@@ -206,93 +206,93 @@ TEST_CASE("Path GlobPath") {
         for (char i = '0'; i <= '9'; ++i) {
             INFO("Testing digit: ", i);
             auto s = std::string(1, i);
-            CHECK(std::get<0>(glob.match(std::string_view{s})));
+            CHECK(glob.match(std::string_view{s}));
         }
-        CHECK_FALSE(std::get<0>(glob.match("a"sv)));
+        CHECK_FALSE(glob.match("a"sv));
     }
 
     SUBCASE("Specific Numerical Range") {
         GlobName glob{"[1-3]"};
-        CHECK(std::get<0>(glob.match("1"sv)));
-        CHECK(std::get<0>(glob.match("2"sv)));
-        CHECK(std::get<0>(glob.match("3"sv)));
-        CHECK_FALSE(std::get<0>(glob.match("0"sv)));
-        CHECK_FALSE(std::get<0>(glob.match("4"sv)));
+        CHECK(glob.match("1"sv));
+        CHECK(glob.match("2"sv));
+        CHECK(glob.match("3"sv));
+        CHECK_FALSE(glob.match("0"sv));
+        CHECK_FALSE(glob.match("4"sv));
     }
 
     SUBCASE("Range with Prefix") {
         GlobName glob{"test[1-3]"};
-        CHECK(std::get<0>(glob.match("test1"sv)));
-        CHECK(std::get<0>(glob.match("test2"sv)));
-        CHECK(std::get<0>(glob.match("test3"sv)));
-        CHECK_FALSE(std::get<0>(glob.match("test4"sv)));
+        CHECK(glob.match("test1"sv));
+        CHECK(glob.match("test2"sv));
+        CHECK(glob.match("test3"sv));
+        CHECK_FALSE(glob.match("test4"sv));
     }
 
     SUBCASE("Multiple Character Classes") {
         GlobName glob{"[a-c][1-3]"};
-        CHECK(std::get<0>(glob.match("a1"sv)));
-        CHECK(std::get<0>(glob.match("b2"sv)));
-        CHECK(std::get<0>(glob.match("c3"sv)));
-        CHECK_FALSE(std::get<0>(glob.match("d1"sv)));
-        CHECK_FALSE(std::get<0>(glob.match("a4"sv)));
+        CHECK(glob.match("a1"sv));
+        CHECK(glob.match("b2"sv));
+        CHECK(glob.match("c3"sv));
+        CHECK_FALSE(glob.match("d1"sv));
+        CHECK_FALSE(glob.match("a4"sv));
     }
 
     SUBCASE("Negated Character Class") {
         GlobName glob{"[!a-c]at"};
-        CHECK(std::get<0>(glob.match("dat"sv)));
-        CHECK(std::get<0>(glob.match("eat"sv)));
-        CHECK_FALSE(std::get<0>(glob.match("bat"sv)));
+        CHECK(glob.match("dat"sv));
+        CHECK(glob.match("eat"sv));
+        CHECK_FALSE(glob.match("bat"sv));
     }
 
     SUBCASE("Escaped Characters") {
         GlobName glob{"test\\*"};
-        CHECK(std::get<0>(glob.match("test*"sv)));
-        CHECK_FALSE(std::get<0>(glob.match("tests"sv)));
+        CHECK(glob.match("test*"sv));
+        CHECK_FALSE(glob.match("tests"sv));
     }
 
     SUBCASE("Complex Pattern") {
         GlobName glob{"[a-z][0-9]?[!0-9]"};
-        CHECK(std::get<0>(glob.match("a1xt"sv)));
-        CHECK(std::get<0>(glob.match("b2ys"sv)));
-        CHECK_FALSE(std::get<0>(glob.match("a111"sv)));
-        CHECK_FALSE(std::get<0>(glob.match("11x1"sv)));
+        CHECK(glob.match("a1xt"sv));
+        CHECK(glob.match("b2ys"sv));
+        CHECK_FALSE(glob.match("a111"sv));
+        CHECK_FALSE(glob.match("11x1"sv));
     }
 
     SUBCASE("Empty Pattern") {
         GlobName glob{""};
-        CHECK(std::get<0>(glob.match(""sv)));
-        CHECK_FALSE(std::get<0>(glob.match("a"sv)));
+        CHECK(glob.match(""sv));
+        CHECK_FALSE(glob.match("a"sv));
     }
 
     SUBCASE("Pattern with Numeric Prefix") {
         GlobName glob{"0[1-2]"};
-        CHECK(std::get<0>(glob.match("01"sv)));
-        CHECK(std::get<0>(glob.match("02"sv)));
-        CHECK_FALSE(std::get<0>(glob.match("03"sv)));
-        CHECK_FALSE(std::get<0>(glob.match("00"sv)));
+        CHECK(glob.match("01"sv));
+        CHECK(glob.match("02"sv));
+        CHECK_FALSE(glob.match("03"sv));
+        CHECK_FALSE(glob.match("00"sv));
     }
 
     SUBCASE("Pattern with Multiple Numeric Ranges") {
         GlobName glob{"[0-1][2-3]"};
-        CHECK(std::get<0>(glob.match("02"sv)));
-        CHECK(std::get<0>(glob.match("03"sv)));
-        CHECK(std::get<0>(glob.match("12"sv)));
-        CHECK(std::get<0>(glob.match("13"sv)));
-        CHECK_FALSE(std::get<0>(glob.match("01"sv)));
-        CHECK_FALSE(std::get<0>(glob.match("14"sv)));
+        CHECK(glob.match("02"sv));
+        CHECK(glob.match("03"sv));
+        CHECK(glob.match("12"sv));
+        CHECK(glob.match("13"sv));
+        CHECK_FALSE(glob.match("01"sv));
+        CHECK_FALSE(glob.match("14"sv));
     }
 
     SUBCASE("Range Validation") {
-        CHECK_FALSE(std::get<0>(GlobName{"[3-1]"}.match("2"sv))); // Invalid range
-        CHECK_FALSE(std::get<0>(GlobName{"[a-A]"}.match("b"sv))); // Invalid range
+        CHECK_FALSE(GlobName{"[3-1]"}.match("2"sv)); // Invalid range
+        CHECK_FALSE(GlobName{"[a-A]"}.match("b"sv)); // Invalid range
     }
 
     SUBCASE("Character Set") {
         GlobName glob{"[abc]"};
-        CHECK(std::get<0>(glob.match("a"sv)));
-        CHECK(std::get<0>(glob.match("b"sv)));
-        CHECK(std::get<0>(glob.match("c"sv)));
-        CHECK_FALSE(std::get<0>(glob.match("d"sv)));
+        CHECK(glob.match("a"sv));
+        CHECK(glob.match("b"sv));
+        CHECK(glob.match("c"sv));
+        CHECK_FALSE(glob.match("d"sv));
     }
 
     SUBCASE("Path with Escaped Glob Characters") {

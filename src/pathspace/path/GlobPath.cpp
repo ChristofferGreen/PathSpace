@@ -45,10 +45,7 @@ auto GlobPath<T>::operator==(ConcretePath<U> const& other) const -> bool {
     auto iterA = this->begin();
     auto iterB = other.begin();
     while (iterA != this->end() && iterB != other.end()) {
-        auto const match = (*iterA).match(*iterB);
-        if (std::get<1>(match)) // Supermatch (**)
-            return true;
-        if (!std::get<0>(match))
+        if (!(*iterA).match(*iterB))
             return false;
         ++iterA;
         ++iterB;

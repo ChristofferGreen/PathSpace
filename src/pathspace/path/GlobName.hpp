@@ -18,9 +18,9 @@ struct GlobName {
     auto operator==(ConcreteNameStringView const& other) const -> bool;
     auto operator==(char const* const other) const -> bool;
 
-    auto match(const std::string_view& str) const -> std::tuple<bool /*match*/, bool /*supermatch*/>;
-    auto match(const ConcreteNameStringView& str) const -> std::tuple<bool /*match*/, bool /*supermatch*/>;
-    auto match(const ConcreteNameString& str) const -> std::tuple<bool /*match*/, bool /*supermatch*/>;
+    auto match(const std::string_view& str) const -> bool;
+    auto match(const ConcreteNameStringView& str) const -> bool;
+    auto match(const ConcreteNameString& str) const -> bool;
 
     auto isConcrete() const -> bool;
     auto isGlob() const -> bool;

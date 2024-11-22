@@ -3,7 +3,8 @@
 
 namespace SP {
 
-WaitMap::Guard::Guard(WaitMap& waitMap, ConcretePathString const& path, std::unique_lock<std::mutex> lock) : waitMap(waitMap), path(path), lock(std::move(lock)) {}
+WaitMap::Guard::Guard(WaitMap& waitMap, ConcretePathString const& path, std::unique_lock<std::mutex> lock)
+    : waitMap(waitMap), path(path), lock(std::move(lock)) {}
 
 auto WaitMap::Guard::wait_until(std::chrono::time_point<std::chrono::system_clock> timeout) -> std::cv_status {
     return this->waitMap.getCv(path).wait_until(lock, timeout);
@@ -65,8 +66,8 @@ auto WaitMap::notify(GlobPathStringView const& path) -> void {
         bool matches     = true;
 
         while (patternIter != path.end() && pathIter != registeredPath.end()) {
-            auto [isMatch, isSuper] = (*patternIter).match((*pathIter).getName());
-            sp_log("Comparing segment: " + std::string((*pathIter).getName()) + " against pattern: " + std::string((*patternIter).getName()) + " -> match=" + std::to_string(isMatch) + ", super=" + std::to_string(isSuper), "WaitMap");
+            auto isMatch = (*patternIter).match((*pathIter).getName());
+            sp_log("Comparing segment: " + std::string((*pathIter).getName()) + " against pattern: " + std::string((*patternIter).getName()) + " -> match=" + std::to_string(isMatch), "WaitMap");
 
             if (!isMatch) {
                 matches = false;

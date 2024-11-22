@@ -48,13 +48,13 @@ auto GlobName::operator==(char const* const other) const -> bool {
     return this->name == other;
 }
 
-auto GlobName::match(const std::string_view& str) const -> std::tuple<bool /*match*/, bool /*supermatch*/> {
+auto GlobName::match(const std::string_view& str) const -> bool {
     size_t globIdx = 0;
     size_t strIdx  = 0;
 
     while (strIdx < str.size()) {
         if (globIdx >= this->name.size()) {
-            return {false, false};
+            return false;
         }
 
         if (this->name[globIdx] == '\\') {
@@ -65,19 +65,16 @@ auto GlobName::match(const std::string_view& str) const -> std::tuple<bool /*mat
                 ++strIdx;
                 ++globIdx;
             } else {
-                return {false, false};
+                return false;
             }
         } else if (globIdx < this->name.size() && this->name[globIdx] == '?') {
             globIdx++;
             strIdx++;
         } else if (globIdx < this->name.size() && this->name[globIdx] == '*') {
             size_t nextGlobIdx = globIdx + 1;
-            if (nextGlobIdx < this->name.size() && this->name[nextGlobIdx] == '*') {
-                return {true, true}; // ** matches across name edge
-            }
 
             if (nextGlobIdx == this->name.size()) {
-                return {true, false}; // Trailing '*' matches everything
+                return true; // Trailing '*' matches everything
             }
 
             size_t matchIdx = strIdx;
@@ -86,7 +83,7 @@ auto GlobName::match(const std::string_view& str) const -> std::tuple<bool /*mat
             }
 
             if (matchIdx == str.size()) {
-                return {false, false};
+                return false;
             }
 
             globIdx = nextGlobIdx;
@@ -120,11 +117,11 @@ auto GlobName::match(const std::string_view& str) const -> std::tuple<bool /*mat
             }
 
             if (globIdx >= this->name.size() || this->name[globIdx] != ']') {
-                return {false, false}; // Malformed pattern - missing closing bracket
+                return false; // Malformed pattern - missing closing bracket
             }
 
             if ((!invert && !matched) || (invert && matched)) {
-                return {false, false};
+                return false;
             }
 
             globIdx++; // Skip the closing bracket
@@ -134,7 +131,7 @@ auto GlobName::match(const std::string_view& str) const -> std::tuple<bool /*mat
                 globIdx++;
                 strIdx++;
             } else {
-                return {false, false};
+                return false;
             }
         }
     }
@@ -144,14 +141,14 @@ auto GlobName::match(const std::string_view& str) const -> std::tuple<bool /*mat
         globIdx++;
     }
 
-    return {globIdx == this->name.size() && strIdx == str.size(), false};
+    return globIdx == this->name.size() && strIdx == str.size();
 }
 
-auto GlobName::match(const ConcreteNameStringView& str) const -> std::tuple<bool /*match*/, bool /*supermatch*/> {
+auto GlobName::match(const ConcreteNameStringView& str) const -> bool {
     return this->match(str.name);
 }
 
-auto GlobName::match(const ConcreteNameString& str) const -> std::tuple<bool /*match*/, bool /*supermatch*/> {
+auto GlobName::match(const ConcreteNameString& str) const -> bool {
     return this->match(str.getName());
 }
 
