@@ -162,16 +162,12 @@ template <size_t N>
 struct FixedString {
     char str[N]{};
     constexpr FixedString(const char (&s)[N]) {
-        for (size_t i = 0; i < N; ++i)
-            str[i] = s[i];
+        std::copy(s, s + N, str);
     }
     constexpr operator std::string_view() const {
         return {str, N - 1};
     }
 };
-
-template <size_t N>
-FixedString(const char (&)[N]) -> FixedString<N>;
 
 consteval bool validate_path(std::string_view str) {
     auto result = validate_path_impl(str);
