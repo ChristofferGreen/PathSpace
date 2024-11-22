@@ -517,6 +517,51 @@ TEST_CASE("PathSpace Integration") {
         CHECK(pspace.insert("/test/new", "data3").nbrValuesInserted == 1);
     }
 
+    SUBCASE("Simple Type Hierarchies") {
+        PathSpace pspace;
+        struct SimpleData {
+            int         value;
+            std::string name;
+
+            bool operator==(const SimpleData& other) const = default;
+        };
+
+        struct NestedData {
+            SimpleData         simple;
+            std::vector<float> measurements;
+
+            bool operator==(const NestedData& other) const = default;
+        };
+
+        SimpleData simple{42, "test"};
+        NestedData nested{
+                .simple       = {100, "nested"},
+                .measurements = {1.0f, 2.0f, 3.0f}};
+
+        pspace.insert("/data/mixed", simple);
+        pspace.insert("/data/mixed", nested);
+
+        auto mixedSimple = pspace.extract<SimpleData>("/data/mixed");
+        REQUIRE(mixedSimple.has_value());
+        INFO("Original simple.value: " << simple.value << ", simple.name: " << simple.name);
+        INFO("Extracted simple.value: " << mixedSimple.value().value << ", simple.name: " << mixedSimple.value().name);
+        CHECK(mixedSimple.value() == simple);
+
+        auto mixedNested = pspace.extract<NestedData>("/data/mixed");
+        REQUIRE(mixedNested.has_value());
+        INFO("Original nested.simple.value: " << nested.simple.value
+                                              << ", nested.simple.name: " << nested.simple.name);
+        INFO("Extracted nested.simple.value: " << mixedNested.value().simple.value
+                                               << ", nested.simple.name: " << mixedNested.value().simple.name);
+        INFO("Original measurements: ");
+        for (float f : nested.measurements)
+            INFO(f << " ");
+        INFO("Extracted measurements: ");
+        for (float f : mixedNested.value().measurements)
+            INFO(f << " ");
+        CHECK(mixedNested.value() == nested);
+    }
+
     SUBCASE("Complex Type Hierarchies") {
         PathSpace pspace;
 
@@ -567,6 +612,7 @@ TEST_CASE("PathSpace Integration") {
 
         auto mixedNested = pspace.extract<NestedData>("/data/mixed");
         REQUIRE(mixedNested.has_value());
-        CHECK(mixedNested.value() == nested2);
+        auto mv = mixedNested.value();
+        CHECK(mv == nested2);
     }
 }

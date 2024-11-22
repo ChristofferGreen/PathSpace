@@ -51,7 +51,7 @@ static auto deserialize(SlidingBuffer const& buffer) -> Expected<T> {
             return std::unexpected(Error{Error::Code::MalformedInput, "Buffer too small for header"});
         }
 
-        // Read header
+        // Read header from the current buffer position
         Header header;
         std::memcpy(&header, buffer.data(), sizeof(header));
 
@@ -59,8 +59,10 @@ static auto deserialize(SlidingBuffer const& buffer) -> Expected<T> {
             return std::unexpected(Error{Error::Code::MalformedInput, "Buffer too small for data"});
         }
 
-        // Deserialize data
-        std::vector<uint8_t> tempBuffer(buffer.data() + sizeof(header), buffer.data() + sizeof(header) + header.size);
+        // Create vector from the current buffer position
+        std::vector<uint8_t> tempBuffer(
+                buffer.data() + sizeof(header),
+                buffer.data() + sizeof(header) + header.size);
 
         std::error_code ec;
         auto const      wrapper = alpaca::deserialize<Wrapper<T>, 1>(tempBuffer, ec);
@@ -69,16 +71,22 @@ static auto deserialize(SlidingBuffer const& buffer) -> Expected<T> {
 
         return wrapper.obj;
     } catch (const std::exception& e) {
-        return std::unexpected(Error{Error::Code::UnserializableType, std::string("Deserialization failed: ") + e.what()});
+        return std::unexpected(Error{Error::Code::UnserializableType,
+                                     std::string("Deserialization failed: ") + e.what()});
     }
 }
 
 template <typename T>
 static auto deserialize_pop(SlidingBuffer& buffer) -> Expected<T> {
-    auto   expected = deserialize<T>(buffer);
-    Header header;
-    buffer.advance(sizeof(header) + header.size);
+    auto expected = deserialize<T>(buffer);
+    if (expected) {
+        // Get the header to know how much to advance
+        Header header;
+        std::memcpy(&header, buffer.data(), sizeof(header));
+        // Advance past header and data
+        buffer.advance(sizeof(header) + header.size);
+    }
     return expected;
-};
+}
 
 } // namespace SP

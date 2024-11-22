@@ -12,6 +12,7 @@ NodeData::NodeData(InputData const& inputData, InOptions const& options) {
 
 auto NodeData::serialize(const InputData& inputData, const InOptions& options) -> std::optional<Error> {
     sp_log("NodeData::serialize", "Function Called");
+    sp_log("Serializing data of type: " + std::string(inputData.metadata.typeInfo->name()), "NodeData");
     if (inputData.taskCreator) {
         this->tasks.push_back(inputData.taskCreator());
         std::optional<ExecutionOptions::Category> const optionsExecutionCategory = options.execution.has_value() ? std::optional<ExecutionOptions::Category>(options.execution.value().category) : std::nullopt;
@@ -23,7 +24,9 @@ auto NodeData::serialize(const InputData& inputData, const InOptions& options) -
     } else {
         if (!inputData.metadata.serialize)
             return Error{Error::Code::SerializationFunctionMissing, "Serialization function is missing."};
+        size_t oldSize = data.size();
         inputData.metadata.serialize(inputData.obj, data);
+        sp_log("Buffer size before: " + std::to_string(oldSize) + ", after: " + std::to_string(data.size()), "NodeData");
     }
 
     pushType(inputData.metadata);
@@ -97,11 +100,14 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
 
 auto NodeData::deserializeData(void* obj, const InputMetadata& inputMetadata, bool doExtract) -> Expected<int> {
     sp_log("NodeData::deserializeData", "Function Called");
+    sp_log("Deserializing data of type: " + std::string(inputMetadata.typeInfo->name()), "NodeData");
+    sp_log("Current buffer size: " + std::to_string(data.size()), "NodeData");
 
     if (doExtract) {
         if (!inputMetadata.deserializePop)
             return std::unexpected(Error{Error::Code::UnserializableType, "No pop deserialization function provided"});
         inputMetadata.deserializePop(obj, data);
+        sp_log("After pop, buffer size: " + std::to_string(data.size()), "NodeData");
         popType();
     } else {
         if (!inputMetadata.deserialize)

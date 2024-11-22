@@ -1,4 +1,6 @@
 #include "SlidingBuffer.hpp"
+#include "utils/TaggedLogger.hpp"
+
 #include <algorithm>
 #include <cstring>
 #include <limits>
@@ -7,6 +9,7 @@
 namespace SP {
 
 auto SlidingBuffer::data() const noexcept -> uint8_t const* {
+    sp_log("Buffer access - front: " + std::to_string(virtualFront_) + ", size: " + std::to_string(data_.size()), "SlidingBuffer");
     return this->data_.data() + this->virtualFront_;
 }
 
@@ -92,8 +95,14 @@ auto SlidingBuffer::append(uint8_t const* bytes, size_t count) -> void {
 }
 
 auto SlidingBuffer::advance(size_t bytes) -> void {
+    sp_log("Buffer advance - current front: " + std::to_string(virtualFront_) + ", advancing: " + std::to_string(bytes), "SlidingBuffer");
+    if (bytes > this->size()) {
+        sp_log("WARNING: Attempting to advance beyond buffer size", "SlidingBuffer");
+        return;
+    }
     this->virtualFront_ += bytes;
     if (this->virtualFront_ > this->data_.size() / 2 && this->data_.size() >= COMPACT_THRESHOLD) {
+        sp_log("Compacting buffer", "SlidingBuffer");
         this->compact();
     }
 }
@@ -103,6 +112,8 @@ auto SlidingBuffer::compact() -> void {
         return;
     }
 
+    sp_log("Compacting buffer - before size: " + std::to_string(data_.size()) + ", front: " + std::to_string(virtualFront_), "SlidingBuffer");
+
     if (this->virtualFront_ < this->data_.size()) {
         size_t remaining = this->data_.size() - this->virtualFront_;
         std::memmove(this->data_.data(), this->data_.data() + this->virtualFront_, remaining);
@@ -111,6 +122,7 @@ auto SlidingBuffer::compact() -> void {
         this->data_.clear();
     }
     this->virtualFront_ = 0uz;
+    sp_log("After compact - size: " + std::to_string(data_.size()) + ", front: " + std::to_string(virtualFront_), "SlidingBuffer");
 }
 
 } // namespace SP
