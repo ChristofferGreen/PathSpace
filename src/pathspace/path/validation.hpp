@@ -25,7 +25,6 @@ struct ValidationError {
     Code code;
 };
 
-// In validation.hpp
 constexpr ValidationError validate_path_impl(std::string_view str) {
     if (str.size() <= 1)
         return {ValidationError::Code::EmptyPath};
