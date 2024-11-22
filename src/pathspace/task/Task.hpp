@@ -1,7 +1,7 @@
 #pragma once
 #include "TaskStateAtomic.hpp"
 #include "core/ExecutionCategory.hpp"
-#include "core/InOptions.hpp"
+#include "core/In.hpp"
 #include "path/GlobPath.hpp"
 #include "type/InputData.hpp"
 #include "utils/TaggedLogger.hpp"
@@ -21,7 +21,7 @@ struct Task {
         return task;
     }
     template <typename DataType>
-    static auto Create(PathSpace* space, GlobPathString const& notificationPath, DataType const& userFunction, InputData const& inputData, InOptions const& options) -> std::shared_ptr<Task> {
+    static auto Create(PathSpace* space, GlobPathString const& notificationPath, DataType const& userFunction, InputData const& inputData, In const& options) -> std::shared_ptr<Task> {
         sp_log("Task::Create", "Function Called");
 
         // For any callable type (lambda, function pointer, etc)

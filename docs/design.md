@@ -211,7 +211,7 @@ The operations in the base language are insert/read/extract, they are implemente
 	* Insert data or a PathSpaceLeaf to one or more paths. If the path does not exist it will be created.
 	* The given path can be a concrete path in which case at most one object will be inserted or a glob expression path which could potentially insert multiple values.
 	* Supports batch operations by inserting an initialiser list
-	* Takes an optional InOptions which has the following properties:
+	* Takes an optional In which has the following properties:
 		* Optional Execution object that describes how to execute the data (if the data is a lambda or function):
 			* Execute immediately or when the user requests the data via read/extract.
 			* If the data should be cached and updated every n milliseconds.
@@ -232,7 +232,7 @@ The operations in the base language are insert/read/extract, they are implemente
 		* How many items/Tasks were inserted.
 		* What errors occurred during insertion.
 	* Syntax:
-		* InsertReturn PathSpace::insert<T>(GlobPath const &path, T const &value, optional<InOptions> const &options={})
+		* InsertReturn PathSpace::insert<T>(GlobPath const &path, T const &value, optional<In> const &options={})
 * **Read**:
 	* Returns a copy of the front value at the supplied path or Error if it could not be found, if for example the path did not exist or the front value had the wrong type.
 	* Takes an optional ReadOptions which has the following properties:
@@ -246,7 +246,7 @@ The operations in the base language are insert/read/extract, they are implemente
 * **Extract**: 
 	* Same as read but pops the front data instead of just returning a copy.
 	* Syntax:
-		* std::expected<T, Error> PathSpace::extract<T>(ConcretePath, Block, optional<OutOptions> const &options={})
+		* std::expected<T, Error> PathSpace::extract<T>(ConcretePath, Block, optional<Out> const &options={})
 
 ## Data Storage
 A normal PathSpace will store data by serialising it to a std::vector<std::byte>. That vector can contain data of different types and a separate vector storing std::type_id pointers

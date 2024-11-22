@@ -29,7 +29,7 @@ auto PathSpace::shutdown() -> void {
     sp_log("PathSpace::shutdown Cleared paths", "PathSpaceShutdown");
 }
 
-auto PathSpace::in(GlobPathStringView const& path, InputData const& data, InOptions const& options) -> InsertReturn {
+auto PathSpace::in(GlobPathStringView const& path, InputData const& data, In const& options) -> InsertReturn {
     sp_log("PathSpace::in", "Function Called");
     InsertReturn ret;
 
@@ -40,7 +40,7 @@ auto PathSpace::in(GlobPathStringView const& path, InputData const& data, InOpti
     return ret;
 }
 
-auto PathSpace::out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, OutOptions const& options, void* obj, bool const doExtract) -> Expected<int> {
+auto PathSpace::out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj, bool const doExtract) -> Expected<int> {
     sp_log("PathSpace::out", "Function Called");
     return this->root.out(PathViewConcrete(path.begin(), path.end()), inputMetadata, obj, options, doExtract);
 }

@@ -6,23 +6,23 @@
 
 namespace SP {
 struct Error;
-struct InOptions;
+struct In;
 struct InsertReturn;
 struct InputData;
-struct OutOptions;
+struct Out;
 struct ConstructiblePath;
 
 class PathSpaceLeaf {
 public:
-    auto in(PathViewGlob const& iter, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void;
-    auto out(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const doExtract) -> Expected<int>;
+    auto in(PathViewGlob const& iter, InputData const& inputData, In const& options, InsertReturn& ret) -> void;
+    auto out(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, Out const& options, bool const doExtract) -> Expected<int>;
     auto clear() -> void;
 
 private:
-    auto inFinalComponent(PathViewGlob const& iter, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void;
-    auto inIntermediateComponent(PathViewGlob const& iter, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void;
-    auto outFinalComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const doExtract) -> Expected<int>;
-    auto outIntermediateComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const doExtract) -> Expected<int>;
+    auto inFinalComponent(PathViewGlob const& iter, InputData const& inputData, In const& options, InsertReturn& ret) -> void;
+    auto inIntermediateComponent(PathViewGlob const& iter, InputData const& inputData, In const& options, InsertReturn& ret) -> void;
+    auto outFinalComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, Out const& options, bool const doExtract) -> Expected<int>;
+    auto outIntermediateComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, Out const& options, bool const doExtract) -> Expected<int>;
 
     NodeDataHashMap nodeDataMap;
 };

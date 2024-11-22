@@ -64,7 +64,7 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("Simple PathSpace Execution Lazy") {
         std::function<int()> f = []() -> int { return 58; };
-        CHECK(pspace.insert("/f", f, InOptions{.executionCategory = ExecutionCategory::Lazy}).nbrTasksInserted == 1);
+        CHECK(pspace.insert("/f", f, In{.executionCategory = ExecutionCategory::Lazy}).nbrTasksInserted == 1);
         CHECK(pspace.readBlock<int>("/f").value() == 58);
     }
 
@@ -120,7 +120,7 @@ TEST_CASE("PathSpace Read") {
     }
 
     SUBCASE("Read with timeout") {
-        auto ret = pspace.readBlock<int>("/timeout", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+        auto ret = pspace.readBlock<int>("/timeout", Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
         CHECK_FALSE(ret.has_value());
     }
 

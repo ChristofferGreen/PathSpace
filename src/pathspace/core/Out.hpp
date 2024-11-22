@@ -7,7 +7,7 @@
 
 namespace SP {
 
-struct OutOptions {
+struct Out {
     ExecutionCategory           executionCategory = ExecutionCategory::Unknown;
     std::optional<BlockOptions> block;
     ValidationLevel             validationLevel = ValidationLevel::Basic;

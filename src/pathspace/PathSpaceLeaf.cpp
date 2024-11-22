@@ -1,8 +1,8 @@
 #include "PathSpaceLeaf.hpp"
 #include "core/Error.hpp"
-#include "core/InOptions.hpp"
+#include "core/In.hpp"
 #include "core/InsertReturn.hpp"
-#include "core/OutOptions.hpp"
+#include "core/Out.hpp"
 #include "path/PathView.hpp"
 #include "pathspace/type/InputData.hpp"
 #include "type/InputData.hpp"
@@ -16,7 +16,7 @@ auto PathSpaceLeaf::clear() -> void {
 /*
     ############# In #############
 */
-auto PathSpaceLeaf::in(PathViewGlob const& iter, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void {
+auto PathSpaceLeaf::in(PathViewGlob const& iter, InputData const& inputData, In const& options, InsertReturn& ret) -> void {
     sp_log("PathSpaceLeaf::in Processing path component: " + std::string(iter.currentComponent().getName()), "PathSpaceLeaf");
     if (iter.isFinalComponent())
         inFinalComponent(iter, inputData, options, ret);
@@ -24,7 +24,7 @@ auto PathSpaceLeaf::in(PathViewGlob const& iter, InputData const& inputData, InO
         inIntermediateComponent(iter, inputData, options, ret);
 }
 
-auto PathSpaceLeaf::inFinalComponent(PathViewGlob const& iter, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void {
+auto PathSpaceLeaf::inFinalComponent(PathViewGlob const& iter, InputData const& inputData, In const& options, InsertReturn& ret) -> void {
     auto const pathComponent = iter.currentComponent();
     if (pathComponent.isGlob()) {
         // Create a vector to store the keys that match before modification.
@@ -66,7 +66,7 @@ auto PathSpaceLeaf::inFinalComponent(PathViewGlob const& iter, InputData const& 
     }
 }
 
-auto PathSpaceLeaf::inIntermediateComponent(PathViewGlob const& iter, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void {
+auto PathSpaceLeaf::inIntermediateComponent(PathViewGlob const& iter, InputData const& inputData, In const& options, InsertReturn& ret) -> void {
     GlobName const& pathComponent = iter.currentComponent();
     auto const      nextIter      = iter.next();
     if (pathComponent.isGlob()) {
@@ -89,14 +89,14 @@ auto PathSpaceLeaf::inIntermediateComponent(PathViewGlob const& iter, InputData 
 /*
     ############# Out #############
 */
-auto PathSpaceLeaf::out(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const doExtract) -> Expected<int> {
+auto PathSpaceLeaf::out(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, Out const& options, bool const doExtract) -> Expected<int> {
     if (iter.isFinalComponent())
         return outFinalComponent(iter, inputMetadata, obj, options, doExtract);
     else
         return outIntermediateComponent(iter, inputMetadata, obj, options, doExtract);
 }
 
-auto PathSpaceLeaf::outFinalComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const doExtract) -> Expected<int> {
+auto PathSpaceLeaf::outFinalComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, Out const& options, bool const doExtract) -> Expected<int> {
     Expected<int> result       = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     bool          shouldErase  = false;
     auto const    concreteName = iter.currentComponent();
@@ -122,7 +122,7 @@ auto PathSpaceLeaf::outFinalComponent(PathViewConcrete const& iter, InputMetadat
     return result;
 }
 
-auto PathSpaceLeaf::outIntermediateComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const doExtract) -> Expected<int> {
+auto PathSpaceLeaf::outIntermediateComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, Out const& options, bool const doExtract) -> Expected<int> {
     Expected<int> expected = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     this->nodeDataMap.if_contains(iter.currentComponent().getName(), [&](auto const& nodePair) {
         bool const isLeaf = std::holds_alternative<std::unique_ptr<PathSpaceLeaf>>(nodePair.second);

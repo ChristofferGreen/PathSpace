@@ -1,16 +1,16 @@
 #include "NodeData.hpp"
 #include "core/InsertReturn.hpp"
-#include "core/OutOptions.hpp"
+#include "core/Out.hpp"
 #include "task/TaskPool.hpp"
 
 namespace SP {
 
-NodeData::NodeData(InputData const& inputData, InOptions const& options) {
+NodeData::NodeData(InputData const& inputData, In const& options) {
     sp_log("NodeData::NodeData", "Function Called");
     this->serialize(inputData, options);
 }
 
-auto NodeData::serialize(const InputData& inputData, const InOptions& options) -> std::optional<Error> {
+auto NodeData::serialize(const InputData& inputData, const In& options) -> std::optional<Error> {
     sp_log("NodeData::serialize", "Function Called");
     sp_log("Serializing data of type: " + std::string(inputData.metadata.typeInfo->name()), "NodeData");
     if (inputData.taskCreator) {
@@ -32,7 +32,7 @@ auto NodeData::serialize(const InputData& inputData, const InOptions& options) -
     return std::nullopt;
 }
 
-auto NodeData::deserialize(void* obj, const InputMetadata& inputMetadata, std::optional<OutOptions> const& options) const -> Expected<int> {
+auto NodeData::deserialize(void* obj, const InputMetadata& inputMetadata, std::optional<Out> const& options) const -> Expected<int> {
     sp_log("NodeData::deserialize", "Function Called");
     return const_cast<NodeData*>(this)->deserializeImpl(obj, inputMetadata, options, false);
 }
@@ -42,7 +42,7 @@ auto NodeData::deserializePop(void* obj, const InputMetadata& inputMetadata) -> 
     return this->deserializeImpl(obj, inputMetadata, std::nullopt, true);
 }
 
-auto NodeData::deserializeImpl(void* obj, const InputMetadata& inputMetadata, std::optional<OutOptions> const& options, bool doExtract) -> Expected<int> {
+auto NodeData::deserializeImpl(void* obj, const InputMetadata& inputMetadata, std::optional<Out> const& options, bool doExtract) -> Expected<int> {
     sp_log("NodeData::deserializeImpl", "Function Called");
 
     if (auto validationResult = validateInputs(inputMetadata); !validationResult)
@@ -50,7 +50,7 @@ auto NodeData::deserializeImpl(void* obj, const InputMetadata& inputMetadata, st
 
     if (this->types.front().category == DataCategory::Execution) {
         assert(!this->tasks.empty());
-        return this->deserializeExecution(obj, inputMetadata, options.value_or(OutOptions{}), doExtract);
+        return this->deserializeExecution(obj, inputMetadata, options.value_or(Out{}), doExtract);
     } else {
         return this->deserializeData(obj, inputMetadata, doExtract);
     }
@@ -68,7 +68,7 @@ auto NodeData::validateInputs(const InputMetadata& inputMetadata) -> Expected<vo
     return {};
 }
 
-auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadata, const OutOptions& options, bool doExtract) -> Expected<int> {
+auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadata, const Out& options, bool doExtract) -> Expected<int> {
     if (this->tasks.empty())
         return std::unexpected(Error{Error::Code::NoObjectFound, "No task available"});
 

@@ -4,7 +4,7 @@
 
 namespace SP {
 
-struct InOptions {
+struct In {
     ExecutionCategory executionCategory = ExecutionCategory::Unknown;
     ValidationLevel   validationLevel   = ValidationLevel::Basic;
 };
