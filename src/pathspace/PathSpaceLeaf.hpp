@@ -20,7 +20,7 @@ public:
 
 private:
     auto inFinalComponent(PathViewGlob const& iter, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void;
-    auto inIntermediateComponent(PathViewGlob const& iter, GlobName const& pathComponent, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void;
+    auto inIntermediateComponent(PathViewGlob const& iter, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void;
     auto outFinalComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const doExtract) -> Expected<int>;
     auto outIntermediateComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, OutOptions const& options, bool const doExtract) -> Expected<int>;
 

@@ -21,7 +21,7 @@ auto PathSpaceLeaf::in(PathViewGlob const& iter, InputData const& inputData, InO
     if (iter.isFinalComponent())
         inFinalComponent(iter, inputData, options, ret);
     else
-        inIntermediateComponent(iter, iter.currentComponent(), inputData, options, ret);
+        inIntermediateComponent(iter, inputData, options, ret);
 }
 
 auto PathSpaceLeaf::inFinalComponent(PathViewGlob const& iter, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void {
@@ -66,8 +66,9 @@ auto PathSpaceLeaf::inFinalComponent(PathViewGlob const& iter, InputData const& 
     }
 }
 
-auto PathSpaceLeaf::inIntermediateComponent(PathViewGlob const& iter, GlobName const& pathComponent, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void {
-    auto const nextIter = iter.next();
+auto PathSpaceLeaf::inIntermediateComponent(PathViewGlob const& iter, InputData const& inputData, InOptions const& options, InsertReturn& ret) -> void {
+    GlobName const& pathComponent = iter.currentComponent();
+    auto const      nextIter      = iter.next();
     if (pathComponent.isGlob()) {
         nodeDataMap.for_each([&](const auto& item) {
             const auto& key = item.first;

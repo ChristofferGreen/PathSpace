@@ -20,13 +20,16 @@ auto is_glob(std::string_view const& strv) -> bool {
     return false;
 }
 
-GlobName::GlobName(char const* const ptr) : name(ptr) {
+GlobName::GlobName(char const* const ptr)
+    : name(ptr) {
 }
 
-GlobName::GlobName(std::string::const_iterator const& iter, std::string::const_iterator const& endIter) : name(iter, endIter) {
+GlobName::GlobName(std::string::const_iterator const& iter, std::string::const_iterator const& endIter)
+    : name(iter, endIter) {
 }
 
-GlobName::GlobName(std::string_view::const_iterator const& iter, std::string_view::const_iterator const& endIter) : name(iter, endIter) {
+GlobName::GlobName(std::string_view::const_iterator const& iter, std::string_view::const_iterator const& endIter)
+    : name(iter, endIter) {
 }
 
 auto GlobName::operator<=>(GlobName const& other) const -> std::strong_ordering {
@@ -47,9 +50,13 @@ auto GlobName::operator==(char const* const other) const -> bool {
 
 auto GlobName::match(const std::string_view& str) const -> std::tuple<bool /*match*/, bool /*supermatch*/> {
     size_t globIdx = 0;
-    size_t strIdx = 0;
+    size_t strIdx  = 0;
 
     while (strIdx < str.size()) {
+        if (globIdx >= this->name.size()) {
+            return {false, false};
+        }
+
         if (this->name[globIdx] == '\\') {
             // Handle escape character
             globIdx++; // Skip backslash
@@ -58,7 +65,6 @@ auto GlobName::match(const std::string_view& str) const -> std::tuple<bool /*mat
                 ++strIdx;
                 ++globIdx;
             } else {
-                // Mismatch, glob pattern does not match filename
                 return {false, false};
             }
         } else if (globIdx < this->name.size() && this->name[globIdx] == '?') {
@@ -66,8 +72,8 @@ auto GlobName::match(const std::string_view& str) const -> std::tuple<bool /*mat
             strIdx++;
         } else if (globIdx < this->name.size() && this->name[globIdx] == '*') {
             size_t nextGlobIdx = globIdx + 1;
-            if (nextGlobIdx < this->name.size() && this->name[nextGlobIdx] == '*') { // ** matches across name edge
-                return {true, true};
+            if (nextGlobIdx < this->name.size() && this->name[nextGlobIdx] == '*') {
+                return {true, true}; // ** matches across name edge
             }
 
             if (nextGlobIdx == this->name.size()) {
@@ -84,7 +90,7 @@ auto GlobName::match(const std::string_view& str) const -> std::tuple<bool /*mat
             }
 
             globIdx = nextGlobIdx;
-            strIdx = matchIdx;
+            strIdx  = matchIdx;
         } else if (globIdx < this->name.size() && this->name[globIdx] == '[') {
             globIdx++;
             bool invert = false;
@@ -93,36 +99,36 @@ auto GlobName::match(const std::string_view& str) const -> std::tuple<bool /*mat
                 globIdx++;
             }
 
-            bool matched = false;
+            bool matched  = false;
             char prevChar = '\0';
-            bool inRange = false;
 
             while (globIdx < this->name.size() && this->name[globIdx] != ']') {
                 if (this->name[globIdx] == '-' && prevChar != '\0' && globIdx + 1 < this->name.size()) {
-                    inRange = true;
-                    prevChar = this->name[globIdx + 1];
-                    globIdx += 2;
+                    char rangeEnd = this->name[globIdx + 1];
+                    // Check if current string character is within range
+                    if (strIdx < str.size() && str[strIdx] >= prevChar && str[strIdx] <= rangeEnd) {
+                        matched = true;
+                    }
+                    globIdx += 2; // Skip both the hyphen and range end character
                 } else {
-                    if (inRange) {
-                        if (strIdx < str.size() && str[strIdx] >= prevChar && str[strIdx] <= this->name[globIdx]) {
-                            matched = true;
-                        }
-                        inRange = false;
-                    } else {
-                        if (strIdx < str.size() && str[strIdx] == this->name[globIdx]) {
-                            matched = true;
-                        }
+                    if (strIdx < str.size() && str[strIdx] == this->name[globIdx]) {
+                        matched = true;
                     }
                     prevChar = this->name[globIdx];
                     globIdx++;
                 }
             }
 
-            if ((invert && !matched) || (!invert && matched)) {
-                strIdx++;
-            } else {
+            if (globIdx >= this->name.size() || this->name[globIdx] != ']') {
+                return {false, false}; // Malformed pattern - missing closing bracket
+            }
+
+            if ((!invert && !matched) || (invert && matched)) {
                 return {false, false};
             }
+
+            globIdx++; // Skip the closing bracket
+            strIdx++;  // Move to next character in string
         } else {
             if (strIdx < str.size() && this->name[globIdx] == str[strIdx]) {
                 globIdx++;
@@ -133,6 +139,7 @@ auto GlobName::match(const std::string_view& str) const -> std::tuple<bool /*mat
         }
     }
 
+    // Skip any remaining wildcards
     while (globIdx < this->name.size() && this->name[globIdx] == '*') {
         globIdx++;
     }
