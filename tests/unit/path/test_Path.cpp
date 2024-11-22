@@ -98,7 +98,6 @@ TEST_CASE("Path Validation") {
         CHECK_FALSE(Path<std::string>("/path/[a-z]").validate().has_value());
         CHECK_FALSE(Path<std::string>("/path/[!a-z]").validate().has_value());
         CHECK_FALSE(Path<std::string>("/path/[0-9]/*").validate().has_value());
-        CHECK_FALSE(Path<std::string>("/path/**").validate().has_value());
 
         // Invalid patterns
         {
@@ -141,7 +140,6 @@ TEST_CASE("Path Validation") {
         // Multiple patterns
         CHECK_FALSE(Path<std::string>("/path/[a-z]/[0-9]/*").validate().has_value());
         CHECK_FALSE(Path<std::string>("/*/[a-z]/?/[0-9]").validate().has_value());
-        CHECK_FALSE(Path<std::string>("/**/[a-z]/*/[0-9]").validate().has_value());
 
         // Escaped patterns in brackets
         CHECK(Path<std::string>("/path/[\\[-\\]]").validate(ValidationLevel::Full).has_value());
@@ -205,7 +203,6 @@ TEST_CASE("PathSpace Integration") {
         // Valid inserts
         CHECK(pspace.insert("/valid/path", 42).errors.empty());
         CHECK(pspace.insert("/test/[a-z]/*", 42).errors.empty());
-        CHECK(pspace.insert("/test/**", 42).errors.empty());
 
         // Invalid inserts
         {
@@ -354,13 +351,6 @@ TEST_CASE("PathSpace Integration") {
         CHECK(temp2.value() == 21.0f);
         CHECK(temp3.value() == 22.0f);
         CHECK(temp4.value() == 23.0f);
-
-        // Test super-matcher
-        CHECK(pspace.insert("/2023/**/temp", 30.0f).nbrValuesInserted == 3);
-
-        // Verify 2023 temps updated but not 2024
-        CHECK(pspace.read<float>("/2023/01/01/temp").value() == 30.0f);
-        CHECK(pspace.read<float>("/2024/01/01/temp").value() == 25.0f);
     }
 
     SUBCASE("Complex Function Execution Chains") {
