@@ -15,8 +15,7 @@ auto NodeData::serialize(const InputData& inputData, const InOptions& options) -
     sp_log("Serializing data of type: " + std::string(inputData.metadata.typeInfo->name()), "NodeData");
     if (inputData.taskCreator) {
         this->tasks.push_back(inputData.taskCreator());
-        std::optional<ExecutionOptions::Category> const optionsExecutionCategory = options.execution.has_value() ? std::optional<ExecutionOptions::Category>(options.execution.value().category) : std::nullopt;
-        bool const                                      isImmediateExecution     = optionsExecutionCategory.value_or(ExecutionOptions{}.category) == ExecutionOptions::Category::Immediate;
+        bool const isImmediateExecution = (*this->tasks.rbegin())->category() == ExecutionCategory::Immediate;
         if (isImmediateExecution) {
             if (auto const ret = TaskPool::Instance().addTask(this->tasks.back()); ret)
                 return ret;
@@ -77,9 +76,11 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
     auto task = this->tasks.front();
 
     if (!task->hasStarted()) {
-        std::optional<ExecutionOptions::Category> const optionsExecutionCategory = options.execution.has_value() ? std::optional<ExecutionOptions::Category>(options.execution.value().category) : std::nullopt;
-        std::optional<ExecutionOptions::Category> const taskExecutionCategory    = task->category();
-        bool const                                      isLazyExecution          = optionsExecutionCategory.value_or(taskExecutionCategory.value_or(ExecutionOptions{}.category)) == ExecutionOptions::Category::Lazy;
+        ExecutionCategory const optionsExecutionCategory = options.executionCategory;
+        ExecutionCategory const taskExecutionCategory    = task->category();
+        bool const              isLazyExecution          = (optionsExecutionCategory == ExecutionCategory::Unknown)
+                                                                   ? taskExecutionCategory == ExecutionCategory::Lazy
+                                                                   : optionsExecutionCategory == ExecutionCategory::Lazy;
 
         if (isLazyExecution)
             if (auto ret = TaskPool::Instance().addTask(task); ret)

@@ -1,6 +1,6 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/core/Error.hpp>
-#include <pathspace/core/ExecutionOptions.hpp>
+#include <pathspace/core/ExecutionCategory.hpp>
 #include <pathspace/core/InOptions.hpp>
 #include <pathspace/core/OutOptions.hpp>
 
@@ -251,7 +251,8 @@ TEST_CASE("PathSpace Multithreading") {
             int              successCount{0};
             int              failCount{0};
 
-            ThreadStats(int id) : threadId(id) {
+            ThreadStats(int id)
+                : threadId(id) {
                 insertedValues.reserve(OPERATIONS_PER_THREAD);
             }
         };
@@ -1047,7 +1048,7 @@ TEST_CASE("PathSpace Multithreading") {
                 return i;
             };
 
-            REQUIRE(pspace.insert("/task/" + std::to_string(i), task, SP::InOptions{.execution = SP::ExecutionOptions{.category = SP::ExecutionOptions::Category::Lazy}}).errors.empty());
+            REQUIRE(pspace.insert("/task/" + std::to_string(i), task, SP::InOptions{.executionCategory = SP::ExecutionCategory::Lazy}).errors.empty());
         }
 
         // Execute tasks in sequence
@@ -1310,7 +1311,7 @@ TEST_CASE("PathSpace Multithreading") {
                     std::this_thread::sleep_for(std::chrono::milliseconds(50));
                     return 42;
                 },
-                InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
+                InOptions{.executionCategory = ExecutionCategory::Lazy});
         REQUIRE_MESSAGE(fast_insert.errors.empty(), "Failed to insert fast task");
 
         // Read fast task - should complete
@@ -1345,7 +1346,7 @@ TEST_CASE("PathSpace Multithreading") {
                     std::this_thread::sleep_for(std::chrono::milliseconds(50));
                     return 23;
                 },
-                InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
+                InOptions{.executionCategory = ExecutionCategory::Lazy});
         REQUIRE_MESSAGE(fast_insert.errors.empty(), "Failed to insert fast task");
         auto slow_insert = space.insert(
                 "/slow_task",
@@ -1353,7 +1354,7 @@ TEST_CASE("PathSpace Multithreading") {
                     std::this_thread::sleep_for(std::chrono::milliseconds(250));
                     return 24;
                 },
-                InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
+                InOptions{.executionCategory = ExecutionCategory::Lazy});
         REQUIRE_MESSAGE(slow_insert.errors.empty(), "Failed to insert fast task");
 
         // Read fast task - should complete
@@ -1386,7 +1387,7 @@ TEST_CASE("PathSpace Multithreading") {
         // Store an error-generating task
         auto error_task = []() -> int { throw std::runtime_error("Expected test error"); };
 
-        REQUIRE(space.insert("/error/task", error_task, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}}).errors.empty());
+        REQUIRE(space.insert("/error/task", error_task, InOptions{.executionCategory = ExecutionCategory::Lazy}).errors.empty());
 
         // First verify the good path works
         auto good_result = space.read<int>("/error/test");
@@ -1444,7 +1445,7 @@ TEST_CASE("PathSpace Multithreading") {
                 return -1;
             };
 
-            // Use ExecutionOptions::Immediate to ensure the task runs right away
+            // Use ExecutionCategory::Immediate to ensure the task runs right away
             CHECK(pspace.insert("/long/" + std::to_string(i), task).errors.empty());
         }
 

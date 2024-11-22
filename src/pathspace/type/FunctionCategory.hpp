@@ -1,9 +1,8 @@
 #pragma once
-#include <typeinfo>
 
 namespace SP {
 
-enum struct ExecutionCategory {
+enum struct FunctionCategory {
     None = 0,
     FunctionPointer,
     StdFunction

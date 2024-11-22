@@ -80,7 +80,7 @@ auto PathSpaceLeaf::inIntermediateComponent(PathViewGlob const& iter, InputData 
         });
     } else {
         auto [it, inserted] = nodeDataMap.try_emplace(pathComponent.getName(), std::make_unique<PathSpaceLeaf>());
-        if (auto* leaf = std::get_if<std::unique_ptr<PathSpaceLeaf>>(&it->second)) {
+        if (auto* leaf = std::get_if<std::unique_ptr<PathSpaceLeaf>>(&it->second)) { // ToDo Is this really thread safe?
             (*leaf)->in(nextIter, inputData, options, ret);
         }
     }

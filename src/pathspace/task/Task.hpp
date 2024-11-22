@@ -1,6 +1,6 @@
 #pragma once
 #include "TaskStateAtomic.hpp"
-#include "core/ExecutionOptions.hpp"
+#include "core/ExecutionCategory.hpp"
 #include "core/InOptions.hpp"
 #include "path/GlobPath.hpp"
 #include "type/InputData.hpp"
@@ -28,11 +28,11 @@ struct Task {
         if constexpr (requires { typename std::invoke_result_t<DataType>; }) {
             using ResultType = std::invoke_result_t<DataType>;
 
-            auto task              = std::shared_ptr<Task>(new Task{});
-            task->space            = space;
-            task->notificationPath = notificationPath;
-            task->executionOptions = options.execution;
-            task->function         = [userFunction](Task& task, bool const) {
+            auto task               = std::shared_ptr<Task>(new Task{});
+            task->space             = space;
+            task->notificationPath  = notificationPath;
+            task->executionCategory = (options.executionCategory == ExecutionCategory::Unknown) ? ExecutionCategory::Immediate : options.executionCategory;
+            task->function          = [userFunction](Task& task, bool const) {
                 sp_log("Task lambda execution", "Task");
                 task.result = userFunction();
                 sp_log("Task lambda completed", "Task");
@@ -55,7 +55,7 @@ struct Task {
     auto transitionToRunning() -> bool;
     auto markCompleted() -> void;
     auto markFailed() -> void;
-    auto category() const -> std::optional<ExecutionOptions::Category>;
+    auto category() const -> ExecutionCategory;
     auto resultCopy(void* dest) -> void {
         // Wait for result to be ready before copying
         while (!this->state.isCompleted())
@@ -72,12 +72,12 @@ private:
     Task(Task&&)                 = delete;  // Non-movable (since we use shared_ptr)
     Task& operator=(Task&&)      = delete;  // Non-movable (since we use shared_ptr)
 
-    PathSpace*                                                space = nullptr;  // Pointer to a PathSpace where the return values from lazy executions will be inserted
-    TaskStateAtomic                                           state;            // Atomic state of the task
-    std::function<void(Task& task, bool const objIsData)>     function;         // Function to be executed by the task
-    std::function<void(std::any const& from, void* const to)> resultCopy_;      // Function to copy the result
-    std::any                                                  result;           // Result of the task execution
-    std::optional<ExecutionOptions>                           executionOptions; // Optional execution options for the task
+    PathSpace*                                                space = nullptr;   // Pointer to a PathSpace where the return values from lazy executions will be inserted
+    TaskStateAtomic                                           state;             // Atomic state of the task
+    std::function<void(Task& task, bool const objIsData)>     function;          // Function to be executed by the task
+    std::function<void(std::any const& from, void* const to)> resultCopy_;       // Function to copy the result
+    std::any                                                  result;            // Result of the task execution
+    ExecutionCategory                                         executionCategory; // Optional execution options for the task
     GlobPathString                                            notificationPath;
 };
 

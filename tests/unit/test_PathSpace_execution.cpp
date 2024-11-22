@@ -36,14 +36,14 @@ TEST_CASE("PathSpace Execution") {
 
     SUBCASE("Execution Categories") {
         SUBCASE("Immediate Execution") {
-            pspace.insert("/test", []() -> int { return 42; }, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Immediate}});
+            pspace.insert("/test", []() -> int { return 42; }, InOptions{.executionCategory = ExecutionCategory::Immediate});
             auto result = pspace.readBlock<int>("/test");
             CHECK(result.has_value());
             CHECK(result.value() == 42);
         }
 
         SUBCASE("Lazy Execution") {
-            pspace.insert("/test", []() -> int { return 42; }, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
+            pspace.insert("/test", []() -> int { return 42; }, InOptions{.executionCategory = ExecutionCategory::Lazy});
             auto result = pspace.readBlock<int>("/test");
             CHECK(result.has_value());
             CHECK(result.value() == 42);
@@ -58,7 +58,7 @@ TEST_CASE("PathSpace Execution") {
                         std::this_thread::sleep_for(50ms);
                         return 42;
                     },
-                    InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
+                    InOptions{.executionCategory = ExecutionCategory::Lazy});
 
             auto result = pspace.readBlock<int>("/test", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = 200ms}});
             CHECK(result.has_value());
@@ -72,7 +72,7 @@ TEST_CASE("PathSpace Execution") {
                         std::this_thread::sleep_for(200ms);
                         return 42;
                     },
-                    InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
+                    InOptions{.executionCategory = ExecutionCategory::Lazy});
 
             auto result = pspace.readBlock<int>("/test", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = 50ms}});
             CHECK(!result.has_value());
@@ -103,7 +103,7 @@ TEST_CASE("PathSpace Execution") {
                         std::this_thread::sleep_for(50ms);
                         return 1;
                     },
-                    InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
+                    InOptions{.executionCategory = ExecutionCategory::Lazy});
 
             pspace.insert(
                     "/test2",
@@ -111,7 +111,7 @@ TEST_CASE("PathSpace Execution") {
                         std::this_thread::sleep_for(50ms);
                         return 2;
                     },
-                    InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
+                    InOptions{.executionCategory = ExecutionCategory::Lazy});
 
             auto result1 = pspace.readBlock<int>("/test1");
             auto result2 = pspace.readBlock<int>("/test2");
@@ -125,7 +125,7 @@ TEST_CASE("PathSpace Execution") {
 
     SUBCASE("Block Behavior Types") {
         SUBCASE("Wait For Execution") {
-            pspace.insert("/test", []() -> int { return 42; }, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}});
+            pspace.insert("/test", []() -> int { return 42; }, InOptions{.executionCategory = ExecutionCategory::Lazy});
 
             auto result = pspace.readBlock<int>("/test", OutOptions{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait}});
             CHECK(result.has_value());

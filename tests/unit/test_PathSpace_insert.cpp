@@ -107,7 +107,7 @@ TEST_CASE("PathSpace Insert") {
 
             // Insert with lazy execution - functions won't run until read
             for (int i = 0; i < 1000; ++i)
-                CHECK(pspace.insert(std::format("/concurrent{}", i), incrementFunc, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}}).nbrTasksInserted == 1);
+                CHECK(pspace.insert(std::format("/concurrent{}", i), incrementFunc, InOptions{.executionCategory = ExecutionCategory::Lazy}).nbrTasksInserted == 1);
 
             // Reading triggers execution in sequence
             for (int i = 0; i < 1000; ++i)
@@ -122,7 +122,7 @@ TEST_CASE("PathSpace Insert") {
 
             // Insert with immediate execution - functions run right away in parallel
             for (int i = 0; i < 1000; ++i)
-                CHECK(pspace.insert(std::format("/concurrent{}", i), incrementFunc, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Immediate}}).nbrTasksInserted == 1);
+                CHECK(pspace.insert(std::format("/concurrent{}", i), incrementFunc, InOptions{.executionCategory = ExecutionCategory::Immediate}).nbrTasksInserted == 1);
 
             // Read the results - they'll be in non-deterministic order
             std::set<int> results;

@@ -26,10 +26,8 @@ auto Task::markFailed() -> void {
     this->state.markFailed();
 }
 
-auto Task::category() const -> std::optional<ExecutionOptions::Category> {
-    if (!this->executionOptions.has_value())
-        return std::nullopt;
-    return this->executionOptions.value().category;
+auto Task::category() const -> ExecutionCategory {
+    return this->executionCategory;
 }
 
 } // namespace SP

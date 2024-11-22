@@ -1,6 +1,6 @@
 #pragma once
 #include "type/DataCategory.hpp"
-#include "type/ExecutionCategory.hpp"
+#include "type/FunctionCategory.hpp"
 #include "type/SlidingBuffer.hpp"
 #include "type/serialization.hpp"
 #include "utils/TaggedLogger.hpp"
@@ -163,13 +163,13 @@ struct AlpacaSerializationTraits {
             return DataCategory::None;
     }();
 
-    static constexpr ExecutionCategory const executionCategory = []() {
+    static constexpr FunctionCategory const functionCategory = []() {
         if constexpr (ExecutionFunctionPointer<T>)
-            return ExecutionCategory::FunctionPointer;
+            return FunctionCategory::FunctionPointer;
         else if constexpr (ExecutionStdFunction<T>)
-            return ExecutionCategory::StdFunction;
+            return FunctionCategory::StdFunction;
         else
-            return ExecutionCategory::None;
+            return FunctionCategory::None;
     }();
 
     static constexpr auto serialize = []() {
@@ -211,9 +211,9 @@ struct InputMetadataT {
     using T      = std::remove_cvref_t<CVRefT>;
     using Traits = AlpacaSerializationTraits<T>;
 
-    static constexpr DataCategory          dataCategory      = Traits::category;
-    static constexpr ExecutionCategory     executionCategory = Traits::executionCategory;
-    static constexpr std::type_info const* typeInfo          = Traits::typeInfo;
+    static constexpr DataCategory          dataCategory     = Traits::category;
+    static constexpr FunctionCategory      functionCategory = Traits::functionCategory;
+    static constexpr std::type_info const* typeInfo         = Traits::typeInfo;
 
     static constexpr auto serialize      = Traits::serialize;
     static constexpr auto deserialize    = Traits::deserialize;

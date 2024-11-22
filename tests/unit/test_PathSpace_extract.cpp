@@ -88,7 +88,7 @@ TEST_CASE("PathSpace Extract") {
 
     SUBCASE("Simple PathSpace Execution Lazy") {
         std::function<int()> f = []() -> int { return 58; };
-        CHECK(pspace.insert("/f", f, InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}}).nbrTasksInserted == 1);
+        CHECK(pspace.insert("/f", f, InOptions{.executionCategory = ExecutionCategory::Lazy}).nbrTasksInserted == 1);
         CHECK(pspace.extractBlock<int>("/f").value() == 58);
         CHECK(!pspace.extract<int>("/f").has_value());
     }
@@ -199,7 +199,7 @@ TEST_CASE("PathSpace Extract") {
         auto periodic_func = [&counter]() -> int { return ++counter; };
         pspace.insert("/periodic",
                       periodic_func,
-                      InOptions{.execution = ExecutionOptions{.category = ExecutionOptions::Category::PeriodicOnRead,
+                      InOptions{.execution = ExecutionCategory{.category = ExecutionCategory::Category::PeriodicOnRead,
                                                               .updateInterval = std::chrono::milliseconds(50)}});
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -547,7 +547,7 @@ TEST_CASE("PathSpace Glob") {
             };
         };
 
-        InOptions options{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}};
+        InOptions options{.executionCategory = ExecutionCategory::Lazy};
         CHECK(pspace.insert("/exec/a", func(1), options).nbrTasksInserted == 1);
         CHECK(pspace.insert("/exec/a", func(10), options).nbrTasksInserted == 1);
         auto val1 = pspace.extractBlock<int>("/exec/a");
@@ -566,7 +566,7 @@ TEST_CASE("PathSpace Glob") {
         };
 
         // Insert lazy executions
-        InOptions options{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}};
+        InOptions options{.executionCategory = ExecutionCategory::Lazy};
         CHECK(pspace.insert("/exec/a", func(1), options).nbrTasksInserted == 1);
         CHECK(pspace.insert("/exec/*", func(10), options).nbrTasksInserted == 1);
         auto val1 = pspace.extractBlock<int>("/exec/a");
@@ -584,7 +584,7 @@ TEST_CASE("PathSpace Glob") {
             };
         };
 
-        InOptions options{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}};
+        InOptions options{.executionCategory = ExecutionCategory::Lazy};
         CHECK(pspace.insert("/exec/a", func(1), options).nbrTasksInserted == 1);
         CHECK(pspace.insert("/exec/*", func(10), options).nbrTasksInserted == 1);
 
@@ -607,7 +607,7 @@ TEST_CASE("PathSpace Glob") {
         };
 
         // Insert lazy executions
-        InOptions options{.execution = ExecutionOptions{.category = ExecutionOptions::Category::Lazy}};
+        InOptions options{.executionCategory = ExecutionCategory::Lazy};
         CHECK(pspace.insert("/exec/a", func(1), options).nbrTasksInserted == 1);
         CHECK(pspace.insert("/exec/b", func(2), options).nbrTasksInserted == 1);
         CHECK(pspace.insert("/exec/c", func(3), options).nbrTasksInserted == 1);

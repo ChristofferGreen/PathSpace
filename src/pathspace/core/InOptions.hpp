@@ -1,14 +1,12 @@
 #pragma once
-#include "ExecutionOptions.hpp"
+#include "ExecutionCategory.hpp"
 #include "path/validation.hpp"
-
-#include <optional>
 
 namespace SP {
 
 struct InOptions {
-    std::optional<ExecutionOptions> execution;
-    ValidationLevel                 validationLevel = ValidationLevel::Basic;
+    ExecutionCategory executionCategory = ExecutionCategory::Unknown;
+    ValidationLevel   validationLevel   = ValidationLevel::Basic;
 };
 
 } // namespace SP
