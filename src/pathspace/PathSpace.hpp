@@ -86,9 +86,8 @@ public:
     template <typename DataType>
     auto readBlock(ConcretePathStringView const& path, Out const& options = Block()) const -> Expected<DataType> {
         sp_log("PathSpace::readBlock", "Function Called");
-        if (options.validationLevel >= ValidationLevel::Basic)
-            if (auto error = path.validate())
-                return std::unexpected(*error);
+        if (auto error = path.validate())
+            return std::unexpected(*error);
         bool const doExtract = false;
         return const_cast<PathSpace*>(this)->outBlock<DataType>(path, options, doExtract);
     }
@@ -160,16 +159,16 @@ protected:
         DataType      obj;
         Expected<int> result; // Moved outside to be accessible in all scopes
         auto const    inputMetaData = InputMetadataT<DataType>{};
-        auto const    deadline      = std::chrono::system_clock::now() + options.timeout;
 
         // First try entirely outside the loop to minimize lock time
         {
             result = this->out(path, inputMetaData, options, &obj, doExtract);
-            if (result.has_value() && result.value() > 0) {
+            if ((result.has_value() && result.value() > 0) || options.block_ == false) {
                 return obj;
             }
         }
 
+        auto const deadline = std::chrono::system_clock::now() + options.timeout;
         while (true) {
             // Check deadline first
             auto now = std::chrono::system_clock::now();
