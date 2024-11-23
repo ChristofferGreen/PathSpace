@@ -453,9 +453,9 @@ TEST_CASE("PathSpace Integration") {
         pspace.insert("/tasks/fast", fastTask);
 
         auto fastResult = pspace.readBlock<int>("/tasks/fast",
-                                                Out::Block(100ms));
+                                                Block(100ms));
         auto slowResult = pspace.readBlock<int>("/tasks/slow",
-                                                Out::Block(100ms));
+                                                Block(100ms));
 
         CHECK(fastResult.has_value());
         CHECK_FALSE(slowResult.has_value());
@@ -463,7 +463,7 @@ TEST_CASE("PathSpace Integration") {
 
         // Verify slow task eventually completes
         auto slowResultWait = pspace.readBlock<int>("/tasks/slow",
-                                                    Out::Block(1000ms));
+                                                    Block(1000ms));
         REQUIRE(slowResultWait.has_value());
         CHECK(slowResultWait.value() == 42);
     }

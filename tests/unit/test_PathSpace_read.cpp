@@ -121,7 +121,7 @@ TEST_CASE("PathSpace Read") {
     }
 
     SUBCASE("Read with timeout") {
-        auto ret = pspace.readBlock<int>("/timeout", Out::Block(100ms));
+        auto ret = pspace.readBlock<int>("/timeout", Block(100ms));
         CHECK_FALSE(ret.has_value());
     }
 

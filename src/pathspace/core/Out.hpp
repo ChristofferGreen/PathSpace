@@ -35,4 +35,9 @@ struct Out {
     std::chrono::milliseconds timeout         = 876600h; // 100 years
 };
 
+struct Block : Out {
+    Block(std::chrono::milliseconds const& timeout = 876600h)
+        : Out{.block_ = true, .timeout = timeout} {}
+};
+
 } // namespace SP

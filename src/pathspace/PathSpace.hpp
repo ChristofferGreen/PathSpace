@@ -84,7 +84,7 @@ public:
     }
 
     template <typename DataType>
-    auto readBlock(ConcretePathStringView const& path, Out const& options = Out::Block()) const -> Expected<DataType> {
+    auto readBlock(ConcretePathStringView const& path, Out const& options = Block()) const -> Expected<DataType> {
         sp_log("PathSpace::readBlock", "Function Called");
         if (options.validationLevel >= ValidationLevel::Basic)
             if (auto error = path.validate())
@@ -95,7 +95,7 @@ public:
 
     template <FixedString pathIn, typename DataType>
         requires(validate_path(pathIn))
-    auto readBlock(Out const& options = Out::Block()) const -> Expected<DataType> {
+    auto readBlock(Out const& options = Block()) const -> Expected<DataType> {
         sp_log("PathSpace::readBlock", "Function Called");
         const_cast<Out&>(options).validationLevel = ValidationLevel::None;
         return this->readBlock<DataType>(ConcretePathStringView{pathIn}, options);
@@ -132,7 +132,7 @@ public:
     }
 
     template <typename DataType>
-    auto extractBlock(ConcretePathStringView const& path, Out const& options = Out::Block()) -> Expected<DataType> {
+    auto extractBlock(ConcretePathStringView const& path, Out const& options = Block()) -> Expected<DataType> {
         sp_log("PathSpace::extractBlock", "Function Called");
         if (auto error = path.validate(options.validationLevel))
             return std::unexpected(*error);
@@ -142,7 +142,7 @@ public:
 
     template <FixedString pathIn, typename DataType>
         requires(validate_path(pathIn))
-    auto extractBlock(Out const& options = Out::Block()) -> Expected<DataType> {
+    auto extractBlock(Out const& options = Block()) -> Expected<DataType> {
         sp_log("PathSpace::extractBlock", "Function Called");
         const_cast<Out&>(options).validationLevel = ValidationLevel::None;
         return this->extractBlock<DataType>(ConcretePathStringView{pathIn}, options);

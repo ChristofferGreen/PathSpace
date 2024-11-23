@@ -13,7 +13,7 @@ TEST_CASE("PathSpace Execution") {
         SUBCASE("Function Pointer") {
             int (*f)() = +[]() -> int { return 65; };
             pspace.insert("/test", f);
-            auto result = pspace.readBlock<int>("/test");
+            auto result = pspace.readBlock<int>("/test", Block{});
             CHECK(result.has_value());
             CHECK(result.value() == 65);
         }
@@ -21,14 +21,14 @@ TEST_CASE("PathSpace Execution") {
         SUBCASE("Function Lambda") {
             auto f = []() -> int { return 65; };
             CHECK(pspace.insert("/test", f).nbrTasksInserted == 1);
-            auto result = pspace.readBlock<int>("/test");
+            auto result = pspace.readBlock<int>("/test", Block{});
             REQUIRE(result.has_value());
             CHECK(result.value() == 65);
         }
 
         SUBCASE("Direct Lambda") {
             CHECK(pspace.insert("/test", []() -> int { return 65; }).nbrTasksInserted == 1);
-            auto result = pspace.readBlock<int>("/test");
+            auto result = pspace.readBlock<int>("/test", Block{});
             REQUIRE(result.has_value());
             CHECK(result.value() == 65);
         }
@@ -37,14 +37,14 @@ TEST_CASE("PathSpace Execution") {
     SUBCASE("Execution Categories") {
         SUBCASE("Immediate Execution") {
             pspace.insert("/test", []() -> int { return 42; }, In{.executionCategory = ExecutionCategory::Immediate});
-            auto result = pspace.readBlock<int>("/test");
+            auto result = pspace.readBlock<int>("/test", Block{});
             REQUIRE(result.has_value());
             CHECK(result.value() == 42);
         }
 
         SUBCASE("Lazy Execution") {
             pspace.insert("/test", []() -> int { return 42; }, In{.executionCategory = ExecutionCategory::Lazy});
-            auto result = pspace.readBlock<int>("/test");
+            auto result = pspace.readBlock<int>("/test", Block{});
             REQUIRE(result.has_value());
             CHECK(result.value() == 42);
         }
@@ -59,7 +59,7 @@ TEST_CASE("PathSpace Execution") {
                         return 42;
                     },
                     In{.executionCategory = ExecutionCategory::Lazy});
-            auto result = pspace.readBlock<int>("/test", Out::Block(200ms));
+            auto result = pspace.readBlock<int>("/test", Block{200ms});
             REQUIRE(result.has_value());
             CHECK(result.value() == 42);
         }
@@ -73,7 +73,7 @@ TEST_CASE("PathSpace Execution") {
                     },
                     In{.executionCategory = ExecutionCategory::Lazy});
 
-            auto result = pspace.readBlock<int>("/test", Out::Block(50ms));
+            auto result = pspace.readBlock<int>("/test", Block(50ms));
             CHECK(!result.has_value());
             CHECK(result.error().code == Error::Code::Timeout);
         }

@@ -184,7 +184,7 @@ TEST_CASE("PathSpace Extract") {
     }
 
     SUBCASE("Extract with timeout") {
-        auto ret = pspace.extractBlock<int>("/timeout", Out::Block(100ms));
+        auto ret = pspace.extractBlock<int>("/timeout", Block(100ms));
         CHECK_FALSE(ret.has_value());
     }
 
