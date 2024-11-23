@@ -76,11 +76,8 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
     auto task = this->tasks.front();
 
     if (!task->hasStarted()) {
-        ExecutionCategory const optionsExecutionCategory = options.executionCategory;
-        ExecutionCategory const taskExecutionCategory    = task->category();
-        bool const              isLazyExecution          = (optionsExecutionCategory == ExecutionCategory::Unknown)
-                                                                   ? taskExecutionCategory == ExecutionCategory::Lazy
-                                                                   : optionsExecutionCategory == ExecutionCategory::Lazy;
+        ExecutionCategory const taskExecutionCategory = task->category();
+        bool const              isLazyExecution       = taskExecutionCategory == ExecutionCategory::Lazy;
 
         if (isLazyExecution)
             if (auto ret = TaskPool::Instance().addTask(task); ret)

@@ -285,7 +285,7 @@ Could be done as a hashmap from a ConcretePath to a PathSpace*. Would need to cl
 The extendability of a PathSpace can be used to create a reactive data flow, for example by creating a child PathSpace that takes n other PathSpace paths as input and combines their
 values by extractbing from them or a PathSpace that performs a transformation on any data from n other paths. Each tuple can be seen as a data stream as long as they are alive, when
 they run out of items the stream dies. One example could be a lambda within the space that waits for the left mouse button to be pressed via space.read<int>("/system/mouse/button_down",
-ReadOptions{.block=true}).
+ReadOptions{.block_=true}).
 
 ## Example Use Cases
 * Scene Graph - Objects to be displayed by a 3d renderer. Mainly takes care of seamlessly interacting with the renderer to upload and display objects in the graph. Could also support data oriented design by having composable objects that store their properties in a list instead of objects in a list.

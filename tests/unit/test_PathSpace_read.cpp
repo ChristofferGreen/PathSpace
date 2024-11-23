@@ -26,6 +26,7 @@
 #include <stack>
 
 using namespace SP;
+using namespace std::chrono_literals;
 
 TEST_CASE("PathSpace Read") {
     PathSpace pspace;
@@ -120,7 +121,7 @@ TEST_CASE("PathSpace Read") {
     }
 
     SUBCASE("Read with timeout") {
-        auto ret = pspace.readBlock<int>("/timeout", Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+        auto ret = pspace.readBlock<int>("/timeout", Out::Block(100ms));
         CHECK_FALSE(ret.has_value());
     }
 

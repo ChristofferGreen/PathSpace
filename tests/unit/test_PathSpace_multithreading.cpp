@@ -21,6 +21,7 @@
 #include <vector>
 
 using namespace SP;
+using namespace std::chrono_literals;
 
 TEST_CASE("PathSpace Multithreading") {
     SUBCASE("PathSpace Basic Concurrent Operations") {
@@ -145,7 +146,7 @@ TEST_CASE("PathSpace Multithreading") {
                 for (int i = 0; i < OPERATIONS_PER_THREAD && state.shouldContinue(); i++) {
                     std::string path = getPath(threadId % (NUM_THREADS / 2), i, rng);
 
-                    Out options{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(50)}};
+                    Out options = Out::Block(50ms);
 
                     // Try read first, fall back to extract
                     auto result = pspace.readBlock<int>(path, options);
@@ -405,7 +406,7 @@ TEST_CASE("PathSpace Multithreading") {
         const int              MAX_TIMEOUTS   = 10; // Allow some timeouts before giving up
 
         while (extractedCount < expectedCount) {
-            auto value = pspace.extractBlock<int>("/counter", Out{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
+            auto value = pspace.extractBlock<int>("/counter", Out::Block(1000ms));
 
             if (!value.has_value()) {
                 if (value.error().code == Error::Code::Timeout) {
@@ -646,7 +647,7 @@ TEST_CASE("PathSpace Multithreading") {
 
                     // Extract all values from this path
                     while (seqNums.size() < expectedValues) {
-                        auto value = pspace.extractBlock<int>(path, Out{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
+                        auto value = pspace.extractBlock<int>(path, Out::Block(1000ms));
 
                         if (!value.has_value()) {
                             if (value.error().code == Error::Code::Timeout) {
@@ -767,7 +768,7 @@ TEST_CASE("PathSpace Multithreading") {
                     int       extractedCount = 0;
 
                     while (extractedCount < NUM_VALUES) {
-                        auto value = pspace.extractBlock<int>("/race", Out{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
+                        auto value = pspace.extractBlock<int>("/race", Out::Block(1000ms));
 
                         if (!value.has_value()) {
                             if (value.error().code == Error::Code::Timeout) {
@@ -840,12 +841,12 @@ TEST_CASE("PathSpace Multithreading") {
 
             // Verify queue is empty with timeouts
             {
-                auto finalRead = pspace.readBlock<int>("/race", Out{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
+                auto finalRead = pspace.readBlock<int>("/race", Out::Block(200ms));
                 CHECK_MESSAGE(!finalRead.has_value(), "Expected no more values to read");
             }
 
             {
-                auto finalExtract = pspace.extractBlock<int>("/race", Out{.block{{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(1000)}}});
+                auto finalExtract = pspace.extractBlock<int>("/race", Out::Block(1000ms));
                 CHECK_MESSAGE(!finalExtract.has_value(), "Expected no more values to extract");
             }
         }
@@ -935,7 +936,7 @@ TEST_CASE("PathSpace Multithreading") {
                     if (item.extracted)
                         continue;
 
-                    auto result = pspace.extractBlock<int>(item.path, Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+                    auto result = pspace.extractBlock<int>(item.path, Out::Block(100ms));
 
                     if (result.has_value()) {
                         CHECK(result.value() == item.value);
@@ -1098,14 +1099,14 @@ TEST_CASE("PathSpace Multithreading") {
                                     }
                                     case 1: {
                                         // Read with short timeout
-                                        auto result = space.readBlock<int>(path, Out{.block = BlockOptions{.timeout = std::chrono::milliseconds(10)}});
+                                        auto result = space.readBlock<int>(path, Out::Block(10ms));
                                         if (result)
                                             success_count++;
                                         break;
                                     }
                                     case 2: {
                                         // Extract with short timeout
-                                        auto result = space.extractBlock<int>(path, Out{.block = BlockOptions{.timeout = std::chrono::milliseconds(10)}});
+                                        auto result = space.extractBlock<int>(path, Out::Block(10ms));
                                         if (result)
                                             success_count++;
                                         break;
@@ -1196,7 +1197,7 @@ TEST_CASE("PathSpace Multithreading") {
         auto reader_func = [&](int reader_id) {
             try {
                 for (int j = 0; j < ITERATIONS && !has_error; j++) {
-                    auto result = space.readBlock<int>("/shared/task", Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::seconds(10)}});
+                    auto result = space.readBlock<int>("/shared/task", Out::Block(10ms));
 
                     if (result && result.value() == 42) {
                         counter.increment();
@@ -1249,7 +1250,7 @@ TEST_CASE("PathSpace Multithreading") {
         auto reader_func = [&](int reader_id) {
             try {
                 for (int j = 0; j < ITERATIONS && !has_error; j++) {
-                    auto result = space.readBlock<int>("/shared/task", Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::seconds(10)}});
+                    auto result = space.readBlock<int>("/shared/task", Out::Block(10ms));
 
                     if (result && result.value() == 42) {
                         counter.increment();
@@ -1291,7 +1292,7 @@ TEST_CASE("PathSpace Multithreading") {
         PathSpace space;
 
         // Try to read from a path that doesn't exist yet, with timeout
-        auto read_result = space.readBlock<int>("/missing_task", Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+        auto read_result = space.readBlock<int>("/missing_task", Out::Block(100ms));
 
         // Should timeout because no data was ever inserted
         CHECK_MESSAGE(!read_result.has_value(), "Expected timeout, but got value: ", read_result.has_value() ? std::to_string(read_result.value()) : "timeout");
@@ -1315,7 +1316,7 @@ TEST_CASE("PathSpace Multithreading") {
         REQUIRE_MESSAGE(fast_insert.errors.empty(), "Failed to insert fast task");
 
         // Read fast task - should complete
-        auto fast_result = space.readBlock<int>("/fast_task", Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(200)}});
+        auto fast_result = space.readBlock<int>("/fast_task", Out::Block(200ms));
 
         CHECK_MESSAGE(fast_result.has_value(), "Fast task should complete but got timeout");
 
@@ -1324,7 +1325,7 @@ TEST_CASE("PathSpace Multithreading") {
         }
 
         // Now try reading from a non-existent path - should timeout
-        auto timeout_result = space.readBlock<int>("/missing_task", Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+        auto timeout_result = space.readBlock<int>("/missing_task", Out::Block(100ms));
 
         CHECK_MESSAGE(!timeout_result.has_value(), "Expected timeout for missing task");
 
@@ -1358,7 +1359,7 @@ TEST_CASE("PathSpace Multithreading") {
         REQUIRE_MESSAGE(slow_insert.errors.empty(), "Failed to insert fast task");
 
         // Read fast task - should complete
-        auto fast_result = space.readBlock<int>("/fast_task", Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(200)}});
+        auto fast_result = space.readBlock<int>("/fast_task", Out::Block(200ms));
 
         CHECK_MESSAGE(fast_result.has_value(), "Fast task should complete but got timeout");
 
@@ -1367,7 +1368,7 @@ TEST_CASE("PathSpace Multithreading") {
         }
 
         // Now try reading from a slow execution- should timeout
-        auto timeout_result = space.readBlock<int>("/slow_task", Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+        auto timeout_result = space.readBlock<int>("/slow_task", Out::Block(100ms));
 
         CHECK_MESSAGE(!timeout_result.has_value(), std::format("Expected timeout for slow task, result has value: {}", timeout_result.value()));
 
@@ -1395,7 +1396,7 @@ TEST_CASE("PathSpace Multithreading") {
         CHECK_MESSAGE(good_result.value() == 42, "Good path should return correct value");
 
         // Then verify error handling
-        auto error_result = space.readBlock<int>("/error/task", Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+        auto error_result = space.readBlock<int>("/error/task", Out::Block(100ms));
     }
 
     SUBCASE("Task Cancellation with Enhanced Control") {
@@ -1662,14 +1663,14 @@ TEST_CASE("PathSpace Multithreading") {
                 // Even threads try to acquire A then B
                 auto resultA = pspace.readBlock<int>("/resourceA");
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                auto resultB = pspace.readBlock<int>("/resourceB", Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+                auto resultB = pspace.readBlock<int>("/resourceB", Out::Block(100ms));
                 if (!resultB)
                     deadlockCount++;
             } else {
                 // Odd threads try to acquire B then A
                 auto resultB = pspace.readBlock<int>("/resourceB");
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                auto resultA = pspace.readBlock<int>("/resourceA", Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+                auto resultA = pspace.readBlock<int>("/resourceA", Out::Block(100ms));
                 if (!resultA)
                     deadlockCount++;
             }
@@ -1712,7 +1713,7 @@ TEST_CASE("PathSpace Multithreading") {
                         std::string path = std::format("/perf/{}", i % NUM_PATHS);
                         auto        task = []() -> int { return 42; };
                         pspace.insert(path, task);
-                        auto result = pspace.readBlock<int>(path, Out{.block = BlockOptions{.timeout = std::chrono::milliseconds(10)}});
+                        auto result = pspace.readBlock<int>(path, Out::Block(10ms));
                         if (result.has_value()) {
                             completedOperations.fetch_add(1, std::memory_order_relaxed);
                         }
@@ -1803,10 +1804,10 @@ TEST_CASE("PathSpace Multithreading") {
                 std::this_thread::sleep_for(std::chrono::milliseconds(think_dist(rng)));
 
                 // Try to pick up forks
-                auto first = pspace.extractBlock<int>(first_fork, Out{.block = BlockOptions{.timeout = std::chrono::milliseconds(50)}});
+                auto first = pspace.extractBlock<int>(first_fork, Out::Block(50ms));
                 if (first.has_value()) {
                     stats[id].forks_acquired.fetch_add(1, std::memory_order_relaxed);
-                    auto second = pspace.extractBlock<int>(second_fork, Out{.block = BlockOptions{.timeout = std::chrono::milliseconds(50)}});
+                    auto second = pspace.extractBlock<int>(second_fork, Out::Block(50ms));
                     if (second.has_value()) {
                         stats[id].forks_acquired.fetch_add(1, std::memory_order_relaxed);
                         // Eating

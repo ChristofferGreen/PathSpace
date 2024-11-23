@@ -453,9 +453,9 @@ TEST_CASE("PathSpace Integration") {
         pspace.insert("/tasks/fast", fastTask);
 
         auto fastResult = pspace.readBlock<int>("/tasks/fast",
-                                                Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = 100ms}});
+                                                Out::Block(100ms));
         auto slowResult = pspace.readBlock<int>("/tasks/slow",
-                                                Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = 100ms}});
+                                                Out::Block(100ms));
 
         CHECK(fastResult.has_value());
         CHECK_FALSE(slowResult.has_value());
@@ -463,7 +463,7 @@ TEST_CASE("PathSpace Integration") {
 
         // Verify slow task eventually completes
         auto slowResultWait = pspace.readBlock<int>("/tasks/slow",
-                                                    Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = 1000ms}});
+                                                    Out::Block(1000ms));
         REQUIRE(slowResultWait.has_value());
         CHECK(slowResultWait.value() == 42);
     }

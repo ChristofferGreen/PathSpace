@@ -24,6 +24,7 @@
 #include <bitset>
 
 using namespace SP;
+using namespace std::chrono_literals;
 
 TEST_CASE("PathSpace Extract") {
     PathSpace pspace;
@@ -183,7 +184,7 @@ TEST_CASE("PathSpace Extract") {
     }
 
     SUBCASE("Extract with timeout") {
-        auto ret = pspace.extractBlock<int>("/timeout", Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = std::chrono::milliseconds(100)}});
+        auto ret = pspace.extractBlock<int>("/timeout", Out::Block(100ms));
         CHECK_FALSE(ret.has_value());
     }
 

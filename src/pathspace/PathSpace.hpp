@@ -8,6 +8,7 @@
 #include "task/Task.hpp"
 #include "type/InputData.hpp"
 #include "utils/TaggedLogger.hpp"
+#include <chrono>
 
 namespace SP {
 struct TaskPool;
@@ -83,7 +84,7 @@ public:
     }
 
     template <typename DataType>
-    auto readBlock(ConcretePathStringView const& path, Out const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}}) const -> Expected<DataType> {
+    auto readBlock(ConcretePathStringView const& path, Out const& options = Out::Block()) const -> Expected<DataType> {
         sp_log("PathSpace::readBlock", "Function Called");
         if (options.validationLevel >= ValidationLevel::Basic)
             if (auto error = path.validate())
@@ -94,7 +95,7 @@ public:
 
     template <FixedString pathIn, typename DataType>
         requires(validate_path(pathIn))
-    auto readBlock(Out const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}}) const -> Expected<DataType> {
+    auto readBlock(Out const& options = Out::Block()) const -> Expected<DataType> {
         sp_log("PathSpace::readBlock", "Function Called");
         const_cast<Out&>(options).validationLevel = ValidationLevel::None;
         return this->readBlock<DataType>(ConcretePathStringView{pathIn}, options);
@@ -131,7 +132,7 @@ public:
     }
 
     template <typename DataType>
-    auto extractBlock(ConcretePathStringView const& path, Out const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}}) -> Expected<DataType> {
+    auto extractBlock(ConcretePathStringView const& path, Out const& options = Out::Block()) -> Expected<DataType> {
         sp_log("PathSpace::extractBlock", "Function Called");
         if (auto error = path.validate(options.validationLevel))
             return std::unexpected(*error);
@@ -141,7 +142,7 @@ public:
 
     template <FixedString pathIn, typename DataType>
         requires(validate_path(pathIn))
-    auto extractBlock(Out const& options = {.block{{.behavior = BlockOptions::Behavior::Wait}}}) -> Expected<DataType> {
+    auto extractBlock(Out const& options = Out::Block()) -> Expected<DataType> {
         sp_log("PathSpace::extractBlock", "Function Called");
         const_cast<Out&>(options).validationLevel = ValidationLevel::None;
         return this->extractBlock<DataType>(ConcretePathStringView{pathIn}, options);
@@ -159,7 +160,7 @@ protected:
         DataType      obj;
         Expected<int> result; // Moved outside to be accessible in all scopes
         auto const    inputMetaData = InputMetadataT<DataType>{};
-        auto const    deadline      = options.block && options.block->timeout ? std::chrono::system_clock::now() + *options.block->timeout : std::chrono::system_clock::time_point::max();
+        auto const    deadline      = std::chrono::system_clock::now() + options.timeout;
 
         // First try entirely outside the loop to minimize lock time
         {

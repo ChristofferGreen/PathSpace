@@ -20,16 +20,16 @@ TEST_CASE("PathSpace Execution") {
 
         SUBCASE("Function Lambda") {
             auto f = []() -> int { return 65; };
-            pspace.insert("/test", f);
+            CHECK(pspace.insert("/test", f).nbrTasksInserted == 1);
             auto result = pspace.readBlock<int>("/test");
-            CHECK(result.has_value());
+            REQUIRE(result.has_value());
             CHECK(result.value() == 65);
         }
 
         SUBCASE("Direct Lambda") {
-            pspace.insert("/test", []() -> int { return 65; });
+            CHECK(pspace.insert("/test", []() -> int { return 65; }).nbrTasksInserted == 1);
             auto result = pspace.readBlock<int>("/test");
-            CHECK(result.has_value());
+            REQUIRE(result.has_value());
             CHECK(result.value() == 65);
         }
     }
@@ -38,14 +38,14 @@ TEST_CASE("PathSpace Execution") {
         SUBCASE("Immediate Execution") {
             pspace.insert("/test", []() -> int { return 42; }, In{.executionCategory = ExecutionCategory::Immediate});
             auto result = pspace.readBlock<int>("/test");
-            CHECK(result.has_value());
+            REQUIRE(result.has_value());
             CHECK(result.value() == 42);
         }
 
         SUBCASE("Lazy Execution") {
             pspace.insert("/test", []() -> int { return 42; }, In{.executionCategory = ExecutionCategory::Lazy});
             auto result = pspace.readBlock<int>("/test");
-            CHECK(result.has_value());
+            REQUIRE(result.has_value());
             CHECK(result.value() == 42);
         }
     }
@@ -59,9 +59,8 @@ TEST_CASE("PathSpace Execution") {
                         return 42;
                     },
                     In{.executionCategory = ExecutionCategory::Lazy});
-
-            auto result = pspace.readBlock<int>("/test", Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = 200ms}});
-            CHECK(result.has_value());
+            auto result = pspace.readBlock<int>("/test", Out::Block(200ms));
+            REQUIRE(result.has_value());
             CHECK(result.value() == 42);
         }
 
@@ -74,7 +73,7 @@ TEST_CASE("PathSpace Execution") {
                     },
                     In{.executionCategory = ExecutionCategory::Lazy});
 
-            auto result = pspace.readBlock<int>("/test", Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait, .timeout = 50ms}});
+            auto result = pspace.readBlock<int>("/test", Out::Block(50ms));
             CHECK(!result.has_value());
             CHECK(result.error().code == Error::Code::Timeout);
         }
@@ -127,7 +126,7 @@ TEST_CASE("PathSpace Execution") {
         SUBCASE("Wait For Execution") {
             pspace.insert("/test", []() -> int { return 42; }, In{.executionCategory = ExecutionCategory::Lazy});
 
-            auto result = pspace.readBlock<int>("/test", Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait}});
+            auto result = pspace.readBlock<int>("/test", Out{.block_ = true});
             CHECK(result.has_value());
             CHECK(result.value() == 42);
         }
@@ -138,7 +137,7 @@ TEST_CASE("PathSpace Execution") {
                 pspace.insert("/test", 42);
             });
 
-            auto result = pspace.readBlock<int>("/test", Out{.block = BlockOptions{.behavior = BlockOptions::Behavior::Wait}});
+            auto result = pspace.readBlock<int>("/test", Out{.block_ = true});
 
             inserter.join();
             CHECK(result.has_value());
