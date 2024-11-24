@@ -88,8 +88,9 @@ public:
         sp_log("PathSpace::readBlock", "Function Called");
         if (auto error = path.validate())
             return std::unexpected(*error);
+        DataType   obj;
         bool const doExtract = false;
-        return const_cast<PathSpace*>(this)->outBlock<DataType>(path, InputMetadataT<DataType>{}, options, doExtract);
+        return const_cast<PathSpace*>(this)->outBlock<DataType>(path, InputMetadataT<DataType>{}, options, &obj, doExtract);
     }
 
     template <FixedString pathIn, typename DataType>
@@ -135,8 +136,9 @@ public:
         sp_log("PathSpace::extractBlock", "Function Called");
         if (auto error = path.validate(options.validationLevel))
             return std::unexpected(*error);
+        DataType   obj;
         bool const doExtract = true;
-        return this->outBlock<DataType>(path, InputMetadataT<DataType>{}, options, doExtract);
+        return this->outBlock<DataType>(path, InputMetadataT<DataType>{}, options, &obj, doExtract);
     }
 
     template <FixedString pathIn, typename DataType>
@@ -153,7 +155,7 @@ protected:
     friend class TaskPool;
 
     template <typename DataType>
-    auto outBlock(ConcretePathStringView const& path, InputMetadataT<DataType> const inputMetadata, Out const& options, bool const doExtract) -> Expected<DataType> {
+    auto outBlock(ConcretePathStringView const& path, InputMetadataT<DataType> const inputMetadata, Out const& options, void* objP, bool const doExtract) -> Expected<DataType> {
         sp_log("PathSpace::outBlock", "Function Called");
 
         DataType      obj;
