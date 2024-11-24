@@ -160,7 +160,7 @@ protected:
 
     virtual auto in(GlobPathStringView const& path, InputData const& data, In const& options) -> InsertReturn;
     virtual auto out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj, bool const doExtract) -> Expected<int>;
-    auto         outBlock(ConcretePathStringView const& path, InputMetadata const inputMetadata, Out const& options, void* obj, bool const doExtract) -> Expected<int>;
+    auto         outBlock(ConcretePathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj, bool const doExtract) -> Expected<int>;
     auto         shutdown() -> void;
 
     TaskPool*     pool = nullptr;

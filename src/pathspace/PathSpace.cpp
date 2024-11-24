@@ -45,7 +45,7 @@ auto PathSpace::out(ConcretePathStringView const& path, InputMetadata const& inp
     return this->root.out(PathViewConcrete(path.begin(), path.end()), inputMetadata, obj, options, doExtract);
 }
 
-auto PathSpace::outBlock(ConcretePathStringView const& path, InputMetadata const inputMetadata, Out const& options, void* obj, bool const doExtract) -> Expected<int> {
+auto PathSpace::outBlock(ConcretePathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj, bool const doExtract) -> Expected<int> {
     sp_log("PathSpace::outBlock", "Function Called");
 
     Expected<int> result; // Moved outside to be accessible in all scopes
