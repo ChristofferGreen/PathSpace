@@ -532,7 +532,7 @@ TEST_CASE("PathSpace Multithreading") {
 
         auto extractorFunction = [&]() {
             while (writesCompleted < (NUM_WRITERS * VALUES_PER_WRITER)) {
-                auto value = pspace.extractBlock<int>("/mixed");
+                auto value = pspace.extractBlock<int>("/mixed", Block{});
                 if (value.has_value()) {
                     extractsCompleted++;
                 }
@@ -883,7 +883,7 @@ TEST_CASE("PathSpace Multithreading") {
                 std::string basePath = "/thread" + std::to_string(t);
                 for (int depth = 0; depth < 3; depth++) {
                     std::string path  = basePath + "/path" + std::to_string(i) + "/depth" + std::to_string(depth);
-                    auto        value = pspace.extractBlock<int>(path);
+                    auto        value = pspace.extractBlock<int>(path, Block{});
                     REQUIRE(value.has_value());
                     CHECK(value.value() == i);
                 }

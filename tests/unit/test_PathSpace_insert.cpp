@@ -44,7 +44,7 @@ TEST_CASE("PathSpace Insert") {
         CHECK(pspace.insert("/a/b/e/f", 456).nbrValuesInserted == 1);
         CHECK(pspace.insert("/a/b/e/f", 567).nbrValuesInserted == 1);
         CHECK(pspace.read<int>("/a/b/c/d", Block{}).value() == 123);
-        CHECK(pspace.extractBlock<int>("/a/b/e/f").value() == 456);
+        CHECK(pspace.extractBlock<int>("/a/b/e/f", Block{}).value() == 456);
         CHECK(pspace.read<int>("/a/b/e/f", Block{}).value() == 567);
     }
 

@@ -87,7 +87,7 @@ TEST_CASE("PathSpace Execution") {
             CHECK(read_result.has_value());
             CHECK(read_result.value() == 42);
 
-            auto extract_result = pspace.extractBlock<int>("/test");
+            auto extract_result = pspace.extractBlock<int>("/test", Block{});
             CHECK(extract_result.has_value());
             CHECK(extract_result.value() == 42);
 
