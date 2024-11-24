@@ -43,15 +43,15 @@ TEST_CASE("PathSpace Insert") {
         CHECK(pspace.insert("/a/b/c/d", 123).nbrValuesInserted == 1);
         CHECK(pspace.insert("/a/b/e/f", 456).nbrValuesInserted == 1);
         CHECK(pspace.insert("/a/b/e/f", 567).nbrValuesInserted == 1);
-        CHECK(pspace.readBlock<int>("/a/b/c/d", Block{}).value() == 123);
+        CHECK(pspace.read<int>("/a/b/c/d", Block{}).value() == 123);
         CHECK(pspace.extractBlock<int>("/a/b/e/f").value() == 456);
-        CHECK(pspace.readBlock<int>("/a/b/e/f", Block{}).value() == 567);
+        CHECK(pspace.read<int>("/a/b/e/f", Block{}).value() == 567);
     }
 
     SUBCASE("Simple Function Pointer Insertion and Execution") {
         int (*simpleFunc)() = []() -> int { return 42; };
         CHECK(pspace.insert("/simple", simpleFunc).errors.size() == 0);
-        auto result = pspace.readBlock<int>("/simple", Block{});
+        auto result = pspace.read<int>("/simple", Block{});
         CHECK(result.has_value());
         CHECK(result.value() == 42);
     }
@@ -59,18 +59,18 @@ TEST_CASE("PathSpace Insert") {
     SUBCASE("std::function Insertion and Execution") {
         std::function<int()> stdFunc = []() -> int { return 100; };
         CHECK(pspace.insert("/std", stdFunc).errors.size() == 0);
-        auto result = pspace.readBlock<int>("/std", Block{});
+        auto result = pspace.read<int>("/std", Block{});
         CHECK(result.has_value());
         CHECK(result.value() == 100);
     }
 
     SUBCASE("Nested Function Calls with Different Types") {
         auto const f1 = [&pspace]() -> double {
-            auto const val = pspace.readBlock<int>("/f2").value();
+            auto const val = pspace.read<int>("/f2", Block{}).value();
             return val * 1.5;
         };
         auto const f2 = [&pspace]() -> int {
-            auto const val = pspace.readBlock<std::string>("/f3", Block{}).value();
+            auto const val = pspace.read<std::string>("/f3", Block{}).value();
             return std::stoi(val);
         };
         std::function<std::string()> const f3 = []() -> std::string { return "50"; };
@@ -79,7 +79,7 @@ TEST_CASE("PathSpace Insert") {
         CHECK(pspace.insert("/f2", f2).errors.size() == 0);
         CHECK(pspace.insert("/f3", f3).errors.size() == 0);
 
-        auto result = pspace.readBlock<double>("/f1", Block{});
+        auto result = pspace.read<double>("/f1", Block{});
         CHECK(result.has_value());
         CHECK(result.value() == 75.0);
     }
@@ -90,12 +90,12 @@ TEST_CASE("PathSpace Insert") {
             auto func = [i, &pspace]() -> int {
                 if (i == 0)
                     return 1;
-                return pspace.readBlock<int>(SP::ConcretePathStringView{"/func" + std::to_string(i - 1)}).value() + 1;
+                return pspace.read<int>(SP::ConcretePathStringView{"/func" + std::to_string(i - 1)}, Block{}).value() + 1;
             };
             CHECK(pspace.insert(SP::GlobPathStringView{"/func" + std::to_string(i)}, func).errors.size() == 0);
         }
 
-        auto result = pspace.readBlock<int>(SP::ConcretePathStringView{"/func" + std::to_string(DEPTH - 1)}, Block{});
+        auto result = pspace.read<int>(SP::ConcretePathStringView{"/func" + std::to_string(DEPTH - 1)}, Block{});
         CHECK(result.has_value());
         CHECK(result.value() == DEPTH);
     }
@@ -111,7 +111,7 @@ TEST_CASE("PathSpace Insert") {
 
             // Reading triggers execution in sequence
             for (int i = 0; i < 1000; ++i)
-                CHECK(pspace.readBlock<int>(std::format("/concurrent{}", i), Block{}) == i + 1);
+                CHECK(pspace.read<int>(std::format("/concurrent{}", i), Block{}) == i + 1);
 
             CHECK(counter == 1000);
         }
@@ -127,7 +127,7 @@ TEST_CASE("PathSpace Insert") {
             // Read the results - they'll be in non-deterministic order
             std::set<int> results;
             for (int i = 0; i < 1000; ++i) {
-                auto result = pspace.readBlock<int>(std::format("/concurrent{}", i), Block{});
+                auto result = pspace.read<int>(std::format("/concurrent{}", i), Block{});
                 REQUIRE(result.has_value());
                 auto value = result.value();
                 CHECK(value > 0);     // Separate checks

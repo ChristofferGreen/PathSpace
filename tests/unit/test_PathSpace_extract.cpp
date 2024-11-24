@@ -220,7 +220,7 @@ TEST_CASE("PathSpace Extract") {
             REQUIRE(pspace.insert("/test", 42).errors.empty());
 
             // Verify read doesn't remove value
-            auto readVal = pspace.readBlock<int>("/test", Block{});
+            auto readVal = pspace.read<int>("/test", Block{});
             REQUIRE(readVal.has_value());
             CHECK(readVal.value() == 42);
 
@@ -269,7 +269,7 @@ TEST_CASE("PathSpace Extract") {
             CHECK(val1.value() == 10);
 
             // Second path should be unaffected
-            auto val2 = pspace.readBlock<int>("/path2", Block{});
+            auto val2 = pspace.read<int>("/path2", Block{});
             REQUIRE(val2.has_value());
             CHECK(val2.value() == 20);
 
@@ -552,7 +552,7 @@ TEST_CASE("PathSpace Glob") {
         CHECK(pspace.insert("/exec/a", func(1), options).nbrTasksInserted == 1);
         CHECK(pspace.insert("/exec/a", func(10), options).nbrTasksInserted == 1);
         auto val1 = pspace.extractBlock<int>("/exec/a");
-        val1      = pspace.readBlock<int>("/exec/a", Block{});
+        val1      = pspace.read<int>("/exec/a", Block{});
     }
 
     SUBCASE("Glob with Lazy Executions2") {
@@ -571,7 +571,7 @@ TEST_CASE("PathSpace Glob") {
         CHECK(pspace.insert("/exec/a", func(1), options).nbrTasksInserted == 1);
         CHECK(pspace.insert("/exec/*", func(10), options).nbrTasksInserted == 1);
         auto val1 = pspace.extractBlock<int>("/exec/a");
-        val1      = pspace.readBlock<int>("/exec/a", Block{});
+        val1      = pspace.read<int>("/exec/a", Block{});
     }
 
     SUBCASE("Glob with Lazy Executions3") {
@@ -592,7 +592,7 @@ TEST_CASE("PathSpace Glob") {
         sp_log("Testcase starting final extractBlock", "Testcase");
         auto val1 = pspace.extractBlock<int>("/exec/a");
         sp_log("Testcase starting final readBlock", "Testcase");
-        val1 = pspace.readBlock<int>("/exec/a", Block{});
+        val1 = pspace.read<int>("/exec/a", Block{});
         sp_log("Testcase ends", "Testcase");
     }
 
@@ -620,21 +620,21 @@ TEST_CASE("PathSpace Glob") {
         auto val1 = pspace.extractBlock<int>("/exec/a");
         CHECK(val1.has_value());
         CHECK(val1.value() == 1);
-        val1 = pspace.readBlock<int>("/exec/a", Block{});
+        val1 = pspace.read<int>("/exec/a", Block{});
         /*CHECK(val1.has_value());
         CHECK(val1.value() == 10);
 
         auto val2 = pspace.extractBlock<int>("/exec/b");
         CHECK(val2.has_value());
         CHECK(val2.value() == 2);
-        val2 = pspace.readBlock<int>("/exec/b", Block{});
+        val2 = pspace.read<int>("/exec/b", Block{});
         CHECK(val2.has_value());
         CHECK(val2.value() == 10);
 
         auto val3 = pspace.extractBlock<int>("/exec/c", Block{});
         CHECK(val3.has_value());
         CHECK(val3.value() == 3);
-        val3 = pspace.readBlock<int>("/exec/c", Block{});
+        val3 = pspace.read<int>("/exec/c", Block{});
         CHECK(val3.has_value());
         CHECK(val3.value() == 10);
 
@@ -858,7 +858,7 @@ TEST_CASE("PathSpace String") {
             auto str_func = []() -> std::string { return "generated string"; };
             CHECK(pspace.insert("/func/str", str_func).nbrTasksInserted == 1);
 
-            auto str_result = pspace.readBlock<std::string>("/func/str", Block{});
+            auto str_result = pspace.read<std::string>("/func/str", Block{});
             CHECK(str_result.has_value());
             CHECK(str_result.value() == "generated string");
 
@@ -875,7 +875,7 @@ TEST_CASE("PathSpace String") {
             CHECK(num.has_value());
             CHECK(num.value() == 42);
 
-            auto dynamic_str = pspace.readBlock<std::string>("/func/mixed", Block{});
+            auto dynamic_str = pspace.read<std::string>("/func/mixed", Block{});
             CHECK(dynamic_str.has_value());
             CHECK(dynamic_str.value() == "dynamic string");
         }
