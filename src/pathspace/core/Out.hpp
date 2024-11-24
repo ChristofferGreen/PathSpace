@@ -56,14 +56,14 @@ struct Block : Out {
         : Out{.block_ = true, .timeout = timeout} {}
 };
 
-struct NoValidation : Out {
-    NoValidation() {
+struct OutNoValidation : Out {
+    OutNoValidation() {
         this->validationLevel = ValidationLevel::None;
     }
 };
 
-struct FullValidation : Out {
-    FullValidation() {
+struct OutFullValidation : Out {
+    OutFullValidation() {
         this->validationLevel = ValidationLevel::Full;
     }
 };
