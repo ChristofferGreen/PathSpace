@@ -89,7 +89,7 @@ public:
         if (auto error = path.validate())
             return std::unexpected(*error);
         bool const doExtract = false;
-        return const_cast<PathSpace*>(this)->outBlock<DataType>(path, options, doExtract);
+        return const_cast<PathSpace*>(this)->outBlock<DataType>(path, InputMetadataT<DataType>{}, options, doExtract);
     }
 
     template <FixedString pathIn, typename DataType>
@@ -136,7 +136,7 @@ public:
         if (auto error = path.validate(options.validationLevel))
             return std::unexpected(*error);
         bool const doExtract = true;
-        return this->outBlock<DataType>(path, options, doExtract);
+        return this->outBlock<DataType>(path, InputMetadataT<DataType>{}, options, doExtract);
     }
 
     template <FixedString pathIn, typename DataType>
@@ -153,16 +153,15 @@ protected:
     friend class TaskPool;
 
     template <typename DataType>
-    auto outBlock(ConcretePathStringView const& path, Out const& options, bool const doExtract) -> Expected<DataType> {
+    auto outBlock(ConcretePathStringView const& path, InputMetadataT<DataType> const inputMetadata, Out const& options, bool const doExtract) -> Expected<DataType> {
         sp_log("PathSpace::outBlock", "Function Called");
 
         DataType      obj;
         Expected<int> result; // Moved outside to be accessible in all scopes
-        auto const    inputMetaData = InputMetadataT<DataType>{};
 
         // First try entirely outside the loop to minimize lock time
         {
-            result = this->out(path, inputMetaData, options, &obj, doExtract);
+            result = this->out(path, inputMetadata, options, &obj, doExtract);
             if ((result.has_value() && result.value() > 0) || options.block_ == false) {
                 return obj;
             }
@@ -180,7 +179,7 @@ protected:
             auto guard = waitMap.wait(path);
             {
                 bool success = guard.wait_until(deadline, [&]() {
-                    result          = this->out(path, inputMetaData, options, &obj, doExtract);
+                    result          = this->out(path, inputMetadata, options, &obj, doExtract);
                     bool haveResult = (result.has_value() && result.value() > 0);
                     return haveResult;
                 });
