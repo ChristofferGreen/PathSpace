@@ -359,10 +359,10 @@ TEST_CASE("PathSpace Integration") {
         // Setup dependent computations
         auto computeBase = []() -> int { return 10; };
         auto multiply    = [&pspace]() -> int {
-            return pspace.readBlock<int>("/data/base", Block{}).value() * 2;
+            return pspace.read<int>("/data/base", Block{}).value() * 2;
         };
         auto addOffset = [&pspace]() -> int {
-            return pspace.readBlock<int>("/data/multiplied", Block{}).value() + 5;
+            return pspace.read<int>("/data/multiplied", Block{}).value() + 5;
         };
 
         pspace.insert("/data/base", computeBase);
@@ -370,12 +370,12 @@ TEST_CASE("PathSpace Integration") {
         pspace.insert("/data/final", addOffset);
 
         // Verify execution chain
-        auto result = pspace.readBlock<int>("/data/final", Block{});
+        auto result = pspace.read<int>("/data/final", Block{});
         REQUIRE(result.has_value());
         CHECK(result.value() == 25); // (10 * 2) + 5
 
         // Test multiple reads give same result
-        auto result2 = pspace.readBlock<int>("/data/final", Block{});
+        auto result2 = pspace.read<int>("/data/final", Block{});
         REQUIRE(result2.has_value());
         CHECK(result2.value() == 25);
     }
@@ -396,7 +396,7 @@ TEST_CASE("PathSpace Integration") {
                         pspace.insert("/data/" + std::to_string(i) + "/status", "active");
 
                         // Read operations
-                        auto value = pspace.readBlock<int>("/data/" + std::to_string(i) + "/value", Block{});
+                        auto value = pspace.read<int>("/data/" + std::to_string(i) + "/value", Block{});
                         if (value)
                             successCount++;
 
@@ -452,18 +452,18 @@ TEST_CASE("PathSpace Integration") {
         pspace.insert("/tasks/slow", slowTask);
         pspace.insert("/tasks/fast", fastTask);
 
-        auto fastResult = pspace.readBlock<int>("/tasks/fast",
-                                                Block(100ms));
-        auto slowResult = pspace.readBlock<int>("/tasks/slow",
-                                                Block(100ms));
+        auto fastResult = pspace.read<int>("/tasks/fast",
+                                           Block(100ms));
+        auto slowResult = pspace.read<int>("/tasks/slow",
+                                           Block(100ms));
 
         CHECK(fastResult.has_value());
         CHECK_FALSE(slowResult.has_value());
         CHECK(slowResult.error().code == Error::Code::Timeout);
 
         // Verify slow task eventually completes
-        auto slowResultWait = pspace.readBlock<int>("/tasks/slow",
-                                                    Block(1000ms));
+        auto slowResultWait = pspace.read<int>("/tasks/slow",
+                                               Block(1000ms));
         REQUIRE(slowResultWait.has_value());
         CHECK(slowResultWait.value() == 42);
     }

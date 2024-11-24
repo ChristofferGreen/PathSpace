@@ -180,7 +180,7 @@ assert(space.extract<int>("/collection/numbers").value() == 5);
 assert(space.read<float>("/collection/numbers").value() == 3.5);
 
 space.insert("/collection/executions", [](){return 7;});
-assert(space.extractBlock<int>("/collection/numbers", Block{}).value() == 7);
+assert(space.extract<int>("/collection/numbers", Block{}).value() == 7);
 ```
 
 ## Polymorphism

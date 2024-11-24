@@ -151,7 +151,7 @@ TEST_CASE("PathSpace Multithreading") {
                     // Try read first, fall back to extract
                     auto result = pspace.read<int>(path, options);
                     if (!result.has_value()) {
-                        result = pspace.extractBlock<int>(path, options);
+                        result = pspace.extract<int>(path, options);
                     }
 
                     if (result.has_value()) {
@@ -406,7 +406,7 @@ TEST_CASE("PathSpace Multithreading") {
         const int              MAX_TIMEOUTS   = 10; // Allow some timeouts before giving up
 
         while (extractedCount < expectedCount) {
-            auto value = pspace.extractBlock<int>("/counter", Block(1000ms));
+            auto value = pspace.extract<int>("/counter", Block(1000ms));
 
             if (!value.has_value()) {
                 if (value.error().code == Error::Code::Timeout) {
@@ -532,7 +532,7 @@ TEST_CASE("PathSpace Multithreading") {
 
         auto extractorFunction = [&]() {
             while (writesCompleted < (NUM_WRITERS * VALUES_PER_WRITER)) {
-                auto value = pspace.extractBlock<int>("/mixed", Block{});
+                auto value = pspace.extract<int>("/mixed", Block{});
                 if (value.has_value()) {
                     extractsCompleted++;
                 }
@@ -647,7 +647,7 @@ TEST_CASE("PathSpace Multithreading") {
 
                     // Extract all values from this path
                     while (seqNums.size() < expectedValues) {
-                        auto value = pspace.extractBlock<int>(path, Block(1000ms));
+                        auto value = pspace.extract<int>(path, Block(1000ms));
 
                         if (!value.has_value()) {
                             if (value.error().code == Error::Code::Timeout) {
@@ -768,7 +768,7 @@ TEST_CASE("PathSpace Multithreading") {
                     int       extractedCount = 0;
 
                     while (extractedCount < NUM_VALUES) {
-                        auto value = pspace.extractBlock<int>("/race", Block(1000ms));
+                        auto value = pspace.extract<int>("/race", Block(1000ms));
 
                         if (!value.has_value()) {
                             if (value.error().code == Error::Code::Timeout) {
@@ -846,7 +846,7 @@ TEST_CASE("PathSpace Multithreading") {
             }
 
             {
-                auto finalExtract = pspace.extractBlock<int>("/race", Block(1000ms));
+                auto finalExtract = pspace.extract<int>("/race", Block(1000ms));
                 CHECK_MESSAGE(!finalExtract.has_value(), "Expected no more values to extract");
             }
         }
@@ -883,7 +883,7 @@ TEST_CASE("PathSpace Multithreading") {
                 std::string basePath = "/thread" + std::to_string(t);
                 for (int depth = 0; depth < 3; depth++) {
                     std::string path  = basePath + "/path" + std::to_string(i) + "/depth" + std::to_string(depth);
-                    auto        value = pspace.extractBlock<int>(path, Block{});
+                    auto        value = pspace.extract<int>(path, Block{});
                     REQUIRE(value.has_value());
                     CHECK(value.value() == i);
                 }
@@ -936,7 +936,7 @@ TEST_CASE("PathSpace Multithreading") {
                     if (item.extracted)
                         continue;
 
-                    auto result = pspace.extractBlock<int>(item.path, Block(100ms));
+                    auto result = pspace.extract<int>(item.path, Block(100ms));
 
                     if (result.has_value()) {
                         CHECK(result.value() == item.value);
@@ -1106,7 +1106,7 @@ TEST_CASE("PathSpace Multithreading") {
                                     }
                                     case 2: {
                                         // Extract with short timeout
-                                        auto result = space.extractBlock<int>(path, Block(10ms));
+                                        auto result = space.extract<int>(path, Block(10ms));
                                         if (result)
                                             success_count++;
                                         break;
@@ -1804,10 +1804,10 @@ TEST_CASE("PathSpace Multithreading") {
                 std::this_thread::sleep_for(std::chrono::milliseconds(think_dist(rng)));
 
                 // Try to pick up forks
-                auto first = pspace.extractBlock<int>(first_fork, Block(50ms));
+                auto first = pspace.extract<int>(first_fork, Block(50ms));
                 if (first.has_value()) {
                     stats[id].forks_acquired.fetch_add(1, std::memory_order_relaxed);
-                    auto second = pspace.extractBlock<int>(second_fork, Block(50ms));
+                    auto second = pspace.extract<int>(second_fork, Block(50ms));
                     if (second.has_value()) {
                         stats[id].forks_acquired.fetch_add(1, std::memory_order_relaxed);
                         // Eating

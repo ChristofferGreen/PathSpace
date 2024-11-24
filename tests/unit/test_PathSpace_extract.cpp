@@ -90,7 +90,7 @@ TEST_CASE("PathSpace Extract") {
     SUBCASE("Simple PathSpace Execution Lazy") {
         std::function<int()> f = []() -> int { return 58; };
         CHECK(pspace.insert("/f", f, In{.executionCategory = ExecutionCategory::Lazy}).nbrTasksInserted == 1);
-        CHECK(pspace.extractBlock<int>("/f", Block{}).value() == 58);
+        CHECK(pspace.extract<int>("/f", Block{}).value() == 58);
         CHECK(!pspace.extract<int>("/f").has_value());
     }
 
@@ -176,7 +176,7 @@ TEST_CASE("PathSpace Extract") {
             pspace.insert("/delayed", 42);
         });
 
-        auto ret = pspace.extractBlock<int>("/delayed", Block{});
+        auto ret = pspace.extract<int>("/delayed", Block{});
         REQUIRE(ret.has_value());
         CHECK(ret.value() == 42);
 
@@ -184,7 +184,7 @@ TEST_CASE("PathSpace Extract") {
     }
 
     SUBCASE("Extract with timeout") {
-        auto ret = pspace.extractBlock<int>("/timeout", Block(100ms));
+        auto ret = pspace.extract<int>("/timeout", Block(100ms));
         CHECK_FALSE(ret.has_value());
     }
 
@@ -225,7 +225,7 @@ TEST_CASE("PathSpace Extract") {
             CHECK(readVal.value() == 42);
 
             // Extract should remove value
-            auto extractVal = pspace.extractBlock<int>("/test", Block{});
+            auto extractVal = pspace.extract<int>("/test", Block{});
             REQUIRE(extractVal.has_value());
             CHECK(extractVal.value() == 42);
 
@@ -241,15 +241,15 @@ TEST_CASE("PathSpace Extract") {
             REQUIRE(pspace.insert("/test", 3).errors.empty());
 
             // Values should be extracted in insertion order
-            auto val1 = pspace.extractBlock<int>("/test", Block{});
+            auto val1 = pspace.extract<int>("/test", Block{});
             REQUIRE(val1.has_value());
             CHECK(val1.value() == 1);
 
-            auto val2 = pspace.extractBlock<int>("/test", Block{});
+            auto val2 = pspace.extract<int>("/test", Block{});
             REQUIRE(val2.has_value());
             CHECK(val2.value() == 2);
 
-            auto val3 = pspace.extractBlock<int>("/test", Block{});
+            auto val3 = pspace.extract<int>("/test", Block{});
             REQUIRE(val3.has_value());
             CHECK(val3.value() == 3);
 
@@ -264,7 +264,7 @@ TEST_CASE("PathSpace Extract") {
             REQUIRE(pspace.insert("/path2", 20).errors.empty());
 
             // Extract from first path
-            auto val1 = pspace.extractBlock<int>("/path1", Block{});
+            auto val1 = pspace.extract<int>("/path1", Block{});
             REQUIRE(val1.has_value());
             CHECK(val1.value() == 10);
 
@@ -278,7 +278,7 @@ TEST_CASE("PathSpace Extract") {
             CHECK_FALSE(check1.has_value());
 
             // Extract from second path
-            auto val3 = pspace.extractBlock<int>("/path2", Block{});
+            auto val3 = pspace.extract<int>("/path2", Block{});
             REQUIRE(val3.has_value());
             CHECK(val3.value() == 20);
 
@@ -551,7 +551,7 @@ TEST_CASE("PathSpace Glob") {
         In options{.executionCategory = ExecutionCategory::Lazy};
         CHECK(pspace.insert("/exec/a", func(1), options).nbrTasksInserted == 1);
         CHECK(pspace.insert("/exec/a", func(10), options).nbrTasksInserted == 1);
-        auto val1 = pspace.extractBlock<int>("/exec/a", Block{});
+        auto val1 = pspace.extract<int>("/exec/a", Block{});
         val1      = pspace.read<int>("/exec/a", Block{});
     }
 
@@ -570,7 +570,7 @@ TEST_CASE("PathSpace Glob") {
         In options{.executionCategory = ExecutionCategory::Lazy};
         CHECK(pspace.insert("/exec/a", func(1), options).nbrTasksInserted == 1);
         CHECK(pspace.insert("/exec/*", func(10), options).nbrTasksInserted == 1);
-        auto val1 = pspace.extractBlock<int>("/exec/a", Block{});
+        auto val1 = pspace.extract<int>("/exec/a", Block{});
         val1      = pspace.read<int>("/exec/a", Block{});
     }
 
@@ -590,7 +590,7 @@ TEST_CASE("PathSpace Glob") {
         CHECK(pspace.insert("/exec/*", func(10), options).nbrTasksInserted == 1);
 
         sp_log("Testcase starting final extractBlock", "Testcase");
-        auto val1 = pspace.extractBlock<int>("/exec/a", Block{});
+        auto val1 = pspace.extract<int>("/exec/a", Block{});
         sp_log("Testcase starting final readBlock", "Testcase");
         val1 = pspace.read<int>("/exec/a", Block{});
         sp_log("Testcase ends", "Testcase");
@@ -617,21 +617,21 @@ TEST_CASE("PathSpace Glob") {
         CHECK(pspace.insert("/exec/*", func(10), options).nbrTasksInserted == 3);
 
         // Verify executions happen in order
-        auto val1 = pspace.extractBlock<int>("/exec/a", Block{});
+        auto val1 = pspace.extract<int>("/exec/a", Block{});
         CHECK(val1.has_value());
         CHECK(val1.value() == 1);
         val1 = pspace.read<int>("/exec/a", Block{});
         /*CHECK(val1.has_value());
         CHECK(val1.value() == 10);
 
-        auto val2 = pspace.extractBlock<int>("/exec/b", Block{});
+        auto val2 = pspace.extract<int>("/exec/b", Block{});
         CHECK(val2.has_value());
         CHECK(val2.value() == 2);
         val2 = pspace.read<int>("/exec/b", Block{});
         CHECK(val2.has_value());
         CHECK(val2.value() == 10);
 
-        auto val3 = pspace.extractBlock<int>("/exec/c", Block{});
+        auto val3 = pspace.extract<int>("/exec/c", Block{});
         CHECK(val3.has_value());
         CHECK(val3.value() == 3);
         val3 = pspace.read<int>("/exec/c", Block{});
@@ -871,7 +871,7 @@ TEST_CASE("PathSpace String") {
             CHECK(static_str.has_value());
             CHECK(static_str.value() == "static string");
 
-            auto num = pspace.extractBlock<int>("/func/mixed", Block{});
+            auto num = pspace.extract<int>("/func/mixed", Block{});
             CHECK(num.has_value());
             CHECK(num.value() == 42);
 

@@ -83,20 +83,6 @@ public:
         return this->read<DataType>(ConcretePathStringView{pathIn}, options);
     }
 
-    template <typename DataType>
-    auto readBlock(ConcretePathStringView const& path, Out const& options = Block()) const -> Expected<DataType> {
-        sp_log("PathSpace::readBlock", "Function Called");
-        return this->read<DataType>(path, options);
-    }
-
-    template <FixedString pathIn, typename DataType>
-        requires(validate_path(pathIn))
-    auto readBlock(Out const& options = Block()) const -> Expected<DataType> {
-        sp_log("PathSpace::readBlock", "Function Called");
-        const_cast<Out&>(options).validationLevel = ValidationLevel::None;
-        return this->readBlock<DataType>(ConcretePathStringView{pathIn}, options);
-    }
-
     /**
      * @brief Reads and removes data from the PathSpace at the specified path.
      *
@@ -122,20 +108,6 @@ public:
         sp_log("PathSpace::extract", "Function Called");
         const_cast<Out&>(options).validationLevel = ValidationLevel::None;
         return this->extract<DataType>(ConcretePathStringView{pathIn}, options);
-    }
-
-    template <typename DataType>
-    auto extractBlock(ConcretePathStringView const& path, Out const& options = Block()) -> Expected<DataType> {
-        sp_log("PathSpace::extractBlock", "Function Called");
-        return this->extract<DataType>(path, options);
-    }
-
-    template <FixedString pathIn, typename DataType>
-        requires(validate_path(pathIn))
-    auto extractBlock(Out const& options = Block()) -> Expected<DataType> {
-        sp_log("PathSpace::extractBlock", "Function Called");
-        const_cast<Out&>(options).validationLevel = ValidationLevel::None;
-        return this->extractBlock<DataType>(ConcretePathStringView{pathIn}, options);
     }
 
     auto clear() -> void;
