@@ -43,15 +43,15 @@ TEST_CASE("PathSpace Insert") {
         CHECK(pspace.insert("/a/b/c/d", 123).nbrValuesInserted == 1);
         CHECK(pspace.insert("/a/b/e/f", 456).nbrValuesInserted == 1);
         CHECK(pspace.insert("/a/b/e/f", 567).nbrValuesInserted == 1);
-        CHECK(pspace.readBlock<int>("/a/b/c/d").value() == 123);
+        CHECK(pspace.readBlock<int>("/a/b/c/d", Block{}).value() == 123);
         CHECK(pspace.extractBlock<int>("/a/b/e/f").value() == 456);
-        CHECK(pspace.readBlock<int>("/a/b/e/f").value() == 567);
+        CHECK(pspace.readBlock<int>("/a/b/e/f", Block{}).value() == 567);
     }
 
     SUBCASE("Simple Function Pointer Insertion and Execution") {
         int (*simpleFunc)() = []() -> int { return 42; };
         CHECK(pspace.insert("/simple", simpleFunc).errors.size() == 0);
-        auto result = pspace.readBlock<int>("/simple");
+        auto result = pspace.readBlock<int>("/simple", Block{});
         CHECK(result.has_value());
         CHECK(result.value() == 42);
     }
@@ -59,7 +59,7 @@ TEST_CASE("PathSpace Insert") {
     SUBCASE("std::function Insertion and Execution") {
         std::function<int()> stdFunc = []() -> int { return 100; };
         CHECK(pspace.insert("/std", stdFunc).errors.size() == 0);
-        auto result = pspace.readBlock<int>("/std");
+        auto result = pspace.readBlock<int>("/std", Block{});
         CHECK(result.has_value());
         CHECK(result.value() == 100);
     }
@@ -70,7 +70,7 @@ TEST_CASE("PathSpace Insert") {
             return val * 1.5;
         };
         auto const f2 = [&pspace]() -> int {
-            auto const val = pspace.readBlock<std::string>("/f3").value();
+            auto const val = pspace.readBlock<std::string>("/f3", Block{}).value();
             return std::stoi(val);
         };
         std::function<std::string()> const f3 = []() -> std::string { return "50"; };
@@ -79,7 +79,7 @@ TEST_CASE("PathSpace Insert") {
         CHECK(pspace.insert("/f2", f2).errors.size() == 0);
         CHECK(pspace.insert("/f3", f3).errors.size() == 0);
 
-        auto result = pspace.readBlock<double>("/f1");
+        auto result = pspace.readBlock<double>("/f1", Block{});
         CHECK(result.has_value());
         CHECK(result.value() == 75.0);
     }
@@ -95,7 +95,7 @@ TEST_CASE("PathSpace Insert") {
             CHECK(pspace.insert(SP::GlobPathStringView{"/func" + std::to_string(i)}, func).errors.size() == 0);
         }
 
-        auto result = pspace.readBlock<int>(SP::ConcretePathStringView{"/func" + std::to_string(DEPTH - 1)});
+        auto result = pspace.readBlock<int>(SP::ConcretePathStringView{"/func" + std::to_string(DEPTH - 1)}, Block{});
         CHECK(result.has_value());
         CHECK(result.value() == DEPTH);
     }
