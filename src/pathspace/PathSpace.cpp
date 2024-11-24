@@ -45,4 +45,45 @@ auto PathSpace::out(ConcretePathStringView const& path, InputMetadata const& inp
     return this->root.out(PathViewConcrete(path.begin(), path.end()), inputMetadata, obj, options, doExtract);
 }
 
+auto PathSpace::outBlock(ConcretePathStringView const& path, InputMetadata const inputMetadata, Out const& options, void* obj, bool const doExtract) -> Expected<int> {
+    sp_log("PathSpace::outBlock", "Function Called");
+
+    Expected<int> result; // Moved outside to be accessible in all scopes
+
+    // First try entirely outside the loop to minimize lock time
+    {
+        result = this->out(path, inputMetadata, options, obj, doExtract);
+        if ((result.has_value() && result.value() > 0) || options.block_ == false) {
+            return result;
+        }
+    }
+
+    auto const deadline = std::chrono::system_clock::now() + options.timeout;
+    while (true) {
+        // Check deadline first
+        auto now = std::chrono::system_clock::now();
+        if (now >= deadline) {
+            return std::unexpected(Error{Error::Code::Timeout, "Operation timed out waiting for data at path: " + std::string(path.getPath())});
+        }
+
+        // Wait with minimal scope
+        auto guard = waitMap.wait(path);
+        {
+            bool success = guard.wait_until(deadline, [&]() {
+                result          = this->out(path, inputMetadata, options, obj, doExtract);
+                bool haveResult = (result.has_value() && result.value() > 0);
+                return haveResult;
+            });
+
+            if (success && result.has_value() && result.value() > 0) {
+                return result;
+            }
+        }
+
+        if (std::chrono::system_clock::now() >= deadline) {
+            return std::unexpected(Error{Error::Code::Timeout, "Operation timed out after waking from guard, waiting for data at path: " + std::string(path.getPath())});
+        }
+    }
+}
+
 } // namespace SP
