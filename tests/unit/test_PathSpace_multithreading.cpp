@@ -513,14 +513,14 @@ TEST_CASE("PathSpace Multithreading") {
 
         auto readerFunction = [&]() {
             while (writesCompleted < (NUM_WRITERS * VALUES_PER_WRITER)) {
-                auto value = pspace.readBlock<int>("/mixed");
+                auto value = pspace.readBlock<int>("/mixed", Block{});
                 if (value.has_value()) {
                     readsCompleted++;
                 }
 
                 // Occasionally check alternate path
                 if (readsCompleted % 10 == 0) {
-                    auto altValue = pspace.readBlock<int>("/mixed_alt");
+                    auto altValue = pspace.readBlock<int>("/mixed_alt", Block{});
                     if (altValue.has_value()) {
                         readsCompleted++;
                     }
@@ -1055,7 +1055,7 @@ TEST_CASE("PathSpace Multithreading") {
         // Execute tasks in sequence
         INFO("Executing tasks in sequence");
         for (int i = 0; i < NUM_TASKS; ++i) {
-            auto result = pspace.readBlock<int>("/task/" + std::to_string(i));
+            auto result = pspace.readBlock<int>("/task/" + std::to_string(i), Block{});
             REQUIRE(result.has_value());
             CHECK(result.value() == i);
         }
@@ -1476,7 +1476,7 @@ TEST_CASE("PathSpace Multithreading") {
 
         std::vector<std::thread> threads;
         for (int i = 0; i < NUM_TASKS; ++i) {
-            threads.emplace_back([&pspace, i]() { pspace.readBlock<int>("/pool/" + std::to_string(i)); });
+            threads.emplace_back([&pspace, i]() { pspace.readBlock<int>("/pool/" + std::to_string(i), Block{}); });
         }
 
         for (auto& t : threads) {
@@ -1661,14 +1661,14 @@ TEST_CASE("PathSpace Multithreading") {
         auto workerFunction = [&](int threadId) {
             if (threadId % 2 == 0) {
                 // Even threads try to acquire A then B
-                auto resultA = pspace.readBlock<int>("/resourceA");
+                auto resultA = pspace.readBlock<int>("/resourceA", Block{});
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 auto resultB = pspace.readBlock<int>("/resourceB", Block(100ms));
                 if (!resultB)
                     deadlockCount++;
             } else {
                 // Odd threads try to acquire B then A
-                auto resultB = pspace.readBlock<int>("/resourceB");
+                auto resultB = pspace.readBlock<int>("/resourceB", Block{});
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 auto resultA = pspace.readBlock<int>("/resourceA", Block(100ms));
                 if (!resultA)
@@ -1876,7 +1876,7 @@ TEST_CASE("PathSpace Multithreading") {
 
         // Check that there's no deadlock (all forks are available)
         for (int i = 0; i < NUM_PHILOSOPHERS; ++i) {
-            auto fork = pspace.readBlock<int>(std::format("/fork/{}", i));
+            auto fork = pspace.readBlock<int>(std::format("/fork/{}", i), Block{});
             CHECK(fork.has_value());
             if (fork.has_value()) {
                 CHECK(fork.value() == 1);

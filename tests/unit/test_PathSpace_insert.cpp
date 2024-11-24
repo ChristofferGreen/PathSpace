@@ -111,7 +111,7 @@ TEST_CASE("PathSpace Insert") {
 
             // Reading triggers execution in sequence
             for (int i = 0; i < 1000; ++i)
-                CHECK(pspace.readBlock<int>(std::format("/concurrent{}", i)) == i + 1);
+                CHECK(pspace.readBlock<int>(std::format("/concurrent{}", i), Block{}) == i + 1);
 
             CHECK(counter == 1000);
         }
@@ -127,7 +127,7 @@ TEST_CASE("PathSpace Insert") {
             // Read the results - they'll be in non-deterministic order
             std::set<int> results;
             for (int i = 0; i < 1000; ++i) {
-                auto result = pspace.readBlock<int>(std::format("/concurrent{}", i));
+                auto result = pspace.readBlock<int>(std::format("/concurrent{}", i), Block{});
                 REQUIRE(result.has_value());
                 auto value = result.value();
                 CHECK(value > 0);     // Separate checks

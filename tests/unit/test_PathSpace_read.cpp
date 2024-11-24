@@ -58,37 +58,37 @@ TEST_CASE("PathSpace Read") {
         TestFuncPtr f2    = []() -> int { return 25; };
         CHECK(pspace.insert("/f", f).nbrTasksInserted == 1);
         CHECK(pspace.insert("/f2", f2).nbrTasksInserted == 1);
-        CHECK(pspace.readBlock<int>("/f").value() == 58);
-        CHECK(pspace.readBlock<int>("/f").value() == 58);
-        CHECK(pspace.readBlock<int>("/f2").value() == 25);
+        CHECK(pspace.readBlock<int>("/f", Block{}).value() == 58);
+        CHECK(pspace.readBlock<int>("/f", Block{}).value() == 58);
+        CHECK(pspace.readBlock<int>("/f2", Block{}).value() == 25);
     }
 
     SUBCASE("Simple PathSpace Execution Lazy") {
         std::function<int()> f = []() -> int { return 58; };
         CHECK(pspace.insert("/f", f, In{.executionCategory = ExecutionCategory::Lazy}).nbrTasksInserted == 1);
-        CHECK(pspace.readBlock<int>("/f").value() == 58);
+        CHECK(pspace.readBlock<int>("/f", Block{}).value() == 58);
     }
 
     SUBCASE("PathSpace Read Function Pointer Execution Blocking Simple") {
-        auto const f1 = [&pspace]() -> int { return pspace.readBlock<int>("/f2").value() + 11; };
+        auto const f1 = [&pspace]() -> int { return pspace.readBlock<int>("/f2", Block{}).value() + 11; };
         int (*f2)()   = []() -> int { return 10; };
 
         CHECK(pspace.insert("/f1", f1).errors.size() == 0);
         CHECK(pspace.insert("/f2", f2).errors.size() == 0);
 
-        auto const val = pspace.readBlock<int>("/f1");
+        auto const val = pspace.readBlock<int>("/f1", Block{});
         CHECK(val.has_value() == true);
         CHECK(val.value() == 21);
     }
 
     SUBCASE("PathSpace Read Function Pointer Execution Blocking") {
         auto const f1 = [&pspace]() -> int {
-            auto val = pspace.readBlock<int>("/f2").value();
+            auto val = pspace.readBlock<int>("/f2", Block{}).value();
             sp_log(std::format("f1 returning {} + 1 = {} from f2.", val, val + 1), "INFO");
             return val + 1;
         };
         auto const f2 = [&pspace]() -> int {
-            auto val = pspace.readBlock<int>("/f3").value();
+            auto val = pspace.readBlock<int>("/f3", Block{}).value();
             sp_log(std::format("f2 returning {} + 10 = {} from f3.", val, val + 10), "INFO");
             return val + 10;
         };
@@ -101,21 +101,21 @@ TEST_CASE("PathSpace Read") {
         CHECK(pspace.insert("/f2", f2).errors.size() == 0);
         CHECK(pspace.insert("/f3", f3).errors.size() == 0);
 
-        auto const val = pspace.readBlock<int>("/f1");
+        auto const val = pspace.readBlock<int>("/f1", Block{});
         CHECK(val.has_value() == true);
         CHECK(val.value() == 111);
     }
 
     SUBCASE("PathSpace Read Block") {
         pspace.insert("/i", 46);
-        auto const val = pspace.readBlock<int>("/i");
+        auto const val = pspace.readBlock<int>("/i", Block{});
         CHECK(val.has_value());
         CHECK(val.value() == 46);
     }
 
     SUBCASE("PathSpace Read Block Delayed") {
         pspace.insert("/i", +[] { return 46; });
-        auto const val = pspace.readBlock<int>("/i");
+        auto const val = pspace.readBlock<int>("/i", Block{});
         CHECK(val.has_value());
         CHECK(val.value() == 46);
     }

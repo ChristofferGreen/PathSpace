@@ -359,10 +359,10 @@ TEST_CASE("PathSpace Integration") {
         // Setup dependent computations
         auto computeBase = []() -> int { return 10; };
         auto multiply    = [&pspace]() -> int {
-            return pspace.readBlock<int>("/data/base").value() * 2;
+            return pspace.readBlock<int>("/data/base", Block{}).value() * 2;
         };
         auto addOffset = [&pspace]() -> int {
-            return pspace.readBlock<int>("/data/multiplied").value() + 5;
+            return pspace.readBlock<int>("/data/multiplied", Block{}).value() + 5;
         };
 
         pspace.insert("/data/base", computeBase);
@@ -370,12 +370,12 @@ TEST_CASE("PathSpace Integration") {
         pspace.insert("/data/final", addOffset);
 
         // Verify execution chain
-        auto result = pspace.readBlock<int>("/data/final");
+        auto result = pspace.readBlock<int>("/data/final", Block{});
         REQUIRE(result.has_value());
         CHECK(result.value() == 25); // (10 * 2) + 5
 
         // Test multiple reads give same result
-        auto result2 = pspace.readBlock<int>("/data/final");
+        auto result2 = pspace.readBlock<int>("/data/final", Block{});
         REQUIRE(result2.has_value());
         CHECK(result2.value() == 25);
     }
@@ -396,7 +396,7 @@ TEST_CASE("PathSpace Integration") {
                         pspace.insert("/data/" + std::to_string(i) + "/status", "active");
 
                         // Read operations
-                        auto value = pspace.readBlock<int>("/data/" + std::to_string(i) + "/value");
+                        auto value = pspace.readBlock<int>("/data/" + std::to_string(i) + "/value", Block{});
                         if (value)
                             successCount++;
 
