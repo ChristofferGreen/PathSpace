@@ -90,8 +90,8 @@ public:
             return std::unexpected(*error);
         DataType   obj;
         bool const doExtract = false;
-        if (auto ret = const_cast<PathSpace*>(this)->outBlock<DataType>(path, InputMetadataT<DataType>{}, options, &obj, doExtract); !ret.has_value())
-            return ret;
+        if (auto ret = const_cast<PathSpace*>(this)->outBlock(path, InputMetadataT<DataType>{}, options, &obj, doExtract); !ret.has_value())
+            return std::unexpected(ret.error());
         return obj;
     }
 
@@ -140,8 +140,8 @@ public:
             return std::unexpected(*error);
         DataType   obj;
         bool const doExtract = true;
-        if (auto ret = this->outBlock<DataType>(path, InputMetadataT<DataType>{}, options, &obj, doExtract); !ret.has_value())
-            return ret;
+        if (auto ret = this->outBlock(path, InputMetadataT<DataType>{}, options, &obj, doExtract); !ret.has_value())
+            return std::unexpected(ret.error());
         return obj;
     }
 
@@ -158,8 +158,7 @@ public:
 protected:
     friend class TaskPool;
 
-    template <typename DataType>
-    auto outBlock(ConcretePathStringView const& path, InputMetadataT<DataType> const inputMetadata, Out const& options, void* obj, bool const doExtract) -> Expected<DataType> {
+    auto outBlock(ConcretePathStringView const& path, InputMetadata const inputMetadata, Out const& options, void* obj, bool const doExtract) -> Expected<int> {
         sp_log("PathSpace::outBlock", "Function Called");
 
         Expected<int> result; // Moved outside to be accessible in all scopes
@@ -168,7 +167,7 @@ protected:
         {
             result = this->out(path, inputMetadata, options, obj, doExtract);
             if ((result.has_value() && result.value() > 0) || options.block_ == false) {
-                return DataType{};
+                return result;
             }
         }
 
@@ -190,7 +189,7 @@ protected:
                 });
 
                 if (success && result.has_value() && result.value() > 0) {
-                    return DataType{};
+                    return result;
                 }
             }
 
