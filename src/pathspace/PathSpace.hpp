@@ -90,7 +90,7 @@ public:
             return std::unexpected(*error);
         DataType   obj;
         bool const doExtract = false;
-        if (auto ret = const_cast<PathSpace*>(this)->outBlock(path, InputMetadataT<DataType>{}, options, &obj, doExtract); !ret.has_value())
+        if (auto ret = const_cast<PathSpace*>(this)->outBlock(path, InputMetadataT<DataType>{}, options, &obj, doExtract); !ret)
             return std::unexpected(ret.error());
         return obj;
     }
@@ -140,7 +140,7 @@ public:
             return std::unexpected(*error);
         DataType   obj;
         bool const doExtract = true;
-        if (auto ret = this->outBlock(path, InputMetadataT<DataType>{}, options, &obj, doExtract); !ret.has_value())
+        if (auto ret = this->outBlock(path, InputMetadataT<DataType>{}, options, &obj, doExtract); !ret)
             return std::unexpected(ret.error());
         return obj;
     }
