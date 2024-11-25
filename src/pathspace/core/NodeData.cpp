@@ -34,15 +34,15 @@ auto NodeData::serialize(const InputData& inputData, const In& options) -> std::
 
 auto NodeData::deserialize(void* obj, const InputMetadata& inputMetadata, Out const& options) const -> Expected<int> {
     sp_log("NodeData::deserialize", "Function Called");
-    return const_cast<NodeData*>(this)->deserializeImpl(obj, inputMetadata, options, false);
+    return const_cast<NodeData*>(this)->deserializeImpl(obj, inputMetadata, false);
 }
 
 auto NodeData::deserializePop(void* obj, const InputMetadata& inputMetadata) -> Expected<int> {
     sp_log("NodeData::deserializePop", "Function Called");
-    return this->deserializeImpl(obj, inputMetadata, Out{}, true);
+    return this->deserializeImpl(obj, inputMetadata, true);
 }
 
-auto NodeData::deserializeImpl(void* obj, const InputMetadata& inputMetadata, Out const& options, bool doExtract) -> Expected<int> {
+auto NodeData::deserializeImpl(void* obj, const InputMetadata& inputMetadata, bool doPop) -> Expected<int> {
     sp_log("NodeData::deserializeImpl", "Function Called");
 
     if (auto validationResult = validateInputs(inputMetadata); !validationResult)
@@ -50,9 +50,9 @@ auto NodeData::deserializeImpl(void* obj, const InputMetadata& inputMetadata, Ou
 
     if (this->types.front().category == DataCategory::Execution) {
         assert(!this->tasks.empty());
-        return this->deserializeExecution(obj, inputMetadata, doExtract);
+        return this->deserializeExecution(obj, inputMetadata, doPop);
     } else {
-        return this->deserializeData(obj, inputMetadata, doExtract);
+        return this->deserializeData(obj, inputMetadata, doPop);
     }
 }
 
@@ -68,7 +68,7 @@ auto NodeData::validateInputs(const InputMetadata& inputMetadata) -> Expected<vo
     return {};
 }
 
-auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadata, bool doExtract) -> Expected<int> {
+auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadata, bool doPop) -> Expected<int> {
     if (this->tasks.empty())
         return std::unexpected(Error{Error::Code::NoObjectFound, "No task available"});
 
@@ -86,7 +86,7 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
 
     if (task->isCompleted()) {
         task->resultCopy(obj);
-        if (doExtract) {
+        if (doPop) {
             this->tasks.pop_front();
             popType();
         }
@@ -96,12 +96,12 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
     return 0;
 }
 
-auto NodeData::deserializeData(void* obj, const InputMetadata& inputMetadata, bool doExtract) -> Expected<int> {
+auto NodeData::deserializeData(void* obj, const InputMetadata& inputMetadata, bool doPop) -> Expected<int> {
     sp_log("NodeData::deserializeData", "Function Called");
     sp_log("Deserializing data of type: " + std::string(inputMetadata.typeInfo->name()), "NodeData");
     sp_log("Current buffer size: " + std::to_string(data.size()), "NodeData");
 
-    if (doExtract) {
+    if (doPop) {
         if (!inputMetadata.deserializePop)
             return std::unexpected(Error{Error::Code::UnserializableType, "No pop deserialization function provided"});
         inputMetadata.deserializePop(obj, data);

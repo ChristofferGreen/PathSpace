@@ -28,10 +28,10 @@ struct NodeData {
 private:
     auto pushType(InputMetadata const& meta) -> void;
     auto popType() -> void;
-    auto deserializeImpl(void* obj, const InputMetadata& inputMetadata, Out const& options, bool doExtract) -> Expected<int>;
+    auto deserializeImpl(void* obj, const InputMetadata& inputMetadata, bool doPop) -> Expected<int>;
     auto validateInputs(const InputMetadata& inputMetadata) -> Expected<void>;
-    auto deserializeExecution(void* obj, const InputMetadata& inputMetadata, bool doExtract) -> Expected<int>;
-    auto deserializeData(void* obj, const InputMetadata& inputMetadata, bool doExtract) -> Expected<int>;
+    auto deserializeExecution(void* obj, const InputMetadata& inputMetadata, bool doPop) -> Expected<int>;
+    auto deserializeData(void* obj, const InputMetadata& inputMetadata, bool doPop) -> Expected<int>;
 
     SP::SlidingBuffer                 data;
     std::deque<std::shared_ptr<Task>> tasks; // NodeData is the primary owner of tasks
