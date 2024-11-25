@@ -70,8 +70,8 @@ public:
             return std::unexpected(*error);
         DataType   obj;
         bool const doExtract = false;
-        if (auto ret = const_cast<PathSpace*>(this)->outBlock(path, InputMetadataT<DataType>{}, options, &obj, doExtract); !ret)
-            return std::unexpected(ret.error());
+        if (auto error = const_cast<PathSpace*>(this)->outBlock(path, InputMetadataT<DataType>{}, options, &obj, doExtract))
+            return std::unexpected{*error};
         return obj;
     }
 
@@ -97,8 +97,8 @@ public:
             return std::unexpected(*error);
         DataType   obj;
         bool const doExtract = true;
-        if (auto ret = this->outBlock(path, InputMetadataT<DataType>{}, options, &obj, doExtract); !ret)
-            return std::unexpected(ret.error());
+        if (auto error = this->outBlock(path, InputMetadataT<DataType>{}, options, &obj, doExtract))
+            return std::unexpected(*error);
         return obj;
     }
 
@@ -116,8 +116,8 @@ protected:
     friend class TaskPool;
 
     virtual auto in(GlobPathStringView const& path, InputData const& data, In const& options) -> InsertReturn;
-    virtual auto out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj, bool const doExtract) -> Expected<int>;
-    auto         outBlock(ConcretePathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj, bool const doExtract) -> Expected<int>;
+    virtual auto out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj, bool const doExtract) -> std::optional<Error>;
+    auto         outBlock(ConcretePathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj, bool const doExtract) -> std::optional<Error>;
     auto         shutdown() -> void;
 
     TaskPool*     pool = nullptr;

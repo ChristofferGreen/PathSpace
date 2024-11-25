@@ -19,17 +19,17 @@ struct NodeData {
     NodeData(InputData const& inputData);
 
     auto serialize(const InputData& inputData) -> std::optional<Error>;
-    auto deserialize(void* obj, const InputMetadata& inputMetadata) const -> Expected<int>;
-    auto deserializePop(void* obj, const InputMetadata& inputMetadata) -> Expected<int>;
+    auto deserialize(void* obj, const InputMetadata& inputMetadata) const -> std::optional<Error>;
+    auto deserializePop(void* obj, const InputMetadata& inputMetadata) -> std::optional<Error>;
     auto empty() const -> bool;
 
 private:
     auto popType() -> void;
     auto pushType(InputMetadata const& meta) -> void;
     auto validateInputs(const InputMetadata& inputMetadata) -> std::optional<Error>;
-    auto deserializeImpl(void* obj, const InputMetadata& inputMetadata, bool doPop) -> Expected<int>;
-    auto deserializeData(void* obj, const InputMetadata& inputMetadata, bool doPop) -> Expected<int>;
-    auto deserializeExecution(void* obj, const InputMetadata& inputMetadata, bool doPop) -> Expected<int>;
+    auto deserializeImpl(void* obj, const InputMetadata& inputMetadata, bool doPop) -> std::optional<Error>;
+    auto deserializeData(void* obj, const InputMetadata& inputMetadata, bool doPop) -> std::optional<Error>;
+    auto deserializeExecution(void* obj, const InputMetadata& inputMetadata, bool doPop) -> std::optional<Error>;
 
     SP::SlidingBuffer                 data;
     std::deque<ElementType>           types;
