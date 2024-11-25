@@ -89,11 +89,11 @@ auto PathSpaceLeaf::inIntermediateComponent(PathViewGlob const& iter, InputData 
 /*
     ############# Out #############
 */
-auto PathSpaceLeaf::out(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, Out const& options, bool const doExtract) -> Expected<int> {
+auto PathSpaceLeaf::out(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> Expected<int> {
     if (iter.isFinalComponent())
         return outFinalComponent(iter, inputMetadata, obj, doExtract);
     else
-        return outIntermediateComponent(iter, inputMetadata, obj, options, doExtract);
+        return outIntermediateComponent(iter, inputMetadata, obj, doExtract);
 }
 
 auto PathSpaceLeaf::outFinalComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> Expected<int> {
@@ -122,12 +122,12 @@ auto PathSpaceLeaf::outFinalComponent(PathViewConcrete const& iter, InputMetadat
     return result;
 }
 
-auto PathSpaceLeaf::outIntermediateComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, Out const& options, bool const doExtract) -> Expected<int> {
+auto PathSpaceLeaf::outIntermediateComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> Expected<int> {
     Expected<int> expected = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     this->nodeDataMap.if_contains(iter.currentComponent().getName(), [&](auto const& nodePair) {
         bool const isLeaf = std::holds_alternative<std::unique_ptr<PathSpaceLeaf>>(nodePair.second);
         expected          = isLeaf
-                                    ? std::get<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)->out(iter.next(), inputMetadata, obj, options, doExtract)
+                                    ? std::get<std::unique_ptr<PathSpaceLeaf>>(nodePair.second)->out(iter.next(), inputMetadata, obj, doExtract)
                                     : std::unexpected(Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"});
     });
     return expected;
