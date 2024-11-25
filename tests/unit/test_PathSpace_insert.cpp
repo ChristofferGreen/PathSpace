@@ -3,54 +3,54 @@
 
 using namespace SP;
 
-TEST_CASE("PathSpace Insert") {
+TEST_CASE("PathSpace Put") {
     PathSpace pspace;
     SUBCASE("Simple PathSpace Construction") {
-        CHECK(pspace.insert("/test", 54).nbrValuesInserted == 1);
+        CHECK(pspace.put("/test", 54).nbrValuesInserted == 1);
     }
 
     SUBCASE("Simple PathSpace Path Into Data") {
-        CHECK(pspace.insert("/test", 54).nbrValuesInserted == 1);
-        auto const val = pspace.insert("/test/data", 55);
+        CHECK(pspace.put("/test", 54).nbrValuesInserted == 1);
+        auto const val = pspace.put("/test/data", 55);
         CHECK(val.nbrValuesInserted == 0);
         // CHECK(val.errors.size() == 1);
         // CHECK(val.errors[0].code == Error::Code::InvalidPathSubcomponent);
     }
 
     SUBCASE("Simple PathSpace Glob Construction") {
-        CHECK(pspace.insert("/test1", 1).nbrValuesInserted == 1);
-        CHECK(pspace.insert("/test2", 2).nbrValuesInserted == 1);
-        CHECK(pspace.insert("/tast1", 3).nbrValuesInserted == 1);
-        CHECK(pspace.insert("/test*", 4).nbrValuesInserted == 2);
+        CHECK(pspace.put("/test1", 1).nbrValuesInserted == 1);
+        CHECK(pspace.put<"/test2">(2).nbrValuesInserted == 1);
+        CHECK(pspace.put("/tast1", 3).nbrValuesInserted == 1);
+        CHECK(pspace.put("/test*", 4).nbrValuesInserted == 2);
     }
 
     SUBCASE("Simple PathSpace Insert Compiletime Check") {
-        CHECK(pspace.insert<"/test1">(1).nbrValuesInserted == 1);
-        CHECK(pspace.insert<"/test2">(2).nbrValuesInserted == 1);
-        CHECK(pspace.insert<"/test3">(3).nbrValuesInserted == 1);
-        CHECK(pspace.insert<"/test*">(4).nbrValuesInserted == 3);
+        CHECK(pspace.put<"/test1">(1).nbrValuesInserted == 1);
+        CHECK(pspace.put<"/test2">(2).nbrValuesInserted == 1);
+        CHECK(pspace.put<"/test3">(3).nbrValuesInserted == 1);
+        CHECK(pspace.put<"/test*">(4).nbrValuesInserted == 3);
     }
 
     SUBCASE("Middle PathSpace Glob Construction") {
-        CHECK(pspace.insert("/test1/test", 1).nbrValuesInserted == 1);
-        CHECK(pspace.insert("/test2/test", 2).nbrValuesInserted == 1);
-        CHECK(pspace.insert("/test3/test", 3).nbrValuesInserted == 1);
-        CHECK(pspace.insert("/tast1", 4).nbrValuesInserted == 1);
-        CHECK(pspace.insert("/test*/moo", 5).nbrValuesInserted == 3);
+        CHECK(pspace.put("/test1/test", 1).nbrValuesInserted == 1);
+        CHECK(pspace.put("/test2/test", 2).nbrValuesInserted == 1);
+        CHECK(pspace.put("/test3/test", 3).nbrValuesInserted == 1);
+        CHECK(pspace.put("/tast1", 4).nbrValuesInserted == 1);
+        CHECK(pspace.put("/test*/moo", 5).nbrValuesInserted == 3);
     }
 
     SUBCASE("Multiple Levels Deep") {
-        CHECK(pspace.insert("/a/b/c/d", 123).nbrValuesInserted == 1);
-        CHECK(pspace.insert("/a/b/e/f", 456).nbrValuesInserted == 1);
-        CHECK(pspace.insert("/a/b/e/f", 567).nbrValuesInserted == 1);
+        CHECK(pspace.put("/a/b/c/d", 123).nbrValuesInserted == 1);
+        CHECK(pspace.put("/a/b/e/f", 456).nbrValuesInserted == 1);
+        CHECK(pspace.put("/a/b/e/f", 567).nbrValuesInserted == 1);
         CHECK(pspace.read<int>("/a/b/c/d", Block{}).value() == 123);
-        CHECK(pspace.extract<int>("/a/b/e/f", Block{}).value() == 456);
+        CHECK(pspace.take<int>("/a/b/e/f", Block{}).value() == 456);
         CHECK(pspace.read<int>("/a/b/e/f", Block{}).value() == 567);
     }
 
     SUBCASE("Simple Function Pointer Insertion and Execution") {
         int (*simpleFunc)() = []() -> int { return 42; };
-        CHECK(pspace.insert("/simple", simpleFunc).errors.size() == 0);
+        CHECK(pspace.put("/simple", simpleFunc).errors.size() == 0);
         auto result = pspace.read<int>("/simple", Block{});
         CHECK(result.has_value());
         CHECK(result.value() == 42);
@@ -58,7 +58,7 @@ TEST_CASE("PathSpace Insert") {
 
     SUBCASE("std::function Insertion and Execution") {
         std::function<int()> stdFunc = []() -> int { return 100; };
-        CHECK(pspace.insert("/std", stdFunc).errors.size() == 0);
+        CHECK(pspace.put("/std", stdFunc).errors.size() == 0);
         auto result = pspace.read<int>("/std", Block{});
         CHECK(result.has_value());
         CHECK(result.value() == 100);
@@ -75,9 +75,9 @@ TEST_CASE("PathSpace Insert") {
         };
         std::function<std::string()> const f3 = []() -> std::string { return "50"; };
 
-        CHECK(pspace.insert("/f1", f1).errors.size() == 0);
-        CHECK(pspace.insert("/f2", f2).errors.size() == 0);
-        CHECK(pspace.insert("/f3", f3).errors.size() == 0);
+        CHECK(pspace.put("/f1", f1).errors.size() == 0);
+        CHECK(pspace.put("/f2", f2).errors.size() == 0);
+        CHECK(pspace.put("/f3", f3).errors.size() == 0);
 
         auto result = pspace.read<double>("/f1", Block{});
         CHECK(result.has_value());
@@ -92,7 +92,7 @@ TEST_CASE("PathSpace Insert") {
                     return 1;
                 return pspace.read<int>(SP::ConcretePathStringView{"/func" + std::to_string(i - 1)}, Block{}).value() + 1;
             };
-            CHECK(pspace.insert(SP::GlobPathStringView{"/func" + std::to_string(i)}, func).errors.size() == 0);
+            CHECK(pspace.put(SP::GlobPathStringView{"/func" + std::to_string(i)}, func).errors.size() == 0);
         }
 
         auto result = pspace.read<int>(SP::ConcretePathStringView{"/func" + std::to_string(DEPTH - 1)}, Block{});
@@ -107,7 +107,7 @@ TEST_CASE("PathSpace Insert") {
 
             // Insert with lazy execution - functions won't run until read
             for (int i = 0; i < 1000; ++i)
-                CHECK(pspace.insert(std::format("/concurrent{}", i), incrementFunc, In{.executionCategory = ExecutionCategory::Lazy}).nbrTasksInserted == 1);
+                CHECK(pspace.put(std::format("/concurrent{}", i), incrementFunc, In{.executionCategory = ExecutionCategory::Lazy}).nbrTasksInserted == 1);
 
             // Reading triggers execution in sequence
             for (int i = 0; i < 1000; ++i)
@@ -122,7 +122,7 @@ TEST_CASE("PathSpace Insert") {
 
             // Insert with immediate execution - functions run right away in parallel
             for (int i = 0; i < 1000; ++i)
-                CHECK(pspace.insert(std::format("/concurrent{}", i), incrementFunc, In{.executionCategory = ExecutionCategory::Immediate}).nbrTasksInserted == 1);
+                CHECK(pspace.put(std::format("/concurrent{}", i), incrementFunc, In{.executionCategory = ExecutionCategory::Immediate}).nbrTasksInserted == 1);
 
             // Read the results - they'll be in non-deterministic order
             std::set<int> results;

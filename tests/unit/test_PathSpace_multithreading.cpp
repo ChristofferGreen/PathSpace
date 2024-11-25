@@ -100,7 +100,7 @@ TEST_CASE("PathSpace Multithreading") {
 
                     bool inserted = false;
                     for (int attempt = 0; attempt < MAX_RETRIES && !inserted && state.shouldContinue(); attempt++) {
-                        if (auto result = pspace.insert(path, value); result.errors.empty()) {
+                        if (auto result = pspace.put(path, value); result.errors.empty()) {
                             inserted = true;
                             state.insertCount.fetch_add(1, std::memory_order_release);
                             state.stats.successfulOps.fetch_add(1, std::memory_order_release);
@@ -151,7 +151,7 @@ TEST_CASE("PathSpace Multithreading") {
                     // Try read first, fall back to extract
                     auto result = pspace.read<int>(path, options);
                     if (!result.has_value()) {
-                        result = pspace.extract<int>(path, options);
+                        result = pspace.take<int>(path, options);
                     }
 
                     if (result.has_value()) {
@@ -267,7 +267,7 @@ TEST_CASE("PathSpace Multithreading") {
                 int value = (threadId * OPERATIONS_PER_THREAD) + i;
 
                 // Try to insert our value
-                auto result = pspace.insert("/data", value);
+                auto result = pspace.put("/data", value);
 
                 if (result.errors.empty()) {
                     stats.insertedValues.push_back(value);
@@ -297,7 +297,7 @@ TEST_CASE("PathSpace Multithreading") {
         // Extract all values to verify what got stored
         std::vector<int> extractedValues;
         while (true) {
-            auto result = pspace.extract<int>("/data");
+            auto result = pspace.take<int>("/data");
             if (!result.has_value())
                 break;
             extractedValues.push_back(result.value());
@@ -358,7 +358,7 @@ TEST_CASE("PathSpace Multithreading") {
                     int value = (threadId * 100) + i;
 
                     // Insert our value
-                    auto result = pspace.insert("/counter", value);
+                    auto result = pspace.put("/counter", value);
                     if (!result.errors.empty()) {
                         std::lock_guard<std::mutex> lock(errorMutex);
                         workerErrorMsg = "Insert failed: " + result.errors[0].message.value_or("Unknown error");
@@ -406,7 +406,7 @@ TEST_CASE("PathSpace Multithreading") {
         const int              MAX_TIMEOUTS   = 10; // Allow some timeouts before giving up
 
         while (extractedCount < expectedCount) {
-            auto value = pspace.extract<int>("/counter", Block(1000ms));
+            auto value = pspace.take<int>("/counter", Block(1000ms));
 
             if (!value.has_value()) {
                 if (value.error().code == Error::Code::Timeout) {
@@ -484,7 +484,7 @@ TEST_CASE("PathSpace Multithreading") {
         }
 
         // Verify no more values exist
-        auto extraValue = pspace.extract<int>("/counter");
+        auto extraValue = pspace.take<int>("/counter");
         CHECK_MESSAGE(!extraValue.has_value(), "Found unexpected extra value in PathSpace after test completion");
     }
 
@@ -501,12 +501,12 @@ TEST_CASE("PathSpace Multithreading") {
         auto writerFunction = [&](int threadId) {
             for (int i = 0; i < VALUES_PER_WRITER; i++) {
                 int value = (threadId * 1000) + i;
-                REQUIRE(pspace.insert("/mixed", value).errors.empty());
+                REQUIRE(pspace.put("/mixed", value).errors.empty());
                 writesCompleted++;
 
                 // Occasionally write to a different path
                 if (i % 10 == 0) {
-                    REQUIRE(pspace.insert("/mixed_alt", value).errors.empty());
+                    REQUIRE(pspace.put("/mixed_alt", value).errors.empty());
                 }
             }
         };
@@ -532,7 +532,7 @@ TEST_CASE("PathSpace Multithreading") {
 
         auto extractorFunction = [&]() {
             while (writesCompleted < (NUM_WRITERS * VALUES_PER_WRITER)) {
-                auto value = pspace.extract<int>("/mixed", Block{});
+                auto value = pspace.take<int>("/mixed", Block{});
                 if (value.has_value()) {
                     extractsCompleted++;
                 }
@@ -599,7 +599,7 @@ TEST_CASE("PathSpace Multithreading") {
                     for (const auto& path : paths) {
                         int value = (threadId * 1000000) + (i * 1000);
 
-                        auto result = pspace.insert(path, value);
+                        auto result = pspace.put(path, value);
                         if (!result.errors.empty()) {
                             std::lock_guard<std::mutex> lock(errorMutex);
                             workerErrorMsg = "Insert failed: " + result.errors[0].message.value_or("Unknown error");
@@ -647,7 +647,7 @@ TEST_CASE("PathSpace Multithreading") {
 
                     // Extract all values from this path
                     while (seqNums.size() < expectedValues) {
-                        auto value = pspace.extract<int>(path, Block(1000ms));
+                        auto value = pspace.take<int>(path, Block(1000ms));
 
                         if (!value.has_value()) {
                             if (value.error().code == Error::Code::Timeout) {
@@ -697,7 +697,7 @@ TEST_CASE("PathSpace Multithreading") {
                     }
 
                     // Verify no more values exist
-                    auto extraValue = pspace.extract<int>(path);
+                    auto extraValue = pspace.take<int>(path);
                     {
                         std::stringstream ss;
                         ss << "Found unexpected extra value in path " << path << " after test completion";
@@ -714,7 +714,7 @@ TEST_CASE("PathSpace Multithreading") {
 
         // Pre-populate with known values
         for (int i = 0; i < NUM_VALUES; i++) {
-            auto              result = pspace.insert("/race", i);
+            auto              result = pspace.put("/race", i);
             std::stringstream ss;
             ss << "Failed to insert initial value " << i;
             REQUIRE_MESSAGE(result.errors.empty(), ss.str());
@@ -768,7 +768,7 @@ TEST_CASE("PathSpace Multithreading") {
                     int       extractedCount = 0;
 
                     while (extractedCount < NUM_VALUES) {
-                        auto value = pspace.extract<int>("/race", Block(1000ms));
+                        auto value = pspace.take<int>("/race", Block(1000ms));
 
                         if (!value.has_value()) {
                             if (value.error().code == Error::Code::Timeout) {
@@ -846,7 +846,7 @@ TEST_CASE("PathSpace Multithreading") {
             }
 
             {
-                auto finalExtract = pspace.extract<int>("/race", Block(1000ms));
+                auto finalExtract = pspace.take<int>("/race", Block(1000ms));
                 CHECK_MESSAGE(!finalExtract.has_value(), "Expected no more values to extract");
             }
         }
@@ -862,7 +862,7 @@ TEST_CASE("PathSpace Multithreading") {
                 std::string basePath = "/thread" + std::to_string(threadId);
                 for (int depth = 0; depth < 3; depth++) {
                     std::string path = basePath + "/path" + std::to_string(i) + "/depth" + std::to_string(depth);
-                    REQUIRE(pspace.insert(path, i).errors.empty());
+                    REQUIRE(pspace.put(path, i).errors.empty());
                 }
             }
         };
@@ -883,7 +883,7 @@ TEST_CASE("PathSpace Multithreading") {
                 std::string basePath = "/thread" + std::to_string(t);
                 for (int depth = 0; depth < 3; depth++) {
                     std::string path  = basePath + "/path" + std::to_string(i) + "/depth" + std::to_string(depth);
-                    auto        value = pspace.extract<int>(path, Block{});
+                    auto        value = pspace.take<int>(path, Block{});
                     REQUIRE(value.has_value());
                     CHECK(value.value() == i);
                 }
@@ -912,7 +912,7 @@ TEST_CASE("PathSpace Multithreading") {
                 for (int i = 0; i < ITEMS_PER_THREAD; ++i) {
                     TestData data{.path = std::format("/data/{}/{}", t, i), .value = t * 1000 + i};
 
-                    auto result = pspace.insert(data.path, data.value);
+                    auto result = pspace.put(data.path, data.value);
                     CHECK_MESSAGE(result.errors.empty(), std::format("Failed to insert at path {}", data.path));
 
                     threadData[t].push_back(data);
@@ -936,7 +936,7 @@ TEST_CASE("PathSpace Multithreading") {
                     if (item.extracted)
                         continue;
 
-                    auto result = pspace.extract<int>(item.path, Block(100ms));
+                    auto result = pspace.take<int>(item.path, Block(100ms));
 
                     if (result.has_value()) {
                         CHECK(result.value() == item.value);
@@ -982,7 +982,7 @@ TEST_CASE("PathSpace Multithreading") {
                         continue;
 
                     // Try to extract the item
-                    auto result = pspace.extract<int>(item.path);
+                    auto result = pspace.take<int>(item.path);
                     if (result.has_value()) {
                         remainingItems++;
                         remainingPaths.push_back(item.path);
@@ -998,7 +998,7 @@ TEST_CASE("PathSpace Multithreading") {
 
                 // Try one more time to extract these items
                 for (const auto& path : remainingPaths) {
-                    if (auto result = pspace.extract<int>(path); result.has_value()) {
+                    if (auto result = pspace.take<int>(path); result.has_value()) {
                         remainingItems--;
                     }
                 }
@@ -1011,7 +1011,7 @@ TEST_CASE("PathSpace Multithreading") {
             bool anyRemaining = false;
             for (const auto& thread : threadData) {
                 for (const auto& item : thread) {
-                    if (auto result = pspace.extract<int>(item.path); result.has_value()) {
+                    if (auto result = pspace.take<int>(item.path); result.has_value()) {
                         anyRemaining = true;
                         sp_log(std::format("Item remains after clear: {}", item.path), "INFO");
                     }
@@ -1049,7 +1049,7 @@ TEST_CASE("PathSpace Multithreading") {
                 return i;
             };
 
-            REQUIRE(pspace.insert("/task/" + std::to_string(i), task, SP::In{.executionCategory = SP::ExecutionCategory::Lazy}).errors.empty());
+            REQUIRE(pspace.put("/task/" + std::to_string(i), task, SP::In{.executionCategory = SP::ExecutionCategory::Lazy}).errors.empty());
         }
 
         // Execute tasks in sequence
@@ -1091,7 +1091,7 @@ TEST_CASE("PathSpace Multithreading") {
                                 switch (i % 3) {
                                     case 0: {
                                         // Insert
-                                        auto result = space.insert(path, i);
+                                        auto result = space.put(path, i);
                                         if (result.errors.empty()) {
                                             success_count++;
                                         }
@@ -1106,7 +1106,7 @@ TEST_CASE("PathSpace Multithreading") {
                                     }
                                     case 2: {
                                         // Extract with short timeout
-                                        auto result = space.extract<int>(path, Block(10ms));
+                                        auto result = space.take<int>(path, Block(10ms));
                                         if (result)
                                             success_count++;
                                         break;
@@ -1192,7 +1192,7 @@ TEST_CASE("PathSpace Multithreading") {
         std::atomic<bool> has_error{false};
 
         // Insert initial value
-        REQUIRE(space.insert("/shared/task", 42).nbrValuesInserted == 1);
+        REQUIRE(space.put("/shared/task", 42).nbrValuesInserted == 1);
 
         auto reader_func = [&](int reader_id) {
             try {
@@ -1245,7 +1245,7 @@ TEST_CASE("PathSpace Multithreading") {
         std::atomic<bool> has_error{false};
 
         // Insert initial value
-        REQUIRE(space.insert("/shared/task", 42).nbrValuesInserted == 1);
+        REQUIRE(space.put("/shared/task", 42).nbrValuesInserted == 1);
 
         auto reader_func = [&](int reader_id) {
             try {
@@ -1306,7 +1306,7 @@ TEST_CASE("PathSpace Multithreading") {
         PathSpace space;
 
         // Insert a fast task that should complete
-        auto fast_insert = space.insert(
+        auto fast_insert = space.put(
                 "/fast_task",
                 []() {
                     std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -1341,7 +1341,7 @@ TEST_CASE("PathSpace Multithreading") {
         PathSpace space;
 
         // Insert a fast task that should complete
-        auto fast_insert = space.insert(
+        auto fast_insert = space.put(
                 "/fast_task",
                 []() {
                     std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -1349,7 +1349,7 @@ TEST_CASE("PathSpace Multithreading") {
                 },
                 In{.executionCategory = ExecutionCategory::Lazy});
         REQUIRE_MESSAGE(fast_insert.errors.empty(), "Failed to insert fast task");
-        auto slow_insert = space.insert(
+        auto slow_insert = space.put(
                 "/slow_task",
                 []() {
                     std::this_thread::sleep_for(std::chrono::milliseconds(250));
@@ -1383,12 +1383,12 @@ TEST_CASE("PathSpace Multithreading") {
         PathSpace space;
 
         // Store a normal value first
-        REQUIRE(space.insert("/error/test", 42).errors.empty());
+        REQUIRE(space.put("/error/test", 42).errors.empty());
 
         // Store an error-generating task
         auto error_task = []() -> int { throw std::runtime_error("Expected test error"); };
 
-        REQUIRE(space.insert("/error/task", error_task, In{.executionCategory = ExecutionCategory::Lazy}).errors.empty());
+        REQUIRE(space.put("/error/task", error_task, In{.executionCategory = ExecutionCategory::Lazy}).errors.empty());
 
         // First verify the good path works
         auto good_result = space.read<int>("/error/test");
@@ -1418,7 +1418,7 @@ TEST_CASE("PathSpace Multithreading") {
                 return i;
             };
 
-            CHECK(pspace.insert("/short/" + std::to_string(i), task).errors.empty());
+            CHECK(pspace.put("/short/" + std::to_string(i), task).errors.empty());
         }
 
         // Wait briefly for short tasks to complete
@@ -1447,7 +1447,7 @@ TEST_CASE("PathSpace Multithreading") {
             };
 
             // Use ExecutionCategory::Immediate to ensure the task runs right away
-            CHECK(pspace.insert("/long/" + std::to_string(i), task).errors.empty());
+            CHECK(pspace.put("/long/" + std::to_string(i), task).errors.empty());
         }
 
         // Wait briefly to ensure all tasks have been picked up
@@ -1471,7 +1471,7 @@ TEST_CASE("PathSpace Multithreading") {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 return ++executedTasks;
             };
-            CHECK(pspace.insert("/pool/" + std::to_string(i), task).errors.size() == 0);
+            CHECK(pspace.put("/pool/" + std::to_string(i), task).errors.size() == 0);
         }
 
         std::vector<std::thread> threads;
@@ -1512,7 +1512,7 @@ TEST_CASE("PathSpace Multithreading") {
                     bool        operationLogged = false;
 
                     // Insert operation
-                    auto insertResult = pspace.insert(path, i);
+                    auto insertResult = pspace.put(path, i);
                     if (!insertResult.errors.empty()) {
                         failedInserts.fetch_add(1, std::memory_order_relaxed);
                         if (!operationLogged) {
@@ -1543,7 +1543,7 @@ TEST_CASE("PathSpace Multithreading") {
                     }
 
                     // Extract operation - non-blocking
-                    auto extractResult = pspace.extract<int>(path);
+                    auto extractResult = pspace.take<int>(path);
                     if (!extractResult.has_value()) {
                         failedExtracts.fetch_add(1, std::memory_order_relaxed);
                         if (!operationLogged) {
@@ -1655,8 +1655,8 @@ TEST_CASE("PathSpace Multithreading") {
         auto resourceA = []() -> int { return 1; };
         auto resourceB = []() -> int { return 2; };
 
-        CHECK(pspace.insert("/resourceA", resourceA).errors.size() == 0);
-        CHECK(pspace.insert("/resourceB", resourceB).errors.size() == 0);
+        CHECK(pspace.put("/resourceA", resourceA).errors.size() == 0);
+        CHECK(pspace.put("/resourceB", resourceB).errors.size() == 0);
 
         auto workerFunction = [&](int threadId) {
             if (threadId % 2 == 0) {
@@ -1712,7 +1712,7 @@ TEST_CASE("PathSpace Multithreading") {
                     for (int i = 0; i < OPERATIONS_PER_THREAD && !shouldStop.load(std::memory_order_relaxed); ++i) {
                         std::string path = std::format("/perf/{}", i % NUM_PATHS);
                         auto        task = []() -> int { return 42; };
-                        pspace.insert(path, task);
+                        pspace.put(path, task);
                         auto result = pspace.read<int>(path, Block(10ms));
                         if (result.has_value()) {
                             completedOperations.fetch_add(1, std::memory_order_relaxed);
@@ -1804,10 +1804,10 @@ TEST_CASE("PathSpace Multithreading") {
                 std::this_thread::sleep_for(std::chrono::milliseconds(think_dist(rng)));
 
                 // Try to pick up forks
-                auto first = pspace.extract<int>(first_fork, Block(50ms));
+                auto first = pspace.take<int>(first_fork, Block(50ms));
                 if (first.has_value()) {
                     stats[id].forks_acquired.fetch_add(1, std::memory_order_relaxed);
-                    auto second = pspace.extract<int>(second_fork, Block(50ms));
+                    auto second = pspace.take<int>(second_fork, Block(50ms));
                     if (second.has_value()) {
                         stats[id].forks_acquired.fetch_add(1, std::memory_order_relaxed);
                         // Eating
@@ -1815,10 +1815,10 @@ TEST_CASE("PathSpace Multithreading") {
                         stats[id].meals_eaten.fetch_add(1, std::memory_order_relaxed);
 
                         // Put down second fork
-                        pspace.insert(second_fork, 1);
+                        pspace.put(second_fork, 1);
                     }
                     // Put down first fork
-                    pspace.insert(first_fork, 1);
+                    pspace.put(first_fork, 1);
                 } else {
                     stats[id].times_starved.fetch_add(1, std::memory_order_relaxed);
                 }
@@ -1830,7 +1830,7 @@ TEST_CASE("PathSpace Multithreading") {
 
         // Initialize forks
         for (int i = 0; i < NUM_PHILOSOPHERS; ++i) {
-            REQUIRE(pspace.insert(std::format("/fork/{}", i), 1).nbrValuesInserted == 1);
+            REQUIRE(pspace.put(std::format("/fork/{}", i), 1).nbrValuesInserted == 1);
         }
 
         // Start philosophers

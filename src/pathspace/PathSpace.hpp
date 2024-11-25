@@ -31,7 +31,7 @@ public:
      * @return InsertReturn object containing information about the insertion operation, including any errors.
      */
     template <typename DataType>
-    auto insert(GlobPathStringView const& path, DataType&& data, In const& options = {}) -> InsertReturn {
+    auto put(GlobPathStringView const& path, DataType&& data, In const& options = {}) -> InsertReturn {
         sp_log("PathSpace::insert", "Function Called");
         if (auto error = path.validate(options.validationLevel))
             return InsertReturn{.errors = {*error}};
@@ -49,9 +49,9 @@ public:
 
     template <FixedString pathIn, typename DataType>
         requires(validate_path(pathIn) == true)
-    auto insert(DataType&& data, In const& options = {}) -> InsertReturn {
+    auto put(DataType&& data, In const& options = {}) -> InsertReturn {
         sp_log("PathSpace::insert", "Function Called");
-        return this->insert(GlobPathStringView{pathIn}, std::forward<DataType>(data), options & InNoValidation{});
+        return this->put(GlobPathStringView{pathIn}, std::forward<DataType>(data), options & InNoValidation{});
     }
 
     /**
@@ -88,7 +88,7 @@ public:
      * @return Expected<DataType> containing the extractbed data if successful, or an error if not.
      */
     template <typename DataType>
-    auto extract(ConcretePathStringView const& path, Out const& options = {}) -> Expected<DataType> {
+    auto take(ConcretePathStringView const& path, Out const& options = {}) -> Expected<DataType> {
         sp_log("PathSpace::extract", "Function Called");
         if (auto error = path.validate(options.validationLevel))
             return std::unexpected(*error);
@@ -100,9 +100,9 @@ public:
 
     template <FixedString pathIn, typename DataType>
         requires(validate_path(pathIn))
-    auto extract(Out const& options = {}) -> Expected<DataType> {
+    auto take(Out const& options = {}) -> Expected<DataType> {
         sp_log("PathSpace::extract", "Function Called");
-        return this->extract<DataType>(ConcretePathStringView{pathIn}, options & Pop{} & OutNoValidation{});
+        return this->take<DataType>(ConcretePathStringView{pathIn}, options & Pop{} & OutNoValidation{});
     }
 
     auto clear() -> void;

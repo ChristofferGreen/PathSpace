@@ -31,8 +31,8 @@ using namespace std::chrono_literals;
 TEST_CASE("PathSpace Read") {
     PathSpace pspace;
     SUBCASE("Simple PathSpace Read") {
-        CHECK(pspace.insert("/test", 56).nbrValuesInserted == 1);
-        CHECK(pspace.insert("/test", 58).nbrValuesInserted == 1);
+        CHECK(pspace.put("/test", 56).nbrValuesInserted == 1);
+        CHECK(pspace.put("/test", 58).nbrValuesInserted == 1);
         auto ret = pspace.read<int>("/test");
         CHECK(ret.has_value());
         CHECK(ret.value() == 56);
@@ -42,8 +42,8 @@ TEST_CASE("PathSpace Read") {
     }
 
     SUBCASE("Deeper PathSpace Read") {
-        CHECK(pspace.insert("/test1/test2", 56).nbrValuesInserted == 1);
-        CHECK(pspace.insert("/test1/test2", 58).nbrValuesInserted == 1);
+        CHECK(pspace.put("/test1/test2", 56).nbrValuesInserted == 1);
+        CHECK(pspace.put("/test1/test2", 58).nbrValuesInserted == 1);
         auto ret = pspace.read<int>("/test1/test2");
         CHECK(ret.has_value());
         CHECK(ret.value() == 56);
@@ -56,8 +56,8 @@ TEST_CASE("PathSpace Read") {
         using TestFuncPtr = int (*)();
         TestFuncPtr f     = []() -> int { return 58; };
         TestFuncPtr f2    = []() -> int { return 25; };
-        CHECK(pspace.insert("/f", f).nbrTasksInserted == 1);
-        CHECK(pspace.insert("/f2", f2).nbrTasksInserted == 1);
+        CHECK(pspace.put("/f", f).nbrTasksInserted == 1);
+        CHECK(pspace.put("/f2", f2).nbrTasksInserted == 1);
         CHECK(pspace.read<int>("/f", Block{}).value() == 58);
         CHECK(pspace.read<int>("/f", Block{}).value() == 58);
         CHECK(pspace.read<int>("/f2", Block{}).value() == 25);
@@ -65,7 +65,7 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("Simple PathSpace Execution Lazy") {
         std::function<int()> f = []() -> int { return 58; };
-        CHECK(pspace.insert("/f", f, In{.executionCategory = ExecutionCategory::Lazy}).nbrTasksInserted == 1);
+        CHECK(pspace.put("/f", f, In{.executionCategory = ExecutionCategory::Lazy}).nbrTasksInserted == 1);
         CHECK(pspace.read<int>("/f", Block{}).value() == 58);
     }
 
@@ -73,8 +73,8 @@ TEST_CASE("PathSpace Read") {
         auto const f1 = [&pspace]() -> int { return pspace.read<int>("/f2", Block{}).value() + 11; };
         int (*f2)()   = []() -> int { return 10; };
 
-        CHECK(pspace.insert("/f1", f1).errors.size() == 0);
-        CHECK(pspace.insert("/f2", f2).errors.size() == 0);
+        CHECK(pspace.put("/f1", f1).errors.size() == 0);
+        CHECK(pspace.put("/f2", f2).errors.size() == 0);
 
         auto const val = pspace.read<int>("/f1", Block{});
         CHECK(val.has_value() == true);
@@ -97,9 +97,9 @@ TEST_CASE("PathSpace Read") {
             return 100;
         };
 
-        CHECK(pspace.insert("/f1", f1).errors.size() == 0);
-        CHECK(pspace.insert("/f2", f2).errors.size() == 0);
-        CHECK(pspace.insert("/f3", f3).errors.size() == 0);
+        CHECK(pspace.put("/f1", f1).errors.size() == 0);
+        CHECK(pspace.put("/f2", f2).errors.size() == 0);
+        CHECK(pspace.put("/f3", f3).errors.size() == 0);
 
         auto const val = pspace.read<int>("/f1", Block{});
         CHECK(val.has_value() == true);
@@ -107,14 +107,14 @@ TEST_CASE("PathSpace Read") {
     }
 
     SUBCASE("PathSpace Read Block") {
-        pspace.insert("/i", 46);
+        pspace.put("/i", 46);
         auto const val = pspace.read<int>("/i", Block{});
         CHECK(val.has_value());
         CHECK(val.value() == 46);
     }
 
     SUBCASE("PathSpace Read Block Delayed") {
-        pspace.insert("/i", +[] { return 46; });
+        pspace.put("/i", +[] { return 46; });
         auto const val = pspace.read<int>("/i", Block{});
         CHECK(val.has_value());
         CHECK(val.value() == 46);
@@ -126,7 +126,7 @@ TEST_CASE("PathSpace Read") {
     }
 
     SUBCASE("PathSpace Read std::string") {
-        pspace.insert("/string", std::string("hello"));
+        pspace.put("/string", std::string("hello"));
         auto const val = pspace.read<std::string>("/string");
         CHECK(val.has_value());
         CHECK(val.value() == "hello");
@@ -134,7 +134,7 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("PathSpace Read std::vector") {
         std::vector<int> vec = {1, 2, 3, 4, 5};
-        pspace.insert("/vector", vec);
+        pspace.put("/vector", vec);
         auto const val = pspace.read<std::vector<int>>("/vector");
         CHECK(val.has_value());
         CHECK(val.value() == vec);
@@ -142,7 +142,7 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("PathSpace Read std::array") {
         std::array<double, 3> arr = {1.1, 2.2, 3.3};
-        pspace.insert("/array", arr);
+        pspace.put("/array", arr);
         auto const val = pspace.read<std::array<double, 3>>("/array");
         CHECK(val.has_value());
         CHECK(val.value() == arr);
@@ -150,7 +150,7 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("PathSpace Read std::map") {
         std::map<std::string, int> map = {{"one", 1}, {"two", 2}, {"three", 3}};
-        pspace.insert("/map", map);
+        pspace.put("/map", map);
         auto const val = pspace.read<std::map<std::string, int>>("/map");
         CHECK(val.has_value());
         CHECK(val.value() == map);
@@ -158,7 +158,7 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("PathSpace Read std::unordered_map") {
         std::unordered_map<std::string, double> umap = {{"pi", 3.14}, {"e", 2.71}};
-        pspace.insert("/umap", umap);
+        pspace.put("/umap", umap);
         auto const val = pspace.read<std::unordered_map<std::string, double>>("/umap");
         CHECK(val.has_value());
         CHECK(val.value() == umap);
@@ -166,7 +166,7 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("PathSpace Read std::set") {
         std::set<char> set = {'a', 'b', 'c', 'd'};
-        pspace.insert("/set", set);
+        pspace.put("/set", set);
         auto const val = pspace.read<std::set<char>>("/set");
         CHECK(val.has_value());
         CHECK(val.value() == set);
@@ -174,7 +174,7 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("PathSpace Read std::unordered_set") {
         std::unordered_set<int> uset = {1, 2, 3, 4, 5};
-        pspace.insert("/uset", uset);
+        pspace.put("/uset", uset);
         auto const val = pspace.read<std::unordered_set<int>>("/uset");
         CHECK(val.has_value());
         CHECK(val.value() == uset);
@@ -182,7 +182,7 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("PathSpace Read std::pair") {
         std::pair<int, std::string> pair = {42, "answer"};
-        pspace.insert("/pair", pair);
+        pspace.put("/pair", pair);
         auto const val = pspace.read<std::pair<int, std::string>>("/pair");
         CHECK(val.has_value());
         CHECK(val.value() == pair);
@@ -190,7 +190,7 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("PathSpace Read std::tuple") {
         std::tuple<int, double, char> tuple = {1, 3.14, 'a'};
-        pspace.insert("/tuple", tuple);
+        pspace.put("/tuple", tuple);
         auto const val = pspace.read<std::tuple<int, double, char>>("/tuple");
         CHECK(val.has_value());
         CHECK(val.value() == tuple);
@@ -198,7 +198,7 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("PathSpace Read std::optional") {
         std::optional<int> opt = 42;
-        pspace.insert("/optional", opt);
+        pspace.put("/optional", opt);
         auto const val = pspace.read<std::optional<int>>("/optional");
         CHECK(val.has_value());
         CHECK(val.value() == opt);
@@ -206,7 +206,7 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("PathSpace Read std::variant") {
         std::variant<int, double, std::string> var = "hello";
-        pspace.insert("/variant", var);
+        pspace.put("/variant", var);
         auto const val = pspace.read<std::variant<int, double, std::string>>("/variant");
         CHECK(val.has_value());
         CHECK(val.value() == var);
@@ -214,7 +214,7 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("PathSpace Read std::bitset") {
         std::bitset<8> bits(0b10101010);
-        pspace.insert("/bitset", bits);
+        pspace.put("/bitset", bits);
         auto const val = pspace.read<std::bitset<8>>("/bitset");
         CHECK(val.has_value());
         CHECK(val.value() == bits);
@@ -222,7 +222,7 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("PathSpace Read std::deque") {
         std::deque<int> deq = {1, 2, 3, 4, 5};
-        pspace.insert("/deque", deq);
+        pspace.put("/deque", deq);
         auto const val = pspace.read<std::deque<int>>("/deque");
         CHECK(val.has_value());
         CHECK(val.value() == deq);
@@ -230,7 +230,7 @@ TEST_CASE("PathSpace Read") {
 
     SUBCASE("PathSpace Read std::list") {
         std::list<std::string> lst = {"one", "two", "three"};
-        pspace.insert("/list", lst);
+        pspace.put("/list", lst);
         auto const val = pspace.read<std::list<std::string>>("/list");
         CHECK(val.has_value());
         CHECK(val.value() == lst);

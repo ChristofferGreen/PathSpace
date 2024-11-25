@@ -17,9 +17,9 @@ struct TestPathHierarchy {
     TestPathHierarchy(PathSpace& sp)
         : space(sp) {
         // Setup standard test hierarchy
-        space.insert("/root/branch1/leaf1", 1);
-        space.insert("/root/branch1/leaf2", 2);
-        space.insert("/root/branch2/leaf1", 3);
+        space.put("/root/branch1/leaf1", 1);
+        space.put("/root/branch1/leaf2", 2);
+        space.put("/root/branch2/leaf1", 3);
     }
 
     template <typename T>
@@ -201,19 +201,19 @@ TEST_CASE("PathSpace Integration") {
 
     SUBCASE("Insert Validation") {
         // Valid inserts
-        CHECK(pspace.insert("/valid/path", 42).errors.empty());
-        CHECK(pspace.insert("/test/[a-z]/*", 42).errors.empty());
+        CHECK(pspace.put("/valid/path", 42).errors.empty());
+        CHECK(pspace.put("/test/[a-z]/*", 42).errors.empty());
 
         // Invalid inserts
         {
-            auto ret = pspace.insert("invalid", 42);
+            auto ret = pspace.put("invalid", 42);
             CHECK_FALSE(ret.errors.empty());
             CHECK(ret.errors[0].code == Error::Code::InvalidPath);
         }
     }
 
     SUBCASE("Read Validation") {
-        pspace.insert("/test", 42);
+        pspace.put("/test", 42);
 
         // Valid paths
         CHECK(pspace.read<int>("/test").has_value());
@@ -225,13 +225,13 @@ TEST_CASE("PathSpace Integration") {
     }
 
     SUBCASE("Extract Validation") {
-        pspace.insert("/test", 42);
+        pspace.put("/test", 42);
 
         // Valid paths
-        CHECK(pspace.extract<int>("/test").has_value());
+        CHECK(pspace.take<int>("/test").has_value());
 
         // Invalid paths
-        auto bad_extract = pspace.extract<int>("invalid");
+        auto bad_extract = pspace.take<int>("invalid");
         REQUIRE_FALSE(bad_extract.has_value());
         CHECK(bad_extract.error().code == Error::Code::InvalidPath);
     }
@@ -240,8 +240,8 @@ TEST_CASE("PathSpace Integration") {
         PathSpace pspace;
 
         // Multi-level insertion
-        REQUIRE(pspace.insert("/org/dept/team/project/task1", 42).nbrValuesInserted == 1);
-        REQUIRE(pspace.insert("/org/dept/team/project/task2", 43).nbrValuesInserted == 1);
+        REQUIRE(pspace.put("/org/dept/team/project/task1", 42).nbrValuesInserted == 1);
+        REQUIRE(pspace.put("/org/dept/team/project/task2", 43).nbrValuesInserted == 1);
 
         // Test partial path reads
         auto task1 = pspace.read<int>("/org/dept/team/project/task1");
@@ -252,15 +252,15 @@ TEST_CASE("PathSpace Integration") {
         CHECK(task2.value() == 43);
 
         // Test glob across multiple levels
-        CHECK(pspace.insert("/org/*/team/*/task*", 100).nbrValuesInserted == 2);
-        auto modifiedTask1 = pspace.extract<int>("/org/dept/team/project/task1");
-        auto modifiedTask2 = pspace.extract<int>("/org/dept/team/project/task2");
+        CHECK(pspace.put("/org/*/team/*/task*", 100).nbrValuesInserted == 2);
+        auto modifiedTask1 = pspace.take<int>("/org/dept/team/project/task1");
+        auto modifiedTask2 = pspace.take<int>("/org/dept/team/project/task2");
         REQUIRE(modifiedTask1.has_value());
         REQUIRE(modifiedTask2.has_value());
         CHECK(modifiedTask1.value() == 42);
         CHECK(modifiedTask2.value() == 43);
-        modifiedTask1 = pspace.extract<int>("/org/dept/team/project/task1");
-        modifiedTask2 = pspace.extract<int>("/org/dept/team/project/task2");
+        modifiedTask1 = pspace.take<int>("/org/dept/team/project/task1");
+        modifiedTask2 = pspace.take<int>("/org/dept/team/project/task2");
         REQUIRE(modifiedTask1.has_value());
         REQUIRE(modifiedTask2.has_value());
         CHECK(modifiedTask1.value() == 100);
@@ -271,14 +271,14 @@ TEST_CASE("PathSpace Integration") {
         PathSpace pspace;
 
         // Setup nested structure with different types
-        pspace.insert("/data/sensors/temp/1", 23.5f);
-        pspace.insert("/data/sensors/temp/2", 24.1f);
-        pspace.insert("/data/sensors/humid/1", 85);
-        pspace.insert("/data/sensors/humid/2", 87);
+        pspace.put("/data/sensors/temp/1", 23.5f);
+        pspace.put("/data/sensors/temp/2", 24.1f);
+        pspace.put("/data/sensors/humid/1", 85);
+        pspace.put("/data/sensors/humid/2", 87);
 
         // Extract humidity readings
-        auto humid1 = pspace.extract<int>("/data/sensors/humid/1");
-        auto humid2 = pspace.extract<int>("/data/sensors/humid/2");
+        auto humid1 = pspace.take<int>("/data/sensors/humid/1");
+        auto humid2 = pspace.take<int>("/data/sensors/humid/2");
         REQUIRE(humid1.has_value());
         REQUIRE(humid2.has_value());
         CHECK(humid1.value() == 85);
@@ -303,14 +303,14 @@ TEST_CASE("PathSpace Integration") {
         };
 
         // Insert different types at same path
-        pspace.insert("/mixed/data", 42);
-        pspace.insert("/mixed/data", "status");
-        pspace.insert("/mixed/data", SensorData{23.5f, 85, "ok"});
+        pspace.put("/mixed/data", 42);
+        pspace.put("/mixed/data", "status");
+        pspace.put("/mixed/data", SensorData{23.5f, 85, "ok"});
 
         // Verify type-specific extraction order
-        auto intResult    = pspace.extract<int>("/mixed/data");
-        auto strResult    = pspace.extract<std::string>("/mixed/data");
-        auto sensorResult = pspace.extract<SensorData>("/mixed/data");
+        auto intResult    = pspace.take<int>("/mixed/data");
+        auto strResult    = pspace.take<std::string>("/mixed/data");
+        auto sensorResult = pspace.take<SensorData>("/mixed/data");
 
         REQUIRE(intResult.has_value());
         REQUIRE(strResult.has_value());
@@ -328,13 +328,13 @@ TEST_CASE("PathSpace Integration") {
         PathSpace pspace;
 
         // Setup hierarchical data
-        pspace.insert("/2023/01/01/temp", 20.0f);
-        pspace.insert("/2023/01/02/temp", 21.0f);
-        pspace.insert("/2023/02/01/temp", 22.0f);
-        pspace.insert("/2024/01/01/temp", 23.0f);
+        pspace.put("/2023/01/01/temp", 20.0f);
+        pspace.put("/2023/01/02/temp", 21.0f);
+        pspace.put("/2023/02/01/temp", 22.0f);
+        pspace.put("/2024/01/01/temp", 23.0f);
 
         // Test complex glob patterns
-        CHECK(pspace.insert("/202?/0[1-2]/*/temp", 25.0f).nbrValuesInserted == 4);
+        CHECK(pspace.put("/202?/0[1-2]/*/temp", 25.0f).nbrValuesInserted == 4);
 
         // Verify all temperatures were updated
         auto temp1 = pspace.read<float>("/2023/01/01/temp");
@@ -365,9 +365,9 @@ TEST_CASE("PathSpace Integration") {
             return pspace.read<int>("/data/multiplied", Block{}).value() + 5;
         };
 
-        pspace.insert("/data/base", computeBase);
-        pspace.insert("/data/multiplied", multiply);
-        pspace.insert("/data/final", addOffset);
+        pspace.put("/data/base", computeBase);
+        pspace.put("/data/multiplied", multiply);
+        pspace.put("/data/final", addOffset);
 
         // Verify execution chain
         auto result = pspace.read<int>("/data/final", Block{});
@@ -392,8 +392,8 @@ TEST_CASE("PathSpace Integration") {
                 threads.emplace_back([&, i]() {
                     try {
                         // Insert operations
-                        pspace.insert("/data/" + std::to_string(i) + "/value", i);
-                        pspace.insert("/data/" + std::to_string(i) + "/status", "active");
+                        pspace.put("/data/" + std::to_string(i) + "/value", i);
+                        pspace.put("/data/" + std::to_string(i) + "/status", "active");
 
                         // Read operations
                         auto value = pspace.read<int>("/data/" + std::to_string(i) + "/value", Block{});
@@ -401,12 +401,12 @@ TEST_CASE("PathSpace Integration") {
                             successCount++;
 
                         // Extract operations
-                        auto status = pspace.extract<std::string>("/data/" + std::to_string(i) + "/status");
+                        auto status = pspace.take<std::string>("/data/" + std::to_string(i) + "/status");
                         if (status)
                             successCount++;
 
                         // Glob operations
-                        pspace.insert("/data/*/value", 100);
+                        pspace.put("/data/*/value", 100);
                     } catch (const std::exception& e) {
                         failureCount++;
                     }
@@ -421,7 +421,7 @@ TEST_CASE("PathSpace Integration") {
         // Check final state
         bool allUpdated = true;
         for (int i = 0; i < NUM_THREADS; ++i) {
-            auto value = pspace.extract<int>("/data/" + std::to_string(i) + "/value");
+            auto value = pspace.take<int>("/data/" + std::to_string(i) + "/value");
             if (!value.has_value() || value.value() != i) {
                 allUpdated = false;
                 break;
@@ -449,8 +449,8 @@ TEST_CASE("PathSpace Integration") {
         };
 
         // Test mixed timeout scenarios
-        pspace.insert("/tasks/slow", slowTask);
-        pspace.insert("/tasks/fast", fastTask);
+        pspace.put("/tasks/slow", slowTask);
+        pspace.put("/tasks/fast", fastTask);
 
         auto fastResult = pspace.read<int>("/tasks/fast",
                                            Block(100ms));
@@ -472,25 +472,25 @@ TEST_CASE("PathSpace Integration") {
         PathSpace pspace;
 
         // Test invalid type combinations
-        pspace.insert("/data", 42);
+        pspace.put("/data", 42);
         auto wrongType = pspace.read<std::string>("/data");
         CHECK(!wrongType.has_value());
         CHECK(wrongType.error().code == Error::Code::InvalidType);
 
         // Test malformed paths
-        auto result = pspace.insert("invalid_path", 42);
+        auto result = pspace.put("invalid_path", 42);
         CHECK(!result.errors.empty());
         CHECK(result.errors[0].code == Error::Code::InvalidPath);
 
         // Test empty containers
         std::vector<int> empty;
-        pspace.insert("/empty", empty);
+        pspace.put("/empty", empty);
         auto readEmpty = pspace.read<std::vector<int>>("/empty");
         REQUIRE(readEmpty.has_value());
         CHECK(readEmpty.value().empty());
 
         // Test nested empty paths
-        CHECK(pspace.insert("/a//b///c", 42).nbrValuesInserted == 1);
+        CHECK(pspace.put("/a//b///c", 42).nbrValuesInserted == 1);
         auto nestedEmptyResult = pspace.read<int>("/a/b/c");
         REQUIRE(nestedEmptyResult.has_value());
         CHECK(nestedEmptyResult.value() == 42);
@@ -500,11 +500,11 @@ TEST_CASE("PathSpace Integration") {
         PathSpace pspace;
 
         // Insert some data
-        pspace.insert("/test/cleanup/1", "data1");
-        pspace.insert("/test/cleanup/2", "data2");
+        pspace.put("/test/cleanup/1", "data1");
+        pspace.put("/test/cleanup/2", "data2");
 
         // Extract and verify cleanup
-        auto data1 = pspace.extract<std::string>("/test/cleanup/1");
+        auto data1 = pspace.take<std::string>("/test/cleanup/1");
         REQUIRE(data1.has_value());
         CHECK(data1.value() == "data1");
         CHECK(!pspace.read<std::string>("/test/cleanup/1").has_value());
@@ -514,7 +514,7 @@ TEST_CASE("PathSpace Integration") {
         CHECK(!pspace.read<std::string>("/test/cleanup/2").has_value());
 
         // Verify new insertions work after clear
-        CHECK(pspace.insert("/test/new", "data3").nbrValuesInserted == 1);
+        CHECK(pspace.put("/test/new", "data3").nbrValuesInserted == 1);
     }
 
     SUBCASE("Simple Type Hierarchies") {
@@ -538,16 +538,16 @@ TEST_CASE("PathSpace Integration") {
                 .simple       = {100, "nested"},
                 .measurements = {1.0f, 2.0f, 3.0f}};
 
-        pspace.insert("/data/mixed", simple);
-        pspace.insert("/data/mixed", nested);
+        pspace.put("/data/mixed", simple);
+        pspace.put("/data/mixed", nested);
 
-        auto mixedSimple = pspace.extract<SimpleData>("/data/mixed");
+        auto mixedSimple = pspace.take<SimpleData>("/data/mixed");
         REQUIRE(mixedSimple.has_value());
         INFO("Original simple.value: " << simple.value << ", simple.name: " << simple.name);
         INFO("Extracted simple.value: " << mixedSimple.value().value << ", simple.name: " << mixedSimple.value().name);
         CHECK(mixedSimple.value() == simple);
 
-        auto mixedNested = pspace.extract<NestedData>("/data/mixed");
+        auto mixedNested = pspace.take<NestedData>("/data/mixed");
         REQUIRE(mixedNested.has_value());
         INFO("Original nested.simple.value: " << nested.simple.value
                                               << ", nested.simple.name: " << nested.simple.name);
@@ -581,7 +581,7 @@ TEST_CASE("PathSpace Integration") {
 
         // Test with simple data first
         SimpleData simple{42, "test"};
-        REQUIRE(pspace.insert("/data/simple", simple).nbrValuesInserted == 1);
+        REQUIRE(pspace.put("/data/simple", simple).nbrValuesInserted == 1);
 
         auto simpleResult = pspace.read<SimpleData>("/data/simple");
         REQUIRE(simpleResult.has_value());
@@ -592,7 +592,7 @@ TEST_CASE("PathSpace Integration") {
                 .simple       = {100, "nested"},
                 .measurements = {1.0f, 2.0f, 3.0f}};
 
-        REQUIRE(pspace.insert("/data/nested", nested).nbrValuesInserted == 1);
+        REQUIRE(pspace.put("/data/nested", nested).nbrValuesInserted == 1);
 
         auto nestedResult = pspace.read<NestedData>("/data/nested");
         REQUIRE(nestedResult.has_value());
@@ -603,14 +603,14 @@ TEST_CASE("PathSpace Integration") {
                 .simple       = {200, "mixed"},
                 .measurements = {4.0f, 5.0f, 6.0f}};
 
-        pspace.insert("/data/mixed", simple);
-        pspace.insert("/data/mixed", nested2);
+        pspace.put("/data/mixed", simple);
+        pspace.put("/data/mixed", nested2);
 
-        auto mixedSimple = pspace.extract<SimpleData>("/data/mixed");
+        auto mixedSimple = pspace.take<SimpleData>("/data/mixed");
         REQUIRE(mixedSimple.has_value());
         CHECK(mixedSimple.value() == simple);
 
-        auto mixedNested = pspace.extract<NestedData>("/data/mixed");
+        auto mixedNested = pspace.take<NestedData>("/data/mixed");
         REQUIRE(mixedNested.has_value());
         auto mv = mixedNested.value();
         CHECK(mv == nested2);
