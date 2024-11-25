@@ -56,7 +56,7 @@ auto PathSpaceLeaf::inFinalComponent(PathViewGlob const& iter, InputData const& 
                         if (auto error = nodeData->serialize(inputData); error.has_value())
                             ret.errors.emplace_back(error.value());
                 },
-                NodeData{inputData}); // ToDo: Find a way not to always create a NodeData here
+                inputData);
         if (inputData.taskCreator)
             ret.nbrTasksInserted++;
         else
@@ -108,9 +108,7 @@ auto PathSpaceLeaf::outFinalComponent(PathViewConcrete const& iter, InputMetadat
             } else {
                 result = nodeData->deserialize(obj, inputMetadata);
             }
-            return true; // modification was successful
         }
-        return false; // no modification needed
     });
 
     // Second pass: if needed, erase the empty node

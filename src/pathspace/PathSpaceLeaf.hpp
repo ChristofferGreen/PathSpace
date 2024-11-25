@@ -1,6 +1,4 @@
 #pragma once
-#include "path/ConcretePathIterator.hpp"
-#include "path/GlobPathIterator.hpp"
 #include "path/PathView.hpp"
 #include "type/NodeDataHashMap.hpp"
 
