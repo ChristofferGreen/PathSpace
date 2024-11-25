@@ -5,12 +5,12 @@
 
 namespace SP {
 
-NodeData::NodeData(InputData const& inputData, In const& options) {
+NodeData::NodeData(InputData const& inputData) {
     sp_log("NodeData::NodeData", "Function Called");
-    this->serialize(inputData, options);
+    this->serialize(inputData);
 }
 
-auto NodeData::serialize(const InputData& inputData, const In& options) -> std::optional<Error> {
+auto NodeData::serialize(const InputData& inputData) -> std::optional<Error> {
     sp_log("NodeData::serialize", "Function Called");
     sp_log("Serializing data of type: " + std::string(inputData.metadata.typeInfo->name()), "NodeData");
     if (inputData.taskCreator) {

@@ -41,7 +41,7 @@ auto PathSpaceLeaf::inFinalComponent(PathViewGlob const& iter, InputData const& 
         for (const auto& key : matchingKeys) {
             nodeDataMap.modify_if(key, [&](auto& nodePair) {
                 if (auto* nodeData = std::get_if<NodeData>(&nodePair.second)) {
-                    if (auto error = nodeData->serialize(inputData, options); error.has_value())
+                    if (auto error = nodeData->serialize(inputData); error.has_value())
                         ret.errors.emplace_back(error.value());
                     if (inputData.taskCreator)
                         ret.nbrTasksInserted++;
@@ -55,10 +55,10 @@ auto PathSpaceLeaf::inFinalComponent(PathViewGlob const& iter, InputData const& 
                 pathComponent.getName(),
                 [&](auto& value) {
                     if (auto* nodeData = std::get_if<NodeData>(&value.second))
-                        if (auto error = nodeData->serialize(inputData, options); error.has_value())
+                        if (auto error = nodeData->serialize(inputData); error.has_value())
                             ret.errors.emplace_back(error.value());
                 },
-                NodeData{inputData, options}); // ToDo: Find a way not to always create a NodeData here
+                NodeData{inputData}); // ToDo: Find a way not to always create a NodeData here
         if (inputData.taskCreator)
             ret.nbrTasksInserted++;
         else
