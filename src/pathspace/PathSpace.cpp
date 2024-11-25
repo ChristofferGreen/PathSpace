@@ -40,19 +40,19 @@ auto PathSpace::in(GlobPathStringView const& path, InputData const& data, In con
     return ret;
 }
 
-auto PathSpace::out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj, bool const doExtract) -> std::optional<Error> {
+auto PathSpace::out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> {
     sp_log("PathSpace::out", "Function Called");
     return this->root.out(PathViewConcrete(path.begin(), path.end()), inputMetadata, obj, doExtract);
 }
 
-auto PathSpace::outBlock(ConcretePathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj, bool const doExtract) -> std::optional<Error> {
+auto PathSpace::outBlock(ConcretePathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> {
     sp_log("PathSpace::outBlock", "Function Called");
 
     std::optional<Error> error;
 
     // First try entirely outside the loop to minimize lock time
     {
-        error = this->out(path, inputMetadata, options, obj, doExtract);
+        error = this->out(path, inputMetadata, obj, options.doPop);
         if (!error.has_value() || (options.doBlock == false))
             return error;
     }
@@ -68,7 +68,7 @@ auto PathSpace::outBlock(ConcretePathStringView const& path, InputMetadata const
         auto guard = waitMap.wait(path);
         {
             bool success = guard.wait_until(deadline, [&]() {
-                error           = this->out(path, inputMetadata, options, obj, doExtract);
+                error           = this->out(path, inputMetadata, obj, options.doPop);
                 bool haveResult = !error.has_value();
                 return haveResult;
             });

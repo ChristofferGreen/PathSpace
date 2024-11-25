@@ -40,7 +40,7 @@ public:
 
         if (inputData.metadata.dataCategory == DataCategory::Execution) {
             inputData.taskCreator = [&, pathStr = std::string(path.getPath())]() -> std::shared_ptr<Task> {
-                return Task::Create(this, pathStr, std::forward<DataType>(data), inputData, options);
+                return Task::Create(this, pathStr, std::forward<DataType>(data), inputData, options & InNoValidation{});
             };
         }
 
@@ -51,8 +51,7 @@ public:
         requires(validate_path(pathIn) == true)
     auto insert(DataType&& data, In const& options = {}) -> InsertReturn {
         sp_log("PathSpace::insert", "Function Called");
-        const_cast<In&>(options).validationLevel = ValidationLevel::None;
-        return this->insert(GlobPathStringView{pathIn}, std::forward<DataType>(data), options);
+        return this->insert(GlobPathStringView{pathIn}, std::forward<DataType>(data), options & InNoValidation{});
     }
 
     /**
@@ -68,9 +67,8 @@ public:
         sp_log("PathSpace::read", "Function Called");
         if (auto error = path.validate())
             return std::unexpected(*error);
-        DataType   obj;
-        bool const doExtract = false;
-        if (auto error = const_cast<PathSpace*>(this)->outBlock(path, InputMetadataT<DataType>{}, options, &obj, doExtract))
+        DataType obj;
+        if (auto error = const_cast<PathSpace*>(this)->outBlock(path, InputMetadataT<DataType>{}, options, &obj))
             return std::unexpected{*error};
         return obj;
     }
@@ -79,8 +77,7 @@ public:
         requires(validate_path(pathIn))
     auto read(Out const& options = {}) const -> Expected<DataType> {
         sp_log("PathSpace::read", "Function Called");
-        const_cast<Out&>(options).validationLevel = ValidationLevel::None;
-        return this->read<DataType>(ConcretePathStringView{pathIn}, options);
+        return this->read<DataType>(ConcretePathStringView{pathIn}, options & OutNoValidation{});
     }
 
     /**
@@ -91,13 +88,12 @@ public:
      * @return Expected<DataType> containing the extractbed data if successful, or an error if not.
      */
     template <typename DataType>
-    auto extract(ConcretePathStringView const& path, Out const& options = Pop{}) -> Expected<DataType> {
+    auto extract(ConcretePathStringView const& path, Out const& options = {}) -> Expected<DataType> {
         sp_log("PathSpace::extract", "Function Called");
         if (auto error = path.validate(options.validationLevel))
             return std::unexpected(*error);
-        DataType   obj;
-        bool const doExtract = true;
-        if (auto error = this->outBlock(path, InputMetadataT<DataType>{}, options, &obj, doExtract))
+        DataType obj;
+        if (auto error = this->outBlock(path, InputMetadataT<DataType>{}, options & Pop{}, &obj))
             return std::unexpected(*error);
         return obj;
     }
@@ -106,8 +102,7 @@ public:
         requires(validate_path(pathIn))
     auto extract(Out const& options = {}) -> Expected<DataType> {
         sp_log("PathSpace::extract", "Function Called");
-        const_cast<Out&>(options).validationLevel = ValidationLevel::None;
-        return this->extract<DataType>(ConcretePathStringView{pathIn}, options);
+        return this->extract<DataType>(ConcretePathStringView{pathIn}, options & Pop{} & OutNoValidation{});
     }
 
     auto clear() -> void;
@@ -116,8 +111,8 @@ protected:
     friend class TaskPool;
 
     virtual auto in(GlobPathStringView const& path, InputData const& data, In const& options) -> InsertReturn;
-    virtual auto out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj, bool const doExtract) -> std::optional<Error>;
-    auto         outBlock(ConcretePathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj, bool const doExtract) -> std::optional<Error>;
+    virtual auto out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;
+    auto         outBlock(ConcretePathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>;
     auto         shutdown() -> void;
 
     TaskPool*     pool = nullptr;
