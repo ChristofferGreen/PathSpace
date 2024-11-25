@@ -32,17 +32,17 @@ auto NodeData::serialize(const InputData& inputData, const In& options) -> std::
     return std::nullopt;
 }
 
-auto NodeData::deserialize(void* obj, const InputMetadata& inputMetadata, std::optional<Out> const& options) const -> Expected<int> {
+auto NodeData::deserialize(void* obj, const InputMetadata& inputMetadata, Out const& options) const -> Expected<int> {
     sp_log("NodeData::deserialize", "Function Called");
     return const_cast<NodeData*>(this)->deserializeImpl(obj, inputMetadata, options, false);
 }
 
 auto NodeData::deserializePop(void* obj, const InputMetadata& inputMetadata) -> Expected<int> {
     sp_log("NodeData::deserializePop", "Function Called");
-    return this->deserializeImpl(obj, inputMetadata, std::nullopt, true);
+    return this->deserializeImpl(obj, inputMetadata, Out{}, true);
 }
 
-auto NodeData::deserializeImpl(void* obj, const InputMetadata& inputMetadata, std::optional<Out> const& options, bool doExtract) -> Expected<int> {
+auto NodeData::deserializeImpl(void* obj, const InputMetadata& inputMetadata, Out const& options, bool doExtract) -> Expected<int> {
     sp_log("NodeData::deserializeImpl", "Function Called");
 
     if (auto validationResult = validateInputs(inputMetadata); !validationResult)
@@ -50,7 +50,7 @@ auto NodeData::deserializeImpl(void* obj, const InputMetadata& inputMetadata, st
 
     if (this->types.front().category == DataCategory::Execution) {
         assert(!this->tasks.empty());
-        return this->deserializeExecution(obj, inputMetadata, options.value_or(Out{}), doExtract);
+        return this->deserializeExecution(obj, inputMetadata, options, doExtract);
     } else {
         return this->deserializeData(obj, inputMetadata, doExtract);
     }

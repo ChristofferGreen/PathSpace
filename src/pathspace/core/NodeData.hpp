@@ -21,14 +21,14 @@ struct NodeData {
     NodeData(InputData const& inputData, In const& options);
 
     auto serialize(const InputData& inputData, const In& options) -> std::optional<Error>;
-    auto deserialize(void* obj, const InputMetadata& inputMetadata, std::optional<Out> const& options) const -> Expected<int>;
+    auto deserialize(void* obj, const InputMetadata& inputMetadata, Out const& options) const -> Expected<int>;
     auto deserializePop(void* obj, const InputMetadata& inputMetadata) -> Expected<int>;
     auto empty() const -> bool;
 
 private:
     auto pushType(InputMetadata const& meta) -> void;
     auto popType() -> void;
-    auto deserializeImpl(void* obj, const InputMetadata& inputMetadata, std::optional<Out> const& options, bool doExtract) -> Expected<int>;
+    auto deserializeImpl(void* obj, const InputMetadata& inputMetadata, Out const& options, bool doExtract) -> Expected<int>;
     auto validateInputs(const InputMetadata& inputMetadata) -> Expected<void>;
     auto deserializeExecution(void* obj, const InputMetadata& inputMetadata, const Out& options, bool doExtract) -> Expected<int>;
     auto deserializeData(void* obj, const InputMetadata& inputMetadata, bool doExtract) -> Expected<int>;
