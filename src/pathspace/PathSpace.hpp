@@ -115,8 +115,8 @@ protected:
     auto         shutdown() -> void;
 
     TaskPool*     pool = nullptr;
-    PathSpaceLeaf root;
     WaitMap       waitMap;
+    PathSpaceLeaf root;
 };
 
 } // namespace SP
