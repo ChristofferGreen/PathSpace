@@ -6,10 +6,8 @@
 
 namespace SP {
 struct Error;
-struct In;
 struct InsertReturn;
 struct InputData;
-struct Out;
 struct ConstructiblePath;
 
 class PathSpaceLeaf {

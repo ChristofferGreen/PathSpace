@@ -1,6 +1,4 @@
 #include "NodeData.hpp"
-#include "core/InsertReturn.hpp"
-#include "core/Out.hpp"
 #include "task/TaskPool.hpp"
 
 namespace SP {
@@ -45,8 +43,8 @@ auto NodeData::deserializePop(void* obj, const InputMetadata& inputMetadata) -> 
 auto NodeData::deserializeImpl(void* obj, const InputMetadata& inputMetadata, bool doPop) -> Expected<int> {
     sp_log("NodeData::deserializeImpl", "Function Called");
 
-    if (auto validationResult = validateInputs(inputMetadata); !validationResult)
-        return std::unexpected(validationResult.error());
+    if (auto validationResult = validateInputs(inputMetadata))
+        return std::unexpected(*validationResult);
 
     if (this->types.front().category == DataCategory::Execution) {
         assert(!this->tasks.empty());
@@ -56,16 +54,16 @@ auto NodeData::deserializeImpl(void* obj, const InputMetadata& inputMetadata, bo
     }
 }
 
-auto NodeData::validateInputs(const InputMetadata& inputMetadata) -> Expected<void> {
+auto NodeData::validateInputs(const InputMetadata& inputMetadata) -> std::optional<Error> {
     sp_log("NodeData::validateInputs", "Function Called");
 
     if (this->types.empty())
-        return std::unexpected(Error{Error::Code::NoObjectFound, "No data available for deserialization"});
+        return Error{Error::Code::NoObjectFound, "No data available for deserialization"};
 
     if (!this->types.empty() && this->types.front().typeInfo != inputMetadata.typeInfo)
-        return std::unexpected(Error{Error::Code::InvalidType, "Type mismatch during deserialization"});
+        return Error{Error::Code::InvalidType, "Type mismatch during deserialization"};
 
-    return {};
+    return std::nullopt;
 }
 
 auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadata, bool doPop) -> Expected<int> {
