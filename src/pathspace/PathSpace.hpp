@@ -40,11 +40,11 @@ public:
 
         if (inputData.metadata.dataCategory == DataCategory::Execution) {
             inputData.taskCreator = [&, pathStr = std::string(path.getPath())]() -> std::shared_ptr<Task> {
-                return Task::Create(this, pathStr, std::forward<DataType>(data), inputData, options & InNoValidation{});
+                return Task::Create(this, pathStr, std::forward<DataType>(data), inputData, options.executionCategory);
             };
         }
 
-        return this->in(path, inputData, options);
+        return this->in(path, inputData, options & InNoValidation{});
     }
 
     template <FixedString pathIn, typename DataType>
