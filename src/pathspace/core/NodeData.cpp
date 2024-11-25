@@ -50,7 +50,7 @@ auto NodeData::deserializeImpl(void* obj, const InputMetadata& inputMetadata, Ou
 
     if (this->types.front().category == DataCategory::Execution) {
         assert(!this->tasks.empty());
-        return this->deserializeExecution(obj, inputMetadata, options, doExtract);
+        return this->deserializeExecution(obj, inputMetadata, doExtract);
     } else {
         return this->deserializeData(obj, inputMetadata, doExtract);
     }
@@ -68,7 +68,7 @@ auto NodeData::validateInputs(const InputMetadata& inputMetadata) -> Expected<vo
     return {};
 }
 
-auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadata, const Out& options, bool doExtract) -> Expected<int> {
+auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadata, bool doExtract) -> Expected<int> {
     if (this->tasks.empty())
         return std::unexpected(Error{Error::Code::NoObjectFound, "No task available"});
 
