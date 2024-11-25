@@ -29,7 +29,7 @@ auto PathSpace::shutdown() -> void {
     sp_log("PathSpace::shutdown Cleared paths", "PathSpaceShutdown");
 }
 
-auto PathSpace::in(GlobPathStringView const& path, InputData const& data, In const& options) -> InsertReturn {
+auto PathSpace::in(GlobPathStringView const& path, InputData const& data) -> InsertReturn {
     sp_log("PathSpace::in", "Function Called");
     InsertReturn ret;
 

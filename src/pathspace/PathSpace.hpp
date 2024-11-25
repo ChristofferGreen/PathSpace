@@ -44,7 +44,7 @@ public:
             };
         }
 
-        return this->in(path, inputData, options & InNoValidation{});
+        return this->in(path, inputData);
     }
 
     template <FixedString pathIn, typename DataType>
@@ -110,7 +110,7 @@ public:
 protected:
     friend class TaskPool;
 
-    virtual auto in(GlobPathStringView const& path, InputData const& data, In const& options) -> InsertReturn;
+    virtual auto in(GlobPathStringView const& path, InputData const& data) -> InsertReturn;
     virtual auto out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;
     auto         outBlock(ConcretePathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>;
     auto         shutdown() -> void;
