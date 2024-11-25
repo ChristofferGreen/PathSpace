@@ -16,15 +16,15 @@ auto PathSpaceLeaf::clear() -> void {
 /*
     ############# In #############
 */
-auto PathSpaceLeaf::in(PathViewGlob const& iter, InputData const& inputData, In const& options, InsertReturn& ret) -> void {
+auto PathSpaceLeaf::in(PathViewGlob const& iter, InputData const& inputData, InsertReturn& ret) -> void {
     sp_log("PathSpaceLeaf::in Processing path component: " + std::string(iter.currentComponent().getName()), "PathSpaceLeaf");
     if (iter.isFinalComponent())
-        inFinalComponent(iter, inputData, options, ret);
+        inFinalComponent(iter, inputData, ret);
     else
-        inIntermediateComponent(iter, inputData, options, ret);
+        inIntermediateComponent(iter, inputData, ret);
 }
 
-auto PathSpaceLeaf::inFinalComponent(PathViewGlob const& iter, InputData const& inputData, In const& options, InsertReturn& ret) -> void {
+auto PathSpaceLeaf::inFinalComponent(PathViewGlob const& iter, InputData const& inputData, InsertReturn& ret) -> void {
     auto const pathComponent = iter.currentComponent();
     if (pathComponent.isGlob()) {
         // Create a vector to store the keys that match before modification.
@@ -66,7 +66,7 @@ auto PathSpaceLeaf::inFinalComponent(PathViewGlob const& iter, InputData const& 
     }
 }
 
-auto PathSpaceLeaf::inIntermediateComponent(PathViewGlob const& iter, InputData const& inputData, In const& options, InsertReturn& ret) -> void {
+auto PathSpaceLeaf::inIntermediateComponent(PathViewGlob const& iter, InputData const& inputData, InsertReturn& ret) -> void {
     GlobName const& pathComponent = iter.currentComponent();
     auto const      nextIter      = iter.next();
     if (pathComponent.isGlob()) {
@@ -74,14 +74,14 @@ auto PathSpaceLeaf::inIntermediateComponent(PathViewGlob const& iter, InputData 
             const auto& key = item.first;
             if (pathComponent.match(key)) {
                 if (const auto* leaf = std::get_if<std::unique_ptr<PathSpaceLeaf>>(&item.second)) {
-                    (*leaf)->in(nextIter, inputData, options, ret);
+                    (*leaf)->in(nextIter, inputData, ret);
                 }
             }
         });
     } else {
         auto [it, inserted] = nodeDataMap.try_emplace(pathComponent.getName(), std::make_unique<PathSpaceLeaf>());
         if (auto* leaf = std::get_if<std::unique_ptr<PathSpaceLeaf>>(&it->second)) { // ToDo Is this really thread safe?
-            (*leaf)->in(nextIter, inputData, options, ret);
+            (*leaf)->in(nextIter, inputData, ret);
         }
     }
 }

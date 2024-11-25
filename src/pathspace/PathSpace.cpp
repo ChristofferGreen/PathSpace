@@ -33,7 +33,7 @@ auto PathSpace::in(GlobPathStringView const& path, InputData const& data, In con
     sp_log("PathSpace::in", "Function Called");
     InsertReturn ret;
 
-    this->root.in(PathViewGlob(path.begin(), path.end()), data, options, ret);
+    this->root.in(PathViewGlob(path.begin(), path.end()), data, ret);
 
     if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0 || ret.nbrTasksInserted > 0)
         waitMap.notify(path);
