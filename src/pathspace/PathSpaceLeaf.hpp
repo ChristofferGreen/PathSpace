@@ -21,7 +21,7 @@ public:
 private:
     auto inFinalComponent(PathViewGlob const& iter, InputData const& inputData, In const& options, InsertReturn& ret) -> void;
     auto inIntermediateComponent(PathViewGlob const& iter, InputData const& inputData, In const& options, InsertReturn& ret) -> void;
-    auto outFinalComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, Out const& options, bool const doExtract) -> Expected<int>;
+    auto outFinalComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> Expected<int>;
     auto outIntermediateComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, Out const& options, bool const doExtract) -> Expected<int>;
 
     NodeDataHashMap nodeDataMap;

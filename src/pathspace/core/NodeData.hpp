@@ -9,10 +9,8 @@
 #include <optional>
 
 namespace SP {
-class In;
 class InsertReturn;
 class InputMetadata;
-class Out;
 class InputData;
 class Task;
 
@@ -21,7 +19,7 @@ struct NodeData {
     NodeData(InputData const& inputData);
 
     auto serialize(const InputData& inputData) -> std::optional<Error>;
-    auto deserialize(void* obj, const InputMetadata& inputMetadata, Out const& options) const -> Expected<int>;
+    auto deserialize(void* obj, const InputMetadata& inputMetadata) const -> Expected<int>;
     auto deserializePop(void* obj, const InputMetadata& inputMetadata) -> Expected<int>;
     auto empty() const -> bool;
 

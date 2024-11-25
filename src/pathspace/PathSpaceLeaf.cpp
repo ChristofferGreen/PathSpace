@@ -91,12 +91,12 @@ auto PathSpaceLeaf::inIntermediateComponent(PathViewGlob const& iter, InputData 
 */
 auto PathSpaceLeaf::out(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, Out const& options, bool const doExtract) -> Expected<int> {
     if (iter.isFinalComponent())
-        return outFinalComponent(iter, inputMetadata, obj, options, doExtract);
+        return outFinalComponent(iter, inputMetadata, obj, doExtract);
     else
         return outIntermediateComponent(iter, inputMetadata, obj, options, doExtract);
 }
 
-auto PathSpaceLeaf::outFinalComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, Out const& options, bool const doExtract) -> Expected<int> {
+auto PathSpaceLeaf::outFinalComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> Expected<int> {
     Expected<int> result       = std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
     bool          shouldErase  = false;
     auto const    concreteName = iter.currentComponent();
@@ -108,7 +108,7 @@ auto PathSpaceLeaf::outFinalComponent(PathViewConcrete const& iter, InputMetadat
                 result      = nodeData->deserializePop(obj, inputMetadata);
                 shouldErase = nodeData->empty();
             } else {
-                result = nodeData->deserialize(obj, inputMetadata, options);
+                result = nodeData->deserialize(obj, inputMetadata);
             }
             return true; // modification was successful
         }

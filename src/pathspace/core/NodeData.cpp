@@ -32,7 +32,7 @@ auto NodeData::serialize(const InputData& inputData) -> std::optional<Error> {
     return std::nullopt;
 }
 
-auto NodeData::deserialize(void* obj, const InputMetadata& inputMetadata, Out const& options) const -> Expected<int> {
+auto NodeData::deserialize(void* obj, const InputMetadata& inputMetadata) const -> Expected<int> {
     sp_log("NodeData::deserialize", "Function Called");
     return const_cast<NodeData*>(this)->deserializeImpl(obj, inputMetadata, false);
 }
