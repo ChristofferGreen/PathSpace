@@ -68,7 +68,7 @@ public:
         if (auto error = path.validate())
             return std::unexpected(*error);
         DataType obj;
-        if (auto error = const_cast<PathSpace*>(this)->outBlock(path, InputMetadataT<DataType>{}, options, &obj))
+        if (auto error = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj))
             return std::unexpected{*error};
         return obj;
     }
@@ -93,7 +93,7 @@ public:
         if (auto error = path.validate(options.validationLevel))
             return std::unexpected(*error);
         DataType obj;
-        if (auto error = this->outBlock(path, InputMetadataT<DataType>{}, options & Pop{}, &obj))
+        if (auto error = this->out(path, InputMetadataT<DataType>{}, options & Pop{}, &obj))
             return std::unexpected(*error);
         return obj;
     }
@@ -111,8 +111,7 @@ protected:
     friend class TaskPool;
 
     virtual auto in(GlobPathStringView const& path, InputData const& data) -> InsertReturn;
-    virtual auto out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;
-    auto         outBlock(ConcretePathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>;
+    auto         out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>;
     auto         shutdown() -> void;
 
     TaskPool*     pool = nullptr;
