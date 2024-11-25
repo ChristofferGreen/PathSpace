@@ -53,7 +53,7 @@ auto PathSpace::outBlock(ConcretePathStringView const& path, InputMetadata const
     // First try entirely outside the loop to minimize lock time
     {
         result = this->out(path, inputMetadata, options, obj, doExtract);
-        if ((result.has_value() && result.value() > 0) || options.block_ == false)
+        if ((result.has_value() && result.value() > 0) || options.doBlock == false)
             return result;
     }
 

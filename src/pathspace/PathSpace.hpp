@@ -91,7 +91,7 @@ public:
      * @return Expected<DataType> containing the extractbed data if successful, or an error if not.
      */
     template <typename DataType>
-    auto extract(ConcretePathStringView const& path, Out const& options = {}) -> Expected<DataType> {
+    auto extract(ConcretePathStringView const& path, Out const& options = Pop{}) -> Expected<DataType> {
         sp_log("PathSpace::extract", "Function Called");
         if (auto error = path.validate(options.validationLevel))
             return std::unexpected(*error);
