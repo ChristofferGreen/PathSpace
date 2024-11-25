@@ -4,9 +4,8 @@
 
 #include <chrono>
 
-using namespace std::chrono_literals;
-
 namespace SP {
+using namespace std::chrono_literals;
 
 struct Out {
     friend auto operator&(Out const& lhs, Out const& rhs) -> Out {
@@ -18,10 +17,10 @@ struct Out {
         return result;
     }
 
-    ValidationLevel           validationLevel = ValidationLevel::Basic;
     bool                      doBlock         = false;
-    std::chrono::milliseconds timeout         = 876600h; // 100 years
     bool                      doPop           = false;
+    std::chrono::milliseconds timeout         = 876600h; // 100 years
+    ValidationLevel           validationLevel = ValidationLevel::Basic;
 };
 
 struct Block : Out {
