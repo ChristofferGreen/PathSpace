@@ -3,34 +3,57 @@
 #include "path/validation.hpp"
 
 #include <chrono>
+#include <concepts>
 
 namespace SP {
 using namespace std::chrono_literals;
 
-struct Out {
-    friend auto operator&(Out const& lhs, Out const& rhs) -> Out {
-        Out result;
-        result.doPop           = lhs.doPop || rhs.doPop;
-        result.doBlock         = lhs.doBlock || rhs.doBlock;
-        result.timeout         = result.doBlock ? std::min(lhs.timeout, rhs.timeout) : 876600h;
-        result.validationLevel = std::max(lhs.validationLevel, rhs.validationLevel);
-        return result;
-    }
+static constexpr auto DEFAULT_TIMEOUT = 876600h; // 100 years
 
+struct Out {
     bool                      doBlock         = false;
     bool                      doPop           = false;
-    std::chrono::milliseconds timeout         = 876600h; // 100 years
+    std::chrono::milliseconds timeout         = DEFAULT_TIMEOUT;
     ValidationLevel           validationLevel = ValidationLevel::Basic;
+
+    template <typename T>
+        requires requires(T const& t, Out& o) { t.modify(o); }
+    friend auto operator&(Out const& lhs, T const& rhs) -> Out {
+        Out o = lhs;
+        rhs.modify(o);
+        return o;
+    }
 };
 
 struct Block : Out {
-    Block(std::chrono::milliseconds const& timeout = 876600h)
-        : Out{.doBlock = true, .timeout = timeout} {}
+    explicit Block(std::chrono::milliseconds const& timeout = DEFAULT_TIMEOUT) {
+        this->doBlock = true;
+        this->timeout = timeout;
+    }
+
+    void modify(Out& o) const {
+        o.doBlock = true;
+        o.timeout = timeout;
+    }
+};
+
+struct Pop : Out {
+    Pop() {
+        this->doPop = true;
+    }
+
+    void modify(Out& o) const {
+        o.doPop = true;
+    }
 };
 
 struct OutNoValidation : Out {
     OutNoValidation() {
         this->validationLevel = ValidationLevel::None;
+    }
+
+    void modify(Out& o) const {
+        o.validationLevel = ValidationLevel::None;
     }
 };
 
@@ -38,11 +61,9 @@ struct OutFullValidation : Out {
     OutFullValidation() {
         this->validationLevel = ValidationLevel::Full;
     }
-};
 
-struct Pop : Out {
-    Pop() {
-        this->doPop = true;
+    void modify(Out& o) const {
+        o.validationLevel = ValidationLevel::Full;
     }
 };
 

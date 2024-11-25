@@ -2,41 +2,70 @@
 #include "ExecutionCategory.hpp"
 #include "path/validation.hpp"
 
+#include <concepts>
+
 namespace SP {
 
 struct In {
-    friend auto operator&(In const& lhs, In const& rhs) -> In {
-        In result;
-        result.executionCategory = (rhs.executionCategory != ExecutionCategory::Unknown) ? rhs.executionCategory : lhs.executionCategory;
-        result.validationLevel   = std::max(lhs.validationLevel, rhs.validationLevel);
-        return result;
-    }
-
     ExecutionCategory executionCategory = ExecutionCategory::Unknown;
     ValidationLevel   validationLevel   = ValidationLevel::Basic;
+
+    template <typename T>
+        requires requires(T const& t, In& i) { t.modify(i); }
+    friend auto operator&(In const& lhs, T const& rhs) -> In {
+        In i = lhs;
+        rhs.modify(i);
+        return i;
+    }
 };
 
 struct Immediate : In {
     Immediate() {
-        executionCategory = ExecutionCategory::Immediate;
+        this->executionCategory = ExecutionCategory::Immediate;
+    }
+
+    void modify(In& i) const {
+        i.executionCategory = ExecutionCategory::Immediate;
     }
 };
 
 struct Lazy : In {
     Lazy() {
-        executionCategory = ExecutionCategory::Lazy;
+        this->executionCategory = ExecutionCategory::Lazy;
+    }
+
+    void modify(In& i) const {
+        i.executionCategory = ExecutionCategory::Lazy;
+    }
+};
+
+struct InBasicValidation : In {
+    InBasicValidation() {
+        this->validationLevel = ValidationLevel::Basic;
+    }
+
+    void modify(In& i) const {
+        i.validationLevel = ValidationLevel::Basic;
     }
 };
 
 struct InNoValidation : In {
     InNoValidation() {
-        validationLevel = ValidationLevel::None;
+        this->validationLevel = ValidationLevel::None;
+    }
+
+    void modify(In& i) const {
+        i.validationLevel = ValidationLevel::None;
     }
 };
 
 struct InFullValidation : In {
     InFullValidation() {
-        validationLevel = ValidationLevel::Full;
+        this->validationLevel = ValidationLevel::Full;
+    }
+
+    void modify(In& i) const {
+        i.validationLevel = ValidationLevel::Full;
     }
 };
 
