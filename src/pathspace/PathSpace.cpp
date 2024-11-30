@@ -40,11 +40,11 @@ auto PathSpace::in(GlobPathStringView const& path, InputData const& data) -> Ins
     return ret;
 }
 
-auto PathSpace::out(ConcretePathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> {
+auto PathSpace::out(GlobPathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> {
     sp_log("PathSpace::outBlock", "Function Called");
 
-    std::optional<Error>   error;
-    PathViewConcrete const pathView(path.begin(), path.end());
+    std::optional<Error> error;
+    PathViewGlob const   pathView(path.begin(), path.end());
 
     // First try entirely outside the loop to minimize lock time
     {
@@ -61,7 +61,7 @@ auto PathSpace::out(ConcretePathStringView const& path, InputMetadata const& inp
             return Error{Error::Code::Timeout, "Operation timed out waiting for data at path: " + std::string(path.getPath())};
 
         // Wait with minimal scope
-        auto guard = waitMap.wait(path);
+        auto guard = waitMap.wait(path.getPath());
         {
             bool success = guard.wait_until(deadline, [&]() {
                 error           = this->root.out(pathView, inputMetadata, obj, options.doPop);

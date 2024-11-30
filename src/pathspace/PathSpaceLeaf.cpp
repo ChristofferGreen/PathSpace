@@ -87,14 +87,14 @@ auto PathSpaceLeaf::inIntermediateComponent(PathViewGlob const& iter, InputData 
 /*
     ############# Out #############
 */
-auto PathSpaceLeaf::out(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> {
+auto PathSpaceLeaf::out(PathViewGlob const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> {
     if (iter.isFinalComponent())
         return outFinalComponent(iter, inputMetadata, obj, doExtract);
     else
         return outIntermediateComponent(iter, inputMetadata, obj, doExtract);
 }
 
-auto PathSpaceLeaf::outFinalComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> {
+auto PathSpaceLeaf::outFinalComponent(PathViewGlob const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> {
     std::optional<Error> result       = Error{Error::Code::NoSuchPath, "Path not found"};
     bool                 shouldErase  = false;
     auto const           concreteName = iter.currentComponent();
@@ -118,7 +118,7 @@ auto PathSpaceLeaf::outFinalComponent(PathViewConcrete const& iter, InputMetadat
     return result;
 }
 
-auto PathSpaceLeaf::outIntermediateComponent(PathViewConcrete const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> {
+auto PathSpaceLeaf::outIntermediateComponent(PathViewGlob const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> {
     std::optional<Error> result = Error{Error::Code::NoSuchPath, "Path not found"};
     this->nodeDataMap.if_contains(iter.currentComponent().getName(), [&](auto const& nodePair) {
         bool const isLeaf = std::holds_alternative<std::unique_ptr<PathSpaceLeaf>>(nodePair.second);

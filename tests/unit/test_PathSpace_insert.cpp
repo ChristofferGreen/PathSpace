@@ -90,12 +90,12 @@ TEST_CASE("PathSpace Put") {
             auto func = [i, &pspace]() -> int {
                 if (i == 0)
                     return 1;
-                return pspace.read<int>(SP::ConcretePathStringView{"/func" + std::to_string(i - 1)}, Block{}).value() + 1;
+                return pspace.read<int>(SP::GlobPathStringView{"/func" + std::to_string(i - 1)}, Block{}).value() + 1;
             };
             CHECK(pspace.put(SP::GlobPathStringView{"/func" + std::to_string(i)}, func).errors.size() == 0);
         }
 
-        auto result = pspace.read<int>(SP::ConcretePathStringView{"/func" + std::to_string(DEPTH - 1)}, Block{});
+        auto result = pspace.read<int>(SP::GlobPathStringView{"/func" + std::to_string(DEPTH - 1)}, Block{});
         CHECK(result.has_value());
         CHECK(result.value() == DEPTH);
     }
