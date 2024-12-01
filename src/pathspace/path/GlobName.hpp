@@ -10,6 +10,7 @@ auto is_glob(std::string_view const& strv) -> bool;
 
 struct GlobName {
     GlobName(char const* const ptr);
+    GlobName(std::string_view view);
     GlobName(std::string::const_iterator const& iter, std::string::const_iterator const& endIter);
     GlobName(std::string_view::const_iterator const& iter, std::string_view::const_iterator const& endIter);
 

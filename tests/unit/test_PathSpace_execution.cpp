@@ -12,7 +12,7 @@ TEST_CASE("PathSpace Execution") {
     SUBCASE("Function Types") {
         SUBCASE("Function Pointer") {
             int (*f)() = +[]() -> int { return 65; };
-            pspace.put("/test", f);
+            pspace.insert("/test", f);
             auto result = pspace.read<int>("/test", Block{});
             CHECK(result.has_value());
             CHECK(result.value() == 65);
@@ -20,14 +20,14 @@ TEST_CASE("PathSpace Execution") {
 
         SUBCASE("Function Lambda") {
             auto f = []() -> int { return 65; };
-            CHECK(pspace.put("/test", f).nbrTasksInserted == 1);
+            CHECK(pspace.insert("/test", f).nbrTasksInserted == 1);
             auto result = pspace.read<int>("/test", Block{});
             REQUIRE(result.has_value());
             CHECK(result.value() == 65);
         }
 
         SUBCASE("Direct Lambda") {
-            CHECK(pspace.put("/test", []() -> int { return 65; }).nbrTasksInserted == 1);
+            CHECK(pspace.insert("/test", []() -> int { return 65; }).nbrTasksInserted == 1);
             auto result = pspace.read<int>("/test", Block{});
             REQUIRE(result.has_value());
             CHECK(result.value() == 65);
@@ -36,14 +36,14 @@ TEST_CASE("PathSpace Execution") {
 
     SUBCASE("Execution Categories") {
         SUBCASE("Immediate Execution") {
-            pspace.put("/test", []() -> int { return 42; }, In{.executionCategory = ExecutionCategory::Immediate});
+            pspace.insert("/test", []() -> int { return 42; }, In{.executionCategory = ExecutionCategory::Immediate});
             auto result = pspace.read<int>("/test", Block{});
             REQUIRE(result.has_value());
             CHECK(result.value() == 42);
         }
 
         SUBCASE("Lazy Execution") {
-            pspace.put("/test", []() -> int { return 42; }, In{.executionCategory = ExecutionCategory::Lazy});
+            pspace.insert("/test", []() -> int { return 42; }, In{.executionCategory = ExecutionCategory::Lazy});
             auto result = pspace.read<int>("/test", Block{});
             REQUIRE(result.has_value());
             CHECK(result.value() == 42);
@@ -52,7 +52,7 @@ TEST_CASE("PathSpace Execution") {
 
     SUBCASE("Timeout Behavior") {
         SUBCASE("Successful Completion Before Timeout") {
-            pspace.put(
+            pspace.insert(
                     "/test",
                     []() -> int {
                         std::this_thread::sleep_for(50ms);
@@ -65,7 +65,7 @@ TEST_CASE("PathSpace Execution") {
         }
 
         SUBCASE("Timeout Before Completion") {
-            pspace.put(
+            pspace.insert(
                     "/test",
                     []() -> int {
                         std::this_thread::sleep_for(200ms);
@@ -81,7 +81,7 @@ TEST_CASE("PathSpace Execution") {
 
     SUBCASE("Multiple Operations") {
         SUBCASE("Read Then Extract") {
-            pspace.put("/test", []() -> int { return 42; });
+            pspace.insert("/test", []() -> int { return 42; });
 
             auto read_result = pspace.read<int>("/test", Block{});
             CHECK(read_result.has_value());
@@ -96,7 +96,7 @@ TEST_CASE("PathSpace Execution") {
         }
 
         SUBCASE("Concurrent Tasks") {
-            pspace.put(
+            pspace.insert(
                     "/test1",
                     []() -> int {
                         std::this_thread::sleep_for(50ms);
@@ -104,7 +104,7 @@ TEST_CASE("PathSpace Execution") {
                     },
                     In{.executionCategory = ExecutionCategory::Lazy});
 
-            pspace.put(
+            pspace.insert(
                     "/test2",
                     []() -> int {
                         std::this_thread::sleep_for(50ms);
@@ -124,7 +124,7 @@ TEST_CASE("PathSpace Execution") {
 
     SUBCASE("Block Behavior Types") {
         SUBCASE("Wait For Execution") {
-            pspace.put("/test", []() -> int { return 42; }, In{.executionCategory = ExecutionCategory::Lazy});
+            pspace.insert("/test", []() -> int { return 42; }, In{.executionCategory = ExecutionCategory::Lazy});
 
             auto result = pspace.read<int>("/test", Block{});
             CHECK(result.has_value());
@@ -134,7 +134,7 @@ TEST_CASE("PathSpace Execution") {
         SUBCASE("Wait For Existence") {
             std::thread inserter([&pspace]() {
                 std::this_thread::sleep_for(50ms);
-                pspace.put("/test", 42);
+                pspace.insert("/test", 42);
             });
 
             auto result = pspace.read<int>("/test", Block{});

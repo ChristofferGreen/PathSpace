@@ -105,10 +105,10 @@ Pattern matching behaviors:
 PathSpace space;
 
 // Insert at concrete path
-space.put("/sensors/temp1/value", 23.5);
+space.insert("/sensors/temp1/value", 23.5);
 
 // Insert using pattern
-space.put("/sensors/*/value", 0.0);  // Reset all sensor values
+space.insert("/sensors/*/value", 0.0);  // Reset all sensor values
 
 // Read with exact path
 auto value = space.read<float>("/sensors/temp1/value");
@@ -174,12 +174,12 @@ PathSpace can be seen as a map between a path and a vector of data. Inserting mo
 ## Syntax Example
 ```
 PathSpace space;
-space.put("/collection/numbers", 5);
-space.put("/collection/numbers", 3.5f);
+space.insert("/collection/numbers", 5);
+space.insert("/collection/numbers", 3.5f);
 assert(space.take<int>("/collection/numbers").value() == 5);
 assert(space.read<float>("/collection/numbers").value() == 3.5);
 
-space.put("/collection/executions", [](){return 7;});
+space.insert("/collection/executions", [](){return 7;});
 assert(space.take<int>("/collection/numbers", Block{}).value() == 7);
 ```
 
@@ -192,10 +192,10 @@ will create a PathSpaceLeaf of the same type as the parent when creating new one
 Paths given to insert can be a glob expression, if the expression matches the names of subspaces then the data will be inserted to all the matching subspaces.
 ````
 PathSpace space;
-space.put("/collection/numbers", 5);
-space.put("/collection/numbers_more", 4);
-space.put("/collection/other_things", 3);
-space.put("/collection/numbers*", 2);
+space.insert("/collection/numbers", 5);
+space.insert("/collection/numbers_more", 4);
+space.insert("/collection/other_things", 3);
+space.insert("/collection/numbers*", 2);
 assert(space.take<int>("/collection/other_things").value() == 2);
 assert(!space.take<int>("/collection/other_things").has_value());
 assert(space.take<int>("/collection/numbers_more").value() == 4);
@@ -302,7 +302,7 @@ Will not write out any data for state saving and if a user logs out all their cr
 
 ### Scripting
 There will be support for manipulating a PathSpace through lua. Issuing an operator can then be done without having to reference a space object, like so: insert("/a", 5).
-But separate space objects could be created as variables in the script and could be used by the normal space_name.put(… usage.
+But separate space objects could be created as variables in the script and could be used by the normal space_name.insert(… usage.
 
 ### Command line
 Using a live script interpreter a command line can be written.

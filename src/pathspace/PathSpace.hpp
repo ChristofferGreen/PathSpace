@@ -31,7 +31,7 @@ public:
      * @return InsertReturn object containing information about the insertion operation, including any errors.
      */
     template <typename DataType>
-    auto put(GlobPathStringView const& path, DataType&& data, In const& options = {}) -> InsertReturn {
+    auto insert(GlobPathStringView const& path, DataType&& data, In const& options = {}) -> InsertReturn {
         sp_log("PathSpace::insert", "Function Called");
         if (auto error = path.validate(options.validationLevel))
             return InsertReturn{.errors = {*error}};
@@ -49,9 +49,9 @@ public:
 
     template <FixedString pathIn, typename DataType>
         requires(validate_path(pathIn) == true)
-    auto put(DataType&& data, In const& options = {}) -> InsertReturn {
+    auto insert(DataType&& data, In const& options = {}) -> InsertReturn {
         sp_log("PathSpace::insert", "Function Called");
-        return this->put(GlobPathStringView{pathIn}, std::forward<DataType>(data), options & InNoValidation{});
+        return this->insert(GlobPathStringView{pathIn}, std::forward<DataType>(data), options & InNoValidation{});
     }
 
     /**

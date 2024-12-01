@@ -95,12 +95,22 @@ auto PathSpaceLeaf::out(PathViewGlob const& iter, InputMetadata const& inputMeta
 }
 
 auto PathSpaceLeaf::outFinalComponent(PathViewGlob const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> {
-    std::optional<Error> result       = Error{Error::Code::NoSuchPath, "Path not found"};
-    bool                 shouldErase  = false;
-    auto const           concreteName = iter.currentComponent();
+    std::optional<Error> result        = Error{Error::Code::NoSuchPath, "Path not found"};
+    bool                 shouldErase   = false;
+    auto                 componentName = iter.currentComponent();
+    if (componentName.isGlob()) {
+        bool found = false;
+        nodeDataMap.for_each([&](const auto& item) {
+            const auto& key = item.first;
+            if (!found && componentName.match(key)) {
+                componentName = key.getName();
+                found         = true;
+            }
+        });
+    }
 
     // First pass: modify data and check if we need to erase
-    this->nodeDataMap.modify_if(concreteName.getName(), [&](auto& nodePair) {
+    this->nodeDataMap.modify_if(componentName.getName(), [&](auto& nodePair) {
         if (auto* nodeData = std::get_if<NodeData>(&nodePair.second)) {
             if (doExtract) {
                 result      = nodeData->deserializePop(obj, inputMetadata);
@@ -113,7 +123,7 @@ auto PathSpaceLeaf::outFinalComponent(PathViewGlob const& iter, InputMetadata co
 
     // Second pass: if needed, erase the empty node
     if (shouldErase)
-        this->nodeDataMap.erase(concreteName.getName());
+        this->nodeDataMap.erase(componentName.getName());
 
     return result;
 }

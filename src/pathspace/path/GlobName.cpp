@@ -24,6 +24,10 @@ GlobName::GlobName(char const* const ptr)
     : name(ptr) {
 }
 
+GlobName::GlobName(std::string_view view)
+    : name(view) {
+}
+
 GlobName::GlobName(std::string::const_iterator const& iter, std::string::const_iterator const& endIter)
     : name(iter, endIter) {
 }
