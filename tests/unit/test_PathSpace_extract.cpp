@@ -474,6 +474,9 @@ TEST_CASE("PathSpace Glob") {
         auto val1 = pspace.take<"/test/[1-2]", int>();
         REQUIRE(val1.has_value());
         CHECK(val1.value() == 1);
+        val1 = pspace.take<"/test/[1-2]", int>();
+        REQUIRE(val1.has_value());
+        CHECK(val1.value() == 2);
     }
 
     SUBCASE("Glob Insert with Different Data Types") {
