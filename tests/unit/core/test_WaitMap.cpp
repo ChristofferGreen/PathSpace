@@ -1,6 +1,7 @@
 #include "core/WaitMap.hpp"
 
 #include "ext/doctest.h"
+#include "path/ConcretePath.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -213,9 +214,9 @@ TEST_SUITE("WaitMap") {
             std::vector<std::jthread> waiters;
 
             // Keep string storage alive for the whole test
-            std::string match_path   = "/test/match/1";
-            std::string nomatch_path = "/test/nomatch/1";
-            std::string pattern      = "/test/match/*";
+            ConcretePathString match_path   = "/test/match/1";
+            ConcretePathString nomatch_path = "/test/nomatch/1";
+            std::string        pattern      = "/test/match/*";
 
             // First waiter - should be notified
             waiters.emplace_back([&]() {

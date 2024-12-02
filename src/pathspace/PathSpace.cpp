@@ -61,7 +61,7 @@ auto PathSpace::out(GlobPathStringView const& path, InputMetadata const& inputMe
             return Error{Error::Code::Timeout, "Operation timed out waiting for data at path: " + std::string(path.getPath())};
 
         // Wait with minimal scope
-        auto guard = waitMap.wait(path.getPath());
+        auto guard = waitMap.wait(path);
         {
             bool success = guard.wait_until(deadline, [&]() {
                 error           = this->root.out(pathView, inputMetadata, obj, options.doPop);

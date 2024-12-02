@@ -26,6 +26,9 @@ struct WaitMap {
     };
 
     auto wait(ConcretePathStringView const& path) -> Guard;
+    auto wait(ConcretePathString const& path) -> Guard;
+    auto wait(GlobPathString const& path) -> Guard;
+    auto wait(GlobPathStringView const& path) -> Guard;
     auto notify(ConcretePathStringView const& path) -> void;
     auto notify(ConcretePathString const& path) -> void;
     auto notify(GlobPathStringView const& path) -> void;

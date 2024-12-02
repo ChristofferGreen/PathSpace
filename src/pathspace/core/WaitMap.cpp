@@ -15,6 +15,21 @@ auto WaitMap::wait(ConcretePathStringView const& path) -> Guard {
     return Guard(*this, ConcretePathString{path.getPath()}, std::unique_lock<std::mutex>(mutex));
 }
 
+auto WaitMap::wait(ConcretePathString const& path) -> Guard {
+    sp_log("WaitMap::wait for path: " + std::string(path.getPath()), "WaitMap");
+    return Guard(*this, path, std::unique_lock<std::mutex>(mutex));
+}
+
+auto WaitMap::wait(GlobPathStringView const& path) -> Guard {
+    sp_log("WaitMap::wait for path: " + std::string(path.getPath()), "WaitMap");
+    return Guard(*this, ConcretePathString{path.getPath()}, std::unique_lock<std::mutex>(mutex));
+}
+
+auto WaitMap::wait(GlobPathString const& path) -> Guard {
+    sp_log("WaitMap::wait for path: " + std::string(path.getPath()), "WaitMap");
+    return Guard(*this, ConcretePathString{path.getPath()}, std::unique_lock<std::mutex>(mutex));
+}
+
 auto WaitMap::notify(ConcretePathStringView const& path) -> void {
     sp_log("notify(concrete view): " + std::string(path.getPath()), "WaitMap");
     this->notify(ConcretePathString{path.getPath()});
