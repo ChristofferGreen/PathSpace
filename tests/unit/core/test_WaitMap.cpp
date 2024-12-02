@@ -21,14 +21,14 @@ TEST_SUITE("WaitMap") {
             ConcretePathStringView path(path_str);
 
             std::thread waiter([&]() {
-                auto guard = waitMap.wait(path);
+                auto guard = waitMap.wait(path.getPath());
                 guard.wait_until(std::chrono::system_clock::now() + 1s, [&]() { return notified.load(); });
             });
 
             std::thread notifier([&]() {
                 std::this_thread::sleep_for(100ms);
                 notified = true;
-                waitMap.notify(path);
+                waitMap.notify(path.getPath());
             });
 
             waiter.join();
@@ -45,7 +45,7 @@ TEST_SUITE("WaitMap") {
             std::vector<std::thread> waiters;
             for (int i = 0; i < NUM_WAITERS; ++i) {
                 waiters.emplace_back([&]() {
-                    auto guard = waitMap.wait(path);
+                    auto guard = waitMap.wait(path.getPath());
                     guard.wait_until(std::chrono::system_clock::now() + 1s, [&]() { return counter.load() > 0; });
                     counter++;
                 });
@@ -53,7 +53,7 @@ TEST_SUITE("WaitMap") {
 
             std::this_thread::sleep_for(100ms);
             counter = 1;
-            waitMap.notify(path);
+            waitMap.notify(path.getPath());
 
             for (auto& t : waiters) {
                 t.join();
@@ -68,7 +68,7 @@ TEST_SUITE("WaitMap") {
             bool                   condition_met = false;
 
             auto start = std::chrono::steady_clock::now();
-            auto guard = waitMap.wait(path);
+            auto guard = waitMap.wait(path.getPath());
             guard.wait_until(std::chrono::system_clock::now() + 100ms, [&]() { return condition_met; });
             auto duration = std::chrono::steady_clock::now() - start;
 
@@ -82,13 +82,13 @@ TEST_SUITE("WaitMap") {
             ConcretePathStringView path(path_str);
 
             std::thread waiter([&]() {
-                auto guard = waitMap.wait(path);
+                auto guard = waitMap.wait(path.getPath());
                 guard.wait_until(std::chrono::system_clock::now() + 500ms, [&]() { return notified.load(); });
             });
 
             std::this_thread::sleep_for(100ms);
             waitMap.clear();
-            waitMap.notify(path); // Notification after clear
+            waitMap.notify(path.getPath()); // Notification after clear
 
             waiter.join();
             CHECK_FALSE(notified); // Should timeout because clear removed the condition variable
@@ -106,7 +106,7 @@ TEST_SUITE("WaitMap") {
             // Create a single waiter we expect to be notified
             std::thread waiter([&]() {
                 ConcretePathStringView path(path_str);
-                auto                   guard = waitMap.wait(path);
+                auto                   guard = waitMap.wait(path.getPath());
                 if (guard.wait_until(std::chrono::system_clock::now() + 200ms, []() { return true; })) {
                     waiterNotified = true;
                 }
@@ -116,7 +116,7 @@ TEST_SUITE("WaitMap") {
             std::this_thread::sleep_for(50ms);
 
             // Try to notify using glob pattern
-            waitMap.notify(GlobPathStringView("/test/match/*"));
+            waitMap.notify("/test/match/*");
 
             waiter.join();
             CHECK(waiterNotified); // Let's see if this waiter gets notified
@@ -130,7 +130,7 @@ TEST_SUITE("WaitMap") {
 
             std::thread waiter([&]() {
                 ConcretePathStringView path(path_str);
-                auto                   guard = waitMap.wait(path);
+                auto                   guard = waitMap.wait(path.getPath());
                 if (guard.wait_until(std::chrono::system_clock::now() + 200ms, []() { return true; })) {
                     waiterNotified = true;
                 }
@@ -139,7 +139,7 @@ TEST_SUITE("WaitMap") {
             std::this_thread::sleep_for(50ms);
 
             // Try to notify using exact same path
-            waitMap.notify(ConcretePathStringView(path_str));
+            waitMap.notify(path_str);
 
             waiter.join();
             CHECK(waiterNotified);
@@ -156,7 +156,7 @@ TEST_SUITE("WaitMap") {
                 path_strs.push_back("/test/" + std::to_string(i));
                 waiters.emplace_back([&, i]() {
                     ConcretePathStringView path(path_strs.back());
-                    auto                   guard = waitMap.wait(path);
+                    auto                   guard = waitMap.wait(path.getPath());
                     guard.wait_until(std::chrono::system_clock::now() + 1s, [&]() { return counter.load() > 0; });
                     counter++;
                 });
@@ -165,7 +165,7 @@ TEST_SUITE("WaitMap") {
             std::this_thread::sleep_for(100ms);
             counter = 1;
             // Notify all paths matching the pattern
-            waitMap.notify(GlobPathStringView("/test/*"));
+            waitMap.notify("/test/*");
 
             for (auto& t : waiters) {
                 t.join();
@@ -220,7 +220,7 @@ TEST_SUITE("WaitMap") {
 
             // First waiter - should be notified
             waiters.emplace_back([&]() {
-                auto guard            = waitMap.wait(match_path);
+                auto guard            = waitMap.wait(match_path.getPath());
                 bool was_notified     = guard.wait_until(std::chrono::system_clock::now() + 300ms) == std::cv_status::no_timeout;
                 match_waiter_notified = was_notified;
                 match_waiter_done     = true;
@@ -228,7 +228,7 @@ TEST_SUITE("WaitMap") {
 
             // Second waiter - should not be notified
             waiters.emplace_back([&]() {
-                auto guard              = waitMap.wait(nomatch_path);
+                auto guard              = waitMap.wait(nomatch_path.getPath());
                 bool was_notified       = guard.wait_until(std::chrono::system_clock::now() + 300ms) == std::cv_status::no_timeout;
                 nomatch_waiter_notified = was_notified;
                 nomatch_waiter_done     = true;
@@ -241,7 +241,7 @@ TEST_SUITE("WaitMap") {
             std::this_thread::sleep_for(50ms);
 
             // Send notification
-            waitMap.notify(GlobPathStringView(pattern));
+            waitMap.notify(pattern);
             notification_sent = true;
 
             waiters.clear(); // Clear waiters
@@ -283,11 +283,11 @@ TEST_SUITE("WaitMap") {
                         // Randomly choose between waiting and notifying
                         if (gen() % 2) {
                             ConcretePathStringView path(path_strs[dis(gen)]);
-                            auto                   guard = waitMap.wait(path);
+                            auto                   guard = waitMap.wait(path.getPath());
                             guard.wait_until(std::chrono::system_clock::now() + 50ms, []() { return true; });
                         } else {
                             ConcretePathStringView path(path_strs[dis(gen)]);
-                            waitMap.notify(path);
+                            waitMap.notify(path.getPath());
                         }
                         completedOperations++;
                     }
@@ -310,7 +310,7 @@ TEST_SUITE("WaitMap") {
             ConcretePathStringView path(empty_str);
             bool                   exceptionThrown = false;
             try {
-                waitMap.notify(path);
+                waitMap.notify(path.getPath());
             } catch (...) {
                 exceptionThrown = true;
             }
@@ -323,13 +323,13 @@ TEST_SUITE("WaitMap") {
             ConcretePathStringView path(root_str);
 
             std::thread waiter([&]() {
-                auto guard = waitMap.wait(path);
+                auto guard = waitMap.wait(path.getPath());
                 guard.wait_until(std::chrono::system_clock::now() + 100ms, [&]() { return notified.load(); });
             });
 
             std::this_thread::sleep_for(50ms);
             notified = true;
-            waitMap.notify(path);
+            waitMap.notify(path.getPath());
 
             waiter.join();
             CHECK(notified);

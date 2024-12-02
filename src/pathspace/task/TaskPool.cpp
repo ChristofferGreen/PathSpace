@@ -108,7 +108,7 @@ auto TaskPool::workerFunction() -> void {
             std::lock_guard<std::mutex> lock(mutex);
             sp_log("Notifying path: " + std::string(notificationPath.getPath()), "TaskPool");
             if (!shuttingDown)
-                space->waitMap.notify(notificationPath);
+                space->waitMap.notify(notificationPath.getPath());
         }
     }
 

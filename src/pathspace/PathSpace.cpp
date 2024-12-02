@@ -36,7 +36,7 @@ auto PathSpace::in(GlobPathStringView const& path, InputData const& data) -> Ins
     this->root.in(PathViewGlob(path.begin(), path.end()), data, ret);
 
     if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0 || ret.nbrTasksInserted > 0)
-        waitMap.notify(path);
+        waitMap.notify(path.getPath());
     return ret;
 }
 
@@ -61,7 +61,7 @@ auto PathSpace::out(GlobPathStringView const& path, InputMetadata const& inputMe
             return Error{Error::Code::Timeout, "Operation timed out waiting for data at path: " + std::string(path.getPath())};
 
         // Wait with minimal scope
-        auto guard = waitMap.wait(path);
+        auto guard = waitMap.wait(path.getPath());
         {
             bool success = guard.wait_until(deadline, [&]() {
                 error           = this->root.out(pathView, inputMetadata, obj, options.doPop);

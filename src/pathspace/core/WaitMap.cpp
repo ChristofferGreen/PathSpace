@@ -3,60 +3,26 @@
 
 namespace SP {
 
-WaitMap::Guard::Guard(WaitMap& waitMap, ConcretePathString const& path, std::unique_lock<std::mutex> lock)
+WaitMap::Guard::Guard(WaitMap& waitMap, std::string_view path, std::unique_lock<std::mutex> lock)
     : waitMap(waitMap), path(path), lock(std::move(lock)) {}
 
 auto WaitMap::Guard::wait_until(std::chrono::time_point<std::chrono::system_clock> timeout) -> std::cv_status {
     return this->waitMap.getCv(path).wait_until(lock, timeout);
 }
 
-auto WaitMap::wait(ConcretePathStringView const& path) -> Guard {
-    sp_log("WaitMap::wait for path: " + std::string(path.getPath()), "WaitMap");
-    return Guard(*this, ConcretePathString{path.getPath()}, std::unique_lock<std::mutex>(mutex));
-}
-
-auto WaitMap::wait(ConcretePathString const& path) -> Guard {
-    sp_log("WaitMap::wait for path: " + std::string(path.getPath()), "WaitMap");
+auto WaitMap::wait(std::string_view path) -> Guard {
+    sp_log("WaitMap::wait for path: " + std::string(path), "WaitMap");
     return Guard(*this, path, std::unique_lock<std::mutex>(mutex));
 }
 
-auto WaitMap::wait(GlobPathStringView const& path) -> Guard {
-    sp_log("WaitMap::wait for path: " + std::string(path.getPath()), "WaitMap");
-    return Guard(*this, ConcretePathString{path.getPath()}, std::unique_lock<std::mutex>(mutex));
-}
+auto WaitMap::notify(std::string_view path) -> void {
+    auto const glob = GlobPathStringView{path};
+    sp_log("notify(glob view): " + std::string(path) + " concrete=" + std::to_string(glob.isConcrete()), "WaitMap");
 
-auto WaitMap::wait(GlobPathString const& path) -> Guard {
-    sp_log("WaitMap::wait for path: " + std::string(path.getPath()), "WaitMap");
-    return Guard(*this, ConcretePathString{path.getPath()}, std::unique_lock<std::mutex>(mutex));
-}
-
-auto WaitMap::notify(ConcretePathStringView const& path) -> void {
-    sp_log("notify(concrete view): " + std::string(path.getPath()), "WaitMap");
-    this->notify(ConcretePathString{path.getPath()});
-}
-
-auto WaitMap::notify(ConcretePathString const& path) -> void {
-    sp_log("notify(concrete string): " + std::string(path.getPath()), "WaitMap");
-    std::lock_guard<std::mutex> lock(mutex);
-    auto                        it = cvMap.find(path);
-    if (it != cvMap.end()) {
-        sp_log("Found exact match for " + std::string(path.getPath()), "WaitMap");
-        it->second.notify_all();
-    }
-}
-
-auto WaitMap::notify(GlobPathString const& path) -> void {
-    sp_log("notify(glob string): " + std::string(path.getPath()), "WaitMap");
-    this->notify(GlobPathStringView{path.getPath()});
-}
-
-auto WaitMap::notify(GlobPathStringView const& path) -> void {
-    sp_log("notify(glob view): " + std::string(path.getPath()) + " concrete=" + std::to_string(path.isConcrete()), "WaitMap");
-
-    if (path.isConcrete()) {
+    if (glob.isConcrete()) {
         sp_log("Path is concrete - using direct notification", "WaitMap");
         std::lock_guard<std::mutex> lock(mutex);
-        auto                        it = cvMap.find(ConcretePathString{path.getPath()});
+        auto                        it = cvMap.find(std::string(path));
         if (it != cvMap.end()) {
             sp_log("Found matching concrete path", "WaitMap");
             it->second.notify_all();
@@ -70,17 +36,18 @@ auto WaitMap::notify(GlobPathStringView const& path) -> void {
     // Log all registered waiters for debugging
     sp_log("Currently registered waiters:", "WaitMap");
     for (auto& [rp, _] : cvMap) {
-        sp_log("  - " + std::string(rp.getPath()), "WaitMap");
+        sp_log("  - " + rp, "WaitMap");
     }
 
     for (auto& [registeredPath, cv] : cvMap) {
-        sp_log("Checking if glob '" + std::string(path.getPath()) + "' matches registered path '" + std::string(registeredPath.getPath()) + "'", "WaitMap");
+        sp_log("Checking if glob '" + std::string(path) + "' matches registered path '" + registeredPath + "'", "WaitMap");
 
-        auto patternIter = path.begin();
-        auto pathIter    = registeredPath.begin();
+        auto patternIter = glob.begin();
+        auto pathGSV     = GlobPathStringView{registeredPath};
+        auto pathIter    = pathGSV.begin();
         bool matches     = true;
 
-        while (patternIter != path.end() && pathIter != registeredPath.end()) {
+        while (patternIter != glob.end() && pathIter != pathGSV.end()) {
             auto isMatch = (*patternIter).match((*pathIter).getName());
             sp_log("Comparing segment: " + std::string((*pathIter).getName()) + " against pattern: " + std::string((*patternIter).getName()) + " -> match=" + std::to_string(isMatch), "WaitMap");
 
@@ -93,12 +60,12 @@ auto WaitMap::notify(GlobPathStringView const& path) -> void {
             ++pathIter;
         }
 
-        bool isCompleteMatch = matches && patternIter == path.end() && pathIter == registeredPath.end();
+        bool isCompleteMatch = matches && patternIter == glob.end() && pathIter == pathGSV.end();
 
         sp_log("Complete match result: " + std::to_string(isCompleteMatch), "WaitMap");
 
         if (isCompleteMatch) {
-            sp_log("Notifying waiters for matching path: " + std::string(registeredPath.getPath()), "WaitMap");
+            sp_log("Notifying waiters for matching path: " + registeredPath, "WaitMap");
             cv.notify_all();
         }
     }
@@ -108,7 +75,7 @@ auto WaitMap::notifyAll() -> void {
     sp_log("notifyAll called", "WaitMap");
     std::lock_guard<std::mutex> lock(mutex);
     for (auto& [path, cv] : cvMap) {
-        sp_log("Notifying path: " + std::string(path.getPath()), "WaitMap");
+        sp_log("Notifying path: " + path, "WaitMap");
         cv.notify_all();
     }
 }
@@ -118,8 +85,8 @@ auto WaitMap::clear() -> void {
     cvMap.clear();
 }
 
-auto WaitMap::getCv(ConcretePathString const& path) -> std::condition_variable& {
-    return cvMap[path];
+auto WaitMap::getCv(std::string_view path) -> std::condition_variable& {
+    return cvMap[std::string(path)];
 }
 
 } // namespace SP
