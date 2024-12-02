@@ -334,4 +334,14 @@ TEST_SUITE("WaitMap") {
             CHECK(notified);
         }
     }
+
+    TEST_CASE("Two-way Glob") {
+        /*WaitMap            waitMap;
+        ConcretePathString concrete = "/1";
+        GlobPathString     glob     = "/[1-2]";
+
+        auto guard = waitMap.wait(glob);
+
+        waitMap.notify(concrete);*/
+    }
 }

@@ -32,3 +32,12 @@ using GlobPathString     = GlobPath<std::string>;
 using GlobPathStringView = GlobPath<std::string_view>;
 
 } // namespace SP
+
+namespace std {
+template <typename T>
+struct hash<SP::GlobPath<T>> {
+    size_t operator()(const SP::GlobPath<T>& path) const noexcept {
+        return hash<string_view>{}(static_cast<string_view>(path));
+    }
+};
+} // namespace std

@@ -31,7 +31,6 @@ struct ConcretePath : public Path<T> {
     explicit operator std::string_view() const noexcept;
 };
 
-// Non-member comparison operators for symmetry
 template <typename T>
 auto operator<=>(std::string_view lhs, const ConcretePath<T>& rhs) -> std::strong_ordering {
     return lhs <=> std::string_view(rhs.getPath());

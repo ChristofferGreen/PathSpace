@@ -35,7 +35,7 @@ struct WaitMap {
 
     auto hasWaiters() const -> bool {
         std::lock_guard<std::mutex> lock(mutex);
-        return !cvMap.empty();
+        return !this->cvMap.empty() || !this->cvMapGlob.empty();
     }
 
 private:
@@ -44,6 +44,7 @@ private:
 
     mutable std::mutex                                              mutex;
     std::unordered_map<ConcretePathString, std::condition_variable> cvMap;
+    std::unordered_map<GlobPathString, std::condition_variable>     cvMapGlob;
 };
 
 } // namespace SP
