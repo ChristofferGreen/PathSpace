@@ -2,6 +2,7 @@
 
 #include "ext/doctest.h"
 #include "path/ConcretePath.hpp"
+#include "path/GlobPath.hpp"
 
 #include <atomic>
 #include <chrono>

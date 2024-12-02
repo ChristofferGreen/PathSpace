@@ -1,4 +1,5 @@
 #include "core/WaitMap.hpp"
+#include "path/GlobPath.hpp"
 #include "utils/TaggedLogger.hpp"
 
 namespace SP {
@@ -22,7 +23,7 @@ auto WaitMap::notify(std::string_view path) -> void {
     if (glob.isConcrete()) {
         sp_log("Path is concrete - using direct notification", "WaitMap");
         std::lock_guard<std::mutex> lock(mutex);
-        auto                        it = cvMap.find(std::string(path));
+        auto                        it = cvMap.find(path);
         if (it != cvMap.end()) {
             sp_log("Found matching concrete path", "WaitMap");
             it->second.notify_all();
@@ -86,7 +87,7 @@ auto WaitMap::clear() -> void {
 }
 
 auto WaitMap::getCv(std::string_view path) -> std::condition_variable& {
-    return cvMap[std::string(path)];
+    return cvMap[std::string(path)]; // ToDo: We may not always need to create a string here
 }
 
 } // namespace SP

@@ -1,11 +1,27 @@
 #pragma once
-#include "path/ConcretePath.hpp"
-#include "path/GlobPath.hpp"
-
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
+#include <string>
+#include <string_view>
 #include <unordered_map>
+
+template <typename... Bases>
+struct overload : Bases... {
+    using is_transparent = void;
+    using Bases::operator()...;
+};
+
+struct char_pointer_hash {
+    auto operator()(const char* ptr) const noexcept {
+        return std::hash<std::string_view>{}(ptr);
+    }
+};
+
+using transparent_string_hash = overload<
+        std::hash<std::string>,
+        std::hash<std::string_view>,
+        char_pointer_hash>;
 
 namespace SP {
 
@@ -39,8 +55,8 @@ private:
     friend struct Guard;
     auto getCv(std::string_view path) -> std::condition_variable&;
 
-    mutable std::mutex                                       mutex;
-    std::unordered_map<std::string, std::condition_variable> cvMap;
+    mutable std::mutex                                                                                 mutex;
+    std::unordered_map<std::string, std::condition_variable, transparent_string_hash, std::equal_to<>> cvMap;
 };
 
 } // namespace SP
