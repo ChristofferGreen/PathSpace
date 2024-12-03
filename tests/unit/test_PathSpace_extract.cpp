@@ -479,14 +479,19 @@ TEST_CASE("PathSpace Glob") {
         CHECK(val1.value() == 2);
     }
 
-    /*SUBCASE("Block Glob Insert and Grab") {
-        // REQUIRE(pspace.insert<"/test/1">([]() { std::this_thread::sleep_for(100ms); return 1; }).nbrTasksInserted == 1);
-        REQUIRE(pspace.insert("/test/1", []() { std::this_thread::sleep_for(20000ms); return 1; }).nbrTasksInserted == 1);
-        // auto val = pspace.take<"/test/[1-2]", int>(Block{});
+    SUBCASE("Block Glob Insert and Grab") {
+        REQUIRE(pspace.insert("/test/1", []() { std::this_thread::sleep_for(50ms); return 1; }).nbrTasksInserted == 1);
         auto val = pspace.take<int>("/test/[1-2]", Block{});
         REQUIRE(val.has_value());
         REQUIRE(val.value() == 1);
-    }*/
+    }
+
+    SUBCASE("Block Glob Insert and Grab Template Path") {
+        REQUIRE(pspace.insert<"/test/1">([]() { std::this_thread::sleep_for(50ms); return 1; }).nbrTasksInserted == 1);
+        auto val = pspace.take<"/test/[1-2]", int>(Block{});
+        REQUIRE(val.has_value());
+        REQUIRE(val.value() == 1);
+    }
 
     SUBCASE("Glob Insert with Different Data Types") {
         // Insert different types to different paths
