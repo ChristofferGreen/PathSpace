@@ -17,38 +17,46 @@ auto WaitMap::wait(std::string_view path) -> Guard {
 }
 
 auto WaitMap::notify(std::string_view path) -> void {
-    auto const glob = GlobPathStringView{path};
-    sp_log("notify(glob view): " + std::string(path) + " concrete=" + std::to_string(glob.isConcrete()), "WaitMap");
+    auto const globView = GlobPathStringView{path};
+    sp_log("notify(glob view): " + std::string(path) + " concrete=" + std::to_string(globView.isConcrete()), "WaitMap");
 
-    if (glob.isConcrete()) {
-        sp_log("Path is concrete - using direct notification", "WaitMap");
-        std::lock_guard<std::mutex> lock(mutex);
-        auto                        it = cvMap.find(path);
-        if (it != cvMap.end()) {
-            sp_log("Found matching concrete path", "WaitMap");
-            it->second.notify_all();
-        }
-        return;
-    }
-
-    sp_log("Path is a glob pattern - checking registered paths", "WaitMap");
     std::lock_guard<std::mutex> lock(mutex);
 
-    // Log all registered waiters for debugging
     sp_log("Currently registered waiters:", "WaitMap");
     for (auto& [rp, _] : cvMap) {
         sp_log("  - " + rp, "WaitMap");
     }
 
+    // First, handle the concrete path case - both directions
+    if (globView.isConcrete()) {
+        // Look for exact match first (existing behavior)
+        auto it = cvMap.find(path);
+        if (it != cvMap.end()) {
+            sp_log("Found matching concrete path", "WaitMap");
+            it->second.notify_all();
+        }
+
+        // Check if any registered glob patterns match our concrete path
+        for (auto& [registeredPath, cv] : cvMap) {
+            auto registeredGlob = GlobPathStringView{registeredPath};
+            if (registeredGlob.isGlob() && registeredGlob.match(globView)) {
+                sp_log("Found matching glob pattern: " + registeredPath, "WaitMap");
+                cv.notify_all();
+            }
+        }
+        return;
+    }
+
+    // Handle the glob pattern case (existing behavior)
     for (auto& [registeredPath, cv] : cvMap) {
         sp_log("Checking if glob '" + std::string(path) + "' matches registered path '" + registeredPath + "'", "WaitMap");
 
-        auto patternIter = glob.begin();
+        auto patternIter = globView.begin();
         auto pathGSV     = GlobPathStringView{registeredPath};
         auto pathIter    = pathGSV.begin();
         bool matches     = true;
 
-        while (patternIter != glob.end() && pathIter != pathGSV.end()) {
+        while (patternIter != globView.end() && pathIter != pathGSV.end()) {
             auto isMatch = (*patternIter).match((*pathIter).getName());
             sp_log("Comparing segment: " + std::string((*pathIter).getName()) + " against pattern: " + std::string((*patternIter).getName()) + " -> match=" + std::to_string(isMatch), "WaitMap");
 
@@ -61,7 +69,7 @@ auto WaitMap::notify(std::string_view path) -> void {
             ++pathIter;
         }
 
-        bool isCompleteMatch = matches && patternIter == glob.end() && pathIter == pathGSV.end();
+        bool isCompleteMatch = matches && patternIter == globView.end() && pathIter == pathGSV.end();
 
         sp_log("Complete match result: " + std::to_string(isCompleteMatch), "WaitMap");
 

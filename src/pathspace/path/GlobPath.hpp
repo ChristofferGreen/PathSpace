@@ -27,6 +27,7 @@ struct GlobPath : public Path<T> {
 
     auto isConcrete() const -> bool;
     auto isGlob() const -> bool;
+    auto match(const GlobPath& str) const -> bool;
 };
 using GlobPathString     = GlobPath<std::string>;
 using GlobPathStringView = GlobPath<std::string_view>;

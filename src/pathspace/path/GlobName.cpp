@@ -156,6 +156,10 @@ auto GlobName::match(const ConcreteNameString& str) const -> bool {
     return this->match(str.getName());
 }
 
+auto GlobName::match(const GlobName& str) const -> bool {
+    return this->match(str.getName());
+}
+
 auto GlobName::isConcrete() const -> bool {
     return !this->isGlob();
 }

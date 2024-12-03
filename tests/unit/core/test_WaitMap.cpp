@@ -323,7 +323,7 @@ TEST_SUITE("WaitMap") {
             std::string            root_str("/");
             ConcretePathStringView path(root_str);
 
-            std::thread waiter([&]() {
+            std::jthread waiter([&]() {
                 auto guard = waitMap.wait(path.getPath());
                 guard.wait_until(std::chrono::system_clock::now() + 100ms, [&]() { return notified.load(); });
             });
@@ -332,18 +332,45 @@ TEST_SUITE("WaitMap") {
             notified = true;
             waitMap.notify(path.getPath());
 
-            waiter.join();
             CHECK(notified);
         }
     }
 
-    TEST_CASE("Two-way Glob") {
-        /*WaitMap            waitMap;
-        ConcretePathString concrete = "/1";
-        GlobPathString     glob     = "/[1-2]";
+    TEST_CASE("WaitMap Pattern Matching - Concrete Notification Matches Glob Waiter") {
+        WaitMap           waitMap;
+        std::atomic<bool> wasNotified{false};
 
-        auto guard = waitMap.wait(glob);
+        std::jthread waiter([&]() {
+            auto guard = waitMap.wait("/foo/[a-z]*"); // Wait with glob pattern
+            if (guard.wait_until(std::chrono::system_clock::now() + 100ms)
+                == std::cv_status::no_timeout) {
+                wasNotified = true;
+            }
+        });
 
-        waitMap.notify(concrete);*/
+        std::this_thread::sleep_for(50ms);
+        waitMap.notify("/foo/bar"); // Notify with concrete path
+
+        waiter.join();
+        CHECK(wasNotified);
+    }
+
+    TEST_CASE("WaitMap Pattern Matching - Glob Notification Matches Concrete Waiter") {
+        WaitMap           waitMap;
+        std::atomic<bool> wasNotified{false};
+
+        std::jthread waiter([&]() {
+            auto guard = waitMap.wait("/foo/bar"); // Wait with concrete path
+            if (guard.wait_until(std::chrono::system_clock::now() + 100ms)
+                == std::cv_status::no_timeout) {
+                wasNotified = true;
+            }
+        });
+
+        std::this_thread::sleep_for(50ms);
+        waitMap.notify("/foo/[a-z]*"); // Notify with glob pattern
+
+        waiter.join();
+        CHECK(wasNotified);
     }
 }

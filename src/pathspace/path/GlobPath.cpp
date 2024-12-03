@@ -65,6 +65,21 @@ auto GlobPath<T>::isGlob() const -> bool {
     return is_glob(this->path);
 }
 
+template <typename T>
+auto GlobPath<T>::match(const GlobPath& str) const -> bool {
+    auto iterA = this->begin();
+    auto iterB = str.begin();
+    while (iterA != this->end() && iterB != str.end()) {
+        if (!(*iterA).match(*iterB))
+            return false;
+        ++iterA;
+        ++iterB;
+    }
+    if (iterA != this->end() || iterB != str.end())
+        return false;
+    return true;
+}
+
 template struct GlobPath<std::string>;
 template auto GlobPathString::operator==(ConcretePathString const&) const -> bool;
 template auto GlobPathString::operator==(ConcretePathStringView const&) const -> bool;
