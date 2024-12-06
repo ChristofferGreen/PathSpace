@@ -4,11 +4,11 @@
 #include "core/Out.hpp"
 #include "core/WaitMap.hpp"
 #include "path/GlobPath.hpp"
+#include "path/PathIterator.hpp"
 #include "path/validation.hpp"
 #include "task/Task.hpp"
 #include "type/InputData.hpp"
 #include "utils/TaggedLogger.hpp"
-#include <chrono>
 
 namespace SP {
 struct TaskPool;

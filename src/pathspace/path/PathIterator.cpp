@@ -57,6 +57,42 @@ auto PathIterator::operator==(const PathIterator& other) const noexcept -> bool 
     return current == other.current;
 }
 
+auto PathIterator::validate(ValidationLevel const& level) const noexcept -> std::optional<Error> {
+    switch (level) {
+        case ValidationLevel::Basic:
+            return this->validateBasic();
+        case ValidationLevel::Full:
+            return this->validateFull();
+        default:
+            return std::nullopt;
+    }
+}
+
+auto PathIterator::validateBasic() const noexcept -> std::optional<Error> {
+    // Handle empty path
+    if (this->path.empty()) {
+        return Error{Error::Code::InvalidPath, "Empty path"};
+    }
+
+    // Path must start with forward slash
+    if (this->path[0] != '/') {
+        return Error{Error::Code::InvalidPath, "Path must start with '/'"};
+    }
+
+    // Path cannot end with slash unless it's the root path
+    if (this->path.size() > 1 && this->path.back() == '/')
+        return Error{Error::Code::InvalidPath, "Path ends with slash"};
+
+    return std::nullopt;
+}
+
+auto PathIterator::validateFull() const noexcept -> std::optional<Error> {
+    auto result = validate_path_impl(std::string_view(this->path));
+    if (result.code != ValidationError::Code::None)
+        return Error{Error::Code::InvalidPath, get_error_message(result.code)};
+    return std::nullopt;
+}
+
 bool PathIterator::isAtStart() const noexcept {
     return this->current == this->path.begin() + 1; // Skip the leading and mandatory '/'
 }

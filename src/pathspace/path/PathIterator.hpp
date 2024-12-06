@@ -1,4 +1,7 @@
 #pragma once
+#include "core/Error.hpp"
+#include "path/validation.hpp"
+#include <optional>
 #include <string_view>
 
 namespace SP {
@@ -24,14 +27,17 @@ public:
     [[nodiscard]] auto isAtFinalComponent() const noexcept -> bool;
     [[nodiscard]] auto isAtEnd() const noexcept -> bool;
     [[nodiscard]] auto fullPath() const noexcept -> std::string_view;
+    [[nodiscard]] auto validate(ValidationLevel const& level) const noexcept -> std::optional<Error>;
 
 private:
     PathIterator(IteratorType first, IteratorType last) noexcept;
 
     auto               skipSlashes(IteratorType& it) noexcept -> void;
-    [[nodiscard]] auto findNextSlash(IteratorType it) noexcept -> IteratorType;
     auto               updateCurrentSegment() noexcept -> void;
     void               findNextComponent() noexcept;
+    [[nodiscard]] auto findNextSlash(IteratorType it) noexcept -> IteratorType;
+    [[nodiscard]] auto validateBasic() const noexcept -> std::optional<Error>;
+    [[nodiscard]] auto validateFull() const noexcept -> std::optional<Error>;
 
     std::string_view path;            // The complete path we're iterating over
     std::string_view current_segment; // View of the current path component
