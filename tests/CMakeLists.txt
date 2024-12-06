@@ -9,6 +9,7 @@ add_executable(PathSpaceTests
   unit/path/test_ConcretePathIterator.cpp
   unit/path/test_ConstructiblePath.cpp
   unit/path/test_Path.cpp
+  unit/path/test_PathIterator.cpp
   unit/core/test_WaitMap.cpp
   unit/type/test_InputMetadata.cpp
   unit/type/test_SlidingBuffer.cpp

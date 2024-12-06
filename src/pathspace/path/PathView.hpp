@@ -8,7 +8,8 @@
 namespace SP {
 
 struct PathViewGlob {
-    PathViewGlob(GlobPathIteratorStringView begin, GlobPathIteratorStringView end) : current_(begin), end_(end) {}
+    PathViewGlob(GlobPathIteratorStringView begin, GlobPathIteratorStringView end)
+        : current_(begin), end_(end) {}
 
     auto currentComponent() const {
         return *current_;
@@ -41,7 +42,8 @@ private:
 };
 
 struct PathViewConcrete {
-    PathViewConcrete(ConcretePathIteratorStringView begin, ConcretePathIteratorStringView end) : current_(begin), end_(end) {}
+    PathViewConcrete(ConcretePathIteratorStringView begin, ConcretePathIteratorStringView end)
+        : current_(begin), end_(end) {}
 
     auto currentComponent() const {
         return *current_;
@@ -58,14 +60,6 @@ struct PathViewConcrete {
     auto next() const -> PathViewConcrete {
         PathViewConcrete p = *this;
         return p.advance();
-    }
-
-    auto current() const {
-        return current_;
-    }
-
-    auto end() const {
-        return end_;
     }
 
 private:

@@ -48,6 +48,8 @@ add_library(PathSpace
     path/GlobPathIterator.cpp
     path/GlobName.cpp
     path/Path.cpp
+    path/path_utils.cpp
+    path/PathIterator.cpp
     core/NodeData.cpp
     core/WaitMap.cpp
     task/Task.cpp
