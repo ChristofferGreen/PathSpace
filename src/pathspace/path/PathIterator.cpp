@@ -61,6 +61,10 @@ bool PathIterator::isAtStart() const noexcept {
     return this->current == this->path.begin() + 1; // Skip the leading and mandatory '/'
 }
 
+auto PathIterator::isAtFinalComponent() const noexcept -> bool {
+    return std::next(current) == path.end();
+}
+
 bool PathIterator::isAtEnd() const noexcept {
     // We're at the end if we can't find any more components
     // (current == segment_end means no component found)

@@ -21,6 +21,7 @@ public:
     [[nodiscard]] auto operator==(const PathIterator& other) const noexcept -> bool;
 
     [[nodiscard]] auto isAtStart() const noexcept -> bool;
+    [[nodiscard]] auto isAtFinalComponent() const noexcept -> bool;
     [[nodiscard]] auto isAtEnd() const noexcept -> bool;
     [[nodiscard]] auto fullPath() const noexcept -> std::string_view;
 
