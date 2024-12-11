@@ -15,7 +15,7 @@ TEST_CASE("Path Iterator and Utilities") {
             PathIterator iter("/");
             CHECK(iter.isAtEnd());
             CHECK(iter.isAtStart());
-            CHECK(iter.fullPath() == "/");
+            CHECK(iter.toStringView() == "/");
         }
 
         SUBCASE("Simple Path") {
@@ -63,9 +63,9 @@ TEST_CASE("Path Iterator and Utilities") {
         SUBCASE("Full Path Access") {
             const std::string path = "/test/path/here";
             PathIterator      iter(path);
-            CHECK(iter.fullPath() == path);
+            CHECK(iter.toStringView() == path);
             ++iter;
-            CHECK(iter.fullPath() == path);
+            CHECK(iter.toStringView() == path);
         }
     }
 

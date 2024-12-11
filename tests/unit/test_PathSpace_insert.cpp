@@ -13,8 +13,10 @@ TEST_CASE("PathSpace Insert") {
         CHECK(pspace.insert("/test", 54).nbrValuesInserted == 1);
         auto const val = pspace.insert("/test/data", 55);
         CHECK(val.nbrValuesInserted == 0);
-        // CHECK(val.errors.size() == 1);
-        // CHECK(val.errors[0].code == Error::Code::InvalidPathSubcomponent);
+    }
+
+    SUBCASE("Simple PathSpace Path Into Data2") {
+        CHECK(pspace.insert2("/test", 54).nbrValuesInserted == 1);
     }
 
     SUBCASE("Simple PathSpace Glob Construction") {

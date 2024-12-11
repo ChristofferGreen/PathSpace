@@ -40,6 +40,17 @@ auto PathSpace::in(GlobPathStringView const& path, InputData const& data) -> Ins
     return ret;
 }
 
+auto PathSpace::in2(PathIterator const& path, InputData const& data) -> InsertReturn {
+    sp_log("PathSpace::in", "Function Called");
+    InsertReturn ret;
+
+    this->root.in(path, data, ret);
+
+    if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0 || ret.nbrTasksInserted > 0)
+        waitMap.notify(path.toStringView());
+    return ret;
+}
+
 auto PathSpace::out(GlobPathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> {
     sp_log("PathSpace::outBlock", "Function Called");
 

@@ -8,9 +8,16 @@
 #include "path/validation.hpp"
 #include "task/Task.hpp"
 #include "type/InputData.hpp"
+#include "type/InputMetadata.hpp"
 #include "utils/TaggedLogger.hpp"
 
 namespace SP {
+
+template <typename T>
+concept SimpleStringConvertible = requires(T t) {
+    { std::string(t) }; // Only checks if it can make a string
+};
+
 struct TaskPool;
 class PathSpace {
 public:
@@ -45,6 +52,23 @@ public:
         }
 
         return this->in(path, inputData);
+    }
+    template <typename DataType, SimpleStringConvertible S>
+    auto insert2(S const& pathIn, DataType&& data, In const& options = {}) -> InsertReturn {
+        sp_log("PathSpace::insert", "Function Called");
+        PathIterator const path{pathIn};
+        if (auto error = path.validate(options.validationLevel))
+            return InsertReturn{.errors = {*error}};
+
+        InputData inputData{std::forward<DataType>(data)};
+
+        if constexpr (InputMetadataT<DataType>::dataCategory == DataCategory::Execution) {
+            inputData.taskCreator = [this, data, inputData, executionCategory = options.executionCategory, pathStr = path.toString()]() -> std::shared_ptr<Task> {
+                return Task::Create(this, pathStr, std::forward<DataType>(data), inputData, executionCategory);
+            };
+        }
+
+        return this->in2(path, inputData);
     }
 
     template <FixedString pathIn, typename DataType>
@@ -111,6 +135,7 @@ protected:
     friend class TaskPool;
 
     virtual auto in(GlobPathStringView const& path, InputData const& data) -> InsertReturn;
+    virtual auto in2(PathIterator const& path, InputData const& data) -> InsertReturn;
     auto         out(GlobPathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>;
     auto         shutdown() -> void;
 

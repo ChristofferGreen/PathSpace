@@ -6,6 +6,8 @@ PathIterator::PathIterator(std::string_view path) noexcept
     : path{path}, current{path.begin()}, segment_end{path.begin()} {
     findNextComponent();
 }
+PathIterator::PathIterator(char const* const path) noexcept
+    : PathIterator{std::string_view{path}} {}
 
 PathIterator::PathIterator(IteratorType first, IteratorType last) noexcept
     : path{first, static_cast<size_t>(last - first)},
@@ -29,6 +31,24 @@ void PathIterator::findNextComponent() noexcept {
     }
 
     updateCurrentSegment();
+}
+
+auto PathIterator::toString() const noexcept -> std::string {
+    return std::string{this->path};
+}
+
+auto PathIterator::toStringView() const noexcept -> std::string_view {
+    return std::string_view{this->path};
+}
+
+auto PathIterator::currentComponent() const noexcept -> std::string_view {
+    return this->current_segment;
+}
+
+auto PathIterator::next() const noexcept -> PathIterator {
+    auto iter = *this;
+    ++iter;
+    return iter;
 }
 
 auto PathIterator::operator*() const noexcept -> value_type {
@@ -98,17 +118,13 @@ bool PathIterator::isAtStart() const noexcept {
 }
 
 auto PathIterator::isAtFinalComponent() const noexcept -> bool {
-    return std::next(current) == path.end();
+    return segment_end == path.end();
 }
 
 bool PathIterator::isAtEnd() const noexcept {
     // We're at the end if we can't find any more components
     // (current == segment_end means no component found)
     return current == path.end() || current == segment_end;
-}
-
-auto PathIterator::fullPath() const noexcept -> std::string_view {
-    return path;
 }
 
 auto PathIterator::skipSlashes(IteratorType& it) noexcept -> void {

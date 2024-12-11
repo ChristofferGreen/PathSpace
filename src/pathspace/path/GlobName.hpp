@@ -6,8 +6,6 @@
 
 namespace SP {
 
-auto is_glob(std::string_view const& strv) -> bool;
-
 struct GlobName {
     GlobName(char const* const ptr);
     GlobName(std::string_view view);

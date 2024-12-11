@@ -15,6 +15,7 @@ public:
     using reference         = const value_type&;
     using IteratorType      = std::string_view::const_iterator;
 
+    explicit PathIterator(char const* const path) noexcept;
     explicit PathIterator(std::string_view path) noexcept;
 
     [[nodiscard]] auto operator*() const noexcept -> value_type;
@@ -26,8 +27,11 @@ public:
     [[nodiscard]] auto isAtStart() const noexcept -> bool;
     [[nodiscard]] auto isAtFinalComponent() const noexcept -> bool;
     [[nodiscard]] auto isAtEnd() const noexcept -> bool;
-    [[nodiscard]] auto fullPath() const noexcept -> std::string_view;
     [[nodiscard]] auto validate(ValidationLevel const& level) const noexcept -> std::optional<Error>;
+    [[nodiscard]] auto toString() const noexcept -> std::string;
+    [[nodiscard]] auto toStringView() const noexcept -> std::string_view;
+    [[nodiscard]] auto currentComponent() const noexcept -> std::string_view;
+    [[nodiscard]] auto next() const noexcept -> PathIterator;
 
 private:
     PathIterator(IteratorType first, IteratorType last) noexcept;
