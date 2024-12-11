@@ -37,24 +37,8 @@ public:
      * @param options Options controlling the insertion behavior, such as overwrite policies.
      * @return InsertReturn object containing information about the insertion operation, including any errors.
      */
-    template <typename DataType>
-    auto insert(GlobPathStringView const& path, DataType&& data, In const& options = {}) -> InsertReturn {
-        sp_log("PathSpace::insert", "Function Called");
-        if (auto error = path.validate(options.validationLevel))
-            return InsertReturn{.errors = {*error}};
-
-        InputData inputData{std::forward<DataType>(data)};
-
-        if (inputData.metadata.dataCategory == DataCategory::Execution) {
-            inputData.taskCreator = [&, pathStr = std::string(path.getPath())]() -> std::shared_ptr<Task> {
-                return Task::Create(this, pathStr, std::forward<DataType>(data), inputData, options.executionCategory);
-            };
-        }
-
-        return this->in(path, inputData);
-    }
     template <typename DataType, SimpleStringConvertible S>
-    auto insert2(S const& pathIn, DataType&& data, In const& options = {}) -> InsertReturn {
+    auto insert(S const& pathIn, DataType&& data, In const& options = {}) -> InsertReturn {
         sp_log("PathSpace::insert", "Function Called");
         PathIterator const path{pathIn};
         if (auto error = path.validate(options.validationLevel))
@@ -63,19 +47,19 @@ public:
         InputData inputData{std::forward<DataType>(data)};
 
         if constexpr (InputMetadataT<DataType>::dataCategory == DataCategory::Execution) {
-            inputData.taskCreator = [this, data, inputData, executionCategory = options.executionCategory, pathStr = path.toString()]() -> std::shared_ptr<Task> {
-                return Task::Create(this, pathStr, std::forward<DataType>(data), inputData, executionCategory);
+            inputData.taskCreator = [this, fun = data, executionCategory = options.executionCategory, pathStr = path.toString()]() -> std::shared_ptr<Task> {
+                return Task::Create(this, pathStr, fun, executionCategory);
             };
-        }
+        } // ToDo: Look into if we really need to do all these copies of data
 
-        return this->in2(path, inputData);
+        return this->in(path, inputData);
     }
 
     template <FixedString pathIn, typename DataType>
         requires(validate_path(pathIn) == true)
     auto insert(DataType&& data, In const& options = {}) -> InsertReturn {
         sp_log("PathSpace::insert", "Function Called");
-        return this->insert(GlobPathStringView{pathIn}, std::forward<DataType>(data), options & InNoValidation{});
+        return this->insert(pathIn, std::forward<DataType>(data), options & InNoValidation{});
     }
 
     /**
@@ -135,7 +119,7 @@ protected:
     friend class TaskPool;
 
     virtual auto in(GlobPathStringView const& path, InputData const& data) -> InsertReturn;
-    virtual auto in2(PathIterator const& path, InputData const& data) -> InsertReturn;
+    virtual auto in(PathIterator const& path, InputData const& data) -> InsertReturn;
     auto         out(GlobPathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>;
     auto         shutdown() -> void;
 

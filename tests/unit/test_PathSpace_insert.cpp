@@ -15,10 +15,6 @@ TEST_CASE("PathSpace Insert") {
         CHECK(val.nbrValuesInserted == 0);
     }
 
-    SUBCASE("Simple PathSpace Path Into Data2") {
-        CHECK(pspace.insert2("/test", 54).nbrValuesInserted == 1);
-    }
-
     SUBCASE("Simple PathSpace Glob Construction") {
         CHECK(pspace.insert("/test1", 1).nbrValuesInserted == 1);
         CHECK(pspace.insert<"/test2">(2).nbrValuesInserted == 1);
@@ -92,9 +88,9 @@ TEST_CASE("PathSpace Insert") {
             auto func = [i, &pspace]() -> int {
                 if (i == 0)
                     return 1;
-                return pspace.read<int>(SP::GlobPathStringView{"/func" + std::to_string(i - 1)}, Block{}).value() + 1;
+                return pspace.read<int>("/func" + std::to_string(i - 1), Block{}).value() + 1;
             };
-            CHECK(pspace.insert(SP::GlobPathStringView{"/func" + std::to_string(i)}, func).errors.size() == 0);
+            CHECK(pspace.insert("/func" + std::to_string(i), func).errors.size() == 0);
         }
 
         auto result = pspace.read<int>(SP::GlobPathStringView{"/func" + std::to_string(DEPTH - 1)}, Block{});

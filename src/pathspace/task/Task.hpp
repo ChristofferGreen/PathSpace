@@ -21,7 +21,7 @@ struct Task {
         return task;
     }
     template <typename DataType>
-    static auto Create(PathSpace* space, GlobPathString const& notificationPath, DataType const& userFunction, InputData const& inputData, ExecutionCategory const& inExecutionCategory) -> std::shared_ptr<Task> {
+    static auto Create(PathSpace* space, GlobPathString const& notificationPath, DataType const& userFunction, ExecutionCategory const& inExecutionCategory) -> std::shared_ptr<Task> {
         sp_log("Task::Create", "Function Called");
 
         // For any callable type (lambda, function pointer, etc)
@@ -32,9 +32,9 @@ struct Task {
             task->space             = space;
             task->notificationPath  = notificationPath;
             task->executionCategory = (inExecutionCategory == ExecutionCategory::Unknown) ? ExecutionCategory::Immediate : inExecutionCategory;
-            task->function          = [userFunction](Task& task, bool const) {
+            task->function          = [fun = userFunction](Task& task, bool const) {
                 sp_log("Task lambda execution", "Task");
-                task.result = userFunction();
+                task.result = fun();
                 sp_log("Task lambda completed", "Task");
             };
             task->resultCopy_ = [](std::any const& from, void* const to) {

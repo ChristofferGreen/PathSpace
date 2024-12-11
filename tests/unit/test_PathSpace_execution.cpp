@@ -1,5 +1,4 @@
 #include "ext/doctest.h"
-#include <chrono>
 #include <pathspace/PathSpace.hpp>
 #include <thread>
 

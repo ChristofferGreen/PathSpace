@@ -40,7 +40,7 @@ auto PathSpace::in(GlobPathStringView const& path, InputData const& data) -> Ins
     return ret;
 }
 
-auto PathSpace::in2(PathIterator const& path, InputData const& data) -> InsertReturn {
+auto PathSpace::in(PathIterator const& path, InputData const& data) -> InsertReturn {
     sp_log("PathSpace::in", "Function Called");
     InsertReturn ret;
 
