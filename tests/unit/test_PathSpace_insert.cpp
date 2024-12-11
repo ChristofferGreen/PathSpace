@@ -93,7 +93,7 @@ TEST_CASE("PathSpace Insert") {
             CHECK(pspace.insert("/func" + std::to_string(i), func).errors.size() == 0);
         }
 
-        auto result = pspace.read<int>(SP::GlobPathStringView{"/func" + std::to_string(DEPTH - 1)}, Block{});
+        auto result = pspace.read<int>("/func" + std::to_string(DEPTH - 1), Block{});
         CHECK(result.has_value());
         CHECK(result.value() == DEPTH);
     }

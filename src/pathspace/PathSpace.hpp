@@ -71,7 +71,7 @@ public:
      * @return Expected<DataType> containing the read data if successful, or an error if not.
      */
     template <typename DataType>
-    auto read(GlobPathStringView const& path, Out const& options = {}) const -> Expected<DataType> {
+    auto read2(GlobPathStringView const& path, Out const& options = {}) const -> Expected<DataType> {
         sp_log("PathSpace::read", "Function Called");
         if (auto error = path.validate())
             return std::unexpected(*error);
@@ -80,12 +80,22 @@ public:
             return std::unexpected{*error};
         return obj;
     }
-
+    template <typename DataType, SimpleStringConvertible S>
+    auto read(S const& pathIn, Out const& options = {}) const -> Expected<DataType> {
+        sp_log("PathSpace::read", "Function Called");
+        PathIterator const path{pathIn};
+        if (auto error = path.validate(options.validationLevel))
+            return std::unexpected(*error);
+        DataType obj;
+        if (auto error = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj))
+            return std::unexpected{*error};
+        return obj;
+    }
     template <FixedString pathIn, typename DataType>
         requires(validate_path(pathIn))
     auto read(Out const& options = {}) const -> Expected<DataType> {
         sp_log("PathSpace::read", "Function Called");
-        return this->read<DataType>(GlobPathStringView{pathIn}, options & OutNoValidation{});
+        return this->read<DataType>(pathIn, options & OutNoValidation{});
     }
 
     /**
@@ -118,9 +128,9 @@ public:
 protected:
     friend class TaskPool;
 
-    virtual auto in(GlobPathStringView const& path, InputData const& data) -> InsertReturn;
     virtual auto in(PathIterator const& path, InputData const& data) -> InsertReturn;
     auto         out(GlobPathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>;
+    auto         out(PathIterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>;
     auto         shutdown() -> void;
 
     TaskPool*     pool = nullptr;
