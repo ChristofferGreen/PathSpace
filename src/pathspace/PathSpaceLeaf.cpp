@@ -27,12 +27,12 @@ auto PathSpaceLeaf::inFinalComponent(PathIterator const& iter, InputData const& 
     auto const pathComponent = iter.currentComponent();
     if (is_glob(pathComponent)) {
         // Create a vector to store the keys that match before modification.
-        std::vector<ConcreteNameString> matchingKeys;
+        std::vector<std::string_view> matchingKeys;
 
         // First pass: Collect all matching keys without holding write locks
-        nodeDataMap.for_each([&](auto& item) {
-            const auto& key = item.first;
-            if (match_names(pathComponent, key.getName()))
+        nodeDataMap.for_each([&](auto const& item) {
+            auto const& key = item.first;
+            if (match_names(pathComponent, key))
                 matchingKeys.push_back(key);
         });
 
@@ -71,7 +71,7 @@ auto PathSpaceLeaf::inIntermediateComponent(PathIterator const& iter, InputData 
     if (is_glob(pathComponent)) {
         nodeDataMap.for_each([&](const auto& item) {
             const auto& key = item.first;
-            if (match_names(pathComponent, key.getName())) {
+            if (match_names(pathComponent, key)) {
                 if (const auto* leaf = std::get_if<std::unique_ptr<PathSpaceLeaf>>(&item.second)) {
                     (*leaf)->in(nextIter, inputData, ret);
                 }
@@ -103,8 +103,8 @@ auto PathSpaceLeaf::outFinalComponent(PathIterator const& iter, InputMetadata co
         bool found = false;
         nodeDataMap.for_each([&](const auto& item) {
             const auto& key = item.first;
-            if (!found && match_names(componentName, key.getName())) {
-                componentName = key.getName();
+            if (!found && match_names(componentName, key)) {
+                componentName = key;
                 found         = true;
             }
         });

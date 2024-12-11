@@ -1,27 +1,12 @@
 #pragma once
+#include "utils/transparent_string.hpp"
+
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-
-template <typename... Bases>
-struct overload : Bases... {
-    using is_transparent = void;
-    using Bases::operator()...;
-};
-
-struct char_pointer_hash {
-    auto operator()(const char* ptr) const noexcept {
-        return std::hash<std::string_view>{}(ptr);
-    }
-};
-
-using transparent_string_hash = overload<
-        std::hash<std::string>,
-        std::hash<std::string_view>,
-        char_pointer_hash>;
 
 namespace SP {
 
