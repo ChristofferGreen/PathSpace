@@ -2,7 +2,6 @@
 
 #include "ext/doctest.h"
 #include "path/ConcretePath.hpp"
-#include "path/GlobPath.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -173,36 +172,6 @@ TEST_SUITE("WaitMap") {
             }
 
             CHECK(counter == NUM_PATHS + 1);
-        }
-
-        SUBCASE("Debug Glob Pattern Matching") {
-            GlobPathStringView     pattern("/test/match/*");
-            ConcretePathStringView path1("/test/match/1");
-            ConcretePathStringView path2("/test/nomatch/1");
-
-            // Test first path
-            auto patternIter1 = pattern.begin();
-            auto pathIter1    = path1.begin();
-            while (patternIter1 != pattern.end() && pathIter1 != path1.end()) {
-                auto isMatch = (*patternIter1).match((*pathIter1).getName());
-                CHECK(isMatch);
-                ++patternIter1;
-                ++pathIter1;
-            }
-            CHECK(patternIter1 == pattern.end());
-            CHECK(pathIter1 == path1.end());
-
-            // Test second path
-            auto patternIter2 = pattern.begin();
-            auto pathIter2    = path2.begin();
-            while (patternIter2 != pattern.end() && pathIter2 != path2.end()) {
-                auto isMatch = (*patternIter2).match((*pathIter2).getName());
-                if (!isMatch)
-                    break;
-                ++patternIter2;
-                ++pathIter2;
-            }
-            CHECK(!(patternIter2 == pattern.end() && pathIter2 == path2.end()));
         }
 
         SUBCASE("Partial Glob Pattern Match With Diagnostics") {
