@@ -4,7 +4,6 @@ project(PathSpaceTests VERSION 1.0)
 
 add_executable(PathSpaceTests
   unit/path/test_ConcreteName.cpp
-  unit/path/test_ConstructiblePath.cpp
   unit/path/test_Path.cpp
   unit/path/test_PathIterator.cpp
   unit/core/test_WaitMap.cpp
