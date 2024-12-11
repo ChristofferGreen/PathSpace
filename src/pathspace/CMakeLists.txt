@@ -40,8 +40,6 @@ FetchContent_MakeAvailable(alpaca)
 
 # Indicate that we only want to compile source files into a library
 add_library(PathSpace
-    path/ConcreteName.cpp
-    path/GlobName.cpp
     path/Path.cpp
     path/path_utils.cpp
     path/PathIterator.cpp
