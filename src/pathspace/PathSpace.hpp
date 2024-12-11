@@ -70,16 +70,6 @@ public:
      * @param options Options controlling the read behavior, such as blocking policies.
      * @return Expected<DataType> containing the read data if successful, or an error if not.
      */
-    template <typename DataType>
-    auto read2(GlobPathStringView const& path, Out const& options = {}) const -> Expected<DataType> {
-        sp_log("PathSpace::read", "Function Called");
-        if (auto error = path.validate())
-            return std::unexpected(*error);
-        DataType obj;
-        if (auto error = const_cast<PathSpace*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj))
-            return std::unexpected{*error};
-        return obj;
-    }
     template <typename DataType, SimpleStringConvertible S>
     auto read(S const& pathIn, Out const& options = {}) const -> Expected<DataType> {
         sp_log("PathSpace::read", "Function Called");
@@ -105,9 +95,10 @@ public:
      * @param path The concrete path from which to extract the data.
      * @return Expected<DataType> containing the extractbed data if successful, or an error if not.
      */
-    template <typename DataType>
-    auto take(GlobPathStringView const& path, Out const& options = {}) -> Expected<DataType> {
+    template <typename DataType, SimpleStringConvertible S>
+    auto take(S const& pathIn, Out const& options = {}) -> Expected<DataType> {
         sp_log("PathSpace::extract", "Function Called");
+        PathIterator const path{pathIn};
         if (auto error = path.validate(options.validationLevel))
             return std::unexpected(*error);
         DataType obj;
@@ -120,7 +111,7 @@ public:
         requires(validate_path(pathIn))
     auto take(Out const& options = {}) -> Expected<DataType> {
         sp_log("PathSpace::extract", "Function Called");
-        return this->take<DataType>(GlobPathStringView{pathIn}, options & Pop{} & OutNoValidation{});
+        return this->take<DataType>(pathIn, options & Pop{} & OutNoValidation{});
     }
 
     auto clear() -> void;
@@ -129,7 +120,6 @@ protected:
     friend class TaskPool;
 
     virtual auto in(PathIterator const& path, InputData const& data) -> InsertReturn;
-    auto         out(GlobPathStringView const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>;
     auto         out(PathIterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>;
     auto         shutdown() -> void;
 

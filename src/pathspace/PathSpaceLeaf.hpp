@@ -19,9 +19,7 @@ public:
 private:
     auto inFinalComponent(PathIterator const& iter, InputData const& inputData, InsertReturn& ret) -> void;
     auto inIntermediateComponent(PathIterator const& iter, InputData const& inputData, InsertReturn& ret) -> void;
-    auto outFinalComponent(PathViewGlob const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;
     auto outFinalComponent(PathIterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;
-    auto outIntermediateComponent(PathViewGlob const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;
     auto outIntermediateComponent(PathIterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;
 
     NodeDataHashMap nodeDataMap;
