@@ -11,8 +11,8 @@ NodeData::NodeData(InputData const& inputData) {
 auto NodeData::serialize(const InputData& inputData) -> std::optional<Error> {
     sp_log("NodeData::serialize", "Function Called");
     sp_log("Serializing data of type: " + std::string(inputData.metadata.typeInfo->name()), "NodeData");
-    if (inputData.taskCreator) {
-        this->tasks.push_back(inputData.taskCreator());
+    if (inputData.task) {
+        this->tasks.push_back(std::move(inputData.task));
         bool const isImmediateExecution = (*this->tasks.rbegin())->category() == ExecutionCategory::Immediate;
         if (isImmediateExecution)
             if (auto const ret = TaskPool::Instance().addTask(this->tasks.back()))

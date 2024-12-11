@@ -46,11 +46,8 @@ public:
 
         InputData inputData{std::forward<DataType>(data)};
 
-        if constexpr (InputMetadataT<DataType>::dataCategory == DataCategory::Execution) {
-            inputData.taskCreator = [this, fun = data, executionCategory = options.executionCategory, pathStr = path.toString()]() -> std::shared_ptr<Task> {
-                return Task::Create(this, pathStr, fun, executionCategory);
-            };
-        } // ToDo: Look into if we really need to do all these copies of data
+        if constexpr (InputMetadataT<DataType>::dataCategory == DataCategory::Execution)
+            inputData.task = Task::Create(this, path.toString(), data, options.executionCategory);
 
         return this->in(path, inputData);
     }

@@ -42,7 +42,7 @@ auto PathSpaceLeaf::inFinalComponent(PathIterator const& iter, InputData const& 
                 if (auto* nodeData = std::get_if<NodeData>(&nodePair.second)) {
                     if (auto error = nodeData->serialize(inputData); error.has_value())
                         ret.errors.emplace_back(error.value());
-                    if (inputData.taskCreator)
+                    if (inputData.task)
                         ret.nbrTasksInserted++;
                     else
                         ret.nbrValuesInserted++;
@@ -58,7 +58,7 @@ auto PathSpaceLeaf::inFinalComponent(PathIterator const& iter, InputData const& 
                             ret.errors.emplace_back(error.value());
                 },
                 inputData);
-        if (inputData.taskCreator)
+        if (inputData.task)
             ret.nbrTasksInserted++;
         else
             ret.nbrValuesInserted++;
