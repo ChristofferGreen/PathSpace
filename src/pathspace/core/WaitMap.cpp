@@ -22,7 +22,7 @@ auto WaitMap::notify(std::string_view path) -> void {
     std::lock_guard<std::mutex> lock(mutex);
 
     sp_log("Currently registered waiters:", "WaitMap");
-    for (auto& [rp, _] : cvMap) {
+    for (auto& [rp, _] : this->cvMap) {
         sp_log("  - " + rp, "WaitMap");
     }
 
@@ -36,7 +36,7 @@ auto WaitMap::notify(std::string_view path) -> void {
         }
 
         // Check if any registered glob patterns match our concrete path
-        for (auto& [registeredPath, cv] : cvMap) {
+        for (auto& [registeredPath, cv] : this->cvMap) {
             if (is_glob(registeredPath) && match_paths(registeredPath, path)) {
                 sp_log("Found matching glob pattern: " + registeredPath, "WaitMap");
                 cv.notify_all();
@@ -45,7 +45,7 @@ auto WaitMap::notify(std::string_view path) -> void {
         return;
     }
 
-    for (auto& [registeredPath, cv] : cvMap) {
+    for (auto& [registeredPath, cv] : this->cvMap) {
         sp_log("Checking if glob '" + std::string(path) + "' matches registered path '" + registeredPath + "'", "WaitMap");
         if (bool const isCompleteMatch = match_paths(path, registeredPath)) {
             sp_log("Notifying waiters for matching path: " + registeredPath, "WaitMap");
@@ -57,7 +57,7 @@ auto WaitMap::notify(std::string_view path) -> void {
 auto WaitMap::notifyAll() -> void {
     sp_log("notifyAll called", "WaitMap");
     std::lock_guard<std::mutex> lock(mutex);
-    for (auto& [path, cv] : cvMap) {
+    for (auto& [path, cv] : this->cvMap) {
         sp_log("Notifying path: " + path, "WaitMap");
         cv.notify_all();
     }
@@ -65,11 +65,11 @@ auto WaitMap::notifyAll() -> void {
 
 auto WaitMap::clear() -> void {
     std::lock_guard<std::mutex> lock(mutex);
-    cvMap.clear();
+    this->cvMap.clear();
 }
 
 auto WaitMap::getCv(std::string_view path) -> std::condition_variable& {
-    return cvMap[std::string(path)]; // ToDo: We may not always need to create a string here
+    return this->cvMap[std::string(path)];
 }
 
 } // namespace SP
