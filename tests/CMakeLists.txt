@@ -3,9 +3,7 @@ cmake_minimum_required(VERSION 3.15)
 project(PathSpaceTests VERSION 1.0)
 
 add_executable(PathSpaceTests
-  unit/path/test_ConcretePath.cpp
   unit/path/test_ConcreteName.cpp
-  unit/path/test_ConcretePathIterator.cpp
   unit/path/test_ConstructiblePath.cpp
   unit/path/test_Path.cpp
   unit/path/test_PathIterator.cpp
