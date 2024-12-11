@@ -1,7 +1,6 @@
 #include "PathSpaceLeaf.hpp"
 #include "core/Error.hpp"
 #include "core/InsertReturn.hpp"
-#include "path/GlobName.hpp"
 #include "path/path_utils.hpp"
 #include "pathspace/type/InputData.hpp"
 #include "type/InputData.hpp"
@@ -67,19 +66,19 @@ auto PathSpaceLeaf::inFinalComponent(PathIterator const& iter, InputData const& 
 }
 
 auto PathSpaceLeaf::inIntermediateComponent(PathIterator const& iter, InputData const& inputData, InsertReturn& ret) -> void {
-    GlobName const& pathComponent = iter.currentComponent();
-    auto const      nextIter      = iter.next();
-    if (pathComponent.isGlob()) {
+    auto const pathComponent = iter.currentComponent();
+    auto const nextIter      = iter.next();
+    if (is_glob(pathComponent)) {
         nodeDataMap.for_each([&](const auto& item) {
             const auto& key = item.first;
-            if (pathComponent.match(key)) {
+            if (match_names(pathComponent, key.getName())) {
                 if (const auto* leaf = std::get_if<std::unique_ptr<PathSpaceLeaf>>(&item.second)) {
                     (*leaf)->in(nextIter, inputData, ret);
                 }
             }
         });
     } else {
-        auto [it, inserted] = nodeDataMap.try_emplace(pathComponent.getName(), std::make_unique<PathSpaceLeaf>());
+        auto [it, inserted] = nodeDataMap.try_emplace(pathComponent, std::make_unique<PathSpaceLeaf>());
         if (auto* leaf = std::get_if<std::unique_ptr<PathSpaceLeaf>>(&it->second)) { // ToDo Is this really thread safe?
             (*leaf)->in(nextIter, inputData, ret);
         }
