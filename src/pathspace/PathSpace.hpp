@@ -3,7 +3,6 @@
 #include "core/InsertReturn.hpp"
 #include "core/Out.hpp"
 #include "core/WaitMap.hpp"
-#include "path/GlobPath.hpp"
 #include "path/PathIterator.hpp"
 #include "path/validation.hpp"
 #include "task/Task.hpp"

@@ -1,7 +1,7 @@
 #include "PathSpaceLeaf.hpp"
 #include "core/Error.hpp"
 #include "core/InsertReturn.hpp"
-#include "path/PathView.hpp"
+#include "path/GlobName.hpp"
 #include "path/path_utils.hpp"
 #include "pathspace/type/InputData.hpp"
 #include "type/InputData.hpp"

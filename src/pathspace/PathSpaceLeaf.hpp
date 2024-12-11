@@ -1,6 +1,5 @@
 #pragma once
 #include "path/PathIterator.hpp"
-#include "path/PathView.hpp"
 #include "type/NodeDataHashMap.hpp"
 
 namespace SP {
@@ -12,7 +11,6 @@ struct ConstructiblePath;
 class PathSpaceLeaf {
 public:
     auto in(PathIterator const& iter, InputData const& inputData, InsertReturn& ret) -> void;
-    auto out(PathViewGlob const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;
     auto out(PathIterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;
     auto clear() -> void;
 
