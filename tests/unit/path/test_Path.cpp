@@ -1,5 +1,6 @@
 #include "PathSpace.hpp"
 #include "ext/doctest.h"
+#include "path/Path.hpp"
 #include "path/validation.hpp"
 
 #include <atomic>

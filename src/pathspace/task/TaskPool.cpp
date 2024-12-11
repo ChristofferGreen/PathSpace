@@ -66,7 +66,7 @@ auto TaskPool::size() const -> size_t {
 
 auto TaskPool::workerFunction() -> void {
     while (true) {
-        GlobPathString      notificationPath;
+        std::string         notificationPath;
         PathSpace*          space = nullptr;
         std::weak_ptr<Task> task;
         {
@@ -106,9 +106,9 @@ auto TaskPool::workerFunction() -> void {
         }
         if (!notificationPath.empty() && space) {
             std::lock_guard<std::mutex> lock(mutex);
-            sp_log("Notifying path: " + std::string(notificationPath.getPath()), "TaskPool");
+            sp_log("Notifying path: " + notificationPath, "TaskPool");
             if (!shuttingDown)
-                space->waitMap.notify(notificationPath.getPath());
+                space->waitMap.notify(notificationPath);
         }
     }
 

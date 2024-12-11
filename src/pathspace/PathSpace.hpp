@@ -1,5 +1,6 @@
 #pragma once
 #include "PathSpaceLeaf.hpp"
+#include "core/In.hpp"
 #include "core/InsertReturn.hpp"
 #include "core/Out.hpp"
 #include "core/WaitMap.hpp"

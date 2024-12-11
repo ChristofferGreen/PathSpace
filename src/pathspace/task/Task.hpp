@@ -1,8 +1,6 @@
 #pragma once
 #include "TaskStateAtomic.hpp"
 #include "core/ExecutionCategory.hpp"
-#include "core/In.hpp"
-#include "path/GlobPath.hpp"
 #include "type/InputData.hpp"
 #include "utils/TaggedLogger.hpp"
 
@@ -21,7 +19,7 @@ struct Task {
         return task;
     }
     template <typename DataType>
-    static auto Create(PathSpace* space, GlobPathString const& notificationPath, DataType const& userFunction, ExecutionCategory const& inExecutionCategory) -> std::shared_ptr<Task> {
+    static auto Create(PathSpace* space, std::string_view const& notificationPath, DataType const& userFunction, ExecutionCategory const& inExecutionCategory) -> std::shared_ptr<Task> {
         sp_log("Task::Create", "Function Called");
 
         // For any callable type (lambda, function pointer, etc)
@@ -78,7 +76,7 @@ private:
     std::function<void(std::any const& from, void* const to)> resultCopy_;       // Function to copy the result
     std::any                                                  result;            // Result of the task execution
     ExecutionCategory                                         executionCategory; // Optional execution options for the task
-    GlobPathString                                            notificationPath;
+    std::string                                               notificationPath;
 };
 
 } // namespace SP
