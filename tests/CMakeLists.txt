@@ -3,7 +3,6 @@ cmake_minimum_required(VERSION 3.15)
 project(PathSpaceTests VERSION 1.0)
 
 add_executable(PathSpaceTests
-  unit/path/test_Path.cpp
   unit/path/test_Iterator.cpp
   unit/core/test_WaitMap.cpp
   unit/type/test_InputMetadata.cpp
