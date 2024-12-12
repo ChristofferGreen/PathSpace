@@ -1,6 +1,7 @@
 #include "Leaf.hpp"
 #include "core/Error.hpp"
 #include "core/InsertReturn.hpp"
+#include "path/Iterator.hpp"
 #include "path/utils.hpp"
 #include "type/InputData.hpp"
 

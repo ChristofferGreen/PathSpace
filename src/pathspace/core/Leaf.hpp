@@ -1,9 +1,9 @@
 #pragma once
-#include "path/Iterator.hpp"
 #include "type/NodeDataHashMap.hpp"
 
 namespace SP {
 struct Error;
+struct Iterator;
 struct InsertReturn;
 struct InputData;
 
@@ -16,8 +16,8 @@ public:
 private:
     auto inFinalComponent(Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void;
     auto inIntermediateComponent(Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void;
-    auto outFinalComponent(Iterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;
     auto outIntermediateComponent(Iterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;
+    auto outFinalComponent(Iterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;
 
     NodeDataHashMap nodeDataMap;
 };
