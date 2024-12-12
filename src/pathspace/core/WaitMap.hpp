@@ -39,9 +39,10 @@ struct WaitMap {
 private:
     friend struct Guard;
     auto getCv(std::string_view path) -> std::condition_variable&;
+    using WaitMapType = std::unordered_map<std::string, std::condition_variable, transparent_string_hash, std::equal_to<>>;
 
-    mutable std::mutex                                                                                 mutex;
-    std::unordered_map<std::string, std::condition_variable, transparent_string_hash, std::equal_to<>> cvMap;
+    mutable std::mutex mutex;
+    WaitMapType        cvMap;
 };
 
 } // namespace SP

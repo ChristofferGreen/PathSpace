@@ -1,8 +1,8 @@
 #pragma once
-#include "PathSpaceLeaf.hpp"
 #include "core/In.hpp"
 #include "core/InsertReturn.hpp"
 #include "core/Out.hpp"
+#include "core/PathSpaceLeaf.hpp"
 #include "core/WaitMap.hpp"
 #include "path/PathIterator.hpp"
 #include "path/validation.hpp"

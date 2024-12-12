@@ -45,13 +45,13 @@ add_library(PathSpace
     path/PathIterator.cpp
     core/NodeData.cpp
     core/WaitMap.cpp
+    core/PathSpaceLeaf.cpp
     task/Task.cpp
     task/TaskPool.cpp
     task/TaskStateAtomic.cpp
     type/SlidingBuffer.cpp
     utils/TaggedLogger.cpp
     PathSpace.cpp
-    PathSpaceLeaf.cpp
 )
 
 target_compile_options(PathSpace PUBLIC "-Wno-deprecated")
