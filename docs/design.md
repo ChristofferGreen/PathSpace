@@ -184,9 +184,9 @@ assert(space.take<int>("/collection/numbers", Block{}).value() == 7);
 ```
 
 ## Polymorphism
-The internal spaces inside a path are implemented witha  PathSpaceLeaf class, it's possible to inherit from that class and insert that child class in order to change the
+The internal spaces inside a path are implemented witha  Leaf class, it's possible to inherit from that class and insert that child class in order to change the
 behaviour of parts of the path structure of a PathSpace instance. This can be used to have different behaviour for different sub spaces within a PathSpace. By default PathSpace
-will create a PathSpaceLeaf of the same type as the parent when creating new ones (which happens during insert of data).
+will create a Leaf of the same type as the parent when creating new ones (which happens during insert of data).
 
 ## Path Globbing
 Paths given to insert can be a glob expression, if the expression matches the names of subspaces then the data will be inserted to all the matching subspaces.
@@ -208,7 +208,7 @@ It's possible to send a blocking object to insert/read/extract instructing it to
 ## Operations
 The operations in the base language are insert/read/extract, they are implemented as member functions of the PathSpace class.
 * **Insert**: 
-	* Insert data or a PathSpaceLeaf to one or more paths. If the path does not exist it will be created.
+	* Insert data or a Leaf to one or more paths. If the path does not exist it will be created.
 	* The given path can be a concrete path in which case at most one object will be inserted or a glob expression path which could potentially insert multiple values.
 	* Supports batch operations by inserting an initialiser list
 	* Takes an optional In which has the following properties:

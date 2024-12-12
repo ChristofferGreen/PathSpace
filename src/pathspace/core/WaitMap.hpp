@@ -1,5 +1,5 @@
 #pragma once
-#include "utils/TransparentString.hpp"
+#include "path/TransparentString.hpp"
 
 #include <chrono>
 #include <condition_variable>

@@ -1,9 +1,9 @@
 #pragma once
+#include "log/TaggedLogger.hpp"
 #include "type/DataCategory.hpp"
 #include "type/FunctionCategory.hpp"
 #include "type/SlidingBuffer.hpp"
 #include "type/serialization.hpp"
-#include "utils/TaggedLogger.hpp"
 
 #include <cassert>
 #include <cstdint>

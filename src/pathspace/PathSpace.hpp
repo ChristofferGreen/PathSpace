@@ -1,22 +1,18 @@
 #pragma once
 #include "core/In.hpp"
 #include "core/InsertReturn.hpp"
+#include "core/Leaf.hpp"
 #include "core/Out.hpp"
-#include "core/PathSpaceLeaf.hpp"
 #include "core/WaitMap.hpp"
+#include "log/TaggedLogger.hpp"
 #include "path/Iterator.hpp"
+#include "path/utils.hpp"
 #include "path/validation.hpp"
 #include "task/Task.hpp"
 #include "type/InputData.hpp"
 #include "type/InputMetadata.hpp"
-#include "utils/TaggedLogger.hpp"
 
 namespace SP {
-
-template <typename T>
-concept SimpleStringConvertible = requires(T t) {
-    { std::string(t) }; // Only checks if it can make a string
-};
 
 struct TaskPool;
 class PathSpace {
@@ -37,7 +33,7 @@ public:
      * @param options Options controlling the insertion behavior, such as overwrite policies.
      * @return InsertReturn object containing information about the insertion operation, including any errors.
      */
-    template <typename DataType, SimpleStringConvertible S>
+    template <typename DataType, StringConvertible S>
     auto insert(S const& pathIn, DataType&& data, In const& options = {}) -> InsertReturn {
         sp_log("PathSpace::insert", "Function Called");
         Iterator const path{pathIn};
@@ -67,7 +63,7 @@ public:
      * @param options Options controlling the read behavior, such as blocking policies.
      * @return Expected<DataType> containing the read data if successful, or an error if not.
      */
-    template <typename DataType, SimpleStringConvertible S>
+    template <typename DataType, StringConvertible S>
     auto read(S const& pathIn, Out const& options = {}) const -> Expected<DataType> {
         sp_log("PathSpace::read", "Function Called");
         Iterator const path{pathIn};
@@ -92,7 +88,7 @@ public:
      * @param path The concrete path from which to extract the data.
      * @return Expected<DataType> containing the extractbed data if successful, or an error if not.
      */
-    template <typename DataType, SimpleStringConvertible S>
+    template <typename DataType, StringConvertible S>
     auto take(S const& pathIn, Out const& options = {}) -> Expected<DataType> {
         sp_log("PathSpace::extract", "Function Called");
         Iterator const path{pathIn};
@@ -120,9 +116,9 @@ protected:
     auto         out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>;
     auto         shutdown() -> void;
 
-    TaskPool*     pool = nullptr;
-    WaitMap       waitMap;
-    PathSpaceLeaf root;
+    TaskPool* pool = nullptr;
+    WaitMap   waitMap;
+    Leaf      root;
 };
 
 } // namespace SP

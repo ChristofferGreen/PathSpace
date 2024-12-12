@@ -1,6 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT
 #include "ext/doctest.h"
-#include "utils/TaggedLogger.hpp"
+#include "log/TaggedLogger.hpp"
 
 struct ShowTestStart : public doctest::IReporter {
     ShowTestStart(const doctest::ContextOptions& /* in */) {

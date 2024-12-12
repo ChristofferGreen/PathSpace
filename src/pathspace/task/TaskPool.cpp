@@ -1,6 +1,6 @@
 #include "TaskPool.hpp"
 #include "PathSpace.hpp"
-#include "utils/TaggedLogger.hpp"
+#include "log/TaggedLogger.hpp"
 
 namespace SP {
 

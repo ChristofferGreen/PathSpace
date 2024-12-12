@@ -7,7 +7,7 @@ struct Error;
 struct InsertReturn;
 struct InputData;
 
-class PathSpaceLeaf {
+class Leaf {
 public:
     auto in(Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void;
     auto out(Iterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;

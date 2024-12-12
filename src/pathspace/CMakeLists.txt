@@ -45,12 +45,12 @@ add_library(PathSpace
     path/utils.cpp
     core/NodeData.cpp
     core/WaitMap.cpp
-    core/PathSpaceLeaf.cpp
+    core/Leaf.cpp
     task/Task.cpp
     task/TaskPool.cpp
     task/TaskStateAtomic.cpp
     type/SlidingBuffer.cpp
-    utils/TaggedLogger.cpp
+    log/TaggedLogger.cpp
     PathSpace.cpp
 )
 
