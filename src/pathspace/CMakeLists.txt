@@ -42,6 +42,7 @@ FetchContent_MakeAvailable(alpaca)
 add_library(PathSpace
     path/Path.cpp
     path/Iterator.cpp
+    path/utils.cpp
     core/NodeData.cpp
     core/WaitMap.cpp
     core/PathSpaceLeaf.cpp
@@ -50,7 +51,6 @@ add_library(PathSpace
     task/TaskStateAtomic.cpp
     type/SlidingBuffer.cpp
     utils/TaggedLogger.cpp
-    utils/path.cpp
     PathSpace.cpp
 )
 

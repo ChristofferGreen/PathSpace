@@ -1,5 +1,5 @@
 #pragma once
-#include "utils/transparent_string.hpp"
+#include "utils/TransparentString.hpp"
 
 #include <chrono>
 #include <condition_variable>
@@ -39,7 +39,7 @@ struct WaitMap {
 private:
     friend struct Guard;
     auto getCv(std::string_view path) -> std::condition_variable&;
-    using WaitMapType = std::unordered_map<std::string, std::condition_variable, transparent_string_hash, std::equal_to<>>;
+    using WaitMapType = std::unordered_map<std::string, std::condition_variable, TransparentStringHash, std::equal_to<>>;
 
     mutable std::mutex mutex;
     WaitMapType        cvMap;

@@ -5,20 +5,20 @@
 namespace SP {
 
 template <typename... Bases>
-struct overload : Bases... {
+struct Overload : Bases... {
     using is_transparent = void;
     using Bases::operator()...;
 };
 
-struct char_pointer_hash {
+struct CharPointerHash {
     auto operator()(const char* ptr) const noexcept {
         return std::hash<std::string_view>{}(ptr);
     }
 };
 
-using transparent_string_hash = overload<
+using TransparentStringHash = Overload<
         std::hash<std::string>,
         std::hash<std::string_view>,
-        char_pointer_hash>;
+        CharPointerHash>;
 
 } // namespace SP

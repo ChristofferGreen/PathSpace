@@ -1,8 +1,8 @@
 #include "PathSpaceLeaf.hpp"
 #include "core/Error.hpp"
 #include "core/InsertReturn.hpp"
+#include "path/utils.hpp"
 #include "type/InputData.hpp"
-#include "utils/path.hpp"
 
 namespace SP {
 

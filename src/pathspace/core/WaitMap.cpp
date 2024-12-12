@@ -1,6 +1,6 @@
 #include "core/WaitMap.hpp"
+#include "path/utils.hpp"
 #include "utils/TaggedLogger.hpp"
-#include "utils/path.hpp"
 
 namespace SP {
 

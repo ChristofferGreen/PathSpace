@@ -1,6 +1,6 @@
 #include "ext/doctest.h"
 #include "path/Iterator.hpp"
-#include "utils/path.hpp"
+#include "path/utils.hpp"
 
 #include <string>
 #include <string_view>
