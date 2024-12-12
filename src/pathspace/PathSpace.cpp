@@ -29,7 +29,7 @@ auto PathSpace::shutdown() -> void {
     sp_log("PathSpace::shutdown Cleared paths", "PathSpaceShutdown");
 }
 
-auto PathSpace::in(PathIterator const& path, InputData const& data) -> InsertReturn {
+auto PathSpace::in(Iterator const& path, InputData const& data) -> InsertReturn {
     sp_log("PathSpace::in", "Function Called");
     InsertReturn ret;
 
@@ -40,7 +40,7 @@ auto PathSpace::in(PathIterator const& path, InputData const& data) -> InsertRet
     return ret;
 }
 
-auto PathSpace::out(PathIterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> {
+auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> {
     sp_log("PathSpace::outBlock", "Function Called");
 
     std::optional<Error> error;

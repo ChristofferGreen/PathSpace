@@ -41,7 +41,7 @@ FetchContent_MakeAvailable(alpaca)
 # Indicate that we only want to compile source files into a library
 add_library(PathSpace
     path/Path.cpp
-    path/PathIterator.cpp
+    path/Iterator.cpp
     core/NodeData.cpp
     core/WaitMap.cpp
     core/PathSpaceLeaf.cpp

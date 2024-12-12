@@ -6,7 +6,7 @@
 
 namespace SP {
 
-class PathIterator {
+class Iterator {
 public:
     using iterator_category = std::forward_iterator_tag;
     using value_type        = std::string_view;
@@ -15,14 +15,14 @@ public:
     using reference         = const value_type&;
     using IteratorType      = std::string_view::const_iterator;
 
-    explicit PathIterator(char const* const path) noexcept;
-    explicit PathIterator(std::string_view path) noexcept;
+    explicit Iterator(char const* const path) noexcept;
+    explicit Iterator(std::string_view path) noexcept;
 
     [[nodiscard]] auto operator*() const noexcept -> value_type;
     [[nodiscard]] auto operator->() const noexcept -> pointer;
-    auto               operator++() noexcept -> PathIterator&;
-    auto               operator++(int) noexcept -> PathIterator;
-    [[nodiscard]] auto operator==(const PathIterator& other) const noexcept -> bool;
+    auto               operator++() noexcept -> Iterator&;
+    auto               operator++(int) noexcept -> Iterator;
+    [[nodiscard]] auto operator==(const Iterator& other) const noexcept -> bool;
 
     [[nodiscard]] auto isAtStart() const noexcept -> bool;
     [[nodiscard]] auto isAtFinalComponent() const noexcept -> bool;
@@ -31,10 +31,10 @@ public:
     [[nodiscard]] auto toString() const noexcept -> std::string;
     [[nodiscard]] auto toStringView() const noexcept -> std::string_view;
     [[nodiscard]] auto currentComponent() const noexcept -> std::string_view;
-    [[nodiscard]] auto next() const noexcept -> PathIterator;
+    [[nodiscard]] auto next() const noexcept -> Iterator;
 
 private:
-    PathIterator(IteratorType first, IteratorType last) noexcept;
+    Iterator(IteratorType first, IteratorType last) noexcept;
 
     auto               skipSlashes(IteratorType& it) noexcept -> void;
     auto               updateCurrentSegment() noexcept -> void;

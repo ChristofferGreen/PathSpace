@@ -1,5 +1,5 @@
 #include "utils/path.hpp"
-#include "path/PathIterator.hpp"
+#include "path/Iterator.hpp"
 
 namespace SP {
 
@@ -100,8 +100,8 @@ auto match_names(std::string_view const nameA, std::string_view const nameB) -> 
 }
 
 auto match_paths(std::string_view const pathA, std::string_view const pathB) -> bool {
-    auto iterA = PathIterator{pathA};
-    auto iterB = PathIterator{pathB};
+    auto iterA = Iterator{pathA};
+    auto iterB = Iterator{pathB};
     while (!iterA.isAtEnd() && !iterB.isAtEnd()) {
         if (!match_names(*iterA, *iterB))
             return false;

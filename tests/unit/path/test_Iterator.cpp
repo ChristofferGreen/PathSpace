@@ -1,5 +1,5 @@
 #include "ext/doctest.h"
-#include "path/PathIterator.hpp"
+#include "path/Iterator.hpp"
 #include "utils/path.hpp"
 
 #include <string>
@@ -11,14 +11,14 @@ using namespace SP;
 TEST_CASE("Path Iterator and Utilities") {
     SUBCASE("Path Iterator Basic Operations") {
         SUBCASE("Root Path") {
-            PathIterator iter("/");
+            Iterator iter("/");
             CHECK(iter.isAtEnd());
             CHECK(iter.isAtStart());
             CHECK(iter.toStringView() == "/");
         }
 
         SUBCASE("Simple Path") {
-            PathIterator iter("/simple/path");
+            Iterator iter("/simple/path");
             CHECK(iter.isAtStart());
             CHECK(*iter == "simple");
             ++iter;
@@ -28,7 +28,7 @@ TEST_CASE("Path Iterator and Utilities") {
         }
 
         SUBCASE("Multiple Consecutive Slashes") {
-            PathIterator             iter("///a////b///c//");
+            Iterator                 iter("///a////b///c//");
             std::vector<std::string> components;
             for (auto it = iter; !it.isAtEnd(); ++it) {
                 components.push_back(std::string(*it));
@@ -41,15 +41,15 @@ TEST_CASE("Path Iterator and Utilities") {
         }
 
         SUBCASE("Path with Single Component") {
-            PathIterator iter("/component");
+            Iterator iter("/component");
             CHECK(*iter == "component");
             ++iter;
             CHECK(iter.isAtEnd());
         }
 
         SUBCASE("Iterator Increment") {
-            PathIterator iter("/a/b/c");
-            auto         it = iter;
+            Iterator iter("/a/b/c");
+            auto     it = iter;
             CHECK(*it == "a");
             ++it;
             CHECK(*it == "b");
@@ -61,7 +61,7 @@ TEST_CASE("Path Iterator and Utilities") {
 
         SUBCASE("Full Path Access") {
             const std::string path = "/test/path/here";
-            PathIterator      iter(path);
+            Iterator          iter(path);
             CHECK(iter.toStringView() == path);
             ++iter;
             CHECK(iter.toStringView() == path);
@@ -70,21 +70,21 @@ TEST_CASE("Path Iterator and Utilities") {
 
     SUBCASE("Path Iterator State Tracking") {
         SUBCASE("Start Position") {
-            PathIterator iter("/path/to/somewhere");
+            Iterator iter("/path/to/somewhere");
             CHECK(iter.isAtStart());
             ++iter;
             CHECK_FALSE(iter.isAtStart());
         }
 
         SUBCASE("End Position") {
-            PathIterator iter("/path");
+            Iterator iter("/path");
             CHECK_FALSE(iter.isAtEnd());
             ++iter;
             CHECK(iter.isAtEnd());
         }
 
         SUBCASE("State Through Iteration") {
-            PathIterator iter("/a/b/c");
+            Iterator iter("/a/b/c");
             CHECK(iter.isAtStart());
             CHECK_FALSE(iter.isAtEnd());
 
@@ -174,7 +174,7 @@ TEST_CASE("Path Iterator and Utilities") {
 
     SUBCASE("Edge Cases") {
         SUBCASE("Paths with Special Characters") {
-            PathIterator             iter("/path/with spaces/and-dashes/under_scores");
+            Iterator                 iter("/path/with spaces/and-dashes/under_scores");
             std::vector<std::string> components;
             for (auto it = iter; !it.isAtEnd(); ++it) {
                 components.push_back(std::string(*it));
@@ -188,9 +188,9 @@ TEST_CASE("Path Iterator and Utilities") {
         }
 
         SUBCASE("Very Long Path Components") {
-            std::string  longComponent(1000, 'a');
-            std::string  path = "/" + longComponent;
-            PathIterator iter(path);
+            std::string longComponent(1000, 'a');
+            std::string path = "/" + longComponent;
+            Iterator    iter(path);
             CHECK(std::string(*iter) == longComponent);
         }
 
@@ -208,7 +208,7 @@ TEST_CASE("Path Iterator and Utilities") {
         }
 
         SUBCASE("Empty Components") {
-            PathIterator             iter("/a//b///c");
+            Iterator                 iter("/a//b///c");
             std::vector<std::string> components;
             for (auto it = iter; !it.isAtEnd(); ++it) {
                 components.push_back(std::string(*it));
@@ -223,7 +223,7 @@ TEST_CASE("Path Iterator and Utilities") {
 
     SUBCASE("Iterator Memory Safety") {
         SUBCASE("Temporary String") {
-            auto iter = PathIterator(std::string("/temp/path"));
+            auto iter = Iterator(std::string("/temp/path"));
             CHECK(*iter == "temp");
             ++iter;
             CHECK(*iter == "path");
@@ -231,7 +231,7 @@ TEST_CASE("Path Iterator and Utilities") {
 
         SUBCASE("String View Lifetime") {
             std::string path = "/test/path";
-            auto        iter = PathIterator(std::string_view(path));
+            auto        iter = Iterator(std::string_view(path));
             CHECK(*iter == "test");
             ++iter;
             CHECK(*iter == "path");

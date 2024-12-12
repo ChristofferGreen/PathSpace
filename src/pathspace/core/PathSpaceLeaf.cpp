@@ -14,7 +14,7 @@ auto PathSpaceLeaf::clear() -> void {
     ############# In #############
 */
 
-auto PathSpaceLeaf::in(PathIterator const& iter, InputData const& inputData, InsertReturn& ret) -> void {
+auto PathSpaceLeaf::in(Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void {
     sp_log("PathSpaceLeaf::in2 Processing path component: " + std::string(iter.currentComponent()), "PathSpaceLeaf");
     if (iter.isAtFinalComponent())
         inFinalComponent(iter, inputData, ret);
@@ -22,7 +22,7 @@ auto PathSpaceLeaf::in(PathIterator const& iter, InputData const& inputData, Ins
         inIntermediateComponent(iter, inputData, ret);
 }
 
-auto PathSpaceLeaf::inFinalComponent(PathIterator const& iter, InputData const& inputData, InsertReturn& ret) -> void {
+auto PathSpaceLeaf::inFinalComponent(Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void {
     auto const pathComponent = iter.currentComponent();
     if (is_glob(pathComponent)) {
         // Create a vector to store the keys that match before modification.
@@ -64,7 +64,7 @@ auto PathSpaceLeaf::inFinalComponent(PathIterator const& iter, InputData const& 
     }
 }
 
-auto PathSpaceLeaf::inIntermediateComponent(PathIterator const& iter, InputData const& inputData, InsertReturn& ret) -> void {
+auto PathSpaceLeaf::inIntermediateComponent(Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void {
     auto const pathComponent = iter.currentComponent();
     auto const nextIter      = iter.next();
     if (is_glob(pathComponent)) {
@@ -87,14 +87,14 @@ auto PathSpaceLeaf::inIntermediateComponent(PathIterator const& iter, InputData 
 /*
     ############# Out #############
 */
-auto PathSpaceLeaf::out(PathIterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> {
+auto PathSpaceLeaf::out(Iterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> {
     if (iter.isAtFinalComponent())
         return outFinalComponent(iter, inputMetadata, obj, doExtract);
     else
         return outIntermediateComponent(iter, inputMetadata, obj, doExtract);
 }
 
-auto PathSpaceLeaf::outFinalComponent(PathIterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> {
+auto PathSpaceLeaf::outFinalComponent(Iterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> {
     std::optional<Error> result        = Error{Error::Code::NoSuchPath, "Path not found"};
     bool                 shouldErase   = false;
     auto                 componentName = iter.currentComponent();
@@ -128,7 +128,7 @@ auto PathSpaceLeaf::outFinalComponent(PathIterator const& iter, InputMetadata co
     return result;
 }
 
-auto PathSpaceLeaf::outIntermediateComponent(PathIterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> {
+auto PathSpaceLeaf::outIntermediateComponent(Iterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> {
     std::optional<Error> result = Error{Error::Code::NoSuchPath, "Path not found"};
     this->nodeDataMap.if_contains(iter.currentComponent(), [&](auto const& nodePair) {
         bool const isLeaf = std::holds_alternative<std::unique_ptr<PathSpaceLeaf>>(nodePair.second);

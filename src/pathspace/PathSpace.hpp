@@ -4,7 +4,7 @@
 #include "core/Out.hpp"
 #include "core/PathSpaceLeaf.hpp"
 #include "core/WaitMap.hpp"
-#include "path/PathIterator.hpp"
+#include "path/Iterator.hpp"
 #include "path/validation.hpp"
 #include "task/Task.hpp"
 #include "type/InputData.hpp"
@@ -40,7 +40,7 @@ public:
     template <typename DataType, SimpleStringConvertible S>
     auto insert(S const& pathIn, DataType&& data, In const& options = {}) -> InsertReturn {
         sp_log("PathSpace::insert", "Function Called");
-        PathIterator const path{pathIn};
+        Iterator const path{pathIn};
         if (auto error = path.validate(options.validationLevel))
             return InsertReturn{.errors = {*error}};
 
@@ -70,7 +70,7 @@ public:
     template <typename DataType, SimpleStringConvertible S>
     auto read(S const& pathIn, Out const& options = {}) const -> Expected<DataType> {
         sp_log("PathSpace::read", "Function Called");
-        PathIterator const path{pathIn};
+        Iterator const path{pathIn};
         if (auto error = path.validate(options.validationLevel))
             return std::unexpected(*error);
         DataType obj;
@@ -95,7 +95,7 @@ public:
     template <typename DataType, SimpleStringConvertible S>
     auto take(S const& pathIn, Out const& options = {}) -> Expected<DataType> {
         sp_log("PathSpace::extract", "Function Called");
-        PathIterator const path{pathIn};
+        Iterator const path{pathIn};
         if (auto error = path.validate(options.validationLevel))
             return std::unexpected(*error);
         DataType obj;
@@ -116,8 +116,8 @@ public:
 protected:
     friend class TaskPool;
 
-    virtual auto in(PathIterator const& path, InputData const& data) -> InsertReturn;
-    auto         out(PathIterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>;
+    virtual auto in(Iterator const& path, InputData const& data) -> InsertReturn;
+    auto         out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>;
     auto         shutdown() -> void;
 
     TaskPool*     pool = nullptr;

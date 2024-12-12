@@ -64,14 +64,14 @@ using GlobPathStringView = GlobPath<std::string_view>;
 The system provides iterators to traverse path components:
 ```cpp
 template <typename T>
-struct ConcretePathIterator {
+struct ConcreteIterator {
     ConcreteNameStringView operator*() const;  // Current component
     bool isAtStart() const;                    // Check if at first component
     std::string_view fullPath() const;         // Full path string
 };
 
 template <typename T>
-struct GlobPathIterator {
+struct GlobIterator {
     GlobName operator*() const;  // Current component with pattern matching
     bool isAtStart() const;      // Check if at first component
     std::string_view fullPath() const;  // Full path string
