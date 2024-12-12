@@ -1,5 +1,5 @@
 #include "ext/doctest.h"
-#include "pathspace/task/TaskPool.hpp"
+#include "task/TaskPool.hpp"
 
 #include <atomic>
 #include <chrono>

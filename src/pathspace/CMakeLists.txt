@@ -41,7 +41,6 @@ FetchContent_MakeAvailable(alpaca)
 # Indicate that we only want to compile source files into a library
 add_library(PathSpace
     path/Path.cpp
-    path/path_utils.cpp
     path/PathIterator.cpp
     core/NodeData.cpp
     core/WaitMap.cpp
@@ -51,6 +50,7 @@ add_library(PathSpace
     task/TaskStateAtomic.cpp
     type/SlidingBuffer.cpp
     utils/TaggedLogger.cpp
+    utils/path.cpp
     PathSpace.cpp
 )
 

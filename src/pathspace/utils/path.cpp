@@ -1,5 +1,5 @@
-#include "path_utils.hpp"
-#include "PathIterator.hpp"
+#include "utils/path.hpp"
+#include "path/PathIterator.hpp"
 
 namespace SP {
 
