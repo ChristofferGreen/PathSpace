@@ -107,14 +107,14 @@ public:
         return this->take<DataType>(pathIn, options & Pop{} & OutNoValidation{});
     }
 
-    auto clear() -> void;
+    virtual auto clear() -> void;
 
 protected:
     friend class TaskPool;
 
     virtual auto in(Iterator const& path, InputData const& data) -> InsertReturn;
-    auto         out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>;
-    auto         shutdown() -> void;
+    virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>;
+    virtual auto shutdown() -> void;
 
     TaskPool* pool = nullptr;
     WaitMap   waitMap;

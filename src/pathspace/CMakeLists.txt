@@ -45,6 +45,7 @@ add_library(PathSpace
     core/NodeData.cpp
     core/WaitMap.cpp
     core/Leaf.cpp
+    layer/PathView.cpp
     task/Task.cpp
     task/TaskPool.cpp
     task/TaskStateAtomic.cpp
