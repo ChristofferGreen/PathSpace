@@ -15,12 +15,14 @@ struct Error {
         InvalidType,
         Timeout,
         MalformedInput,
+        InvalidPermissions,
         SerializationFunctionMissing,
         UnserializableType,
         NoObjectFound
     };
 
-    Error(Code c, std::string m) : code(c), message(std::move(m)) {}
+    Error(Code c, std::string m)
+        : code(c), message(std::move(m)) {}
 
     Code                       code;
     std::optional<std::string> message;

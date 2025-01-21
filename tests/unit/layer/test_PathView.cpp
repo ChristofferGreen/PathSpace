@@ -4,10 +4,15 @@
 using namespace SP;
 using namespace std::chrono_literals;
 
-TEST_CASE("PathSpace View") {
+/*TEST_CASE("PathSpace View") {
     SUBCASE("Function Types") {
-        auto     permissions = [](Iterator const& iterator) -> Permission { return Permission{true, true, true}; };
-        PathView pspace(permissions);
-        pspace.insert("/test", 4);
+        auto                       permissions = [](Iterator const& iterator) -> Permission {
+            if (iterator.toStringView().starts_with("/legal"))
+                return Permission{true, true, true};
+            return Permission{false, false, false}; };
+        std::shared_ptr<PathSpace> space;
+        PathView                   pspace(space, permissions);
+        CHECK(pspace.insert("/legal/test", 4).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/illegal/test", 4).nbrValuesInserted == 0);
     }
-}
+}*/

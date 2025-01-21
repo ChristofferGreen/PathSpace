@@ -111,6 +111,7 @@ public:
 
 protected:
     friend class TaskPool;
+    friend class PathView;
 
     virtual auto in(Iterator const& path, InputData const& data) -> InsertReturn;
     virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>;
