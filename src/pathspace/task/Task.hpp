@@ -9,7 +9,7 @@
 #include <functional>
 
 namespace SP {
-struct PathSpace;
+struct PathSpaceBase;
 
 struct Task {
     template <typename FunctionType>
@@ -19,7 +19,7 @@ struct Task {
         return task;
     }
     template <typename DataType>
-    static auto Create(PathSpace* space, std::string_view const& notificationPath, DataType const& userFunction, ExecutionCategory const& inExecutionCategory) -> std::shared_ptr<Task> {
+    static auto Create(PathSpaceBase* space, std::string_view const& notificationPath, DataType const& userFunction, ExecutionCategory const& inExecutionCategory) -> std::shared_ptr<Task> {
         sp_log("Task::Create", "Function Called");
 
         // For any callable type (lambda, function pointer, etc)
@@ -70,7 +70,7 @@ private:
     Task(Task&&)                 = delete;  // Non-movable (since we use shared_ptr)
     Task& operator=(Task&&)      = delete;  // Non-movable (since we use shared_ptr)
 
-    PathSpace*                                                space = nullptr;   // Pointer to a PathSpace where the return values from lazy executions will be inserted
+    PathSpaceBase*                                            space = nullptr;   // Pointer to a PathSpace where the return values from lazy executions will be inserted
     TaskStateAtomic                                           state;             // Atomic state of the task
     std::function<void(Task& task, bool const objIsData)>     function;          // Function to be executed by the task
     std::function<void(std::any const& from, void* const to)> resultCopy_;       // Function to copy the result

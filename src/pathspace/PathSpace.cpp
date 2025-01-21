@@ -76,4 +76,9 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
     }
 }
 
+auto PathSpace::notify(std::string const& notificationPath) -> void {
+    sp_log("PathSpace::notify", "Function Called");
+    this->waitMap.notify(notificationPath);
+}
+
 } // namespace SP
