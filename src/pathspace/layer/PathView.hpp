@@ -9,8 +9,8 @@ struct Permission {
     bool execute = true;
 };
 
-struct PathView : public PathSpace {
-    PathView(std::shared_ptr<PathSpace> const& space, std::function<Permission(Iterator const&)> permission, std::string root = "")
+struct PathView : public PathSpaceBase {
+    PathView(std::shared_ptr<PathSpaceBase> const& space, std::function<Permission(Iterator const&)> permission, std::string root = "")
         : space(space), permission(permission), root(root) {}
     auto in(Iterator const& path, InputData const& data) -> InsertReturn override;
     auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> override;
@@ -18,7 +18,7 @@ struct PathView : public PathSpace {
 private:
     std::string                                root;
     std::function<Permission(Iterator const&)> permission;
-    std::shared_ptr<PathSpace>                 space;
+    std::shared_ptr<PathSpaceBase>             space;
 };
 
 } // namespace SP
