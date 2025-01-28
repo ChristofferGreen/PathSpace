@@ -18,7 +18,8 @@ struct Error {
         InvalidPermissions,
         SerializationFunctionMissing,
         UnserializableType,
-        NoObjectFound
+        NoObjectFound,
+        TypeMismatch
     };
 
     Error(Code c, std::string m)
