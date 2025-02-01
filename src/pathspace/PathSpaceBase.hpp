@@ -13,6 +13,13 @@
 #include <optional>
 
 namespace SP {
+/*
+template <typename T>
+struct is_unique_ptr : std::false_type {};
+
+template <typename T, typename D>
+struct is_unique_ptr<std::unique_ptr<T, D>> : std::true_type {};
+*/
 struct InputMetadata;
 struct Out;
 class PathSpaceBase {
@@ -33,12 +40,21 @@ public:
         if (auto error = path.validate(options.validationLevel))
             return InsertReturn{.errors = {*error}};
 
+        // Special handling for std::unique_ptr<PathSpaceBase> or for children of PathSpaceBase.
+        /*if constexpr (is_unique_ptr<std::remove_cvref_t<DataType>>::value) {
+            // Check specifically for
+            if constexpr (std::is_base_of_v<PathSpaceBase, typename std::remove_cvref_t<DataType>::element_type>) {
+                return {};
+            }
+        } else {*/
         InputData inputData{std::forward<DataType>(data)};
 
         if constexpr (InputMetadataT<DataType>::dataCategory == DataCategory::Execution)
             inputData.task = Task::Create(this, path.toString(), data, options.executionCategory);
 
         return this->in(path, inputData);
+        /*}
+        return {}; // Can not be reached*/
     }
 
     template <FixedString pathIn, typename DataType>

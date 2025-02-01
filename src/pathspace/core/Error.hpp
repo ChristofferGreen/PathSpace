@@ -19,7 +19,8 @@ struct Error {
         SerializationFunctionMissing,
         UnserializableType,
         NoObjectFound,
-        TypeMismatch
+        TypeMismatch,
+        NotFound
     };
 
     Error(Code c, std::string m)

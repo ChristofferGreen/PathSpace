@@ -10,6 +10,12 @@ auto PathFileSystem::out(Iterator const& path, InputMetadata const& inputMetadat
     if (inputMetadata.typeInfo != &typeid(std::string))
         return Error{Error::Code::TypeMismatch, "PathFileSystem only supports std::string"};
     auto const p = this->root + "/" + path.toString();
+
+    std::ifstream file(p);
+    if (!file.is_open())
+        return Error{Error::Code::NotFound, "File not found"};
+    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    *reinterpret_cast<std::string*>(obj) = content;
     return {};
 }
 
