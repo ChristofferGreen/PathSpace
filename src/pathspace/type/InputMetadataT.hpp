@@ -155,6 +155,8 @@ struct AlpacaSerializationTraits {
     }();
 
     static constexpr DataCategory const category = []() {
+        if (is_unique_ptr<T>::value)
+            return DataCategory::UniquePtr;
         if constexpr (Execution<T>)
             return DataCategory::Execution;
         else if constexpr (FunctionPointer<T>)
@@ -165,8 +167,6 @@ struct AlpacaSerializationTraits {
             return DataCategory::SerializedData;
         else if constexpr (AlpacaCompatible<T>)
             return DataCategory::SerializationLibraryCompatible;
-        else if (is_unique_ptr<T>::value)
-            return DataCategory::UniquePtr;
         else
             return DataCategory::None;
     }();

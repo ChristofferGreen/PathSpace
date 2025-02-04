@@ -40,6 +40,11 @@ auto PathSpace::in(Iterator const& path, InputData const& data) -> InsertReturn 
     return ret;
 }
 
+auto PathSpace::outMinimal(Iterator const& path, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> {
+    sp_log("PathSpace::outMinimal", "Function Called");
+    return this->root.out(path, inputMetadata, obj, doExtract);
+}
+
 auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> {
     sp_log("PathSpace::outBlock", "Function Called");
 

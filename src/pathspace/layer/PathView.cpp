@@ -18,6 +18,11 @@ auto PathView::in(Iterator const& path, InputData const& data) -> InsertReturn {
     // Forward to base class implementation
     return this->space->in(fullPath, data);
 }
+
+auto PathView::outMinimal(Iterator const& path, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> {
+    return std::nullopt;
+}
+
 auto PathView::out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> {
     if (!this->space)
         return Error{Error::Code::InvalidPermissions, "PathSpace not set"};

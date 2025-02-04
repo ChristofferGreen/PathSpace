@@ -56,13 +56,15 @@ auto Leaf::inFinalComponent(Iterator const& iter, InputData const& inputData, In
             });
         }
     } else {
+        bool success = true;
         if (inputData.metadata.dataCategory == DataCategory::UniquePtr) {
-            std::unique_ptr<PathSpaceBase> ptr = std::move(*static_cast<std::unique_ptr<PathSpaceBase>*>(inputData.obj));
             nodeDataMap.try_emplace_l(
                     pathComponent,
                     [&](auto& value) {
+                        ret.errors.emplace_back(Error::Code::InvalidType, "PathSpaces cannot be added in glob expressions.");
+                        success = false;
                     },
-                    std::move(ptr));
+                    std::move(*static_cast<std::unique_ptr<PathSpaceBase>*>(inputData.obj)));
         } else {
             nodeDataMap.try_emplace_l(
                     pathComponent,
@@ -72,11 +74,11 @@ auto Leaf::inFinalComponent(Iterator const& iter, InputData const& inputData, In
                                 ret.errors.emplace_back(error.value());
                         }
                     },
-                    inputData); // NodeData constructor taking an InputData is called here
+                    NodeData(inputData));
         }
         if (inputData.task)
             ret.nbrTasksInserted++;
-        else
+        else if (success)
             ret.nbrValuesInserted++;
     }
 }
@@ -136,6 +138,10 @@ auto Leaf::outFinalComponent(Iterator const& iter, InputMetadata const& inputMet
                 result = nodeData->deserialize(obj, inputMetadata);
             }
         }
+        if (auto* nodeData = std::get_if<std::unique_ptr<PathSpaceBase>>(&nodePair.second)) {
+            int a = 0;
+            ++a;
+        }
     });
 
     // Second pass: if needed, erase the empty node
@@ -148,12 +154,14 @@ auto Leaf::outFinalComponent(Iterator const& iter, InputMetadata const& inputMet
 auto Leaf::outIntermediateComponent(Iterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> {
     std::optional<Error> result = Error{Error::Code::NoSuchPath, "Path not found"};
     this->nodeDataMap.if_contains(iter.currentComponent(), [&](auto const& nodePair) {
-        bool const isLeaf = std::holds_alternative<std::unique_ptr<Leaf>>(nodePair.second);
-        result            = isLeaf
-                                    ? std::get<std::unique_ptr<Leaf>>(nodePair.second)->out(iter.next(), inputMetadata, obj, doExtract)
-                                    : Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"};
+        if (std::holds_alternative<std::unique_ptr<Leaf>>(nodePair.second)) {
+            result = std::get<std::unique_ptr<Leaf>>(nodePair.second)->out(iter.next(), inputMetadata, obj, doExtract);
+        } else if (std::holds_alternative<std::unique_ptr<PathSpaceBase>>(nodePair.second)) {
+            result = std::get<std::unique_ptr<PathSpaceBase>>(nodePair.second)->outMinimal(iter.next(), inputMetadata, obj, doExtract);
+        } else {
+            result = Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"};
+        }
     });
     return result;
 }
-
 } // namespace SP
