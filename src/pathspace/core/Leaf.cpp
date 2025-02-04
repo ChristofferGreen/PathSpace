@@ -65,6 +65,8 @@ auto Leaf::inFinalComponent(Iterator const& iter, InputData const& inputData, In
                         success = false;
                     },
                     std::move(*static_cast<std::unique_ptr<PathSpaceBase>*>(inputData.obj)));
+            if (success)
+                ret.nbrSpacesInserted++;
         } else {
             nodeDataMap.try_emplace_l(
                     pathComponent,
@@ -74,7 +76,7 @@ auto Leaf::inFinalComponent(Iterator const& iter, InputData const& inputData, In
                                 ret.errors.emplace_back(error.value());
                         }
                     },
-                    NodeData(inputData));
+                    inputData); // calls NodeData(inputData) if node data does not already exist
         }
         if (inputData.task)
             ret.nbrTasksInserted++;
@@ -127,7 +129,7 @@ auto Leaf::outFinalComponent(Iterator const& iter, InputMetadata const& inputMet
             }
         });
     }
-
+    int size = this->nodeDataMap.size();
     // First pass: modify data and check if we need to erase
     this->nodeDataMap.modify_if(componentName, [&](auto& nodePair) {
         if (auto* nodeData = std::get_if<NodeData>(&nodePair.second)) {

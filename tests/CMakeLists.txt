@@ -12,6 +12,7 @@ add_executable(PathSpaceTests
   unit/ext/test_alpaca.cpp
   unit/task/test_TaskPool.cpp
   unit/test_PathSpace_read.cpp
+  unit/test_PathSpace_nesting.cpp
   unit/test_PathSpace_extract.cpp
   unit/test_PathSpace_insert.cpp
   unit/test_PathSpace_multithreading.cpp
