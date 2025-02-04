@@ -23,6 +23,12 @@ struct PathSpace;
 // ########### Type Detection Concepts ###########
 
 template <typename T>
+struct is_unique_ptr : std::false_type {};
+
+template <typename T, typename D>
+struct is_unique_ptr<std::unique_ptr<T, D>> : std::true_type {};
+
+template <typename T>
 concept FunctionPointer = requires {
     requires std::is_pointer_v<T>;
     requires std::is_function_v<std::remove_pointer_t<T>>;
@@ -159,6 +165,8 @@ struct AlpacaSerializationTraits {
             return DataCategory::SerializedData;
         else if constexpr (AlpacaCompatible<T>)
             return DataCategory::SerializationLibraryCompatible;
+        else if (is_unique_ptr<T>::value)
+            return DataCategory::UniquePtr;
         else
             return DataCategory::None;
     }();
@@ -173,7 +181,7 @@ struct AlpacaSerializationTraits {
     }();
 
     static constexpr auto serialize = []() {
-        if constexpr (Execution<T>)
+        if constexpr (Execution<T> || is_unique_ptr<T>::value)
             return nullptr;
         else if constexpr (StringLiteral<T> || StringType<T>)
             return &StringSerializationHelper<T>::Serialize;
@@ -184,7 +192,7 @@ struct AlpacaSerializationTraits {
     }();
 
     static constexpr auto deserialize = []() -> void (*)(void* obj, SP::SlidingBuffer const&) {
-        if constexpr (Execution<T>)
+        if constexpr (Execution<T> || is_unique_ptr<T>::value)
             return nullptr;
         else if constexpr (std::is_same_v<T, std::string>) // Only allow deserialization to std::string
             return &StringSerializationHelper<T>::Deserialize;
@@ -195,7 +203,7 @@ struct AlpacaSerializationTraits {
     }();
 
     static constexpr auto deserializePop = []() {
-        if constexpr (Execution<T>)
+        if constexpr (Execution<T> || is_unique_ptr<T>::value)
             return nullptr;
         else if constexpr (std::is_same_v<T, std::string>) // Only allow deserialization to std::string
             return &StringSerializationHelper<T>::DeserializePop;

@@ -9,7 +9,8 @@ enum struct DataCategory {
     Execution,
     FunctionPointer,
     Fundamental,
-    SerializationLibraryCompatible
+    SerializationLibraryCompatible,
+    UniquePtr
 };
 
 } // namespace SP

@@ -1,9 +1,11 @@
 #include "Leaf.hpp"
+#include "PathSpaceBase.hpp"
 #include "core/Error.hpp"
 #include "core/InsertReturn.hpp"
 #include "path/Iterator.hpp"
 #include "path/utils.hpp"
 #include "type/InputData.hpp"
+#include <memory>
 
 namespace SP {
 
@@ -26,6 +28,10 @@ auto Leaf::in(Iterator const& iter, InputData const& inputData, InsertReturn& re
 auto Leaf::inFinalComponent(Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void {
     auto const pathComponent = iter.currentComponent();
     if (is_glob(pathComponent)) {
+        if (inputData.metadata.dataCategory == DataCategory::UniquePtr) {
+            ret.errors.emplace_back(Error::Code::InvalidType, "PathSpaces cannot be added in glob expressions.");
+            return;
+        }
         // Create a vector to store the keys that match before modification.
         std::vector<std::string_view> matchingKeys;
 
@@ -50,14 +56,24 @@ auto Leaf::inFinalComponent(Iterator const& iter, InputData const& inputData, In
             });
         }
     } else {
-        nodeDataMap.try_emplace_l(
-                pathComponent,
-                [&](auto& value) {
-                    if (auto* nodeData = std::get_if<NodeData>(&value.second))
-                        if (auto error = nodeData->serialize(inputData); error.has_value())
-                            ret.errors.emplace_back(error.value());
-                },
-                inputData);
+        if (inputData.metadata.dataCategory == DataCategory::UniquePtr) {
+            std::unique_ptr<PathSpaceBase> ptr = std::move(*static_cast<std::unique_ptr<PathSpaceBase>*>(inputData.obj));
+            nodeDataMap.try_emplace_l(
+                    pathComponent,
+                    [&](auto& value) {
+                    },
+                    std::move(ptr));
+        } else {
+            nodeDataMap.try_emplace_l(
+                    pathComponent,
+                    [&](auto& value) {
+                        if (auto* nodeData = std::get_if<NodeData>(&value.second)) {
+                            if (auto error = nodeData->serialize(inputData); error.has_value())
+                                ret.errors.emplace_back(error.value());
+                        }
+                    },
+                    inputData); // NodeData constructor taking an InputData is called here
+        }
         if (inputData.task)
             ret.nbrTasksInserted++;
         else

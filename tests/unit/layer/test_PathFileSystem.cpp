@@ -18,7 +18,7 @@ TEST_CASE("PathSpace FileSystem") {
     }
 
     SUBCASE("Subspace") {
-        /*PathSpace space;
+        PathSpace space;
         space.insert<"/fs">(std::make_unique<PathFileSystem>("../../tests/data/filesystem/"));
 
         CHECK(space.read<"/fs/a.txt", std::string>().has_value());
@@ -28,6 +28,6 @@ TEST_CASE("PathSpace FileSystem") {
         CHECK(space.read<"/fs/b.txt", std::string>().value() == "world");
 
         CHECK(space.read<"/fs/c/d.txt", std::string>().has_value());
-        CHECK(space.read<"/fs/c/d.txt", std::string>().value() == "!");*/
+        CHECK(space.read<"/fs/c/d.txt", std::string>().value() == "!");
     }
 }

@@ -13,13 +13,6 @@
 #include <optional>
 
 namespace SP {
-/*
-template <typename T>
-struct is_unique_ptr : std::false_type {};
-
-template <typename T, typename D>
-struct is_unique_ptr<std::unique_ptr<T, D>> : std::true_type {};
-*/
 struct InputMetadata;
 struct Out;
 class PathSpaceBase {
@@ -53,8 +46,6 @@ public:
             inputData.task = Task::Create(this, path.toString(), data, options.executionCategory);
 
         return this->in(path, inputData);
-        /*}
-        return {}; // Can not be reached*/
     }
 
     template <FixedString pathIn, typename DataType>
