@@ -113,11 +113,10 @@ protected:
     friend class PathFileSystem;
     friend class Leaf;
 
-    virtual auto in(Iterator const& path, InputData const& data) -> InsertReturn                                                               = 0;
-    virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>          = 0;
-    virtual auto outMinimal(Iterator const& path, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> = 0;
-    virtual auto shutdown() -> void                                                                                                            = 0;
-    virtual auto notify(std::string const& notificationPath) -> void                                                                           = 0;
+    virtual auto in(Iterator const& path, InputData const& data) -> InsertReturn                                                      = 0;
+    virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> = 0;
+    virtual auto shutdown() -> void                                                                                                   = 0;
+    virtual auto notify(std::string const& notificationPath) -> void                                                                  = 0;
 };
 
 } // namespace SP

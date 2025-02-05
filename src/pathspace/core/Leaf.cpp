@@ -159,7 +159,7 @@ auto Leaf::outIntermediateComponent(Iterator const& iter, InputMetadata const& i
         if (std::holds_alternative<std::unique_ptr<Leaf>>(nodePair.second)) {
             result = std::get<std::unique_ptr<Leaf>>(nodePair.second)->out(iter.next(), inputMetadata, obj, doExtract);
         } else if (std::holds_alternative<std::unique_ptr<PathSpaceBase>>(nodePair.second)) {
-            result = std::get<std::unique_ptr<PathSpaceBase>>(nodePair.second)->outMinimal(iter.next(), inputMetadata, obj, doExtract);
+            result = std::get<std::unique_ptr<PathSpaceBase>>(nodePair.second)->out(iter.next(), inputMetadata, Out{.doPop = doExtract, .isMinimal = true}, obj);
         } else {
             result = Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"};
         }

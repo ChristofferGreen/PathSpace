@@ -13,6 +13,7 @@ static constexpr auto DEFAULT_TIMEOUT = 876600h; // 100 years
 struct Out {
     bool                      doBlock         = false;
     bool                      doPop           = false;
+    bool                      isMinimal       = false;
     std::chrono::milliseconds timeout         = DEFAULT_TIMEOUT;
     ValidationLevel           validationLevel = ValidationLevel::Basic;
 

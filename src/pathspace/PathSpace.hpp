@@ -30,7 +30,6 @@ public:
 protected:
     virtual auto in(Iterator const& path, InputData const& data) -> InsertReturn;
     virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>;
-    virtual auto outMinimal(Iterator const& path, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;
     virtual auto shutdown() -> void;
     virtual auto notify(std::string const& notificationPath) -> void;
 
