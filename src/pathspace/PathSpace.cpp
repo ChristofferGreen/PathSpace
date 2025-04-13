@@ -35,6 +35,14 @@ auto PathSpace::in(Iterator const& path, InputData const& data) -> InsertReturn 
 
     this->root.in(path, data, ret);
 
+    /*if (ret.nbrSpacesInserted > 0) {
+        if (data.metadata.dataCategory == DataCategory::UniquePtr) {
+            auto space = static_cast<std::unique_ptr<PathSpaceBase>*>(data.obj);
+            (*space)->insert<"/_ps_sys/root">(static_cast<void*>(this));
+        }
+    }*/
+    // Not sure why this is needed, may need to readd but space is null since it was moved from in root.in
+
     if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0 || ret.nbrTasksInserted > 0)
         waitMap.notify(path.toStringView());
     return ret;
