@@ -45,6 +45,10 @@ auto Iterator::currentComponent() const noexcept -> std::string_view {
     return this->current_segment;
 }
 
+auto Iterator::startToCurrent() const noexcept -> std::string_view {
+    return std::string_view{this->path.begin(), static_cast<size_t>(this->path.end() - this->current + 1)};
+}
+
 auto Iterator::currentToEnd() const noexcept -> std::string_view {
     return std::string_view{this->current, static_cast<size_t>(this->path.end() - this->current)};
 }

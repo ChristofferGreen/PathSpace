@@ -31,6 +31,7 @@ public:
     [[nodiscard]] auto toString() const noexcept -> std::string;
     [[nodiscard]] auto toStringView() const noexcept -> std::string_view;
     [[nodiscard]] auto currentComponent() const noexcept -> std::string_view;
+    [[nodiscard]] auto startToCurrent() const noexcept -> std::string_view;
     [[nodiscard]] auto currentToEnd() const noexcept -> std::string_view;
     [[nodiscard]] auto next() const noexcept -> Iterator;
 

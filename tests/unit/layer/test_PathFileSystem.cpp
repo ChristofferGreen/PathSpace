@@ -15,6 +15,8 @@ TEST_CASE("PathSpace FileSystem") {
 
         CHECK(space.read<"/c/d.txt", std::string>().has_value());
         CHECK(space.read<"/c/d.txt", std::string>().value() == "!");
+
+        CHECK(!space.read<"/c/e.txt", std::string>().has_value());
     }
 
     SUBCASE("Subspace") {

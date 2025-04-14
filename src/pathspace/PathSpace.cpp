@@ -16,7 +16,7 @@ PathSpace::~PathSpace() {
 
 auto PathSpace::clear() -> void {
     sp_log("PathSpace::clear", "Function Called");
-    this->root.clear();
+    this->leaf.clear();
     this->waitMap.clear();
 }
 
@@ -25,7 +25,7 @@ auto PathSpace::shutdown() -> void {
     sp_log("PathSpace::shutdown Starting shutdown", "PathSpaceShutdown");
     this->waitMap.notifyAll();
     sp_log("PathSpace::shutdown Notified all waiters", "PathSpaceShutdown");
-    this->root.clear();
+    this->leaf.clear();
     sp_log("PathSpace::shutdown Cleared paths", "PathSpaceShutdown");
 }
 
@@ -33,15 +33,19 @@ auto PathSpace::in(Iterator const& path, InputData const& data) -> InsertReturn 
     sp_log("PathSpace::in", "Function Called");
     InsertReturn ret;
 
-    this->root.in(path, data, ret);
-
-    /*if (ret.nbrSpacesInserted > 0) {
-        if (data.metadata.dataCategory == DataCategory::UniquePtr) {
-            auto space = static_cast<std::unique_ptr<PathSpaceBase>*>(data.obj);
-            (*space)->insert<"/_ps_sys/root">(static_cast<void*>(this));
+    void* space = nullptr;
+    if (data.metadata.dataCategory == DataCategory::UniquePtr) {
+        if (data.metadata.typeInfo == &typeid(std::unique_ptr<PathSpace>)) {
+            space                                    = reinterpret_cast<std::unique_ptr<PathSpace>*>(data.obj)->get();
+            static_cast<PathSpace*>(space)->rootPath = path.startToCurrent();
         }
-    }*/
-    // Not sure why this is needed, may need to readd but space is null since it was moved from in root.in
+    }
+
+    this->leaf.in(path, data, ret);
+
+    if (space && ret.nbrSpacesInserted > 0 && data.metadata.dataCategory == DataCategory::UniquePtr) {
+        static_cast<PathSpace*>(space)->setRoot(this->root ? this->root : this);
+    }
 
     if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0 || ret.nbrTasksInserted > 0)
         waitMap.notify(path.toStringView());
@@ -51,12 +55,12 @@ auto PathSpace::in(Iterator const& path, InputData const& data) -> InsertReturn 
 auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> {
     sp_log("PathSpace::outBlock", "Function Called");
     if (options.isMinimal)
-        return this->root.out(path, inputMetadata, obj, options.doPop);
+        return this->leaf.out(path, inputMetadata, obj, options.doPop);
 
     std::optional<Error> error;
     // First try entirely outside the loop to minimize lock time
     {
-        error = this->root.out(path, inputMetadata, obj, options.doPop);
+        error = this->leaf.out(path, inputMetadata, obj, options.doPop);
         if (!error.has_value() || (options.doBlock == false))
             return error;
     }
@@ -72,7 +76,7 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
         auto guard = waitMap.wait(path.toStringView());
         {
             bool success = guard.wait_until(deadline, [&]() {
-                error           = this->root.out(path, inputMetadata, obj, options.doPop);
+                error           = this->leaf.out(path, inputMetadata, obj, options.doPop);
                 bool haveResult = !error.has_value();
                 return haveResult;
             });
@@ -88,7 +92,10 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
 
 auto PathSpace::notify(std::string const& notificationPath) -> void {
     sp_log("PathSpace::notify", "Function Called");
-    this->waitMap.notify(notificationPath);
+    if (this->root)
+        this->root->waitMap.notify(this->rootPath + notificationPath);
+    else
+        this->waitMap.notify(notificationPath);
 }
 
 } // namespace SP

@@ -111,6 +111,7 @@ protected:
     friend class TaskPool;
     friend class PathView;
     friend class PathFileSystem;
+    friend class PathSpace;
     friend class Leaf;
 
     virtual auto in(Iterator const& path, InputData const& data) -> InsertReturn                                                      = 0;
