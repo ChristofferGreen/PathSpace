@@ -32,9 +32,6 @@ protected:
     virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>;
     virtual auto shutdown() -> void;
     virtual auto notify(std::string const& notificationPath) -> void;
-    virtual auto setRoot(PathSpace* root) -> void {
-        this->root = root;
-    }
 
     std::string rootPath;
     PathSpace*  root = nullptr;

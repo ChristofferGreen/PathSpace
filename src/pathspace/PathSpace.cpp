@@ -33,18 +33,18 @@ auto PathSpace::in(Iterator const& path, InputData const& data) -> InsertReturn 
     sp_log("PathSpace::in", "Function Called");
     InsertReturn ret;
 
-    void* space = nullptr;
+    PathSpace* space = nullptr;
     if (data.metadata.dataCategory == DataCategory::UniquePtr) {
         if (data.metadata.typeInfo == &typeid(std::unique_ptr<PathSpace>)) {
-            space                                    = reinterpret_cast<std::unique_ptr<PathSpace>*>(data.obj)->get();
-            static_cast<PathSpace*>(space)->rootPath = path.startToCurrent();
+            space           = reinterpret_cast<std::unique_ptr<PathSpace>*>(data.obj)->get();
+            space->rootPath = path.startToCurrent();
         }
     }
 
     this->leaf.in(path, data, ret);
 
     if (space && ret.nbrSpacesInserted > 0 && data.metadata.dataCategory == DataCategory::UniquePtr) {
-        static_cast<PathSpace*>(space)->setRoot(this->root ? this->root : this);
+        space->root = this->root ? this->root : this;
     }
 
     if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0 || ret.nbrTasksInserted > 0)
