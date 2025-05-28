@@ -13,7 +13,7 @@ include(FetchContent)
 FetchContent_Declare(
     ParallelHashmap
     GIT_REPOSITORY https://github.com/greg7mdp/parallel-hashmap.git
-    GIT_TAG v1.3.11
+    GIT_TAG v2.0.0
 )
 FetchContent_MakeAvailable(ParallelHashmap)
 
@@ -71,6 +71,10 @@ target_include_directories(PathSpace
     ${foonathan_memory_SOURCE_DIR}/include
 )
 
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_definitions(PathSpace PRIVATE SP_LOG_DEBUG)
+endif()
+
 target_link_libraries(PathSpace
     PRIVATE
 
@@ -79,10 +83,6 @@ target_link_libraries(PathSpace
 )
 
 set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "PathSpace.hpp")
-
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_compile_definitions(PathSpace PRIVATE SP_LOG_DEBUG)
-endif()
 
 install(TARGETS PathSpace
     ARCHIVE DESTINATION lib

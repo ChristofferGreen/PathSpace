@@ -20,13 +20,13 @@ add_executable(PathSpaceTests
   test_main.cpp
 )
 
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  target_compile_definitions(PathSpaceTests PRIVATE SP_LOG_DEBUG)
+endif()
+
 target_link_libraries(PathSpaceTests
   PRIVATE
   PathSpace
 )
-
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  target_compile_definitions(PathSpaceTests PRIVATE SP_LOG_DEBUG)
-endif()
 
 include(CTest)

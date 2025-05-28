@@ -7,6 +7,7 @@
 #include <any>
 #include <cassert>
 #include <functional>
+#include <thread>
 
 namespace SP {
 struct PathSpaceBase;
