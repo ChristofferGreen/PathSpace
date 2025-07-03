@@ -11,6 +11,19 @@ using namespace std::string_view_literals;
 
 namespace SP {
 
+template <typename Range, typename Delimiter>
+std::string join_with_impl(const Range& range, const Delimiter& delim) {
+    std::ostringstream oss;
+    bool               first = true;
+    for (const auto& item : range) {
+        if (!first)
+            oss << delim;
+        oss << item;
+        first = false;
+    }
+    return oss.str();
+}
+
 std::mutex TaggedLogger::coutMutex;
 
 TaggedLogger& logger() {
@@ -88,7 +101,7 @@ inline auto SP::TaggedLogger::writeToStderr(const LogMessage& msg) const -> void
     std::ostringstream oss;
     oss << std::put_time(nowTm, "%Y-%m-%d %H:%M:%S") << '.' << std::setfill('0') << std::setw(3) << nowMs.count() << ' ';
 
-    oss << '[' << (std::views::join_with(msg.tags, std::string("][")) | std::ranges::to<std::string>()) << ']' << ' ';
+    oss << '[' << (join_with_impl(msg.tags, std::string("][")) | std::ranges::to<std::string>()) << ']' << ' ';
 
     oss << "[" << msg.threadName << "] ";
     oss << "[" << getShortPath(msg.location.file_name()) << ":" << msg.location.line() << "] ";
