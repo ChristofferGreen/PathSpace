@@ -120,14 +120,16 @@ auto Leaf::outFinalComponent(Iterator const& iter, InputMetadata const& inputMet
     bool                 shouldErase   = false;
     auto                 componentName = iter.currentComponent();
     if (is_glob(componentName)) {
-        bool found = false;
+        std::string_view foundName;
         nodeDataMap.for_each([&](const auto& item) {
             const auto& key = item.first;
-            if (!found && match_names(componentName, key)) {
-                componentName = key;
-                found         = true;
+            if (match_names(componentName, key)) {
+                if (key < foundName || foundName.empty()) {
+                    foundName = key;
+                }
             }
         });
+        componentName = foundName;
     }
     int size = this->nodeDataMap.size();
     // First pass: modify data and check if we need to erase
