@@ -131,7 +131,7 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
 
 ## Concurrency & thread-safety notes
 
-- `WaitMap` internally synchronizes access to the condition variable map via `mutex`.
+- `WaitMap` uses a trie-backed registry for concrete path waiters and a separate registry for glob waiters; concrete notifications resolve via the trie (O(path depth)) and glob notifications filter over registered patterns; accesses are synchronized via a mutex.
 - `TaskPool` uses worker threads and `std::condition_variable` to schedule tasks.
 - Tasks notify via a `weak_ptr<NotificationSink>`; `PathSpaceBase` resets its `shared_ptr` during shutdown so late notifications are dropped safely.
 - `NodeData` may contain `Task` objects (shared pointers) and a `SlidingBuffer`. Serialization/deserialization must be used carefully if adding new methods—`NodeData` methods assume proper locking at call sites (the Node trie’s concurrent children map and per-node payload mutexes manage access).

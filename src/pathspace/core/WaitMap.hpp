@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <memory>
 
 namespace SP {
 
@@ -38,8 +39,25 @@ struct WaitMap {
 
 private:
     friend struct Guard;
+public:
+    // Trie-based waiter storage for concrete paths.
+    // Each node holds a CV for waiters on that exact node name.
+    struct TrieNode {
+        std::unordered_map<std::string, std::unique_ptr<TrieNode>, TransparentStringHash, std::equal_to<>> children;
+        std::condition_variable cv;
+    };
+private:
+
+    // Root of the trie (created on first use).
+    std::unique_ptr<TrieNode> root;
+
+    // Existing API compatibility (current .cpp still uses these; slated for migration):
     auto getCv(std::string_view path) -> std::condition_variable&;
     using WaitMapType = std::unordered_map<std::string, std::condition_variable, TransparentStringHash, std::equal_to<>>;
+
+    // Glob waiters are tracked separately by their pattern.
+    // During notify, candidates are filtered via prefix/components and matched with match_paths.
+    std::unordered_map<std::string, std::condition_variable, TransparentStringHash, std::equal_to<>> globWaiters;
 
     mutable std::mutex mutex;
     WaitMapType        cvMap;
