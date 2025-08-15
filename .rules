@@ -1,0 +1,132 @@
+# PathSpace documentation rules
+# This file describes the intended purpose, audience, and editing guidelines
+# for content located under ./docs/.
+
+rules_version: 1
+applies_to: "./docs"
+
+general:
+  purpose: >
+    Provide architecture, design, and usage documentation for PathSpace that is
+    accurate, concise, and kept in sync with the source code and build tooling.
+  audience:
+    - New engineers onboarding to the codebase
+    - AI assistants performing code analysis or edits
+    - Contributors proposing changes to core subsystems
+  writing_style:
+    - Prefer concise, direct language
+    - Use Markdown headings and lists; keep sections scannable
+    - Use relative links within the repository where relevant
+    - Use backticks for file/directory names like `src/pathspace/...`
+    - Prefer diagrams (Mermaid or SVG) when they add clarity, but keep text authoritative
+  cross_references:
+    - When referencing code, include the full repo-relative path
+    - Keep references stable; if files move, update the docs in the same PR
+  change_management:
+    - If a change affects core behavior (paths, NodeData, WaitMap, TaskPool, serialization),
+      update both `docs/AI_OVERVIEW.md` and `docs/AI_ARCHITECTURE.md`
+    - If a change affects build or scripts (CMake, scripts/*), update the "Tests & build"
+      section in `docs/AI_OVERVIEW.md`
+    - Add or update images in `docs/images/` as needed, with appropriate alt text
+
+documents:
+  - path: "docs/AI_OVERVIEW.md"
+    title: "PathSpace — AI-facing Architecture Overview"
+    purpose: >
+      A high-level, AI- and newcomer-friendly map of the system:
+      major directories, key classes, typical data flows, concurrency notes,
+      extension points, and pointers for programmatic exploration.
+    audience:
+      - AI assistants
+      - New maintainers looking for a guided map of the codebase
+    must_keep_sections:
+      - "High-level summary"
+      - "Top-level layout (important files & directories)"
+      - "Key classes and relationships"
+      - "Typical data flow (insert)"
+      - "Typical data flow (read / take)"
+      - "Concurrency & thread-safety notes"
+      - "Extending the system"
+      - "Where to look for specific behavior"
+      - "Useful grep patterns for programmatic discovery"
+      - "Tests & build"
+      - "Notes for an AI editor"
+    editing_guidelines:
+      - Keep section ordering stable; append new sections at the end if needed
+      - Update "Top-level layout" paths if files move/rename
+      - Update "Tests & build" when compile/test workflows change
+      - Ensure examples reflect current APIs and file locations
+    build_and_scripts_notes:
+      - The "Tests & build" section documents `scripts/compile.sh` usage
+      - If `scripts/compile.sh` flags or behavior change, update the examples:
+        - Default incremental build
+        - `--clean` full rebuild
+        - `--build-type` / `--debug` / `--release`
+        - `-j/--jobs`, `-G/--generator`, `-t/--target`
+        - Sanitizers: `--asan`, `--tsan`, `--usan`
+        - `-v/--verbose`
+    anti_patterns:
+      - Do not duplicate full code listings; link to files instead
+      - Do not add environment-specific instructions without noting OS/versions
+
+  - path: "docs/AI_ARCHITECTURE.md"
+    title: "PathSpace — Architecture"
+    purpose: >
+      In-depth design document explaining path abstractions, internal data structures,
+      pattern matching, performance considerations, thread-safety, and error handling.
+    audience:
+      - Engineers modifying internals
+      - Reviewers assessing architectural changes
+    must_keep_sections:
+      - "Introduction"
+      - "Path System" (and sub-sections)
+      - "Internal Data"
+      - "Syntax Example"
+      - "Polymorphism"
+      - "Path Globbing"
+    editing_guidelines:
+      - Keep headings and structure stable to preserve external references
+      - Update examples when APIs or semantics change (e.g., path iteration, matching)
+      - If adding new path features, include rationale and complexity/perf notes
+      - Prefer illustrative examples and light pseudo-code over full code dumps
+    performance_notes:
+      - Summarize expected complexity of critical operations
+      - Note memory/perf trade-offs for `NodeData`, hash maps, and buffers
+    anti_patterns:
+      - Avoid speculative sections not backed by code or planned work
+      - Avoid duplicating content already in `AI_OVERVIEW.md`; cross-reference instead
+
+  - path: "docs/images/"
+    title: "Documentation Images"
+    purpose: "Static assets for diagrams and figures referenced by docs"
+    file_conventions:
+      preferred_formats:
+        - "SVG (preferred for vector diagrams)"
+        - "PNG (fallback)"
+      naming:
+        - "Use kebab-case, e.g., pathspace-architecture.svg"
+        - "Prefix by topic when appropriate, e.g., waitmap-sequence.svg"
+      size_limits:
+        advisory_max_kb: 750
+        rationale: "Keep repository lightweight; compress where possible"
+      accessibility:
+        - "Provide alt text or a caption near the image reference"
+        - "Ensure diagrams are legible in both light and dark modes"
+    editing_guidelines:
+      - Store only source-of-truth images; no binaries unrelated to docs
+      - Keep diagrams updated when flows or components change
+      - For Mermaid diagrams, prefer embedding in Markdown over exporting static images
+
+validation_checklist:
+  - "All referenced file paths exist and are current"
+  - "Examples compile or reflect valid commands"
+  - "Sections listed in must_keep_sections are present"
+  - "Images referenced in Markdown are present in docs/images/"
+  - "Any changed script or build workflow is reflected in AI_OVERVIEW.md"
+  - "Links are relative and not pointing to external resources unless necessary"
+
+contributor_notes:
+  - "Small doc fixes may be committed with nearby code changes"
+  - "Large restructures should be proposed with an outline before editing"
+  - "If unsure whether to update AI_OVERVIEW.md or AI_ARCHITECTURE.md, update both and ask in review"
+  - "For build/test changes, run: ./scripts/compile.sh [--clean] [-j N] and ensure tests pass"

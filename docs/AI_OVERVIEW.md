@@ -172,6 +172,19 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
 
 - Tests live under `PathSpace/tests`.
 - Build is configured by `CMakeLists.txt` at project root and `PathSpace/src/pathspace/CMakeLists.txt`.
+- Helper script: `scripts/compile.sh`
+  - Default: incremental build into `./build`
+  - Full rebuild: `--clean` removes the build directory and reconfigures
+  - Build type: `--debug` (default) or `--release` or `--build-type TYPE`
+  - Jobs: `-j N` or `--jobs N` for parallel builds
+  - Generator: `-G "Ninja"` or `--generator NAME`
+  - Target: `-t NAME` or `--target NAME` to build a specific target (e.g., `PathSpaceTests`)
+  - Sanitizers: `--asan`, `--tsan`, `--usan` map to this repo’s CMake options
+  - Verbose: `-v` or `--verbose` prints underlying commands
+  - Examples:
+    - `./scripts/compile.sh`
+    - `./scripts/compile.sh --clean -j 8 --release`
+    - `./scripts/compile.sh -G "Ninja" --target PathSpaceTests`
 
 ---
 
