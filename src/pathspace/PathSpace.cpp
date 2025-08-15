@@ -68,7 +68,14 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
     // First try entirely outside the loop to minimize lock time
     {
         error = this->leaf.out(path, inputMetadata, obj, options.doPop);
-        if (!error.has_value() || (options.doBlock == false))
+        if (!error.has_value()) {
+            if (options.doPop) {
+                // Popping may unblock other waiters on the same path (more items may be available)
+                waitMap.notify(path.toStringView());
+            }
+            return error;
+        }
+        if (options.doBlock == false)
             return error;
     }
 
@@ -92,8 +99,13 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
         }
         // After being notified, try to read again outside of the WaitMap lock
         error = this->leaf.out(path, inputMetadata, obj, options.doPop);
-        if (!error.has_value())
+        if (!error.has_value()) {
+            if (options.doPop) {
+                // Notify other waiters to re-check after a successful pop
+                waitMap.notify(path.toStringView());
+            }
             return error;
+        }
 
         if (std::chrono::system_clock::now() >= deadline)
             return Error{Error::Code::Timeout, "Operation timed out after waking from guard, waiting for data at path: " + path.toString()};

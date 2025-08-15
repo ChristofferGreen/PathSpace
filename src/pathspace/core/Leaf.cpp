@@ -164,40 +164,38 @@ auto Leaf::outAtNode(Node& node,
             if (matches.empty())
                 return Error{Error::Code::NoSuchPath, "Path not found"};
             std::sort(matches.begin(), matches.end());
+            bool foundAny = false;
             for (auto const& k : matches) {
                 Node* childTry = node.getChild(k);
                 if (!childTry)
                     continue;
-                bool attempted   = false;
-                bool shouldErase = false;
                 std::optional<Error> res;
+                bool attempted = false;
                 {
                     std::lock_guard<std::mutex> lg(childTry->payloadMutex);
                     if (childTry->data) {
+                        foundAny = true;
                         attempted = true;
                         if (doExtract) {
                             res = childTry->data->deserializePop(obj, inputMetadata);
-                            if (!res.has_value()) {
-                                if (childTry->data->empty()) {
-                                    childTry->data.reset();
-                                    shouldErase = !childTry->hasChildren() && !childTry->hasNestedSpace();
-                                }
+                            if (!res.has_value() && childTry->data->empty()) {
+                                // Keep node; avoid erasure to prevent races under concurrency
+                                childTry->data.reset();
                             }
                         } else {
                             res = childTry->data->deserialize(obj, inputMetadata);
                         }
                     }
                 }
+                // Success path: return immediately only if we actually attempted and succeeded
                 if (attempted && !res.has_value()) {
-                    if (doExtract && shouldErase) {
-                        if (parent) {
-                            parent->eraseChild(k);
-                        } else {
-                            node.eraseChild(k);
-                        }
-                    }
                     return std::nullopt;
                 }
+            }
+            // If we saw at least one matching child but none yielded a value of the requested type,
+            // surface a type error; otherwise, report no such path.
+            if (foundAny) {
+                return Error{Error::Code::InvalidType, "Type mismatch during deserialization"};
             }
             return Error{Error::Code::NoSuchPath, "Path not found"};
         }
@@ -225,13 +223,7 @@ auto Leaf::outAtNode(Node& node,
                     }
                 }
             }
-            if (!res.has_value() && doExtract && shouldErase) {
-                if (parent) {
-                    parent->eraseChild(keyInParent);
-                } else {
-                    node.eraseChild(keyInParent);
-                }
-            }
+            // Do not erase child nodes on empty; keep placeholder to avoid races under concurrency.
             return res;
         }
 

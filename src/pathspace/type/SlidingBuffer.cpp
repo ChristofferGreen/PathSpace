@@ -41,8 +41,8 @@ auto SlidingBuffer::operator[](size_t index) const& -> uint8_t const& {
     return this->data_[this->virtualFront_ + index];
 }
 
-auto SlidingBuffer::operator[](size_t index) && -> uint8_t&& {
-    return std::move(this->data_[this->virtualFront_ + index]);
+auto SlidingBuffer::operator[](size_t index) && -> uint8_t {
+    return this->data_[this->virtualFront_ + index];
 }
 
 auto SlidingBuffer::at(size_t index) & -> uint8_t& {

@@ -30,7 +30,7 @@ struct SlidingBuffer {
 
     [[nodiscard]] auto operator[](size_t index) & -> uint8_t&;
     [[nodiscard]] auto operator[](size_t index) const& -> uint8_t const&;
-    [[nodiscard]] auto operator[](size_t index) && -> uint8_t&&;
+    [[nodiscard]] auto operator[](size_t index) && -> uint8_t;
 
     // Deducing this for iterators
     [[nodiscard]] auto begin(this auto&& self) {
