@@ -1,4 +1,5 @@
 #include "ext/doctest.h"
+#include <string>
 #include <pathspace/layer/PathFileSystem.hpp>
 
 using namespace SP;
@@ -6,7 +7,7 @@ using namespace std::chrono_literals;
 
 TEST_CASE("PathSpace FileSystem") {
     SUBCASE("Basic") {
-        PathFileSystem space("../../tests/data/filesystem/");
+        PathFileSystem space(std::string(PATHSPACE_SOURCE_DIR) + "/tests/data/filesystem/");
         CHECK(space.read<"/a.txt", std::string>().has_value());
         CHECK(space.read<"/a.txt", std::string>().value() == "hello");
 
@@ -21,7 +22,7 @@ TEST_CASE("PathSpace FileSystem") {
 
     SUBCASE("Subspace") {
         PathSpace space;
-        space.insert<"/fs">(std::make_unique<PathFileSystem>("../../tests/data/filesystem/"));
+        space.insert<"/fs">(std::make_unique<PathFileSystem>(std::string(PATHSPACE_SOURCE_DIR) + "/tests/data/filesystem/"));
 
         CHECK(space.read<"/fs/a.txt", std::string>().has_value());
         CHECK(space.read<"/fs/a.txt", std::string>().value() == "hello");

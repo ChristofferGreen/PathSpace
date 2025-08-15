@@ -24,6 +24,8 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   target_compile_definitions(PathSpaceTests PRIVATE SP_LOG_DEBUG)
 endif()
 
+target_compile_definitions(PathSpaceTests PRIVATE PATHSPACE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+
 target_link_libraries(PathSpaceTests
   PRIVATE
   PathSpace
