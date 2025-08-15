@@ -12,7 +12,10 @@ auto NodeData::serialize(const InputData& inputData) -> std::optional<Error> {
     sp_log("NodeData::serialize", "Function Called");
     sp_log("Serializing data of type: " + std::string(inputData.metadata.typeInfo->name()), "NodeData");
     if (inputData.task) {
+        // Store task and aligned future handle
         this->tasks.push_back(std::move(inputData.task));
+        this->futures.push_back(Future::FromShared(this->tasks.back()));
+
         bool const isImmediateExecution = (*this->tasks.rbegin())->category() == ExecutionCategory::Immediate;
         if (isImmediateExecution) {
             // Prefer injected executor when available; fall back to TaskPool singleton
@@ -76,26 +79,47 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
     if (this->tasks.empty())
         return Error{Error::Code::NoObjectFound, "No task available"};
 
-    // Make a copy instead of taking a reference
-    auto task = this->tasks.front();
+    // Use the aligned future to handle readiness non-blockingly
+    auto const& task = this->tasks.front();
 
     if (!task->hasStarted()) {
         ExecutionCategory const taskExecutionCategory = task->category();
         bool const              isLazyExecution       = taskExecutionCategory == ExecutionCategory::Lazy;
 
         if (isLazyExecution) {
-            // Prefer injected executor when available; fall back to TaskPool singleton
-            // We don't have InputData here, so rely on the task already enqueued via serialize,
-            // or re-submit via singleton as a safe fallback to preserve behavior.
-            if (auto ret = TaskPool::Instance().submit(task); ret)
-                return ret;
+            // Prefer the Task's preferred executor if available; fall back to singleton
+            if (task->executor) {
+                if (auto ret = task->executor->submit(task); ret)
+                    return ret;
+            } else {
+                if (auto ret = TaskPool::Instance().submit(task); ret)
+                    return ret;
+            }
         }
+    }
+
+    // If we have a future and the task is ready, copy the result. Otherwise report not completed.
+    if (!this->futures.empty() && this->futures.front().ready()) {
+        if (auto locked = this->futures.front().weak_task().lock()) {
+            locked->resultCopy(obj);
+            if (doPop) {
+                this->tasks.pop_front();
+                this->futures.pop_front();
+                popType();
+            }
+            return std::nullopt;
+        }
+        // Task expired unexpectedly
+        return Error{Error::Code::UnknownError, "Task expired before result could be copied"};
     }
 
     if (task->isCompleted()) {
         task->resultCopy(obj);
         if (doPop) {
             this->tasks.pop_front();
+            // Keep futures deque aligned if present
+            if (!this->futures.empty())
+                this->futures.pop_front();
             popType();
         }
         return std::nullopt;

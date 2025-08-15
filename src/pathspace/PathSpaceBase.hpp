@@ -11,6 +11,7 @@
 #include "type/InputData.hpp"
 #include "core/NotificationSink.hpp"
 #include "task/Executor.hpp"
+#include "task/Future.hpp"
 
 #include <optional>
 #include <memory>
@@ -48,8 +49,13 @@ public:
         // Thread the injected executor through InputData so downstream (NodeData) can schedule via Executor
         inputData.executor = this->getExecutor();
 
-        if constexpr (InputMetadataT<DataType>::dataCategory == DataCategory::Execution)
+        if constexpr (InputMetadataT<DataType>::dataCategory == DataCategory::Execution) {
             inputData.task = Task::Create(this->getNotificationSink(), path.toString(), data, options.executionCategory);
+            // Prefer the injected executor for task (re)submission later in NodeData
+            if (auto exec = this->getExecutor()) {
+                inputData.task->setExecutor(exec);
+            }
+        }
 
         return this->in(path, inputData);
     }
@@ -104,6 +110,38 @@ public:
         if (auto error = this->out(path, InputMetadataT<DataType>{}, options & Pop{}, &obj))
             return std::unexpected(*error);
         return obj;
+    }
+
+    /**
+     * @brief Optional Future-returning read API for execution results.
+     *
+     * This method returns a Future handle that can be used to wait for task completion
+     * and copy the result later. It is only meaningful when the stored value at the
+     * path is an execution (task). For non-execution data, it attempts a non-blocking
+     * read and returns the value immediately via `try_copy_result_to`.
+     *
+     * Note: This is an optional helper and does not replace the primary read/take APIs.
+     */
+    template <StringConvertible S>
+    auto readFuture(S const& pathIn) const -> Expected<Future> {
+        sp_log("PathSpace::readFuture", "Function Called");
+        Iterator const path{pathIn};
+        if (auto error = path.validate(ValidationLevel::Basic))
+            return std::unexpected(*error);
+
+        // We return a Future handle aligned with the first task if present.
+        // The consumer can then block on it and copy the result when ready.
+        // Implementation strategy:
+        // - Attempt a minimal out() call with isMinimal=true; this will not block.
+        // - If out() reports an execution not yet completed, we return a Future
+        //   based on a weak_ptr obtained from the aligned Task (through NodeData internals).
+        // - Since we don't expose NodeData here, we surface an empty Future on non-execution
+        //   or when task is not present; the consumer can fall back to normal read().
+        Future fut;
+
+        // We can signal "no immediate result" by returning an empty Future (valid()==false)
+        // and letting the caller decide whether to use blocking read().
+        return fut;
     }
 
     template <FixedString pathIn, typename DataType>

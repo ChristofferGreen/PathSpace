@@ -4,6 +4,7 @@
 #include "log/TaggedLogger.hpp"
 #include "type/InputData.hpp"
 #include "core/NotificationSink.hpp"
+#include "task/Executor.hpp"
 
 #include <any>
 #include <cassert>
@@ -93,8 +94,14 @@ struct Task {
         resultCopy_(result, dest);
     }
 
+    // Set preferred executor for (re)submission
+    auto setExecutor(Executor* exec) -> void {
+        this->executor = exec;
+    }
+
 private:
     friend class TaskPool;
+    friend struct NodeData; // Allow NodeData to access Task internals for scheduling
 
     Task()                       = default; // Private constructor - use Create()
     Task(const Task&)            = delete;  // Non-copyable
@@ -110,6 +117,7 @@ private:
     ExecutionCategory                                         executionCategory; // Optional execution options for the task
     std::weak_ptr<NotificationSink>                           notifier;          // Weak reference to notification sink for lifetime-safe notifications
     std::string                                               notificationPath;
+    Executor*                                                 executor = nullptr; // Optional preferred executor for (re)submission
 };
 
 } // namespace SP

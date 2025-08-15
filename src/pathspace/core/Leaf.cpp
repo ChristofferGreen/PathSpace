@@ -12,6 +12,18 @@
 
 namespace SP {
 
+// Forward declarations of internal helpers (defined below)
+static auto ensureNodeData(Node& n, InputData const& inputData, InsertReturn& ret) -> NodeData*;
+static void mergeInsertReturn(InsertReturn& into, InsertReturn const& from);
+static auto inAtNode(Node& node, Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void;
+static auto outAtNode(Node& node,
+                      Iterator const& iter,
+                      InputMetadata const& inputMetadata,
+                      void* obj,
+                      bool const doExtract,
+                      Node* parent,
+                      std::string_view keyInParent) -> std::optional<Error>;
+
 auto Leaf::ensureNodeData(Node& n, InputData const& inputData, InsertReturn& ret) -> NodeData* {
     {
         std::lock_guard<std::mutex> lg(n.payloadMutex);
@@ -25,7 +37,7 @@ auto Leaf::ensureNodeData(Node& n, InputData const& inputData, InsertReturn& ret
     return n.data.get();
 }
 
-auto Leaf::mergeInsertReturn(InsertReturn& into, InsertReturn const& from) -> void {
+void Leaf::mergeInsertReturn(InsertReturn& into, InsertReturn const& from) {
     into.nbrValuesInserted += from.nbrValuesInserted;
     into.nbrSpacesInserted += from.nbrSpacesInserted;
     into.nbrTasksInserted  += from.nbrTasksInserted;
@@ -252,6 +264,8 @@ auto Leaf::outAtNode(Node& node,
     return outAtNode(*child, nextIter, inputMetadata, obj, doExtract, &node, nextIter.currentComponent());
 }
 
+
+
 auto Leaf::clear() -> void {
     this->root.clearRecursive();
 }
@@ -286,6 +300,44 @@ auto Leaf::outFinalComponent(Iterator const& iter, InputMetadata const& inputMet
 
 auto Leaf::outIntermediateComponent(Iterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> {
     return this->outAtNode(this->root, iter, inputMetadata, obj, doExtract, nullptr, {});
+}
+
+auto Leaf::peekFuture(Iterator const& iter) const -> std::optional<Future> {
+    // Walk down to the final component non-mutatingly
+    Node const* node = &this->root;
+    Iterator    it   = iter;
+    while (!it.isAtFinalComponent()) {
+        auto const name = it.currentComponent();
+        if (is_glob(name)) {
+            // For peek we only support concrete traversal
+            return std::nullopt;
+        }
+        node = node->getChild(name);
+        if (!node)
+            return std::nullopt;
+        it = it.next();
+    }
+
+    // At final component: if it's a glob, we don't resolve here
+    auto const last = it.currentComponent();
+    if (is_glob(last))
+        return std::nullopt;
+
+    Node const* child = node->getChild(last);
+    if (!child)
+        return std::nullopt;
+
+    // Check if the node stores execution: we need to peek at the front task
+    {
+        std::lock_guard<std::mutex> lg(child->payloadMutex);
+        // We cannot access NodeData internals here without exposing them;
+        // return an empty optional if no data or not an execution node.
+        if (!child->data || child->data->empty())
+            return std::nullopt;
+        // This method is a stub: exposing a Future requires access to the underlying Task.
+        // For now, keep the API shape and return std::nullopt until a safe accessor is available.
+        return std::nullopt;
+    }
 }
 
 } // namespace SP

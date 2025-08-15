@@ -3,6 +3,7 @@
 #include "ElementType.hpp"
 #include "Error.hpp"
 #include "type/SlidingBuffer.hpp"
+#include "task/Future.hpp"
 
 #include <deque>
 #include <memory>
@@ -31,9 +32,10 @@ private:
     auto deserializeData(void* obj, const InputMetadata& inputMetadata, bool doPop) -> std::optional<Error>;
     auto deserializeExecution(void* obj, const InputMetadata& inputMetadata, bool doPop) -> std::optional<Error>;
 
-    SP::SlidingBuffer                 data;
-    std::deque<ElementType>           types;
-    std::deque<std::shared_ptr<Task>> tasks; // NodeData is the primary owner of tasks
+    SP::SlidingBuffer                  data;
+    std::deque<ElementType>            types;
+    std::deque<std::shared_ptr<Task>>  tasks;   // NodeData is the primary owner of tasks
+    std::deque<Future>                 futures; // Aligned with tasks; lightweight handles for result readiness
 };
 
 } // namespace SP
