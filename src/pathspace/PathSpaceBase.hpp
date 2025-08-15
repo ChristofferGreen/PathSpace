@@ -19,6 +19,7 @@ struct InputMetadata;
 struct Out;
 class PathSpaceBase {
 public:
+    virtual ~PathSpaceBase() = default;
     /**
      * @brief Inserts data into the PathSpace at the specified path.
      *

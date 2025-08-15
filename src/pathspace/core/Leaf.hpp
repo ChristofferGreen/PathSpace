@@ -1,10 +1,12 @@
 #pragma once
-#include "type/NodeDataHashMap.hpp"
+#include "core/Node.hpp"
+#include <string_view>
 
 namespace SP {
 struct Error;
 struct Iterator;
 struct InsertReturn;
+struct InputMetadata;
 struct InputData;
 
 class Leaf {
@@ -18,8 +20,14 @@ private:
     auto inIntermediateComponent(Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void;
     auto outIntermediateComponent(Iterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;
     auto outFinalComponent(Iterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;
+    
+    // Internal helpers (members for friend access to PathSpaceBase)
+    auto inAtNode(Node& node, Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void;
+    auto outAtNode(Node& node, Iterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract, Node* parent, std::string_view keyInParent) -> std::optional<Error>;
+    static auto ensureNodeData(Node& n, InputData const& inputData, InsertReturn& ret) -> NodeData*;
+    static void mergeInsertReturn(InsertReturn& into, InsertReturn const& from);
 
-    NodeDataHashMap nodeDataMap;
+    Node root;
 };
 
 } // namespace SP

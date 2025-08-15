@@ -24,6 +24,7 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
 
 - `PathSpace/src/pathspace/core/` — core runtime data structures:
   - `Leaf.hpp` / `Leaf.cpp` — manages node traversal and delegates to `NodeData`.
+  - `Node.hpp` — unified trie node (children, payload `NodeData`, optional nested space).
   - `NodeData.hpp` / `NodeData.cpp` — primary per-node storage: serialized data or queued `Task`s; (de)serialization and type bookkeeping.
   - `WaitMap.hpp` / `WaitMap.cpp` — condition-variable map used to block/wake readers waiting for data.
   - `NotificationSink.hpp` — lifetime-safe notification interface; tasks hold a weak_ptr token, and spaces own the shared token.
@@ -48,7 +49,6 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
 
 - `PathSpace/src/pathspace/type/` — supporting type utilities:
   - `InputData.hpp`, `InputMetadata.hpp`, `InputMetadataT.hpp` — how runtime/compile-time type metadata and serialization hooks are expressed.
-  - `NodeDataHashMap.hpp` — container used by `Leaf` to map path keys to `NodeData`.
   - `SlidingBuffer.hpp` — byte buffer used to store serialized object payloads.
 
 ---
@@ -72,7 +72,7 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
 
 - `Leaf` (`PathSpace/src/pathspace/core/Leaf.hpp` / `.cpp`)
   - Walks a path (`Iterator`) to the final node.
-  - Creates/looks up `NodeData` in `NodeDataHashMap`.
+  - Navigates the Node trie (`PathSpace/src/pathspace/core/Node.hpp`) and looks up or creates `Node::data` for payload at the final component.
   - Calls into `NodeData::serialize` to store incoming `InputData`, or `NodeData::deserialize` to read/extract.
 
 - `NodeData` (`PathSpace/src/pathspace/core/NodeData.hpp` / `.cpp`)
@@ -134,7 +134,7 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
 - `WaitMap` internally synchronizes access to the condition variable map via `mutex`.
 - `TaskPool` uses worker threads and `std::condition_variable` to schedule tasks.
 - Tasks notify via a `weak_ptr<NotificationSink>`; `PathSpaceBase` resets its `shared_ptr` during shutdown so late notifications are dropped safely.
-- `NodeData` may contain `Task` objects (shared pointers) and a `SlidingBuffer`. Serialization/deserialization must be used carefully if adding new methods—`NodeData` methods assume proper locking at call sites (the `Leaf`/`NodeDataHashMap` manage access).
+- `NodeData` may contain `Task` objects (shared pointers) and a `SlidingBuffer`. Serialization/deserialization must be used carefully if adding new methods—`NodeData` methods assume proper locking at call sites (the Node trie’s concurrent children map and per-node payload mutexes manage access).
 - `PathSpace::out` implements a loop with `waitMap.wait` and `wait_until` to implement blocking with deadlines. The pattern minimizes lock scope.
 
 ---
@@ -218,7 +218,7 @@ A. Insert (simple serialized data)
    - detects special-case (e.g., nested `PathSpace`) if the inserted type is `unique_ptr<PathSpace>`
    - calls `leaf.in(path, inputData, ret)` — `PathSpace/src/pathspace/core/Leaf.hpp/.cpp`
 4. `Leaf::in`:
-   - traverses components using `Iterator` to locate/create a node entry in `NodeDataHashMap` — `PathSpace/src/pathspace/type/NodeDataHashMap.hpp`
+   - traverses components using `Iterator` to locate/create nodes in the Node trie — `PathSpace/src/pathspace/core/Node.hpp`
    - calls `NodeData::serialize(inputData)` — `PathSpace/src/pathspace/core/NodeData.cpp`
 5. `NodeData::serialize`:
    - if `inputData.task` is present, pushes the `Task` into `tasks` and possibly schedules immediate execution via `TaskPool::Instance().addTask(...)` — `PathSpace/src/pathspace/task/TaskPool.hpp/.cpp`
@@ -269,7 +269,7 @@ PathSpaceBase (templates: insert/read/take)  --> PathView / PathFileSystem (subc
   v
 PathSpace (root implementation)
   |-- leaf : Leaf
-  |       |-- nodeDataMap : NodeDataHashMap
+  |       |-- root : Node (trie)
   |       |       \-- NodeData
   |       |            |-- SlidingBuffer (serialized bytes)
   |       |            \-- tasks (deque<shared_ptr<Task>>)

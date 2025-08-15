@@ -172,7 +172,16 @@ Comprehensive error handling for path operations:
 - Timeout conditions
 
 ## Internal Data
-PathSpace can be seen as a map between a path and a vector of data. Inserting more data to the path will append it to the end. Reading data from the path will return a copy of the front data. Extracting data from a path will pop and return the front data of the vector for the path.
+PathSpace stores data in a unified Node trie. Each Node contains:
+- children: a concurrent hash map keyed by the next path component
+- data: an optional NodeData payload that holds serialized bytes and/or queued Task objects
+- nested: an optional nested PathSpaceBase anchored at that node
+
+Inserting more data at a path appends to the node’s NodeData sequence. Reading returns a copy of the front element; extracting pops the front element. Nodes that become empty after extraction are erased from their parent when safe.
+
+Concurrency notes:
+- children uses a sharded concurrent map for scalability
+- payload accesses (data/nested) are guarded by a per-node mutex to ensure safe updates under contention
 
 Additionally, nodes may hold `Task` objects representing deferred computations alongside serialized bytes. `NodeData` stores tasks (`std::shared_ptr<Task>`) and, when tasks complete, notifications are delivered via a `NotificationSink` interface: tasks hold a `std::weak_ptr<NotificationSink>` and the owning `PathSpaceBase` provides the `shared_ptr` token and forwards to `notify(path)`. This removes the need for a global registry and prevents use-after-free races during teardown (the space resets its token during shutdown, causing late notifications to be dropped safely).
 
