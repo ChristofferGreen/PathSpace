@@ -271,15 +271,70 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
         info "Running tests in a loop ($COUNT iterations)..."
         for i in $(seq 1 "$COUNT"); do
           info "Loop $i/$COUNT: starting"
-          if ! "$TEST_EXE"; then
-            die "Loop $i failed (non-zero exit code)"
+          if command -v timeout >/dev/null 2>&1; then
+            timeout 60s "$TEST_EXE"
+            RC=$?
+          else
+            # Fallback manual timeout if 'timeout' is not available
+            "$TEST_EXE" & pid=$!
+            SECS=0
+            while kill -0 "$pid" 2>/dev/null; do
+              sleep 1
+              SECS=$((SECS+1))
+              if [[ $SECS -ge 60 ]]; then
+                echo "Error: tests timed out after 60 seconds"
+                kill -TERM "$pid" 2>/dev/null || true
+                wait "$pid" 2>/dev/null || true
+                RC=124
+                break
+              fi
+            done
+            if [[ -z "${RC:-}" ]]; then
+              wait "$pid"
+              RC=$?
+            fi
           fi
-          info "Loop $i/$COUNT: passed"
+          if [[ $RC -eq 0 ]]; then
+            info "Loop $i/$COUNT: passed"
+          elif [[ $RC -eq 124 ]]; then
+            die "Loop $i failed (timeout after 60 seconds)"
+          else
+            die "Loop $i failed (non-zero exit code $RC)"
+          fi
         done
         info "All $COUNT iterations passed."
       else
         info "Running tests..."
-        "$TEST_EXE"
+        if command -v timeout >/dev/null 2>&1; then
+          timeout 60s "$TEST_EXE"
+          RC=$?
+        else
+          # Fallback manual timeout if 'timeout' is not available
+          "$TEST_EXE" & pid=$!
+          SECS=0
+          while kill -0 "$pid" 2>/dev/null; do
+            sleep 1
+            SECS=$((SECS+1))
+            if [[ $SECS -ge 60 ]]; then
+              echo "Error: tests timed out after 60 seconds"
+              kill -TERM "$pid" 2>/dev/null || true
+              wait "$pid" 2>/dev/null || true
+              RC=124
+              break
+            fi
+          done
+          if [[ -z "${RC:-}" ]]; then
+            wait "$pid"
+            RC=$?
+          fi
+        fi
+        if [[ $RC -eq 0 ]]; then
+          info "Tests completed successfully."
+        elif [[ $RC -eq 124 ]]; then
+          die "Tests timed out after 60 seconds"
+        else
+          die "Tests failed with exit code $RC"
+        fi
       fi
     fi
   elif [[ "$TEST" -eq 1 ]]; then

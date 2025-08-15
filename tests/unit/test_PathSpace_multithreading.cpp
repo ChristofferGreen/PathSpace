@@ -177,7 +177,7 @@ TEST_CASE("PathSpace Multithreading") {
 
         // Launch threads with proper cleanup
         {
-            std::vector<std::jthread> threads;
+            std::vector<std::thread> threads;
             auto                      testStart = std::chrono::steady_clock::now();
 
             // Start writers
@@ -201,7 +201,7 @@ TEST_CASE("PathSpace Multithreading") {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
 
-            // Threads will be automatically joined by std::jthread destructors
+            for (auto& t : threads) { if (t.joinable()) t.join(); }
         }
 
         // Verify results
@@ -948,11 +948,12 @@ TEST_CASE("PathSpace Multithreading") {
 
             // Launch extraction threads
             {
-                std::vector<std::jthread> threads;
+                std::vector<std::thread> threads;
                 for (int t = 0; t < NUM_THREADS; ++t) {
                     threads.emplace_back(extractWorker, t);
                 }
 
+                for (auto& t : threads) { t.detach(); }
                 // Monitor progress
                 auto start = std::chrono::steady_clock::now();
                 while (extractedCount < NUM_THREADS * ITEMS_PER_THREAD) {
@@ -1213,7 +1214,7 @@ TEST_CASE("PathSpace Multithreading") {
 
         // Launch reader threads in controlled scope
         {
-            std::vector<std::jthread> readers;
+            std::vector<std::thread> readers;
             readers.reserve(READERS);
 
             for (int i = 0; i < READERS; i++) {
@@ -1228,7 +1229,7 @@ TEST_CASE("PathSpace Multithreading") {
             CHECK_MESSAGE(completed, "All reads should complete within timeout");
             CHECK_MESSAGE(counter.get_count() == EXPECTED_COUNT, "Expected " << EXPECTED_COUNT << " reads, got " << counter.get_count());
 
-            // threads automatically join when vector is destroyed
+            for (auto& t : readers) { if (t.joinable()) t.join(); }
         }
 
         // Cleanup
@@ -1266,7 +1267,7 @@ TEST_CASE("PathSpace Multithreading") {
 
         // Launch reader threads in controlled scope
         {
-            std::vector<std::jthread> readers;
+            std::vector<std::thread> readers;
             readers.reserve(READERS);
 
             for (int i = 0; i < READERS; i++) {
@@ -1281,7 +1282,7 @@ TEST_CASE("PathSpace Multithreading") {
             CHECK_MESSAGE(completed, "All reads should complete within timeout");
             CHECK_MESSAGE(counter.get_count() == EXPECTED_COUNT, "Expected " << EXPECTED_COUNT << " reads, got " << counter.get_count());
 
-            // threads automatically join when vector is destroyed
+            for (auto& t : readers) { if (t.joinable()) t.join(); }
         }
 
         // Cleanup
@@ -1722,16 +1723,16 @@ TEST_CASE("PathSpace Multithreading") {
 
                 auto start = std::chrono::steady_clock::now();
 
-                std::vector<std::jthread> threads;
+                std::vector<std::thread> threads;
                 threads.reserve(concurrency);
                 for (int i = 0; i < concurrency; ++i) {
                     threads.emplace_back(workerFunction);
                 }
 
-                std::jthread timeoutThread([&shouldStop, TEST_DURATION](std::stop_token stoken) {
+                std::thread([&shouldStop, TEST_DURATION]() {
                     std::this_thread::sleep_for(TEST_DURATION);
                     shouldStop.store(true, std::memory_order_relaxed);
-                });
+                }).detach();
 
                 for (auto& t : threads) {
                     t.join();
@@ -1834,7 +1835,7 @@ TEST_CASE("PathSpace Multithreading") {
         }
 
         // Start philosophers
-        std::vector<std::jthread> philosophers;
+        std::vector<std::thread> philosophers;
         for (int i = 0; i < NUM_PHILOSOPHERS; ++i) {
             philosophers.emplace_back(philosopher, i);
         }
@@ -1843,6 +1844,7 @@ TEST_CASE("PathSpace Multithreading") {
         std::this_thread::sleep_for(std::chrono::milliseconds(TEST_DURATION_MS));
 
         // Join all threads
+        for (auto& t : philosophers) { if (t.joinable()) t.join(); }
         philosophers.clear();
 
         // Output and check results

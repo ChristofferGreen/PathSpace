@@ -1,5 +1,8 @@
 #pragma once
 #include "core/Node.hpp"
+#ifdef TYPED_TASKS
+#include "task/IFutureAny.hpp"
+#endif
 #include <string_view>
 
 namespace SP {
@@ -17,10 +20,15 @@ public:
 
 
 
-    // Return a weak Future-like handle for an execution at the given path.
-    // If the node at the path stores an execution (task), this returns a Future
-    // constructed from the front task. Otherwise, returns an empty optional.
-    auto peekFuture(Iterator const& iter) const -> std::optional<Future>;
+    #ifdef TYPED_TASKS
+        // Return a type-erased FutureAny handle for an execution at the given path (typed tasks).
+        auto peekAnyFuture(Iterator const& iter) const -> std::optional<FutureAny>;
+    #endif
+
+        // Return a weak Future-like handle for an execution at the given path.
+        // If the node at the path stores an execution (task), this returns a Future
+        // constructed from the front task. Otherwise, returns an empty optional.
+        auto peekFuture(Iterator const& iter) const -> std::optional<Future>;
 
 private:
     auto inFinalComponent(Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void;

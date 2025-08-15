@@ -25,13 +25,13 @@ public:
 
     auto submit(std::weak_ptr<Task>&& task) -> std::optional<Error> override;
     auto addTask(std::weak_ptr<Task>&& task) -> std::optional<Error>;
-    auto shutdown() -> void override;
+    auto shutdown() -> void override; // Ensures all worker threads are joined before return
     auto size() const -> size_t override;
 
 private:
     auto workerFunction() -> void;
 
-    std::vector<std::jthread>       workers;
+    std::vector<std::thread>        workers;
     std::queue<std::weak_ptr<Task>> tasks;
     std::mutex                      mutex;
     std::condition_variable         taskCV;

@@ -2,6 +2,7 @@
 #include "type/InputMetadata.hpp"
 #include "task/Future.hpp"
 #include "task/Executor.hpp"
+#include "task/IFutureAny.hpp"
 
 #include <memory>
 
@@ -20,7 +21,8 @@ struct InputData {
 
     void*                 obj = nullptr;
     std::shared_ptr<Task> task;
-    Future                future;    // Optional: future handle for task results
+    Future                future;    // Optional: future handle for legacy task results
+    FutureAny             anyFuture; // Optional: type-erased future for typed task results
     Executor*             executor = nullptr; // Optional: injected executor for task scheduling
     InputMetadata         metadata;
 };

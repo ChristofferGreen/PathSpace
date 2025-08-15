@@ -12,6 +12,14 @@
 #include "core/NotificationSink.hpp"
 #include "task/Executor.hpp"
 #include "task/Future.hpp"
+#ifdef TYPED_TASKS
+#include "task/TaskT.hpp"
+#include "task/IFutureAny.hpp"
+#endif
+#include <type_traits>
+#ifdef PATHSPACE_CONTEXT
+#include "core/PathSpaceContext.hpp"
+#endif
 
 #include <optional>
 #include <memory>
@@ -46,15 +54,26 @@ public:
             }
         } else {*/
         InputData inputData{std::forward<DataType>(data)};
+        sp_log(std::string("PathSpaceBase::insert dataCategory=") + std::to_string(static_cast<int>(InputMetadataT<DataType>::dataCategory))
+               + " type=" + (InputMetadataT<DataType>::typeInfo ? InputMetadataT<DataType>::typeInfo->name() : "null"), "PathSpaceBase");
         // Thread the injected executor through InputData so downstream (NodeData) can schedule via Executor
         inputData.executor = this->getExecutor();
 
         if constexpr (InputMetadataT<DataType>::dataCategory == DataCategory::Execution) {
+#ifdef TYPED_TASKS
+            auto notifier = this->getNotificationSink();
+            auto exec     = this->getExecutor();
+            using ResultT = std::invoke_result_t<DataType>;
+            auto taskT    = TaskT<ResultT>::Create(std::move(notifier), path.toString(), data, options.executionCategory, exec);
+            inputData.task      = taskT->legacy_task();
+            inputData.anyFuture = taskT->any_future();
+#else
             inputData.task = Task::Create(this->getNotificationSink(), path.toString(), data, options.executionCategory);
             // Prefer the injected executor for task (re)submission later in NodeData
             if (auto exec = this->getExecutor()) {
                 inputData.task->setExecutor(exec);
             }
+#endif
         }
 
         return this->in(path, inputData);
@@ -115,34 +134,37 @@ public:
     /**
      * @brief Optional Future-returning read API for execution results.
      *
-     * This method returns a Future handle that can be used to wait for task completion
-     * and copy the result later. It is only meaningful when the stored value at the
-     * path is an execution (task). For non-execution data, it attempts a non-blocking
-     * read and returns the value immediately via `try_copy_result_to`.
+     * Behavior:
+     * - When TYPED_TASKS is enabled: returns a type-erased FutureAny if an execution is present
+     *   at the path (non-blocking peek). If not present or not an execution node, returns an error.
+     * - Legacy path: returns an empty Future (valid()==false) to indicate no immediate handle.
      *
-     * Note: This is an optional helper and does not replace the primary read/take APIs.
+     * Note: This helper does not replace the primary read/take APIs.
      */
+#ifdef TYPED_TASKS
+    template <StringConvertible S>
+    auto readFuture(S const& pathIn) const -> Expected<FutureAny> {
+        sp_log("PathSpace::readFuture", "Function Called");
+        Iterator const path{pathIn};
+        if (auto error = path.validate(ValidationLevel::Basic))
+            return std::unexpected(*error);
+        // Delegate to a virtual hook so concrete implementations can surface a FutureAny.
+        if (auto fut = this->typedPeekFuture(path.toStringView())) {
+            return *fut;
+        }
+        return std::unexpected(Error{Error::Code::NoObjectFound, "No execution future available at path"});
+    }
+#else
     template <StringConvertible S>
     auto readFuture(S const& pathIn) const -> Expected<Future> {
         sp_log("PathSpace::readFuture", "Function Called");
         Iterator const path{pathIn};
         if (auto error = path.validate(ValidationLevel::Basic))
             return std::unexpected(*error);
-
-        // We return a Future handle aligned with the first task if present.
-        // The consumer can then block on it and copy the result when ready.
-        // Implementation strategy:
-        // - Attempt a minimal out() call with isMinimal=true; this will not block.
-        // - If out() reports an execution not yet completed, we return a Future
-        //   based on a weak_ptr obtained from the aligned Task (through NodeData internals).
-        // - Since we don't expose NodeData here, we surface an empty Future on non-execution
-        //   or when task is not present; the consumer can fall back to normal read().
-        Future fut;
-
-        // We can signal "no immediate result" by returning an empty Future (valid()==false)
-        // and letting the caller decide whether to use blocking read().
-        return fut;
+        // Legacy: signal no immediate result; caller may fall back to blocking read().
+        return Future{};
     }
+#endif
 
     template <FixedString pathIn, typename DataType>
         requires(validate_path(pathIn))
@@ -154,6 +176,22 @@ public:
 protected:
     // Provide a weak NotificationSink for lifetime-safe task notifications.
     std::weak_ptr<NotificationSink> getNotificationSink() const {
+#ifdef PATHSPACE_CONTEXT
+        if (context_) {
+            auto w = context_->getSink();
+            if (!w.lock()) {
+                struct DefaultNotificationSinkImpl : NotificationSink {
+                    explicit DefaultNotificationSinkImpl(PathSpaceBase* owner) : owner(owner) {}
+                    void notify(const std::string& notificationPath) override { owner->notify(notificationPath); }
+                    PathSpaceBase* owner;
+                };
+                auto sink = std::shared_ptr<NotificationSink>(new DefaultNotificationSinkImpl(const_cast<PathSpaceBase*>(this)));
+                context_->setSink(sink);
+                return std::weak_ptr<NotificationSink>(sink);
+            }
+            return w;
+        }
+#endif
         if (!notificationSink_) {
             struct DefaultNotificationSinkImpl : NotificationSink {
                 explicit DefaultNotificationSinkImpl(PathSpaceBase* owner) : owner(owner) {}
@@ -166,16 +204,40 @@ protected:
     }
 
     // Executor injection point for task scheduling (set by concrete space)
-    void setExecutor(Executor* exec) { executor_ = exec; }
-    Executor* getExecutor() const { return executor_; }
+    void setExecutor(Executor* exec) {
+#ifdef PATHSPACE_CONTEXT
+        if (context_) context_->setExecutor(exec);
+#endif
+        executor_ = exec;
+    }
+    Executor* getExecutor() const {
+#ifdef PATHSPACE_CONTEXT
+        if (context_ && context_->executor()) return context_->executor();
+#endif
+        return executor_;
+    }
+
+#ifdef PATHSPACE_CONTEXT
+    // Expose shared context for friends (e.g., Leaf) to adopt for nested spaces
+    std::shared_ptr<PathSpaceContext> getContext() const { return context_; }
+#endif
 
     mutable std::shared_ptr<NotificationSink> notificationSink_;
+#ifdef PATHSPACE_CONTEXT
+    std::shared_ptr<PathSpaceContext>         context_;
+#endif
     Executor*                                 executor_ = nullptr;
     friend class TaskPool;
     friend class PathView;
     friend class PathFileSystem;
     friend class PathSpace;
     friend class Leaf;
+
+#ifdef TYPED_TASKS
+    // Hook for concrete spaces to expose a type-erased future aligned with an execution node.
+    // Default implementation returns no future; PathSpace overrides to provide a real handle.
+    virtual std::optional<FutureAny> typedPeekFuture(std::string_view) const { return std::nullopt; }
+#endif
 
     virtual auto in(Iterator const& path, InputData const& data) -> InsertReturn                                                      = 0;
     virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> = 0;

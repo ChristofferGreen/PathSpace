@@ -1,5 +1,6 @@
 #include "Leaf.hpp"
 #include "PathSpaceBase.hpp"
+#include "PathSpace.hpp"
 #include "core/Error.hpp"
 #include "core/InsertReturn.hpp"
 #include "path/Iterator.hpp"
@@ -81,11 +82,23 @@ auto Leaf::inAtNode(Node& node, Iterator const& iter, InputData const& inputData
         // Concrete final component
         Node& child = node.getOrCreateChild(name);
         if (inputData.metadata.dataCategory == DataCategory::UniquePtr) {
-            // Move nested PathSpaceBase into place
+            // Move nested PathSpaceBase into place and adopt parent context/prefix when available
             {
                 std::lock_guard<std::mutex> lg(child.payloadMutex);
                 child.nested = std::move(*static_cast<std::unique_ptr<PathSpaceBase>*>(inputData.obj));
             }
+            // Compute mount prefix for the nested space: <startToCurrent>/<name>
+            std::string mountPrefix = std::string(iter.startToCurrent());
+            if (mountPrefix.empty() || mountPrefix == "/")
+                mountPrefix = "/" + std::string(name);
+            else
+                mountPrefix += "/" + std::string(name);
+            #ifdef PATHSPACE_CONTEXT
+            if (auto ps = dynamic_cast<PathSpace*>(child.nested.get())) {
+                // Adopt parent context later if available; set prefix now.
+
+            }
+            #endif
             ret.nbrSpacesInserted++;
         } else {
             ensureNodeData(child, inputData, ret);
@@ -173,8 +186,10 @@ auto Leaf::outAtNode(Node& node,
                     matches.emplace_back(key);
                 }
             });
-            if (matches.empty())
+            if (matches.empty()) {
+                sp_log("Leaf::outAtNode(final,glob) no matches for pattern: " + std::string(name), "Leaf");
                 return Error{Error::Code::NoSuchPath, "Path not found"};
+            }
             std::sort(matches.begin(), matches.end());
             bool foundAny = false;
             for (auto const& k : matches) {
@@ -188,6 +203,7 @@ auto Leaf::outAtNode(Node& node,
                     if (childTry->data) {
                         foundAny = true;
                         attempted = true;
+                        sp_log("Leaf::outAtNode(final,glob) attempting deserialize on: " + k, "Leaf");
                         if (doExtract) {
                             res = childTry->data->deserializePop(obj, inputMetadata);
                             if (!res.has_value() && childTry->data->empty()) {
@@ -197,24 +213,34 @@ auto Leaf::outAtNode(Node& node,
                         } else {
                             res = childTry->data->deserialize(obj, inputMetadata);
                         }
+                    } else {
+                        sp_log("Leaf::outAtNode(final,glob) child has no data: " + k, "Leaf");
                     }
                 }
                 // Success path: return immediately only if we actually attempted and succeeded
                 if (attempted && !res.has_value()) {
+                    sp_log("Leaf::outAtNode(final,glob) success on: " + k, "Leaf");
                     return std::nullopt;
+                }
+                if (attempted && res.has_value()) {
+                    sp_log("Leaf::outAtNode(final,glob) failed on: " + k + " code=" + std::to_string(static_cast<int>(res->code)) + " msg=" + res->message.value_or(""), "Leaf");
                 }
             }
             // If we saw at least one matching child but none yielded a value of the requested type,
             // surface a type error; otherwise, report no such path.
             if (foundAny) {
+                sp_log("Leaf::outAtNode(final,glob) type mismatch after attempts", "Leaf");
                 return Error{Error::Code::InvalidType, "Type mismatch during deserialization"};
             }
+            sp_log("Leaf::outAtNode(final,glob) no such path after matching", "Leaf");
             return Error{Error::Code::NoSuchPath, "Path not found"};
         }
 
         Node* child = node.getChild(name);
-        if (!child)
+        if (!child) {
+            sp_log("Leaf::outAtNode(final) no such child: " + std::string(name), "Leaf");
             return Error{Error::Code::NoSuchPath, "Path not found"};
+        }
  
         if (child->hasData()) {
             std::optional<Error> res;
@@ -222,6 +248,7 @@ auto Leaf::outAtNode(Node& node,
             {
                 std::lock_guard<std::mutex> lg(child->payloadMutex);
                 if (child->data) {
+                    sp_log(std::string("Leaf::outAtNode(final) deserializing on child: ") + std::string(name) + (doExtract ? " (pop)" : " (read)"), "Leaf");
                     if (doExtract) {
                         res = child->data->deserializePop(obj, inputMetadata);
                         if (!res.has_value()) {
@@ -233,13 +260,21 @@ auto Leaf::outAtNode(Node& node,
                     } else {
                         res = child->data->deserialize(obj, inputMetadata);
                     }
+                } else {
+                    sp_log("Leaf::outAtNode(final) child hasData()==true but data==nullptr", "Leaf");
                 }
             }
             // Do not erase child nodes on empty; keep placeholder to avoid races under concurrency.
+            if (res.has_value()) {
+                sp_log("Leaf::outAtNode(final) deserialize failed code=" + std::to_string(static_cast<int>(res->code)) + " msg=" + res->message.value_or(""), "Leaf");
+            } else {
+                sp_log("Leaf::outAtNode(final) deserialize success on child: " + std::string(name), "Leaf");
+            }
             return res;
         }
 
         // Final component, but nested space present or no data: treat as not found (compat)
+        sp_log("Leaf::outAtNode(final) no data and no nested space for child: " + std::string(name), "Leaf");
         return Error{Error::Code::NoSuchPath, "Path not found"};
     }
 
@@ -339,5 +374,43 @@ auto Leaf::peekFuture(Iterator const& iter) const -> std::optional<Future> {
         return std::nullopt;
     }
 }
+
+#ifdef TYPED_TASKS
+auto Leaf::peekAnyFuture(Iterator const& iter) const -> std::optional<FutureAny> {
+    // Walk down to the final component non-mutatingly
+    Node const* node = &this->root;
+    Iterator    it   = iter;
+    while (!it.isAtFinalComponent()) {
+        auto const name = it.currentComponent();
+        if (is_glob(name)) {
+            // For peek we only support concrete traversal
+            return std::nullopt;
+        }
+        node = node->getChild(name);
+        if (!node)
+            return std::nullopt;
+        it = it.next();
+    }
+
+    // At final component: if it's a glob, we don't resolve here
+    auto const last = it.currentComponent();
+    if (is_glob(last))
+        return std::nullopt;
+
+    Node const* child = node->getChild(last);
+    if (!child)
+        return std::nullopt;
+
+    // If the node stores execution, surface the type-erased future aligned with the front task
+    {
+        std::lock_guard<std::mutex> lg(child->payloadMutex);
+        if (!child->data || child->data->empty())
+            return std::nullopt;
+        if (auto fut = child->data->peekAnyFuture())
+            return fut;
+        return std::nullopt;
+    }
+}
+#endif
 
 } // namespace SP

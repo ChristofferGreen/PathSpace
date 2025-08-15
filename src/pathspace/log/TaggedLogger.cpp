@@ -31,7 +31,7 @@ TaggedLogger& logger() {
     return instance;
 }
 
-TaggedLogger::TaggedLogger() : running(true), nextThreadNumber(0), loggingEnabled(true) {
+TaggedLogger::TaggedLogger() : running(true), nextThreadNumber(0), loggingEnabled(false) {
     this->workerThread = std::thread(&TaggedLogger::processQueue, this);
 }
 

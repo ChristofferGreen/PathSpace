@@ -17,6 +17,8 @@
 #   ./scripts/run_testcase.sh -t Dining -s "Dining Philosophers" # pass subcase
 #
 set -uo pipefail
+# Default per-run timeout (seconds)
+TEST_TIMEOUT_SECS=60
 
 # Defaults
 EXECUTABLE="./build/tests/PathSpaceTests"
@@ -26,6 +28,7 @@ SUBCASE=""
 VERBOSE=0
 DRY_RUN=0
 RUN_ALL_MATCHES=0
+LOOP=0
 
 print_help() {
     cat <<EOF
@@ -41,6 +44,7 @@ Options:
                           run all matches instead of prompting.
   -v, --verbose           Print commands that will be run.
   -n, --dry-run           Show what would be run but don't execute.
+      --loop[=N]          Repeat the selected run N times (default: 15). Implies fail-fast on first error/timeout.
   -h, --help              Show this help and exit.
 EOF
 }
@@ -76,6 +80,24 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             print_help
             exit 0
+            ;;
+        --loop)
+            LOOP=15
+            ;;
+        --loop=*)
+            LOOP="${1#*=}"
+            case "$LOOP" in
+              ''|*[!0-9]*)
+                echo "Error: --loop requires a positive integer" >&2
+                exit 2
+                ;;
+              *)
+                if [[ "$LOOP" -lt 1 ]]; then
+                  echo "Error: --loop must be >= 1" >&2
+                  exit 2
+                fi
+                ;;
+            esac
             ;;
         *)
             echo "Unknown argument: $1" >&2
@@ -120,12 +142,43 @@ run_command() {
         echo "=== RUNNING: $(timestamp) ==="
         echo "Command: ${cmd[*]}"
         echo
-        "${cmd[@]}"
-        rc=$?
+        # Prefer GNU/BSD timeout if available, otherwise emulate a timeout
+        if command -v timeout >/dev/null 2>&1; then
+            timeout "${TEST_TIMEOUT_SECS}s" "${cmd[@]}"
+            rc=$?
+        else
+            # Fallback manual timeout mechanism
+            "${cmd[@]}" &
+            pid=$!
+            SECS=0
+            while kill -0 "$pid" 2>/dev/null; do
+                sleep 1
+                SECS=$((SECS+1))
+                if [[ $SECS -ge $TEST_TIMEOUT_SECS ]]; then
+                    echo "Error: tests timed out after ${TEST_TIMEOUT_SECS} seconds"
+                    kill -TERM "$pid" 2>/dev/null || true
+                    # give it a moment to terminate gracefully
+                    sleep 1
+                    kill -KILL "$pid" 2>/dev/null || true
+                    wait "$pid" 2>/dev/null
+                    rc=124
+                    break
+                fi
+            done
+            if [[ -z "${rc:-}" ]]; then
+                wait "$pid"
+                rc=$?
+            fi
+        fi
         echo
         echo "=== EXIT CODE: $rc ==="
         echo "=== FINISHED: $(timestamp) ==="
     } >> "$LOG_FILE" 2>&1
+
+    # If timed out with rc 124, surface a clear message and fail
+    if [[ ${rc:-0} -eq 124 ]]; then
+        echo "Error: test run timed out after ${TEST_TIMEOUT_SECS} seconds. See log: $LOG_FILE" >&2
+    fi
 
     return ${rc:-0}
 }
@@ -143,14 +196,36 @@ if [[ -z "$TEST_QUERY" ]]; then
         echo "Log file: $LOG_FILE"
     fi
 
-    run_command "${CMD[@]}"
-    EXIT_CODE=$?
-    if [[ $EXIT_CODE -eq 0 ]]; then
-        echo "Run finished (exit code 0). Log: $LOG_FILE"
+    if [[ "$LOOP" -gt 0 ]]; then
+        echo "Looping entire test execution $LOOP time(s)..."
+        for i in $(seq 1 "$LOOP"); do
+            echo "Iteration $i/$LOOP"
+            run_command "${CMD[@]}"
+            EXIT_CODE=$?
+            if [[ $EXIT_CODE -eq 0 ]]; then
+                echo "Iteration $i passed."
+            elif [[ $EXIT_CODE -eq 124 ]]; then
+                echo "Iteration $i timed out after ${TEST_TIMEOUT_SECS} seconds. See log: $LOG_FILE"
+                exit 124
+            else
+                echo "Iteration $i failed with exit code $EXIT_CODE. See log: $LOG_FILE"
+                exit $EXIT_CODE
+            fi
+        done
+        echo "All $LOOP iterations passed."
+        exit 0
     else
-        echo "Run finished with exit code $EXIT_CODE. See log: $LOG_FILE"
+        run_command "${CMD[@]}"
+        EXIT_CODE=$?
+        if [[ $EXIT_CODE -eq 0 ]]; then
+            echo "Run finished (exit code 0). Log: $LOG_FILE"
+        elif [[ $EXIT_CODE -eq 124 ]]; then
+            echo "Run timed out after ${TEST_TIMEOUT_SECS} seconds. See log: $LOG_FILE"
+        else
+            echo "Run finished with exit code $EXIT_CODE. See log: $LOG_FILE"
+        fi
+        exit $EXIT_CODE
     fi
-    exit $EXIT_CODE
 fi
 
 # Otherwise, try to list test cases and fuzzy-match
@@ -198,11 +273,34 @@ if [[ ${#MATCHES[@]} -eq 0 ]]; then
         echo "Attempting: ${CMD[*]}"
         echo "Log file: $LOG_FILE"
     fi
-    run_command "${CMD[@]}"
-    rc=$?
-    if [[ $rc -eq 0 ]]; then
-        echo "Run succeeded using --subcase filter with query '$TEST_QUERY'. See log: $LOG_FILE"
+    if [[ "$LOOP" -gt 0 ]]; then
+        echo "Looping subcase run $LOOP time(s)..."
+        for i in $(seq 1 "$LOOP"); do
+            echo "Iteration $i/$LOOP"
+            run_command "${CMD[@]}"
+            rc=$?
+            if [[ $rc -eq 0 ]]; then
+                echo "Iteration $i passed."
+            elif [[ $rc -eq 124 ]]; then
+                echo "Iteration $i timed out after ${TEST_TIMEOUT_SECS} seconds. See log: $LOG_FILE"
+                exit 124
+            else
+                echo "Iteration $i failed with exit code $rc. See log: $LOG_FILE"
+                exit $rc
+            fi
+        done
+        echo "All $LOOP iterations passed."
         exit 0
+    else
+        run_command "${CMD[@]}"
+        rc=$?
+        if [[ $rc -eq 0 ]]; then
+            echo "Run succeeded using --subcase filter with query '$TEST_QUERY'. See log: $LOG_FILE"
+            exit 0
+        elif [[ $rc -eq 124 ]]; then
+            echo "Run timed out after ${TEST_TIMEOUT_SECS} seconds using --subcase filter with query '$TEST_QUERY'. See log: $LOG_FILE"
+            exit 124
+        fi
     fi
 
     # If that also failed, fall back to listing available test cases for the user.
@@ -225,14 +323,36 @@ if [[ ${#MATCHES[@]} -eq 1 ]]; then
     if [[ -n "$SUBCASE" ]]; then
         CMD+=( --subcase="$SUBCASE" )
     fi
-    run_command "${CMD[@]}"
-    rc=$?
-    if [[ $rc -eq 0 ]]; then
-        echo "Test case '$SELECTED' passed (exit code 0). Log: $LOG_FILE"
+    if [[ "$LOOP" -gt 0 ]]; then
+        echo "Looping test case '$SELECTED' $LOOP time(s)..."
+        for i in $(seq 1 "$LOOP"); do
+            echo "Iteration $i/$LOOP"
+            run_command "${CMD[@]}"
+            rc=$?
+            if [[ $rc -eq 0 ]]; then
+                echo "Iteration $i passed."
+            elif [[ $rc -eq 124 ]]; then
+                echo "Iteration $i timed out after ${TEST_TIMEOUT_SECS} seconds. Log: $LOG_FILE"
+                exit 124
+            else
+                echo "Iteration $i failed (exit code $rc). Log: $LOG_FILE"
+                exit $rc
+            fi
+        done
+        echo "All $LOOP iterations passed."
+        exit 0
     else
-        echo "Test case '$SELECTED' failed (exit code $rc). Log: $LOG_FILE"
+        run_command "${CMD[@]}"
+        rc=$?
+        if [[ $rc -eq 0 ]]; then
+            echo "Test case '$SELECTED' passed (exit code 0). Log: $LOG_FILE"
+        elif [[ $rc -eq 124 ]]; then
+            echo "Test case '$SELECTED' timed out after ${TEST_TIMEOUT_SECS} seconds. Log: $LOG_FILE"
+        else
+            echo "Test case '$SELECTED' failed (exit code $rc). Log: $LOG_FILE"
+        fi
+        exit $rc
     fi
-    exit $rc
 fi
 
 # Multiple matches: list them
@@ -256,7 +376,11 @@ if [[ $RUN_ALL_MATCHES -eq 1 ]]; then
         run_command "${CMD[@]}"
         rc=$?
         if [[ $rc -ne 0 ]]; then
-            echo "Test case '$t' failed with exit code $rc (continuing)."
+            if [[ $rc -eq 124 ]]; then
+                echo "Test case '$t' timed out after 120 seconds (continuing)."
+            else
+                echo "Test case '$t' failed with exit code $rc (continuing)."
+            }
             EXIT_CODE=$rc
         fi
     done
@@ -284,10 +408,25 @@ if is_tty; then
             if [[ -n "$SUBCASE" ]]; then
                 CMD+=( --subcase="$SUBCASE" )
             fi
-            run_command "${CMD[@]}"
-            rc=$?
-            if [[ $rc -ne 0 ]]; then
-                EXIT_CODE=$rc
+            if [[ "$LOOP" -gt 0 ]]; then
+                echo "Looping test case '$t' $LOOP time(s)..."
+                for i in $(seq 1 "$LOOP"); do
+                    echo "Iteration $i/$LOOP"
+                    run_command "${CMD[@]}"
+                    rc=$?
+                    if [[ $rc -ne 0 ]]; then
+                        EXIT_CODE=$rc
+                        echo "Iteration $i failed (exit code $rc). Log: $LOG_FILE"
+                        exit $EXIT_CODE
+                    fi
+                done
+                echo "All $LOOP iterations for '$t' passed."
+            else
+                run_command "${CMD[@]}"
+                rc=$?
+                if [[ $rc -ne 0 ]]; then
+                    EXIT_CODE=$rc
+                }
             fi
         done
         exit $EXIT_CODE
@@ -311,18 +450,61 @@ if is_tty; then
     if [[ -n "$SUBCASE" ]]; then
         CMD+=( --subcase="$SUBCASE" )
     fi
-    run_command "${CMD[@]}"
-    rc=$?
-    exit $rc
-else
-    # Non-interactive: run the first match
-    SELECTED="${MATCHES[0]}"
+    if [[ "$LOOP" -gt 0 ]]; then
+        echo "Looping selected test case $LOOP time(s)..."
+        for i in $(seq 1 "$LOOP"); do
+            echo "Iteration $i/$LOOP"
+            run_command "${CMD[@]}"
+            rc=$?
+            if [[ $rc -ne 0 ]]; then
+                if [[ $rc -eq 124 ]]; then
+                    echo "Iteration $i timed out after 120 seconds. See log: $LOG_FILE"
+                else
+                    echo "Iteration $i failed with exit code $rc. See log: $LOG_FILE"
+                fi
+                exit $rc
+            fi
+        done
+        echo "All $LOOP iterations passed."
+        exit 0
+    else
+        run_command "${CMD[@]}"
+        rc=$?
+        if [[ $rc -eq 124 ]]; then
+            echo "Selected test case timed out after ${TEST_TIMEOUT_SECS} seconds. See log: $LOG_FILE"
+        fi
+        exit $rc
+    else
+        # Non-interactive: run the first match
+        SELECTED="${MATCHES[0]}"
     echo "Non-interactive session: running first match: '$SELECTED'"
     CMD=( "$EXECUTABLE" --test-case="$SELECTED" )
     if [[ -n "$SUBCASE" ]]; then
         CMD+=( --subcase="$SUBCASE" )
     fi
-    run_command "${CMD[@]}"
-    rc=$?
-    exit $rc
+    if [[ "$LOOP" -gt 0 ]]; then
+        echo "Looping first matched test case '$SELECTED' $LOOP time(s)..."
+        for i in $(seq 1 "$LOOP"); do
+            echo "Iteration $i/$LOOP"
+            run_command "${CMD[@]}"
+            rc=$?
+            if [[ $rc -ne 0 ]]; then
+                if [[ $rc -eq 124 ]]; then
+                    echo "Iteration $i timed out after ${TEST_TIMEOUT_SECS} seconds. See log: $LOG_FILE"
+                else
+                    echo "Iteration $i failed with exit code $rc. See log: $LOG_FILE"
+                fi
+                exit $rc
+            fi
+        done
+        echo "All $LOOP iterations passed."
+        exit 0
+    else
+        run_command "${CMD[@]}"
+        rc=$?
+        if [[ $rc -eq 124 ]]; then
+            echo "Test case '$SELECTED' timed out after ${TEST_TIMEOUT_SECS} seconds. See log: $LOG_FILE"
+        fi
+        exit $rc
+    fi
 fi

@@ -44,6 +44,7 @@ add_library(PathSpace
     path/utils.cpp
     core/NodeData.cpp
     core/WaitMap.cpp
+    core/WatchRegistry.hpp
     core/Leaf.cpp
     layer/PathView.cpp
     layer/PathFileSystem.cpp

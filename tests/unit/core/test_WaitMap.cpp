@@ -180,7 +180,7 @@ TEST_SUITE("WaitMap") {
             std::atomic<bool>         nomatch_waiter_done{false};
             std::atomic<bool>         match_waiter_notified{false};
             std::atomic<bool>         nomatch_waiter_notified{false};
-            std::vector<std::jthread> waiters;
+            std::vector<std::thread> waiters;
 
             // Keep string storage alive for the whole test
             std::string_view match_path   = "/test/match/1";
@@ -213,7 +213,8 @@ TEST_SUITE("WaitMap") {
             waitMap.notify(pattern);
             notification_sent = true;
 
-            waiters.clear(); // Clear waiters
+            for (auto& t : waiters) { if (t.joinable()) t.join(); }
+            waiters.clear(); // Clear after joining all threads
 
             CHECK(match_waiter_notified);         // Should be notified
             CHECK_FALSE(nomatch_waiter_notified); // Should not be notified
@@ -291,7 +292,7 @@ TEST_SUITE("WaitMap") {
             std::string       root_str("/");
             std::string_view  path(root_str);
 
-            std::jthread waiter([&]() {
+            std::thread waiter([&]() {
                 auto guard = waitMap.wait(path);
                 guard.wait_until(std::chrono::system_clock::now() + 100ms, [&]() { return notified.load(); });
             });
@@ -300,6 +301,7 @@ TEST_SUITE("WaitMap") {
             notified = true;
             waitMap.notify(path);
 
+            if (waiter.joinable()) waiter.join();
             CHECK(notified);
         }
     }
@@ -308,7 +310,7 @@ TEST_SUITE("WaitMap") {
         WaitMap           waitMap;
         std::atomic<bool> wasNotified{false};
 
-        std::jthread waiter([&]() {
+        std::thread waiter([&]() {
             auto guard = waitMap.wait("/foo/[a-z]*"); // Wait with glob pattern
             if (guard.wait_until(std::chrono::system_clock::now() + 100ms)
                 == std::cv_status::no_timeout) {
@@ -327,7 +329,7 @@ TEST_SUITE("WaitMap") {
         WaitMap           waitMap;
         std::atomic<bool> wasNotified{false};
 
-        std::jthread waiter([&]() {
+        std::thread waiter([&]() {
             auto guard = waitMap.wait("/foo/bar"); // Wait with concrete path
             if (guard.wait_until(std::chrono::system_clock::now() + 100ms)
                 == std::cv_status::no_timeout) {
