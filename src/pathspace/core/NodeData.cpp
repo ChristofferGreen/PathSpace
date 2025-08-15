@@ -15,7 +15,7 @@ auto NodeData::serialize(const InputData& inputData) -> std::optional<Error> {
         this->tasks.push_back(std::move(inputData.task));
         bool const isImmediateExecution = (*this->tasks.rbegin())->category() == ExecutionCategory::Immediate;
         if (isImmediateExecution)
-            if (auto const ret = TaskPool::Instance().addTask(this->tasks.back()))
+            if (auto const ret = TaskPool::Instance().submit(this->tasks.back()))
                 return ret;
     } else {
         if (!inputData.metadata.serialize)
@@ -77,7 +77,7 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
         bool const              isLazyExecution       = taskExecutionCategory == ExecutionCategory::Lazy;
 
         if (isLazyExecution)
-            if (auto ret = TaskPool::Instance().addTask(task); ret)
+            if (auto ret = TaskPool::Instance().submit(task); ret)
                 return ret;
     }
 

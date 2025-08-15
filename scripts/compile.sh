@@ -31,6 +31,7 @@ TARGET=""
 VERBOSE=0
 SANITIZER=""  # "asan" | "tsan" | "usan"
 TEST=0        # run tests after build if 1
+LOOP=0        # run tests in a loop N times (default 15 if provided without value)
 
 # ----------------------------
 # Helpers
@@ -59,6 +60,7 @@ Options:
   -t, --target NAME          Build a specific target (default: all).
   -v, --verbose              Print commands before running them.
       --test                 Build and run tests (executes build/tests/PathSpaceTests).
+      --loop[=N]            Run tests in a loop N times (default: 15). Implies --test.
   -h, --help                 Show this help and exit.
 
 Sanitizers (mutually exclusive, maps to CMake options in this repo):
@@ -135,6 +137,24 @@ while [[ $# -gt 0 ]]; do
       ;;
     --test)
       TEST=1
+      ;;
+    --loop)
+      TEST=1
+      LOOP=15
+      ;;
+    --loop=*)
+      TEST=1
+      LOOP="${1#*=}"
+      case "$LOOP" in
+        ''|*[!0-9]*)
+          die "--loop requires a positive integer (e.g., --loop=15)"
+          ;;
+        *)
+          if [[ "$LOOP" -lt 1 ]]; then
+            die "--loop must be >= 1"
+          fi
+          ;;
+      esac
       ;;
     -h|--help)
       print_help
@@ -246,8 +266,21 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
   if [[ -x "$TEST_EXE" ]]; then
     info "Test executable: $TEST_EXE"
     if [[ "$TEST" -eq 1 ]]; then
-      info "Running tests..."
-      "$TEST_EXE"
+      if [[ "$LOOP" -gt 0 ]]; then
+        COUNT="$LOOP"
+        info "Running tests in a loop ($COUNT iterations)..."
+        for i in $(seq 1 "$COUNT"); do
+          info "Loop $i/$COUNT: starting"
+          if ! "$TEST_EXE"; then
+            die "Loop $i failed (non-zero exit code)"
+          fi
+          info "Loop $i/$COUNT: passed"
+        done
+        info "All $COUNT iterations passed."
+      else
+        info "Running tests..."
+        "$TEST_EXE"
+      fi
     fi
   elif [[ "$TEST" -eq 1 ]]; then
     die "Test executable not found or not executable: $TEST_EXE"

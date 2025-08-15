@@ -186,11 +186,14 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
   - Sanitizers: `--asan`, `--tsan`, `--usan` map to this repo’s CMake options
   - Verbose: `-v` or `--verbose` prints underlying commands
   - Test run: `--test` builds and runs tests (executes `build/tests/PathSpaceTests`)
+  - Loop: `--loop[=N]` runs the selected tests N times (default: 15). Implies `--test`.
+    - Recommended for changes that touch concurrency (WaitMap, Node trie, Task/Executor), since intermittent races may only appear across repeated runs.
   - Examples:
     - `./scripts/compile.sh`
     - `./scripts/compile.sh --clean -j 8 --release`
     - `./scripts/compile.sh -G "Ninja" --target PathSpaceTests`
     - `./scripts/compile.sh --test`
+    - `./scripts/compile.sh --loop=15`
 
 ---
 

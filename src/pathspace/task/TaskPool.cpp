@@ -34,6 +34,11 @@ auto TaskPool::addTask(std::weak_ptr<Task>&& task) -> std::optional<Error> {
     return std::nullopt;
 }
 
+auto TaskPool::submit(std::weak_ptr<Task>&& task) -> std::optional<Error> {
+    // Executor interface: forward to existing addTask logic
+    return this->addTask(std::move(task));
+}
+
 auto TaskPool::shutdown() -> void {
     sp_log("TaskPool::shutdown", "TaskPool");
     // Signal shutdown

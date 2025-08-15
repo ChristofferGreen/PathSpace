@@ -160,6 +160,10 @@ The path system provides thread-safe operations through:
 - Thread-safe path resolution
 - Atomic path operations
 
+Testing guidance:
+- Concurrency and scheduling changes (WaitMap, Node trie, Task/Executor) can expose intermittent races only under repeated runs.
+- Use the build helper to loop tests: `./scripts/compile.sh --loop[=N]` (default N=15) to increase the likelihood of catching rare timing issues.
+
 Wait/notify:
 - Waiters are stored in a trie-backed registry keyed by concrete paths, with a separate registry for glob-pattern waiters.
 - Concrete notifications traverse the trie along the path (O(depth)), while glob notifications filter and match registered patterns.

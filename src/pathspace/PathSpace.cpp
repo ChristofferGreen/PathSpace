@@ -5,8 +5,13 @@ namespace SP {
 
 PathSpace::PathSpace(TaskPool* pool) {
     sp_log("PathSpace::PathSpace", "Function Called");
-    if (this->pool == nullptr)
+    if (pool) {
+        this->pool = pool;
+        this->setExecutor(pool);
+    } else {
         this->pool = &TaskPool::Instance();
+        this->setExecutor(&TaskPool::Instance());
+    }
 };
 
 PathSpace::~PathSpace() {
@@ -74,18 +79,21 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
         if (now >= deadline)
             return Error{Error::Code::Timeout, "Operation timed out waiting for data at path: " + path.toString()};
 
-        // Wait with minimal scope
-        auto guard = waitMap.wait(path.toStringView());
+        // Wait with minimal scope; do not invoke leaf.out while holding WaitMap lock
+        // Wait in short slices to be resilient to missed notifications; never call leaf.out under the WaitMap lock
         {
-            bool success = guard.wait_until(deadline, [&]() {
-                error           = this->leaf.out(path, inputMetadata, obj, options.doPop);
-                bool haveResult = !error.has_value();
-                return haveResult;
-            });
-
-            if (success && !error.has_value())
-                return error;
+            auto guard = waitMap.wait(path.toStringView());
+            auto now2   = std::chrono::system_clock::now();
+            auto remain = deadline - now2;
+            auto slice  = std::chrono::milliseconds(50);
+            if (remain < slice)
+                slice = std::chrono::duration_cast<std::chrono::milliseconds>(remain);
+            guard.wait_until(std::chrono::system_clock::now() + slice);
         }
+        // After being notified, try to read again outside of the WaitMap lock
+        error = this->leaf.out(path, inputMetadata, obj, options.doPop);
+        if (!error.has_value())
+            return error;
 
         if (std::chrono::system_clock::now() >= deadline)
             return Error{Error::Code::Timeout, "Operation timed out after waking from guard, waiting for data at path: " + path.toString()};

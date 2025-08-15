@@ -1,5 +1,6 @@
 #pragma once
 #include "Task.hpp"
+#include "Executor.hpp"
 #include "core/Error.hpp"
 
 #include <atomic>
@@ -12,7 +13,7 @@
 namespace SP {
 
 
-class TaskPool {
+class TaskPool : public Executor {
 public:
     explicit TaskPool(size_t threadCount = std::thread::hardware_concurrency());
     ~TaskPool();
@@ -22,9 +23,10 @@ public:
     TaskPool(TaskPool const&)                    = delete;
     auto operator=(TaskPool const&) -> TaskPool& = delete;
 
+    auto submit(std::weak_ptr<Task>&& task) -> std::optional<Error> override;
     auto addTask(std::weak_ptr<Task>&& task) -> std::optional<Error>;
-    auto shutdown() -> void;
-    auto size() const -> size_t;
+    auto shutdown() -> void override;
+    auto size() const -> size_t override;
 
 private:
     auto workerFunction() -> void;

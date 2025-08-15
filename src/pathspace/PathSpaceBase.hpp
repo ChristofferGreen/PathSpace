@@ -10,6 +10,7 @@
 #include "task/Task.hpp"
 #include "type/InputData.hpp"
 #include "core/NotificationSink.hpp"
+#include "task/Executor.hpp"
 
 #include <optional>
 #include <memory>
@@ -124,7 +125,12 @@ protected:
         return std::weak_ptr<NotificationSink>(notificationSink_);
     }
 
+    // Executor injection point for task scheduling (set by concrete space)
+    void setExecutor(Executor* exec) { executor_ = exec; }
+    Executor* getExecutor() const { return executor_; }
+
     mutable std::shared_ptr<NotificationSink> notificationSink_;
+    Executor*                                 executor_ = nullptr;
     friend class TaskPool;
     friend class PathView;
     friend class PathFileSystem;
