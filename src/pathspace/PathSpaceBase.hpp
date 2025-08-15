@@ -9,8 +9,10 @@
 #include "path/validation.hpp"
 #include "task/Task.hpp"
 #include "type/InputData.hpp"
+#include "core/NotificationSink.hpp"
 
 #include <optional>
+#include <memory>
 
 namespace SP {
 struct InputMetadata;
@@ -43,7 +45,7 @@ public:
         InputData inputData{std::forward<DataType>(data)};
 
         if constexpr (InputMetadataT<DataType>::dataCategory == DataCategory::Execution)
-            inputData.task = Task::Create(this, path.toString(), data, options.executionCategory);
+            inputData.task = Task::Create(this->getNotificationSink(), path.toString(), data, options.executionCategory);
 
         return this->in(path, inputData);
     }
@@ -108,6 +110,20 @@ public:
     }
 
 protected:
+    // Provide a weak NotificationSink for lifetime-safe task notifications.
+    std::weak_ptr<NotificationSink> getNotificationSink() const {
+        if (!notificationSink_) {
+            struct DefaultNotificationSinkImpl : NotificationSink {
+                explicit DefaultNotificationSinkImpl(PathSpaceBase* owner) : owner(owner) {}
+                void notify(const std::string& notificationPath) override { owner->notify(notificationPath); }
+                PathSpaceBase* owner;
+            };
+            notificationSink_ = std::shared_ptr<NotificationSink>(new DefaultNotificationSinkImpl(const_cast<PathSpaceBase*>(this)));
+        }
+        return std::weak_ptr<NotificationSink>(notificationSink_);
+    }
+
+    mutable std::shared_ptr<NotificationSink> notificationSink_;
     friend class TaskPool;
     friend class PathView;
     friend class PathFileSystem;

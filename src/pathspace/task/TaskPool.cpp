@@ -1,5 +1,5 @@
 #include "TaskPool.hpp"
-#include "PathSpace.hpp"
+#include "core/NotificationSink.hpp"
 #include "log/TaggedLogger.hpp"
 
 namespace SP {
@@ -66,9 +66,9 @@ auto TaskPool::size() const -> size_t {
 
 auto TaskPool::workerFunction() -> void {
     while (true) {
-        std::string         notificationPath;
-        PathSpaceBase*      space = nullptr;
-        std::weak_ptr<Task> task;
+        std::string                         notificationPath;
+        std::weak_ptr<NotificationSink>     notifier;
+        std::weak_ptr<Task>                 task;
         {
             std::unique_lock<std::mutex> lock(mutex);
             taskCV.wait(lock, [this] { return this->shuttingDown || !this->tasks.empty(); });
@@ -86,7 +86,7 @@ auto TaskPool::workerFunction() -> void {
         if (auto strongTask = task.lock()) {
             sp_log("TaskPool::workerFunction Task locked successfully", "TaskPool");
             notificationPath = strongTask->notificationPath;
-            space            = strongTask->space;
+            notifier         = strongTask->notifier;
 
             ++activeTasks;
             try {
@@ -104,11 +104,13 @@ auto TaskPool::workerFunction() -> void {
         } else {
             sp_log("TaskPool::workerFunction Failed to lock task - references lost", "TaskPool");
         }
-        if (!notificationPath.empty() && space) {
-            std::lock_guard<std::mutex> lock(mutex);
+        if (!notificationPath.empty()) {
             sp_log("Notifying path: " + notificationPath, "TaskPool");
-            if (!shuttingDown)
-                space->notify(notificationPath);
+            if (!shuttingDown) {
+                if (auto sink = notifier.lock()) {
+                    sink->notify(notificationPath);
+                }
+            }
         }
     }
 

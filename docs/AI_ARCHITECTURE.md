@@ -160,6 +160,9 @@ The path system provides thread-safe operations through:
 - Thread-safe path resolution
 - Atomic path operations
 
+Additional note:
+- Task completion notifications are lifetime-safe via a NotificationSink token. Each `PathSpaceBase` owns a `shared_ptr<NotificationSink>` that forwards to its `notify(path)`; `Task` objects capture a `weak_ptr<NotificationSink>`. During shutdown, the `PathSpace` resets the `shared_ptr` so late notifications are dropped cleanly without dereferencing stale pointers.
+
 ### Path Error Handling
 Comprehensive error handling for path operations:
 - Path validation errors
@@ -170,6 +173,8 @@ Comprehensive error handling for path operations:
 
 ## Internal Data
 PathSpace can be seen as a map between a path and a vector of data. Inserting more data to the path will append it to the end. Reading data from the path will return a copy of the front data. Extracting data from a path will pop and return the front data of the vector for the path.
+
+Additionally, nodes may hold `Task` objects representing deferred computations alongside serialized bytes. `NodeData` stores tasks (`std::shared_ptr<Task>`) and, when tasks complete, notifications are delivered via a `NotificationSink` interface: tasks hold a `std::weak_ptr<NotificationSink>` and the owning `PathSpaceBase` provides the `shared_ptr` token and forwards to `notify(path)`. This removes the need for a global registry and prevents use-after-free races during teardown (the space resets its token during shutdown, causing late notifications to be dropped safely).
 
 ## Syntax Example
 ```

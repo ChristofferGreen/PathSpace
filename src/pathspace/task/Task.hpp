@@ -3,10 +3,12 @@
 #include "core/ExecutionCategory.hpp"
 #include "log/TaggedLogger.hpp"
 #include "type/InputData.hpp"
+#include "core/NotificationSink.hpp"
 
 #include <any>
 #include <cassert>
 #include <functional>
+#include <memory>
 #include <thread>
 
 namespace SP {
@@ -29,6 +31,35 @@ struct Task {
 
             auto task               = std::shared_ptr<Task>(new Task{});
             task->space             = space;
+            task->notificationPath  = notificationPath;
+            task->executionCategory = (inExecutionCategory == ExecutionCategory::Unknown) ? ExecutionCategory::Immediate : inExecutionCategory;
+            task->function          = [fun = userFunction](Task& task, bool const) {
+                sp_log("Task lambda execution", "Task");
+                task.result = fun();
+                sp_log("Task lambda completed", "Task");
+            };
+            task->resultCopy_ = [](std::any const& from, void* const to) {
+                sp_log("Task copying result", "Task");
+                *static_cast<ResultType*>(to) = std::any_cast<ResultType>(from);
+            };
+
+            return task;
+        } else {
+            sp_log("Task::Create - Invalid callable type", "ERROR");
+            return nullptr;
+        }
+    }
+
+    template <typename DataType>
+    static auto Create(std::weak_ptr<NotificationSink> notifier, std::string_view const& notificationPath, DataType const& userFunction, ExecutionCategory const& inExecutionCategory) -> std::shared_ptr<Task> {
+        sp_log("Task::Create", "Function Called");
+
+        // For any callable type (lambda, function pointer, etc)
+        if constexpr (requires { typename std::invoke_result_t<DataType>; }) {
+            using ResultType = std::invoke_result_t<DataType>;
+
+            auto task               = std::shared_ptr<Task>(new Task{});
+            task->notifier          = std::move(notifier);
             task->notificationPath  = notificationPath;
             task->executionCategory = (inExecutionCategory == ExecutionCategory::Unknown) ? ExecutionCategory::Immediate : inExecutionCategory;
             task->function          = [fun = userFunction](Task& task, bool const) {
@@ -77,6 +108,7 @@ private:
     std::function<void(std::any const& from, void* const to)> resultCopy_;       // Function to copy the result
     std::any                                                  result;            // Result of the task execution
     ExecutionCategory                                         executionCategory; // Optional execution options for the task
+    std::weak_ptr<NotificationSink>                           notifier;          // Weak reference to notification sink for lifetime-safe notifications
     std::string                                               notificationPath;
 };
 

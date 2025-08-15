@@ -26,6 +26,7 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
   - `Leaf.hpp` / `Leaf.cpp` — manages node traversal and delegates to `NodeData`.
   - `NodeData.hpp` / `NodeData.cpp` — primary per-node storage: serialized data or queued `Task`s; (de)serialization and type bookkeeping.
   - `WaitMap.hpp` / `WaitMap.cpp` — condition-variable map used to block/wake readers waiting for data.
+  - `NotificationSink.hpp` — lifetime-safe notification interface; tasks hold a weak_ptr token, and spaces own the shared token.
   - `Error.hpp`, `In.hpp`, `Out.hpp`, `InsertReturn.hpp`, `ElementType.hpp`, etc. — small core types used by the core logic.
 
 - `PathSpace/src/pathspace/task/` — task execution:
@@ -83,6 +84,7 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
 - `Task` / `TaskPool` (`PathSpace/src/pathspace/task/`)
   - `Task` encapsulates a callable, result storage (`std::any`), and a small adaptor to copy the result into user-provided output buffers (`resultCopy_`).
   - `TaskPool` maintains worker threads and processes queued tasks, tracking active workers/tasks and returning `Error` on overload/shutdown.
+  - `NotificationSink` (`PathSpace/src/pathspace/core/NotificationSink.hpp`) provides lifetime-safe notifications. `Task` holds a `weak_ptr<NotificationSink>`, and `PathSpaceBase` owns the token and forwards notify calls.
 
 - `WaitMap` (`PathSpace/src/pathspace/core/WaitMap.hpp`)
   - Maintains a mapping from path string -> `std::condition_variable`.
@@ -130,7 +132,8 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
 ## Concurrency & thread-safety notes
 
 - `WaitMap` internally synchronizes access to the condition variable map via `mutex`.
-- `TaskPool` uses worker threads (`std::jthread`) and `std::condition_variable` to schedule tasks.
+- `TaskPool` uses worker threads and `std::condition_variable` to schedule tasks.
+- Tasks notify via a `weak_ptr<NotificationSink>`; `PathSpaceBase` resets its `shared_ptr` during shutdown so late notifications are dropped safely.
 - `NodeData` may contain `Task` objects (shared pointers) and a `SlidingBuffer`. Serialization/deserialization must be used carefully if adding new methods—`NodeData` methods assume proper locking at call sites (the `Leaf`/`NodeDataHashMap` manage access).
 - `PathSpace::out` implements a loop with `waitMap.wait` and `wait_until` to implement blocking with deadlines. The pattern minimizes lock scope.
 
@@ -155,6 +158,7 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
 - Node storage & type bookkeeping: `NodeData` (`PathSpace/src/pathspace/core/NodeData.*`).
 - Path parsing and validation: `Iterator` and `validation.hpp` (`PathSpace/src/pathspace/path/`).
 - Task lifecycle and thread pool: `Task.hpp` and `TaskPool.hpp` (`PathSpace/src/pathspace/task/`).
+- Notification sink and lifetime: `NotificationSink.hpp` (`PathSpace/src/pathspace/core/NotificationSink.hpp`).
 - Wait-notify primitives: `WaitMap.hpp` (`PathSpace/src/pathspace/core/WaitMap.hpp`).
 - Logging utilities: `TaggedLogger.hpp` (`PathSpace/src/pathspace/log/TaggedLogger.hpp`).
 
@@ -164,7 +168,7 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
 
 - Find data-flow entrypoints: search for `PathSpace::in` / `PathSpace::out` or `PathSpaceBase::insert`.
 - Find node-level code: grep for `NodeData::` and for `Leaf::`.
-- Find task flow: grep for `Task::Create`, `TaskPool::addTask`, and `Task::resultCopy`.
+- Find task flow: grep for `Task::Create`, `TaskPool::addTask`, `NotificationSink`, and `Task::resultCopy`.
 
 ---
 
@@ -181,10 +185,12 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
   - Target: `-t NAME` or `--target NAME` to build a specific target (e.g., `PathSpaceTests`)
   - Sanitizers: `--asan`, `--tsan`, `--usan` map to this repo’s CMake options
   - Verbose: `-v` or `--verbose` prints underlying commands
+  - Test run: `--test` builds and runs tests (executes `build/tests/PathSpaceTests`)
   - Examples:
     - `./scripts/compile.sh`
     - `./scripts/compile.sh --clean -j 8 --release`
     - `./scripts/compile.sh -G "Ninja" --target PathSpaceTests`
+    - `./scripts/compile.sh --test`
 
 ---
 

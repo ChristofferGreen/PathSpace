@@ -7,9 +7,10 @@
 #include <mutex>
 #include <queue>
 #include <thread>
+#include <optional>
 
 namespace SP {
-struct Task;
+
 
 class TaskPool {
 public:

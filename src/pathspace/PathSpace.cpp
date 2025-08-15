@@ -23,6 +23,8 @@ auto PathSpace::clear() -> void {
 auto PathSpace::shutdown() -> void {
     sp_log("PathSpace::shutdown", "Function Called");
     sp_log("PathSpace::shutdown Starting shutdown", "PathSpaceShutdown");
+    // Invalidate notification sink so future notifications are dropped
+    this->notificationSink_.reset();
     this->waitMap.notifyAll();
     sp_log("PathSpace::shutdown Notified all waiters", "PathSpaceShutdown");
     this->leaf.clear();

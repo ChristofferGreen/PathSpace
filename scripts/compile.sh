@@ -30,6 +30,7 @@ GENERATOR=""
 TARGET=""
 VERBOSE=0
 SANITIZER=""  # "asan" | "tsan" | "usan"
+TEST=0        # run tests after build if 1
 
 # ----------------------------
 # Helpers
@@ -57,6 +58,7 @@ Options:
   -G, --generator NAME       CMake generator (e.g., "Ninja", "Unix Makefiles").
   -t, --target NAME          Build a specific target (default: all).
   -v, --verbose              Print commands before running them.
+      --test                 Build and run tests (executes build/tests/PathSpaceTests).
   -h, --help                 Show this help and exit.
 
 Sanitizers (mutually exclusive, maps to CMake options in this repo):
@@ -68,6 +70,7 @@ Examples:
   $0
   $0 --clean -j 8 --release
   $0 -G "Ninja" --target PathSpaceTests
+  $0 --test
 EOF
 }
 
@@ -129,6 +132,9 @@ while [[ $# -gt 0 ]]; do
       ;;
     -v|--verbose)
       VERBOSE=1
+      ;;
+    --test)
+      TEST=1
       ;;
     -h|--help)
       print_help
@@ -239,5 +245,13 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
   TEST_EXE="$BUILD_DIR/tests/PathSpaceTests"
   if [[ -x "$TEST_EXE" ]]; then
     info "Test executable: $TEST_EXE"
+    if [[ "$TEST" -eq 1 ]]; then
+      info "Running tests..."
+      "$TEST_EXE"
+    fi
+  elif [[ "$TEST" -eq 1 ]]; then
+    die "Test executable not found or not executable: $TEST_EXE"
   fi
+elif [[ "$TEST" -eq 1 ]]; then
+  die "Tests directory not found: $BUILD_DIR/tests"
 fi
