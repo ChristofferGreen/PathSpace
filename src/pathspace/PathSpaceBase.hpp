@@ -45,6 +45,8 @@ public:
             }
         } else {*/
         InputData inputData{std::forward<DataType>(data)};
+        // Thread the injected executor through InputData so downstream (NodeData) can schedule via Executor
+        inputData.executor = this->getExecutor();
 
         if constexpr (InputMetadataT<DataType>::dataCategory == DataCategory::Execution)
             inputData.task = Task::Create(this->getNotificationSink(), path.toString(), data, options.executionCategory);

@@ -14,9 +14,16 @@ auto NodeData::serialize(const InputData& inputData) -> std::optional<Error> {
     if (inputData.task) {
         this->tasks.push_back(std::move(inputData.task));
         bool const isImmediateExecution = (*this->tasks.rbegin())->category() == ExecutionCategory::Immediate;
-        if (isImmediateExecution)
-            if (auto const ret = TaskPool::Instance().submit(this->tasks.back()))
-                return ret;
+        if (isImmediateExecution) {
+            // Prefer injected executor when available; fall back to TaskPool singleton
+            if (inputData.executor) {
+                if (auto const ret = inputData.executor->submit(this->tasks.back()))
+                    return ret;
+            } else {
+                if (auto const ret = TaskPool::Instance().submit(this->tasks.back()))
+                    return ret;
+            }
+        }
     } else {
         if (!inputData.metadata.serialize)
             return Error{Error::Code::SerializationFunctionMissing, "Serialization function is missing."};
@@ -76,9 +83,13 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
         ExecutionCategory const taskExecutionCategory = task->category();
         bool const              isLazyExecution       = taskExecutionCategory == ExecutionCategory::Lazy;
 
-        if (isLazyExecution)
+        if (isLazyExecution) {
+            // Prefer injected executor when available; fall back to TaskPool singleton
+            // We don't have InputData here, so rely on the task already enqueued via serialize,
+            // or re-submit via singleton as a safe fallback to preserve behavior.
             if (auto ret = TaskPool::Instance().submit(task); ret)
                 return ret;
+        }
     }
 
     if (task->isCompleted()) {

@@ -50,6 +50,7 @@ add_library(PathSpace
     task/Task.cpp
     task/TaskPool.cpp
     task/TaskStateAtomic.cpp
+    task/Future.cpp
     type/SlidingBuffer.cpp
     log/TaggedLogger.cpp
     PathSpace.cpp
