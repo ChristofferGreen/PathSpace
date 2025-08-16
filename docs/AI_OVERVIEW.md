@@ -275,9 +275,10 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
   - `./build/devices_example`
   - Press Ctrl-C to exit.
 - Behavior:
-  - Prints simulated plug/unplug from a discovery provider (by default, the example simulates devices).
-  - Prints mouse moves/clicks/wheel from a `PathIOMice` provider, and keyboard keydown/keyup/text from a `PathIOKeyboard` provider.
-  - To switch from simulation to real OS backends in the future, disable simulation in the example and mount the OS-specific providers instead (e.g., macOS backends guarded by `ENABLE_PATHIO_MACOS`).
+  - No simulation: the example listens for real input events from mounted providers.
+  - On macOS with `-DENABLE_PATHIO_MACOS=ON`, the example can start the macOS backend skeletons which generate events via OS hooks when implemented (they are currently scaffolding).
+  - It logs mouse moves/clicks/wheel from a `PathIOMice` provider and keyboard keydown/keyup/text from a `PathIOKeyboard` provider.
+  - Plug/unplug messages are inferred using an inactivity heuristic (first event marks "plug-in"; prolonged idle marks "unplug") since there is no OS-level hotplug API wired yet.
     - `./scripts/compile.sh --test`
     - `./scripts/compile.sh --loop=15`
 
