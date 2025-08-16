@@ -58,6 +58,13 @@ add_library(PathSpace
     PathSpace.cpp
 )
 
+# macOS-specific Objective-C++ implementation for PathIO backends (optional)
+if(APPLE AND ENABLE_PATHIO_MACOS)
+    target_sources(PathSpace PRIVATE layer/macos/PathIO_macos.mm)
+    # Ensure Objective-C++ language for .mm on Apple/Clang
+    set_source_files_properties(layer/macos/PathIO_macos.mm PROPERTIES LANGUAGE CXX)
+endif()
+
 target_compile_options(PathSpace PUBLIC "-Wno-deprecated")
 
 target_include_directories(PathSpace
@@ -85,7 +92,7 @@ target_link_libraries(PathSpace
     # foonathan_memory
 )
 
-set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "PathSpace.hpp;layer/PathIO.hpp;layer/PathIOMice.hpp;layer/PathIOKeyboard.hpp;layer/PathIOStdOut.hpp;layer/PathAlias.hpp;layer/PathIODeviceDiscovery.hpp")
+set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "PathSpace.hpp;layer/PathIO.hpp;layer/PathIOMice.hpp;layer/PathIOKeyboard.hpp;layer/PathIOStdOut.hpp;layer/PathAlias.hpp;layer/PathIODeviceDiscovery.hpp;layer/PathIOPointerMixer.hpp")
 
 install(TARGETS PathSpace
     ARCHIVE DESTINATION lib

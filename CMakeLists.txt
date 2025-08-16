@@ -63,6 +63,16 @@ if(APPLE AND ENABLE_PATHIO_MACOS)
     add_compile_definitions(PATHIO_BACKEND_MACOS=1)
 endif()
 
+# Examples (optional)
+option(BUILD_PATHSPACE_EXAMPLES "Build PathSpace examples" OFF)
+if(BUILD_PATHSPACE_EXAMPLES)
+    add_executable(devices_example examples/devices_example.cpp)
+    target_link_libraries(devices_example PRIVATE PathSpace)
+    if(APPLE AND ENABLE_PATHIO_MACOS)
+        target_compile_definitions(devices_example PRIVATE PATHIO_BACKEND_MACOS=1)
+    endif()
+endif()
+
 if(CMAKE_EXPORT_COMPILE_COMMANDS)
     add_custom_target(
         copy-compile-commands ALL
