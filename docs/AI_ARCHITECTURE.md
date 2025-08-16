@@ -383,7 +383,23 @@ TBD
 TBD
 
 ## Views
-TBD
+PathSpace supports read-only projections and permission gating through `src/pathspace/layer/PathView.hpp` (view with a permission callback) and path aliasing/forwarding via `src/pathspace/layer/PathAlias.hpp`.
+
+- PathView: wraps an underlying `PathSpaceBase` and enforces a `Permission(Iterator)` policy for `in`/`out`. It can also optionally prepend a root mount prefix when forwarding paths.
+- PathAlias: a lightweight alias layer that forwards `in`/`out`/`notify` to an upstream space after rewriting the path using a configurable `targetPrefix`. It supports atomic retargeting and uses the iterator tail (current->end) so nested mounts resolve correctly.
+
+Concurrency and notifications:
+- Both layers are mount-agnostic; they adopt the parent `PathSpaceContext` when inserted so that `notify`/wait semantics flow through naturally.
+- `PathAlias` emits a notification on its mount path when retargeted to prompt waiters to re-check.
 
 ## Operating System
-TBD
+Device IO is provided by path-agnostic layers that can be mounted anywhere in a parent `PathSpace`, with platform backends feeding events into them:
+
+- `src/pathspace/layer/PathIOMice.hpp` and `src/pathspace/layer/PathIOKeyboard.hpp` expose typed event queues (MouseEvent/KeyboardEvent) with blocking `out()`/`take()` (peek vs pop via `Out.doPop`). When mounted with a shared context, `simulateEvent()` wakes blocking readers.
+- `src/pathspace/layer/PathIODeviceDiscovery.hpp` provides a simulation-backed `/dev`-like discovery surface (classes, device IDs, per-device `meta` and `capabilities`), using iterator tail mapping for correct nested mounts.
+
+macOS backend skeletons (guarded by CMake):
+- `src/pathspace/layer/macos/PathIO_macos.hpp` declares `PathIOMiceMacOS` and `PathIOKeyboardMacOS` that derive from the providers and host a worker thread for CGEventTap/IOKit HID integration (to be implemented in `.mm/.cpp`).
+- Enable with `-DENABLE_PATHIO_MACOS=ON` (defines `PATHIO_BACKEND_MACOS`); CI remains simulation-only by default.
+
+Note: First-class links (symlinks) are planned; in the interim, `PathAlias` offers robust forwarding/retargeting semantics without changing core trie invariants.

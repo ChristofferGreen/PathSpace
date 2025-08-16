@@ -49,7 +49,28 @@ echo "[pre-push] OK"
 
 This document is written for an AI (or new engineer) that needs to understand the structure, responsibilities and relationships of components in the `PathSpace` project. It maps the main subsystems to file locations, describes typical data flows (insert / read / take), and summarizes concurrency and extension points.
 
+New layers and IO building blocks:
+- `src/pathspace/layer/PathAlias.hpp` — path aliasing/forwarding layer
+  - Forwards `in`/`out`/`notify` to an upstream `PathSpaceBase` with a configurable `targetPrefix`.
+  - Supports atomic retargeting and plays well with nested mounts by using the iterator tail (current->end).
+- `src/pathspace/layer/PathIOMice.hpp` and `src/pathspace/layer/PathIOKeyboard.hpp` — device IO providers (path-agnostic)
+  - Provide thread-safe simulated event queues and typed `out()`/`take()` for `MouseEvent`/`KeyboardEvent`.
+  - Respect `Out.doPop` (peek vs pop) and `Out.doBlock` timeouts.
+  - When mounted with a shared context, `simulateEvent()` wakes blocking readers.
+- `src/pathspace/layer/PathIOStdOut.hpp` — simple sink that prints inserted `std::string` to stdout (optional prefix/newline).
+- `src/pathspace/layer/PathIODeviceDiscovery.hpp` — simulation-backed `/dev`-like discovery
+  - Lists classes, device IDs, per-device `meta` and `capabilities`.
+  - Mount anywhere (e.g., `/dev`) and it works via iterator tail mapping.
+
+Platform backends (macOS skeletons):
+- `src/pathspace/layer/macos/PathIO_macos.hpp` contains skeletons:
+  - `PathIOMiceMacOS` and `PathIOKeyboardMacOS` derive from the providers and host a worker thread to integrate CGEventTap/IOKit HID in a future .mm/.cpp.
+- Build flag:
+  - Add `-DENABLE_PATHIO_MACOS=ON` to CMake on macOS to define `PATHIO_BACKEND_MACOS` and include these skeletons (no-op in CI by default).
+- CI remains simulation-only by default (no OS hooks).
+
 ---
+
 
 ## High-level summary
 
@@ -219,7 +240,7 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
 
 ---
 
-## Tests & build
+### Tests & build
 
 - Tests live under `PathSpace/tests`.
 - Build is configured by `CMakeLists.txt` at project root and `PathSpace/src/pathspace/CMakeLists.txt`.
@@ -235,7 +256,7 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
   - Test run: `--test` builds and runs tests (executes `build/tests/PathSpaceTests`)
   - Loop: `--loop[=N]` runs the selected tests N times (default: 15). Implies `--test`.
     - Recommended for changes that touch concurrency (WaitMap, Node trie, Task/Executor), since intermittent races may only appear across repeated runs.
-  - Examples:
+  Examples:
     - `./scripts/compile.sh`
     - `./scripts/compile.sh --clean -j 8 --release`
     - `./scripts/compile.sh -G "Ninja" --target PathSpaceTests`
