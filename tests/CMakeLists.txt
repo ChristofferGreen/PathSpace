@@ -9,6 +9,11 @@ add_executable(PathSpaceTests
   unit/type/test_SlidingBuffer.cpp
   unit/layer/test_PathView.cpp
   unit/layer/test_PathFileSystem.cpp
+  unit/layer/test_PathIO.cpp
+  unit/layer/test_PathIODevices.cpp
+  unit/layer/test_PathIOStdOut.cpp
+  unit/layer/test_PathAlias.cpp
+  unit/layer/test_PathIODeviceDiscovery.cpp
   unit/ext/test_alpaca.cpp
   unit/task/test_TaskPool.cpp
   unit/test_PathSpace_read.cpp

@@ -771,10 +771,39 @@ tasks:
       - Add options and platform checks in CMake; document flags.
  ```
 
-Additional machine-readable tasks (device path namespace)
+Additional machine-readable tasks (device path namespace and links/aliases)
 
 ```yaml
 tasks:
+  - id: LINKS-ALIAS-CORE
+    title: Implement path links/aliases as first-class feature
+    rationale: Provide transparent path indirection (akin to symlinks) so users can place devices anywhere in a parent PathSpace; enables defaults like /system/input/pointer/default and retargeting without changing clients.
+    area: core
+    priority: P1
+    complexity: M
+    status: planned
+    labels: [alias, links, indirection, notify]
+    code_paths:
+      - PathSpace/src/pathspace/core/Node.hpp
+      - PathSpace/src/pathspace/core/Leaf.cpp
+      - PathSpace/src/pathspace/PathSpace.cpp
+    test_paths:
+      - PathSpace/tests/unit/test_PathSpace_read.cpp
+      - PathSpace/tests/unit/test_PathSpace_insert.cpp
+      - PathSpace/tests/unit/layer/test_PathIO.cpp
+    doc_paths:
+      - PathSpace/docs/AI_OVERVIEW.md
+      - PathSpace/docs/AI_ARCHITECTURE.md
+      - PathSpace/docs/AI_TODO.md
+    acceptance_criteria:
+      - Links can be created and removed programmatically (temporary API) and resolve transparently for read/take.
+      - Notify bridging: waiters on the link receive notifications when the target changes or produces data.
+      - Cycle detection prevents recursive/looping links; link updates are atomic and generate a notification.
+      - loop=15 remains green with link-heavy tests.
+    steps:
+      - Choose approach v1: PathAlias layer (rewrite and forward) or first-class Node link edges; prefer layer to avoid core surgery initially.
+      - Implement transparent resolution and notify bridging, with cycle detection.
+      - Add tests for alias creation, retargeting, cycles, and nested mounting with PathIO-derived providers.
   - id: PATHS-DEVICE-NAMESPACE
     title: Design standard device path namespace (Plan 9/Linux style)
     rationale: Establish a canonical, extensible namespace for device I/O paths similar to Plan 9/Linux, enabling consistent discovery and interaction across mice, keyboards, gamepads, touch screens, and tablets.

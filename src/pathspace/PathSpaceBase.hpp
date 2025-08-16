@@ -11,7 +11,7 @@
 #include "type/InputData.hpp"
 #include "core/NotificationSink.hpp"
 #include "task/Executor.hpp"
-
+#include "task/Future.hpp"
 #include "task/TaskT.hpp"
 #include "task/IFutureAny.hpp"
 #include <type_traits>
@@ -19,6 +19,7 @@
 
 #include <optional>
 #include <memory>
+#include <string>
 
 namespace SP {
 struct InputMetadata;
@@ -186,26 +187,43 @@ protected:
         return executor_;
     }
 
-    // Expose shared context for friends (e.g., Leaf) to adopt for nested spaces
-    std::shared_ptr<PathSpaceContext> getContext() const { return context_; }
+        // Expose shared context for friends (e.g., Leaf) to adopt for nested spaces
+        std::shared_ptr<PathSpaceContext> getContext() const { return context_; }
 
-    mutable std::shared_ptr<NotificationSink> notificationSink_;
-    std::shared_ptr<PathSpaceContext>         context_;
-    Executor*                                 executor_ = nullptr;
-    friend class TaskPool;
-    friend class PathView;
-    friend class PathFileSystem;
-    friend class PathSpace;
-    friend class Leaf;
+        // Allow nested providers to adopt shared context and an optional mount prefix.
+        // Default implementation adopts the context and aligns the executor if present.
+        // The prefix is intentionally ignored here; concrete PathSpace implementations may store it.
+        virtual void adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context, std::string /*prefix*/) {
+            context_ = std::move(context);
+            if (context_ && context_->executor()) {
+                executor_ = context_->executor();
+            }
+        }
 
-    // Hook for concrete spaces to expose a type-erased future aligned with an execution node.
-    // Default implementation returns no future; PathSpace overrides to provide a real handle.
-    virtual std::optional<FutureAny> typedPeekFuture(std::string_view) const { return std::nullopt; }
+        // Public forwarding helpers (wrap protected virtuals) to enable aliasing layers
+    public:
+        InsertReturn forwardIn(Iterator const& path, InputData const& data) { return this->in(path, data); }
+        std::optional<Error> forwardOut(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) { return this->out(path, inputMetadata, options, obj); }
+        void forwardNotify(std::string const& notificationPath) { this->notify(notificationPath); }
 
-    virtual auto in(Iterator const& path, InputData const& data) -> InsertReturn                                                      = 0;
-    virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> = 0;
-    virtual auto shutdown() -> void                                                                                                   = 0;
-    virtual auto notify(std::string const& notificationPath) -> void                                                                  = 0;
-};
+    protected:
+        mutable std::shared_ptr<NotificationSink> notificationSink_;
+        std::shared_ptr<PathSpaceContext>         context_;
+        Executor*                                 executor_ = nullptr;
+        friend class TaskPool;
+        friend class PathView;
+        friend class PathFileSystem;
+        friend class PathSpace;
+        friend class Leaf;
+
+        // Hook for concrete spaces to expose a type-erased future aligned with an execution node.
+        // Default implementation returns no future; PathSpace overrides to provide a real handle.
+        virtual std::optional<FutureAny> typedPeekFuture(std::string_view) const { return std::nullopt; }
+
+        virtual auto in(Iterator const& path, InputData const& data) -> InsertReturn                                                      = 0;
+        virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> = 0;
+        virtual auto shutdown() -> void                                                                                                   = 0;
+        virtual auto notify(std::string const& notificationPath) -> void                                                                  = 0;
+    };
 
 } // namespace SP

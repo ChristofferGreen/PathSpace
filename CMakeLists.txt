@@ -26,6 +26,9 @@ option(ENABLE_THREAD_SANITIZER "Enable Thread Sanitizer" OFF)
 option(ENABLE_ADDRESS_SANITIZER "Enable Address Sanitizer" OFF)
 option(ENABLE_UNDEFINED_SANITIZER "Enable Undefined Behavior Sanitizer" OFF)
 
+# PathIO platform backends
+option(ENABLE_PATHIO_MACOS "Enable macOS PathIO backends (IOKit/CoreGraphics/HID)" OFF)
+
 # Check if Clang is used, set it to use libc++
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     #add_compile_options(-D__cpp_concepts=202002L)
@@ -54,6 +57,11 @@ endif()
 enable_testing()
 add_subdirectory(src/pathspace)
 add_subdirectory(tests)
+
+# Platform-specific defines for PathIO backends
+if(APPLE AND ENABLE_PATHIO_MACOS)
+    add_compile_definitions(PATHIO_BACKEND_MACOS=1)
+endif()
 
 if(CMAKE_EXPORT_COMPILE_COMMANDS)
     add_custom_target(
