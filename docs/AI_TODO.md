@@ -62,7 +62,6 @@ tasks:
       - Update AI docs to describe unified wait/notify semantics and complexity trade-offs.
     risks:
       - Performance regressions if naive scanning; ensure short critical sections and amortized behavior.
-
   - id: OUT-SLICE-TUNABLES
     title: Make blocking slice duration configurable
     rationale: Reduce latency variance; allow tuning per call or globally.
@@ -87,7 +86,6 @@ tasks:
       - Add a field to Out (e.g., waitSliceMs) with defaults.
       - Thread through PathSpace::out loop; respect deadline math.
       - Update docs and examples.
-
   - id: LOG-ALLOWLIST
     title: Introduce logger allowlist (enabledTags) and prune noisy defaults
     rationale: Keep tests and CI quiet by default; enable targeted categories on demand.
@@ -108,7 +106,6 @@ tasks:
     steps:
       - Add allowlist guard in logging hot path; prefer allowlist if non-empty.
       - Provide a simple API for toggling tags; document usage.
-
   - id: DOCS-BACKPRESSURE
     title: Document back-pressure handling and queue growth bounds
     rationale: Clarify system behavior under high producer/consumer skew and how to mitigate.
@@ -129,7 +126,6 @@ tasks:
       - AI_ARCHITECTURE.md “Back-Pressure Handling” section is populated with current behavior, queueing, and mitigation.
       - Pointers to NodeData type queues, task queues, and any limits; trade-offs explained.
       - One test subcase references doc guidance via comments.
-
   - id: DOCS-FAULT-TOLERANCE
     title: Document fault tolerance and error propagation
     rationale: Make error surfaces predictable (task exceptions, read/take failures, shutdown behavior).
@@ -150,7 +146,6 @@ tasks:
     acceptance_criteria:
       - “Fault Tolerance” section describes exception handling, retries (if any), and read/take error codes.
       - Link to tests that exercise exception paths; clarify expected logs.
-
   - id: DOCS-DEFAULT-PATHS-VIEWS
     title: Fill in “Default Paths” and “Views” documentation
     rationale: Help engineers understand view semantics and expected defaults/mounts.
@@ -170,7 +165,6 @@ tasks:
     acceptance_criteria:
       - “Views” and “Default Paths” sections describe API, invariants, and examples mapped to existing tests.
       - Cross-references to file paths and tests are valid.
-
   - id: CI-MACOS
     title: Add a macOS CI job mirroring loop=15
     rationale: Catch platform-specific issues early (allocator, threading, libc++).
@@ -188,7 +182,6 @@ tasks:
     acceptance_criteria:
       - A macOS job runs ./scripts/compile.sh --clean --test --loop=15.
       - Branch protection includes both Linux and macOS checks.
-
   - id: FUTURE-PEEK-TESTS
     title: Add tests for peekFuture (legacy) and readFuture (typed any)
     rationale: Lock in handle exposure for execution nodes and prevent regressions.
@@ -208,7 +201,6 @@ tasks:
     acceptance_criteria:
       - New subcases assert that peekFuture returns a valid Future when an execution exists.
       - readFuture returns a valid FutureAny for typed tasks; both paths non-blocking and consistent.
-
   - id: REG-UNIFY-SEMANTICS
     title: Unify WaitMap and WatchRegistry semantics or provide a clear adapter
     rationale: Reduce mental overhead; ensure one authoritative path for wait/notify semantics.
@@ -230,6 +222,167 @@ tasks:
     acceptance_criteria:
       - A single abstraction governs waiters; glob/concrete behaviors documented and tested.
       - No functional regressions; loop=15 remains green; performance notes updated.
+  - id: PAPER-OUTLINE
+    title: Write a paper outline for PathSpace (tech and philosophy)
+    rationale: Establish scope, contributions, and structure early to guide writing and experiments.
+    area: docs
+    priority: P1
+    complexity: M
+    status: planned
+    labels: [paper, research, writing]
+    code_paths: []
+    test_paths: []
+    doc_paths:
+      - PathSpace/docs/AI_OVERVIEW.md
+      - PathSpace/docs/AI_ARCHITECTURE.md
+      - PathSpace/docs/AI_TODO.md
+    acceptance_criteria:
+      - 1–2 page outline with sections: Introduction, Motivation, System Overview, Design Principles, Core Abstractions (paths, NodeData, WatchRegistry/WaitMap, Task model), Concurrency, Performance, Case Studies, Related Work, Limitations, Future Work.
+      - Clear thesis and list of contributions (bulleted).
+      - Timeline and artifact plan referenced.
+    steps:
+      - Draft outline in docs/ (e.g., docs/paper/outline.md).
+      - Iterate with stakeholders; finalize scope and contributions.
+      - Align outline sections with existing docs to avoid duplication.
+  - id: PAPER-FIGURES
+    title: Prepare figures and diagrams
+    rationale: Visuals clarify PathSpace architecture and data flow.
+    area: docs
+    priority: P2
+    complexity: M
+    status: planned
+    labels: [paper, figures, diagrams]
+    code_paths: []
+    test_paths: []
+    doc_paths:
+      - PathSpace/docs/images/
+      - PathSpace/docs/AI_OVERVIEW.md
+      - PathSpace/docs/AI_ARCHITECTURE.md
+    acceptance_criteria:
+      - At least 4 figures: high-level architecture, data flow (insert/read/take), wait/notify sequence, concurrency model.
+      - Stored as SVG in docs/images/ with alt text.
+      - Referenced in both the paper draft and AI docs.
+    steps:
+      - Create Mermaid/SVG diagrams; ensure legibility in light/dark.
+      - Add captions/alt text; cross-link from relevant sections.
+  - id: PAPER-BENCH
+    title: Benchmark plan and results for the paper
+    rationale: Provide quantitative support for claims (latency, throughput, scalability).
+    area: docs
+    priority: P1
+    complexity: L
+    status: planned
+    labels: [paper, benchmarks, performance]
+    code_paths:
+      - PathSpace/scripts/compile.sh
+      - PathSpace/src/pathspace/task/TaskPool.cpp
+      - PathSpace/src/pathspace/core/NodeData.cpp
+    test_paths:
+      - PathSpace/tests/unit/test_PathSpace_multithreading.cpp
+    doc_paths:
+      - PathSpace/docs/AI_ARCHITECTURE.md
+      - PathSpace/docs/AI_OVERVIEW.md
+      - PathSpace/docs/AI_TODO.md
+    acceptance_criteria:
+      - Reproducible benchmark scripts and documented environment.
+      - Results include med/avg/percentiles for key operations; graphs included.
+      - Discussion of trade-offs and limitations; ties back to design principles.
+    steps:
+      - Define workloads; add scripts/bench targets as needed.
+      - Capture results; generate plots (SVG/PNG) under docs/images/.
+      - Integrate into paper draft with interpretation.
+  - id: PAPER-ARTIFACT
+    title: Artifact and replication package
+    rationale: Ensure the paper is reproducible and useful to reviewers and readers.
+    area: docs
+    priority: P1
+    complexity: M
+    status: planned
+    labels: [paper, artifact, reproducibility]
+    code_paths:
+      - PathSpace/scripts/compile.sh
+      - PathSpace/.github/workflows/ci.yml
+    test_paths: []
+    doc_paths:
+      - PathSpace/docs/AI_TODO.md
+      - PathSpace/docs/AI_OVERVIEW.md
+    acceptance_criteria:
+      - A tagged release with instructions to build, test, and reproduce experiments.
+      - CI job verifies artifact building and test loops; checksums for large assets if any.
+      - README with step-by-step replication guidance.
+    steps:
+      - Script a one-command setup; document dependencies clearly.
+      - Add CI job to validate replication path on Linux (and macOS if added).
+  - id: PAPER-RELATED
+    title: Related work survey
+    rationale: Position PathSpace among existing systems and abstractions.
+    area: docs
+    priority: P2
+    complexity: M
+    status: planned
+    labels: [paper, related-work]
+    code_paths: []
+    test_paths: []
+    doc_paths:
+      - PathSpace/docs/AI_TODO.md
+    acceptance_criteria:
+      - Annotated bibliography with 10–20 key references; mapping to PathSpace contributions.
+      - Summary table (CSV/Markdown) of features vs. systems if applicable.
+    steps:
+      - Collect references; write summaries; identify differentiators.
+  - id: PAPER-VENUE
+    title: Select target venue and formatting
+    rationale: Guides writing style, page limits, and evaluation criteria.
+    area: docs
+    priority: P1
+    complexity: S
+    status: planned
+    labels: [paper, venue]
+    code_paths: []
+    test_paths: []
+    doc_paths:
+      - PathSpace/docs/AI_TODO.md
+    acceptance_criteria:
+      - Venue chosen with deadline and formatting template captured.
+      - Paper skeleton updated to match template.
+    steps:
+      - Evaluate venues (systems, PL, databases); pick best fit and deadline.
+      - Add template (LaTeX/Markdown) under docs/paper/.
+  - id: PAPER-DRAFT
+    title: Full paper draft
+    rationale: Produce a complete draft ready for internal review.
+    area: docs
+    priority: P1
+    complexity: L
+    status: planned
+    labels: [paper, draft]
+    code_paths: []
+    test_paths: []
+    doc_paths:
+      - PathSpace/docs/AI_TODO.md
+    acceptance_criteria:
+      - Complete draft with abstract, figures, results, and references.
+      - Internal review feedback addressed; ready for submission polish.
+    steps:
+      - Convert outline to prose; integrate figures and benchmarks.
+      - Iterate with reviewers; stabilize claims and wording.
+  - id: PAPER-CITATION
+    title: Citation and BibTeX
+    rationale: Provide a stable reference for PathSpace versions/releases.
+    area: docs
+    priority: P3
+    complexity: S
+    status: planned
+    labels: [paper, citation]
+    code_paths: []
+    test_paths: []
+    doc_paths:
+      - PathSpace/docs/AI_TODO.md
+    acceptance_criteria:
+      - BibTeX entry and recommended citation text added to docs.
+      - Links to tagged release/DOI if applicable.
+    steps:
+      - Add CITATION.cff and docs/citation.md with examples.
 ```
 
 Change management and docs rules (must follow)
@@ -243,7 +396,7 @@ Tips for AI editors
   - Examples:
     - Watchers: grep -nR "wait(" src/pathspace | grep -E "(Context|Registry|WaitMap)"
     - Futures: grep -nR "peek.*Future" src/pathspace
-    - Logging: grep -nR "sp_log\\(" src/pathspace
+    - Logging: grep -nR "sp_log\(" src/pathspace
 - Prefer extending existing tests over introducing new frameworks.
 - Add clear logging temporarily if needed; keep default logs quiet and remove/guard noisy lines before merging.
 - Validate with: ./scripts/compile.sh --clean --test --loop=15
