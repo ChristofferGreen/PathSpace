@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+# NOTE:
+# To "gate pushes" to master behind a clean recompile and a loop of 15 successful test runs,
+# enable Branch protection for `master` in GitHub repository settings and require the
+# status check from this workflow job (`loop-tests`) to pass before merging.
+# Settings → Branches → Add rule → Require status checks to pass → select "CI / loop-tests".
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  loop-tests:
+    name: Build and Test (loop=15)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CI: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential
+
+      - name: Make compile script executable
+        run: chmod +x scripts/compile.sh
+
+      - name: Build and run tests (loop=15, release)
+        run: |
+          set -eo pipefail
+          ./scripts/compile.sh --clean --test --loop=15 --release --jobs "$(nproc)" 2>&1 | tee ci-test-output.txt
+
+      - name: Upload CI logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-test-output
+          path: ci-test-output.txt

@@ -1,5 +1,52 @@
 # PathSpace — AI-facing Architecture Overview
 
+## Pre-push checks (local + CI)
+
+This repository uses both a local pre-push hook (optional) and a CI status check to ensure stability:
+- Local: block pushes that don’t pass a clean recompile and 15 looped test runs.
+- CI: GitHub Actions workflow runs the same loop=15 test job; protect master so pushes/merges require this check to pass.
+
+### Local pre-push hook (optional)
+
+Install a pre-push hook in your clone to gate pushes:
+
+1) Create the hook file:
+```/dev/null/pre-push.sh#L1-100
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Allow explicit bypass if needed:
+if [[ "${SKIP_LOOP_TESTS:-}" == "1" ]]; then
+  echo "[pre-push] SKIP_LOOP_TESTS=1 set; bypassing loop tests."
+  exit 0
+fi
+
+# Ensure compile script is executable
+chmod +x ./scripts/compile.sh
+
+# Clean rebuild and looped tests (15 iterations, release)
+echo "[pre-push] Building and running tests (loop=15)..."
+./scripts/compile.sh --clean --test --loop=15 --release --jobs "$(command -v nproc >/dev/null 2>&1 && nproc || sysctl -n hw.ncpu)" --verbose
+
+echo "[pre-push] OK"
+```
+
+2) Install it into your local repo:
+- Save the script above to .git/hooks/pre-push
+- Make it executable: chmod +x .git/hooks/pre-push
+
+3) Usage:
+- Push as normal: the hook will block the push if the loop tests fail.
+- To bypass for an emergency: SKIP_LOOP_TESTS=1 git push
+
+### CI status check and branch protection
+
+- Workflow: .github/workflows/ci.yml defines a job named “Build and Test (loop=15)” (job id: loop-tests).
+- Enable branch protection for master:
+  - Settings → Branches → Add rule → Require status checks to pass
+  - Select: CI / loop-tests
+  - Optionally require pull request before merging to master.
+
 This document is written for an AI (or new engineer) that needs to understand the structure, responsibilities and relationships of components in the `PathSpace` project. It maps the main subsystems to file locations, describes typical data flows (insert / read / take), and summarizes concurrency and extension points.
 
 ---
