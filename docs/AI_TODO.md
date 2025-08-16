@@ -771,6 +771,101 @@ tasks:
       - Add options and platform checks in CMake; document flags.
  ```
 
+Additional machine-readable tasks (device path namespace)
+
+```yaml
+tasks:
+  - id: PATHS-DEVICE-NAMESPACE
+    title: Design standard device path namespace (Plan 9/Linux style)
+    rationale: Establish a canonical, extensible namespace for device I/O paths similar to Plan 9/Linux, enabling consistent discovery and interaction across mice, keyboards, gamepads, touch screens, and tablets.
+    area: api
+    priority: P1
+    complexity: M
+    status: planned
+    labels: [io, devices, namespace, plan9]
+    code_paths:
+      - PathSpace/src/pathspace/layer/PathIO.hpp
+      - PathSpace/src/pathspace/layer/PathIO.cpp
+      - PathSpace/src/pathspace/layer/PathView.hpp
+    test_paths:
+      - PathSpace/tests/unit/layer/test_PathIO.cpp
+    doc_paths:
+      - PathSpace/docs/AI_OVERVIEW.md
+      - PathSpace/docs/AI_ARCHITECTURE.md
+    acceptance_criteria:
+      - Define canonical paths such as /dev/mouse/<id>, /dev/keyboard/<id>, /dev/gamepad/<id>, /dev/touch/<id>, /dev/tablet/<id>, and /screen/<id>.
+      - Standardize reserved subpaths: /dev/<class>/<id>/events, /dev/<class>/<id>/state, /dev/<class>/<id>/control, and /dev/<class>/<id>/meta.
+      - Document normalization rules (case, component encoding) and provide validation helpers.
+    steps:
+      - Draft the namespace map and reserved subpaths with examples.
+      - Implement path validation and canonicalization helpers.
+      - Update PathIO routing to dispatch to device-specific backends based on the canonical paths.
+    risks:
+      - Platform differences and OS-specific semantics; avoid leaking OS details into the public namespace.
+
+  - id: PATHS-DEVICE-DISCOVERY
+    title: Device discovery and enumeration
+    rationale: Provide stable discovery endpoints and metadata so clients can enumerate available devices and their properties.
+    area: api
+    priority: P1
+    complexity: M
+    status: planned
+    labels: [io, discovery, metadata]
+    code_paths:
+      - PathSpace/src/pathspace/layer/PathIO.cpp
+    test_paths:
+      - PathSpace/tests/unit/layer/test_PathIO.cpp
+    doc_paths:
+      - PathSpace/docs/AI_OVERVIEW.md
+    acceptance_criteria:
+      - /dev lists device classes; /dev/<class> lists devices; /dev/<class>/<id>/meta returns structured metadata.
+      - Metadata includes vendor, product, device id, capabilities, connection type, and versioning.
+      - Simulated backend yields deterministic enumerations for CI tests.
+    steps:
+      - Define metadata schema and serializers.
+      - Implement enumeration in the simulation backend; document real backend plans.
+
+  - id: PATHS-DEVICE-CAPABILITIES
+    title: Capabilities and feature flags per device
+    rationale: Let clients adapt to device features (multitouch, pressure, haptics, extra buttons) via a clear capability surface.
+    area: api
+    priority: P2
+    complexity: S
+    status: planned
+    labels: [io, capabilities]
+    code_paths:
+      - PathSpace/src/pathspace/layer/PathIO.hpp
+    test_paths:
+      - PathSpace/tests/unit/layer/test_PathIO.cpp
+    doc_paths:
+      - PathSpace/docs/AI_ARCHITECTURE.md
+    acceptance_criteria:
+      - Capability descriptors exposed at /dev/<class>/<id>/capabilities with versioned keys.
+      - Tests assert presence/absence of capabilities and compatibility checks.
+    steps:
+      - Define capability keys and versioning; wire into metadata and discovery endpoints.
+
+  - id: PATHS-DEVICE-SCREEN
+    title: Standardize screen paths and operations
+    rationale: Provide consistent paths for displays, modes, and optional frame capture.
+    area: api
+    priority: P2
+    complexity: M
+    status: planned
+    labels: [screen, display, io]
+    code_paths:
+      - PathSpace/src/pathspace/layer/PathIO.cpp
+    test_paths:
+      - PathSpace/tests/unit/layer/test_PathIO.cpp
+    doc_paths:
+      - PathSpace/docs/AI_OVERVIEW.md
+    acceptance_criteria:
+      - /screen lists displays; /screen/<id>/meta and /screen/<id>/modes exist and return structured data.
+      - Optional /screen/<id>/frame (simulation-only in tests) for capture semantics; documented as experimental.
+    steps:
+      - Define schemas; add simulated data; plan real backends in a later task.
+```
+
 Change management and docs rules (must follow)
 - Update both docs/AI_OVERVIEW.md and docs/AI_ARCHITECTURE.md when core behavior changes (paths, NodeData, WaitMap/WatchRegistry, Task/TaskT, serialization).
 - If build scripts or compile flags change, update the “Tests & build” section in docs/AI_OVERVIEW.md (compile.sh examples, flags).
