@@ -24,6 +24,8 @@ struct NodeData {
     auto deserialize(void* obj, const InputMetadata& inputMetadata) const -> std::optional<Error>;
     auto deserializePop(void* obj, const InputMetadata& inputMetadata) -> std::optional<Error>;
     auto empty() const -> bool;
+    // Return a Future aligned with the front task (if present)
+    auto peekFuture() const -> std::optional<Future>;
     // Return a type-erased future aligned with the front typed task (if present)
     auto peekAnyFuture() const -> std::optional<FutureAny>;
 

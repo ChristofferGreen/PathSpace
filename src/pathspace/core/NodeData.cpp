@@ -278,4 +278,12 @@ auto NodeData::peekAnyFuture() const -> std::optional<FutureAny> {
     return this->anyFutures.front();
 }
 
+auto NodeData::peekFuture() const -> std::optional<Future> {
+    if (this->types.empty() || this->types.front().category != DataCategory::Execution)
+        return std::nullopt;
+    if (this->futures.empty())
+        return std::nullopt;
+    return this->futures.front();
+}
+
 } // namespace SP

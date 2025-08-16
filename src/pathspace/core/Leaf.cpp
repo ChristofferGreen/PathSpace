@@ -360,12 +360,10 @@ auto Leaf::peekFuture(Iterator const& iter) const -> std::optional<Future> {
     // Check if the node stores execution: we need to peek at the front task
     {
         std::lock_guard<std::mutex> lg(child->payloadMutex);
-        // We cannot access NodeData internals here without exposing them;
-        // return an empty optional if no data or not an execution node.
         if (!child->data || child->data->empty())
             return std::nullopt;
-        // This method is a stub: exposing a Future requires access to the underlying Task.
-        // For now, keep the API shape and return std::nullopt until a safe accessor is available.
+        if (auto fut = child->data->peekFuture())
+            return fut;
         return std::nullopt;
     }
 }
