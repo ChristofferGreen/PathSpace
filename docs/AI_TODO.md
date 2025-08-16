@@ -864,6 +864,156 @@ tasks:
       - Optional /screen/<id>/frame (simulation-only in tests) for capture semantics; documented as experimental.
     steps:
       - Define schemas; add simulated data; plan real backends in a later task.
+  - id: PATHS-DEFAULT-ALIAS
+    title: Define default device alias paths (pointer/keyboard/display)
+    rationale: Provide stable entry points like /system/input/pointer/default that transparently resolve to the current concrete device(s).
+    area: api
+    priority: P1
+    complexity: M
+    status: planned
+    labels: [io, alias, defaults]
+    code_paths:
+      - PathSpace/src/pathspace/layer/PathIO.hpp
+      - PathSpace/src/pathspace/layer/PathIO.cpp
+    test_paths:
+      - PathSpace/tests/unit/layer/test_PathIO.cpp
+    doc_paths:
+      - PathSpace/docs/AI_OVERVIEW.md
+    acceptance_criteria:
+      - Canonical aliases documented and supported: /system/input/pointer/default, /system/input/keyboard/default, /system/output/display/default.
+      - Reads/takes on aliases deliver events/state from the current target device(s); notify bridging works.
+      - Atomic alias retargeting emits a notification on the alias path.
+    steps:
+      - Introduce an alias table and path rewrite in the PathIO layer (or a dedicated PathAlias layer).
+      - Implement notify bridging and atomic retarget semantics; detect and prevent alias cycles.
+      - Add tests covering alias reads and retargeting under load.
+
+  - id: PATHS-POINTER-MIXER
+    title: Default pointer mixer (aggregate multiple mice/tablets into pointer/default)
+    rationale: Allow multiple input devices (mice, pen tablets) to contribute to a single logical pointer stream.
+    area: api
+    priority: P1
+    complexity: L
+    status: planned
+    labels: [io, mixer, pointer, aggregation]
+    code_paths:
+      - PathSpace/src/pathspace/layer/PathIO.cpp
+    test_paths:
+      - PathSpace/tests/unit/layer/test_PathIO.cpp
+    doc_paths:
+      - PathSpace/docs/AI_OVERVIEW.md
+      - PathSpace/docs/AI_ARCHITECTURE.md
+    acceptance_criteria:
+      - /system/input/pointer/default surfaces a merged event stream from selected devices (e.g., mice/0 + tablets/0).
+      - Deterministic ordering rules for merged streams are documented (timestamp then device-priority).
+      - Tests simulate concurrent device events and verify ordering and no loss under loop=15.
+    steps:
+      - Implement a mixer that merges per-device queues; define device priority and timestamp tie-breaks.
+      - Expose selection policy via control path (e.g., /system/input/pointer/default/control).
+      - Add simulation tests for two mice + one tablet contributing.
+
+  - id: PATHS-ALIAS-VS-VIRTUAL
+    title: Clarify alias vs virtual-device semantics
+    rationale: Distinguish simple path aliasing from virtual devices that transform/aggregate events.
+    area: api
+    priority: P2
+    complexity: S
+    status: planned
+    labels: [io, alias, virtual]
+    code_paths:
+      - PathSpace/src/pathspace/layer/PathIO.hpp
+    test_paths:
+      - PathSpace/tests/unit/layer/test_PathIO.cpp
+    doc_paths:
+      - PathSpace/docs/AI_OVERVIEW.md
+    acceptance_criteria:
+      - Docs specify that aliases rewrite paths transparently, while virtual devices (e.g., mixer) produce new streams.
+      - Atomic updates and notify bridging behavior described for both.
+    steps:
+      - Add documentation and examples; ensure tests cover both alias and virtual device flows.
+
+  - id: PATHS-NORMALIZATION
+    title: Event normalization and calibration across devices
+    rationale: Align heterogeneous device reports (DPI, coordinate ranges, orientation, dead zones) into a consistent model.
+    area: api
+    priority: P2
+    complexity: M
+    status: planned
+    labels: [io, normalization, calibration]
+    code_paths:
+      - PathSpace/src/pathspace/layer/PathIO.cpp
+      - PathSpace/src/pathspace/type/InputMetadata.hpp
+    test_paths:
+      - PathSpace/tests/unit/layer/test_PathIO.cpp
+    doc_paths:
+      - PathSpace/docs/AI_ARCHITECTURE.md
+    acceptance_criteria:
+      - Normalization parameters documented and applied (scaling, axis inversion, offsets).
+      - Calibration can be adjusted via /control; tests verify normalized coordinates.
+    steps:
+      - Define a normalization schema and apply during event serialization.
+      - Add tests with simulated devices of different DPI/ranges.
+
+  - id: PATHS-HOTPLUG
+    title: Hotplug handling and default alias policy
+    rationale: Keep default aliases valid as devices appear/disappear; notify clients of changes.
+    area: api
+    priority: P1
+    complexity: M
+    status: planned
+    labels: [io, hotplug, defaults]
+    code_paths:
+      - PathSpace/src/pathspace/layer/PathIO.cpp
+    test_paths:
+      - PathSpace/tests/unit/layer/test_PathIO.cpp
+    doc_paths:
+      - PathSpace/docs/AI_OVERVIEW.md
+    acceptance_criteria:
+      - When current default device disappears, alias retargets according to policy (first-available/preferred) atomically.
+      - Alias change triggers a notification; readers re-check seamlessly.
+    steps:
+      - Implement a selection policy and atomic retarget; integrate with discovery.
+      - Add simulation tests that unplug/plug devices and assert behavior.
+
+  - id: PATHS-CONFLICT-RESOLVE
+    title: Conflict resolution for mixed pointer inputs
+    rationale: Define rules when multiple inputs update the same logical channel (e.g., two mice moving simultaneously).
+    area: api
+    priority: P2
+    complexity: M
+    status: planned
+    labels: [io, conflict, policy]
+    code_paths:
+      - PathSpace/src/pathspace/layer/PathIO.cpp
+    test_paths:
+      - PathSpace/tests/unit/layer/test_PathIO.cpp
+    doc_paths:
+      - PathSpace/docs/AI_ARCHITECTURE.md
+    acceptance_criteria:
+      - Documented policy (e.g., timestamp-first, then device-priority) for merging movements/buttons.
+      - Tests cover simultaneous events with deterministic outcomes.
+    steps:
+      - Implement policy in mixer; add tests for edge-ties and ordering.
+
+  - id: PATHS-SIM-MIX
+    title: Simulation tests for default pointer mixer and aliasing
+    rationale: Ensure CI determinism and robustness without physical devices.
+    area: ci
+    priority: P1
+    complexity: S
+    status: planned
+    labels: [io, simulation, tests]
+    code_paths:
+      - PathSpace/src/pathspace/layer/PathIO.cpp
+    test_paths:
+      - PathSpace/tests/unit/layer/test_PathIO.cpp
+    doc_paths:
+      - PathSpace/docs/AI_TODO.md
+    acceptance_criteria:
+      - Simulated backends produce device events for multiple mice and a tablet; alias and mixer behavior verified.
+      - Loop=15 runs green across all subcases.
+    steps:
+      - Add simulation sources and deterministic scheduling; write unit subcases for alias retarget + merging.
 ```
 
 Change management and docs rules (must follow)
