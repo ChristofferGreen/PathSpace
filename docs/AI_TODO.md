@@ -588,7 +588,188 @@ tasks:
     steps:
       - Add flags to bench scripts to select memory resource.
       - Capture metrics and include plots under docs/images/.
-```
+  - id: PATHIO-ARCH
+    title: Define PathIO architecture for input/output devices (mouse, keyboard, gamepad, touch, tablet)
+    rationale: Establish a clear, extensible layer to expose device I/O via PathSpace paths with consistent semantics.
+    area: core
+    priority: P1
+    complexity: M
+    status: planned
+    labels: [io, devices, input, output, api, layer]
+    code_paths:
+      - PathSpace/src/pathspace/layer/PathIO.hpp
+      - PathSpace/src/pathspace/layer/PathIO.cpp
+      - PathSpace/src/pathspace/layer/PathView.hpp
+      - PathSpace/src/pathspace/PathSpaceBase.hpp
+    test_paths:
+      - PathSpace/tests/unit/layer/test_PathIO.cpp
+    doc_paths:
+      - PathSpace/docs/AI_OVERVIEW.md
+      - PathSpace/docs/AI_TODO.md
+    acceptance_criteria:
+      - PathIO header and implementation compile with a valid constructor and no duplicate Permission types.
+      - Clear path conventions are documented (e.g., /io/mouse, /io/keyboard, /io/gamepad, /io/touch, /io/tablet).
+      - Read/write semantics, blocking/timeout, and notify behavior are specified.
+    steps:
+      - Fix PathIO header (constructor) and remove local Permission type (see LAYER-PERMISSION-UNIFY).
+      - Draft path scheme and minimal capability matrix per device type.
+      - Document v1 scope and non-goals in AI_OVERVIEW.md.
+
+  - id: PATHIO-MACOS-BACKENDS
+    title: Implement macOS backends (Quartz/CoreGraphics, IOKit, HID) for device input
+    rationale: Provide a concrete first backend to exercise PathIO semantics via real devices on macOS.
+    area: core
+    priority: P1
+    complexity: L
+    status: planned
+    labels: [io, macos, hid, devices]
+    code_paths:
+      - PathSpace/src/pathspace/layer/PathIO.cpp
+    test_paths:
+      - PathSpace/tests/unit/layer/test_PathIO.cpp
+    doc_paths:
+      - PathSpace/docs/AI_OVERVIEW.md
+    acceptance_criteria:
+      - Mouse move/click events can be read via /io/mouse (non-blocking and blocking read with timeout).
+      - Keyboard keydown/keyup events readable via /io/keyboard.
+      - Notify/wait triggers on event arrival; loop=15 remains green with simulated inputs in tests.
+    steps:
+      - Abstract a small OS interface for event capture; stub in tests.
+      - Implement macOS event polling/callback translation into PathSpace events.
+      - Add tests using a simulated backend to avoid device dependency in CI.
+
+  - id: PATHIO-EVENT-MODEL
+    title: Define a stable event model and serialization for device inputs
+    rationale: Ensure events are structured, versioned, and easy to deserialize/consume from PathSpace.
+    area: api
+    priority: P1
+    complexity: M
+    status: planned
+    labels: [io, events, schema]
+    code_paths:
+      - PathSpace/src/pathspace/type/InputMetadata.hpp
+      - PathSpace/src/pathspace/layer/PathIO.hpp
+    test_paths:
+      - PathSpace/tests/unit/layer/test_PathIO.cpp
+    doc_paths:
+      - PathSpace/docs/AI_ARCHITECTURE.md
+      - PathSpace/docs/AI_OVERVIEW.md
+    acceptance_criteria:
+      - Event structs for mouse, keyboard, gamepad, touch, tablet with timestamps and device ids.
+      - Serialization/deserialization covered by tests; type-safe reads in examples.
+    steps:
+      - Introduce minimal event types and wire InputMetadata serializers.
+      - Add subcases that emit and read back event sequences.
+
+  - id: PATHIO-STREAMING
+    title: Support streaming reads and back-pressure for high-frequency devices
+    rationale: Handle event bursts (e.g., mouse movement) without losing data or stalling consumers.
+    area: concurrency
+    priority: P2
+    complexity: M
+    status: planned
+    labels: [io, streaming, backpressure]
+    code_paths:
+      - PathSpace/src/pathspace/type/SlidingBuffer.hpp
+      - PathSpace/src/pathspace/core/NodeData.cpp
+      - PathSpace/src/pathspace/layer/PathIO.cpp
+    test_paths:
+      - PathSpace/tests/unit/test_PathSpace_multithreading.cpp
+      - PathSpace/tests/unit/layer/test_PathIO.cpp
+    doc_paths:
+      - PathSpace/docs/AI_ARCHITECTURE.md
+      - PathSpace/docs/AI_OVERVIEW.md
+    acceptance_criteria:
+      - Streaming read API or guidance for polling at bounded intervals.
+      - Tests simulate bursts without timeouts; document dropped-event policy if applicable.
+    steps:
+      - Evaluate SlidingBuffer adequacy for event queues; add PMR support if needed.
+      - Add tests with synthetic high-rate inputs and verify consumer behavior.
+
+  - id: PATHIO-PERMISSIONS
+    title: Integrate PathView permission model for device access control
+    rationale: Enforce read/execute permissions per device path; avoid accidental writes where unsupported.
+    area: api
+    priority: P2
+    complexity: S
+    status: planned
+    labels: [io, permissions, security]
+    code_paths:
+      - PathSpace/src/pathspace/layer/PathView.hpp
+      - PathSpace/src/pathspace/layer/PathIO.hpp
+    test_paths:
+      - PathSpace/tests/unit/layer/test_PathView.cpp
+      - PathSpace/tests/unit/layer/test_PathIO.cpp
+    doc_paths:
+      - PathSpace/docs/AI_OVERVIEW.md
+    acceptance_criteria:
+      - Permission callback applied for /io/* subpaths; denied access returns InvalidPermissions.
+      - Tests cover allowed/denied combinations for read/execute.
+    steps:
+      - Reuse PathView Permission pattern; add examples in docs and tests.
+
+  - id: PATHIO-SIM-TESTS
+    title: Simulation backends for deterministic CI tests
+    rationale: CI cannot rely on real devices; simulate events and assert PathIO behavior.
+    area: ci
+    priority: P1
+    complexity: M
+    status: planned
+    labels: [io, testing, simulation]
+    code_paths:
+      - PathSpace/src/pathspace/layer/PathIO.cpp
+    test_paths:
+      - PathSpace/tests/unit/layer/test_PathIO.cpp
+    doc_paths:
+      - PathSpace/docs/AI_TODO.md
+    acceptance_criteria:
+      - A test-only backend feeds scripted events to PathIO paths.
+      - All PathIO tests pass in loop=15 without device access.
+    steps:
+      - Introduce a compile-time or runtime switch for simulated backend.
+      - Write tests for mouse and keyboard streams.
+
+  - id: PATHIO-OUTPUT-HAPTICS
+    title: Define and stub output/haptics APIs
+    rationale: Provide a forward path for output devices (rumble/haptics), even if initially unimplemented.
+    area: api
+    priority: P3
+    complexity: M
+    status: planned
+    labels: [io, output, haptics]
+    code_paths:
+      - PathSpace/src/pathspace/layer/PathIO.hpp
+      - PathSpace/src/pathspace/layer/PathIO.cpp
+    test_paths: []
+    doc_paths:
+      - PathSpace/docs/AI_OVERVIEW.md
+    acceptance_criteria:
+      - Output path conventions documented (e.g., /io/gamepad/<id>/rumble).
+      - Calls return clear Unsupported errors until a backend exists.
+    steps:
+      - Add API shape and clear error mapping; defer backend.
+
+  - id: PATHIO-CMAKE
+    title: CMake wiring and platform guards for PathIO backends
+    rationale: Build only supported backends per platform and keep CI portable.
+    area: build
+    priority: P2
+    complexity: S
+    status: planned
+    labels: [build, cmake, io]
+    code_paths:
+      - PathSpace/src/pathspace/CMakeLists.txt
+      - PathSpace/CMakeLists.txt
+    test_paths: []
+    doc_paths:
+      - PathSpace/docs/AI_OVERVIEW.md
+      - PathSpace/docs/AI_TODO.md
+    acceptance_criteria:
+      - Optional macOS backend target compiles only on macOS.
+      - Linux/Windows stubs compile cleanly; tests use simulation backend on CI.
+    steps:
+      - Add options and platform checks in CMake; document flags.
+ ```
 
 Change management and docs rules (must follow)
 - Update both docs/AI_OVERVIEW.md and docs/AI_ARCHITECTURE.md when core behavior changes (paths, NodeData, WaitMap/WatchRegistry, Task/TaskT, serialization).
