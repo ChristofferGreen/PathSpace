@@ -240,7 +240,7 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
 
 ---
 
-### Tests & build
+## Tests & build
 
 - Tests live under `PathSpace/tests`.
 - Build is configured by `CMakeLists.txt` at project root and `PathSpace/src/pathspace/CMakeLists.txt`.
@@ -260,6 +260,24 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
     - `./scripts/compile.sh`
     - `./scripts/compile.sh --clean -j 8 --release`
     - `./scripts/compile.sh -G "Ninja" --target PathSpaceTests`
+
+### Example application (optional)
+- A small example app demonstrates user-level composition (mounting providers under arbitrary paths) and prints device activity:
+  - File: `examples/devices_example.cpp`
+  - It is not hardwired to any path conventions; it simply mounts providers at the paths you choose in the example.
+- Build (disabled by default):
+  - Enable with CMake option: `-DBUILD_PATHSPACE_EXAMPLES=ON`
+  - macOS backend skeletons (optional): `-DENABLE_PATHIO_MACOS=ON`
+  - Commands:
+    - `cmake -S . -B build -DBUILD_PATHSPACE_EXAMPLES=ON`
+    - `cmake --build build -j`
+- Run:
+  - `./build/devices_example`
+  - Press Ctrl-C to exit.
+- Behavior:
+  - Prints simulated plug/unplug from a discovery provider (by default, the example simulates devices).
+  - Prints mouse moves/clicks/wheel from a `PathIOMice` provider, and keyboard keydown/keyup/text from a `PathIOKeyboard` provider.
+  - To switch from simulation to real OS backends in the future, disable simulation in the example and mount the OS-specific providers instead (e.g., macOS backends guarded by `ENABLE_PATHIO_MACOS`).
     - `./scripts/compile.sh --test`
     - `./scripts/compile.sh --loop=15`
 
