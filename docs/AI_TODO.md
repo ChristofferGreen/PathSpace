@@ -383,6 +383,74 @@ tasks:
       - Links to tagged release/DOI if applicable.
     steps:
       - Add CITATION.cff and docs/citation.md with examples.
+  - id: LAYER-PATHIO-DECIDE
+    title: Decide PathIO fate (implement or remove)
+    rationale: PathIO is a broken stub (constructor syntax error, duplicate Permission) and currently unused; clarify intent to reduce confusion or implement a proper IO bridge.
+    area: core
+    priority: P1
+    complexity: S
+    status: planned
+    labels: [layer, io, cleanup]
+    code_paths:
+      - PathSpace/src/pathspace/layer/PathIO.hpp
+      - PathSpace/src/pathspace/layer/PathIO.cpp
+    test_paths: []
+    doc_paths:
+      - PathSpace/docs/AI_TODO.md
+    acceptance_criteria:
+      - EITHER: PathIO is removed from the tree; references (if any) cleaned up.
+      - OR: PathIO compiles with a valid constructor, no duplicate Permission type, and clear documented semantics.
+    steps:
+      - If removing: delete PathIO files and update CMake if needed.
+      - If implementing: fix constructor, unify Permission (see LAYER-PERMISSION-UNIFY), implement minimal semantics or explicitly document unsupported ops.
+  - id: LAYER-FS-COMPLETE
+    title: Complete PathFileSystem (read robustness and write support)
+    rationale: PathFileSystem is read-only and minimal; add write support (optional), robust error mapping, and explicit includes.
+    area: core
+    priority: P2
+    complexity: M
+    status: planned
+    labels: [layer, filesystem]
+    code_paths:
+      - PathSpace/src/pathspace/layer/PathFileSystem.hpp
+      - PathSpace/src/pathspace/layer/PathFileSystem.cpp
+    test_paths:
+      - PathSpace/tests/unit/layer/test_PathFileSystem.cpp
+    doc_paths:
+      - PathSpace/docs/AI_OVERVIEW.md
+      - PathSpace/docs/AI_TODO.md
+    acceptance_criteria:
+      - PathFileSystem.cpp explicitly includes <fstream>.
+      - out() remains read-only for std::string or is extended per design; errors are precise (NotFound, TypeMismatch, Permission, etc.).
+      - in() either returns clear Unsupported error or supports writing strings to files (creating parent dirs optional).
+      - Tests updated to cover write behavior or assert read-only semantics.
+    steps:
+      - Add <fstream> include; audit path joining and error messages.
+      - Decide on write semantics; implement or explicitly document read-only.
+      - Extend tests accordingly.
+  - id: LAYER-PERMISSION-UNIFY
+    title: Unify Permission type across layers
+    rationale: Avoid duplicate Permission structs (PathView vs PathIO); provide a single shared definition for consistency.
+    area: api
+    priority: P2
+    complexity: S
+    status: planned
+    labels: [layer, api, cleanup]
+    code_paths:
+      - PathSpace/src/pathspace/layer/PathView.hpp
+      - PathSpace/src/pathspace/layer/PathIO.hpp
+    test_paths:
+      - PathSpace/tests/unit/layer/test_PathView.cpp
+    doc_paths:
+      - PathSpace/docs/AI_OVERVIEW.md
+      - PathSpace/docs/AI_TODO.md
+    acceptance_criteria:
+      - A single Permission struct is defined in a shared header (e.g., layer/Permission.hpp).
+      - PathView and any other layers include and use the shared type.
+      - Tests compile and pass without name clashes.
+    steps:
+      - Introduce layer/Permission.hpp with the shared struct.
+      - Replace local Permission definitions and fix includes.
   - id: ALLOC-PMR-BASE
     title: Introduce std::pmr infrastructure and central memory resource
     rationale: Allow users to plug in custom allocators/resources for reduced fragmentation, better locality, or instrumentation.
