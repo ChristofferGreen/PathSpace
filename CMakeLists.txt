@@ -49,9 +49,7 @@ elseif(ENABLE_UNDEFINED_SANITIZER)
 endif()
 
 # Architectural features permanently enabled (no gating)
-add_compile_definitions(PATHSPACE_CONTEXT=1)
-add_compile_definitions(WATCH_REGISTRY=1)
-add_compile_definitions(TYPED_TASKS=1)
+
 
 enable_testing()
 add_subdirectory(src/pathspace)

@@ -1,8 +1,7 @@
 #include "PathSpace.hpp"
 #include "task/TaskPool.hpp"
-#ifdef PATHSPACE_CONTEXT
 #include "core/PathSpaceContext.hpp"
-#endif
+#include "log/TaggedLogger.hpp"
 
 namespace SP {
 
@@ -20,15 +19,12 @@ PathSpace::PathSpace(TaskPool* pool) {
     this->context_ = std::make_shared<PathSpaceContext>(exec);
     this->setExecutor(exec);
 };
-#ifdef PATHSPACE_CONTEXT
+
 PathSpace::PathSpace(std::shared_ptr<PathSpaceContext> context, std::string prefix) {
     sp_log("PathSpace::PathSpace(context)", "Function Called");
     this->context_ = std::move(context);
-#ifdef PATHSPACE_CONTEXT
-    this->prefix = std::move(prefix);
-#else
-    (void)prefix;
-#endif
+
+        this->prefix = std::move(prefix);
     // Ensure we have an executor via context
     if (this->context_ && this->context_->executor()) {
         this->setExecutor(this->context_->executor());
@@ -50,7 +46,6 @@ void PathSpace::setOwnedPool(TaskPool* p) {
         this->setExecutor(static_cast<Executor*>(this->pool));
     }
 }
-#endif
 
 PathSpace::~PathSpace() {
     sp_log("PathSpace::~PathSpace", "Function Called");

@@ -1,6 +1,6 @@
 #include "Leaf.hpp"
 #include "PathSpaceBase.hpp"
-#include "PathSpace.hpp"
+
 #include "core/Error.hpp"
 #include "core/InsertReturn.hpp"
 #include "path/Iterator.hpp"
@@ -93,12 +93,7 @@ auto Leaf::inAtNode(Node& node, Iterator const& iter, InputData const& inputData
                 mountPrefix = "/" + std::string(name);
             else
                 mountPrefix += "/" + std::string(name);
-            #ifdef PATHSPACE_CONTEXT
-            if (auto ps = dynamic_cast<PathSpace*>(child.nested.get())) {
-                // Adopt parent context later if available; set prefix now.
 
-            }
-            #endif
             ret.nbrSpacesInserted++;
         } else {
             ensureNodeData(child, inputData, ret);
@@ -375,7 +370,7 @@ auto Leaf::peekFuture(Iterator const& iter) const -> std::optional<Future> {
     }
 }
 
-#ifdef TYPED_TASKS
+
 auto Leaf::peekAnyFuture(Iterator const& iter) const -> std::optional<FutureAny> {
     // Walk down to the final component non-mutatingly
     Node const* node = &this->root;
@@ -411,6 +406,5 @@ auto Leaf::peekAnyFuture(Iterator const& iter) const -> std::optional<FutureAny>
         return std::nullopt;
     }
 }
-#endif
 
 } // namespace SP

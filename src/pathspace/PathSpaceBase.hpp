@@ -11,15 +11,11 @@
 #include "type/InputData.hpp"
 #include "core/NotificationSink.hpp"
 #include "task/Executor.hpp"
-#include "task/Future.hpp"
-#ifdef TYPED_TASKS
+
 #include "task/TaskT.hpp"
 #include "task/IFutureAny.hpp"
-#endif
 #include <type_traits>
-#ifdef PATHSPACE_CONTEXT
 #include "core/PathSpaceContext.hpp"
-#endif
 
 #include <optional>
 #include <memory>
@@ -60,20 +56,12 @@ public:
         inputData.executor = this->getExecutor();
 
         if constexpr (InputMetadataT<DataType>::dataCategory == DataCategory::Execution) {
-#ifdef TYPED_TASKS
             auto notifier = this->getNotificationSink();
             auto exec     = this->getExecutor();
             using ResultT = std::invoke_result_t<DataType>;
             auto taskT    = TaskT<ResultT>::Create(std::move(notifier), path.toString(), data, options.executionCategory, exec);
             inputData.task      = taskT->legacy_task();
             inputData.anyFuture = taskT->any_future();
-#else
-            inputData.task = Task::Create(this->getNotificationSink(), path.toString(), data, options.executionCategory);
-            // Prefer the injected executor for task (re)submission later in NodeData
-            if (auto exec = this->getExecutor()) {
-                inputData.task->setExecutor(exec);
-            }
-#endif
         }
 
         return this->in(path, inputData);
@@ -135,13 +123,11 @@ public:
      * @brief Optional Future-returning read API for execution results.
      *
      * Behavior:
-     * - When TYPED_TASKS is enabled: returns a type-erased FutureAny if an execution is present
-     *   at the path (non-blocking peek). If not present or not an execution node, returns an error.
-     * - Legacy path: returns an empty Future (valid()==false) to indicate no immediate handle.
+     * - Returns a type-erased FutureAny if an execution is present at the path (non-blocking peek).
+     *   If not present or not an execution node, returns an error.
      *
      * Note: This helper does not replace the primary read/take APIs.
      */
-#ifdef TYPED_TASKS
     template <StringConvertible S>
     auto readFuture(S const& pathIn) const -> Expected<FutureAny> {
         sp_log("PathSpace::readFuture", "Function Called");
@@ -154,17 +140,6 @@ public:
         }
         return std::unexpected(Error{Error::Code::NoObjectFound, "No execution future available at path"});
     }
-#else
-    template <StringConvertible S>
-    auto readFuture(S const& pathIn) const -> Expected<Future> {
-        sp_log("PathSpace::readFuture", "Function Called");
-        Iterator const path{pathIn};
-        if (auto error = path.validate(ValidationLevel::Basic))
-            return std::unexpected(*error);
-        // Legacy: signal no immediate result; caller may fall back to blocking read().
-        return Future{};
-    }
-#endif
 
     template <FixedString pathIn, typename DataType>
         requires(validate_path(pathIn))
@@ -176,7 +151,6 @@ public:
 protected:
     // Provide a weak NotificationSink for lifetime-safe task notifications.
     std::weak_ptr<NotificationSink> getNotificationSink() const {
-#ifdef PATHSPACE_CONTEXT
         if (context_) {
             auto w = context_->getSink();
             if (!w.lock()) {
@@ -191,7 +165,6 @@ protected:
             }
             return w;
         }
-#endif
         if (!notificationSink_) {
             struct DefaultNotificationSinkImpl : NotificationSink {
                 explicit DefaultNotificationSinkImpl(PathSpaceBase* owner) : owner(owner) {}
@@ -205,27 +178,19 @@ protected:
 
     // Executor injection point for task scheduling (set by concrete space)
     void setExecutor(Executor* exec) {
-#ifdef PATHSPACE_CONTEXT
         if (context_) context_->setExecutor(exec);
-#endif
         executor_ = exec;
     }
     Executor* getExecutor() const {
-#ifdef PATHSPACE_CONTEXT
         if (context_ && context_->executor()) return context_->executor();
-#endif
         return executor_;
     }
 
-#ifdef PATHSPACE_CONTEXT
     // Expose shared context for friends (e.g., Leaf) to adopt for nested spaces
     std::shared_ptr<PathSpaceContext> getContext() const { return context_; }
-#endif
 
     mutable std::shared_ptr<NotificationSink> notificationSink_;
-#ifdef PATHSPACE_CONTEXT
     std::shared_ptr<PathSpaceContext>         context_;
-#endif
     Executor*                                 executor_ = nullptr;
     friend class TaskPool;
     friend class PathView;
@@ -233,11 +198,9 @@ protected:
     friend class PathSpace;
     friend class Leaf;
 
-#ifdef TYPED_TASKS
     // Hook for concrete spaces to expose a type-erased future aligned with an execution node.
     // Default implementation returns no future; PathSpace overrides to provide a real handle.
     virtual std::optional<FutureAny> typedPeekFuture(std::string_view) const { return std::nullopt; }
-#endif
 
     virtual auto in(Iterator const& path, InputData const& data) -> InsertReturn                                                      = 0;
     virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> = 0;

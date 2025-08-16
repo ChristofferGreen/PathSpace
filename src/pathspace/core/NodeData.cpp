@@ -1,5 +1,10 @@
 #include "NodeData.hpp"
-#include "task/TaskPool.hpp"
+#include "log/TaggedLogger.hpp"
+#include "type/InputData.hpp"
+#include "core/ExecutionCategory.hpp"
+#include "task/Task.hpp"
+
+
 
 namespace SP {
 
@@ -15,12 +20,10 @@ auto NodeData::serialize(const InputData& inputData) -> std::optional<Error> {
         // Store task and aligned future handle
         this->tasks.push_back(std::move(inputData.task));
         this->futures.push_back(Future::FromShared(this->tasks.back()));
-#ifdef TYPED_TASKS
         // If a type-erased future is provided (typed task path), align it as well
         if (inputData.anyFuture.valid()) {
             this->anyFutures.push_back(inputData.anyFuture);
         }
-#endif
 
         bool const isImmediateExecution = (*this->tasks.rbegin())->category() == ExecutionCategory::Immediate;
         if (isImmediateExecution) {
@@ -267,7 +270,6 @@ auto NodeData::popType() -> void {
             this->types.erase(this->types.begin());
 }
 
-#ifdef TYPED_TASKS
 auto NodeData::peekAnyFuture() const -> std::optional<FutureAny> {
     if (this->types.empty() || this->types.front().category != DataCategory::Execution)
         return std::nullopt;
@@ -275,6 +277,5 @@ auto NodeData::peekAnyFuture() const -> std::optional<FutureAny> {
         return std::nullopt;
     return this->anyFutures.front();
 }
-#endif
 
 } // namespace SP
