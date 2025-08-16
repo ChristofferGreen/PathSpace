@@ -383,6 +383,143 @@ tasks:
       - Links to tagged release/DOI if applicable.
     steps:
       - Add CITATION.cff and docs/citation.md with examples.
+  - id: ALLOC-PMR-BASE
+    title: Introduce std::pmr infrastructure and central memory resource
+    rationale: Allow users to plug in custom allocators/resources for reduced fragmentation, better locality, or instrumentation.
+    area: core
+    priority: P1
+    complexity: M
+    status: planned
+    labels: [allocator, pmr, memory]
+    code_paths:
+      - PathSpace/src/pathspace/core/Node.hpp
+      - PathSpace/src/pathspace/core/NodeData.hpp
+      - PathSpace/src/pathspace/type/SlidingBuffer.hpp
+      - PathSpace/src/pathspace/core/PathSpaceContext.hpp
+    test_paths:
+      - PathSpace/tests/unit/test_PathSpace_insert.cpp
+      - PathSpace/tests/unit/test_PathSpace_multithreading.cpp
+    doc_paths:
+      - PathSpace/docs/AI_OVERVIEW.md
+      - PathSpace/docs/AI_ARCHITECTURE.md
+      - PathSpace/docs/AI_TODO.md
+    acceptance_criteria:
+      - PathSpaceContext exposes setMemoryResource(std::pmr::memory_resource*) and getMemoryResource().
+      - Default resource uses std::pmr::get_default_resource(); null is rejected.
+      - Core containers support construction with a std::pmr::polymorphic_allocator from the context.
+    steps:
+      - Add memory_resource pointer to PathSpaceContext and thread getters to PathSpaceBase/Leaf construction sites.
+      - Define aliases/types to ease adoption (e.g., PMRVector<T> = std::pmr::vector<T>).
+      - Prepare Node/SlidingBuffer for allocator-aware migration (no functional change yet).
+    risks:
+      - Lifetime ordering of memory_resource; ensure resource outlives containers using it.
+  - id: ALLOC-CONTAINER-MIGRATE
+    title: Migrate internal containers to PMR-aware variants
+    rationale: Enable allocator injection for hotspots (SlidingBuffer, trie children map).
+    area: core
+    priority: P1
+    complexity: M
+    status: planned
+    labels: [allocator, pmr, containers]
+    code_paths:
+      - PathSpace/src/pathspace/type/SlidingBuffer.hpp
+      - PathSpace/src/pathspace/core/Node.hpp
+    test_paths:
+      - PathSpace/tests/unit/type/test_SlidingBuffer.cpp
+      - PathSpace/tests/unit/path/test_Iterator.cpp
+    doc_paths:
+      - PathSpace/docs/AI_ARCHITECTURE.md
+    acceptance_criteria:
+      - SlidingBuffer uses std::pmr::vector<uint8_t> and accepts a pmr::polymorphic_allocator.
+      - Node::ChildrenMap uses a PMR allocator parameter (std::pmr::polymorphic_allocator for value_type).
+      - All tests pass loop=15 with default resource.
+    steps:
+      - Add constructors to SlidingBuffer to accept a polymorphic_allocator; default to context resource.
+      - Update Node::ChildrenMap allocator typedef to a PMR allocator; ensure phmap template parameters are updated accordingly.
+      - Propagate context memory_resource into these components during construction.
+    risks:
+      - phmap allocator interactions; validate template parameter correctness and performance.
+  - id: ALLOC-API
+    title: Public API for user-supplied allocator/resource
+    rationale: Let users supply custom memory strategies (monotonic pools, tracking allocators).
+    area: api
+    priority: P1
+    complexity: S
+    status: planned
+    labels: [allocator, pmr, api]
+    code_paths:
+      - PathSpace/src/pathspace/PathSpace.hpp
+      - PathSpace/src/pathspace/core/PathSpaceContext.hpp
+    test_paths:
+      - PathSpace/tests/unit/test_PathSpace_insert.cpp
+    doc_paths:
+      - PathSpace/docs/AI_OVERVIEW.md
+    acceptance_criteria:
+      - PathSpace constructor or context exposes a setter for memory_resource.
+      - Example demonstrates using a monotonic_buffer_resource backing.
+    steps:
+      - Add overloads/constructors to take std::pmr::memory_resource*.
+      - Document expected lifetime: resource must outlive PathSpace and its containers.
+  - id: ALLOC-TESTS
+    title: Allocation-aware tests and instrumentation hooks
+    rationale: Verify containers honor the provided allocator and maintain correctness under stress.
+    area: core
+    priority: P2
+    complexity: M
+    status: planned
+    labels: [allocator, tests]
+    code_paths:
+      - PathSpace/src/pathspace/type/SlidingBuffer.hpp
+    test_paths:
+      - PathSpace/tests/unit/type/test_SlidingBuffer.cpp
+      - PathSpace/tests/unit/test_PathSpace_multithreading.cpp
+    doc_paths:
+      - PathSpace/docs/AI_TODO.md
+    acceptance_criteria:
+      - Custom memory_resource counting allocations is used in tests; assertions verify allocation paths.
+      - Stress subcases with many inserts/reads succeed with custom resource.
+    steps:
+      - Implement a simple counting_resource in tests.
+      - Add subcases toggling default vs custom resource.
+  - id: ALLOC-DOCS
+    title: Document allocator integration and best practices
+    rationale: Guide users to choose and plug allocators safely (lifetime, pooling).
+    area: docs
+    priority: P2
+    complexity: S
+    status: planned
+    labels: [allocator, docs]
+    code_paths: []
+    test_paths: []
+    doc_paths:
+      - PathSpace/docs/AI_OVERVIEW.md
+      - PathSpace/docs/AI_ARCHITECTURE.md
+    acceptance_criteria:
+      - Overview contains a “Custom allocator” section with code snippets and caveats.
+      - Architecture notes summarize allocator-aware components and perf trade-offs.
+    steps:
+      - Add examples for monotonic and unsynchronized_pool_resource usage.
+      - Note thread-safety and deallocation behavior when popping data.
+  - id: ALLOC-BENCH
+    title: Benchmarks comparing default vs custom allocators
+    rationale: Quantify impact on throughput/latency and memory usage.
+    area: docs
+    priority: P2
+    complexity: M
+    status: planned
+    labels: [allocator, benchmarks]
+    code_paths:
+      - PathSpace/scripts/compile.sh
+    test_paths: []
+    doc_paths:
+      - PathSpace/docs/AI_TODO.md
+      - PathSpace/docs/AI_OVERVIEW.md
+    acceptance_criteria:
+      - Bench scripts run with default resource and a tuned custom resource; results summarized in docs.
+      - loop=15 remains green under both configurations.
+    steps:
+      - Add flags to bench scripts to select memory resource.
+      - Capture metrics and include plots under docs/images/.
 ```
 
 Change management and docs rules (must follow)
