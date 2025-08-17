@@ -53,19 +53,21 @@ EOF
 USE_CORE_HOOKS_PATH=0
 UNINSTALL=0
 FORCE=0
-for arg in "${@:-}"; do
-  case "$arg" in
-    --use-core-hooks-path) USE_CORE_HOOKS_PATH=1 ;;
-    --uninstall)           UNINSTALL=1 ;;
-    --force)               FORCE=1 ;;
-    -h|--help)             usage; exit 0 ;;
-    *)
-      err "Unknown option: $arg"
-      usage
-      exit 1
-      ;;
-  esac
-done
+if [[ $# -gt 0 ]]; then
+  for arg in "$@"; do
+    case "$arg" in
+      --use-core-hooks-path) USE_CORE_HOOKS_PATH=1 ;;
+      --uninstall)           UNINSTALL=1 ;;
+      --force)               FORCE=1 ;;
+      -h|--help)             usage; exit 0 ;;
+      *)
+        err "Unknown option: $arg"
+        usage
+        exit 1
+        ;;
+    esac
+  done
+fi
 
 # --- Ensure inside a git repo ---
 if ! command -v git >/dev/null 2>&1; then

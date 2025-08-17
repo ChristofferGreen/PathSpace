@@ -9,7 +9,6 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/layer/PathIOMice.hpp>
 #include <pathspace/layer/PathIOKeyboard.hpp>
-
 // Optional macOS backend skeletons (compile with -DENABLE_PATHIO_MACOS=ON in CMake to define PATHIO_BACKEND_MACOS)
 #ifdef PATHIO_BACKEND_MACOS
 #include <pathspace/layer/macos/PathIO_macos.hpp>
