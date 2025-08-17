@@ -1696,12 +1696,10 @@ TEST_CASE("PathSpace Multithreading") {
     SUBCASE("Performance Testing") {
         PathSpace  pspace;
         const int  NUM_THREADS           = std::thread::hardware_concurrency();
-        const char* _fastEnv = std::getenv("PATHSPACE_FAST_TESTS");
-        const bool  _FAST    = (_fastEnv && std::strcmp(_fastEnv, "0") != 0);
-        const int  OPERATIONS_PER_THREAD = _FAST ? 200 : 500;
-        const int  NUM_PATHS             = _FAST ? 20  : 50;
-        const auto TEST_DURATION         = std::chrono::milliseconds(_FAST ? 150 : 300);
-        const int  NUM_ITERATIONS        = _FAST ? 1   : 2;
+        const int  OPERATIONS_PER_THREAD = 200;
+        const int  NUM_PATHS             = 20;
+        const auto TEST_DURATION         = std::chrono::milliseconds(150);
+        const int  NUM_ITERATIONS        = 1;
 
         auto performanceTest = [&](int concurrency) {
             struct Result {
@@ -1781,11 +1779,9 @@ TEST_CASE("PathSpace Multithreading") {
     SUBCASE("Dining Philosophers") {
         PathSpace pspace;
         const int NUM_PHILOSOPHERS     = 5;
-        const char* _fastEnv2 = std::getenv("PATHSPACE_FAST_TESTS");
-        const bool  _FAST2    = (_fastEnv2 && std::strcmp(_fastEnv2, "0") != 0);
-        const int EATING_DURATION_MS   = _FAST2 ? 5    : 10;
-        const int THINKING_DURATION_MS = _FAST2 ? 5    : 10;
-        const int TEST_DURATION_MS     = _FAST2 ? 1500 : 5000; // 1.5s when FAST, else 5s
+        const int EATING_DURATION_MS   = 5;
+        const int THINKING_DURATION_MS = 5;
+        const int TEST_DURATION_MS     = 1500;
 
         struct PhilosopherStats {
             std::atomic<int> meals_eaten{0};

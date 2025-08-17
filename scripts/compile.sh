@@ -76,6 +76,16 @@ Examples:
 EOF
 }
 
+# Determine CPU jobs (fallback to 4 if detection is unavailable)
+cpu_jobs() {
+  if command -v nproc >/dev/null 2>&1; then
+    nproc
+  elif command -v sysctl >/dev/null 2>&1; then
+    sysctl -n hw.ncpu
+  else
+    echo 4
+  fi
+}
 require_tool() {
   command -v "$1" >/dev/null 2>&1 || die "Required tool not found: $1"
 }
@@ -176,8 +186,10 @@ if [[ -z "$BUILD_DIR" ]]; then
   BUILD_DIR="$BUILD_DIR_DEFAULT"
 fi
 
-# Jobs sanity (optional)
-if [[ -n "${JOBS}" ]]; then
+# Jobs sanity and default parallelism
+if [[ -z "${JOBS}" ]]; then
+  JOBS="$(cpu_jobs)"
+else
   case "$JOBS" in
     ''|*[!0-9]*)
       die "--jobs must be a positive integer"
@@ -228,6 +240,14 @@ mkdir -p "$BUILD_DIR"
 # Configure
 # ----------------------------
 CONFIGURE_CMD=( cmake -S "$ROOT_DIR" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE="$BUILD_TYPE" )
+# Prefer Ninja by default if no generator was specified and it's available
+if [[ -z "$GENERATOR" ]]; then
+  if command -v ninja >/dev/null 2>&1; then
+    GENERATOR="Ninja"
+  elif command -v ninja-build >/dev/null 2>&1; then
+    GENERATOR="Ninja"
+  fi
+fi
 if [[ -n "$GENERATOR" ]]; then
   CONFIGURE_CMD+=( -G "$GENERATOR" )
 fi
@@ -245,9 +265,7 @@ BUILD_CMD=( cmake --build "$BUILD_DIR" )
 if [[ -n "$TARGET" ]]; then
   BUILD_CMD+=( --target "$TARGET" )
 fi
-if [[ -n "$JOBS" ]]; then
-  BUILD_CMD+=( --parallel "$JOBS" )
-fi
+BUILD_CMD+=( --parallel "$JOBS" )
 
 if [[ "$VERBOSE" -eq 1 ]]; then
   echo "Build: ${BUILD_CMD[*]}"
