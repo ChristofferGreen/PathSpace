@@ -263,6 +263,7 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
     - `./scripts/compile.sh`
     - `./scripts/compile.sh --clean -j 8 --release`
     - `./scripts/compile.sh -G "Ninja" --target PathSpaceTests`
+    - `./scripts/update_compile_commands.sh --no-configure`
 
 ### Example application (optional)
 - A small example app demonstrates user-level composition (mounting providers under arbitrary paths) and prints device activity:
