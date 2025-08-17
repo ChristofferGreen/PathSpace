@@ -284,8 +284,8 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
 Run the full looped test suite and a brief local smoke test of the example before pushing (so you don’t rely on CI to catch issues):
 
 1) Install the hook in your clone:
-- ln -sf ../../scripts/git-hooks/pre-push.local.sh .git/hooks/pre-push
-- chmod +x scripts/git-hooks/pre-push.local.sh .git/hooks/pre-push
+- ln -sf ../../scripts/git-hooks/pre-push .git/hooks/pre-push
+- chmod +x scripts/git-hooks/pre-push .git/hooks/pre-push
 
 2) What it does by default:
 - Builds and runs the test suite with a loop (loop=15)
