@@ -317,7 +317,7 @@ Examples:
 
 Use a clear, conventional format so history is scannable and tooling-friendly. Conventional Commits style works well for C++ projects with repo-specific scopes.
 
-Format:
+Format (80-char max per line):
 type(scope): imperative subject
 
 Rules:
@@ -326,11 +326,11 @@ Rules:
 - scope: a concise area, e.g., core, path, layer, task, type, tests, docs, build, scripts
 - subject:
   - imperative mood, present tense (e.g., add, fix, improve)
-  - concise; aim ≤ 72 characters
+  - concise; subject line must be ≤ 80 characters
 - body:
   - explain what and why (not just how)
   - include concurrency and performance considerations where relevant
-  - wrap lines ~72–80 chars for readability
+  - wrap all body lines to ≤ 80 characters (hard limit)
 - footers (as needed):
   - Breaking-Change: <description>
   - Refs: #123, Fixes: #123
@@ -349,14 +349,17 @@ Examples:
 Full examples with body:
 
 fix(task): handle timeout edge-case in wait loop with minimal lock time
-- Why: avoid holding registry lock across condition waits; fixes rare deadlock
-- Concurrency: narrows critical section; uses short slices to re-check readiness
+- Why: avoid holding registry lock across condition waits; fixes rare
+  deadlock
+- Concurrency: narrows critical section; uses short slices to re-check
+  readiness
 - Tests: adds regression test and exercises timeout in looped scenario
 Refs: #123
 
 perf(core): reduce contention in PathSpace::out by tuning wait slices
 - Why: lower spurious wake-ups and context switches under high contention
-- Performance: ~15% lower involuntary context switches in heavy tests
+- Performance: ~15% lower involuntary context switches in heavy
+  tests
 - Risk: semantics unchanged; only timing granularity adjusted
 
 When a change affects core behavior (paths, NodeData, WaitMap, TaskPool, serialization), update both docs/AI_OVERVIEW.md and docs/AI_ARCHITECTURE.md. For build/script changes, update the “Tests & build” section in docs/AI_OVERVIEW.md.

@@ -112,7 +112,7 @@ If `gh` is not available, the script opens the GitHub compare page so you can fi
 
 Use Conventional Commits with repo-appropriate scopes. This keeps history scannable and makes release and changelog tooling possible.
 
-Format:
+Format (80-char max per line):
 - `type(scope): imperative subject`
 
 Types:
@@ -123,12 +123,12 @@ Scopes (suggestions; keep short and meaningful):
 
 Subject:
 - Imperative mood, present tense (e.g., “add”, “fix”, “improve”)
-- Keep concise; aim for ≤ 72 chars
+- Keep concise; subject line must be ≤ 80 characters
 
 Body:
 - Explain what and why (not just how)
 - Mention concurrency and performance considerations when relevant
-- Wrap lines around 72–80 chars
+- Wrap all body lines to ≤ 80 characters (hard limit)
 
 Footers (as needed):
 - `Breaking-Change: <description>`
