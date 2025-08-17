@@ -279,8 +279,30 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
   - On macOS with `-DENABLE_PATHIO_MACOS=ON`, the example can start the macOS backend skeletons which generate events via OS hooks when implemented (they are currently scaffolding).
   - It logs mouse moves/clicks/wheel from a `PathIOMice` provider and keyboard keydown/keyup/text from a `PathIOKeyboard` provider.
   - Plug/unplug messages are inferred using an inactivity heuristic (first event marks "plug-in"; prolonged idle marks "unplug") since there is no OS-level hotplug API wired yet.
-    - `./scripts/compile.sh --test`
-    - `./scripts/compile.sh --loop=15`
+
+### Local pre-push hook (recommended)
+Run the full looped test suite and a brief local smoke test of the example before pushing (so you don’t rely on CI to catch issues):
+
+1) Install the hook in your clone:
+- ln -sf ../../scripts/git-hooks/pre-push.local.sh .git/hooks/pre-push
+- chmod +x scripts/git-hooks/pre-push.local.sh .git/hooks/pre-push
+
+2) What it does by default:
+- Builds and runs the test suite with a loop (loop=15)
+- Builds the example app (devices_example)
+- Runs the example locally for ~3 seconds to ensure it starts cleanly
+
+3) Useful environment toggles:
+- SKIP_LOOP_TESTS=1 — skip the looped tests (e.g., for quick local pushes)
+- SKIP_EXAMPLE=1 — skip the example smoke test
+- BUILD_TYPE=Release|Debug — choose build type (default: Release)
+- JOBS=N — parallel build jobs (defaults to system CPU count)
+- PATHSPACE_CMAKE_ARGS="..." — pass extra CMake args
+- ENABLE_PATHIO_MACOS=ON — on macOS, include macOS backends in the example build
+
+Examples:
+- SKIP_EXAMPLE=1 ./scripts/compile.sh --test
+- SKIP_LOOP_TESTS=1 BUILD_TYPE=Debug JOBS=8 git push
 
 ---
 
