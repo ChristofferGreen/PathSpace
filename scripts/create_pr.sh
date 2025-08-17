@@ -243,6 +243,13 @@ fi
 
 # Fallback: open the compare page in browser
 COMPARE_URL="https://github.com/${REPO_SLUG}/compare/${BASE}...${BRANCH}?expand=1"
+# Suggest installing GitHub CLI if it's not available locally
+if ! command -v gh >/dev/null 2>&1; then
+  warn "GitHub CLI (gh) not found. Consider installing it:"
+  warn "  macOS (Homebrew): brew install gh"
+  warn "  Ubuntu/Debian:    sudo apt-get install gh  (or see https://cli.github.com)"
+  warn "Then authenticate via: gh auth login"
+fi
 warn "Falling back to opening compare page. Complete PR details in the browser."
 say "Compare URL (create PR from this page):"
 echo "$COMPARE_URL"

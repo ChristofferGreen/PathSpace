@@ -104,7 +104,28 @@ Use the helper script (auto-push, create PR, open browser):
   - Reviewers/assignees/labels (when using `gh`): `-r`, `-a`, `-l`
   - Skip auto-push (if you pushed already): `--no-push`
 
-If `gh` is not available, the script opens the GitHub compare page so you can finalize the PR manually.
+If you have GitHub CLI (`gh`) installed, the script will create the PR via
+`gh pr create` and open the PR URL in your browser automatically. If `gh` is
+not available, the script falls back to opening the GitHub compare page so you
+can finalize the PR in your browser.
+
+What is `gh` (GitHub CLI) and how to set it up:
+- macOS (Homebrew):
+  - `brew install gh`
+- Ubuntu/Debian:
+  - `sudo apt-get install gh` (or see https://cli.github.com for instructions)
+- Authenticate:
+  - `gh auth login` (follow the prompts; choose HTTPS and your browser)
+
+Handy `gh` commands (run from your topic branch):
+- Create a PR with title/body and base:
+  - `gh pr create --title "fix(core): iterator bounds" --body "…" --base main`
+- Draft PR:
+  - `gh pr create --draft`
+- Add labels/reviewers/assignees:
+  - `gh pr create --label "perf,tests" --reviewer your-handle --assignee your-handle`
+- Open the current PR in your browser:
+  - `gh pr view --web`
 
 ---
 
