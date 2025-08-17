@@ -288,7 +288,7 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
   - Plug/unplug messages are inferred using an inactivity heuristic (first event marks "plug-in"; prolonged idle marks "unplug") since there is no OS-level hotplug API wired yet.
 
 ### Local pre-push hook (recommended)
-Note: Ask before committing and pushing changes. You do not need to ask to run tests.
+Note: Ask before committing and pushing changes. You do not need to ask to run tests. After pushing your topic branch, run ./scripts/create_pr.sh to automatically create the PR (via gh or GH_TOKEN) and open it in your browser.
 Run the full looped test suite and a brief local smoke test of the example before pushing (so you don’t rely on CI to catch issues):
 
 1) Install the hook in your clone:

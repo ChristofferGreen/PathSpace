@@ -34,7 +34,7 @@ Helpful scripts in `scripts/`:
   - `perf/<topic>` — performance improvements
   - `refactor/<topic>` — internal refactors
   - `docs/<topic>` — documentation-only changes
-- Avoid direct pushes to `main`. Open a PR from your topic branch into `main`.
+- Avoid direct pushes to `main`. Open a PR from your topic branch into `main`. After pushing your topic branch, run `./scripts/create_pr.sh` to automatically create the PR (via `gh` or `GH_TOKEN`) and open it in your browser.
 - Contributor policy: Ask before committing and pushing changes. You do not need to ask to run tests.
 
 Recommended merge strategy:
@@ -105,10 +105,7 @@ Use the helper script (auto-push, create PR, open browser):
   - Reviewers/assignees/labels (when using `gh`): `-r`, `-a`, `-l`
   - Skip auto-push (if you pushed already): `--no-push`
 
-If you have GitHub CLI (`gh`) installed, the script will create the PR via
-`gh pr create` and open the PR URL in your browser automatically. If `gh` is
-not available, the script falls back to opening the GitHub compare page so you
-can finalize the PR in your browser.
+If you have GitHub CLI (`gh`) installed or `GH_TOKEN` set (with repo access), the script will create the PR automatically and open it in your browser. Otherwise, it will open the GitHub compare page so you can finalize the PR manually.
 
 What is `gh` (GitHub CLI) and how to set it up:
 - macOS (Homebrew):
