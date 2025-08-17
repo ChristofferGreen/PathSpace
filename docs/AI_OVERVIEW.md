@@ -342,6 +342,22 @@ Examples:
 - docs(overview): document compile_commands.json refresh workflow
 - build(scripts): prefer Ninja and auto-parallelize by CPU core count
 - refactor(path): unify iterator types and remove string_view end() usage
+- test(multithreading): shorten perf case without reducing coverage
+- chore(logging): gate SP_LOG_DEBUG output behind PATHSPACE_LOG
+- feat(layer): add alias retarget notification path forwarding
+
+Full examples with body:
+
+fix(task): handle timeout edge-case in wait loop with minimal lock time
+- Why: avoid holding registry lock across condition waits; fixes rare deadlock
+- Concurrency: narrows critical section; uses short slices to re-check readiness
+- Tests: adds regression test and exercises timeout in looped scenario
+Refs: #123
+
+perf(core): reduce contention in PathSpace::out by tuning wait slices
+- Why: lower spurious wake-ups and context switches under high contention
+- Performance: ~15% lower involuntary context switches in heavy tests
+- Risk: semantics unchanged; only timing granularity adjusted
 
 When a change affects core behavior (paths, NodeData, WaitMap, TaskPool, serialization), update both docs/AI_OVERVIEW.md and docs/AI_ARCHITECTURE.md. For build/script changes, update the “Tests & build” section in docs/AI_OVERVIEW.md.
 
