@@ -256,6 +256,9 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
   - Test run: `--test` builds and runs tests (executes `build/tests/PathSpaceTests`)
   - Loop: `--loop[=N]` runs the selected tests N times (default: 15). Implies `--test`.
     - Recommended for changes that touch concurrency (WaitMap, Node trie, Task/Executor), since intermittent races may only appear across repeated runs.
+  - Compilation database (`compile_commands.json`):
+    - After each successful configure/build, CMake target `copy-compile-commands` mirrors `build/compile_commands.json` to `./compile_commands.json` at the repo root.
+    - If you add/rename/remove source files, re-run configure or the compile script to refresh it; many editors/LSPs depend on it for include paths and diagnostics.
   Examples:
     - `./scripts/compile.sh`
     - `./scripts/compile.sh --clean -j 8 --release`
