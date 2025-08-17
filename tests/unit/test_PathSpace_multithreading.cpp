@@ -1715,7 +1715,7 @@ TEST_CASE("PathSpace Multithreading") {
 
                 auto workerFunction = [&]() {
                     for (int i = 0; i < OPERATIONS_PER_THREAD && !shouldStop.load(std::memory_order_relaxed); ++i) {
-                        std::string path = std::format("/perf/{}", i % NUM_PATHS);
+                        std::string path = std::string("/perf/") + std::to_string(i % NUM_PATHS);
                         auto        task = []() -> int { return 42; };
                         pspace.insert(path, task);
                         auto result = pspace.read<int>(path, Block(10ms));
@@ -1796,8 +1796,8 @@ TEST_CASE("PathSpace Multithreading") {
         std::vector<PhilosopherStats> stats(NUM_PHILOSOPHERS);
 
         auto philosopher = [&](int id) {
-            std::string first_fork  = std::format("/fork/{}", std::min(id, (id + 1) % NUM_PHILOSOPHERS));
-            std::string second_fork = std::format("/fork/{}", std::max(id, (id + 1) % NUM_PHILOSOPHERS));
+            std::string first_fork  = std::string("/fork/") + std::to_string(std::min(id, (id + 1) % NUM_PHILOSOPHERS));
+            std::string second_fork = std::string("/fork/") + std::to_string(std::max(id, (id + 1) % NUM_PHILOSOPHERS));
 
             std::mt19937                    rng(id);
             std::uniform_int_distribution<> think_dist(1, THINKING_DURATION_MS);
