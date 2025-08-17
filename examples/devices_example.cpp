@@ -37,6 +37,28 @@ int main() {
     auto space = std::make_shared<PathSpace>();
 
     // Mount mice and keyboard providers (path-agnostic providers; paths chosen by this example)
+    // Prefer macOS backends when available, otherwise use generic providers.
+#ifdef PATHIO_BACKEND_MACOS
+    auto miceBackend = std::make_unique<PathIOMiceMacOS>();
+    auto* miceRaw = miceBackend.get();
+    {
+        auto ret = space->insert<"/inputs/mice/0">(std::move(miceBackend));
+        if (!ret.errors.empty()) {
+            std::cerr << "Failed to mount mice (macOS) provider\n";
+            return 1;
+        }
+    }
+
+    auto kbBackend = std::make_unique<PathIOKeyboardMacOS>();
+    auto* kbRaw = kbBackend.get();
+    {
+        auto ret = space->insert<"/inputs/keyboards/0">(std::move(kbBackend));
+        if (!ret.errors.empty()) {
+            std::cerr << "Failed to mount keyboard (macOS) provider\n";
+            return 1;
+        }
+    }
+#else
     auto mice = std::make_unique<PathIOMice>();
     auto* miceRaw = mice.get();
     {
@@ -56,13 +78,16 @@ int main() {
             return 1;
         }
     }
+#endif
 
 #ifdef PATHIO_BACKEND_MACOS
-    // Optionally start macOS backends if available (replace with real integrations as needed)
-    PathIOMiceMacOS miceOs;
-    PathIOKeyboardMacOS kbOs;
-    miceOs.start();
-    kbOs.start();
+    // Start macOS backends if mounted
+    if (miceRaw) {
+        static_cast<PathIOMiceMacOS*>(miceRaw)->start();
+    }
+    if (kbRaw) {
+        static_cast<PathIOKeyboardMacOS*>(kbRaw)->start();
+    }
     std::cout << "[info] macOS backends started (PATHIO_BACKEND_MACOS)\n";
 #endif
 
@@ -72,6 +97,9 @@ int main() {
     ActivityTracker miceAct, kbAct;
 
     // Reader thread: mice
+    // Track an accumulated pointer position from relative moves; reset when unplugged
+    std::atomic<int> mouseX{0};
+    std::atomic<int> mouseY{0};
     std::thread miceReader([&] {
         while (g_running.load(std::memory_order_acquire)) {
             auto r = space->read<"/inputs/mice/0/events", PathIOMice::Event>(Block{250ms});
@@ -84,20 +112,35 @@ int main() {
                 miceAct.idleTicks.store(0, std::memory_order_release);
 
                 switch (e.type) {
-                    case MouseEventType::Move:
-                        std::cout << "[mouse] move dx=" << e.dx << " dy=" << e.dy << "\n";
+                    case MouseEventType::Move: {
+                        // Update accumulated coordinates based on relative deltas
+                        int nx = mouseX.load(std::memory_order_acquire) + e.dx;
+                        int ny = mouseY.load(std::memory_order_acquire) + e.dy;
+                        mouseX.store(nx, std::memory_order_release);
+                        mouseY.store(ny, std::memory_order_release);
+                        std::cout << "[mouse] move dx=" << e.dx << " dy=" << e.dy
+                                  << " | pos=(" << nx << "," << ny << ")\n";
                         break;
-                    case MouseEventType::AbsoluteMove:
-                        std::cout << "[mouse] abs x=" << e.x << " y=" << e.y << "\n";
+                    }
+                    case MouseEventType::AbsoluteMove: {
+                        // Set absolute coordinates directly
+                        mouseX.store(e.x, std::memory_order_release);
+                        mouseY.store(e.y, std::memory_order_release);
+                        std::cout << "[mouse] abs x=" << e.x << " y=" << e.y
+                                  << " | pos=(" << e.x << "," << e.y << ")\n";
                         break;
+                    }
                     case MouseEventType::ButtonDown:
-                        std::cout << "[mouse] button down " << static_cast<int>(e.button) << "\n";
+                        std::cout << "[mouse] button down " << static_cast<int>(e.button)
+                                  << " | pos=(" << mouseX.load() << "," << mouseY.load() << ")\n";
                         break;
                     case MouseEventType::ButtonUp:
-                        std::cout << "[mouse] button up " << static_cast<int>(e.button) << "\n";
+                        std::cout << "[mouse] button up " << static_cast<int>(e.button)
+                                  << " | pos=(" << mouseX.load() << "," << mouseY.load() << ")\n";
                         break;
                     case MouseEventType::Wheel:
-                        std::cout << "[mouse] wheel " << e.wheel << "\n";
+                        std::cout << "[mouse] wheel " << e.wheel
+                                  << " | pos=(" << mouseX.load() << "," << mouseY.load() << ")\n";
                         break;
                 }
             } else {
@@ -105,6 +148,9 @@ int main() {
                 miceAct.idleTicks.fetch_add(1, std::memory_order_acq_rel);
                 if (miceAct.plugged.load(std::memory_order_acquire) && miceAct.idleTicks.load(std::memory_order_acquire) > 20) {
                     miceAct.plugged.store(false, std::memory_order_release);
+                    // Reset accumulated position on unplug for clarity
+                    mouseX.store(0, std::memory_order_release);
+                    mouseY.store(0, std::memory_order_release);
                     std::cout << "[unplug] mice/0 (inactivity)\n";
                 }
             }
@@ -161,8 +207,13 @@ int main() {
     monitor.join();
 
 #ifdef PATHIO_BACKEND_MACOS
-    kbOs.stop();
-    miceOs.stop();
+    // Stop macOS backends if started
+    if (kbRaw) {
+        static_cast<PathIOKeyboardMacOS*>(kbRaw)->stop();
+    }
+    if (miceRaw) {
+        static_cast<PathIOMiceMacOS*>(miceRaw)->stop();
+    }
 #endif
 
     std::cout << "Exiting device example.\n";
