@@ -265,6 +265,9 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
     - `./scripts/compile.sh -G "Ninja" --target PathSpaceTests`
     - `./scripts/update_compile_commands.sh --no-configure`
 
+  Test env toggles:
+    - `PATHSPACE_LOG=1` — enable verbose test logging when compiled with `SP_LOG_DEBUG` (set to `0` to force off)
+    - `PATHSPACE_FAST_TESTS=1` — speed up heavy tests (reduced durations/iterations) without changing their utility
 ### Example application (optional)
 - A small example app demonstrates user-level composition (mounting providers under arbitrary paths) and prints device activity:
   - File: `examples/devices_example.cpp`

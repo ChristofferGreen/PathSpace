@@ -1,6 +1,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT
 #include "ext/doctest.h"
 #include "log/TaggedLogger.hpp"
+#include <cstdlib>
+#include <cstring>
 
 struct ShowTestStart : public doctest::IReporter {
     ShowTestStart(const doctest::ContextOptions& /* in */) {
@@ -55,6 +57,11 @@ int main(int argc, char** argv) {
 #ifdef SP_LOG_DEBUG
     // Initialize thread name for logging
     SP::set_thread_name("TestMain");
+    // Determine whether to enable logging based on PATHSPACE_LOG
+    bool enableLog = false;
+    if (const char* _env_log = std::getenv("PATHSPACE_LOG")) {
+        if (std::strcmp(_env_log, "0") != 0) enableLog = true;
+    }
 #endif
 
     // Check if we're in test discovery mode or if we should exit early
@@ -64,9 +71,11 @@ int main(int argc, char** argv) {
     }
 
 #ifdef SP_LOG_DEBUG
-    // Enable logging for normal test execution
-    SP::set_logging_enabled(true);
-    sp_log("Starting test execution", "TEST", "INFO");
+    // Enable logging for normal test execution if PATHSPACE_LOG is set (and not "0")
+    if (enableLog) {
+        SP::set_logging_enabled(true);
+        sp_log("Starting test execution", "TEST", "INFO");
+    }
 #endif
 
     // Run the tests
@@ -74,10 +83,12 @@ int main(int argc, char** argv) {
 
     // Log the test results
 #ifdef SP_LOG_DEBUG
-    if (res == 0) {
-        sp_log("All tests passed successfully", "TEST", "SUCCESS");
-    } else {
-        sp_log("Some tests failed", "TEST", "FAILURE");
+    if (enableLog) {
+        if (res == 0) {
+            sp_log("All tests passed successfully", "TEST", "SUCCESS");
+        } else {
+            sp_log("Some tests failed", "TEST", "FAILURE");
+        }
     }
 #endif
 
