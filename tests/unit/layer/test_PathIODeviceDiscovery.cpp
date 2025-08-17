@@ -27,7 +27,7 @@ TEST_CASE("PathIODeviceDiscovery - Empty and basic listing") {
     }
 
     SUBCASE("Unknown class returns NotFound") {
-        auto r = dev.read<"/mice", std::string>();
+        auto r = dev.read<"/mouse", std::string>();
         CHECK_FALSE(r.has_value());
     }
 }
@@ -40,7 +40,7 @@ TEST_CASE("PathIODeviceDiscovery - Simulated devices listing and metadata") {
         PathIODeviceDiscovery::SimDevice m0;
         m0.id = 0; m0.vendor = "Acme"; m0.product = "FastMouse"; m0.connection = "USB";
         m0.capabilities = {"wheel", "buttons:3"};
-        dev.addSimulatedDevice("mice", m0);
+        dev.addSimulatedDevice("mouse", m0);
     }
     {
         PathIODeviceDiscovery::SimDevice k0;
@@ -53,12 +53,12 @@ TEST_CASE("PathIODeviceDiscovery - Simulated devices listing and metadata") {
         auto r = dev.read<std::string>("/");
         REQUIRE(r.has_value());
         auto s = r.value();
-        CHECK(contains_line(s, "mice"));
+        CHECK(contains_line(s, "mouse"));
         CHECK(contains_line(s, "keyboards"));
     }
 
     SUBCASE("Class listing returns device IDs per line") {
-        auto rm = dev.read<"/mice", std::string>();
+        auto rm = dev.read<"/mouse", std::string>();
         REQUIRE(rm.has_value());
         CHECK(contains_line(rm.value(), "0"));
 
@@ -67,17 +67,17 @@ TEST_CASE("PathIODeviceDiscovery - Simulated devices listing and metadata") {
         CHECK(contains_line(rk.value(), "0"));
     }
 
-    SUBCASE("Synonym class names are normalized (mouse -> mice)") {
+    SUBCASE("Synonym class names are normalized (mouse alias)") {
         PathIODeviceDiscovery::SimDevice m1;
         m1.id = 1; m1.vendor = "Globex"; m1.product = "Precision"; m1.connection = "USB-C";
         dev.addSimulatedDevice("mouse", m1); // synonym
-        auto rm = dev.read<"/mice", std::string>();
+        auto rm = dev.read<"/mouse", std::string>();
         REQUIRE(rm.has_value());
         CHECK(contains_line(rm.value(), "1"));
     }
 
     SUBCASE("Device metadata is exposed as key=value lines") {
-        auto meta = dev.read<"/mice/0/meta", std::string>();
+        auto meta = dev.read<"/mouse/0/meta", std::string>();
         REQUIRE(meta.has_value());
         auto s = meta.value();
         CHECK(contains_line(s, "id=0"));
@@ -87,7 +87,7 @@ TEST_CASE("PathIODeviceDiscovery - Simulated devices listing and metadata") {
     }
 
     SUBCASE("Device capabilities are exposed as one per line") {
-        auto caps = dev.read<"/mice/0/capabilities", std::string>();
+        auto caps = dev.read<"/mouse/0/capabilities", std::string>();
         REQUIRE(caps.has_value());
         auto s = caps.value();
         CHECK(contains_line(s, "wheel"));
@@ -95,12 +95,12 @@ TEST_CASE("PathIODeviceDiscovery - Simulated devices listing and metadata") {
     }
 
     SUBCASE("Type mismatch returns error") {
-        auto bad = dev.read<"/mice", int>();
+        auto bad = dev.read<"/mouse", int>();
         CHECK_FALSE(bad.has_value());
     }
 
     SUBCASE("Blocking read option is ignored (returns immediately)") {
-        auto r = dev.read<"/mice", std::string>(Block{10ms});
+        auto r = dev.read<"/mouse", std::string>(Block{10ms});
         REQUIRE(r.has_value());
         CHECK(contains_line(r.value(), "0"));
     }
@@ -111,24 +111,24 @@ TEST_CASE("PathIODeviceDiscovery - Removal updates visibility") {
 
     PathIODeviceDiscovery::SimDevice m0;
     m0.id = 0; m0.vendor = "Acme"; m0.product = "GoneSoon"; m0.connection = "USB";
-    dev.addSimulatedDevice("mice", m0);
+    dev.addSimulatedDevice("mouse", m0);
 
     // Sanity: present
     {
-        auto rm = dev.read<"/mice", std::string>();
+        auto rm = dev.read<"/mouse", std::string>();
         REQUIRE(rm.has_value());
         CHECK(contains_line(rm.value(), "0"));
     }
 
     // Remove and verify NotFound
-    dev.removeSimulatedDevice("mice", 0);
+    dev.removeSimulatedDevice("mouse", 0);
 
     {
-        auto rm = dev.read<"/mice", std::string>();
+        auto rm = dev.read<"/mouse", std::string>();
         CHECK_FALSE(rm.has_value()); // Class now empty -> NotFound by contract
     }
     {
-        auto meta = dev.read<"/mice/0/meta", std::string>();
+        auto meta = dev.read<"/mouse/0/meta", std::string>();
         CHECK_FALSE(meta.has_value());
     }
 }
@@ -147,27 +147,27 @@ TEST_CASE("PathIODeviceDiscovery - Mounted under PathSpace at /dev") {
     PathIODeviceDiscovery::SimDevice m0;
     m0.id = 7; m0.vendor = "Acme"; m0.product = "MountMouse"; m0.connection = "USB";
     m0.capabilities = {"wheel", "buttons:3"};
-    raw->addSimulatedDevice("mice", m0);
+    raw->addSimulatedDevice("mouse", m0);
 
     SUBCASE("Parent read lists devices for a specific class under the mount") {
-        auto r = space.read<"/dev/mice", std::string>();
+        auto r = space.read<"/dev/mouse", std::string>();
         REQUIRE(r.has_value());
         CHECK(contains_line(r.value(), "7"));
     }
 
     SUBCASE("Parent read sees device ids under mounted class path") {
-        auto r = space.read<"/dev/mice", std::string>();
+        auto r = space.read<"/dev/mouse", std::string>();
         REQUIRE(r.has_value());
         CHECK(contains_line(r.value(), "7"));
     }
 
     SUBCASE("Parent read sees metadata and capabilities") {
-        auto meta = space.read<"/dev/mice/7/meta", std::string>();
+        auto meta = space.read<"/dev/mouse/7/meta", std::string>();
         REQUIRE(meta.has_value());
         CHECK(contains_line(meta.value(), "id=7"));
         CHECK(contains_line(meta.value(), "product=MountMouse"));
 
-        auto caps = space.read<"/dev/mice/7/capabilities", std::string>();
+        auto caps = space.read<"/dev/mouse/7/capabilities", std::string>();
         REQUIRE(caps.has_value());
         CHECK(contains_line(caps.value(), "wheel"));
     }

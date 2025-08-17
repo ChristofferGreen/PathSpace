@@ -25,7 +25,7 @@ namespace SP {
  * - Backed by an in-memory simulation map; platform backends can also feed/update devices.
  *
  * Path conventions (relative to the mount point):
- * - "/" or ""                  -> list of classes present (one per line), e.g., "mice\nkeyboards\n"
+ * - "/" or ""                  -> list of classes present (one per line), e.g., "mouse\nkeyboards\n"
  * - "/<class>"                 -> list of device IDs (one per line), e.g., "0\n1\n"
  * - "/<class>/<id>/meta"      -> metadata (one key=value per line)
  * - "/<class>/<id>/capabilities" -> capabilities (one per line)
@@ -50,7 +50,7 @@ public:
 
     // ---- Simulation / backend update API (thread-safe) ----
 
-    // Add or update a device under a class (e.g., "mice", "keyboards").
+    // Add or update a device under a class (e.g., "mouse", "keyboards").
     // If the class name isn't one of the known tokens, it will be lowercased and used as-is.
     void addSimulatedDevice(std::string cls, SimDevice dev) {
         auto norm = normalizeClass_(cls);
@@ -216,8 +216,8 @@ private:
 
     static std::string normalizeClass_(std::string cls) {
         auto s = toLower_(std::move(cls));
-        // Normalize common synonyms
-        if (s == "mouse") s = "mice";
+        // Normalize common synonyms (canonicalize to singular 'mouse')
+        if (s == "mice") s = "mouse";
         if (s == "keyboard") s = "keyboards";
         if (s == "gamepad") s = "gamepads";
         if (s == "touchscreen") s = "touch";

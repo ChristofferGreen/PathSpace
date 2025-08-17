@@ -7,7 +7,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/layer/PathAlias.hpp>
-#include <pathspace/layer/PathIOMice.hpp>
+#include <pathspace/layer/PathIOMouse.hpp>
 #include <pathspace/layer/PathIOPointerMixer.hpp>
 
 using namespace SP;
@@ -40,21 +40,21 @@ static std::optional<T> poll_take(Space& space, std::string const& path, std::ch
     return std::nullopt;
 }
 
-// Demonstrates user-level wiring of: mice -> pointer mixer -> alias to "default pointer".
+// Demonstrates user-level wiring of: mouse -> pointer mixer -> alias to "default pointer".
 // Providers remain path-agnostic; the user composes them and chooses paths.
-TEST_CASE("Composition: mice -> mixer -> alias (user-level wiring, providers are path-agnostic)") {
+TEST_CASE("Composition: mouse -> mixer -> alias (user-level wiring, providers are path-agnostic)") {
     // User-owned PathSpace (can be heap or stack; use heap to show shared ownership for alias upstream)
     auto root = std::make_shared<PathSpace>();
 
     // Create providers (path-agnostic)
-    auto miceUptr   = std::make_unique<PathIOMice>();
-    auto* miceRaw   = miceUptr.get();
+    auto mouseUptr  = std::make_unique<PathIOMouse>(PathIOMouse::BackendMode::Off);
+    auto* mouseRaw  = mouseUptr.get();
     auto mixerUptr  = std::make_unique<PathIOPointerMixer>();
     auto* mixerRaw  = mixerUptr.get();
 
     // Mount providers at user-chosen paths (providers don't care about these)
     {
-        auto ret1 = root->insert<"/inputs/mice/0">(std::move(miceUptr));
+        auto ret1 = root->insert<"/inputs/mouse/0">(std::move(mouseUptr));
         REQUIRE(ret1.errors.empty());
         REQUIRE(ret1.nbrSpacesInserted == 1);
 
@@ -63,13 +63,13 @@ TEST_CASE("Composition: mice -> mixer -> alias (user-level wiring, providers are
         REQUIRE(ret2.nbrSpacesInserted == 1);
     }
 
-    // Create a forwarding thread that reads typed mouse events from the mice provider
+    // Create a forwarding thread that reads typed mouse events from the mouse provider
     // and forwards them to the mixer. This demonstrates "glue" code without hard-coded paths.
     std::atomic<bool> forwarderRunning{true};
     std::thread forwarder([&] {
         while (forwarderRunning.load(std::memory_order_acquire)) {
             // Block briefly waiting for a mouse event; on success, translate to pointer mixer event.
-            auto r = miceRaw->read<"/events", PathIOMice::Event>(Block{50ms});
+            auto r = mouseRaw->read<"/events", PathIOMouse::Event>(Block{50ms});
             if (r.has_value()) {
                 auto const& mev = *r;
                 PathIOPointerMixer::Event pev;
@@ -120,7 +120,7 @@ TEST_CASE("Composition: mice -> mixer -> alias (user-level wiring, providers are
 
     SUBCASE("Mouse move is visible through alias default pointer path") {
         // Simulate a relative move on the mouse
-        miceRaw->simulateMove(+5, -3);
+        mouseRaw->simulateMove(+5, -3);
 
         // Read via the alias (forwarded to mixer). We poll non-blocking to avoid depending on notify.
         auto evOpt = poll_read<PathIOPointerMixer::Event>(*root, "/system/default-pointer/events", 200ms);
@@ -133,7 +133,7 @@ TEST_CASE("Composition: mice -> mixer -> alias (user-level wiring, providers are
 
     SUBCASE("Multiple sources can feed the mixer; alias exposes the merged stream") {
         // Source 0: mouse via forwarder
-        miceRaw->simulateButtonDown(MouseButton::Left, /*deviceId=*/0);
+        mouseRaw->simulateButtonDown(MouseButton::Left, /*deviceId=*/0);
 
         // Source 1: another pointer device feeding directly into the mixer (e.g., tablet)
         mixerRaw->simulateAbsolute(100, 200, /*sourceId=*/1);

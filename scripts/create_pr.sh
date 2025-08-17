@@ -13,7 +13,8 @@
 # Prerequisites:
 # - A git repository with a remote named "origin" pointing to GitHub.
 # - Branch pushed to origin (script will push automatically unless --no-push).
-# - Optional: GitHub CLI (`gh`) authenticated (`gh auth login`).
+# - Optional: GitHub CLI (`gh`) authenticated (`gh auth login`), or
+# - GH_TOKEN environment variable set (with repo access) for REST API fallback.
 
 set -euo pipefail
 
@@ -57,6 +58,7 @@ Options:
 Behavior:
 - If GitHub CLI (gh) is available and authenticated, this script will run:
     gh pr create ... and open the created PR in your browser.
+- Else if GH_TOKEN is set, it will call the GitHub REST API to create the PR and open its URL.
 - Otherwise, it will open the GitHub compare page for the branch so you can create a PR manually.
 
 Commit message tips (Conventional Commits):
@@ -239,6 +241,51 @@ if command -v gh >/dev/null 2>&1; then
     fi
   fi
   warn "GitHub CLI could not determine the PR URL automatically."
+fi
+
+# Attempt with GitHub REST API using GH_TOKEN
+if [[ -n "${GH_TOKEN:-}" ]]; then
+  say "Creating PR using GitHub REST API..."
+  OWNER="${REPO_SLUG%%/*}"
+  REPO="${REPO_SLUG##*/}"
+
+  # Prepare JSON; prefer jq when available for correct escaping
+  if command -v jq >/dev/null 2>&1; then
+    JSON="$(jq -n \
+      --arg title "$TITLE" \
+      --arg head "$BRANCH" \
+      --arg base "$BASE" \
+      --arg body "$BODY" \
+      --argjson draft "$([[ ${DRAFT:-0} -eq 1 ]] && echo true || echo false)" \
+      '{title:$title, head:$head, base:$base, body:$body, draft:$draft}')"
+  else
+    # Minimal escaping for quotes, backslashes, and newlines
+    esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/; s/\n/\\n/g'; }
+    T_ESC="$(esc "$TITLE")"
+    B_ESC="$(esc "$BODY")"
+    DRAFT_BOOL="$( [[ ${DRAFT:-0} -eq 1 ]] && echo true || echo false )"
+    JSON="{\"title\":\"$T_ESC\",\"head\":\"$BRANCH\",\"base\":\"$BASE\",\"body\":\"$B_ESC\",\"draft\":$DRAFT_BOOL}"
+  fi
+
+  RESP="$(curl -sS \
+    -H "Authorization: token ${GH_TOKEN}" \
+    -H "Accept: application/vnd.github+json" \
+    -X POST "https://api.github.com/repos/${REPO_SLUG}/pulls" \
+    -d "$JSON" || true)"
+
+  if command -v jq >/dev/null 2>&1; then
+    PR_URL="$(printf '%s' "$RESP" | jq -r '.html_url // empty')"
+  else
+    PR_URL="$(printf '%s' "$RESP" | grep -Eo '\"html_url\"[[:space:]]*:[[:space:]]*\"https://github\.com/[^"]+/pull/[0-9]+' | head -n1 | sed -E 's/.*\"(https:\/\/github\.com\/[^"]+)\"/\1/')"
+  fi
+
+  if [[ -n "$PR_URL" ]]; then
+    ok "PR created: $PR_URL"
+    open_url "$PR_URL"
+    exit 0
+  else
+    warn "GH_TOKEN present but REST API PR creation failed. Falling back to compare page."
+  fi
 fi
 
 # Fallback: open the compare page in browser

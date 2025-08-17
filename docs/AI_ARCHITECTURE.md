@@ -398,11 +398,16 @@ Concurrency and notifications:
 ## Operating System
 Device IO is provided by path-agnostic layers that can be mounted anywhere in a parent `PathSpace`, with platform backends feeding events into them:
 
-- `src/pathspace/layer/PathIOMice.hpp` and `src/pathspace/layer/PathIOKeyboard.hpp` expose typed event queues (MouseEvent/KeyboardEvent) with blocking `out()`/`take()` (peek vs pop via `Out.doPop`). When mounted with a shared context, `simulateEvent()` wakes blocking readers.
+- `src/pathspace/layer/PathIOMouse.hpp` and `src/pathspace/layer/PathIOKeyboard.hpp` expose typed event queues (MouseEvent/KeyboardEvent) with blocking `out()`/`take()` (peek vs pop via `Out.doPop`). When mounted with a shared context, `simulateEvent()` wakes blocking readers.
 - `src/pathspace/layer/PathIODeviceDiscovery.hpp` provides a simulation-backed `/dev`-like discovery surface (classes, device IDs, per-device `meta` and `capabilities`), using iterator tail mapping for correct nested mounts.
 
-macOS backend skeletons (guarded by CMake):
-- `src/pathspace/layer/macos/PathIO_macos.hpp` declares `PathIOMiceMacOS` and `PathIOKeyboardMacOS` that derive from the providers and host a worker thread for CGEventTap/IOKit HID integration (to be implemented in `.mm/.cpp`).
-- Enable with `-DENABLE_PATHIO_MACOS=ON` (defines `PATHIO_BACKEND_MACOS`); CI remains simulation-only by default.
+Platform backends (unified, via compile-time macros):
+- `src/pathspace/layer/PathIOMouse.hpp` and `src/pathspace/layer/PathIOKeyboard.hpp` expose start()/stop() hooks and select OS paths internally (e.g., `PATHIO_BACKEND_MACOS`) to feed events via `simulateEvent(...)`.
+- On macOS, enable with `-DENABLE_PATHIO_MACOS=ON` to define `PATHIO_BACKEND_MACOS` (CI uses simulation/no-op by default).
+- Deprecated: `src/pathspace/layer/macos/PathIO_macos.hpp` is a compatibility shim only and no longer defines `PathIOMouseMacOS` or `PathIOKeyboardMacOS`. Include the unified headers instead.
 
 Note: First-class links (symlinks) are planned; in the interim, `PathAlias` offers robust forwarding/retargeting semantics without changing core trie invariants.
+
+Contributor policy:
+- Ask before committing and pushing changes.
+- You do not need to ask to run tests.

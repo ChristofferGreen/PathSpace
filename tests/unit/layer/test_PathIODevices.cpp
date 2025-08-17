@@ -2,13 +2,13 @@
 #include <string>
 
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/layer/PathIOMice.hpp>
+#include <pathspace/layer/PathIOMouse.hpp>
 #include <pathspace/layer/PathIOKeyboard.hpp>
 
 using namespace SP;
 
-TEST_CASE("PathIOMice - Simulation queue basic operations") {
-    PathIOMice mice;
+TEST_CASE("PathIOMouse - Simulation queue basic operations") {
+    PathIOMouse mice{PathIOMouse::BackendMode::Off};
 
     CHECK(mice.pending() == 0);
 
@@ -46,7 +46,7 @@ TEST_CASE("PathIOMice - Simulation queue basic operations") {
 }
 
 TEST_CASE("PathIOKeyboard - Simulation queue basic operations") {
-    PathIOKeyboard kb;
+    PathIOKeyboard kb{PathIOKeyboard::BackendMode::Off};
 
     CHECK(kb.pending() == 0);
 
@@ -82,13 +82,13 @@ TEST_CASE("PathIOKeyboard - Simulation queue basic operations") {
     CHECK(kb.pending() == 0);
 }
 
-TEST_CASE("PathIOMice - Mounting under PathSpace") {
+TEST_CASE("PathIOMouse - Mounting under PathSpace") {
     // Prepare device and keep a raw pointer to validate it remains alive after insertion.
-    auto dev = std::make_unique<PathIOMice>();
-    PathIOMice* raw = dev.get();
+    auto dev = std::make_unique<PathIOMouse>(PathIOMouse::BackendMode::Off);
+    PathIOMouse* raw = dev.get();
 
     PathSpace space;
-    auto ret = space.insert<"/devices/mice">(std::move(dev));
+    auto ret = space.insert<"/devices/mouse">(std::move(dev));
     CHECK(ret.nbrSpacesInserted == 1);
 
     // We can still interact with the mounted device through the retained raw pointer.
@@ -96,12 +96,12 @@ TEST_CASE("PathIOMice - Mounting under PathSpace") {
     CHECK(raw->pending() == 1);
 
     // The nested provider currently doesn't implement out(); reads should fail gracefully.
-    auto r = space.read<"/devices/mice/events", std::string>();
+    auto r = space.read<"/devices/mouse/events", std::string>();
     CHECK_FALSE(r.has_value());
 }
 
 TEST_CASE("PathIOKeyboard - Mounting under PathSpace") {
-    auto dev = std::make_unique<PathIOKeyboard>();
+    auto dev = std::make_unique<PathIOKeyboard>(PathIOKeyboard::BackendMode::Off);
     PathIOKeyboard* raw = dev.get();
 
     PathSpace space;
@@ -115,16 +115,16 @@ TEST_CASE("PathIOKeyboard - Mounting under PathSpace") {
     CHECK_FALSE(r.has_value());
 }
 
-TEST_CASE("PathIOMice - typed out()/take() semantics") {
-    PathIOMice mice;
+TEST_CASE("PathIOMouse - typed out()/take() semantics") {
+    PathIOMouse mice{PathIOMouse::BackendMode::Off};
 
     SUBCASE("Non-blocking read on empty returns error") {
-        auto r = mice.read<"/events", PathIOMice::Event>();
+        auto r = mice.read<"/events", PathIOMouse::Event>();
         CHECK_FALSE(r.has_value());
     }
 
     SUBCASE("Blocking read times out on empty") {
-        auto r = mice.read<"/events", PathIOMice::Event>(Block{std::chrono::milliseconds(10)});
+        auto r = mice.read<"/events", PathIOMouse::Event>(Block{std::chrono::milliseconds(10)});
         CHECK_FALSE(r.has_value());
     }
 
@@ -133,7 +133,7 @@ TEST_CASE("PathIOMice - typed out()/take() semantics") {
         mice.simulateMove(3, 4);
 
         // Peek (non-pop) should return the event without consuming it
-        auto peek = mice.read<"/events", PathIOMice::Event>();
+        auto peek = mice.read<"/events", PathIOMouse::Event>();
         REQUIRE(peek.has_value());
         CHECK(peek->type == MouseEventType::Move);
         CHECK(peek->dx == 3);
@@ -141,7 +141,7 @@ TEST_CASE("PathIOMice - typed out()/take() semantics") {
         CHECK(mice.pending() == 1);
 
         // Pop should consume it
-        auto popped = mice.take<"/events", PathIOMice::Event>();
+        auto popped = mice.take<"/events", PathIOMouse::Event>();
         REQUIRE(popped.has_value());
         CHECK(popped->type == MouseEventType::Move);
         CHECK(mice.pending() == 0);
@@ -149,7 +149,7 @@ TEST_CASE("PathIOMice - typed out()/take() semantics") {
 }
 
 TEST_CASE("PathIOKeyboard - typed out()/take() semantics") {
-    PathIOKeyboard kb;
+    PathIOKeyboard kb{PathIOKeyboard::BackendMode::Off};
 
     SUBCASE("Non-blocking read on empty returns error") {
         auto r = kb.read<"/events", PathIOKeyboard::Event>();

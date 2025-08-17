@@ -7,6 +7,8 @@
 #include <deque>
 #include <mutex>
 #include <optional>
+#include <atomic>
+#include <thread>
 
 namespace SP {
 
@@ -50,7 +52,7 @@ struct MouseEvent {
 };
 
 /**
- * PathIOMice — concrete IO provider for mouse devices.
+ * PathIOMouse — concrete IO provider for mouse devices.
  *
  * Notes:
  * - This class does not know anything about where it is mounted in a parent PathSpace.
@@ -59,11 +61,50 @@ struct MouseEvent {
  * - A future implementation will override out() to deliver MouseEvent directly
  *   (peek or pop depending on the Out options), and use notify(...) to wake waiters.
  */
-class PathIOMice final : public PathIO {
+class PathIOMouse final : public PathIO {
 public:
     using Event = MouseEvent;
 
-    PathIOMice() = default;
+    enum class BackendMode { Off, Auto, Simulation, OS };
+
+    explicit PathIOMouse(BackendMode mode = BackendMode::Off) {
+        mode_ = mode;
+#if defined(PATHIO_BACKEND_MACOS)
+        if (mode_ == BackendMode::Auto) {
+            mode_ = BackendMode::OS;
+        }
+        if (mode_ == BackendMode::OS) {
+            osInit_();
+        }
+#else
+        if (mode_ == BackendMode::Auto) {
+            mode_ = BackendMode::Simulation;
+        }
+#endif
+        if (mode_ != BackendMode::Off) {
+            running_.store(true, std::memory_order_release);
+            worker_ = std::thread([this] { this->runLoop_(); });
+        }
+    }
+    ~PathIOMouse() {
+#if defined(PATHIO_BACKEND_MACOS)
+        if (running_.load(std::memory_order_acquire) && mode_ == BackendMode::OS) {
+            osShutdown_();
+        }
+#endif
+        running_.store(false, std::memory_order_release);
+        if (worker_.joinable()) {
+            worker_.join();
+        }
+    }
+
+    // ---- Construction hooks ----
+    // Backend selection occurs in the constructor; background worker is stopped in the destructor.
+
+
+
+
+
 
     // ---- Simulation API (thread-safe) ----
 
@@ -181,10 +222,10 @@ public:
     auto out(Iterator const& /*path*/, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> override {
         // Type-check: only support MouseEvent payloads here
         if (inputMetadata.typeInfo != &typeid(Event)) {
-            return Error{Error::Code::InvalidType, "PathIOMice only supports MouseEvent"};
+            return Error{Error::Code::InvalidType, "Mouse provider only supports MouseEvent"};
         }
         if (obj == nullptr) {
-            return Error{Error::Code::MalformedInput, "Null output pointer for PathIOMice::out"};
+            return Error{Error::Code::MalformedInput, "Null output pointer"};
         }
 
         // Fast path: try without blocking
@@ -231,6 +272,41 @@ public:
     }
 
 private:
+    // Worker loop that sources events from the OS or simulates when no OS integration is available.
+    void runLoop_() {
+        while (running_.load(std::memory_order_acquire)) {
+#if defined(PATHIO_BACKEND_MACOS)
+            if (mode_ == BackendMode::Simulation) {
+                // Minimal simulation placeholder
+                this->simulateMove(1, 0, /*deviceId=*/0);
+                std::this_thread::sleep_for(std::chrono::milliseconds(16));
+            } else {
+                // OS-backed poll (stubbed; implement with CGEventTap/IOKit HID)
+                osPollOnce_();
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+#else
+            // Non-macOS: provide a light simulation when requested; otherwise idle
+            if (mode_ == BackendMode::Simulation) {
+                this->simulateMove(1, 0, /*deviceId=*/0);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+#endif
+        }
+    }
+
+private:
+    std::atomic<bool>         running_{false};
+    std::thread               worker_;
+    BackendMode               mode_{BackendMode::Off};
+
+#if defined(PATHIO_BACKEND_MACOS)
+    // macOS OS hook stubs (to be implemented with CGEventTap / IOKit HID)
+    void osInit_() {}
+    void osShutdown_() {}
+    void osPollOnce_() { std::this_thread::sleep_for(std::chrono::milliseconds(10)); }
+#endif
+
     mutable std::mutex        mutex_;
     mutable std::condition_variable cv_;
     std::deque<Event>         queue_;

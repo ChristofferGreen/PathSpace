@@ -14,20 +14,20 @@ TEST_CASE("PathAlias - Forwarding insert and read to upstream") {
     PathAlias alias{upstream, "/dev"};
 
     SUBCASE("Insert via alias maps to target prefix") {
-        auto ret = alias.insert<"/mice/0/name", std::string>(std::string("mouse0"));
+        auto ret = alias.insert<"/mouse/0/name", std::string>(std::string("mouse0"));
         CHECK(ret.errors.empty());
         CHECK(ret.nbrValuesInserted == 1);
 
-        auto u = upstream->read<"/dev/mice/0/name", std::string>();
+        auto u = upstream->read<"/dev/mouse/0/name", std::string>();
         REQUIRE(u.has_value());
         CHECK(u.value() == "mouse0");
     }
 
     SUBCASE("Read via alias maps to target prefix") {
         // Prepare data directly in upstream at the target path
-        upstream->insert<"/dev/mice/0/name", std::string>(std::string("M0"));
+        upstream->insert<"/dev/mouse/0/name", std::string>(std::string("M0"));
 
-        auto r = alias.read<"/mice/0/name", std::string>();
+        auto r = alias.read<"/mouse/0/name", std::string>();
         REQUIRE(r.has_value());
         CHECK(r.value() == "M0");
     }
