@@ -2,17 +2,21 @@
 
 namespace SP {
 
-Iterator::Iterator(std::string_view path) noexcept
-    : path{path}, current{path.begin()}, segment_end{path.begin()} {
+Iterator::Iterator(std::string_view pathIn) noexcept
+    : storage{std::string(pathIn)},
+      path{storage},
+      current{storage.begin()},
+      segment_end{storage.begin()} {
     findNextComponent();
 }
-Iterator::Iterator(char const* const path) noexcept
-    : Iterator{std::string_view{path}} {}
+Iterator::Iterator(char const* const pathIn) noexcept
+    : Iterator{std::string_view{pathIn}} {}
 
 Iterator::Iterator(IteratorType first, IteratorType last) noexcept
-    : path{first, static_cast<size_t>(last - first)},
-      current{path.begin()},
-      segment_end{path.begin()} {
+    : storage{std::string(first, last)},
+      path{storage},
+      current{storage.begin()},
+      segment_end{storage.begin()} {
     skipSlashes(current);
     segment_end = findNextSlash(current);
     updateCurrentSegment();
@@ -20,13 +24,13 @@ Iterator::Iterator(IteratorType first, IteratorType last) noexcept
 
 void Iterator::findNextComponent() noexcept {
     // Skip any leading separators
-    while (current != path.end() && *current == '/') {
+    while (current != storage.end() && *current == '/') {
         ++current;
     }
 
     // Find end of component (next separator or end)
     segment_end = current;
-    while (segment_end != path.end() && *segment_end != '/') {
+    while (segment_end != storage.end() && *segment_end != '/') {
         ++segment_end;
     }
 
@@ -46,11 +50,20 @@ auto Iterator::currentComponent() const noexcept -> std::string_view {
 }
 
 auto Iterator::startToCurrent() const noexcept -> std::string_view {
-    return std::string_view{this->path.begin(), static_cast<size_t>(this->path.end() - this->current + 1)};
+    // start at the first character after the leading '/'
+    size_t startIdx = 0;
+    if (!this->storage.empty() && this->storage.front() == '/') {
+        startIdx = 1;
+    }
+    size_t currentIdx = static_cast<size_t>(this->current - this->storage.begin());
+    size_t len        = currentIdx >= startIdx ? currentIdx - startIdx : 0;
+    return std::string_view{this->storage.data() + startIdx, len};
 }
 
 auto Iterator::currentToEnd() const noexcept -> std::string_view {
-    return std::string_view{this->current, static_cast<size_t>(this->path.end() - this->current)};
+    size_t currentIdx = static_cast<size_t>(this->current - this->storage.begin());
+    size_t len        = static_cast<size_t>(this->storage.size() - currentIdx);
+    return std::string_view{this->storage.data() + currentIdx, len};
 }
 
 auto Iterator::next() const noexcept -> Iterator {
@@ -122,32 +135,32 @@ auto Iterator::validateFull() const noexcept -> std::optional<Error> {
 }
 
 bool Iterator::isAtStart() const noexcept {
-    return this->current == this->path.begin() + 1; // Skip the leading and mandatory '/'
+    return this->current == this->storage.begin() + 1; // Skip the leading and mandatory '/'
 }
 
 auto Iterator::isAtFinalComponent() const noexcept -> bool {
-    return segment_end == path.end();
+    return segment_end == storage.end();
 }
 
 bool Iterator::isAtEnd() const noexcept {
     // We're at the end if we can't find any more components
     // (current == segment_end means no component found)
-    return current == path.end() || current == segment_end;
+    return current == storage.end() || current == segment_end;
 }
 
 auto Iterator::skipSlashes(IteratorType& it) noexcept -> void {
-    while (it != path.end() && *it == '/')
+    while (it != storage.end() && *it == '/')
         ++it;
 }
 
 auto Iterator::findNextSlash(IteratorType it) noexcept -> IteratorType {
-    while (it != path.end() && *it != '/')
+    while (it != storage.end() && *it != '/')
         ++it;
     return it;
 }
 
 auto Iterator::updateCurrentSegment() noexcept -> void {
-    current_segment = path.substr(current - path.begin(), segment_end - current);
+    current_segment = path.substr(static_cast<size_t>(current - storage.begin()), static_cast<size_t>(segment_end - current));
 }
 
 } // namespace SP
