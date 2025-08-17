@@ -47,7 +47,7 @@ TEST_CASE("Composition: mouse -> mixer -> alias (user-level wiring, providers ar
     auto root = std::make_shared<PathSpace>();
 
     // Create providers (path-agnostic)
-    auto mouseUptr  = std::make_unique<PathIOMouse>();
+    auto mouseUptr  = std::make_unique<PathIOMouse>(PathIOMouse::BackendMode::Off);
     auto* mouseRaw  = mouseUptr.get();
     auto mixerUptr  = std::make_unique<PathIOPointerMixer>();
     auto* mixerRaw  = mixerUptr.get();

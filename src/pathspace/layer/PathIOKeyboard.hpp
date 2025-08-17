@@ -61,9 +61,9 @@ class PathIOKeyboard final : public PathIO {
 public:
     using Event = KeyboardEvent;
 
-    enum class BackendMode { Auto, Simulation, OS };
+    enum class BackendMode { Off, Auto, Simulation, OS };
 
-    explicit PathIOKeyboard(BackendMode mode = BackendMode::Auto) {
+    explicit PathIOKeyboard(BackendMode mode = BackendMode::Off) {
         mode_ = mode;
 #if defined(PATHIO_BACKEND_MACOS)
         if (mode_ == BackendMode::Auto) {
@@ -74,8 +74,10 @@ public:
             mode_ = BackendMode::Simulation;
         }
 #endif
-        running_.store(true, std::memory_order_release);
-        worker_ = std::thread([this] { this->runLoop_(); });
+        if (mode_ != BackendMode::Off) {
+            running_.store(true, std::memory_order_release);
+            worker_ = std::thread([this] { this->runLoop_(); });
+        }
     }
 
     ~PathIOKeyboard() {
@@ -273,7 +275,7 @@ private:
 private:
     std::atomic<bool>              running_{false};
     std::thread                    worker_;
-    BackendMode                    mode_{BackendMode::Auto};
+    BackendMode                    mode_{BackendMode::Off};
 
     mutable std::mutex              mutex_;
     mutable std::condition_variable cv_;

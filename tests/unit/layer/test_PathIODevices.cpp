@@ -8,7 +8,7 @@
 using namespace SP;
 
 TEST_CASE("PathIOMouse - Simulation queue basic operations") {
-    PathIOMouse mice;
+    PathIOMouse mice{PathIOMouse::BackendMode::Off};
 
     CHECK(mice.pending() == 0);
 
@@ -46,7 +46,7 @@ TEST_CASE("PathIOMouse - Simulation queue basic operations") {
 }
 
 TEST_CASE("PathIOKeyboard - Simulation queue basic operations") {
-    PathIOKeyboard kb;
+    PathIOKeyboard kb{PathIOKeyboard::BackendMode::Off};
 
     CHECK(kb.pending() == 0);
 
@@ -84,7 +84,7 @@ TEST_CASE("PathIOKeyboard - Simulation queue basic operations") {
 
 TEST_CASE("PathIOMouse - Mounting under PathSpace") {
     // Prepare device and keep a raw pointer to validate it remains alive after insertion.
-    auto dev = std::make_unique<PathIOMouse>();
+    auto dev = std::make_unique<PathIOMouse>(PathIOMouse::BackendMode::Off);
     PathIOMouse* raw = dev.get();
 
     PathSpace space;
@@ -101,7 +101,7 @@ TEST_CASE("PathIOMouse - Mounting under PathSpace") {
 }
 
 TEST_CASE("PathIOKeyboard - Mounting under PathSpace") {
-    auto dev = std::make_unique<PathIOKeyboard>();
+    auto dev = std::make_unique<PathIOKeyboard>(PathIOKeyboard::BackendMode::Off);
     PathIOKeyboard* raw = dev.get();
 
     PathSpace space;
@@ -116,7 +116,7 @@ TEST_CASE("PathIOKeyboard - Mounting under PathSpace") {
 }
 
 TEST_CASE("PathIOMouse - typed out()/take() semantics") {
-    PathIOMouse mice;
+    PathIOMouse mice{PathIOMouse::BackendMode::Off};
 
     SUBCASE("Non-blocking read on empty returns error") {
         auto r = mice.read<"/events", PathIOMouse::Event>();
@@ -149,7 +149,7 @@ TEST_CASE("PathIOMouse - typed out()/take() semantics") {
 }
 
 TEST_CASE("PathIOKeyboard - typed out()/take() semantics") {
-    PathIOKeyboard kb;
+    PathIOKeyboard kb{PathIOKeyboard::BackendMode::Off};
 
     SUBCASE("Non-blocking read on empty returns error") {
         auto r = kb.read<"/events", PathIOKeyboard::Event>();

@@ -65,9 +65,9 @@ class PathIOMouse final : public PathIO {
 public:
     using Event = MouseEvent;
 
-    enum class BackendMode { Auto, Simulation, OS };
+    enum class BackendMode { Off, Auto, Simulation, OS };
 
-    explicit PathIOMouse(BackendMode mode = BackendMode::Auto) {
+    explicit PathIOMouse(BackendMode mode = BackendMode::Off) {
         mode_ = mode;
 #if defined(PATHIO_BACKEND_MACOS)
         if (mode_ == BackendMode::Auto) {
@@ -81,12 +81,14 @@ public:
             mode_ = BackendMode::Simulation;
         }
 #endif
-        running_.store(true, std::memory_order_release);
-        worker_ = std::thread([this] { this->runLoop_(); });
+        if (mode_ != BackendMode::Off) {
+            running_.store(true, std::memory_order_release);
+            worker_ = std::thread([this] { this->runLoop_(); });
+        }
     }
     ~PathIOMouse() {
 #if defined(PATHIO_BACKEND_MACOS)
-        if (mode_ == BackendMode::OS) {
+        if (running_.load(std::memory_order_acquire) && mode_ == BackendMode::OS) {
             osShutdown_();
         }
 #endif
@@ -296,7 +298,7 @@ private:
 private:
     std::atomic<bool>         running_{false};
     std::thread               worker_;
-    BackendMode               mode_{BackendMode::Auto};
+    BackendMode               mode_{BackendMode::Off};
 
 #if defined(PATHIO_BACKEND_MACOS)
     // macOS OS hook stubs (to be implemented with CGEventTap / IOKit HID)
