@@ -313,6 +313,38 @@ Examples:
 
 ---
 
+## Commit message guidelines
+
+Use a clear, conventional format so history is scannable and tooling-friendly. Conventional Commits style works well for C++ projects with repo-specific scopes.
+
+Format:
+type(scope): imperative subject
+
+Rules:
+- type: one of
+  - feat, fix, perf, refactor, docs, test, chore, build, ci, revert, style
+- scope: a concise area, e.g., core, path, layer, task, type, tests, docs, build, scripts
+- subject:
+  - imperative mood, present tense (e.g., add, fix, improve)
+  - concise; aim ≤ 72 characters
+- body:
+  - explain what and why (not just how)
+  - include concurrency and performance considerations where relevant
+  - wrap lines ~72–80 chars for readability
+- footers (as needed):
+  - Breaking-Change: <description>
+  - Refs: #123, Fixes: #123
+  - Co-authored-by: Name <email>
+
+Examples:
+- fix(iterator): rebind views/iterators to local storage for safe copies
+- perf(waitmap): reduce notify scan with concrete-path fast path
+- docs(overview): document compile_commands.json refresh workflow
+- build(scripts): prefer Ninja and auto-parallelize by CPU core count
+- refactor(path): unify iterator types and remove string_view end() usage
+
+When a change affects core behavior (paths, NodeData, WaitMap, TaskPool, serialization), update both docs/AI_OVERVIEW.md and docs/AI_ARCHITECTURE.md. For build/script changes, update the “Tests & build” section in docs/AI_OVERVIEW.md.
+
 ## Notes for an AI editor
 
 - Prefer using `grep` over guessing file paths. The codebase uses consistent naming and directory structure under `PathSpace/src/pathspace/`.
