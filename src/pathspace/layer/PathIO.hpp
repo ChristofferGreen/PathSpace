@@ -3,9 +3,9 @@
 
 namespace SP {
 
-// PathIO is a base class for concrete IO providers (e.g., mice, keyboards).
+// PathIO is a base class for concrete IO providers (e.g., mouse, keyboard).
 // It deliberately has no knowledge of specific paths or device classes.
-// Concrete subclasses (e.g., PathIOMice, PathIOKeyboard) implement behavior.
+// Concrete subclasses (e.g., PathIOMouse, PathIOKeyboard) implement behavior.
 // TODO: future "link" class (path aliasing/symlinks) will be implemented separately.
 struct PathIO : public PathSpaceBase {
     PathIO() = default;

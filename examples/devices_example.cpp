@@ -1,18 +1,15 @@
 #include <atomic>
-#include <chrono>
+
 #include <csignal>
 #include <iostream>
-#include <optional>
-#include <string>
+
+
 #include <thread>
 
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/layer/PathIOMice.hpp>
+#include <pathspace/layer/PathIOMouse.hpp>
 #include <pathspace/layer/PathIOKeyboard.hpp>
-// Optional macOS backend skeletons (compile with -DENABLE_PATHIO_MACOS=ON in CMake to define PATHIO_BACKEND_MACOS)
-#ifdef PATHIO_BACKEND_MACOS
-#include <pathspace/layer/macos/PathIO_macos.hpp>
-#endif
+
 
 using namespace SP;
 using namespace std::chrono_literals;
@@ -33,82 +30,49 @@ struct ActivityTracker {
 int main() {
     std::signal(SIGINT, sigint_handler);
 
-    auto space = std::make_shared<PathSpace>();
+    auto space = PathSpace();
 
     // Mount mice and keyboard providers (path-agnostic providers; paths chosen by this example)
     // Prefer macOS backends when available, otherwise use generic providers.
-#ifdef PATHIO_BACKEND_MACOS
-    auto miceBackend = std::make_unique<PathIOMiceMacOS>();
-    auto* miceRaw = miceBackend.get();
+    auto mouse = std::make_unique<PathIOMouse>();
     {
-        auto ret = space->insert<"/inputs/mice/0">(std::move(miceBackend));
+        auto ret = space.insert<"/inputs/mouse/0">(std::move(mouse));
         if (!ret.errors.empty()) {
-            std::cerr << "Failed to mount mice (macOS) provider\n";
-            return 1;
-        }
-    }
-
-    auto kbBackend = std::make_unique<PathIOKeyboardMacOS>();
-    auto* kbRaw = kbBackend.get();
-    {
-        auto ret = space->insert<"/inputs/keyboards/0">(std::move(kbBackend));
-        if (!ret.errors.empty()) {
-            std::cerr << "Failed to mount keyboard (macOS) provider\n";
-            return 1;
-        }
-    }
-#else
-    auto mice = std::make_unique<PathIOMice>();
-    auto* miceRaw = mice.get();
-    {
-        auto ret = space->insert<"/inputs/mice/0">(std::move(mice));
-        if (!ret.errors.empty()) {
-            std::cerr << "Failed to mount mice provider\n";
+            std::cerr << "Failed to mount mouse provider\n";
             return 1;
         }
     }
 
     auto keyboard = std::make_unique<PathIOKeyboard>();
-    auto* kbRaw = keyboard.get();
     {
-        auto ret = space->insert<"/inputs/keyboards/0">(std::move(keyboard));
+        auto ret = space.insert<"/inputs/keyboards/0">(std::move(keyboard));
         if (!ret.errors.empty()) {
             std::cerr << "Failed to mount keyboard provider\n";
             return 1;
         }
     }
-#endif
 
-#ifdef PATHIO_BACKEND_MACOS
-    // Start macOS backends if mounted
-    if (miceRaw) {
-        static_cast<PathIOMiceMacOS*>(miceRaw)->start();
-    }
-    if (kbRaw) {
-        static_cast<PathIOKeyboardMacOS*>(kbRaw)->start();
-    }
-    std::cout << "[info] macOS backends started (PATHIO_BACKEND_MACOS)\n";
-#endif
+    std::cout << "[info] input backends ready\n";
 
     std::cout << "Device example (no simulation). Ctrl-C to exit.\n";
 
     // Track "plugged" based on first-seen event; declare "unplug" if idle for N ticks.
-    ActivityTracker miceAct, kbAct;
+    ActivityTracker mouseAct, kbAct;
 
-    // Reader thread: mice
+    // Reader thread: mouse
     // Track an accumulated pointer position from relative moves; reset when unplugged
     std::atomic<int> mouseX{0};
     std::atomic<int> mouseY{0};
-    std::thread miceReader([&] {
+    std::thread mouseReader([&] {
         while (g_running.load(std::memory_order_acquire)) {
-            auto r = space->read<"/inputs/mice/0/events", PathIOMice::Event>(Block{250ms});
+            auto r = space.read<"/inputs/mouse/0/events", PathIOMouse::Event>(Block{250ms});
             if (r.has_value()) {
                 auto const& e = *r;
-                if (!miceAct.plugged.exchange(true, std::memory_order_acq_rel)) {
-                    std::cout << "[plug-in] mice/0\n";
+                if (!mouseAct.plugged.exchange(true, std::memory_order_acq_rel)) {
+                    std::cout << "[plug-in] mouse/0\n";
                 }
-                miceAct.events.fetch_add(1, std::memory_order_acq_rel);
-                miceAct.idleTicks.store(0, std::memory_order_release);
+                mouseAct.events.fetch_add(1, std::memory_order_acq_rel);
+                mouseAct.idleTicks.store(0, std::memory_order_release);
 
                 switch (e.type) {
                     case MouseEventType::Move: {
@@ -144,13 +108,13 @@ int main() {
                 }
             } else {
                 // no event within block window
-                miceAct.idleTicks.fetch_add(1, std::memory_order_acq_rel);
-                if (miceAct.plugged.load(std::memory_order_acquire) && miceAct.idleTicks.load(std::memory_order_acquire) > 20) {
-                    miceAct.plugged.store(false, std::memory_order_release);
+                mouseAct.idleTicks.fetch_add(1, std::memory_order_acq_rel);
+                if (mouseAct.plugged.load(std::memory_order_acquire) && mouseAct.idleTicks.load(std::memory_order_acquire) > 20) {
+                    mouseAct.plugged.store(false, std::memory_order_release);
                     // Reset accumulated position on unplug for clarity
                     mouseX.store(0, std::memory_order_release);
                     mouseY.store(0, std::memory_order_release);
-                    std::cout << "[unplug] mice/0 (inactivity)\n";
+                    std::cout << "[unplug] mouse/0 (inactivity)\n";
                 }
             }
         }
@@ -159,7 +123,7 @@ int main() {
     // Reader thread: keyboard
     std::thread keyboardReader([&] {
         while (g_running.load(std::memory_order_acquire)) {
-            auto r = space->read<"/inputs/keyboards/0/events", PathIOKeyboard::Event>(Block{250ms});
+            auto r = space.read<"/inputs/keyboards/0/events", PathIOKeyboard::Event>(Block{250ms});
             if (r.has_value()) {
                 auto const& e = *r;
                 if (!kbAct.plugged.exchange(true, std::memory_order_acq_rel)) {
@@ -193,27 +157,19 @@ int main() {
     std::thread monitor([&] {
         while (g_running.load(std::memory_order_acquire)) {
             std::this_thread::sleep_for(2s);
-            auto m = miceAct.events.exchange(0, std::memory_order_acq_rel);
+            auto m = mouseAct.events.exchange(0, std::memory_order_acq_rel);
             auto k = kbAct.events.exchange(0, std::memory_order_acq_rel);
             if (m || k) {
-                std::cout << "[summary] mice events=" << m << " key events=" << k << "\n";
+                std::cout << "[summary] mouse events=" << m << " key events=" << k << "\n";
             }
         }
     });
 
-    miceReader.join();
+    mouseReader.join();
     keyboardReader.join();
     monitor.join();
 
-#ifdef PATHIO_BACKEND_MACOS
-    // Stop macOS backends if started
-    if (kbRaw) {
-        static_cast<PathIOKeyboardMacOS*>(kbRaw)->stop();
-    }
-    if (miceRaw) {
-        static_cast<PathIOMiceMacOS*>(miceRaw)->stop();
-    }
-#endif
+    // Backends lifecycle is automatic (constructor/destructor)
 
     std::cout << "Exiting device example.\n";
     return 0;

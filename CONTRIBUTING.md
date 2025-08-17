@@ -35,6 +35,7 @@ Helpful scripts in `scripts/`:
   - `refactor/<topic>` — internal refactors
   - `docs/<topic>` — documentation-only changes
 - Avoid direct pushes to `main`. Open a PR from your topic branch into `main`.
+- Contributor policy: Ask before committing and pushing changes. You do not need to ask to run tests.
 
 Recommended merge strategy:
 - Use “Squash and merge” to keep a linear history.

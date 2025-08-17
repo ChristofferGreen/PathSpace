@@ -154,7 +154,7 @@ private:
 private:
     std::shared_ptr<PathSpaceBase> upstream_;
     mutable std::mutex             mutex_;
-    std::string                    targetPrefix_; // e.g., "/system/input/mice/0"
+    std::string                    targetPrefix_; // e.g., "/system/input/mouse/0"
     std::string                    mountPrefix_;  // alias location within parent (for notifications)
 };
 

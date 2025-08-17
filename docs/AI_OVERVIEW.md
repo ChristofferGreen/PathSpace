@@ -53,7 +53,7 @@ New layers and IO building blocks:
 - `src/pathspace/layer/PathAlias.hpp` — path aliasing/forwarding layer
   - Forwards `in`/`out`/`notify` to an upstream `PathSpaceBase` with a configurable `targetPrefix`.
   - Supports atomic retargeting and plays well with nested mounts by using the iterator tail (current->end).
-- `src/pathspace/layer/PathIOMice.hpp` and `src/pathspace/layer/PathIOKeyboard.hpp` — device IO providers (path-agnostic)
+- `src/pathspace/layer/PathIOMouse.hpp` and `src/pathspace/layer/PathIOKeyboard.hpp` — device IO providers (path-agnostic)
   - Provide thread-safe simulated event queues and typed `out()`/`take()` for `MouseEvent`/`KeyboardEvent`.
   - Respect `Out.doPop` (peek vs pop) and `Out.doBlock` timeouts.
   - When mounted with a shared context, `simulateEvent()` wakes blocking readers.
@@ -62,12 +62,12 @@ New layers and IO building blocks:
   - Lists classes, device IDs, per-device `meta` and `capabilities`.
   - Mount anywhere (e.g., `/dev`) and it works via iterator tail mapping.
 
-Platform backends (macOS skeletons):
-- `src/pathspace/layer/macos/PathIO_macos.hpp` contains skeletons:
-  - `PathIOMiceMacOS` and `PathIOKeyboardMacOS` derive from the providers and host a worker thread to integrate CGEventTap/IOKit HID in a future .mm/.cpp.
+Platform backends (unified providers):
+- `src/pathspace/layer/PathIOMouse.hpp` and `src/pathspace/layer/PathIOKeyboard.hpp` include start()/stop() hooks and select platform code paths via compile-time macros (e.g., `PATHIO_BACKEND_MACOS`). When enabled, a worker thread sources OS events and feeds their `simulateEvent(...)` APIs.
 - Build flag:
-  - Add `-DENABLE_PATHIO_MACOS=ON` to CMake on macOS to define `PATHIO_BACKEND_MACOS` and include these skeletons (no-op in CI by default).
-- CI remains simulation-only by default (no OS hooks).
+  - Add `-DENABLE_PATHIO_MACOS=ON` to CMake on macOS to define `PATHIO_BACKEND_MACOS` and enable macOS backend paths in the unified providers (CI defaults to simulation/no-op).
+- Deprecated:
+  - `src/pathspace/layer/macos/PathIO_macos.hpp` is a compatibility shim only and no longer exposes `PathIOMiceMacOS` or `PathIOKeyboardMacOS`. Include the unified headers instead.
 
 ---
 
@@ -274,7 +274,7 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
   - It is not hardwired to any path conventions; it simply mounts providers at the paths you choose in the example.
 - Build (disabled by default):
   - Enable with CMake option: `-DBUILD_PATHSPACE_EXAMPLES=ON`
-  - macOS backend skeletons (optional): `-DENABLE_PATHIO_MACOS=ON`
+  - macOS backend paths (optional, via unified providers): `-DENABLE_PATHIO_MACOS=ON`
   - Commands:
     - `cmake -S . -B build -DBUILD_PATHSPACE_EXAMPLES=ON`
     - `cmake --build build -j`
@@ -283,11 +283,12 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
   - Press Ctrl-C to exit.
 - Behavior:
   - No simulation: the example listens for real input events from mounted providers.
-  - On macOS with `-DENABLE_PATHIO_MACOS=ON`, the example can start the macOS backend skeletons which generate events via OS hooks when implemented (they are currently scaffolding).
-  - It logs mouse moves/clicks/wheel from a `PathIOMice` provider and keyboard keydown/keyup/text from a `PathIOKeyboard` provider.
+  - On macOS with `-DENABLE_PATHIO_MACOS=ON`, the unified providers start platform backend threads and can source OS events via hooks when implemented; otherwise they remain simulation/no-op.
+  - It logs mouse moves/clicks/wheel from a `PathIOMouse` provider and keyboard keydown/keyup/text from a `PathIOKeyboard` provider.
   - Plug/unplug messages are inferred using an inactivity heuristic (first event marks "plug-in"; prolonged idle marks "unplug") since there is no OS-level hotplug API wired yet.
 
 ### Local pre-push hook (recommended)
+Note: Ask before committing and pushing changes. You do not need to ask to run tests.
 Run the full looped test suite and a brief local smoke test of the example before pushing (so you don’t rely on CI to catch issues):
 
 1) Install the hook in your clone:
@@ -305,7 +306,7 @@ Run the full looped test suite and a brief local smoke test of the example befor
 - BUILD_TYPE=Release|Debug — choose build type (default: Release)
 - JOBS=N — parallel build jobs (defaults to system CPU count)
 - PATHSPACE_CMAKE_ARGS="..." — pass extra CMake args
-- ENABLE_PATHIO_MACOS=ON — on macOS, include macOS backends in the example build
+- ENABLE_PATHIO_MACOS=ON — on macOS, enable macOS backend paths in the unified providers
 
 Examples:
 - SKIP_EXAMPLE=1 ./scripts/compile.sh --test

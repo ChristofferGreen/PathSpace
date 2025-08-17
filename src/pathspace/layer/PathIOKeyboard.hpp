@@ -8,6 +8,8 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <atomic>
+#include <thread>
 
 namespace SP {
 
@@ -59,7 +61,33 @@ class PathIOKeyboard final : public PathIO {
 public:
     using Event = KeyboardEvent;
 
-    PathIOKeyboard() = default;
+    enum class BackendMode { Auto, Simulation, OS };
+
+    explicit PathIOKeyboard(BackendMode mode = BackendMode::Auto) {
+        mode_ = mode;
+#if defined(PATHIO_BACKEND_MACOS)
+        if (mode_ == BackendMode::Auto) {
+            mode_ = BackendMode::OS;
+        }
+#else
+        if (mode_ == BackendMode::Auto) {
+            mode_ = BackendMode::Simulation;
+        }
+#endif
+        running_.store(true, std::memory_order_release);
+        worker_ = std::thread([this] { this->runLoop_(); });
+    }
+
+    ~PathIOKeyboard() {
+        running_.store(false, std::memory_order_release);
+        if (worker_.joinable()) {
+            worker_.join();
+        }
+    }
+
+    // Backend lifecycle is managed by constructor/destructor; start() removed.
+
+    // Backend lifecycle is managed by constructor/destructor; stop() removed.
 
     // ---- Simulation API (thread-safe) ----
 
@@ -206,6 +234,47 @@ public:
     }
 
 private:
+    // Worker loop that sources events from the OS or simulates when no OS integration is available.
+    void runLoop_() {
+        while (running_.load(std::memory_order_acquire)) {
+#if defined(PATHIO_BACKEND_MACOS)
+            if (mode_ == BackendMode::Simulation) {
+                static bool key_down = false;
+                if (!key_down) {
+                    this->simulateKeyDown(/*keycode=*/65 /* 'A' */, /*modifiers=*/Mod_Shift, /*deviceId=*/0);
+                    key_down = true;
+                } else {
+                    this->simulateKeyUp(/*keycode=*/65 /* 'A' */, /*modifiers=*/Mod_Shift, /*deviceId=*/0);
+                    this->simulateText("A", /*modifiers=*/Mod_Shift, /*deviceId=*/0);
+                    key_down = false;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            } else {
+                // OS-backed poll (stub; wire to OS hooks when implemented)
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+#else
+            if (mode_ == BackendMode::Simulation) {
+                static bool key_down = false;
+                if (!key_down) {
+                    this->simulateKeyDown(/*keycode=*/65 /* 'A' */, /*modifiers=*/Mod_Shift, /*deviceId=*/0);
+                    key_down = true;
+                } else {
+                    this->simulateKeyUp(/*keycode=*/65 /* 'A' */, /*modifiers=*/Mod_Shift, /*deviceId=*/0);
+                    this->simulateText("A", /*modifiers=*/Mod_Shift, /*deviceId=*/0);
+                    key_down = false;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+#endif
+        }
+    }
+
+private:
+    std::atomic<bool>              running_{false};
+    std::thread                    worker_;
+    BackendMode                    mode_{BackendMode::Auto};
+
     mutable std::mutex              mutex_;
     mutable std::condition_variable cv_;
     std::deque<Event>               queue_;
