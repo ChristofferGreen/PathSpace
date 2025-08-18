@@ -152,7 +152,10 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
     }
 
     while (true) {
-        // Check deadline first
+        // Check shutdown and deadline first
+        if (this->context_ && this->context_->isShuttingDown()) {
+            return Error{Error::Code::Timeout, "Shutting down while waiting for data at path: " + path.toString()};
+        }
         auto now = std::chrono::system_clock::now();
         if (now >= deadline)
             return Error{Error::Code::Timeout, "Operation timed out waiting for data at path: " + path.toString()};
