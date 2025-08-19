@@ -68,8 +68,9 @@ auto PathSpace::shutdown() -> void {
     sp_log("PathSpace::shutdown", "Function Called");
     sp_log("PathSpace::shutdown Starting shutdown", "PathSpaceShutdown");
     this->context_->invalidateSink();
-    this->context_->notifyAll();
-    sp_log("PathSpace::shutdown Notified all waiters", "PathSpaceShutdown");
+    // Mark shutting down and wake all waiters so blocking outs can exit promptly
+    this->context_->shutdown();
+    sp_log("PathSpace::shutdown Context shutdown signaled", "PathSpaceShutdown");
     this->leaf.clear();
     sp_log("PathSpace::shutdown Cleared paths", "PathSpaceShutdown");
 }
