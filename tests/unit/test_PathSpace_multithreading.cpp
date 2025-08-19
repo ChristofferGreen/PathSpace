@@ -491,6 +491,7 @@ TEST_CASE("PathSpace Multithreading") {
     }
 
     SUBCASE("Mixed Readers and Writers") {
+        sp_log("Mixed Readers and Writers: START", "TestMRW");
         PathSpace pspace;
         const int NUM_WRITERS       = 4;
         const int NUM_READERS       = 4;
@@ -546,12 +547,14 @@ TEST_CASE("PathSpace Multithreading") {
         std::vector<std::thread> threads;
 
         // Start readers and extractors first
+        sp_log("MRW: launching readers and extractors", "TestMRW");
         for (int i = 0; i < NUM_READERS / 2; i++) {
             threads.emplace_back(readerFunction);
             threads.emplace_back(extractorFunction);
         }
 
         // Then start writers
+        sp_log("MRW: launching writers", "TestMRW");
         for (int i = 0; i < NUM_WRITERS; i++) {
             threads.emplace_back(writerFunction, i);
         }
@@ -563,7 +566,9 @@ TEST_CASE("PathSpace Multithreading") {
         }
 
         // Wake indefinite waiters, then join reader/extractor threads
+        sp_log(std::format("MRW: before shutdownPublic, writesCompleted={}", writesCompleted.load()), "TestMRW");
         pspace.shutdownPublic();
+        sp_log("MRW: after shutdownPublic", "TestMRW");
 
         // Join remaining reader/extractor threads
         for (size_t i = 0; i < threads.size() - NUM_WRITERS; ++i) {
@@ -571,6 +576,7 @@ TEST_CASE("PathSpace Multithreading") {
             if (t.joinable()) t.join();
         }
 
+        sp_log(std::format("MRW: final counts reads={}, extracts={}, writes={}", readsCompleted.load(), extractsCompleted.load(), writesCompleted.load()), "TestMRW");
         // Verify operations
         CHECK(writesCompleted == NUM_WRITERS * VALUES_PER_WRITER);
         INFO("Reads completed: " << readsCompleted);

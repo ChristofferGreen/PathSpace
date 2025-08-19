@@ -297,6 +297,12 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
 Note: Ask before committing and pushing changes. You do not need to ask to run tests. After pushing your topic branch, run ./scripts/create_pr.sh to automatically create the PR (via gh or GH_TOKEN) and open it in your browser.
 Run the full looped test suite and a brief local smoke test of the example before pushing (so you don’t rely on CI to catch issues):
 
+Hard rules (must follow; no exceptions):
+- Never push if looped tests are failing locally. If a single iteration fails in a loop run, stop, debug, and fix before pushing.
+- Never modify tests to hide or “deflake” failures without prior approval from the maintainer. Fix the underlying product issue or propose the exact minimal test change for review first.
+- If a failure happens intermittently, raise the loop count (e.g., 30+) until stable. Attach logs and a short analysis to the PR if you suspect flakiness.
+- Use bounded waits and clear cancellation/teardown semantics in product code; avoid indefinite waits that depend on external signals when possible.
+
 1) Install the hook in your clone:
 - ln -sf ../../scripts/git-hooks/pre-push .git/hooks/pre-push
 - chmod +x scripts/git-hooks/pre-push .git/hooks/pre-push
@@ -307,12 +313,19 @@ Run the full looped test suite and a brief local smoke test of the example befor
 - Runs the example locally for ~3 seconds to ensure it starts cleanly
 
 3) Useful environment toggles:
+(Do not use these to bypass failures; they are for targeted local runs only. For any push to a shared branch, the looped tests must pass locally.)
 - SKIP_LOOP_TESTS=1 — skip the looped tests (e.g., for quick local pushes)
 - SKIP_EXAMPLE=1 — skip the example smoke test
 - BUILD_TYPE=Release|Debug — choose build type (default: Release)
 - JOBS=N — parallel build jobs (defaults to system CPU count)
 - PATHSPACE_CMAKE_ARGS="..." — pass extra CMake args
 - ENABLE_PATHIO_MACOS=ON — on macOS, enable macOS backend paths in the unified providers
+
+Debugging guidance:
+- Add temporary logs at key coordination points (e.g., on wait registration, notify, shutdown start/finish) with stable tags (PathSpace, PathSpaceShutdown, Wait/Notify).
+- Prefer INFO-level logs guarded by existing logging filters to keep noise low; remove or gate temporary logs before merge.
+- When investigating concurrency issues, print thread IDs and counters at entry/exit of loops and before/after waits.
+- Use bounded timeouts in product code where practicable; on shutdown, always notifyAll() and exit loops promptly.
 
 Examples:
 - SKIP_EXAMPLE=1 ./scripts/compile.sh --test
