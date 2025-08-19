@@ -335,7 +335,7 @@ Examples:
 
 ## Commit message guidelines
 
-Use a clear, conventional format so history is scannable and tooling-friendly. The first line of a commit message is the title; keep it short, imperative, and to the point (typically ≤ 72–80 characters). Conventional Commits style works well for C++ projects with repo-specific scopes.
+Use a clear, conventional format so history is scannable and tooling-friendly. The first line of a commit message is the title; keep it short, imperative, and to the point (typically ≤ 72–80 characters). Conventional Commits style works well for C++ projects with repo-specific scopes. For PRs authored by AI: PR titles must be single-line (no literal \n); put multi-line details in the PR body using real newlines.
 
 Format (80-char max per line):
 type(scope): imperative subject
