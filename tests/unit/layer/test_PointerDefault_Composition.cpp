@@ -69,7 +69,7 @@ TEST_CASE("Composition: mouse -> mixer -> alias (user-level wiring, providers ar
     std::thread forwarder([&] {
         while (forwarderRunning.load(std::memory_order_acquire)) {
             // Block briefly waiting for a mouse event; on success, translate to pointer mixer event.
-            auto r = mouseRaw->read<"/events", PathIOMouse::Event>(Block{50ms});
+            auto r = mouseRaw->take<"/events", PathIOMouse::Event>(Block{50ms});
             if (r.has_value()) {
                 auto const& mev = *r;
                 PathIOPointerMixer::Event pev;
