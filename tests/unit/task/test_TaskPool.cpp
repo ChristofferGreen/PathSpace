@@ -476,10 +476,15 @@ TEST_CASE("TaskPool Misc") {
                 pool.addTask(task);
             }
 
-            // Wait for completion (with timeout)
-            auto start = std::chrono::steady_clock::now();
-            while (completedTasks < TASK_COUNT) {
-                if (std::chrono::steady_clock::now() - start > std::chrono::seconds(2)) {
+            // Wait for completion (deadline loop with final re-check)
+            auto start    = std::chrono::steady_clock::now();
+            auto deadline = start + std::chrono::seconds(2);
+            while (completedTasks.load() < TASK_COUNT) {
+                if (std::chrono::steady_clock::now() >= deadline) {
+                    // Final re-check before failing to avoid race at timeout boundary
+                    if (completedTasks.load() >= TASK_COUNT) {
+                        break;
+                    }
                     MESSAGE("Completed tasks: ", completedTasks.load(), "/", TASK_COUNT);
                     MESSAGE("Unique threads: ", tracker->getUniqueThreadCount());
                     FAIL("Timeout waiting for tasks to complete");
