@@ -1,47 +1,316 @@
 # PathSpace
 
-PathSpace is a new coordination language that draws inspiration from other coordination languages such as Linda, as well as concepts from reactive programming and data-oriented design. It provides a tuplespace-like system for managing typed hierarchical streams of data and computations.
+Typed, hierarchical, thread-safe paths for data and computations.
 
-## Introduction
+PathSpace is a C++ library inspired by tuplespaces (e.g., Linda) and reactive/dataflow ideas. You insert values or executions at paths, then read or take them—optionally blocking with timeouts. Paths look like a filesystem, and inserts can target multiple nodes using simple glob patterns.
 
-PathSpace is designed to be a foundational component for larger systems, such as:
-- Game engines
-- Visualization engines
-- Web-based book readers
-- Any application requiring a tree-like structure for storing typed distributed data in a thread-safe manner
+- Typed values (fundamental types, std::string, and most STL containers/structs via Alpaca serialization)
+- Executions (lambdas, std::function, function pointers) with Lazy or Immediate scheduling
+- Blocking reads with timeouts and non-blocking peeks
+- Globbed insert to fan-out to multiple existing subtrees
+- Thread-safe from the ground up
 
-It's intended to be a multi-platform library supporting at least Windows, Linux, Android, macOS, and iOS.
+Links:
+- docs/AI_ARCHITECTURE.md (design and internals)
+- examples/devices_example.cpp (experimental device IO example)
 
-## Key Features
+## Quick start
 
-- **Hierarchical Structure**: Similar to a file system, with PathSpaces as folders and Data as files
-- **Typed Data Storage**: Supports various data types, including user-defined serializable classes and lambda functions
-- **Polymorphism**: Allows user-supplied child classes to behave differently in different parts of the tree
-- **Thread-Safe Operations**: All PathSpace operations are designed to be thread-safe
-- **Glob Expressions**: Supports glob-style path matching for flexible data access
-- **JSON Serialization**: Built-in support for JSON serialization and deserialization
-- **Capability-based Access Control**: Fine-grained control over data access and operations
+1) Prerequisites
+- A C++23 compiler (Clang or GCC)
+- CMake ≥ 3.15
+- macOS/Linux/Windows
 
-## Core Operations
+2) Configure & build
+```bash
+git clone <this-repo>
+cd PathSpace
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+```
 
-1. **Insert**: Add data or a PathSpace to one or more paths
-2. **Read**: Retrieve a copy of the value at a specified path
-3. **Extract**: Similar to read, but removes the data from the PathSpace
+3) Run tests (optional)
+```bash
+ctest --test-dir build -j
+```
 
-## Advanced Features
+4) Use in your project
+- Link against the `PathSpace` target (installed or via add_subdirectory)
+- Include headers from `src/pathspace`:
+```cpp
+#include <pathspace/PathSpace.hpp>
+```
 
-- **Blocking Operations**: Wait for data to become available
-- **Execution Management**: Support for lambda functions and delayed execution
-- **Data Compression**: Automatic data compression and decompression
-- **Out-of-core Storage**: Ability to store data on disk instead of RAM
-- **Reactive Programming Support**: Enables creation of reactive data flows
-- **Distributed Data Management**: Replication of spaces across multiple computers (planned)
+Build options:
+- ENABLE_ADDRESS_SANITIZER=ON|OFF
+- ENABLE_THREAD_SANITIZER=ON|OFF
+- ENABLE_UNDEFINED_SANITIZER=ON|OFF
+- ENABLE_PATHIO_MACOS=ON|OFF (compile-time defines for experimental macOS PathIO)
+- BUILD_PATHSPACE_EXAMPLES=ON|OFF
 
-## Use Cases
+Scripts:
+- ./scripts/compile.sh
+- ./scripts/update_compile_commands.sh (keeps compile_commands.json in repo root)
 
-PathSpace can be used to implement various systems, including:
-- Scene graphs for 3D renderers
-- Vulkan renderers with easy mesh and shader management
-- Just-in-time geometry generation systems
-- Operating system-like environments with user and file system management
-- Database front-ends
+## API at a glance
+
+- Insert a typed value or execution:
+  - `insert<"/a/b">(42)`
+  - `insert<"/a/f">([](){ return 123; })`
+  - `insert<"/a/f">([](){ return 123; })` with compile-time path validation
+- Read (copy, non-destructive) or take (destructive):
+  - `auto v = read<int>("/a/b");`
+  - `auto v = take<int>("/a/b", Block{500ms});`
+- Blocking and timeouts:
+  - `read<T>(path, Block{timeout})` blocks until available or times out
+- Execution scheduling category:
+  - Lazy (run on first read) or Immediate (run when inserted)
+  - `insert<"/exec">(fn, Lazy{})` or `insert<"/exec">(fn, Immediate{})`
+- Peek a future (execution result handle):
+  - `auto fut = readFuture("/exec");` returns a type-erased FutureAny
+- Globbed insert (fan-out to existing subtrees):
+  - `insert<"/sensors/*/status">(1)` writes to all matching, already-existing paths
+
+Notes:
+- Read/take expect concrete (non-glob) paths.
+- Insert supports glob patterns to target multiple existing matches.
+
+## Simple examples
+
+Hello, PathSpace:
+```cpp
+#include <pathspace/PathSpace.hpp>
+using namespace SP;
+
+int main() {
+    PathSpace ps;
+
+    // Insert then read
+    ps.insert<"/numbers/answer">(42);
+    auto v = ps.read<int>("/numbers/answer");
+    if (v) {
+        // 42
+        (void)v.value();
+    }
+
+    // Take removes the value
+    auto first = ps.take<int>("/numbers/answer");
+    auto none  = ps.read<int>("/numbers/answer"); // no value now
+}
+```
+
+Blocking read with timeout:
+```cpp
+#include <pathspace/PathSpace.hpp>
+#include <chrono>
+using namespace SP;
+using namespace std::chrono_literals;
+
+int main() {
+    PathSpace ps;
+
+    // Times out because nothing is present at the path
+    auto v = ps.read<int>("/missing/value", Block{100ms});
+    if (!v) {
+        // Timed out or not found
+    }
+
+    // Insert later from another thread, then read with a larger timeout
+    ps.insert<"/ready/value">(7);
+    auto r = ps.read<int>("/ready/value", Block{500ms}); // returns 7
+}
+```
+
+Globbed insert (fan-out to existing matches):
+```cpp
+#include <pathspace/PathSpace.hpp>
+using namespace SP;
+
+int main() {
+    PathSpace ps;
+    ps.insert<"/sensors/a">(0);
+    ps.insert<"/sensors/b">(0);
+
+    // Fan-out to existing children under /sensors/*
+    // This will write the value 1 into all concrete children that exist.
+    ps.insert<"/sensors/*">(1);
+
+    auto a = ps.read<int>("/sensors/a"); // 1
+    auto b = ps.read<int>("/sensors/b"); // 1
+}
+```
+
+## Executions (lambdas, std::function, function pointers)
+
+Insert computations that produce values. Read triggers evaluation (Lazy) or retrieves the already-running (Immediate) result.
+
+Lazy execution (runs on first read):
+```cpp
+#include <pathspace/PathSpace.hpp>
+using namespace SP;
+
+int main() {
+    PathSpace ps;
+
+    ps.insert<"/compute/lazy">([]() -> int { return 100; }, Lazy{});
+
+    // Triggers the lambda to run, then copies the result
+    auto v = ps.read<int>("/compute/lazy", Block{});
+    // v.value() == 100
+}
+```
+
+Immediate execution (scheduled at insert time):
+```cpp
+#include <pathspace/PathSpace.hpp>
+using namespace SP;
+
+int main() {
+    PathSpace ps;
+
+    ps.insert<"/compute/imm">([]() -> int { return 1 + 1; }, Immediate{});
+
+    // The computation likely finished already; read returns the result.
+    auto v = ps.read<int>("/compute/imm", Block{});
+    // v.value() == 2
+}
+```
+
+Chained computations:
+```cpp
+#include <pathspace/PathSpace.hpp>
+using namespace SP;
+
+int main() {
+    PathSpace ps;
+
+    // f3 produces 100
+    ps.insert<"/f3">([]{ return 100; });
+
+    // f2 reads f3 and returns +10
+    ps.insert<"/f2">([&]{
+        return ps.read<int>("/f3", Block{}).value() + 10;
+    });
+
+    // f1 reads f2 and returns +1
+    ps.insert<"/f1">([&]{
+        return ps.read<int>("/f2", Block{}).value() + 1;
+    });
+
+    auto v = ps.read<int>("/f1", Block{});
+    // v.value() == 111
+}
+```
+
+Advanced: peek the future for an execution result
+```cpp
+#include <pathspace/PathSpace.hpp>
+using namespace SP;
+
+int main() {
+    PathSpace ps;
+
+    ps.insert<"/exec">([]{ return 42; }, Immediate{});
+
+    // Non-blocking peek; returns Expected<FutureAny>
+    auto futExp = ps.readFuture("/exec");
+    if (futExp) {
+        auto fut = futExp.value();
+        // Wait and copy typed result (caller must know the type)
+        int out = 0;
+        fut.copy_to(&out);
+        // out == 42
+    }
+}
+```
+
+## Data types and serialization
+
+- Fundamental types (int, double, etc.) are serialized directly
+- std::string and many STL containers and user-defined structs are serialized via Alpaca (see src/pathspace/type/serialization.hpp)
+- For custom structs, Alpaca can usually serialize them by value; see Alpaca's docs for constraints and attributes
+- Executions (functions/lambdas) are not serialized; they’re run within the process and their results are stored/served
+
+If you need to take results repeatedly, prefer read (copy) over take (pop). Use take to consume streams or queues where you only want the front element once.
+
+## Threading model
+
+- Reads/writes are thread-safe
+- Blocking reads use a wait/notify mechanism; you can pass timeouts with `Block{...}`
+- Immediate executions are scheduled on the internal TaskPool when inserted
+- Lazy executions are scheduled on first read
+
+Tip: For high-throughput patterns, write with Immediate and `readFuture` to coordinate downstream consumers.
+
+## Experimental IO providers (PathIO)
+
+The repository includes experimental providers under `src/pathspace/layer` and an example in `examples/devices_example.cpp`. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a `PathSpace` tree and serve typed event streams.
+
+Sketch:
+```cpp
+#include <pathspace/PathSpace.hpp>
+#include <pathspace/layer/PathIOMouse.hpp>
+#include <pathspace/layer/PathIOKeyboard.hpp>
+using namespace SP;
+
+int main() {
+    PathSpace ps;
+
+    auto mouse    = std::make_unique<PathIOMouse>(PathIOMouse::BackendMode::Auto);
+    auto keyboard = std::make_unique<PathIOKeyboard>(PathIOKeyboard::BackendMode::Auto);
+
+    // Mount providers at app-chosen paths
+    auto mret = ps.insert<"/inputs/mouse/0">(std::move(mouse));
+    auto kret = ps.insert<"/inputs/keyboards/0">(std::move(keyboard));
+
+    // Read typed events (blocking with timeout)
+    auto me = ps.read<SP::PathIOMouse::Event>("/inputs/mouse/0/events", Block{});
+    auto ke = ps.read<SP::PathIOKeyboard::Event>("/inputs/keyboards/0/events", Block{});
+}
+```
+
+Notes:
+- These providers are evolving; platform-specific backends may require flags (ENABLE_PATHIO_MACOS)
+- The example simulates events if no OS backend is active
+
+See:
+- examples/devices_example.cpp
+- src/pathspace/layer/*
+
+## CMake integration
+
+As a subproject:
+```cmake
+# In your CMakeLists.txt
+add_subdirectory(PathSpace)
+target_link_libraries(your_app PRIVATE PathSpace)
+target_include_directories(your_app PRIVATE ${CMAKE_SOURCE_DIR}/PathSpace/src) # if needed
+```
+
+As an installed library:
+```cmake
+find_package(PathSpace REQUIRED) # if you export a config in your environment
+target_link_libraries(your_app PRIVATE PathSpace)
+```
+
+Options:
+- ENABLE_ADDRESS_SANITIZER, ENABLE_THREAD_SANITIZER, ENABLE_UNDEFINED_SANITIZER (default OFF)
+- ENABLE_PATHIO_MACOS (default OFF)
+- BUILD_PATHSPACE_EXAMPLES (default OFF)
+
+## Troubleshooting
+
+- Path must be concrete for read/take; insert can use globs to target existing matches
+- Use `Block{...}` for blocking reads; without it, reads are non-blocking and may return NoObjectFound
+- When using Immediate executions, ensure you are reading the correct type at the path
+- For timeouts or readiness issues, `readFuture` lets you explicitly coordinate on completion
+
+## License
+
+See LICENSE for details.
+
+## Contributing
+
+- Keep docs and code consistent; if you change core behavior or APIs (paths, NodeData, WaitMap, TaskPool, serialization), update docs/AI_ARCHITECTURE.md
+- Run tests: `./scripts/compile.sh && ctest --test-dir build -j`
+- PRs should include a short “Purpose” and an “AI Change Log” when applicable
