@@ -773,6 +773,31 @@ tasks:
 
 Additional machine-readable tasks (device path namespace and links/aliases)
 
+- id: STREAM-MIXER-TIMESTAMP
+  title: Timestamped merge policy and newest-read semantics for stream mixers
+  rationale: To support mixers that merge multiple input streams under a single path, events must carry timestamps so the mixer can select the newest event deterministically when peeking/reading (and define source-priority tie-breaks).
+  area: io, api, concurrency
+  priority: P1
+  complexity: M
+  status: planned
+  labels: [io, mixer, events, timestamp, merge]
+  code_paths:
+    - PathSpace/src/pathspace/layer/PathIOPointerMixer.hpp
+    - PathSpace/src/pathspace/layer/PathIOMouse.hpp
+    - PathSpace/src/pathspace/layer/PathIOKeyboard.hpp
+    - PathSpace/src/pathspace/core/Out.hpp
+    - PathSpace/src/pathspace/type/InputMetadata.hpp
+  acceptance_criteria:
+    - Event structs include a monotonic nanoseconds timestamp; docs updated.
+    - Mixers implement deterministic merge: newest timestamp wins; tie-breaker is configurable source priority.
+    - Expose and document a “newest” read/take behavior on merged streams (or clarify default behavior).
+    - Unit tests simulate concurrent events from multiple sources; loop=30 green.
+  steps:
+    - Audit event types and ensure they carry timestamps; update serializers if applicable.
+    - Implement timestamp-first, then source-priority merge in pointer mixer; add configuration hooks if needed.
+    - Add tests for mixed sources with near-simultaneous events; verify presence and deterministic selection.
+    - Update AI_OVERVIEW.md and AI_ARCHITECTURE.md with the merge policy and semantics.
+
 ```yaml
 tasks:
   - id: LINKS-ALIAS-CORE

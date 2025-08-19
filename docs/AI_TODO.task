@@ -497,6 +497,33 @@ task {
   }
 
   task {
+    name: "Timestamped merge policy and newest-read semantics for stream mixers"
+    description: "To support mixers that merge multiple input streams under a single path, ensure events carry timestamps and implement deterministic newest-wins merge with tie-breakers."
+    status: planned
+    priority: P1
+    labels: [io, mixer, events, timestamp, merge]
+    acceptance_criteria: [
+      "Event structs include a monotonic nanoseconds timestamp; docs updated.",
+      "Mixers implement deterministic merge: newest timestamp wins; configurable source priority tie-breaker.",
+      "Expose and document a 'newest' read/take behavior on merged streams (or clarify default behavior).",
+      "Unit tests simulate concurrent events from multiple sources; loop=30 green."
+    ]
+    steps: [
+      "Audit event types and ensure they carry timestamps; update serializers if applicable.",
+      "Implement timestamp-first, then source-priority merge in pointer mixer; add configuration hooks if needed.",
+      "Add tests for mixed sources with near-simultaneous events; verify presence and deterministic selection.",
+      "Update AI_OVERVIEW.md and AI_ARCHITECTURE.md with the merge policy and semantics."
+    ]
+    code_paths: [
+      "PathSpace/src/pathspace/layer/PathIOPointerMixer.hpp",
+      "PathSpace/src/pathspace/layer/PathIOMouse.hpp",
+      "PathSpace/src/pathspace/layer/PathIOKeyboard.hpp",
+      "PathSpace/src/pathspace/core/Out.hpp",
+      "PathSpace/src/pathspace/type/InputMetadata.hpp"
+    ]
+  }
+
+  task {
     name: "Simulation tests for default pointer mixer and aliasing"
     description: "Ensure CI determinism and robustness without physical devices."
     status: planned
