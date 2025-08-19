@@ -556,9 +556,19 @@ TEST_CASE("PathSpace Multithreading") {
             threads.emplace_back(writerFunction, i);
         }
 
-        // Wait for completion
-        for (auto& t : threads) {
-            t.join();
+        // Join writer threads first (writers were appended last)
+        for (int i = 0; i < NUM_WRITERS; ++i) {
+            auto& wt = threads[threads.size() - 1 - i];
+            if (wt.joinable()) wt.join();
+        }
+
+        // Wake indefinite waiters, then join reader/extractor threads
+        pspace.shutdownPublic();
+
+        // Join remaining reader/extractor threads
+        for (size_t i = 0; i < threads.size() - NUM_WRITERS; ++i) {
+            auto& t = threads[i];
+            if (t.joinable()) t.join();
         }
 
         // Verify operations

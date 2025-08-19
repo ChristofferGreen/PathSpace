@@ -3,6 +3,8 @@
 
 ## Introduction
 
+
+
 Note for editors: when you add, rename, or remove source files, refresh the compilation database (`./compile_commands.json`). Running `./scripts/compile.sh` or `./scripts/update_compile_commands.sh` (or re-configuring with CMake) regenerates `build/compile_commands.json` and copies it to the repo root; many editors/LSPs rely on it for correct include paths and diagnostics.
 Commit messages should follow Conventional Commits (type(scope): imperative subject); see "Commit message guidelines" in `docs/AI_OVERVIEW.md`. If a change affects core behavior (paths, NodeData, WaitMap, TaskPool, serialization), update both `docs/AI_OVERVIEW.md` and `docs/AI_ARCHITECTURE.md` in the same PR.
 PathSpace is a coordination language that enables insertion and extractions from paths in a thread safe datastructure. The data structure supports views of the paths similar to Plan 9. The data attached to the paths are more like a JSON datastructure than files though. The data supported is standard C++ data types and data structures from the standard library, user created structs/classes as well as function pointers, std::function or function objects for storing executions that generate values to be inserted at a path.

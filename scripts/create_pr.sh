@@ -47,7 +47,7 @@ Usage: $0 [options]
 Options:
   -b, --base BRANCH     Base branch for the PR (default: detect 'main' or 'master')
   -t, --title TITLE     PR title (default: last commit subject)
-  -B, --body TEXT       PR body (default: bullet list of commit subjects since base)
+  -B, --body TEXT       PR body (default: minimal list of changed files since base)
   -r, --reviewers LIST  Comma-separated GitHub handles to request review from (gh only)
   -a, --assignees LIST  Comma-separated GitHub handles to assign (gh only)
   -l, --labels LIST     Comma-separated labels to apply (gh only)
@@ -145,12 +145,20 @@ collect_default_title() {
 
 collect_default_body() {
   local base="$1"
-  # Bullet list of commit subjects since base (if range is valid)
+  local files=""
+  # Minimal list of changed files since base (if range is valid)
   if git merge-base --is-ancestor "$base" HEAD 2>/dev/null; then
-    git log --pretty=format:"- %s" "${base}..HEAD"
+    files="$(git diff --name-only "${base}..HEAD" | sed 's/^/- /')"
   else
-    # If base is not ancestor (or unknown), fallback to recent commits
-    git log -n 10 --pretty=format:"- %s"
+    # If base is not ancestor (or unknown), fallback to last commit diff
+    files="$(git diff --name-only HEAD~1..HEAD 2>/dev/null | sed 's/^/- /')"
+  fi
+
+  if [[ -z "$files" ]]; then
+    echo "- No file changes detected"
+  else
+    echo "Changed files:"
+    echo "$files"
   fi
 }
 

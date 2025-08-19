@@ -199,11 +199,11 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
 
 ## Concurrency & thread-safety notes
 
-- `WaitMap` uses a trie-backed registry for concrete path waiters and a separate registry for glob waiters; concrete notifications resolve via the trie (O(path depth)) and glob notifications filter over registered patterns; accesses are synchronized via a mutex.
+- `WatchRegistry` backs wait/notify for concrete (non-glob) paths using a trie of path components (O(path depth)) and a single mutex; `notifyAll()` wakes all waiters. Glob subscriptions are not handled by `WatchRegistry` in this version; glob matching is performed at higher layers (e.g., leaf/path matching), while notifications are issued for concrete paths.
 - `TaskPool` uses worker threads and `std::condition_variable` to schedule tasks.
 - Tasks notify via a `weak_ptr<NotificationSink>`; `PathSpaceBase` resets its `shared_ptr` during shutdown so late notifications are dropped safely.
 - `NodeData` may contain `Task` objects (shared pointers) and a `SlidingBuffer`. Serialization/deserialization must be used carefully if adding new methods—`NodeData` methods assume proper locking at call sites (the Node trie’s concurrent children map and per-node payload mutexes manage access).
-- `PathSpace::out` implements a loop with `waitMap.wait` and `wait_until` to implement blocking with deadlines. The pattern minimizes lock scope.
+- `PathSpace::out` implements a deadline-driven wait loop using `PathSpaceContext::wait(...)` (backed by `WatchRegistry`) and `wait_until`. The pattern minimizes lock scope around the registry and honors the timeout specified in `Out` options.
 
 ---
 
@@ -268,6 +268,12 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
   Test env toggles:
     - `PATHSPACE_LOG=1` — enable verbose test logging when compiled with `SP_LOG_DEBUG` (set to `0` to force off)
     - `PATHSPACE_FAST_TESTS=1` — speed up heavy tests (reduced durations/iterations) without changing their utility
+  Timeout policy:
+    - Tests must never be run without a timeout wrapper.
+    - Use `scripts/run_testcase.sh` (and `scripts/compile.sh --test` / `--loop`) which enforce a 60s timeout with a manual fallback when `timeout` is unavailable.
+    - Do not bypass these wrappers in CI or local loops. If you invoke the binary directly, wrap it with `timeout 60s ./build/tests/PathSpaceTests` (or the platform equivalent).
+    - Keep timeouts strict: do not raise or disable them to hide hangs. Typical runs complete in 1–2 seconds; significantly longer runs likely indicate a hang.
+
 ### Example application (optional)
 - A small example app demonstrates user-level composition (mounting providers under arbitrary paths) and prints device activity:
   - File: `examples/devices_example.cpp`

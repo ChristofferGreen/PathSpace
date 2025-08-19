@@ -1,9 +1,9 @@
 # Pull Request
 
-Thank you for opening a PR. This template helps keep changes reviewable and consistent with our local-first workflow.
+Thank you for opening a PR. This template helps keep changes reviewable and consistent with our local-first workflow. Keep your PR title/body narrowly scoped to the actual diff; avoid future plans or unrelated context.
 
 ## Summary
-- What changed and why (short paragraph). Focus on intent and effects.
+- Describe only what changed in this PR (short and specific). If follow-ups are needed, link them under "Links" or note them as "Follow-ups" — do not include future work here.
 
 ## Scope
 - [ ] Affects core behavior (paths, NodeData, WaitMap, Task/Executor, serialization)

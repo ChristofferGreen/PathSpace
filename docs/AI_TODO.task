@@ -1,0 +1,786 @@
+task {
+  name: "Unify wait/notify and read behavior"
+  description: "Consolidate wait/notify semantics and read-blocking behavior so PathSpace exposes one coherent model."
+  status: planned
+  priority: P1
+
+  task {
+    name: "Add glob watch support to WatchRegistry"
+    description: "Align wait/notify with WaitMap's glob semantics to unify blocking reads and notifications."
+    rationale: "Unify waiting on globs across the system and reduce conceptual divergence."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "Waiting on a glob path (e.g., \"/a/*/c\") wakes when matching concrete notifications occur.",
+      "Existing WaitMap glob tests are extended or mirrored to cover WatchRegistry paths.",
+      "No deadlocks or self-wake races; loop=15 remains green."
+    ]
+    steps: [
+      "Extend internal structures to index glob waiters efficiently; avoid O(N) scans where possible.",
+      "Ensure PathSpace::out register/wait/notify calls use the registry consistently for both concrete and glob.",
+      "Mirror/extend \"Path Pattern Matching\" subcases to assert notifications for glob waiters.",
+      "Update AI docs to describe unified wait/notify semantics and complexity trade-offs."
+    ]
+    risks: [
+      "Performance regressions if naive scanning; ensure short critical sections and amortized behavior."
+    ]
+  }
+
+  task {
+    name: "Unify WaitMap and WatchRegistry semantics or provide a clear adapter"
+    description: "Reduce mental overhead; ensure one authoritative path for wait/notify semantics."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "A single abstraction governs waiters; glob/concrete behaviors documented and tested.",
+      "No functional regressions; loop=15 remains green; performance notes updated."
+    ]
+  }
+
+  task {
+    name: "Make blocking slice duration configurable"
+    description: "Reduce latency variance; allow tuning per call or globally."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "Out options expose a slice duration (e.g., milliseconds) with sensible default (current ~20ms).",
+      "Tests cover small and larger slices and confirm timeout behavior bounds."
+    ]
+    steps: [
+      "Add a field to Out (e.g., waitSliceMs) with defaults.",
+      "Thread through PathSpace::out loop; respect deadline math.",
+      "Update docs and examples."
+    ]
+  }
+}
+
+task {
+  name: "Execution API stabilization"
+  description: "Stabilize the execution/future surfaces and lock in expected behavior for typed and legacy handles."
+  status: planned
+  priority: P1
+
+  task {
+    name: "Add tests for peekFuture (legacy) and readFuture (typed any)"
+    description: "Lock in handle exposure for execution nodes and prevent regressions."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "New subcases assert that peekFuture returns a valid Future when an execution exists.",
+      "readFuture returns a valid FutureAny for typed tasks; both paths non-blocking and consistent."
+    ]
+  }
+}
+
+task {
+  name: "Allocator/PMR initiative"
+  description: "Introduce PMR infrastructure and migrate selected components safely with tests and documentation."
+  status: planned
+  priority: P2
+
+  task {
+    name: "Introduce std::pmr infrastructure and central memory resource"
+    description: "Allow users to plug in custom allocators/resources for reduced fragmentation, better locality, or instrumentation."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "PathSpaceContext exposes setMemoryResource(std::pmr::memory_resource*) and getMemoryResource().",
+      "Default resource uses std::pmr::get_default_resource(); null is rejected.",
+      "Core containers support construction with a std::pmr::polymorphic_allocator from the context."
+    ]
+    steps: [
+      "Add memory_resource pointer to PathSpaceContext and thread getters to PathSpaceBase/Leaf construction sites.",
+      "Define aliases/types to ease adoption (e.g., PMRVector<T> = std::pmr::vector<T>).",
+      "Prepare Node/SlidingBuffer for allocator-aware migration (no functional change yet)."
+    ]
+    risks: [
+      "Lifetime ordering of memory_resource; ensure resource outlives containers using it."
+    ]
+  }
+
+  task {
+    name: "Public API for user-supplied allocator/resource"
+    description: "Let users supply custom memory strategies (monotonic pools, tracking allocators)."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "PathSpace constructor or context exposes a setter for memory_resource.",
+      "Example demonstrates using a monotonic_buffer_resource backing."
+    ]
+    steps: [
+      "Add overloads/constructors to take std::pmr::memory_resource*.",
+      "Document expected lifetime: resource must outlive PathSpace and its containers."
+    ]
+  }
+
+  task {
+    name: "Migrate internal containers to PMR-aware variants"
+    description: "Enable allocator injection for hotspots (SlidingBuffer, trie children map)."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "SlidingBuffer uses std::pmr::vector<uint8_t> and accepts a pmr::polymorphic_allocator.",
+      "Node::ChildrenMap uses a PMR allocator parameter (std::pmr::polymorphic_allocator for value_type).",
+      "All tests pass loop=15 with default resource."
+    ]
+    steps: [
+      "Add constructors to SlidingBuffer to accept a polymorphic_allocator; default to context resource.",
+      "Update Node::ChildrenMap allocator typedef to a PMR allocator; ensure phmap template parameters are updated accordingly.",
+      "Propagate context memory_resource into these components during construction."
+    ]
+    risks: [
+      "phmap allocator interactions; validate template parameter correctness and performance."
+    ]
+  }
+
+  task {
+    name: "Allocation-aware tests and instrumentation hooks"
+    description: "Verify containers honor the provided allocator and maintain correctness under stress."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "Custom memory_resource counting allocations is used in tests; assertions verify allocation paths.",
+      "Stress subcases with many inserts/reads succeed with custom resource."
+    ]
+    steps: [
+      "Implement a simple counting_resource in tests.",
+      "Add subcases toggling default vs custom resource."
+    ]
+  }
+
+  task {
+    name: "Document allocator integration and best practices"
+    description: "Guide users to choose and plug allocators safely (lifetime, pooling)."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "Overview contains a \"Custom allocator\" section with code snippets and caveats.",
+      "Architecture notes summarize allocator-aware components and perf trade-offs."
+    ]
+    steps: [
+      "Add examples for monotonic and unsynchronized_pool_resource usage.",
+      "Note thread-safety and deallocation behavior when popping data."
+    ]
+  }
+
+  task {
+    name: "Benchmarks comparing default vs custom allocators"
+    description: "Quantify impact on throughput/latency and memory usage."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "Bench scripts run with default resource and a tuned custom resource; results summarized in docs.",
+      "loop=15 remains green under both configurations."
+    ]
+    steps: [
+      "Add flags to bench scripts to select memory resource.",
+      "Capture metrics and include plots under docs/images/."
+    ]
+  }
+}
+
+task {
+  name: "PathIO architecture and backends"
+  description: "Define the PathIO layer and provide stable, testable backends with CI-friendly simulation."
+  status: planned
+  priority: P2
+
+  task {
+    name: "Decide PathIO fate (implement or remove)"
+    description: "PathIO is a broken stub and currently unused; clarify intent to reduce confusion or implement a proper IO bridge."
+    status: planned
+    priority: P1
+    note: gate task for PathIO roadmap
+    acceptance_criteria: [
+      "EITHER: PathIO is removed from the tree; references (if any) cleaned up.",
+      "OR: PathIO compiles with a valid constructor, no duplicate Permission type, and clear documented semantics."
+    ]
+    steps: [
+      "If removing: delete PathIO files and update CMake if needed.",
+      "If implementing: fix constructor, unify Permission (see Permission unification), implement minimal semantics or explicitly document unsupported ops."
+    ]
+  }
+
+  task {
+    name: "Define PathIO architecture for input/output devices (mouse, keyboard, gamepad, touch, tablet)"
+    description: "Establish a clear, extensible layer to expose device I/O via PathSpace paths with consistent semantics."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "PathIO header and implementation compile with a valid constructor and no duplicate Permission types.",
+      "Clear path conventions are documented (e.g., /io/mouse, /io/keyboard, /io/gamepad, /io/touch, /io/tablet).",
+      "Read/write semantics, blocking/timeout, and notify behavior are specified."
+    ]
+    steps: [
+      "Fix PathIO header (constructor) and remove local Permission type (see Permission unification).",
+      "Draft path scheme and minimal capability matrix per device type.",
+      "Document v1 scope and non-goals in AI_OVERVIEW.md."
+    ]
+  }
+
+  task {
+    name: "Define a stable event model and serialization for device inputs"
+    description: "Ensure events are structured, versioned, and easy to deserialize/consume from PathSpace."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "Event structs for mouse, keyboard, gamepad, touch, tablet with timestamps and device ids.",
+      "Serialization/deserialization covered by tests; type-safe reads in examples."
+    ]
+    steps: [
+      "Introduce minimal event types and wire InputMetadata serializers.",
+      "Add subcases that emit and read back event sequences."
+    ]
+  }
+
+  task {
+    name: "CMake wiring and platform guards for PathIO backends"
+    description: "Build only supported backends per platform and keep CI portable."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "Optional macOS backend target compiles only on macOS.",
+      "Linux/Windows stubs compile cleanly; tests use simulation backend on CI."
+    ]
+    steps: [
+      "Add options and platform checks in CMake; document flags."
+    ]
+  }
+
+  task {
+    name: "Implement macOS backends (Quartz/CoreGraphics, IOKit, HID) for device input"
+    description: "Provide a concrete first backend to exercise PathIO semantics via real devices on macOS."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "Mouse move/click events can be read via /io/mouse (non-blocking and blocking read with timeout).",
+      "Keyboard keydown/keyup events readable via /io/keyboard.",
+      "Notify/wait triggers on event arrival; loop=15 remains green with simulated inputs in tests."
+    ]
+    steps: [
+      "Abstract a small OS interface for event capture; stub in tests.",
+      "Implement macOS event polling/callback translation into PathSpace events.",
+      "Add tests using a simulated backend to avoid device dependency in CI."
+    ]
+  }
+
+  task {
+    name: "Simulation backends for deterministic CI tests"
+    description: "CI cannot rely on real devices; simulate events and assert PathIO behavior."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "A test-only backend feeds scripted events to PathIO paths.",
+      "All PathIO tests pass in loop=15 without device access."
+    ]
+    steps: [
+      "Introduce a compile-time or runtime switch for simulated backend.",
+      "Write tests for mouse and keyboard streams."
+    ]
+  }
+
+  task {
+    name: "Support streaming reads and back-pressure for high-frequency devices"
+    description: "Handle event bursts (e.g., mouse movement) without losing data or stalling consumers."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "Streaming read API or guidance for polling at bounded intervals.",
+      "Tests simulate bursts without timeouts; document dropped-event policy if applicable."
+    ]
+    steps: [
+      "Evaluate SlidingBuffer adequacy for event queues; add PMR support if needed.",
+      "Add tests with synthetic high-rate inputs and verify consumer behavior."
+    ]
+  }
+
+  task {
+    name: "Integrate PathView permission model for device access control"
+    description: "Enforce read/execute permissions per device path; avoid accidental writes where unsupported."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "Permission callback applied for /io/* subpaths; denied access returns InvalidPermissions.",
+      "Tests cover allowed/denied combinations for read/execute."
+    ]
+    steps: [
+      "Reuse PathView Permission pattern; add examples in docs and tests."
+    ]
+  }
+}
+
+task {
+  name: "Device namespace and discovery"
+  description: "Define a canonical device path namespace and provide discovery surfaces with metadata."
+  status: planned
+  priority: P2
+
+  task {
+    name: "Design standard device path namespace (Plan 9/Linux style)"
+    description: "Canonical, extensible namespace for device I/O paths across classes and devices."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "Define canonical paths such as /dev/mouse/<id>, /dev/keyboard/<id>, /dev/gamepad/<id>, /dev/touch/<id>, /dev/tablet/<id>, and /screen/<id>.",
+      "Standardize reserved subpaths: /dev/<class>/<id>/events, /dev/<class>/<id>/state, /dev/<class>/<id>/control, and /dev/<class>/<id>/meta.",
+      "Document normalization rules (case, component encoding) and provide validation helpers."
+    ]
+    steps: [
+      "Draft the namespace map and reserved subpaths with examples.",
+      "Implement path validation and canonicalization helpers.",
+      "Update PathIO routing to dispatch based on canonical paths."
+    ]
+    risks: [
+      "Platform differences and OS-specific semantics; avoid leaking OS details into the public namespace."
+    ]
+  }
+
+  task {
+    name: "Device discovery and enumeration"
+    description: "Stable discovery endpoints and metadata so clients can enumerate devices."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "/dev lists classes; /dev/<class> lists devices; /dev/<class>/<id>/meta returns structured metadata.",
+      "Metadata includes vendor, product, device id, capabilities, connection type, and versioning.",
+      "Simulated backend yields deterministic enumerations for CI tests."
+    ]
+    steps: [
+      "Define metadata schema and serializers.",
+      "Implement enumeration in the simulation backend; document real backend plans."
+    ]
+  }
+
+  task {
+    name: "Capabilities and feature flags per device"
+    description: "Expose features (multitouch, pressure, haptics, extra buttons) via clear capability surface."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "Capability descriptors exposed at /dev/<class>/<id>/capabilities with versioned keys.",
+      "Tests assert presence/absence of capabilities and compatibility checks."
+    ]
+    steps: [
+      "Define capability keys and versioning; wire into metadata and discovery endpoints."
+    ]
+  }
+
+  task {
+    name: "Standardize screen paths and operations"
+    description: "Consistent paths for displays, modes, and optional frame capture."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "/screen lists displays; /screen/<id>/meta and /screen/<id>/modes exist and return structured data.",
+      "Optional /screen/<id>/frame (simulation-only in tests) for capture semantics; documented as experimental."
+    ]
+    steps: [
+      "Define schemas; add simulated data; plan real backends in a later task."
+    ]
+  }
+}
+
+task {
+  name: "Aliasing and virtual devices"
+  description: "Provide aliasing, mixing, and virtual-device semantics for flexible device routing."
+  status: planned
+  priority: P2
+
+  task {
+    name: "Implement path links/aliases as first-class feature"
+    description: "Transparent path indirection (akin to symlinks) with notify bridging and cycle detection."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "Links can be created and removed programmatically (temporary API) and resolve transparently for read/take.",
+      "Notify bridging: waiters on the link receive notifications when the target changes or produces data.",
+      "Cycle detection prevents recursive/looping links; link updates are atomic and generate a notification.",
+      "loop=15 remains green with link-heavy tests."
+    ]
+    steps: [
+      "Choose approach v1: PathAlias layer or first-class Node link edges; prefer layer initially.",
+      "Implement transparent resolution and notify bridging, with cycle detection.",
+      "Add tests for alias creation, retargeting, cycles, and nested mounting with PathIO-derived providers."
+    ]
+  }
+
+  task {
+    name: "Define default device alias paths (pointer/keyboard/display)"
+    description: "Stable entry points like /system/input/pointer/default that resolve to current device(s)."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "Canonical aliases documented and supported: /system/input/pointer/default, /system/input/keyboard/default, /system/output/display/default.",
+      "Reads/takes on aliases deliver events/state from the current target device(s); notify bridging works.",
+      "Atomic alias retargeting emits a notification on the alias path."
+    ]
+    steps: [
+      "Introduce an alias table and path rewrite in the PathIO layer (or a dedicated PathAlias layer).",
+      "Implement notify bridging and atomic retarget semantics; detect and prevent alias cycles.",
+      "Add tests covering alias reads and retargeting under load."
+    ]
+  }
+
+  task {
+    name: "Default pointer mixer (aggregate multiple mice/tablets into pointer/default)"
+    description: "Allow multiple input devices to contribute to a single logical pointer stream."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "/system/input/pointer/default surfaces a merged event stream from selected devices (e.g., mice/0 + tablets/0).",
+      "Deterministic ordering rules for merged streams are documented (timestamp then device-priority).",
+      "Tests simulate concurrent device events and verify ordering and no loss under loop=15."
+    ]
+    steps: [
+      "Implement a mixer that merges per-device queues; define device priority and timestamp tie-breaks.",
+      "Expose selection policy via control path (e.g., /system/input/pointer/default/control).",
+      "Add simulation tests for two mice + one tablet contributing."
+    ]
+  }
+
+  task {
+    name: "Clarify alias vs virtual-device semantics"
+    description: "Distinguish simple path aliasing from virtual devices that transform/aggregate events."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "Docs specify that aliases rewrite paths transparently, while virtual devices produce new streams.",
+      "Atomic updates and notify bridging behavior described for both."
+    ]
+    steps: [
+      "Add documentation and examples; ensure tests cover both alias and virtual device flows."
+    ]
+  }
+
+  task {
+    name: "Event normalization and calibration across devices"
+    description: "Align heterogeneous device reports into a consistent model."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "Normalization parameters documented and applied (scaling, axis inversion, offsets).",
+      "Calibration can be adjusted via /control; tests verify normalized coordinates."
+    ]
+    steps: [
+      "Define a normalization schema and apply during event serialization.",
+      "Add tests with simulated devices of different DPI/ranges."
+    ]
+  }
+
+  task {
+    name: "Hotplug handling and default alias policy"
+    description: "Keep default aliases valid as devices appear/disappear; notify clients of changes."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "When current default device disappears, alias retargets according to policy (first-available/preferred) atomically.",
+      "Alias change triggers a notification; readers re-check seamlessly."
+    ]
+    steps: [
+      "Implement a selection policy and atomic retarget; integrate with discovery.",
+      "Add simulation tests that unplug/plug devices and assert behavior."
+    ]
+  }
+
+  task {
+    name: "Conflict resolution for mixed pointer inputs"
+    description: "Define rules when multiple inputs update the same logical channel."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "Documented policy (e.g., timestamp-first, then device-priority) for merging movements/buttons.",
+      "Tests cover simultaneous events with deterministic outcomes."
+    ]
+    steps: [
+      "Implement policy in mixer; add tests for edge-ties and ordering."
+    ]
+  }
+
+  task {
+    name: "Simulation tests for default pointer mixer and aliasing"
+    description: "Ensure CI determinism and robustness without physical devices."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "Simulated backends produce device events for multiple mice and a tablet; alias and mixer behavior verified.",
+      "Loop=15 runs green across all subcases."
+    ]
+    steps: [
+      "Add simulation sources and deterministic scheduling; write unit subcases for alias retarget + merging."
+    ]
+  }
+
+  task {
+    name: "Define and stub output/haptics APIs"
+    description: "Provide a forward path for output devices (rumble/haptics), even if initially unimplemented."
+    status: planned
+    priority: P3
+    acceptance_criteria: [
+      "Output path conventions documented (e.g., /io/gamepad/<id>/rumble).",
+      "Calls return clear Unsupported errors until a backend exists."
+    ]
+    steps: [
+      "Add API shape and clear error mapping; defer backend."
+    ]
+  }
+}
+
+task {
+  name: "Documentation improvements"
+  description: "Fill key gaps in the documentation to clarify behavior and usage."
+  status: planned
+  priority: P1
+
+  task {
+    name: "Document back-pressure handling and queue growth bounds"
+    description: "Clarify system behavior under high producer/consumer skew and how to mitigate."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "AI_ARCHITECTURE.md “Back-Pressure Handling” section is populated with current behavior, queueing, and mitigation.",
+      "Pointers to NodeData type queues, task queues, and any limits; trade-offs explained.",
+      "One test subcase references doc guidance via comments."
+    ]
+  }
+
+  task {
+    name: "Document fault tolerance and error propagation"
+    description: "Make error surfaces predictable (task exceptions, read/take failures, shutdown behavior)."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "“Fault Tolerance” section describes exception handling, retries (if any), and read/take error codes.",
+      "Link to tests that exercise exception paths; clarify expected logs."
+    ]
+  }
+
+  task {
+    name: "Fill in \"Default Paths\" and \"Views\" documentation"
+    description: "Help engineers understand view semantics and expected defaults/mounts."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "\"Views\" and \"Default Paths\" sections describe API, invariants, and examples mapped to existing tests.",
+      "Cross-references to file paths and tests are valid."
+    ]
+  }
+}
+
+task {
+  name: "Developer experience"
+  description: "Reduce noise and improve targeted observability."
+  status: planned
+  priority: P2
+
+  task {
+    name: "Introduce logger allowlist (enabledTags) and prune noisy defaults"
+    description: "Keep tests and CI quiet by default; enable targeted categories on demand."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "enabledTags allowlist is supported and defaults to empty; skipTags remains for convenience.",
+      "Minimal default output; targeted tags can be enabled at runtime for debugging."
+    ]
+    steps: [
+      "Add allowlist guard in logging hot path; prefer allowlist if non-empty.",
+      "Provide a simple API for toggling tags; document usage."
+    ]
+  }
+}
+
+task {
+  name: "CI and platform coverage"
+  description: "Keep CI stable across platforms and flush timing issues via loops."
+  status: planned
+  priority: P2
+
+  task {
+    name: "Add a macOS CI job mirroring loop=15"
+    description: "Catch platform-specific issues early (allocator, threading, libc++)."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "A macOS job runs ./scripts/compile.sh --clean --test --loop=15.",
+      "Branch protection includes both Linux and macOS checks."
+    ]
+  }
+}
+
+task {
+  name: "Paper and artifacts"
+  description: "Plan, write, and package a publishable paper with reproducible artifacts."
+  status: planned
+  priority: P2
+
+  task {
+    name: "Select target venue and formatting"
+    description: "Guides writing style, page limits, and evaluation criteria."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "Venue chosen with deadline and formatting template captured.",
+      "Paper skeleton updated to match template."
+    ]
+    steps: [
+      "Evaluate venues (systems, PL, databases); pick best fit and deadline.",
+      "Add template (LaTeX/Markdown) under docs/paper/."
+    ]
+  }
+
+  task {
+    name: "Write a paper outline for PathSpace (tech and philosophy)"
+    description: "Establish scope, contributions, and structure early to guide writing and experiments."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "1-2 page outline with sections: Introduction, Motivation, System Overview, Design Principles, Core Abstractions (paths, NodeData, WatchRegistry/WaitMap, Task model), Concurrency, Performance, Case Studies, Related Work, Limitations, Future Work.",
+      "Clear thesis and list of contributions (bulleted).",
+      "Timeline and artifact plan referenced."
+    ]
+    steps: [
+      "Draft outline in docs/ (e.g., docs/paper/outline.md).",
+      "Iterate with stakeholders; finalize scope and contributions.",
+      "Align outline sections with existing docs to avoid duplication."
+    ]
+  }
+
+  task {
+    name: "Related work survey"
+    description: "Position PathSpace among existing systems and abstractions."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "Annotated bibliography with 10-20 key references; mapping to PathSpace contributions.",
+      "Summary table (CSV/Markdown) of features vs. systems if applicable."
+    ]
+    steps: [
+      "Collect references; write summaries; identify differentiators."
+    ]
+  }
+
+  task {
+    name: "Prepare figures and diagrams"
+    description: "Visuals clarify PathSpace architecture and data flow."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "At least 4 figures: high-level architecture, data flow (insert/read/take), wait/notify sequence, concurrency model.",
+      "Stored as SVG in docs/images/ with alt text.",
+      "Referenced in both the paper draft and AI docs."
+    ]
+    steps: [
+      "Create Mermaid/SVG diagrams; ensure legibility in light/dark.",
+      "Add captions/alt text; cross-link from relevant sections."
+    ]
+  }
+
+  task {
+    name: "Benchmark plan and results for the paper"
+    description: "Provide quantitative support for claims (latency, throughput, scalability)."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "Reproducible benchmark scripts and documented environment.",
+      "Results include med/avg/percentiles for key operations; graphs included.",
+      "Discussion of trade-offs and limitations; ties back to design principles."
+    ]
+    steps: [
+      "Define workloads; add scripts/bench targets as needed.",
+      "Capture results; generate plots (SVG/PNG) under docs/images/.",
+      "Integrate into paper draft with interpretation."
+    ]
+  }
+
+  task {
+    name: "Artifact and replication package"
+    description: "Ensure the paper is reproducible and useful to reviewers and readers."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "A tagged release with instructions to build, test, and reproduce experiments.",
+      "CI job verifies artifact building and test loops; checksums for large assets if any.",
+      "README with step-by-step replication guidance."
+    ]
+    steps: [
+      "Script a one-command setup; document dependencies clearly.",
+      "Add CI job to validate replication path on Linux (and macOS if added)."
+    ]
+  }
+
+  task {
+    name: "Full paper draft"
+    description: "Produce a complete draft ready for internal review."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "Complete draft with abstract, figures, results, and references.",
+      "Internal review feedback addressed; ready for submission polish."
+    ]
+    steps: [
+      "Convert outline to prose; integrate figures and benchmarks.",
+      "Iterate with reviewers; stabilize claims and wording."
+    ]
+  }
+
+  task {
+    name: "Citation and BibTeX"
+    description: "Provide a stable reference for PathSpace versions/releases."
+    status: planned
+    priority: P3
+    acceptance_criteria: [
+      "BibTeX entry and recommended citation text added to docs.",
+      "Links to tagged release/DOI if applicable."
+    ]
+    steps: [
+      "Add CITATION.cff and docs/citation.md with examples."
+    ]
+  }
+}
+
+task {
+  name: "Filesystem adapter improvements"
+  description: "Round out the PathFileSystem adapter with robustness and explicit choices."
+  status: planned
+  priority: P2
+
+  task {
+    name: "Complete PathFileSystem (read robustness and write support)"
+    description: "PathFileSystem is read-only and minimal; add write support (optional), robust error mapping, and explicit includes."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "PathFileSystem.cpp explicitly includes <fstream>.",
+      "out() remains read-only for std::string or is extended per design; errors are precise (NotFound, TypeMismatch, Permission, etc.).",
+      "in() either returns clear Unsupported error or supports writing strings to files (creating parent dirs optional).",
+      "Tests updated to cover write behavior or assert read-only semantics."
+    ]
+    steps: [
+      "Add <fstream> include; audit path joining and error messages.",
+      "Decide on write semantics; implement or explicitly document read-only.",
+      "Extend tests accordingly."
+    ]
+  }
+}
+
+task {
+  name: "Permission unification"
+  description: "Provide a single shared Permission type across layers."
+  status: planned
+  priority: P2
+
+  task {
+    name: "Unify Permission type across layers"
+    description: "Avoid duplicate Permission structs (PathView vs PathIO); provide a single shared definition for consistency."
+    status: planned
+    priority: P2
+    acceptance_criteria: [
+      "A single Permission struct is defined in a shared header (e.g., layer/Permission.hpp).",
+      "PathView and any other layers include and use the shared type.",
+      "Tests compile and pass without name clashes."
+    ]
+    steps: [
+      "Introduce layer/Permission.hpp with the shared struct.",
+      "Replace local Permission definitions and fix includes."
+    ]
+  }
+}

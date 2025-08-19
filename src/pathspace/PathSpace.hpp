@@ -43,6 +43,12 @@ public:
 
     virtual auto clear() -> void;
 
+    // Test/utility: wake all waiters or request cooperative shutdown.
+    // - notifyAll(): wakes all waiters across paths (delegates to context)
+    // - shutdownPublic(): exposes shutdown() for test control
+    void notifyAll() { this->context_->notifyAll(); }
+    void shutdownPublic() { this->shutdown(); }
+
 public:
     // Peek a Future aligned with the execution at a concrete path (if present).
     // Returns std::nullopt if the path is not concrete, not found, or not an execution node.
