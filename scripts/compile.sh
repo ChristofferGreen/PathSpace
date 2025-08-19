@@ -32,6 +32,8 @@ VERBOSE=0
 SANITIZER=""  # "asan" | "tsan" | "usan"
 TEST=0        # run tests after build if 1
 LOOP=0        # run tests in a loop N times (default 15 if provided without value)
+PER_TEST_TIMEOUT=""  # override seconds per test; default 60 (single), 120 (when --loop is used)
+PER_TEST_TIMEOUT=""  # override seconds per test; default 60 (single), 120 (when --loop is used)
 
 # ----------------------------
 # Helpers
@@ -61,6 +63,7 @@ Options:
   -v, --verbose              Print commands before running them.
       --test                 Build and run tests (executes build/tests/PathSpaceTests).
       --loop[=N]            Run tests in a loop N times (default: 15). Implies --test.
+      --per-test-timeout SECS  Override per-test timeout (default: 60; 120 when --loop is used).
   -h, --help                 Show this help and exit.
 
 Sanitizers (mutually exclusive, maps to CMake options in this repo):
@@ -162,6 +165,20 @@ while [[ $# -gt 0 ]]; do
         *)
           if [[ "$LOOP" -lt 1 ]]; then
             die "--loop must be >= 1"
+          fi
+          ;;
+      esac
+      ;;
+    --per-test-timeout)
+      shift || die "Missing argument for $1"
+      PER_TEST_TIMEOUT="$1"
+      case "$PER_TEST_TIMEOUT" in
+        ''|*[!0-9]*)
+          die "--per-test-timeout requires a positive integer"
+          ;;
+        *)
+          if [[ "$PER_TEST_TIMEOUT" -lt 1 ]]; then
+            die "--per-test-timeout must be >= 1"
           fi
           ;;
       esac
@@ -278,6 +295,15 @@ if [[ -f "$BUILD_DIR/compile_commands.json" ]]; then
   info "compile_commands.json generated."
 fi
 
+# Determine per-test timeout default (if not provided)
+if [[ -z "${PER_TEST_TIMEOUT}" ]]; then
+  if [[ "$LOOP" -gt 0 ]]; then
+    PER_TEST_TIMEOUT=120
+  else
+    PER_TEST_TIMEOUT=60
+  fi
+fi
+
 # Friendly pointers
 if [[ -d "$BUILD_DIR/tests" ]]; then
   TEST_EXE="$BUILD_DIR/tests/PathSpaceTests"
@@ -290,7 +316,7 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
         for i in $(seq 1 "$COUNT"); do
           info "Loop $i/$COUNT: starting"
           if command -v timeout >/dev/null 2>&1; then
-            timeout 60s "$TEST_EXE"
+            timeout "${PER_TEST_TIMEOUT}s" "$TEST_EXE"
             RC=$?
           else
             # Fallback manual timeout if 'timeout' is not available
@@ -299,8 +325,8 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
             while kill -0 "$pid" 2>/dev/null; do
               sleep 1
               SECS=$((SECS+1))
-              if [[ $SECS -ge 60 ]]; then
-                echo "Error: tests timed out after 60 seconds"
+              if [[ $SECS -ge $PER_TEST_TIMEOUT ]]; then
+                echo "Error: tests timed out after ${PER_TEST_TIMEOUT} seconds"
                 kill -TERM "$pid" 2>/dev/null || true
                 wait "$pid" 2>/dev/null || true
                 RC=124
@@ -315,7 +341,7 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
           if [[ $RC -eq 0 ]]; then
             info "Loop $i/$COUNT: passed"
           elif [[ $RC -eq 124 ]]; then
-            die "Loop $i failed (timeout after 60 seconds)"
+            die "Loop $i failed (timeout after ${PER_TEST_TIMEOUT} seconds)"
           else
             die "Loop $i failed (non-zero exit code $RC)"
           fi
@@ -324,7 +350,7 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
       else
         info "Running tests..."
         if command -v timeout >/dev/null 2>&1; then
-          timeout 60s "$TEST_EXE"
+          timeout "${PER_TEST_TIMEOUT}s" "$TEST_EXE"
           RC=$?
         else
           # Fallback manual timeout if 'timeout' is not available
@@ -333,8 +359,8 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
           while kill -0 "$pid" 2>/dev/null; do
             sleep 1
             SECS=$((SECS+1))
-            if [[ $SECS -ge 60 ]]; then
-              echo "Error: tests timed out after 60 seconds"
+            if [[ $SECS -ge $PER_TEST_TIMEOUT ]]; then
+              echo "Error: tests timed out after ${PER_TEST_TIMEOUT} seconds"
               kill -TERM "$pid" 2>/dev/null || true
               wait "$pid" 2>/dev/null || true
               RC=124
@@ -349,7 +375,7 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
         if [[ $RC -eq 0 ]]; then
           info "Tests completed successfully."
         elif [[ $RC -eq 124 ]]; then
-          die "Tests timed out after 60 seconds"
+          die "Tests timed out after ${PER_TEST_TIMEOUT} seconds"
         else
           die "Tests failed with exit code $RC"
         fi
