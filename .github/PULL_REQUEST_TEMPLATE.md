@@ -1,3 +1,5 @@
+> Note: PR titles should not include Conventional Commit prefixes (e.g., "chore(...):", "fix:") and must start with a capital letter.
+
 # Purpose
 Explain the intent of this change in 1–3 sentences:
 - What problem does it solve or what behavior does it improve?

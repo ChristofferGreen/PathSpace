@@ -294,7 +294,7 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
   - Plug/unplug messages are inferred using an inactivity heuristic (first event marks "plug-in"; prolonged idle marks "unplug") since there is no OS-level hotplug API wired yet.
 
 ### Local pre-push hook (recommended)
-Note: Ask before committing and pushing changes. You do not need to ask to run tests. After pushing your topic branch, run ./scripts/create_pr.sh to automatically create the PR (via gh or GH_TOKEN) and open it in your browser.
+Note: Ask before committing and pushing changes. You do not need to ask to run tests. After pushing your topic branch, run ./scripts/create_pr.sh to automatically create the PR (via gh or GH_TOKEN) and open it in your browser. When creating the PR, follow the PR title/body rules for AI: do not use Conventional Commit prefixes in the PR title (e.g., no “chore(...):”), start the title with a capital letter, and use the minimal template with a “Purpose” section and an “AI Change Log”. See .github/PULL_REQUEST_TEMPLATE.md.
 Run the full looped test suite and a brief local smoke test of the example before pushing (so you don’t rely on CI to catch issues):
 
 Hard rules (must follow; no exceptions):
@@ -335,7 +335,13 @@ Examples:
 
 ## Commit message guidelines
 
-Use a clear, conventional format so history is scannable and tooling-friendly. The first line of a commit message is the title; keep it short, imperative, and to the point (typically ≤ 72–80 characters). Conventional Commits style works well for C++ projects with repo-specific scopes. For PRs authored by AI: PR titles must be single-line (no literal \n); put multi-line details in the PR body using real newlines.
+Use a clear, conventional format so history is scannable and tooling-friendly. The first line of a commit message is the title; keep it short, imperative, and to the point (typically ≤ 72–80 characters). Conventional Commits style works well for C++ projects with repo-specific scopes.
+
+PR Title & Body (AI authors):
+- PR titles must NOT include Conventional Commit prefixes (e.g., “chore(...):”, “fix:”, etc.).
+- PR titles must be single-line (no literal \n) and start with a capital letter; keep the subject short and human-friendly.
+- PR bodies should use the minimal template: a “Purpose” section (1–3 sentences) and an “AI Change Log” listing file-by-file edits.
+- See .github/PULL_REQUEST_TEMPLATE.md for the exact structure.
 
 Format (80-char max per line):
 type(scope): imperative subject
@@ -382,7 +388,7 @@ perf(core): reduce contention in PathSpace::out by tuning wait slices
   tests
 - Risk: semantics unchanged; only timing granularity adjusted
 
-When a change affects core behavior (paths, NodeData, WaitMap, TaskPool, serialization), update both docs/AI_OVERVIEW.md and docs/AI_ARCHITECTURE.md. For build/script changes, update the “Tests & build” section in docs/AI_OVERVIEW.md.
+When a change affects core behavior (paths, NodeData, WaitMap, TaskPool, serialization), update both docs/AI_OVERVIEW.md and docs/AI_ARCHITECTURE.md. For build/script changes, update the “Tests & build” section in docs/AI_OVERVIEW.md. For PRs authored by AI, ensure the PR title/body rules above are followed (capitalized title without Conventional Commit prefixes; body includes Purpose + AI Change Log).
 
 ## Notes for an AI editor
 
