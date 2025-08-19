@@ -135,8 +135,10 @@ int main() {
     // This will write the value 1 into all concrete children that exist.
     ps.insert<"/sensors/*">(1);
 
-    auto a = ps.read<int>("/sensors/a"); // 1
-    auto b = ps.read<int>("/sensors/b"); // 1
+    auto a0 = ps.take<int>("/sensors/a"); // 0
+    auto a1 = ps.read<int>("/sensors/a"); // 1
+    auto b0 = ps.take<int>("/sensors/b"); // 0
+    auto b1 = ps.read<int>("/sensors/b"); // 1
 }
 ```
 
