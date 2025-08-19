@@ -335,11 +335,11 @@ Examples:
 
 ## Commit message guidelines
 
-Use a clear, conventional format so history is scannable and tooling-friendly. The first line of a commit message is the title; keep it short, imperative, and to the point (typically ≤ 72–80 characters). Conventional Commits style works well for C++ projects with repo-specific scopes.
+Use a clear, conventional format so history is scannable and tooling-friendly. Conventional Commits style works well for C++ projects with repo-specific scopes.
 
 PR Title & Body (AI authors):
 - PR titles must NOT include Conventional Commit prefixes (e.g., “chore(...):”, “fix:”, etc.).
-- PR titles must be single-line (no literal \n) and start with a capital letter; keep the subject short and human-friendly.
+- Start PR titles with a capital letter and write them as a short, human-friendly subject.
 - PR bodies should use the minimal template: a “Purpose” section (1–3 sentences) and an “AI Change Log” listing file-by-file edits.
 - See .github/PULL_REQUEST_TEMPLATE.md for the exact structure.
 
