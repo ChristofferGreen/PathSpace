@@ -173,9 +173,8 @@ Examples (good commit messages):
 See `docs/.rules` for authoritative guidance. Highlights:
 
 - If a change affects core behavior (paths, NodeData, WaitMap, TaskPool, serialization), update:
-  - `docs/AI_OVERVIEW.md`, and
   - `docs/AI_ARCHITECTURE.md`
-- If a change affects build or scripts (`CMake`, `scripts/*`), update the “Tests & build” section in `docs/AI_OVERVIEW.md`.
+- If a change affects build or scripts (`CMake`, `scripts/*`), update relevant build/test documentation accordingly.
 - Images/diagrams go to `docs/images/` (SVG preferred; keep them small and legible).
 - Keep references stable (full repo-relative paths); update docs in the same PR if files moved.
 
@@ -212,7 +211,7 @@ Self-review checklist (quick skim):
 
 ## Questions or future improvements
 
-- If you need to add additional scripts for automation (e.g., release notes, formatting), put them under `scripts/` and document usage in `docs/AI_OVERVIEW.md`.
+- If you need to add additional scripts for automation (e.g., release notes, formatting), put them under `scripts/` and document usage in repository docs.
 - Open an issue or draft PR to discuss substantial architectural changes before landing them.
 
 Thank you for contributing to PathSpace!
