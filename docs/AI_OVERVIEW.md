@@ -195,6 +195,9 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
      - If stored as serialized bytes, runs `InputMetadata::deserialize` (or `deserializePop`) into `obj`.
      - If stored as `Task`, ensures `Task` is scheduled, waits or returns error if not completed, and copies task result via `resultCopy`.
 
+Guidance:
+- Use `read` (peek) for passive observation. Use `take` (pop) when a consumer is responsible for advancing a queue (e.g., glue/forwarders that relay events). Using `read` in a forwarder will duplicate events downstream.
+
 ---
 
 ## Concurrency & thread-safety notes
@@ -204,6 +207,9 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
 - Tasks notify via a `weak_ptr<NotificationSink>`; `PathSpaceBase` resets its `shared_ptr` during shutdown so late notifications are dropped safely.
 - `NodeData` may contain `Task` objects (shared pointers) and a `SlidingBuffer`. Serialization/deserialization must be used carefully if adding new methods—`NodeData` methods assume proper locking at call sites (the Node trie’s concurrent children map and per-node payload mutexes manage access).
 - `PathSpace::out` implements a deadline-driven wait loop using `PathSpaceContext::wait(...)` (backed by `WatchRegistry`) and `wait_until`. The pattern minimizes lock scope around the registry and honors the timeout specified in `Out` options.
+- Providers with blocking reads must notify waiters on enqueue (`notify(path)` or `notifyAll()`) so readers wake promptly.
+- Layers that forward/alias paths (e.g., `PathAlias`) should forward `notify` so end-to-end waits work across the alias boundary.
+- Use bounded waits and cooperative shutdown. `PathSpace::shutdown()` marks shutting down and wakes all waiters; long-running loops should check a stop flag and exit promptly.
 
 ---
 
@@ -273,6 +279,13 @@ PathSpace is an in-memory, path-keyed data & task routing system. It exposes a p
     - Use `scripts/run_testcase.sh` (and `scripts/compile.sh --test` / `--loop`) which enforce a 60s timeout with a manual fallback when `timeout` is unavailable.
     - Do not bypass these wrappers in CI or local loops. If you invoke the binary directly, wrap it with `timeout 60s ./build/tests/PathSpaceTests` (or the platform equivalent).
     - Keep timeouts strict: do not raise or disable them to hide hangs. Typical runs complete in 1–2 seconds; significantly longer runs likely indicate a hang.
+
+### Writing robust event tests
+- For mixed/merged streams (e.g., pointer mixer fed by multiple sources), avoid asserting strict ordering unless guaranteed by the component.
+- Prefer asserting presence of expected event kinds. Either:
+  - Take N events and check that all expected kinds are present, or
+  - Accumulate events until a short overall deadline and then assert presence.
+- Use `poll_take` when consumption matters to avoid re-reading the same event; use `poll_read` only for passive observation.
 
 ### Example application (optional)
 - A small example app demonstrates user-level composition (mounting providers under arbitrary paths) and prints device activity:

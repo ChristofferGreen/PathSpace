@@ -391,11 +391,16 @@ TBD
 PathSpace supports read-only projections and permission gating through `src/pathspace/layer/PathView.hpp` (view with a permission callback) and path aliasing/forwarding via `src/pathspace/layer/PathAlias.hpp`.
 
 - PathView: wraps an underlying `PathSpaceBase` and enforces a `Permission(Iterator)` policy for `in`/`out`. It can also optionally prepend a root mount prefix when forwarding paths.
-- PathAlias: a lightweight alias layer that forwards `in`/`out`/`notify` to an upstream space after rewriting the path using a configurable `targetPrefix`. It supports atomic retargeting and uses the iterator tail (current->end) so nested mounts resolve correctly.
+- PathAlias: a lightweight alias layer that forwards `in`/`out`/`notify` to an upstream space after path rewriting with a configurable `targetPrefix`. It uses the iterator tail (`currentToEnd()`) so nested mounts resolve correctly. It forwards `notify(...)` by mapping the notification path through the current target prefix before forwarding upstream. On retargeting, it emits a notification on its mount prefix to wake waiters and prompt re-resolution.
 
 Concurrency and notifications:
 - Both layers are mount-agnostic; they adopt the parent `PathSpaceContext` when inserted so that `notify`/wait semantics flow through naturally.
-- `PathAlias` emits a notification on its mount path when retargeted to prompt waiters to re-check.
+- `PathAlias` forwards `notify(...)` by mapping the notification path through its current `targetPrefix` and then forwarding upstream, preserving end-to-end wait/notify semantics across the alias boundary.
+- On retargeting, `PathAlias` emits a notification on its mount prefix to wake waiters and prompt re-resolution.
+- Provider/forwarder patterns:
+  - When relaying events between providers (e.g., mouse -> mixer), consume with `take` (pop) on the upstream queue so each event is forwarded exactly once; use `read` (peek) only for passive observation.
+  - Providers with blocking reads should notify waiters upon enqueue (`notify(path)` or `notifyAll()`).
+  - Use bounded waits and cooperative shutdown: long-running loops should check a stop flag and exit promptly; `PathSpace::shutdown()` marks shutting down and wakes waiters.
 
 ## Operating System
 Device IO is provided by path-agnostic layers that can be mounted anywhere in a parent `PathSpace`, with platform backends feeding events into them:
