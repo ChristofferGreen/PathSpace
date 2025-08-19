@@ -149,12 +149,13 @@ TEST_SUITE("WaitMap") {
             const int                NUM_PATHS = 3;
             std::vector<std::thread> waiters;
             std::vector<std::string> path_strs; // Keep strings alive
+            path_strs.reserve(NUM_PATHS);
 
             // Create waiters for paths /test/1, /test/2, /test/3
             for (int i = 1; i <= NUM_PATHS; ++i) {
                 path_strs.push_back("/test/" + std::to_string(i));
                 waiters.emplace_back([&, i]() {
-                    std::string_view path(path_strs.back());
+                    std::string_view path(path_strs[i - 1]);
                     auto             guard = waitMap.wait(path);
                     guard.wait_until(std::chrono::system_clock::now() + 1s, [&]() { return counter.load() > 0; });
                     counter++;

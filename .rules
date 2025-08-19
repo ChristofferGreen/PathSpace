@@ -24,50 +24,12 @@ general:
     - Keep references stable; if files move, update the docs in the same PR
   change_management:
     - If a change affects core behavior (paths, NodeData, WaitMap, TaskPool, serialization),
-      update both `docs/AI_OVERVIEW.md` and `docs/AI_ARCHITECTURE.md`
-    - If a change affects build or scripts (CMake, scripts/*), update the "Tests & build"
-      section in `docs/AI_OVERVIEW.md`
+      update `docs/AI_ARCHITECTURE.md`
+    - If a change affects build or scripts (CMake, scripts/*), update relevant build/test documentation accordingly
     - Add or update images in `docs/images/` as needed, with appropriate alt text
 
 documents:
-  - path: "docs/AI_OVERVIEW.md"
-    title: "PathSpace — AI-facing Architecture Overview"
-    purpose: >
-      A high-level, AI- and newcomer-friendly map of the system:
-      major directories, key classes, typical data flows, concurrency notes,
-      extension points, and pointers for programmatic exploration.
-    audience:
-      - AI assistants
-      - New maintainers looking for a guided map of the codebase
-    must_keep_sections:
-      - "High-level summary"
-      - "Top-level layout (important files & directories)"
-      - "Key classes and relationships"
-      - "Typical data flow (insert)"
-      - "Typical data flow (read / take)"
-      - "Concurrency & thread-safety notes"
-      - "Extending the system"
-      - "Where to look for specific behavior"
-      - "Useful grep patterns for programmatic discovery"
-      - "Tests & build"
-      - "Notes for an AI editor"
-    editing_guidelines:
-      - Keep section ordering stable; append new sections at the end if needed
-      - Update "Top-level layout" paths if files move/rename
-      - Update "Tests & build" when compile/test workflows change
-      - Ensure examples reflect current APIs and file locations
-    build_and_scripts_notes:
-      - The "Tests & build" section documents `scripts/compile.sh` usage
-      - If `scripts/compile.sh` flags or behavior change, update the examples:
-        - Default incremental build
-        - `--clean` full rebuild
-        - `--build-type` / `--debug` / `--release`
-        - `-j/--jobs`, `-G/--generator`, `-t/--target`
-        - Sanitizers: `--asan`, `--tsan`, `--usan`
-        - `-v/--verbose`
-    anti_patterns:
-      - Do not duplicate full code listings; link to files instead
-      - Do not add environment-specific instructions without noting OS/versions
+
 
   - path: "docs/AI_ARCHITECTURE.md"
     title: "PathSpace — Architecture"
@@ -94,7 +56,7 @@ documents:
       - Note memory/perf trade-offs for `NodeData`, hash maps, and buffers
     anti_patterns:
       - Avoid speculative sections not backed by code or planned work
-      - Avoid duplicating content already in `AI_OVERVIEW.md`; cross-reference instead
+      - Avoid duplicating content already in other docs; cross-reference instead
 
   - path: "docs/images/"
     title: "Documentation Images"
@@ -117,16 +79,31 @@ documents:
       - Keep diagrams updated when flows or components change
       - For Mermaid diagrams, prefer embedding in Markdown over exporting static images
 
+  - path: "docs/AI_TODO.task"
+    title: "AI Backlog"
+    purpose: >
+      Source-of-truth backlog of AI-facing tasks and epics. Keep in sync with
+      `docs/AI_ARCHITECTURE.md`; link tasks to code/tests.
+    audience:
+      - AI assistants
+      - Maintainers planning/triaging work
+    editing_guidelines:
+      - Keep tasks concise with status, priority, and acceptance criteria.
+      - Cross-link to relevant docs sections and repo paths (tests, src files).
+      - Update alongside behavioral changes affecting the listed tasks.
+
 validation_checklist:
   - "All referenced file paths exist and are current"
   - "Examples compile or reflect valid commands"
   - "Sections listed in must_keep_sections are present"
   - "Images referenced in Markdown are present in docs/images/"
-  - "Any changed script or build workflow is reflected in AI_OVERVIEW.md"
+  - "Any changed script or build workflow is reflected in repository docs"
   - "Links are relative and not pointing to external resources unless necessary"
+  - "Backlog at docs/AI_TODO.task is present, referenced here, and tasks stay in sync with docs and code"
+
 
 contributor_notes:
   - "Small doc fixes may be committed with nearby code changes"
   - "Large restructures should be proposed with an outline before editing"
-  - "If unsure whether to update AI_OVERVIEW.md or AI_ARCHITECTURE.md, update both and ask in review"
+  - "If unsure whether to update AI_ARCHITECTURE.md, update it and ask in review"
   - "For build/test changes, run: ./scripts/compile.sh [--clean] [-j N] and ensure tests pass"
