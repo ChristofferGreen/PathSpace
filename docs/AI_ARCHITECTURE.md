@@ -402,6 +402,14 @@ Concurrency and notifications:
   - Providers with blocking reads should notify waiters upon enqueue (`notify(path)` or `notifyAll()`).
   - Use bounded waits and cooperative shutdown: long-running loops should check a stop flag and exit promptly; `PathSpace::shutdown()` marks shutting down and wakes waiters.
 
+### Shutdown and Test Hooks
+
+- `PathSpace::shutdown()` is the public API to cooperatively wake waiters and clear paths during teardown.
+- `PathSpace::shutdownPublic()` and `PathSpace::notifyAll()` are protected test utilities. When tests need to call them, expose via a small test-only subclass, for example:
+  - `struct TestablePathSpace : SP::PathSpace { using SP::PathSpace::PathSpace; using SP::PathSpace::shutdownPublic; };`
+- `PathSpace::peekFuture(...)` and `PathSpace::setOwnedPool(...)` are protected implementation details. Prefer `PathSpaceBase::readFuture(...)` and constructor injection of the executor/pool.
+- Nested spaces adopt shared context and a mount prefix internally via the protected `adoptContextAndPrefix(...)`; external callers should not invoke this directly.
+
 ## Operating System
 Device IO is provided by path-agnostic layers that can be mounted anywhere in a parent `PathSpace`, with platform backends feeding events into them:
 
