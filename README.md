@@ -53,23 +53,25 @@ Scripts:
 - ./scripts/update_compile_commands.sh (keeps compile_commands.json in repo root)
 
 ## API at a glance
+All operations below are member functions on a PathSpace instance. Assume `PathSpace ps;`.
+
 
 - Insert a typed value or execution:
-  - `insert<"/a/b">(42)`
-  - `insert<"/a/f">([](){ return 123; })`
-  - `insert<"/a/f">([](){ return 123; })` with compile-time path validation
+  - `ps.insert<"/a/b">(42)`
+  - `ps.insert<"/a/f">([](){ return 123; })`
+  - `ps.insert<"/a/f">([](){ return 123; })` with compile-time path validation
 - Read (copy, non-destructive) or take (destructive):
-  - `auto v = read<int>("/a/b");`
-  - `auto v = take<int>("/a/b", Block{500ms});`
+  - `auto v = ps.read<int>("/a/b");`
+  - `auto v = ps.take<int>("/a/b", Block{500ms});`
 - Blocking and timeouts:
-  - `read<T>(path, Block{timeout})` blocks until available or times out
+  - `ps.read<T>(path, Block{timeout})` blocks until available or times out
 - Execution scheduling category:
   - Lazy (run on first read) or Immediate (run when inserted)
-  - `insert<"/exec">(fn, Lazy{})` or `insert<"/exec">(fn, Immediate{})`
+  - `ps.insert<"/exec">(fn, Lazy{})` or `ps.insert<"/exec">(fn, Immediate{})`
 - Peek a future (execution result handle):
-  - `auto fut = readFuture("/exec");` returns a type-erased FutureAny
+  - `auto fut = ps.readFuture("/exec");` returns a type-erased FutureAny
 - Globbed insert (fan-out to existing subtrees):
-  - `insert<"/sensors/*/status">(1)` writes to all matching, already-existing paths
+  - `ps.insert<"/sensors/*/status">(1)` writes to all matching, already-existing paths
 
 Notes:
 - Read/take expect concrete (non-glob) paths.
