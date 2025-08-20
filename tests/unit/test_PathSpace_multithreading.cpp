@@ -491,8 +491,9 @@ TEST_CASE("PathSpace Multithreading") {
     }
 
     SUBCASE("Mixed Readers and Writers") {
+        struct TestablePathSpace : SP::PathSpace { using SP::PathSpace::PathSpace; using SP::PathSpace::shutdownPublic; };
 
-        PathSpace pspace;
+        TestablePathSpace pspace;
         const int NUM_WRITERS       = 4;
         const int NUM_READERS       = 4;
         const int VALUES_PER_WRITER = 100;

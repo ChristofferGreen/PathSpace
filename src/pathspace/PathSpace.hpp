@@ -33,25 +33,30 @@ public:
      * @param prefix  Optional mount path prefix for this space.
      */
     explicit PathSpace(std::shared_ptr<PathSpaceContext> context, std::string prefix = {});
-    /**
-     * @brief Adopt a shared context and mount prefix after construction (used for nested insert).
-     */
-    void adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context, std::string prefix);
-    // Mark that this PathSpace owns the TaskPool and should shut it down and delete it on destruction.
-    void setOwnedPool(TaskPool* p);
+
     ~PathSpace();
 
     virtual auto clear() -> void;
 
-    // Test/utility: wake all waiters or request cooperative shutdown.
-    // - notifyAll(): wakes all waiters across paths (delegates to context)
-    // - shutdownPublic(): exposes shutdown() for test control
+
+protected:
+    /**
+     * Adopt a shared context and mount prefix after construction.
+     * Protected: used internally when mounting nested spaces; not part of the public API.
+     * External callers should not invoke this directly—mounting is coordinated by insert/in().
+     */
+    void adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context, std::string prefix) override;
+    // Protected helper: transfer ownership of a TaskPool so PathSpace manages its lifetime.
+    void setOwnedPool(TaskPool* p);
+
+    // Protected test utilities:
+    // - notifyAll(): wakes all waiters across paths via the shared context
+    // - shutdownPublic(): cooperatively signals shutdown() for tests; expose via a test-only subclass if needed
     void notifyAll() { this->context_->notifyAll(); }
     void shutdownPublic() { this->shutdown(); }
 
-public:
-    // Peek a Future aligned with the execution at a concrete path (if present).
-    // Returns std::nullopt if the path is not concrete, not found, or not an execution node.
+    // Protected probe: non-blocking peek of a typed Future at a concrete path (if present).
+    // Prefer PathSpaceBase::readFuture() for the public API. Returns std::nullopt if not found or not an execution node.
     auto peekFuture(std::string_view pathIn) const -> std::optional<Future> {
         Iterator const it{pathIn};
         return this->leaf.peekFuture(it);
@@ -63,7 +68,7 @@ protected:
     virtual auto shutdown() -> void;
     virtual auto notify(std::string const& notificationPath) -> void;
     // Expose typed future peek to PathSpaceBase::readFuture
-    std::optional<FutureAny> typedPeekFuture(std::string_view pathIn) const {
+    std::optional<FutureAny> typedPeekFuture(std::string_view pathIn) const override {
         Iterator const it{pathIn};
         return this->leaf.peekAnyFuture(it);
     }
