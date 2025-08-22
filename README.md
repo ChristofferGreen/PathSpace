@@ -67,7 +67,6 @@ You can generate HTML API documentation into build/docs/html:
   cmake -S . -B build -DENABLE_DOXYGEN=ON
   cmake --build build --target docs -j
   ```
-  Output: [docs/doxygen/html/index.html](docs/doxygen/html/index.html)
 
 ## API at a glance
 All operations below are member functions on a PathSpace instance. Assume `PathSpace ps;`.
