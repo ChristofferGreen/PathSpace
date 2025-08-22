@@ -319,8 +319,13 @@ A log of every action can be produced. This is mostly for aiding in debugging.
 ## Exception Handling
 PathSpaces will not throw exceptions, all errors will be handled via the return type of the operations.
 
-## Licensing
-PathSpace will be under an open source license, likely GPL-3.
+
+
+
+
+
+
+
 
 ## Trellis
 Lazy executions can be chained together via blocking operations waiting for new data, when one execution updates a value another listener to that value can execute.
