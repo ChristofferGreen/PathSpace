@@ -102,7 +102,7 @@ option(ENABLE_DOXYGEN "Enable generating Doxygen API documentation (target: docs
 find_package(Doxygen QUIET)
 
 if(ENABLE_DOXYGEN AND DOXYGEN_FOUND)
-    set(DOXYGEN_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/docs/doxygen")
+    set(DOXYGEN_OUTPUT_DIR "${CMAKE_BINARY_DIR}/docs")
     file(MAKE_DIRECTORY "${DOXYGEN_OUTPUT_DIR}")
 
     set(DOXYFILE_PATH "${CMAKE_BINARY_DIR}/Doxyfile")
