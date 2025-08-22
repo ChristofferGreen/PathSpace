@@ -83,6 +83,47 @@ if(BUILD_PATHSPACE_EXAMPLES)
     endif()
 endif()
 
+# Documentation (Doxygen)
+option(ENABLE_DOXYGEN "Enable generating Doxygen API documentation (target: docs)" OFF)
+find_package(Doxygen QUIET)
+
+if(ENABLE_DOXYGEN AND DOXYGEN_FOUND)
+    set(DOXYGEN_OUTPUT_DIR "${CMAKE_BINARY_DIR}/docs")
+    file(MAKE_DIRECTORY "${DOXYGEN_OUTPUT_DIR}")
+
+    set(DOXYFILE_PATH "${CMAKE_BINARY_DIR}/Doxyfile")
+
+    file(WRITE "${DOXYFILE_PATH}"
+"PROJECT_NAME           = PathSpace
+PROJECT_NUMBER         = ${PROJECT_VERSION}
+OUTPUT_DIRECTORY       = ${DOXYGEN_OUTPUT_DIR}
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_LATEX         = NO
+QUIET                  = YES
+WARN_AS_ERROR          = NO
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+INPUT                  = ${CMAKE_SOURCE_DIR}/src/pathspace ${CMAKE_SOURCE_DIR}/README.md ${CMAKE_SOURCE_DIR}/docs
+RECURSIVE              = YES
+FILE_PATTERNS          = *.hpp *.h *.cpp *.md
+USE_MDFILE_AS_MAINPAGE = ${CMAKE_SOURCE_DIR}/README.md
+")
+
+    add_custom_command(
+        OUTPUT "${DOXYGEN_OUTPUT_DIR}/html/index.html"
+        COMMAND "${DOXYGEN_EXECUTABLE}" "${DOXYFILE_PATH}"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+        COMMENT "Generating API documentation with Doxygen"
+        VERBATIM
+    )
+
+    add_custom_target(docs DEPENDS "${DOXYGEN_OUTPUT_DIR}/html/index.html")
+elseif(ENABLE_DOXYGEN)
+    message(WARNING "Doxygen requested but not found; 'docs' target will be unavailable.")
+endif()
+
 if(CMAKE_EXPORT_COMPILE_COMMANDS)
     add_custom_target(
         copy-compile-commands ALL
