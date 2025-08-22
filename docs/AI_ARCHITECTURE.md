@@ -57,6 +57,8 @@ AI autonomy guideline:
 - Only defer to the user when blocked by missing credentials, unavailable external services, or ambiguous requirements that cannot be resolved from the repository context.
 - Prefer making conservative, reversible changes; keep edits minimal and focused, and ensure all references and paths are valid.
 
+
+
 AI pull request workflow (to avoid stale commits and noisy PR history):
 - Always branch from the current default branch (usually `master`):
   - git fetch origin
@@ -493,35 +495,30 @@ Concurrency and notifications:
 - Nested spaces adopt shared context and a mount prefix internally via the protected `adoptContextAndPrefix(...)`; external callers should not invoke this directly.
 
 AI execution policy:
-This section is deprecated. See the “AI autonomy guideline” and “AI pull request workflow” near the top of this document for the current policy.
+- When a task requests building or testing, the AI should run the necessary scripts directly (compile, test loops, example builds) rather than instructing the user to do so.
+- If platform constraints require configuration (e.g., choosing a compiler on macOS), the AI should adjust CMake cache or script flags accordingly within the PR.
+- Validate changes by running `./scripts/compile.sh --clean --test --loop=50` unless otherwise stated; if examples cause toolchain issues on CI, temporarily disable example builds during loops while keeping the example source correct.
 
 ## Operating System
 Device IO is provided by path-agnostic layers that can be mounted anywhere in a parent `PathSpace`, with platform backends feeding events into them:
 
-Example PathIO mounts:
-- Inputs (typed event streams):
-  - /system/devices/in/pointer/default/events
-  - /system/devices/in/text/default/events
-  - /system/devices/in/gamepad/default/events
-- Outputs (haptics):
-  - /system/devices/out/gamepad/<id>/rumble
-- Discovery (simulation-backed listing):
-  - Mount PathIODeviceDiscovery at /system/devices/discovery
-
 Decision: PathIO v1 (final)
-- Keep `PathIO` base and current providers (mouse, keyboard, pointer mixer, stdout, discovery).
+- Keep `PathIO` base and current providers (mouse, keyboard, pointer mixer, stdout, discovery, gamepad).
 - Event providers deliver typed events via `out()`/`take()`; blocking semantics are controlled by `Out{doBlock, timeout}` and pop-vs-peek by `Out.doPop`.
 - Canonical device namespace (aligned with SceneGraph plan):
-  - Inputs: `/system/devices/in/pointer/default/events`, `/system/devices/in/text/default/events`
-  - Additional classes will follow the same pattern under `/system/devices/in/<class>/<id>/events`
-  - Discovery: mount `PathIODeviceDiscovery` under an app- or system-chosen prefix (e.g., `/system/devices/discovery`); it lists classes, device IDs, and per-device `meta`/`capabilities` relative to its mount.
+  - Inputs:
+    - `/system/devices/in/pointer/default/events`
+    - `/system/devices/in/text/default/events`
+    - `/system/devices/in/gamepad/default/events`
+  - Discovery mount (recommended): `/system/devices/discovery`
+  - Haptics (outputs): `/system/devices/out/gamepad/<id>/rumble`
 - Notifications: providers perform targeted `notify(mountPrefix)` and `notify(mountPrefix + "/events")` on enqueue; use `notifyAll()` only for broad updates (e.g., retargeting or clear).
-### Backpressure and queue limits
 
-- Scope: Event providers (mouse/keyboard/pointer mixer) maintain per-mount in-memory deques for pending events.
+### Backpressure and queue limits
+- Scope: Event providers (mouse/keyboard/pointer mixer/gamepad) maintain per-mount in-memory deques for pending events.
 - Complexity: enqueue/dequeue O(1); targeted notify is O(depth) along the path trie; memory is O(N) per queue.
-- Current behavior: Queues are unbounded deques; no drops are performed.
-- Planned: Bound queues to N events (implementation-defined; target default ≈1024) with a configurable drop policy:
+- Current behavior: queues are unbounded deques; no drops are performed.
+- Planned: bound queues to N events (target default ≈1024) with a configurable drop policy:
   - Oldest-drop: drop front entries to minimize end-to-end latency on live streams.
   - Newest-drop: drop incoming events if preserving history is preferred.
 - Blocking semantics:
@@ -531,8 +528,7 @@ Decision: PathIO v1 (final)
   - Prefer pop (`take`) to keep up; minimize work in the read loop; batch processing where possible.
   - Use mixers/aggregation to reduce per-device rates; downsample or coalesce deltas when acceptable.
   - Consider shorter time slices for provider loops once configurable wait-slice is introduced.
-- Observability: Track counters per provider (enqueued, dropped_oldest, dropped_newest); expose via a side path such as `.../stats` in a later change.
-
+- Observability: track counters per provider (enqueued, dropped_oldest, dropped_newest); expose via a side path such as `.../stats` in a later change.
 
 - `src/pathspace/layer/PathIOMouse.hpp`, `src/pathspace/layer/PathIOKeyboard.hpp`, and `src/pathspace/layer/PathIOGamepad.hpp` expose typed event queues (MouseEvent/KeyboardEvent/GamepadEvent) with blocking `out()`/`take()` (peek vs pop via `Out.doPop`). When mounted with a shared context, `simulateEvent()` wakes blocking readers.
 - `src/pathspace/layer/PathIODeviceDiscovery.hpp` provides a simulation-backed discovery surface (classes, device IDs, per-device `meta` and `capabilities`), using iterator tail mapping for correct nested mounts; recommended mount prefix: `/system/devices/discovery`.
@@ -547,3 +543,4 @@ Note: First-class links (symlinks) are planned; in the interim, `PathAlias` offe
 Contributor policy:
 - Ask before committing and pushing changes.
 - You do not need to ask to run tests.
+
