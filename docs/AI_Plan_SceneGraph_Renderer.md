@@ -3,7 +3,6 @@
 Status: Active plan (MVP in progress)
 Scope: UI surfaces, renderers, presenters, multi-scene targets; atomic params and snapshot-based rendering
 Audience: Engineers building UI/rendering layers and contributors adding platform backends
-Docs: https://christoffergreen.github.io/PathSpace/doxygen/html/index.html
 
 ## Goals
 
@@ -266,6 +265,7 @@ struct DrawableEntry {
 };
 ```
 
+<<<<<<< HEAD
 ## Scene authoring model (C++ API)
 
 - Authoring is done via typed C++ helpers; no JSON authoring.
@@ -420,6 +420,8 @@ uint64_t wait_for_new_revision(SP::PathSpace& ps, std::string const& app, std::s
 }
 ```
 
+=======
+>>>>>>> ee97327 (docs: update AI_ARCHITECTURE and add scene graph renderer plan)
 ### Renderer loop outline
 
 ```
@@ -790,7 +792,9 @@ int main() {
   - Semantic DOM/CSS only; no ray tracing or canvas/WebGL in this adapter.
   - Text fidelity improves if we pre-shape glyphs in the snapshot and emit positioned spans.
   - This adapter is optional and does not affect software/GPU outputs.
+<<<<<<< HEAD
 
+<<<<<<< HEAD
 ## Software renderer — path tracing with tetrahedral acceleration
 
 Status: Resolved plan for software renderer pipeline
@@ -909,6 +913,11 @@ Robustness
 - Watertightness via shared canonical planes for both incident tets.
 - Tie-breaking on near-coplanar cases: deterministic next-face selection; small forward epsilon step when crossing faces.
 
+=======
+=======
+  
+>>>>>>> ee97327 (docs: update AI_ARCHITECTURE and add scene graph renderer plan)
+>>>>>>> 4290844 (docs: update AI_ARCHITECTURE and add scene graph renderer plan)
 ## MVP plan
 1) Scaffolding and helpers
    - Add `src/pathspace/ui/` with stubs for `PathRenderer2D`, `PathSurfaceSoftware`, and `PathWindowView` (presenter).
@@ -976,8 +985,39 @@ Notes:
 ## Gaps and Decisions (unresolved areas)
 
 Next to decide:
+<<<<<<< HEAD
 
+<<<<<<< HEAD
 1) Lighting and shadows
+=======
+
+1) Snapshot builder spec
+=======
+1) Path/schema specs and typing
+   - Finalize schemas for renderer target params (settings/inbox and settings/active), surface descriptions (pixel format, stride, premultiplied alpha, color space), and outputs (software framebuffer; GPU handle wrappers).
+   - Introduce versioned keys (e.g., params/v1, outputs/v1).
+   - Define app-relative resolution helper API and enforce same-app containment checks.
+
+2) Scene authoring model
+   - Node properties: transform representation (TRS vs matrix), style/visibility, interaction flags.
+   - Hierarchy semantics: property inheritance, z-order, clipping behavior.
+   - Initial layout systems: absolute/stack; plan flex/grid later. Measurement contracts for text and images.
+   - Authoring API: thread model and batching for updates into scenes/<sid>/src.
+
+3) Snapshot builder spec
+>>>>>>> ee97327 (docs: update AI_ARCHITECTURE and add scene graph renderer plan)
+   - Triggering/debounce policy and max rebuild frequency.
+   - Work partitioning across passes (measure, layout, batching) and threading.
+   - Transform propagation from hierarchy; text shaping pipeline and caching.
+   - Snapshot/resource GC policy and sharing across revisions.
+
+<<<<<<< HEAD
+2) Rendering pipeline specifics
+   - Software rasterization details (AA, clipping, blending, color pipeline) and text composition order.
+   - GPU plans (command encoding patterns, pipeline caching) for Metal/Vulkan.
+
+3) Lighting and shadows
+>>>>>>> 4290844 (docs: update AI_ARCHITECTURE and add scene graph renderer plan)
    - Software UI lighting model (directional light, Lambert/Blinn-Phong) and elevation-based shadow heuristics.
    - Opt-in normals/3D attributes for “2.5D” widgets.
 
@@ -1001,6 +1041,60 @@ Next to decide:
 
 ## Target keys (final)
 
+=======
+4) DrawableBucket details
+   - Handle API (stable handles, generation counters), free lists.
+   - Memory layout (SoA vs AoS), per-layer arrays, indices for fast material/layer iteration.
+   - Thread safety: who updates staging, who publishes, child dirty propagation, and publish protocol.
+
+Additional areas to flesh out:
+5) Culling and spatial acceleration
+   - Sphere vs AABB/OBB choices; optional quadtree/BVH later; rebuild vs incremental thresholds.
+
+6) Rendering pipeline specifics
+   - Software rasterization details (AA, clipping, blending, color pipeline) and text composition order.
+   - GPU plans (command encoding patterns, pipeline caching) for Metal/Vulkan.
+
+7) Lighting and shadows
+   - Software UI lighting model (directional light, Lambert/Blinn-Phong) and elevation-based shadow heuristics.
+   - Opt-in normals/3D attributes for “2.5D” widgets.
+
+8) Coordinate systems and cameras
+   - Units/DPI/scale conventions; orthographic defaults for UI; z-ordering semantics across 2D/3D.
+
+9) Time, animation, and frame scheduling
+   - Global clock, animation system, frame pacing/vsync, staleness thresholds, who triggers frames.
+
+10) Input, hit testing, and focus
+    - Mapping OS input to scene coords, hit-testing via DrawableBucket bounds, event routing (capture/bubble), IME/text.
+
+11) Presenters and window integration
+    - Vsync/present timing, occlusion throttling, dirty-region tracking for software blits.
+
+12) GPU backend architecture
+    - Device/queue ownership, thread affinity, synchronization, offscreen texture/image formats and color spaces.
+
+13) Resource system (images, fonts, shaders)
+    - Async loading/decoding, caches, eviction, asset path conventions, font fallback/shaping library.
+
+14) Error handling, observability, and profiling
+    - Error propagation style, structured logging/tracing per target/scene/frame, metrics and debug overlays.
+
+15) Testing strategy
+    - Deterministic snapshot tests, golden image tests (tolerances), concurrency/teardown races, feature-flagged GPU tests.
+
+16) Safety and isolation
+    - Enforce same-app validation consistently; opaque GPU handles with clear lifetimes; defensive teardown ordering.
+
+17) APIs/builders and lifecycles
+    - Finalize builder signatures/return types, error semantics; guarantees when app root is deleted; thread-safety of helpers.
+
+18) Documentation and diagrams
+    - Add “UI/Rendering” to AI_ARCHITECTURE.md when APIs solidify; include Mermaid diagrams for data flow and schemas.
+
+## Target keys (final)
+ 
+>>>>>>> ee97327 (docs: update AI_ARCHITECTURE and add scene graph renderer plan)
 - Target base:
   - `<app>/renderers/<rendererName>/targets/<kind>/<name>`
   - kind ∈ { `surfaces`, `textures`, `html` }
@@ -1017,22 +1111,36 @@ Next to decide:
     - `software/framebuffer` — pixel buffer + metadata (width, height, stride, format, colorSpace, premultiplied)
     - `metal/texture` or `vulkan/image` — opaque GPU handles and metadata
     - `html/dom`, `html/commands`, `html/assets/*` — optional web outputs
+<<<<<<< HEAD
 
 ## RenderSettings v1 (final)
 
+=======
+ 
+## RenderSettings v1 (final)
+ 
+>>>>>>> ee97327 (docs: update AI_ARCHITECTURE and add scene graph renderer plan)
 - time: `{ time_ms: double, delta_ms: double, frame_index: uint64 }`
 - pacing: `{ user_cap_fps: optional<double> }`  # effective rate = min(display refresh, user cap)
 - surface: `{ size_px:{w:int,h:int}, dpi_scale: float, visibility: bool }`
 - clear_color: `[float,4]`
 - camera: `{ projection: Orthographic | Perspective, zNear:float, zFar:float }` (optional)
 - debug: `{ flags: uint32 }` (optional)
+<<<<<<< HEAD
 
+=======
+ 
+>>>>>>> ee97327 (docs: update AI_ARCHITECTURE and add scene graph renderer plan)
 Invariants:
 - Writers always insert whole `RenderSettings` to `settings/inbox` (no partial field writes).
 - Renderer drains `settings/inbox` via take(), adopts only the last (last-write-wins), and may mirror to `settings/active`.
 - `scene` paths are app-relative and must resolve to within the same application root.
 - `output/v1` contains only the latest render result for the target.
+<<<<<<< HEAD
 
+=======
+ 
+>>>>>>> ee97327 (docs: update AI_ARCHITECTURE and add scene graph renderer plan)
 ## Glossary
 
 - App root: `/system/applications/<app>` or `/users/<user>/system/applications/<app>`.
