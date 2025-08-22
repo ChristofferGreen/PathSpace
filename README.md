@@ -13,7 +13,7 @@ PathSpace is a C++ library inspired by tuplespaces (e.g., Linda) and reactive/da
 Links:
 - docs/AI_ARCHITECTURE.md (design and internals)
 - examples/devices_example.cpp (experimental device IO example)
-- build/docs/html/index.html (Doxygen API Reference)
+- docs/doxygen/html/index.html (Doxygen API Reference)
 
 ## Quick start
 
@@ -60,14 +60,13 @@ You can generate HTML API documentation into build/docs/html:
   ```bash
   ./scripts/compile.sh --docs
   ```
-  Output: [build/docs/html/index.html](build/docs/html/index.html)
+  Output: [docs/doxygen/html/index.html](docs/doxygen/html/index.html)
 
 - Using CMake directly:
   ```bash
   cmake -S . -B build -DENABLE_DOXYGEN=ON
   cmake --build build --target docs -j
   ```
-  Output: [build/docs/html/index.html](build/docs/html/index.html)
 
 ## API at a glance
 All operations below are member functions on a PathSpace instance. Assume `PathSpace ps;`.
