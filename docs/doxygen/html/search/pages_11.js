@@ -1,0 +1,27 @@
+var searchData=
+[
+  ['safety_0',['Path Thread Safety',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md37',1,'']]],
+  ['safety_1',['Thread-safety',['../struct_s_p_1_1_executor.html#autotoc_md4',1,'']]],
+  ['safety_20and_20validation_2',['Safety and validation',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md99',1,'']]],
+  ['scene_20graph_20and_20renderer_20plan_3',['PathSpace — Scene Graph and Renderer Plan',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html',1,'']]],
+  ['scene_20graph_20concurrency_20authoring_20vs_20rendering_4',['Scene graph concurrency (authoring vs rendering)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md87',1,'']]],
+  ['scheduling_5',['Notifications and scheduling',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md98',1,'']]],
+  ['schema_20as_20code_20returns_20paths_6',['Helper API (schema-as-code; returns paths)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md102',1,'']]],
+  ['scripting_7',['Scripting',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md57',1,'']]],
+  ['serialization_8',['Data types and serialization',['../index.html#autotoc_md13',1,'']]],
+  ['settings_20atomicity_20per_20renderer_20target_9',['Render settings atomicity (per renderer target)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md86',1,'']]],
+  ['shutdown_20and_20test_20hooks_10',['Shutdown and Test Hooks',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md78',1,'']]],
+  ['simple_20examples_11',['Simple examples',['../index.html#autotoc_md11',1,'']]],
+  ['sketch_12',['Minimal types (sketch)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md96',1,'']]],
+  ['sorting_20and_20batching_13',['Sorting and batching',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md95',1,'']]],
+  ['source_20layout_20and_20build_20integration_14',['Source layout and build integration',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md104',1,'']]],
+  ['standardized_15',['App-internal layout (standardized)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md83',1,'']]],
+  ['start_16',['Quick start',['../index.html#autotoc_md8',1,'']]],
+  ['std_3a_3afunction_20function_20pointers_17',['Executions (lambdas, std::function, function pointers)',['../index.html#autotoc_md12',1,'']]],
+  ['storage_18',['Storage',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md45',1,'Data Storage'],['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md34',1,'Path Storage']]],
+  ['strategy_19',['Locking strategy',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md88',1,'']]],
+  ['structs_20',['Examples (creation with parameter structs)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md103',1,'']]],
+  ['support_21',['Transaction Support',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md68',1,'']]],
+  ['syntax_20example_22',['Syntax Example',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md40',1,'']]],
+  ['system_23',['System',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md79',1,'Operating System'],['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md22',1,'Path System']]]
+];

@@ -1,0 +1,26 @@
+var searchData=
+[
+  ['back_20pressure_20handling_0',['Back-Pressure Handling',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md73',1,'']]],
+  ['backendmode_1',['BackendMode',['../class_s_p_1_1_path_i_o_keyboard.html#aa4d8386b1b19a9c5db38382e4bed929e',1,'SP::PathIOKeyboard::BackendMode'],['../class_s_p_1_1_path_i_o_mouse.html#abe2878f95ed3de9d9b3aed169d260a62',1,'SP::PathIOMouse::BackendMode']]],
+  ['based_20programming_2',['Actor Based Programming',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md50',1,'']]],
+  ['based_20reasoning_3',['Invariant-based Reasoning',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md71',1,'']]],
+  ['basic_4',['Basic',['../namespace_s_p.html#ab721aeb6b48c6a4a030fd86655fb8318a972e73b7a882d0802a4e3a16946a2f94',1,'SP']]],
+  ['basic_20path_20operations_5',['Basic Path Operations',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md31',1,'']]],
+  ['batching_6',['Sorting and batching',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md95',1,'']]],
+  ['begin_7',['begin',['../struct_s_p_1_1_sliding_buffer.html#a185468f2060b721d7a8003b765dd7c7e',1,'SP::SlidingBuffer']]],
+  ['behavior_8',['Behavior',['../struct_block_options.html#a9e49ce94c35ecadf4c98fe4ebeed372c',1,'BlockOptions']]],
+  ['behavior_9',['behavior',['../struct_block_options.html#ab2f09e509c50aa199e780b4f032da914',1,'BlockOptions']]],
+  ['block_10',['Block',['../struct_s_p_1_1_block.html',1,'SP::Block'],['../struct_s_p_1_1_block.html#a65c66db5e79e864ce0deb3a181ce2833',1,'SP::Block::Block()']]],
+  ['blocking_11',['Blocking',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md43',1,'']]],
+  ['blockoptions_12',['BlockOptions',['../struct_block_options.html',1,'']]],
+  ['blockoptions_2ehpp_13',['BlockOptions.hpp',['../_block_options_8hpp.html',1,'']]],
+  ['bottlenecks_14',['Bottlenecks',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md51',1,'']]],
+  ['bounding_20volumes_20and_20culling_15',['Bounding volumes and culling',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md93',1,'']]],
+  ['build_20integration_16',['Source layout and build integration',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md104',1,'']]],
+  ['builder_20helpers_20typed_20wiring_17',['Builder/helpers (typed wiring)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md101',1,'']]],
+  ['button_18',['button',['../struct_s_p_1_1_mouse_event.html#a45b436d05cfabe7a77ca7da57d1d3626',1,'SP::MouseEvent::button'],['../struct_s_p_1_1_path_i_o_pointer_mixer_1_1_event.html#a220d41916177eeb9b664e2a133ce2f5b',1,'SP::PathIOPointerMixer::Event::button']]],
+  ['button4_19',['Button4',['../class_s_p_1_1_path_i_o_pointer_mixer.html#a2538a036d98704f2335839113769757ca91ff24acfc01cc2c3a4238a272a37d07',1,'SP::PathIOPointerMixer::Button4'],['../namespace_s_p.html#a97b2c045b3a559a00bde9d0a74432844a91ff24acfc01cc2c3a4238a272a37d07',1,'SP::Button4']]],
+  ['button5_20',['Button5',['../class_s_p_1_1_path_i_o_pointer_mixer.html#a2538a036d98704f2335839113769757caf8849babaeaee3344306b87310664d65',1,'SP::PathIOPointerMixer::Button5'],['../namespace_s_p.html#a97b2c045b3a559a00bde9d0a74432844af8849babaeaee3344306b87310664d65',1,'SP::Button5']]],
+  ['buttondown_21',['ButtonDown',['../class_s_p_1_1_path_i_o_pointer_mixer.html#a8b80cd34a35547317af8c39af7c2bd63adbe47f32761ac5389cee901a663e7bc0',1,'SP::PathIOPointerMixer::ButtonDown'],['../namespace_s_p.html#a31e29cffd1751f5767af0f8eacd0a58eadbe47f32761ac5389cee901a663e7bc0',1,'SP::ButtonDown']]],
+  ['buttonup_22',['ButtonUp',['../class_s_p_1_1_path_i_o_pointer_mixer.html#a8b80cd34a35547317af8c39af7c2bd63af64c6bd570a1159149526b21a7c41936',1,'SP::PathIOPointerMixer::ButtonUp'],['../namespace_s_p.html#a31e29cffd1751f5767af0f8eacd0a58eaf64c6bd570a1159149526b21a7c41936',1,'SP::ButtonUp']]]
+];

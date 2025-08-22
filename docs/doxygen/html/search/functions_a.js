@@ -1,0 +1,8 @@
+var searchData=
+[
+  ['markcompleted_0',['markCompleted',['../struct_s_p_1_1_task.html#a98d7fc297d31dbaf4cacac55d317025e',1,'SP::Task::markCompleted()'],['../struct_s_p_1_1_task_state_atomic.html#aaa0c92f209b02fd7b2fd0df33e81e869',1,'SP::TaskStateAtomic::markCompleted()']]],
+  ['markfailed_1',['markFailed',['../struct_s_p_1_1_task.html#abd6136878bbc761ce85437b6a52b6a5d',1,'SP::Task::markFailed()'],['../struct_s_p_1_1_task_state_atomic.html#a16c8674905c2d866d43159c4c04c8928',1,'SP::TaskStateAtomic::markFailed()']]],
+  ['match_5fnames_2',['match_names',['../namespace_s_p.html#a29b44bad1754a6916d6aca0dd399a086',1,'SP']]],
+  ['match_5fpaths_3',['match_paths',['../namespace_s_p.html#af570b623b5f82356e6aa561379a5f92d',1,'SP']]],
+  ['modify_4',['modify',['../struct_s_p_1_1_immediate.html#a620adca254078a9904ac5031918072cb',1,'SP::Immediate::modify()'],['../struct_s_p_1_1_lazy.html#ac323ff24cec0208d255973e42a1f6f7a',1,'SP::Lazy::modify()'],['../struct_s_p_1_1_in_basic_validation.html#abca2ece6de962751c3950186f190b1ce',1,'SP::InBasicValidation::modify()'],['../struct_s_p_1_1_in_no_validation.html#ab79f0321f1f4179c208149ae37339718',1,'SP::InNoValidation::modify()'],['../struct_s_p_1_1_in_full_validation.html#ac1ba57b6fda8394b96756dc0a63b8b74',1,'SP::InFullValidation::modify()'],['../struct_s_p_1_1_block.html#a675710b8ccd5db4aeae25ff514899743',1,'SP::Block::modify()'],['../struct_s_p_1_1_pop.html#a42380852463583d85a327d01fd711425',1,'SP::Pop::modify()'],['../struct_s_p_1_1_out_no_validation.html#ac4175145177e81db3ba1022bbf709db4',1,'SP::OutNoValidation::modify()'],['../struct_s_p_1_1_out_full_validation.html#abd409c6089d0da4a41100ac2fdcd9bb3',1,'SP::OutFullValidation::modify()']]]
+];
