@@ -34,6 +34,7 @@ TEST=0        # run tests after build if 1
 LOOP=0        # run tests in a loop N times (default 15 if provided without value)
 PER_TEST_TIMEOUT=""  # override seconds per test; default 60 (single), 120 (when --loop is used)
 PER_TEST_TIMEOUT=""  # override seconds per test; default 60 (single), 120 (when --loop is used)
+DOCS=0               # generate Doxygen docs if 1
 
 # ----------------------------
 # Helpers
@@ -64,6 +65,7 @@ Options:
       --test                 Build and run tests (executes build/tests/PathSpaceTests).
       --loop[=N]            Run tests in a loop N times (default: 15). Implies --test.
       --per-test-timeout SECS  Override per-test timeout (default: 60; 120 when --loop is used).
+      --docs                 Generate Doxygen docs into build/docs/html (requires doxygen).
   -h, --help                 Show this help and exit.
 
 Sanitizers (mutually exclusive, maps to CMake options in this repo):
@@ -76,6 +78,7 @@ Examples:
   $0 --clean -j 8 --release
   $0 -G "Ninja" --target PathSpaceTests
   $0 --test
+  $0 --docs
 EOF
 }
 
@@ -150,6 +153,9 @@ while [[ $# -gt 0 ]]; do
       ;;
     --test)
       TEST=1
+      ;;
+    --docs)
+      DOCS=1
       ;;
     --loop)
       TEST=1
@@ -293,6 +299,35 @@ info "Build completed."
 info "Build directory: $BUILD_DIR"
 if [[ -f "$BUILD_DIR/compile_commands.json" ]]; then
   info "compile_commands.json generated."
+fi
+if [[ "$DOCS" -eq 1 ]]; then
+  require_tool doxygen
+  DOXY_DIR="$BUILD_DIR/docs"
+  info "Generating Doxygen docs in: $DOXY_DIR/html"
+  mkdir -p "$DOXY_DIR"
+  DOXYFILE="$BUILD_DIR/Doxyfile"
+  cat > "$DOXYFILE" <<EOF
+PROJECT_NAME           = PathSpace
+OUTPUT_DIRECTORY       = $DOXY_DIR
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_LATEX         = NO
+QUIET                  = YES
+WARN_AS_ERROR          = NO
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+INPUT                  = $ROOT_DIR/src/pathspace $ROOT_DIR/README.md $ROOT_DIR/docs
+RECURSIVE              = YES
+FILE_PATTERNS          = *.hpp *.h *.cpp *.md
+USE_MDFILE_AS_MAINPAGE = $ROOT_DIR/README.md
+EOF
+  ( cd "$BUILD_DIR" && doxygen "$DOXYFILE" )
+  if [[ -f "$DOXY_DIR/html/index.html" ]]; then
+    info "Doxygen: $DOXY_DIR/html/index.html"
+  else
+    die "Doxygen generation failed (index.html not found)"
+  fi
 fi
 
 # Determine per-test timeout default (if not provided)
