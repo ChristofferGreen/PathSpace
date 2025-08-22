@@ -3,6 +3,17 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "")
 
 # Fix for GCC on macOS - set library paths BEFORE project() call
 if(APPLE)
+    # Prefer Apple clang toolchain for C/C++/ObjC++ to support ObjC blocks and frameworks
+    if(NOT CMAKE_C_COMPILER)
+        set(CMAKE_C_COMPILER "/usr/bin/clang" CACHE FILEPATH "" FORCE)
+    endif()
+    if(NOT CMAKE_CXX_COMPILER)
+        set(CMAKE_CXX_COMPILER "/usr/bin/clang++" CACHE FILEPATH "" FORCE)
+    endif()
+    if(NOT CMAKE_OBJCXX_COMPILER)
+        set(CMAKE_OBJCXX_COMPILER "/usr/bin/clang++" CACHE FILEPATH "" FORCE)
+    endif()
+
     set(CMAKE_EXE_LINKER_FLAGS_INIT "-L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib")
     set(CMAKE_SHARED_LINKER_FLAGS_INIT "-L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib")
     set(CMAKE_MODULE_LINKER_FLAGS_INIT "-L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib")
@@ -18,8 +29,7 @@ endif()
 
 # Additional GCC settings for macOS
 if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    # Add the include path to avoid header issues
-    include_directories(SYSTEM /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include)
+    message(FATAL_ERROR "On macOS, please use clang/clang++ (Apple Clang) instead of GCC to build ObjC++ sources and Apple frameworks.")
 endif()
 
 # Define the C++ standard to use
@@ -39,7 +49,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     #add_compile_options(-D__cpp_concepts=202002L)
     #add_compile_options(-Wno-builtin-macro-redefined)
     add_compile_options(-stdlib=libc++)
-    #add_link_options(-stdlib=libc++)
+    add_link_options(-stdlib=libc++)
     #add_link_options(-lc++abi)
     #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=lld")
 endif()
@@ -69,7 +79,7 @@ if(APPLE)
 endif()
 
 # Examples (optional)
-option(BUILD_PATHSPACE_EXAMPLES "Build PathSpace examples" ON)
+option(BUILD_PATHSPACE_EXAMPLES "Build PathSpace examples" OFF)
 if(BUILD_PATHSPACE_EXAMPLES)
     add_executable(devices_example examples/devices_example.cpp)
     target_link_libraries(devices_example PRIVATE PathSpace)
