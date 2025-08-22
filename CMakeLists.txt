@@ -9,7 +9,12 @@ if(APPLE)
 endif()
 
 # Define the project name and the language used
-project(PathSpaceTests LANGUAGES CXX OBJCXX)
+# Keep platform independence by enabling ObjC++ only on Apple (for example window helper)
+if(APPLE)
+  project(PathSpaceTests LANGUAGES CXX OBJCXX)
+else()
+  project(PathSpaceTests LANGUAGES CXX)
+endif()
 
 # Additional GCC settings for macOS
 if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -27,7 +32,7 @@ option(ENABLE_ADDRESS_SANITIZER "Enable Address Sanitizer" OFF)
 option(ENABLE_UNDEFINED_SANITIZER "Enable Undefined Behavior Sanitizer" OFF)
 
 # PathIO platform backends
-option(ENABLE_PATHIO_MACOS "Enable macOS backend paths in unified providers" ON)
+# Build macOS backends automatically when on Apple; no user toggle required.
 
 # Check if Clang is used, set it to use libc++
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -59,7 +64,7 @@ add_subdirectory(src/pathspace)
 add_subdirectory(tests)
 
 # Platform-specific defines for unified PathIO backends
-if(APPLE AND ENABLE_PATHIO_MACOS)
+if(APPLE)
     add_compile_definitions(PATHIO_BACKEND_MACOS=1)
 endif()
 
@@ -74,8 +79,6 @@ if(BUILD_PATHSPACE_EXAMPLES)
             set_source_files_properties(examples/macos/WindowEventPump.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
         endif()
         target_link_libraries(devices_example PRIVATE "-framework Cocoa")
-    endif()
-    if(APPLE AND ENABLE_PATHIO_MACOS)
         target_compile_definitions(devices_example PRIVATE PATHIO_BACKEND_MACOS=1)
     endif()
 endif()
