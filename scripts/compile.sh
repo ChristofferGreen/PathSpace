@@ -64,11 +64,7 @@ Options:
       --test                 Build and run tests (executes build/tests/PathSpaceTests).
       --loop[=N]            Run tests in a loop N times (default: 15). Implies --test.
       --per-test-timeout SECS  Override per-test timeout (default: 60; 120 when --loop is used).
-<<<<<<< HEAD
       --docs                 Generate Doxygen docs into build/docs/html (requires doxygen).
-=======
-      --docs                 Generate Doxygen docs into build/docs/html (requires doxygen).
->>>>>>> 8f11a3f (docs(doxygen): add CMake docs target, compile.sh --docs, and README link)
   -h, --help                 Show this help and exit.
 
 Sanitizers (mutually exclusive, maps to CMake options in this repo):
@@ -306,10 +302,14 @@ fi
 if [[ "$DOCS" -eq 1 ]]; then
   require_tool doxygen
 <<<<<<< HEAD
+<<<<<<< HEAD
   DOXY_DIR="$BUILD_DIR/docs"
 =======
   DOXY_DIR="$BUILD_DIR/docs"
 >>>>>>> 8f11a3f (docs(doxygen): add CMake docs target, compile.sh --docs, and README link)
+=======
+  DOXY_DIR="$ROOT_DIR/docs/doxygen"
+>>>>>>> 458349b (docs(doxygen): output to docs/doxygen/html; update README and compile.sh; track docs/doxygen dir)
   info "Generating Doxygen docs in: $DOXY_DIR/html"
   mkdir -p "$DOXY_DIR"
   DOXYFILE="$BUILD_DIR/Doxyfile"
