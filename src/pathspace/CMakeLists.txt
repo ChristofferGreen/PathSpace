@@ -59,7 +59,7 @@ add_library(PathSpace
 )
 
 # macOS backend enable flag (compile-time macro; no .mm sources)
-if(APPLE AND ENABLE_PATHIO_MACOS)
+if(APPLE)
     target_compile_definitions(PathSpace PRIVATE PATHIO_BACKEND_MACOS=1)
 endif()
 

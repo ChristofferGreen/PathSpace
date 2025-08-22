@@ -9,6 +9,10 @@
 #include <optional>
 #include <atomic>
 #include <thread>
+#include <ostream>
+#if defined(PATHIO_BACKEND_MACOS)
+#include <ApplicationServices/ApplicationServices.h>
+#endif
 
 namespace SP {
 
@@ -49,7 +53,24 @@ struct MouseEvent {
 
     // Monotonic timestamp in nanoseconds for ordering/merging
     uint64_t                                 timestampNs = 0;
-};
+
+    // Stream operator (hidden friend) for convenient logging/printing
+    friend std::ostream& operator<<(std::ostream& os, MouseEvent const& e) {
+        switch (e.type) {
+            case MouseEventType::Move:
+                return os << "[pointer] move dx=" << e.dx << " dy=" << e.dy;
+            case MouseEventType::AbsoluteMove:
+                return os << "[pointer] abs x=" << e.x << " y=" << e.y;
+            case MouseEventType::ButtonDown:
+                return os << "[pointer] button down " << static_cast<int>(e.button);
+            case MouseEventType::ButtonUp:
+                return os << "[pointer] button up " << static_cast<int>(e.button);
+            case MouseEventType::Wheel:
+                return os << "[pointer] wheel " << e.wheel;
+        }
+        return os;
+    }
+    };
 
 /**
  * PathIOMouse — concrete IO provider for mouse devices.
@@ -73,9 +94,7 @@ public:
         if (mode_ == BackendMode::Auto) {
             mode_ = BackendMode::OS;
         }
-        if (mode_ == BackendMode::OS) {
-            osInit_();
-        }
+        // Defer OS initialization to the worker thread's run loop (see osPollOnce_())
 #else
         if (mode_ == BackendMode::Auto) {
             mode_ = BackendMode::Simulation;
@@ -281,9 +300,9 @@ private:
                 this->simulateMove(1, 0, /*deviceId=*/0);
                 std::this_thread::sleep_for(std::chrono::milliseconds(16));
             } else {
-                // OS-backed poll (stubbed; implement with CGEventTap/IOKit HID)
+                // OS-backed poll
                 osPollOnce_();
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
             }
 #else
             // Non-macOS: provide a light simulation when requested; otherwise idle
@@ -301,10 +320,169 @@ private:
     BackendMode               mode_{BackendMode::Off};
 
 #if defined(PATHIO_BACKEND_MACOS)
-    // macOS OS hook stubs (to be implemented with CGEventTap / IOKit HID)
-    void osInit_() {}
-    void osShutdown_() {}
-    void osPollOnce_() { std::this_thread::sleep_for(std::chrono::milliseconds(10)); }
+    // macOS OS event-tap backend (CGEventTap)
+    static CGEventRef MouseTapCallback(CGEventTapProxy /*proxy*/, CGEventType type, CGEventRef event, void* refcon) {
+        auto self = static_cast<PathIOMouse*>(refcon);
+        if (!self) return event;
+
+        // Re-enable tap if it gets disabled
+        if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
+            if (self->eventTap_) CGEventTapEnable(self->eventTap_, true);
+            return event;
+        }
+
+        // Map CG events to high-level mouse events
+        switch (type) {
+            case kCGEventMouseMoved:
+            case kCGEventLeftMouseDragged:
+            case kCGEventRightMouseDragged:
+            case kCGEventOtherMouseDragged: {
+                Event ev;
+                ev.type = MouseEventType::Move;
+                ev.dx   = static_cast<int>(CGEventGetIntegerValueField(event, kCGMouseEventDeltaX));
+                ev.dy   = static_cast<int>(CGEventGetIntegerValueField(event, kCGMouseEventDeltaY));
+                ev.timestampNs = CGEventGetTimestamp(event);
+                self->simulateEvent(ev);
+                break;
+            }
+            case kCGEventLeftMouseDown:
+            case kCGEventRightMouseDown:
+            case kCGEventOtherMouseDown: {
+                Event ev;
+                ev.type   = MouseEventType::ButtonDown;
+                ev.button = (type == kCGEventLeftMouseDown)  ? MouseButton::Left
+                          : (type == kCGEventRightMouseDown) ? MouseButton::Right
+                                                            : MouseButton::Middle;
+                ev.timestampNs = CGEventGetTimestamp(event);
+                self->simulateEvent(ev);
+                break;
+            }
+            case kCGEventLeftMouseUp:
+            case kCGEventRightMouseUp:
+            case kCGEventOtherMouseUp: {
+                Event ev;
+                ev.type   = MouseEventType::ButtonUp;
+                ev.button = (type == kCGEventLeftMouseUp)  ? MouseButton::Left
+                          : (type == kCGEventRightMouseUp) ? MouseButton::Right
+                                                           : MouseButton::Middle;
+                ev.timestampNs = CGEventGetTimestamp(event);
+                self->simulateEvent(ev);
+                break;
+            }
+            case kCGEventScrollWheel: {
+                Event ev;
+                ev.type  = MouseEventType::Wheel;
+                // Use vertical axis (Axis1); positive = up
+                ev.wheel = static_cast<int>(CGEventGetIntegerValueField(event, kCGScrollWheelEventDeltaAxis1));
+                ev.timestampNs = CGEventGetTimestamp(event);
+                self->simulateEvent(ev);
+                break;
+            }
+            default:
+                break;
+        }
+        return event;
+    }
+
+    // Ensure the event tap is attached to the calling thread's runloop.
+    // If an existing tap is bound to a different runloop, rebind it here.
+    void osInit_() {
+        CFRunLoopRef current = CFRunLoopGetCurrent();
+        if (runLoopRef_ && runLoopRef_ != current) {
+            osShutdown_();
+        }
+        if (eventTap_) {
+            // Already initialized for this runloop
+            return;
+        }
+
+        CGEventMask mask =
+            CGEventMaskBit(kCGEventMouseMoved) |
+            CGEventMaskBit(kCGEventLeftMouseDown) | CGEventMaskBit(kCGEventLeftMouseUp) |
+            CGEventMaskBit(kCGEventRightMouseDown) | CGEventMaskBit(kCGEventRightMouseUp) |
+            CGEventMaskBit(kCGEventOtherMouseDown) | CGEventMaskBit(kCGEventOtherMouseUp) |
+            CGEventMaskBit(kCGEventLeftMouseDragged) | CGEventMaskBit(kCGEventRightMouseDragged) |
+            CGEventMaskBit(kCGEventOtherMouseDragged) |
+            CGEventMaskBit(kCGEventScrollWheel);
+
+        eventTap_ = CGEventTapCreate(kCGSessionEventTap,
+                                     kCGHeadInsertEventTap,
+                                     kCGEventTapOptionDefault,
+                                     mask,
+                                     &MouseTapCallback,
+                                     this);
+        if (!eventTap_) {
+            // Could not create tap (permissions?). Use position polling fallback (no special perms)
+            fallbackActive_.store(true, std::memory_order_release);
+            return;
+        } else {
+            fallbackActive_.store(false, std::memory_order_release);
+        }
+
+        eventSrc_ = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap_, 0);
+        runLoopRef_  = current;
+
+        if (eventSrc_ && runLoopRef_) {
+            CFRunLoopAddSource(runLoopRef_, eventSrc_, kCFRunLoopCommonModes);
+            CGEventTapEnable(eventTap_, true);
+            osReady_.store(true, std::memory_order_release);
+        }
+    }
+
+    void osShutdown_() {
+        osReady_.store(false, std::memory_order_release);
+        if (runLoopRef_ && eventSrc_) {
+            CFRunLoopRemoveSource(runLoopRef_, eventSrc_, kCFRunLoopCommonModes);
+        }
+        if (eventSrc_) {
+            CFRelease(eventSrc_);
+            eventSrc_ = nullptr;
+        }
+        if (eventTap_) {
+            CGEventTapEnable(eventTap_, false);
+            CFRelease(eventTap_);
+            eventTap_ = nullptr;
+        }
+        runLoopRef_ = nullptr;
+        // Disable fallback polling
+        fallbackActive_.store(false, std::memory_order_release);
+    }
+
+    // Poll once: service the current thread's runloop briefly
+    void osPollOnce_() {
+        if (!osReady_.load(std::memory_order_acquire)) {
+            osInit_();
+        }
+        if (fallbackActive_.load(std::memory_order_acquire)) {
+            // Permission-less fallback: poll global mouse location and emit AbsoluteMove
+            CGPoint p = CGEventGetLocation(nullptr);
+            // Throttle a bit
+            static int lastX = std::numeric_limits<int>::min();
+            static int lastY = std::numeric_limits<int>::min();
+            int xi = static_cast<int>(p.x);
+            int yi = static_cast<int>(p.y);
+            if (xi != lastX || yi != lastY) {
+                lastX = xi;
+                lastY = yi;
+                this->simulateAbsolute(xi, yi, /*deviceId=*/0);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(8));
+            return;
+        }
+        if (runLoopRef_) {
+            // Process pending events for a short slice without blocking indefinitely
+            CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.02, true);
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
+
+    // macOS event-tap state
+    CFMachPortRef       eventTap_ = nullptr;
+    CFRunLoopSourceRef  eventSrc_ = nullptr;
+    CFRunLoopRef        runLoopRef_  = nullptr;
+    std::atomic<bool>   osReady_{false};
+    std::atomic<bool>   fallbackActive_{false};
 #endif
 
     mutable std::mutex        mutex_;
