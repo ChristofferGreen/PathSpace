@@ -3,13 +3,9 @@
 #include <csignal>
 #include <iostream>
 
-
-#include <thread>
-
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/layer/PathIOMouse.hpp>
 #include <pathspace/layer/PathIOKeyboard.hpp>
-
 
 using namespace SP;
 using namespace std::chrono_literals;
@@ -27,152 +23,69 @@ struct ActivityTracker {
     std::atomic<bool> plugged{false};
 };
 
+// Minimal aliases to keep the example readable and close to the sketch
+using PointerDeviceEvent = PathIOMouse::Event;
+using TextInputDeviceEvent = PathIOKeyboard::Event;
+// Stream events via operator<<; no custom print overloads
+#if defined(__APPLE__)
+namespace SP {
+    void PSInitLocalEventWindow(PathIOMouse*, PathIOKeyboard*);
+    void PSPollLocalEventWindow();
+}
+#endif
+
+// Print helpers: accept Expected<T> and only print when an event is available
+namespace SP {
+static inline std::ostream& operator<<(std::ostream& os, Error const& err) {
+    os << "[error]";
+    if (err.message.has_value()) {
+        os << " " << *err.message;
+    } else {
+        os << " code=" << static_cast<int>(err.code);
+    }
+    return os;
+}
+template <typename T>
+static inline std::ostream& operator<<(std::ostream& os, Expected<T> const& e) {
+    if (e.has_value()) {
+        return os << *e;
+    }
+    return os << e.error();
+}
+} // namespace SP
+
+// Device initialization kept minimal: mount providers at the sketch paths without spinning up threads
+static inline void initialize_devices(PathSpace& space) {
+#if defined(__APPLE__)
+    // Use local window to forward events without global permissions
+    auto mouse = std::make_unique<PathIOMouse>(PathIOMouse::BackendMode::Off);
+    auto keyboard = std::make_unique<PathIOKeyboard>(PathIOKeyboard::BackendMode::Off);
+    PathIOMouse* mousePtr = mouse.get();
+    PathIOKeyboard* keyboardPtr = keyboard.get();
+
+    space.insert<"/system/devices/in/pointer/default">(std::move(mouse));
+    space.insert<"/system/devices/in/text/default">(std::move(keyboard));
+
+    PSInitLocalEventWindow(mousePtr, keyboardPtr);
+#else
+    auto mouse = std::make_unique<PathIOMouse>(PathIOMouse::BackendMode::Auto);
+    auto keyboard = std::make_unique<PathIOKeyboard>(PathIOKeyboard::BackendMode::Auto);
+
+    space.insert<"/system/devices/in/pointer/default">(std::move(mouse));
+    space.insert<"/system/devices/in/text/default">(std::move(keyboard));
+#endif
+}
+
 int main() {
-    std::signal(SIGINT, sigint_handler);
-
-    auto space = PathSpace();
-
-    // Mount mice and keyboard providers (path-agnostic providers; paths chosen by this example)
-    // Prefer macOS backends when available, otherwise use generic providers.
-    auto mouse = std::make_unique<PathIOMouse>();
-    {
-        auto ret = space.insert<"/inputs/mouse/0">(std::move(mouse));
-        if (!ret.errors.empty()) {
-            std::cerr << "Failed to mount mouse provider\n";
-            return 1;
-        }
+    PathSpace space;
+    initialize_devices(space);
+    while(true) {
+#if defined(__APPLE__)
+        SP::PSPollLocalEventWindow();
+#endif
+        std::cout << space.take<"/system/devices/in/pointer/default/events", PointerDeviceEvent>(Block{250ms}) << std::endl;
+        std::cout << space.take<"/system/devices/in/text/default/events", TextInputDeviceEvent>(Block{250ms}) << std::endl;
     }
-
-    auto keyboard = std::make_unique<PathIOKeyboard>();
-    {
-        auto ret = space.insert<"/inputs/keyboards/0">(std::move(keyboard));
-        if (!ret.errors.empty()) {
-            std::cerr << "Failed to mount keyboard provider\n";
-            return 1;
-        }
-    }
-
-    std::cout << "[info] input backends ready\n";
-
-    std::cout << "Device example (no simulation). Ctrl-C to exit.\n";
-
-    // Track "plugged" based on first-seen event; declare "unplug" if idle for N ticks.
-    ActivityTracker mouseAct, kbAct;
-
-    // Reader thread: mouse
-    // Track an accumulated pointer position from relative moves; reset when unplugged
-    std::atomic<int> mouseX{0};
-    std::atomic<int> mouseY{0};
-    std::thread mouseReader([&] {
-        while (g_running.load(std::memory_order_acquire)) {
-            auto r = space.read<"/inputs/mouse/0/events", PathIOMouse::Event>(Block{250ms});
-            if (r.has_value()) {
-                auto const& e = *r;
-                if (!mouseAct.plugged.exchange(true, std::memory_order_acq_rel)) {
-                    std::cout << "[plug-in] mouse/0\n";
-                }
-                mouseAct.events.fetch_add(1, std::memory_order_acq_rel);
-                mouseAct.idleTicks.store(0, std::memory_order_release);
-
-                switch (e.type) {
-                    case MouseEventType::Move: {
-                        // Update accumulated coordinates based on relative deltas
-                        int nx = mouseX.load(std::memory_order_acquire) + e.dx;
-                        int ny = mouseY.load(std::memory_order_acquire) + e.dy;
-                        mouseX.store(nx, std::memory_order_release);
-                        mouseY.store(ny, std::memory_order_release);
-                        std::cout << "[mouse] move dx=" << e.dx << " dy=" << e.dy
-                                  << " | pos=(" << nx << "," << ny << ")\n";
-                        break;
-                    }
-                    case MouseEventType::AbsoluteMove: {
-                        // Set absolute coordinates directly
-                        mouseX.store(e.x, std::memory_order_release);
-                        mouseY.store(e.y, std::memory_order_release);
-                        std::cout << "[mouse] abs x=" << e.x << " y=" << e.y
-                                  << " | pos=(" << e.x << "," << e.y << ")\n";
-                        break;
-                    }
-                    case MouseEventType::ButtonDown:
-                        std::cout << "[mouse] button down " << static_cast<int>(e.button)
-                                  << " | pos=(" << mouseX.load() << "," << mouseY.load() << ")\n";
-                        break;
-                    case MouseEventType::ButtonUp:
-                        std::cout << "[mouse] button up " << static_cast<int>(e.button)
-                                  << " | pos=(" << mouseX.load() << "," << mouseY.load() << ")\n";
-                        break;
-                    case MouseEventType::Wheel:
-                        std::cout << "[mouse] wheel " << e.wheel
-                                  << " | pos=(" << mouseX.load() << "," << mouseY.load() << ")\n";
-                        break;
-                }
-            } else {
-                // no event within block window
-                mouseAct.idleTicks.fetch_add(1, std::memory_order_acq_rel);
-                if (mouseAct.plugged.load(std::memory_order_acquire) && mouseAct.idleTicks.load(std::memory_order_acquire) > 20) {
-                    mouseAct.plugged.store(false, std::memory_order_release);
-                    // Reset accumulated position on unplug for clarity
-                    mouseX.store(0, std::memory_order_release);
-                    mouseY.store(0, std::memory_order_release);
-                    std::cout << "[unplug] mouse/0 (inactivity)\n";
-                }
-            }
-        }
-    });
-
-    // Reader thread: keyboard
-    std::thread keyboardReader([&] {
-        while (g_running.load(std::memory_order_acquire)) {
-            auto r = space.read<"/inputs/keyboards/0/events", PathIOKeyboard::Event>(Block{250ms});
-            if (r.has_value()) {
-                auto const& e = *r;
-                if (!kbAct.plugged.exchange(true, std::memory_order_acq_rel)) {
-                    std::cout << "[plug-in] keyboards/0\n";
-                }
-                kbAct.events.fetch_add(1, std::memory_order_acq_rel);
-                kbAct.idleTicks.store(0, std::memory_order_release);
-
-                switch (e.type) {
-                    case KeyEventType::KeyDown:
-                        std::cout << "[key] down code=" << e.keycode << " mods=" << e.modifiers << "\n";
-                        break;
-                    case KeyEventType::KeyUp:
-                        std::cout << "[key] up code=" << e.keycode << " mods=" << e.modifiers << "\n";
-                        break;
-                    case KeyEventType::Text:
-                        std::cout << "[key] text \"" << e.text << "\" mods=" << e.modifiers << "\n";
-                        break;
-                }
-            } else {
-                kbAct.idleTicks.fetch_add(1, std::memory_order_acq_rel);
-                if (kbAct.plugged.load(std::memory_order_acquire) && kbAct.idleTicks.load(std::memory_order_acquire) > 20) {
-                    kbAct.plugged.store(false, std::memory_order_release);
-                    std::cout << "[unplug] keyboards/0 (inactivity)\n";
-                }
-            }
-        }
-    });
-
-    // Idle monitor to print periodic summaries (optional)
-    std::thread monitor([&] {
-        while (g_running.load(std::memory_order_acquire)) {
-            std::this_thread::sleep_for(2s);
-            auto m = mouseAct.events.exchange(0, std::memory_order_acq_rel);
-            auto k = kbAct.events.exchange(0, std::memory_order_acq_rel);
-            if (m || k) {
-                std::cout << "[summary] mouse events=" << m << " key events=" << k << "\n";
-            }
-        }
-    });
-
-    mouseReader.join();
-    keyboardReader.join();
-    monitor.join();
-
-    // Backends lifecycle is automatic (constructor/destructor)
-
-    std::cout << "Exiting device example.\n";
-    return 0;
 }
 
 /*

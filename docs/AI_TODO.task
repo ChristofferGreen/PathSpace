@@ -397,6 +397,30 @@ task {
   description: "Plan, write, and package a publishable paper with reproducible artifacts."
   status: planned
   priority: P2
+}
+
+task {
+  name: "Branch/PR Hygiene For AI [DOCS]"
+  description: "Document a clean workflow for AI-authored PRs to avoid stale commits and noisy histories; include branch-from-master, rebase, and cherry-pick guidance."
+  status: planned
+  priority: P1
+
+  acceptance_criteria: [
+    "AI_ARCHITECTURE.md includes a short 'AI pull request workflow' section with concrete git commands.",
+    "Instructions cover: branching from origin/master, keeping the branch rebased, creating a clean branch and cherry-picking if started from an old topic branch, and using scripts/create_pr.sh.",
+    "Guidance includes how to skip heavy local hooks (SKIP_LOOP_TESTS/SKIP_EXAMPLE) and how to handle non-fast-forward pushes."
+  ]
+
+  steps: [
+    "Add 'AI pull request workflow' section to docs/AI_ARCHITECTURE.md with exact commands.",
+    "Reference scripts/create_pr.sh and examples for typical flows.",
+    "Call out how to recover from starting work on an old branch using cherry-pick onto a fresh branch from origin/master.",
+    "Note env toggles for local hooks (SKIP_LOOP_TESTS=1, SKIP_EXAMPLE=1) and when to use them."
+  ]
+
+  links: [
+    "docs/AI_ARCHITECTURE.md"
+  ]
 
   task {
     name: "Select Paper Venue [DOCS]"

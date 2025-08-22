@@ -6,7 +6,29 @@
 
 
 Note for editors: when you add, rename, or remove source files, refresh the compilation database (`./compile_commands.json`). Running `./scripts/compile.sh` or `./scripts/update_compile_commands.sh` (or re-configuring with CMake) regenerates `build/compile_commands.json` and copies it to the repo root; many editors/LSPs rely on it for correct include paths and diagnostics.
-If a change affects core behavior (paths, NodeData, WaitMap, TaskPool, serialization), update `docs/AI_ARCHITECTURE.md` in the same PR. For PRs authored by AI, PR titles must not include Conventional Commit prefixes (e.g., "chore(...):", "fix:"), must start with a capital letter, and should be short and human-friendly. PR bodies should use the minimal template in `.github/PULL_REQUEST_TEMPLATE.md`: include a concise "Purpose" (1–3 sentences) and an "AI Change Log" (file-by-file summary of edits).
+If a change affects core behavior (paths, NodeData, WaitMap, TaskPool, serialization), update `docs/AI_ARCHITECTURE.md` in the same PR.
+
+AI pull request workflow (to avoid stale commits and noisy PR history):
+- Always branch from the current default branch (usually `master`):
+  - git fetch origin
+  - git checkout -b feat/<short-topic> origin/master
+- Keep your branch up to date during the work:
+  - git fetch origin
+  - git rebase origin/master
+- If you accidentally started from an old topic branch, create a clean branch and cherry-pick only your commits:
+  - git checkout -b fix/<topic>-clean origin/master
+  - git cherry-pick <commit1> [<commit2> ...]
+- Use the helper script to open a PR cleanly:
+  - ./scripts/create_pr.sh -b master -t "Short human-friendly title"
+  - If the PR shows unrelated older commits, close it and create a fresh branch from `origin/master`, then cherry-pick your changes and re-run the script.
+- If pre-push hooks run local builds/tests you can skip them for a quick PR push:
+  - SKIP_LOOP_TESTS=1 SKIP_EXAMPLE=1 git push -u origin HEAD
+
+PR authoring guidelines for AI:
+- PR titles must not include Conventional Commit prefixes (e.g., "chore(...):", "fix:"). Start with a capital letter and keep them short and human-friendly.
+- PR bodies should use the minimal template in `.github/PULL_REQUEST_TEMPLATE.md`: include a concise "Purpose" (1–3 sentences) and an "AI Change Log" (file-by-file summary of edits).
+- Validate docs and code references against repo paths per `.rules`.
+
 PathSpace is a coordination language that enables insertion and extractions from paths in a thread safe datastructure. The data structure supports views of the paths similar to Plan 9. The data attached to the paths are more like a JSON datastructure than files though. The data supported is standard C++ data types and data structures from the standard library, user created structs/classes as well as function pointers, std::function or function objects for storing executions that generate values to be inserted at a path.
 
 ## Path System
