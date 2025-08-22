@@ -114,7 +114,7 @@ say "Jobs: $JOBS  Build type: $BUILD_TYPE"
 if [[ "${SKIP_LOOP_TESTS:-0}" != "1" ]]; then
   say "Building and running tests with loop=15"
   # scripts/compile.sh takes care of configure+build+tests
-  ./scripts/compile.sh --clean --test --loop=15 --${BUILD_TYPE,,} --jobs "$JOBS"
+  CMAKE_CXX_COMPILER="${CMAKE_CXX_COMPILER:-$(command -v clang++ || true)}" CMAKE_OBJCXX_COMPILER="${CMAKE_OBJCXX_COMPILER:-$(command -v clang++ || true)}" ./scripts/compile.sh --clean --test --loop=15 --${BUILD_TYPE,,} --jobs "$JOBS"
   ok "Test loop completed successfully"
 else
   warn "Skipping test loop (SKIP_LOOP_TESTS=1)"
@@ -128,7 +128,9 @@ if [[ "${SKIP_EXAMPLE:-0}" != "1" ]]; then
     -DBUILD_PATHSPACE_EXAMPLES=ON \
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
     ${ENABLE_PATHIO_MACOS:+-DENABLE_PATHIO_MACOS="$ENABLE_PATHIO_MACOS"} \
-    ${PATHSPACE_CMAKE_ARGS:-}
+    ${PATHSPACE_CMAKE_ARGS:-} \
+    ${CMAKE_CXX_COMPILER:+-DCMAKE_CXX_COMPILER="$CMAKE_CXX_COMPILER"} \
+    ${CMAKE_OBJCXX_COMPILER:+-DCMAKE_OBJCXX_COMPILER="$CMAKE_OBJCXX_COMPILER"}
 
   say "Building example app"
   cmake --build build -j "$JOBS" --target devices_example
