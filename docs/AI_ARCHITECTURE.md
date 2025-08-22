@@ -8,6 +8,11 @@
 Note for editors: when you add, rename, or remove source files, refresh the compilation database (`./compile_commands.json`). Running `./scripts/compile.sh` or `./scripts/update_compile_commands.sh` (or re-configuring with CMake) regenerates `build/compile_commands.json` and copies it to the repo root; many editors/LSPs rely on it for correct include paths and diagnostics.
 If a change affects core behavior (paths, NodeData, WaitMap, TaskPool, serialization), update `docs/AI_ARCHITECTURE.md` in the same PR.
 
+AI autonomy guideline:
+- The AI should complete tasks end-to-end without asking the user to run commands or finish steps. Use the provided scripts and tooling to build, test, and validate changes (e.g., `./scripts/compile.sh --clean --test --loop=N`).
+- Only defer to the user when blocked by missing credentials, unavailable external services, or ambiguous requirements that cannot be resolved from the repository context.
+- Prefer making conservative, reversible changes; keep edits minimal and focused, and ensure all references and paths are valid.
+
 AI pull request workflow (to avoid stale commits and noisy PR history):
 - Always branch from the current default branch (usually `master`):
   - git fetch origin
@@ -429,8 +434,13 @@ Concurrency and notifications:
 - `PathSpace::shutdown()` is the public API to cooperatively wake waiters and clear paths during teardown.
 - `PathSpace::shutdownPublic()` and `PathSpace::notifyAll()` are protected test utilities. When tests need to call them, expose via a small test-only subclass, for example:
   - `struct TestablePathSpace : SP::PathSpace { using SP::PathSpace::PathSpace; using SP::PathSpace::shutdownPublic; };`
-- `PathSpace::peekFuture(...)` and `PathSpace::setOwnedPool(...)` are protected implementation details. Prefer `PathSpaceBase::readFuture(...)` and constructor injection of the executor/pool.
+- `PathSpace::peekFuture(...)` and `PathSpace::setOwnedPool(...)` are protected implementation details. Prefer the unified `read<FutureAny>(path)` and constructor injection of the executor/pool.
 - Nested spaces adopt shared context and a mount prefix internally via the protected `adoptContextAndPrefix(...)`; external callers should not invoke this directly.
+
+AI execution policy:
+- When a task requests building or testing, the AI should run the necessary scripts directly (compile, test loops, example builds) rather than instructing the user to do so.
+- If platform constraints require configuration (e.g., choosing a compiler on macOS), the AI should adjust CMake cache or script flags accordingly within the PR.
+- Validate changes by running `./scripts/compile.sh --clean --test --loop=50` unless otherwise stated; if examples cause toolchain issues on CI, temporarily disable example builds during loops while keeping the example source correct.
 
 ## Operating System
 Device IO is provided by path-agnostic layers that can be mounted anywhere in a parent `PathSpace`, with platform backends feeding events into them:

@@ -256,7 +256,7 @@ mkdir -p "$BUILD_DIR"
 # ----------------------------
 # Configure
 # ----------------------------
-CONFIGURE_CMD=( cmake -S "$ROOT_DIR" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE="$BUILD_TYPE" )
+CONFIGURE_CMD=( cmake -S "$ROOT_DIR" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE="$BUILD_TYPE" ${PATHSPACE_CMAKE_ARGS:-} )
 # Prefer Ninja by default if no generator was specified and it's available
 if [[ -z "$GENERATOR" ]]; then
   if command -v ninja >/dev/null 2>&1; then

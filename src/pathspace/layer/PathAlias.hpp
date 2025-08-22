@@ -79,7 +79,7 @@ public:
         }
         auto mappedStr = mapPath_(path);
         Iterator mapped{mappedStr};
-        return upstream_->forwardIn(mapped, data);
+        return upstream_->in(mapped, data);
     }
 
     // Forward read/take: map alias path under the current target prefix and forward upstream.
@@ -89,7 +89,7 @@ public:
         }
         auto mappedStr = mapPath_(path);
         Iterator mapped{mappedStr};
-        return upstream_->forwardOut(mapped, inputMetadata, options, obj);
+        return upstream_->out(mapped, inputMetadata, options, obj);
     }
 
     // Forward notify: map alias path under the current target prefix and notify upstream.
@@ -97,7 +97,7 @@ public:
         if (!upstream_)
             return;
         auto mapped = mapPathRaw_(notificationPath);
-        upstream_->forwardNotify(mapped);
+        upstream_->notify(mapped);
     }
 
     // No special shutdown behavior; upstream should be managed externally.

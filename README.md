@@ -68,8 +68,8 @@ All operations below are member functions on a PathSpace instance. Assume `PathS
 - Execution scheduling category:
   - Lazy (run on first read) or Immediate (run when inserted)
   - `ps.insert<"/exec">(fn, Lazy{})` or `ps.insert<"/exec">(fn, Immediate{})`
-- Peek a future (execution result handle):
-  - `auto fut = ps.readFuture("/exec");` returns a type-erased FutureAny
+- Peek a future (execution result handle) via the unified read API:
+  - `auto fut = ps.read<FutureAny>("/exec");` returns a type-erased FutureAny
 - Globbed insert (fan-out to existing subtrees):
   - `ps.insert<"/sensors/*/status">(1)` writes to all matching, already-existing paths
 
@@ -216,8 +216,8 @@ int main() {
 
     ps.insert<"/exec">([]{ return 42; }, Immediate{});
 
-    // Non-blocking peek; returns Expected<FutureAny>
-    auto futExp = ps.readFuture("/exec");
+    // Non-blocking peek via unified read; returns Expected<FutureAny>
+    auto futExp = ps.read<FutureAny>("/exec");
     if (futExp) {
         auto fut = futExp.value();
         // Wait and copy typed result (caller must know the type)
@@ -244,7 +244,7 @@ If you need to take results repeatedly, prefer read (copy) over take (pop). Use 
 - Immediate executions are scheduled on the internal TaskPool when inserted
 - Lazy executions are scheduled on first read
 
-Tip: For high-throughput patterns, write with Immediate and `readFuture` to coordinate downstream consumers.
+Tip: For high-throughput patterns, write with Immediate and read<FutureAny> to coordinate downstream consumers.
 
 ## Experimental IO providers (PathIO)
 
