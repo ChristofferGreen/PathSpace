@@ -13,7 +13,7 @@ PathSpace is a C++ library inspired by tuplespaces (e.g., Linda) and reactive/da
 Links:
 - docs/AI_ARCHITECTURE.md (design and internals)
 - examples/devices_example.cpp (experimental device IO example)
-- docs/doxygen/html/index.html (Doxygen API Reference)
+- Doxygen API Reference — generate locally or view via GitHub Pages (see "Documentation (Doxygen)" below)
 
 ## Quick start
 
@@ -60,14 +60,21 @@ You can generate HTML API documentation into build/docs/html:
   ```bash
   ./scripts/compile.sh --docs
   ```
-  Output: [docs/doxygen/html/index.html](docs/doxygen/html/index.html)
+  Output: [docs/doxygen/html/index.html](docs/doxygen/html/index.html) — open locally in your browser (GitHub does not render HTML files in the repo view)
 
 - Using CMake directly:
   ```bash
   cmake -S . -B build -DENABLE_DOXYGEN=ON
   cmake --build build --target docs -j
   ```
-  Output: [docs/doxygen/html/index.html](docs/doxygen/html/index.html)
+  Output: [docs/doxygen/html/index.html](docs/doxygen/html/index.html) — open locally in your browser (GitHub does not render HTML files in the repo view)
+
+To publish the HTML so it’s viewable online via GitHub Pages:
+- In your repository settings, open “Pages” and set Source to “Deploy from a branch”
+- Choose Branch: “main”, Folder: “/docs”, then save
+- After it builds, your site is available at https://<your-user-or-org>.github.io/PathSpace/
+- The Doxygen index will be at https://<your-user-or-org>.github.io/PathSpace/doxygen/html/index.html
+- Update links accordingly if you enable Pages
 
 ## API at a glance
 All operations below are member functions on a PathSpace instance. Assume `PathSpace ps;`.

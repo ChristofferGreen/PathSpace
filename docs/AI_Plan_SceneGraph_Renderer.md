@@ -986,6 +986,7 @@ Notes:
 
 Next to decide:
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 <<<<<<< HEAD
 1) Lighting and shadows
@@ -999,18 +1000,26 @@ Next to decide:
    - Define app-relative resolution helper API and enforce same-app containment checks.
 
 2) Scene authoring model
+=======
+1) Scene authoring model
+>>>>>>> a841b6b (docs: clarify Doxygen HTML viewing and add Pages instructions; prune resolved items from SceneGraph plan 'Gaps and Decisions')
    - Node properties: transform representation (TRS vs matrix), style/visibility, interaction flags.
    - Hierarchy semantics: property inheritance, z-order, clipping behavior.
    - Initial layout systems: absolute/stack; plan flex/grid later. Measurement contracts for text and images.
    - Authoring API: thread model and batching for updates into scenes/<sid>/src.
 
+<<<<<<< HEAD
 3) Snapshot builder spec
 >>>>>>> ee97327 (docs: update AI_ARCHITECTURE and add scene graph renderer plan)
+=======
+2) Snapshot builder spec
+>>>>>>> a841b6b (docs: clarify Doxygen HTML viewing and add Pages instructions; prune resolved items from SceneGraph plan 'Gaps and Decisions')
    - Triggering/debounce policy and max rebuild frequency.
    - Work partitioning across passes (measure, layout, batching) and threading.
    - Transform propagation from hierarchy; text shaping pipeline and caching.
    - Snapshot/resource GC policy and sharing across revisions.
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 2) Rendering pipeline specifics
    - Software rasterization details (AA, clipping, blending, color pipeline) and text composition order.
@@ -1052,45 +1061,33 @@ Additional areas to flesh out:
    - Sphere vs AABB/OBB choices; optional quadtree/BVH later; rebuild vs incremental thresholds.
 
 6) Rendering pipeline specifics
+=======
+3) Rendering pipeline specifics
+>>>>>>> a841b6b (docs: clarify Doxygen HTML viewing and add Pages instructions; prune resolved items from SceneGraph plan 'Gaps and Decisions')
    - Software rasterization details (AA, clipping, blending, color pipeline) and text composition order.
    - GPU plans (command encoding patterns, pipeline caching) for Metal/Vulkan.
 
-7) Lighting and shadows
+4) Lighting and shadows
    - Software UI lighting model (directional light, Lambert/Blinn-Phong) and elevation-based shadow heuristics.
    - Opt-in normals/3D attributes for “2.5D” widgets.
 
-8) Coordinate systems and cameras
+5) Coordinate systems and cameras
    - Units/DPI/scale conventions; orthographic defaults for UI; z-ordering semantics across 2D/3D.
 
-9) Time, animation, and frame scheduling
-   - Global clock, animation system, frame pacing/vsync, staleness thresholds, who triggers frames.
+6) Input, hit testing, and focus
+   - Mapping OS input to scene coords, hit-testing via DrawableBucket bounds, event routing (capture/bubble), IME/text.
 
-10) Input, hit testing, and focus
-    - Mapping OS input to scene coords, hit-testing via DrawableBucket bounds, event routing (capture/bubble), IME/text.
+7) GPU backend architecture
+   - Device/queue ownership, thread affinity, synchronization, offscreen texture/image formats and color spaces.
 
-11) Presenters and window integration
-    - Vsync/present timing, occlusion throttling, dirty-region tracking for software blits.
+8) Resource system (images, fonts, shaders)
+   - Async loading/decoding, caches, eviction, asset path conventions, font fallback/shaping library.
 
-12) GPU backend architecture
-    - Device/queue ownership, thread affinity, synchronization, offscreen texture/image formats and color spaces.
+9) Error handling, observability, and profiling
+   - Error propagation style, structured logging/tracing per target/scene/frame, metrics and debug overlays.
 
-13) Resource system (images, fonts, shaders)
-    - Async loading/decoding, caches, eviction, asset path conventions, font fallback/shaping library.
-
-14) Error handling, observability, and profiling
-    - Error propagation style, structured logging/tracing per target/scene/frame, metrics and debug overlays.
-
-15) Testing strategy
-    - Deterministic snapshot tests, golden image tests (tolerances), concurrency/teardown races, feature-flagged GPU tests.
-
-16) Safety and isolation
-    - Enforce same-app validation consistently; opaque GPU handles with clear lifetimes; defensive teardown ordering.
-
-17) APIs/builders and lifecycles
-    - Finalize builder signatures/return types, error semantics; guarantees when app root is deleted; thread-safety of helpers.
-
-18) Documentation and diagrams
-    - Add “UI/Rendering” to AI_ARCHITECTURE.md when APIs solidify; include Mermaid diagrams for data flow and schemas.
+10) Documentation and diagrams
+   - Add “UI/Rendering” to AI_ARCHITECTURE.md when APIs solidify; include Mermaid diagrams for data flow and schemas.
 
 ## Target keys (final)
  
