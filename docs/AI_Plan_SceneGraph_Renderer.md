@@ -1,8 +1,9 @@
 # PathSpace — Scene Graph and Renderer Plan
 
-Status: Draft (planning)
-Scope: UI surfaces, renderers, presenters, multiple-scenes support, atomic updates
+Status: Active plan (MVP in progress)
+Scope: UI surfaces, renderers, presenters, multi-scene targets; atomic params and snapshot-based rendering
 Audience: Engineers building UI/rendering layers and contributors adding platform backends
+Docs: https://christoffergreen.github.io/PathSpace/doxygen/html/index.html
 
 ## Goals
 
