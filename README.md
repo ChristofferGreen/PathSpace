@@ -54,7 +54,7 @@ Scripts:
 - ./scripts/update_compile_commands.sh (keeps compile_commands.json in repo root)
 
 ## Documentation (Doxygen)
-You can generate HTML API documentation into build/docs/html:
+You can generate HTML API documentation into docs/doxygen/html:
 
 - Using the helper script (requires doxygen):
   ```bash

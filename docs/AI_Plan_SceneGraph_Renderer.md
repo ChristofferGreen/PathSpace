@@ -701,7 +701,7 @@ Next to decide:
    - Node properties: transform representation (TRS vs matrix), style/visibility, interaction flags.
    - Hierarchy semantics: property inheritance, z-order, clipping behavior.
    - Initial layout systems: absolute/stack; plan flex/grid later. Measurement contracts for text and images.
-   - Authoring API: thread model and batching for updates into scenes/<sid>/src.
+   - Authoring API: thread model and batching for updates into scenes/&lt;sid&gt;/src.
 
 2) Snapshot builder spec
    - Triggering/debounce policy and max rebuild frequency.
