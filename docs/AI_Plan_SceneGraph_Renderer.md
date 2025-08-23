@@ -266,6 +266,160 @@ struct DrawableEntry {
 };
 ```
 
+## Scene authoring model (C++ API)
+
+- Authoring is done via typed C++ helpers; no JSON authoring.
+- Scene content lives under `<app>/scenes/<sid>/src/...`; a commit barrier signals atomic batches.
+- Minimal node kinds: `Container`, `Rect`, `Text`, `Image`.
+- Transforms: 2D TRS per-node (position, rotationDeg, scale), relative to parent.
+- Layout: `Absolute` and `Stack` (vertical/horizontal) in v1.
+- Style: opacity (inherits multiplicatively), fill/stroke, strokeWidth, cornerRadius, clip flag (on containers).
+- Z-order: by `(zIndex asc, then children[] order)` within a parent.
+
+Authoring pattern (preferred: nested PathSpace mount)
+- Build the scene in a temporary PathSpace:
+  - Create a local PathSpace that is not yet mounted in the app tree.
+  - Insert nodes under its `/src/...` subtree (typed inserts).
+  - Set `/src/nodes/root` and `/src/root` when ready.
+- Atomically publish by mounting:
+  - Insert the local PathSpace into the main PathSpace at `<app>/scenes/<sid>` using `std::unique_ptr<PathSpace>`.
+  - The nested space adopts the parent context/prefix; a single notify wakes waiters (e.g., the snapshot builder).
+- Incremental alternative (optional):
+  - For streaming updates, you may write directly under `<app>/scenes/<sid>/src/...` and optionally use a `src/commit` counter as a publish hint.
+
+Example: atomic publish via nested PathSpace (preferred)
+```
+SP::PathSpace ps;
+
+// Build scene in a local (unmounted) PathSpace
+auto local = std::make_unique<SP::PathSpace>();
+
+// Author nodes under the local space's /src subtree (typed inserts)
+local->insert("/src/nodes/card", RectNode{
+  .style = Style{ .fill = Color{0.29f,0.56f,0.89f,1}, .cornerRadius = 12 },
+  .layout = Absolute{ .x = 40, .y = 30, .w = 200, .h = 120 }
+});
+
+local->insert("/src/nodes/title", TextNode{
+  .text = TextProps{ .content = "Hello, PathSpace!", .font = "16px system-ui" },
+  .layout = Absolute{ .x = 56, .y = 70 } // auto size for text
+});
+
+local->insert("/src/nodes/root", ContainerNode{
+  .layout = Absolute{ .x = 0, .y = 0, .w = 800, .h = 600 },
+  .children = std::vector<NodeId>{ id("card"), id("title") }
+});
+
+// Set the root reference within the local space
+local->insert("/src/root", std::string{"root"});
+
+// Atomically publish the completed scene by mounting it
+ps.insert("apps/demo/scenes/home", std::move(local));
+// The nested space adopts ps's context/prefix and emits a single notify to wake the builder.
+```
+
+### Stack layout (v1)
+
+- Purpose: arrange children along one axis with spacing, alignment, and optional weight-based distribution.
+- Fields:
+  - `axis`: Vertical (top→bottom) or Horizontal (left→right)
+  - `spacing`: gap between adjacent children (main axis)
+  - `alignMain`: Start | Center | End — pack the whole sequence if there’s slack
+  - `alignCross`: Start | Center | End | Stretch — cross-axis placement/sizing
+  - Per-child `weight` (>= 0): shares leftover main-axis space; 0 = fixed
+  - Per-child min/max hints on both axes (optional)
+
+Main-axis sizing
+1) Measure fixed items (weight==0): main size = explicit size if given, else intrinsic; clamp to min/max.
+2) Compute `available = containerMain - (sumFixed + spacing*(N-1))`.
+3) Distribute to weighted items: each gets `available * (weight_i / totalWeight)`.
+4) Clamp weighted items to min/max iteratively; redistribute remaining `available` among unclamped weighted items until stable.
+5) Overflow: if content exceeds container, no auto-shrink in v1; items overflow sequentially. If the container’s `clip` is true, overflow is clipped.
+
+Cross-axis sizing
+- If explicit cross size: use it.
+- Else if `alignCross=Stretch`: child cross size = container cross size (then clamp).
+- Else: use intrinsic cross size; position by `alignCross`.
+
+Positioning
+- Start with `offset = 0`, adjust by `alignMain` when totalChildrenSize < containerMain.
+- Place child at `(offset, crossOffset)`, then `offset += childMain + spacing`.
+- Child `Transform2D` applies after layout (visual only; does not affect layout in v1).
+
+Z-order and hit testing
+- Order within a stack remains `(zIndex asc, then children[] order)`.
+- If the container has `clip=true`, descendants are clipped for draw and hit testing.
+
+Text and images
+- Text:
+  - If width is implicit via Stretch on cross-axis (vertical stack) or explicit size, wrap to that width; height grows.
+  - Otherwise, single-line intrinsic width/height; may overflow unless clipped.
+- Image:
+  - Natural size if no explicit size; otherwise apply fit mode (contain/cover/fill/none).
+
+### Authoring publish strategies
+
+- Atomic mount (preferred):
+  - Build the scene in a temporary PathSpace and insert it at `<app>/scenes/<sid>` (unique_ptr<PathSpace>).
+  - The nested space adopts the parent context/prefix and a single notify wakes waiters (e.g., the snapshot builder).
+  - Avoids partial reads without extra synchronization primitives.
+- Optional commit barrier (incremental authoring):
+  - For streaming/incremental edits to `<app>/scenes/<sid>/src`, writers may update nodes and then bump `<app>/scenes/<sid>/src/commit` as a publish hint.
+  - Builders can listen to `src/commit` to rebuild immediately; non-commit edits may be debounced (e.g., ~16ms).
+
+#### Builder: waiting for mount or revision
+
+- Atomic mount detection:
+  - Since the parent notifies on the mount path (`<app>/scenes/<sid>`), the builder should poll for readiness of `<app>/scenes/<sid>/src/root` using short blocking reads in a loop until it appears, then proceed to build.
+  - Example polling loop:
+```
+using namespace std::chrono_literals;
+
+Expected<void> wait_for_scene_ready(SP::PathSpace& ps, std::string const& app, std::string const& sid) {
+  const std::string rootPath = app + "/scenes/" + sid + "/src/root";
+  for (;;) {
+    auto root = ps.read<std::string>(rootPath, Block{50ms});
+    if (root) return {};
+    // Timed out or not found yet; loop again (optionally add a sleep or backoff if needed)
+  }
+}
+```
+
+- Incremental edits with commit barrier:
+  - When authors bump `<app>/scenes/<sid>/src/commit`, builders can block on that path and rebuild when it changes:
+```
+using namespace std::chrono_literals;
+
+void wait_for_commit_and_rebuild(SP::PathSpace& ps, std::string const& app, std::string const& sid) {
+  const std::string commitPath = app + "/scenes/" + sid + "/src/commit";
+  uint64_t last = ps.read<uint64_t>(commitPath).value_or(0);
+  for (;;) {
+    auto cur = ps.read<uint64_t>(commitPath, Block{500ms}); // wakes on commit writes
+    if (cur && *cur != last) {
+      last = *cur;
+      // trigger rebuild for sid
+      break;
+    }
+    // else continue waiting
+  }
+}
+```
+
+- Waiting for a new published revision:
+  - After building/publishing, the builder (or renderer) can wait for `current_revision` to change:
+```
+using namespace std::chrono_literals;
+
+uint64_t wait_for_new_revision(SP::PathSpace& ps, std::string const& app, std::string const& sid, uint64_t known) {
+  const std::string revPath = app + "/scenes/" + sid + "/current_revision";
+  for (;;) {
+    auto rev = ps.read<uint64_t>(revPath, Block{250ms});
+    if (rev && *rev != known) return *rev;
+    // continue waiting
+  }
+}
+```
+
 ### Renderer loop outline
 
 ```
@@ -657,7 +811,7 @@ int main() {
   - DOM/CSS is fastest to implement but not pixel-perfect; Canvas JSON offers better parity with the software renderer.
   - Text fidelity improves if we pre-shape glyphs in the snapshot and emit positioned quads.
   - This adapter is optional and does not affect software/GPU outputs.
-  
+
 ## MVP plan
 1) Scaffolding and helpers
    - Add `src/pathspace/ui/` with stubs for `PathRenderer2D`, `PathSurfaceSoftware`, and `PathWindowView` (presenter).
@@ -698,46 +852,42 @@ int main() {
 ## Gaps and Decisions (unresolved areas)
 
 Next to decide:
-1) Scene authoring model
-   - Node properties: transform representation (TRS vs matrix), style/visibility, interaction flags.
-   - Hierarchy semantics: property inheritance, z-order, clipping behavior.
-   - Initial layout systems: absolute/stack; plan flex/grid later. Measurement contracts for text and images.
-   - Authoring API: thread model and batching for updates into scenes/&lt;sid&gt;/src.
 
-2) Snapshot builder spec
+
+1) Snapshot builder spec
    - Triggering/debounce policy and max rebuild frequency.
    - Work partitioning across passes (measure, layout, batching) and threading.
    - Transform propagation from hierarchy; text shaping pipeline and caching.
    - Snapshot/resource GC policy and sharing across revisions.
 
-3) Rendering pipeline specifics
+2) Rendering pipeline specifics
    - Software rasterization details (AA, clipping, blending, color pipeline) and text composition order.
    - GPU plans (command encoding patterns, pipeline caching) for Metal/Vulkan.
 
-4) Lighting and shadows
+3) Lighting and shadows
    - Software UI lighting model (directional light, Lambert/Blinn-Phong) and elevation-based shadow heuristics.
    - Opt-in normals/3D attributes for “2.5D” widgets.
 
-5) Coordinate systems and cameras
+4) Coordinate systems and cameras
    - Units/DPI/scale conventions; orthographic defaults for UI; z-ordering semantics across 2D/3D.
 
-6) Input, hit testing, and focus
+5) Input, hit testing, and focus
    - Mapping OS input to scene coords, hit-testing via DrawableBucket bounds, event routing (capture/bubble), IME/text.
 
-7) GPU backend architecture
+6) GPU backend architecture
    - Device/queue ownership, thread affinity, synchronization, offscreen texture/image formats and color spaces.
 
-8) Resource system (images, fonts, shaders)
+7) Resource system (images, fonts, shaders)
    - Async loading/decoding, caches, eviction, asset path conventions, font fallback/shaping library.
 
-9) Error handling, observability, and profiling
+8) Error handling, observability, and profiling
    - Error propagation style, structured logging/tracing per target/scene/frame, metrics and debug overlays.
 
 10) Documentation and diagrams
    - Add “UI/Rendering” to AI_ARCHITECTURE.md when APIs solidify; include Mermaid diagrams for data flow and schemas.
 
 ## Target keys (final)
- 
+
 - Target base:
   - `<app>/renderers/<rendererName>/targets/<kind>/<name>`
   - kind ∈ { `surfaces`, `textures`, `html` }
@@ -754,22 +904,22 @@ Next to decide:
     - `software/framebuffer` — pixel buffer + metadata (width, height, stride, format, colorSpace, premultiplied)
     - `metal/texture` or `vulkan/image` — opaque GPU handles and metadata
     - `html/dom`, `html/commands`, `html/assets/*` — optional web outputs
- 
+
 ## RenderSettings v1 (final)
- 
+
 - time: `{ time_ms: double, delta_ms: double, frame_index: uint64 }`
 - pacing: `{ user_cap_fps: optional<double> }`  # effective rate = min(display refresh, user cap)
 - surface: `{ size_px:{w:int,h:int}, dpi_scale: float, visibility: bool }`
 - clear_color: `[float,4]`
 - camera: `{ projection: Orthographic | Perspective, zNear:float, zFar:float }` (optional)
 - debug: `{ flags: uint32 }` (optional)
- 
+
 Invariants:
 - Writers always insert whole `RenderSettings` to `settings/inbox` (no partial field writes).
 - Renderer drains `settings/inbox` via take(), adopts only the last (last-write-wins), and may mirror to `settings/active`.
 - `scene` paths are app-relative and must resolve to within the same application root.
 - `output/v1` contains only the latest render result for the target.
- 
+
 ## Glossary
 
 - App root: `/system/applications/<app>` or `/users/<user>/system/applications/<app>`.
