@@ -266,6 +266,10 @@ struct DrawableEntry {
 };
 ```
 
+
+=======
+
+>>>>>>> feat/gamepad-pathio-v1
 ## Scene authoring model (C++ API)
 
 - Authoring is done via typed C++ helpers; no JSON authoring.
@@ -420,6 +424,11 @@ uint64_t wait_for_new_revision(SP::PathSpace& ps, std::string const& app, std::s
 }
 ```
 
+<<<<<<< HEAD
+
+
+
+>>>>>>> feat/gamepad-pathio-v1
 ### Renderer loop outline
 
 ```
@@ -748,23 +757,19 @@ int main() {
 - CMake options and example are listed above.
 ## HTML/Web output (optional adapter)
 - Motivation: enable preview/export of UI scenes to browsers without changing the core pipeline.
-- Approach: add an HTML output adapter that walks the same sorted drawables or scene snapshot and emits:
-  - DOM/CSS (quick path, not pixel-perfect), or
-  - Canvas 2D JSON command stream + tiny JS runtime (closer to software renderer),
-  - Optional WebGL later for performance and 3D effects.
+- Approach: semantic HTML/DOM adapter that maps widgets to native elements with CSS-based layout/animation. No ray tracing, no canvas command stream, no WebGL.
 - Paths (under a renderer target base):
   - `<targetBase>/output/v1/html/dom` — full HTML document as a string (may inline CSS/JS)
   - `<targetBase>/output/v1/html/css` — CSS string, if split
-  - `<targetBase>/output/v1/html/commands` — JSON string of canvas commands
   - `<targetBase>/output/v1/html/assets/<name>` — optional assets (base64 or URLs)
 - Mapping hints:
-  - Rects/rounded-rects → div with border-radius or canvas roundRect
-  - Images → img or canvas drawImage
-  - Text → DOM text or canvas fillText (or pre-shaped glyph quads later)
-  - Transforms → CSS matrix()/matrix3d() or canvas transform()
-  - Shadows → CSS box-shadow or canvas shadow* properties
+  - Rects/rounded-rects → div with border-radius
+  - Images → img or CSS background-image on div
+  - Text → DOM text (or pre-shaped glyph spans later)
+  - Transforms → CSS matrix()/matrix3d()
+  - Shadows → CSS box-shadow
   - Z-order → z-index stacking contexts
-  - Clipping → overflow:hidden (DOM) or canvas clip()
+  - Clipping → overflow:hidden or CSS clip-path
 - Example (DOM/CSS):
 ```/dev/null/target_outputs_html_dom_example.html#L1-80
 <!doctype html>
@@ -787,31 +792,142 @@ int main() {
 </body>
 </html>
 ```
-- Example (Canvas JSON commands):
-```/dev/null/target_outputs_html_commands.json#L1-60
-{
-  "surface": { "size_px": {"w": 640, "h": 360}, "dpi_scale": 2.0 },
-  "commands": [
-    { "op": "clear", "color": [0.125, 0.125, 0.125, 1.0] },
-    { "op": "save" },
-    { "op": "transform", "m": [1,0,0,1,0,0] },
-    { "op": "shadow", "color": [0,0,0,0.25], "blur": 20, "offsetX": 0, "offsetY": 8 },
-    { "op": "fillRoundRect", "x": 40, "y": 30, "w": 200, "h": 120, "r": 12, "color": [0.29, 0.56, 0.89, 1] },
-    { "op": "shadow", "color": [0,0,0,0], "blur": 0, "offsetX": 0, "offsetY": 0 },
-    { "op": "fillText", "x": 56, "y": 70, "text": "Hello, PathSpace!", "font": "16px system-ui", "color": [1,1,1,1] },
-    { "op": "restore" }
-  ]
-}
-```
 - PathKeys additions:
   - `target_outputs_html_dom(targetBase)`
   - `target_outputs_html_css(targetBase)`
-  - `target_outputs_html_commands(targetBase)`
 - Notes:
-  - DOM/CSS is fastest to implement but not pixel-perfect; Canvas JSON offers better parity with the software renderer.
-  - Text fidelity improves if we pre-shape glyphs in the snapshot and emit positioned quads.
+  - Semantic DOM/CSS only; no ray tracing or canvas/WebGL in this adapter.
+  - Text fidelity improves if we pre-shape glyphs in the snapshot and emit positioned spans.
   - This adapter is optional and does not affect software/GPU outputs.
 
+
+=======
+
+
+## Software renderer — path tracing with tetrahedral acceleration
+
+Status: Resolved plan for software renderer pipeline
+
+Summary
+- Scenes are often static; we prioritize incremental refinement via path tracing over tetrahedral meshes.
+- Acceleration is snapshot-integrated:
+  - TLAS per revision over instances; BLAS per unique geometry (deduped).
+  - Tetrahedral face adjacency enables “tet-walk” traversal between neighboring tets for multi-bounce paths.
+- Caching for fast edits:
+  - Per-pixel PixelHitCache stores primary hit data and accumulation state; supports targeted invalidation.
+  - Per-face reservoirs (ReSTIR-style) store reusable direct- and indirect-light samples to guide secondary rays.
+
+Geometry and traversal
+- Mesh: tetrahedra with precomputed face table and adjacency (two incident tets per face, boundary sentinel).
+- Surface classification: a face is a “surface” when adjacent media differ (or one side is boundary); shading happens on surfaces.
+- Primary rays: TLAS → BLAS (face BVH) intersection.
+- Secondary rays: start from a hit face and tet-walk across faces inside the same medium; intersect surface faces; fall back to BVH if needed.
+
+Per-pixel cache (primary visibility and accumulation)
+- Store per pixel: instanceIndex, primIndex, t, barycentrics, uv, packed normal, materialId, and flags: hitValid, shadeValid.
+- Invalidate selectively:
+  - Material shading-only change → shadeValid = 0 for pixels using that material (no retrace).
+  - Material visibility/alpha/displacement → hitValid = 0 for pixels using that material (retrace).
+  - Instance transform/visibility → hitValid = 0 for that instance’s pixels.
+  - Camera/viewport change → full reset (or reprojection heuristics).
+- Use per-tile (e.g., 16x16) inverted indices mapping materialId/instanceIndex → bitsets of affected pixels for O(tiles) invalidation.
+
+Per-face reservoirs and guiding (reuse across pixels/frames)
+- Direct lighting: small ReSTIR DI reservoir per face; sample from it and update with new candidates each iteration.
+- Indirect lighting (optional): GI reservoirs per face capturing incoming direction/radiance; guide BSDF sampling.
+- Spatial reuse: for faces with sparse history, reseed from adjacent faces via tet adjacency.
+- Guiding: optionally fit a lightweight directional PDF (e.g., 1–2 vMF lobes) from reservoir history; mix with BSDF and apply MIS.
+
+Iteration pipeline (per frame/refinement step)
+1) Acquire snapshot revision and settings; map TLAS/BLAS, face adjacency; allocate per-frame state.
+2) For each visible pixel:
+   - If hitValid, reuse primary hit; else regenerate and update PixelHitCache.
+   - Direct light via DI reservoir + BSDF importance sampling (MIS).
+   - Spawn secondary ray(s), guided by face GI/DI where available; walk via tet-walk until a surface is hit; accumulate contribution.
+   - Update per-face reservoirs at landing faces with MIS-consistent weights.
+3) Write accumulated color; update per-tile indices for invalidation.
+
+Settings (software renderer)
+- rt.enable, rt.raysPerPixel, rt.maxDepth, rt.branching (4|8), rt.leafMaxPrims, rt.quantization (none|aabb16), rt.tileSize (8|16|32)
+- reuse: di.enable, gi.enable, reuseStrength
+- caches: pixelCache.enable, faceReservoirs.enable, faceReservoirs.capacity (small K)
+- debug: showTetWalk, showSurfaceFaces, showInvalidation, showReservoirs
+
+Stats (output/v1/common and output/v1/rt_stats)
+- cpu_build_ms, traversal_ms, shading_ms
+- tlas_nodes, blas_nodes_total, rays_traced, hits, miss_rate
+- retraced_pixels, reshaded_pixels, reservoir_updates
+
+Failure modes and fallbacks
+- If TLAS/BLAS not ready: render with cached primary where valid; schedule (re)build within budget; optionally hybrid raster primary as fallback.
+- If adjacency is non-manifold/degenerate in a region: fall back to BVH traversal there; log once.
+
+Cross-reference
+- When core snapshot semantics or acceleration formats evolve, reflect changes in docs/AI_ARCHITECTURE.md (Snapshot Builder and Rebuild Policy).
+
+## Tetrahedral face adjacency
+
+Purpose
+- Provide a watertight, deterministic connectivity index over tetrahedral meshes to enable fast multi-bounce path tracing (“tet-walk”) and robust physics sweeps without re-entering a BVH at every step.
+
+Data model
+- Face table (one record per unique triangle):
+  - Canonical vertex triplet (deterministic winding)
+  - Incident tetrahedra: up to two per face; boundary has one
+  - Per-incidence metadata: local face index in the tet, winding parity vs canonical
+  - Precomputed plane (n.xyz, d), optional tangent frame and area
+  - Optional per-side medium/material id to classify “surface” faces (medium change)
+- Tet table (one record per tetrahedron):
+  - Vertex indices [a,b,c,d]
+  - Global faceId[4] mapping local faces to face table
+  - neighborTet[4] and neighborLocalFace[4] across each local face (or -1 for boundary)
+
+Canonical local faces (for tet [a,b,c,d])
+- f0 (opposite a): (b,c,d)
+- f1 (opposite b): (a,d,c)
+- f2 (opposite c): (a,b,d)
+- f3 (opposite d): (a,c,b)
+
+Build algorithm (deterministic)
+- For each tet local face, compute a sorted triplet key (ascending vertex ids) to deduplicate faces.
+- First incidence sets the face’s canonical winding (use the tet’s local winding).
+- Second incidence fills neighbor links and winding parity.
+- Compute planes once per face from canonical winding; assign medium ids per side if available.
+- Validate: flag non-manifold faces (>2 incidences) and zero-area faces for fallback.
+
+Traversal (renderer/physics)
+- Path tracing secondary rays: start at a surface face; choose entering tet by sign of d·n; repeatedly intersect current tet’s face planes and cross to the next tet until reaching a surface/boundary face; only intersect triangles at surface faces. Fall back to BVH in degenerate regions.
+- Physics shape-casts/CCD: same face-to-face stepping with conservative inflation; use the static TLAS for broad-phase, adjacency for narrow-phase marching.
+
+Medium transitions (disjoint air/object)
+- Keep separate adjacency for object and air; no need to stitch meshes.
+- Surface portals (precomputed):
+  - For each surface face, store 1..K candidate entry air tet ids on the outward side; build by offsetting a point on the face (e.g., centroid) along the outward normal by ε and locating the containing air tet via an air AABB BVH + point-in-tet test. Sample a few intra-face points for robustness.
+  - At runtime, after shading with an outgoing direction into air, jump to the portal’s air tet and begin the air tet-walk from there.
+- Clip-and-test fallback:
+  - While walking in air (or object), compute exit distance to the next tet face; clip the segment [t_cur, t_exit] and test that short segment against the global surface-face BVH. If a hit occurs before exit, transition media at that face; otherwise cross to the neighbor tet and continue.
+  - Guarantees correctness when portals are missing or ambiguous; segment tests are cheap because they’re short and coherent.
+- Build-time guarantees:
+  - Provide an air boundary layer so every surface face has an air tet within ε outward; refine locally if needed.
+  - Maintain a global surface-face BVH (faces where medium changes) as the transition oracle.
+- Edge handling:
+  - Always nudge a small ε into the target medium to avoid re-hitting the same face; deterministically break ties for near-coplanar/edge cases.
+  - If a portal’s tet fails the point-in-tet check at runtime, fall back to BVH-based point location in air and continue.
+
+Caching and invalidation
+- Per-face lighting reservoirs (DI/GI) keyed by faceId; invalidate by material/region; optionally diffuse seeds to neighbors.
+- PixelHitCache remains per-pixel for primary visibility; instance/material edits flip hit/shade validity via per-tile bitmaps.
+
+Robustness
+- Watertightness via shared canonical planes for both incident tets.
+- Tie-breaking on near-coplanar cases: deterministic next-face selection; small forward epsilon step when crossing faces.
+
+
+
+  
+
+
+>>>>>>> feat/gamepad-pathio-v1
 ## MVP plan
 1) Scaffolding and helpers
    - Add `src/pathspace/ui/` with stubs for `PathRenderer2D`, `PathSurfaceSoftware`, and `PathWindowView` (presenter).
@@ -849,18 +965,125 @@ int main() {
 - Direct-to-window bypass for single-view performance-critical cases (optional surface mode).
 - HTML adapter fidelity targets (DOM/CSS vs Canvas JSON vs WebGL) and text shaping strategy for web output.
 
+## Decision: Snapshot Builder (resolved)
+
+Summary:
+- Maintain the previous snapshot in memory and apply targeted patches for small changes; perform full rebuilds only on global invalidations or when fragmentation/cost crosses thresholds.
+
+Approach:
+- Patch-first: dirty propagation with per-node dirty bits (STRUCTURE, LAYOUT, TRANSFORM, VISUAL, TEXT, BATCH) and epoch counters to skip up-to-date nodes.
+- Copy-on-write: assemble new revisions by reusing unchanged SoA arrays/chunks; only modified subtrees allocate new chunks.
+- Text shaping cache: key by font+features+script+dir+text; re-shape only dirty runs.
+- Chunked draw lists per subtree with k-way merge; re-bucket only affected chunks.
+
+Full rebuild triggers:
+- Global params changed (DPI/root constraints/camera/theme/color space/font tables).
+- Structure churn: inserts+removes > 15% or reparent touch > 5% of nodes.
+- Batching churn: moved draw ops > 30% or stacking contexts change broadly.
+- Fragmentation: tombstones > 20% in nodes/draw chunks.
+- Performance: 3 consecutive frames over budget, or patch_ms ≥ 0.7 × last_full_ms.
+- Consistency violation detected by validations.
+
+Publish/GC:
+- Atomic write to `builds/<rev>.staging` then rename; update `current_revision` atomically.
+- Retain last 3 revisions or 2 minutes; defer GC while a renderer references an older revision.
+
+Notes:
+- Renderer behavior is unchanged; it consumes the latest revision agnostic to patch vs rebuild.
+- If any core semantics change, reflect them in `docs/AI_ARCHITECTURE.md` and update tests accordingly.
+
 ## Gaps and Decisions (unresolved areas)
 
 Next to decide:
 
 
+
 1) Snapshot builder spec
+
+
+
+
+
+1) Lighting and shadows
+
+
+1) Snapshot builder spec
+
+1) Path/schema specs and typing
+   - Finalize schemas for renderer target params (settings/inbox and settings/active), surface descriptions (pixel format, stride, premultiplied alpha, color space), and outputs (software framebuffer; GPU handle wrappers).
+   - Introduce versioned keys (e.g., params/v1, outputs/v1).
+   - Define app-relative resolution helper API and enforce same-app containment checks.
+
+2) Scene authoring model
+
+1) Scene authoring model
+
+   - Node properties: transform representation (TRS vs matrix), style/visibility, interaction flags.
+   - Hierarchy semantics: property inheritance, z-order, clipping behavior.
+   - Initial layout systems: absolute/stack; plan flex/grid later. Measurement contracts for text and images.
+   - Authoring API: thread model and batching for updates into scenes/<sid>/src.
+
+
+3) Snapshot builder spec
+
+
+2) Snapshot builder spec
+
+>>>>>>> feat/gamepad-pathio-v1
    - Triggering/debounce policy and max rebuild frequency.
    - Work partitioning across passes (measure, layout, batching) and threading.
    - Transform propagation from hierarchy; text shaping pipeline and caching.
    - Snapshot/resource GC policy and sharing across revisions.
 
+
 2) Rendering pipeline specifics
+
+
+
+2) Rendering pipeline specifics
+   - Software rasterization details (AA, clipping, blending, color pipeline) and text composition order.
+   - GPU plans (command encoding patterns, pipeline caching) for Metal/Vulkan.
+
+3) Lighting and shadows
+
+   - Software UI lighting model (directional light, Lambert/Blinn-Phong) and elevation-based shadow heuristics.
+   - Opt-in normals/3D attributes for “2.5D” widgets.
+
+2) Coordinate systems and cameras
+   - Units/DPI/scale conventions; orthographic defaults for UI; z-ordering semantics across 2D/3D.
+
+3) Input, hit testing, and focus
+   - Mapping OS input to scene coords, hit-testing via DrawableBucket bounds, event routing (capture/bubble), IME/text.
+
+4) GPU backend architecture
+   - Device/queue ownership, thread affinity, synchronization, offscreen texture/image formats and color spaces.
+
+7) Resource system (images, fonts, shaders)
+   - Async loading/decoding, caches, eviction, asset path conventions, font fallback/shaping library.
+
+8) Error handling, observability, and profiling
+   - Error propagation style, structured logging/tracing per target/scene/frame, metrics and debug overlays.
+
+10) Documentation and diagrams
+   - Add “UI/Rendering” to AI_ARCHITECTURE.md when APIs solidify; include Mermaid diagrams for data flow and schemas.
+
+## Target keys (final)
+
+
+4) DrawableBucket details
+   - Handle API (stable handles, generation counters), free lists.
+   - Memory layout (SoA vs AoS), per-layer arrays, indices for fast material/layer iteration.
+   - Thread safety: who updates staging, who publishes, child dirty propagation, and publish protocol.
+
+Additional areas to flesh out:
+5) Culling and spatial acceleration
+   - Sphere vs AABB/OBB choices; optional quadtree/BVH later; rebuild vs incremental thresholds.
+
+6) Rendering pipeline specifics
+
+3) Rendering pipeline specifics
+
+>>>>>>> feat/gamepad-pathio-v1
    - Software rasterization details (AA, clipping, blending, color pipeline) and text composition order.
    - GPU plans (command encoding patterns, pipeline caching) for Metal/Vulkan.
 
@@ -888,6 +1111,10 @@ Next to decide:
 
 ## Target keys (final)
 
+
+ 
+>>>>>>> feat/gamepad-pathio-v1
+
 - Target base:
   - `<app>/renderers/<rendererName>/targets/<kind>/<name>`
   - kind ∈ { `surfaces`, `textures`, `html` }
@@ -905,8 +1132,20 @@ Next to decide:
     - `metal/texture` or `vulkan/image` — opaque GPU handles and metadata
     - `html/dom`, `html/commands`, `html/assets/*` — optional web outputs
 
+
 ## RenderSettings v1 (final)
 
+
+
+
+## RenderSettings v1 (final)
+
+
+ 
+## RenderSettings v1 (final)
+ 
+
+>>>>>>> feat/gamepad-pathio-v1
 - time: `{ time_ms: double, delta_ms: double, frame_index: uint64 }`
 - pacing: `{ user_cap_fps: optional<double> }`  # effective rate = min(display refresh, user cap)
 - surface: `{ size_px:{w:int,h:int}, dpi_scale: float, visibility: bool }`
@@ -914,12 +1153,28 @@ Next to decide:
 - camera: `{ projection: Orthographic | Perspective, zNear:float, zFar:float }` (optional)
 - debug: `{ flags: uint32 }` (optional)
 
+
+=======
+<<<<<<< HEAD
+
+=======
+ 
+
+>>>>>>> feat/gamepad-pathio-v1
 Invariants:
 - Writers always insert whole `RenderSettings` to `settings/inbox` (no partial field writes).
 - Renderer drains `settings/inbox` via take(), adopts only the last (last-write-wins), and may mirror to `settings/active`.
 - `scene` paths are app-relative and must resolve to within the same application root.
 - `output/v1` contains only the latest render result for the target.
+<<<<<<< HEAD
 
+=======
+<<<<<<< HEAD
+
+=======
+ 
+
+>>>>>>> feat/gamepad-pathio-v1
 ## Glossary
 
 - App root: `/system/applications/<app>` or `/users/<user>/system/applications/<app>`.

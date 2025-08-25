@@ -13,7 +13,7 @@ PathSpace is a C++ library inspired by tuplespaces (e.g., Linda) and reactive/da
 Links:
 - docs/AI_ARCHITECTURE.md (design and internals)
 - examples/devices_example.cpp (experimental device IO example)
-- Doxygen API Reference: https://christoffergreen.github.io/PathSpace/doxygen/html/index.html
+- build/docs/html/index.html (Doxygen API Reference)
 
 ## Quick start
 
@@ -54,7 +54,20 @@ Scripts:
 - ./scripts/update_compile_commands.sh (keeps compile_commands.json in repo root)
 
 ## Documentation (Doxygen)
-Hosted API Reference: https://christoffergreen.github.io/PathSpace/doxygen/html/index.html
+You can generate HTML API documentation into build/docs/html:
+
+- Using the helper script (requires doxygen):
+  ```bash
+  ./scripts/compile.sh --docs
+  ```
+  Output: [build/docs/html/index.html](build/docs/html/index.html)
+
+- Using CMake directly:
+  ```bash
+  cmake -S . -B build -DENABLE_DOXYGEN=ON
+  cmake --build build --target docs -j
+  ```
+  Output: [build/docs/html/index.html](build/docs/html/index.html)
 
 ## API at a glance
 All operations below are member functions on a PathSpace instance. Assume `PathSpace ps;`.
@@ -252,7 +265,7 @@ Tip: For high-throughput patterns, write with Immediate and read<FutureAny> to c
 
 ## Experimental IO providers (PathIO)
 
-The repository includes experimental providers under `src/pathspace/layer` and an example in `examples/devices_example.cpp`. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a `PathSpace` tree and serve typed event streams.
+The repository includes experimental providers under `src/pathspace/layer` and an example in `examples/devices_example.cpp`. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a `PathSpace` tree and serve typed event streams using the canonical `/system/devices/in/*` namespace; see `docs/AI_Plan_SceneGraph_Renderer.md` for app/device path conventions.
 
 Sketch:
 ```cpp
@@ -268,12 +281,12 @@ int main() {
     auto keyboard = std::make_unique<PathIOKeyboard>(PathIOKeyboard::BackendMode::Auto);
 
     // Mount providers at app-chosen paths
-    auto mret = ps.insert<"/inputs/mouse/0">(std::move(mouse));
-    auto kret = ps.insert<"/inputs/keyboards/0">(std::move(keyboard));
+    auto mret = ps.insert<"/system/devices/in/pointer/default">(std::move(mouse));
+    auto kret = ps.insert<"/system/devices/in/text/default">(std::move(keyboard));
 
     // Read typed events (blocking with timeout)
-    auto me = ps.read<SP::PathIOMouse::Event>("/inputs/mouse/0/events", Block{});
-    auto ke = ps.read<SP::PathIOKeyboard::Event>("/inputs/keyboards/0/events", Block{});
+    auto me = ps.read<SP::PathIOMouse::Event>("/system/devices/in/pointer/default/events", Block{});
+    auto ke = ps.read<SP::PathIOKeyboard::Event>("/system/devices/in/text/default/events", Block{});
 }
 ```
 

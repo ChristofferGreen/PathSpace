@@ -15,6 +15,7 @@ add_executable(PathSpaceTests
   unit/layer/test_PathAlias.cpp
   unit/layer/test_PathIODeviceDiscovery.cpp
   unit/layer/test_PathIOPointerMixer.cpp
+  unit/layer/test_PathIOGamepad.cpp
   unit/layer/test_PointerDefault_Composition.cpp
   unit/ext/test_alpaca.cpp
   unit/task/test_TaskPool.cpp

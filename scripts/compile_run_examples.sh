@@ -125,7 +125,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   if command -v clang++ >/dev/null 2>&1; then
     CONFIGURE_CMD+=( -DCMAKE_CXX_COMPILER="$(command -v clang++)" )
   fi
-  if command -v clang >/dev/null 2>&1; then
+  if command -v clang++ >/dev/null 2>&1; then
     CONFIGURE_CMD+=( -DCMAKE_OBJCXX_COMPILER="$(command -v clang++)" )
   fi
 fi
@@ -166,10 +166,8 @@ for p in "${exe_candidates[@]}"; do
 done
 if [[ -z "$exe_path" ]]; then
   # Fallback: scan build dir for the target name
-  mapfile -t found < <(find "$BUILD_DIR" -type f -perm +111 -name "$TARGET_EXE_NAME" 2>/dev/null || true)
-  if [[ "${#found[@]}" -gt 0 ]]; then
-    exe_path="${found[0]}"
-  fi
+  # Fallback: scan build dir for the target name (portable find -perm)
+  exe_path="$(find "$BUILD_DIR" -type f \( -perm -u+x -o -perm -g+x -o -perm -o+x \) -name "$TARGET_EXE_NAME" -print -quit 2>/dev/null || true)"
 fi
 [[ -n "$exe_path" ]] || die "Could not locate built executable '$TARGET_EXE_NAME' under $BUILD_DIR"
 
