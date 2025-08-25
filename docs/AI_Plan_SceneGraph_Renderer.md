@@ -995,70 +995,36 @@ Notes:
 ## Gaps and Decisions (unresolved areas)
 
 Next to decide:
-
-
-
-1) Snapshot builder spec
-
-
-
-
-
-1) Lighting and shadows
-
-
-1) Snapshot builder spec
-
-1) Path/schema specs and typing
-   - Finalize schemas for renderer target params (settings/inbox and settings/active), surface descriptions (pixel format, stride, premultiplied alpha, color space), and outputs (software framebuffer; GPU handle wrappers).
-   - Introduce versioned keys (e.g., params/v1, outputs/v1).
-   - Define app-relative resolution helper API and enforce same-app containment checks.
-
-2) Scene authoring model
-
 1) Scene authoring model
-
    - Node properties: transform representation (TRS vs matrix), style/visibility, interaction flags.
    - Hierarchy semantics: property inheritance, z-order, clipping behavior.
    - Initial layout systems: absolute/stack; plan flex/grid later. Measurement contracts for text and images.
    - Authoring API: thread model and batching for updates into scenes/<sid>/src.
 
-
-3) Snapshot builder spec
-
-
 2) Snapshot builder spec
-
-
    - Triggering/debounce policy and max rebuild frequency.
    - Work partitioning across passes (measure, layout, batching) and threading.
    - Transform propagation from hierarchy; text shaping pipeline and caching.
    - Snapshot/resource GC policy and sharing across revisions.
 
-
-2) Rendering pipeline specifics
-
-
-
-2) Rendering pipeline specifics
+3) Rendering pipeline specifics
    - Software rasterization details (AA, clipping, blending, color pipeline) and text composition order.
    - GPU plans (command encoding patterns, pipeline caching) for Metal/Vulkan.
 
-3) Lighting and shadows
-
+4) Lighting and shadows
    - Software UI lighting model (directional light, Lambert/Blinn-Phong) and elevation-based shadow heuristics.
    - Opt-in normals/3D attributes for “2.5D” widgets.
 
-2) Coordinate systems and cameras
+5) Coordinate systems and cameras
    - Units/DPI/scale conventions; orthographic defaults for UI; z-ordering semantics across 2D/3D.
 
-3) Input, hit testing, and focus
+6) Input, hit testing, and focus
    - Mapping OS input to scene coords, hit-testing via DrawableBucket bounds, event routing (capture/bubble), IME/text.
 
-4) GPU backend architecture
+7) GPU backend architecture
    - Device/queue ownership, thread affinity, synchronization, offscreen texture/image formats and color spaces.
 
-7) Resource system (images, fonts, shaders)
+8) Resource system (images, fonts, shaders)
    - Async loading/decoding, caches, eviction, asset path conventions, font fallback/shaping library.
 
 8) Error handling, observability, and profiling
@@ -1108,6 +1074,61 @@ Additional areas to flesh out:
 
 10) Documentation and diagrams
    - Add “UI/Rendering” to AI_ARCHITECTURE.md when APIs solidify; include Mermaid diagrams for data flow and schemas.
+
+## Schemas and typing (v1)
+
+This section specifies the C++ types bound to target keys and the versioning policy for renderer I/O. It complements “Target keys (final)” and “Invariants”.
+
+C++ types per key:
+- `scene` — `std::string`
+  - App-relative path to the scene root, e.g., `"scenes/<sid>"`. Must resolve within the same app root (see app-relative helpers below).
+- `desc` — `SurfaceDesc` | `TextureDesc` (per target kind)
+  - `SurfaceDesc`:
+    - `size_px { int w, int h }`
+    - `pixel_format` (enum)
+    - `color_space` (enum)
+    - `premultiplied_alpha` (bool)
+  - `TextureDesc`:
+    - `size_px { int w, int h }`
+    - `pixel_format` (enum)
+    - `color_space` (enum)
+    - `usage_flags` (bitmask)
+- `desc/active` — mirror of the adopted descriptor (`SurfaceDesc` | `TextureDesc`) for introspection.
+- `settings/inbox` — queue of whole `RenderSettingsV1` objects (writers insert; renderer takes and adopts last):
+  - `RenderSettingsV1`:
+    - `time { double time_ms, double delta_ms, uint64_t frame_index }`
+    - `pacing { std::optional<double> user_cap_fps }` (effective = min(display, cap))
+    - `surface { {int w,int h} size_px, float dpi_scale, bool visibility }`
+    - `std::array<float,4> clear_color`
+    - `camera` (optional): `{ enum Projection { Orthographic, Perspective }, float zNear, float zFar }`
+    - `debug { uint32_t flags }` (optional)
+- `settings/active` — single-value mirror of the last adopted `RenderSettingsV1` (optional; introspection).
+- `render` — execution that renders one frame for this target (no payload).
+- `output/v1/common/*` — single-value registers with latest metadata:
+  - `frameIndex: uint64_t`
+  - `revision: uint64_t`
+  - `renderMs: double`
+  - `lastError: std::string` (empty on success)
+- `output/v1/software/framebuffer` — `SoftwareFramebuffer`:
+  - `std::vector<uint8_t> pixels`
+  - `int width, int height, int stride`
+  - `enum pixel_format`, `enum color_space`, `bool premultiplied_alpha`
+- `output/v1/metal/texture` (when Metal enabled) — `MetalTextureHandle` (opaque handle or registry id + size/format/color_space).
+- `output/v1/vulkan/image` (when Vulkan enabled) — `VulkanImageHandle` (opaque handle or registry id + size/format/color_space/layout).
+
+App-relative resolution helpers:
+- Writers set `scene` as an app-relative string (no leading slash).
+- Provide and use:
+  - `bool is_app_relative(std::string_view)`
+  - `std::string resolve_app_relative(AppRoot, std::string_view)`
+  - `bool ensure_within_app(AppRoot, std::string_view resolved)`
+
+Versioning policy:
+- Settings and descriptors: unversioned at the path level (pure C++ in-process; producers/consumers recompile together). Keep the `V1` suffix in C++ type names to make source-level evolution explicit.
+- Outputs: versioned at the path level under `output/v1`. If an incompatible change is needed, add `output/v2` and keep `output/v1` during a deprecation window (update docs/tests accordingly).
+
+Cross-references:
+- See “Target keys (final)” for the path layout, and “Invariants” for whole-object write semantics and adoption behavior.
 
 ## Target keys (final)
 
