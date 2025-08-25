@@ -301,15 +301,7 @@ if [[ -f "$BUILD_DIR/compile_commands.json" ]]; then
 fi
 if [[ "$DOCS" -eq 1 ]]; then
   require_tool doxygen
-<<<<<<< HEAD
-<<<<<<< HEAD
   DOXY_DIR="$BUILD_DIR/docs"
-=======
-  DOXY_DIR="$BUILD_DIR/docs"
->>>>>>> 8f11a3f (docs(doxygen): add CMake docs target, compile.sh --docs, and README link)
-=======
-  DOXY_DIR="$ROOT_DIR/docs/doxygen"
->>>>>>> 458349b (docs(doxygen): output to docs/doxygen/html; update README and compile.sh; track docs/doxygen dir)
   info "Generating Doxygen docs in: $DOXY_DIR/html"
   mkdir -p "$DOXY_DIR"
   DOXYFILE="$BUILD_DIR/Doxyfile"
