@@ -265,7 +265,7 @@ struct DrawableEntry {
 };
 ```
 
-<<<<<<< HEAD
+
 ## Scene authoring model (C++ API)
 
 - Authoring is done via typed C++ helpers; no JSON authoring.
@@ -420,8 +420,8 @@ uint64_t wait_for_new_revision(SP::PathSpace& ps, std::string const& app, std::s
 }
 ```
 
-=======
->>>>>>> ee97327 (docs: update AI_ARCHITECTURE and add scene graph renderer plan)
+
+
 ### Renderer loop outline
 
 ```
@@ -792,9 +792,9 @@ int main() {
   - Semantic DOM/CSS only; no ray tracing or canvas/WebGL in this adapter.
   - Text fidelity improves if we pre-shape glyphs in the snapshot and emit positioned spans.
   - This adapter is optional and does not affect software/GPU outputs.
-<<<<<<< HEAD
 
-<<<<<<< HEAD
+
+
 ## Software renderer — path tracing with tetrahedral acceleration
 
 Status: Resolved plan for software renderer pipeline
@@ -913,11 +913,11 @@ Robustness
 - Watertightness via shared canonical planes for both incident tets.
 - Tie-breaking on near-coplanar cases: deterministic next-face selection; small forward epsilon step when crossing faces.
 
-=======
-=======
+
+
   
->>>>>>> ee97327 (docs: update AI_ARCHITECTURE and add scene graph renderer plan)
->>>>>>> 4290844 (docs: update AI_ARCHITECTURE and add scene graph renderer plan)
+
+
 ## MVP plan
 1) Scaffolding and helpers
    - Add `src/pathspace/ui/` with stubs for `PathRenderer2D`, `PathSurfaceSoftware`, and `PathWindowView` (presenter).
@@ -985,48 +985,48 @@ Notes:
 ## Gaps and Decisions (unresolved areas)
 
 Next to decide:
-<<<<<<< HEAD
-<<<<<<< HEAD
 
-<<<<<<< HEAD
+
+
+
 1) Lighting and shadows
-=======
+
 
 1) Snapshot builder spec
-=======
+
 1) Path/schema specs and typing
    - Finalize schemas for renderer target params (settings/inbox and settings/active), surface descriptions (pixel format, stride, premultiplied alpha, color space), and outputs (software framebuffer; GPU handle wrappers).
    - Introduce versioned keys (e.g., params/v1, outputs/v1).
    - Define app-relative resolution helper API and enforce same-app containment checks.
 
 2) Scene authoring model
-=======
+
 1) Scene authoring model
->>>>>>> a841b6b (docs: clarify Doxygen HTML viewing and add Pages instructions; prune resolved items from SceneGraph plan 'Gaps and Decisions')
+
    - Node properties: transform representation (TRS vs matrix), style/visibility, interaction flags.
    - Hierarchy semantics: property inheritance, z-order, clipping behavior.
    - Initial layout systems: absolute/stack; plan flex/grid later. Measurement contracts for text and images.
    - Authoring API: thread model and batching for updates into scenes/<sid>/src.
 
-<<<<<<< HEAD
+
 3) Snapshot builder spec
->>>>>>> ee97327 (docs: update AI_ARCHITECTURE and add scene graph renderer plan)
+
 =======
 2) Snapshot builder spec
->>>>>>> a841b6b (docs: clarify Doxygen HTML viewing and add Pages instructions; prune resolved items from SceneGraph plan 'Gaps and Decisions')
+
    - Triggering/debounce policy and max rebuild frequency.
    - Work partitioning across passes (measure, layout, batching) and threading.
    - Transform propagation from hierarchy; text shaping pipeline and caching.
    - Snapshot/resource GC policy and sharing across revisions.
 
 <<<<<<< HEAD
-<<<<<<< HEAD
+
 2) Rendering pipeline specifics
    - Software rasterization details (AA, clipping, blending, color pipeline) and text composition order.
    - GPU plans (command encoding patterns, pipeline caching) for Metal/Vulkan.
 
 3) Lighting and shadows
->>>>>>> 4290844 (docs: update AI_ARCHITECTURE and add scene graph renderer plan)
+
    - Software UI lighting model (directional light, Lambert/Blinn-Phong) and elevation-based shadow heuristics.
    - Opt-in normals/3D attributes for “2.5D” widgets.
 
@@ -1050,7 +1050,7 @@ Next to decide:
 
 ## Target keys (final)
 
-=======
+
 4) DrawableBucket details
    - Handle API (stable handles, generation counters), free lists.
    - Memory layout (SoA vs AoS), per-layer arrays, indices for fast material/layer iteration.
@@ -1061,9 +1061,9 @@ Additional areas to flesh out:
    - Sphere vs AABB/OBB choices; optional quadtree/BVH later; rebuild vs incremental thresholds.
 
 6) Rendering pipeline specifics
-=======
+
 3) Rendering pipeline specifics
->>>>>>> a841b6b (docs: clarify Doxygen HTML viewing and add Pages instructions; prune resolved items from SceneGraph plan 'Gaps and Decisions')
+
    - Software rasterization details (AA, clipping, blending, color pipeline) and text composition order.
    - GPU plans (command encoding patterns, pipeline caching) for Metal/Vulkan.
 
@@ -1091,7 +1091,7 @@ Additional areas to flesh out:
 
 ## Target keys (final)
  
->>>>>>> ee97327 (docs: update AI_ARCHITECTURE and add scene graph renderer plan)
+
 - Target base:
   - `<app>/renderers/<rendererName>/targets/<kind>/<name>`
   - kind ∈ { `surfaces`, `textures`, `html` }
