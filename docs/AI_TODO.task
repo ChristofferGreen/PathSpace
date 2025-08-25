@@ -145,20 +145,11 @@ task {
 
 task {
   name: "PathIO Devices & Streams [EPIC]"
-  description: "Define PathIO, event models, backends, and CI-friendly simulation; include permissions and streaming/backpressure."
+  description: "Define PathIO, event models, backends, and CI-friendly simulation; include permissions and streaming/backpressure. See docs/AI_ARCHITECTURE.md (Operating System — Decision: PathIO v1) for canonical paths and semantics."
   status: planned
   priority: P2
 
-  task {
-    name: "Decide PathIO Direction [CLEANUP]"
-    description: "Either remove PathIO entirely or implement a minimal, coherent v1."
-    status: planned
-    priority: P1
-    acceptance_criteria: [
-      "EITHER: PathIO removed; references cleaned.",
-      "OR: PathIO compiles (valid constructor), no duplicate Permission type, and has documented semantics."
-    ]
-  }
+
 
   task {
     name: "PathIO Architecture [FEATURE]"
@@ -199,7 +190,7 @@ task {
     status: planned
     priority: P2
     acceptance_criteria: [
-      "Permission callbacks applied for /io/*; denied access returns InvalidPermissions.",
+      "Permission callbacks applied for /system/devices/*; denied access returns InvalidPermissions.",
       "Tests cover allowed/denied combinations for read/execute."
     ]
   }
@@ -243,7 +234,7 @@ task {
     status: planned
     priority: P1
     acceptance_criteria: [
-      "Mouse move/click readable via /io/mouse; keyboard keydown/keyup via /io/keyboard.",
+      "Pointer move/click readable via /system/devices/in/pointer/default/events; keyboard keydown/keyup via /system/devices/in/text/default/events.",
       "Notify/wait triggers on event arrival; loop=15 remains green with simulated inputs."
     ]
   }
