@@ -249,10 +249,13 @@ public:
             return ret;
         }
 
-        // Best-effort path tail routing: accept empty or suffixes "/rumble" or "/haptics"
+        // Best-effort path tail routing: accept empty, "rumble"/"haptics", or suffixes "/rumble" or "/haptics"
         const std::string tail = std::string(path.currentToEnd());
         if (!tail.empty()) {
-            if (!(endsWith_(tail, "/rumble") || endsWith_(tail, "/haptics"))) {
+            bool ok =
+                (tail == "rumble" || tail == "haptics") ||
+                endsWith_(tail, "/rumble") || endsWith_(tail, "/haptics");
+            if (!ok) {
                 ret.errors.emplace_back(Error::Code::InvalidPath, "Unsupported control path for gamepad haptics");
                 return ret;
             }
