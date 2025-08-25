@@ -149,16 +149,7 @@ task {
   status: planned
   priority: P2
 
-  task {
-    name: "Decide PathIO Direction [CLEANUP]"
-    description: "Either remove PathIO entirely or implement a minimal, coherent v1."
-    status: planned
-    priority: P1
-    acceptance_criteria: [
-      "EITHER: PathIO removed; references cleaned.",
-      "OR: PathIO compiles (valid constructor), no duplicate Permission type, and has documented semantics."
-    ]
-  }
+
 
   task {
     name: "PathIO Architecture [FEATURE]"
