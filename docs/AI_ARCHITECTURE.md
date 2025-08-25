@@ -8,6 +8,8 @@
 Note for editors: when you add, rename, or remove source files, refresh the compilation database (`./compile_commands.json`). Running `./scripts/compile.sh` or `./scripts/update_compile_commands.sh` (or re-configuring with CMake) regenerates `build/compile_commands.json` and copies it to the repo root; many editors/LSPs rely on it for correct include paths and diagnostics.
 If a change affects core behavior (paths, NodeData, WaitMap, TaskPool, serialization), update `docs/AI_ARCHITECTURE.md` in the same PR.
 For UI/Rendering (scene graph and renderer), see `docs/AI_Plan_SceneGraph_Renderer.md`.
+<<<<<<< HEAD
+=======
 Snapshot builder policy (summary): patch-first incremental snapshots with copy-on-write; fall back to a full rebuild on global parameter changes (e.g., DPI/root constraints/theme/color space/font tables) or when fragmentation/performance thresholds are exceeded. See "Snapshot Builder and Rebuild Policy" below.
 
 ## Snapshot Builder and Rebuild Policy
@@ -51,6 +53,7 @@ Performance notes:
 
 See also:
 - `docs/AI_Plan_SceneGraph_Renderer.md` for the broader rendering plan and target I/O layout. If snapshot semantics change, update both documents in the same PR per `.rules`.
+>>>>>>> feat/gamepad-pathio-v1
 
 AI autonomy guideline:
 - The AI should complete tasks end-to-end without asking the user to run commands or finish steps. Use the provided scripts and tooling to build, test, and validate changes (e.g., `./scripts/compile.sh --clean --test --loop=N`).
@@ -495,9 +498,7 @@ Concurrency and notifications:
 - Nested spaces adopt shared context and a mount prefix internally via the protected `adoptContextAndPrefix(...)`; external callers should not invoke this directly.
 
 AI execution policy:
-- When a task requests building or testing, the AI should run the necessary scripts directly (compile, test loops, example builds) rather than instructing the user to do so.
-- If platform constraints require configuration (e.g., choosing a compiler on macOS), the AI should adjust CMake cache or script flags accordingly within the PR.
-- Validate changes by running `./scripts/compile.sh --clean --test --loop=50` unless otherwise stated; if examples cause toolchain issues on CI, temporarily disable example builds during loops while keeping the example source correct.
+This section is deprecated. See the “AI autonomy guideline” and “AI pull request workflow” near the top of this document for the current policy.
 
 ## Operating System
 Device IO is provided by path-agnostic layers that can be mounted anywhere in a parent `PathSpace`, with platform backends feeding events into them:

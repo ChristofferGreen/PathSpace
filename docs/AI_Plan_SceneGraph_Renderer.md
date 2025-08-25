@@ -3,6 +3,7 @@
 Status: Active plan (MVP in progress)
 Scope: UI surfaces, renderers, presenters, multi-scene targets; atomic params and snapshot-based rendering
 Audience: Engineers building UI/rendering layers and contributors adding platform backends
+Docs: https://christoffergreen.github.io/PathSpace/doxygen/html/index.html
 
 ## Goals
 
@@ -266,6 +267,9 @@ struct DrawableEntry {
 ```
 
 
+=======
+
+>>>>>>> feat/gamepad-pathio-v1
 ## Scene authoring model (C++ API)
 
 - Authoring is done via typed C++ helpers; no JSON authoring.
@@ -420,8 +424,11 @@ uint64_t wait_for_new_revision(SP::PathSpace& ps, std::string const& app, std::s
 }
 ```
 
+<<<<<<< HEAD
 
 
+
+>>>>>>> feat/gamepad-pathio-v1
 ### Renderer loop outline
 
 ```
@@ -794,6 +801,8 @@ int main() {
   - This adapter is optional and does not affect software/GPU outputs.
 
 
+=======
+
 
 ## Software renderer — path tracing with tetrahedral acceleration
 
@@ -918,6 +927,7 @@ Robustness
   
 
 
+>>>>>>> feat/gamepad-pathio-v1
 ## MVP plan
 1) Scaffolding and helpers
    - Add `src/pathspace/ui/` with stubs for `PathRenderer2D`, `PathSurfaceSoftware`, and `PathWindowView` (presenter).
@@ -988,6 +998,11 @@ Next to decide:
 
 
 
+1) Snapshot builder spec
+
+
+
+
 
 1) Lighting and shadows
 
@@ -1011,15 +1026,19 @@ Next to decide:
 
 3) Snapshot builder spec
 
-=======
+
 2) Snapshot builder spec
 
+>>>>>>> feat/gamepad-pathio-v1
    - Triggering/debounce policy and max rebuild frequency.
    - Work partitioning across passes (measure, layout, batching) and threading.
    - Transform propagation from hierarchy; text shaping pipeline and caching.
    - Snapshot/resource GC policy and sharing across revisions.
 
-<<<<<<< HEAD
+
+2) Rendering pipeline specifics
+
+
 
 2) Rendering pipeline specifics
    - Software rasterization details (AA, clipping, blending, color pipeline) and text composition order.
@@ -1064,33 +1083,37 @@ Additional areas to flesh out:
 
 3) Rendering pipeline specifics
 
+>>>>>>> feat/gamepad-pathio-v1
    - Software rasterization details (AA, clipping, blending, color pipeline) and text composition order.
    - GPU plans (command encoding patterns, pipeline caching) for Metal/Vulkan.
 
-4) Lighting and shadows
+3) Lighting and shadows
    - Software UI lighting model (directional light, Lambert/Blinn-Phong) and elevation-based shadow heuristics.
    - Opt-in normals/3D attributes for “2.5D” widgets.
 
-5) Coordinate systems and cameras
+4) Coordinate systems and cameras
    - Units/DPI/scale conventions; orthographic defaults for UI; z-ordering semantics across 2D/3D.
 
-6) Input, hit testing, and focus
+5) Input, hit testing, and focus
    - Mapping OS input to scene coords, hit-testing via DrawableBucket bounds, event routing (capture/bubble), IME/text.
 
-7) GPU backend architecture
+6) GPU backend architecture
    - Device/queue ownership, thread affinity, synchronization, offscreen texture/image formats and color spaces.
 
-8) Resource system (images, fonts, shaders)
+7) Resource system (images, fonts, shaders)
    - Async loading/decoding, caches, eviction, asset path conventions, font fallback/shaping library.
 
-9) Error handling, observability, and profiling
+8) Error handling, observability, and profiling
    - Error propagation style, structured logging/tracing per target/scene/frame, metrics and debug overlays.
 
 10) Documentation and diagrams
    - Add “UI/Rendering” to AI_ARCHITECTURE.md when APIs solidify; include Mermaid diagrams for data flow and schemas.
 
 ## Target keys (final)
+
+
  
+>>>>>>> feat/gamepad-pathio-v1
 
 - Target base:
   - `<app>/renderers/<rendererName>/targets/<kind>/<name>`
@@ -1108,26 +1131,36 @@ Additional areas to flesh out:
     - `software/framebuffer` — pixel buffer + metadata (width, height, stride, format, colorSpace, premultiplied)
     - `metal/texture` or `vulkan/image` — opaque GPU handles and metadata
     - `html/dom`, `html/commands`, `html/assets/*` — optional web outputs
-<<<<<<< HEAD
+
 
 ## RenderSettings v1 (final)
 
-=======
+
+
+
+## RenderSettings v1 (final)
+
+
  
 ## RenderSettings v1 (final)
  
->>>>>>> ee97327 (docs: update AI_ARCHITECTURE and add scene graph renderer plan)
+
+>>>>>>> feat/gamepad-pathio-v1
 - time: `{ time_ms: double, delta_ms: double, frame_index: uint64 }`
 - pacing: `{ user_cap_fps: optional<double> }`  # effective rate = min(display refresh, user cap)
 - surface: `{ size_px:{w:int,h:int}, dpi_scale: float, visibility: bool }`
 - clear_color: `[float,4]`
 - camera: `{ projection: Orthographic | Perspective, zNear:float, zFar:float }` (optional)
 - debug: `{ flags: uint32 }` (optional)
+
+
+=======
 <<<<<<< HEAD
 
 =======
  
->>>>>>> ee97327 (docs: update AI_ARCHITECTURE and add scene graph renderer plan)
+
+>>>>>>> feat/gamepad-pathio-v1
 Invariants:
 - Writers always insert whole `RenderSettings` to `settings/inbox` (no partial field writes).
 - Renderer drains `settings/inbox` via take(), adopts only the last (last-write-wins), and may mirror to `settings/active`.
@@ -1136,8 +1169,12 @@ Invariants:
 <<<<<<< HEAD
 
 =======
+<<<<<<< HEAD
+
+=======
  
->>>>>>> ee97327 (docs: update AI_ARCHITECTURE and add scene graph renderer plan)
+
+>>>>>>> feat/gamepad-pathio-v1
 ## Glossary
 
 - App root: `/system/applications/<app>` or `/users/<user>/system/applications/<app>`.
