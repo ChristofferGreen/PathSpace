@@ -90,7 +90,7 @@ target_link_libraries(PathSpace
     # foonathan_memory
 )
 
-set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "PathSpace.hpp;layer/PathIO.hpp;layer/PathIOMouse.hpp;layer/PathIOKeyboard.hpp;layer/PathIOStdOut.hpp;layer/PathAlias.hpp;layer/PathIODeviceDiscovery.hpp;layer/PathIOPointerMixer.hpp")
+set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "PathSpace.hpp;layer/PathIO.hpp;layer/PathIOMouse.hpp;layer/PathIOKeyboard.hpp;layer/PathIOStdOut.hpp;layer/PathAlias.hpp;layer/PathIODeviceDiscovery.hpp;layer/PathIOPointerMixer.hpp;layer/PathIOGamepad.hpp")
 
 install(TARGETS PathSpace
     ARCHIVE DESTINATION lib

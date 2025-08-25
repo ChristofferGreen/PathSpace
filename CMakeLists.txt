@@ -84,11 +84,15 @@ if(BUILD_PATHSPACE_EXAMPLES)
     add_executable(devices_example examples/devices_example.cpp)
     target_link_libraries(devices_example PRIVATE PathSpace)
     if(APPLE)
-        target_sources(devices_example PRIVATE examples/macos/WindowEventPump.mm)
+        target_sources(devices_example PRIVATE examples/macos/WindowEventPump.mm examples/macos/GameControllerHaptics.mm)
         if(CMAKE_OBJCXX_COMPILER_ID MATCHES "Clang")
-            set_source_files_properties(examples/macos/WindowEventPump.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+            set_source_files_properties(
+                examples/macos/WindowEventPump.mm
+                examples/macos/GameControllerHaptics.mm
+                PROPERTIES COMPILE_FLAGS "-fobjc-arc"
+            )
         endif()
-        target_link_libraries(devices_example PRIVATE "-framework Cocoa")
+        target_link_libraries(devices_example PRIVATE "-framework Cocoa" "-framework GameController")
         target_compile_definitions(devices_example PRIVATE PATHIO_BACKEND_MACOS=1)
     endif()
 endif()

@@ -33,7 +33,6 @@ SANITIZER=""  # "asan" | "tsan" | "usan"
 TEST=0        # run tests after build if 1
 LOOP=0        # run tests in a loop N times (default 15 if provided without value)
 PER_TEST_TIMEOUT=""  # override seconds per test; default 60 (single), 120 (when --loop is used)
-PER_TEST_TIMEOUT=""  # override seconds per test; default 60 (single), 120 (when --loop is used)
 DOCS=0               # generate Doxygen docs if 1
 
 # ----------------------------
@@ -65,7 +64,7 @@ Options:
       --test                 Build and run tests (executes build/tests/PathSpaceTests).
       --loop[=N]            Run tests in a loop N times (default: 15). Implies --test.
       --per-test-timeout SECS  Override per-test timeout (default: 60; 120 when --loop is used).
-      --docs                 Generate Doxygen docs into docs/doxygen/html (requires doxygen).
+      --docs                 Generate Doxygen docs into build/docs/html (requires doxygen).
   -h, --help                 Show this help and exit.
 
 Sanitizers (mutually exclusive, maps to CMake options in this repo):
@@ -302,7 +301,7 @@ if [[ -f "$BUILD_DIR/compile_commands.json" ]]; then
 fi
 if [[ "$DOCS" -eq 1 ]]; then
   require_tool doxygen
-  DOXY_DIR="$ROOT_DIR/docs/doxygen"
+  DOXY_DIR="$BUILD_DIR/docs"
   info "Generating Doxygen docs in: $DOXY_DIR/html"
   mkdir -p "$DOXY_DIR"
   DOXYFILE="$BUILD_DIR/Doxyfile"
