@@ -267,9 +267,9 @@ struct DrawableEntry {
 ```
 
 
-=======
 
->>>>>>> feat/gamepad-pathio-v1
+
+
 ## Scene authoring model (C++ API)
 
 - Authoring is done via typed C++ helpers; no JSON authoring.
@@ -424,11 +424,11 @@ uint64_t wait_for_new_revision(SP::PathSpace& ps, std::string const& app, std::s
 }
 ```
 
-<<<<<<< HEAD
 
 
 
->>>>>>> feat/gamepad-pathio-v1
+
+
 ### Renderer loop outline
 
 ```
@@ -801,7 +801,7 @@ int main() {
   - This adapter is optional and does not affect software/GPU outputs.
 
 
-=======
+
 
 
 ## Software renderer — path tracing with tetrahedral acceleration
@@ -927,7 +927,7 @@ Robustness
   
 
 
->>>>>>> feat/gamepad-pathio-v1
+
 ## MVP plan
 1) Scaffolding and helpers
    - Add `src/pathspace/ui/` with stubs for `PathRenderer2D`, `PathSurfaceSoftware`, and `PathWindowView` (presenter).
@@ -1029,7 +1029,7 @@ Next to decide:
 
 2) Snapshot builder spec
 
->>>>>>> feat/gamepad-pathio-v1
+
    - Triggering/debounce policy and max rebuild frequency.
    - Work partitioning across passes (measure, layout, batching) and threading.
    - Transform propagation from hierarchy; text shaping pipeline and caching.
@@ -1083,7 +1083,7 @@ Additional areas to flesh out:
 
 3) Rendering pipeline specifics
 
->>>>>>> feat/gamepad-pathio-v1
+
    - Software rasterization details (AA, clipping, blending, color pipeline) and text composition order.
    - GPU plans (command encoding patterns, pipeline caching) for Metal/Vulkan.
 
@@ -1113,7 +1113,7 @@ Additional areas to flesh out:
 
 
  
->>>>>>> feat/gamepad-pathio-v1
+
 
 - Target base:
   - `<app>/renderers/<rendererName>/targets/<kind>/<name>`
@@ -1145,7 +1145,7 @@ Additional areas to flesh out:
 ## RenderSettings v1 (final)
  
 
->>>>>>> feat/gamepad-pathio-v1
+
 - time: `{ time_ms: double, delta_ms: double, frame_index: uint64 }`
 - pacing: `{ user_cap_fps: optional<double> }`  # effective rate = min(display refresh, user cap)
 - surface: `{ size_px:{w:int,h:int}, dpi_scale: float, visibility: bool }`
@@ -1154,27 +1154,27 @@ Additional areas to flesh out:
 - debug: `{ flags: uint32 }` (optional)
 
 
-=======
-<<<<<<< HEAD
 
-=======
+
+
+
  
 
->>>>>>> feat/gamepad-pathio-v1
+
 Invariants:
 - Writers always insert whole `RenderSettings` to `settings/inbox` (no partial field writes).
 - Renderer drains `settings/inbox` via take(), adopts only the last (last-write-wins), and may mirror to `settings/active`.
 - `scene` paths are app-relative and must resolve to within the same application root.
 - `output/v1` contains only the latest render result for the target.
-<<<<<<< HEAD
 
-=======
-<<<<<<< HEAD
 
-=======
+
+
+
+
  
 
->>>>>>> feat/gamepad-pathio-v1
+
 ## Glossary
 
 - App root: `/system/applications/<app>` or `/users/<user>/system/applications/<app>`.
