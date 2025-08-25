@@ -252,7 +252,7 @@ Tip: For high-throughput patterns, write with Immediate and read<FutureAny> to c
 
 ## Experimental IO providers (PathIO)
 
-The repository includes experimental providers under `src/pathspace/layer` and an example in `examples/devices_example.cpp`. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a `PathSpace` tree and serve typed event streams.
+The repository includes experimental providers under `src/pathspace/layer` and an example in `examples/devices_example.cpp`. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a `PathSpace` tree and serve typed event streams using the canonical `/system/devices/in/*` namespace; see `docs/AI_Plan_SceneGraph_Renderer.md` for app/device path conventions.
 
 Sketch:
 ```cpp
@@ -268,12 +268,12 @@ int main() {
     auto keyboard = std::make_unique<PathIOKeyboard>(PathIOKeyboard::BackendMode::Auto);
 
     // Mount providers at app-chosen paths
-    auto mret = ps.insert<"/inputs/mouse/0">(std::move(mouse));
-    auto kret = ps.insert<"/inputs/keyboards/0">(std::move(keyboard));
+    auto mret = ps.insert<"/system/devices/in/pointer/default">(std::move(mouse));
+    auto kret = ps.insert<"/system/devices/in/text/default">(std::move(keyboard));
 
     // Read typed events (blocking with timeout)
-    auto me = ps.read<SP::PathIOMouse::Event>("/inputs/mouse/0/events", Block{});
-    auto ke = ps.read<SP::PathIOKeyboard::Event>("/inputs/keyboards/0/events", Block{});
+    auto me = ps.read<SP::PathIOMouse::Event>("/system/devices/in/pointer/default/events", Block{});
+    auto ke = ps.read<SP::PathIOKeyboard::Event>("/system/devices/in/text/default/events", Block{});
 }
 ```
 

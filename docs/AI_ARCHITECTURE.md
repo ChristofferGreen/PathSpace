@@ -8,6 +8,49 @@
 Note for editors: when you add, rename, or remove source files, refresh the compilation database (`./compile_commands.json`). Running `./scripts/compile.sh` or `./scripts/update_compile_commands.sh` (or re-configuring with CMake) regenerates `build/compile_commands.json` and copies it to the repo root; many editors/LSPs rely on it for correct include paths and diagnostics.
 If a change affects core behavior (paths, NodeData, WaitMap, TaskPool, serialization), update `docs/AI_ARCHITECTURE.md` in the same PR.
 For UI/Rendering (scene graph and renderer), see `docs/AI_Plan_SceneGraph_Renderer.md`.
+Snapshot builder policy (summary): patch-first incremental snapshots with copy-on-write; fall back to a full rebuild on global parameter changes (e.g., DPI/root constraints/theme/color space/font tables) or when fragmentation/performance thresholds are exceeded. See "Snapshot Builder and Rebuild Policy" below.
+
+## Snapshot Builder and Rebuild Policy
+
+Purpose:
+- Provide a renderer-facing, immutable scene snapshot per revision, built incrementally when possible, with a well-defined fallback to full rebuild.
+
+Key concepts:
+- Incremental, patch-first: maintain the previous snapshot in memory; apply targeted patches for small edits and only rebuild fully on global changes.
+- Copy-on-write: snapshots share unchanged structures; modified subtrees allocate new chunks.
+- Dirty flags and epochs: per-node flags (STRUCTURE, LAYOUT, TRANSFORM, VISUAL, TEXT, BATCH) and computed-epoch counters to skip unchanged work.
+- Chunked draw lists: draw ops are stored per-subtree; unaffected chunks are reused; merges are k-way by stable sort keys.
+- Text shaping cache: shaped runs keyed by font+features+script+dir+text hash; only re-shape dirty runs.
+
+Patch pipeline (incremental pass order):
+1) Change ingestion → mark dirty and propagate (up/down) with early cut-offs at independent subtrees.
+2) Measure/Text: re-shape dirty text; update intrinsic sizes.
+3) Layout: re-layout dirty subtrees; contain ripples to constraint islands.
+4) Transform: recompute world transforms and bounds for dirty subtrees (pre-order).
+5) Batching/Flatten: rebuild only affected chunks; merge and stabilize paint order.
+6) Validate changed regions; assemble a new revision with copy-on-write.
+
+Publish and retention:
+- Write to `builds/<revision>.staging/...` then atomically rename to `builds/<revision>`; atomically replace `current_revision`.
+- Retain the last K revisions (default 3) and GC older ones after a TTL, deferring deletion if a renderer still references them.
+
+When to trigger a full rebuild:
+- Global parameters changed: DPI/root constraints/camera/theme/color space/font tables.
+- Structure churn: inserts+removes > 15% of nodes or reparent operations touch > 5%.
+- Batching churn: > 30% of draw ops move buckets, or widespread stacking-context changes.
+- Fragmentation: tombstones > 20% in node/draw-chunk storage; indices significantly degraded.
+- Performance: 3 consecutive frames over budget, or moving-average patch cost ≥ 70% of last full rebuild.
+- Consistency: validations detect invariant violations (cycles, bounds, sort instability).
+
+Configuration knobs (defaults are conservative and tunable per app/scene):
+- Debounce windows (min interval, max staleness), concurrency caps, cache sizes, revision retention (K, TTL).
+
+Performance notes:
+- Common passes are O(N_dirty) and parallelizable; copy-on-write keeps memory locality high.
+- Renderers are agnostic to build mode; they consume `builds/<revision>` referenced by `current_revision`.
+
+See also:
+- `docs/AI_Plan_SceneGraph_Renderer.md` for the broader rendering plan and target I/O layout. If snapshot semantics change, update both documents in the same PR per `.rules`.
 
 AI autonomy guideline:
 - The AI should complete tasks end-to-end without asking the user to run commands or finish steps. Use the provided scripts and tooling to build, test, and validate changes (e.g., `./scripts/compile.sh --clean --test --loop=N`).
@@ -455,8 +498,44 @@ This section is deprecated. See the “AI autonomy guideline” and “AI pull r
 ## Operating System
 Device IO is provided by path-agnostic layers that can be mounted anywhere in a parent `PathSpace`, with platform backends feeding events into them:
 
-- `src/pathspace/layer/PathIOMouse.hpp` and `src/pathspace/layer/PathIOKeyboard.hpp` expose typed event queues (MouseEvent/KeyboardEvent) with blocking `out()`/`take()` (peek vs pop via `Out.doPop`). When mounted with a shared context, `simulateEvent()` wakes blocking readers.
-- `src/pathspace/layer/PathIODeviceDiscovery.hpp` provides a simulation-backed `/dev`-like discovery surface (classes, device IDs, per-device `meta` and `capabilities`), using iterator tail mapping for correct nested mounts.
+Example PathIO mounts:
+- Inputs (typed event streams):
+  - /system/devices/in/pointer/default/events
+  - /system/devices/in/text/default/events
+  - /system/devices/in/gamepad/default/events
+- Outputs (haptics):
+  - /system/devices/out/gamepad/<id>/rumble
+- Discovery (simulation-backed listing):
+  - Mount PathIODeviceDiscovery at /system/devices/discovery
+
+Decision: PathIO v1 (final)
+- Keep `PathIO` base and current providers (mouse, keyboard, pointer mixer, stdout, discovery).
+- Event providers deliver typed events via `out()`/`take()`; blocking semantics are controlled by `Out{doBlock, timeout}` and pop-vs-peek by `Out.doPop`.
+- Canonical device namespace (aligned with SceneGraph plan):
+  - Inputs: `/system/devices/in/pointer/default/events`, `/system/devices/in/text/default/events`
+  - Additional classes will follow the same pattern under `/system/devices/in/<class>/<id>/events`
+  - Discovery: mount `PathIODeviceDiscovery` under an app- or system-chosen prefix (e.g., `/system/devices/discovery`); it lists classes, device IDs, and per-device `meta`/`capabilities` relative to its mount.
+- Notifications: providers perform targeted `notify(mountPrefix)` and `notify(mountPrefix + "/events")` on enqueue; use `notifyAll()` only for broad updates (e.g., retargeting or clear).
+### Backpressure and queue limits
+
+- Scope: Event providers (mouse/keyboard/pointer mixer) maintain per-mount in-memory deques for pending events.
+- Complexity: enqueue/dequeue O(1); targeted notify is O(depth) along the path trie; memory is O(N) per queue.
+- Current behavior: Queues are unbounded deques; no drops are performed.
+- Planned: Bound queues to N events (implementation-defined; target default ≈1024) with a configurable drop policy:
+  - Oldest-drop: drop front entries to minimize end-to-end latency on live streams.
+  - Newest-drop: drop incoming events if preserving history is preferred.
+- Blocking semantics:
+  - Non-blocking read returns `NoObjectFound` when empty.
+  - Blocking read wakes on arrival or timeout; wakeups use targeted `notify(mountPrefix)` and `notify(mountPrefix + "/events")`.
+- Mitigations:
+  - Prefer pop (`take`) to keep up; minimize work in the read loop; batch processing where possible.
+  - Use mixers/aggregation to reduce per-device rates; downsample or coalesce deltas when acceptable.
+  - Consider shorter time slices for provider loops once configurable wait-slice is introduced.
+- Observability: Track counters per provider (enqueued, dropped_oldest, dropped_newest); expose via a side path such as `.../stats` in a later change.
+
+
+- `src/pathspace/layer/PathIOMouse.hpp`, `src/pathspace/layer/PathIOKeyboard.hpp`, and `src/pathspace/layer/PathIOGamepad.hpp` expose typed event queues (MouseEvent/KeyboardEvent/GamepadEvent) with blocking `out()`/`take()` (peek vs pop via `Out.doPop`). When mounted with a shared context, `simulateEvent()` wakes blocking readers.
+- `src/pathspace/layer/PathIODeviceDiscovery.hpp` provides a simulation-backed discovery surface (classes, device IDs, per-device `meta` and `capabilities`), using iterator tail mapping for correct nested mounts; recommended mount prefix: `/system/devices/discovery`.
 
 Platform backends (unified, via compile-time macros):
 - `src/pathspace/layer/PathIOMouse.hpp` and `src/pathspace/layer/PathIOKeyboard.hpp` expose start()/stop() hooks and select OS paths internally (e.g., `PATHIO_BACKEND_MACOS`) to feed events via `simulateEvent(...)`.

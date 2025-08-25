@@ -166,7 +166,7 @@ task {
     status: planned
     priority: P1
     acceptance_criteria: [
-      "Header/impl compile; clear path conventions (e.g., /io/mouse, /io/keyboard, /io/gamepad, /io/touch, /io/tablet).",
+      "Header/impl compile; clear path conventions (e.g., /system/devices/in/pointer/<id>, /system/devices/in/text/<id>, /system/devices/in/gamepad/<id>, /system/devices/in/touch/<id>, /system/devices/in/tablet/<id>).",
       "Semantics for read/write, blocking/timeout, and notify are specified."
     ]
   }
@@ -221,7 +221,7 @@ task {
     status: planned
     priority: P3
     acceptance_criteria: [
-      "Output path conventions documented (e.g., /io/gamepad/<id>/rumble).",
+      "Output path conventions documented (e.g., /system/devices/out/gamepad/<id>/rumble).",
       "Calls return clear Unsupported errors until a backend exists."
     ]
   }
@@ -261,7 +261,7 @@ task {
     status: planned
     priority: P1
     acceptance_criteria: [
-      "Canonical paths for devices (e.g., /dev/<class>/<id>, /screen/<id>).",
+      "Canonical paths for devices (e.g., /system/devices/in/<class>/<id>).",
       "Reserved subpaths standardized: events, state, control, meta."
     ]
   }
@@ -272,7 +272,7 @@ task {
     status: planned
     priority: P1
     acceptance_criteria: [
-      "/dev lists classes; /dev/<class> lists devices; /dev/<class>/<id>/meta returns structured metadata."
+      "/system/devices/discovery lists classes; /system/devices/discovery/<class> lists devices; /system/devices/discovery/<class>/<id>/meta returns structured metadata."
     ]
   }
 
@@ -299,7 +299,7 @@ task {
 
   task {
     name: "Default Device Aliases [API]"
-    description: "Stable entry points like /system/input/pointer/default that resolve to current device(s)."
+    description: "Stable entry points like /system/devices/in/pointer/default that resolve to current device(s)."
     status: planned
     priority: P1
     acceptance_criteria: [
