@@ -1,47 +1,8 @@
-Snapshot builder policy (summary): patch-first incremental snapshots with copy-on-write; fall back to a full rebuild on global parameter changes (e.g., DPI/root constraints/theme/color space/font tables) or when fragmentation/performance thresholds are exceeded. See "Snapshot Builder and Rebuild Policy" below.
-
-## Snapshot Builder and Rebuild Policy
-
-Purpose:
-- Provide a renderer-facing, immutable scene snapshot per revision, built incrementally when possible, with a well-defined fallback to full rebuild.
-
-Key concepts:
-- Incremental, patch-first: maintain the previous snapshot in memory; apply targeted patches for small edits and only rebuild fully on global changes.
-- Copy-on-write: snapshots share unchanged structures; modified subtrees allocate new chunks.
-- Dirty flags and epochs: per-node flags (STRUCTURE, LAYOUT, TRANSFORM, VISUAL, TEXT, BATCH) and computed-epoch counters to skip unchanged work.
-- Chunked draw lists: draw ops are stored per-subtree; unaffected chunks are reused; merges are k-way by stable sort keys.
-- Text shaping cache: shaped runs keyed by font+features+script+dir+text hash; only re-shape dirty runs.
-
-Patch pipeline (incremental pass order):
-1) Change ingestion → mark dirty and propagate (up/down) with early cut-offs at independent subtrees.
-2) Measure/Text: re-shape dirty text; update intrinsic sizes.
-3) Layout: re-layout dirty subtrees; contain ripples to constraint islands.
-4) Transform: recompute world transforms and bounds for dirty subtrees (pre-order).
-5) Batching/Flatten: rebuild only affected chunks; merge and stabilize paint order.
-6) Validate changed regions; assemble a new revision with copy-on-write.
-
-Publish and retention:
-- Write to `builds/<revision>.staging/...` then atomically rename to `builds/<revision>`; atomically replace `current_revision`.
-- Retain the last K revisions (default 3) and GC older ones after a TTL, deferring deletion if a renderer still references them.
-
-When to trigger a full rebuild:
-- Global parameters changed: DPI/root constraints/camera/theme/color space/font tables.
-- Structure churn: inserts+removes > 15% of nodes or reparent operations touch > 5%.
-- Batching churn: > 30% of draw ops move buckets, or widespread stacking-context changes.
-- Fragmentation: tombstones > 20% in node/draw-chunk storage; indices significantly degraded.
-- Performance: 3 consecutive frames over budget, or moving-average patch cost ≥ 70% of last full rebuild.
-- Consistency: validations detect invariant violations (cycles, bounds, sort instability).
-
-Configuration knobs (defaults are conservative and tunable per app/scene):
-- Debounce windows (min interval, max staleness), concurrency caps, cache sizes, revision retention (K, TTL).
-
-Performance notes:
-- Common passes are O(N_dirty) and parallelizable; copy-on-write keeps memory locality high.
-- Renderers are agnostic to build mode; they consume `builds/<revision>` referenced by `current_revision`.
+Renderer snapshot builder details have moved out of this architecture document. See docs/AI_Plan_SceneGraph_Renderer.md (“Decision: Snapshot Builder”) for the authoritative policy, rebuild triggers, publish/GC protocol, and performance notes. This file focuses on PathSpace core (paths, trie storage, concurrency/wait/notify, views/alias layers, and OS I/O).
 
 See also:
 - `docs/AI_Plan_SceneGraph_Renderer.md` for the broader rendering plan and target I/O layout. If snapshot semantics change, update both documents in the same PR per `.rules`.
-- `docs/AI_PATHS.md` for the canonical path namespaces and layout conventions; update it alongside changes to path usage and target I/O layout.
+ - `docs/AI_PATHS.md` for the canonical path namespaces and layout conventions; update it alongside changes to path usage and target I/O layout.
 
 
 AI autonomy guideline:
