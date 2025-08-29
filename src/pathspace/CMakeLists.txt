@@ -47,8 +47,13 @@ add_library(PathSpace
     core/WatchRegistry.hpp
     core/Leaf.cpp
     layer/PathView.cpp
-    layer/PathFileSystem.cpp
-    layer/PathIO.cpp
+    layer/io/PathFileSystem.cpp
+    layer/io/PathIOGamepad.cpp
+    layer/io/PathIOPointerMixer.cpp
+    layer/io/PathIOMouse.cpp
+    layer/io/PathIOKeyboard.cpp
+    layer/io/PathIODeviceDiscovery.cpp
+    layer/io/PathIOStdOut.cpp
     task/Task.cpp
     task/TaskPool.cpp
     task/TaskStateAtomic.cpp
@@ -58,9 +63,32 @@ add_library(PathSpace
     PathSpace.cpp
 )
 
-# macOS backend enable flag (compile-time macro; no .mm sources)
+# macOS backend options and integration
 if(APPLE)
-    target_compile_definitions(PathSpace PRIVATE PATHIO_BACKEND_MACOS=1)
+    # Option to enable CGEventTap-based mouse/keyboard OS backend in providers
+    option(PATHSPACE_ENABLE_MOUSE_OS_TAP "Enable macOS CGEventTap backend in IO providers" OFF)
+
+    # Define PATHIO_BACKEND_MACOS only when OS backends are enabled (prevents CGEventTap code in unit tests)
+    if(PATHSPACE_ENABLE_MOUSE_OS_TAP)
+        target_compile_definitions(PathSpace PRIVATE PATHIO_BACKEND_MACOS=1)
+    endif()
+
+    # Add ObjC++ GameController helper and enable ARC (always safe; uses weak imports and dynamic selectors)
+    target_sources(PathSpace PRIVATE layer/macos/GameControllerHaptics.mm)
+    set_source_files_properties(layer/macos/GameControllerHaptics.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+
+    # Link required Apple frameworks
+    # - Foundation, Cocoa for Objective‑C runtime and windowing helpers (used by examples and helpers)
+    # - GameController for haptics/input helper (weak/dynamic – linking is safe if framework present)
+    # - ApplicationServices only when CGEventTap backend is enabled (provides CGEventTap symbols)
+    target_link_libraries(PathSpace PRIVATE
+        "-framework Foundation"
+        "-framework Cocoa"
+        "-framework GameController"
+    )
+    if(PATHSPACE_ENABLE_MOUSE_OS_TAP)
+        target_link_libraries(PathSpace PRIVATE "-framework ApplicationServices")
+    endif()
 endif()
 
 target_compile_options(PathSpace PUBLIC "-Wno-deprecated")
@@ -79,7 +107,9 @@ target_include_directories(PathSpace
     ${foonathan_memory_SOURCE_DIR}/include
 )
 
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+# Opt-in debug logging to keep test runs fast by default
+option(PATHSPACE_ENABLE_LOG_DEBUG "Enable SP_LOG_DEBUG logging" OFF)
+if(PATHSPACE_ENABLE_LOG_DEBUG)
     target_compile_definitions(PathSpace PRIVATE SP_LOG_DEBUG)
 endif()
 
@@ -90,7 +120,7 @@ target_link_libraries(PathSpace
     # foonathan_memory
 )
 
-set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "PathSpace.hpp;layer/PathIO.hpp;layer/PathIOMouse.hpp;layer/PathIOKeyboard.hpp;layer/PathIOStdOut.hpp;layer/PathAlias.hpp;layer/PathIODeviceDiscovery.hpp;layer/PathIOPointerMixer.hpp;layer/PathIOGamepad.hpp")
+set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "PathSpace.hpp;layer/io/PathIOMouse.hpp;layer/io/PathIOKeyboard.hpp;layer/io/PathIOStdOut.hpp;layer/PathAlias.hpp;layer/io/PathIODeviceDiscovery.hpp;layer/io/PathIOPointerMixer.hpp;layer/io/PathIOGamepad.hpp")
 
 install(TARGETS PathSpace
     ARCHIVE DESTINATION lib

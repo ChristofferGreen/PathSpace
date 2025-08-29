@@ -28,7 +28,9 @@ add_executable(PathSpaceTests
   test_main.cpp
 )
 
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+# Opt-in debug logging for tests
+option(PATHSPACE_ENABLE_LOG_DEBUG "Enable SP_LOG_DEBUG logging" OFF)
+if(PATHSPACE_ENABLE_LOG_DEBUG)
   target_compile_definitions(PathSpaceTests PRIVATE SP_LOG_DEBUG)
 endif()
 

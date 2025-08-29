@@ -12,9 +12,9 @@ struct TaskStateAtomic {
     TaskStateAtomic(const TaskStateAtomic& other);            // Copy constructor takes a snapshot of the other state
     TaskStateAtomic& operator=(const TaskStateAtomic& other); // Copy assignment takes a snapshot of the other state
 
-    // Allow move operations
-    TaskStateAtomic(TaskStateAtomic&& other)            = default;
-    TaskStateAtomic& operator=(TaskStateAtomic&& other) = default;
+    // Move operations are deleted because std::atomic is non-movable
+    TaskStateAtomic(TaskStateAtomic&& other)            = delete;
+    TaskStateAtomic& operator=(TaskStateAtomic&& other) = delete;
 
     bool tryStart();            // Attempts to transition from NotStarted to Starting. Returns true if successful, false if already started
     bool transitionToRunning(); // Attempts to transition from Starting to Running. Returns true if successful, false if not in Starting state

@@ -33,6 +33,7 @@ SANITIZER=""  # "asan" | "tsan" | "usan"
 TEST=0        # run tests after build if 1
 LOOP=0        # run tests in a loop N times (default 15 if provided without value)
 PER_TEST_TIMEOUT=""  # override seconds per test; default 60 (single), 120 (when --loop is used)
+EXTRA_ARGS=""        # extra args passed to test executable (doctest)
 DOCS=0               # generate Doxygen docs if 1
 
 # ----------------------------
@@ -65,6 +66,7 @@ Options:
       --loop[=N]            Run tests in a loop N times (default: 15). Implies --test.
       --per-test-timeout SECS  Override per-test timeout (default: 60; 120 when --loop is used).
       --docs                 Generate Doxygen docs into build/docs/html (requires doxygen).
+      --args "..."           Extra arguments passed to the test runner (doctest)
   -h, --help                 Show this help and exit.
 
 Sanitizers (mutually exclusive, maps to CMake options in this repo):
@@ -187,6 +189,13 @@ while [[ $# -gt 0 ]]; do
           fi
           ;;
       esac
+      ;;
+    --args)
+      shift || die "Missing argument for $1"
+      EXTRA_ARGS="$1"
+      ;;
+    --args=*)
+      EXTRA_ARGS="${1#*=}"
       ;;
     -h|--help)
       print_help
@@ -347,14 +356,24 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
       if [[ "$LOOP" -gt 0 ]]; then
         COUNT="$LOOP"
         info "Running tests in a loop ($COUNT iterations)..."
+        export PATHSPACE_TEST_TIMEOUT="${PATHSPACE_TEST_TIMEOUT:-1}"
+        # Reduce VM pressure in massive thread creation scenarios
+        export MallocNanoZone=${MallocNanoZone:-0}
+        # Optional: enable core dumps/backtraces for debugging crashes
+        if [[ "${PATHSPACE_ENABLE_CORES:-0}" == "1" ]]; then
+          # Best-effort: increase core dump size on systems that support ulimit -c
+          (ulimit -c unlimited) 2>/dev/null || true
+          export ASAN_OPTIONS="${ASAN_OPTIONS:-} detect_leaks=0 fast_unwind_on_malloc=0 symbolize=1"
+          export UBSAN_OPTIONS="${UBSAN_OPTIONS:-} print_stacktrace=1 halt_on_error=1"
+        fi
         for i in $(seq 1 "$COUNT"); do
           info "Loop $i/$COUNT: starting"
-          if command -v timeout >/dev/null 2>&1; then
-            timeout "${PER_TEST_TIMEOUT}s" "$TEST_EXE"
+          if [[ "${USE_CLI_TIMEOUT:-0}" == "1" ]] && command -v timeout >/dev/null 2>&1; then
+            timeout "${PER_TEST_TIMEOUT}s" "$TEST_EXE" ${EXTRA_ARGS}
             RC=$?
           else
             # Fallback manual timeout if 'timeout' is not available
-            "$TEST_EXE" & pid=$!
+            "$TEST_EXE" ${EXTRA_ARGS} & pid=$!
             SECS=0
             while kill -0 "$pid" 2>/dev/null; do
               sleep 1
@@ -383,12 +402,21 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
         info "All $COUNT iterations passed."
       else
         info "Running tests..."
-        if command -v timeout >/dev/null 2>&1; then
-          timeout "${PER_TEST_TIMEOUT}s" "$TEST_EXE"
+        export PATHSPACE_TEST_TIMEOUT="${PATHSPACE_TEST_TIMEOUT:-1}"
+        # Reduce VM pressure in massive thread creation scenarios
+        export MallocNanoZone=${MallocNanoZone:-0}
+        # Optional: enable core dumps/backtraces for debugging crashes
+        if [[ "${PATHSPACE_ENABLE_CORES:-0}" == "1" ]]; then
+          (ulimit -c unlimited) 2>/dev/null || true
+          export ASAN_OPTIONS="${ASAN_OPTIONS:-} detect_leaks=0 fast_unwind_on_malloc=0 symbolize=1"
+          export UBSAN_OPTIONS="${UBSAN_OPTIONS:-} print_stacktrace=1 halt_on_error=1"
+        fi
+        if [[ "${USE_CLI_TIMEOUT:-0}" == "1" ]] && command -v timeout >/dev/null 2>&1; then
+          timeout "${PER_TEST_TIMEOUT}s" "$TEST_EXE" ${EXTRA_ARGS}
           RC=$?
         else
           # Fallback manual timeout if 'timeout' is not available
-          "$TEST_EXE" & pid=$!
+          "$TEST_EXE" ${EXTRA_ARGS} & pid=$!
           SECS=0
           while kill -0 "$pid" 2>/dev/null; do
             sleep 1

@@ -11,7 +11,6 @@
 #include "type/InputData.hpp"
 #include "core/NotificationSink.hpp"
 #include "task/Executor.hpp"
-#include "task/Future.hpp"
 #include "task/TaskT.hpp"
 #include "task/IFutureAny.hpp"
 #include <type_traits>
@@ -69,6 +68,10 @@ public:
         }
         return this->in(path, inputData);
     }
+    // Compile-time path overload:
+    // - Validates the path literal at compile time via validate_path(pathIn)
+    // - Disables runtime validation using InNoValidation (already guaranteed by the constraint)
+    // - Prefer this when the path is a FixedString literal for zero-cost checks
     template <FixedString pathIn, typename DataType>
         requires(validate_path(pathIn) == true)
     auto insert(DataType&& data, In const& options = {}) -> InsertReturn {
@@ -90,6 +93,10 @@ public:
             return std::unexpected{*error};
         return obj;
     }
+    // Compile-time path overload for read<T>:
+    // - Requires a FixedString literal path validated at compile time (validate_path(pathIn))
+    // - Runtime validation is disabled using OutNoValidation
+    // - For typed reads (non-FutureAny), paths must be concrete (non-glob)
     template <FixedString pathIn, typename DataType>
         requires(validate_path(pathIn) && !std::is_same_v<std::remove_cvref_t<DataType>, FutureAny>)
     auto read(Out const& options = {}) const -> Expected<DataType> {
@@ -109,6 +116,10 @@ public:
         }
         return std::unexpected(Error{Error::Code::NoObjectFound, "No execution future available at path"});
     }
+    // Compile-time path overload for read<FutureAny>:
+    // - Validates FixedString literal at compile time (validate_path(pathIn))
+    // - Skips runtime validation with OutNoValidation
+    // - Returns a type-erased future handle if present, or NoObjectFound otherwise
     template <FixedString pathIn, typename DataType = FutureAny>
         requires(validate_path(pathIn) && std::is_same_v<std::remove_cvref_t<DataType>, FutureAny>)
     auto read(Out const& options = {}) const -> Expected<FutureAny> {
@@ -128,6 +139,10 @@ public:
             return std::unexpected(*error);
         return obj;
     }
+    // Compile-time path overload for take<T>:
+    // - Validates FixedString literal at compile time (validate_path(pathIn))
+    // - Applies Pop{} semantics (consume) and disables runtime validation with OutNoValidation
+    // - Use for concrete (non-glob) paths where you want to pop from a queue/stream
     template <FixedString pathIn, typename DataType>
         requires(validate_path(pathIn))
     auto take(Out const& options = {}) -> Expected<DataType> {
@@ -175,6 +190,17 @@ protected:
 
     // Shared context access & adoption (used when mounting nested spaces).
     std::shared_ptr<PathSpaceContext> getContext() const { return context_; }
+
+    // - Called by the parent space when this object is mounted under a path.
+    // - Supplies a shared PathSpaceContext for wait/notify and an absolute mount prefix.
+    // Default behavior:
+    // - Adopt the provided context and propagate its executor into this space.
+    // Override guidance:
+    // - Always call PathSpaceBase::adoptContextAndPrefix(...) first to inherit context/executor.
+    // - If you perform targeted wake-ups, capture the 'prefix' atomically (e.g., into a member) so that
+    //   later operations can call ctx->notify(prefix) or ctx->notify(prefix + "/...") rather than notifyAll().
+    // - Avoid blocking work or spawning threads here; this hook should be lightweight.
+    // - Treat the prefix as read-only and stable for the lifetime of the mount unless explicitly retargeted.
     virtual void adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context, std::string /*prefix*/) {
         context_ = std::move(context);
         if (context_ && context_->executor()) {

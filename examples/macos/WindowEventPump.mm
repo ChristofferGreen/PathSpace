@@ -1,8 +1,8 @@
 #import <Cocoa/Cocoa.h>
 
 // Objective-C++ bridge: forward local window events to PathSpace providers.
-#include <pathspace/layer/PathIOMouse.hpp>
-#include <pathspace/layer/PathIOKeyboard.hpp>
+#include <pathspace/layer/io/PathIOMouse.hpp>
+#include <pathspace/layer/io/PathIOKeyboard.hpp>
 
 using SP::PathIOMouse;
 using SP::PathIOKeyboard;
@@ -35,25 +35,41 @@ static void PSEmitAbsoluteIfNeeded(NSEvent* ev);
 
 - (void)mouseMoved:(NSEvent *)event {
     if (gMouseProvider) {
-        gMouseProvider->simulateMove((int)event.deltaX, (int)event.deltaY, /*deviceId=*/0);
+        SP::PathIOMouse::Event ev{};
+        ev.type = SP::MouseEventType::Move;
+        ev.dx = (int)event.deltaX;
+        ev.dy = (int)event.deltaY;
+        gMouseProvider->insert<"/events">(ev);
         PSEmitAbsoluteIfNeeded(event);
     }
 }
 - (void)mouseDragged:(NSEvent *)event {
     if (gMouseProvider) {
-        gMouseProvider->simulateMove((int)event.deltaX, (int)event.deltaY, /*deviceId=*/0);
+        SP::PathIOMouse::Event ev{};
+        ev.type = SP::MouseEventType::Move;
+        ev.dx = (int)event.deltaX;
+        ev.dy = (int)event.deltaY;
+        gMouseProvider->insert<"/events">(ev);
         PSEmitAbsoluteIfNeeded(event);
     }
 }
 - (void)rightMouseDragged:(NSEvent *)event {
     if (gMouseProvider) {
-        gMouseProvider->simulateMove((int)event.deltaX, (int)event.deltaY, /*deviceId=*/0);
+        SP::PathIOMouse::Event ev{};
+        ev.type = SP::MouseEventType::Move;
+        ev.dx = (int)event.deltaX;
+        ev.dy = (int)event.deltaY;
+        gMouseProvider->insert<"/events">(ev);
         PSEmitAbsoluteIfNeeded(event);
     }
 }
 - (void)otherMouseDragged:(NSEvent *)event {
     if (gMouseProvider) {
-        gMouseProvider->simulateMove((int)event.deltaX, (int)event.deltaY, /*deviceId=*/0);
+        SP::PathIOMouse::Event ev{};
+        ev.type = SP::MouseEventType::Move;
+        ev.dx = (int)event.deltaX;
+        ev.dy = (int)event.deltaY;
+        gMouseProvider->insert<"/events">(ev);
         PSEmitAbsoluteIfNeeded(event);
     }
 }
@@ -63,39 +79,80 @@ static void PSEmitAbsoluteIfNeeded(NSEvent* ev);
         CGFloat dy = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.deltaY;
         int ticks = (int)llround(dy);
         if (ticks != 0) {
-            gMouseProvider->simulateWheel(ticks, /*deviceId=*/0);
+            SP::PathIOMouse::Event ev{};
+            ev.type = SP::MouseEventType::Wheel;
+            ev.wheel = ticks;
+            gMouseProvider->insert<"/events">(ev);
         }
     }
 }
 - (void)mouseDown:(NSEvent *)event {
-    if (gMouseProvider) gMouseProvider->simulateButtonDown(PSButtonFrom(event), /*deviceId=*/0);
+    if (gMouseProvider) {
+        SP::PathIOMouse::Event ev{};
+        ev.type = SP::MouseEventType::ButtonDown;
+        ev.button = PSButtonFrom(event);
+        gMouseProvider->insert<"/events">(ev);
+    }
 }
 - (void)mouseUp:(NSEvent *)event {
-    if (gMouseProvider) gMouseProvider->simulateButtonUp(PSButtonFrom(event), /*deviceId=*/0);
+    if (gMouseProvider) {
+        SP::PathIOMouse::Event ev{};
+        ev.type = SP::MouseEventType::ButtonUp;
+        ev.button = PSButtonFrom(event);
+        gMouseProvider->insert<"/events">(ev);
+    }
 }
 - (void)rightMouseDown:(NSEvent *)event {
-    if (gMouseProvider) gMouseProvider->simulateButtonDown(PSButtonFrom(event), /*deviceId=*/0);
+    if (gMouseProvider) {
+        SP::PathIOMouse::Event ev{};
+        ev.type = SP::MouseEventType::ButtonDown;
+        ev.button = PSButtonFrom(event);
+        gMouseProvider->insert<"/events">(ev);
+    }
 }
 - (void)rightMouseUp:(NSEvent *)event {
-    if (gMouseProvider) gMouseProvider->simulateButtonUp(PSButtonFrom(event), /*deviceId=*/0);
+    if (gMouseProvider) {
+        SP::PathIOMouse::Event ev{};
+        ev.type = SP::MouseEventType::ButtonUp;
+        ev.button = PSButtonFrom(event);
+        gMouseProvider->insert<"/events">(ev);
+    }
 }
 - (void)otherMouseDown:(NSEvent *)event {
-    if (gMouseProvider) gMouseProvider->simulateButtonDown(PSButtonFrom(event), /*deviceId=*/0);
+    if (gMouseProvider) {
+        SP::PathIOMouse::Event ev{};
+        ev.type = SP::MouseEventType::ButtonDown;
+        ev.button = PSButtonFrom(event);
+        gMouseProvider->insert<"/events">(ev);
+    }
 }
 - (void)otherMouseUp:(NSEvent *)event {
-    if (gMouseProvider) gMouseProvider->simulateButtonUp(PSButtonFrom(event), /*deviceId=*/0);
+    if (gMouseProvider) {
+        SP::PathIOMouse::Event ev{};
+        ev.type = SP::MouseEventType::ButtonUp;
+        ev.button = PSButtonFrom(event);
+        gMouseProvider->insert<"/events">(ev);
+    }
 }
 
 - (void)keyDown:(NSEvent *)event {
     if (gKeyboardProvider) {
-        gKeyboardProvider->simulateKeyDown((int)event.keyCode, PSModifiersFrom(event.modifierFlags), /*deviceId=*/0);
+        SP::PathIOKeyboard::Event ev{};
+        ev.type = SP::KeyEventType::KeyDown;
+        ev.keycode = (int)event.keyCode;
+        ev.modifiers = PSModifiersFrom(event.modifierFlags);
+        gKeyboardProvider->insert<"/events">(ev);
     }
     // Ask Cocoa to produce insertText: for text composition
     [self interpretKeyEvents:@[event]];
 }
 - (void)keyUp:(NSEvent *)event {
     if (gKeyboardProvider) {
-        gKeyboardProvider->simulateKeyUp((int)event.keyCode, PSModifiersFrom(event.modifierFlags), /*deviceId=*/0);
+        SP::PathIOKeyboard::Event ev{};
+        ev.type = SP::KeyEventType::KeyUp;
+        ev.keycode = (int)event.keyCode;
+        ev.modifiers = PSModifiersFrom(event.modifierFlags);
+        gKeyboardProvider->insert<"/events">(ev);
     }
 }
 - (void)flagsChanged:(NSEvent *)event {
@@ -169,7 +226,11 @@ static void PSEmitAbsoluteIfNeeded(NSEvent* ev) {
     // Flip Y to a more conventional top-left origin if desired; here we keep native view coords.
     int xi = (int)llround(p.x);
     int yi = (int)llround(p.y);
-    gMouseProvider->simulateAbsolute(xi, yi, /*deviceId=*/0);
+    SP::PathIOMouse::Event mev{};
+    mev.type = SP::MouseEventType::AbsoluteMove;
+    mev.x = xi;
+    mev.y = yi;
+    gMouseProvider->insert<"/events">(mev);
 }
 
 // Public API (C++)

@@ -1,5 +1,5 @@
 #pragma once
-#include "layer/PathIO.hpp"
+#include "PathSpace.hpp"
 
 #include <chrono>
 #include <condition_variable>
@@ -82,7 +82,7 @@ struct MouseEvent {
  * - A future implementation will override out() to deliver MouseEvent directly
  *   (peek or pop depending on the Out options), and use notify(...) to wake waiters.
  */
-class PathIOMouse final : public PathIO {
+class PathIOMouse final : public PathSpaceBase {
 public:
     using Event = MouseEvent;
 
@@ -116,7 +116,16 @@ public:
             worker_.join();
         }
     }
-
+    
+    // Accept Event writes at ".../events" (relative to mount) and enqueue into the provider queue.
+    auto in(Iterator const& path, InputData const& data) -> InsertReturn override;
+    
+    // Cooperative shutdown: stop worker and join; also stop OS backend if active
+    auto shutdown() -> void override;
+    
+    // Provider does not rely on external notifications
+    auto notify(std::string const& notificationPath) -> void override;
+    
     // ---- Construction hooks ----
     // Backend selection occurs in the constructor; background worker is stopped in the destructor.
 
@@ -125,104 +134,12 @@ public:
 
 
 
-    // ---- Simulation API (thread-safe) ----
+    // Event production:
+    // - Write MouseEvent at "events" (relative to mount) using insert<"/events">(Event)
+    // - This provider enqueues events and wakes waiters accordingly
 
-    // Enqueue a generic event (from tests or platform backends)
-    void simulateEvent(Event const& ev) {
-        {
-            std::lock_guard<std::mutex> lg(mutex_);
-            queue_.push_back(ev);
-        }
-        cv_.notify_all();
-        if (auto ctx = this->getContext()) {
-            ctx->notifyAll();
-        }
-    }
-
-    // Relative move (dx, dy)
-    void simulateMove(int dx, int dy, int deviceId = 0) {
-        Event ev;
-        ev.deviceId = deviceId;
-        ev.type     = MouseEventType::Move;
-        ev.dx       = dx;
-        ev.dy       = dy;
-        auto nowDur = std::chrono::steady_clock::now().time_since_epoch();
-        ev.timestampNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(nowDur).count());
-        simulateEvent(ev);
-    }
-
-    // Absolute move (x, y)
-    void simulateAbsolute(int x, int y, int deviceId = 0) {
-        Event ev;
-        ev.deviceId = deviceId;
-        ev.type     = MouseEventType::AbsoluteMove;
-        ev.x        = x;
-        ev.y        = y;
-        auto nowDur = std::chrono::steady_clock::now().time_since_epoch();
-        ev.timestampNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(nowDur).count());
-        simulateEvent(ev);
-    }
-
-    // Button down/up
-    void simulateButtonDown(MouseButton button, int deviceId = 0) {
-        Event ev;
-        ev.deviceId = deviceId;
-        ev.type     = MouseEventType::ButtonDown;
-        ev.button   = button;
-        auto nowDur = std::chrono::steady_clock::now().time_since_epoch();
-        ev.timestampNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(nowDur).count());
-        simulateEvent(ev);
-    }
-    void simulateButtonUp(MouseButton button, int deviceId = 0) {
-        Event ev;
-        ev.deviceId = deviceId;
-        ev.type     = MouseEventType::ButtonUp;
-        ev.button   = button;
-        auto nowDur = std::chrono::steady_clock::now().time_since_epoch();
-        ev.timestampNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(nowDur).count());
-        simulateEvent(ev);
-    }
-
-    // Wheel ticks (+/-)
-    void simulateWheel(int ticks, int deviceId = 0) {
-        Event ev;
-        ev.deviceId = deviceId;
-        ev.type     = MouseEventType::Wheel;
-        ev.wheel    = ticks;
-        auto nowDur = std::chrono::steady_clock::now().time_since_epoch();
-        ev.timestampNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(nowDur).count());
-        simulateEvent(ev);
-    }
-
-    // ---- Introspection helpers ----
-
-    // Number of pending simulated events
-    size_t pending() const {
-        std::lock_guard<std::mutex> lg(mutex_);
-        return queue_.size();
-    }
-
-    // Peek at the front event (does not pop). Returns std::nullopt if empty.
-    std::optional<Event> peek() const {
-        std::lock_guard<std::mutex> lg(mutex_);
-        if (queue_.empty()) return std::nullopt;
-        return queue_.front();
-    }
-
-    // Pop the front event if any; returns it or std::nullopt if empty.
-    std::optional<Event> pop() {
-        std::lock_guard<std::mutex> lg(mutex_);
-        if (queue_.empty()) return std::nullopt;
-        Event ev = queue_.front();
-        queue_.pop_front();
-        return ev;
-    }
-
-    // Clear all pending events
-    void clear() {
-        std::lock_guard<std::mutex> lg(mutex_);
-        queue_.clear();
-    }
+    // Introspection helpers removed:
+    // - Prefer read/take with Out options for consumer-side access
 
 protected:
     // Derived implementations (future) can use these for blocking waits
@@ -238,57 +155,7 @@ public:
     // - If the queue is empty:
     //    * If options.doBlock is false: return NoObjectFound.
     //    * If options.doBlock is true: wait until timeout for an event to arrive; return Timeout on expiry.
-    auto out(Iterator const& /*path*/, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> override {
-        // Type-check: only support MouseEvent payloads here
-        if (inputMetadata.typeInfo != &typeid(Event)) {
-            return Error{Error::Code::InvalidType, "Mouse provider only supports MouseEvent"};
-        }
-        if (obj == nullptr) {
-            return Error{Error::Code::MalformedInput, "Null output pointer"};
-        }
-
-        // Fast path: try without blocking
-        {
-            std::lock_guard<std::mutex> lg(mutex_);
-            if (!queue_.empty()) {
-                Event ev = queue_.front();
-                if (options.doPop) {
-                    queue_.pop_front();
-                }
-                *reinterpret_cast<Event*>(obj) = ev;
-                return std::nullopt;
-            }
-        }
-
-        // No event and non-blocking read requested
-        if (!options.doBlock) {
-            return Error{Error::Code::NoObjectFound, "No mouse event available"};
-        }
-
-        // Blocking path: wait until an event is available or timeout expires
-        auto deadline = std::chrono::steady_clock::now() +
-                        std::chrono::duration_cast<std::chrono::steady_clock::duration>(options.timeout);
-
-        bool ready = waitFor(deadline, [&] { return !queue_.empty(); });
-        if (!ready) {
-            return Error{Error::Code::Timeout, "Timed out waiting for mouse event"};
-        }
-
-        // Event is available now
-        {
-            std::lock_guard<std::mutex> lg(mutex_);
-            if (queue_.empty()) {
-                // Rare race: event consumed by another thread before we reacquired the lock
-                return Error{Error::Code::NoObjectFound, "No mouse event available after wake"};
-            }
-            Event ev = queue_.front();
-            if (options.doPop) {
-                queue_.pop_front();
-            }
-            *reinterpret_cast<Event*>(obj) = ev;
-        }
-        return std::nullopt;
-    }
+    auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> override;
 
 private:
     // Worker loop that sources events from the OS or simulates when no OS integration is available.
@@ -297,7 +164,14 @@ private:
 #if defined(PATHIO_BACKEND_MACOS)
             if (mode_ == BackendMode::Simulation) {
                 // Minimal simulation placeholder
-                this->simulateMove(1, 0, /*deviceId=*/0);
+                {
+                    Event ev{};
+                    ev.type = MouseEventType::Move;
+                    ev.dx = 1; ev.dy = 0;
+                    std::lock_guard<std::mutex> lg(mutex_);
+                    queue_.push_back(ev);
+                }
+                cv_.notify_all();
                 std::this_thread::sleep_for(std::chrono::milliseconds(16));
             } else {
                 // OS-backed poll
@@ -307,7 +181,14 @@ private:
 #else
             // Non-macOS: provide a light simulation when requested; otherwise idle
             if (mode_ == BackendMode::Simulation) {
-                this->simulateMove(1, 0, /*deviceId=*/0);
+                {
+                    Event ev{};
+                    ev.type = MouseEventType::Move;
+                    ev.dx = 1; ev.dy = 0;
+                    std::lock_guard<std::mutex> lg(mutex_);
+                    queue_.push_back(ev);
+                }
+                cv_.notify_all();
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
 #endif
@@ -342,7 +223,11 @@ private:
                 ev.dx   = static_cast<int>(CGEventGetIntegerValueField(event, kCGMouseEventDeltaX));
                 ev.dy   = static_cast<int>(CGEventGetIntegerValueField(event, kCGMouseEventDeltaY));
                 ev.timestampNs = CGEventGetTimestamp(event);
-                self->simulateEvent(ev);
+                {
+                    std::lock_guard<std::mutex> lg(self->mutex_);
+                    self->queue_.push_back(ev);
+                }
+                self->cv_.notify_all();
                 break;
             }
             case kCGEventLeftMouseDown:
@@ -354,7 +239,11 @@ private:
                           : (type == kCGEventRightMouseDown) ? MouseButton::Right
                                                             : MouseButton::Middle;
                 ev.timestampNs = CGEventGetTimestamp(event);
-                self->simulateEvent(ev);
+                {
+                    std::lock_guard<std::mutex> lg(self->mutex_);
+                    self->queue_.push_back(ev);
+                }
+                self->cv_.notify_all();
                 break;
             }
             case kCGEventLeftMouseUp:
@@ -366,7 +255,11 @@ private:
                           : (type == kCGEventRightMouseUp) ? MouseButton::Right
                                                            : MouseButton::Middle;
                 ev.timestampNs = CGEventGetTimestamp(event);
-                self->simulateEvent(ev);
+                {
+                    std::lock_guard<std::mutex> lg(self->mutex_);
+                    self->queue_.push_back(ev);
+                }
+                self->cv_.notify_all();
                 break;
             }
             case kCGEventScrollWheel: {
@@ -375,7 +268,11 @@ private:
                 // Use vertical axis (Axis1); positive = up
                 ev.wheel = static_cast<int>(CGEventGetIntegerValueField(event, kCGScrollWheelEventDeltaAxis1));
                 ev.timestampNs = CGEventGetTimestamp(event);
-                self->simulateEvent(ev);
+                {
+                    std::lock_guard<std::mutex> lg(self->mutex_);
+                    self->queue_.push_back(ev);
+                }
+                self->cv_.notify_all();
                 break;
             }
             default:
@@ -387,6 +284,14 @@ private:
     // Ensure the event tap is attached to the calling thread's runloop.
     // If an existing tap is bound to a different runloop, rebind it here.
     void osInit_() {
+#if defined(PATHIO_BACKEND_MACOS)
+        // Only initialize OS hooks when explicitly enabled (backend = OS)
+        if (mode_ != BackendMode::OS) {
+            fallbackActive_.store(false, std::memory_order_release);
+            osReady_.store(false, std::memory_order_release);
+            return;
+        }
+
         CFRunLoopRef current = CFRunLoopGetCurrent();
         if (runLoopRef_ && runLoopRef_ != current) {
             osShutdown_();
@@ -396,24 +301,22 @@ private:
             return;
         }
 
-        CGEventMask mask =
-            CGEventMaskBit(kCGEventMouseMoved) |
-            CGEventMaskBit(kCGEventLeftMouseDown) | CGEventMaskBit(kCGEventLeftMouseUp) |
-            CGEventMaskBit(kCGEventRightMouseDown) | CGEventMaskBit(kCGEventRightMouseUp) |
-            CGEventMaskBit(kCGEventOtherMouseDown) | CGEventMaskBit(kCGEventOtherMouseUp) |
-            CGEventMaskBit(kCGEventLeftMouseDragged) | CGEventMaskBit(kCGEventRightMouseDragged) |
-            CGEventMaskBit(kCGEventOtherMouseDragged) |
-            CGEventMaskBit(kCGEventScrollWheel);
+        CGEventMask mask = CGEventMaskBit(kCGEventMouseMoved) | CGEventMaskBit(kCGEventLeftMouseDragged) |
+                           CGEventMaskBit(kCGEventRightMouseDragged) | CGEventMaskBit(kCGEventOtherMouseDragged) |
+                           CGEventMaskBit(kCGEventLeftMouseDown) | CGEventMaskBit(kCGEventLeftMouseUp) |
+                           CGEventMaskBit(kCGEventRightMouseDown) | CGEventMaskBit(kCGEventRightMouseUp) |
+                           CGEventMaskBit(kCGEventOtherMouseDown) | CGEventMaskBit(kCGEventOtherMouseUp) |
+                           CGEventMaskBit(kCGEventScrollWheel);
 
-        eventTap_ = CGEventTapCreate(kCGSessionEventTap,
+        eventTap_ = CGEventTapCreate(kCGHIDEventTap,
                                      kCGHeadInsertEventTap,
                                      kCGEventTapOptionDefault,
                                      mask,
                                      &MouseTapCallback,
                                      this);
         if (!eventTap_) {
-            // Could not create tap (permissions?). Use position polling fallback (no special perms)
-            fallbackActive_.store(true, std::memory_order_release);
+            // Could not create tap (permissions?). Fall back to no OS sourcing; tests still function via insert()
+            fallbackActive_.store(false, std::memory_order_release);
             return;
         } else {
             fallbackActive_.store(false, std::memory_order_release);
@@ -427,9 +330,13 @@ private:
             CGEventTapEnable(eventTap_, true);
             osReady_.store(true, std::memory_order_release);
         }
+#else
+        (void)path; // no-op on non-macOS builds
+#endif
     }
 
     void osShutdown_() {
+#if defined(PATHIO_BACKEND_MACOS)
         osReady_.store(false, std::memory_order_release);
         if (runLoopRef_ && eventSrc_) {
             CFRunLoopRemoveSource(runLoopRef_, eventSrc_, kCFRunLoopCommonModes);
@@ -446,27 +353,25 @@ private:
         runLoopRef_ = nullptr;
         // Disable fallback polling
         fallbackActive_.store(false, std::memory_order_release);
+#else
+        // no-op when OS backend is disabled
+#endif
     }
 
     // Poll once: service the current thread's runloop briefly
     void osPollOnce_() {
+#if defined(PATHIO_BACKEND_MACOS)
         if (!osReady_.load(std::memory_order_acquire)) {
             osInit_();
         }
+        if (mode_ != BackendMode::OS) {
+            // Do nothing when not in OS mode; tests and apps can use insert("/events") to feed data
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            return;
+        }
         if (fallbackActive_.load(std::memory_order_acquire)) {
-            // Permission-less fallback: poll global mouse location and emit AbsoluteMove
-            CGPoint p = CGEventGetLocation(nullptr);
-            // Throttle a bit
-            static int lastX = std::numeric_limits<int>::min();
-            static int lastY = std::numeric_limits<int>::min();
-            int xi = static_cast<int>(p.x);
-            int yi = static_cast<int>(p.y);
-            if (xi != lastX || yi != lastY) {
-                lastX = xi;
-                lastY = yi;
-                this->simulateAbsolute(xi, yi, /*deviceId=*/0);
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(8));
+            // Permission-less fallback disabled by default
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
             return;
         }
         if (runLoopRef_) {
@@ -475,6 +380,10 @@ private:
         } else {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+#else
+        // Non-macOS / backend disabled: no-op
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+#endif
     }
 
     // macOS event-tap state

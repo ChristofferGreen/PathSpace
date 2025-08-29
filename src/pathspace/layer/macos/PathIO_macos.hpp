@@ -17,12 +17,12 @@
 
 #ifndef PATHSPACE_SUPPRESS_DEPRECATED_BACKENDS
   #if defined(__clang__) || defined(__GNUC__) || defined(_MSC_VER)
-    #pragma message("PathSpace: 'layer/macos/PathIO_macos.hpp' is deprecated. Include 'layer/PathIOMouse.hpp' and/or 'layer/PathIOKeyboard.hpp' instead.")
+    #pragma message("PathSpace: 'layer/macos/PathIO_macos.hpp' is deprecated. Include 'layer/io/PathIOMouse.hpp' and/or 'layer/io/PathIOKeyboard.hpp' instead.")
   #endif
 #endif
 
-#include "layer/PathIOMouse.hpp"
-#include "layer/PathIOKeyboard.hpp"
+#include "layer/io/PathIOMouse.hpp"
+#include "layer/io/PathIOKeyboard.hpp"
 
 namespace SP {
 // Intentionally empty: no macOS-specific types are declared here anymore.

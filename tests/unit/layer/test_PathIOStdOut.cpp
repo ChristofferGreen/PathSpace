@@ -2,7 +2,7 @@
 #include <string>
 
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/layer/PathIOStdOut.hpp>
+#include <pathspace/layer/io/PathIOStdOut.hpp>
 
 using namespace SP;
 

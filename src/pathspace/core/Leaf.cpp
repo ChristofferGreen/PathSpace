@@ -239,7 +239,6 @@ auto Leaf::outAtNode(Node& node,
  
         if (child->hasData()) {
             std::optional<Error> res;
-            bool                 shouldErase = false;
             {
                 std::lock_guard<std::mutex> lg(child->payloadMutex);
                 if (child->data) {
@@ -248,8 +247,8 @@ auto Leaf::outAtNode(Node& node,
                         res = child->data->deserializePop(obj, inputMetadata);
                         if (!res.has_value()) {
                             if (child->data->empty()) {
+                                // Keep node; avoid erasure to prevent races under concurrency
                                 child->data.reset();
-                                shouldErase = !child->hasChildren() && !child->hasNestedSpace();
                             }
                         }
                     } else {
@@ -259,7 +258,7 @@ auto Leaf::outAtNode(Node& node,
                     sp_log("Leaf::outAtNode(final) child hasData()==true but data==nullptr", "Leaf");
                 }
             }
-            // Do not erase child nodes on empty; keep placeholder to avoid races under concurrency.
+            // If popped to empty, child may have been erased under payload lock.
             if (res.has_value()) {
                 sp_log("Leaf::outAtNode(final) deserialize failed code=" + std::to_string(static_cast<int>(res->code)) + " msg=" + res->message.value_or(""), "Leaf");
             } else {

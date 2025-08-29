@@ -2,25 +2,36 @@
 #include <string>
 
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/layer/PathIOMouse.hpp>
-#include <pathspace/layer/PathIOKeyboard.hpp>
+#include <pathspace/layer/io/PathIOMouse.hpp>
+#include <pathspace/layer/io/PathIOKeyboard.hpp>
 
 using namespace SP;
 
 TEST_CASE("PathIOMouse - Simulation queue basic operations") {
     PathIOMouse mice{PathIOMouse::BackendMode::Off};
 
-    CHECK(mice.pending() == 0);
-
-    // Enqueue a few events
-    mice.simulateMove(5, -3, /*deviceId=*/0);
-    mice.simulateButtonDown(MouseButton::Left, /*deviceId=*/0);
-    mice.simulateWheel(+2, /*deviceId=*/0);
-
-    CHECK(mice.pending() == 3);
+    // Enqueue a few events via insert at '/events'
+    {
+        PathIOMouse::Event ev{};
+        ev.type = MouseEventType::Move;
+        ev.dx = 5; ev.dy = -3;
+        mice.insert<"/events">(ev);
+    }
+    {
+        PathIOMouse::Event ev{};
+        ev.type = MouseEventType::ButtonDown;
+        ev.button = MouseButton::Left;
+        mice.insert<"/events">(ev);
+    }
+    {
+        PathIOMouse::Event ev{};
+        ev.type = MouseEventType::Wheel;
+        ev.wheel = +2;
+        mice.insert<"/events">(ev);
+    }
 
     // Peek should see the first event without popping
-    auto e1_opt = mice.peek();
+    auto e1_opt = mice.read<"/events", PathIOMouse::Event>();
     REQUIRE(e1_opt.has_value());
     auto e1 = *e1_opt;
     CHECK(e1.type == MouseEventType::Move);
@@ -28,37 +39,49 @@ TEST_CASE("PathIOMouse - Simulation queue basic operations") {
     CHECK(e1.dy == -3);
 
     // Pop events in order
-    auto p1 = mice.pop();
+    auto p1 = mice.take<"/events", PathIOMouse::Event>();
     REQUIRE(p1.has_value());
     CHECK(p1->type == MouseEventType::Move);
 
-    auto p2 = mice.pop();
+    auto p2 = mice.take<"/events", PathIOMouse::Event>();
     REQUIRE(p2.has_value());
     CHECK(p2->type == MouseEventType::ButtonDown);
     CHECK(p2->button == MouseButton::Left);
 
-    auto p3 = mice.pop();
+    auto p3 = mice.take<"/events", PathIOMouse::Event>();
     REQUIRE(p3.has_value());
     CHECK(p3->type == MouseEventType::Wheel);
     CHECK(p3->wheel == 2);
-
-    CHECK(mice.pending() == 0);
 }
 
 TEST_CASE("PathIOKeyboard - Simulation queue basic operations") {
     PathIOKeyboard kb{PathIOKeyboard::BackendMode::Off};
 
-    CHECK(kb.pending() == 0);
-
-    // Enqueue a few events
-    kb.simulateKeyDown(/*keycode=*/65, /*modifiers=*/Mod_Shift, /*deviceId=*/0);
-    kb.simulateText("A", /*modifiers=*/Mod_Shift, /*deviceId=*/0);
-    kb.simulateKeyUp(/*keycode=*/65, /*modifiers=*/Mod_Shift, /*deviceId=*/0);
-
-    CHECK(kb.pending() == 3);
+    // Enqueue a few events via insert at '/events'
+    {
+        PathIOKeyboard::Event ev{};
+        ev.type = KeyEventType::KeyDown;
+        ev.keycode = 65;
+        ev.modifiers = Mod_Shift;
+        kb.insert<"/events">(ev);
+    }
+    {
+        PathIOKeyboard::Event ev{};
+        ev.type = KeyEventType::Text;
+        ev.text = "A";
+        ev.modifiers = Mod_Shift;
+        kb.insert<"/events">(ev);
+    }
+    {
+        PathIOKeyboard::Event ev{};
+        ev.type = KeyEventType::KeyUp;
+        ev.keycode = 65;
+        ev.modifiers = Mod_Shift;
+        kb.insert<"/events">(ev);
+    }
 
     // Peek should see the first event without popping
-    auto e1_opt = kb.peek();
+    auto e1_opt = kb.read<"/events", PathIOKeyboard::Event>();
     REQUIRE(e1_opt.has_value());
     auto e1 = *e1_opt;
     CHECK(e1.type == KeyEventType::KeyDown);
@@ -66,20 +89,18 @@ TEST_CASE("PathIOKeyboard - Simulation queue basic operations") {
     CHECK((e1.modifiers & Mod_Shift) != 0u);
 
     // Pop events in order
-    auto p1 = kb.pop();
+    auto p1 = kb.take<"/events", PathIOKeyboard::Event>();
     REQUIRE(p1.has_value());
     CHECK(p1->type == KeyEventType::KeyDown);
 
-    auto p2 = kb.pop();
+    auto p2 = kb.take<"/events", PathIOKeyboard::Event>();
     REQUIRE(p2.has_value());
     CHECK(p2->type == KeyEventType::Text);
     CHECK(p2->text == "A");
 
-    auto p3 = kb.pop();
+    auto p3 = kb.take<"/events", PathIOKeyboard::Event>();
     REQUIRE(p3.has_value());
     CHECK(p3->type == KeyEventType::KeyUp);
-
-    CHECK(kb.pending() == 0);
 }
 
 TEST_CASE("PathIOMouse - Mounting under PathSpace") {
@@ -92,10 +113,14 @@ TEST_CASE("PathIOMouse - Mounting under PathSpace") {
     CHECK(ret.nbrSpacesInserted == 1);
 
     // We can still interact with the mounted device through the retained raw pointer.
-    raw->simulateMove(1, 2);
-    CHECK(raw->pending() == 1);
+    {
+        PathIOMouse::Event ev{};
+        ev.type = MouseEventType::Move;
+        ev.dx = 1; ev.dy = 2;
+        raw->insert<"/events">(ev);
+    }
 
-    // The nested provider currently doesn't implement out(); reads should fail gracefully.
+    // The nested provider currently doesn't implement out() for std::string; reads should fail gracefully.
     auto r = space.read<"/devices/mouse/events", std::string>();
     CHECK_FALSE(r.has_value());
 }
@@ -108,8 +133,13 @@ TEST_CASE("PathIOKeyboard - Mounting under PathSpace") {
     auto ret = space.insert<"/devices/keyboard">(std::move(dev));
     CHECK(ret.nbrSpacesInserted == 1);
 
-    raw->simulateKeyDown(65, Mod_Shift);
-    CHECK(raw->pending() == 1);
+    {
+        PathIOKeyboard::Event ev{};
+        ev.type = KeyEventType::KeyDown;
+        ev.keycode = 65;
+        ev.modifiers = Mod_Shift;
+        raw->insert<"/events">(ev);
+    }
 
     auto r = space.read<"/devices/keyboard/events", std::string>();
     CHECK_FALSE(r.has_value());
@@ -130,7 +160,12 @@ TEST_CASE("PathIOMouse - typed out()/take() semantics") {
 
     SUBCASE("Peek then Pop preserves and consumes in order") {
         // Enqueue one event
-        mice.simulateMove(3, 4);
+        {
+            PathIOMouse::Event ev{};
+            ev.type = MouseEventType::Move;
+            ev.dx = 3; ev.dy = 4;
+            mice.insert<"/events">(ev);
+        }
 
         // Peek (non-pop) should return the event without consuming it
         auto peek = mice.read<"/events", PathIOMouse::Event>();
@@ -138,13 +173,11 @@ TEST_CASE("PathIOMouse - typed out()/take() semantics") {
         CHECK(peek->type == MouseEventType::Move);
         CHECK(peek->dx == 3);
         CHECK(peek->dy == 4);
-        CHECK(mice.pending() == 1);
 
         // Pop should consume it
         auto popped = mice.take<"/events", PathIOMouse::Event>();
         REQUIRE(popped.has_value());
         CHECK(popped->type == MouseEventType::Move);
-        CHECK(mice.pending() == 0);
     }
 }
 
@@ -163,7 +196,13 @@ TEST_CASE("PathIOKeyboard - typed out()/take() semantics") {
 
     SUBCASE("Peek then Pop preserves and consumes in order") {
         // Enqueue a key down event
-        kb.simulateKeyDown(/*keycode=*/65, /*modifiers=*/Mod_Shift);
+        {
+            PathIOKeyboard::Event ev{};
+            ev.type = KeyEventType::KeyDown;
+            ev.keycode = 65;
+            ev.modifiers = Mod_Shift;
+            kb.insert<"/events">(ev);
+        }
 
         // Peek (non-pop)
         auto peek = kb.read<"/events", PathIOKeyboard::Event>();
@@ -171,12 +210,10 @@ TEST_CASE("PathIOKeyboard - typed out()/take() semantics") {
         CHECK(peek->type == KeyEventType::KeyDown);
         CHECK(peek->keycode == 65);
         CHECK((peek->modifiers & Mod_Shift) != 0u);
-        CHECK(kb.pending() == 1);
 
         // Pop
         auto popped = kb.take<"/events", PathIOKeyboard::Event>();
         REQUIRE(popped.has_value());
         CHECK(popped->type == KeyEventType::KeyDown);
-        CHECK(kb.pending() == 0);
     }
 }

@@ -39,28 +39,27 @@ class WatchRegistry {
 public:
     // Define TrieNode before Guard so Guard methods can access its members.
     struct TrieNode {
-        std::unordered_map<std::string, std::unique_ptr<TrieNode>> children;
+        std::unordered_map<std::string, std::shared_ptr<TrieNode>> children;
         std::condition_variable                                     cv;
         std::size_t                                                 waiters = 0;
     };
 
     struct Guard {
-        Guard(WatchRegistry& reg, std::string path, std::unique_lock<std::mutex> lock, TrieNode* node) noexcept
-            : reg_(reg), path_(std::move(path)), lock_(std::move(lock)), node_(node) {}
+        Guard(WatchRegistry& reg, std::string path, std::unique_lock<std::mutex> lock, std::shared_ptr<TrieNode> node) noexcept
+            : reg_(reg), path_(std::move(path)), lock_(std::move(lock)), node_(std::move(node)) {}
 
         Guard(Guard&& other) noexcept
             : reg_(other.reg_)
             , path_(std::move(other.path_))
             , lock_(std::move(other.lock_))
-            , node_(other.node_) {
-            other.node_ = nullptr;
+            , node_(std::move(other.node_)) {
         }
 
         Guard(Guard const&)            = delete;
         Guard& operator=(Guard const&) = delete;
 
         ~Guard() {
-            if (node_ != nullptr) {
+            if (node_) {
                 // Decrement waiter count under the existing unique_lock (avoid double-locking)
                 if (!lock_.owns_lock()) {
                     lock_.lock();
@@ -69,26 +68,26 @@ public:
                     --node_->waiters;
                 if (reg_.totalWaiters_ > 0)
                     --reg_.totalWaiters_;
-                node_ = nullptr;
+                node_.reset();
             }
         }
 
         // Untimed wait until notification (or spurious wakeup)
         void wait() {
-            if (node_ == nullptr) return;
+            if (!node_) return;
             node_->cv.wait(lock_);
         }
 
         // Timed wait until the specified deadline; returns std::cv_status
         auto wait_until(std::chrono::time_point<std::chrono::system_clock> deadline) -> std::cv_status {
-            if (node_ == nullptr) return std::cv_status::no_timeout;
+            if (!node_) return std::cv_status::no_timeout;
             return node_->cv.wait_until(lock_, deadline);
         }
 
         // Predicate-based wait_until; returns true if predicate satisfied
         template <typename Pred>
         bool wait_until(std::chrono::time_point<std::chrono::system_clock> deadline, Pred pred) {
-            if (node_ == nullptr) return true;
+            if (!node_) return true;
             return node_->cv.wait_until(lock_, deadline, std::move(pred));
         }
 
@@ -96,7 +95,7 @@ public:
         WatchRegistry&                reg_;
         std::string                   path_;
         std::unique_lock<std::mutex>  lock_;
-        TrieNode*                     node_;
+        std::shared_ptr<TrieNode>     node_;
     };
 
     WatchRegistry()  = default;
@@ -110,16 +109,16 @@ public:
     // Call wait()/wait_until(...) on the guard to block.
     Guard wait(std::string_view path) {
         std::unique_lock<std::mutex> lock(mutex_);
-        TrieNode* node = getOrCreateTrieNodeUnlocked(path);
+        auto node = getOrCreateTrieNodeUnlocked(path);
         ++node->waiters;
         ++totalWaiters_;
-        return Guard(*this, std::string(path), std::move(lock), node);
+        return Guard(*this, std::string(path), std::move(lock), std::move(node));
     }
 
     // Notify waiters registered on the exact (concrete) path.
     void notify(std::string_view path) {
         std::lock_guard<std::mutex> lg(mutex_);
-        TrieNode* node = findTrieNodeUnlocked(path);
+        auto node = findTrieNodeUnlocked(path);
         if (node) {
             node->cv.notify_all();
         }
@@ -167,41 +166,39 @@ private:
         // Special case: root path "/" maps to zero components; handle at callers.
     }
 
-    TrieNode* getOrCreateTrieNodeUnlocked(std::string_view path) {
-        if (!root_) root_ = std::make_unique<TrieNode>();
+    std::shared_ptr<TrieNode> getOrCreateTrieNodeUnlocked(std::string_view path) {
+        if (!root_) root_ = std::make_shared<TrieNode>();
         if (path == "/" || path.empty())
-            return root_.get();
+            return root_;
 
         scratch_.clear();
         splitPath_(path, scratch_);
-        TrieNode* node = root_.get();
+        std::shared_ptr<TrieNode> node = root_;
         for (auto const& comp : scratch_) {
             auto it = node->children.find(std::string(comp));
             if (it == node->children.end()) {
-                it = node->children.emplace(std::string(comp), std::make_unique<TrieNode>()).first;
+                it = node->children.emplace(std::string(comp), std::make_shared<TrieNode>()).first;
             }
-            node = it->second.get();
+            node = it->second;
         }
         return node;
     }
 
-    TrieNode* findTrieNodeUnlocked(std::string_view path) const {
+    std::shared_ptr<TrieNode> findTrieNodeUnlocked(std::string_view path) const {
         if (!root_) return nullptr;
         if (path == "/" || path.empty())
-            return root_.get();
-
-        // We need a non-const traversal; cast is safe under mutex_.
-        auto* node = const_cast<TrieNode*>(root_.get());
+            return root_;
 
         // Use a local scratch since this is const. We avoid storing per-instance mutable state.
         std::vector<std::string_view> comps;
         comps.reserve(8);
         splitPath_(path, comps);
+        std::shared_ptr<TrieNode> node = root_;
         for (auto const& comp : comps) {
             auto it = node->children.find(std::string(comp));
             if (it == node->children.end())
                 return nullptr;
-            node = it->second.get();
+            node = it->second;
         }
         return node;
     }
@@ -216,7 +213,7 @@ private:
 
     // Registry state
     mutable std::mutex                 mutex_;
-    std::unique_ptr<TrieNode>          root_;
+    std::shared_ptr<TrieNode>          root_;
     std::size_t                        totalWaiters_{0};
 
     // Reusable buffer to avoid reallocations during getOrCreate calls (protected by mutex_)

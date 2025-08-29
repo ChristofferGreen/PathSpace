@@ -6,6 +6,7 @@
 #include <iostream>
 #include <ranges>
 #include <sstream>
+#include <cstdlib>
 
 using namespace std::string_view_literals;
 
@@ -32,6 +33,67 @@ TaggedLogger& logger() {
 }
 
 TaggedLogger::TaggedLogger() : running(true), nextThreadNumber(0), loggingEnabled(false) {
+    // Configure defaults from environment
+    auto truthy = [](std::string_view v) {
+        return v == "1" || v == "true" || v == "TRUE" || v == "on" || v == "ON" || v == "yes" || v == "YES";
+    };
+
+    if (const char* env = std::getenv("PATHSPACE_LOG_ENABLED")) {
+        if (truthy(env)) {
+            loggingEnabled.store(true, std::memory_order_relaxed);
+        }
+    } else if (const char* env2 = std::getenv("PATHSPACE_LOG")) {
+        if (truthy(env2)) {
+            loggingEnabled.store(true, std::memory_order_relaxed);
+        }
+    }
+
+    // Optionally clear the default skip list first
+    if (const char* clearSkips = std::getenv("PATHSPACE_LOG_CLEAR_DEFAULT_SKIPS")) {
+        if (truthy(clearSkips)) {
+            skipTags.clear();
+        }
+    }
+
+    // Helper to iterate CSV tokens and apply a functor
+    auto foreach_token = [](const char* s, auto&& fn) {
+        std::string current;
+        for (const char* p = s; *p; ++p) {
+            if (*p == ',') {
+                size_t start = current.find_first_not_of(" \t");
+                size_t end   = current.find_last_not_of(" \t");
+                if (start != std::string::npos) {
+                    fn(current.substr(start, end - start + 1));
+                }
+                current.clear();
+            } else {
+                current.push_back(*p);
+            }
+        }
+        if (!current.empty()) {
+            size_t start = current.find_first_not_of(" \t");
+            size_t end   = current.find_last_not_of(" \t");
+            if (start != std::string::npos) {
+                fn(current.substr(start, end - start + 1));
+            }
+        }
+    };
+
+    // Comma-separated list of tags to enable (restrict output to these tags)
+    if (const char* en = std::getenv("PATHSPACE_LOG_ENABLE_TAGS"); en && *en) {
+        enabledTags.clear();
+        foreach_token(en, [this](std::string t) {
+            if (!t.empty()) enabledTags.insert(std::move(t));
+        });
+    }
+
+    // Comma-separated list of tags to add to the skip set
+    if (const char* sk = std::getenv("PATHSPACE_LOG_SKIP_TAGS"); sk && *sk) {
+        foreach_token(sk, [this](std::string t) {
+            if (!t.empty()) skipTags.insert(std::move(t));
+        });
+    }
+
     this->workerThread = std::thread(&TaggedLogger::processQueue, this);
 }
 
