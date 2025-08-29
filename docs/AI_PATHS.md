@@ -1,0 +1,125 @@
+# PathSpace — Standard Paths
+
+This file gathers the canonical path namespaces and layout conventions referenced across the docs. Paths are grouped by domain and use placeholders in angle brackets. Absolute paths begin with “/”. App-internal paths are app-relative (no leading slash) and must resolve within the app root. Sources: see docs/AI_ARCHITECTURE.md and docs/AI_Plan_SceneGraph_Renderer.md. Keep these in sync when path conventions change.
+
+Conventions:
+- Placeholders: <app>, <user>, <scene-id>, <renderer-id>, <surface-id>, <view-id>, <target-id>, <revision>, <id>, <rendererName>, <kind>, <name>
+- App-relative: no leading “/”; resolved against the app root
+- Target-id convention: prefer the consumer’s app-local path, e.g. `surfaces/<surface-id>` or `textures/<texture-name>`
+
+## 1) System-wide namespaces (absolute)
+
+- Application roots
+  - `/system/applications/<app>`
+  - `/users/<user>/system/applications/<app>`
+
+- Device IO
+  - Inputs (event queues):
+    - `/system/devices/in/pointer/default/events`
+    - `/system/devices/in/text/default/events`
+    - `/system/devices/in/gamepad/default/events`
+  - Discovery (recommended mount):
+    - `/system/devices/discovery`
+  - Haptics (outputs):
+    - `/system/devices/out/gamepad/<id>/rumble`
+
+## 2) Application subtree layout (app-relative)
+
+The following subtrees are standardized within each application root (one of the absolute roots above). See docs/AI_Plan_SceneGraph_Renderer.md for detailed semantics and responsibilities.
+
+- Scenes
+  - `scenes/<scene-id>/`
+    - `src/...` — authoring tree (mutable)
+    - `builds/<revision>/...` — immutable snapshots per revision
+    - `current_revision` — single-value pointer to latest published build
+
+- Renderers
+  - `renderers/<renderer-id>/`
+    - `caps`
+    - `targets/`
+      - `<target-id>/`
+        - `scene` — app-relative path to the scene to render
+        - `desc` — target descriptor (size/format/etc.)
+        - `desc/active` — optional mirror written by renderer
+        - `status/*` — e.g. `reconfiguring`, `device_lost`, `message`
+        - `settings/`
+          - `inbox` — queue of whole `RenderSettings` (producers write)
+          - `active` — optional mirror of adopted settings
+        - `render` — execution: render one frame for this target
+        - `output/`
+          - `v1/`
+            - `common/`
+              - `frameIndex`
+              - `revision`
+              - `renderMs`
+              - `lastError`
+            - `software/framebuffer` — pixels + stride
+            - `metal/texture` — opaque GPU handle + metadata
+            - `vulkan/image` — opaque GPU handle + metadata
+            - `html/dom`
+            - `html/commands`
+            - `html/assets/*`
+
+- Surfaces (offscreen targets)
+  - `surfaces/<surface-id>/`
+    - `renderer` — app-relative, e.g. `renderers/2d`
+    - `scene` — app-relative, e.g. `scenes/main`
+    - `render` — execution that coordinates with the renderer target
+
+- Windows (presenters)
+  - `windows/<window-id>/`
+    - `window` — platform-native window shell
+    - `views/<view-id>/`
+      - `surface` — app-relative reference to a surface
+      - `present` — execution to present the surface to the window
+
+## 3) Renderer target keys (final)
+
+Target base (app-relative; fully-qualified form prefixes with the app root, e.g. `<app-root>/renderers/...` where `<app-root>` is `/system/applications/<app>` or `/users/<user>/system/applications/<app>`):
+- `renderers/<rendererName>/targets/<kind>/<name>`
+- `kind ∈ { surfaces, textures, html }`
+
+Keys under a target:
+- `scene`
+- `desc`
+- `desc/active`
+- `status/*`
+- `settings/inbox`
+- `settings/active`
+- `render`
+- `output/v1/...` (see section 2)
+
+## 4) Scene build and publish protocol
+
+- Staging and publish:
+  - `scenes/<scene-id>/builds/<revision>.staging/...` — write here first
+  - Atomically rename to `scenes/<scene-id>/builds/<revision>`
+  - Atomically replace `scenes/<scene-id>/current_revision` with `<revision>`
+
+- Renderer adoption (per frame):
+  - Read `scenes/<scene-id>/current_revision`
+  - Traverse `scenes/<scene-id>/builds/<revision>/...`
+  - Write outputs under the target’s `output/v1/...`
+
+## 5) Output versioning
+
+- Target outputs are versioned at the path level:
+  - `output/v1/...` (current)
+  - Future incompatible changes should add `output/v2/...` and keep `output/v1` during a deprecation window.
+
+## 6) Fully-qualified examples
+
+- `/system/applications/notepad/scenes/main/current_revision`
+- `/system/applications/notepad/scenes/main/builds/42/...`
+- `/system/applications/notepad/renderers/2d/targets/surfaces/editor/settings/inbox`
+- `/system/applications/notepad/renderers/2d/targets/surfaces/editor/output/v1/common/frameIndex`
+- `/system/devices/in/pointer/default/events`
+- `/system/devices/out/gamepad/1/rumble`
+
+## 7) Glossary
+
+- App root: `/system/applications/<app>` or `/users/<user>/system/applications/<app>`
+- App-relative path: a path string without leading slash, resolved within the app root
+- Renderer target: a per-consumer subtree under `renderers/<id>/targets/<kind>/<name>`
+- Snapshot (scene): immutable render-ready representation under `scenes/<scene-id>/builds/<revision>`
+- Revision: monotonically increasing identifier referenced by `current_revision`
