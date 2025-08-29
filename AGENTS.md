@@ -1,16 +1,18 @@
+# AGENTS — Quick Workflow Guide
 Docs can be found in ./docs such as docs/AI_ARCHITECTURE.md which describe the code architecture of the project.
 
-Do not fix issues with tests failing by changing the tests.
-The entire test suite should finish in less than 10 seconds so a 20 second timeout will be enough to discover any hangs.
-Never run the test suite without timeout protections
-Always run the test suite to verify any code changes to make sure they work.
-Always run the test suite on loop with at least 15 iterations to find any multithreading issues.
+## Testing rules (must follow)
+- Do not fix failing tests by changing the tests.
+- Always run the full test suite after any code changes.
+- Always run the test suite on loop with at least 15 iterations to find multithreading issues.
+- Always run with timeouts: the full suite should finish in <10 seconds; a 20-second timeout is enough to detect hangs.
+- Never run the test suite without timeout protections.
 
 The sources of the project can be found in ./src
 Ask before committing and pushing changes.
 You do not need to ask to run tests.
 
-Contributing and PR workflow
+## Branching and PR workflow (AI quickstart)
 - Default branch (protected): master
 - Always work on topic branches:
   - feat/<topic> — features
@@ -42,7 +44,7 @@ Troubleshooting (common errors and fixes)
   - Fix: push first (git push -u origin <branch>) or omit --no-push
 - PR shows unrelated older commits
   - Fix: create a clean branch from origin/master and cherry-pick:
-    - git checkout -b docs<<topic>-clean origin/master
+    - git checkout -b docs/<topic>-clean origin/master
     - git cherry-pick <commit_sha1> [<commit_sha2> ...]
     - git push -u origin docs/<topic>-clean
     - ./scripts/create_pr.sh -b master -t "docs(<topic>): concise title"
