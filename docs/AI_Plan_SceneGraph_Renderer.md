@@ -19,7 +19,7 @@ Applications are mounted under:
 - System-owned: `/system/applications/<app>`
 - User-owned: `/users/<user>/system/applications/<app>`
 
-Everything an application needs is a subtree below the app root. No cross-app sharing of surfaces or renderers. All references are app-relative (no leading slash) and must resolve within the app root.
+Everything an application needs is a subtree below the app root. No cross-app sharing of surfaces or renderers. All references are app-relative (no leading slash) and must resolve within the app root. See docs/AI_PATHS.md for the canonical path namespaces and layout conventions.
 
 ## App-internal layout (standardized)
 

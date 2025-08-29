@@ -41,6 +41,7 @@ Performance notes:
 
 See also:
 - `docs/AI_Plan_SceneGraph_Renderer.md` for the broader rendering plan and target I/O layout. If snapshot semantics change, update both documents in the same PR per `.rules`.
+- `docs/AI_PATHS.md` for the canonical path namespaces and layout conventions; update it alongside changes to path usage and target I/O layout.
 
 
 AI autonomy guideline:
@@ -386,7 +387,7 @@ Device IO is provided by path-agnostic layers that can be mounted anywhere in a 
 
 - Keep `PathIO` base and current providers (mouse, keyboard, pointer mixer, stdout, discovery, gamepad).
 - Event providers deliver typed events via `out()`/`take()`; blocking semantics are controlled by `Out{doBlock, timeout}` and pop-vs-peek by `Out.doPop`.
-- Canonical device namespace (aligned with SceneGraph plan):
+- Canonical device namespace (aligned with SceneGraph plan; see `docs/AI_PATHS.md`):
   - Inputs:
     - `/system/devices/in/pointer/default/events`
     - `/system/devices/in/text/default/events`
