@@ -27,14 +27,14 @@ Helpful scripts in `scripts/`:
 
 ## Branching and workflow
 
-- Default branch (protected): `master` (or `main`; the PR script auto-detects)
+- Default branch (protected): `master`
 - Work on topic branches:
   - `feat/<topic>` — features
   - `fix/<topic>` — bug fixes
   - `perf/<topic>` — performance improvements
   - `refactor/<topic>` — internal refactors
   - `docs/<topic>` — documentation-only changes
-- Avoid direct pushes to the default branch (`master`/`main`). Open a PR from your topic branch into the default branch. Push your topic branch first with `git push -u origin <branch>` (this sets the correct upstream to `origin/<branch>`), then run `./scripts/create_pr.sh` to automatically create the PR (via `gh` or `GH_TOKEN`) and open it in your browser.
+- Avoid direct pushes to `master`. Open a PR from your topic branch into `master`. Push your topic branch first with `git push -u origin <branch>` (this sets the correct upstream to `origin/<branch>`), then run `./scripts/create_pr.sh` to automatically create the PR (via `gh` or `GH_TOKEN`) and open it in your browser.
 - Contributor policy: Ask before committing and pushing changes. You do not need to ask to run tests.
 
 PR creation gotchas (to avoid upstream mistakes):
@@ -42,7 +42,7 @@ PR creation gotchas (to avoid upstream mistakes):
 - Do not commit on the default branch. If you did:
   - Create a topic branch from the default branch: `git checkout -b docs/<topic>`
   - Move the commit off the default branch: on the default branch, run `git reset --hard origin/<default>`; keep your work on the topic branch. Alternatively, cherry-pick onto the topic branch: `git cherry-pick <commit_sha>`.
-- If `./scripts/create_pr.sh` warns “You are on 'master'” (or 'main'), create a topic branch and push it before re-running the script.
+- If `./scripts/create_pr.sh` warns “You are on 'master'”, create a topic branch and push it before re-running the script.
 - If GitHub reports “No commits between base and head” or “Head sha can’t be blank”, push your topic branch (or fix its upstream) and re-run the script.
 
 Recommended merge strategy:
@@ -107,7 +107,7 @@ Use the helper script (auto-push, create PR, open browser):
 
 - `./scripts/create_pr.sh`
 - Options:
-  - Base branch: `-b main` (default attempts to detect)
+  - Base branch: `-b master` (default attempts to detect)
   - Title: `-t "fix(iterator): …"`
   - Draft: `--draft`
   - Reviewers/assignees/labels (when using `gh`): `-r`, `-a`, `-l`
@@ -125,7 +125,7 @@ What is `gh` (GitHub CLI) and how to set it up:
 
 Handy `gh` commands (run from your topic branch):
 - Create a PR with title/body and base:
-  - `gh pr create --title "fix(core): iterator bounds" --body "…" --base main`
+  - `gh pr create --title "fix(core): iterator bounds" --body "…" --base master`
 - Draft PR:
   - `gh pr create --draft`
 - Add labels/reviewers/assignees:
