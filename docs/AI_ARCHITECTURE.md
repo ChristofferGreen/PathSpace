@@ -5,19 +5,90 @@ See also:
  - `docs/AI_PATHS.md` for the canonical path namespaces and layout conventions; update it alongside changes to path usage and target I/O layout.
 
 
-AI autonomy guideline:
-- The AI should complete tasks end-to-end without asking the user to run commands or finish steps. Use the provided scripts and tooling to build, test, and validate changes (e.g., `./scripts/compile.sh --clean --test --loop=N`).
-- Only defer to the user when blocked by missing credentials, unavailable external services, or ambiguous requirements that cannot be resolved from the repository context.
-- Prefer making conservative, reversible changes; keep edits minimal and focused, and ensure all references and paths are valid.
+## Contributing to PathSpace
 
+This section consolidates the contributor workflow and PR creation guidance. The default branch is master.
 
+Prerequisites
+- C++23-capable toolchain (Clang/GCC) and CMake 3.15+
+- Ninja (recommended)
+- Optional: GitHub CLI (gh) authenticated (gh auth login)
 
-AI pull request workflow (to avoid stale commits and noisy PR history):
-- Always branch from the current default branch (usually `master`):
-  - git fetch origin
-  - git checkout -b feat/<short-topic> origin/master
-- Keep your branch up to date during the work:
-  - git fetch origin
+Branching and workflow
+- Default branch (protected): master
+- Always work on topic branches:
+  - feat/<topic> — features
+  - fix/<topic> — bug fixes
+  - perf/<topic> — performance work
+  - refactor/<topic> — internal refactors
+  - docs/<topic> — documentation-only changes
+- Never commit directly on master. Open PRs from your topic branch into master.
+
+PR quickstart (always to master)
+1) Create and push a topic branch:
+   - git fetch origin
+   - git checkout -b docs/<topic> origin/master
+   - git push -u origin docs/<topic>   # sets upstream to origin/<branch>
+2) Create the PR:
+   - ./scripts/create_pr.sh -b master -t "docs(<topic>): concise title"
+   - The script will create the PR via gh/GH_TOKEN, or open the compare page if not available
+
+Troubleshooting (common errors and fixes)
+- Error: “You are on 'master'. Create a topic branch before creating a PR.”
+  - Fix: git checkout -b docs/<topic> origin/master; git push -u origin docs/<topic>; re-run ./scripts/create_pr.sh -b master
+- Error: “Head sha can't be blank / Base sha can't be blank / No commits between master and <branch> / Head ref must be a branch”
+  - Cause: branch not pushed or wrong upstream; base not set to master; or branch has no new commits
+  - Fix:
+    - Push and set upstream: git push -u origin <branch>
+    - Ensure base is master: ./scripts/create_pr.sh -b master ...
+    - Verify branch is ahead: git log --oneline origin/master..HEAD
+- Error: “Branch '<branch>' has no upstream and --no-push was set. PR creation may fail.”
+  - Fix: push first (git push -u origin <branch>) or omit --no-push
+- PR shows unrelated older commits
+  - Fix: create a clean branch from origin/master and cherry-pick:
+    - git checkout -b docs/<topic>-clean origin/master
+    - git cherry-pick <commit_sha1> [<commit_sha2> ...]
+    - git push -u origin docs/<topic>-clean
+    - ./scripts/create_pr.sh -b master -t "docs(<topic>): concise title"
+
+Local development loop
+- Build:
+  - ./scripts/compile.sh
+  - Full rebuild: ./scripts/compile.sh --clean
+  - Specific target: ./scripts/compile.sh -t PathSpaceTests
+- Tests:
+  - Quick: ./build/tests/PathSpaceTests
+  - Helper: ./scripts/compile.sh --test
+  - Loop to surface rare races: ./scripts/compile.sh --loop[=N] (default N=15)
+- Update compilation DB:
+  - ./scripts/update_compile_commands.sh
+
+Local pre-push checks
+- Install: ./init-git.sh (installs scripts/git-hooks/pre-push)
+- Useful toggles:
+  - SKIP_LOOP_TESTS=1 — skip looped tests
+  - SKIP_EXAMPLE=1 — skip example smoke test
+  - BUILD_TYPE=Release|Debug — change build type for the hook run
+
+Creating a Pull Request (CLI)
+- ./scripts/create_pr.sh -b master -t "fix(core): iterator bounds"
+- Options:
+  - --draft, -r reviewers, -a assignees, -l labels
+- gh equivalents:
+  - gh pr create --title "fix(core): iterator bounds" --body "…" --base master
+  - gh pr view --web
+
+Commit message guidelines (Conventional Commits)
+- Format: type(scope): imperative subject
+- Types: feat, fix, perf, refactor, docs, test, chore, build, ci, revert, style
+- Scopes (suggestions): core, path, layer, task, type, tests, docs, build, scripts, log
+- Subject: ≤ 80 chars, imperative mood; body explains what and why; wrap at 80
+- Examples:
+  - fix(iterator): rebind views/iterators to local storage for safe copies
+  - perf(waitmap): reduce notify scan with concrete-path fast path
+  - docs(overview): document compile_commands.json refresh workflow
+
+Note: This Contributing section supersedes previous AI-specific workflow/guideline snippets. Keep this doc in sync with scripts/create_pr.sh behavior.
   - git rebase origin/master
 - If you accidentally started from an old topic branch, create a clean branch and cherry-pick only your commits:
   - git checkout -b fix/<topic>-clean origin/master
