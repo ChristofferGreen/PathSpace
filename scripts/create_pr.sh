@@ -105,21 +105,12 @@ get_repo_slug() {
 }
 
 default_base_branch() {
-  # Prefer 'main', else 'master', else first remote HEAD target
-  if git ls-remote --exit-code --heads origin main >/dev/null 2>&1; then
-    echo "main"
-  elif git ls-remote --exit-code --heads origin master >/dev/null 2>&1; then
+  # Default to 'master' (repository standard). Validate it exists on origin; otherwise fall back to origin/HEAD.
+  if git ls-remote --exit-code --heads origin master >/dev/null 2>&1; then
     echo "master"
   else
-    # Fallback to local branch named main or master if present
-    if git show-ref --verify --quiet refs/heads/main; then
-      echo "main"
-    elif git show-ref --verify --quiet refs/heads/master; then
-      echo "master"
-    else
-      # Last resort: resolve origin/HEAD target
-      git remote show origin 2>/dev/null | awk '/HEAD branch/ {print $NF}' | head -n1
-    fi
+    # Last resort: resolve origin/HEAD target
+    git remote show origin 2>/dev/null | awk '/HEAD branch/ {print $NF}' | head -n1
   fi
 }
 
@@ -131,8 +122,8 @@ ensure_branch_pushed() {
     return 0
   fi
   if [[ "$no_push" == "1" ]]; then
-    warn "Branch '$branch' has no upstream and --no-push was set. PR creation may fail."
-    return 0
+    err "Branch '$branch' has no upstream and --no-push was set. Push with: git push -u origin \"$branch\""
+    exit 1
   fi
   say "Pushing current branch '$branch' to origin (setting upstream)..."
   git push -u origin "$branch"
@@ -214,6 +205,20 @@ REPO_SLUG="$(get_repo_slug)"
 say "Repository: $REPO_SLUG"
 say "Base branch: $BASE"
 say "Head branch: $BRANCH"
+
+# Validate base exists on origin
+if ! git ls-remote --exit-code --heads origin "$BASE" >/dev/null 2>&1; then
+  err "Base branch '$BASE' not found on origin. Use -b master or run: git fetch origin"
+  exit 1
+fi
+
+# Ensure there are commits between base and HEAD (avoid 'No commits between base and head')
+if git merge-base --is-ancestor "$BASE" HEAD 2>/dev/null; then
+  if [[ "$(git rev-list --count "${BASE}..HEAD")" -eq 0 ]]; then
+    err "No commits between '$BASE' and HEAD. Create or cherry-pick commits onto your topic branch before creating a PR."
+    exit 1
+  fi
+fi
 
 # Push branch if needed
 ensure_branch_pushed "$BRANCH" "$NO_PUSH"
