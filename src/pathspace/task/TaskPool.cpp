@@ -5,8 +5,11 @@
 namespace SP {
 
 TaskPool& TaskPool::Instance() {
-    static TaskPool instance;
-    return instance;
+    // Leak-on-exit singleton to avoid destructor-order and atexit races in heavy looped runs
+    static TaskPool* instance = []() -> TaskPool* {
+        return new TaskPool();
+    }();
+    return *instance;
 }
 
 TaskPool::TaskPool(size_t threadCount) {

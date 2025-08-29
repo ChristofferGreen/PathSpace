@@ -36,6 +36,7 @@ public:
 
     auto setThreadName(const std::string& name) -> void;
     auto setLoggingEnabled(bool enabled) -> void;
+    auto isEnabled() const -> bool { return loggingEnabled.load(std::memory_order_relaxed); }
 
     static std::mutex coutMutex;
 
@@ -77,7 +78,7 @@ auto TaggedLogger::log_impl(const std::string& message, const std::source_locati
     }
 }
 
-#define sp_log(message, ...) ::SP::logger().log_impl(message, std::source_location::current(), ##__VA_ARGS__)
+#define sp_log(message, ...) do { auto& __sp_logger = ::SP::logger(); if (__sp_logger.isEnabled()) { __sp_logger.log_impl((message), std::source_location::current(), ##__VA_ARGS__); } } while(0)
 
 void set_thread_name(const std::string& name);
 void set_logging_enabled(bool enabled);

@@ -8,10 +8,24 @@
 namespace SP {
 
 WaitMap::Guard::Guard(WaitMap& waitMap, std::string_view path, std::unique_lock<std::mutex> lock)
-    : waitMap(waitMap), path(path), lock(std::move(lock)) {}
+    : waitMap(waitMap), path(path), lock(std::move(lock)) {
+    // Cache CV pointer to avoid repeated lookups during wait slices
+    cvPtr = &this->waitMap.getCv(this->path);
+    // Track active waiter immediately to close race with clear()
+    if (!counted) {
+        counted = true;
+        this->waitMap.activeWaiterCount.fetch_add(1, std::memory_order_acq_rel);
+    }
+}
 
 auto WaitMap::Guard::wait_until(std::chrono::time_point<std::chrono::system_clock> timeout) -> std::cv_status {
-    return this->waitMap.getCv(path).wait_until(lock, timeout);
+    if (!cvPtr) cvPtr = &this->waitMap.getCv(this->path);
+    // Begin waiter tracking on first wait call in this Guard
+    if (!counted) {
+        counted = true;
+        this->waitMap.activeWaiterCount.fetch_add(1, std::memory_order_acq_rel);
+    }
+    return cvPtr->wait_until(lock, timeout);
 }
 
 auto WaitMap::wait(std::string_view path) -> Guard {
@@ -80,115 +94,175 @@ static WaitMap::TrieNode* findTrieNode(std::unique_ptr<WaitMap::TrieNode> const&
 auto WaitMap::notify(std::string_view path) -> void {
     sp_log("notify(glob view): " + std::string(path) + " concrete=" + std::to_string(is_concrete(path)), "WaitMap");
 
-    std::lock_guard<std::mutex> lock(mutex);
+    // Gather CVs to notify without holding the mutex during notify_all
+    std::vector<std::condition_variable*> toNotify;
+    std::vector<std::condition_variable*> toNotifyGlob;
 
-    sp_log("Currently registered waiters:", "WaitMap");
-    for (auto& [rp, _] : this->cvMap) {
-        sp_log("  - " + rp, "WaitMap");
-    }
+    {
+        std::lock_guard<std::mutex> lock(mutex);
 
-    if (is_concrete(path)) {
-        // Notify exact concrete waiters (cvMap) if present
-        auto it = cvMap.find(path);
-        if (it != cvMap.end()) {
-            sp_log("Found matching concrete path", "WaitMap");
-            it->second.notify_all();
-        }
-
-        // Notify any glob waiters that match this concrete path
-        for (auto& [pattern, cv] : this->globWaiters) {
-            if (is_glob(pattern) && match_paths(pattern, path)) {
-                sp_log("Found matching glob waiter: " + pattern, "WaitMap");
-                cv.notify_all();
+        if (is_concrete(path)) {
+            // Notify trie node CV for concrete path
+            if (auto* node = findTrieNode(this->root, path)) {
+                sp_log("Found matching concrete path", "WaitMap");
+                toNotify.push_back(&node->cv);
             }
-        }
-        return;
-    }
+            // Also notify compatibility cvMap entry if present
 
-    // Glob notify: find all concrete registered paths that match
-    if (!this->root) {
-        sp_log("No trie root; nothing to notify for glob", "WaitMap");
-        return;
-    }
 
-    std::function<void(TrieNode*, std::string&)> dfs;
-    dfs = [&](TrieNode* node, std::string& current) {
-        // Only notify exact registered concrete paths present in cvMap
-        if (!current.empty() && current[0] != '/')
-            current.insert(current.begin(), '/');
-
-        // If this exact current path is registered and matches the glob, notify
-        if (!current.empty()) {
-            if (match_paths(path, current)) {
-                auto it = cvMap.find(current);
-                if (it != cvMap.end()) {
-                    sp_log("Notifying waiters for matching path: " + current, "WaitMap");
-                    it->second.notify_all();
+            // Notify any glob waiters that match this concrete path
+            for (auto& [pattern, cv] : this->globWaiters) {
+                if (is_glob(pattern) && match_paths(pattern, path)) {
+                    sp_log("Found matching glob waiter: " + pattern, "WaitMap");
+                    toNotifyGlob.push_back(&cv);
                 }
             }
-        }
+        } else {
+            // Glob notify: find all concrete registered paths that match
+            if (!this->root) {
+                sp_log("No trie root; nothing to notify for glob", "WaitMap");
+            } else {
+                std::function<void(TrieNode*, std::string&)> dfs;
+                dfs = [&](TrieNode* node, std::string& current) {
+                    // Only notify exact registered concrete paths present in cvMap
+                    if (!current.empty() && current[0] != '/')
+                        current.insert(current.begin(), '/');
 
-        // Continue traversal
-        for (auto& [name, childPtr] : node->children) {
-            size_t oldSize = current.size();
-            if (current == "/" || current.empty())
-                current = "/" + name;
-            else
-                current += "/" + name;
-            dfs(childPtr.get(), current);
-            current.resize(oldSize);
-        }
-    };
+                    // If this exact current path is registered and matches the glob, schedule notify
+                    if (!current.empty()) {
+                        if (match_paths(path, current)) {
+                            sp_log("Queueing notify for matching path: " + current, "WaitMap");
+                            toNotify.push_back(&node->cv);
 
-    std::string prefix;
-    // Root represents "/", ensure we also consider "/" itself when matching
-    if (path == "/" || match_paths(path, "/")) {
-        auto it = cvMap.find("/");
-        if (it != cvMap.end()) {
-            sp_log("Notifying waiters for matching root path: /", "WaitMap");
-            it->second.notify_all();
+                        }
+                    }
+
+                    // Continue traversal
+                    for (auto& [name, childPtr] : node->children) {
+                        size_t oldSize = current.size();
+                        if (current == "/" || current.empty())
+                            current = "/" + name;
+                        else
+                            current += "/" + name;
+                        dfs(childPtr.get(), current);
+                        current.resize(oldSize);
+                    }
+                };
+
+                std::string prefix;
+                // Root represents "/", ensure we also consider "/" itself when matching
+                if (path == "/" || match_paths(path, "/")) {
+                    // Notify root node CV if present
+                    if (this->root) {
+                        sp_log("Queueing notify for matching root path: /", "WaitMap");
+                        toNotify.push_back(&this->root->cv);
+                    }
+                    // Also notify compatibility cvMap entry if present
+
+                }
+                dfs(this->root.get(), prefix);
+            }
         }
+    } // release mutex before notifying
+
+    for (auto* cv : toNotify) {
+        cv->notify_all();
     }
-    dfs(this->root.get(), prefix);
+    for (auto* cv : toNotifyGlob) {
+        cv->notify_all();
+    }
 }
 
 auto WaitMap::notifyAll() -> void {
-    sp_log("notifyAll called", "WaitMap");
-    std::lock_guard<std::mutex> lock(mutex);
 
-    // Notify all concrete waiters
-    for (auto& [path, cv] : this->cvMap) {
-        sp_log("Notifying path: " + path, "WaitMap");
-        cv.notify_all();
-    }
+    std::vector<std::condition_variable*> toNotify;
 
-    // Notify all glob waiters
-    for (auto& [pattern, cv] : this->globWaiters) {
-        sp_log("Notifying glob waiter: " + pattern, "WaitMap");
-        cv.notify_all();
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+
+        // Notify all trie-based concrete waiters
+        if (this->root) {
+            std::function<void(TrieNode*)> dfsNotify = [&](TrieNode* node) {
+                if (!node) return;
+                toNotify.push_back(&node->cv);
+                for (auto& [_, child] : node->children) {
+                    dfsNotify(child.get());
+                }
+            };
+            dfsNotify(this->root.get());
+        }
+
+
+
+        // Notify all glob waiters
+        for (auto& [pattern, cv] : this->globWaiters) {
+            toNotify.push_back(&cv);
+        }
+    } // release mutex
+
+    for (auto* cv : toNotify) {
+        cv->notify_all();
     }
 }
 
 auto WaitMap::clear() -> void {
-    std::lock_guard<std::mutex> lock(mutex);
-    this->cvMap.clear();
-    this->globWaiters.clear();
-    this->root.reset();
+    // Step 1: wake all current waiters so they can exit waits before we destroy CVs
+    std::vector<std::condition_variable*> toNotify;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+
+        // Gather all trie-based CVs
+        if (this->root) {
+            std::function<void(TrieNode*)> dfsNotify = [&](TrieNode* node) {
+                if (!node) return;
+                toNotify.push_back(&node->cv);
+                for (auto& [_, child] : node->children) {
+                    dfsNotify(child.get());
+                }
+            };
+            dfsNotify(this->root.get());
+        }
+
+        // Gather all glob CVs
+        for (auto& [_, cv] : this->globWaiters) {
+            toNotify.push_back(&cv);
+        }
+    } // release registry lock before notifying
+
+    for (auto* cv : toNotify) {
+        cv->notify_all();
+    }
+
+    // Step 2: wait for any in-flight waiters to drain so no one is waiting on CVs we are about to destroy
+    {
+        std::unique_lock<std::mutex> lk(this->activeWaitersMutex);
+        this->noActiveWaitersCv.wait(lk, [this] {
+            return this->activeWaiterCount.load(std::memory_order_acquire) == 0;
+        });
+    }
+
+    // Step 3: clear all waiter structures safely
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        this->globWaiters.clear();
+        this->root.reset();
+    }
 }
 
 auto WaitMap::getCv(std::string_view path) -> std::condition_variable& {
-    // Glob waiters: keep a separate registry
+    // Glob waiters: keep a separate registry (note: map CV is used only for glob waits)
     if (is_glob(path)) {
         return this->globWaiters[std::string(path)];
     }
 
-    // Concrete waiters: ensure trie node exists and return cv from flat registry for compatibility
-    // Maintain cvMap for hasWaiters() and for waiter CVs; also mirror into trie for efficient glob notify.
+    // Concrete waiters: ensure trie node exists and return its CV for stable storage
     if (!this->root)
         this->root = std::make_unique<TrieNode>();
-    (void)getOrCreateTrieNode(this->root, path);
+    TrieNode* node = getOrCreateTrieNode(this->root, path);
 
-    return this->cvMap[std::string(path)];
+
+
+    return node->cv;
 }
 
 } // namespace SP

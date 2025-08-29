@@ -7,8 +7,8 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/layer/PathAlias.hpp>
-#include <pathspace/layer/PathIOMouse.hpp>
-#include <pathspace/layer/PathIOPointerMixer.hpp>
+#include <pathspace/layer/io/PathIOMouse.hpp>
+#include <pathspace/layer/io/PathIOPointerMixer.hpp>
 
 using namespace SP;
 using namespace std::chrono_literals;
@@ -100,7 +100,7 @@ TEST_CASE("Composition: mouse -> mixer -> alias (user-level wiring, providers ar
                         break;
                 }
                 pev.timestampNs = 0; // not relevant for this test
-                mixerRaw->simulateEvent(pev);
+                mixerRaw->insert<"/events">(pev);
             } else {
                 // No event available; small backoff
                 std::this_thread::sleep_for(2ms);
@@ -119,8 +119,14 @@ TEST_CASE("Composition: mouse -> mixer -> alias (user-level wiring, providers ar
     }
 
     SUBCASE("Mouse move is visible through alias default pointer path") {
-        // Simulate a relative move on the mouse
-        mouseRaw->simulateMove(+5, -3);
+        // Produce a relative move on the mouse
+        {
+            PathIOMouse::Event ev{};
+            ev.type = MouseEventType::Move;
+            ev.dx = +5;
+            ev.dy = -3;
+            mouseRaw->insert<"/events">(ev);
+        }
 
         // Read via the alias (forwarded to mixer). We poll non-blocking to avoid depending on notify.
         auto evOpt = poll_read<PathIOPointerMixer::Event>(*root, "/system/default-pointer/events", 200ms);
@@ -133,10 +139,22 @@ TEST_CASE("Composition: mouse -> mixer -> alias (user-level wiring, providers ar
 
     SUBCASE("Multiple sources can feed the mixer; alias exposes the merged stream") {
         // Source 0: mouse via forwarder
-        mouseRaw->simulateButtonDown(MouseButton::Left, /*deviceId=*/0);
+        {
+            PathIOMouse::Event ev{};
+            ev.type = MouseEventType::ButtonDown;
+            ev.button = MouseButton::Left;
+            mouseRaw->insert<"/events">(ev);
+        }
 
         // Source 1: another pointer device feeding directly into the mixer (e.g., tablet)
-        mixerRaw->simulateAbsolute(100, 200, /*sourceId=*/1);
+        {
+            PathIOPointerMixer::Event ev{};
+            ev.type = PathIOPointerMixer::PointerEventType::AbsoluteMove;
+            ev.x = 100;
+            ev.y = 200;
+            ev.sourceId = 1;
+            mixerRaw->insert<"/events">(ev);
+        }
 
         // Read 2 events from the alias; order is by arrival into the mixer
         std::vector<PathIOPointerMixer::Event> got;
@@ -169,7 +187,13 @@ TEST_CASE("Composition: mouse -> mixer -> alias (user-level wiring, providers ar
         aliasRaw->setTargetPrefix("/aggregate/pointer2");
 
         // Feed an event into the new mixer directly (user wiring could be updated similarly)
-        mixer2Raw->simulateWheel(+3, /*sourceId=*/2);
+        {
+            PathIOPointerMixer::Event ev{};
+            ev.type = PathIOPointerMixer::PointerEventType::Wheel;
+            ev.wheel = +3;
+            ev.sourceId = 2;
+            mixer2Raw->insert<"/events">(ev);
+        }
 
         // Read from the alias; should reflect the new target
         auto evOpt = poll_read<PathIOPointerMixer::Event>(*root, "/system/default-pointer/events", 250ms);

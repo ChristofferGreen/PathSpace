@@ -140,25 +140,7 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
                     return ret;
                 }
                 sp_log("Lazy submission accepted by executor", "NodeData");
-
-                // Briefly wait for lazy tasks to complete to smooth races between notify and wait registration.
-                // Increase to cover short user sleeps in test tasks (e.g., 50ms) to ensure prompt readiness.
-                auto startLazy = std::chrono::steady_clock::now();
-                auto untilLazy = startLazy + std::chrono::milliseconds(60);
-                while (std::chrono::steady_clock::now() < untilLazy) {
-                    if (task->isCompleted()) {
-                        sp_log("Lazy task completed during brief wait; copying result", "NodeData");
-                        task->resultCopy(obj);
-                        if (doPop) {
-                            this->tasks.pop_front();
-                            if (!this->futures.empty())
-                                this->futures.pop_front();
-                            popType();
-                        }
-                        return std::nullopt;
-                    }
-                    std::this_thread::yield();
-                }
+                // Removed busy-wait for lazy tasks; rely on external wait/notify to observe readiness.
             } else {
                 sp_log("Lazy submission failed: task has no preferred executor", "NodeData");
                 return Error{Error::Code::UnknownError, "No executor available for lazy task submission"};
@@ -198,28 +180,7 @@ auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadat
         return std::nullopt;
     }
 
-    // Briefly wait for immediate tasks to complete to smooth races between notify and wait registration.
-    // This avoids spurious "not completed" when the task is finishing imminently.
-    if (task->category() == ExecutionCategory::Immediate) {
-        sp_log("Immediate task not completed yet; briefly waiting for completion", "NodeData");
-        auto start = std::chrono::steady_clock::now();
-        auto until = start + std::chrono::milliseconds(10);
-        while (std::chrono::steady_clock::now() < until) {
-            if (task->isCompleted()) {
-                sp_log("Immediate task completed during brief wait; copying result", "NodeData");
-                task->resultCopy(obj);
-                // Only pop on explicit extract (doPop == true)
-                if (doPop) {
-                    this->tasks.pop_front();
-                    if (!this->futures.empty())
-                        this->futures.pop_front();
-                    popType();
-                }
-                return std::nullopt;
-            }
-            std::this_thread::yield();
-        }
-    }
+    // Removed busy-wait for immediate tasks; rely on Future readiness and PathSpace::out blocking loop.
 
     sp_log("Task not yet completed; returning non-ready status to caller", "NodeData");
     return Error{Error::Code::UnknownError, "Task is not completed"};

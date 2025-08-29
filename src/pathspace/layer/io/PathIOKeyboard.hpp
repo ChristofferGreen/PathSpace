@@ -1,5 +1,5 @@
 #pragma once
-#include "layer/PathIO.hpp"
+#include "PathSpace.hpp"
 
 #include <chrono>
 #include <condition_variable>
@@ -70,11 +70,10 @@ struct KeyboardEvent {
  * Notes:
  * - This class does not know where it is mounted in a parent PathSpace.
  * - It exposes a thread-safe simulated event queue API to feed events from tests or
- *   platform backends (macOS, etc). The out()/in() behavior is inherited from PathIO.
- * - A future implementation will override out() to deliver KeyboardEvent directly
- *   (peek or pop depending on Out options), and use notify(...) to wake waiters.
+ *   platform backends (macOS, etc). Writes are unsupported; reads use out() to deliver KeyboardEvent.
+ * - out() returns KeyboardEvent with peek-or-pop semantics (Out.doPop) and optional blocking (Out.doBlock).
  */
-class PathIOKeyboard final : public PathIO {
+class PathIOKeyboard final : public PathSpaceBase {
 public:
     using Event = KeyboardEvent;
 
@@ -108,6 +107,17 @@ public:
     // Backend lifecycle is managed by constructor/destructor; start() removed.
 
     // Backend lifecycle is managed by constructor/destructor; stop() removed.
+
+    // Accept Event writes at ".../events" (relative to mount) and enqueue into the provider queue.
+    auto in(Iterator const& path, InputData const& data) -> InsertReturn override;
+
+
+
+    // Cooperative shutdown: stop worker and join if running
+    auto shutdown() -> void override;
+
+    // No-op notify (provider uses its own condition variable and notifies via context in out paths if needed)
+    auto notify(std::string const& notificationPath) -> void override;
 
     // ---- Simulation API (thread-safe) ----
 
@@ -201,57 +211,7 @@ public:
     // - If the queue is empty:
     //    * If options.doBlock is false: return NoObjectFound.
     //    * If options.doBlock is true: wait until timeout for an event to arrive; return Timeout on expiry.
-    auto out(Iterator const& /*path*/, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> override {
-        // Type-check: only support KeyboardEvent payloads here
-        if (inputMetadata.typeInfo != &typeid(Event)) {
-            return Error{Error::Code::InvalidType, "PathIOKeyboard only supports KeyboardEvent"};
-        }
-        if (obj == nullptr) {
-            return Error{Error::Code::MalformedInput, "Null output pointer for PathIOKeyboard::out"};
-        }
-
-        // Fast path: try without blocking
-        {
-            std::lock_guard<std::mutex> lg(mutex_);
-            if (!queue_.empty()) {
-                Event ev = queue_.front();
-                if (options.doPop) {
-                    queue_.pop_front();
-                }
-                *reinterpret_cast<Event*>(obj) = ev;
-                return std::nullopt;
-            }
-        }
-
-        // No event and non-blocking read requested
-        if (!options.doBlock) {
-            return Error{Error::Code::NoObjectFound, "No keyboard event available"};
-        }
-
-        // Blocking path: wait until an event is available or timeout expires
-        auto deadline = std::chrono::steady_clock::now() +
-                        std::chrono::duration_cast<std::chrono::steady_clock::duration>(options.timeout);
-
-        bool ready = waitFor(deadline, [&] { return !queue_.empty(); });
-        if (!ready) {
-            return Error{Error::Code::Timeout, "Timed out waiting for keyboard event"};
-        }
-
-        // Event is available now
-        {
-            std::lock_guard<std::mutex> lg(mutex_);
-            if (queue_.empty()) {
-                // Rare race: event consumed by another thread before we reacquired the lock
-                return Error{Error::Code::NoObjectFound, "No keyboard event available after wake"};
-            }
-            Event ev = queue_.front();
-            if (options.doPop) {
-                queue_.pop_front();
-            }
-            *reinterpret_cast<Event*>(obj) = ev;
-        }
-        return std::nullopt;
-    }
+    auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> override;
 
 private:
     // Worker loop that sources events from the OS or simulates when no OS integration is available.
@@ -411,11 +371,40 @@ private:
         if (fallbackActive_.load(std::memory_order_acquire)) {
             static bool key_down = false;
             if (!key_down) {
-                this->simulateKeyDown(/*keycode=*/65 /* 'A' */, /*modifiers=*/Mod_Shift, /*deviceId=*/0);
+                // Directly enqueue a KeyDown event for 'A' with Shift modifier
+                {
+                    std::lock_guard<std::mutex> lg(mutex_);
+                    Event ev{};
+                    ev.deviceId    = 0;
+                    ev.type        = KeyEventType::KeyDown;
+                    ev.keycode     = 65; // 'A'
+                    ev.modifiers   = Mod_Shift;
+                    ev.timestampNs = 0;
+                    queue_.push_back(ev);
+                }
+                cv_.notify_all();
                 key_down = true;
             } else {
-                this->simulateKeyUp(/*keycode=*/65 /* 'A' */, /*modifiers=*/Mod_Shift, /*deviceId=*/0);
-                this->simulateText("A", /*modifiers=*/Mod_Shift, /*deviceId=*/0);
+                // Enqueue KeyUp and Text events for 'A'
+                {
+                    std::lock_guard<std::mutex> lg(mutex_);
+                    Event up{};
+                    up.deviceId    = 0;
+                    up.type        = KeyEventType::KeyUp;
+                    up.keycode     = 65; // 'A'
+                    up.modifiers   = Mod_Shift;
+                    up.timestampNs = 0;
+                    queue_.push_back(up);
+
+                    Event text{};
+                    text.deviceId    = 0;
+                    text.type        = KeyEventType::Text;
+                    text.text        = "A";
+                    text.modifiers   = Mod_Shift;
+                    text.timestampNs = 0;
+                    queue_.push_back(text);
+                }
+                cv_.notify_all();
                 key_down = false;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(100));

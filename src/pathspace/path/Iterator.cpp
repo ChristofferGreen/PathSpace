@@ -135,7 +135,9 @@ auto Iterator::validateFull() const noexcept -> std::optional<Error> {
 }
 
 bool Iterator::isAtStart() const noexcept {
-    return this->current == this->storage.begin() + 1; // Skip the leading and mandatory '/'
+    auto it = this->storage.begin();
+    while (it != this->storage.end() && *it == '/') ++it;
+    return this->current == it;
 }
 
 auto Iterator::isAtFinalComponent() const noexcept -> bool {
@@ -143,9 +145,7 @@ auto Iterator::isAtFinalComponent() const noexcept -> bool {
 }
 
 bool Iterator::isAtEnd() const noexcept {
-    // We're at the end if we can't find any more components
-    // (current == segment_end means no component found)
-    return current == storage.end() || current == segment_end;
+    return this->current == this->storage.end();
 }
 
 auto Iterator::skipSlashes(IteratorType& it) noexcept -> void {

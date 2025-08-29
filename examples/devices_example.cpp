@@ -4,9 +4,9 @@
 #include <iostream>
 
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/layer/PathIOMouse.hpp>
-#include <pathspace/layer/PathIOKeyboard.hpp>
-#include <pathspace/layer/PathIOGamepad.hpp>
+#include <pathspace/layer/io/PathIOMouse.hpp>
+#include <pathspace/layer/io/PathIOKeyboard.hpp>
+#include <pathspace/layer/io/PathIOGamepad.hpp>
 
 using namespace SP;
 using namespace std::chrono_literals;

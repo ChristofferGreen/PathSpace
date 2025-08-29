@@ -84,7 +84,7 @@ if(BUILD_PATHSPACE_EXAMPLES)
     add_executable(devices_example examples/devices_example.cpp)
     target_link_libraries(devices_example PRIVATE PathSpace)
     if(APPLE)
-        target_sources(devices_example PRIVATE examples/macos/WindowEventPump.mm examples/macos/GameControllerHaptics.mm)
+        target_sources(devices_example PRIVATE examples/macos/WindowEventPump.mm)
         if(CMAKE_OBJCXX_COMPILER_ID MATCHES "Clang")
             set_source_files_properties(
                 examples/macos/WindowEventPump.mm

@@ -1,6 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <objc/message.h>
-#include <pathspace/layer/PathIOGamepad.hpp>
+#include <pathspace/layer/io/PathIOGamepad.hpp>
 
 
 // ObjC++ translation unit providing:
@@ -193,12 +193,12 @@ void PSInitGameControllerInput(PathIOGamepad* pad) {
                             SEL valueSel = NSSelectorFromString(@"value");
                             if (element == lt && [element respondsToSelector:valueSel]) {
                                 float v = sendFloat0(element, valueSel);
-                                pad->simulateAxisMove(/*axis*/4, v);
+                                { SP::PathIOGamepad::Event ev{}; ev.type = SP::PathIOGamepad::EventType::AxisMove; ev.axis = 4; ev.value = v; pad->insert<"/events">(ev); }
                                 return;
                             }
                             if (element == rt && [element respondsToSelector:valueSel]) {
                                 float v = sendFloat0(element, valueSel);
-                                pad->simulateAxisMove(/*axis*/5, v);
+                                { SP::PathIOGamepad::Event ev{}; ev.type = SP::PathIOGamepad::EventType::AxisMove; ev.axis = 5; ev.value = v; pad->insert<"/events">(ev); }
                                 return;
                             }
 
@@ -226,9 +226,9 @@ void PSInitGameControllerInput(PathIOGamepad* pad) {
                             if ([element respondsToSelector:isPressedSel]) {
                                 BOOL pressed = sendBool0(element, isPressedSel);
                                 if (pressed) {
-                                    pad->simulateButtonDown(idx);
+                                    { SP::PathIOGamepad::Event ev{}; ev.type = SP::PathIOGamepad::EventType::ButtonDown; ev.button = idx; pad->insert<"/events">(ev); }
                                 } else {
-                                    pad->simulateButtonUp(idx);
+                                    { SP::PathIOGamepad::Event ev{}; ev.type = SP::PathIOGamepad::EventType::ButtonUp; ev.button = idx; pad->insert<"/events">(ev); }
                                 }
                             }
                             return;
@@ -278,7 +278,7 @@ void PSInitGameControllerInput(PathIOGamepad* pad) {
                                 SEL valueSel = NSSelectorFromString(@"value");
                                 if ([element respondsToSelector:valueSel]) {
                                     float v = sendFloat0(element, valueSel);
-                                    pad->simulateAxisMove(axisIdx, v);
+                                    { SP::PathIOGamepad::Event ev{}; ev.type = SP::PathIOGamepad::EventType::AxisMove; ev.axis = axisIdx; ev.value = v; pad->insert<"/events">(ev); }
                                 }
                                 return;
                             }
@@ -294,11 +294,11 @@ void PSInitGameControllerInput(PathIOGamepad* pad) {
                                 SEL valueSel = NSSelectorFromString(@"value");
                                 if (xAxis && [xAxis respondsToSelector:valueSel]) {
                                     float xv = sendFloat0(xAxis, valueSel);
-                                    pad->simulateAxisMove(/*axis*/6, xv);
+                                    { SP::PathIOGamepad::Event ev{}; ev.type = SP::PathIOGamepad::EventType::AxisMove; ev.axis = 6; ev.value = xv; pad->insert<"/events">(ev); }
                                 }
                                 if (yAxis && [yAxis respondsToSelector:valueSel]) {
                                     float yv = sendFloat0(yAxis, valueSel);
-                                    pad->simulateAxisMove(/*axis*/7, yv);
+                                    { SP::PathIOGamepad::Event ev{}; ev.type = SP::PathIOGamepad::EventType::AxisMove; ev.axis = 7; ev.value = yv; pad->insert<"/events">(ev); }
                                 }
                                 return;
                             }
@@ -317,7 +317,7 @@ void PSInitGameControllerInput(PathIOGamepad* pad) {
         NSArray* ctrls = PSFetchControllers();
         if (ctrls) {
             for (id c in ctrls) {
-                pad->simulateConnected();
+                { SP::PathIOGamepad::Event ev{}; ev.type = SP::PathIOGamepad::EventType::Connected; pad->insert<"/events">(ev); }
                 installHandlerForController(c);
             }
         }
@@ -331,7 +331,7 @@ void PSInitGameControllerInput(PathIOGamepad* pad) {
                              queue:queue
                         usingBlock:^(NSNotification* note) {
             id controller = note.object;
-            pad->simulateConnected();
+            { SP::PathIOGamepad::Event ev{}; ev.type = SP::PathIOGamepad::EventType::Connected; pad->insert<"/events">(ev); }
             installHandlerForController(controller);
         }];
 
@@ -339,7 +339,7 @@ void PSInitGameControllerInput(PathIOGamepad* pad) {
                             object:nil
                              queue:queue
                         usingBlock:^(NSNotification* /*note*/) {
-            pad->simulateDisconnected();
+            { SP::PathIOGamepad::Event ev{}; ev.type = SP::PathIOGamepad::EventType::Disconnected; pad->insert<"/events">(ev); }
         }];
     }
 }

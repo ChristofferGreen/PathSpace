@@ -1,60 +1,3 @@
-# PathSpace
-![PathSpace](images/PathSpace.jpeg)
-
-## Introduction
-
-
-
-Note for editors: when you add, rename, or remove source files, refresh the compilation database (`./compile_commands.json`). Running `./scripts/compile.sh` or `./scripts/update_compile_commands.sh` (or re-configuring with CMake) regenerates `build/compile_commands.json` and copies it to the repo root; many editors/LSPs rely on it for correct include paths and diagnostics.
-If a change affects core behavior (paths, NodeData, WaitMap, TaskPool, serialization), update `docs/AI_ARCHITECTURE.md` in the same PR.
-For UI/Rendering (scene graph and renderer), see `docs/AI_Plan_SceneGraph_Renderer.md`.
-<<<<<<< HEAD
-=======
-Snapshot builder policy (summary): patch-first incremental snapshots with copy-on-write; fall back to a full rebuild on global parameter changes (e.g., DPI/root constraints/theme/color space/font tables) or when fragmentation/performance thresholds are exceeded. See "Snapshot Builder and Rebuild Policy" below.
-
-## Snapshot Builder and Rebuild Policy
-
-Purpose:
-- Provide a renderer-facing, immutable scene snapshot per revision, built incrementally when possible, with a well-defined fallback to full rebuild.
-
-Key concepts:
-- Incremental, patch-first: maintain the previous snapshot in memory; apply targeted patches for small edits and only rebuild fully on global changes.
-- Copy-on-write: snapshots share unchanged structures; modified subtrees allocate new chunks.
-- Dirty flags and epochs: per-node flags (STRUCTURE, LAYOUT, TRANSFORM, VISUAL, TEXT, BATCH) and computed-epoch counters to skip unchanged work.
-- Chunked draw lists: draw ops are stored per-subtree; unaffected chunks are reused; merges are k-way by stable sort keys.
-- Text shaping cache: shaped runs keyed by font+features+script+dir+text hash; only re-shape dirty runs.
-
-Patch pipeline (incremental pass order):
-1) Change ingestion → mark dirty and propagate (up/down) with early cut-offs at independent subtrees.
-2) Measure/Text: re-shape dirty text; update intrinsic sizes.
-3) Layout: re-layout dirty subtrees; contain ripples to constraint islands.
-4) Transform: recompute world transforms and bounds for dirty subtrees (pre-order).
-5) Batching/Flatten: rebuild only affected chunks; merge and stabilize paint order.
-6) Validate changed regions; assemble a new revision with copy-on-write.
-
-Publish and retention:
-- Write to `builds/<revision>.staging/...` then atomically rename to `builds/<revision>`; atomically replace `current_revision`.
-- Retain the last K revisions (default 3) and GC older ones after a TTL, deferring deletion if a renderer still references them.
-
-When to trigger a full rebuild:
-- Global parameters changed: DPI/root constraints/camera/theme/color space/font tables.
-- Structure churn: inserts+removes > 15% of nodes or reparent operations touch > 5%.
-- Batching churn: > 30% of draw ops move buckets, or widespread stacking-context changes.
-- Fragmentation: tombstones > 20% in node/draw-chunk storage; indices significantly degraded.
-- Performance: 3 consecutive frames over budget, or moving-average patch cost ≥ 70% of last full rebuild.
-- Consistency: validations detect invariant violations (cycles, bounds, sort instability).
-
-Configuration knobs (defaults are conservative and tunable per app/scene):
-- Debounce windows (min interval, max staleness), concurrency caps, cache sizes, revision retention (K, TTL).
-
-Performance notes:
-- Common passes are O(N_dirty) and parallelizable; copy-on-write keeps memory locality high.
-- Renderers are agnostic to build mode; they consume `builds/<revision>` referenced by `current_revision`.
-
-See also:
-- `docs/AI_Plan_SceneGraph_Renderer.md` for the broader rendering plan and target I/O layout. If snapshot semantics change, update both documents in the same PR per `.rules`.
->>>>>>> feat/gamepad-pathio-v1
-
 Snapshot builder policy (summary): patch-first incremental snapshots with copy-on-write; fall back to a full rebuild on global parameter changes (e.g., DPI/root constraints/theme/color space/font tables) or when fragmentation/performance thresholds are exceeded. See "Snapshot Builder and Rebuild Policy" below.
 
 ## Snapshot Builder and Rebuild Policy
@@ -210,9 +153,9 @@ Pattern matching can handle various glob patterns:
 ```cpp
 struct GlobName {
     // Returns match status
-    auto match(const std::string_view& str) const 
+    auto match(const std::string_view& str) const
         -> bool /*match*/;
-    
+
     bool isConcrete() const;  // Check if contains patterns
     bool isGlob() const;      // Check for glob characters
 };
@@ -321,7 +264,7 @@ Concurrency notes:
 Additionally, nodes may hold `Task` objects representing deferred computations alongside serialized bytes. `NodeData` stores tasks (`std::shared_ptr<Task>`) and, when tasks complete, notifications are delivered via a `NotificationSink` interface: tasks hold a `std::weak_ptr<NotificationSink>` and the owning `PathSpaceBase` provides the `shared_ptr` token and forwards to `notify(path)`. This removes the need for a global registry and prevents use-after-free races during teardown (the space resets its token during shutdown, causing late notifications to be dropped safely).
 
 ## Syntax Example
-```
+```CPP
 PathSpace space;
 space.insert("/collection/numbers", 5);
 space.insert("/collection/numbers", 3.5f);
@@ -361,7 +304,7 @@ It's possible to send a blocking object to insert/read/extract instructing it to
 
 ## Operations
 The operations in the base language are insert/read/extract, they are implemented as member functions of the PathSpace class.
-* **Insert**: 
+* **Insert**:
 	* Insert data or a Leaf to one or more paths. If the path does not exist it will be created.
 	* The given path can be a concrete path in which case at most one object will be inserted or a glob expression path which could potentially insert multiple values.
 	* Supports batch operations by inserting an initialiser list
@@ -397,7 +340,7 @@ The operations in the base language are insert/read/extract, they are implemente
 	* Takes a ConcretePath, does not support GlobPaths. Perhaps will implement a readMultiple later that returns a vector<T>
 	* Syntax:
 		* std::expected<T, Error> PathSpace::read<T>(ConcretePath const &path, optional<ReadOptions> const &options={})
-* **Extract**: 
+* **Extract**:
 	* Same as read but pops the front data instead of just returning a copy.
 	* Syntax:
 		* std::expected<T, Error> PathSpace::take<T>(ConcretePath, Block, optional<Out> const &options={})
@@ -410,114 +353,10 @@ a pointer to the front element will instead be stored and its position changed f
 compiler supporting the C++26 serialisation functionality it will be rewritten to use that instead.
 
 ## Unit Testing
-Unit testing will be done by using the C++ doctest library. A test driven development method will be used.
-
-## Logging
-A log of every action can be produced. This is mostly for aiding in debugging.
+Unit testing is by using the C++ doctest library.
 
 ## Exception Handling
 PathSpaces will not throw exceptions, all errors will be handled via the return type of the operations.
-
-
-
-
-
-
-
-
-
-## Trellis
-Lazy executions can be chained together via blocking operations waiting for new data, when one execution updates a value another listener to that value can execute.
-This creates a trellis like structure as described in the book mirror worlds book where values are fed from bottom processes and filtered up into higher order processes.
-
-## Actor Based Programming
-An actor system could be implemented with PathSpace by having executions within the PathSpace as actors communicating via messages sent to mailboxes at predefined paths, the mailboxes
-could simply be std::string objects stored at those paths.
-
-## Bottlenecks
-Linda like tuple spaces have traditionally been seen as slow. To some degree this is due to the pattern matching required to extract data from a tuple. 
-### Path Caching
-In PathSpace the slowest part will be traversing the path hierarchy. Potentially this could be sped up if we provide a cache of the most recent lookups of paths for insert/read/extract.
-Could be done as a hashmap from a ConcretePath to a PathSpace*. Would need to clear the cache on extract, or other PathSpace removals.
-
-### Reactive programming
-The extendability of a PathSpace can be used to create a reactive data flow, for example by creating a child PathSpace that takes n other PathSpace paths as input and combines their
-values by extractbing from them or a PathSpace that performs a transformation on any data from n other paths. Each tuple can be seen as a data stream as long as they are alive, when
-they run out of items the stream dies. One example could be a lambda within the space that waits for the left mouse button to be pressed via space.read<int>("/system/mouse/button_down",
-ReadOptions{.block_=true}).
-
-## Example Use Cases
-* Scene Graph - Objects to be displayed by a 3d renderer. Mainly takes care of seamlessly interacting with the renderer to upload and display objects in the graph. Could also support data oriented design by having composable objects that store their properties in a list instead of objects in a list.
-* Vulkan Render - A renderer that integrates with the GPU via Vulkan. Makes it easy to upload and use meshes and shaders.
-* ISO Surface Generator - Just in time generation of geometry to display, taking LOD into account. It can have an internal path like …/generate/x_y_y that can be read to start the generation.
-* Operating System - The capabilities functionality can be used to implement a user system and file system similar to Unix. When the initial PathSpace has been filled a process for the root user with full capability can be started by launching a lambda that executes a script. This is similar to how on login a bash session is started with a default script. This process can in turn launch other processes similar to systemd or cron.
-* Database front end - Interpreter to a proper database library adding or changing data within it. For example mariadb or postgressql.
-* GraphQL server to interact with html/javascript
-
-## Not Yet Implemented Features
-
-### Temporary Data Path
-Will not write out any data for state saving and if a user logs out all their created data will be deleted. Will usually be at /tmp, with user dirs as /tmp/username.
-
-### Scripting
-There will be support for manipulating a PathSpace through lua. Issuing an operator can then be done without having to reference a space object, like so: insert("/a", 5).
-But separate space objects could be created as variables in the script and could be used by the normal space_name.insert(… usage.
-
-### Command line
-Using a live script interpreter a command line can be written.
-
-### Compression
-Compresses the input data seamlessly behind the scene on insert and decompresses it on read/extract.
-
-### Out-of-core
-Similar to compression but can store the data on the hard drive instead of in RAM.
-
-### Distributed Data
-Another specialisation is to create a PathSpace child that can replicate a space over several computers over the network. Duplicating data where needed. May use Asia for networking.
-Like a live object.
-
-## Memory (not yet implemented)
-In order to avoid memory allocation calls to the operating system the PathSpace could have a pre-allocated pool of memory from the start. Perhaps some PathSpace tuple data could be marked
-as non essential somehow, if an out of memory situation occurs such data could be erased or flushed to disk. The alpha version of PathSpace will not contain this feature and will allocate
-all memory via std standard allocators.
-
-## Metadata (not yet implemented)
-Every PathSpace will have some metadata such as last time read, last time modified, how many times modified (same as version). Testing will be done by using a special CMake project that uses one .cpp file per operation to test.
-
-## Documentation (outdated)
-Note: This section is outdated. The hosted API reference is available at https://christoffergreen.github.io/PathSpace/doxygen/html/index.html (generated by Doxygen). See `README.md` for details.
-
-### Metrics Collection (not yet implemented)
-Will be possible to collect metrics on the data for the paths, how often they are accessed etc.
-
-### Data Integrity (not yet implemented)
-Especially for the networking part some checking for data consistency will be needed.
-
-## Distributed Networking
-Note: The following subsections are TBD design placeholders; they are not implemented yet.
-### Transaction Support
-TBD
-### Multi-Version Consistency Control
-TBD
-### Conflict-Free Replicated Data Types
-TBD
-### Invariant-based Reasoning
-TBD
-
-### Version Migration Utilities
-TBD
-
-## Back-Pressure Handling
-TBD
-
-## Default Paths
-TBD
-
-## Live Objects
-TBD
-
-## Fault Tolerance
-TBD
 
 ## Views
 PathSpace supports read-only projections and permission gating through `src/pathspace/layer/PathView.hpp` (view with a permission callback) and path aliasing/forwarding via `src/pathspace/layer/PathAlias.hpp`.
@@ -542,13 +381,9 @@ Concurrency and notifications:
 - `PathSpace::peekFuture(...)` and `PathSpace::setOwnedPool(...)` are protected implementation details. Prefer the unified `read<FutureAny>(path)` and constructor injection of the executor/pool.
 - Nested spaces adopt shared context and a mount prefix internally via the protected `adoptContextAndPrefix(...)`; external callers should not invoke this directly.
 
-AI execution policy:
-This section is deprecated. See the “AI autonomy guideline” and “AI pull request workflow” near the top of this document for the current policy.
-
 ## Operating System
 Device IO is provided by path-agnostic layers that can be mounted anywhere in a parent `PathSpace`, with platform backends feeding events into them:
 
-Decision: PathIO v1 (final)
 - Keep `PathIO` base and current providers (mouse, keyboard, pointer mixer, stdout, discovery, gamepad).
 - Event providers deliver typed events via `out()`/`take()`; blocking semantics are controlled by `Out{doBlock, timeout}` and pop-vs-peek by `Out.doPop`.
 - Canonical device namespace (aligned with SceneGraph plan):
@@ -576,17 +411,12 @@ Decision: PathIO v1 (final)
   - Consider shorter time slices for provider loops once configurable wait-slice is introduced.
 - Observability: track counters per provider (enqueued, dropped_oldest, dropped_newest); expose via a side path such as `.../stats` in a later change.
 
-- `src/pathspace/layer/PathIOMouse.hpp`, `src/pathspace/layer/PathIOKeyboard.hpp`, and `src/pathspace/layer/PathIOGamepad.hpp` expose typed event queues (MouseEvent/KeyboardEvent/GamepadEvent) with blocking `out()`/`take()` (peek vs pop via `Out.doPop`). When mounted with a shared context, `simulateEvent()` wakes blocking readers.
-- `src/pathspace/layer/PathIODeviceDiscovery.hpp` provides a simulation-backed discovery surface (classes, device IDs, per-device `meta` and `capabilities`), using iterator tail mapping for correct nested mounts; recommended mount prefix: `/system/devices/discovery`.
+- `src/pathspace/layer/io/PathIOMouse.hpp`, `src/pathspace/layer/io/PathIOKeyboard.hpp`, and `src/pathspace/layer/io/PathIOGamepad.hpp` expose typed event queues (MouseEvent/KeyboardEvent/GamepadEvent) with blocking `out()`/`take()` (peek vs pop via `Out.doPop`). When mounted with a shared context, `simulateEvent()` wakes blocking readers.
+- `src/pathspace/layer/io/PathIODeviceDiscovery.hpp` provides a simulation-backed discovery surface (classes, device IDs, per-device `meta` and `capabilities`), using iterator tail mapping for correct nested mounts; recommended mount prefix: `/system/devices/discovery`.
 
 Platform backends (unified, via compile-time macros):
-- `src/pathspace/layer/PathIOMouse.hpp` and `src/pathspace/layer/PathIOKeyboard.hpp` expose start()/stop() hooks and select OS paths internally (e.g., `PATHIO_BACKEND_MACOS`) to feed events via `simulateEvent(...)`.
+- `src/pathspace/layer/io/PathIOMouse.hpp` and `src/pathspace/layer/io/PathIOKeyboard.hpp` expose start()/stop() hooks and select OS paths internally (e.g., `PATHIO_BACKEND_MACOS`) to feed events via `simulateEvent(...)`.
 - On macOS, enable with `-DENABLE_PATHIO_MACOS=ON` to define `PATHIO_BACKEND_MACOS` (CI uses simulation/no-op by default).
 - Deprecated: `src/pathspace/layer/macos/PathIO_macos.hpp` is a compatibility shim only and no longer defines `PathIOMouseMacOS` or `PathIOKeyboardMacOS`. Include the unified headers instead.
 
 Note: First-class links (symlinks) are planned; in the interim, `PathAlias` offers robust forwarding/retargeting semantics without changing core trie invariants.
-
-Contributor policy:
-- Ask before committing and pushing changes.
-- You do not need to ask to run tests.
-

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/WatchRegistry.hpp"
+#include "core/WaitMap.hpp"
 #include "core/NotificationSink.hpp"
 #include "task/Executor.hpp"
 
@@ -27,12 +27,12 @@ namespace SP {
  */
 class PathSpaceContext final {
 public:
-    using WaitGuard = WatchRegistry::Guard;
-    using WaitType = WatchRegistry;
+    using WaitGuard = WaitMap::Guard;
+    using WaitType = WaitMap;
 
     explicit PathSpaceContext(Executor* exec = nullptr)
         : executor_(exec)
-        , wait_(std::make_unique<WatchRegistry>())
+        , wait_(std::make_unique<WaitMap>())
         , shuttingDown_(false) {}
 
     ~PathSpaceContext() = default;
@@ -109,11 +109,18 @@ public:
         return shuttingDown_.load(std::memory_order_acquire);
     }
 
+    // Whether there are any registered waiters (concrete or glob)
+    bool hasWaiters() const noexcept {
+        // ensureWait_ is non-const; use const_cast for lazy init
+        const_cast<PathSpaceContext*>(this)->ensureWait_();
+        return wait_->hasWaiters();
+    }
+
 private:
     void ensureWait_() {
         if (!wait_) {
             // Late initialization in case context was default-constructed without wait registry
-            wait_ = std::make_unique<WatchRegistry>();
+            wait_ = std::make_unique<WaitMap>();
         }
     }
 
@@ -124,8 +131,8 @@ private:
     // Preferred executor for task scheduling.
     Executor*                          executor_ = nullptr;
 
-    // Wait/notify registry (now backed by WatchRegistry).
-    std::unique_ptr<WatchRegistry>     wait_;
+    // Wait/notify registry (backed by WaitMap for glob/concrete semantics).
+    std::unique_ptr<WaitMap>           wait_;
 
     // Shutdown flag visible across threads.
     std::atomic<bool>                  shuttingDown_;

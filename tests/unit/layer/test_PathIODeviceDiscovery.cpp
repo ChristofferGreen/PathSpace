@@ -3,7 +3,7 @@
 #include <chrono>
 
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/layer/PathIODeviceDiscovery.hpp>
+#include <pathspace/layer/io/PathIODeviceDiscovery.hpp>
 
 using namespace SP;
 using namespace std::chrono_literals;

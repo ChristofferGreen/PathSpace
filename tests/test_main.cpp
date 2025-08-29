@@ -70,6 +70,8 @@ int main(int argc, char** argv) {
         return context.run();
     }
 
+// No default exclusions: run all test cases unless the user filters via CLI.
+
 #ifdef SP_LOG_DEBUG
     // Enable logging for normal test execution if PATHSPACE_LOG is set (and not "0")
     if (enableLog) {

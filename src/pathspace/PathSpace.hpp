@@ -63,10 +63,10 @@ protected:
     }
 
 protected:
-    virtual auto in(Iterator const& path, InputData const& data) -> InsertReturn;
-    virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error>;
-    virtual auto shutdown() -> void;
-    virtual auto notify(std::string const& notificationPath) -> void;
+    virtual auto in(Iterator const& path, InputData const& data) -> InsertReturn override;
+    virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> override;
+    virtual auto shutdown() -> void override;
+    virtual auto notify(std::string const& notificationPath) -> void override;
     // Expose typed future peek to PathSpaceBase::readFuture
     std::optional<FutureAny> typedPeekFuture(std::string_view pathIn) const override {
         Iterator const it{pathIn};

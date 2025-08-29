@@ -265,13 +265,13 @@ Tip: For high-throughput patterns, write with Immediate and read<FutureAny> to c
 
 ## Experimental IO providers (PathIO)
 
-The repository includes experimental providers under `src/pathspace/layer` and an example in `examples/devices_example.cpp`. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a `PathSpace` tree and serve typed event streams using the canonical `/system/devices/in/*` namespace; see `docs/AI_Plan_SceneGraph_Renderer.md` for app/device path conventions.
+The repository includes experimental providers under `src/pathspace/layer/io` and an example in `examples/devices_example.cpp`. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a `PathSpace` tree and serve typed event streams using the canonical `/system/devices/in/*` namespace; see `docs/AI_Plan_SceneGraph_Renderer.md` for app/device path conventions.
 
 Sketch:
 ```cpp
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/layer/PathIOMouse.hpp>
-#include <pathspace/layer/PathIOKeyboard.hpp>
+#include <pathspace/layer/io/PathIOMouse.hpp>
+#include <pathspace/layer/io/PathIOKeyboard.hpp>
 using namespace SP;
 
 int main() {
@@ -296,7 +296,7 @@ Notes:
 
 See:
 - examples/devices_example.cpp
-- src/pathspace/layer/*
+- src/pathspace/layer/io/*
 
 ## CMake integration
 

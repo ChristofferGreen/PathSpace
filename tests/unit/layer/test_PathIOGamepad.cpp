@@ -4,7 +4,7 @@
 #include <string>
 
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/layer/PathIOGamepad.hpp>
+#include <pathspace/layer/io/PathIOGamepad.hpp>
 
 using namespace SP;
 using namespace std::chrono_literals;
@@ -13,38 +13,47 @@ TEST_SUITE("PathIOGamepad") {
     TEST_CASE("Simulation queue basic operations") {
         PathIOGamepad pad{PathIOGamepad::BackendMode::Simulation};
 
-        CHECK(pad.pending() == 0);
-
-        // Enqueue a few events
-        pad.simulateConnected();
-        pad.simulateButtonDown(/*button=*/0);
-        pad.simulateAxisMove(/*axis=*/1, /*value=*/0.5f);
-
-        CHECK(pad.pending() == 3);
+        // Enqueue a few events via insert to '/events'
+        {
+            PathIOGamepad::Event ev{};
+            ev.type = PathIOGamepad::EventType::Connected;
+            pad.insert<"/events">(ev);
+        }
+        {
+            PathIOGamepad::Event ev{};
+            ev.type = PathIOGamepad::EventType::ButtonDown;
+            ev.button = 0;
+            pad.insert<"/events">(ev);
+        }
+        {
+            PathIOGamepad::Event ev{};
+            ev.type = PathIOGamepad::EventType::AxisMove;
+            ev.axis = 1;
+            ev.value = 0.5f;
+            pad.insert<"/events">(ev);
+        }
 
         // Peek should see the first event without popping
-        auto e1_opt = pad.peek();
+        auto e1_opt = pad.read<"/events", PathIOGamepad::Event>();
         REQUIRE(e1_opt.has_value());
         auto e1 = *e1_opt;
         CHECK(e1.type == PathIOGamepad::EventType::Connected);
 
         // Pop events in order
-        auto p1 = pad.pop();
+        auto p1 = pad.take<"/events", PathIOGamepad::Event>();
         REQUIRE(p1.has_value());
         CHECK(p1->type == PathIOGamepad::EventType::Connected);
 
-        auto p2 = pad.pop();
+        auto p2 = pad.take<"/events", PathIOGamepad::Event>();
         REQUIRE(p2.has_value());
         CHECK(p2->type == PathIOGamepad::EventType::ButtonDown);
         CHECK(p2->button == 0);
 
-        auto p3 = pad.pop();
+        auto p3 = pad.take<"/events", PathIOGamepad::Event>();
         REQUIRE(p3.has_value());
         CHECK(p3->type == PathIOGamepad::EventType::AxisMove);
         CHECK(p3->axis == 1);
         CHECK(p3->value == doctest::Approx(0.5f));
-
-        CHECK(pad.pending() == 0);
     }
 
     TEST_CASE("Typed out()/take() semantics") {
@@ -64,20 +73,23 @@ TEST_SUITE("PathIOGamepad") {
 
         SUBCASE("Peek then Pop preserves and consumes in order") {
             // Enqueue one event
-            pad.simulateButtonDown(/*button=*/1);
+            {
+                PathIOGamepad::Event ev{};
+                ev.type = PathIOGamepad::EventType::ButtonDown;
+                ev.button = 1;
+                pad.insert<"/events">(ev);
+            }
 
-            // Peek (non-pop) should return the event without consuming it
+            // Peek (non-pop)
             auto peek = pad.read<"/events", PathIOGamepad::Event>();
             REQUIRE(peek.has_value());
             CHECK(peek->type == PathIOGamepad::EventType::ButtonDown);
             CHECK(peek->button == 1);
-            CHECK(pad.pending() == 1);
 
-            // Pop should consume it
+            // Pop
             auto popped = pad.take<"/events", PathIOGamepad::Event>();
             REQUIRE(popped.has_value());
             CHECK(popped->type == PathIOGamepad::EventType::ButtonDown);
-            CHECK(pad.pending() == 0);
         }
     }
 
@@ -135,8 +147,14 @@ TEST_SUITE("PathIOGamepad") {
         auto ir = space.insert<"/system/devices/in/gamepad/default">(std::move(dev));
         CHECK(ir.nbrSpacesInserted == 1);
 
-        // Simulate an event on the raw provider
-        raw->simulateAxisMove(/*axis=*/2, /*value=*/-0.25f);
+        // Feed an event on the mounted provider via insert
+        {
+            GamepadEvent ev{};
+            ev.type = PathIOGamepad::EventType::AxisMove;
+            ev.axis = 2;
+            ev.value = -0.25f;
+            raw->insert<"/events">(ev);
+        }
 
         // Take the event via the space from the canonical events path
         auto evt = space.take<"/system/devices/in/gamepad/default/events", GamepadEvent>(Block{50ms});
