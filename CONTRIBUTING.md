@@ -103,6 +103,37 @@ Useful toggles:
 
 ## Creating a Pull Request
 
+PR quickstart (always to master)
+1) Create and push a topic branch:
+   - git fetch origin
+   - git checkout -b docs/<topic> origin/master
+   - git push -u origin docs/<topic>   # sets upstream to origin/<branch>
+2) Create the PR:
+   - ./scripts/create_pr.sh -b master -t "docs(<topic>): concise title"
+   - The script will create the PR via gh/GH_TOKEN, or open the compare page if not available
+
+Never commit directly on master. If you did, create a topic branch and move the commit off master (see Troubleshooting).
+
+Troubleshooting (common errors and fixes)
+- Error: “You are on 'master'. Create a topic branch before creating a PR.”
+  - Fix: git checkout -b docs/<topic> origin/master; git push -u origin docs/<topic>; re-run ./scripts/create_pr.sh -b master
+- Error: “Head sha can't be blank / Base sha can't be blank / No commits between master and <branch> / Head ref must be a branch”
+  - Cause: branch not pushed or wrong upstream; base not set to master; or branch has no new commits
+  - Fix:
+    - Push and set upstream: git push -u origin <branch>
+    - Ensure base is master: ./scripts/create_pr.sh -b master ...
+    - Verify branch is ahead: git log --oneline origin/master..HEAD
+- Warning: “Branch '<branch>' has no upstream and --no-push was set. PR creation may fail.”
+  - Fix: push first (git push -u origin <branch>) or omit --no-push
+- PR shows unrelated older commits
+  - Fix: create a clean branch from origin/master and cherry-pick:
+    - git checkout -b docs/<topic>-clean origin/master
+    - git cherry-pick <commit_sha1> [<commit_sha2> ...]
+    - git push -u origin docs/<topic>-clean
+    - ./scripts/create_pr.sh -b master -t "docs(<topic>): concise title"
+
+Use the helper script (auto-push, create PR, open browser):
+
 Use the helper script (auto-push, create PR, open browser):
 
 - `./scripts/create_pr.sh`
