@@ -1,32 +1,4 @@
 var searchData=
 [
-  ['a_20glance_0',['API at a glance',['../index.html#autotoc_md10',1,'']]],
-  ['actor_20based_20programming_1',['Actor Based Programming',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md50',1,'']]],
-  ['adapter_2',['HTML/Web output (optional adapter)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md105',1,'']]],
-  ['and_20batching_3',['Sorting and batching',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md95',1,'']]],
-  ['and_20build_20integration_4',['Source layout and build integration',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md104',1,'']]],
-  ['and_20caching_5',['Draw command generation and caching',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md94',1,'']]],
-  ['and_20concurrency_6',['Atomicity and concurrency',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md85',1,'']]],
-  ['and_20culling_7',['Bounding volumes and culling',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md93',1,'']]],
-  ['and_20decisions_20unresolved_20areas_8',['Gaps and Decisions (unresolved areas)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md108',1,'']]],
-  ['and_20hierarchy_20without_20per_20frame_20traversal_9',['Transforms and hierarchy without per-frame traversal',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md92',1,'']]],
-  ['and_20layout_10',['Hierarchical coordinates and layout',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md90',1,'']]],
-  ['and_20ownership_11',['Application roots and ownership',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md82',1,'']]],
-  ['and_20renderer_20plan_12',['PathSpace — Scene Graph and Renderer Plan',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html',1,'']]],
-  ['and_20responsibilities_13',['Entities and responsibilities',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md84',1,'']]],
-  ['and_20scheduling_14',['Notifications and scheduling',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md98',1,'']]],
-  ['and_20serialization_15',['Data types and serialization',['../index.html#autotoc_md13',1,'']]],
-  ['and_20test_20hooks_16',['Shutdown and Test Hooks',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md78',1,'']]],
-  ['and_20validation_17',['Safety and validation',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md99',1,'']]],
-  ['api_20at_20a_20glance_18',['API at a glance',['../index.html#autotoc_md10',1,'']]],
-  ['api_20schema_20as_20code_20returns_20paths_19',['Helper API (schema-as-code; returns paths)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md102',1,'']]],
-  ['app_20internal_20layout_20standardized_20',['App-internal layout (standardized)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md83',1,'']]],
-  ['application_20roots_20and_20ownership_21',['Application roots and ownership',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md82',1,'']]],
-  ['areas_22',['Gaps and Decisions (unresolved areas)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md108',1,'']]],
-  ['as_20code_20returns_20paths_23',['Helper API (schema-as-code; returns paths)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md102',1,'']]],
-  ['at_20a_20glance_24',['API at a glance',['../index.html#autotoc_md10',1,'']]],
-  ['at_20render_20time_25',['DrawableBucket (no widget-tree traversal at render time)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md91',1,'']]],
-  ['atomicity_20and_20concurrency_26',['Atomicity and concurrency',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md85',1,'']]],
-  ['atomicity_20per_20renderer_20target_27',['Render settings atomicity (per renderer target)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md86',1,'']]],
-  ['authoring_20vs_20rendering_28',['Scene graph concurrency (authoring vs rendering)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md87',1,'']]]
+  ['1_20system_20wide_20namespaces_20absolute_0',['1) System-wide namespaces (absolute)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___p_a_t_h_s.html#autotoc_md54',1,'']]]
 ];

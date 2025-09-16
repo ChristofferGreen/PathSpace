@@ -17,16 +17,9 @@ var class_s_p_1_1_path_i_o_pointer_mixer =
       [ "Wheel", "class_s_p_1_1_path_i_o_pointer_mixer.html#a8b80cd34a35547317af8c39af7c2bd63aa5df60ef4fc4447353769d66661d2229", null ]
     ] ],
     [ "PathIOPointerMixer", "class_s_p_1_1_path_i_o_pointer_mixer.html#a58de7ce4bb8274fe6e62ba7977b3a894", null ],
-    [ "clear", "class_s_p_1_1_path_i_o_pointer_mixer.html#ad0edafc0b35d8c6dae829b168a301fa5", null ],
-    [ "out", "class_s_p_1_1_path_i_o_pointer_mixer.html#abaf96cc9119cd5f5371b6497d9dcc347", null ],
-    [ "peek", "class_s_p_1_1_path_i_o_pointer_mixer.html#ae12da368a4196560b02881e4fee81278", null ],
-    [ "pending", "class_s_p_1_1_path_i_o_pointer_mixer.html#aa6c415add3c8e645297a88378685235e", null ],
-    [ "pop", "class_s_p_1_1_path_i_o_pointer_mixer.html#a6950ce993f6fe7c2bde8074b9613b194", null ],
-    [ "simulateAbsolute", "class_s_p_1_1_path_i_o_pointer_mixer.html#ab5742fc308b1fb9e412f98dbc93a81f8", null ],
-    [ "simulateButtonDown", "class_s_p_1_1_path_i_o_pointer_mixer.html#a963ba0c1fcfe565fdc32597e3ec37749", null ],
-    [ "simulateButtonUp", "class_s_p_1_1_path_i_o_pointer_mixer.html#a565d44ca30458778f46c1374214eea9b", null ],
-    [ "simulateEvent", "class_s_p_1_1_path_i_o_pointer_mixer.html#a125811d568b6469af6b486a12ca73991", null ],
-    [ "simulateMove", "class_s_p_1_1_path_i_o_pointer_mixer.html#a583464ffeca236fb04373f62676087b3", null ],
-    [ "simulateWheel", "class_s_p_1_1_path_i_o_pointer_mixer.html#a9bee088d94aa9147225d2e6f371afce1", null ],
+    [ "in", "class_s_p_1_1_path_i_o_pointer_mixer.html#a876fa9246a3a2ebb61230fc52a29d5c6", null ],
+    [ "notify", "class_s_p_1_1_path_i_o_pointer_mixer.html#ad561f799d36b1d27cb222db2acf1d599", null ],
+    [ "out", "class_s_p_1_1_path_i_o_pointer_mixer.html#a13460d7f73f29e29ae639a6835c40510", null ],
+    [ "shutdown", "class_s_p_1_1_path_i_o_pointer_mixer.html#a4ccbe74e14bd52b60ea8e0cf3af525ee", null ],
     [ "waitFor", "class_s_p_1_1_path_i_o_pointer_mixer.html#ab70d4acf2f687ae5f38a711d8c2c8230", null ]
 ];

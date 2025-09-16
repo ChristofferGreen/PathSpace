@@ -129,57 +129,58 @@ $(function(){initNavTree('_tagged_logger_8hpp_source.html','',''); });
 <div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span> </div>
 <div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>    <span class="keyword">auto</span> setThreadName(<span class="keyword">const</span> std::string&amp; name) -&gt; void;</div>
 <div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>    <span class="keyword">auto</span> setLoggingEnabled(<span class="keywordtype">bool</span> enabled) -&gt; void;</div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span> </div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>    <span class="keyword">static</span> std::mutex coutMutex;</div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span> </div>
-<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span><span class="keyword">private</span>:</div>
-<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>    std::queue&lt;LogMessage&gt;  messageQueue;</div>
-<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>    <span class="keyword">mutable</span> std::mutex      queueMutex;</div>
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>    std::condition_variable cv;</div>
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>    std::thread             workerThread;</div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>    std::atomic&lt;bool&gt;       running;</div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>    std::atomic&lt;bool&gt;       loggingEnabled;</div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>    <span class="comment">// std::set&lt;std::string&gt;   skipTags{};</span></div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>    std::set&lt;std::string&gt; skipTags{<span class="stringliteral">&quot;Function Called&quot;</span>, <span class="stringliteral">&quot;INFO&quot;</span>, <span class="stringliteral">&quot;WaitMap&quot;</span>, <span class="stringliteral">&quot;Leaf&quot;</span>, <span class="stringliteral">&quot;ThreadPool&quot;</span>, <span class="stringliteral">&quot;TaskPool&quot;</span>, <span class="stringliteral">&quot;PathSpaceShutdown&quot;</span>, <span class="stringliteral">&quot;Testcase&quot;</span>, <span class="stringliteral">&quot;Task&quot;</span>, <span class="stringliteral">&quot;Task lambda execution&quot;</span>, <span class="stringliteral">&quot;Task lambda completed&quot;</span>, <span class="stringliteral">&quot;Task copying result&quot;</span>, <span class="stringliteral">&quot;ERROR&quot;</span>, <span class="stringliteral">&quot;SlidingBuffer&quot;</span>, <span class="stringliteral">&quot;NodeData&quot;</span>, <span class="stringliteral">&quot;PathSpace&quot;</span>, <span class="stringliteral">&quot;PathSpaceBase&quot;</span>};</div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>    std::set&lt;std::string&gt; enabledTags{};</div>
-<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>    <span class="comment">// std::set&lt;std::string&gt;   enabledTags{&quot;TaskPool&quot;, &quot;PathSpaceShutdown&quot;, &quot;Leaf&quot;, &quot;WaitMap&quot;, &quot;Testcase&quot;};</span></div>
-<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span> </div>
-<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>    std::unordered_map&lt;std::thread::id, std::string&gt; threadNames;</div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>    <span class="keyword">mutable</span> std::mutex                               threadNamesMutex;</div>
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>    std::atomic&lt;int&gt;                                 nextThreadNumber;</div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span> </div>
-<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>    <span class="keyword">auto</span>        processQueue() -&gt; void;</div>
-<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>    <span class="keyword">auto</span>        writeToStderr(<span class="keyword">const</span> LogMessage&amp; msg) <span class="keyword">const</span> -&gt; void;</div>
-<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>    <span class="keyword">auto</span>        getThreadName(<span class="keyword">const</span> std::thread::id&amp; <span class="keywordtype">id</span>) -&gt; std::string;</div>
-<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>    <span class="keyword">static</span> <span class="keyword">auto</span> getShortPath(<span class="keyword">const</span> <span class="keywordtype">char</span>* filepath) -&gt; std::string;</div>
-<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>};</div>
-<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span> </div>
-<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>TaggedLogger&amp; logger();</div>
-<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span> </div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span>... Tags&gt;</div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span><span class="keyword">auto</span> TaggedLogger::log_impl(<span class="keyword">const</span> std::string&amp; message, <span class="keyword">const</span> std::source_location&amp; location, Tags&amp;&amp;... tags) -&gt; <span class="keywordtype">void</span> {</div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>    <span class="keywordflow">if</span> (!loggingEnabled)</div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>        <span class="keywordflow">return</span>;</div>
-<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span> </div>
-<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>    <span class="keyword">const</span> <span class="keyword">auto</span> logMessage = LogMessage{.timestamp = std::chrono::system_clock::now(), .tags = {std::forward&lt;Tags&gt;(tags)...}, .message = message, .threadName = getThreadName(std::this_thread::get_id()), .location = location};</div>
-<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span> </div>
-<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>    {</div>
-<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>        std::unique_lock&lt;std::mutex&gt; lock(this-&gt;queueMutex);</div>
-<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>        this-&gt;messageQueue.push(std::move(logMessage));</div>
-<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>        this-&gt;cv.notify_one();</div>
-<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>    }</div>
-<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>}</div>
-<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span> </div>
-<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span><span class="preprocessor">#define sp_log(message, ...) ::SP::logger().log_impl(message, std::source_location::current(), ##__VA_ARGS__)</span></div>
-<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span> </div>
-<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span><span class="keywordtype">void</span> set_thread_name(<span class="keyword">const</span> std::string&amp; name);</div>
-<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span><span class="keywordtype">void</span> set_logging_enabled(<span class="keywordtype">bool</span> enabled);</div>
-<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span> </div>
-<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>} <span class="comment">// namespace SP</span></div>
-<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span> </div>
-<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span><span class="preprocessor">#else</span></div>
-<div class="line"><a id="l00088" name="l00088"></a><span class="lineno"><a class="line" href="_tagged_logger_8hpp.html#af8b794aac2f3fcc048c17971031b3648">   88</a></span><span class="preprocessor">#define sp_log(message, ...) ((void)0)</span></div>
-<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span><span class="preprocessor">#endif </span><span class="comment">// SP_LOG_DEBUG</span></div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>    <span class="keyword">auto</span> isEnabled() const -&gt; <span class="keywordtype">bool</span> { <span class="keywordflow">return</span> loggingEnabled.load(std::memory_order_relaxed); }</div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span> </div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>    <span class="keyword">static</span> std::mutex coutMutex;</div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span> </div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span><span class="keyword">private</span>:</div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>    std::queue&lt;LogMessage&gt;  messageQueue;</div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>    <span class="keyword">mutable</span> std::mutex      queueMutex;</div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>    std::condition_variable cv;</div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>    std::thread             workerThread;</div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>    std::atomic&lt;bool&gt;       running;</div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>    std::atomic&lt;bool&gt;       loggingEnabled;</div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>    <span class="comment">// std::set&lt;std::string&gt;   skipTags{};</span></div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>    std::set&lt;std::string&gt; skipTags{<span class="stringliteral">&quot;Function Called&quot;</span>, <span class="stringliteral">&quot;INFO&quot;</span>, <span class="stringliteral">&quot;WaitMap&quot;</span>, <span class="stringliteral">&quot;Leaf&quot;</span>, <span class="stringliteral">&quot;ThreadPool&quot;</span>, <span class="stringliteral">&quot;TaskPool&quot;</span>, <span class="stringliteral">&quot;PathSpaceShutdown&quot;</span>, <span class="stringliteral">&quot;Testcase&quot;</span>, <span class="stringliteral">&quot;Task&quot;</span>, <span class="stringliteral">&quot;Task lambda execution&quot;</span>, <span class="stringliteral">&quot;Task lambda completed&quot;</span>, <span class="stringliteral">&quot;Task copying result&quot;</span>, <span class="stringliteral">&quot;ERROR&quot;</span>, <span class="stringliteral">&quot;SlidingBuffer&quot;</span>, <span class="stringliteral">&quot;NodeData&quot;</span>, <span class="stringliteral">&quot;PathSpace&quot;</span>, <span class="stringliteral">&quot;PathSpaceBase&quot;</span>};</div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>    std::set&lt;std::string&gt; enabledTags{};</div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>    <span class="comment">// std::set&lt;std::string&gt;   enabledTags{&quot;TaskPool&quot;, &quot;PathSpaceShutdown&quot;, &quot;Leaf&quot;, &quot;WaitMap&quot;, &quot;Testcase&quot;};</span></div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span> </div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>    std::unordered_map&lt;std::thread::id, std::string&gt; threadNames;</div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>    <span class="keyword">mutable</span> std::mutex                               threadNamesMutex;</div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>    std::atomic&lt;int&gt;                                 nextThreadNumber;</div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span> </div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>    <span class="keyword">auto</span>        processQueue() -&gt; void;</div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>    <span class="keyword">auto</span>        writeToStderr(<span class="keyword">const</span> LogMessage&amp; msg) <span class="keyword">const</span> -&gt; void;</div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>    <span class="keyword">auto</span>        getThreadName(<span class="keyword">const</span> std::thread::id&amp; <span class="keywordtype">id</span>) -&gt; std::string;</div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>    <span class="keyword">static</span> <span class="keyword">auto</span> getShortPath(<span class="keyword">const</span> <span class="keywordtype">char</span>* filepath) -&gt; std::string;</div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>};</div>
+<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span> </div>
+<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>TaggedLogger&amp; logger();</div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span> </div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span><span class="keyword">template</span> &lt;<span class="keyword">typename</span>... Tags&gt;</div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span><span class="keyword">auto</span> TaggedLogger::log_impl(<span class="keyword">const</span> std::string&amp; message, <span class="keyword">const</span> std::source_location&amp; location, Tags&amp;&amp;... tags) -&gt; <span class="keywordtype">void</span> {</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>    <span class="keywordflow">if</span> (!loggingEnabled)</div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>        <span class="keywordflow">return</span>;</div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span> </div>
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>    <span class="keyword">const</span> <span class="keyword">auto</span> logMessage = LogMessage{.timestamp = std::chrono::system_clock::now(), .tags = {std::forward&lt;Tags&gt;(tags)...}, .message = message, .threadName = getThreadName(std::this_thread::get_id()), .location = location};</div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span> </div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>    {</div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>        std::unique_lock&lt;std::mutex&gt; lock(this-&gt;queueMutex);</div>
+<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>        this-&gt;messageQueue.push(std::move(logMessage));</div>
+<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>        this-&gt;cv.notify_one();</div>
+<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>    }</div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>}</div>
+<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span> </div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span><span class="preprocessor">#define sp_log(message, ...) do { auto&amp; __sp_logger = ::SP::logger(); if (__sp_logger.isEnabled()) { __sp_logger.log_impl((message), std::source_location::current(), ##__VA_ARGS__); } } while(0)</span></div>
+<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span> </div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span><span class="keywordtype">void</span> set_thread_name(<span class="keyword">const</span> std::string&amp; name);</div>
+<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span><span class="keywordtype">void</span> set_logging_enabled(<span class="keywordtype">bool</span> enabled);</div>
+<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span> </div>
+<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>} <span class="comment">// namespace SP</span></div>
+<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span> </div>
+<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span><span class="preprocessor">#else</span></div>
+<div class="line"><a id="l00089" name="l00089"></a><span class="lineno"><a class="line" href="_tagged_logger_8hpp.html#af8b794aac2f3fcc048c17971031b3648">   89</a></span><span class="preprocessor">#define sp_log(message, ...) ((void)0)</span></div>
+<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span><span class="preprocessor">#endif </span><span class="comment">// SP_LOG_DEBUG</span></div>
 <div class="ttc" id="anamespace_s_p_html"><div class="ttname"><a href="namespace_s_p.html">SP</a></div><div class="ttdef"><b>Definition</b> ElementType.hpp:7</div></div>
 </div><!-- fragment --></div><!-- contents -->
 </div><!-- doc-content -->

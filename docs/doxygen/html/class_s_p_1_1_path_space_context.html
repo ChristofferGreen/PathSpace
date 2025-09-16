@@ -96,8 +96,8 @@ $(function(){initNavTree('class_s_p_1_1_path_space_context.html','','class_s_p_1
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 id="header-pub-types" class="groupheader"><a id="pub-types" name="pub-types"></a>
 Public Types</h2></td></tr>
-<tr class="memitem:a36e958889c16b389529036b19da5adf7" id="r_a36e958889c16b389529036b19da5adf7"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a36e958889c16b389529036b19da5adf7">WaitGuard</a> = <a class="el" href="struct_s_p_1_1_watch_registry_1_1_guard.html">WatchRegistry::Guard</a></td></tr>
-<tr class="memitem:add003d75dfbcbf9541e89d3f53cad6e3" id="r_add003d75dfbcbf9541e89d3f53cad6e3"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#add003d75dfbcbf9541e89d3f53cad6e3">WaitType</a> = <a class="el" href="class_s_p_1_1_watch_registry.html">WatchRegistry</a></td></tr>
+<tr class="memitem:a68a9dfb79e46e36c3666406e43ecaa60" id="r_a68a9dfb79e46e36c3666406e43ecaa60"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a68a9dfb79e46e36c3666406e43ecaa60">WaitGuard</a> = <a class="el" href="struct_s_p_1_1_wait_map_1_1_guard.html">WaitMap::Guard</a></td></tr>
+<tr class="memitem:ab05d4dca7c24cae2ff8d80c1dbbd9b78" id="r_ab05d4dca7c24cae2ff8d80c1dbbd9b78"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#ab05d4dca7c24cae2ff8d80c1dbbd9b78">WaitType</a> = <a class="el" href="struct_s_p_1_1_wait_map.html">WaitMap</a></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 id="header-pub-methods" class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
@@ -108,12 +108,13 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a5691be852072fb66c24a58478ce342b5" id="r_a5691be852072fb66c24a58478ce342b5"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a5691be852072fb66c24a58478ce342b5">setSink</a> (std::shared_ptr&lt; <a class="el" href="struct_s_p_1_1_notification_sink.html">NotificationSink</a> &gt; sink)</td></tr>
 <tr class="memitem:a7e69387c0eb6195d02ea7299dfa974b7" id="r_a7e69387c0eb6195d02ea7299dfa974b7"><td class="memItemLeft" align="right" valign="top">std::weak_ptr&lt; <a class="el" href="struct_s_p_1_1_notification_sink.html">NotificationSink</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a7e69387c0eb6195d02ea7299dfa974b7">getSink</a> () const</td></tr>
 <tr class="memitem:a1c3d191bec6d7fe05a7158efbdcd57fd" id="r_a1c3d191bec6d7fe05a7158efbdcd57fd"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a1c3d191bec6d7fe05a7158efbdcd57fd">invalidateSink</a> ()</td></tr>
-<tr class="memitem:af67c2d96c98ace33b6d971dab35dc539" id="r_af67c2d96c98ace33b6d971dab35dc539"><td class="memItemLeft" align="right" valign="top"><a class="el" href="#a36e958889c16b389529036b19da5adf7">WaitGuard</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#af67c2d96c98ace33b6d971dab35dc539">wait</a> (std::string_view path)</td></tr>
+<tr class="memitem:af67c2d96c98ace33b6d971dab35dc539" id="r_af67c2d96c98ace33b6d971dab35dc539"><td class="memItemLeft" align="right" valign="top"><a class="el" href="#a68a9dfb79e46e36c3666406e43ecaa60">WaitGuard</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#af67c2d96c98ace33b6d971dab35dc539">wait</a> (std::string_view path)</td></tr>
 <tr class="memitem:a4398aa5c72d3324d39a8e0f82ace44e1" id="r_a4398aa5c72d3324d39a8e0f82ace44e1"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a4398aa5c72d3324d39a8e0f82ace44e1">notify</a> (std::string_view path)</td></tr>
 <tr class="memitem:afca8ece6cf81e55cfdf7004d782650a0" id="r_afca8ece6cf81e55cfdf7004d782650a0"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#afca8ece6cf81e55cfdf7004d782650a0">notifyAll</a> ()</td></tr>
 <tr class="memitem:a1037a10765f3473c022a4576a4332429" id="r_a1037a10765f3473c022a4576a4332429"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a1037a10765f3473c022a4576a4332429">clearWaits</a> ()</td></tr>
 <tr class="memitem:a7d7b4e31535215c3ff0523f93421af4d" id="r_a7d7b4e31535215c3ff0523f93421af4d"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a7d7b4e31535215c3ff0523f93421af4d">shutdown</a> ()</td></tr>
 <tr class="memitem:a8e25752339368bcdda74789f68a4fe3c" id="r_a8e25752339368bcdda74789f68a4fe3c"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a8e25752339368bcdda74789f68a4fe3c">isShuttingDown</a> () const noexcept</td></tr>
+<tr class="memitem:a32c1bd6df42e05c1d30e0eaab1ad83d9" id="r_a32c1bd6df42e05c1d30e0eaab1ad83d9"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a32c1bd6df42e05c1d30e0eaab1ad83d9">hasWaiters</a> () const noexcept</td></tr>
 </table>
 <a name="details" id="details"></a><h2 id="header-details" class="groupheader">Detailed Description</h2>
 <div class="textblock"><p><a class="el" href="class_s_p_1_1_path_space_context.html">PathSpaceContext</a> — shared runtime context for <a class="el" href="class_s_p_1_1_path_space.html">PathSpace</a> trees</p>
@@ -128,28 +129,28 @@ Public Member Functions</h2></td></tr>
 <li>Nested <a class="el" href="class_s_p_1_1_path_space.html">PathSpace</a> instances should share the same Context and carry a distinct path prefix. </li>
 </ul>
 </div><a name="doc-typedef-members" id="doc-typedef-members"></a><h2 id="header-doc-typedef-members" class="groupheader">Member Typedef Documentation</h2>
-<a id="a36e958889c16b389529036b19da5adf7" name="a36e958889c16b389529036b19da5adf7"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a36e958889c16b389529036b19da5adf7">&#9670;&#160;</a></span>WaitGuard</h2>
+<a id="a68a9dfb79e46e36c3666406e43ecaa60" name="a68a9dfb79e46e36c3666406e43ecaa60"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a68a9dfb79e46e36c3666406e43ecaa60">&#9670;&#160;</a></span>WaitGuard</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname">using <a class="el" href="#a36e958889c16b389529036b19da5adf7">SP::PathSpaceContext::WaitGuard</a> = <a class="el" href="struct_s_p_1_1_watch_registry_1_1_guard.html">WatchRegistry::Guard</a></td>
+          <td class="memname">using <a class="el" href="#a68a9dfb79e46e36c3666406e43ecaa60">SP::PathSpaceContext::WaitGuard</a> = <a class="el" href="struct_s_p_1_1_wait_map_1_1_guard.html">WaitMap::Guard</a></td>
         </tr>
       </table>
 </div><div class="memdoc">
 
 </div>
 </div>
-<a id="add003d75dfbcbf9541e89d3f53cad6e3" name="add003d75dfbcbf9541e89d3f53cad6e3"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#add003d75dfbcbf9541e89d3f53cad6e3">&#9670;&#160;</a></span>WaitType</h2>
+<a id="ab05d4dca7c24cae2ff8d80c1dbbd9b78" name="ab05d4dca7c24cae2ff8d80c1dbbd9b78"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ab05d4dca7c24cae2ff8d80c1dbbd9b78">&#9670;&#160;</a></span>WaitType</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname">using <a class="el" href="#add003d75dfbcbf9541e89d3f53cad6e3">SP::PathSpaceContext::WaitType</a> = <a class="el" href="class_s_p_1_1_watch_registry.html">WatchRegistry</a></td>
+          <td class="memname">using <a class="el" href="#ab05d4dca7c24cae2ff8d80c1dbbd9b78">SP::PathSpaceContext::WaitType</a> = <a class="el" href="struct_s_p_1_1_wait_map.html">WaitMap</a></td>
         </tr>
       </table>
 </div><div class="memdoc">
@@ -277,6 +278,31 @@ Public Member Functions</h2></td></tr>
   </td>
   <td class="mlabels-right">
 <span class="mlabels"><span class="mlabel inline">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="a32c1bd6df42e05c1d30e0eaab1ad83d9" name="a32c1bd6df42e05c1d30e0eaab1ad83d9"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a32c1bd6df42e05c1d30e0eaab1ad83d9">&#9670;&#160;</a></span>hasWaiters()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">bool SP::PathSpaceContext::hasWaiters </td>
+          <td>(</td>
+          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
+          <td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel inline">inline</span><span class="mlabel noexcept">noexcept</span></span>  </td>
   </tr>
 </table>
 </div><div class="memdoc">
@@ -468,7 +494,7 @@ Public Member Functions</h2></td></tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="#a36e958889c16b389529036b19da5adf7">WaitGuard</a> SP::PathSpaceContext::wait </td>
+          <td class="memname"><a class="el" href="#a68a9dfb79e46e36c3666406e43ecaa60">WaitGuard</a> SP::PathSpaceContext::wait </td>
           <td>(</td>
           <td class="paramtype">std::string_view</td>          <td class="paramname"><span class="paramname"><em>path</em></span></td><td>)</td>
           <td></td>

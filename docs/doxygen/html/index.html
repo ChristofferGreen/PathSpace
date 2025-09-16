@@ -104,9 +104,18 @@ $(function(){initNavTree('index.html','',''); });
 <p>Links:</p><ul>
 <li>docs/AI_ARCHITECTURE.md (design and internals)</li>
 <li>examples/devices_example.cpp (experimental device IO example)</li>
-<li>docs/doxygen/html/index.html (Doxygen API Reference)</li>
+<li>build/docs/html/index.html (Doxygen API Reference)</li>
 </ul>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md8"></a>
+Architecture at a Glance</h1>
+<ul>
+<li><b>Trie-backed space</b> — <span class="tt">PathSpace</span> stores data in a concurrent trie of <span class="tt">Node</span> objects. Each node owns serialized <span class="tt">NodeData</span> payloads plus queued <span class="tt">Task</span> executions; inserts append, reads copy, and takes pop without global locks. See “Internal Data” in <span class="tt">docs/AI_ARCHITECTURE.md</span>.</li>
+<li><b>Paths &amp; globbing</b> — Strongly-typed <span class="tt">ConcretePath</span>/<span class="tt">GlobPath</span> wrappers provide component iterators, pattern matching (<span class="tt">*</span>, <span class="tt">**</span>, ranges), and validation (<span class="tt">src/pathspace/path/</span>).</li>
+<li><b>Wait/notify</b> — Blocking reads register waiters in concrete/glob registries and wake via a <span class="tt">NotificationSink</span> token; timeouts surface as <span class="tt">Error::Timeout</span> (<span class="tt">Wait/notify</span> + <span class="tt">Blocking</span> in the architecture doc).</li>
+<li><b>Layers &amp; PathIO</b> — Permission-checked views (<span class="tt">PathView</span>), alias mounts (<span class="tt">PathAlias</span>), and OS/event bridges live in <span class="tt">src/pathspace/layer/</span>. Enable macOS backends with <span class="tt">-DENABLE_PATHIO_MACOS=ON</span> and review the PathIO guidance near the end of <span class="tt">docs/AI_ARCHITECTURE.md</span>.</li>
+<li><b>Canonical namespaces</b> — <span class="tt">docs/AI_PATHS.md</span> defines system/app/render targets; renderer and presenter plans live in <span class="tt">docs/AI_Plan_SceneGraph_Renderer.md</span>.</li>
+</ul>
+<h1 class="doxsection"><a class="anchor" id="autotoc_md9"></a>
 Quick start</h1>
 <p>1) Prerequisites</p><ul>
 <li>A C++23 compiler (Clang or GCC)</li>
@@ -117,7 +126,8 @@ Quick start</h1>
 <div class="line">cd PathSpace</div>
 <div class="line">cmake -S . -B build -DCMAKE_BUILD_TYPE=Release</div>
 <div class="line">cmake --build build -j</div>
-</div><!-- fragment --><p>3) Run tests (optional) </p><div class="fragment"><div class="line">ctest --test-dir build -j</div>
+</div><!-- fragment --><p>3) Run tests (recommended) </p><div class="fragment"><div class="line">ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20</div>
+</div><!-- fragment --><p> or use the helper that wraps the loop/timeout policy from <span class="tt">docs/AI_ARCHITECTURE.md</span>: </p><div class="fragment"><div class="line">./scripts/compile.sh --loop=15 --timeout=20</div>
 </div><!-- fragment --><p>4) Use in your project</p><ul>
 <li>Link against the <span class="tt">PathSpace</span> target (installed or via add_subdirectory)</li>
 <li>Include headers from <span class="tt">src/pathspace</span>: <div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="_path_space_8hpp.html">pathspace/PathSpace.hpp</a>&gt;</span></div>
@@ -131,21 +141,22 @@ Quick start</h1>
 <li>ENABLE_PATHIO_MACOS=ON|OFF (compile-time defines for experimental macOS PathIO)</li>
 <li>BUILD_PATHSPACE_EXAMPLES=ON|OFF</li>
 </ul>
+<p>Tip: Enable sanitizers when debugging concurrency/path issues, and pair <span class="tt">ENABLE_PATHIO_MACOS=ON</span> with the PathIO section in <span class="tt">docs/AI_ARCHITECTURE.md</span> if you need native device backends.</p>
 <p>Scripts:</p><ul>
 <li>./scripts/compile.sh</li>
 <li>./scripts/update_compile_commands.sh (keeps compile_commands.json in repo root)</li>
 </ul>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md9"></a>
+<h1 class="doxsection"><a class="anchor" id="autotoc_md10"></a>
 Documentation (Doxygen)</h1>
 <p>You can generate HTML API documentation into build/docs/html:</p>
 <ul>
 <li>Using the helper script (requires doxygen): <div class="fragment"><div class="line">./scripts/compile.sh --docs</div>
-</div><!-- fragment --> Output: <a href="docs/doxygen/html/index.html">docs/doxygen/html/index.html</a></li>
+</div><!-- fragment --> Output: <a href="build/docs/html/index.html">build/docs/html/index.html</a></li>
 <li>Using CMake directly: <div class="fragment"><div class="line">cmake -S . -B build -DENABLE_DOXYGEN=ON</div>
 <div class="line">cmake --build build --target docs -j</div>
-</div><!-- fragment --> Output: <a href="docs/doxygen/html/index.html">docs/doxygen/html/index.html</a></li>
+</div><!-- fragment --> Output: <a href="build/docs/html/index.html">build/docs/html/index.html</a></li>
 </ul>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md10"></a>
+<h1 class="doxsection"><a class="anchor" id="autotoc_md11"></a>
 API at a glance</h1>
 <p>All operations below are member functions on a PathSpace instance. Assume <span class="tt">PathSpace ps;</span>.</p>
 <ul>
@@ -182,7 +193,7 @@ API at a glance</h1>
 <li>Read/take expect concrete (non-glob) paths.</li>
 <li>Insert supports glob patterns to target multiple existing matches.</li>
 </ul>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md11"></a>
+<h1 class="doxsection"><a class="anchor" id="autotoc_md12"></a>
 Simple examples</h1>
 <p>Hello, PathSpace: </p><div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="_path_space_8hpp.html">pathspace/PathSpace.hpp</a>&gt;</span></div>
 <div class="line"><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespace_s_p.html">SP</a>;</div>
@@ -202,9 +213,9 @@ Simple examples</h1>
 <div class="line">    <span class="keyword">auto</span> first = ps.<a class="code hl_function" href="class_s_p_1_1_path_space_base.html#a9d6d6181387a09664b3608813c29f51a">take</a>&lt;<span class="keywordtype">int</span>&gt;(<span class="stringliteral">&quot;/numbers/answer&quot;</span>);</div>
 <div class="line">    <span class="keyword">auto</span> none  = ps.<a class="code hl_function" href="class_s_p_1_1_path_space_base.html#a2941f2763aad2813c12a9a886ccf5961">read</a>&lt;<span class="keywordtype">int</span>&gt;(<span class="stringliteral">&quot;/numbers/answer&quot;</span>); <span class="comment">// no value now</span></div>
 <div class="line">}</div>
-<div class="ttc" id="aclass_s_p_1_1_path_space_base_html_a2941f2763aad2813c12a9a886ccf5961"><div class="ttname"><a href="class_s_p_1_1_path_space_base.html#a2941f2763aad2813c12a9a886ccf5961">SP::PathSpaceBase::read</a></div><div class="ttdeci">auto read(S const &amp;pathIn, Out const &amp;options={}) const -&gt; Expected&lt; DataType &gt;</div><div class="ttdef"><b>Definition</b> PathSpaceBase.hpp:83</div></div>
-<div class="ttc" id="aclass_s_p_1_1_path_space_base_html_a7f160bb41b90202c97f3581612e22001"><div class="ttname"><a href="class_s_p_1_1_path_space_base.html#a7f160bb41b90202c97f3581612e22001">SP::PathSpaceBase::insert</a></div><div class="ttdeci">auto insert(S const &amp;pathIn, DataType &amp;&amp;data, In const &amp;options={}) -&gt; InsertReturn</div><div class="ttdef"><b>Definition</b> PathSpaceBase.hpp:52</div></div>
-<div class="ttc" id="aclass_s_p_1_1_path_space_base_html_a9d6d6181387a09664b3608813c29f51a"><div class="ttname"><a href="class_s_p_1_1_path_space_base.html#a9d6d6181387a09664b3608813c29f51a">SP::PathSpaceBase::take</a></div><div class="ttdeci">auto take(S const &amp;pathIn, Out const &amp;options={}) -&gt; Expected&lt; DataType &gt;</div><div class="ttdef"><b>Definition</b> PathSpaceBase.hpp:121</div></div>
+<div class="ttc" id="aclass_s_p_1_1_path_space_base_html_a2941f2763aad2813c12a9a886ccf5961"><div class="ttname"><a href="class_s_p_1_1_path_space_base.html#a2941f2763aad2813c12a9a886ccf5961">SP::PathSpaceBase::read</a></div><div class="ttdeci">auto read(S const &amp;pathIn, Out const &amp;options={}) const -&gt; Expected&lt; DataType &gt;</div><div class="ttdef"><b>Definition</b> PathSpaceBase.hpp:86</div></div>
+<div class="ttc" id="aclass_s_p_1_1_path_space_base_html_a7f160bb41b90202c97f3581612e22001"><div class="ttname"><a href="class_s_p_1_1_path_space_base.html#a7f160bb41b90202c97f3581612e22001">SP::PathSpaceBase::insert</a></div><div class="ttdeci">auto insert(S const &amp;pathIn, DataType &amp;&amp;data, In const &amp;options={}) -&gt; InsertReturn</div><div class="ttdef"><b>Definition</b> PathSpaceBase.hpp:51</div></div>
+<div class="ttc" id="aclass_s_p_1_1_path_space_base_html_a9d6d6181387a09664b3608813c29f51a"><div class="ttname"><a href="class_s_p_1_1_path_space_base.html#a9d6d6181387a09664b3608813c29f51a">SP::PathSpaceBase::take</a></div><div class="ttdeci">auto take(S const &amp;pathIn, Out const &amp;options={}) -&gt; Expected&lt; DataType &gt;</div><div class="ttdef"><b>Definition</b> PathSpaceBase.hpp:132</div></div>
 <div class="ttc" id="aclass_s_p_1_1_path_space_html"><div class="ttname"><a href="class_s_p_1_1_path_space.html">SP::PathSpace</a></div><div class="ttdef"><b>Definition</b> PathSpace.hpp:23</div></div>
 <div class="ttc" id="anamespace_s_p_html"><div class="ttname"><a href="namespace_s_p.html">SP</a></div><div class="ttdef"><b>Definition</b> ElementType.hpp:7</div></div>
 </div><!-- fragment --><p>Blocking read with timeout: </p><div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="_path_space_8hpp.html">pathspace/PathSpace.hpp</a>&gt;</span></div>
@@ -243,7 +254,7 @@ Simple examples</h1>
 <div class="line">    <span class="keyword">auto</span> b0 = ps.<a class="code hl_function" href="class_s_p_1_1_path_space_base.html#a9d6d6181387a09664b3608813c29f51a">take</a>&lt;<span class="keywordtype">int</span>&gt;(<span class="stringliteral">&quot;/sensors/b&quot;</span>); <span class="comment">// 0</span></div>
 <div class="line">    <span class="keyword">auto</span> b1 = ps.<a class="code hl_function" href="class_s_p_1_1_path_space_base.html#a2941f2763aad2813c12a9a886ccf5961">read</a>&lt;<span class="keywordtype">int</span>&gt;(<span class="stringliteral">&quot;/sensors/b&quot;</span>); <span class="comment">// 1</span></div>
 <div class="line">}</div>
-</div><!-- fragment --><h1 class="doxsection"><a class="anchor" id="autotoc_md12"></a>
+</div><!-- fragment --><h1 class="doxsection"><a class="anchor" id="autotoc_md13"></a>
 Executions (lambdas, std::function, function pointers)</h1>
 <p>Insert computations that produce values. Read triggers evaluation (Lazy) or retrieves the already-running (Immediate) result.</p>
 <p>Lazy execution (runs on first read): </p><div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="_path_space_8hpp.html">pathspace/PathSpace.hpp</a>&gt;</span></div>
@@ -313,7 +324,7 @@ Executions (lambdas, std::function, function pointers)</h1>
 <div class="line">    }</div>
 <div class="line">}</div>
 <div class="ttc" id="aclass_s_p_1_1_future_any_html"><div class="ttname"><a href="class_s_p_1_1_future_any.html">SP::FutureAny</a></div><div class="ttdef"><b>Definition</b> IFutureAny.hpp:130</div></div>
-</div><!-- fragment --><h1 class="doxsection"><a class="anchor" id="autotoc_md13"></a>
+</div><!-- fragment --><h1 class="doxsection"><a class="anchor" id="autotoc_md14"></a>
 Data types and serialization</h1>
 <ul>
 <li>Fundamental types (int, double, etc.) are serialized directly</li>
@@ -322,7 +333,7 @@ Data types and serialization</h1>
 <li>Executions (functions/lambdas) are not serialized; they’re run within the process and their results are stored/served</li>
 </ul>
 <p>If you need to take results repeatedly, prefer read (copy) over take (pop). Use take to consume streams or queues where you only want the front element once.</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md14"></a>
+<h1 class="doxsection"><a class="anchor" id="autotoc_md15"></a>
 Threading model</h1>
 <ul>
 <li>Reads/writes are thread-safe</li>
@@ -331,12 +342,12 @@ Threading model</h1>
 <li>Lazy executions are scheduled on first read</li>
 </ul>
 <p>Tip: For high-throughput patterns, write with Immediate and read&lt;FutureAny&gt; to coordinate downstream consumers.</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md15"></a>
+<h1 class="doxsection"><a class="anchor" id="autotoc_md16"></a>
 Experimental IO providers (PathIO)</h1>
-<p>The repository includes experimental providers under <span class="tt">src/pathspace/layer</span> and an example in <span class="tt">examples/devices_example.cpp</span>. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a <span class="tt">PathSpace</span> tree and serve typed event streams.</p>
+<p>The repository includes experimental providers under <span class="tt">src/pathspace/layer/io</span> and an example in <span class="tt">examples/devices_example.cpp</span>. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a <span class="tt">PathSpace</span> tree and serve typed event streams using the canonical <span class="tt">/system/devices/in/*</span> namespace; see <span class="tt">docs/AI_Plan_SceneGraph_Renderer.md</span> for app/device path conventions.</p>
 <p>Sketch: </p><div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="_path_space_8hpp.html">pathspace/PathSpace.hpp</a>&gt;</span></div>
-<div class="line"><span class="preprocessor">#include &lt;<a class="code" href="_path_i_o_mouse_8hpp.html">pathspace/layer/PathIOMouse.hpp</a>&gt;</span></div>
-<div class="line"><span class="preprocessor">#include &lt;<a class="code" href="_path_i_o_keyboard_8hpp.html">pathspace/layer/PathIOKeyboard.hpp</a>&gt;</span></div>
+<div class="line"><span class="preprocessor">#include &lt;<a class="code" href="_path_i_o_mouse_8hpp.html">pathspace/layer/io/PathIOMouse.hpp</a>&gt;</span></div>
+<div class="line"><span class="preprocessor">#include &lt;<a class="code" href="_path_i_o_keyboard_8hpp.html">pathspace/layer/io/PathIOKeyboard.hpp</a>&gt;</span></div>
 <div class="line"><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespace_s_p.html">SP</a>;</div>
 <div class="line"> </div>
 <div class="line"><span class="keywordtype">int</span> main() {</div>
@@ -346,17 +357,17 @@ Experimental IO providers (PathIO)</h1>
 <div class="line">    <span class="keyword">auto</span> keyboard = std::make_unique&lt;PathIOKeyboard&gt;(<a class="code hl_enumvalue" href="class_s_p_1_1_path_i_o_keyboard.html#aa4d8386b1b19a9c5db38382e4bed929ea06b9281e396db002010bde1de57262eb">PathIOKeyboard::BackendMode::Auto</a>);</div>
 <div class="line"> </div>
 <div class="line">    <span class="comment">// Mount providers at app-chosen paths</span></div>
-<div class="line">    <span class="keyword">auto</span> mret = ps.<a class="code hl_function" href="class_s_p_1_1_path_space_base.html#a7f160bb41b90202c97f3581612e22001">insert</a>&lt;<span class="stringliteral">&quot;/inputs/mouse/0&quot;</span>&gt;(std::move(mouse));</div>
-<div class="line">    <span class="keyword">auto</span> kret = ps.<a class="code hl_function" href="class_s_p_1_1_path_space_base.html#a7f160bb41b90202c97f3581612e22001">insert</a>&lt;<span class="stringliteral">&quot;/inputs/keyboards/0&quot;</span>&gt;(std::move(keyboard));</div>
+<div class="line">    <span class="keyword">auto</span> mret = ps.<a class="code hl_function" href="class_s_p_1_1_path_space_base.html#a7f160bb41b90202c97f3581612e22001">insert</a>&lt;<span class="stringliteral">&quot;/system/devices/in/pointer/default&quot;</span>&gt;(std::move(mouse));</div>
+<div class="line">    <span class="keyword">auto</span> kret = ps.<a class="code hl_function" href="class_s_p_1_1_path_space_base.html#a7f160bb41b90202c97f3581612e22001">insert</a>&lt;<span class="stringliteral">&quot;/system/devices/in/text/default&quot;</span>&gt;(std::move(keyboard));</div>
 <div class="line"> </div>
 <div class="line">    <span class="comment">// Read typed events (blocking with timeout)</span></div>
-<div class="line">    <span class="keyword">auto</span> me = ps.<a class="code hl_function" href="class_s_p_1_1_path_space_base.html#a2941f2763aad2813c12a9a886ccf5961">read</a>&lt;<a class="code hl_typedef" href="class_s_p_1_1_path_i_o_mouse.html#aa67fd5094d11dd5dbc15e6198019b73e">SP::PathIOMouse::Event</a>&gt;(<span class="stringliteral">&quot;/inputs/mouse/0/events&quot;</span>, <a class="code hl_struct" href="struct_s_p_1_1_block.html">Block</a>{});</div>
-<div class="line">    <span class="keyword">auto</span> ke = ps.<a class="code hl_function" href="class_s_p_1_1_path_space_base.html#a2941f2763aad2813c12a9a886ccf5961">read</a>&lt;<a class="code hl_typedef" href="class_s_p_1_1_path_i_o_keyboard.html#ac3900d2803758ffc2d76a74a82af9bc8">SP::PathIOKeyboard::Event</a>&gt;(<span class="stringliteral">&quot;/inputs/keyboards/0/events&quot;</span>, <a class="code hl_struct" href="struct_s_p_1_1_block.html">Block</a>{});</div>
+<div class="line">    <span class="keyword">auto</span> me = ps.<a class="code hl_function" href="class_s_p_1_1_path_space_base.html#a2941f2763aad2813c12a9a886ccf5961">read</a>&lt;<a class="code hl_typedef" href="class_s_p_1_1_path_i_o_mouse.html#aa67fd5094d11dd5dbc15e6198019b73e">SP::PathIOMouse::Event</a>&gt;(<span class="stringliteral">&quot;/system/devices/in/pointer/default/events&quot;</span>, <a class="code hl_struct" href="struct_s_p_1_1_block.html">Block</a>{});</div>
+<div class="line">    <span class="keyword">auto</span> ke = ps.<a class="code hl_function" href="class_s_p_1_1_path_space_base.html#a2941f2763aad2813c12a9a886ccf5961">read</a>&lt;<a class="code hl_typedef" href="class_s_p_1_1_path_i_o_keyboard.html#ac3900d2803758ffc2d76a74a82af9bc8">SP::PathIOKeyboard::Event</a>&gt;(<span class="stringliteral">&quot;/system/devices/in/text/default/events&quot;</span>, <a class="code hl_struct" href="struct_s_p_1_1_block.html">Block</a>{});</div>
 <div class="line">}</div>
 <div class="ttc" id="a_path_i_o_keyboard_8hpp_html"><div class="ttname"><a href="_path_i_o_keyboard_8hpp.html">PathIOKeyboard.hpp</a></div></div>
 <div class="ttc" id="a_path_i_o_mouse_8hpp_html"><div class="ttname"><a href="_path_i_o_mouse_8hpp.html">PathIOMouse.hpp</a></div></div>
-<div class="ttc" id="aclass_s_p_1_1_path_i_o_keyboard_html_aa4d8386b1b19a9c5db38382e4bed929ea06b9281e396db002010bde1de57262eb"><div class="ttname"><a href="class_s_p_1_1_path_i_o_keyboard.html#aa4d8386b1b19a9c5db38382e4bed929ea06b9281e396db002010bde1de57262eb">SP::PathIOKeyboard::BackendMode::Auto</a></div><div class="ttdeci">@ Auto</div><div class="ttdef"><b>Definition</b> PathIOKeyboard.hpp:81</div></div>
-<div class="ttc" id="aclass_s_p_1_1_path_i_o_keyboard_html_ac3900d2803758ffc2d76a74a82af9bc8"><div class="ttname"><a href="class_s_p_1_1_path_i_o_keyboard.html#ac3900d2803758ffc2d76a74a82af9bc8">SP::PathIOKeyboard::Event</a></div><div class="ttdeci">KeyboardEvent Event</div><div class="ttdef"><b>Definition</b> PathIOKeyboard.hpp:79</div></div>
+<div class="ttc" id="aclass_s_p_1_1_path_i_o_keyboard_html_aa4d8386b1b19a9c5db38382e4bed929ea06b9281e396db002010bde1de57262eb"><div class="ttname"><a href="class_s_p_1_1_path_i_o_keyboard.html#aa4d8386b1b19a9c5db38382e4bed929ea06b9281e396db002010bde1de57262eb">SP::PathIOKeyboard::BackendMode::Auto</a></div><div class="ttdeci">@ Auto</div><div class="ttdef"><b>Definition</b> PathIOKeyboard.hpp:80</div></div>
+<div class="ttc" id="aclass_s_p_1_1_path_i_o_keyboard_html_ac3900d2803758ffc2d76a74a82af9bc8"><div class="ttname"><a href="class_s_p_1_1_path_i_o_keyboard.html#ac3900d2803758ffc2d76a74a82af9bc8">SP::PathIOKeyboard::Event</a></div><div class="ttdeci">KeyboardEvent Event</div><div class="ttdef"><b>Definition</b> PathIOKeyboard.hpp:78</div></div>
 <div class="ttc" id="aclass_s_p_1_1_path_i_o_mouse_html_aa67fd5094d11dd5dbc15e6198019b73e"><div class="ttname"><a href="class_s_p_1_1_path_i_o_mouse.html#aa67fd5094d11dd5dbc15e6198019b73e">SP::PathIOMouse::Event</a></div><div class="ttdeci">MouseEvent Event</div><div class="ttdef"><b>Definition</b> PathIOMouse.hpp:87</div></div>
 <div class="ttc" id="aclass_s_p_1_1_path_i_o_mouse_html_abe2878f95ed3de9d9b3aed169d260a62a06b9281e396db002010bde1de57262eb"><div class="ttname"><a href="class_s_p_1_1_path_i_o_mouse.html#abe2878f95ed3de9d9b3aed169d260a62a06b9281e396db002010bde1de57262eb">SP::PathIOMouse::BackendMode::Auto</a></div><div class="ttdeci">@ Auto</div><div class="ttdef"><b>Definition</b> PathIOMouse.hpp:89</div></div>
 </div><!-- fragment --><p>Notes:</p><ul>
@@ -365,9 +376,9 @@ Experimental IO providers (PathIO)</h1>
 </ul>
 <p>See:</p><ul>
 <li>examples/devices_example.cpp</li>
-<li>src/pathspace/layer/*</li>
+<li>src/pathspace/layer/io/*</li>
 </ul>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md16"></a>
+<h1 class="doxsection"><a class="anchor" id="autotoc_md17"></a>
 CMake integration</h1>
 <p>As a subproject: </p><div class="fragment"><div class="line"># In your CMakeLists.txt</div>
 <div class="line">add_subdirectory(PathSpace)</div>
@@ -380,7 +391,7 @@ CMake integration</h1>
 <li>ENABLE_PATHIO_MACOS (default OFF)</li>
 <li>BUILD_PATHSPACE_EXAMPLES (default OFF)</li>
 </ul>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md17"></a>
+<h1 class="doxsection"><a class="anchor" id="autotoc_md18"></a>
 Troubleshooting</h1>
 <ul>
 <li>Path must be concrete for read/take; insert can use globs to target existing matches</li>
@@ -388,10 +399,10 @@ Troubleshooting</h1>
 <li>When using Immediate executions, ensure you are reading the correct type at the path</li>
 <li>For timeouts or readiness issues, <span class="tt">readFuture</span> lets you explicitly coordinate on completion</li>
 </ul>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md18"></a>
+<h1 class="doxsection"><a class="anchor" id="autotoc_md19"></a>
 License</h1>
 <p>See LICENSE for details.</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md19"></a>
+<h1 class="doxsection"><a class="anchor" id="autotoc_md20"></a>
 Contributing</h1>
 <ul>
 <li>Keep docs and code consistent; if you change core behavior or APIs (paths, NodeData, WaitMap, TaskPool, serialization), update docs/AI_ARCHITECTURE.md</li>

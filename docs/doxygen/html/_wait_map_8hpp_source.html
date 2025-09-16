@@ -96,94 +96,129 @@ $(function(){initNavTree('_wait_map_8hpp_source.html','',''); });
 <div class="line"><a id="l00003" name="l00003"></a><span class="lineno">    3</span> </div>
 <div class="line"><a id="l00004" name="l00004"></a><span class="lineno">    4</span><span class="preprocessor">#include &lt;chrono&gt;</span></div>
 <div class="line"><a id="l00005" name="l00005"></a><span class="lineno">    5</span><span class="preprocessor">#include &lt;condition_variable&gt;</span></div>
-<div class="line"><a id="l00006" name="l00006"></a><span class="lineno">    6</span><span class="preprocessor">#include &lt;mutex&gt;</span></div>
-<div class="line"><a id="l00007" name="l00007"></a><span class="lineno">    7</span><span class="preprocessor">#include &lt;string&gt;</span></div>
-<div class="line"><a id="l00008" name="l00008"></a><span class="lineno">    8</span><span class="preprocessor">#include &lt;string_view&gt;</span></div>
-<div class="line"><a id="l00009" name="l00009"></a><span class="lineno">    9</span><span class="preprocessor">#include &lt;unordered_map&gt;</span></div>
-<div class="line"><a id="l00010" name="l00010"></a><span class="lineno">   10</span><span class="preprocessor">#include &lt;memory&gt;</span></div>
-<div class="line"><a id="l00011" name="l00011"></a><span class="lineno">   11</span> </div>
-<div class="line"><a id="l00012" name="l00012"></a><span class="lineno">   12</span><span class="keyword">namespace </span><a class="code hl_namespace" href="namespace_s_p.html">SP</a> {</div>
-<div class="line"><a id="l00013" name="l00013"></a><span class="lineno">   13</span> </div>
-<div class="foldopen" id="foldopen00014" data-start="{" data-end="};">
-<div class="line"><a id="l00014" name="l00014"></a><span class="lineno"><a class="line" href="struct_s_p_1_1_wait_map.html">   14</a></span><span class="keyword">struct </span><a class="code hl_struct" href="struct_s_p_1_1_wait_map.html">WaitMap</a> {</div>
+<div class="line"><a id="l00006" name="l00006"></a><span class="lineno">    6</span><span class="preprocessor">#include &lt;atomic&gt;</span></div>
+<div class="line"><a id="l00007" name="l00007"></a><span class="lineno">    7</span><span class="preprocessor">#include &lt;mutex&gt;</span></div>
+<div class="line"><a id="l00008" name="l00008"></a><span class="lineno">    8</span><span class="preprocessor">#include &lt;string&gt;</span></div>
+<div class="line"><a id="l00009" name="l00009"></a><span class="lineno">    9</span><span class="preprocessor">#include &lt;string_view&gt;</span></div>
+<div class="line"><a id="l00010" name="l00010"></a><span class="lineno">   10</span><span class="preprocessor">#include &lt;unordered_map&gt;</span></div>
+<div class="line"><a id="l00011" name="l00011"></a><span class="lineno">   11</span><span class="preprocessor">#include &lt;memory&gt;</span></div>
+<div class="line"><a id="l00012" name="l00012"></a><span class="lineno">   12</span> </div>
+<div class="line"><a id="l00013" name="l00013"></a><span class="lineno">   13</span><span class="keyword">namespace </span><a class="code hl_namespace" href="namespace_s_p.html">SP</a> {</div>
+<div class="line"><a id="l00014" name="l00014"></a><span class="lineno">   14</span> </div>
 <div class="foldopen" id="foldopen00015" data-start="{" data-end="};">
-<div class="line"><a id="l00015" name="l00015"></a><span class="lineno"><a class="line" href="struct_s_p_1_1_wait_map_1_1_guard.html">   15</a></span>    <span class="keyword">struct </span><a class="code hl_function" href="struct_s_p_1_1_wait_map_1_1_guard.html#aa5098fddfe6cfa491175e27324ee35d4">Guard</a> {</div>
-<div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span>        <a class="code hl_friend" href="struct_s_p_1_1_wait_map.html#ade71a865465c2985b2b08b5f979647db">Guard</a>(<a class="code hl_struct" href="struct_s_p_1_1_wait_map.html">WaitMap</a>&amp; waitMap, std::string_view path, std::unique_lock&lt;std::mutex&gt; lock);</div>
-<div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span> </div>
-<div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span>        <span class="keyword">auto</span> <a class="code hl_function" href="struct_s_p_1_1_wait_map_1_1_guard.html#a30305e66be18f75480f7f06212961ffd">wait_until</a>(std::chrono::time_point&lt;std::chrono::system_clock&gt; timeout) -&gt; std::cv_status;</div>
-<div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span>        <span class="keyword">template</span> &lt;<span class="keyword">typename</span> Pred&gt;</div>
+<div class="line"><a id="l00015" name="l00015"></a><span class="lineno"><a class="line" href="struct_s_p_1_1_wait_map.html">   15</a></span><span class="keyword">struct </span><a class="code hl_struct" href="struct_s_p_1_1_wait_map.html">WaitMap</a> {</div>
+<div class="foldopen" id="foldopen00016" data-start="{" data-end="};">
+<div class="line"><a id="l00016" name="l00016"></a><span class="lineno"><a class="line" href="struct_s_p_1_1_wait_map_1_1_guard.html">   16</a></span>    <span class="keyword">struct </span><a class="code hl_function" href="struct_s_p_1_1_wait_map_1_1_guard.html#aa5098fddfe6cfa491175e27324ee35d4">Guard</a> {</div>
+<div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span>        <a class="code hl_friend" href="struct_s_p_1_1_wait_map.html#ade71a865465c2985b2b08b5f979647db">Guard</a>(<a class="code hl_struct" href="struct_s_p_1_1_wait_map.html">WaitMap</a>&amp; waitMap, std::string_view path, std::unique_lock&lt;std::mutex&gt; lock);</div>
+<div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span> </div>
+<div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span>        <span class="comment">// When a Guard is destroyed, decrement active waiter count if this Guard performed a wait.</span></div>
 <div class="foldopen" id="foldopen00020" data-start="{" data-end="}">
-<div class="line"><a id="l00020" name="l00020"></a><span class="lineno"><a class="line" href="struct_s_p_1_1_wait_map_1_1_guard.html#a74dc7ef4cc283012f08be331534dc05f">   20</a></span>        <span class="keywordtype">bool</span> <a class="code hl_function" href="struct_s_p_1_1_wait_map_1_1_guard.html#a74dc7ef4cc283012f08be331534dc05f">wait_until</a>(std::chrono::time_point&lt;std::chrono::system_clock&gt; timeout, Pred pred) {</div>
-<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span>            <span class="keywordflow">return</span> waitMap.getCv(path).wait_until(lock, timeout, std::move(pred));</div>
-<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span>        }</div>
+<div class="line"><a id="l00020" name="l00020"></a><span class="lineno"><a class="line" href="struct_s_p_1_1_wait_map_1_1_guard.html#a7ed771f2aa3d95347d3deef3d0a974df">   20</a></span>        <a class="code hl_function" href="struct_s_p_1_1_wait_map_1_1_guard.html#a7ed771f2aa3d95347d3deef3d0a974df">~Guard</a>() {</div>
+<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span>            <span class="keywordflow">if</span> (counted) {</div>
+<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span>                <span class="keyword">auto</span> prev = waitMap.activeWaiterCount.fetch_sub(1, std::memory_order_acq_rel);</div>
+<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span>                <span class="keywordflow">if</span> (prev == 1) {</div>
+<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span>                    <span class="comment">// Wake clear() waiters that might be waiting for all active waiters to drain.</span></div>
+<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>                    std::lock_guard&lt;std::mutex&gt; lg(waitMap.activeWaitersMutex);</div>
+<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span>                    waitMap.noActiveWaitersCv.notify_all();</div>
+<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span>                }</div>
+<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span>            }</div>
+<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span>        }</div>
 </div>
-<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span> </div>
-<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span>    <span class="keyword">private</span>:</div>
-<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>        <a class="code hl_struct" href="struct_s_p_1_1_wait_map.html">WaitMap</a>&amp;                     waitMap;</div>
-<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span>        std::string                  path;</div>
-<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span>        std::unique_lock&lt;std::mutex&gt; lock;</div>
-<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span>    };</div>
+<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span> </div>
+<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span>        <span class="keyword">auto</span> <a class="code hl_function" href="struct_s_p_1_1_wait_map_1_1_guard.html#a30305e66be18f75480f7f06212961ffd">wait_until</a>(std::chrono::time_point&lt;std::chrono::system_clock&gt; timeout) -&gt; std::cv_status;</div>
+<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span>        <span class="keyword">template</span> &lt;<span class="keyword">typename</span> Pred&gt;</div>
+<div class="foldopen" id="foldopen00033" data-start="{" data-end="}">
+<div class="line"><a id="l00033" name="l00033"></a><span class="lineno"><a class="line" href="struct_s_p_1_1_wait_map_1_1_guard.html#a74dc7ef4cc283012f08be331534dc05f">   33</a></span>        <span class="keywordtype">bool</span> <a class="code hl_function" href="struct_s_p_1_1_wait_map_1_1_guard.html#a74dc7ef4cc283012f08be331534dc05f">wait_until</a>(std::chrono::time_point&lt;std::chrono::system_clock&gt; timeout, Pred pred) {</div>
+<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span>            <span class="keywordflow">if</span> (!cvPtr) cvPtr = &amp;waitMap.getCv(path);</div>
+<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span>            <span class="comment">// Begin waiter tracking on first wait call in this Guard (template path only).</span></div>
+<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>            <span class="keywordflow">if</span> (!counted) {</div>
+<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>                counted = <span class="keyword">true</span>;</div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>                waitMap.activeWaiterCount.fetch_add(1, std::memory_order_acq_rel);</div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>            }</div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>            <span class="keywordflow">return</span> cvPtr-&gt;wait_until(lock, timeout, std::move(pred));</div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>        }</div>
 </div>
-<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span> </div>
-<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span>    <span class="keyword">auto</span> <a class="code hl_function" href="struct_s_p_1_1_wait_map.html#aa3d84bd334cd6635a7f55479b21193c4">wait</a>(std::string_view path) -&gt; <a class="code hl_friend" href="struct_s_p_1_1_wait_map.html#ade71a865465c2985b2b08b5f979647db">Guard</a>;</div>
-<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span>    <span class="keyword">auto</span> <a class="code hl_function" href="struct_s_p_1_1_wait_map.html#a41d768d2388b545e0ea82afc3cfaf6c6">notify</a>(std::string_view path) -&gt; void;</div>
-<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span>    <span class="keyword">auto</span> <a class="code hl_function" href="struct_s_p_1_1_wait_map.html#a6844ce0a9d022f154be778f790ca043e">notifyAll</a>() -&gt; void;</div>
-<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>    <span class="keyword">auto</span> <a class="code hl_function" href="struct_s_p_1_1_wait_map.html#a2bcc875aec49d338191969ab71477cb8">clear</a>() -&gt; void;</div>
-<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span> </div>
-<div class="foldopen" id="foldopen00035" data-start="{" data-end="}">
-<div class="line"><a id="l00035" name="l00035"></a><span class="lineno"><a class="line" href="struct_s_p_1_1_wait_map.html#a910ffb4d2062eb62bd4edab17d5f8b22">   35</a></span>    <span class="keyword">auto</span> <a class="code hl_function" href="struct_s_p_1_1_wait_map.html#a910ffb4d2062eb62bd4edab17d5f8b22">hasWaiters</a>() const -&gt; <span class="keywordtype">bool</span> {</div>
-<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>        std::lock_guard&lt;std::mutex&gt; lock(mutex);</div>
-<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>        <span class="keywordflow">return</span> !this-&gt;cvMap.empty();</div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>    }</div>
-</div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span> </div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span><span class="keyword">private</span>:</div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno"><a class="line" href="struct_s_p_1_1_wait_map.html#ade71a865465c2985b2b08b5f979647db">   41</a></span>    <span class="keyword">friend</span> <span class="keyword">struct </span><a class="code hl_struct" href="struct_s_p_1_1_wait_map_1_1_guard.html">Guard</a>;</div>
-<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span><span class="keyword">public</span>:</div>
-<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>    <span class="comment">// Trie-based waiter storage for concrete paths.</span></div>
-<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>    <span class="comment">// Each node holds a CV for waiters on that exact node name.</span></div>
-<div class="foldopen" id="foldopen00045" data-start="{" data-end="};">
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno"><a class="line" href="struct_s_p_1_1_wait_map_1_1_trie_node.html">   45</a></span>    <span class="keyword">struct </span><a class="code hl_struct" href="struct_s_p_1_1_wait_map_1_1_trie_node.html">TrieNode</a> {</div>
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno"><a class="line" href="struct_s_p_1_1_wait_map_1_1_trie_node.html#a2822737b69352a71267adfb8394cef43">   46</a></span>        std::unordered_map&lt;std::string, std::unique_ptr&lt;TrieNode&gt;, <a class="code hl_typedef" href="namespace_s_p.html#adbf694052bc62c2fe70e151ae34a44c3">TransparentStringHash</a>, std::equal_to&lt;&gt;&gt; <a class="code hl_variable" href="struct_s_p_1_1_wait_map_1_1_trie_node.html#a2822737b69352a71267adfb8394cef43">children</a>;</div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno"><a class="line" href="struct_s_p_1_1_wait_map_1_1_trie_node.html#a875b3b033bf9d946f022021fe69e7ae5">   47</a></span>        std::condition_variable <a class="code hl_variable" href="struct_s_p_1_1_wait_map_1_1_trie_node.html#a875b3b033bf9d946f022021fe69e7ae5">cv</a>;</div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>    };</div>
-</div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span><span class="keyword">private</span>:</div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span> </div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>    <span class="keyword">private</span>:</div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>        <a class="code hl_struct" href="struct_s_p_1_1_wait_map.html">WaitMap</a>&amp;                     waitMap;</div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>        std::string                  path;</div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>        std::unique_lock&lt;std::mutex&gt; lock;</div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>        std::condition_variable*     cvPtr = <span class="keyword">nullptr</span>;</div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>        <span class="comment">// Tracks whether this Guard has incremented the active waiter count.</span></div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>        <span class="keywordtype">bool</span>                         counted = <span class="keyword">false</span>;</div>
 <div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span> </div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>    <span class="comment">// Root of the trie (created on first use).</span></div>
-<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>    std::unique_ptr&lt;TrieNode&gt; root;</div>
-<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span> </div>
-<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>    <span class="comment">// Existing API compatibility (current .cpp still uses these; slated for migration):</span></div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>    <span class="keyword">auto</span> getCv(std::string_view path) -&gt; std::condition_variable&amp;;</div>
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>    <span class="keyword">using </span>WaitMapType = std::unordered_map&lt;std::string, std::condition_variable, TransparentStringHash, std::equal_to&lt;&gt;&gt;;</div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span> </div>
-<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>    <span class="comment">// Glob waiters are tracked separately by their pattern.</span></div>
-<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>    <span class="comment">// During notify, candidates are filtered via prefix/components and matched with match_paths.</span></div>
-<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>    std::unordered_map&lt;std::string, std::condition_variable, TransparentStringHash, std::equal_to&lt;&gt;&gt; globWaiters;</div>
-<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span> </div>
-<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>    <span class="keyword">mutable</span> std::mutex mutex;</div>
-<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>    WaitMapType        cvMap;</div>
-<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>};</div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span> </div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>    };</div>
 </div>
-<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span> </div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>} <span class="comment">// namespace SP</span></div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span> </div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>    <span class="keyword">auto</span> <a class="code hl_function" href="struct_s_p_1_1_wait_map.html#aa3d84bd334cd6635a7f55479b21193c4">wait</a>(std::string_view path) -&gt; <a class="code hl_friend" href="struct_s_p_1_1_wait_map.html#ade71a865465c2985b2b08b5f979647db">Guard</a>;</div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>    <span class="keyword">auto</span> <a class="code hl_function" href="struct_s_p_1_1_wait_map.html#a41d768d2388b545e0ea82afc3cfaf6c6">notify</a>(std::string_view path) -&gt; void;</div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>    <span class="keyword">auto</span> <a class="code hl_function" href="struct_s_p_1_1_wait_map.html#a6844ce0a9d022f154be778f790ca043e">notifyAll</a>() -&gt; void;</div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>    <span class="keyword">auto</span> <a class="code hl_function" href="struct_s_p_1_1_wait_map.html#a2bcc875aec49d338191969ab71477cb8">clear</a>() -&gt; void;</div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span> </div>
+<div class="foldopen" id="foldopen00059" data-start="{" data-end="}">
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno"><a class="line" href="struct_s_p_1_1_wait_map.html#a910ffb4d2062eb62bd4edab17d5f8b22">   59</a></span>    <span class="keyword">auto</span> <a class="code hl_function" href="struct_s_p_1_1_wait_map.html#a910ffb4d2062eb62bd4edab17d5f8b22">hasWaiters</a>() const -&gt; <span class="keywordtype">bool</span> {</div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>        std::lock_guard&lt;std::mutex&gt; lock(mutex);</div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>        <span class="keywordflow">return</span> (this-&gt;root != <span class="keyword">nullptr</span>) || !this-&gt;globWaiters.empty();</div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>    }</div>
+</div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span> </div>
+<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span><span class="keyword">private</span>:</div>
+<div class="line"><a id="l00065" name="l00065"></a><span class="lineno"><a class="line" href="struct_s_p_1_1_wait_map.html#ade71a865465c2985b2b08b5f979647db">   65</a></span>    <span class="keyword">friend</span> <span class="keyword">struct </span><a class="code hl_struct" href="struct_s_p_1_1_wait_map_1_1_guard.html">Guard</a>;</div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span><span class="keyword">public</span>:</div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>    <span class="comment">// Trie-based waiter storage for concrete paths.</span></div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>    <span class="comment">// Each node holds a CV for waiters on that exact node name.</span></div>
+<div class="foldopen" id="foldopen00069" data-start="{" data-end="};">
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno"><a class="line" href="struct_s_p_1_1_wait_map_1_1_trie_node.html">   69</a></span>    <span class="keyword">struct </span><a class="code hl_struct" href="struct_s_p_1_1_wait_map_1_1_trie_node.html">TrieNode</a> {</div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno"><a class="line" href="struct_s_p_1_1_wait_map_1_1_trie_node.html#a2822737b69352a71267adfb8394cef43">   70</a></span>        std::unordered_map&lt;std::string, std::unique_ptr&lt;TrieNode&gt;, <a class="code hl_typedef" href="namespace_s_p.html#adbf694052bc62c2fe70e151ae34a44c3">TransparentStringHash</a>, std::equal_to&lt;&gt;&gt; <a class="code hl_variable" href="struct_s_p_1_1_wait_map_1_1_trie_node.html#a2822737b69352a71267adfb8394cef43">children</a>;</div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno"><a class="line" href="struct_s_p_1_1_wait_map_1_1_trie_node.html#a875b3b033bf9d946f022021fe69e7ae5">   71</a></span>        std::condition_variable <a class="code hl_variable" href="struct_s_p_1_1_wait_map_1_1_trie_node.html#a875b3b033bf9d946f022021fe69e7ae5">cv</a>;</div>
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>    };</div>
+</div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span><span class="keyword">private</span>:</div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span> </div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>    <span class="comment">// Root of the trie (created on first use).</span></div>
+<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>    std::unique_ptr&lt;TrieNode&gt; root;</div>
+<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span> </div>
+<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>    <span class="comment">// Existing API compatibility (current .cpp still uses these; slated for migration):</span></div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>    <span class="keyword">auto</span> getCv(std::string_view path) -&gt; std::condition_variable&amp;;</div>
+<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span> </div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span> </div>
+<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>    <span class="comment">// Glob waiters are tracked separately by their pattern.</span></div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>    <span class="comment">// During notify, candidates are filtered via prefix/components and matched with match_paths.</span></div>
+<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>    std::unordered_map&lt;std::string, std::condition_variable, TransparentStringHash, std::equal_to&lt;&gt;&gt; globWaiters;</div>
+<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span> </div>
+<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>    <span class="keyword">mutable</span> std::mutex mutex;</div>
+<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span> </div>
+<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>    <span class="comment">// Active waiter tracking to make clear() safe:</span></div>
+<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>    <span class="comment">// - activeWaiterCount counts Guards that have entered a wait (via template wait_until).</span></div>
+<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>    <span class="comment">// - noActiveWaitersCv is notified when the last active waiter departs, so clear() can wait if needed.</span></div>
+<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>    <span class="comment">// Note: clear() implementation should notify_all() first, then wait for activeWaiterCount==0 before destroying CVs.</span></div>
+<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>    <span class="keyword">mutable</span> std::mutex              activeWaitersMutex;</div>
+<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span>    std::condition_variable         noActiveWaitersCv;</div>
+<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>    std::atomic&lt;size_t&gt;             activeWaiterCount{0};</div>
+<div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span> </div>
+<div class="line"><a id="l00096" name="l00096"></a><span class="lineno">   96</span>};</div>
+</div>
+<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span> </div>
+<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>} <span class="comment">// namespace SP</span></div>
 <div class="ttc" id="a_transparent_string_8hpp_html"><div class="ttname"><a href="_transparent_string_8hpp.html">TransparentString.hpp</a></div></div>
 <div class="ttc" id="anamespace_s_p_html"><div class="ttname"><a href="namespace_s_p.html">SP</a></div><div class="ttdef"><b>Definition</b> ElementType.hpp:7</div></div>
 <div class="ttc" id="anamespace_s_p_html_adbf694052bc62c2fe70e151ae34a44c3"><div class="ttname"><a href="namespace_s_p.html#adbf694052bc62c2fe70e151ae34a44c3">SP::TransparentStringHash</a></div><div class="ttdeci">Overload&lt; std::hash&lt; std::string &gt;, std::hash&lt; std::string_view &gt;, CharPointerHash &gt; TransparentStringHash</div><div class="ttdef"><b>Definition</b> TransparentString.hpp:19</div></div>
-<div class="ttc" id="astruct_s_p_1_1_wait_map_1_1_guard_html"><div class="ttname"><a href="struct_s_p_1_1_wait_map_1_1_guard.html">SP::WaitMap::Guard</a></div><div class="ttdef"><b>Definition</b> WaitMap.hpp:15</div></div>
-<div class="ttc" id="astruct_s_p_1_1_wait_map_1_1_guard_html_a30305e66be18f75480f7f06212961ffd"><div class="ttname"><a href="struct_s_p_1_1_wait_map_1_1_guard.html#a30305e66be18f75480f7f06212961ffd">SP::WaitMap::Guard::wait_until</a></div><div class="ttdeci">auto wait_until(std::chrono::time_point&lt; std::chrono::system_clock &gt; timeout) -&gt; std::cv_status</div><div class="ttdef"><b>Definition</b> WaitMap.cpp:13</div></div>
-<div class="ttc" id="astruct_s_p_1_1_wait_map_1_1_guard_html_a74dc7ef4cc283012f08be331534dc05f"><div class="ttname"><a href="struct_s_p_1_1_wait_map_1_1_guard.html#a74dc7ef4cc283012f08be331534dc05f">SP::WaitMap::Guard::wait_until</a></div><div class="ttdeci">bool wait_until(std::chrono::time_point&lt; std::chrono::system_clock &gt; timeout, Pred pred)</div><div class="ttdef"><b>Definition</b> WaitMap.hpp:20</div></div>
+<div class="ttc" id="astruct_s_p_1_1_wait_map_1_1_guard_html"><div class="ttname"><a href="struct_s_p_1_1_wait_map_1_1_guard.html">SP::WaitMap::Guard</a></div><div class="ttdef"><b>Definition</b> WaitMap.hpp:16</div></div>
+<div class="ttc" id="astruct_s_p_1_1_wait_map_1_1_guard_html_a30305e66be18f75480f7f06212961ffd"><div class="ttname"><a href="struct_s_p_1_1_wait_map_1_1_guard.html#a30305e66be18f75480f7f06212961ffd">SP::WaitMap::Guard::wait_until</a></div><div class="ttdeci">auto wait_until(std::chrono::time_point&lt; std::chrono::system_clock &gt; timeout) -&gt; std::cv_status</div><div class="ttdef"><b>Definition</b> WaitMap.cpp:21</div></div>
+<div class="ttc" id="astruct_s_p_1_1_wait_map_1_1_guard_html_a74dc7ef4cc283012f08be331534dc05f"><div class="ttname"><a href="struct_s_p_1_1_wait_map_1_1_guard.html#a74dc7ef4cc283012f08be331534dc05f">SP::WaitMap::Guard::wait_until</a></div><div class="ttdeci">bool wait_until(std::chrono::time_point&lt; std::chrono::system_clock &gt; timeout, Pred pred)</div><div class="ttdef"><b>Definition</b> WaitMap.hpp:33</div></div>
+<div class="ttc" id="astruct_s_p_1_1_wait_map_1_1_guard_html_a7ed771f2aa3d95347d3deef3d0a974df"><div class="ttname"><a href="struct_s_p_1_1_wait_map_1_1_guard.html#a7ed771f2aa3d95347d3deef3d0a974df">SP::WaitMap::Guard::~Guard</a></div><div class="ttdeci">~Guard()</div><div class="ttdef"><b>Definition</b> WaitMap.hpp:20</div></div>
 <div class="ttc" id="astruct_s_p_1_1_wait_map_1_1_guard_html_aa5098fddfe6cfa491175e27324ee35d4"><div class="ttname"><a href="struct_s_p_1_1_wait_map_1_1_guard.html#aa5098fddfe6cfa491175e27324ee35d4">SP::WaitMap::Guard::Guard</a></div><div class="ttdeci">Guard(WaitMap &amp;waitMap, std::string_view path, std::unique_lock&lt; std::mutex &gt; lock)</div><div class="ttdef"><b>Definition</b> WaitMap.cpp:10</div></div>
-<div class="ttc" id="astruct_s_p_1_1_wait_map_1_1_trie_node_html"><div class="ttname"><a href="struct_s_p_1_1_wait_map_1_1_trie_node.html">SP::WaitMap::TrieNode</a></div><div class="ttdef"><b>Definition</b> WaitMap.hpp:45</div></div>
-<div class="ttc" id="astruct_s_p_1_1_wait_map_1_1_trie_node_html_a2822737b69352a71267adfb8394cef43"><div class="ttname"><a href="struct_s_p_1_1_wait_map_1_1_trie_node.html#a2822737b69352a71267adfb8394cef43">SP::WaitMap::TrieNode::children</a></div><div class="ttdeci">std::unordered_map&lt; std::string, std::unique_ptr&lt; TrieNode &gt;, TransparentStringHash, std::equal_to&lt;&gt; &gt; children</div><div class="ttdef"><b>Definition</b> WaitMap.hpp:46</div></div>
-<div class="ttc" id="astruct_s_p_1_1_wait_map_1_1_trie_node_html_a875b3b033bf9d946f022021fe69e7ae5"><div class="ttname"><a href="struct_s_p_1_1_wait_map_1_1_trie_node.html#a875b3b033bf9d946f022021fe69e7ae5">SP::WaitMap::TrieNode::cv</a></div><div class="ttdeci">std::condition_variable cv</div><div class="ttdef"><b>Definition</b> WaitMap.hpp:47</div></div>
-<div class="ttc" id="astruct_s_p_1_1_wait_map_html"><div class="ttname"><a href="struct_s_p_1_1_wait_map.html">SP::WaitMap</a></div><div class="ttdef"><b>Definition</b> WaitMap.hpp:14</div></div>
-<div class="ttc" id="astruct_s_p_1_1_wait_map_html_a2bcc875aec49d338191969ab71477cb8"><div class="ttname"><a href="struct_s_p_1_1_wait_map.html#a2bcc875aec49d338191969ab71477cb8">SP::WaitMap::clear</a></div><div class="ttdeci">auto clear() -&gt; void</div><div class="ttdef"><b>Definition</b> WaitMap.cpp:172</div></div>
-<div class="ttc" id="astruct_s_p_1_1_wait_map_html_a41d768d2388b545e0ea82afc3cfaf6c6"><div class="ttname"><a href="struct_s_p_1_1_wait_map.html#a41d768d2388b545e0ea82afc3cfaf6c6">SP::WaitMap::notify</a></div><div class="ttdeci">auto notify(std::string_view path) -&gt; void</div><div class="ttdef"><b>Definition</b> WaitMap.cpp:80</div></div>
-<div class="ttc" id="astruct_s_p_1_1_wait_map_html_a6844ce0a9d022f154be778f790ca043e"><div class="ttname"><a href="struct_s_p_1_1_wait_map.html#a6844ce0a9d022f154be778f790ca043e">SP::WaitMap::notifyAll</a></div><div class="ttdeci">auto notifyAll() -&gt; void</div><div class="ttdef"><b>Definition</b> WaitMap.cpp:155</div></div>
-<div class="ttc" id="astruct_s_p_1_1_wait_map_html_a910ffb4d2062eb62bd4edab17d5f8b22"><div class="ttname"><a href="struct_s_p_1_1_wait_map.html#a910ffb4d2062eb62bd4edab17d5f8b22">SP::WaitMap::hasWaiters</a></div><div class="ttdeci">auto hasWaiters() const -&gt; bool</div><div class="ttdef"><b>Definition</b> WaitMap.hpp:35</div></div>
-<div class="ttc" id="astruct_s_p_1_1_wait_map_html_aa3d84bd334cd6635a7f55479b21193c4"><div class="ttname"><a href="struct_s_p_1_1_wait_map.html#aa3d84bd334cd6635a7f55479b21193c4">SP::WaitMap::wait</a></div><div class="ttdeci">auto wait(std::string_view path) -&gt; Guard</div><div class="ttdef"><b>Definition</b> WaitMap.cpp:17</div></div>
-<div class="ttc" id="astruct_s_p_1_1_wait_map_html_ade71a865465c2985b2b08b5f979647db"><div class="ttname"><a href="struct_s_p_1_1_wait_map.html#ade71a865465c2985b2b08b5f979647db">SP::WaitMap::Guard</a></div><div class="ttdeci">friend struct Guard</div><div class="ttdef"><b>Definition</b> WaitMap.hpp:41</div></div>
+<div class="ttc" id="astruct_s_p_1_1_wait_map_1_1_trie_node_html"><div class="ttname"><a href="struct_s_p_1_1_wait_map_1_1_trie_node.html">SP::WaitMap::TrieNode</a></div><div class="ttdef"><b>Definition</b> WaitMap.hpp:69</div></div>
+<div class="ttc" id="astruct_s_p_1_1_wait_map_1_1_trie_node_html_a2822737b69352a71267adfb8394cef43"><div class="ttname"><a href="struct_s_p_1_1_wait_map_1_1_trie_node.html#a2822737b69352a71267adfb8394cef43">SP::WaitMap::TrieNode::children</a></div><div class="ttdeci">std::unordered_map&lt; std::string, std::unique_ptr&lt; TrieNode &gt;, TransparentStringHash, std::equal_to&lt;&gt; &gt; children</div><div class="ttdef"><b>Definition</b> WaitMap.hpp:70</div></div>
+<div class="ttc" id="astruct_s_p_1_1_wait_map_1_1_trie_node_html_a875b3b033bf9d946f022021fe69e7ae5"><div class="ttname"><a href="struct_s_p_1_1_wait_map_1_1_trie_node.html#a875b3b033bf9d946f022021fe69e7ae5">SP::WaitMap::TrieNode::cv</a></div><div class="ttdeci">std::condition_variable cv</div><div class="ttdef"><b>Definition</b> WaitMap.hpp:71</div></div>
+<div class="ttc" id="astruct_s_p_1_1_wait_map_html"><div class="ttname"><a href="struct_s_p_1_1_wait_map.html">SP::WaitMap</a></div><div class="ttdef"><b>Definition</b> WaitMap.hpp:15</div></div>
+<div class="ttc" id="astruct_s_p_1_1_wait_map_html_a2bcc875aec49d338191969ab71477cb8"><div class="ttname"><a href="struct_s_p_1_1_wait_map.html#a2bcc875aec49d338191969ab71477cb8">SP::WaitMap::clear</a></div><div class="ttdeci">auto clear() -&gt; void</div><div class="ttdef"><b>Definition</b> WaitMap.cpp:208</div></div>
+<div class="ttc" id="astruct_s_p_1_1_wait_map_html_a41d768d2388b545e0ea82afc3cfaf6c6"><div class="ttname"><a href="struct_s_p_1_1_wait_map.html#a41d768d2388b545e0ea82afc3cfaf6c6">SP::WaitMap::notify</a></div><div class="ttdeci">auto notify(std::string_view path) -&gt; void</div><div class="ttdef"><b>Definition</b> WaitMap.cpp:94</div></div>
+<div class="ttc" id="astruct_s_p_1_1_wait_map_html_a6844ce0a9d022f154be778f790ca043e"><div class="ttname"><a href="struct_s_p_1_1_wait_map.html#a6844ce0a9d022f154be778f790ca043e">SP::WaitMap::notifyAll</a></div><div class="ttdeci">auto notifyAll() -&gt; void</div><div class="ttdef"><b>Definition</b> WaitMap.cpp:176</div></div>
+<div class="ttc" id="astruct_s_p_1_1_wait_map_html_a910ffb4d2062eb62bd4edab17d5f8b22"><div class="ttname"><a href="struct_s_p_1_1_wait_map.html#a910ffb4d2062eb62bd4edab17d5f8b22">SP::WaitMap::hasWaiters</a></div><div class="ttdeci">auto hasWaiters() const -&gt; bool</div><div class="ttdef"><b>Definition</b> WaitMap.hpp:59</div></div>
+<div class="ttc" id="astruct_s_p_1_1_wait_map_html_aa3d84bd334cd6635a7f55479b21193c4"><div class="ttname"><a href="struct_s_p_1_1_wait_map.html#aa3d84bd334cd6635a7f55479b21193c4">SP::WaitMap::wait</a></div><div class="ttdeci">auto wait(std::string_view path) -&gt; Guard</div><div class="ttdef"><b>Definition</b> WaitMap.cpp:31</div></div>
+<div class="ttc" id="astruct_s_p_1_1_wait_map_html_ade71a865465c2985b2b08b5f979647db"><div class="ttname"><a href="struct_s_p_1_1_wait_map.html#ade71a865465c2985b2b08b5f979647db">SP::WaitMap::Guard</a></div><div class="ttdeci">friend struct Guard</div><div class="ttdef"><b>Definition</b> WaitMap.hpp:65</div></div>
 </div><!-- fragment --></div><!-- contents -->
 </div><!-- doc-content -->
 </div><!-- container -->

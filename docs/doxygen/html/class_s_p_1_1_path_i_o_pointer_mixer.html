@@ -99,7 +99,6 @@ Inheritance diagram for SP::PathIOPointerMixer:</div>
  <div class="center">
   <img src="class_s_p_1_1_path_i_o_pointer_mixer.png" usemap="#SP_3A_3APathIOPointerMixer_map" alt=""/>
   <map id="SP_3A_3APathIOPointerMixer_map" name="SP_3A_3APathIOPointerMixer_map">
-<area href="struct_s_p_1_1_path_i_o.html" alt="SP::PathIO" shape="rect" coords="0,56,144,80"/>
 <area href="class_s_p_1_1_path_space_base.html" alt="SP::PathSpaceBase" shape="rect" coords="0,0,144,24"/>
   </map>
 </div></div>
@@ -133,22 +132,10 @@ Public Types</h2></td></tr>
 <tr class="heading"><td colspan="2"><h2 id="header-pub-methods" class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
 <tr class="memitem:a58de7ce4bb8274fe6e62ba7977b3a894" id="r_a58de7ce4bb8274fe6e62ba7977b3a894"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a58de7ce4bb8274fe6e62ba7977b3a894">PathIOPointerMixer</a> ()=default</td></tr>
-<tr class="memitem:a125811d568b6469af6b486a12ca73991" id="r_a125811d568b6469af6b486a12ca73991"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a125811d568b6469af6b486a12ca73991">simulateEvent</a> (<a class="el" href="struct_s_p_1_1_path_i_o_pointer_mixer_1_1_event.html">Event</a> const &amp;ev)</td></tr>
-<tr class="memitem:a583464ffeca236fb04373f62676087b3" id="r_a583464ffeca236fb04373f62676087b3"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a583464ffeca236fb04373f62676087b3">simulateMove</a> (int dx, int dy, int sourceId=0)</td></tr>
-<tr class="memitem:ab5742fc308b1fb9e412f98dbc93a81f8" id="r_ab5742fc308b1fb9e412f98dbc93a81f8"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#ab5742fc308b1fb9e412f98dbc93a81f8">simulateAbsolute</a> (int x, int y, int sourceId=0)</td></tr>
-<tr class="memitem:a963ba0c1fcfe565fdc32597e3ec37749" id="r_a963ba0c1fcfe565fdc32597e3ec37749"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a963ba0c1fcfe565fdc32597e3ec37749">simulateButtonDown</a> (<a class="el" href="#a2538a036d98704f2335839113769757c">PointerButton</a> button, int sourceId=0)</td></tr>
-<tr class="memitem:a565d44ca30458778f46c1374214eea9b" id="r_a565d44ca30458778f46c1374214eea9b"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a565d44ca30458778f46c1374214eea9b">simulateButtonUp</a> (<a class="el" href="#a2538a036d98704f2335839113769757c">PointerButton</a> button, int sourceId=0)</td></tr>
-<tr class="memitem:a9bee088d94aa9147225d2e6f371afce1" id="r_a9bee088d94aa9147225d2e6f371afce1"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a9bee088d94aa9147225d2e6f371afce1">simulateWheel</a> (int ticks, int sourceId=0)</td></tr>
-<tr class="memitem:aa6c415add3c8e645297a88378685235e" id="r_aa6c415add3c8e645297a88378685235e"><td class="memItemLeft" align="right" valign="top">size_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#aa6c415add3c8e645297a88378685235e">pending</a> () const</td></tr>
-<tr class="memitem:ae12da368a4196560b02881e4fee81278" id="r_ae12da368a4196560b02881e4fee81278"><td class="memItemLeft" align="right" valign="top">std::optional&lt; <a class="el" href="struct_s_p_1_1_path_i_o_pointer_mixer_1_1_event.html">Event</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#ae12da368a4196560b02881e4fee81278">peek</a> () const</td></tr>
-<tr class="memitem:a6950ce993f6fe7c2bde8074b9613b194" id="r_a6950ce993f6fe7c2bde8074b9613b194"><td class="memItemLeft" align="right" valign="top">std::optional&lt; <a class="el" href="struct_s_p_1_1_path_i_o_pointer_mixer_1_1_event.html">Event</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a6950ce993f6fe7c2bde8074b9613b194">pop</a> ()</td></tr>
-<tr class="memitem:ad0edafc0b35d8c6dae829b168a301fa5" id="r_ad0edafc0b35d8c6dae829b168a301fa5"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#ad0edafc0b35d8c6dae829b168a301fa5">clear</a> ()</td></tr>
-<tr class="memitem:abaf96cc9119cd5f5371b6497d9dcc347" id="r_abaf96cc9119cd5f5371b6497d9dcc347"><td class="memItemLeft" align="right" valign="top">auto&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#abaf96cc9119cd5f5371b6497d9dcc347">out</a> (<a class="el" href="class_s_p_1_1_iterator.html">Iterator</a> const &amp;, <a class="el" href="struct_s_p_1_1_input_metadata.html">InputMetadata</a> const &amp;inputMetadata, <a class="el" href="struct_s_p_1_1_out.html">Out</a> const &amp;options, void *obj) -&gt; std::optional&lt; <a class="el" href="struct_s_p_1_1_error.html">Error</a> &gt; override</td></tr>
-<tr class="inherit_header pub_methods_struct_s_p_1_1_path_i_o"><td colspan="2" onclick="javascript:dynsection.toggleInherit('pub_methods_struct_s_p_1_1_path_i_o')"><span class="dynarrow"><span class="arrowhead closed"></span></span>Public Member Functions inherited from <a class="el" href="struct_s_p_1_1_path_i_o.html">SP::PathIO</a></td></tr>
-<tr class="memitem:ae066308a459337cb9d786871656b0f77 inherit pub_methods_struct_s_p_1_1_path_i_o" id="r_ae066308a459337cb9d786871656b0f77"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_s_p_1_1_path_i_o.html#ae066308a459337cb9d786871656b0f77">PathIO</a> ()=default</td></tr>
-<tr class="memitem:a8b992803f43217223a22052f2a574464 inherit pub_methods_struct_s_p_1_1_path_i_o" id="r_a8b992803f43217223a22052f2a574464"><td class="memItemLeft" align="right" valign="top">virtual auto&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_s_p_1_1_path_i_o.html#a8b992803f43217223a22052f2a574464">in</a> (<a class="el" href="class_s_p_1_1_iterator.html">Iterator</a> const &amp;path, <a class="el" href="struct_s_p_1_1_input_data.html">InputData</a> const &amp;data) -&gt; <a class="el" href="struct_s_p_1_1_insert_return.html">InsertReturn</a> override</td></tr>
-<tr class="memitem:aedc818429320e57831f30dd53ae588e0 inherit pub_methods_struct_s_p_1_1_path_i_o" id="r_aedc818429320e57831f30dd53ae588e0"><td class="memItemLeft" align="right" valign="top">virtual auto&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_s_p_1_1_path_i_o.html#aedc818429320e57831f30dd53ae588e0">shutdown</a> () -&gt; void override</td></tr>
-<tr class="memitem:aff7cad204074847f5857408cc25e1f82 inherit pub_methods_struct_s_p_1_1_path_i_o" id="r_aff7cad204074847f5857408cc25e1f82"><td class="memItemLeft" align="right" valign="top">virtual auto&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_s_p_1_1_path_i_o.html#aff7cad204074847f5857408cc25e1f82">notify</a> (std::string const &amp;notificationPath) -&gt; void override</td></tr>
+<tr class="memitem:a876fa9246a3a2ebb61230fc52a29d5c6" id="r_a876fa9246a3a2ebb61230fc52a29d5c6"><td class="memItemLeft" align="right" valign="top">auto&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a876fa9246a3a2ebb61230fc52a29d5c6">in</a> (<a class="el" href="class_s_p_1_1_iterator.html">Iterator</a> const &amp;path, <a class="el" href="struct_s_p_1_1_input_data.html">InputData</a> const &amp;data) -&gt; <a class="el" href="struct_s_p_1_1_insert_return.html">InsertReturn</a> override</td></tr>
+<tr class="memitem:a13460d7f73f29e29ae639a6835c40510" id="r_a13460d7f73f29e29ae639a6835c40510"><td class="memItemLeft" align="right" valign="top">auto&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a13460d7f73f29e29ae639a6835c40510">out</a> (<a class="el" href="class_s_p_1_1_iterator.html">Iterator</a> const &amp;path, <a class="el" href="struct_s_p_1_1_input_metadata.html">InputMetadata</a> const &amp;inputMetadata, <a class="el" href="struct_s_p_1_1_out.html">Out</a> const &amp;options, void *obj) -&gt; std::optional&lt; <a class="el" href="struct_s_p_1_1_error.html">Error</a> &gt; override</td></tr>
+<tr class="memitem:a4ccbe74e14bd52b60ea8e0cf3af525ee" id="r_a4ccbe74e14bd52b60ea8e0cf3af525ee"><td class="memItemLeft" align="right" valign="top">auto&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a4ccbe74e14bd52b60ea8e0cf3af525ee">shutdown</a> () -&gt; void override</td></tr>
+<tr class="memitem:ad561f799d36b1d27cb222db2acf1d599" id="r_ad561f799d36b1d27cb222db2acf1d599"><td class="memItemLeft" align="right" valign="top">auto&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#ad561f799d36b1d27cb222db2acf1d599">notify</a> (std::string const &amp;notificationPath) -&gt; void override</td></tr>
 <tr class="inherit_header pub_methods_class_s_p_1_1_path_space_base"><td colspan="2" onclick="javascript:dynsection.toggleInherit('pub_methods_class_s_p_1_1_path_space_base')"><span class="dynarrow"><span class="arrowhead closed"></span></span>Public Member Functions inherited from <a class="el" href="class_s_p_1_1_path_space_base.html">SP::PathSpaceBase</a></td></tr>
 <tr class="memitem:ac15ba73ea81e8946ea23c4beb2e4c598 inherit pub_methods_class_s_p_1_1_path_space_base" id="r_ac15ba73ea81e8946ea23c4beb2e4c598"><td class="memItemLeft" align="right" valign="top">virtual&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="class_s_p_1_1_path_space_base.html#ac15ba73ea81e8946ea23c4beb2e4c598">~PathSpaceBase</a> ()=default</td></tr>
 <tr class="memitem:a7f160bb41b90202c97f3581612e22001 inherit pub_methods_class_s_p_1_1_path_space_base" id="r_a7f160bb41b90202c97f3581612e22001"><td class="memTemplParams" colspan="2">template&lt;typename DataType, StringConvertible S&gt; </td></tr>
@@ -189,10 +176,10 @@ Protected Member Functions</h2></td></tr>
 <div class="textblock"><p><a class="el" href="class_s_p_1_1_path_i_o_pointer_mixer.html">PathIOPointerMixer</a> — aggregates pointer events (mouse/tablet/pen) from multiple sources.</p>
 <p>Characteristics:</p><ul>
 <li>Path-agnostic: can be mounted anywhere in a parent <a class="el" href="class_s_p_1_1_path_space.html">PathSpace</a>.</li>
-<li>Typed <a class="el" href="#abaf96cc9119cd5f5371b6497d9dcc347">out()</a>/take(): serves <a class="el" href="#aa983d14f1809ad330c9e5fef8261ad19">PointerEvent</a> with peek (non-pop) and pop semantics and supports blocking waits.</li>
-<li>Simulation API: feed events from tests or platform backends via simulate* helpers or simulateEvent(Event).</li>
+<li>Typed <a class="el" href="#a13460d7f73f29e29ae639a6835c40510">out()</a>/take(): serves <a class="el" href="#aa983d14f1809ad330c9e5fef8261ad19">PointerEvent</a> with peek (non-pop) and pop semantics and supports blocking waits.</li>
+<li>Production: feed events via insert at "events" (relative to mount) into this provider.</li>
 <li>Concurrency: thread-safe enqueue/peek/pop with condition_variable-based blocking reads.</li>
-<li>Notifications: when mounted with a shared context, simulateEvent will wake waiters via notifyAll().</li>
+<li>Notifications: when mounted with a shared context, event inserts will wake waiters via the provider/PathSpace context.</li>
 </ul>
 <p>Notes:</p><ul>
 <li>This mixer does not enforce a single "active" source by default; it merges all events by arrival order.</li>
@@ -299,8 +286,8 @@ Protected Member Functions</h2></td></tr>
 </div>
 </div>
 <a name="doc-func-members" id="doc-func-members"></a><h2 id="header-doc-func-members" class="groupheader">Member Function Documentation</h2>
-<a id="ad0edafc0b35d8c6dae829b168a301fa5" name="ad0edafc0b35d8c6dae829b168a301fa5"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ad0edafc0b35d8c6dae829b168a301fa5">&#9670;&#160;</a></span>clear()</h2>
+<a id="a876fa9246a3a2ebb61230fc52a29d5c6" name="a876fa9246a3a2ebb61230fc52a29d5c6"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a876fa9246a3a2ebb61230fc52a29d5c6">&#9670;&#160;</a></span>in()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -309,23 +296,56 @@ Protected Member Functions</h2></td></tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">void SP::PathIOPointerMixer::clear </td>
+          <td class="memname">auto SP::PathIOPointerMixer::in </td>
           <td>(</td>
-          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
+          <td class="paramtype"><a class="el" href="class_s_p_1_1_iterator.html">Iterator</a> const &amp;</td>          <td class="paramname"><span class="paramname"><em>path</em></span>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
           <td></td>
+          <td class="paramtype"><a class="el" href="struct_s_p_1_1_input_data.html">InputData</a> const &amp;</td>          <td class="paramname"><span class="paramname"><em>data</em></span>&#160;) -&gt; <a class="el" href="struct_s_p_1_1_insert_return.html">InsertReturn</a></td>
         </tr>
       </table>
   </td>
   <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel inline">inline</span></span>  </td>
+<span class="mlabels"><span class="mlabel override">override</span><span class="mlabel virtual">virtual</span></span>  </td>
   </tr>
 </table>
 </div><div class="memdoc">
 
+<p>Implements <a class="el" href="class_s_p_1_1_path_space_base.html">SP::PathSpaceBase</a>.</p>
+
 </div>
 </div>
-<a id="abaf96cc9119cd5f5371b6497d9dcc347" name="abaf96cc9119cd5f5371b6497d9dcc347"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#abaf96cc9119cd5f5371b6497d9dcc347">&#9670;&#160;</a></span>out()</h2>
+<a id="ad561f799d36b1d27cb222db2acf1d599" name="ad561f799d36b1d27cb222db2acf1d599"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ad561f799d36b1d27cb222db2acf1d599">&#9670;&#160;</a></span>notify()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">auto SP::PathIOPointerMixer::notify </td>
+          <td>(</td>
+          <td class="paramtype">std::string const &amp;</td>          <td class="paramname"><span class="paramname"><em>notificationPath</em></span></td><td>)</td>
+          <td> -&gt; void</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel override">override</span><span class="mlabel virtual">virtual</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Implements <a class="el" href="class_s_p_1_1_path_space_base.html">SP::PathSpaceBase</a>.</p>
+
+</div>
+</div>
+<a id="a13460d7f73f29e29ae639a6835c40510" name="a13460d7f73f29e29ae639a6835c40510"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a13460d7f73f29e29ae639a6835c40510">&#9670;&#160;</a></span>out()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -336,7 +356,7 @@ Protected Member Functions</h2></td></tr>
         <tr>
           <td class="memname">auto SP::PathIOPointerMixer::out </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="class_s_p_1_1_iterator.html">Iterator</a> const &amp;</td>          <td class="paramname"><span class="paramname"><em></em></span>, </td>
+          <td class="paramtype"><a class="el" href="class_s_p_1_1_iterator.html">Iterator</a> const &amp;</td>          <td class="paramname"><span class="paramname"><em>path</em></span>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -356,17 +376,17 @@ Protected Member Functions</h2></td></tr>
       </table>
   </td>
   <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel inline">inline</span><span class="mlabel override">override</span><span class="mlabel virtual">virtual</span></span>  </td>
+<span class="mlabels"><span class="mlabel override">override</span><span class="mlabel virtual">virtual</span></span>  </td>
   </tr>
 </table>
 </div><div class="memdoc">
 
-<p>Reimplemented from <a class="el" href="struct_s_p_1_1_path_i_o.html#aa6369701639587cf2bb63ad9bdce016f">SP::PathIO</a>.</p>
+<p>Implements <a class="el" href="class_s_p_1_1_path_space_base.html">SP::PathSpaceBase</a>.</p>
 
 </div>
 </div>
-<a id="ae12da368a4196560b02881e4fee81278" name="ae12da368a4196560b02881e4fee81278"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ae12da368a4196560b02881e4fee81278">&#9670;&#160;</a></span>peek()</h2>
+<a id="a4ccbe74e14bd52b60ea8e0cf3af525ee" name="a4ccbe74e14bd52b60ea8e0cf3af525ee"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a4ccbe74e14bd52b60ea8e0cf3af525ee">&#9670;&#160;</a></span>shutdown()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -375,248 +395,20 @@ Protected Member Functions</h2></td></tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">std::optional&lt; <a class="el" href="struct_s_p_1_1_path_i_o_pointer_mixer_1_1_event.html">Event</a> &gt; SP::PathIOPointerMixer::peek </td>
+          <td class="memname">auto SP::PathIOPointerMixer::shutdown </td>
           <td>(</td>
           <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
-          <td> const</td>
+          <td> -&gt; void</td>
         </tr>
       </table>
   </td>
   <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel inline">inline</span></span>  </td>
+<span class="mlabels"><span class="mlabel override">override</span><span class="mlabel virtual">virtual</span></span>  </td>
   </tr>
 </table>
 </div><div class="memdoc">
 
-</div>
-</div>
-<a id="aa6c415add3c8e645297a88378685235e" name="aa6c415add3c8e645297a88378685235e"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aa6c415add3c8e645297a88378685235e">&#9670;&#160;</a></span>pending()</h2>
-
-<div class="memitem">
-<div class="memproto">
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">size_t SP::PathIOPointerMixer::pending </td>
-          <td>(</td>
-          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
-          <td> const</td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel inline">inline</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-
-</div>
-</div>
-<a id="a6950ce993f6fe7c2bde8074b9613b194" name="a6950ce993f6fe7c2bde8074b9613b194"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a6950ce993f6fe7c2bde8074b9613b194">&#9670;&#160;</a></span>pop()</h2>
-
-<div class="memitem">
-<div class="memproto">
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">std::optional&lt; <a class="el" href="struct_s_p_1_1_path_i_o_pointer_mixer_1_1_event.html">Event</a> &gt; SP::PathIOPointerMixer::pop </td>
-          <td>(</td>
-          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
-          <td></td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel inline">inline</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-
-</div>
-</div>
-<a id="ab5742fc308b1fb9e412f98dbc93a81f8" name="ab5742fc308b1fb9e412f98dbc93a81f8"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ab5742fc308b1fb9e412f98dbc93a81f8">&#9670;&#160;</a></span>simulateAbsolute()</h2>
-
-<div class="memitem">
-<div class="memproto">
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">void SP::PathIOPointerMixer::simulateAbsolute </td>
-          <td>(</td>
-          <td class="paramtype">int</td>          <td class="paramname"><span class="paramname"><em>x</em></span>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">int</td>          <td class="paramname"><span class="paramname"><em>y</em></span>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">int</td>          <td class="paramname"><span class="paramname"><em>sourceId</em></span><span class="paramdefsep"> = </span><span class="paramdefval">0</span>&#160;)</td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel inline">inline</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-
-</div>
-</div>
-<a id="a963ba0c1fcfe565fdc32597e3ec37749" name="a963ba0c1fcfe565fdc32597e3ec37749"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a963ba0c1fcfe565fdc32597e3ec37749">&#9670;&#160;</a></span>simulateButtonDown()</h2>
-
-<div class="memitem">
-<div class="memproto">
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">void SP::PathIOPointerMixer::simulateButtonDown </td>
-          <td>(</td>
-          <td class="paramtype"><a class="el" href="#a2538a036d98704f2335839113769757c">PointerButton</a></td>          <td class="paramname"><span class="paramname"><em>button</em></span>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">int</td>          <td class="paramname"><span class="paramname"><em>sourceId</em></span><span class="paramdefsep"> = </span><span class="paramdefval">0</span>&#160;)</td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel inline">inline</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-
-</div>
-</div>
-<a id="a565d44ca30458778f46c1374214eea9b" name="a565d44ca30458778f46c1374214eea9b"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a565d44ca30458778f46c1374214eea9b">&#9670;&#160;</a></span>simulateButtonUp()</h2>
-
-<div class="memitem">
-<div class="memproto">
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">void SP::PathIOPointerMixer::simulateButtonUp </td>
-          <td>(</td>
-          <td class="paramtype"><a class="el" href="#a2538a036d98704f2335839113769757c">PointerButton</a></td>          <td class="paramname"><span class="paramname"><em>button</em></span>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">int</td>          <td class="paramname"><span class="paramname"><em>sourceId</em></span><span class="paramdefsep"> = </span><span class="paramdefval">0</span>&#160;)</td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel inline">inline</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-
-</div>
-</div>
-<a id="a125811d568b6469af6b486a12ca73991" name="a125811d568b6469af6b486a12ca73991"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a125811d568b6469af6b486a12ca73991">&#9670;&#160;</a></span>simulateEvent()</h2>
-
-<div class="memitem">
-<div class="memproto">
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">void SP::PathIOPointerMixer::simulateEvent </td>
-          <td>(</td>
-          <td class="paramtype"><a class="el" href="struct_s_p_1_1_path_i_o_pointer_mixer_1_1_event.html">Event</a> const &amp;</td>          <td class="paramname"><span class="paramname"><em>ev</em></span></td><td>)</td>
-          <td></td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel inline">inline</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-
-</div>
-</div>
-<a id="a583464ffeca236fb04373f62676087b3" name="a583464ffeca236fb04373f62676087b3"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a583464ffeca236fb04373f62676087b3">&#9670;&#160;</a></span>simulateMove()</h2>
-
-<div class="memitem">
-<div class="memproto">
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">void SP::PathIOPointerMixer::simulateMove </td>
-          <td>(</td>
-          <td class="paramtype">int</td>          <td class="paramname"><span class="paramname"><em>dx</em></span>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">int</td>          <td class="paramname"><span class="paramname"><em>dy</em></span>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">int</td>          <td class="paramname"><span class="paramname"><em>sourceId</em></span><span class="paramdefsep"> = </span><span class="paramdefval">0</span>&#160;)</td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel inline">inline</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-
-</div>
-</div>
-<a id="a9bee088d94aa9147225d2e6f371afce1" name="a9bee088d94aa9147225d2e6f371afce1"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a9bee088d94aa9147225d2e6f371afce1">&#9670;&#160;</a></span>simulateWheel()</h2>
-
-<div class="memitem">
-<div class="memproto">
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">void SP::PathIOPointerMixer::simulateWheel </td>
-          <td>(</td>
-          <td class="paramtype">int</td>          <td class="paramname"><span class="paramname"><em>ticks</em></span>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">int</td>          <td class="paramname"><span class="paramname"><em>sourceId</em></span><span class="paramdefsep"> = </span><span class="paramdefval">0</span>&#160;)</td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel inline">inline</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
+<p>Implements <a class="el" href="class_s_p_1_1_path_space_base.html">SP::PathSpaceBase</a>.</p>
 
 </div>
 </div>
@@ -651,8 +443,9 @@ template&lt;class Pred&gt; </div>
 
 </div>
 </div>
-<hr/>The documentation for this class was generated from the following file:<ul>
-<li>/Users/chrgre01/src/PathSpace/src/pathspace/layer/<a class="el" href="_path_i_o_pointer_mixer_8hpp_source.html">PathIOPointerMixer.hpp</a></li>
+<hr/>The documentation for this class was generated from the following files:<ul>
+<li>/Users/chrgre01/src/PathSpace/src/pathspace/layer/io/<a class="el" href="_path_i_o_pointer_mixer_8hpp_source.html">PathIOPointerMixer.hpp</a></li>
+<li>/Users/chrgre01/src/PathSpace/src/pathspace/layer/io/<a class="el" href="_path_i_o_pointer_mixer_8cpp.html">PathIOPointerMixer.cpp</a></li>
 </ul>
 </div><!-- contents -->
 </div><!-- doc-content -->

@@ -22,6 +22,9 @@ Conventions:
     - `/system/devices/discovery`
   - Haptics (outputs):
     - `/system/devices/out/gamepad/<id>/rumble`
+- System IO (logs)
+  - `/system/io/stdout`
+  - `/system/io/stderr`
 
 ## 2) Application subtree layout (app-relative)
 
@@ -42,9 +45,7 @@ The following subtrees are standardized within each application root (one of the
         - `desc` — target descriptor (size/format/etc.)
         - `desc/active` — optional mirror written by renderer
         - `status/*` — e.g. `reconfiguring`, `device_lost`, `message`
-        - `settings/`
-          - `inbox` — queue of whole `RenderSettings` (producers write)
-          - `active` — optional mirror of adopted settings
+        - `settings` — single `RenderSettingsV1` value (atomic whole-object replace)
         - `render` — execution: render one frame for this target
         - `output/`
           - `v1/`
@@ -73,19 +74,26 @@ The following subtrees are standardized within each application root (one of the
       - `surface` — app-relative reference to a surface
       - `present` — execution to present the surface to the window
 
+- IO logging (app-local)
+  - `io/log/error` — authoritative error log (UTF-8, newline-delimited)
+  - `io/log/warn` — authoritative warnings log
+  - `io/log/info` — authoritative info log
+  - `io/log/debug` — authoritative debug log (may not tee globally)
+  - `io/stdout` — read-only mirror of info and debug (system tee)
+  - `io/stderr` — read-only mirror of warn and error (system tee)
+
 ## 3) Renderer target keys (final)
 
 Target base (app-relative; fully-qualified form prefixes with the app root, e.g. `<app-root>/renderers/...` where `<app-root>` is `/system/applications/<app>` or `/users/<user>/system/applications/<app>`):
 - `renderers/<rendererName>/targets/<kind>/<name>`
-- `kind ∈ { surfaces, textures, html }`
+- `kind ∈ { surfaces, textures, windows, html }`
 
 Keys under a target:
 - `scene`
 - `desc`
 - `desc/active`
 - `status/*`
-- `settings/inbox`
-- `settings/active`
+- `settings`
 - `render`
 - `output/v1/...` (see section 2)
 
@@ -111,8 +119,16 @@ Keys under a target:
 
 - `/system/applications/notepad/scenes/main/current_revision`
 - `/system/applications/notepad/scenes/main/builds/42/...`
-- `/system/applications/notepad/renderers/2d/targets/surfaces/editor/settings/inbox`
+- `/system/applications/notepad/renderers/2d/targets/surfaces/editor/settings`
 - `/system/applications/notepad/renderers/2d/targets/surfaces/editor/output/v1/common/frameIndex`
+- `/system/applications/notepad/io/log/error`
+- `/system/applications/notepad/io/log/warn`
+- `/system/applications/notepad/io/log/info`
+- `/system/applications/notepad/io/log/debug`
+- `/system/applications/notepad/io/stdout`
+- `/system/applications/notepad/io/stderr`
+- `/system/io/stdout`
+- `/system/io/stderr`
 - `/system/devices/in/pointer/default/events`
 - `/system/devices/out/gamepad/1/rumble`
 

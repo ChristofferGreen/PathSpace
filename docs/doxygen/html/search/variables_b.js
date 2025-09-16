@@ -1,5 +1,7 @@
 var searchData=
 [
-  ['obj_0',['obj',['../struct_s_p_1_1_input_data.html#a2d0bc7220ec557003c1b686bfc1b9901',1,'SP::InputData::obj'],['../struct_s_p_1_1_wrapper.html#ab6aa7ae24ee00ee33c06a30c1a279768',1,'SP::Wrapper::obj']]],
-  ['ownedpool_1',['ownedPool',['../class_s_p_1_1_path_space.html#a669397d74602c370920719f699065676',1,'SP::PathSpace']]]
+  ['nbrspacesinserted_0',['nbrSpacesInserted',['../struct_s_p_1_1_insert_return.html#aa1df4ad0b213ae08c1b2d7eaefbcf043',1,'SP::InsertReturn']]],
+  ['nbrtasksinserted_1',['nbrTasksInserted',['../struct_s_p_1_1_insert_return.html#ac4935f3a02e37510a5b4afc01b2a2313',1,'SP::InsertReturn']]],
+  ['nbrvaluesinserted_2',['nbrValuesInserted',['../struct_s_p_1_1_insert_return.html#a0226cc65f464966477c8f45512ec00b6',1,'SP::InsertReturn']]],
+  ['nested_3',['nested',['../struct_s_p_1_1_node.html#aad99d924933a545f8de687d8e3e0a32f',1,'SP::Node']]]
 ];

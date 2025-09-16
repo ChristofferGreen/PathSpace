@@ -15,6 +15,13 @@ Links:
 - examples/devices_example.cpp (experimental device IO example)
 - build/docs/html/index.html (Doxygen API Reference)
 
+## Architecture at a Glance
+- **Trie-backed space** — `PathSpace` stores data in a concurrent trie of `Node` objects. Each node owns serialized `NodeData` payloads plus queued `Task` executions; inserts append, reads copy, and takes pop without global locks. See “Internal Data” in `docs/AI_ARCHITECTURE.md`.
+- **Paths & globbing** — Strongly-typed `ConcretePath`/`GlobPath` wrappers provide component iterators, pattern matching (`*`, `**`, ranges), and validation (`src/pathspace/path/`).
+- **Wait/notify** — Blocking reads register waiters in concrete/glob registries and wake via a `NotificationSink` token; timeouts surface as `Error::Timeout` (`Wait/notify` + `Blocking` in the architecture doc).
+- **Layers & PathIO** — Permission-checked views (`PathView`), alias mounts (`PathAlias`), and OS/event bridges live in `src/pathspace/layer/`. Enable macOS backends with `-DENABLE_PATHIO_MACOS=ON` and review the PathIO guidance near the end of `docs/AI_ARCHITECTURE.md`.
+- **Canonical namespaces** — `docs/AI_PATHS.md` defines system/app/render targets; renderer and presenter plans live in `docs/AI_Plan_SceneGraph_Renderer.md`.
+
 ## Quick start
 
 1) Prerequisites
@@ -30,9 +37,13 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
 
-3) Run tests (optional)
+3) Run tests (recommended)
 ```bash
-ctest --test-dir build -j
+ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20
+```
+or use the helper that wraps the loop/timeout policy from `docs/AI_ARCHITECTURE.md`:
+```bash
+./scripts/compile.sh --loop=15 --timeout=20
 ```
 
 4) Use in your project
@@ -48,6 +59,8 @@ Build options:
 - ENABLE_UNDEFINED_SANITIZER=ON|OFF
 - ENABLE_PATHIO_MACOS=ON|OFF (compile-time defines for experimental macOS PathIO)
 - BUILD_PATHSPACE_EXAMPLES=ON|OFF
+
+Tip: Enable sanitizers when debugging concurrency/path issues, and pair `ENABLE_PATHIO_MACOS=ON` with the PathIO section in `docs/AI_ARCHITECTURE.md` if you need native device backends.
 
 Scripts:
 - ./scripts/compile.sh
