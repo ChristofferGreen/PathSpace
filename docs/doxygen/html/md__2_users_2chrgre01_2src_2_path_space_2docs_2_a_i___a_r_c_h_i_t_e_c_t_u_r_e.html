@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.14.0"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>PathSpace: PathSpace</title>
+<title>PathSpace: AI_ARCHITECTURE</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -88,57 +88,29 @@ $(function(){initNavTree('md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___
 </div>
 
 <div><div class="header">
-  <div class="headertitle"><div class="title">PathSpace </div></div>
+  <div class="headertitle"><div class="title">AI_ARCHITECTURE </div></div>
 </div><!--header-->
 <div class="contents">
-<div class="textblock"><p><a class="anchor" id="autotoc_md20"></a></p>
-<p><img src="images/PathSpace.jpeg" alt="PathSpace" class="inline"/></p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md21"></a>
-Introduction</h1>
-<p>Note for editors: when you add, rename, or remove source files, refresh the compilation database (<span class="tt">./compile_commands.json</span>). Running <span class="tt">./scripts/compile.sh</span> or <span class="tt">./scripts/update_compile_commands.sh</span> (or re-configuring with CMake) regenerates <span class="tt">build/compile_commands.json</span> and copies it to the repo root; many editors/LSPs rely on it for correct include paths and diagnostics. If a change affects core behavior (paths, NodeData, WaitMap, TaskPool, serialization), update <span class="tt"><a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_ARCHITECTURE.md</a></span> in the same PR.</p>
-<p>AI autonomy guideline:</p><ul>
-<li>The AI should complete tasks end-to-end without asking the user to run commands or finish steps. Use the provided scripts and tooling to build, test, and validate changes (e.g., <span class="tt">./scripts/compile.sh --clean --test --loop=N</span>).</li>
-<li>Only defer to the user when blocked by missing credentials, unavailable external services, or ambiguous requirements that cannot be resolved from the repository context.</li>
-<li>Prefer making conservative, reversible changes; keep edits minimal and focused, and ensure all references and paths are valid.</li>
-</ul>
-<p>AI pull request workflow (to avoid stale commits and noisy PR history):</p><ul>
-<li>Always branch from the current default branch (usually <span class="tt">master</span>):<ul>
-<li>git fetch origin</li>
-<li>git checkout -b feat/&lt;short-topic&gt; origin/master</li>
-</ul>
-</li>
-<li>Keep your branch up to date during the work:<ul>
-<li>git fetch origin</li>
-<li>git rebase origin/master</li>
-</ul>
-</li>
-<li>If you accidentally started from an old topic branch, create a clean branch and cherry-pick only your commits:<ul>
-<li>git checkout -b fix/&lt;topic&gt;-clean origin/master</li>
-<li>git cherry-pick &lt;commit1&gt; [&lt;commit2&gt; ...]</li>
-</ul>
-</li>
-<li>Use the helper script to open a PR cleanly:<ul>
-<li>./scripts/create_pr.sh -b master -t "Short human-friendly title"</li>
-<li>If the PR shows unrelated older commits, close it and create a fresh branch from <span class="tt">origin/master</span>, then cherry-pick your changes and re-run the script.</li>
-</ul>
-</li>
-<li>If pre-push hooks run local builds/tests you can skip them for a quick PR push:<ul>
-<li>SKIP_LOOP_TESTS=1 SKIP_EXAMPLE=1 git push -u origin HEAD</li>
+<div class="textblock"><p>Renderer snapshot builder details have moved out of this architecture document. See <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/AI_Plan_SceneGraph_Renderer.md</a> (“Decision: Snapshot Builder”) for the authoritative policy, rebuild triggers, publish/GC protocol, and performance notes. This file focuses on PathSpace core (paths, trie storage, concurrency/wait/notify, views/alias layers, and OS I/O).</p>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md21"></a>
+UI/Rendering — cross-reference</h2>
+<p>Present policy (backend-aware) and the software progressive present are documented in <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/AI_Plan_SceneGraph_Renderer.md</a>. This architecture document focuses on PathSpace core; rendering/presenter details live in the plan. Also see “View keys (final)” and “Target keys (final)” in <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/AI_Plan_SceneGraph_Renderer.md</a> for the authoritative schemas, and note that RenderSettings are a single-path atomic whole-object value; ParamUpdateMode::Queue refers to client-side coalescing before one atomic write (no server-side queue in v1).</p>
+<p>See also:</p><ul>
+<li><span class="tt"><a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/AI_Plan_SceneGraph_Renderer.md</a></span> for the broader rendering plan and target I/O layout. If snapshot semantics change, update both documents in the same PR per <span class="tt">.rules</span>.<ul>
+<li><span class="tt"><a class="el" href="_a_i___p_a_t_h_s_8md.html">docs/AI_PATHS.md</a></span> for the canonical path namespaces and layout conventions; update it alongside changes to path usage and target I/O layout.</li>
 </ul>
 </li>
 </ul>
-<p>PR authoring guidelines for AI:</p><ul>
-<li>PR titles must not include Conventional Commit prefixes (e.g., "chore(...):", "fix:"). Start with a capital letter and keep them short and human-friendly.</li>
-<li>PR bodies should use the minimal template in <span class="tt">.github/PULL_REQUEST_TEMPLATE.md</span>: include a concise "Purpose" (1–3 sentences) and an "AI Change Log" (file-by-file summary of edits).</li>
-<li>Validate docs and code references against repo paths per <span class="tt">.rules</span>.</li>
-</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md22"></a>
+Contributing to PathSpace</h2>
+<p>For AI-facing workflows (branching, PR creation, troubleshooting, commit guidelines), see AGENTS.md. This document focuses on code architecture and APIs.</p>
 <p>PathSpace is a coordination language that enables insertion and extractions from paths in a thread safe datastructure. The data structure supports views of the paths similar to Plan 9. The data attached to the paths are more like a JSON datastructure than files though. The data supported is standard C++ data types and data structures from the standard library, user created structs/classes as well as function pointers, std::function or function objects for storing executions that generate values to be inserted at a path.</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md22"></a>
-Path System</h1>
 <h2 class="doxsection"><a class="anchor" id="autotoc_md23"></a>
-Path Types</h2>
+Path System</h2>
 <h3 class="doxsection"><a class="anchor" id="autotoc_md24"></a>
-Concrete Paths</h3>
+Path Types</h3>
+<h4 class="doxsection"><a class="anchor" id="autotoc_md25"></a>
+Concrete Paths</h4>
 <p>Concrete paths represent exact locations in the PathSpace hierarchy. They follow these rules:</p><ul>
 <li>Must start with a forward slash (/)</li>
 <li>Components are separated by forward slashes</li>
@@ -148,8 +120,8 @@ Concrete Paths</h3>
 </ul>
 <p>Example: </p><div class="fragment"><div class="line"><span class="stringliteral">&quot;/data/sensors/temperature&quot;</span></div>
 <div class="line"><span class="stringliteral">&quot;/system/status/current&quot;</span></div>
-</div><!-- fragment --><h3 class="doxsection"><a class="anchor" id="autotoc_md25"></a>
-Glob Paths</h3>
+</div><!-- fragment --><h4 class="doxsection"><a class="anchor" id="autotoc_md26"></a>
+Glob Paths</h4>
 <p>Glob paths extend concrete paths with pattern matching capabilities. They support:</p><ul>
 <li><span class="tt">*</span> - Matches any sequence of characters within a component</li>
 <li><span class="tt">**</span> - Matches zero or more components (super-matcher)</li>
@@ -162,10 +134,10 @@ Glob Paths</h3>
 <div class="line"><span class="stringliteral">&quot;/data/**/status&quot;</span>       <span class="comment">// Matches status at any depth</span></div>
 <div class="line"><span class="stringliteral">&quot;/sensor-[0-9]/*&quot;</span>       <span class="comment">// Matches numbered sensors</span></div>
 <div class="line"><span class="stringliteral">&quot;/data/temp-?&quot;</span>          <span class="comment">// Matches single character variations</span></div>
-</div><!-- fragment --><h2 class="doxsection"><a class="anchor" id="autotoc_md26"></a>
-Path Implementation</h2>
-<h3 class="doxsection"><a class="anchor" id="autotoc_md27"></a>
-Core Classes</h3>
+</div><!-- fragment --><h3 class="doxsection"><a class="anchor" id="autotoc_md27"></a>
+Path Implementation</h3>
+<h4 class="doxsection"><a class="anchor" id="autotoc_md28"></a>
+Core Classes</h4>
 <div class="fragment"><div class="line"><span class="comment">// Base path template</span></div>
 <div class="line"><span class="keyword">template</span> &lt;<span class="keyword">typename</span> T&gt;</div>
 <div class="line"><span class="keyword">struct </span>Path {</div>
@@ -181,8 +153,8 @@ Core Classes</h3>
 <div class="line"><span class="comment">// Glob path types</span></div>
 <div class="line"><span class="keyword">using </span>GlobPathString = GlobPath&lt;std::string&gt;;</div>
 <div class="line"><span class="keyword">using </span>GlobPathStringView = GlobPath&lt;std::string_view&gt;;</div>
-</div><!-- fragment --><h3 class="doxsection"><a class="anchor" id="autotoc_md28"></a>
-Path Component Iteration</h3>
+</div><!-- fragment --><h4 class="doxsection"><a class="anchor" id="autotoc_md29"></a>
+Path Component Iteration</h4>
 <p>The system provides iterators to traverse path components: </p><div class="fragment"><div class="line"><span class="keyword">template</span> &lt;<span class="keyword">typename</span> T&gt;</div>
 <div class="line"><span class="keyword">struct </span>ConcreteIterator {</div>
 <div class="line">    ConcreteNameStringView operator*() <span class="keyword">const</span>;  <span class="comment">// Current component</span></div>
@@ -196,14 +168,14 @@ Path Component Iteration</h3>
 <div class="line">    <span class="keywordtype">bool</span> isAtStart() <span class="keyword">const</span>;      <span class="comment">// Check if at first component</span></div>
 <div class="line">    std::string_view fullPath() <span class="keyword">const</span>;  <span class="comment">// Full path string</span></div>
 <div class="line">};</div>
-</div><!-- fragment --><h3 class="doxsection"><a class="anchor" id="autotoc_md29"></a>
-Pattern Matching</h3>
+</div><!-- fragment --><h4 class="doxsection"><a class="anchor" id="autotoc_md30"></a>
+Pattern Matching</h4>
 <p>Pattern matching can handle various glob patterns:</p>
 <div class="fragment"><div class="line"><span class="keyword">struct </span>GlobName {</div>
 <div class="line">    <span class="comment">// Returns match status</span></div>
-<div class="line">    <span class="keyword">auto</span> match(<span class="keyword">const</span> std::string_view&amp; str) <span class="keyword">const</span> </div>
+<div class="line">    <span class="keyword">auto</span> match(<span class="keyword">const</span> std::string_view&amp; str) <span class="keyword">const</span></div>
 <div class="line">        -&gt; <span class="keywordtype">bool</span> <span class="comment">/*match*/</span>;</div>
-<div class="line">    </div>
+<div class="line"> </div>
 <div class="line">    <span class="keywordtype">bool</span> isConcrete() <span class="keyword">const</span>;  <span class="comment">// Check if contains patterns</span></div>
 <div class="line">    <span class="keywordtype">bool</span> isGlob() <span class="keyword">const</span>;      <span class="comment">// Check for glob characters</span></div>
 <div class="line">};</div>
@@ -213,10 +185,10 @@ Pattern Matching</h3>
 <li>Escaped characters are handled literally</li>
 <li>Empty components are normalized</li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md30"></a>
-Path Usage Examples</h2>
 <h3 class="doxsection"><a class="anchor" id="autotoc_md31"></a>
-Basic Path Operations</h3>
+Path Usage Examples</h3>
+<h4 class="doxsection"><a class="anchor" id="autotoc_md32"></a>
+Basic Path Operations</h4>
 <div class="fragment"><div class="line">PathSpace space;</div>
 <div class="line"> </div>
 <div class="line"><span class="comment">// Insert at concrete path</span></div>
@@ -230,8 +202,8 @@ Basic Path Operations</h3>
 <div class="line"> </div>
 <div class="line"><span class="comment">// Read with pattern</span></div>
 <div class="line"><span class="keyword">auto</span> values = space.read&lt;<span class="keywordtype">float</span>&gt;(<span class="stringliteral">&quot;/sensors/*/value&quot;</span>);</div>
-</div><!-- fragment --><h3 class="doxsection"><a class="anchor" id="autotoc_md32"></a>
-Pattern Matching Examples</h3>
+</div><!-- fragment --><h4 class="doxsection"><a class="anchor" id="autotoc_md33"></a>
+Pattern Matching Examples</h4>
 <div class="fragment"><div class="line"><span class="comment">// Match any sensor</span></div>
 <div class="line"><span class="stringliteral">&quot;/sensors/*&quot;</span></div>
 <div class="line"> </div>
@@ -246,32 +218,32 @@ Pattern Matching Examples</h3>
 <div class="line"> </div>
 <div class="line"><span class="comment">// Match range of sensors</span></div>
 <div class="line"><span class="stringliteral">&quot;/sensors/[1-5]&quot;</span></div>
-</div><!-- fragment --><h2 class="doxsection"><a class="anchor" id="autotoc_md33"></a>
-Path Performance Considerations</h2>
-<h3 class="doxsection"><a class="anchor" id="autotoc_md34"></a>
-Path Storage</h3>
+</div><!-- fragment --><h3 class="doxsection"><a class="anchor" id="autotoc_md34"></a>
+Path Performance Considerations</h3>
+<h4 class="doxsection"><a class="anchor" id="autotoc_md35"></a>
+Path Storage</h4>
 <ul>
 <li>Uses <span class="tt">string_view</span> for read-only operations to avoid copies</li>
 <li>Maintains string ownership where needed for modifications</li>
 <li>Caches path components for efficient iteration</li>
 </ul>
-<h3 class="doxsection"><a class="anchor" id="autotoc_md35"></a>
-Pattern Matching Optimization</h3>
+<h4 class="doxsection"><a class="anchor" id="autotoc_md36"></a>
+Pattern Matching Optimization</h4>
 <ul>
 <li>Early termination for non-matching patterns</li>
 <li>Efficient character class evaluation</li>
 <li>Optimized super-matcher (<span class="tt">**</span>) handling</li>
 <li>Component-wise matching to minimize string operations</li>
 </ul>
-<h3 class="doxsection"><a class="anchor" id="autotoc_md36"></a>
-Memory Efficiency</h3>
+<h4 class="doxsection"><a class="anchor" id="autotoc_md37"></a>
+Memory Efficiency</h4>
 <ul>
 <li>Shared path component storage</li>
 <li>Lazy evaluation of pattern matches</li>
 <li>Efficient string views for immutable paths</li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md37"></a>
-Path Thread Safety</h2>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md38"></a>
+Path Thread Safety</h3>
 <p>The path system provides thread-safe operations through:</p><ul>
 <li>Immutable path objects</li>
 <li>Synchronized pattern matching</li>
@@ -290,8 +262,8 @@ Path Thread Safety</h2>
 <p>Additional note:</p><ul>
 <li>Task completion notifications are lifetime-safe via a NotificationSink token. Each <span class="tt">PathSpaceBase</span> owns a <span class="tt">shared_ptr&lt;NotificationSink&gt;</span> that forwards to its <span class="tt">notify(path)</span>; <span class="tt">Task</span> objects capture a <span class="tt">weak_ptr&lt;NotificationSink&gt;</span>. During shutdown, the <span class="tt">PathSpace</span> resets the <span class="tt">shared_ptr</span> so late notifications are dropped cleanly without dereferencing stale pointers.</li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md38"></a>
-Path Error Handling</h2>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md39"></a>
+Path Error Handling</h3>
 <p>Comprehensive error handling for path operations:</p><ul>
 <li>Path validation errors</li>
 <li>Pattern syntax errors</li>
@@ -299,8 +271,8 @@ Path Error Handling</h2>
 <li>Type mismatches</li>
 <li>Timeout conditions</li>
 </ul>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md39"></a>
-Internal Data</h1>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md40"></a>
+Internal Data</h2>
 <p>PathSpace stores data in a unified Node trie. Each Node contains:</p><ul>
 <li>children: a concurrent hash map keyed by the next path component</li>
 <li>data: an optional NodeData payload that holds serialized bytes and/or queued Task objects</li>
@@ -312,37 +284,46 @@ Internal Data</h1>
 <li>payload accesses (data/nested) are guarded by a per-node mutex to ensure safe updates under contention</li>
 </ul>
 <p>Additionally, nodes may hold <span class="tt">Task</span> objects representing deferred computations alongside serialized bytes. <span class="tt">NodeData</span> stores tasks (<span class="tt">std::shared_ptr&lt;Task&gt;</span>) and, when tasks complete, notifications are delivered via a <span class="tt">NotificationSink</span> interface: tasks hold a <span class="tt">std::weak_ptr&lt;NotificationSink&gt;</span> and the owning <span class="tt">PathSpaceBase</span> provides the <span class="tt">shared_ptr</span> token and forwards to <span class="tt">notify(path)</span>. This removes the need for a global registry and prevents use-after-free races during teardown (the space resets its token during shutdown, causing late notifications to be dropped safely).</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md40"></a>
-Syntax Example</h1>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md41"></a>
+Syntax Example</h2>
 <div class="fragment"><div class="line">PathSpace space;</div>
-<div class="line">space.insert(&quot;/collection/numbers&quot;, 5);</div>
-<div class="line">space.insert(&quot;/collection/numbers&quot;, 3.5f);</div>
-<div class="line">assert(space.take&lt;int&gt;(&quot;/collection/numbers&quot;).value() == 5);</div>
-<div class="line">assert(space.read&lt;float&gt;(&quot;/collection/numbers&quot;).value() == 3.5);</div>
+<div class="line">space.insert(<span class="stringliteral">&quot;/collection/numbers&quot;</span>, 5);</div>
+<div class="line">space.insert(<span class="stringliteral">&quot;/collection/numbers&quot;</span>, 3.5f);</div>
+<div class="line">assert(space.take&lt;<span class="keywordtype">int</span>&gt;(<span class="stringliteral">&quot;/collection/numbers&quot;</span>).value() == 5);</div>
+<div class="line">assert(space.read&lt;<span class="keywordtype">float</span>&gt;(<span class="stringliteral">&quot;/collection/numbers&quot;</span>).value() == 3.5);</div>
 <div class="line"> </div>
-<div class="line">space.insert(&quot;/collection/executions&quot;, [](){return 7;});</div>
-<div class="line">assert(space.take&lt;int&gt;(&quot;/collection/numbers&quot;, Block{}).value() == 7);</div>
-</div><!-- fragment --><h1 class="doxsection"><a class="anchor" id="autotoc_md41"></a>
-Polymorphism</h1>
+<div class="line">space.insert(<span class="stringliteral">&quot;/collection/executions&quot;</span>, [](){<span class="keywordflow">return</span> 7;});</div>
+<div class="line">assert(space.take&lt;<span class="keywordtype">int</span>&gt;(<span class="stringliteral">&quot;/collection/executions&quot;</span>, Block{}).value() == 7);</div>
+</div><!-- fragment --><h2 class="doxsection"><a class="anchor" id="autotoc_md42"></a>
+Polymorphism</h2>
 <p>The internal spaces inside a path are implemented witha Leaf class, it's possible to inherit from that class and insert that child class in order to change the behaviour of parts of the path structure of a PathSpace instance. This can be used to have different behaviour for different sub spaces within a PathSpace. By default PathSpace will create a Leaf of the same type as the parent when creating new ones (which happens during insert of data).</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md42"></a>
-Path Globbing</h1>
-<p>Paths given to insert can be a glob expression, if the expression matches the names of subspaces then the data will be inserted to all the matching subspaces. `<span class="tt">
-PathSpace space;
-space.insert("/collection/numbers", 5);
-space.insert("/collection/numbers_more", 4);
-space.insert("/collection/other_things", 3);
-space.insert("/collection/numbers*", 2);
-assert(space.take&lt;int&gt;("/collection/other_things").value() == 2);
-assert(!space.take&lt;int&gt;("/collection/other_things").has_value());
-assert(space.take&lt;int&gt;("/collection/numbers_more").value() == 4);
-assert(space.take&lt;int&gt;("/collection/numbers_more").value() == 2);
-</span></p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md43"></a>
-Blocking</h1>
-<p>It's possible to send a blocking object to insert/read/extract instructing it to wait a certain amount of time for data to arrive if it is currently empty or non-existent.</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md44"></a>
-Operations</h1>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md43"></a>
+Path Globbing</h2>
+<p>Paths given to insert can be a glob expression, if the expression matches the names of subspaces then the data will be inserted to all the matching subspaces. </p><div class="fragment"><div class="line">PathSpace space;</div>
+<div class="line">space.insert(<span class="stringliteral">&quot;/collection/numbers&quot;</span>, 5);</div>
+<div class="line">space.insert(<span class="stringliteral">&quot;/collection/numbers_more&quot;</span>, 4);</div>
+<div class="line">space.insert(<span class="stringliteral">&quot;/collection/other_things&quot;</span>, 3);</div>
+<div class="line"> </div>
+<div class="line"><span class="comment">// Globbed insert updates only paths matching the pattern &quot;numbers*&quot;</span></div>
+<div class="line">space.insert(<span class="stringliteral">&quot;/collection/numbers*&quot;</span>, 2);</div>
+<div class="line"> </div>
+<div class="line"><span class="comment">// Unaffected: different prefix</span></div>
+<div class="line">assert(space.read&lt;<span class="keywordtype">int</span>&gt;(<span class="stringliteral">&quot;/collection/other_things&quot;</span>).value() == 3);</div>
+<div class="line"> </div>
+<div class="line"><span class="comment">// Affected: matches &quot;numbers*&quot;</span></div>
+<div class="line">assert(space.take&lt;<span class="keywordtype">int</span>&gt;(<span class="stringliteral">&quot;/collection/numbers_more&quot;</span>).value() == 4);</div>
+<div class="line">assert(space.take&lt;<span class="keywordtype">int</span>&gt;(<span class="stringliteral">&quot;/collection/numbers_more&quot;</span>).value() == 2);</div>
+</div><!-- fragment --><h2 class="doxsection"><a class="anchor" id="autotoc_md44"></a>
+Blocking</h2>
+<p>Blocking is opt-in and expressed through the helpers in <span class="tt"><a class="el" href="_out_8hpp.html">src/pathspace/core/Out.hpp</a></span>.</p>
+<ul>
+<li>Passing <span class="tt">Block{}</span> to <span class="tt">read</span>/<span class="tt">take</span> (or composing <span class="tt">Out{} &amp; Block{}</span>) turns the call into a waiter when the target node is empty. The waiter is registered in the concrete or glob registry described in the wait/notify section.</li>
+<li><span class="tt">Block{}</span> defaults to a very large timeout (100 years); override it with <span class="tt">Block{std::chrono::milliseconds{budget}}</span> to enforce a real deadline. When the timeout elapses, the operation returns an <span class="tt">Error::Timeout</span> in the <span class="tt">std::expected</span> result.</li>
+<li>Successful reads/takes automatically deregister their waiter before returning. If the waiter is cancelled because the path is deleted or the space is shutting down, the operation reports an error so callers can retry or exit.</li>
+<li>Inserts themselves do not block, but they wake both concrete and glob waiters on completion. Custom layers can tap into the same behaviour through <span class="tt"><a class="el" href="struct_block_options.html">BlockOptions</a></span> when forwarding or composing higher-level queues.</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md45"></a>
+Operations</h2>
 <p>The operations in the base language are insert/read/extract, they are implemented as member functions of the PathSpace class.</p><ul>
 <li><b>Insert</b>:<ul>
 <li>Insert data or a Leaf to one or more paths. If the path does not exist it will be created.</li>
@@ -415,109 +396,17 @@ Operations</h1>
 </ul>
 </li>
 </ul>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md45"></a>
-Data Storage</h1>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md46"></a>
+Data Storage</h2>
 <p>A normal PathSpace will store data by serialising it to a std::vector&lt;std::byte&gt;. That vector can contain data of different types and a separate vector storing std::type_id pointers together with how many objects or that type are in a row will be used to determine what parts of the data vector has what type. std::function objects will be stored in their own vector as well since they can not be serialised. Insert will append serialised data to this vector. Extract will not necessarily erase from the front of the vector since this would be too costly, a pointer to the front element will instead be stored and its position changed forward when a extract is issued. At first the serialisation will be done via the alpaca library but when a compiler supporting the C++26 serialisation functionality it will be rewritten to use that instead.</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md46"></a>
-Unit Testing</h1>
-<p>Unit testing will be done by using the C++ doctest library. A test driven development method will be used.</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md47"></a>
-Logging</h1>
-<p>A log of every action can be produced. This is mostly for aiding in debugging.</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md48"></a>
-Exception Handling</h1>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md47"></a>
+Unit Testing</h2>
+<p>Unit testing is by using the C++ doctest library.</p>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md48"></a>
+Exception Handling</h2>
 <p>PathSpaces will not throw exceptions, all errors will be handled via the return type of the operations.</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md49"></a>
-Trellis</h1>
-<p>Lazy executions can be chained together via blocking operations waiting for new data, when one execution updates a value another listener to that value can execute. This creates a trellis like structure as described in the book mirror worlds book where values are fed from bottom processes and filtered up into higher order processes.</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md50"></a>
-Actor Based Programming</h1>
-<p>An actor system could be implemented with PathSpace by having executions within the PathSpace as actors communicating via messages sent to mailboxes at predefined paths, the mailboxes could simply be std::string objects stored at those paths.</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md51"></a>
-Bottlenecks</h1>
-<p>Linda like tuple spaces have traditionally been seen as slow. To some degree this is due to the pattern matching required to extract data from a tuple. </p>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md52"></a>
-Path Caching</h2>
-<p>In PathSpace the slowest part will be traversing the path hierarchy. Potentially this could be sped up if we provide a cache of the most recent lookups of paths for insert/read/extract. Could be done as a hashmap from a ConcretePath to a PathSpace*. Would need to clear the cache on extract, or other PathSpace removals.</p>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md53"></a>
-Reactive programming</h2>
-<p>The extendability of a PathSpace can be used to create a reactive data flow, for example by creating a child PathSpace that takes n other PathSpace paths as input and combines their values by extractbing from them or a PathSpace that performs a transformation on any data from n other paths. Each tuple can be seen as a data stream as long as they are alive, when they run out of items the stream dies. One example could be a lambda within the space that waits for the left mouse button to be pressed via space.read&lt;int&gt;("/system/mouse/button_down", ReadOptions{.block_=true}).</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md54"></a>
-Example Use Cases</h1>
-<ul>
-<li>Scene Graph - Objects to be displayed by a 3d renderer. Mainly takes care of seamlessly interacting with the renderer to upload and display objects in the graph. Could also support data oriented design by having composable objects that store their properties in a list instead of objects in a list.</li>
-<li>Vulcan Render - A renderer that integrates with the GPU via Vulcan. Makes it easy to upload and use meshes and shaders.</li>
-<li>ISO Surface Generator - Just in time generation of geometry to display, taking LOD into account. It can have an internal path like …/generate/x_y_y that can be read to start the generation.</li>
-<li>Operating System - The capabilities functionality can be used to implement a user system and file system similar to Unix. When the initial PathSpace has been filled a process for the root user with full capability can be started by launching a lambda that executes a script. This is similar to how on login a bash session is started with a default script. This process can in turn launch other processes similar to systemd or cron.</li>
-<li>Database front end - Interpreter to a proper database library adding or changing data within it. For example mariadb or postgressql.</li>
-<li>GraphQL server to interact with html/javascript</li>
-</ul>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md55"></a>
-Not Yet Implemented Features</h1>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md56"></a>
-Temporary Data Path</h2>
-<p>Will not write out any data for state saving and if a user logs out all their created data will be deleted. Will usually be at /tmp, with user dirs as /tmp/username.</p>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md57"></a>
-Scripting</h2>
-<p>There will be support for manipulating a PathSpace through lua. Issuing an operator can then be done without having to reference a space object, like so: insert("/a", 5). But separate space objects could be created as variables in the script and could be used by the normal space_name.insert(… usage.</p>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md58"></a>
-Command line</h2>
-<p>Using a live script interpreter a command line can be written.</p>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md59"></a>
-Compression</h2>
-<p>Compresses the input data seamlessly behind the scene on insert and decompresses it on read/extract.</p>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md60"></a>
-Out-of-core</h2>
-<p>Similar to compression but can store the data on the hard drive instead of in RAM.</p>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md61"></a>
-Distributed Data</h2>
-<p>Another specialisation is to create a PathSpace child that can replicate a space over several computers over the network. Duplicating data where needed. May use Asia for networking. Like a live object.</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md62"></a>
-Memory (not yet implemented)</h1>
-<p>In order to avoid memory allocation calls to the operating system the PathSpace could have a pre-allocated pool of memory from the start. Perhaps some PathSpace tuple data could be marked as non essential somehow, if an out of memory situation occurs such data could be erased or flushed to disk. The alpha version of PathSpace will not contain this feature and will allocate all memory via std standard allocators.</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md63"></a>
-Metadata (not yet implemented)</h1>
-<p>Every PathSpace will have some metadata such as last time read, last time modified, how many times modified (same as version). Testing will be done by using a special CMake project that uses one .cpp file per operation to test.</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md64"></a>
-Documentation (not yet implemented)</h1>
-<p>Documentation with examples and descriptions of the API will be provided on the GitHub page for the project.</p>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md65"></a>
-Metrics Collection (not yet implemented)</h2>
-<p>Will be possible to collect metrics on the data for the paths, how often they are accessed etc.</p>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md66"></a>
-Data Integrity (not yet implemented)</h2>
-<p>Especially for the networking part some checking for data consistency will be needed.</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md67"></a>
-Distributed Networking</h1>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md68"></a>
-Transaction Support</h2>
-<p>TBD </p>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md69"></a>
-Multi-Version Consistency Control</h2>
-<p>TBD </p>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md70"></a>
-Conflict-Free Replicated Data Types</h2>
-<p>TBD </p>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md71"></a>
-Invariant-based Reasoning</h2>
-<p>TBD</p>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md72"></a>
-Version Migration Utilities</h2>
-<p>TBD</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md73"></a>
-Back-Pressure Handling</h1>
-<p>TBD</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md74"></a>
-Default Paths</h1>
-<p>TBD</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md75"></a>
-Live Objects</h1>
-<p>TBD</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md76"></a>
-Fault Tolerance</h1>
-<p>TBD</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md77"></a>
-Views</h1>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md49"></a>
+Views</h2>
 <p>PathSpace supports read-only projections and permission gating through <span class="tt"><a class="el" href="_path_view_8hpp.html">src/pathspace/layer/PathView.hpp</a></span> (view with a permission callback) and path aliasing/forwarding via <span class="tt"><a class="el" href="_path_alias_8hpp.html">src/pathspace/layer/PathAlias.hpp</a></span>.</p>
 <ul>
 <li>PathView: wraps an underlying <span class="tt">PathSpaceBase</span> and enforces a <span class="tt">Permission(Iterator)</span> policy for <span class="tt">in</span>/<span class="tt">out</span>. It can also optionally prepend a root mount prefix when forwarding paths.</li>
@@ -534,8 +423,8 @@ Views</h1>
 </ul>
 </li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md78"></a>
-Shutdown and Test Hooks</h2>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md50"></a>
+Shutdown and Test Hooks</h3>
 <ul>
 <li><span class="tt">PathSpace::shutdown()</span> is the public API to cooperatively wake waiters and clear paths during teardown.</li>
 <li><span class="tt">PathSpace::shutdownPublic()</span> and <span class="tt">PathSpace::notifyAll()</span> are protected test utilities. When tests need to call them, expose via a small test-only subclass, for example:<ul>
@@ -545,28 +434,57 @@ Shutdown and Test Hooks</h2>
 <li><span class="tt">PathSpace::peekFuture(...)</span> and <span class="tt">PathSpace::setOwnedPool(...)</span> are protected implementation details. Prefer the unified <span class="tt">read&lt;FutureAny&gt;(path)</span> and constructor injection of the executor/pool.</li>
 <li>Nested spaces adopt shared context and a mount prefix internally via the protected <span class="tt">adoptContextAndPrefix(...)</span>; external callers should not invoke this directly.</li>
 </ul>
-<p>AI execution policy:</p><ul>
-<li>When a task requests building or testing, the AI should run the necessary scripts directly (compile, test loops, example builds) rather than instructing the user to do so.</li>
-<li>If platform constraints require configuration (e.g., choosing a compiler on macOS), the AI should adjust CMake cache or script flags accordingly within the PR.</li>
-<li>Validate changes by running <span class="tt">./scripts/compile.sh --clean --test --loop=50</span> unless otherwise stated; if examples cause toolchain issues on CI, temporarily disable example builds during loops while keeping the example source correct.</li>
-</ul>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md79"></a>
-Operating System</h1>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md51"></a>
+Operating System</h2>
 <p>Device IO is provided by path-agnostic layers that can be mounted anywhere in a parent <span class="tt">PathSpace</span>, with platform backends feeding events into them:</p>
 <ul>
-<li><span class="tt"><a class="el" href="_path_i_o_mouse_8hpp.html">src/pathspace/layer/PathIOMouse.hpp</a></span> and <span class="tt"><a class="el" href="_path_i_o_keyboard_8hpp.html">src/pathspace/layer/PathIOKeyboard.hpp</a></span> expose typed event queues (MouseEvent/KeyboardEvent) with blocking <span class="tt">out()</span>/<span class="tt">take()</span> (peek vs pop via <span class="tt">Out.doPop</span>). When mounted with a shared context, <span class="tt">simulateEvent()</span> wakes blocking readers.</li>
-<li><span class="tt"><a class="el" href="_path_i_o_device_discovery_8hpp.html">src/pathspace/layer/PathIODeviceDiscovery.hpp</a></span> provides a simulation-backed <span class="tt">/dev</span>-like discovery surface (classes, device IDs, per-device <span class="tt">meta</span> and <span class="tt">capabilities</span>), using iterator tail mapping for correct nested mounts.</li>
+<li>Keep <span class="tt">PathIO</span> base and current providers (mouse, keyboard, pointer mixer, stdout, discovery, gamepad).</li>
+<li>Event providers deliver typed events via <span class="tt">out()</span>/<span class="tt">take()</span>; blocking semantics are controlled by <span class="tt">Out{doBlock, timeout}</span> and pop-vs-peek by <span class="tt">Out.doPop</span>.</li>
+<li>Canonical device namespace (aligned with SceneGraph plan; see <span class="tt"><a class="el" href="_a_i___p_a_t_h_s_8md.html">docs/AI_PATHS.md</a></span>):<ul>
+<li>Inputs:<ul>
+<li><span class="tt">/system/devices/in/pointer/default/events</span></li>
+<li><span class="tt">/system/devices/in/text/default/events</span></li>
+<li><span class="tt">/system/devices/in/gamepad/default/events</span></li>
+</ul>
+</li>
+<li>Discovery mount (recommended): <span class="tt">/system/devices/discovery</span></li>
+<li>Haptics (outputs): <span class="tt">/system/devices/out/gamepad/&lt;id&gt;/rumble</span></li>
+</ul>
+</li>
+<li>Notifications: providers perform targeted <span class="tt">notify(mountPrefix)</span> and <span class="tt">notify(mountPrefix + "/events")</span> on enqueue; use <span class="tt">notifyAll()</span> only for broad updates (e.g., retargeting or clear).</li>
+</ul>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md52"></a>
+Backpressure and queue limits</h3>
+<ul>
+<li>Scope: Event providers (mouse/keyboard/pointer mixer/gamepad) maintain per-mount in-memory deques for pending events.</li>
+<li>Complexity: enqueue/dequeue O(1); targeted notify is O(depth) along the path trie; memory is O(N) per queue.</li>
+<li>Current behavior: queues are unbounded deques; no drops are performed.</li>
+<li>Planned: bound queues to N events (target default ≈1024) with a configurable drop policy:<ul>
+<li>Oldest-drop: drop front entries to minimize end-to-end latency on live streams.</li>
+<li>Newest-drop: drop incoming events if preserving history is preferred.</li>
+</ul>
+</li>
+<li>Blocking semantics:<ul>
+<li>Non-blocking read returns <span class="tt">NoObjectFound</span> when empty.</li>
+<li>Blocking read wakes on arrival or timeout; wakeups use targeted <span class="tt">notify(mountPrefix)</span> and <span class="tt">notify(mountPrefix + "/events")</span>.</li>
+</ul>
+</li>
+<li>Mitigations:<ul>
+<li>Prefer pop (<span class="tt">take</span>) to keep up; minimize work in the read loop; batch processing where possible.</li>
+<li>Use mixers/aggregation to reduce per-device rates; downsample or coalesce deltas when acceptable.</li>
+<li>Consider shorter time slices for provider loops once configurable wait-slice is introduced.</li>
+</ul>
+</li>
+<li>Observability: track counters per provider (enqueued, dropped_oldest, dropped_newest); expose via a side path such as <span class="tt">.../stats</span> in a later change.</li>
+<li><span class="tt"><a class="el" href="_path_i_o_mouse_8hpp.html">src/pathspace/layer/io/PathIOMouse.hpp</a></span>, <span class="tt"><a class="el" href="_path_i_o_keyboard_8hpp.html">src/pathspace/layer/io/PathIOKeyboard.hpp</a></span>, and <span class="tt"><a class="el" href="_path_i_o_gamepad_8hpp.html">src/pathspace/layer/io/PathIOGamepad.hpp</a></span> expose typed event queues (MouseEvent/KeyboardEvent/GamepadEvent) with blocking <span class="tt">out()</span>/<span class="tt">take()</span> (peek vs pop via <span class="tt">Out.doPop</span>). When mounted with a shared context, <span class="tt">simulateEvent()</span> wakes blocking readers.</li>
+<li><span class="tt"><a class="el" href="_path_i_o_device_discovery_8hpp.html">src/pathspace/layer/io/PathIODeviceDiscovery.hpp</a></span> provides a simulation-backed discovery surface (classes, device IDs, per-device <span class="tt">meta</span> and <span class="tt">capabilities</span>), using iterator tail mapping for correct nested mounts; recommended mount prefix: <span class="tt">/system/devices/discovery</span>.</li>
 </ul>
 <p>Platform backends (unified, via compile-time macros):</p><ul>
-<li><span class="tt"><a class="el" href="_path_i_o_mouse_8hpp.html">src/pathspace/layer/PathIOMouse.hpp</a></span> and <span class="tt"><a class="el" href="_path_i_o_keyboard_8hpp.html">src/pathspace/layer/PathIOKeyboard.hpp</a></span> expose start()/stop() hooks and select OS paths internally (e.g., <span class="tt">PATHIO_BACKEND_MACOS</span>) to feed events via <span class="tt">simulateEvent(...)</span>.</li>
+<li><span class="tt"><a class="el" href="_path_i_o_mouse_8hpp.html">src/pathspace/layer/io/PathIOMouse.hpp</a></span> and <span class="tt"><a class="el" href="_path_i_o_keyboard_8hpp.html">src/pathspace/layer/io/PathIOKeyboard.hpp</a></span> expose start()/stop() hooks and select OS paths internally (e.g., <span class="tt">PATHIO_BACKEND_MACOS</span>) to feed events via <span class="tt">simulateEvent(...)</span>.</li>
 <li>On macOS, enable with <span class="tt">-DENABLE_PATHIO_MACOS=ON</span> to define <span class="tt">PATHIO_BACKEND_MACOS</span> (CI uses simulation/no-op by default).</li>
 <li>Deprecated: <span class="tt"><a class="el" href="_path_i_o__macos_8hpp.html">src/pathspace/layer/macos/PathIO_macos.hpp</a></span> is a compatibility shim only and no longer defines <span class="tt">PathIOMouseMacOS</span> or <span class="tt">PathIOKeyboardMacOS</span>. Include the unified headers instead.</li>
 </ul>
-<p>Note: First-class links (symlinks) are planned; in the interim, <span class="tt">PathAlias</span> offers robust forwarding/retargeting semantics without changing core trie invariants.</p>
-<p>Contributor policy:</p><ul>
-<li>Ask before committing and pushing changes.</li>
-<li>You do not need to ask to run tests. </li>
-</ul>
+<p>Note: First-class links (symlinks) are planned; in the interim, <span class="tt">PathAlias</span> offers robust forwarding/retargeting semantics without changing core trie invariants. </p>
 </div></div><!-- contents -->
 </div><!-- PageDoc -->
 </div><!-- doc-content -->

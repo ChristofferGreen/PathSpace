@@ -96,7 +96,7 @@ $(function(){initNavTree('struct_s_p_1_1_watch_registry_1_1_guard.html','','stru
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 id="header-pub-methods" class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a5731d270c827e01ab73a407254250989" id="r_a5731d270c827e01ab73a407254250989"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a5731d270c827e01ab73a407254250989">Guard</a> (<a class="el" href="class_s_p_1_1_watch_registry.html">WatchRegistry</a> &amp;reg, std::string path, std::unique_lock&lt; std::mutex &gt; lock, <a class="el" href="struct_s_p_1_1_watch_registry_1_1_trie_node.html">TrieNode</a> *node) noexcept</td></tr>
+<tr class="memitem:a4a6dfbb3849bfc8a11f932996331d24e" id="r_a4a6dfbb3849bfc8a11f932996331d24e"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a4a6dfbb3849bfc8a11f932996331d24e">Guard</a> (<a class="el" href="class_s_p_1_1_watch_registry.html">WatchRegistry</a> &amp;reg, std::string path, std::unique_lock&lt; std::mutex &gt; lock, std::shared_ptr&lt; <a class="el" href="struct_s_p_1_1_watch_registry_1_1_trie_node.html">TrieNode</a> &gt; node) noexcept</td></tr>
 <tr class="memitem:ad3ce976e27a0638721c21b01e07435cd" id="r_ad3ce976e27a0638721c21b01e07435cd"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#ad3ce976e27a0638721c21b01e07435cd">Guard</a> (<a class="el" href="struct_s_p_1_1_watch_registry_1_1_guard.html">Guard</a> &amp;&amp;other) noexcept</td></tr>
 <tr class="memitem:a984fbe0f05c68a06df7183344527389e" id="r_a984fbe0f05c68a06df7183344527389e"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a984fbe0f05c68a06df7183344527389e">Guard</a> (<a class="el" href="struct_s_p_1_1_watch_registry_1_1_guard.html">Guard</a> const &amp;)=delete</td></tr>
 <tr class="memitem:a0f80785fb32854e758607a1544e9ff18" id="r_a0f80785fb32854e758607a1544e9ff18"><td class="memItemLeft" align="right" valign="top"><a class="el" href="struct_s_p_1_1_watch_registry_1_1_guard.html">Guard</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a0f80785fb32854e758607a1544e9ff18">operator=</a> (<a class="el" href="struct_s_p_1_1_watch_registry_1_1_guard.html">Guard</a> const &amp;)=delete</td></tr>
@@ -107,8 +107,8 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a5aeaf80bf9853958a1841975b04d7edb template"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a5aeaf80bf9853958a1841975b04d7edb">wait_until</a> (std::chrono::time_point&lt; std::chrono::system_clock &gt; deadline, Pred pred)</td></tr>
 </table>
 <a name="doc-constructors" id="doc-constructors"></a><h2 id="header-doc-constructors" class="groupheader">Constructor &amp; Destructor Documentation</h2>
-<a id="a5731d270c827e01ab73a407254250989" name="a5731d270c827e01ab73a407254250989"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a5731d270c827e01ab73a407254250989">&#9670;&#160;</a></span>Guard() <span class="overload">[1/3]</span></h2>
+<a id="a4a6dfbb3849bfc8a11f932996331d24e" name="a4a6dfbb3849bfc8a11f932996331d24e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a4a6dfbb3849bfc8a11f932996331d24e">&#9670;&#160;</a></span>Guard() <span class="overload">[1/3]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -134,7 +134,7 @@ Public Member Functions</h2></td></tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype"><a class="el" href="struct_s_p_1_1_watch_registry_1_1_trie_node.html">TrieNode</a> *</td>          <td class="paramname"><span class="paramname"><em>node</em></span>&#160;)</td>
+          <td class="paramtype">std::shared_ptr&lt; <a class="el" href="struct_s_p_1_1_watch_registry_1_1_trie_node.html">TrieNode</a> &gt;</td>          <td class="paramname"><span class="paramname"><em>node</em></span>&#160;)</td>
         </tr>
       </table>
   </td>

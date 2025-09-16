@@ -13,6 +13,7 @@ var hierarchy =
       [ "SP::TaskT< T >", "class_s_p_1_1_task_t.html", null ]
     ] ],
     [ "SP::Error", "struct_s_p_1_1_error.html", null ],
+    [ "SP::PathIOGamepad::Event", "struct_s_p_1_1_path_i_o_gamepad_1_1_event.html", null ],
     [ "SP::PathIOPointerMixer::Event", "struct_s_p_1_1_path_i_o_pointer_mixer_1_1_event.html", null ],
     [ "SP::Executor", "struct_s_p_1_1_executor.html", [
       [ "SP::TaskPool", "class_s_p_1_1_task_pool.html", null ]
@@ -27,6 +28,7 @@ var hierarchy =
     [ "SP::FutureT< T >", "class_s_p_1_1_future_t.html", null ],
     [ "SP::WaitMap::Guard", "struct_s_p_1_1_wait_map_1_1_guard.html", null ],
     [ "SP::WatchRegistry::Guard", "struct_s_p_1_1_watch_registry_1_1_guard.html", null ],
+    [ "SP::PathIOGamepad::HapticsCommand", "struct_s_p_1_1_path_i_o_gamepad_1_1_haptics_command.html", null ],
     [ "SP::Header", "struct_s_p_1_1_header.html", null ],
     [ "SP::In", "struct_s_p_1_1_in.html", [
       [ "SP::Immediate", "struct_s_p_1_1_immediate.html", null ],
@@ -58,13 +60,12 @@ var hierarchy =
     [ "SP::PathSpaceBase", "class_s_p_1_1_path_space_base.html", [
       [ "SP::PathAlias", "class_s_p_1_1_path_alias.html", null ],
       [ "SP::PathFileSystem", "struct_s_p_1_1_path_file_system.html", null ],
-      [ "SP::PathIO", "struct_s_p_1_1_path_i_o.html", [
-        [ "SP::PathIODeviceDiscovery", "class_s_p_1_1_path_i_o_device_discovery.html", null ],
-        [ "SP::PathIOKeyboard", "class_s_p_1_1_path_i_o_keyboard.html", null ],
-        [ "SP::PathIOMouse", "class_s_p_1_1_path_i_o_mouse.html", null ],
-        [ "SP::PathIOPointerMixer", "class_s_p_1_1_path_i_o_pointer_mixer.html", null ],
-        [ "SP::PathIOStdOut", "class_s_p_1_1_path_i_o_std_out.html", null ]
-      ] ],
+      [ "SP::PathIODeviceDiscovery", "class_s_p_1_1_path_i_o_device_discovery.html", null ],
+      [ "SP::PathIOGamepad", "class_s_p_1_1_path_i_o_gamepad.html", null ],
+      [ "SP::PathIOKeyboard", "class_s_p_1_1_path_i_o_keyboard.html", null ],
+      [ "SP::PathIOMouse", "class_s_p_1_1_path_i_o_mouse.html", null ],
+      [ "SP::PathIOPointerMixer", "class_s_p_1_1_path_i_o_pointer_mixer.html", null ],
+      [ "SP::PathIOStdOut", "class_s_p_1_1_path_i_o_std_out.html", null ],
       [ "SP::PathSpace", "class_s_p_1_1_path_space.html", null ],
       [ "SP::PathView", "struct_s_p_1_1_path_view.html", null ]
     ] ],

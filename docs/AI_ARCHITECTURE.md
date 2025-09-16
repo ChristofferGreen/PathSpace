@@ -1,5 +1,9 @@
 Renderer snapshot builder details have moved out of this architecture document. See docs/AI_Plan_SceneGraph_Renderer.md (“Decision: Snapshot Builder”) for the authoritative policy, rebuild triggers, publish/GC protocol, and performance notes. This file focuses on PathSpace core (paths, trie storage, concurrency/wait/notify, views/alias layers, and OS I/O).
 
+## UI/Rendering — cross-reference
+
+Present policy (backend-aware) and the software progressive present are documented in docs/AI_Plan_SceneGraph_Renderer.md. This architecture document focuses on PathSpace core; rendering/presenter details live in the plan. Also see “View keys (final)” and “Target keys (final)” in docs/AI_Plan_SceneGraph_Renderer.md for the authoritative schemas, and note that RenderSettings are a single-path atomic whole-object value; ParamUpdateMode::Queue refers to client-side coalescing before one atomic write (no server-side queue in v1).
+
 See also:
 - `docs/AI_Plan_SceneGraph_Renderer.md` for the broader rendering plan and target I/O layout. If snapshot semantics change, update both documents in the same PR per `.rules`.
  - `docs/AI_PATHS.md` for the canonical path namespaces and layout conventions; update it alongside changes to path usage and target I/O layout.
@@ -238,7 +242,12 @@ assert(space.take<int>("/collection/numbers_more").value() == 2);
 ```
 
 ## Blocking
-It's possible to send a blocking object to insert/read/extract instructing it to wait a certain amount of time for data to arrive if it is currently empty or non-existent.
+Blocking is opt-in and expressed through the helpers in `src/pathspace/core/Out.hpp`.
+
+- Passing `Block{}` to `read`/`take` (or composing `Out{} & Block{}`) turns the call into a waiter when the target node is empty. The waiter is registered in the concrete or glob registry described in the wait/notify section.
+- `Block{}` defaults to a very large timeout (100 years); override it with `Block{std::chrono::milliseconds{budget}}` to enforce a real deadline. When the timeout elapses, the operation returns an `Error::Timeout` in the `std::expected` result.
+- Successful reads/takes automatically deregister their waiter before returning. If the waiter is cancelled because the path is deleted or the space is shutting down, the operation reports an error so callers can retry or exit.
+- Inserts themselves do not block, but they wake both concrete and glob waiters on completion. Custom layers can tap into the same behaviour through `BlockOptions` when forwarding or composing higher-level queues.
 
 ## Operations
 The operations in the base language are insert/read/extract, they are implemented as member functions of the PathSpace class.

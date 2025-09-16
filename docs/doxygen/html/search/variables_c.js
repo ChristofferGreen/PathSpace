@@ -1,7 +1,5 @@
 var searchData=
 [
-  ['payloadmutex_0',['payloadMutex',['../struct_s_p_1_1_node.html#af1b3fa75c9d4a7b3bd9c49d1245cd557',1,'SP::Node']]],
-  ['pool_1',['pool',['../class_s_p_1_1_path_space.html#a22991951b21bd2d9fa8f0dcdc3a8cf9c',1,'SP::PathSpace']]],
-  ['prefix_2',['prefix',['../class_s_p_1_1_path_space.html#aa86d7e755ae7e2c5d3e5f536348532e8',1,'SP::PathSpace']]],
-  ['product_3',['product',['../struct_s_p_1_1_path_i_o_device_discovery_1_1_sim_device.html#a743905d697600ed124e64804bf70a253',1,'SP::PathIODeviceDiscovery::SimDevice']]]
+  ['obj_0',['obj',['../struct_s_p_1_1_input_data.html#a2d0bc7220ec557003c1b686bfc1b9901',1,'SP::InputData::obj'],['../struct_s_p_1_1_wrapper.html#ab6aa7ae24ee00ee33c06a30c1a279768',1,'SP::Wrapper::obj']]],
+  ['ownedpool_1',['ownedPool',['../class_s_p_1_1_path_space.html#a669397d74602c370920719f699065676',1,'SP::PathSpace']]]
 ];

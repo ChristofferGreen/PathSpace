@@ -1,11 +1,7 @@
 # PathSpace — Scene Graph and Renderer Plan
-
-Status: Active plan (MVP in progress)
 Scope: UI surfaces, renderers, presenters, multi-scene targets; atomic params and snapshot-based rendering
-Audience: Engineers building UI/rendering layers and contributors adding platform backends
 
 ## Goals
-
 - Application-scoped resources: windows, scenes, renderers, and surfaces live under one app root so removing the root tears everything down
 - Multi-scene renderers: a single renderer can render multiple scenes concurrently; consumers select a scene via per-target configuration
 - Window-agnostic surfaces: offscreen render targets (software or GPU) that can be presented by multiple windows within the same application
@@ -22,6 +18,14 @@ Applications are mounted under:
 Everything an application needs is a subtree below the app root. No cross-app sharing of surfaces or renderers. All references are app-relative (no leading slash) and must resolve within the app root. See docs/AI_PATHS.md for the canonical path namespaces and layout conventions.
 
 ## App-internal layout (standardized)
+
+Path shorthand guide
+- The docs use shorthand like targets/<tid>/... and windows/<win>/views/<view>/... to keep examples concise.
+- Shorthand expands relative to the app root to full paths:
+  - targets/<tid>/... => <app>/renderers/<renderer-id>/targets/<kind>/<name>/...
+  - scenes/<sid>/... => <app>/scenes/<scene-id>/...
+  - windows/<win>/views/<view>/... => <app>/windows/<window-id>/views/<view>/...
+- In code and tests, prefer full app-root paths and validate containment. Shorthand is documentation-only.
 
 - `scenes/<scene-id>/` — authoring tree (`src/...`), immutable builds (`builds/<revision>/...`), and `current_revision`
 - `renderers/<renderer-id>/` — renderer with per-target subtrees (multi-scene capable)
@@ -48,9 +52,7 @@ Example (abridged):
           scene                         # "scenes/main" (app-relative)
           desc                          # SurfaceDesc/TextureDesc/HtmlTargetDesc
           desc/active                   # mirror written by renderer (optional)
-          settings/
-            inbox                       # queue of whole RenderSettings (write-only by producers)
-            active                      # mirror of adopted settings (optional)
+          settings                      # single RenderSettings value (atomic whole-object replace)
           render                        # Execution: render one frame
           output/
             v1/
@@ -77,6 +79,26 @@ Example (abridged):
 
 ## Entities and responsibilities
 
+Entity (renderer-facing, renderable-only)
+- Purpose: the renderable view of a domain object. The true/authoritative object lives elsewhere (physics/sim/scripts); the renderer never serves data back to them.
+- Identity: stable per-Entity id suitable for caching, hit testing, and routing; derived deterministically from the source object id plus a stable sub-draw index.
+- Components (renderer-facing): world transform (with transformEpoch), geometry/material/texture references (with contentEpoch), pipeline flags, and world-space bounds (sphere/box).
+- Snapshot immutability: Entities and their referenced resources are immutable within a published revision; changes produce a new revision unless explicitly marked dynamic (streaming).
+
+Per-item residency/storage policy (standard PathSpace values)
+- Policy is defined per resource under authoring: `scenes/<sid>/src/resources/<rid>/policy/residency/*`:
+  - allowed: backends the item may reside in, e.g., ["gpu","ram","disk"]
+  - preferred: backend ordering hints, e.g., ["gpu","ram"]
+  - durability: "ephemeral" | "cacheable" | "durable" (restart-survivable if not ephemeral)
+  - max_bytes, cache_priority, eviction_group: admission/eviction controls
+- The renderer’s resource manager enforces residency/eviction according to policy and watermarks; backend mapping (RAM/SHM/FS/GPU) is internal and opaque to callers.
+
+Authoring concurrency (proposed vs resolved)
+- Producers write proposals under `scenes/<sid>/src/objects/<oid>/proposed/<source>/<component>/*` (e.g., physics, script).
+- A coalescer resolves to `.../resolved/<component>/*` using per-component policy: ownership, priority, or merge. Resolved components carry epochs/versions.
+- The builder latches a consistent resolved view (epochs) and publishes an immutable snapshot under `scenes/<sid>/builds/<rev>/*`; then updates `current_revision`. Renderers latch `current_revision` per frame and never re-read mid-frame.
+
+
 - Window (shell)
   - Platform-native window; emits state/events (resize, focus, close)
   - Lives under `windows/<id>/window` and is unaware of rendering
@@ -93,8 +115,7 @@ Example (abridged):
   - Lives under `renderers/<id>/...`
   - Stateless w.r.t. windows; serves work per target:
     - `targets/<target-id>/scene` — app-relative scene path to render
-    - `targets/<target-id>/settings/inbox` — queue of whole `RenderSettings` (atomic via insert/take)
-    - `targets/<target-id>/settings/active` — optional mirror of adopted settings
+    - `targets/<target-id>/settings` — single whole `RenderSettings` value (atomic whole-object replace)
     - `targets/<target-id>/render` — execution that renders one frame for this target
     - `targets/<target-id>/output/v1/...` — per-target outputs and stats (software/GPU/HTML)
   - Target-id convention: use the consumer’s app-local path, e.g., `surfaces/<surface-name>` or `textures/<texture-name>`
@@ -103,11 +124,14 @@ Example (abridged):
 
 ### Render settings atomicity (per renderer target)
 
-- Settings update queue:
-  - Writers insert whole `RenderSettings` values into `settings/inbox`
-  - Renderer drains `settings/inbox` with `take()` and adopts only the last (last-write-wins)
-  - Renderer may mirror the adopted struct to `settings/active` (single-value) for introspection
-- Readers never see half-updated params; a single-path commit is used for producers
+- Single-path settings:
+  - Authoritative path: `settings`
+  - Writers construct a complete `RenderSettings` object (or nested subtree) off-thread and atomically replace the value at this path in one insert.
+  - Do not split settings across multiple child paths if you require atomic reads.
+- Renderer latch (per frame):
+  - At frame start, read `settings` once and use that snapshot for the entire frame (no mid-frame reads).
+- Multi-producer guidance:
+  - Prefer a single logical owner (aggregator) that merges inputs and performs the atomic replace; if multiple producers write directly, last-writer-wins applies at the single path.
 
 ### Scene graph concurrency (authoring vs rendering)
 
@@ -132,7 +156,7 @@ Example (abridged):
 ## Frame orchestration
 
 Renderer (per target):
-1) Adopt settings from `settings/inbox` (drain; last-write-wins; optionally mirror to `settings/active`)
+1) Read settings once from `settings` (atomic single-path value for the whole frame). Mid-frame writes to `settings` do not affect the in-flight frame; adoption occurs at the next frame start (no cancellation).
 2) Resolve `targets/<tid>/scene` against the app root; validate it stays within the same app subtree
 3) Read `scenes/<sid>/current_revision`; latch for this render
 4) Traverse `scenes/<sid>/builds/<revision>/...` and render:
@@ -141,15 +165,84 @@ Renderer (per target):
 5) Write `targets/<tid>/output/v1/...` and stamp `frameIndex` + `revision`
 
 Presenter (per window view):
-1) Read `views/<vid>/surface`; resolve to `surfaces/<sid>`
-2) Optionally call `surfaces/<sid>/render`, which:
-   - Writes `RenderSettings` to `renderers/<rid>/targets/surfaces/<sid>/settings/inbox`
-   - Triggers `renderers/<rid>/targets/surfaces/<sid>/render`
+1) Read `windows/<win>/views/<view>/{surface, windowTarget, present/{policy,params}}` once per present; resolve to `renderers/<rid>/targets/surfaces/<sid>` or `renderers/<rid>/targets/windows/<wid>`; do not re-read mid-present
+2) For surfaces:
+   - Optionally call `surfaces/<sid>/render`, which:
+     - Writes a whole `RenderSettings` to `renderers/<rid>/targets/surfaces/<sid>/settings`
+     - Triggers `renderers/<rid>/targets/surfaces/<sid>/render`
+   For windows targets:
+   - Acquire the window drawable/swapchain for `<wid>` on the platform UI/present thread; present for windowTarget occurs on that thread. Surface blits occur on the UI thread after render completes.
 3) Present:
-   - Software: read framebuffer and blit to the window
-   - GPU: draw a textured quad sampling the offscreen texture/image to the window drawable/swapchain
+   - Software (surface): read framebuffer and blit to the window
+   - GPU (surface): draw a textured quad sampling the offscreen texture/image to the window drawable/swapchain
+   - GPU (windows target): present the acquired drawable/swapchain image (direct-to-window)
 
-Staleness policy: presenters can present last-complete outputs if a fresh frame is in-flight (configurable freshness threshold)
+Present policy (backend-aware)
+- Modes:
+  - AlwaysFresh
+    - Software: UI thread waits up to a tight deadline for a new framebuffer; if not ready by deadline, skip this present rather than blitting stale pixels.
+    - GPU: wait on the offscreen render fence until (vsync_deadline − ε) or frame_timeout_ms. If not signaled, either draw the previous offscreen texture or skip present (configurable).
+    - HTML: treated as AlwaysLatestComplete (policy ignored).
+  - PreferLatestCompleteWithBudget (default)
+    - Software: if a fresh framebuffer can complete by now + staleness_budget_ms, wait; else blit last-complete. Never block the UI thread beyond budget.
+    - GPU: if the offscreen fence is likely to signal by (vsync_deadline − ε), wait; else draw the previous offscreen texture this vsync.
+    - HTML: AlwaysLatestComplete.
+  - AlwaysLatestComplete
+    - Software/GPU: present whatever output is complete now; do not wait.
+    - HTML: same.
+
+- Parameters:
+  - staleness_budget_ms: float (default 8.0)
+  - max_age_frames: uint (default 1)
+  - frame_timeout_ms: float (default 20.0)
+  - vsync_align: bool (default true)
+  - auto_render_on_present: bool (default true)
+
+- Semantics (per present):
+  1) Latch target base and current_revision at present start.
+  2) If auto_render_on_present and output age > staleness_budget_ms, enqueue a render (idempotent if already in-flight).
+  2a) If output age in frames exceeds max_age_frames, enqueue a render (idempotent). Age in frames counts completed frames since the output’s revision was produced; skipped presents do not reset age.
+  3) Compute deadline:
+     - AlwaysFresh: deadline = min(vsync_deadline, now + frame_timeout_ms)
+     - PreferLatestCompleteWithBudget: deadline = min(vsync_deadline, now + staleness_budget_ms)
+     - AlwaysLatestComplete: deadline = now
+  4) If a newer frame completes before deadline, present it; else present last-complete if policy allows.
+     - AlwaysFresh: skip present when the deadline is missed.
+     - If age_frames > max_age_frames and a fresh frame is not ready by the deadline:
+       - PreferLatestCompleteWithBudget / AlwaysLatestComplete: present the last-complete and keep the queued render.
+       - AlwaysFresh: still skip present.
+
+- Backend notes:
+  - Timing source: vsync_deadline comes from platform presentation timing APIs when available (e.g., CVDisplayLink/CAMetalLayer on macOS); otherwise estimate from a monotonic clock and known refresh.
+  - Software:
+    - Keep double-buffering for buffered mode; reserve a blit_budget_ms derived from width×height×bytes_per_pixel to avoid missing vsync on large frames.
+    - Never block the UI thread longer than min(staleness_budget_ms, frame_timeout_ms) − blit_budget_ms.
+  - GPU (Metal/Vulkan):
+    - Use a fence/completion handler for offscreen completion; align waits to (vsync_deadline − ε).
+    - If drawable acquisition fails or is late, skip present and set a status message; keep last-complete texture for the next tick.
+  - HTML:
+    - Policy ignored; DOM/CSS adapter always presents the latest complete output without waiting.
+
+- Configuration (presenter-owned; per view):
+  - windows/<win>/views/<view>/present/policy: enum { AlwaysFresh, PreferLatestCompleteWithBudget, AlwaysLatestComplete }
+  - windows/<win>/views/<view>/present/params:
+    - staleness_budget_ms: float
+    - max_age_frames: uint
+    - frame_timeout_ms: float
+    - vsync_align: bool
+    - auto_render_on_present: bool
+
+- Per-call overrides (Builders):
+  - present_view(..., optional policyOverride, optional paramsOverride)
+
+- Metrics (written by presenter to output/v1/common):
+  - presentedRevision: uint64
+  - presentedAgeMs: double
+  - presentedMode: string
+  - stale: bool
+  - waitMs: double
+  - skippedPresent: bool (GPU)
+  - drawableUnavailable: bool (GPU)
 
 Pacing:
 - Default: match the display device’s refresh/vsync for the window/surface (variable-refresh compatible)
@@ -268,19 +361,30 @@ On-disk schema (per scene, per revision)
   - cmd-buffer.bin        — cmdKinds[M] + payload blob
   - indices/opaque.bin    — optional opaqueIndices[]
   - indices/alpha.bin     — optional alphaIndices[]
-  - indices/layer/*.bin   — optional per-layer indices
+  - indices/layer/*.bin   — optional per-layer indices (see naming/format below)
   - meta.json             — small JSON with revision, created_at, tool versions, and authoring→drawable id map summary
   - trace/tlas.bin        — optional (software path tracer; instances carry AABBs)
   - trace/blas.bin        — optional (software path tracer; geometry bounds/AABBs per BLAS)
 - Binary headers:
   - All *.bin start with: magic(4), version(u32), endianness(u8), reserved, counts/offsets(u64), checksum(u64)
+- Per-layer index naming/format:
+  - File name: indices/layer/<layer>.bin where <layer> is the decimal text of the uint32 layer id (e.g., indices/layer/3.bin).
+  - Encoding: little-endian, 64-bit aligned, with the same header (magic, version, endianness, counts/offsets, checksum).
+  - Payload: a tightly packed array of uint32 indices into the drawables SoA for that layer; count is recorded in the header.
 
 Publish/adopt/GC protocol
 - Build writes to `scenes/<sid>/builds/<rev>.staging/*`, fsyncs, then atomically renames to `scenes/<sid>/builds/<rev>`
 - Publish: atomically replace `scenes/<sid>/current_revision` with `<rev>`
 - Renderer adopts by reading `current_revision` once per frame, mapping only `/<rev>/bucket/*` for that frame; the revision is pinned until frame end
-- GC: retain last K revisions (default 3) or T minutes (default 2m), whichever greater; never delete a pinned revision
+- GC: retain last K revisions (default 3) or T minutes (default 2m), whichever greater; never delete a pinned revision. Effective deletion cutoff = min(count-cutoff, time-cutoff, (minActiveLeaseRev - 1) if leases present). Never delete `current_revision` and always retain at least one revision.
 - Observability: renderer writes `frameIndex`, `revision`, `renderMs`, `lastError` under `targets/<tid>/output/v1/common/*` (see “Target keys (final)”)
+
+> Note — Revision allocation and error handling
+> - current_revision type and allocation: uint64, builder-assigned, strictly monotonically increasing per scene. Builders are responsible for generating new revisions; do not reuse old values.
+> - Renderer behavior on read failure:
+>   - If `scenes/<sid>/current_revision` is missing or unreadable, set a concise message in `targets/<tid>/output/v1/common/lastError` and skip the frame (or render a clear color) without crashing.
+>   - If `current_revision` points to a missing or partial `scenes/<sid>/builds/<rev>/*`, also report a concise error and skip/clear; recover automatically when a valid revision is published.
+> - Adoption invariants: renderers latch `current_revision` once at frame start; all reads during the frame must come from that latched revision.
 
 Cross-references
 - Changes to publish/adopt, snapshot schema, or DrawableBucket invariants must be reflected in `docs/AI_ARCHITECTURE.md` and associated tests
@@ -352,6 +456,86 @@ Software renderer (2D UI)
   - ClipPath: software stencil/coverage buffer; commands between clip begin/end respect the active mask.
 - Color management:
   - Linear working space. Inputs decode per asset flags; outputs encode to target color space (e.g., sRGB) with optional dithering for 8-bit.
+  - DisplayP3 handling: when assets declare DisplayP3 or targets request DisplayP3, convert between working linear space and the target/display space via ICC or well-defined matrix transforms. For software paths, encode to sRGB or DisplayP3 at store-time; for GPU, use appropriate formats and perform conversion on write-out. Avoid double conversion when using sRGB/linear attachments.
+
+### Color management (v1)
+
+Policy
+- Working space: linear light for all shading and blending.
+- Framebuffer encoding: default sRGB 8-bit with linear→sRGB encode on write; optional linear FP formats (e.g., RGBA16F/32F) for HDR.
+- Alpha: premultiplied everywhere by default.
+
+Inputs
+- Solid colors are authored in sRGB; convert to linear at material upload.
+- Images: honor embedded ICC when present; otherwise assume sRGB. Convert to the working space at decode, or sample from sRGB textures with automatic decode-to-linear.
+- Text/MSDF: decode in linear; blend premultiplied in linear. LCD subpixel only when the target is sRGB8 and transforms preserve subpixel geometry.
+
+Flags and semantics
+- SrgbFramebuffer: target expects sRGB-encoded output; encode on write-out; blending remains in linear.
+- LinearFramebuffer: target is linear (e.g., FP16/FP32); do not sRGB-encode on write.
+- UnpremultipliedSrc: source is straight alpha; convert to premultiplied in the draw path before blending; discourage use for general content.
+
+Backend notes
+- Software: composite in linear float; encode to target color space on store; optional dithering for 8-bit.
+- Metal/Vulkan: prefer sRGB formats with automatic decode-to-linear sampling; select FP formats for HDR paths.
+
+Defaults and tests
+- Defaults: sRGB working space, srgb8 framebuffer, premultiplied alpha.
+- Tests: golden semi-transparent composites, software vs GPU parity, MSDF edge quality and LCD downgrade behavior.
+
+### Progressive present (software, non-buffered)
+
+Overview
+- Low-latency mode for the software path using a single shared framebuffer with progressive tile updates.
+- Presenter blits only tile-aligned dirty regions that are consistent; no full-frame commit is required.
+
+Shared framebuffer and tiles
+- One CPU pixel buffer sized to the target (physical pixels; respect dpi_scale). Pixel format: RGBA8 premultiplied alpha with sRGB encoding on store (linear working space → sRGB on write-out). The presenter blits bytes as-is (no further color conversion).
+- Fixed tile size (e.g., 32×32 or 64×64). Per-tile seqlock metadata:
+  - seq: uint32 (even=stable, odd=being-written)
+  - pass: enum { None, OpaqueDone, AlphaDone }
+  - epoch: uint64 (increments each time a tile reaches AlphaDone)
+
+Renderer protocol per tile
+- Writer atomics: `seq` is a std::atomic<uint32_t>. Begin: `seq.fetch_add(1)` to odd. Write tile pixels. Publish with `std::atomic_thread_fence(std::memory_order_release)`. End: `seq.fetch_add(1)` to even.
+- Publish pass/epoch atomically: `pass.store(OpaqueDone|AlphaDone, std::memory_order_release)` only after the corresponding tile pixels are visible; `epoch.store(newEpoch, std::memory_order_release)` when a tile reaches AlphaDone. Readers use `memory_order_acquire` on `seq/pass/epoch`. If `seq` changes between pre- and post-copy reads, discard that tile copy.
+
+Dirty region feed
+- Renderer enqueues tile-aligned dirty rects to a lock-free queue.
+- Presenter drains and coalesces rects on the UI thread; for each tile:
+  - Read seq; if odd, skip; if even, copy; re-check seq after copy; if changed, discard that tile copy (avoid tearing).
+- Use platform partial redraw APIs (e.g., setNeedsDisplayInRect) to schedule partial blits.
+
+Two-phase progressive draw (optional)
+- Present opaque-complete tiles immediately for quick stabilization; blend alpha tiles progressively as they complete.
+
+Input-priority micro-updates
+- Pointer interactions enqueue high-priority dirty regions around the cursor/control (e.g., 64–128 px neighborhood) to maintain perceived low latency.
+
+Policy interaction
+- PreferProgressive (software-only) can be selected per view or auto-chosen when budget is tight.
+- Mapping:
+  - AlwaysLatestComplete: buffered; if presentedAgeMs > staleness_budget_ms, temporarily switch to progressive until stabilized.
+  - PreferLatestCompleteWithBudget (default): progressive for late tiles beyond budget; otherwise buffered.
+  - AlwaysFresh: prefer buffered; progressive only if a full frame cannot meet the deadline.
+
+- Settings (per view)
+- windows/<win>/views/<view>/present/policy: may be PreferProgressive on software targets
+- windows/<win>/views/<view>/present/params.software.progressive:
+  - enable: bool (default true)
+  - tile_size: int (32|64)
+  - alpha_two_phase: bool (default true)
+  - max_dirty_per_vsync: int (coalescing cap)
+- Pacing note: user pacing caps (user_cap_fps) do not change `RenderSettings.time.delta_ms` beyond the actual elapsed time between frames; if frames are skipped due to pacing, `delta_ms` still reflects real elapsed time so animations advance correctly.
+
+Metrics (software presenter)
+- progressiveTilesCopied, progressiveRectsCoalesced, progressiveSkipOddSeq, progressiveRecopyAfterSeqChange
+- presentLatencyMs (min/avg/max), copyBytesPerSecond
+
+Safety and correctness
+- Seqlock per tile avoids locks and prevents torn reads.
+- Presenter never blocks the UI thread on renderer work; cap coalesced rects per vsync to avoid starvation.
+- macOS note: shared buffer → Core Graphics blits of dirty rects; IOSurface/Core Animation can be considered later to reduce copies.
 
 GPU renderer (Metal/Vulkan)
 - Targets:
@@ -459,7 +643,7 @@ Units and DPI
 - UI logical units are device-independent pixels (dp). World-space units for 2D UI equal logical px; physical px = logical px × dpi_scale.
 
 Orthographic UI defaults (2D)
-- Projection: Orthographic with y-down. Screen origin at top-left of the target; +X right, +Y down.
+- Projection: Orthographic with y-down. Screen origin at top-left of the target; +X right, +Y down. Matrices are column-major; vectors are column vectors; compose with post-multiply (world = parentWorld * local; clip = P*V*M*pos).
 - Default world-to-screen mapping: x_world,y_world interpreted as logical pixels; z defaults to 0 unless specified.
 - Z-ordering for 2D:
   - Primary ordering by `layer` (ascending).
@@ -563,24 +747,28 @@ Device and queue ownership
 - Each renderer instance owns its GPU device/context and one or more queues:
   - Metal: MTLDevice + MTLCommandQueue (one graphics queue per renderer; optional transfer-only queue in future)
   - Vulkan: VkDevice + graphics queue (and present queue when applicable); command pools are per-thread
-- Targets render offscreen; presenters handle display integration on the UI thread (e.g., CAMetalLayer)
+- Surfaces/textures render offscreen; windows targets render directly to the window drawable/swapchain. Presenters handle acquisition and present on the UI/present thread (e.g., CAMetalLayer).
 
 Thread affinity and submission
 - Command encoding happens on a renderer worker thread per target (no UI thread dependency)
-- Metal objects with thread affinity (e.g., CAMetalDrawable) are handled by the presenter; renderers consume offscreen textures/images
+- Metal objects with thread affinity (e.g., CAMetalDrawable) are handled by the presenter. For surfaces/textures, renderers consume offscreen textures/images; for windows targets, the presenter acquires the drawable and the renderer encodes directly against it before the presenter submits/presents on the UI thread.
 - Vulkan command pools are thread-bound; allocate and reset per-thread pools
 
 Synchronization model
 - Per-target synchronization only; no global renderer lock
 - CPU side:
-  - Short mutex to adopt `settings/active`; snapshot read is lock-free after latching `current_revision`
+  - Short mutex to read `settings` at frame start; snapshot read is lock-free after latching `current_revision`
 - GPU side:
   - One command buffer per frame per target (or a small ring); fences/semaphores wait for completion before resource reuse
   - Avoid cross-target synchronization; each target’s timeline is independent
 - Present:
-  - Software path: blit framebuffer to window on UI thread
-  - Metal: presenter draws a textured quad sampling the offscreen texture into CAMetalDrawable
-  - Vulkan: similar present path via swapchain in the presenter (future)
+  - Software: blit framebuffer to window on UI thread (unchanged)
+  - Metal:
+    - Offscreen targets (surfaces/textures): presenter draws a textured quad sampling the offscreen texture into CAMetalDrawable
+    - Windows targets: renderer renders directly into CAMetalDrawable acquired by the presenter; presenter calls presentDrawable on the UI thread
+  - Vulkan:
+    - Offscreen targets: presenter composites the offscreen image/quad into the view’s drawable
+    - Windows targets: renderer renders directly into the acquired swapchain image; presenter queues vkQueuePresentKHR and handles SUBOPTIMAL/OUT_OF_DATE by recreating the swapchain
 
 Resources and reconfigure
 - Target descriptor changes (`desc`) trigger reconfigure:
@@ -622,7 +810,7 @@ Observability
 ### Minimal types (sketch)
 
 ```cpp
-struct Transform { float m[16]; }; // 3D; 2D via orthographic with z=0
+struct Transform { float m[16]; }; // Column-major 4x4; column vectors; post-multiply (world = parentWorld * local; clip = P*V*M*pos). 3D; 2D via orthographic with z=0
 
 struct BoundingSphere { float cx, cy, cz, r; };
 struct BoundingBox { float min[3], max[3]; };
@@ -668,7 +856,7 @@ struct DrawableEntry {
 - Transforms: 2D TRS per node (position, rotationDeg, scale), relative to parent
 - Layout: `Absolute` and `Stack` (vertical/horizontal) in v1
 - Style: opacity (inherits multiplicatively), fill/stroke, strokeWidth, cornerRadius, `clip` flag (on containers)
-- Z-order: by `(zIndex asc, then children[] order)` within a parent
+- Z-order: by `(zIndex asc, then children[] order)` within a parent. Mapping to runtime: the snapshot builder assigns `layer` from the nearest layer-bearing ancestor (default 0) and derives per-drawable `z` from authoring `zIndex` within that layer; ties are broken by stable `DrawableId` for determinism.
 
 Preferred authoring pattern: nested PathSpace mount
 - Build the scene in a temporary, unmounted `PathSpace`:
@@ -819,6 +1007,7 @@ void renderTarget(const Camera& cam,
 ## Notifications and scheduling
 
 - Edits set a scene dirty flag/counter and notify a layout worker (debounced)
+- Commit barrier monotonicity: `<app>/scenes/<sid>/src/commit` is a monotonically increasing uint64 counter; writers increment it by at least 1 per publish. Readers ignore equal or lower values.
 - Renderers may watch target scene subtrees to mark targets dirty
 - Modes:
   - Explicit: surfaces/presenters trigger frames
@@ -828,6 +1017,7 @@ void renderTarget(const Camera& cam,
 
 - App-relative resolution: a path without a leading slash is resolved against the app root
 - Same-app validation: after resolution, verify the target path still lies within the app root; reject otherwise
+- Symlink/alias containment (filesystem-backed paths): when resolving any filesystem path, resolve symlinks/aliases to absolute paths and verify containment within the app root to prevent escapes.
 - Platform handle hygiene:
   - Use opaque typed wrappers for `CAMetalLayer*`, `VkImage`, etc.
   - Document ownership and thread affinity (present must occur on the correct thread)
@@ -850,7 +1040,7 @@ Responsibilities:
 - Manage target-id convention (`targets/surfaces/<name>`)
 - Use PathSpace atomic primitives:
   - Single-value replace for small configs (e.g., `desc`)
-  - Params update queue for per-target renderer params (drained via `take()`; last-write-wins)
+  - Param updates (Queue) are client-side coalescing, then a single atomic write to `<target>/settings` (no server-side queue in v1)
   - Snapshot revision flip (single write) for scene publish (builder concern)
 - Provide readable errors with context (target-id, frame index, snapshot revision)
 
@@ -883,7 +1073,7 @@ Expected<void> set_surface_scene(PathSpace&, AppRoot const&,
                                  std::string surfacePathOrName, std::string scenePathOrName);
 
 struct RenderSettings { /* see RenderSettings v1 (final) */ };
-enum class ParamUpdateMode { Queue, ReplaceActive };
+enum class ParamUpdateMode { Queue, ReplaceActive }; // v1 semantics: Queue = client-side coalesce then atomic single-path replace; no server-side queue
 
 Expected<void> update_target_settings(PathSpace&, AppRoot const&,
                                       std::string targetPathOrSpec,
@@ -984,7 +1174,7 @@ int main() {
   auto rendererPath = create_renderer(space, app, rparams).value();
 
   // 3) Create a surface linked to the renderer
-  SurfaceDesc sdesc; sdesc.size = {1280, 720, 2.0f};
+  SurfaceDesc sdesc; sdesc.size_px = {1280, 720};
   SurfaceParams sparams{ .name = "editor", .desc = sdesc, .renderer = "2d" };
   auto surfacePath = create_surface(space, app, sparams).value();
 
@@ -996,7 +1186,7 @@ int main() {
   attach_surface_to_view(space, app, "MainWindow", "editor", "editor").value();
   set_surface_scene(space, app, surfacePath, "scenes/main").value();
 
-  // 6) Update settings (queued) and render once
+  // 6) Update settings (queued: client-side coalesce, then a single atomic write) and render once
   RenderSettings rs; rs.surface.size_px = {1280, 720}; rs.surface.dpi_scale = 2.0f;
   update_target_settings(space, app, "renderers/2d/targets/surfaces/editor", rs).value();
   auto fut = render_target_once(space, app, "renderers/2d/targets/surfaces/editor").value();
@@ -1015,6 +1205,7 @@ Approach: semantic HTML/DOM adapter mapping widgets to native elements with CSS-
 Paths (under a renderer target base):
 - `output/v1/html/dom` — full HTML document as a string (may inline CSS/JS)
 - `output/v1/html/css` — CSS string, if split
+- `output/v1/html/commands` — Canvas JSON fallback command stream
 - `output/v1/html/assets/<name>` — optional assets (base64 or URLs)
 
 Mapping hints:
@@ -1197,52 +1388,162 @@ Robustness:
    - `PathSurfaceMetal` producing an offscreen `MTLTexture`
    - Presenter draws textured quad into `CAMetalLayer` drawable on the UI thread
 
-## Open questions
 
-- Present policy: per-app defaults for staleness vs always-fresh frames
-- Snapshot GC triggers and retention policy (K snapshots vs revision-based)
-- Text shaping and bidi strategy; font fallback
-- Color management (sRGB, HDR) across software/GPU paths
-- Direct-to-window bypass for single-view performance-critical cases (optional surface mode)
-- Documentation and diagrams: add UI/Rendering section to `docs/AI_ARCHITECTURE.md` when APIs solidify; include Mermaid diagrams for data flow and schemas
+
 
 ## Gaps and Decisions (unresolved areas)
 
 The following items are intentionally unresolved and tracked as backlog. Promote items to “Decision” when resolved and keep in sync with `docs/AI_TODO.task` and code/tests.
 
-1) Lighting and shadows
-- Software UI lighting model (directional light, Lambert/Blinn-Phong)
-- Elevation-based shadow heuristics
-- Opt-in normals/3D attributes for “2.5D” widgets
 
 
+## Decision: HTML adapter fidelity (resolved)
 
+Summary:
+- Adopt DOM/CSS as the default v1 adapter for preview/export of 2D UI scenes.
+- Provide an automatic fallback to a compact Canvas JSON + tiny runtime when DOM node budgets or fidelity constraints are exceeded.
+- Defer WebGL to a later phase; only consider if performance or blend/clip fidelity requires it.
 
+Scope and constraints (v1):
+- Supported: rect/rrect, images, text, 2D transforms, z-order, rect/rrect clipping, shadows; sRGB color and premultiplied alpha semantics approximated via CSS.
+- Out of scope: 3D transforms, advanced blend modes beyond normal alpha, non-rectangular hit regions, Display P3 targets, GPU lighting.
 
-2) Resource system (images, fonts, shaders)
-- Async loading/decoding, caches, eviction
-- Asset path conventions
-- Font fallback and shaping library selection
+Output paths:
+- output/v1/html/dom — full HTML document (may inline CSS/JS)
+- output/v1/html/css — optional CSS string
+- output/v1/html/commands — Canvas JSON fallback command stream
+- output/v1/html/assets/* — assets referenced by DOM/CSS or Canvas JSON
 
-3) Error handling, observability, and profiling
-- Error propagation style
-- Structured logging/tracing per target/scene/frame
-- Metrics and debug overlays
+Fidelity tiers and selection:
+- Tier 1: DOM/CSS (default)
+  - Semantic elements and CSS transforms; overflow/clip-path for safe cases.
+  - Deterministic stacking via z-index and DOM order; stable ids for tie-breaks.
+- Tier 2: Canvas JSON (fallback)
+  - Emit a compact command stream (moveTo/lineTo/arc/clip/drawImage/drawGlyph) and include a minimal replay runtime (<10 KB) in the DOM or as an asset.
+  - Switch when:
+    - Estimated DOM node count exceeds maxDomNodes (default 10k).
+    - Scene uses clip/blend features that DOM/CSS cannot match acceptably.
+- Tier 3: WebGL (deferred)
+  - Not implemented in v1; revisit only if necessary.
 
-4) Documentation and diagrams
-- Add UI/Rendering to `docs/AI_ARCHITECTURE.md` when APIs solidify
-- Include Mermaid diagrams for data flow and schemas
-- Keep images in `docs/images/` and cross-link to code/tests
+Text shaping strategy (v1):
+- Primary: consume pre-shaped glyph runs from the snapshot builder (HarfBuzz + FreeType, per existing decision).
+- DOM/CSS mode:
+  - Emit absolutely positioned glyph spans (one per glyph for complex scripts; coalesce safe clusters), with CSS transforms for subpixel placement.
+  - Optional simplified mode for trivial Latin runs: native DOM text to reduce node count.
+- Canvas JSON mode:
+  - Replay positioned glyphs; MSDF atlas path may be added later but is not required for v1.
+- Fonts:
+  - Emit @font-face rules referencing output/v1/html/assets/fonts/*; optional later subsetting to WOFF2.
 
-5) HTML adapter fidelity targets
-- DOM/CSS vs Canvas JSON vs WebGL
-- Text shaping strategy for web output
+Mapping:
+- Rect/rrect → div + border-radius (fallback to clip-path for non-uniform radii as needed).
+- Paths more complex than rrect → Canvas JSON fallback; DOM clip-path used only for well-supported, simple shapes.
+- Images → img with explicit width/height; use CSS object-fit when needed.
+- Transforms → CSS matrix() composed in the snapshot order.
+- Stacking/blending → z-index and element opacity; advanced blend modes defer to Canvas JSON.
+- Clipping → overflow:hidden for rect/rrect; complex clips use clip-path when safe, otherwise Canvas JSON.
+- Color → sRGB CSS colors; assume sRGB target.
 
-6) Present policy
-- Per-app defaults for staleness vs always-fresh frames
+Implementation:
+- HtmlAdapter::emitDomCss(revision, options) → domString, cssString, assets[]
+- Options: { preferDom=true, maxDomNodes=10000, allowClipPath=true, preferGlyphSpans=true }
+- Asset pipeline: copy referenced images/fonts to output/v1/html/assets/*; generate @font-face.
+- Canvas JSON: encoder walking snapshot draw order; tiny JS runtime embedded or referenced from assets.
 
-7) Snapshot GC and retention
-- Triggers and policy (K snapshots vs revision-based)
+Tests and metrics:
+- Golden screenshot tests with headless Chromium and Firefox comparing DOM/CSS and Canvas JSON to software renderer goldens for rects/rrects/images/text.
+- Text: Latin kerning/ligatures, Arabic joining+bidi, Devanagari reordering, CJK; verify layout stability for glyph-span mode.
+- Size/perf: DOM node count, total output size, initial render time; validate tier switch thresholds.
+- Path and containment: verify output paths populated and app-relative constraints enforced.
+
+Milestones:
+- M1 DOM/CSS MVP: rect/rrect/images/basic Latin text, transforms, z-index, rect clipping, assets/@font-face, goldens on two browsers.
+- M2 Shaped text and safe clip-path: full shaped scripts via glyph spans; fallback selection logic.
+- M3 Canvas JSON fallback: encoder + runtime; fidelity tests; thresholds.
+- M4 Optimizations: text run coalescing; optional font subsetting; doc polish.
+
+Cross-references:
+- Update HTML/Web output section to mention tiers and selection logic.
+- Reflect adapter behavior in docs/AI_ARCHITECTURE.md.
+
+## Decision: Lighting and shadows (resolved)
+
+Summary:
+- Hybrid pipeline: software microtriangle rasterization for visibility with per-vertex irradiance computed by a GPU ray tracer. Triangles are tessellated to approximately one pixel in screen space per frame; lighting is computed in the GPU RT stage and stored into a vertex lighting buffer, then the software raster interpolates vertex lighting to pixels. Prefer hardware ray tracing when available; otherwise either disable RT lighting or use a reduced compute BVH fallback if configured.
+
+Model (v1):
+- RenderSettings.MicrotriRT:
+  - enabled: bool
+  - microtriEdgePx: float (target edge length in pixels; default ≈ 1.0)
+  - maxMicrotrisPerFrame: uint (tessellation budget)
+  - raysPerVertex: uint (spp for irradiance integration)
+  - maxBounces: uint (≥ 1; commonly 1–3)
+  - rrStartBounce: uint (≤ maxBounces)
+  - useHardwareRT: enum { Auto, ForceOn, ForceOff }
+  - environment: { hdrPath: string, intensity: float, rotation: float }
+  - allowCaustics: bool
+  - clampDirect?: float
+  - clampIndirect?: float
+  - progressiveAccumulation: bool
+  - vertexAccumHalfLife: float (temporal accumulation weight, e.g., 0.1–0.5)
+  - seed: uint64
+- Materials/BSDF (per draw node or mesh subset):
+  - PBR: baseColor, metalness, roughness (GGX), ior, transmission, emissive, normalMap
+- Geometry:
+  - UI geometry: primarily SDF-defined primitives (buttons, window chrome, etc.) are converted to triangle meshes via isosurface contouring during snapshot build. We use adaptive marching on implicit fields to produce well-conditioned triangles that target ≈ microtriEdgePx after subsequent screen-space tessellation. Each generated vertex receives a stable vertexId derived from (sourceSdfId, cellCoord, isoEdgeIndex).
+  - Non-UI geometry: represented as tetrahedral meshes by default. Surface triangles for raster visibility are extracted from the tet boundary; the full tet mesh is used by the GPU RT integrator for robust interior traversal and media transitions (consistent with the tetrahedral acceleration section).
+  - The snapshot builder emits the per-view microtriangle buffers from these sources with stable vertexIds enabling temporal accumulation and reuse.
+
+Approach:
+- Microtri tessellation (CPU):
+  - Adaptively tessellate visible primitives to ≈ microtriEdgePx in screen space; write per-vertex worldPos, normal, uv, materialId.
+  - Generate stable vertexIds: hash(sourcePrimitiveId, gridU, gridV, lodSeed) to support temporal accumulation and buffer reuse.
+  - Produce an index/vertex buffer for software raster and a GPU-visible vertex buffer for RT.
+- Software raster (visibility and composition):
+  - Rasterize microtris in tiles; resolve visibility, clipping, stacking contexts, and blending as usual.
+  - Shading reads per-vertex irradiance from the lighting buffer and interpolates to pixels; baseColor and alpha come from materials/textures. Optionally add a lightweight view-dependent specular term from roughness.
+- GPU ray tracing (per-vertex irradiance):
+  - Build/reuse BLAS/TLAS over the full scene on hardware RT; if ForceOff, an optional compute BVH fallback may be used.
+  - Dispatch a ray-gen kernel that, for each unique vertexId in the microtri mesh, traces rays to integrate incoming radiance (direct via NEE + BSDF sampling, indirect via path continuation). Write irradiance (rgb) into the vertex lighting buffer at vertexId.
+  - MIS for area lights and environment; Fresnel-aware BSDF sampling; Russian roulette after rrStartBounce. Optionally output moments/variance for adaptive temporal filtering.
+- Synchronization and data flow:
+  - Double-buffer the vertex lighting buffer: while raster reads buffer A, GPU RT writes buffer B; swap atomically at frame end. Latch RenderSettings and snapshot revision at frame start.
+- Temporal accumulation and denoise:
+  - If progressiveAccumulation, accumulate per-vertex irradiance across frames using vertexId and motion-aware reprojection where available. Clamp variance to reduce ghosting.
+- Budgets and fallbacks:
+  - Enforce maxMicrotrisPerFrame and raysPerVertex; adapt tessellation density and/or spp when over budget. If useHardwareRT=Auto and unavailable, either skip RT lighting (fallback to ambient/baseColor) or use the compute fallback if enabled.
+
+Data and API changes:
+- RenderSettings:
+  - Add MicrotriRT struct as above.
+- Snapshot builder:
+  - Add microtriangle tessellator; emit per-view microtri vertex/index buffers with stable vertexIds.
+- Renderer outputs:
+  - output/v1/common/: add { vertexLightingEpoch, microtriCount }
+  - output/v1/buffers/: optional debug dumps of microtri meshes and lighting buffers (debug builds)
+- Scene schema:
+  - Add declarative SDF node types for UI (rect/rrect, text SDF, path SDF, composition ops) with parameters; builder performs isosurface contouring to triangles.
+  - Support tetrahedral mesh nodes for non-UI content with material regions; surface extraction is derived at build time.
+  - Mesh nodes remain supported; PBR materials apply uniformly across SDF-derived, tet-derived, and explicit meshes.
+
+Atomicity and threading:
+- RT lighting is computed per frame with double-buffered publish; raster always consumes a complete, immutable lighting buffer for that frame.
+
+Culling and bounds:
+- CPU frustum cull source primitives pre-tessellation; microtri meshes are view-local and not persisted between frames.
+
+Validation and safety:
+- Validate rrStartBounce ≤ maxBounces; enforce budgets; ensure BSDF parameters are energy-conserving.
+
+Performance targets:
+- 1080p: ≈1px microtris with 1–2 rays/vertex on modern RT hardware within present budgets; progressive accumulation improves quality over time.
+
+Tests:
+- Microtri density and budget control; fixed-seed determinism for per-vertex lighting; clean fallback when hardware RT is unavailable; concurrency loop=15 remains green.
+
+Docs and examples:
+- Add “Hybrid Microtri + RT” to docs/AI_ARCHITECTURE.md with dataflow and buffer lifetimes; provide sample scenes showing area lights, glossy/refraction, and environment lighting.
 
 ## Decision: Snapshot Builder (resolved)
 
@@ -1271,6 +1572,357 @@ Notes:
 - Renderer behavior is unchanged; it consumes the latest revision agnostic to patch vs rebuild
 - If any core semantics change, reflect them in `docs/AI_ARCHITECTURE.md` and update tests accordingly
 
+## Decision: Direct-to-Window targets (resolved)
+
+Summary:
+- Add a Direct-to-Window target mode for single-view performance-critical cases to bypass the offscreen surface → present blit and reduce latency.
+
+Semantics:
+- Target kind: introduce a new target kind windows for direct-to-window rendering.
+- Single consumer: one view binds to a windows target at a time; binding a second view is invalid.
+- Sizing and reconfigure: size derives from the window’s drawable/swapchain; window resizes trigger reconfigure and update desc/active.
+- Present policy: buffered presentation only (AlwaysLatestComplete or PreferLatestCompleteWithBudget). AlwaysFresh is allowed only if backend can wait without blocking the UI thread.
+- Adoption and threading: renderer latches current_revision per frame; present occurs on the platform’s UI/present thread.
+
+Descriptors:
+- WindowBackbufferDesc:
+  - swapchain: { min_images:uint, present_mode: Fifo | Mailbox | Immediate }
+  - pixel_format (enum), color_space (enum)
+- desc/active mirrors chosen swapchain parameters (image count, size, format, color_space).
+
+GPU specifics:
+- Metal: render directly into CAMetalDrawable.texture and present via presentDrawable on the UI thread.
+- Vulkan: own swapchain; render into acquired image; handle VK_SUBOPTIMAL_KHR and VK_ERROR_OUT_OF_DATE_KHR by recreating the swapchain.
+
+Status and errors:
+- status/* includes device_lost, drawable_unavailable, suboptimal_swapchain, and message.
+- On invalid multi-bind, set an error status and write output/v1/common/lastError.
+
+Tests and metrics:
+- Verify desc/active reflects window changes; device-lost/suboptimal recovery; skip present when drawable unavailable.
+- Latency microbenchmarks comparing windows targets vs offscreen+blit.
+
+Cross-reference:
+- Update Target keys to include windows.
+- Document backend nuances under GPU backend architecture.
+
+## Decision: Present Policy (resolved)
+
+Summary:
+- Presenters use a backend-aware policy to choose between waiting for a fresh frame and showing the latest completed output. The HTML adapter ignores policy (always presents latest complete).
+- Modes:
+  - AlwaysFresh — wait up to a tight deadline for a new frame; otherwise skip present (don’t show stale).
+  - PreferLatestCompleteWithBudget (default) — wait within a small staleness budget; else present last-complete.
+  - AlwaysLatestComplete — never wait; present whatever is complete now.
+- Software renderer supports an optional Progressive Present mode for low latency (shared framebuffer with tile seqlock and partial blits). GPU paths align waits to vsync and prefer reusing the last-complete texture over blocking the UI thread.
+- Configuration is per view: windows/<win>/views/<view>/present/{policy, params}; Builders may provide per-call overrides.
+- Metrics: output/v1/common includes presentedRevision, presentedAgeMs, presentedMode, stale, waitMs; GPU may add skippedPresent and drawableUnavailable.
+
+Cross-reference:
+- Full semantics, parameters, and progressive mode details are specified in docs/AI_ARCHITECTURE.md under:
+  - “UI/Rendering — Present Policy (backend-aware)”
+  - “Software Renderer — Progressive Present (non-buffered)”
+
+## Decision: Text shaping, bidi, and font fallback (resolved)
+
+Summary:
+- Standardize on HarfBuzz + FreeType for Unicode shaping and font loading on Windows, macOS, iOS, Android, and Linux.
+- Use MSDF atlases for medium/large/zooming text and stylized effects; use per-size bitmap atlases (FreeType raster) for very small text requiring hinting/LCD subpixel AA (desktop).
+- Build glyphs on demand with a non-blocking glyph cache and dynamic atlas; re-render regions as missing glyphs land.
+
+Approach:
+- Shaping:
+  - HarfBuzz shapes runs with script, direction (UAX#9 bidi), language, and OpenType features; outputs glyph ids, advances, offsets, clusters.
+  - Cache shaped runs keyed by `{fontFace+features+script+direction+text}`; invalidate on style/font change.
+- Atlases:
+  - MSDF generation from FreeType outlines (msdfgen or equivalent). Choose `pxRange` 8–12 (UI) or 12–16 (heavy zoom); padding ≥ ceil(pxRange)+2 texels.
+  - Separate pages by `{fontFace, pxRange}`; pack with skyline/guillotine; generate mipmaps. Evict via LRU; persist pages on disk keyed by `{font hash, face index, style, pxRange, tool versions}`.
+  - Small text threshold (~16–20 px): switch to bitmap atlases (optional LCD subpixel on desktop).
+- Miss handling:
+  - During draw, render present glyphs; enqueue missing glyphs to a worker queue (outline → MSDF → pack → subresource upload). Mark affected runs/regions dirty and re-render next frame.
+  - Optional temporary grayscale bitmap fallback while MSDF bakes for user-visible inputs.
+- Fallback strategy:
+  - Accept CSS-like font family lists; resolve fallback per script. Ship a curated Noto set for coverage; optionally consult platform registries for system fallback.
+  - Include variable font axis tuples in cache keys when used; support COLR/CPAL/emoji via bitmap path (not MSDF).
+- Cross-platform and build:
+  - Dependencies: HarfBuzz (shaping), FreeType (outlines/raster), optional ICU (line breaking/script/lang hints).
+  - CMake flags (suggested): `PATHSPACE_TEXT_HARFBUZZ`, `PATHSPACE_TEXT_FREETYPE`, `PATHSPACE_TEXT_ICU` (optional). On Apple, CoreText may be used for discovery only.
+- Rendering:
+  - TextGlyphs commands carry per-glyph UVs, page id, plane bounds, `pxRange`, and placement; shader decodes MSDF (median RGB) with `fwidth` for crisp edges, supports outline/glow via threshold offsets.
+
+Tests and metrics:
+- Golden tests for Latin (kern/lig), Arabic (joining+bidi), Devanagari (reordering), CJK; include fallback spans and variable font axes.
+- Metrics: shapedRunCache hit/miss, atlas hit/miss, bake/upload latency, evictions, LCD downgrade counts.
+
+Cross-references:
+- Update `docs/AI_ARCHITECTURE.md` to document `TextShaper`/atlas abstractions and builder style fields (`font_family`, `font_size_px`, `font_features`, `lang`, `direction`, `wrap_mode`).
+- Keep snapshot schema stable; `TextGlyphs` payload includes atlas and `pxRange` metadata.
+
+## Decision: Entity Residency and Snapshot Storage Policy (resolved)
+
+Summary:
+- Entities are renderer-facing, renderable projections of authoritative domain objects that live elsewhere (e.g., physics/simulation). The renderer does not own or serve data back to other systems.
+- Each resource (geometry/material/texture/etc.) referenced by an Entity has a configurable residency/storage policy expressed as standard PathSpace values. The backend (RAM, shared memory, filesystem, GPU) is selected internally per item based on policy and platform.
+- Snapshot publish/adopt semantics remain uniform: builders publish a complete subtree under `scenes/<sid>/builds/<rev>` and atomically update `scenes/<sid>/current_revision`; renderers latch `current_revision` per frame and read immutable values only.
+
+Per-item residency policy (values under authoring/resources):
+- Keys (examples):
+  - `scenes/<sid>/src/resources/<rid>/policy/residency/allowed = ["gpu","ram","disk"]`
+  - `scenes/<sid>/src/resources/<rid>/policy/residency/preferred = ["gpu","ram"]`
+  - `scenes/<sid>/src/resources/<rid>/policy/residency/durability = "ephemeral|cacheable|durable"`
+  - `scenes/<sid>/src/resources/<rid>/policy/residency/max_bytes = <uint64>`
+  - `scenes/<sid>/src/resources/<rid>/policy/residency/cache_priority = <uint32>`
+  - `scenes/<sid>/src/resources/<rid>/policy/residency/eviction_group = "textures|geometry|materials|other"`
+- Semantics:
+  - allowed/preferred constrain and order backend selection; durability controls restart survivability (non-ephemeral items are reloadable after a renderer crash/restart).
+  - max_bytes guides admission/eviction; cache_priority and eviction_group control pressure handling within watermarks.
+
+Storage backends (opaque to callers; exposed as normal PathSpace values):
+- RAM: process-local; fastest; not crash-safe; selected only when allowed and durability permits.
+- SHM (shared memory): cross-process crash-safe; avoids disk IO; size-limited; selected when durability requires and within thresholds.
+- Filesystem: staging + fsync + atomic exposure behind PathSpace; chosen for large or durable items and when SHM is unavailable.
+- GPU: device-local residency for draw-time; backed by RAM/SHM/FS per policy for reload; eviction respects watermarks.
+
+Authoring concurrency (proposed vs resolved):
+- Producers write to `scenes/<sid>/src/objects/<oid>/proposed/<source>/<component>/*` (e.g., `physics`, `script`).
+- A coalescer resolves to `scenes/<sid>/src/objects/<oid>/resolved/<component>/*` using a per-component policy (ownership, priority, or merge). Resolved components carry epochs for MVCC.
+- The snapshot builder latches a consistent `resolved/*` view (by epochs) and emits `scenes/<sid>/builds/<rev>/entities/*` and `.../resources/*`. Mid-build changes affect the next revision.
+
+Atomicity and adoption:
+- Builders write under `builds/<rev>.staging/*` then atomically expose as `builds/<rev>` via the runtime’s atomic subtree swap/alias (or FS rename internally). Finally, they atomically set `current_revision = <rev>`.
+- Renderers latch `current_revision` at frame start; no mid-frame reads; outputs are written under `targets/<tid>/output/v1/*`.
+
+Crash-restart:
+- Items with durability ≠ `ephemeral` are re-openable by a new renderer process using only standard PathSpace reads; the runtime maps the correct backend (SHM/FS) internally.
+
+Watermarks and GC:
+- Residency honors the existing “Renderer cache watermarks (resolved)” for CPU/GPU caches.
+- Snapshot retention and safety continue to follow “Snapshot GC and Leases (resolved)”.
+
+Tests:
+- Backend-agnostic publish/adopt remains atomic; no partial visibility of `.staging`.
+- Crash-restart rehydrates durable resources; ephemeral items are repopulated by producers.
+- Residency decisions respect allowed/preferred and watermarks; eviction degrades gracefully (e.g., proxy textures).
+
+Cross-reference:
+- Update docs/AI_ARCHITECTURE.md to reflect Entity residency keys and the proposed/resolved authoring model. Keep existing path shapes and invariants intact.
+
+## Decision: Snapshot GC and Leases (resolved)
+
+Summary:
+- Automate cleanup of scene snapshot revisions while guaranteeing no renderer reads a deleted revision.
+- Use per-target short-ttl leases; GC respects leases plus K/T retention thresholds; publish/adopt remain atomic.
+
+Protocol:
+- Publish:
+  - Builder writes to `scenes/<sid>/builds/<rev>.staging/*`, fsyncs, atomically renames to `scenes/<sid>/builds/<rev>`, then atomically updates `scenes/<sid>/current_revision` to `<rev>`.
+- Adopt (per frame):
+  - Renderer latches `current_revision = R` once at frame start and reads exclusively from `scenes/<sid>/builds/<R>/...` for the entire frame.
+  - Renderer creates or refreshes a lease under `scenes/<sid>/leases/<rendererId>/<targetId>` with `{ rev: R, expires_at_ms: now + ttl_ms, epoch: inc }`.
+  - On shutdown it deletes its lease; on crash, the lease naturally expires (ttl).
+
+Retention policy (defaults):
+- Retain by count: keep last K revisions (default K = 3).
+- Retain by time: keep revisions newer than T minutes (default T = 2m).
+- Lease safety: never delete `current_revision` or any revision referenced by a non-expired lease.
+- Always retain at least one revision even if rules would allow more deletion.
+
+Lease keys and timing:
+- Path: `scenes/<sid>/leases/<rendererId>/<targetId>`
+- Value: `{ rev:uint64, expires_at_ms:uint64 (monotonic), epoch:uint64 }`
+- Recommended defaults:
+  - `lease_ttl_ms = 3000` (must exceed max frame/present latency)
+  - `min_refresh_ms = 250` (coalesce lease writes; also refresh when `rev` changes)
+
+GC algorithm (idempotent, crash-safe):
+- Enumerate `scenes/<sid>/builds/<rev>` (uint64 increasing).
+- Determine active leases where `expires_at_ms > now_ms`; compute `minActiveLeaseRev` if any.
+- Compute cutoff by count/time; effective cutoff = min(countCutoff, timeCutoff, minActiveLeaseRev if present).
+- For each rev older than cutoff:
+  - Skip `current_revision`, any rev in active lease set, and any `*.staging`.
+  - Atomically rename `builds/<rev>` → `builds/<rev>.todelete`, then recursively delete `*.todelete` (retry-safe).
+- Never touch the currently publishing `.staging` or the latest live revision.
+
+Observability (optional but recommended):
+- `scenes/<sid>/gc/lastRunMs: double`
+- `scenes/<sid>/gc/reclaimedCount: uint32`, `scenes/<sid>/gc/retainedCount: uint32`
+- `scenes/<sid>/gc/reason: string` (e.g., "count", "time", "lease")
+- Per-revision metadata (optional): `scenes/<sid>/builds/<rev>/.meta { created_at_ms:uint64, size_bytes:uint64 }`
+
+Configuration (per scene):
+- `scenes/<sid>/settings/gc { keep_last:int=3, keep_ms:int=120000, lease_ttl_ms:int=3000, min_refresh_ms:int=250 }`
+
+Invariants:
+- Builders publish via `.staging` → live rename, then update `current_revision` atomically.
+- Renderers read only from the latched revision for a frame; adoption is lock-free post-latch.
+- GC never deletes `current_revision` or revisions protected by non-expired leases.
+
+Test considerations:
+- Concurrency: rapid publish while multiple renderers render; assert no deleted-read.
+- Crash: set lease, crash renderer; ensure GC reclaims only after lease expiry.
+- Churn: high-frequency revisions; validate K/T retention and never deleting `current_revision`.
+
+## Decision: IO logging and stdout/stderr mirrors (resolved)
+
+Summary:
+- Each application writes errors and other levels to authoritative per-app log paths under `<app>/io/log/*`; read-only mirrors forward to per-app stdout/stderr and then to global system streams. All logs are bounded rings.
+
+Authoritative per-app logs
+- `<app>/io/log/error` — the only write target for error text (UTF-8, newline-delimited)
+- `<app>/io/log/info`, `<app>/io/log/debug` (optional), etc.
+- Apps write only to `<app>/io/log/*`; mirrors are derived.
+
+Mirrors and aggregation
+- Local mirrors (read-only to apps):
+  - `<app>/io/stderr` — tails `<app>/io/log/error` and appends the same bytes
+  - `<app>/io/stdout` — tails `<app>/io/log/info` (and optionally debug) and appends the same bytes
+- Global mirrors (system-owned):
+  - `/system/io/stderr` — tails every `<app>/io/stderr`; prefixes provenance `[app=<app-path>]`
+  - `/system/io/stdout` — tails every `<app>/io/stdout`; prefixes provenance
+- Forwarders maintain durable offsets; if they lag beyond eviction, they fast-forward and increment a loss counter.
+
+Semantics
+- Encoding: UTF-8 only; replace invalid sequences with U+FFFD.
+- Framing: newline-delimited lines; CRLF normalized to LF; partial lines buffered until LF.
+- Non-blocking: writers never block on mirrors; forwarding is best-effort.
+- Level routing: INFO/DEBUG → stdout; WARN/ERROR/FATAL → stderr.
+
+Bounded retention (caps)
+- Every log place is a bounded ring with at least:
+  - `max_messages`: hard cap on retained complete lines
+  - Optional: `max_bytes` and `max_age_ms`
+- Eviction policy: drop oldest whole messages to satisfy caps; track `dropped_oldest_total`.
+- Status/metrics per path:
+  - `status/current_messages`, `status/max_messages`, `status/committed_messages_total`,
+    `status/dropped_oldest_total`, `status/lag_bytes` (mirrors), `status/lost_to_forwarder_total`,
+    `status/last_eviction_ms`
+- Recommended defaults (tunable per deployment):
+  - `<app>/io/log/error`: 10k; `<app>/io/log/info`: 20k; `<app>/io/stderr`: 20k; `/system/io/stderr`: 1M.
+
+ACLs and safety
+- Writes:
+  - App → `<app>/io/log/*` only
+  - Local tee → `<app>/io/std{out,err}`
+  - System aggregator → `/system/io/std{out,err}`
+- Readers: app devs/tools read app-local logs; ops/admin tools read system logs.
+- Loop prevention: local tee reads only from `<app>/io/log/*`; aggregator reads only from `<app>/io/std{out,err}`.
+
+Interop with renderer observability
+- When a renderer updates `output/v1/common/lastError` (or trace), emit a concise one-line to `<app>/io/log/error` (once per change) with a corr tag `(rendererId:targetId:frameIndex)` for correlation.
+- Keep structured, per-target metrics under `renderers/<rid>/targets/.../output/v1/*`; the `io/*` streams remain text-only.
+
+Failure behavior
+- If a mirror or aggregator is down, authoritative logs continue; upon restart, forwarders resume from durable offsets or fast-forward if necessary (with loss accounting).
+
+## Decision: Resource system (resolved)
+
+Summary:
+- Canonical app asset namespace with deterministic references in snapshots.
+- Snapshot-local asset table keyed by content digest (sha256); renderer caches by digest across targets.
+- Async load/decode with fallback behavior; eviction via LRU with pins for in-use revisions.
+
+App asset layout (under the app root):
+- Images: `<app>/assets/images/<name>/{data,meta.json}`
+- Fonts: `<app>/assets/fonts/<family>/<style>/{file,meta.json}`
+- Shaders: `<app>/assets/shaders/<name>/{msl|spirv,meta.json}`
+
+meta.json (per asset):
+- Common: `{ digest_sha256, byte_size, created_at, updated_at }`
+- Images: `{ color_space: "sRGB|DisplayP3|Linear", premultiplied: bool, icc_embedded: bool, width, height, format }`
+- Fonts: `{ family, style, weight, stretch, format: "ttf|otf|woff2", index? }`
+- Shaders: `{ stage, language, compiler, defines[] }`
+
+Snapshot integration (per revision):
+- `scenes/<sid>/builds/<rev>/assets/index.json` lists assets used by the snapshot:
+  - `[{ kind: "image|font|shader", logical: "images/<name>" | "fonts/<family>/<style>" | "shaders/<name>", digest_sha256, local_id }]`
+- Drawable/material payloads reference `local_id` (not paths) for stability and compactness.
+- Snapshots do not embed raw asset bytes; renderers resolve `digest_sha256` via caches.
+
+Renderer cache behavior:
+- Key: `digest_sha256` (content-addressed).
+- Async load/decode off-thread on first use; pin assets referenced by the latched revision until frame end.
+- Eviction: LRU with soft/hard watermarks; separate pools for CPU (software) and GPU.
+- Fallbacks on miss:
+  - Images: placeholder draw + single error message per target/revision in `output/v1/common/lastError`.
+  - Fonts: configured fallback family/style; mark degraded text via debug flags.
+
+Authoring references and helpers:
+- Nodes:
+  - Image: `.src = "assets/images/<name>"`
+  - Text: `.font = { family, style, weight }` resolved to `assets/fonts/...`
+- Builders.hpp additions:
+  - `upload_image(...) -> "assets/images/<name>"`
+  - `register_font(...) -> "assets/fonts/<family>/<style>"`
+
+Change detection and incremental rebuilds:
+- Writers update `{data,meta.json}` atomically and bump a small `assets/index` counter.
+- Snapshot builder watches `assets/*`; on change:
+  - Mark affected nodes `contentEpoch++`.
+  - Invalidate text shaping cache entries keyed by `{font+features+script+dir+text}` when fonts change.
+  - Rebuild only impacted draw payloads; publish a new revision.
+
+Color pipeline integration:
+- Respect `meta.color_space` and `premultiplied`.
+- Decode to linear working space or sample from sRGB textures with automatic decode.
+- Set `pipelineFlags` appropriately (`SrgbFramebuffer`, `UnpremultipliedSrc` conversion when required).
+
+Failure modes and observability:
+- Missing asset path during build: emit placeholder entry and authoring error; renderer surfaces concise status in `output/v1/common/lastError`.
+- Decode failure: cache records digest→error; avoid repeated work until files change.
+
+Metrics (debug):
+- `assetsLoaded`, `assetsPending`, `assetBytesResident`, `assetEvictions`.
+
+Minimal tests:
+- sRGB vs Linear PNG render goldens (color correctness).
+- Font registration + mixed-script shaping; verify cache invalidation after font swap.
+- Live image asset change triggers partial snapshot rebuild without tearing.
+
+## Decision: Renderer cache watermarks (resolved)
+
+Summary:
+- Bound renderer memory with soft/hard watermarks for CPU- and GPU-resident caches. Evict cold items predictably to avoid OOM and stalls, while pinning assets referenced by the latched revision for frame safety.
+
+Scope:
+- CPU cache: decoded images, procedurally generated outputs, shaped text/MSDF atlas pages, prepared geometry blobs.
+- GPU cache: textures/atlas pages, vertex/index/uniform buffers, optional intermediates. Pipeline/descriptor caches are small and not watermark-managed in v1.
+
+Configuration (per renderer):
+- Path: `renderers/<rid>/settings/cache`
+  - `cpu_soft_bytes: uint64`
+  - `cpu_hard_bytes: uint64`
+  - `gpu_soft_bytes: uint64`
+  - `gpu_hard_bytes: uint64`
+  - Optional per-kind caps (v1 optional): `text_atlas_soft_bytes`, `image_soft_bytes`, etc.
+
+Semantics:
+- Soft watermark: when resident_bytes > soft, begin background eviction (LRU or size-aware LRU) until below soft.
+- Hard watermark: if an allocation/upload would exceed hard, perform synchronous eviction; if still over, deny/skip the allocation and surface a concise error. Placeholders are allowed to render.
+- Pinning: assets referenced by the currently latched `revision` are pinned until frame end and cannot be evicted; optionally pin a small MRU window to reduce churn.
+- Eviction policy: maintain per-kind LRU lists to prevent large images from evicting text infrastructure first; prefer evicting largest-cold items. Never evict pinned or in-flight items.
+- Miss handling: CPU miss triggers async decode/generation; GPU miss uploads when CPU bytes become ready. Render placeholders until assets land.
+
+Defaults (starting points):
+- Desktop dev: CPU soft 256 MiB, hard 512 MiB; GPU soft 256 MiB, hard 512 MiB.
+- Constrained/iGPU: CPU soft 128 MiB, hard 256 MiB; GPU soft 128 MiB, hard 256 MiB.
+- Implementations may scale GPU watermarks by VRAM when available (e.g., reserve 5–10% for UI caches).
+
+Observability:
+- Expose under `renderers/<rid>/targets/<tid>/output/v1/debug/cache/*` (debug-only):
+  - `assetBytesResidentCPU`, `assetBytesResidentGPU`
+  - `assetEvictionsTotal`, `assetEvictionsByKind/*`
+  - `assetsPending`, `assetsLoaded`
+  - `lastEvictionMs`, `lastEvictionReason`
+- On hard watermark denial or repeated thrash, set `targets/<tid>/output/v1/common/lastError` once per change.
+
+Tests:
+- Watermark eviction stress: exceed soft via many assets; assert background eviction reduces usage without stalling the frame loop.
+- Hard cap enforcement: attempt an allocation that would exceed hard; verify eviction runs, and if still over, allocation is denied and a placeholder renders with a single error line.
+- Pinning safety: mark assets as in-use by a revision; ensure no evictions until frame end.
+
+Cross-references:
+- See “Decision: Resource system (resolved)” for asset digests and cache keys. This section formalizes eviction behavior and configuration.
+
 ## Schemas and typing (v1)
 
 This section specifies the C++ types bound to target keys and the versioning policy for renderer I/O.
@@ -1278,19 +1930,36 @@ This section specifies the C++ types bound to target keys and the versioning pol
 C++ types per key:
 - `scene` — `std::string`
   - App-relative path to the scene root, e.g., `"scenes/<sid>"`. Must resolve within the same app root
-- `desc` — `SurfaceDesc | TextureDesc` (per target kind)
+- `desc` — `SurfaceDesc | TextureDesc | WindowBackbufferDesc | HtmlTargetDesc` (per target kind)
   - `SurfaceDesc`:
     - `size_px { int w, int h }`
-    - `pixel_format` (enum)
-    - `color_space` (enum)
-    - `premultiplied_alpha` (bool)
+    - `pixel_format` (enum): `RGBA8Unorm | BGRA8Unorm | RGBA8Unorm_sRGB | BGRA8Unorm_sRGB | RGBA16F | RGBA32F`
+      - Platform notes: on Apple/Metal, `BGRA8Unorm[_sRGB]` is the common swap/present format; the software renderer uses `RGBA8Unorm`.
+    - `color_space` (enum): `sRGB | DisplayP3 | Linear`
+      - Write-out obeys pipeline flags (`SrgbFramebuffer` vs `LinearFramebuffer`); sRGB textures are linearized on sample.
+    - `premultiplied_alpha` (bool) — default true for UI; renderers expect premultiplied inputs. If false, sources are converted at draw time (see `UnpremultipliedSrc`).
   - `TextureDesc`:
     - `size_px { int w, int h }`
-    - `pixel_format` (enum)
-    - `color_space` (enum)
+    - `pixel_format` (enum): `RGBA8Unorm | BGRA8Unorm | RGBA8Unorm_sRGB | BGRA8Unorm_sRGB | RGBA16F | RGBA32F`
+    - `color_space` (enum): `sRGB | DisplayP3 | Linear`
     - `usage_flags` (bitmask)
-- `desc/active` — mirror of the adopted descriptor (`SurfaceDesc | TextureDesc`) for introspection
-- `settings/inbox` — queue of whole `RenderSettingsV1` objects (writers insert; renderer takes and adopts last)
+  - `WindowBackbufferDesc`:
+    - `present_mode` (enum: Fifo | Mailbox | Immediate)
+    - `min_images` (uint)
+    - `pixel_format` (enum): `BGRA8Unorm | BGRA8Unorm_sRGB | RGBA16F`
+      - Platform notes: swapchains commonly expose `BGRA8Unorm`; availability of explicit sRGB variants is platform-dependent. When unavailable, use `color_space` plus pipeline flags for sRGB encoding.
+    - `color_space` (enum): `sRGB | DisplayP3 | Linear`
+  - `HtmlTargetDesc`:
+    - `size_px { int w, int h }`
+    - `dpi_scale: float` (default 1.0)
+    - `prefer_dom: bool` (default true)
+    - `max_dom_nodes: uint32` (default 10000)
+    - `allow_clip_path: bool` (default true; safe subset only)
+    - `inline_assets: bool` (default false)
+    - `embed_css: bool` (default true)
+    - Defaults: prefer DOM/CSS (Tier 1). When thresholds/fidelity require fallback, emit Canvas JSON to `output/v1/html/commands` and include CSS under `output/v1/html/css` when split.
+- `desc/active` — mirror of the adopted descriptor (`SurfaceDesc | TextureDesc | WindowBackbufferDesc`) for introspection
+- `settings` — single `RenderSettingsV1` value (atomic whole-object replace)
   - `RenderSettingsV1`:
     - `time { double time_ms, double delta_ms, uint64_t frame_index }`
     - `pacing { std::optional<double> user_cap_fps }` (effective = min(display, cap))
@@ -1298,11 +1967,11 @@ C++ types per key:
     - `std::array<float,4> clear_color`
     - `camera` (optional): `{ enum Projection { Orthographic, Perspective }, float zNear, float zFar }`
     - `debug { uint32_t flags }` (optional)
-- `settings/active` — single-value mirror of the last adopted `RenderSettingsV1` (optional)
+
 - `render` — execution that renders one frame for this target (no payload)
 - `output/v1/common/*` — single-value registers with latest metadata:
-  - `frameIndex: uint64_t`
-  - `revision: uint64_t`
+  - `frameIndex: uint64_t` (monotonically increasing per target; practically non-wrapping; if wrap ever occurs, consumers must use unsigned modular comparisons)
+  - `revision: uint64_t` (monotonically increasing per scene; practically non-wrapping)
   - `renderMs: double`
   - `lastError: std::string` (empty on success)
 - `output/v1/software/framebuffer` — `SoftwareFramebuffer`:
@@ -1311,6 +1980,10 @@ C++ types per key:
   - `enum pixel_format`, `enum color_space`, `bool premultiplied_alpha`
 - `output/v1/metal/texture` — `MetalTextureHandle` (opaque handle or registry id + size/format/color_space)
 - `output/v1/vulkan/image` — `VulkanImageHandle` (opaque handle or registry id + size/format/color_space/layout)
+- `output/v1/window/presentInfo` — `WindowPresentInfo` (no pixel payload; windows targets present directly)
+  - `uint32_t image_count`
+  - `enum present_mode`
+  - `bool suboptimal`
 
 App-relative resolution helpers:
 - `is_app_relative(std::string_view)`
@@ -1325,25 +1998,47 @@ Versioning policy:
 
 Target base:
 - `<app>/renderers/<rendererName>/targets/<kind>/<name>`
-- `kind ∈ { surfaces, textures, html }`
+- `kind ∈ { surfaces, textures, windows, html }`
 
 Keys under a target:
 - `scene` — app-relative path to the scene root to render (must resolve within the same app root)
-- `desc` — descriptor for the target (`SurfaceDesc | TextureDesc | HtmlTargetDesc`)
+- `desc` — descriptor for the target (`SurfaceDesc | TextureDesc | WindowBackbufferDesc | HtmlTargetDesc`)
 - `desc/active` — mirror written by renderer after reconfigure
 - `status/*` — e.g., `reconfiguring`, `device_lost`, `message`
-- `settings/inbox` — queue of whole `RenderSettings` objects (writers insert; renderer takes and adopts last)
-- `settings/active` — single-value mirror written by renderer after adoption (optional)
+- `settings` — single `RenderSettings` value (atomic whole-object replace)
 - `render` — execution to render one frame for this target
 - `output/v1/...` — latest outputs for this target:
   - `common/` — timings and metadata (`frameIndex`, `revision`, `renderMs`, `lastError`)
   - `software/framebuffer` — pixel buffer + metadata (width, height, stride, format, colorSpace, premultiplied)
   - `metal/texture` or `vulkan/image` — opaque GPU handles and metadata
+  - `window/presentInfo` — present metadata (image_count, present_mode, suboptimal)
   - `html/dom`, `html/commands`, `html/assets/*` — optional web outputs
+
+## View keys (final)
+
+View base:
+- <app>/windows/<win>/views/<view>
+
+Keys under a view:
+- surface — app-relative path to renderers/<rid>/targets/surfaces/<name>
+- windowTarget — app-relative path to renderers/<rid>/targets/windows/<name>
+- present/policy — AlwaysFresh | PreferLatestCompleteWithBudget | AlwaysLatestComplete
+- present/params — backend-aware parameters such as staleness_budget_ms, frame_timeout_ms
+- status/* — latest present metadata (e.g., chosenMode, waitMs); optional
+
+Semantics:
+- Exactly one of surface or windowTarget must be set at a time; switching is atomic and should notify the presenter.
+- Presenters read binding and policy once per present; no mid-present re-reads.
+- Threading: windowTarget presents must occur on the platform UI/present thread; surface blits occur on the UI thread after render completes.
+- HTML adapters ignore present policy and always present latest-complete.
+
+Cross-references:
+- See “Decision: Present Policy (resolved)” for policy semantics.
+- See “Target keys (final)” for target key details.
 
 ## RenderSettings v1 (final)
 
-- `time: { time_ms: double, delta_ms: double, frame_index: uint64 }`
+- `time: { time_ms: double, delta_ms: double, frame_index: uint64 }`  // frame_index is monotonically increasing per target; delta_ms reflects real elapsed time even when pacing skips frames
 - `pacing: { user_cap_fps: optional<double> }`  // effective rate = min(display refresh, user cap)
 - `surface: { size_px:{w:int,h:int}, dpi_scale: float, visibility: bool }`
 - `clear_color: [float,4]`
@@ -1351,8 +2046,9 @@ Keys under a target:
 - `debug: { flags: uint32 }` (optional)
 
 Invariants:
-- Writers always insert whole `RenderSettings` to `settings/inbox` (no partial field writes)
-- Renderer drains `settings/inbox` via `take()`, adopts only the last (last-write-wins), and may mirror to `settings/active`
+- Writers replace the entire `RenderSettings` at `settings` in a single atomic write (single-path whole-object)
+- Renderer latches the `settings` value once at frame start and uses it for the duration of the frame; mid-frame writes do not affect the in-flight frame (adoption occurs next frame)
+- Multi-producer policy (final): there is no server-side merge/queue in v1; producers must aggregate/coalesce on the client side and perform one atomic replace (last-writer-wins at the single path)
 - `scene` paths are app-relative and must resolve to within the same application root
 - `output/v1` contains only the latest render result for the target
 
@@ -1367,3 +2063,53 @@ Invariants:
 ## Cross-references
 
 - Update `docs/AI_ARCHITECTURE.md` when changes affect core behavior (paths, NodeData, WaitMap, TaskPool, serialization). Keep examples and path references stable; if files move, update references in the same change.
+
+## TODO — Clarifications and Follow-ups
+
+These items clarify edge cases or finalize small inconsistencies. Resolve and reflect updates in `docs/AI_ARCHITECTURE.md`, tests, and any affected examples. (Items already reflected in the main text have been removed from this list.)
+
+
+
+- HTML outputs: unify keys and document Canvas JSON
+  - Standardize the outputs to include:
+    - `output/v1/html/dom` (HTML document string)
+    - `output/v1/html/css` (CSS string when split)
+    - `output/v1/html/assets/*` (referenced assets)
+    - `output/v1/html/commands` (Canvas JSON fallback stream; compact command list)
+  - Ensure “Target keys (final)” lists both `html/css` and `html/commands`.
+  - In the HTML/Web section, name “Canvas JSON” explicitly and state when it is selected (node count thresholds, clip/blend fidelity limits).
+
+- Progressive present: color encoding and seqlock memory model
+  - Color format:
+    - Specify the shared framebuffer pixel format and alpha convention, e.g., `RGBA8Unorm_sRGB` with premultiplied alpha. Renderer encodes linear→sRGB per tile on store; presenter blits bytes without further conversion.
+    - Alternatively, define a linear float buffer and a final encode step during blit; if chosen, document the encode exactly and why.
+  - Seqlock memory ordering:
+    - Use atomics for `seq/pass/epoch`: writer increments to odd (begin), writes pixels, issues `release` fence, increments to even (end). Reader uses `acquire` loads; if `seq` changed during copy, discard the tile copy.
+    - Document that `pass` transitions (OpaqueDone → AlphaDone) are published with `memory_order_release` after the corresponding tile pixels are visible.
+
+- Clip stack metadata for hit testing
+  - Persist clip stack membership per drawable to avoid re-walking the command stream:
+    - Add a per-revision clip node array (rect/path nodes) and store, per drawable, a `clipHeadIndex` into a singly-linked list of active clips.
+    - Clip nodes reference either rect parameters or a range in `cmd-buffer.bin` for path geometry.
+  - Hit testing reconstructs the stack by following `clipHeadIndex` links and applies per-node tests.
+
+- DrawableId mapping from authoring nodes
+  - Specify how authoring node ids map to stable `DrawableId`s across revisions:
+    - Recommend: `DrawableId = hash(sceneId, authoringNodeId, drawableIndexWithinNode)` with a generation counter on reuse.
+    - Persist a mapping summary in `builds/<rev>/bucket/meta.json` for diagnostics and hit test routing.
+
+- sRGB attachments and linear blending
+  - Clarify that blending and shading remain in linear space even when using sRGB attachments:
+    - On APIs with sRGB formats, sampling decodes to linear and framebuffer writes encode to sRGB; do not double-encode.
+    - Add a note to tests to verify no double-encoding occurs when toggling `SrgbFramebuffer`.
+
+
+
+- SurfaceDesc schema vs examples
+  - Align `SurfaceDesc` fields with examples:
+    - Examples used `sdesc.size = {w,h,scale}`; schema specifies `size_px {w,h}` and `dpi_scale` separately. Update examples or schema to be consistent and call it out here.
+
+- RenderSettings v1 vs MicrotriRT decision
+  - Decide whether `MicrotriRT` lives inside `RenderSettingsV1` or as an optional extension type under settings:
+    - If included in v1, update “RenderSettings v1 (final)” and Builders helpers.
+    - If separate, document the path and versioning under `settings` (e.g., feature flags or nested struct with default-disabled semantics).
