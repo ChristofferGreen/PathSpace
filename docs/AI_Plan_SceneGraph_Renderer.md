@@ -807,6 +807,47 @@ Observability
 - Per-frame metrics written to `output/v1/common/*`: `frameIndex`, `revision`, `renderMs`, `lastError`
 - Optional GPU counters (backend-specific) may be exposed under a debug subtree for diagnostics; avoid mandatory dependencies on profiling APIs
 
+## Error handling and observability (plan)
+
+Goals
+- Keep error reporting at the PathSpace layer so renderers, surfaces, windows, scenes, and applications all share the same machinery
+- Standardize what metadata accompanies an error and how tooling discovers it
+- Provide lightweight logging/metrics hooks that the frame profiler and future dashboards can reuse
+
+### PathSpaceError struct
+
+```cpp
+struct PathSpaceError {
+  enum class Severity : uint32_t { Info = 0, Warning, Recoverable, Fatal };
+
+  int                                               code;       // partitioned ranges: 0-999 core, 1000-1999 system, 2000-2999 renderer, 3000-3999 UI, 4000-4999 app
+  Severity                                          severity;   // coarse impact classification
+  std::string                                       message;    // human-readable summary
+  std::string                                       path;       // PathSpace node the error is attached to (app- or system-relative)
+  uint64_t                                          revision;   // generation/version number associated with the error (scene rev, target rev, etc.)
+  std::chrono::steady_clock::time_point             timestamp;  // time of insertion (ordering + GC hints)
+  std::string                                       detail;     // optional structured payload (JSON/text); empty when unused
+};
+```
+
+- Error ownership: the struct lives exactly under the PathSpace node that emitted it (e.g., `renderers/<id>/diagnostics/errors/live`). Lifetime is governed by that node; when a node is removed or its retention policy expires, the attached error is garbage-collected automatically.
+- Code partitioning keeps ownership clear while allowing plenty of space for subsystem-specific codes. Subsystems can define their own tables under their allotted range without clashing with core PathSpace errors.
+- `revision` and `path` give enough context for tooling to link errors back to specific snapshots, renderer targets, or authoring nodes without walking extra metadata trees.
+
+### Diagnostics layout
+
+- Latest error per domain stored under `diagnostics/errors/live`; significant errors optionally appended under `diagnostics/errors/history/<id>` with the same payload.
+- Structured logs use small immutable ring segments (`diagnostics/log/ring/<segment>`) with timestamped entries (category, severity, message, optional detail). Segments roll at fixed size so the profiler can tail them cheaply.
+- Rolling metrics live under `diagnostics/metrics/live` (render/present timings, drawable counts, cull stats, resource residency, etc.). Writers update once per frame; consumers can compute aggregates on demand.
+- Debug overlays (when enabled via `debug.flags`) publish drawable overlays to `diagnostics/overlays/<kind>` so both in-app views and tooling can visualize issues in-frame.
+- All diagnostics paths are optional; when absent, consumers fall back to the minimal `output/v1/common/*` data.
+
+### Tooling expectations
+
+- Frame profiler: polls `errors/live`, rings, and metrics to populate UI panels and annotate frame samples; capture requests simply snapshot these paths.
+- CLI tooling: `pathspace diag` commands can dump the same paths for CI triage without needing app-specific logic.
+- Tests: helper assertions verify that particular operations emit (or clear) expected error codes by reading the attached PathSpaceError payloads.
+
 ### Minimal types (sketch)
 
 ```cpp
@@ -1254,6 +1295,8 @@ Summary:
 - Acceleration is snapshot-integrated:
   - TLAS per revision over instances; BLAS per unique geometry (deduped)
   - Tetrahedral face adjacency enables “tet-walk” traversal between neighboring tets for multi-bounce paths
+- Emissive geometry (tetrahedral faces and SDF surfaces) doubles as the area-light list; the snapshot builder emits immutable emitter tables so sampling stays consistent with the published revision.
+- GPU execution favors portable compute/ray-tracing pipelines (Metal, Vulkan, etc.) with a shared sampling/integration core that also powers the SIMD CPU fallback—no CUDA-specific path.
 
 Caching for fast edits:
 - Per-pixel `PixelHitCache` stores primary hit data and accumulation state; supports targeted invalidation
@@ -1284,7 +1327,7 @@ Iteration pipeline (per frame/refinement step):
 1) Acquire snapshot revision and settings; map TLAS/BLAS, face adjacency; allocate per-frame state
 2) For each visible pixel:
    - If `hitValid`, reuse primary hit; else regenerate and update `PixelHitCache`
-   - Direct light via DI reservoir + BSDF importance sampling (MIS)
+   - Direct light via emitter sampling (tet faces/SDF surfaces) plus DI reservoir + BSDF importance sampling (MIS)
    - Spawn secondary ray(s), guided by face GI/DI where available; walk via tet-walk until a surface is hit; accumulate contribution
    - Update per-face reservoirs at landing faces with MIS-consistent weights
 3) Write accumulated color; update per-tile indices for invalidation
@@ -1364,6 +1407,52 @@ Robustness:
 - Watertightness via shared canonical planes for both incident tets
 - Deterministic next-face selection; small forward epsilon step when crossing faces
 
+## Plan: Resource system (images, fonts, shaders)
+
+Goals
+- Publish a canonical asset namespace so renderers, snapshot builders, and tooling share the same handles
+- Load and decode assets asynchronously with deterministic lifetimes and clear diagnostics
+- Persist reusable products (glyph atlases, decoded images, compiled shaders) across frames and application runs
+
+### Asset layout and metadata
+- Standardize per-app resources under `resources/{images,fonts,shaders}/<name>/...` with immutable `builds/<revision>` payloads and an `active` pointer
+- Registration records capture file origin, format, color space, and content hashes; references are always app-relative and validated against the app root
+- Scenes and renderers store resource fingerprints alongside drawables so revisions can declare exactly which assets they require
+
+### Loader and decode pipeline
+- Writers enqueue work at `resources/<kind>/<name>/inbox`; a resource service drains the queue on worker threads
+- Each job resolves the asset path, streams the bytes, decodes or shapes them, and publishes the result as a new build revision before atomically updating `active`
+- Errors surface under `resources/<kind>/<name>/diagnostics/errors` with `PathSpaceError` payloads so tooling can attribute failures
+
+### Caching and lifetime management
+- Maintain an in-memory LRU keyed by `{kind, fingerprint}` with reference counts provided by scenes and renderer targets
+- Evict entries when the refcount reaches zero and the entry ages beyond a per-kind TTL; retain at least the revisions referenced by active scenes to avoid thrash
+- Persist blob fingerprints in snapshot metadata so renderer targets can skip redundant uploads when a revision reuses the same asset payload
+
+### Font stack and shaping
+- Wrap HarfBuzz + ICU (or equivalent) in a `FontManager` that maps logical font requests to fallback chains recorded in `resources/fonts/<name>/manifest`
+- Cache shaped glyph runs keyed by `(text, script, direction, font-set, features)` and publish glyph atlas textures under the font resource subtree
+- Snapshot publishes the atlas fingerprint per drawable so renderers can pin the correct atlas revision without reshaping
+
+### Shader compilation and persistent cache
+- Describe shaders via `resources/shaders/<name>/src` (source, macros, entry points) and compile through backend adapters (Metal library, SPIR-V, etc.)
+- Store compiled binaries under `resources/shaders/<name>/builds/<revision>` with metadata summarizing target backend, options, and validation stamps
+- Keep a disk-backed cache keyed by `(source hash, compile options, backend)` so subsequent application runs can adopt existing binaries without recompiling
+- Renderers mirror the adopted revision to `resources/shaders/<name>/active` and retain live references so GC does not drop binaries in use
+
+### Integration points
+- Snapshot builder emits the set of resource fingerprints per scene revision, letting renderer targets prefetch via `resources/<kind>/<name>/prefetch`
+- Surfaces and presenters resolve resource paths through the existing typed helpers, ensuring only app-contained assets are bound to drawables
+- Loader exposes lightweight metrics (queue depth, decode ms, cache hits) under `resources/<kind>/<name>/diagnostics/metrics` for profiling
+
+## Plan: HTML adapter fidelity targets
+
+- Introduce an `HtmlAdapter` interface so renderer targets can pick a fidelity mode (Canvas JSON replay, DOM/CSS, WebGL) without touching scene graph code. The adapter owns capability detection and wires renderer outputs to the chosen runtime.
+- Ship a baseline Canvas replay: emit a compact JSON command stream mirroring the `DrawableBucket` ordering (opaque first, alpha second) plus resource fingerprints; bundle a lightweight JS runtime that replays commands on a `<canvas>` with batched state changes.
+- Gate optional WebGL extensions behind capability flags: reuse the same command stream but attach buffer/texture uploads so browsers that support accelerated paths can render via shaders; fall back to Canvas replay when unavailable.
+- Provide DOM/CSS shims only for widgets that map directly (text, simple rects) and layer them on top of the Canvas runtime for accessibility tooling; keep parity by sourcing from the same manifest.
+- Publish fidelity metadata alongside `output/v1/html/commands` so presenters can pick the highest supported mode and tooling can diff frames irrespective of runtime choice.
+
 ## MVP plan
 
 1) Scaffolding and helpers
@@ -1388,14 +1477,30 @@ Robustness:
    - `PathSurfaceMetal` producing an offscreen `MTLTexture`
    - Presenter draws textured quad into `CAMetalLayer` drawable on the UI thread
 
+## Open questions
 
+- Text shaping and bidi strategy; font fallback
+- Color management (sRGB, HDR) across software/GPU paths
+- Direct-to-window bypass for single-view performance-critical cases (optional surface mode)
 
+## Decision: Present policy
 
-## Gaps and Decisions (unresolved areas)
+Summary:
+- Applications choose between always-fresh frames, bounded staleness reuse, or explicit/manual presentation. Defaults live at the app root, with optional overrides per window/view when a surface needs different latency or power trade-offs.
+Approach:
+- Publish `present_policy.json` under `applications/<app>/windows/` capturing the default policy (`always_fresh`, `allow_stale`, or `manual`) and, for `allow_stale`, thresholds (`max_age_ms`, `max_revision_gap`) that bound reuse; allow overrides at `windows/<id>/views/<view>/present_policy`.
+- Extend the typed path helpers so `PathWindowView` resolves the effective policy by walking `view → window → app` scopes, caching the result, and listening for config churn via the existing notification channels.
+- Teach `PathSurfaceSoftware::present()` (and future GPU surface implementations) to honor the policy: force a synchronous `render` for `always_fresh`; reuse the last frame for `allow_stale` while the output’s `frameIndex`/`revision` stay within thresholds; require an explicit trigger when `manual` is in effect.
+- Emit presentation metrics (`reused_frames`, `forced_renders`, `stale_age_ms`) under `windows/<id>/views/<view>/metrics/present_policy` so tooling can tune thresholds, spot regressions, and keep behavior consistent across backends.
 
-The following items are intentionally unresolved and tracked as backlog. Promote items to “Decision” when resolved and keep in sync with `docs/AI_TODO.task` and code/tests.
+## Decision: Snapshot retention
 
-
+- Maintain a per-scene `SnapshotRegistry` that tracks revision metadata (`ref_count`, `last_used_ms`, `size_bytes`). Renderers bump the ref count when adopting a revision and release when the frame completes; background jobs (capture, metrics) use the same API so the GC sees every consumer.
+- Retain the newest three revisions at all times and pin any revision with a non-zero `ref_count`. When a revision with `ref_count == 0` is both older than two minutes and not among the newest three, evict it immediately.
+- Run a lightweight GC task (`SceneSnapshotGcTask`) every 250 ms. The task walks each `SnapshotRegistry`, applies the retention rules, and records aggregate counters (`retained`, `evicted`, `bytes_alive`) under `scenes/<id>/metrics/snapshots`.
+- If eviction pressure persists (e.g., disk or memory budget exceeded), emit a `snapshot_evicted` event and annotate the active renderer target via `output/v1/common/lastError` so tooling can inform authors that accumulation restarted.
+- Enforce a hard cap (configurable; default 12 revisions) to prevent unbounded growth during bursty edits. When about to exceed the cap, evict the oldest zero-ref revision regardless of age; if none qualify, block new snapshot publication until a consumer releases or a configurable timeout triggers an error.
+- Document the policy in `docs/AI_ARCHITECTURE.md` (rendering section) and expose metrics in telemetry so operators can tune thresholds per app.
 
 ## Decision: HTML adapter fidelity (resolved)
 
@@ -1471,6 +1576,13 @@ Cross-references:
 
 Summary:
 - Hybrid pipeline: software microtriangle rasterization for visibility with per-vertex irradiance computed by a GPU ray tracer. Triangles are tessellated to approximately one pixel in screen space per frame; lighting is computed in the GPU RT stage and stored into a vertex lighting buffer, then the software raster interpolates vertex lighting to pixels. Prefer hardware ray tracing when available; otherwise either disable RT lighting or use a reduced compute BVH fallback if configured.
+
+Guiding principles:
+- All drawables—even traditional UI widgets—are authored and rendered as true 3D assets; no 2.5D exceptions or special UI lighting paths.
+- Area lights originate directly from emissive geometry: tetrahedral mesh faces and signed-distance field surfaces flagged with emission properties. The snapshot builder publishes immutable emitter records (radiance, PDFs, orientation) alongside TLAS/BLAS/SDF acceleration data so renderers can importance-sample in lockstep with geometry updates.
+- The progressive path tracer is the authoritative lighting solution. GPU execution uses portable compute or ray-tracing pipelines (Metal, Vulkan, etc.) while the CPU backend shares the same sampling core; CUDA-specific code is intentionally avoided.
+- Shadows emerge naturally from the ray-traced solution; no raster fallbacks or analytic shadow heuristics are maintained.
+- Accumulation state (sample count, variance, backend flag) is surfaced under each target’s `output/v1/...` subtree so presenters and tooling can tonemap partial results and respond to edits by only resetting affected regions.
 
 Model (v1):
 - RenderSettings.MicrotriRT:
@@ -1566,7 +1678,7 @@ Full rebuild triggers:
 
 Publish/GC:
 - Atomic write to `builds/<rev>.staging` then rename; update `current_revision` atomically
-- Retain last 3 revisions or 2 minutes; defer GC while a renderer references an older revision
+- Delegate retention to the policy defined in “Decision: Snapshot retention”; GC skips revisions with outstanding references.
 
 Notes:
 - Renderer behavior is unchanged; it consumes the latest revision agnostic to patch vs rebuild
@@ -2063,6 +2175,7 @@ Invariants:
 ## Cross-references
 
 - Update `docs/AI_ARCHITECTURE.md` when changes affect core behavior (paths, NodeData, WaitMap, TaskPool, serialization). Keep examples and path references stable; if files move, update references in the same change.
+- See `docs/AI_ARCHITECTURE.md#ui--rendering` for the current UI/Rendering overview and Mermaid diagrams; keep the sources in `docs/images/` synchronized when the path contracts evolve.
 
 ## TODO — Clarifications and Follow-ups
 

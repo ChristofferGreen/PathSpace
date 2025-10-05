@@ -367,3 +367,99 @@ Platform backends (unified, via compile-time macros):
 - Deprecated: `src/pathspace/layer/macos/PathIO_macos.hpp` is a compatibility shim only and no longer defines `PathIOMouseMacOS` or `PathIOKeyboardMacOS`. Include the unified headers instead.
 
 Note: First-class links (symlinks) are planned; in the interim, `PathAlias` offers robust forwarding/retargeting semantics without changing core trie invariants.
+
+## UI & Rendering
+
+The scene graph and renderer pipeline lives entirely on top of PathSpace paths. Applications mount their rendering tree under a single app root (see `docs/AI_Plan_SceneGraph_Renderer.md` and `docs/AI_PATHS.md`) so that tearing down the app root atomically releases windows, surfaces, scenes, and renderer targets in one operation. All references between components are app-relative strings validated through the existing path helpers (`is_app_relative`, `resolve_app_relative`, `ensure_within_app`).
+
+### Component landscape
+- `scenes/<scene-id>/` — authoring source (`src/`), immutable builds (`builds/<revision>/`), and `current_revision` pointing at the latest published snapshot.
+- `renderers/<renderer-id>/targets/<kind>/<name>/` — renderer targets. Each target binds to a scene, drains whole-frame `RenderSettings`, executes `render`, and publishes the most recent outputs under `output/v1/...`.
+- `surfaces/<surface-id>/` — offscreen render entry. Surfaces coordinate with a renderer target, provide per-frame execution (`render`), and surface the output handles/buffers the presenters consume.
+- `windows/<window-id>/views/<view-id>/` — presenters that resolve a `surface`, optionally trigger a frame, and blit/draw into the platform window shell.
+- Upcoming C++ stubs ship under `src/pathspace/ui/` (`PathRenderer2D`, `PathSurfaceSoftware`, `PathWindowView`) and will wire directly into these paths. Keep this section updated as the implementations land.
+
+### Data flow
+The following Mermaid diagram documents how scene snapshots propagate to render targets, surfaces, and window presenters. The source lives at `docs/images/ui_rendering_flow.mmd`.
+
+```mermaid
+%% Source: docs/images/ui_rendering_flow.mmd
+flowchart TD
+    subgraph Scenes
+        A[scenes/<scene-id>/src]
+        B[SnapshotBuilder]
+        C[scenes/<scene-id>/current_revision]
+        A --> B
+        B --> C
+    end
+
+    subgraph Renderer Target
+        D[renderers/<renderer-id>/targets/<kind>/<name>/scene]
+        E[renderers/<renderer-id>/targets/<kind>/<name>/render]
+        F[renderers/<renderer-id>/targets/<kind>/<name>/output/v1/...]
+        C --> D
+        E --> F
+    end
+
+    subgraph Surface
+        G[surfaces/<surface-id>/render]
+        H[surfaces/<surface-id>/output]
+        D --> G
+        G --> E
+        F --> H
+    end
+
+    subgraph Window View
+        I[windows/<window-id>/views/<view-id>/present]
+        J[windows/<window-id>/window]
+        H --> I
+        I --> J
+    end
+```
+
+### Atomic pipeline
+Renderer targets adopt settings atomically and publish immutable outputs. The sequence diagram (stored in `docs/images/render_atomic_pipeline.mmd`) captures the contract between producers, renderers, surfaces, and presenters.
+
+```mermaid
+%% Source: docs/images/render_atomic_pipeline.mmd
+sequenceDiagram
+    autonumber
+    participant Producer as Producer (Surface/Presenter)
+    participant Target as Renderer Target Paths
+    participant Renderer as PathRenderer
+    participant Surface as PathSurface
+    participant Presenter as Window View
+
+    Producer->>Target: insert RenderSettings (settings/inbox)
+    Renderer->>Target: take() latest settings
+    Renderer->>Target: update settings/active
+    Surface->>Renderer: invoke render
+    Renderer->>Target: publish output/v1/common & buffers
+    Presenter->>Surface: trigger present (optional frame)
+    Presenter->>Target: read output/v1/*
+```
+
+Atomicity rules:
+- Writers insert whole `RenderSettingsV1` objects into `settings/inbox`; partial updates are not supported. The renderer drains the inbox with `take()` and only adopts the newest payload.
+- Targets may mirror the adopted settings under `settings/active` for introspection. Mirrors must be written atomically so consumers never observe a mixed version.
+- Frame outputs live under `output/v1/...` and are single-value registers (software framebuffers, GPU handles, timing metadata). Replace-in-place updates keep consumers lockstep with renderer commits.
+- Surfaces coordinate per-target renders, double-buffer software pixels, and ensure GPU handles remain valid until presenters finish presenting the active frame.
+
+### Snapshot integration
+- Snapshot builder publishes immutable scene revisions beneath `scenes/<id>/builds/<revision>/...` and atomically updates `current_revision` when a revision is ready.
+- Renderer targets resolve the scene by reading `targets/<kind>/<name>/scene` and load the referenced `current_revision`. They bump snapshot reference counts during adoption and release once the frame completes (see `docs/AI_Plan_SceneGraph_Renderer.md`, “Decision: Snapshot retention”).
+- Metrics for snapshot GC (`retained`, `evicted`, `bytes_alive`) live under `scenes/<id>/metrics/snapshots` so render loops can surface health in UI tooling.
+
+### HTML adapter modes
+- Renderer targets select an adapter via `renderers/<rid>/targets/html/<name>/adapter_mode` (enum: `canvas_replay`, `webgl`, `dom_bridge`). Adapters own capability detection: they probe the runtime, negotiate fallbacks, and surface the final choice under `output/v1/html/metadata/active_mode`.
+- All modes share the same command stream contract: `output/v1/html/commands` stores a compact JSON array mirroring the `DrawableBucket` ordering (opaque before alpha) with resource fingerprints for textures, glyph atlases, and shader bundles. The adapter runtime hydrates resources from `output/v1/html/assets/*` using those fingerprints.
+- Canvas replay ships as the baseline runtime. The manifest (`renderers/<rid>/targets/html/<name>/manifest.json`) declares the JS module that replays commands on a `<canvas>`, supported features, and the minimum schema version. Presenters load the module referenced by `manifest.runtime.module` and stream frames by diffing fingerprints.
+- WebGL mode adds optional GPU acceleration. The manifest lists shader binaries or pipelines under `assets/shaders/*` and flags optional capabilities (e.g., `EXT_disjoint_timer_query`, MSAA sample counts). If the presenter or browser does not meet the requirements, the adapter downgrades to Canvas replay without changing the command stream.
+- DOM bridge layers semantic HTML on top of the Canvas runtime for accessibility. The manifest’s `dom_overlays` section maps drawable categories (text, rects) to DOM templates and attributes. When enabled, presenters render Canvas first, then materialize DOM overlays based on `output/v1/html/overlays` produced by the adapter.
+- Versioning: `manifest.json` carries `{ "schema_version": 1 }`. Breaking changes increment the schema and adapters must retain compatibility with the previous version for at least one release. Resource fingerprints always include the schema version so stale presenters fall back safely.
+
+### Contributor checklist
+- Mount new UI components under the application root and use the typed path helpers to validate app-relative references before storing them.
+- When adding renderer targets or surfaces, document the path contract in `docs/AI_Plan_SceneGraph_Renderer.md` and ensure tests cover atomic settings adoption and output publication (loop=15).
+- Update the Mermaid sources in `docs/images/` if data flow or pipeline steps change; keep the inline diagrams in this section synchronized.
+- Cross-link new C++ entry points (`PathRenderer2D`, `PathSurface*`, `PathWindowView`, etc.) from this section so contributors can navigate between docs and code.

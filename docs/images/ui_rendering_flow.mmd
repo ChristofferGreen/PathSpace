@@ -1,0 +1,33 @@
+%% PathSpace UI rendering data flow
+%% Maintainers: update alongside docs/AI_ARCHITECTURE.md (UI & Rendering)
+flowchart TD
+    subgraph Scenes
+        A[scenes/<scene-id>/src]
+        B[SnapshotBuilder]
+        C[scenes/<scene-id>/current_revision]
+        A --> B
+        B --> C
+    end
+
+    subgraph Renderer Target
+        D[renderers/<renderer-id>/targets/<kind>/<name>/scene]
+        E[renderers/<renderer-id>/targets/<kind>/<name>/render]
+        F[renderers/<renderer-id>/targets/<kind>/<name>/output/v1/...]
+        C --> D
+        E --> F
+    end
+
+    subgraph Surface
+        G[surfaces/<surface-id>/render]
+        H[surfaces/<surface-id>/output]
+        D --> G
+        G --> E
+        F --> H
+    end
+
+    subgraph Window View
+        I[windows/<window-id>/views/<view-id>/present]
+        J[windows/<window-id>/window]
+        H --> I
+        I --> J
+    end

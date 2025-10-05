@@ -570,3 +570,15 @@ task {
     "Links to tests exercising exception paths; expected logs clarified."
   ]
 }
+
+task {
+  name: "HTML Adapter Documentation [DOCS]"
+  description: "Capture adapter mode selection, manifests, and runtime negotiation for HTML renderer targets."
+  status: planned
+  priority: P1
+  acceptance_criteria: [
+    "docs/AI_ARCHITECTURE.md#html-adapter-modes describes adapter_mode values, shared command stream, and downgrade rules.",
+    "Manifest schema example covers runtime module, capability flags, dom_overlays, and schema_version handling.",
+    "docs/AI_Plan_SceneGraph_Renderer.md references stay aligned when adapter milestones land."
+  ]
+}

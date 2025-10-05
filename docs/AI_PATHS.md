@@ -35,6 +35,14 @@ The following subtrees are standardized within each application root (one of the
     - `src/...` — authoring tree (mutable)
     - `builds/<revision>/...` — immutable snapshots per revision
     - `current_revision` — single-value pointer to latest published build
+    - `diagnostics/`
+      - `errors/live` — latest `PathSpaceError` for the scene
+      - `errors/history/<id>` — optional immutable historical errors
+      - `log/ring/<segment>` — structured log segments (JSON/CBOR blobs)
+      - `metrics/live` — rolling scene metrics (optional)
+      - `overlays/<kind>` — optional debugging overlays (e.g., bounds violations)
+      - `frame_profiler/node/<drawable-id>` — drawable-specific annotations
+      - `frame_profiler/summary` — scene-level diagnostics counters and timestamps
 
 - Renderers
   - `renderers/<renderer-id>/`
@@ -60,12 +68,29 @@ The following subtrees are standardized within each application root (one of the
             - `html/dom`
             - `html/commands`
             - `html/assets/*`
+    - `diagnostics/`
+      - `errors/live` — latest `PathSpaceError` for the renderer
+      - `errors/history/<id>` — optional immutable error records
+      - `log/ring/<segment>` — structured log segments
+      - `metrics/live` — rolling averages and counters for recent frames
+      - `overlays/<kind>` — debug overlay payloads (e.g., errors, overdraw)
+      - `frame_profiler/live` — latest frame sample (struct payload)
+      - `frame_profiler/ring` — immutable ring buffer chunks for timeline data
+      - `frame_profiler/capture/`
+        - `inbox` — capture requests inserted by external profilers
+        - `active` — renderer acknowledgement + status metadata
+        - `dump/*` — optional blobs captured for that request (framebuffers, GPU counters)
 
 - Surfaces (offscreen targets)
   - `surfaces/<surface-id>/`
     - `renderer` — app-relative, e.g. `renderers/2d`
     - `scene` — app-relative, e.g. `scenes/main`
     - `render` — execution that coordinates with the renderer target
+    - `diagnostics/`
+      - `errors/live`
+      - `errors/history/<id>`
+      - `log/ring/<segment>`
+      - `metrics/live` — optional surface-level counters (e.g., presents, latency)
 
 - Windows (presenters)
   - `windows/<window-id>/`
@@ -73,6 +98,11 @@ The following subtrees are standardized within each application root (one of the
     - `views/<view-id>/`
       - `surface` — app-relative reference to a surface
       - `present` — execution to present the surface to the window
+    - `diagnostics/`
+      - `errors/live`
+      - `errors/history/<id>`
+      - `log/ring/<segment>`
+      - `metrics/live` — optional presentation metrics (latency, dropped frames)
 
 - IO logging (app-local)
   - `io/log/error` — authoritative error log (UTF-8, newline-delimited)

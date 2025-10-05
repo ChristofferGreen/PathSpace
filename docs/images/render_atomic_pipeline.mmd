@@ -1,0 +1,17 @@
+%% PathSpace render target atomic pipeline
+%% Maintainers: keep in sync with docs/AI_ARCHITECTURE.md (UI & Rendering)
+sequenceDiagram
+    autonumber
+    participant Producer as Producer (Surface/Presenter)
+    participant Target as Renderer Target Paths
+    participant Renderer as PathRenderer
+    participant Surface as PathSurface
+    participant Presenter as Window View
+
+    Producer->>Target: insert RenderSettings (settings/inbox)
+    Renderer->>Target: take() latest settings
+    Renderer->>Target: update settings/active
+    Surface->>Renderer: invoke render
+    Renderer->>Target: publish output/v1/common & buffers
+    Presenter->>Surface: trigger present (optional frame)
+    Presenter->>Target: read output/v1/*
