@@ -1,48 +1,277 @@
 #include <pathspace/ui/Builders.hpp>
 
+#include "core/Out.hpp"
+#include "path/UnvalidatedPath.hpp"
+
 #include <algorithm>
+#include <chrono>
+#include <cstdint>
+#include <iomanip>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 namespace SP::UI::Builders {
 
 namespace {
 
-auto make_error(std::string message, SP::Error::Code code = SP::Error::Code::InvalidPath) -> SP::Error {
+constexpr std::string_view kScenesSegment = "/scenes/";
+constexpr std::string_view kRenderersSegment = "/renderers/";
+constexpr std::string_view kSurfacesSegment = "/surfaces/";
+constexpr std::string_view kWindowsSegment = "/windows/";
+
+struct SceneRevisionRecord {
+    uint64_t    revision = 0;
+    int64_t     published_at_ms = 0;
+    std::string author;
+};
+
+auto make_error(std::string message,
+                SP::Error::Code code = SP::Error::Code::UnknownError) -> SP::Error {
     return SP::Error{code, std::move(message)};
 }
 
-auto ensure_non_empty(std::string_view value, std::string_view what) -> SP::Expected<void> {
+auto ensure_non_empty(std::string_view value,
+                      std::string_view what) -> SP::Expected<void> {
     if (value.empty()) {
-        return std::unexpected(make_error(std::string(what) + " must not be empty"));
+        return std::unexpected(make_error(std::string(what) + " must not be empty",
+                                          SP::Error::Code::InvalidPath));
     }
     return {};
 }
 
-auto combine_relative(AppRootPathView root, std::string relative) -> SP::Expected<ConcretePath> {
-    return SP::App::resolve_app_relative(root, relative);
+auto ensure_identifier(std::string_view value,
+                       std::string_view what) -> SP::Expected<void> {
+    if (auto status = ensure_non_empty(value, what); !status) {
+        return status;
+    }
+    if (value == "." || value == "..") {
+        return std::unexpected(make_error(std::string(what) + " must not be '.' or '..'",
+                                          SP::Error::Code::InvalidPathSubcomponent));
+    }
+    if (value.find('/') != std::string_view::npos) {
+        return std::unexpected(make_error(std::string(what) + " must not contain '/' characters",
+                                          SP::Error::Code::InvalidPathSubcomponent));
+    }
+    return {};
 }
 
-auto relative_to_root(AppRootPathView root, ConcretePathView absolute) -> SP::Expected<std::string> {
-    auto status = SP::App::ensure_within_app(root, absolute);
-    if (!status) {
-        return std::unexpected(status.error());
+template <typename T>
+auto drain_queue(PathSpace& space, std::string const& path) -> SP::Expected<void> {
+    while (true) {
+        auto taken = space.take<T>(path);
+        if (taken) {
+            continue;
+        }
+        auto const& error = taken.error();
+        if (error.code == SP::Error::Code::NoObjectFound
+            || error.code == SP::Error::Code::NoSuchPath) {
+            break;
+        }
+        return std::unexpected(error);
     }
+    return {};
+}
+
+template <typename T>
+auto replace_single(PathSpace& space,
+                   std::string const& path,
+                   T const& value) -> SP::Expected<void> {
+    if (auto cleared = drain_queue<T>(space, path); !cleared) {
+        return cleared;
+    }
+    auto result = space.insert(path, value);
+    if (!result.errors.empty()) {
+        return std::unexpected(result.errors.front());
+    }
+    return {};
+}
+
+template <typename T>
+auto read_value(PathSpace const& space,
+                std::string const& path,
+                SP::Out const& out = {}) -> SP::Expected<T> {
+    auto const& base = static_cast<PathSpaceBase const&>(space);
+    return base.template read<T, std::string>(path, out);
+}
+
+template <typename T>
+auto read_optional(PathSpace const& space,
+                   std::string const& path) -> SP::Expected<std::optional<T>> {
+    auto value = read_value<T>(space, path);
+    if (value) {
+        return std::optional<T>{*value};
+    }
+    auto const& error = value.error();
+    if (error.code == SP::Error::Code::NoObjectFound
+        || error.code == SP::Error::Code::NoSuchPath) {
+        return std::optional<T>{};
+    }
+    return std::unexpected(error);
+}
+auto combine_relative(AppRootPathView root,
+                       std::string relative) -> SP::Expected<ConcretePath> {
+    return SP::App::resolve_app_relative(root, std::move(relative));
+}
+
+auto relative_to_root(AppRootPathView root,
+                      ConcretePathView absolute) -> SP::Expected<std::string> {
+    auto ensured = SP::App::ensure_within_app(root, absolute);
+    if (!ensured) {
+        return std::unexpected(ensured.error());
+    }
+
     auto const& rootStr = root.getPath();
-    auto const& absStr  = absolute.getPath();
+    auto const& absStr = absolute.getPath();
     if (absStr.size() == rootStr.size()) {
+        return std::string{};
+    }
+    if (absStr.size() <= rootStr.size() + 1) {
         return std::string{};
     }
     return std::string(absStr.substr(rootStr.size() + 1));
 }
 
-auto ensure_contains_segment(ConcretePathView path, std::string_view segment) -> SP::Expected<void> {
+auto derive_app_root_for(ConcretePathView absolute) -> SP::Expected<AppRootPath> {
+    return SP::App::derive_app_root(absolute);
+}
+
+auto ensure_contains_segment(ConcretePathView path,
+                             std::string_view segment) -> SP::Expected<void> {
     if (path.getPath().find(segment) == std::string::npos) {
-        return std::unexpected(make_error("path '" + std::string(path.getPath()) + "' missing segment '" + std::string(segment) + "'"));
+        return std::unexpected(make_error("path '" + std::string(path.getPath()) + "' missing segment '"
+                                          + std::string(segment) + "'",
+                                          SP::Error::Code::InvalidPath));
     }
     return {};
 }
 
-auto derive_app_root_for(ConcretePathView absolute) -> SP::Expected<AppRootPath> {
-    return SP::App::derive_app_root(absolute);
+auto same_app(ConcretePathView lhs,
+             ConcretePathView rhs) -> SP::Expected<void> {
+    auto lhsRoot = derive_app_root_for(lhs);
+    if (!lhsRoot) {
+        return std::unexpected(lhsRoot.error());
+    }
+    auto rhsRoot = derive_app_root_for(rhs);
+    if (!rhsRoot) {
+        return std::unexpected(rhsRoot.error());
+    }
+    if (lhsRoot->getPath() != rhsRoot->getPath()) {
+        return std::unexpected(make_error("paths belong to different application roots",
+                                          SP::Error::Code::InvalidPath));
+    }
+    return {};
+}
+
+auto to_epoch_ms(std::chrono::system_clock::time_point tp) -> int64_t {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count();
+}
+
+auto from_epoch_ms(int64_t ms) -> std::chrono::system_clock::time_point {
+    return std::chrono::system_clock::time_point{std::chrono::milliseconds{ms}};
+}
+
+auto to_record(SceneRevisionDesc const& desc) -> SceneRevisionRecord {
+    SceneRevisionRecord record{};
+    record.revision = desc.revision;
+    record.published_at_ms = to_epoch_ms(desc.published_at);
+    record.author = desc.author;
+    return record;
+}
+
+auto from_record(SceneRevisionRecord const& record) -> SceneRevisionDesc {
+    SceneRevisionDesc desc{};
+    desc.revision = record.revision;
+    desc.published_at = from_epoch_ms(record.published_at_ms);
+    desc.author = record.author;
+    return desc;
+}
+
+auto format_revision(uint64_t revision) -> std::string {
+    std::ostringstream oss;
+    oss << std::setw(16) << std::setfill('0') << revision;
+    return oss.str();
+}
+
+auto make_revision_base(ScenePath const& scenePath,
+                        std::string const& revisionStr) -> std::string {
+    return std::string(scenePath.getPath()) + "/builds/" + revisionStr;
+}
+
+auto make_scene_meta(ScenePath const& scenePath,
+                     std::string const& leaf) -> std::string {
+    return std::string(scenePath.getPath()) + "/meta/" + leaf;
+}
+
+auto bytes_from_span(std::span<std::byte const> bytes) -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> out;
+    out.reserve(bytes.size());
+    for (auto b : bytes) {
+        out.push_back(static_cast<std::uint8_t>(b));
+    }
+    return out;
+}
+
+auto resolve_renderer_spec(AppRootPathView appRoot,
+                           std::string const& spec) -> SP::Expected<ConcretePath> {
+    if (spec.empty()) {
+        return std::unexpected(make_error("renderer spec must not be empty",
+                                          SP::Error::Code::InvalidPath));
+    }
+
+    if (spec.front() == '/') {
+        return SP::App::resolve_app_relative(appRoot, spec);
+    }
+
+    std::string candidate = spec;
+    if (spec.find('/') == std::string::npos) {
+        candidate = "renderers/" + spec;
+    }
+    return SP::App::resolve_app_relative(appRoot, candidate);
+}
+
+auto leaf_component(ConcretePathView path) -> SP::Expected<std::string> {
+    SP::UnvalidatedPathView raw{path.getPath()};
+    auto components = raw.split_absolute_components();
+    if (!components) {
+        return std::unexpected(components.error());
+    }
+    if (components->empty()) {
+        return std::unexpected(make_error("path has no components",
+                                          SP::Error::Code::InvalidPath));
+    }
+    return std::string(components->back());
+}
+
+auto read_relative_string(PathSpace const& space,
+                          std::string const& path) -> SP::Expected<std::string> {
+    auto value = read_value<std::string>(space, path);
+    if (value) {
+        return *value;
+    }
+    auto const& error = value.error();
+    if (error.code == SP::Error::Code::NoObjectFound) {
+        return std::string{};
+    }
+    return std::unexpected(error);
+}
+
+auto store_desc(PathSpace& space,
+                std::string const& path,
+                SurfaceDesc const& desc) -> SP::Expected<void> {
+    return replace_single<SurfaceDesc>(space, path, desc);
+}
+
+auto ensure_within_root(AppRootPathView root,
+                        ConcretePathView path) -> SP::Expected<void> {
+    auto status = SP::App::ensure_within_app(root, path);
+    if (!status) {
+        return std::unexpected(status.error());
+    }
+    return {};
 }
 
 } // namespace
@@ -60,75 +289,151 @@ auto derive_target_base(AppRootPathView root,
 
 namespace Scene {
 
-auto Create(PathSpace& /*space*/,
+auto Create(PathSpace& space,
              AppRootPathView appRoot,
              SceneParams const& params) -> SP::Expected<ScenePath> {
-    if (auto status = ensure_non_empty(params.name, "scene name"); !status) {
+    if (auto status = ensure_identifier(params.name, "scene name"); !status) {
         return std::unexpected(status.error());
     }
-    auto relative = std::string("scenes/") + params.name;
-    auto resolved = combine_relative(appRoot, std::move(relative));
+
+    auto resolved = combine_relative(appRoot, std::string("scenes/") + params.name);
     if (!resolved) {
         return std::unexpected(resolved.error());
     }
+
+    auto metaNamePath = make_scene_meta(ScenePath{resolved->getPath()}, "name");
+    auto existing = read_optional<std::string>(space, metaNamePath);
+    if (!existing) {
+        return std::unexpected(existing.error());
+    }
+    if (existing->has_value()) {
+        return ScenePath{resolved->getPath()};
+    }
+
+    if (auto status = replace_single<std::string>(space, metaNamePath, params.name); !status) {
+        return std::unexpected(status.error());
+    }
+    auto metaDescPath = make_scene_meta(ScenePath{resolved->getPath()}, "description");
+    if (auto status = replace_single<std::string>(space, metaDescPath, params.description); !status) {
+        return std::unexpected(status.error());
+    }
+
     return ScenePath{resolved->getPath()};
 }
 
 auto EnsureAuthoringRoot(PathSpace& /*space*/,
                           ScenePath const& scenePath) -> SP::Expected<void> {
     if (!scenePath.isValid()) {
-        return std::unexpected(make_error("scene path is not a valid concrete path"));
+        return std::unexpected(make_error("scene path is not valid",
+                                          SP::Error::Code::InvalidPath));
     }
-    if (auto status = ensure_contains_segment(scenePath, "/scenes/"); !status) {
-        return std::unexpected(status.error());
-    }
-    auto root = derive_app_root_for(scenePath);
-    if (!root) {
-        return std::unexpected(root.error());
+    if (auto status = ensure_contains_segment(ConcretePathView{scenePath.getPath()}, kScenesSegment); !status) {
+        return status;
     }
     return {};
 }
 
 auto PublishRevision(PathSpace& space,
                       ScenePath const& scenePath,
-                      SceneRevisionDesc const& /*revision*/,
-                      std::span<std::byte const> /*drawableBucket*/,
-                      std::span<std::byte const> /*metadata*/) -> SP::Expected<void> {
-    return EnsureAuthoringRoot(space, scenePath);
+                      SceneRevisionDesc const& revision,
+                      std::span<std::byte const> drawableBucket,
+                      std::span<std::byte const> metadata) -> SP::Expected<void> {
+    if (auto status = EnsureAuthoringRoot(space, scenePath); !status) {
+        return status;
+    }
+
+    auto record = to_record(revision);
+    auto revisionStr = format_revision(revision.revision);
+    auto revisionBase = make_revision_base(scenePath, revisionStr);
+
+    if (auto status = replace_single<SceneRevisionRecord>(space, revisionBase + "/desc", record); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::vector<std::uint8_t>>(space,
+                                                                revisionBase + "/drawable_bucket",
+                                                                bytes_from_span(drawableBucket)); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::vector<std::uint8_t>>(space,
+                                                                revisionBase + "/metadata",
+                                                                bytes_from_span(metadata)); !status) {
+        return status;
+    }
+
+    auto currentRevisionPath = std::string(scenePath.getPath()) + "/current_revision";
+    if (auto status = replace_single<uint64_t>(space, currentRevisionPath, revision.revision); !status) {
+        return status;
+    }
+
+    return {};
 }
 
-auto ReadCurrentRevision(PathSpace const& /*space*/,
+auto ReadCurrentRevision(PathSpace const& space,
                           ScenePath const& scenePath) -> SP::Expected<SceneRevisionDesc> {
-    if (!scenePath.isValid()) {
-        return std::unexpected(make_error("scene path is not a valid concrete path"));
+    auto currentRevisionPath = std::string(scenePath.getPath()) + "/current_revision";
+    auto revisionValue = read_value<uint64_t>(space, currentRevisionPath);
+    if (!revisionValue) {
+        return std::unexpected(revisionValue.error());
     }
-    SceneRevisionDesc desc{};
-    desc.author = "unknown";
-    return desc;
+
+    auto revisionStr = format_revision(*revisionValue);
+    auto descPath = make_revision_base(scenePath, revisionStr) + "/desc";
+    auto record = read_value<SceneRevisionRecord>(space, descPath);
+    if (!record) {
+        return std::unexpected(record.error());
+    }
+    return from_record(*record);
 }
 
 auto WaitUntilReady(PathSpace& space,
                      ScenePath const& scenePath,
-                     std::chrono::milliseconds /*timeout*/) -> SP::Expected<void> {
-    return EnsureAuthoringRoot(space, scenePath);
+                     std::chrono::milliseconds timeout) -> SP::Expected<void> {
+    auto currentRevisionPath = std::string(scenePath.getPath()) + "/current_revision";
+    auto result = read_value<uint64_t>(space, currentRevisionPath, SP::Out{} & SP::Block{timeout});
+    if (!result) {
+        return std::unexpected(result.error());
+    }
+    (void)result;
+    return {};
 }
 
 } // namespace Scene
 
 namespace Renderer {
 
-auto Create(PathSpace& /*space*/,
+auto Create(PathSpace& space,
              AppRootPathView appRoot,
              RendererParams const& params,
-             RendererKind /*kind*/) -> SP::Expected<RendererPath> {
-    if (auto status = ensure_non_empty(params.name, "renderer name"); !status) {
+             RendererKind kind) -> SP::Expected<RendererPath> {
+    if (auto status = ensure_identifier(params.name, "renderer name"); !status) {
         return std::unexpected(status.error());
     }
-    auto relative = std::string("renderers/") + params.name;
-    auto resolved = combine_relative(appRoot, std::move(relative));
+
+    auto resolved = combine_relative(appRoot, std::string("renderers/") + params.name);
     if (!resolved) {
         return std::unexpected(resolved.error());
     }
+
+    auto metaBase = std::string(resolved->getPath()) + "/meta";
+    auto namePath = metaBase + "/name";
+    auto existing = read_optional<std::string>(space, namePath);
+    if (!existing) {
+        return std::unexpected(existing.error());
+    }
+    if (existing->has_value()) {
+        return RendererPath{resolved->getPath()};
+    }
+
+    if (auto status = replace_single<std::string>(space, namePath, params.name); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single<std::string>(space, metaBase + "/description", params.description); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single<RendererKind>(space, metaBase + "/kind", kind); !status) {
+        return std::unexpected(status.error());
+    }
+
     return RendererPath{resolved->getPath()};
 }
 
@@ -139,19 +444,21 @@ auto ResolveTargetBase(PathSpace const& /*space*/,
     if (auto status = ensure_non_empty(targetSpec, "target spec"); !status) {
         return std::unexpected(status.error());
     }
-    if (auto status = SP::App::ensure_within_app(appRoot, rendererPath); !status) {
+
+    if (auto status = SP::App::ensure_within_app(appRoot, ConcretePathView{rendererPath.getPath()}); !status) {
         return std::unexpected(status.error());
     }
 
-    if (!targetSpec.empty() && targetSpec.front() == '/') {
-        auto resolved = combine_relative(appRoot, std::string(targetSpec));
+    std::string spec{targetSpec};
+    if (!spec.empty() && spec.front() == '/') {
+        auto resolved = combine_relative(appRoot, std::move(spec));
         if (!resolved) {
             return std::unexpected(resolved.error());
         }
         return *resolved;
     }
 
-    auto rendererRelative = relative_to_root(appRoot, rendererPath);
+    auto rendererRelative = relative_to_root(appRoot, ConcretePathView{rendererPath.getPath()});
     if (!rendererRelative) {
         return std::unexpected(rendererRelative.error());
     }
@@ -160,7 +467,7 @@ auto ResolveTargetBase(PathSpace const& /*space*/,
     if (!combined.empty()) {
         combined.push_back('/');
     }
-    combined.append(targetSpec);
+    combined.append(spec);
 
     auto resolved = combine_relative(appRoot, std::move(combined));
     if (!resolved) {
@@ -169,23 +476,17 @@ auto ResolveTargetBase(PathSpace const& /*space*/,
     return *resolved;
 }
 
-auto UpdateSettings(PathSpace& /*space*/,
+auto UpdateSettings(PathSpace& space,
                      ConcretePathView targetPath,
-                     RenderSettings const& /*settings*/) -> SP::Expected<void> {
-    auto root = derive_app_root_for(targetPath);
-    if (!root) {
-        return std::unexpected(root.error());
-    }
-    return {};
+                     RenderSettings const& settings) -> SP::Expected<void> {
+    auto settingsPath = std::string(targetPath.getPath()) + "/settings";
+    return replace_single<RenderSettings>(space, settingsPath, settings);
 }
 
-auto ReadSettings(PathSpace const& /*space*/,
+auto ReadSettings(PathSpace const& space,
                    ConcretePathView targetPath) -> SP::Expected<RenderSettings> {
-    auto root = derive_app_root_for(targetPath);
-    if (!root) {
-        return std::unexpected(root.error());
-    }
-    return RenderSettings{};
+    auto settingsPath = std::string(targetPath.getPath()) + "/settings";
+    return read_value<RenderSettings>(space, settingsPath);
 }
 
 auto TriggerRender(PathSpace& /*space*/,
@@ -202,96 +503,273 @@ auto TriggerRender(PathSpace& /*space*/,
 
 namespace Surface {
 
-auto Create(PathSpace& /*space*/,
+auto Create(PathSpace& space,
              AppRootPathView appRoot,
              SurfaceParams const& params) -> SP::Expected<SurfacePath> {
-    if (auto status = ensure_non_empty(params.name, "surface name"); !status) {
+    if (auto status = ensure_identifier(params.name, "surface name"); !status) {
         return std::unexpected(status.error());
     }
-    auto relative = std::string("surfaces/") + params.name;
-    auto resolved = combine_relative(appRoot, std::move(relative));
-    if (!resolved) {
-        return std::unexpected(resolved.error());
+
+    auto surfacePath = combine_relative(appRoot, std::string("surfaces/") + params.name);
+    if (!surfacePath) {
+        return std::unexpected(surfacePath.error());
     }
-    return SurfacePath{resolved->getPath()};
+
+    auto rendererPath = resolve_renderer_spec(appRoot, params.renderer);
+    if (!rendererPath) {
+        return std::unexpected(rendererPath.error());
+    }
+
+    if (auto status = ensure_contains_segment(ConcretePathView{surfacePath->getPath()}, kSurfacesSegment); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = ensure_contains_segment(ConcretePathView{rendererPath->getPath()}, kRenderersSegment); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto metaBase = std::string(surfacePath->getPath()) + "/meta";
+    auto namePath = metaBase + "/name";
+    auto existing = read_optional<std::string>(space, namePath);
+    if (!existing) {
+        return std::unexpected(existing.error());
+    }
+    if (existing->has_value()) {
+        return SurfacePath{surfacePath->getPath()};
+    }
+
+    if (auto status = replace_single<std::string>(space, namePath, params.name); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto descPath = std::string(surfacePath->getPath()) + "/desc";
+    if (auto status = store_desc(space, descPath, params.desc); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto rendererRelative = relative_to_root(appRoot, ConcretePathView{rendererPath->getPath()});
+    if (!rendererRelative) {
+        return std::unexpected(rendererRelative.error());
+    }
+
+    auto rendererField = std::string(surfacePath->getPath()) + "/renderer";
+    if (auto status = replace_single<std::string>(space, rendererField, *rendererRelative); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto targetSpec = std::string("targets/surfaces/") + params.name;
+    auto targetBase = Renderer::ResolveTargetBase(space, appRoot, *rendererPath, targetSpec);
+    if (!targetBase) {
+        return std::unexpected(targetBase.error());
+    }
+
+    auto targetRelative = relative_to_root(appRoot, ConcretePathView{targetBase->getPath()});
+    if (!targetRelative) {
+        return std::unexpected(targetRelative.error());
+    }
+
+    if (auto status = store_desc(space, std::string(targetBase->getPath()) + "/desc", params.desc); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto targetField = std::string(surfacePath->getPath()) + "/target";
+    if (auto status = replace_single<std::string>(space, targetField, *targetRelative); !status) {
+        return std::unexpected(status.error());
+    }
+
+    return SurfacePath{surfacePath->getPath()};
 }
 
-auto SetScene(PathSpace& /*space*/,
+auto SetScene(PathSpace& space,
                SurfacePath const& surfacePath,
                ScenePath const& scenePath) -> SP::Expected<void> {
-    auto surfaceRoot = derive_app_root_for(surfacePath);
+    auto surfaceRoot = derive_app_root_for(ConcretePathView{surfacePath.getPath()});
     if (!surfaceRoot) {
         return std::unexpected(surfaceRoot.error());
     }
-    auto sceneRoot = derive_app_root_for(scenePath);
+    auto sceneRoot = derive_app_root_for(ConcretePathView{scenePath.getPath()});
     if (!sceneRoot) {
         return std::unexpected(sceneRoot.error());
     }
     if (surfaceRoot->getPath() != sceneRoot->getPath()) {
-        return std::unexpected(make_error("surface and scene belong to different applications"));
+        return std::unexpected(make_error("surface and scene belong to different applications",
+                                          SP::Error::Code::InvalidPath));
     }
-    return {};
+
+    auto sceneRelative = relative_to_root(SP::App::AppRootPathView{surfaceRoot->getPath()},
+                                          ConcretePathView{scenePath.getPath()});
+    if (!sceneRelative) {
+        return std::unexpected(sceneRelative.error());
+    }
+
+    auto sceneField = std::string(surfacePath.getPath()) + "/scene";
+    if (auto status = replace_single<std::string>(space, sceneField, *sceneRelative); !status) {
+        return status;
+    }
+
+    auto targetField = std::string(surfacePath.getPath()) + "/target";
+    auto targetRelative = read_value<std::string>(space, targetField);
+    if (!targetRelative) {
+        if (targetRelative.error().code == SP::Error::Code::NoObjectFound) {
+            return std::unexpected(make_error("surface missing target binding",
+                                              SP::Error::Code::InvalidPath));
+        }
+        return std::unexpected(targetRelative.error());
+    }
+
+    auto targetAbsolute = SP::App::resolve_app_relative(SP::App::AppRootPathView{surfaceRoot->getPath()},
+                                                        *targetRelative);
+    if (!targetAbsolute) {
+        return std::unexpected(targetAbsolute.error());
+    }
+
+    auto targetScenePath = targetAbsolute->getPath() + "/scene";
+    return replace_single<std::string>(space, targetScenePath, *sceneRelative);
 }
 
-auto RenderOnce(PathSpace& /*space*/,
+auto RenderOnce(PathSpace& space,
                  SurfacePath const& surfacePath,
-                 std::optional<RenderSettings> /*settingsOverride*/) -> SP::Expected<SP::FutureAny> {
-    auto root = derive_app_root_for(surfacePath);
-    if (!root) {
-        return std::unexpected(root.error());
+                 std::optional<RenderSettings> settingsOverride) -> SP::Expected<SP::FutureAny> {
+    auto surfaceRoot = derive_app_root_for(ConcretePathView{surfacePath.getPath()});
+    if (!surfaceRoot) {
+        return std::unexpected(surfaceRoot.error());
     }
-    return std::unexpected(make_error("render helpers not implemented", SP::Error::Code::UnknownError));
+
+    auto targetField = std::string(surfacePath.getPath()) + "/target";
+    auto targetRelative = read_value<std::string>(space, targetField);
+    if (!targetRelative) {
+        return std::unexpected(targetRelative.error());
+    }
+
+    auto targetAbsolute = SP::App::resolve_app_relative(SP::App::AppRootPathView{surfaceRoot->getPath()},
+                                                        *targetRelative);
+    if (!targetAbsolute) {
+        return std::unexpected(targetAbsolute.error());
+    }
+
+    if (settingsOverride) {
+        if (auto status = Renderer::UpdateSettings(space,
+                                                   ConcretePathView{targetAbsolute->getPath()},
+                                                   *settingsOverride); !status) {
+            return std::unexpected(status.error());
+        }
+    }
+
+    return Renderer::TriggerRender(space, ConcretePathView{targetAbsolute->getPath()});
 }
 
 } // namespace Surface
 
 namespace Window {
 
-auto Create(PathSpace& /*space*/,
+auto Create(PathSpace& space,
              AppRootPathView appRoot,
              WindowParams const& params) -> SP::Expected<WindowPath> {
-    if (auto status = ensure_non_empty(params.name, "window name"); !status) {
+    if (auto status = ensure_identifier(params.name, "window name"); !status) {
         return std::unexpected(status.error());
     }
-    auto relative = std::string("windows/") + params.name;
-    auto resolved = combine_relative(appRoot, std::move(relative));
-    if (!resolved) {
-        return std::unexpected(resolved.error());
+
+    auto windowPath = combine_relative(appRoot, std::string("windows/") + params.name);
+    if (!windowPath) {
+        return std::unexpected(windowPath.error());
     }
-    return WindowPath{resolved->getPath()};
+
+    auto metaBase = std::string(windowPath->getPath()) + "/meta";
+    auto namePath = metaBase + "/name";
+    auto existing = read_optional<std::string>(space, namePath);
+    if (!existing) {
+        return std::unexpected(existing.error());
+    }
+    if (existing->has_value()) {
+        return WindowPath{windowPath->getPath()};
+    }
+
+    if (auto status = replace_single<std::string>(space, namePath, params.name); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single<std::string>(space, metaBase + "/title", params.title); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single<int>(space, metaBase + "/width", params.width); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single<int>(space, metaBase + "/height", params.height); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single<float>(space, metaBase + "/scale", params.scale); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single<std::string>(space, metaBase + "/background", params.background); !status) {
+        return std::unexpected(status.error());
+    }
+
+    return WindowPath{windowPath->getPath()};
 }
 
-auto AttachSurface(PathSpace& /*space*/,
+auto AttachSurface(PathSpace& space,
                     WindowPath const& windowPath,
                     std::string_view viewName,
                     SurfacePath const& surfacePath) -> SP::Expected<void> {
-    if (auto status = ensure_non_empty(viewName, "view name"); !status) {
-        return std::unexpected(status.error());
+    if (auto status = ensure_identifier(viewName, "view name"); !status) {
+        return status;
     }
-    auto windowRoot = derive_app_root_for(windowPath);
+
+    if (auto status = same_app(ConcretePathView{windowPath.getPath()},
+                               ConcretePathView{surfacePath.getPath()}); !status) {
+        return status;
+    }
+
+    auto windowRoot = derive_app_root_for(ConcretePathView{windowPath.getPath()});
     if (!windowRoot) {
         return std::unexpected(windowRoot.error());
     }
-    auto surfaceRoot = derive_app_root_for(surfacePath);
-    if (!surfaceRoot) {
-        return std::unexpected(surfaceRoot.error());
+
+    auto surfaceRelative = relative_to_root(SP::App::AppRootPathView{windowRoot->getPath()},
+                                            ConcretePathView{surfacePath.getPath()});
+    if (!surfaceRelative) {
+        return std::unexpected(surfaceRelative.error());
     }
-    if (windowRoot->getPath() != surfaceRoot->getPath()) {
-        return std::unexpected(make_error("window and surface belong to different applications"));
+
+    std::string viewBase = std::string(windowPath.getPath()) + "/views/" + std::string(viewName);
+    if (auto status = replace_single<std::string>(space, viewBase + "/surface", *surfaceRelative); !status) {
+        return status;
     }
+    (void)drain_queue<std::string>(space, viewBase + "/windowTarget");
     return {};
 }
 
-auto Present(PathSpace& /*space*/,
+auto Present(PathSpace& space,
               WindowPath const& windowPath,
               std::string_view viewName) -> SP::Expected<void> {
-    if (auto status = ensure_non_empty(viewName, "view name"); !status) {
-        return std::unexpected(status.error());
+    if (auto status = ensure_identifier(viewName, "view name"); !status) {
+        return status;
     }
-    auto windowRoot = derive_app_root_for(windowPath);
+
+    auto windowRoot = derive_app_root_for(ConcretePathView{windowPath.getPath()});
     if (!windowRoot) {
         return std::unexpected(windowRoot.error());
     }
+
+    std::string viewBase = std::string(windowPath.getPath()) + "/views/" + std::string(viewName);
+    auto surfaceRel = read_value<std::string>(space, viewBase + "/surface");
+    if (!surfaceRel) {
+        return std::unexpected(surfaceRel.error());
+    }
+    if (surfaceRel->empty()) {
+        return std::unexpected(make_error("view is not bound to a surface",
+                                          SP::Error::Code::InvalidPath));
+    }
+
+    auto surfacePath = SP::App::resolve_app_relative(SP::App::AppRootPathView{windowRoot->getPath()},
+                                                     *surfaceRel);
+    if (!surfacePath) {
+        return std::unexpected(surfacePath.error());
+    }
+
+    auto renderResult = Surface::RenderOnce(space, SurfacePath{surfacePath->getPath()}, std::nullopt);
+    if (!renderResult) {
+        return std::unexpected(renderResult.error());
+    }
+
     return {};
 }
 
@@ -299,24 +777,61 @@ auto Present(PathSpace& /*space*/,
 
 namespace Diagnostics {
 
-auto ReadTargetMetrics(PathSpace const& /*space*/,
+auto ReadTargetMetrics(PathSpace const& space,
                         ConcretePathView targetPath) -> SP::Expected<TargetMetrics> {
-    auto root = derive_app_root_for(targetPath);
-    if (!root) {
-        return std::unexpected(root.error());
-    }
     TargetMetrics metrics{};
-    metrics.last_error.clear();
+
+    auto base = std::string(targetPath.getPath()) + "/output/v1/common";
+
+    if (auto value = read_value<uint64_t>(space, base + "/frameIndex"); value) {
+        metrics.frame_index = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/revision"); value) {
+        metrics.revision = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<double>(space, base + "/renderMs"); value) {
+        metrics.render_ms = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<double>(space, base + "/presentMs"); value) {
+        metrics.present_ms = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<bool>(space, base + "/lastPresentSkipped"); value) {
+        metrics.last_present_skipped = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<std::string>(space, base + "/lastError"); value) {
+        metrics.last_error = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
     return metrics;
 }
 
-auto ClearTargetError(PathSpace& /*space*/,
+auto ClearTargetError(PathSpace& space,
                        ConcretePathView targetPath) -> SP::Expected<void> {
-    auto root = derive_app_root_for(targetPath);
-    if (!root) {
-        return std::unexpected(root.error());
-    }
-    return {};
+    auto path = std::string(targetPath.getPath()) + "/output/v1/common/lastError";
+    return replace_single<std::string>(space, path, std::string{});
 }
 
 } // namespace Diagnostics

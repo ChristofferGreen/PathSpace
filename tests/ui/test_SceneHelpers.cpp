@@ -17,7 +17,7 @@ using namespace SP::UI;
 struct SceneHelpersFixture {
     PathSpace space;
     AppRootPath app_root{ "/system/applications/test_app" };
-    auto root_view() const -> AppRootPathView { return AppRootPathView{app_root.getPath()}; }
+    auto root_view() const -> SP::App::AppRootPathView { return SP::App::AppRootPathView{app_root.getPath()}; }
 };
 
 } // namespace

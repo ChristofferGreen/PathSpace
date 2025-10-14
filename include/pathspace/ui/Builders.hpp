@@ -4,11 +4,14 @@
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/task/Future.hpp>
 
+#include <array>
 #include <chrono>
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace SP::UI::Builders {
 
@@ -44,19 +47,35 @@ enum class RendererKind {
     Vulkan2D,
 };
 
+enum class PixelFormat {
+    RGBA8Unorm,
+    BGRA8Unorm,
+    RGBA8Unorm_sRGB,
+    BGRA8Unorm_sRGB,
+    RGBA16F,
+    RGBA32F,
+};
+
+enum class ColorSpace {
+    sRGB,
+    DisplayP3,
+    Linear,
+};
+
 struct SurfaceDesc {
     struct SizePx {
         int width = 0;
         int height = 0;
     } size_px;
-    float dpi_scale = 1.0f;
-    std::string color_space; // e.g. "srgb8"
+    PixelFormat pixel_format = PixelFormat::RGBA8Unorm;
+    ColorSpace color_space = ColorSpace::sRGB;
+    bool premultiplied_alpha = true;
 };
 
 struct SurfaceParams {
     std::string name;
     SurfaceDesc desc;
-    std::string renderer; // name or absolute path
+    std::string renderer; // name, app-relative, or absolute path
 };
 
 struct WindowParams {
@@ -69,7 +88,42 @@ struct WindowParams {
 };
 
 struct RenderSettings {
-    // TODO: expand with actual render settings fields.
+    struct Time {
+        double   time_ms    = 0.0;
+        double   delta_ms   = 0.0;
+        uint64_t frame_index = 0;
+    } time;
+
+    struct Pacing {
+        bool   has_user_cap_fps = false;
+        double user_cap_fps     = 0.0;
+    } pacing;
+
+    struct Surface {
+        struct SizePx {
+            int width  = 0;
+            int height = 0;
+        } size_px;
+        float dpi_scale = 1.0f;
+        bool  visibility = true;
+    } surface;
+
+    std::array<float, 4> clear_color{0.0f, 0.0f, 0.0f, 1.0f};
+
+    struct Camera {
+        enum class Projection {
+            Orthographic,
+            Perspective,
+        } projection = Projection::Orthographic;
+        float z_near = 0.1f;
+        float z_far  = 1000.0f;
+        bool  enabled = false;
+    } camera;
+
+    struct Debug {
+        uint32_t flags   = 0;
+        bool     enabled = false;
+    } debug;
 };
 
 enum class ParamUpdateMode {

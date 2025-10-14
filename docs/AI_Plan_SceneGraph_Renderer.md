@@ -2165,11 +2165,11 @@ Cross-references:
 ## RenderSettings v1 (final)
 
 - `time: { time_ms: double, delta_ms: double, frame_index: uint64 }`  // frame_index is monotonically increasing per target; delta_ms reflects real elapsed time even when pacing skips frames
-- `pacing: { user_cap_fps: optional<double> }`  // effective rate = min(display refresh, user cap)
+- `pacing: { has_user_cap_fps: bool, user_cap_fps: double }`  // set `has_user_cap_fps=false` when the cap is unset
 - `surface: { size_px:{w:int,h:int}, dpi_scale: float, visibility: bool }`
 - `clear_color: [float,4]`
-- `camera: { projection: Orthographic | Perspective, zNear:float, zFar:float }` (optional)
-- `debug: { flags: uint32 }` (optional)
+- `camera: { enabled: bool, projection: Orthographic | Perspective, zNear:float, zFar:float }`
+- `debug: { enabled: bool, flags: uint32 }`
 
 Invariants:
 - Writers replace the entire `RenderSettings` at `settings` in a single atomic write (single-path whole-object)

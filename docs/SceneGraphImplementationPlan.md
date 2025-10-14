@@ -44,6 +44,7 @@ Each workstream lands independently but respects shared contracts (paths, atomic
 - Implement `include/pathspace/ui/Builders.hpp` with app-root resolution, target id derivation, and atomic parameter helpers (stubbed implementations calling existing `PathSpace` primitives).
 - Run the test loop to verify behavior before moving on.
 - Wire helper usage docs and examples; update `AI_PATHS.md` if new canonical paths are introduced.
+- Treat helper creates as idempotent (return existing paths when metadata already exists) so restarts/replays do not fail; codify this in doctests alongside enum/RenderSettings coverage.
 - ✅ (October 11, 2025) Initial UI helper implementations (`src/pathspace/ui/Helpers.cpp`) enforce app-root containment for scene/renderer/surface/window calls with accompanying doctests in `tests/ui/test_SceneHelpers.cpp`; remaining work will flesh out Builders.hpp and atomic settings writes.
 
 ### Phase 2 — Scene Schema & Snapshot Builder (2 sprints)
