@@ -370,7 +370,19 @@ Note: First-class links (symlinks) are planned; in the interim, `PathAlias` offe
 
 ## UI & Rendering
 
-The scene graph and renderer pipeline lives entirely on top of PathSpace paths. Applications mount their rendering tree under a single app root (see `docs/AI_Plan_SceneGraph_Renderer.md` and `docs/AI_PATHS.md`) so that tearing down the app root atomically releases windows, surfaces, scenes, and renderer targets in one operation. All references between components are app-relative strings validated through the existing path helpers (`is_app_relative`, `resolve_app_relative`, `ensure_within_app`).
+The scene graph and renderer pipeline lives entirely on top of PathSpace paths. Applications mount their rendering tree under a single app root (see `docs/AI_Plan_SceneGraph_Renderer.md` and `docs/AI_PATHS.md`) so that tearing down the app root atomically releases windows, surfaces, scenes, and renderer targets in one operation. All references between components are app-relative strings validated through the dedicated helpers in `SP::App` (`SP::App::is_app_relative`, `SP::App::resolve_app_relative`, `SP::App::ensure_within_app`).
+
+- Raw user input that has not yet been validated should flow through `SP::UnvalidatedPathView`; the helper layer makes the transition to `ConcretePath`/`ConcretePathView` explicit before touching core storage.
+
+Build toggles (CMake options, default in parenthesis):
+- `PATHSPACE_ENABLE_EXTRA` (ON) — layer/view/IO providers, platform discovery helpers, and their tests. Set to OFF to consume only the core data-space API.
+- `PATHSPACE_ENABLE_APP` (ON) — app-level helpers in `SP::App`.
+- `PATHSPACE_ENABLE_UI` (OFF) — UI/scene graph helper stubs; see `docs/AI_Plan_SceneGraph_Renderer.md` for downstream feature guards (`PATHSPACE_UI_SOFTWARE`, `PATHSPACE_UI_METAL`).
+
+### Layering and Synchronization
+- PathSpace core retains exclusive ownership of concurrency primitives (per-node mutexes, wait queues). Higher layers—including SceneGraph helpers—coordinate via atomic inserts/takes, revision counters, and notifications; they must not introduce external mutexes.
+- Typed helper functions (`Scene::Create`, `Renderer::UpdateSettings`, etc.) now delegate to the builder layer in `include/pathspace/ui/Builders.hpp`, which centralizes app-root containment and path derivation before touching `PathSpace` storage. The `SP::UI` façade remains thin wrappers over these builders.
+- Tests can substitute `PathSpace` fixtures or helper fakes to validate SceneGraph behaviour independently from core internals, provided they respect the same atomic contracts.
 
 ### Component landscape
 - `scenes/<scene-id>/` — authoring source (`src/`), immutable builds (`builds/<revision>/`), and `current_revision` pointing at the latest published snapshot.

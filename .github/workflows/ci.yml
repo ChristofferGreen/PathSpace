@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: core-only
+            extra: "OFF"
+            app: "OFF"
+            ui: "OFF"
+            software: "OFF"
+            metal: "OFF"
+          - name: core-plus-app
+            extra: "ON"
+            app: "ON"
+            ui: "OFF"
+            software: "OFF"
+            metal: "OFF"
+          - name: full-software-ui
+            extra: "ON"
+            app: "ON"
+            ui: "ON"
+            software: "ON"
+            metal: "OFF"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake
+
+      - name: Configure (${{ matrix.config.name }})
+        run: |
+          cmake -S . -B build-${{ matrix.config.name }} -G Ninja \
+            -DPATHSPACE_ENABLE_EXTRA=${{ matrix.config.extra }} \
+            -DPATHSPACE_ENABLE_APP=${{ matrix.config.app }} \
+            -DPATHSPACE_ENABLE_UI=${{ matrix.config.ui }} \
+            -DPATHSPACE_UI_SOFTWARE=${{ matrix.config.software }} \
+            -DPATHSPACE_UI_METAL=${{ matrix.config.metal }} \
+            -DBUILD_PATHSPACE_EXAMPLES=OFF
+
+      - name: Build (${{ matrix.config.name }})
+        run: cmake --build build-${{ matrix.config.name }}
+
+      - name: Test (${{ matrix.config.name }})
+        run: ctest --test-dir build-${{ matrix.config.name }} --output-on-failure

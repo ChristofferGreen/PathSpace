@@ -40,20 +40,20 @@ FetchContent_MakeAvailable(alpaca)
 
 # Indicate that we only want to compile source files into a library
 add_library(PathSpace
+    path/Path.cpp
+    path/ConcreteName.cpp
+    path/ConcretePathIterator.cpp
+    path/ConcretePath.cpp
+    path/GlobName.cpp
+    path/GlobPathIterator.cpp
+    path/GlobPath.cpp
+    path/UnvalidatedPath.cpp
     path/Iterator.cpp
     path/utils.cpp
     core/NodeData.cpp
     core/WaitMap.cpp
     core/WatchRegistry.hpp
     core/Leaf.cpp
-    layer/PathView.cpp
-    layer/io/PathFileSystem.cpp
-    layer/io/PathIOGamepad.cpp
-    layer/io/PathIOPointerMixer.cpp
-    layer/io/PathIOMouse.cpp
-    layer/io/PathIOKeyboard.cpp
-    layer/io/PathIODeviceDiscovery.cpp
-    layer/io/PathIOStdOut.cpp
     task/Task.cpp
     task/TaskPool.cpp
     task/TaskStateAtomic.cpp
@@ -63,31 +63,80 @@ add_library(PathSpace
     PathSpace.cpp
 )
 
+if(PATHSPACE_ENABLE_APP)
+    target_sources(PathSpace PRIVATE app/AppPaths.cpp)
+    target_compile_definitions(PathSpace PUBLIC PATHSPACE_ENABLE_APP=1)
+else()
+    target_compile_definitions(PathSpace PUBLIC PATHSPACE_ENABLE_APP=0)
+endif()
+
+if(PATHSPACE_ENABLE_EXTRA)
+    target_sources(PathSpace PRIVATE
+        layer/PathView.cpp
+        layer/io/PathFileSystem.cpp
+        layer/io/PathIOGamepad.cpp
+        layer/io/PathIOPointerMixer.cpp
+        layer/io/PathIOMouse.cpp
+        layer/io/PathIOKeyboard.cpp
+        layer/io/PathIODeviceDiscovery.cpp
+        layer/io/PathIOStdOut.cpp
+    )
+    target_compile_definitions(PathSpace PUBLIC PATHSPACE_ENABLE_EXTRA=1)
+else()
+    target_compile_definitions(PathSpace PUBLIC PATHSPACE_ENABLE_EXTRA=0)
+endif()
+
+if(PATHSPACE_ENABLE_UI)
+    target_sources(PathSpace PRIVATE
+        ui/Helpers.cpp
+        ui/Builders.cpp
+    )
+    target_compile_definitions(PathSpace PUBLIC PATHSPACE_ENABLE_UI=1)
+    if(PATHSPACE_UI_SOFTWARE)
+        target_compile_definitions(PathSpace PUBLIC PATHSPACE_UI_SOFTWARE=1)
+    else()
+        target_compile_definitions(PathSpace PUBLIC PATHSPACE_UI_SOFTWARE=0)
+    endif()
+    if(PATHSPACE_UI_METAL)
+        target_compile_definitions(PathSpace PUBLIC PATHSPACE_UI_METAL=1)
+    else()
+        target_compile_definitions(PathSpace PUBLIC PATHSPACE_UI_METAL=0)
+    endif()
+else()
+    target_compile_definitions(PathSpace PUBLIC
+        PATHSPACE_ENABLE_UI=0
+        PATHSPACE_UI_SOFTWARE=0
+        PATHSPACE_UI_METAL=0
+    )
+endif()
+
 # macOS backend options and integration
 if(APPLE)
-    # Option to enable CGEventTap-based mouse/keyboard OS backend in providers
-    option(PATHSPACE_ENABLE_MOUSE_OS_TAP "Enable macOS CGEventTap backend in IO providers" OFF)
+    if(PATHSPACE_ENABLE_EXTRA)
+        # Option to enable CGEventTap-based mouse/keyboard OS backend in providers
+        option(PATHSPACE_ENABLE_MOUSE_OS_TAP "Enable macOS CGEventTap backend in IO providers" OFF)
 
-    # Define PATHIO_BACKEND_MACOS only when OS backends are enabled (prevents CGEventTap code in unit tests)
-    if(PATHSPACE_ENABLE_MOUSE_OS_TAP)
-        target_compile_definitions(PathSpace PRIVATE PATHIO_BACKEND_MACOS=1)
-    endif()
+        # Define PATHIO_BACKEND_MACOS only when OS backends are enabled (prevents CGEventTap code in unit tests)
+        if(PATHSPACE_ENABLE_MOUSE_OS_TAP)
+            target_compile_definitions(PathSpace PRIVATE PATHIO_BACKEND_MACOS=1)
+        endif()
 
-    # Add ObjC++ GameController helper and enable ARC (always safe; uses weak imports and dynamic selectors)
-    target_sources(PathSpace PRIVATE layer/macos/GameControllerHaptics.mm)
-    set_source_files_properties(layer/macos/GameControllerHaptics.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+        # Add ObjC++ GameController helper and enable ARC (always safe; uses weak imports and dynamic selectors)
+        target_sources(PathSpace PRIVATE layer/macos/GameControllerHaptics.mm)
+        set_source_files_properties(layer/macos/GameControllerHaptics.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 
-    # Link required Apple frameworks
-    # - Foundation, Cocoa for Objective‑C runtime and windowing helpers (used by examples and helpers)
-    # - GameController for haptics/input helper (weak/dynamic – linking is safe if framework present)
-    # - ApplicationServices only when CGEventTap backend is enabled (provides CGEventTap symbols)
-    target_link_libraries(PathSpace PRIVATE
-        "-framework Foundation"
-        "-framework Cocoa"
-        "-framework GameController"
-    )
-    if(PATHSPACE_ENABLE_MOUSE_OS_TAP)
-        target_link_libraries(PathSpace PRIVATE "-framework ApplicationServices")
+        # Link required Apple frameworks
+        # - Foundation, Cocoa for Objective‑C runtime and windowing helpers (used by examples and helpers)
+        # - GameController for haptics/input helper (weak/dynamic – linking is safe if framework present)
+        # - ApplicationServices only when CGEventTap backend is enabled (provides CGEventTap symbols)
+        target_link_libraries(PathSpace PRIVATE
+            "-framework Foundation"
+            "-framework Cocoa"
+            "-framework GameController"
+        )
+        if(PATHSPACE_ENABLE_MOUSE_OS_TAP)
+            target_link_libraries(PathSpace PRIVATE "-framework ApplicationServices")
+        endif()
     endif()
 endif()
 
@@ -120,7 +169,20 @@ target_link_libraries(PathSpace
     # foonathan_memory
 )
 
-set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "PathSpace.hpp;layer/io/PathIOMouse.hpp;layer/io/PathIOKeyboard.hpp;layer/io/PathIOStdOut.hpp;layer/PathAlias.hpp;layer/io/PathIODeviceDiscovery.hpp;layer/io/PathIOPointerMixer.hpp;layer/io/PathIOGamepad.hpp")
+set(_pathspace_public_headers "PathSpace.hpp")
+if(PATHSPACE_ENABLE_EXTRA)
+    list(APPEND _pathspace_public_headers
+        layer/io/PathIOMouse.hpp
+        layer/io/PathIOKeyboard.hpp
+        layer/io/PathIOStdOut.hpp
+        layer/PathAlias.hpp
+        layer/io/PathIODeviceDiscovery.hpp
+        layer/io/PathIOPointerMixer.hpp
+        layer/io/PathIOGamepad.hpp
+    )
+endif()
+list(JOIN _pathspace_public_headers ";" _pathspace_public_header_string)
+set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "${_pathspace_public_header_string}")
 
 install(TARGETS PathSpace
     ARCHIVE DESTINATION lib

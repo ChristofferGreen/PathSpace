@@ -7,16 +7,6 @@ add_executable(PathSpaceTests
   unit/core/test_WaitMap.cpp
   unit/type/test_InputMetadata.cpp
   unit/type/test_SlidingBuffer.cpp
-  unit/layer/test_PathView.cpp
-  unit/layer/test_PathFileSystem.cpp
-  unit/layer/test_PathIO.cpp
-  unit/layer/test_PathIODevices.cpp
-  unit/layer/test_PathIOStdOut.cpp
-  unit/layer/test_PathAlias.cpp
-  unit/layer/test_PathIODeviceDiscovery.cpp
-  unit/layer/test_PathIOPointerMixer.cpp
-  unit/layer/test_PathIOGamepad.cpp
-  unit/layer/test_PointerDefault_Composition.cpp
   unit/ext/test_alpaca.cpp
   unit/task/test_TaskPool.cpp
   unit/test_PathSpace_read.cpp
@@ -25,8 +15,32 @@ add_executable(PathSpaceTests
   unit/test_PathSpace_insert.cpp
   unit/test_PathSpace_multithreading.cpp
   unit/test_PathSpace_execution.cpp
+  unit/path/test_UnvalidatedPath.cpp
   test_main.cpp
 )
+
+if(PATHSPACE_ENABLE_APP)
+  target_sources(PathSpaceTests PRIVATE app/test_AppPaths.cpp)
+endif()
+
+if(PATHSPACE_ENABLE_EXTRA)
+  target_sources(PathSpaceTests PRIVATE
+    unit/layer/test_PathView.cpp
+    unit/layer/test_PathFileSystem.cpp
+    unit/layer/test_PathIO.cpp
+    unit/layer/test_PathIODevices.cpp
+    unit/layer/test_PathIOStdOut.cpp
+    unit/layer/test_PathAlias.cpp
+    unit/layer/test_PathIODeviceDiscovery.cpp
+    unit/layer/test_PathIOPointerMixer.cpp
+    unit/layer/test_PathIOGamepad.cpp
+    unit/layer/test_PointerDefault_Composition.cpp
+  )
+endif()
+
+if(PATHSPACE_ENABLE_UI)
+  target_sources(PathSpaceTests PRIVATE ui/test_SceneHelpers.cpp)
+endif()
 
 # Opt-in debug logging for tests
 option(PATHSPACE_ENABLE_LOG_DEBUG "Enable SP_LOG_DEBUG logging" OFF)

@@ -1087,9 +1087,10 @@ Responsibilities:
 
 Helper API (schema-as-code; returns canonical absolute paths; excerpt):
 ```cpp
-namespace SP::ui {
+namespace SP::UI {
 
 using AppRoot = std::string;
+using UnvalidatedPathView = SP::UnvalidatedPathView;
 
 struct SceneParams    { std::string name; std::string description; };
 enum class RendererKind { Software2D, Metal2D, Vulkan2D };
@@ -1098,7 +1099,7 @@ struct SurfaceDesc    { /* backend, size, format, colorSpace, etc. */ };
 struct SurfaceParams  { std::string name; SurfaceDesc desc; std::string renderer; };
 struct WindowParams   { std::string name, title; int width=0, height=0; float scale=1.0f; std::string background; };
 
-Expected<std::string> resolve_app_relative(AppRoot const& appRoot, std::string_view maybeRel);
+Expected<std::string> resolve_app_relative(AppRoot const& appRoot, UnvalidatedPathView maybeRel);
 std::string derive_target_base(AppRoot const& appRoot, std::string const& rendererPathAbs, std::string const& targetPathAbs);
 
 Expected<std::string> create_scene   (PathSpace&, AppRoot const&, SceneParams const&);
@@ -1134,7 +1135,7 @@ struct RendererCaps {};
 Expected<RendererCaps> get_renderer_caps(PathSpace const&, AppRoot const&, std::string rendererPathOrName);
 Expected<SurfaceDesc>  get_surface_desc (PathSpace const&, AppRoot const&, std::string surfacePathOrName);
 
-} // namespace SP::ui
+} // namespace SP::UI
 ```
 
 Source layout (proposed):
@@ -1153,11 +1154,12 @@ Source layout (proposed):
 
 CMake options (single library, feature-gated):
 ```cmake
-option(PATHSPACE_ENABLE_UI "Build UI (surfaces/renderers/windows)" ON)
+option(PATHSPACE_ENABLE_UI "Build UI (surfaces/renderers/windows)" OFF)
 option(PATHSPACE_UI_SOFTWARE "Enable software surface" ON)
-option(PATHSPACE_UI_METAL "Enable Metal surface/presenter (Apple)" ON)
+option(PATHSPACE_UI_METAL "Enable Metal surface/presenter (Apple)" ${APPLE})
 
 if(PATHSPACE_ENABLE_UI)
+  target_compile_definitions(PathSpace PUBLIC PATHSPACE_ENABLE_UI=1)
   target_sources(PathSpace PRIVATE
     include/pathspace/ui/Builders.hpp
     src/pathspace/ui/renderer/PathRenderer2D.cpp
@@ -1169,12 +1171,16 @@ if(PATHSPACE_ENABLE_UI)
     src/pathspace/ui/surface/SurfaceTypes.hpp
   )
   if(PATHSPACE_UI_SOFTWARE)
+    target_compile_definitions(PathSpace PUBLIC PATHSPACE_UI_SOFTWARE=1)
     target_sources(PathSpace PRIVATE
       src/pathspace/ui/surface/PathSurfaceSoftware.cpp
       src/pathspace/ui/surface/PathSurfaceSoftware.hpp
     )
+  else()
+    target_compile_definitions(PathSpace PUBLIC PATHSPACE_UI_SOFTWARE=0)
   endif()
   if(APPLE AND PATHSPACE_UI_METAL)
+    target_compile_definitions(PathSpace PUBLIC PATHSPACE_UI_METAL=1)
     enable_language(OBJCXX)
     target_sources(PathSpace PRIVATE
       src/pathspace/ui/surface/PathSurfaceMetal.mm
@@ -1190,7 +1196,15 @@ if(PATHSPACE_ENABLE_UI)
         PROPERTIES COMPILE_FLAGS "-fobjc-arc"
       )
     endif()
+  else()
+    target_compile_definitions(PathSpace PUBLIC PATHSPACE_UI_METAL=0)
   endif()
+else()
+  target_compile_definitions(PathSpace PUBLIC
+    PATHSPACE_ENABLE_UI=0
+    PATHSPACE_UI_SOFTWARE=0
+    PATHSPACE_UI_METAL=0
+  )
 endif()
 ```
 
@@ -1200,7 +1214,7 @@ endif()
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/Builders.hpp>
 using namespace SP;
-using namespace SP::ui;
+using namespace SP::UI;
 
 int main() {
   PathSpace space;
@@ -2098,9 +2112,9 @@ C++ types per key:
   - `bool suboptimal`
 
 App-relative resolution helpers:
-- `is_app_relative(std::string_view)`
-- `resolve_app_relative(AppRoot, std::string_view)`
-- `ensure_within_app(AppRoot, std::string_view resolved)`
+- `is_app_relative(UnvalidatedPathView)`
+- `resolve_app_relative(AppRoot, UnvalidatedPathView)`
+- `ensure_within_app(AppRoot, ConcretePathView resolved)`
 
 Versioning policy:
 - Settings and descriptors: unversioned at the path level (pure C++ in-process; producers/consumers recompile together). Keep the `V1` suffix in C++ type names for source-level evolution
@@ -2176,6 +2190,7 @@ Invariants:
 
 - Update `docs/AI_ARCHITECTURE.md` when changes affect core behavior (paths, NodeData, WaitMap, TaskPool, serialization). Keep examples and path references stable; if files move, update references in the same change.
 - See `docs/AI_ARCHITECTURE.md#ui--rendering` for the current UI/Rendering overview and Mermaid diagrams; keep the sources in `docs/images/` synchronized when the path contracts evolve.
+- Implementation roadmap: `docs/SceneGraphImplementationPlan.md` details the phased delivery plan and test strategy for this design.
 
 ## TODO — Clarifications and Follow-ups
 

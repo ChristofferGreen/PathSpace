@@ -1,0 +1,187 @@
+#pragma once
+
+#include <pathspace/PathSpace.hpp>
+#include <pathspace/app/AppPaths.hpp>
+#include <pathspace/task/Future.hpp>
+
+#include <chrono>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+
+namespace SP::UI::Builders {
+
+using AppRootPath = SP::App::AppRootPath;
+using AppRootPathView = SP::App::AppRootPathView;
+using ConcretePath = SP::ConcretePathString;
+using ConcretePathView = SP::ConcretePathStringView;
+using UnvalidatedPathView = SP::UnvalidatedPathView;
+using ScenePath = ConcretePath;
+using RendererPath = ConcretePath;
+using SurfacePath = ConcretePath;
+using WindowPath = ConcretePath;
+
+struct SceneParams {
+    std::string name;
+    std::string description;
+};
+
+struct SceneRevisionDesc {
+    uint64_t revision = 0;
+    std::chrono::system_clock::time_point published_at{};
+    std::string author;
+};
+
+struct RendererParams {
+    std::string name;
+    std::string description;
+};
+
+enum class RendererKind {
+    Software2D,
+    Metal2D,
+    Vulkan2D,
+};
+
+struct SurfaceDesc {
+    struct SizePx {
+        int width = 0;
+        int height = 0;
+    } size_px;
+    float dpi_scale = 1.0f;
+    std::string color_space; // e.g. "srgb8"
+};
+
+struct SurfaceParams {
+    std::string name;
+    SurfaceDesc desc;
+    std::string renderer; // name or absolute path
+};
+
+struct WindowParams {
+    std::string name;
+    std::string title;
+    int width = 0;
+    int height = 0;
+    float scale = 1.0f;
+    std::string background;
+};
+
+struct RenderSettings {
+    // TODO: expand with actual render settings fields.
+};
+
+enum class ParamUpdateMode {
+    Queue,
+    ReplaceActive,
+};
+
+auto resolve_app_relative(AppRootPathView root,
+                          UnvalidatedPathView maybeRelative) -> SP::Expected<ConcretePath>;
+
+auto derive_target_base(AppRootPathView root,
+                        ConcretePathView rendererPath,
+                        ConcretePathView targetPath) -> SP::Expected<ConcretePath>;
+
+namespace Scene {
+
+auto Create(PathSpace& space,
+             AppRootPathView appRoot,
+             SceneParams const& params) -> SP::Expected<ScenePath>;
+
+auto EnsureAuthoringRoot(PathSpace& space,
+                          ScenePath const& scenePath) -> SP::Expected<void>;
+
+auto PublishRevision(PathSpace& space,
+                      ScenePath const& scenePath,
+                      SceneRevisionDesc const& revision,
+                      std::span<std::byte const> drawableBucket,
+                      std::span<std::byte const> metadata) -> SP::Expected<void>;
+
+auto ReadCurrentRevision(PathSpace const& space,
+                          ScenePath const& scenePath) -> SP::Expected<SceneRevisionDesc>;
+
+auto WaitUntilReady(PathSpace& space,
+                     ScenePath const& scenePath,
+                     std::chrono::milliseconds timeout) -> SP::Expected<void>;
+
+} // namespace Scene
+
+namespace Renderer {
+
+auto Create(PathSpace& space,
+             AppRootPathView appRoot,
+             RendererParams const& params,
+             RendererKind kind) -> SP::Expected<RendererPath>;
+
+auto ResolveTargetBase(PathSpace const& space,
+                        AppRootPathView appRoot,
+                        RendererPath const& rendererPath,
+                        std::string_view targetSpec) -> SP::Expected<ConcretePath>;
+
+auto UpdateSettings(PathSpace& space,
+                     ConcretePathView targetPath,
+                     RenderSettings const& settings) -> SP::Expected<void>;
+
+auto ReadSettings(PathSpace const& space,
+                   ConcretePathView targetPath) -> SP::Expected<RenderSettings>;
+
+auto TriggerRender(PathSpace& space,
+                    ConcretePathView targetPath) -> SP::Expected<SP::FutureAny>;
+
+} // namespace Renderer
+
+namespace Surface {
+
+auto Create(PathSpace& space,
+             AppRootPathView appRoot,
+             SurfaceParams const& params) -> SP::Expected<SurfacePath>;
+
+auto SetScene(PathSpace& space,
+               SurfacePath const& surfacePath,
+               ScenePath const& scenePath) -> SP::Expected<void>;
+
+auto RenderOnce(PathSpace& space,
+                 SurfacePath const& surfacePath,
+                 std::optional<RenderSettings> settingsOverride = std::nullopt) -> SP::Expected<SP::FutureAny>;
+
+} // namespace Surface
+
+namespace Window {
+
+auto Create(PathSpace& space,
+             AppRootPathView appRoot,
+             WindowParams const& params) -> SP::Expected<WindowPath>;
+
+auto AttachSurface(PathSpace& space,
+                    WindowPath const& windowPath,
+                    std::string_view viewName,
+                    SurfacePath const& surfacePath) -> SP::Expected<void>;
+
+auto Present(PathSpace& space,
+              WindowPath const& windowPath,
+              std::string_view viewName) -> SP::Expected<void>;
+
+} // namespace Window
+
+namespace Diagnostics {
+
+struct TargetMetrics {
+    uint64_t frame_index = 0;
+    uint64_t revision = 0;
+    double render_ms = 0.0;
+    double present_ms = 0.0;
+    bool last_present_skipped = false;
+    std::string last_error;
+};
+
+auto ReadTargetMetrics(PathSpace const& space,
+                        ConcretePathView targetPath) -> SP::Expected<TargetMetrics>;
+
+auto ClearTargetError(PathSpace& space,
+                       ConcretePathView targetPath) -> SP::Expected<void>;
+
+} // namespace Diagnostics
+
+} // namespace SP::UI::Builders

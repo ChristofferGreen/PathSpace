@@ -36,6 +36,13 @@ endif()
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# UI/renderer feature gating
+option(PATHSPACE_ENABLE_UI "Build UI (surfaces/renderers/windows)" OFF)
+option(PATHSPACE_UI_SOFTWARE "Enable software surface backend" ON)
+option(PATHSPACE_UI_METAL "Enable Metal surface/presenter (Apple)" ${APPLE})
+option(PATHSPACE_ENABLE_APP "Build app-layer helpers" ON)
+option(PATHSPACE_ENABLE_EXTRA "Build optional runtime extras (PathIO providers, discovery, etc.)" ON)
+
 # Add options for sanitizers
 option(ENABLE_THREAD_SANITIZER "Enable Thread Sanitizer" OFF)
 option(ENABLE_ADDRESS_SANITIZER "Enable Address Sanitizer" OFF)
