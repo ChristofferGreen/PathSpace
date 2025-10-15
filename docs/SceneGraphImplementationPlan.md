@@ -31,6 +31,12 @@ Each workstream lands independently but respects shared contracts (paths, atomic
 - Usage: SceneGraph code consumes these helpers exclusively instead of embedding path literals; tests mock them to isolate higher layers.
 - Future additions (Metal/HTML adapters) extend these namespaces rather than reaching into core PathSpace directly.
 
+## Immediate Next Steps
+- Spin up Phase 3 by drafting the golden framebuffer comparisons and failure-handling tests, then implementing `PathRenderer2D` with RenderSettings adoption, color management defaults, mandated per-frame metrics, and looped test validation.
+- For Phase 4 follow-ups, prepare end-to-end scene→render→present scenarios, wire presenters through `Window::Present`, surface progressive-mode metrics, codify seqlock/deadline tests, and rerun the loop harness once integrations land.
+- Begin Phase 5 test authoring for hit ordering, clip-aware picking, focus routing, and event delivery latency; follow with DrawableBucket-backed picking and wait/notify integration for dirty markers and auto-render scheduling.
+- Line up Phase 6 diagnostics/tooling work: extend error/metrics coverage, normalize `PathSpaceError` reporting, expand scripts for UI log capture, and draft the debugging playbook updates before the next hardening pass.
+
 ## Phase Plan
 ### Phase 0 — Foundations (1 sprint)
 - Audit existing `PathSpace` helpers for app-relative enforcement; add shared utilities if missing.
@@ -52,9 +58,7 @@ Completed:
 - ✅ (October 14, 2025) Added doctests in `tests/ui/test_SceneSnapshotBuilder.cpp` covering round-trip decoding plus retention under burst publishes.
 - ✅ (October 15, 2025) Added long-running publish/prune stress coverage with metrics validation and GC metric emission (retained/evicted/last_revision/total_fingerprint_count) in `tests/ui/test_SceneSnapshotBuilder.cpp`.
 - ✅ (October 15, 2025) Snapshot metadata now records resource fingerprints per revision; GC metrics aggregate total fingerprint counts for residency planning.
-
-Remaining:
-- Document the finalized binary split (drawables.bin, transforms.bin, etc.) once the on-disk format switches from the interim Alpaca blob.
+- ✅ (October 15, 2025) Documented the finalized binary artifact split (`drawables.bin`, `transforms.bin`, `bounds.bin`, `state.bin`, `cmd-buffer.bin`, index files) and retired the Alpaca fallback in `docs/AI_ARCHITECTURE.md` / `docs/AI_Plan_SceneGraph_Renderer.md`.
 
 ### Phase 3 — Software Renderer Core (2 sprints)
 - Draft golden framebuffer comparisons, render/present concurrency loops, and failure-handling tests up front.

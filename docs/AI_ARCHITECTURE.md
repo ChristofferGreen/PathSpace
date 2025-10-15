@@ -467,7 +467,7 @@ Atomicity rules:
 ### Snapshot integration
 - Snapshot builder publishes immutable scene revisions beneath `scenes/<id>/builds/<revision>/...` and atomically updates `current_revision` when a revision is ready.
 - Renderer targets resolve the scene by reading `targets/<kind>/<name>/scene` and load the referenced `current_revision`. They bump snapshot reference counts during adoption and release once the frame completes (see `docs/AI_Plan_SceneGraph_Renderer.md`, “Decision: Snapshot retention”).
-- The C++ helper (`SceneSnapshotBuilder`, added October 14, 2025) clamps drawable SoA integrity, serializes buckets/metadata via Alpaca before handing them to `Builders::Scene::PublishRevision`, records a rolling index at `meta/snapshots/index`, and enforces the default retention policy (≥3 revisions or ≥2 minutes) by pruning stale entries while preserving `current_revision`.
+- The C++ helper (`SceneSnapshotBuilder`, added October 14, 2025) clamps drawable SoA integrity and now emits structured binary artifacts (`drawables.bin`, `transforms.bin`, `bounds.bin`, `state.bin`, `cmd-buffer.bin`, plus optional index files) under `scenes/<id>/builds/<revision>/bucket/`. A compact binary manifest stored at `drawable_bucket` records counts and layer ids for consumers. After writing the files it atomically publishes via `Builders::Scene::PublishRevision`, maintains a rolling index at `meta/snapshots/index`, and enforces the default retention policy (≥3 revisions or ≥2 minutes) while preserving `current_revision`.
 - Metrics for snapshot GC (`retained`, `evicted`, `last_revision`, `total_fingerprint_count`) live under `scenes/<id>/metrics/snapshots` so render loops can surface health in UI tooling.
 
 ### HTML adapter modes

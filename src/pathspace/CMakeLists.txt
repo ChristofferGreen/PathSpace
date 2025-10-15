@@ -93,6 +93,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/SceneSnapshotBuilder.cpp
         ui/ProgressiveSurfaceBuffer.cpp
         ui/PathSurfaceSoftware.cpp
+        ui/PathRenderer2D.cpp
         ui/PathWindowView.cpp
     )
     target_compile_definitions(PathSpace PUBLIC PATHSPACE_ENABLE_UI=1)

@@ -371,7 +371,7 @@ On-disk schema (per scene, per revision)
   - meta.json             — small JSON with revision metadata and aggregate authoring-map statistics
   - trace/tlas.bin        — optional (software path tracer; instances carry AABBs)
   - trace/blas.bin        — optional (software path tracer; geometry bounds/AABBs per BLAS)
-- Implementation status (October 15, 2025): the in-repo `SceneSnapshotBuilder` now emits dedicated `*.bin` payloads (`drawables.bin`, `transforms.bin`, `bounds.bin`, `state.bin`, `cmd-buffer.bin`, per-layer index files) under each revision, while `drawable_bucket` carries a small manifest for compatibility with existing helpers.
+- Manifest: `scenes/<sid>/builds/<rev>/drawable_bucket` stores a compact binary manifest (version, drawable/command counts, layer ids) that loader helpers read before mapping the individual `*.bin` files. This manifest replaces the earlier Alpaca blob fallback; all consumers must migrate to the split-file schema.
 - Binary headers:
   - All *.bin start with: magic(4), version(u32), endianness(u8), reserved, counts/offsets(u64), checksum(u64)
 - Per-layer index naming/format:
@@ -1607,7 +1607,9 @@ Cross-references:
 ## Decision: Lighting and shadows (resolved)
 
 Summary:
-- Hybrid pipeline: software microtriangle rasterization for visibility with per-vertex irradiance computed by a GPU ray tracer. Triangles are tessellated to approximately one pixel in screen space per frame; lighting is computed in the GPU RT stage and stored into a vertex lighting buffer, then the software raster interpolates vertex lighting to pixels. Prefer hardware ray tracing when available; otherwise either disable RT lighting or use a reduced compute BVH fallback if configured.
+- Lighting will ultimately rely on ray queries against the authoritative surface representation with a progressive pixel cache. The earlier “microtriangle tessellation” concept has been superseded by this approach.
+- Detailed rollout, cache mechanics, and open questions live in `docs/surface_ray_cache_plan.md`; keep this section and that plan in sync as decisions evolve.
+- Implementation sequencing: finish the baseline pixel presenter (simple “set pixel color” per drawable) before layering in the ray cache and RT lighting work. The plan document acts as the blueprint once we reach that phase.
 
 Guiding principles:
 - All drawables—even traditional UI widgets—are authored and rendered as true 3D assets; no 2.5D exceptions or special UI lighting paths.
@@ -1638,6 +1640,7 @@ Model (v1):
   - UI geometry: primarily SDF-defined primitives (buttons, window chrome, etc.) are converted to triangle meshes via isosurface contouring during snapshot build. We use adaptive marching on implicit fields to produce well-conditioned triangles that target ≈ microtriEdgePx after subsequent screen-space tessellation. Each generated vertex receives a stable vertexId derived from (sourceSdfId, cellCoord, isoEdgeIndex).
   - Non-UI geometry: represented as tetrahedral meshes by default. Surface triangles for raster visibility are extracted from the tet boundary; the full tet mesh is used by the GPU RT integrator for robust interior traversal and media transitions (consistent with the tetrahedral acceleration section).
   - The snapshot builder emits the per-view microtriangle buffers from these sources with stable vertexIds enabling temporal accumulation and reuse.
+  - **Canonical form:** regardless of authoring primitive (SDF, mesh, analytic surface), we convert to tetrahedral volume representations before any ray queries so the renderer, cache, and RT kernels operate on a unified intersection kernel.
 
 Approach:
 - Microtri tessellation (CPU):
@@ -2188,7 +2191,7 @@ Cross-references:
 - `clear_color: [float,4]`
 - `camera: { enabled: bool, projection: Orthographic | Perspective, zNear:float, zFar:float }`
 - `debug: { enabled: bool, flags: uint32 }`
-- `microtri_rt: { enabled: bool, budget:{microtri_edge_px: float, max_microtris_per_frame: uint32, rays_per_vertex: uint32}, path:{max_bounces:uint32, rr_start_bounce:uint32, allow_caustics: bool}, use_hardware_rt: {Auto|ForceOn|ForceOff}, environment:{hdr_path:string,intensity:float,rotation:float}, clamp:{direct:float, indirect:float, has_direct:bool, has_indirect:bool}, progressive_accumulation: bool, vertex_accum_half_life: float, seed: uint64 }`
+- `ray_cache: { budget:{primary_rays_per_frame:uint32, refinement_pixels_per_frame:uint32, rt_bounces_per_frame:uint32}, path:{max_bounces:uint32, rr_start_bounce:uint32}, cache:{search_radius_px:float, invalidate_on_epoch_change:bool}, seed:uint64 }`
 
 Invariants:
 - Writers replace the entire `RenderSettings` at `settings` in a single atomic write (single-path whole-object)
