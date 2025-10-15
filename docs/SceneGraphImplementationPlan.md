@@ -32,7 +32,8 @@ Each workstream lands independently but respects shared contracts (paths, atomic
 - Future additions (Metal/HTML adapters) extend these namespaces rather than reaching into core PathSpace directly.
 
 ## Immediate Next Steps
-- Spin up Phase 3 by drafting the golden framebuffer comparisons and failure-handling tests, then implementing `PathRenderer2D` with RenderSettings adoption, color management defaults, mandated per-frame metrics, and looped test validation.
+- Wire `PathRenderer2D` into the Builders render flow (`Renderer::TriggerRender`, `Surface::RenderOnce`, `Window::Present`) so PathSpace executions drive renders end-to-end; add regression tests for the synchronous path.
+- Expand `PathRenderer2D` beyond bounding-box fills: interpret drawable command streams, honor layer/opaque vs alpha ordering, and validate color-management paths (with failure-handling tests and goldens).
 - For Phase 4 follow-ups, prepare end-to-end scene→render→present scenarios, wire presenters through `Window::Present`, surface progressive-mode metrics, codify seqlock/deadline tests, and rerun the loop harness once integrations land.
 - Begin Phase 5 test authoring for hit ordering, clip-aware picking, focus routing, and event delivery latency; follow with DrawableBucket-backed picking and wait/notify integration for dirty markers and auto-render scheduling.
 - Line up Phase 6 diagnostics/tooling work: extend error/metrics coverage, normalize `PathSpaceError` reporting, expand scripts for UI log capture, and draft the debugging playbook updates before the next hardening pass.
@@ -61,11 +62,14 @@ Completed:
 - ✅ (October 15, 2025) Documented the finalized binary artifact split (`drawables.bin`, `transforms.bin`, `bounds.bin`, `state.bin`, `cmd-buffer.bin`, index files) and retired the Alpaca fallback in `docs/AI_ARCHITECTURE.md` / `docs/AI_Plan_SceneGraph_Renderer.md`.
 
 ### Phase 3 — Software Renderer Core (2 sprints)
+Completed:
+- ✅ (October 15, 2025) `PathRenderer2D` MVP renders axis-aligned bounding boxes from snapshot bounds, resets `lastError`, publishes `drawableCount`, and ships doctest coverage for success/error paths (`PathRenderer2D` suite).
+
+Remaining:
 - Draft golden framebuffer comparisons, render/present concurrency loops, and failure-handling tests up front.
-- Build `PathRenderer2D` reading adopted snapshots, partitioning opaque/alpha passes, and writing outputs under `targets/<tid>/output/v1/*`.
-- Implement RenderSettings adoption (single-path atomic replace) and per-frame metrics.
+- Build `PathRenderer2D` to interpret drawable command streams, partition opaque/alpha passes, and write outputs under `targets/<tid>/output/v1/*`.
+- Implement RenderSettings adoption (single-path atomic replace) and per-frame/diagnostic metrics (cull/sort counters, timings).
 - Integrate color management defaults (linear working space, sRGB encode) and pipeline flags.
-- Populate the mandated metrics fields (`frameIndex`, `revision`, `renderMs`, `lastError`, cull/sort counters) and verify via tests.
 - Re-run the looped test suite and inspect goldens post implementation.
 
 ### Phase 4 — Surfaces, Presenters, and Progressive Mode (2 sprints)

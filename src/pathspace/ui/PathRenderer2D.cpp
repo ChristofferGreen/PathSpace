@@ -63,13 +63,13 @@ auto to_byte(float value) -> std::uint8_t {
     return static_cast<std::uint8_t>(std::lround(clamped * 255.0f));
 }
 
-auto encode_clear_color(Builders::SurfaceDesc const& desc,
-                        std::array<float, 4> const& clear_color) -> std::array<std::uint8_t, 4> {
-    float alpha = clamp_unit(clear_color[3]);
+auto encode_color(Builders::SurfaceDesc const& desc,
+                  std::array<float, 4> const& rgba) -> std::array<std::uint8_t, 4> {
+    float alpha = clamp_unit(rgba[3]);
 
-    float red = clamp_unit(clear_color[0]);
-    float green = clamp_unit(clear_color[1]);
-    float blue = clamp_unit(clear_color[2]);
+    float red = clamp_unit(rgba[0]);
+    float green = clamp_unit(rgba[1]);
+    float blue = clamp_unit(rgba[2]);
 
     if (desc.premultiplied_alpha) {
         red *= alpha;
@@ -90,6 +90,18 @@ auto set_last_error(PathSpace& space,
                     std::string const& message) -> SP::Expected<void> {
     auto base = std::string(targetPath.getPath()) + "/output/v1/common/lastError";
     return replace_single<std::string>(space, base, message);
+}
+
+auto color_from_drawable(std::uint64_t drawableId) -> std::array<float, 4> {
+    auto r = static_cast<float>(drawableId & 0xFFu) / 255.0f;
+    auto g = static_cast<float>((drawableId >> 8) & 0xFFu) / 255.0f;
+    auto b = static_cast<float>((drawableId >> 16) & 0xFFu) / 255.0f;
+    if (r == 0.0f && g == 0.0f && b == 0.0f) {
+        r = 0.9f;
+        g = 0.9f;
+        b = 0.9f;
+    }
+    return {r, g, b, 1.0f};
 }
 
 } // namespace
@@ -185,7 +197,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         return std::unexpected(make_error(message, SP::Error::Code::UnknownError));
     }
 
-    auto encoded = encode_clear_color(desc, params.settings.clear_color);
+    auto encoded_clear = encode_color(desc, params.settings.clear_color);
     auto const width = desc.size_px.width;
     auto const height = desc.size_px.height;
     auto const stride = static_cast<std::size_t>(surface.row_stride_bytes());
@@ -197,15 +209,70 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         for (int col = 0; col < width; ++col) {
             auto offset = static_cast<std::size_t>(col) * 4u;
             if (is_bgra) {
-                rowPtr[offset + 0] = encoded[2];
-                rowPtr[offset + 1] = encoded[1];
-                rowPtr[offset + 2] = encoded[0];
+                rowPtr[offset + 0] = encoded_clear[2];
+                rowPtr[offset + 1] = encoded_clear[1];
+                rowPtr[offset + 2] = encoded_clear[0];
             } else {
-                rowPtr[offset + 0] = encoded[0];
-                rowPtr[offset + 1] = encoded[1];
-                rowPtr[offset + 2] = encoded[2];
+                rowPtr[offset + 0] = encoded_clear[0];
+                rowPtr[offset + 1] = encoded_clear[1];
+                rowPtr[offset + 2] = encoded_clear[2];
             }
-            rowPtr[offset + 3] = encoded[3];
+            rowPtr[offset + 3] = encoded_clear[3];
+        }
+    }
+
+    std::uint64_t rendered_drawables = 0;
+    if (!bucket->drawable_ids.empty()) {
+        auto const drawable_count = bucket->drawable_ids.size();
+        auto const& bounds = bucket->bounds_boxes;
+        auto const& bounds_valid = bucket->bounds_box_valid;
+        auto const& visibility = bucket->visibility;
+
+        for (std::size_t i = 0; i < drawable_count; ++i) {
+            if (i < visibility.size() && visibility[i] == 0) {
+                continue;
+            }
+            if (i >= bounds.size()) {
+                continue;
+            }
+            if (i < bounds_valid.size() && bounds_valid[i] == 0) {
+                continue;
+            }
+
+            auto const& box = bounds[i];
+            auto const min_x = static_cast<int>(std::floor(box.min[0]));
+            auto const min_y = static_cast<int>(std::floor(box.min[1]));
+            auto const max_x = static_cast<int>(std::ceil(box.max[0]));
+            auto const max_y = static_cast<int>(std::ceil(box.max[1]));
+
+            auto const clipped_min_x = std::clamp(min_x, 0, width);
+            auto const clipped_min_y = std::clamp(min_y, 0, height);
+            auto const clipped_max_x = std::clamp(max_x, 0, width);
+            auto const clipped_max_y = std::clamp(max_y, 0, height);
+
+            if (clipped_min_x >= clipped_max_x || clipped_min_y >= clipped_max_y) {
+                continue;
+            }
+
+            auto color = encode_color(desc, color_from_drawable(bucket->drawable_ids[i]));
+
+            for (int y = clipped_min_y; y < clipped_max_y; ++y) {
+                auto* rowPtr = staging.data() + static_cast<std::size_t>(y) * stride;
+                for (int x = clipped_min_x; x < clipped_max_x; ++x) {
+                    auto offset = static_cast<std::size_t>(x) * 4u;
+                    if (is_bgra) {
+                        rowPtr[offset + 0] = color[2];
+                        rowPtr[offset + 1] = color[1];
+                        rowPtr[offset + 2] = color[0];
+                    } else {
+                        rowPtr[offset + 0] = color[0];
+                        rowPtr[offset + 1] = color[1];
+                        rowPtr[offset + 2] = color[2];
+                    }
+                    rowPtr[offset + 3] = color[3];
+                }
+            }
+            ++rendered_drawables;
         }
     }
 
@@ -234,6 +301,8 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     if (auto status = replace_single<std::string>(space_, metricsBase + "/lastError", std::string{}); !status) {
         return std::unexpected(status.error());
     }
+    auto drawableCountPath = metricsBase + "/drawableCount";
+    (void)replace_single<std::uint64_t>(space_, drawableCountPath, rendered_drawables);
 
     RenderStats stats{};
     stats.frame_index = params.settings.time.frame_index;

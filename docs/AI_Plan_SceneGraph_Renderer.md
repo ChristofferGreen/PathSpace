@@ -465,6 +465,8 @@ Software renderer (2D UI)
   - Linear working space. Inputs decode per asset flags; outputs encode to target color space (e.g., sRGB) with optional dithering for 8-bit.
   - DisplayP3 handling: when assets declare DisplayP3 or targets request DisplayP3, convert between working linear space and the target/display space via ICC or well-defined matrix transforms. For software paths, encode to sRGB or DisplayP3 at store-time; for GPU, use appropriate formats and perform conversion on write-out. Avoid double conversion when using sRGB/linear attachments.
 
+> **Current implementation (October 15, 2025):** `PathRenderer2D` fills the surface clear color and renders visible drawables as axis-aligned bounding boxes derived from snapshot bounds. Command-stream execution (rects, text, images), blending, and clipping are targeted for upcoming iterations.
+
 ### Color management (v1)
 
 Policy
