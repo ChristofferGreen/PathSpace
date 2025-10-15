@@ -185,6 +185,23 @@ auto draw_rect_command(Scene::RectCommand const& command,
                           height);
 }
 
+auto draw_rounded_rect_command(Scene::RoundedRectCommand const& command,
+                               std::vector<float>& buffer,
+                               int width,
+                               int height) -> bool {
+    auto color = make_linear_color(command.color);
+    // TODO: implement analytic rounded corner coverage. For now, fill the bounding box so
+    // contributors can inspect placeholder output while other command kinds are wired up.
+    return draw_rect_area(command.min_x,
+                          command.min_y,
+                          command.max_x,
+                          command.max_y,
+                          color,
+                          buffer,
+                          width,
+                          height);
+}
+
 auto draw_fallback_bounds_box(Scene::DrawableBucketSnapshot const& bucket,
                               std::size_t drawable_index,
                               std::vector<float>& buffer,
@@ -522,24 +539,32 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                                                       SP::Error::Code::InvalidType));
                 }
 
-                switch (kind) {
-                case Scene::DrawCommandKind::Rect: {
-                    auto rect = read_struct<Scene::RectCommand>(bucket->command_payload,
-                                                                payload_offset);
-                    if (draw_rect_command(rect, linear_buffer, width, height)) {
-                        drawable_drawn = true;
-                    }
-                    ++executed_commands;
-                    break;
+            switch (kind) {
+            case Scene::DrawCommandKind::Rect: {
+                auto rect = read_struct<Scene::RectCommand>(bucket->command_payload,
+                                                            payload_offset);
+                if (draw_rect_command(rect, linear_buffer, width, height)) {
+                    drawable_drawn = true;
                 }
-                default:
-                    return std::unexpected(make_error("unsupported draw command kind",
-                                                      SP::Error::Code::InvalidType));
-                }
+                ++executed_commands;
+                break;
             }
+            case Scene::DrawCommandKind::RoundedRect: {
+                auto rounded = read_struct<Scene::RoundedRectCommand>(bucket->command_payload,
+                                                                      payload_offset);
+                if (draw_rounded_rect_command(rounded, linear_buffer, width, height)) {
+                    drawable_drawn = true;
+                }
+                ++executed_commands;
+                break;
+            }
+            default:
+                break;
+            }
+        }
 
-            if (!drawable_drawn) {
-                ++culled_drawables;
+        if (!drawable_drawn) {
+            ++culled_drawables;
                 return {};
             }
         }

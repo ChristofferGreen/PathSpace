@@ -25,6 +25,7 @@ using SP::UI::Scene::DrawableBucketSnapshot;
 using SP::UI::Scene::SceneSnapshotBuilder;
 using SP::UI::Scene::SnapshotPublishOptions;
 using SP::UI::Scene::Transform;
+using SP::UI::Scene::RoundedRectCommand;
 using SP::UI::Scene::RectCommand;
 using SP::UI::Scene::DrawCommandKind;
 
@@ -112,6 +113,14 @@ auto encode_rect_command(RectCommand const& rect,
     bucket.command_payload.resize(offset + sizeof(RectCommand));
     std::memcpy(bucket.command_payload.data() + offset, &rect, sizeof(RectCommand));
     bucket.command_kinds.push_back(static_cast<std::uint32_t>(DrawCommandKind::Rect));
+}
+
+auto encode_rounded_rect_command(RoundedRectCommand const& rounded,
+                                 DrawableBucketSnapshot& bucket) -> void {
+    auto offset = bucket.command_payload.size();
+    bucket.command_payload.resize(offset + sizeof(RoundedRectCommand));
+    std::memcpy(bucket.command_payload.data() + offset, &rounded, sizeof(RoundedRectCommand));
+    bucket.command_kinds.push_back(static_cast<std::uint32_t>(DrawCommandKind::RoundedRect));
 }
 
 struct LinearColor {
@@ -245,14 +254,18 @@ TEST_CASE("render executes rect commands across passes and encodes pixels") {
     };
     encode_rect_command(base_rect, bucket);
 
-    RectCommand overlay_rect{
+    RoundedRectCommand overlay_rect{
         .min_x = 1.0f,
         .min_y = 1.0f,
         .max_x = 3.0f,
         .max_y = 3.0f,
+        .radius_top_left = 0.25f,
+        .radius_top_right = 0.25f,
+        .radius_bottom_right = 0.25f,
+        .radius_bottom_left = 0.25f,
         .color = {0.0f, 1.0f, 0.0f, 0.5f},
     };
-    encode_rect_command(overlay_rect, bucket);
+    encode_rounded_rect_command(overlay_rect, bucket);
 
     auto scenePath = create_scene(fx, "scene_rects", bucket);
     auto rendererPath = create_renderer(fx, "renderer_rects");

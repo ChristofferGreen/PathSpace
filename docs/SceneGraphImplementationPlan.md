@@ -65,13 +65,12 @@ Completed:
 ### Phase 3 — Software Renderer Core (2 sprints)
 Completed:
 - ✅ (October 15, 2025) Builders `Surface::RenderOnce` / `Window::Present` now call `PathRenderer2D` synchronously via `Renderer::TriggerRender`, return ready `FutureAny` handles, and update target metrics; doctests cover the integration path.
-- ✅ (October 15, 2025) `PathRenderer2D` MVP renders axis-aligned bounding boxes from snapshot bounds, resets `lastError`, publishes `drawableCount`, and ships doctest coverage for success/error paths (`PathRenderer2D` suite).
+- ✅ (October 16, 2025) `PathRenderer2D` now executes recorded Rect and RoundedRect commands in linear light, keeps the opaque/alpha partitioning path alive, and publishes drawable/cull/command metrics with doctest coverage for success/error flows.
 
 Remaining:
 - Draft golden framebuffer comparisons, render/present concurrency loops, and failure-handling tests up front.
-- Build `PathRenderer2D` to interpret drawable command streams, partition opaque/alpha passes, and write outputs under `targets/<tid>/output/v1/*`.
-- Implement RenderSettings adoption (single-path atomic replace) and per-frame/diagnostic metrics (cull/sort counters, timings).
-- Integrate color management defaults (linear working space, sRGB encode) and pipeline flags.
+- Extend `PathRenderer2D` beyond Rect/RoundedRect (Image, TextGlyphs, Path, Mesh) with full pipeline flag handling and blend semantics.
+- Add golden framebuffer comparisons plus richer diagnostics (sort keys, overdraw/progressive stats) for regression detection.
 - Re-run the looped test suite and inspect goldens post implementation.
 
 ### Phase 4 — Surfaces, Presenters, and Progressive Mode (2 sprints)
