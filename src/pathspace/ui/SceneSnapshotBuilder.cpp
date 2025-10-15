@@ -16,6 +16,7 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+#include <unordered_set>
 
 namespace SP::UI::Scene {
 
@@ -75,6 +76,10 @@ struct BucketClipHeadsBinary {
 
 struct BucketClipNodesBinary {
     std::vector<ClipNode> clip_nodes;
+};
+
+struct BucketAuthoringMapBinary {
+    std::vector<DrawableAuthoringMapEntry> authoring_map;
 };
 
 struct SnapshotSummary {
@@ -213,11 +218,50 @@ auto ensure_valid_bucket(DrawableBucketSnapshot const& bucket) -> Expected<void>
                                               Error::Code::InvalidType));
         }
     }
+    if (!bucket.authoring_map.empty()) {
+        if (bucket.authoring_map.size() != drawable_size) {
+            return std::unexpected(make_error("authoring_map size mismatch",
+                                              Error::Code::InvalidType));
+        }
+        // Optional sanity: ensure entries follow drawable_ids order
+        for (std::size_t i = 0; i < drawable_size; ++i) {
+            if (bucket.authoring_map[i].drawable_id != 0
+                && bucket.authoring_map[i].drawable_id != bucket.drawable_ids[i]) {
+                return std::unexpected(make_error("authoring_map drawable_id mismatch",
+                                                  Error::Code::InvalidType));
+            }
+        }
+    }
     return {};
 }
 
 auto to_view(std::vector<std::uint8_t> const& bytes) -> std::span<std::byte const> {
     return std::span<std::byte const>{reinterpret_cast<std::byte const*>(bytes.data()), bytes.size()};
+}
+
+auto json_escape(std::string_view input) -> std::string {
+    std::string escaped;
+    escaped.reserve(input.size());
+    for (char ch : input) {
+        switch (ch) {
+        case '\"': escaped += "\\\""; break;
+        case '\\': escaped += "\\\\"; break;
+        case '\b': escaped += "\\b"; break;
+        case '\f': escaped += "\\f"; break;
+        case '\n': escaped += "\\n"; break;
+        case '\r': escaped += "\\r"; break;
+        case '\t': escaped += "\\t"; break;
+        default:
+            if (static_cast<unsigned char>(ch) < 0x20) {
+                char buffer[7];
+                std::snprintf(buffer, sizeof(buffer), "\\u%04x", static_cast<unsigned char>(ch));
+                escaped += buffer;
+            } else {
+                escaped += ch;
+            }
+        }
+    }
+    return escaped;
 }
 
 } // namespace
@@ -382,6 +426,29 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
         }
     }
 
+    std::vector<DrawableAuthoringMapEntry> authoring_map;
+    {
+        auto authoringBytes = space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/authoring-map.bin");
+        if (authoringBytes) {
+            auto decoded = from_bytes<BucketAuthoringMapBinary>(*authoringBytes);
+            if (!decoded) {
+                return std::unexpected(decoded.error());
+            }
+            authoring_map = std::move(decoded->authoring_map);
+        } else {
+            auto const& error = authoringBytes.error();
+            if (error.code == Error::Code::NoObjectFound
+                || error.code == Error::Code::NoSuchPath) {
+                authoring_map.assign(drawablesDecoded->drawable_ids.size(), DrawableAuthoringMapEntry{});
+                for (std::size_t i = 0; i < authoring_map.size(); ++i) {
+                    authoring_map[i].drawable_id = drawablesDecoded->drawable_ids[i];
+                }
+            } else {
+                return std::unexpected(error);
+            }
+        }
+    }
+
     DrawableBucketSnapshot bucket{};
     bucket.drawable_ids     = std::move(drawablesDecoded->drawable_ids);
     bucket.world_transforms = std::move(transformsDecoded->world_transforms);
@@ -401,6 +468,7 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
     bucket.command_payload  = std::move(cmdDecoded->command_payload);
     bucket.clip_head_indices = std::move(clip_head_indices);
     bucket.clip_nodes        = std::move(clip_nodes);
+    bucket.authoring_map     = std::move(authoring_map);
 
     bucket.layer_indices.reserve(summary->layer_ids.size());
     for (auto layerId : summary->layer_ids) {
@@ -575,6 +643,45 @@ auto SceneSnapshotBuilder::store_bucket(std::uint64_t revision,
         return std::unexpected(clipNodesBytes.error());
     }
     if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/clip-nodes.bin", *clipNodesBytes); !status) {
+        return status;
+    }
+
+    std::vector<DrawableAuthoringMapEntry> authoringMap = bucket.authoring_map;
+    if (authoringMap.empty()) {
+        authoringMap.resize(bucket.drawable_ids.size());
+        for (std::size_t i = 0; i < bucket.drawable_ids.size(); ++i) {
+            authoringMap[i].drawable_id = bucket.drawable_ids[i];
+        }
+    }
+    auto authoringBytes = to_bytes(BucketAuthoringMapBinary{ .authoring_map = authoringMap });
+    if (!authoringBytes) {
+        return std::unexpected(authoringBytes.error());
+    }
+    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/authoring-map.bin", *authoringBytes); !status) {
+        return status;
+    }
+
+    std::unordered_set<std::string> unique_authoring_nodes;
+    unique_authoring_nodes.reserve(authoringMap.size());
+    for (auto const& entry : authoringMap) {
+        if (!entry.authoring_node_id.empty()) {
+            unique_authoring_nodes.insert(entry.authoring_node_id);
+        }
+    }
+    std::string meta_json;
+    meta_json.reserve(256);
+    meta_json += "{";
+    meta_json += "\"revision\":" + std::to_string(revision) + ",";
+    meta_json += "\"created_at_ms\":" + std::to_string(to_epoch_ms(metadata.created_at)) + ",";
+    meta_json += "\"author\":\"" + json_escape(metadata.author) + "\",";
+    meta_json += "\"tool_version\":\"" + json_escape(metadata.tool_version) + "\",";
+    meta_json += "\"drawable_count\":" + std::to_string(metadata.drawable_count) + ",";
+    meta_json += "\"command_count\":" + std::to_string(metadata.command_count) + ",";
+    meta_json += "\"fingerprint_count\":" + std::to_string(metadata.fingerprint_digests.size()) + ",";
+    meta_json += "\"authoring_map_entries\":" + std::to_string(authoringMap.size()) + ",";
+    meta_json += "\"unique_authoring_nodes\":" + std::to_string(unique_authoring_nodes.size());
+    meta_json += "}";
+    if (auto status = replace_single<std::string>(space_, revisionBase + "/bucket/meta.json", meta_json); !status) {
         return status;
     }
 

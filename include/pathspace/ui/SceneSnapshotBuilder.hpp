@@ -56,6 +56,13 @@ struct ClipNode {
     ClipPathReference path{};
 };
 
+struct DrawableAuthoringMapEntry {
+    std::uint64_t drawable_id = 0;
+    std::string   authoring_node_id;
+    std::uint32_t drawable_index_within_node = 0;
+    std::uint32_t generation = 0;
+};
+
 struct LayerIndices {
     std::uint32_t             layer = 0;
     std::vector<std::uint32_t> indices;
@@ -81,6 +88,7 @@ struct DrawableBucketSnapshot {
     std::vector<std::uint8_t>  command_payload;
     std::vector<ClipNode>      clip_nodes;
     std::vector<std::int32_t>  clip_head_indices;
+    std::vector<DrawableAuthoringMapEntry> authoring_map;
 };
 
 struct SnapshotMetadata {

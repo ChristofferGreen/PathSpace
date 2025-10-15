@@ -291,11 +291,11 @@ Double-buffering:
 #### DrawableBucket — v1 contract
 
 Handles and IDs
-- DrawableId: 64-bit stable identifier scoped to a scene; reused only after a generation bump
+- DrawableId: 64-bit stable identifier scoped to a scene; reused only after a generation bump. Builders derive it deterministically as `hash64(sceneId, authoringNodeId, drawableIndexWithinNode)` and persist the accompanying authoring node id plus index in the authoring map.
 - Generation: 32-bit counter incremented on reuse from a free-list; handle = (id, generation)
 - Free-list and tombstones: removals push ids into a free-list with tombstone count; reuse occurs only when generation++ and all references to the old revision are gone
 - Stability: within minor edits (no removal), drawables keep the same (id, generation); indices into SoA arrays may change between revisions, but ids do not
-- Mapping: authoring node id → 1..N drawables (e.g., text can expand to multiple drawables); record this mapping in snapshot metadata for diagnostics
+- Authoring map: a per-drawable record of `{DrawableId, authoringNodeId, drawableIndexWithinNode, generation}` stored in `bucket/authoring-map.bin` allows hit testing, tooling, and diagnostics to trace a runtime drawable back to its authored source without replaying commands.
 
 SoA layout (per snapshot revision)
 - Arrays sized N drawables unless stated otherwise, tightly packed, immutable per revision:
@@ -362,10 +362,13 @@ On-disk schema (per scene, per revision)
   - bounds.bin            — Bounds[N] with sphereWorld always present; boxWorld optional
   - state.bin             — layer[N], z[N], materialId[N], pipelineFlags[N], visible[N]
   - cmd-buffer.bin        — cmdKinds[M] + payload blob
+  - clip-heads.bin        — per-drawable singly linked-list heads into clip_nodes
+  - clip-nodes.bin        — clip stack nodes (rect/path references) for hit testing without replaying commands
+  - authoring-map.bin     — ordered authoring provenance (`DrawableId` ↔ authoring node id / drawable index / generation)
   - indices/opaque.bin    — optional opaqueIndices[]
   - indices/alpha.bin     — optional alphaIndices[]
   - indices/layer/*.bin   — optional per-layer indices (see naming/format below)
-  - meta.json             — small JSON with revision, created_at, tool versions, and authoring→drawable id map summary
+  - meta.json             — small JSON with revision metadata and aggregate authoring-map statistics
   - trace/tlas.bin        — optional (software path tracer; instances carry AABBs)
   - trace/blas.bin        — optional (software path tracer; geometry bounds/AABBs per BLAS)
 - Implementation status (October 15, 2025): the in-repo `SceneSnapshotBuilder` now emits dedicated `*.bin` payloads (`drawables.bin`, `transforms.bin`, `bounds.bin`, `state.bin`, `cmd-buffer.bin`, per-layer index files) under each revision, while `drawable_bucket` carries a small manifest for compatibility with existing helpers.
@@ -2210,17 +2213,6 @@ Invariants:
 These items clarify edge cases or finalize small inconsistencies. Resolve and reflect updates in `docs/AI_ARCHITECTURE.md`, tests, and any affected examples. (Items already reflected in the main text have been removed from this list.)
 
 
-
-- Clip stack metadata for hit testing
-  - Persist clip stack membership per drawable to avoid re-walking the command stream:
-    - Add a per-revision clip node array (rect/path nodes) and store, per drawable, a `clipHeadIndex` into a singly-linked list of active clips.
-    - Clip nodes reference either rect parameters or a range in `cmd-buffer.bin` for path geometry.
-  - Hit testing reconstructs the stack by following `clipHeadIndex` links and applies per-node tests.
-
-- DrawableId mapping from authoring nodes
-  - Specify how authoring node ids map to stable `DrawableId`s across revisions:
-    - Recommend: `DrawableId = hash(sceneId, authoringNodeId, drawableIndexWithinNode)` with a generation counter on reuse.
-    - Persist a mapping summary in `builds/<rev>/bucket/meta.json` for diagnostics and hit test routing.
 
 - sRGB attachments and linear blending
   - Clarify that blending and shading remain in linear space even when using sRGB attachments:

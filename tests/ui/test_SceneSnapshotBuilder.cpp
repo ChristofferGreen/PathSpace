@@ -99,6 +99,14 @@ auto make_bucket(std::size_t drawables, std::size_t commands) -> DrawableBucketS
         bucket.clip_head_indices[1] = (bucket.clip_nodes.size() > 1) ? 1 : -1;
     }
 
+    bucket.authoring_map.resize(drawables);
+    for (std::size_t i = 0; i < drawables; ++i) {
+        bucket.authoring_map[i].drawable_id = bucket.drawable_ids[i];
+        bucket.authoring_map[i].authoring_node_id = "node-" + std::to_string(i);
+        bucket.authoring_map[i].drawable_index_within_node = static_cast<std::uint32_t>(i);
+        bucket.authoring_map[i].generation = 1;
+    }
+
     return bucket;
 }
 
@@ -150,6 +158,9 @@ TEST_CASE("publish snapshot encodes bucket and metadata") {
         CHECK(decodedBucket->clip_nodes[1].type == ClipNodeType::Path);
         CHECK(decodedBucket->clip_nodes[1].path.command_count == bucket.clip_nodes[1].path.command_count);
     }
+    CHECK(decodedBucket->authoring_map.size() == bucket.authoring_map.size());
+    CHECK(decodedBucket->authoring_map[0].authoring_node_id == bucket.authoring_map[0].authoring_node_id);
+    CHECK(decodedBucket->authoring_map[0].drawable_index_within_node == bucket.authoring_map[0].drawable_index_within_node);
 
     auto rawMeta = fx.space.read<std::vector<std::uint8_t>>(revisionBase + "/metadata");
     REQUIRE(rawMeta);
@@ -161,6 +172,11 @@ TEST_CASE("publish snapshot encodes bucket and metadata") {
     CHECK(decodedMeta->drawable_count == bucket.drawable_ids.size());
     CHECK(decodedMeta->command_count == bucket.command_kinds.size());
     CHECK(decodedMeta->fingerprint_digests == opts.metadata.fingerprint_digests);
+
+    auto bucketMetaJson = fx.space.read<std::string>(revisionBase + "/bucket/meta.json");
+    REQUIRE(bucketMetaJson);
+    CHECK(bucketMetaJson->find("\"author\":\"tester\"") != std::string::npos);
+    CHECK(bucketMetaJson->find("\"authoring_map_entries\":2") != std::string::npos);
 
     auto storedDrawables = fx.space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/drawables.bin");
     REQUIRE(storedDrawables);
