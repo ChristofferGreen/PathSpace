@@ -32,7 +32,6 @@ Each workstream lands independently but respects shared contracts (paths, atomic
 - Future additions (Metal/HTML adapters) extend these namespaces rather than reaching into core PathSpace directly.
 
 ## Immediate Next Steps
-- Wire `PathRenderer2D` into the Builders render flow (`Renderer::TriggerRender`, `Surface::RenderOnce`, `Window::Present`) so PathSpace executions drive renders end-to-end; add regression tests for the synchronous path.
 - Expand `PathRenderer2D` beyond bounding-box fills: interpret drawable command streams, honor layer/opaque vs alpha ordering, and validate color-management paths (with failure-handling tests and goldens).
 - For Phase 4 follow-ups, prepare end-to-end scene→render→present scenarios, wire presenters through `Window::Present`, surface progressive-mode metrics, codify seqlock/deadline tests, and rerun the loop harness once integrations land.
 - Begin Phase 5 test authoring for hit ordering, clip-aware picking, focus routing, and event delivery latency; follow with DrawableBucket-backed picking and wait/notify integration for dirty markers and auto-render scheduling.
@@ -63,6 +62,7 @@ Completed:
 
 ### Phase 3 — Software Renderer Core (2 sprints)
 Completed:
+- ✅ (October 15, 2025) Builders `Surface::RenderOnce` / `Window::Present` now call `PathRenderer2D` synchronously via `Renderer::TriggerRender`, return ready `FutureAny` handles, and update target metrics; doctests cover the integration path.
 - ✅ (October 15, 2025) `PathRenderer2D` MVP renders axis-aligned bounding boxes from snapshot bounds, resets `lastError`, publishes `drawableCount`, and ships doctest coverage for success/error paths (`PathRenderer2D` suite).
 
 Remaining:

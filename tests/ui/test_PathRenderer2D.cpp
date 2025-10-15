@@ -295,4 +295,44 @@ TEST_CASE("render reports error when target scene binding missing") {
     CHECK(*lastError == "target missing scene binding");
 }
 
+TEST_CASE("Surface::RenderOnce drives renderer and records metrics") {
+    RendererFixture fx;
+
+    auto bucket = make_rect_bucket(0.0f, 0.0f, 4.0f, 4.0f, 0xABCD01u);
+    auto scenePath = create_scene(fx, "scene_for_surface", std::move(bucket));
+    auto rendererPath = create_renderer(fx, "renderer_pipeline", RendererKind::Software2D);
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 4;
+    surfaceDesc.size_px.height = 4;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_main", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+
+    auto first = Surface::RenderOnce(fx.space, surfacePath, std::nullopt);
+    REQUIRE(first);
+    CHECK(first->ready());
+
+    auto targetPath = resolve_target(fx, surfacePath);
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/frameIndex").value() == 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/revision").value() == 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/drawableCount").value() == 1);
+    auto lastError = fx.space.read<std::string, std::string>(metricsBase + "/lastError");
+    REQUIRE(lastError);
+    CHECK(lastError->empty());
+
+    auto storedSettings = Renderer::ReadSettings(fx.space, SP::ConcretePathStringView{targetPath.getPath()});
+    REQUIRE(storedSettings);
+    CHECK(storedSettings->time.frame_index == 1);
+
+    auto second = Surface::RenderOnce(fx.space, surfacePath, std::nullopt);
+    REQUIRE(second);
+    CHECK(second->ready());
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/frameIndex").value() == 2);
+}
+
 } // TEST_SUITE

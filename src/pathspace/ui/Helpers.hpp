@@ -68,7 +68,8 @@ auto ReadSettings(PathSpace const& space,
                   ConcretePath const& targetPath) -> SP::Expected<RenderSettings>;
 
 auto TriggerRender(PathSpace& space,
-                   ConcretePath const& targetPath) -> SP::Expected<SP::FutureAny>;
+                   ConcretePath const& targetPath,
+                   RenderSettings const& settings) -> SP::Expected<SP::FutureAny>;
 
 } // namespace Renderer
 

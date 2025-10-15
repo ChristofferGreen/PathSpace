@@ -1,8 +1,11 @@
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
+#include <pathspace/ui/PathRenderer2D.hpp>
+#include <pathspace/ui/PathSurfaceSoftware.hpp>
 
 #include "core/Out.hpp"
 #include "path/UnvalidatedPath.hpp"
+#include "task/IFutureAny.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -490,14 +493,29 @@ auto ReadSettings(PathSpace const& space,
     return read_value<RenderSettings>(space, settingsPath);
 }
 
-auto TriggerRender(PathSpace& /*space*/,
-                    ConcretePathView targetPath) -> SP::Expected<SP::FutureAny> {
-    auto root = derive_app_root_for(targetPath);
-    if (!root) {
-        return std::unexpected(root.error());
+auto TriggerRender(PathSpace& space,
+                   ConcretePathView targetPath,
+                   RenderSettings const& settings) -> SP::Expected<SP::FutureAny> {
+    auto descPath = std::string(targetPath.getPath()) + "/desc";
+    auto surfaceDesc = read_value<SurfaceDesc>(space, descPath);
+    if (!surfaceDesc) {
+        return std::unexpected(surfaceDesc.error());
     }
-    return std::unexpected(make_error("render execution helpers not available",
-                                      SP::Error::Code::UnknownError));
+
+    PathRenderer2D renderer{space};
+    PathSurfaceSoftware surface{*surfaceDesc};
+    auto stats = renderer.render({
+        .target_path = targetPath,
+        .settings = settings,
+        .surface = surface,
+    });
+    if (!stats) {
+        return std::unexpected(stats.error());
+    }
+
+    auto state = std::make_shared<SP::SharedState<bool>>();
+    state->set_value(true);
+    return SP::FutureT<bool>{state}.to_any();
 }
 
 } // namespace Renderer
@@ -647,15 +665,59 @@ auto RenderOnce(PathSpace& space,
         return std::unexpected(targetAbsolute.error());
     }
 
+    auto descPath = targetAbsolute->getPath() + "/desc";
+    auto targetDesc = read_value<SurfaceDesc>(space, descPath);
+    if (!targetDesc) {
+        return std::unexpected(targetDesc.error());
+    }
+
+    RenderSettings effective{};
     if (settingsOverride) {
-        if (auto status = Renderer::UpdateSettings(space,
-                                                   ConcretePathView{targetAbsolute->getPath()},
-                                                   *settingsOverride); !status) {
-            return std::unexpected(status.error());
+        effective = *settingsOverride;
+    } else {
+        auto stored = Renderer::ReadSettings(space, ConcretePathView{targetAbsolute->getPath()});
+        if (stored) {
+            effective = *stored;
+        } else {
+            auto const& error = stored.error();
+            if (error.code != SP::Error::Code::NoObjectFound
+                && error.code != SP::Error::Code::NoSuchPath) {
+                return std::unexpected(error);
+            }
+            effective.surface.size_px.width = targetDesc->size_px.width;
+            effective.surface.size_px.height = targetDesc->size_px.height;
+            effective.surface.dpi_scale = 1.0f;
+            effective.surface.visibility = true;
+            effective.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+            effective.time.time_ms = 0.0;
+            effective.time.delta_ms = 16.0;
+            effective.time.frame_index = 0;
         }
     }
 
-    return Renderer::TriggerRender(space, ConcretePathView{targetAbsolute->getPath()});
+    effective.surface.size_px.width = targetDesc->size_px.width;
+    effective.surface.size_px.height = targetDesc->size_px.height;
+    if (effective.surface.dpi_scale == 0.0f) {
+        effective.surface.dpi_scale = 1.0f;
+    }
+
+    if (!settingsOverride) {
+        if (effective.time.delta_ms == 0.0) {
+            effective.time.delta_ms = 16.0;
+        }
+        effective.time.time_ms += effective.time.delta_ms;
+        effective.time.frame_index += 1;
+    }
+
+    if (auto status = Renderer::UpdateSettings(space,
+                                               ConcretePathView{targetAbsolute->getPath()},
+                                               effective); !status) {
+        return std::unexpected(status.error());
+    }
+
+    return Renderer::TriggerRender(space,
+                                   ConcretePathView{targetAbsolute->getPath()},
+                                   effective);
 }
 
 } // namespace Surface

@@ -296,7 +296,7 @@ TEST_CASE("Window attach surface records binding") {
 
     auto present = Window::Present(fx.space, *window, "view");
     CHECK_FALSE(present);
-    CHECK(present.error().code == Error::Code::UnknownError);
+    CHECK(present.error().code == Error::Code::NoSuchPath);
 }
 
 TEST_CASE("Renderer::ResolveTargetBase rejects empty specifications") {
