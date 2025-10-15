@@ -251,6 +251,8 @@ esac
 
 # Always export compile_commands.json (redundant with project default, but safe)
 CMAKE_FLAGS+=("-DCMAKE_EXPORT_COMPILE_COMMANDS=ON")
+# Always enable UI tests when building via this helper so CI/push runs cover them.
+CMAKE_FLAGS+=("-DPATHSPACE_ENABLE_UI=ON" "-DPATHSPACE_UI_SOFTWARE=ON")
 
 # ----------------------------
 # Clean if requested
