@@ -1,5 +1,7 @@
 #include "ext/doctest.h"
 
+#include <pathspace/PathSpace.hpp>
+#include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
 
@@ -8,6 +10,9 @@
 #include <vector>
 
 using namespace SP::UI;
+using SP::ConcretePathString;
+using SP::ConcretePathStringView;
+using SP::PathSpace;
 
 namespace {
 
@@ -53,6 +58,7 @@ TEST_CASE("present copies buffered frame") {
     CHECK_FALSE(stats.used_progressive);
     CHECK(stats.frame.frame_index == 5);
     CHECK(stats.error.empty());
+    CHECK(stats.present_ms >= 0.0);
     CHECK(framebuffer == std::vector<std::uint8_t>(stage.begin(), stage.end()));
 }
 
@@ -98,6 +104,7 @@ TEST_CASE("present copies progressive tiles when buffered missing") {
     CHECK(stats.progressive_tiles_copied == 1);
     CHECK(stats.frame.revision == 3);
     CHECK(stats.error.empty());
+    CHECK(stats.present_ms >= 0.0);
 
     auto row_stride = surface.row_stride_bytes();
     for (int row = 0; row < 2; ++row) {
@@ -137,6 +144,36 @@ TEST_CASE("always fresh skips when buffered frame missing") {
     CHECK(stats.skipped);
     CHECK_FALSE(stats.presented);
     CHECK_FALSE(stats.used_progressive);
+    CHECK(stats.present_ms >= 0.0);
+}
+
+TEST_CASE("WritePresentMetrics stores presenter results in PathSpace") {
+    PathSpace space;
+    PathWindowView::PresentStats stats{};
+    stats.presented = true;
+    stats.skipped = false;
+    stats.frame.frame_index = 42;
+    stats.frame.revision = 77;
+    stats.frame.render_ms = 5.5;
+    stats.present_ms = 2.0;
+    stats.error = "ok";
+
+    auto targetPath = ConcretePathString{"/renderers/r/targets/surfaces/main"};
+    auto writeStatus = Builders::Diagnostics::WritePresentMetrics(
+        space,
+        ConcretePathStringView{targetPath.getPath()},
+        stats);
+    REQUIRE(writeStatus);
+
+    auto base = std::string(targetPath.getPath()) + "/output/v1/common";
+    CHECK(space.read<uint64_t>(base + "/frameIndex").value() == 42);
+    CHECK(space.read<uint64_t>(base + "/revision").value() == 77);
+    CHECK(space.read<double>(base + "/renderMs").value() == doctest::Approx(5.5));
+    CHECK(space.read<double>(base + "/presentMs").value() == doctest::Approx(2.0));
+    CHECK_FALSE(space.read<bool>(base + "/lastPresentSkipped").value());
+    auto lastError = space.read<std::string, std::string>(base + "/lastError");
+    REQUIRE(lastError);
+    CHECK(*lastError == "ok");
 }
 
 } // TEST_SUITE

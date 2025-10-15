@@ -16,6 +16,7 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
                              PresentPolicy const& policy,
                              PresentRequest const& request) -> PresentStats {
     PresentStats stats{};
+    auto const start_time = request.now;
 
     auto wait_budget = request.vsync_deadline - request.now;
     if (wait_budget < std::chrono::steady_clock::duration::zero()) {
@@ -28,6 +29,8 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
     if (required_bytes > 0 && request.framebuffer.size() < required_bytes) {
         stats.skipped = true;
         stats.error = "framebuffer span too small for surface dimensions";
+        auto finish = std::chrono::steady_clock::now();
+        stats.present_ms = std::chrono::duration<double, std::milli>(finish - start_time).count();
         return stats;
     }
 
@@ -37,17 +40,23 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
             stats.presented = true;
             stats.buffered_frame_consumed = true;
             stats.frame = copy->info;
+            auto finish = std::chrono::steady_clock::now();
+            stats.present_ms = std::chrono::duration<double, std::milli>(finish - start_time).count();
             return stats;
         }
     }
 
     if (policy.mode == PresentMode::AlwaysFresh) {
         stats.skipped = true;
+        auto finish = std::chrono::steady_clock::now();
+        stats.present_ms = std::chrono::duration<double, std::milli>(finish - start_time).count();
         return stats;
     }
 
     if (!surface.has_progressive() || request.dirty_tiles.empty()) {
         stats.skipped = true;
+        auto finish = std::chrono::steady_clock::now();
+        stats.present_ms = std::chrono::duration<double, std::milli>(finish - start_time).count();
         return stats;
     }
 
@@ -93,6 +102,8 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
     } else {
         stats.skipped = true;
     }
+    auto finish = std::chrono::steady_clock::now();
+    stats.present_ms = std::chrono::duration<double, std::milli>(finish - start_time).count();
     return stats;
 }
 

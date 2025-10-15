@@ -13,6 +13,10 @@
 #include <string_view>
 #include <vector>
 
+namespace SP::UI {
+struct PathWindowPresentStats;
+}
+
 namespace SP::UI::Builders {
 
 using AppRootPath = SP::App::AppRootPath;
@@ -234,7 +238,11 @@ auto ReadTargetMetrics(PathSpace const& space,
                         ConcretePathView targetPath) -> SP::Expected<TargetMetrics>;
 
 auto ClearTargetError(PathSpace& space,
-                       ConcretePathView targetPath) -> SP::Expected<void>;
+                      ConcretePathView targetPath) -> SP::Expected<void>;
+
+auto WritePresentMetrics(PathSpace& space,
+                          ConcretePathView targetPath,
+                          PathWindowPresentStats const& stats) -> SP::Expected<void>;
 
 } // namespace Diagnostics
 

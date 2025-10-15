@@ -1,4 +1,5 @@
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/PathWindowView.hpp>
 
 #include "core/Out.hpp"
 #include "path/UnvalidatedPath.hpp"
@@ -829,9 +830,35 @@ auto ReadTargetMetrics(PathSpace const& space,
 }
 
 auto ClearTargetError(PathSpace& space,
-                       ConcretePathView targetPath) -> SP::Expected<void> {
+                      ConcretePathView targetPath) -> SP::Expected<void> {
     auto path = std::string(targetPath.getPath()) + "/output/v1/common/lastError";
     return replace_single<std::string>(space, path, std::string{});
+}
+
+auto WritePresentMetrics(PathSpace& space,
+                          ConcretePathView targetPath,
+                          PathWindowPresentStats const& stats) -> SP::Expected<void> {
+    auto base = std::string(targetPath.getPath()) + "/output/v1/common";
+
+    if (auto status = replace_single<uint64_t>(space, base + "/frameIndex", stats.frame.frame_index); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space, base + "/revision", stats.frame.revision); !status) {
+        return status;
+    }
+    if (auto status = replace_single<double>(space, base + "/renderMs", stats.frame.render_ms); !status) {
+        return status;
+    }
+    if (auto status = replace_single<double>(space, base + "/presentMs", stats.present_ms); !status) {
+        return status;
+    }
+    if (auto status = replace_single<bool>(space, base + "/lastPresentSkipped", stats.skipped); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::string>(space, base + "/lastError", stats.error); !status) {
+        return status;
+    }
+    return {};
 }
 
 } // namespace Diagnostics
