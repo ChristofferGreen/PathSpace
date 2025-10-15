@@ -105,7 +105,8 @@ public:
 
     auto snapshot_records() -> SP::Expected<std::vector<SnapshotRecord>>;
 
-    static auto decode_bucket(std::span<std::byte const> bytes) -> SP::Expected<DrawableBucketSnapshot>;
+    static auto decode_bucket(PathSpace const& space,
+                               std::string const& revisionBase) -> SP::Expected<DrawableBucketSnapshot>;
     static auto decode_metadata(std::span<std::byte const> bytes) -> SP::Expected<SnapshotMetadata>;
 
 private:

@@ -39,22 +39,31 @@ struct EncodedSnapshotMetadata {
     std::vector<std::string> fingerprint_digests;
 };
 
-struct BucketBinary {
+struct BucketDrawablesBinary {
     std::vector<std::uint64_t> drawable_ids;
-    std::vector<Transform>     world_transforms;
-    std::vector<BoundingSphere> bounds_spheres;
-    std::vector<BoundingBox>     bounds_boxes;
-    std::vector<std::uint8_t>    bounds_box_valid;
+    std::vector<std::uint32_t> command_offsets;
+    std::vector<std::uint32_t> command_counts;
+};
+
+struct BucketTransformsBinary {
+    std::vector<Transform> world_transforms;
+};
+
+struct BucketBoundsBinary {
+    std::vector<BoundingSphere> spheres;
+    std::vector<BoundingBox>    boxes;
+    std::vector<std::uint8_t>   box_valid;
+};
+
+struct BucketStateBinary {
     std::vector<std::uint32_t> layers;
     std::vector<float>         z_values;
     std::vector<std::uint32_t> material_ids;
     std::vector<std::uint32_t> pipeline_flags;
     std::vector<std::uint8_t>  visibility;
-    std::vector<std::uint32_t> command_offsets;
-    std::vector<std::uint32_t> command_counts;
-    std::vector<std::uint32_t> opaque_indices;
-    std::vector<std::uint32_t> alpha_indices;
-    std::vector<LayerIndices>  layer_indices;
+};
+
+struct BucketCommandBufferBinary {
     std::vector<std::uint32_t> command_kinds;
     std::vector<std::uint8_t>  command_payload;
 };
@@ -62,6 +71,8 @@ struct BucketBinary {
 struct SnapshotSummary {
     std::uint64_t drawable_count = 0;
     std::uint64_t command_count = 0;
+    std::vector<std::uint32_t> layer_ids;
+    std::uint64_t fingerprint_count = 0;
 };
 
 auto make_error(std::string message, Error::Code code = Error::Code::UnknownError) -> Error {
@@ -69,7 +80,7 @@ auto make_error(std::string message, Error::Code code = Error::Code::UnknownErro
 }
 
 template <typename T>
-auto to_bytes(T const& obj) -> Expected<std::vector<std::byte>> {
+auto to_bytes(T const& obj) -> Expected<std::vector<std::uint8_t>> {
     std::vector<std::uint8_t> buffer;
     std::error_code           ec;
     alpaca::serialize(obj, buffer, ec);
@@ -77,19 +88,11 @@ auto to_bytes(T const& obj) -> Expected<std::vector<std::byte>> {
         return std::unexpected(make_error("serialization failed: " + ec.message(),
                                           Error::Code::SerializationFunctionMissing));
     }
-    std::vector<std::byte> bytes(buffer.size());
-    std::transform(buffer.begin(), buffer.end(), bytes.begin(), [](std::uint8_t value) {
-        return static_cast<std::byte>(value);
-    });
-    return bytes;
+    return buffer;
 }
 
 template <typename T>
-auto from_bytes(std::span<std::byte const> bytes) -> Expected<T> {
-    std::vector<std::uint8_t> buffer(bytes.size());
-    std::transform(bytes.begin(), bytes.end(), buffer.begin(), [](std::byte b) {
-        return static_cast<std::uint8_t>(b);
-    });
+auto from_bytes(std::vector<std::uint8_t> const& buffer) -> Expected<T> {
     std::error_code ec;
     auto            decoded = alpaca::deserialize<T>(buffer, ec);
     if (ec) {
@@ -169,8 +172,8 @@ auto ensure_valid_bucket(DrawableBucketSnapshot const& bucket) -> Expected<void>
     return {};
 }
 
-auto to_view(std::vector<std::byte> const& bytes) -> std::span<std::byte const> {
-    return std::span<std::byte const>{bytes.data(), bytes.size()};
+auto to_view(std::vector<std::uint8_t> const& bytes) -> std::span<std::byte const> {
+    return std::span<std::byte const>{reinterpret_cast<std::byte const*>(bytes.data()), bytes.size()};
 }
 
 } // namespace
@@ -252,34 +255,89 @@ auto SceneSnapshotBuilder::snapshot_records() -> Expected<std::vector<SnapshotRe
     return load_index();
 }
 
-auto SceneSnapshotBuilder::decode_bucket(std::span<std::byte const> bytes) -> Expected<DrawableBucketSnapshot> {
-    auto decoded = from_bytes<BucketBinary>(bytes);
-    if (!decoded) {
-        return std::unexpected(decoded.error());
-    }
+auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
+                                         std::string const& revisionBase) -> Expected<DrawableBucketSnapshot> {
+    auto read_bytes = [&](std::string const& path) -> Expected<std::vector<std::uint8_t>> {
+        auto value = space.read<std::vector<std::uint8_t>>(path);
+        if (!value) {
+            return std::unexpected(value.error());
+        }
+        return *value;
+    };
+
+    auto drawablesBytes = read_bytes(revisionBase + "/bucket/drawables.bin");
+    if (!drawablesBytes) return std::unexpected(drawablesBytes.error());
+    auto drawablesDecoded = from_bytes<BucketDrawablesBinary>(*drawablesBytes);
+    if (!drawablesDecoded) return std::unexpected(drawablesDecoded.error());
+
+    auto transformsBytes = read_bytes(revisionBase + "/bucket/transforms.bin");
+    if (!transformsBytes) return std::unexpected(transformsBytes.error());
+    auto transformsDecoded = from_bytes<BucketTransformsBinary>(*transformsBytes);
+    if (!transformsDecoded) return std::unexpected(transformsDecoded.error());
+
+    auto boundsBytes = read_bytes(revisionBase + "/bucket/bounds.bin");
+    if (!boundsBytes) return std::unexpected(boundsBytes.error());
+    auto boundsDecoded = from_bytes<BucketBoundsBinary>(*boundsBytes);
+    if (!boundsDecoded) return std::unexpected(boundsDecoded.error());
+
+    auto stateBytes = read_bytes(revisionBase + "/bucket/state.bin");
+    if (!stateBytes) return std::unexpected(stateBytes.error());
+    auto stateDecoded = from_bytes<BucketStateBinary>(*stateBytes);
+    if (!stateDecoded) return std::unexpected(stateDecoded.error());
+
+    auto cmdBytes = read_bytes(revisionBase + "/bucket/cmd-buffer.bin");
+    if (!cmdBytes) return std::unexpected(cmdBytes.error());
+    auto cmdDecoded = from_bytes<BucketCommandBufferBinary>(*cmdBytes);
+    if (!cmdDecoded) return std::unexpected(cmdDecoded.error());
+
+    auto opaque = space.read<std::vector<std::uint32_t>>(revisionBase + "/bucket/indices/opaque.bin");
+    if (!opaque) return std::unexpected(opaque.error());
+    auto alpha = space.read<std::vector<std::uint32_t>>(revisionBase + "/bucket/indices/alpha.bin");
+    if (!alpha) return std::unexpected(alpha.error());
+
+    auto summary = space.read<SnapshotSummary>(revisionBase + std::string(kBucketSummary));
+    if (!summary) return std::unexpected(summary.error());
+
     DrawableBucketSnapshot bucket{};
-    bucket.drawable_ids     = std::move(decoded->drawable_ids);
-    bucket.world_transforms = std::move(decoded->world_transforms);
-    bucket.bounds_spheres   = std::move(decoded->bounds_spheres);
-    bucket.bounds_boxes     = std::move(decoded->bounds_boxes);
-    bucket.bounds_box_valid = std::move(decoded->bounds_box_valid);
-    bucket.layers           = std::move(decoded->layers);
-    bucket.z_values         = std::move(decoded->z_values);
-    bucket.material_ids     = std::move(decoded->material_ids);
-    bucket.pipeline_flags   = std::move(decoded->pipeline_flags);
-    bucket.visibility       = std::move(decoded->visibility);
-    bucket.command_offsets  = std::move(decoded->command_offsets);
-    bucket.command_counts   = std::move(decoded->command_counts);
-    bucket.opaque_indices   = std::move(decoded->opaque_indices);
-    bucket.alpha_indices    = std::move(decoded->alpha_indices);
-    bucket.layer_indices    = std::move(decoded->layer_indices);
-    bucket.command_kinds    = std::move(decoded->command_kinds);
-    bucket.command_payload  = std::move(decoded->command_payload);
+    bucket.drawable_ids     = std::move(drawablesDecoded->drawable_ids);
+    bucket.world_transforms = std::move(transformsDecoded->world_transforms);
+    bucket.bounds_spheres   = std::move(boundsDecoded->spheres);
+    bucket.bounds_boxes     = std::move(boundsDecoded->boxes);
+    bucket.bounds_box_valid = std::move(boundsDecoded->box_valid);
+    bucket.layers           = std::move(stateDecoded->layers);
+    bucket.z_values         = std::move(stateDecoded->z_values);
+    bucket.material_ids     = std::move(stateDecoded->material_ids);
+    bucket.pipeline_flags   = std::move(stateDecoded->pipeline_flags);
+    bucket.visibility       = std::move(stateDecoded->visibility);
+    bucket.command_offsets  = std::move(drawablesDecoded->command_offsets);
+    bucket.command_counts   = std::move(drawablesDecoded->command_counts);
+    bucket.opaque_indices   = *opaque;
+    bucket.alpha_indices    = *alpha;
+    bucket.command_kinds    = std::move(cmdDecoded->command_kinds);
+    bucket.command_payload  = std::move(cmdDecoded->command_payload);
+
+    bucket.layer_indices.reserve(summary->layer_ids.size());
+    for (auto layerId : summary->layer_ids) {
+        auto layerPath = revisionBase + "/bucket/indices/layer/" + std::to_string(layerId) + ".bin";
+        auto indices = space.read<std::vector<std::uint32_t>>(layerPath);
+        if (!indices) {
+            return std::unexpected(indices.error());
+        }
+        bucket.layer_indices.push_back(LayerIndices{
+            .layer = layerId,
+            .indices = std::move(*indices),
+        });
+    }
+
     return bucket;
 }
 
 auto SceneSnapshotBuilder::decode_metadata(std::span<std::byte const> bytes) -> Expected<SnapshotMetadata> {
-    auto decoded = from_bytes<EncodedSnapshotMetadata>(bytes);
+    std::vector<std::uint8_t> buffer(bytes.size());
+    std::transform(bytes.begin(), bytes.end(), buffer.begin(), [](std::byte b) {
+        return static_cast<std::uint8_t>(b);
+    });
+    auto decoded = from_bytes<EncodedSnapshotMetadata>(buffer);
     if (!decoded) {
         return std::unexpected(decoded.error());
     }
@@ -316,28 +374,22 @@ auto SceneSnapshotBuilder::store_bucket(std::uint64_t revision,
     revisionDesc.published_at = metadata.created_at;
     revisionDesc.author       = metadata.author;
 
-    BucketBinary binary{};
-    binary.drawable_ids    = bucket.drawable_ids;
-    binary.world_transforms = bucket.world_transforms;
-    binary.bounds_spheres   = bucket.bounds_spheres;
-    binary.bounds_boxes     = bucket.bounds_boxes;
-    binary.bounds_box_valid = bucket.bounds_box_valid;
-    binary.layers           = bucket.layers;
-    binary.z_values         = bucket.z_values;
-    binary.material_ids     = bucket.material_ids;
-    binary.pipeline_flags   = bucket.pipeline_flags;
-    binary.visibility       = bucket.visibility;
-    binary.command_offsets  = bucket.command_offsets;
-    binary.command_counts   = bucket.command_counts;
-    binary.opaque_indices   = bucket.opaque_indices;
-    binary.alpha_indices    = bucket.alpha_indices;
-    binary.layer_indices    = bucket.layer_indices;
-    binary.command_kinds    = bucket.command_kinds;
-    binary.command_payload  = bucket.command_payload;
+    struct BucketManifest {
+        std::uint32_t version = 1;
+        std::uint64_t drawable_count = 0;
+        std::uint64_t command_count = 0;
+        std::vector<std::uint32_t> layer_ids;
+    } manifest;
+    manifest.drawable_count = static_cast<std::uint64_t>(bucket.drawable_ids.size());
+    manifest.command_count  = static_cast<std::uint64_t>(bucket.command_kinds.size());
+    manifest.layer_ids.reserve(bucket.layer_indices.size());
+    for (auto const& layer : bucket.layer_indices) {
+        manifest.layer_ids.push_back(layer.layer);
+    }
 
-    auto encodedBucket = to_bytes(binary);
-    if (!encodedBucket) {
-        return std::unexpected(encodedBucket.error());
+    auto encodedManifest = to_bytes(manifest);
+    if (!encodedManifest) {
+        return std::unexpected(encodedManifest.error());
     }
 
     EncodedSnapshotMetadata encodedMeta{};
@@ -356,20 +408,90 @@ auto SceneSnapshotBuilder::store_bucket(std::uint64_t revision,
     auto publish = Builders::Scene::PublishRevision(space_,
                                                     scene_path_,
                                                     revisionDesc,
-                                                    to_view(*encodedBucket),
+                                                    to_view(*encodedManifest),
                                                     to_view(*encodedMetadata));
     if (!publish) {
         return std::unexpected(publish.error());
     }
 
     auto revisionBase = make_revision_base(scene_path_, revision);
-    struct SnapshotSummary {
-        std::uint64_t drawable_count = 0;
-        std::uint64_t command_count = 0;
-    } summary{
-        .drawable_count = static_cast<std::uint64_t>(metadata.drawable_count),
-        .command_count  = static_cast<std::uint64_t>(metadata.command_count),
-    };
+    auto drawablesBytes = to_bytes(BucketDrawablesBinary{
+        .drawable_ids    = bucket.drawable_ids,
+        .command_offsets = bucket.command_offsets,
+        .command_counts  = bucket.command_counts,
+    });
+    if (!drawablesBytes) {
+        return std::unexpected(drawablesBytes.error());
+    }
+    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/drawables.bin", *drawablesBytes); !status) {
+        return status;
+    }
+
+    auto transformsBytes = to_bytes(BucketTransformsBinary{ .world_transforms = bucket.world_transforms });
+    if (!transformsBytes) {
+        return std::unexpected(transformsBytes.error());
+    }
+    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/transforms.bin", *transformsBytes); !status) {
+        return status;
+    }
+
+    auto boundsBytes = to_bytes(BucketBoundsBinary{
+        .spheres   = bucket.bounds_spheres,
+        .boxes     = bucket.bounds_boxes,
+        .box_valid = bucket.bounds_box_valid,
+    });
+    if (!boundsBytes) {
+        return std::unexpected(boundsBytes.error());
+    }
+    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/bounds.bin", *boundsBytes); !status) {
+        return status;
+    }
+
+    auto stateBytes = to_bytes(BucketStateBinary{
+        .layers         = bucket.layers,
+        .z_values       = bucket.z_values,
+        .material_ids   = bucket.material_ids,
+        .pipeline_flags = bucket.pipeline_flags,
+        .visibility     = bucket.visibility,
+    });
+    if (!stateBytes) {
+        return std::unexpected(stateBytes.error());
+    }
+    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/state.bin", *stateBytes); !status) {
+        return status;
+    }
+
+    auto cmdBytes = to_bytes(BucketCommandBufferBinary{
+        .command_kinds   = bucket.command_kinds,
+        .command_payload = bucket.command_payload,
+    });
+    if (!cmdBytes) {
+        return std::unexpected(cmdBytes.error());
+    }
+    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/cmd-buffer.bin", *cmdBytes); !status) {
+        return status;
+    }
+
+    if (auto status = replace_single<std::vector<std::uint32_t>>(space_, revisionBase + "/bucket/indices/opaque.bin", bucket.opaque_indices); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::vector<std::uint32_t>>(space_, revisionBase + "/bucket/indices/alpha.bin", bucket.alpha_indices); !status) {
+        return status;
+    }
+
+    std::vector<std::uint32_t> layer_ids = manifest.layer_ids;
+    for (auto const& layer : bucket.layer_indices) {
+        auto layerPath = revisionBase + "/bucket/indices/layer/" + std::to_string(layer.layer) + ".bin";
+        if (auto status = replace_single<std::vector<std::uint32_t>>(space_, layerPath, layer.indices); !status) {
+            return status;
+        }
+    }
+
+    SnapshotSummary summary{};
+    summary.drawable_count     = static_cast<std::uint64_t>(metadata.drawable_count);
+    summary.command_count      = static_cast<std::uint64_t>(metadata.command_count);
+    summary.layer_ids          = std::move(layer_ids);
+    summary.fingerprint_count  = static_cast<std::uint64_t>(metadata.fingerprint_digests.size());
 
     return replace_single<SnapshotSummary>(space_, revisionBase + std::string(kBucketSummary), summary);
 }
@@ -467,10 +589,25 @@ auto SceneSnapshotBuilder::prune_impl(std::vector<SnapshotRecord>& records, Snap
         }
 
         auto base = make_revision_base(scene_path_, record.revision);
+        std::vector<std::uint32_t> layer_ids;
+        if (auto summaryValue = space_.read<SnapshotSummary>(base + std::string(kBucketSummary)); summaryValue) {
+            layer_ids = summaryValue->layer_ids;
+            (void)space_.take<SnapshotSummary>(base + std::string(kBucketSummary));
+        }
         (void)space_.take<SceneRevisionRecord>(base + "/desc");
         (void)space_.take<std::vector<std::uint8_t>>(base + "/drawable_bucket");
         (void)space_.take<std::vector<std::uint8_t>>(base + "/metadata");
-        (void)space_.take<SnapshotSummary>(base + std::string(kBucketSummary));
+        (void)space_.take<std::vector<std::uint8_t>>(base + "/bucket/drawables.bin");
+        (void)space_.take<std::vector<std::uint8_t>>(base + "/bucket/transforms.bin");
+        (void)space_.take<std::vector<std::uint8_t>>(base + "/bucket/bounds.bin");
+        (void)space_.take<std::vector<std::uint8_t>>(base + "/bucket/state.bin");
+        (void)space_.take<std::vector<std::uint8_t>>(base + "/bucket/cmd-buffer.bin");
+        (void)space_.take<std::vector<std::uint32_t>>(base + "/bucket/indices/opaque.bin");
+        (void)space_.take<std::vector<std::uint32_t>>(base + "/bucket/indices/alpha.bin");
+        for (auto layerId : layer_ids) {
+            auto layerPath = base + "/bucket/indices/layer/" + std::to_string(layerId) + ".bin";
+            (void)space_.take<std::vector<std::uint32_t>>(layerPath);
+        }
         ++evicted;
     }
 

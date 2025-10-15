@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <span>
 #include <string>
 #include <thread>
 #include <vector>
@@ -74,14 +75,6 @@ auto make_bucket(std::size_t drawables, std::size_t commands) -> DrawableBucketS
     return bucket;
 }
 
-auto to_bytes(std::vector<std::uint8_t> const& input) -> std::vector<std::byte> {
-    std::vector<std::byte> out(input.size());
-    std::transform(input.begin(), input.end(), out.begin(), [](std::uint8_t v) {
-        return static_cast<std::byte>(v);
-    });
-    return out;
-}
-
 } // namespace
 
 TEST_SUITE("SceneSnapshotBuilder") {
@@ -110,10 +103,7 @@ TEST_CASE("publish snapshot encodes bucket and metadata") {
 
     auto revisionBase = std::string(scene->getPath()) + "/builds/0000000000000001";
 
-    auto rawBucket = fx.space.read<std::vector<std::uint8_t>>(revisionBase + "/drawable_bucket");
-    REQUIRE(rawBucket);
-    auto bucketBytes = to_bytes(*rawBucket);
-    auto decodedBucket = SceneSnapshotBuilder::decode_bucket(std::span<const std::byte>{bucketBytes.data(), bucketBytes.size()});
+    auto decodedBucket = SceneSnapshotBuilder::decode_bucket(fx.space, revisionBase);
     REQUIRE(decodedBucket);
     CHECK(decodedBucket->drawable_ids == bucket.drawable_ids);
     CHECK(decodedBucket->world_transforms.size() == bucket.world_transforms.size());
@@ -128,14 +118,18 @@ TEST_CASE("publish snapshot encodes bucket and metadata") {
 
     auto rawMeta = fx.space.read<std::vector<std::uint8_t>>(revisionBase + "/metadata");
     REQUIRE(rawMeta);
-    auto metaBytes = to_bytes(*rawMeta);
-    auto decodedMeta = SceneSnapshotBuilder::decode_metadata(std::span<const std::byte>{metaBytes.data(), metaBytes.size()});
+    auto metaSpan = std::span<const std::byte>{reinterpret_cast<const std::byte*>(rawMeta->data()), rawMeta->size()};
+    auto decodedMeta = SceneSnapshotBuilder::decode_metadata(metaSpan);
     REQUIRE(decodedMeta);
     CHECK(decodedMeta->author == "tester");
     CHECK(decodedMeta->tool_version == "unit-test");
     CHECK(decodedMeta->drawable_count == bucket.drawable_ids.size());
     CHECK(decodedMeta->command_count == bucket.command_kinds.size());
     CHECK(decodedMeta->fingerprint_digests == opts.metadata.fingerprint_digests);
+
+    auto storedDrawables = fx.space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/drawables.bin");
+    REQUIRE(storedDrawables);
+    CHECK_FALSE(storedDrawables->empty());
 }
 
 TEST_CASE("publish enforces retention policy") {

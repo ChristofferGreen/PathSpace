@@ -365,7 +365,7 @@ On-disk schema (per scene, per revision)
   - meta.json             — small JSON with revision, created_at, tool versions, and authoring→drawable id map summary
   - trace/tlas.bin        — optional (software path tracer; instances carry AABBs)
   - trace/blas.bin        — optional (software path tracer; geometry bounds/AABBs per BLAS)
-- Implementation status (October 14, 2025): the in-repo `SceneSnapshotBuilder` persists the SoA + indices + command stream as an Alpaca-encoded blob at `drawable_bucket` and a compact metadata blob at `metadata`, ensuring the same logical fields are populated while we bring up the finalized binary splitting above.
+- Implementation status (October 15, 2025): the in-repo `SceneSnapshotBuilder` now emits dedicated `*.bin` payloads (`drawables.bin`, `transforms.bin`, `bounds.bin`, `state.bin`, `cmd-buffer.bin`, per-layer index files) under each revision, while `drawable_bucket` carries a small manifest for compatibility with existing helpers.
 - Binary headers:
   - All *.bin start with: magic(4), version(u32), endianness(u8), reserved, counts/offsets(u64), checksum(u64)
 - Per-layer index naming/format:
