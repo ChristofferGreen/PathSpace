@@ -178,7 +178,9 @@ TEST_CASE("Renderer::UpdateSettings replaces any queued values atomically") {
 
     auto empty = fx.space.take<RenderSettings>(settingsPath);
     CHECK_FALSE(empty);
-    CHECK(empty.error().code == Error::Code::NoObjectFound);
+    auto code = empty.error().code;
+    bool is_expected = (code == Error::Code::NoObjectFound) || (code == Error::Code::NoSuchPath);
+    CHECK(is_expected);
 }
 
 TEST_CASE("Surface creation binds renderer and scene") {

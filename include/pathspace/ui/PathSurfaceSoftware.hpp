@@ -31,7 +31,8 @@ public:
         FrameInfo info{};
     };
 
-    PathSurfaceSoftware(Builders::SurfaceDesc desc, Options options = {});
+    PathSurfaceSoftware(Builders::SurfaceDesc desc);
+    PathSurfaceSoftware(Builders::SurfaceDesc desc, Options options);
 
     auto desc() const -> Builders::SurfaceDesc const& { return desc_; }
     auto options() const -> Options const& { return options_; }

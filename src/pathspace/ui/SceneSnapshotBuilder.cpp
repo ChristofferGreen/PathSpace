@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdint>
+#include <exception>
 #include <iterator>
 #include <mutex>
 #include <numeric>
@@ -82,10 +83,13 @@ auto make_error(std::string message, Error::Code code = Error::Code::UnknownErro
 template <typename T>
 auto to_bytes(T const& obj) -> Expected<std::vector<std::uint8_t>> {
     std::vector<std::uint8_t> buffer;
-    std::error_code           ec;
-    alpaca::serialize(obj, buffer, ec);
-    if (ec) {
-        return std::unexpected(make_error("serialization failed: " + ec.message(),
+    try {
+        alpaca::serialize(obj, buffer);
+    } catch (std::exception const& ex) {
+        return std::unexpected(make_error("serialization failed: " + std::string(ex.what()),
+                                          Error::Code::SerializationFunctionMissing));
+    } catch (...) {
+        return std::unexpected(make_error("serialization failed: unknown exception",
                                           Error::Code::SerializationFunctionMissing));
     }
     return buffer;

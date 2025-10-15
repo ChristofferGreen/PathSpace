@@ -79,6 +79,25 @@ private:
         std::atomic<std::uint32_t> seq{0};
         std::atomic<std::uint32_t> pass{0};
         std::atomic<std::uint64_t> epoch{0};
+
+        TileMetadata() = default;
+        TileMetadata(TileMetadata const&) = delete;
+        auto operator=(TileMetadata const&) -> TileMetadata& = delete;
+
+        TileMetadata(TileMetadata&& other) noexcept {
+            seq.store(other.seq.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            pass.store(other.pass.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            epoch.store(other.epoch.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        }
+
+        auto operator=(TileMetadata&& other) noexcept -> TileMetadata& {
+            if (this != &other) {
+                seq.store(other.seq.load(std::memory_order_relaxed), std::memory_order_relaxed);
+                pass.store(other.pass.load(std::memory_order_relaxed), std::memory_order_relaxed);
+                epoch.store(other.epoch.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            }
+            return *this;
+        }
     };
 
     int width_px_ = 0;

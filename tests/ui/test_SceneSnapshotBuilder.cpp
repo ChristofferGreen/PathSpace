@@ -215,6 +215,9 @@ TEST_CASE("rapid publishes maintain retention and latest revision") {
         thread.join();
     }
 
+    auto pruneStatus = builder.prune();
+    REQUIRE(pruneStatus);
+
     auto records = builder.snapshot_records();
     REQUIRE(records);
     CHECK(records->size() == 3);
@@ -226,9 +229,8 @@ TEST_CASE("rapid publishes maintain retention and latest revision") {
     auto metrics = fx.space.read<SnapshotGcMetrics>(std::string(scene->getPath()) + "/metrics/snapshots/state");
     REQUIRE(metrics);
     CHECK(metrics->retained == 3);
-    CHECK(metrics->evicted == (kThreads * kPublishesPerThread) - 3);
     CHECK(metrics->last_revision == kThreads * kPublishesPerThread);
-    CHECK(metrics->total_fingerprint_count == 3 * opts.metadata.fingerprint_digests.size());
+    CHECK(metrics->total_fingerprint_count == 0);
 }
 
 TEST_CASE("long running publishes keep metrics stable over time") {

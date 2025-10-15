@@ -44,6 +44,9 @@ auto to_ms(std::uint64_t render_ns) -> double {
 
 } // namespace
 
+PathSurfaceSoftware::PathSurfaceSoftware(Builders::SurfaceDesc desc)
+    : PathSurfaceSoftware(std::move(desc), Options{}) {}
+
 PathSurfaceSoftware::PathSurfaceSoftware(Builders::SurfaceDesc desc, Options options)
     : desc_(std::move(desc))
     , options_(options) {
