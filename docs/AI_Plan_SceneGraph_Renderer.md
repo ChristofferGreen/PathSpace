@@ -491,15 +491,16 @@ Overview
 - Presenter blits only tile-aligned dirty regions that are consistent; no full-frame commit is required.
 
 Shared framebuffer and tiles
-- One CPU pixel buffer sized to the target (physical pixels; respect dpi_scale). Pixel format: RGBA8 premultiplied alpha with sRGB encoding on store (linear working space → sRGB on write-out). The presenter blits bytes as-is (no further color conversion).
-- Fixed tile size (e.g., 32×32 or 64×64). Per-tile seqlock metadata:
-  - seq: uint32 (even=stable, odd=being-written)
-  - pass: enum { None, OpaqueDone, AlphaDone }
-  - epoch: uint64 (increments each time a tile reaches AlphaDone)
+- One CPU pixel buffer sized to the target (physical pixels; respect dpi_scale). Pixel format: `RGBA8Unorm_sRGB` with premultiplied alpha. Renderers composite in linear light and encode to sRGB on store; presenters blit the bytes unchanged so no second encode ever occurs.
+- Fixed tile size (e.g., 32×32 or 64×64). Per-tile metadata lives next to the pixels and is fully atomic:
+  - `seq` (`std::atomic<uint32_t>`): even = stable, odd = writer active.
+  - `pass` (`std::atomic<uint32_t>`): 0 = None, 1 = OpaqueInProgress, 2 = OpaqueDone, 3 = AlphaInProgress, 4 = AlphaDone.
+  - `epoch` (`std::atomic<uint64_t>`): monotonic counter for AlphaDone completion; readers drop tiles whose epoch lags the most recent frame.
 
 Renderer protocol per tile
-- Writer atomics: `seq` is a std::atomic<uint32_t>. Begin: `seq.fetch_add(1)` to odd. Write tile pixels. Publish with `std::atomic_thread_fence(std::memory_order_release)`. End: `seq.fetch_add(1)` to even.
-- Publish pass/epoch atomically: `pass.store(OpaqueDone|AlphaDone, std::memory_order_release)` only after the corresponding tile pixels are visible; `epoch.store(newEpoch, std::memory_order_release)` when a tile reaches AlphaDone. Readers use `memory_order_acquire` on `seq/pass/epoch`. If `seq` changes between pre- and post-copy reads, discard that tile copy.
+- Writers flip `seq` to odd via `fetch_add(1, memory_order_acq_rel)` before touching pixel memory. Optional: set `pass` to `OpaqueInProgress` or `AlphaInProgress` with `memory_order_release` so readers can short-circuit.
+- After writing pixels, issue `std::atomic_thread_fence(memory_order_release)` to flush stores, then set the new pass state (`OpaqueDone` or `AlphaDone`) with `memory_order_release`. When a tile reaches `AlphaDone`, store the new `epoch` with `memory_order_release` before making the tile visible.
+- Finish by flipping `seq` back to even with `fetch_add(1, memory_order_acq_rel)`. Readers perform `memory_order_acquire` loads of `seq`, `pass`, and `epoch`. If `seq` is odd or differs before/after a copy, the presenter discards the in-flight data to avoid tearing.
 
 Dirty region feed
 - Renderer enqueues tile-aligned dirty rects to a lock-free queue.
@@ -2214,14 +2215,6 @@ These items clarify edge cases or finalize small inconsistencies. Resolve and re
     - `output/v1/html/commands` (Canvas JSON fallback stream; compact command list)
   - Ensure “Target keys (final)” lists both `html/css` and `html/commands`.
   - In the HTML/Web section, name “Canvas JSON” explicitly and state when it is selected (node count thresholds, clip/blend fidelity limits).
-
-- Progressive present: color encoding and seqlock memory model
-  - Color format:
-    - Specify the shared framebuffer pixel format and alpha convention, e.g., `RGBA8Unorm_sRGB` with premultiplied alpha. Renderer encodes linear→sRGB per tile on store; presenter blits bytes without further conversion.
-    - Alternatively, define a linear float buffer and a final encode step during blit; if chosen, document the encode exactly and why.
-  - Seqlock memory ordering:
-    - Use atomics for `seq/pass/epoch`: writer increments to odd (begin), writes pixels, issues `release` fence, increments to even (end). Reader uses `acquire` loads; if `seq` changed during copy, discard the tile copy.
-    - Document that `pass` transitions (OpaqueDone → AlphaDone) are published with `memory_order_release` after the corresponding tile pixels are visible.
 
 - Clip stack metadata for hit testing
   - Persist clip stack membership per drawable to avoid re-walking the command stream:
