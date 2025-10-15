@@ -128,6 +128,34 @@ struct RenderSettings {
         uint32_t flags   = 0;
         bool     enabled = false;
     } debug;
+
+    struct MicrotriRT {
+        enum class HardwareMode {
+            Auto,
+            ForceOn,
+            ForceOff,
+        };
+        struct Environment {
+            std::string hdr_path;
+            float       intensity = 1.0f;
+            float       rotation  = 0.0f;
+        };
+
+        bool          enabled = false;
+        float         microtri_edge_px = 1.0f;
+        std::uint32_t max_microtris_per_frame = 200000;
+        std::uint32_t rays_per_vertex = 1;
+        std::uint32_t max_bounces = 1;
+        std::uint32_t rr_start_bounce = 1;
+        HardwareMode  use_hardware_rt = HardwareMode::Auto;
+        Environment   environment{};
+        bool          allow_caustics = false;
+        std::optional<float> clamp_direct{};
+        std::optional<float> clamp_indirect{};
+        bool          progressive_accumulation = true;
+        float         vertex_accum_half_life = 0.25f;
+        std::uint64_t seed = 0;
+    } microtri_rt;
 };
 
 enum class ParamUpdateMode {

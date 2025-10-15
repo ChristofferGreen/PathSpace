@@ -601,6 +601,7 @@ enum PipelineFlags : uint32_t {
 Notes
 - Materials own shader program and textures; `materialId` selects programs and resource bindings. `pipelineFlags` selects pipeline variants and state bits.
 - If this section changes (blend behavior, flags, or color pipeline), update examples and tests, and reflect any core behavior impacts in `docs/AI_ARCHITECTURE.md`.
+- Regardless of framebuffer format, shading and blending are performed in linear light. When `SrgbFramebuffer` is set, texture sampling decodes to linear and framebuffer writes re-encode to sRGB; ensure no code path applies an extra encode. Add regression tests whenever blend paths change to keep this invariant intact.
 
 ## Culling and spatial acceleration (v1)
 
@@ -1265,6 +1266,7 @@ int main() {
   present_view(space, app, windowPath, "editor").value();
 }
 ```
+`SurfaceDesc` captures immutable framebuffer dimensions and pixel format; per-present scaling (DPI) is controlled via `RenderSettings::surface.dpi_scale`.
 
 ## HTML/Web output (optional adapter)
 
@@ -2186,6 +2188,7 @@ Cross-references:
 - `clear_color: [float,4]`
 - `camera: { enabled: bool, projection: Orthographic | Perspective, zNear:float, zFar:float }`
 - `debug: { enabled: bool, flags: uint32 }`
+- `microtri_rt: { enabled: bool, microtri_edge_px: float, max_microtris_per_frame: uint32, rays_per_vertex: uint32, max_bounces:uint32, rr_start_bounce:uint32, use_hardware_rt: {Auto|ForceOn|ForceOff}, environment:{hdr_path:string,intensity:float,rotation:float}, allow_caustics: bool, clamp_direct?: float, clamp_indirect?: float, progressive_accumulation: bool, vertex_accum_half_life: float, seed: uint64 }`
 
 Invariants:
 - Writers replace the entire `RenderSettings` at `settings` in a single atomic write (single-path whole-object)
@@ -2211,21 +2214,3 @@ Invariants:
 ## TODO — Clarifications and Follow-ups
 
 These items clarify edge cases or finalize small inconsistencies. Resolve and reflect updates in `docs/AI_ARCHITECTURE.md`, tests, and any affected examples. (Items already reflected in the main text have been removed from this list.)
-
-
-
-- sRGB attachments and linear blending
-  - Clarify that blending and shading remain in linear space even when using sRGB attachments:
-    - On APIs with sRGB formats, sampling decodes to linear and framebuffer writes encode to sRGB; do not double-encode.
-    - Add a note to tests to verify no double-encoding occurs when toggling `SrgbFramebuffer`.
-
-
-
-- SurfaceDesc schema vs examples
-  - Align `SurfaceDesc` fields with examples:
-    - Examples used `sdesc.size = {w,h,scale}`; schema specifies `size_px {w,h}` and `dpi_scale` separately. Update examples or schema to be consistent and call it out here.
-
-- RenderSettings v1 vs MicrotriRT decision
-  - Decide whether `MicrotriRT` lives inside `RenderSettingsV1` or as an optional extension type under settings:
-    - If included in v1, update “RenderSettings v1 (final)” and Builders helpers.
-    - If separate, document the path and versioning under `settings` (e.g., feature flags or nested struct with default-disabled semantics).
