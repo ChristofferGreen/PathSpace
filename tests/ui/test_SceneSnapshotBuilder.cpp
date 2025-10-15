@@ -26,6 +26,12 @@ struct SnapshotFixture {
     }
 };
 
+template <typename T>
+auto read_value(PathSpace const& space, std::string const& path) -> SP::Expected<T> {
+    auto const& base = static_cast<SP::PathSpaceBase const&>(space);
+    return base.template read<T, std::string>(path);
+}
+
 auto make_bucket(std::size_t drawables, std::size_t commands) -> DrawableBucketSnapshot {
     DrawableBucketSnapshot bucket{};
     bucket.drawable_ids.resize(drawables);
@@ -173,7 +179,7 @@ TEST_CASE("publish snapshot encodes bucket and metadata") {
     CHECK(decodedMeta->command_count == bucket.command_kinds.size());
     CHECK(decodedMeta->fingerprint_digests == opts.metadata.fingerprint_digests);
 
-    auto bucketMetaJson = fx.space.read<std::string>(revisionBase + "/bucket/meta.json");
+    auto bucketMetaJson = read_value<std::string>(fx.space, revisionBase + "/bucket/meta.json");
     REQUIRE(bucketMetaJson);
     CHECK(bucketMetaJson->find("\"author\":\"tester\"") != std::string::npos);
     CHECK(bucketMetaJson->find("\"authoring_map_entries\":2") != std::string::npos);

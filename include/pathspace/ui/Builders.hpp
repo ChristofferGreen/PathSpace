@@ -140,18 +140,29 @@ struct RenderSettings {
             float       intensity = 1.0f;
             float       rotation  = 0.0f;
         };
+        struct Budget {
+            float         microtri_edge_px = 1.0f;
+            std::uint32_t max_microtris_per_frame = 200'000;
+            std::uint32_t rays_per_vertex = 1;
+        };
+        struct Path {
+            std::uint32_t max_bounces = 1;
+            std::uint32_t rr_start_bounce = 1;
+            bool          allow_caustics = false;
+        };
+        struct Clamp {
+            float direct = 0.0f;
+            float indirect = 0.0f;
+            bool  has_direct = false;
+            bool  has_indirect = false;
+        };
 
         bool          enabled = false;
-        float         microtri_edge_px = 1.0f;
-        std::uint32_t max_microtris_per_frame = 200000;
-        std::uint32_t rays_per_vertex = 1;
-        std::uint32_t max_bounces = 1;
-        std::uint32_t rr_start_bounce = 1;
+        Budget        budget{};
+        Path          path{};
         HardwareMode  use_hardware_rt = HardwareMode::Auto;
         Environment   environment{};
-        bool          allow_caustics = false;
-        std::optional<float> clamp_direct{};
-        std::optional<float> clamp_indirect{};
+        Clamp         clamp{};
         bool          progressive_accumulation = true;
         float         vertex_accum_half_life = 0.25f;
         std::uint64_t seed = 0;

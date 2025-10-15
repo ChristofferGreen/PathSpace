@@ -2188,7 +2188,7 @@ Cross-references:
 - `clear_color: [float,4]`
 - `camera: { enabled: bool, projection: Orthographic | Perspective, zNear:float, zFar:float }`
 - `debug: { enabled: bool, flags: uint32 }`
-- `microtri_rt: { enabled: bool, microtri_edge_px: float, max_microtris_per_frame: uint32, rays_per_vertex: uint32, max_bounces:uint32, rr_start_bounce:uint32, use_hardware_rt: {Auto|ForceOn|ForceOff}, environment:{hdr_path:string,intensity:float,rotation:float}, allow_caustics: bool, clamp_direct?: float, clamp_indirect?: float, progressive_accumulation: bool, vertex_accum_half_life: float, seed: uint64 }`
+- `microtri_rt: { enabled: bool, budget:{microtri_edge_px: float, max_microtris_per_frame: uint32, rays_per_vertex: uint32}, path:{max_bounces:uint32, rr_start_bounce:uint32, allow_caustics: bool}, use_hardware_rt: {Auto|ForceOn|ForceOff}, environment:{hdr_path:string,intensity:float,rotation:float}, clamp:{direct:float, indirect:float, has_direct:bool, has_indirect:bool}, progressive_accumulation: bool, vertex_accum_half_life: float, seed: uint64 }`
 
 Invariants:
 - Writers replace the entire `RenderSettings` at `settings` in a single atomic write (single-path whole-object)
