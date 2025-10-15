@@ -40,19 +40,21 @@ Each workstream lands independently but respects shared contracts (paths, atomic
 - ✅ (October 11, 2025) Top-level CMake now exposes `PATHSPACE_ENABLE_UI` (default OFF) plus `PATHSPACE_UI_SOFTWARE` / `PATHSPACE_UI_METAL`, `PATHSPACE_ENABLE_APP`, and `PATHSPACE_ENABLE_EXTRA` flags, and the library/tests gate feature-specific sources on these toggles.
 
 ### Phase 1 — Typed Helpers & Path Semantics (1 sprint)
-- Define test stubs and fixtures that codify path containment, settings atomicity, and failure cases.
-- Implement `include/pathspace/ui/Builders.hpp` with app-root resolution, target id derivation, and atomic parameter helpers (stubbed implementations calling existing `PathSpace` primitives).
-- Run the test loop to verify behavior before moving on.
-- Wire helper usage docs and examples; update `AI_PATHS.md` if new canonical paths are introduced.
-- Treat helper creates as idempotent (return existing paths when metadata already exists) so restarts/replays do not fail; codify this in doctests alongside enum/RenderSettings coverage.
+Completed:
+- ✅ (October 14, 2025) Added doctest coverage in `tests/ui/test_Builders.cpp` for idempotent scene creation, cross-app rejection, and atomic `Renderer::UpdateSettings` behaviour (path containment + queue draining).
+- ✅ (October 14, 2025) Validated Builders via `./scripts/compile.sh --loop=15 --per-test-timeout 20` (15 iterations, 20 s per-test timeout).
 - ✅ (October 11, 2025) Initial UI helper implementations (`src/pathspace/ui/Helpers.cpp`) enforce app-root containment for scene/renderer/surface/window calls with accompanying doctests in `tests/ui/test_SceneHelpers.cpp`; remaining work will flesh out Builders.hpp and atomic settings writes.
+- ✅ (October 14, 2025) Documented Builders usage patterns and invariants in `docs/AI_Plan_SceneGraph_Renderer.md` (idempotent creates, atomic settings, app-root enforcement); no new canonical paths required for `AI_PATHS.md`.
 
 ### Phase 2 — Scene Schema & Snapshot Builder (2 sprints)
-- Author unit/concurrency tests that describe the expected schema, dirty tracking, and GC invariants.
-- Implement the minimal snapshot builder (`SceneSnapshotBuilder`) emitting `DrawableBucket` files and metadata, including revision publish/GC utilities.
-- Execute the concurrency test loop (hammer authoring edits while snapshot builds run) with the mandated harness.
-- Enforce per-item residency policy and emit fingerprints/metadata required by renderers and resource managers.
-- Document schema changes in `AI_ARCHITECTURE.md`.
+Completed:
+- ✅ (October 14, 2025) `SceneSnapshotBuilder` now emits full SoA drawable data (transforms, bounds, material/pipeline metadata, command offsets/counts, command stream, opaque/alpha/per-layer indices) and documents the layout in `docs/AI_Plan_SceneGraph_Renderer.md` / `docs/AI_ARCHITECTURE.md`.
+- ✅ (October 14, 2025) Added doctests in `tests/ui/test_SceneSnapshotBuilder.cpp` covering round-trip decoding plus retention under burst publishes.
+- ✅ (October 15, 2025) Added long-running publish/prune stress coverage with metrics validation and GC metric emission (retained/evicted/last_revision/total_fingerprint_count) in `tests/ui/test_SceneSnapshotBuilder.cpp`.
+- ✅ (October 15, 2025) Snapshot metadata now records resource fingerprints per revision; GC metrics aggregate total fingerprint counts for residency planning.
+
+Remaining:
+- Document the finalized binary split (drawables.bin, transforms.bin, etc.) once the on-disk format switches from the interim Alpaca blob.
 
 ### Phase 3 — Software Renderer Core (2 sprints)
 - Draft golden framebuffer comparisons, render/present concurrency loops, and failure-handling tests up front.

@@ -90,6 +90,7 @@ if(PATHSPACE_ENABLE_UI)
     target_sources(PathSpace PRIVATE
         ui/Helpers.cpp
         ui/Builders.cpp
+        ui/SceneSnapshotBuilder.cpp
     )
     target_compile_definitions(PathSpace PUBLIC PATHSPACE_ENABLE_UI=1)
     if(PATHSPACE_UI_SOFTWARE)

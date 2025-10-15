@@ -460,7 +460,8 @@ Atomicity rules:
 ### Snapshot integration
 - Snapshot builder publishes immutable scene revisions beneath `scenes/<id>/builds/<revision>/...` and atomically updates `current_revision` when a revision is ready.
 - Renderer targets resolve the scene by reading `targets/<kind>/<name>/scene` and load the referenced `current_revision`. They bump snapshot reference counts during adoption and release once the frame completes (see `docs/AI_Plan_SceneGraph_Renderer.md`, “Decision: Snapshot retention”).
-- Metrics for snapshot GC (`retained`, `evicted`, `bytes_alive`) live under `scenes/<id>/metrics/snapshots` so render loops can surface health in UI tooling.
+- The C++ helper (`SceneSnapshotBuilder`, added October 14, 2025) clamps drawable SoA integrity, serializes buckets/metadata via Alpaca before handing them to `Builders::Scene::PublishRevision`, records a rolling index at `meta/snapshots/index`, and enforces the default retention policy (≥3 revisions or ≥2 minutes) by pruning stale entries while preserving `current_revision`.
+- Metrics for snapshot GC (`retained`, `evicted`, `last_revision`, `total_fingerprint_count`) live under `scenes/<id>/metrics/snapshots` so render loops can surface health in UI tooling.
 
 ### HTML adapter modes
 - Renderer targets select an adapter via `renderers/<rid>/targets/html/<name>/adapter_mode` (enum: `canvas_replay`, `webgl`, `dom_bridge`). Adapters own capability detection: they probe the runtime, negotiate fallbacks, and surface the final choice under `output/v1/html/metadata/active_mode`.

@@ -365,6 +365,7 @@ On-disk schema (per scene, per revision)
   - meta.json             — small JSON with revision, created_at, tool versions, and authoring→drawable id map summary
   - trace/tlas.bin        — optional (software path tracer; instances carry AABBs)
   - trace/blas.bin        — optional (software path tracer; geometry bounds/AABBs per BLAS)
+- Implementation status (October 14, 2025): the in-repo `SceneSnapshotBuilder` persists the SoA + indices + command stream as an Alpaca-encoded blob at `drawable_bucket` and a compact metadata blob at `metadata`, ensuring the same logical fields are populated while we bring up the finalized binary splitting above.
 - Binary headers:
   - All *.bin start with: magic(4), version(u32), endianness(u8), reserved, counts/offsets(u64), checksum(u64)
 - Per-layer index naming/format:
@@ -1085,7 +1086,7 @@ Responsibilities:
   - Snapshot revision flip (single write) for scene publish (builder concern)
 - Provide readable errors with context (target-id, frame index, snapshot revision)
 
-Helper API (schema-as-code; returns canonical absolute paths; excerpt):
+Helper API (schema-as-code; returns canonical absolute paths; excerpt validated by doctests in `tests/ui/test_Builders.cpp` and `tests/ui/test_SceneSnapshotBuilder.cpp`):
 ```cpp
 namespace SP::UI {
 
@@ -1137,6 +1138,13 @@ Expected<SurfaceDesc>  get_surface_desc (PathSpace const&, AppRoot const&, std::
 
 } // namespace SP::UI
 ```
+
+Usage notes:
+- Treat all `Create` helpers as idempotent: if the target subtree already exists, the helper returns the canonical absolute path without rewriting metadata. (Verified by `Scene::Create` doctest on October 14, 2025.)
+- `Renderer::UpdateSettings` performs a single-path atomic replace after draining any queued settings values under `<target>/settings`; callers should coalesce state before invoking it (doctest coverage ensures stale entries are discarded).
+- `Surface::SetScene` and `Window::AttachSurface` enforce shared app roots, rejecting cross-app bindings with a typed `InvalidPath` error so misuse is caught during integration.
+- The Builders suite is exercised in the 15× compile loop (`./scripts/compile.sh --loop=15 --per-test-timeout 20`) to guarantee the helpers remain race-free under load.
+- `SceneSnapshotBuilder` serializes drawable buckets with explicit SoA fields (world transforms, bounding spheres/boxes with validity flags, material/pipeline metadata, command offsets/counts, command stream, pre-filtered opaque/alpha indices, and per-layer index blocks) plus per-revision resource fingerprints; doctests validate round-tripping and retention behaviour.
 
 Source layout (proposed):
 - `include/pathspace/ui/Builders.hpp`

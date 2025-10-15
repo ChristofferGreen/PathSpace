@@ -6,6 +6,7 @@
 #include <array>
 #include <chrono>
 #include <cstddef>
+#include <string>
 #include <vector>
 
 namespace {
@@ -128,6 +129,58 @@ TEST_CASE("Renderer settings round-trip") {
     CHECK(stored->debug.flags == settings.debug.flags);
 }
 
+TEST_CASE("Scene::Create is idempotent and preserves metadata") {
+    BuildersFixture fx;
+
+    SceneParams firstParams{ .name = "main", .description = "First description" };
+    auto first = Scene::Create(fx.space, fx.root_view(), firstParams);
+    REQUIRE(first);
+
+    SceneParams secondParams{ .name = "main", .description = "Second description" };
+    auto second = Scene::Create(fx.space, fx.root_view(), secondParams);
+    REQUIRE(second);
+    CHECK(second->getPath() == first->getPath());
+
+    auto storedDesc = read_value<std::string>(fx.space, std::string(first->getPath()) + "/meta/description");
+    REQUIRE(storedDesc);
+    CHECK(*storedDesc == "First description");
+}
+
+TEST_CASE("Renderer::UpdateSettings replaces any queued values atomically") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{ .name = "2d", .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    REQUIRE(renderer);
+
+    auto targetBase = Renderer::ResolveTargetBase(fx.space,
+                                                  fx.root_view(),
+                                                  *renderer,
+                                                  "targets/surfaces/editor");
+    REQUIRE(targetBase);
+
+    auto settingsPath = targetBase->getPath() + std::string{"/settings"};
+    RenderSettings staleA;
+    staleA.time.frame_index = 1;
+    RenderSettings staleB;
+    staleB.time.frame_index = 2;
+    fx.space.insert(settingsPath, staleA);
+    fx.space.insert(settingsPath, staleB);
+
+    auto latest = make_sample_settings();
+    latest.time.frame_index = 99;
+    auto updated = Renderer::UpdateSettings(fx.space, ConcretePathView{targetBase->getPath()}, latest);
+    REQUIRE(updated);
+
+    auto taken = fx.space.take<RenderSettings>(settingsPath);
+    REQUIRE(taken);
+    CHECK(taken->time.frame_index == latest.time.frame_index);
+
+    auto empty = fx.space.take<RenderSettings>(settingsPath);
+    CHECK_FALSE(empty);
+    CHECK(empty.error().code == Error::Code::NoObjectFound);
+}
+
 TEST_CASE("Surface creation binds renderer and scene") {
     BuildersFixture fx;
 
@@ -206,6 +259,38 @@ TEST_CASE("Window attach surface records binding") {
     auto present = Window::Present(fx.space, *window, "view");
     CHECK_FALSE(present);
     CHECK(present.error().code == Error::Code::UnknownError);
+}
+
+TEST_CASE("Renderer::ResolveTargetBase rejects empty specifications") {
+    BuildersFixture fx;
+    RendererParams rendererParams{ .name = "2d", .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    REQUIRE(renderer);
+
+    auto target = Renderer::ResolveTargetBase(fx.space, fx.root_view(), *renderer, "");
+    CHECK_FALSE(target);
+    CHECK(target.error().code == Error::Code::InvalidPath);
+}
+
+TEST_CASE("Window::AttachSurface enforces shared app roots") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{ .name = "2d", .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    REQUIRE(renderer);
+
+    SurfaceParams surfaceParams{ .name = "pane", .desc = {}, .renderer = "renderers/2d" };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    WindowParams windowParams{ .name = "Main", .title = "app", .width = 800, .height = 600, .scale = 1.0f, .background = "#000" };
+    auto window = Window::Create(fx.space, fx.root_view(), windowParams);
+    REQUIRE(window);
+
+    SurfacePath foreignSurface{ "/system/applications/other_app/surfaces/pane" };
+    auto attached = Window::AttachSurface(fx.space, *window, "view", foreignSurface);
+    CHECK_FALSE(attached);
+    CHECK(attached.error().code == Error::Code::InvalidPath);
 }
 
 TEST_CASE("Diagnostics read metrics and clear error") {
