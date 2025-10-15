@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.15)
 
 project(PathSpaceTests VERSION 1.0)
 
-add_executable(PathSpaceTests
+set(PATHSPACE_CORE_TEST_SOURCES
   unit/path/test_Iterator.cpp
   unit/core/test_WaitMap.cpp
   unit/type/test_InputMetadata.cpp
@@ -18,6 +18,8 @@ add_executable(PathSpaceTests
   unit/path/test_UnvalidatedPath.cpp
   test_main.cpp
 )
+
+add_executable(PathSpaceTests ${PATHSPACE_CORE_TEST_SOURCES})
 
 if(PATHSPACE_ENABLE_APP)
   target_sources(PathSpaceTests PRIVATE app/test_AppPaths.cpp)
@@ -39,11 +41,16 @@ if(PATHSPACE_ENABLE_EXTRA)
 endif()
 
 if(PATHSPACE_ENABLE_UI)
-  target_sources(PathSpaceTests PRIVATE ui/test_SceneHelpers.cpp)
-  target_sources(PathSpaceTests PRIVATE ui/test_Builders.cpp)
-  target_sources(PathSpaceTests PRIVATE ui/test_SceneSnapshotBuilder.cpp)
-  target_sources(PathSpaceTests PRIVATE ui/test_ProgressiveSurfaceBuffer.cpp)
-  target_sources(PathSpaceTests PRIVATE ui/test_PathSurfaceSoftware.cpp)
+  add_executable(PathSpaceUITests
+    ui/test_SceneHelpers.cpp
+    ui/test_Builders.cpp
+    ui/test_SceneSnapshotBuilder.cpp
+    ui/test_ProgressiveSurfaceBuffer.cpp
+    ui/test_PathSurfaceSoftware.cpp
+    test_main.cpp
+  )
+  target_compile_definitions(PathSpaceUITests PRIVATE PATHSPACE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+  target_link_libraries(PathSpaceUITests PRIVATE PathSpace)
 endif()
 
 # Opt-in debug logging for tests
@@ -61,3 +68,10 @@ target_link_libraries(PathSpaceTests
 
 include(CTest)
 add_test(NAME PathSpaceTests COMMAND PathSpaceTests)
+
+set_tests_properties(PathSpaceTests PROPERTIES LABELS core)
+
+if(PATHSPACE_ENABLE_UI)
+  add_test(NAME PathSpaceUITests COMMAND PathSpaceUITests)
+  set_tests_properties(PathSpaceUITests PROPERTIES LABELS ui)
+endif()
