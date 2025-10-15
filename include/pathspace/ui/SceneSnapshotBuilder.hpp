@@ -32,6 +32,30 @@ struct BoundingBox {
     std::array<float, 3> max{};
 };
 
+enum class ClipNodeType : std::uint8_t {
+    Rect = 0,
+    Path = 1,
+};
+
+struct ClipRect {
+    float min_x = 0.0f;
+    float min_y = 0.0f;
+    float max_x = 0.0f;
+    float max_y = 0.0f;
+};
+
+struct ClipPathReference {
+    std::uint32_t command_offset = 0;
+    std::uint32_t command_count = 0;
+};
+
+struct ClipNode {
+    ClipNodeType type = ClipNodeType::Rect;
+    std::int32_t next = -1; // index into clip node array; -1 = end of list
+    ClipRect rect{};
+    ClipPathReference path{};
+};
+
 struct LayerIndices {
     std::uint32_t             layer = 0;
     std::vector<std::uint32_t> indices;
@@ -55,6 +79,8 @@ struct DrawableBucketSnapshot {
     std::vector<LayerIndices>  layer_indices;
     std::vector<std::uint32_t> command_kinds;
     std::vector<std::uint8_t>  command_payload;
+    std::vector<ClipNode>      clip_nodes;
+    std::vector<std::int32_t>  clip_head_indices;
 };
 
 struct SnapshotMetadata {

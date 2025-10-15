@@ -176,6 +176,9 @@ Presenter (per window view):
    - Software (surface): read framebuffer and blit to the window
    - GPU (surface): draw a textured quad sampling the offscreen texture/image to the window drawable/swapchain
    - GPU (windows target): present the acquired drawable/swapchain image (direct-to-window)
+4) Record presenter metrics: write `frameIndex`, `revision`, `renderMs`, `presentMs`, `lastPresentSkipped`, and `lastError` under `targets/<tid>/output/v1/common/*` via `Builders::Diagnostics::WritePresentMetrics`. These values mirror the most recent present result and back diagnostics/telemetry.
+
+Implementation note: `PathWindowView` (software presenter) performs the buffered/progressive copy, returns a `PresentStats` struct, and the helpers layer persists the metrics via `WritePresentMetrics`. UI doctests live in the `PathSpaceUITests` target to keep presenter/surface coverage isolated from the core suite.
 
 Present policy (backend-aware)
 - Modes:
@@ -1264,12 +1267,12 @@ int main() {
 
 Motivation: preview/export UI scenes to browsers without changing the core pipeline
 
-Approach: semantic HTML/DOM adapter mapping widgets to native elements with CSS-based layout/animation. No ray tracing, no canvas command stream, no WebGL.
+Approach: semantic HTML/DOM adapter mapping widgets to native elements with CSS-based layout/animation. A compact Canvas JSON stream is emitted as a fallback when DOM fidelity limits are exceeded; no WebGL path is required in the MVP.
 
 Paths (under a renderer target base):
 - `output/v1/html/dom` — full HTML document as a string (may inline CSS/JS)
 - `output/v1/html/css` — CSS string, if split
-- `output/v1/html/commands` — Canvas JSON fallback command stream
+- `output/v1/html/commands` — Canvas JSON fallback command stream (ordered draw commands)
 - `output/v1/html/assets/<name>` — optional assets (base64 or URLs)
 
 Mapping hints:
@@ -1305,7 +1308,8 @@ Example (DOM/CSS):
 ```
 
 Notes:
-- Semantic DOM/CSS only; no ray tracing or canvas/WebGL in this adapter
+- DOM/CSS is preferred when the rendered scene stays within fidelity limits: active node count ≤ `HtmlTargetDesc::max_dom_nodes`, clips are rect or rounded-rect, and blend modes stay within CSS-compatible cases. If any constraint is violated, the adapter emits a Canvas JSON stream alongside the DOM so preview tooling can fall back automatically.
+- Canvas JSON carries the same draw order as the snapshot and allows lossless replay in browsers that cannot honor the DOM/CSS output.
 - Text fidelity improves if we pre-shape glyphs in the snapshot and emit positioned spans
 - Optional adapter; does not affect software/GPU outputs
 
@@ -2147,7 +2151,7 @@ Keys under a target:
   - `software/framebuffer` — pixel buffer + metadata (width, height, stride, format, colorSpace, premultiplied)
   - `metal/texture` or `vulkan/image` — opaque GPU handles and metadata
   - `window/presentInfo` — present metadata (image_count, present_mode, suboptimal)
-  - `html/dom`, `html/commands`, `html/assets/*` — optional web outputs
+  - `html/dom`, `html/css`, `html/commands`, `html/assets/*` — optional web outputs
 
 ## View keys (final)
 
@@ -2206,15 +2210,6 @@ Invariants:
 These items clarify edge cases or finalize small inconsistencies. Resolve and reflect updates in `docs/AI_ARCHITECTURE.md`, tests, and any affected examples. (Items already reflected in the main text have been removed from this list.)
 
 
-
-- HTML outputs: unify keys and document Canvas JSON
-  - Standardize the outputs to include:
-    - `output/v1/html/dom` (HTML document string)
-    - `output/v1/html/css` (CSS string when split)
-    - `output/v1/html/assets/*` (referenced assets)
-    - `output/v1/html/commands` (Canvas JSON fallback stream; compact command list)
-  - Ensure “Target keys (final)” lists both `html/css` and `html/commands`.
-  - In the HTML/Web section, name “Canvas JSON” explicitly and state when it is selected (node count thresholds, clip/blend fidelity limits).
 
 - Clip stack metadata for hit testing
   - Persist clip stack membership per drawable to avoid re-walking the command stream:

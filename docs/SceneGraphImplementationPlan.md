@@ -65,10 +65,14 @@ Remaining:
 - Re-run the looped test suite and inspect goldens post implementation.
 
 ### Phase 4 — Surfaces, Presenters, and Progressive Mode (2 sprints)
+Completed:
+- ✅ (October 15, 2025) `PathSurfaceSoftware` progressive buffer + double-buffer landed with dedicated UI tests.
+- ✅ (October 15, 2025) `PathWindowView` now presents buffered/progressive frames and writes presenter metrics via `Builders::Diagnostics::WritePresentMetrics`; UI tests split into `PathSpaceUITests` for isolation.
+
+Remaining:
 - Create end-to-end scenario tests (scene edit → render → present, policy permutations) and progressive-mode assertions before coding.
-- Implement `PathSurfaceSoftware` with double-buffer and render coordination (`render` execution path).
-- Build `PathWindowView` to honor present policy, progressive tile copies, and UI-thread ownership.
-- Metrics for present policy outcomes and progressive copy stats; hook into diagnostics paths.
+- Integrate presenters with `Window::Present` helper so render→present happens through PathSpace (auto-render scheduling still pending).
+- Metrics for present policy outcomes and progressive copy stats; hook into diagnostics paths for renderer/presenter tooling.
 - Codify seqlock memory-ordering and deadline behavior in tests; ensure implementations follow the spec’s atomic protocols.
 - Revalidate via the loop harness and scenario suites.
 

@@ -69,6 +69,14 @@ struct BucketCommandBufferBinary {
     std::vector<std::uint8_t>  command_payload;
 };
 
+struct BucketClipHeadsBinary {
+    std::vector<std::int32_t> clip_head_indices;
+};
+
+struct BucketClipNodesBinary {
+    std::vector<ClipNode> clip_nodes;
+};
+
 struct SnapshotSummary {
     std::uint64_t drawable_count = 0;
     std::uint64_t command_count = 0;
@@ -173,6 +181,38 @@ auto ensure_valid_bucket(DrawableBucketSnapshot const& bucket) -> Expected<void>
     if (auto status = check_size(bucket.visibility.size(), "visibility"); !status) return status;
     if (auto status = check_size(bucket.command_offsets.size(), "command_offsets"); !status) return status;
     if (auto status = check_size(bucket.command_counts.size(), "command_counts"); !status) return status;
+    if (!bucket.clip_head_indices.empty()) {
+        if (auto status = check_size(bucket.clip_head_indices.size(), "clip_head_indices"); !status) return status;
+    }
+    auto const clip_node_count = bucket.clip_nodes.size();
+    for (auto const nodeIndex : bucket.clip_head_indices) {
+        if (nodeIndex < -1 || (nodeIndex >= 0 && static_cast<std::size_t>(nodeIndex) >= clip_node_count)) {
+            return std::unexpected(make_error("clip_head_indices contains out-of-range index",
+                                              Error::Code::InvalidType));
+        }
+    }
+    for (std::size_t i = 0; i < bucket.clip_nodes.size(); ++i) {
+        auto const& node = bucket.clip_nodes[i];
+        if (node.next < -1 || (node.next >= 0 && static_cast<std::size_t>(node.next) >= clip_node_count)) {
+            return std::unexpected(make_error("clip_nodes contains next index out of range",
+                                              Error::Code::InvalidType));
+        }
+        switch (node.type) {
+        case ClipNodeType::Rect:
+            // No additional validation required yet; fields are directly authored.
+            break;
+        case ClipNodeType::Path:
+            // In path mode, expect a non-zero command count to reference cmd-buffer range.
+            if (node.path.command_count == 0) {
+                return std::unexpected(make_error("clip_nodes path reference missing command count",
+                                                  Error::Code::InvalidType));
+            }
+            break;
+        default:
+            return std::unexpected(make_error("clip_nodes contains unknown type",
+                                              Error::Code::InvalidType));
+        }
+    }
     return {};
 }
 
@@ -302,6 +342,46 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
     auto summary = space.read<SnapshotSummary>(revisionBase + std::string(kBucketSummary));
     if (!summary) return std::unexpected(summary.error());
 
+    std::vector<std::int32_t> clip_head_indices;
+    {
+        auto clipHeadsBytes = space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/clip-heads.bin");
+        if (clipHeadsBytes) {
+            auto decoded = from_bytes<BucketClipHeadsBinary>(*clipHeadsBytes);
+            if (!decoded) {
+                return std::unexpected(decoded.error());
+            }
+            clip_head_indices = std::move(decoded->clip_head_indices);
+        } else {
+            auto const& error = clipHeadsBytes.error();
+            if (error.code == Error::Code::NoObjectFound
+                || error.code == Error::Code::NoSuchPath) {
+                clip_head_indices.assign(drawablesDecoded->drawable_ids.size(), -1);
+            } else {
+                return std::unexpected(error);
+            }
+        }
+    }
+
+    std::vector<ClipNode> clip_nodes;
+    {
+        auto clipNodesBytes = space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/clip-nodes.bin");
+        if (clipNodesBytes) {
+            auto decoded = from_bytes<BucketClipNodesBinary>(*clipNodesBytes);
+            if (!decoded) {
+                return std::unexpected(decoded.error());
+            }
+            clip_nodes = std::move(decoded->clip_nodes);
+        } else {
+            auto const& error = clipNodesBytes.error();
+            if (error.code == Error::Code::NoObjectFound
+                || error.code == Error::Code::NoSuchPath) {
+                clip_nodes.clear();
+            } else {
+                return std::unexpected(error);
+            }
+        }
+    }
+
     DrawableBucketSnapshot bucket{};
     bucket.drawable_ids     = std::move(drawablesDecoded->drawable_ids);
     bucket.world_transforms = std::move(transformsDecoded->world_transforms);
@@ -319,6 +399,8 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
     bucket.alpha_indices    = *alpha;
     bucket.command_kinds    = std::move(cmdDecoded->command_kinds);
     bucket.command_payload  = std::move(cmdDecoded->command_payload);
+    bucket.clip_head_indices = std::move(clip_head_indices);
+    bucket.clip_nodes        = std::move(clip_nodes);
 
     bucket.layer_indices.reserve(summary->layer_ids.size());
     for (auto layerId : summary->layer_ids) {
@@ -473,6 +555,26 @@ auto SceneSnapshotBuilder::store_bucket(std::uint64_t revision,
         return std::unexpected(cmdBytes.error());
     }
     if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/cmd-buffer.bin", *cmdBytes); !status) {
+        return status;
+    }
+
+    std::vector<std::int32_t> clipHeads = bucket.clip_head_indices;
+    if (clipHeads.empty()) {
+        clipHeads.assign(bucket.drawable_ids.size(), -1);
+    }
+    auto clipHeadBytes = to_bytes(BucketClipHeadsBinary{ .clip_head_indices = clipHeads });
+    if (!clipHeadBytes) {
+        return std::unexpected(clipHeadBytes.error());
+    }
+    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/clip-heads.bin", *clipHeadBytes); !status) {
+        return status;
+    }
+
+    auto clipNodesBytes = to_bytes(BucketClipNodesBinary{ .clip_nodes = bucket.clip_nodes });
+    if (!clipNodesBytes) {
+        return std::unexpected(clipNodesBytes.error());
+    }
+    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/clip-nodes.bin", *clipNodesBytes); !status) {
         return status;
     }
 

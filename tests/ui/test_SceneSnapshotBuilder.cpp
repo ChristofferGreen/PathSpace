@@ -72,6 +72,33 @@ auto make_bucket(std::size_t drawables, std::size_t commands) -> DrawableBucketS
     bucket.alpha_indices  = {1};
     bucket.layer_indices.push_back(LayerIndices{.layer = 0, .indices = {0}});
     bucket.layer_indices.push_back(LayerIndices{.layer = 1, .indices = {1}});
+
+    bucket.clip_nodes.push_back(ClipNode{
+        .type = ClipNodeType::Rect,
+        .next = -1,
+        .rect = ClipRect{.min_x = 0.0f, .min_y = 0.0f, .max_x = 100.0f, .max_y = 50.0f},
+        .path = {},
+    });
+    if (drawables > 1) {
+        bucket.clip_nodes.push_back(ClipNode{
+            .type = ClipNodeType::Path,
+            .next = -1,
+            .rect = {},
+            .path = ClipPathReference{
+                .command_offset = bucket.command_offsets[1],
+                .command_count  = bucket.command_counts[1],
+            },
+        });
+    }
+
+    bucket.clip_head_indices.assign(drawables, -1);
+    if (drawables > 0) {
+        bucket.clip_head_indices[0] = 0;
+    }
+    if (drawables > 1) {
+        bucket.clip_head_indices[1] = (bucket.clip_nodes.size() > 1) ? 1 : -1;
+    }
+
     return bucket;
 }
 
@@ -115,6 +142,14 @@ TEST_CASE("publish snapshot encodes bucket and metadata") {
     CHECK(decodedBucket->pipeline_flags == bucket.pipeline_flags);
     CHECK(decodedBucket->command_offsets == bucket.command_offsets);
     CHECK(decodedBucket->command_kinds == bucket.command_kinds);
+    CHECK(decodedBucket->clip_head_indices == bucket.clip_head_indices);
+    REQUIRE(decodedBucket->clip_nodes.size() == bucket.clip_nodes.size());
+    CHECK(decodedBucket->clip_nodes[0].type == bucket.clip_nodes[0].type);
+    CHECK(decodedBucket->clip_nodes[0].rect.max_x == doctest::Approx(bucket.clip_nodes[0].rect.max_x));
+    if (decodedBucket->clip_nodes.size() > 1) {
+        CHECK(decodedBucket->clip_nodes[1].type == ClipNodeType::Path);
+        CHECK(decodedBucket->clip_nodes[1].path.command_count == bucket.clip_nodes[1].path.command_count);
+    }
 
     auto rawMeta = fx.space.read<std::vector<std::uint8_t>>(revisionBase + "/metadata");
     REQUIRE(rawMeta);
