@@ -156,6 +156,10 @@ TEST_CASE("WritePresentMetrics stores presenter results in PathSpace") {
     stats.frame.revision = 77;
     stats.frame.render_ms = 5.5;
     stats.present_ms = 2.0;
+    stats.buffered_frame_consumed = true;
+    stats.used_progressive = true;
+    stats.progressive_tiles_copied = 3;
+    stats.wait_budget_ms = 1.25;
     stats.error = "ok";
 
     auto targetPath = ConcretePathString{"/renderers/r/targets/surfaces/main"};
@@ -171,6 +175,11 @@ TEST_CASE("WritePresentMetrics stores presenter results in PathSpace") {
     CHECK(space.read<double>(base + "/renderMs").value() == doctest::Approx(5.5));
     CHECK(space.read<double>(base + "/presentMs").value() == doctest::Approx(2.0));
     CHECK_FALSE(space.read<bool>(base + "/lastPresentSkipped").value());
+    CHECK(space.read<bool>(base + "/presented").value());
+    CHECK(space.read<bool>(base + "/bufferedFrameConsumed").value());
+    CHECK(space.read<bool>(base + "/usedProgressive").value());
+    CHECK(space.read<uint64_t>(base + "/progressiveTilesCopied").value() == 3);
+    CHECK(space.read<double>(base + "/waitBudgetMs").value() == doctest::Approx(1.25));
     auto lastError = space.read<std::string, std::string>(base + "/lastError");
     REQUIRE(lastError);
     CHECK(*lastError == "ok");

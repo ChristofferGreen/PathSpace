@@ -1,4 +1,6 @@
 # PathSpace — Scene Graph and Renderer Plan
+
+> **Context update (October 15, 2025):** All renderer milestones now track the “Atlas” AI context introduced in this launch; treat previous context references as historical.
 Scope: UI surfaces, renderers, presenters, multi-scene targets; atomic params and snapshot-based rendering
 
 ## Goals

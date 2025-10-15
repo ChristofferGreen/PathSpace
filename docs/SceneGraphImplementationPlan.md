@@ -1,5 +1,7 @@
 # Scene Graph Implementation Plan
 
+> **Context update (October 15, 2025):** Implementation phases now assume the “Atlas” AI context; convert prior context cues to the Atlas vocabulary during execution.
+
 ## Context and Objectives
 - Groundwork for implementing the renderer stack described in `docs/AI_Plan_SceneGraph_Renderer.md` and the broader architecture contract in `docs/AI_ARCHITECTURE.md`.
 - Deliver an incremental path from today's codebase to the MVP (software renderer, surfaces, presenters, snapshot builder), while keeping room for Metal/Vulkan and HTML adapters outlined in the master plan.

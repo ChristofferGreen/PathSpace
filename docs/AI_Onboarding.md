@@ -1,5 +1,7 @@
 # PathSpace — AI Onboarding (Fresh Session)
 
+> **Context update (October 15, 2025):** This onboarding now targets the “Atlas” AI context introduced for the current launch window; adjust legacy workflows to align with this context.
+
 This guide bootstraps a brand-new AI assistant so it can work productively in the PathSpace repository without inheriting prior conversational context. Follow these steps at the beginning of every new session.
 
 ## 1. Confirm Scope & Branch Context

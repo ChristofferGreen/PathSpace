@@ -1,5 +1,7 @@
 Renderer snapshot builder details have moved out of this architecture document. See docs/AI_Plan_SceneGraph_Renderer.md (“Decision: Snapshot Builder”) for the authoritative policy, rebuild triggers, publish/GC protocol, and performance notes. This file focuses on PathSpace core (paths, trie storage, concurrency/wait/notify, views/alias layers, and OS I/O). New AI assistants should first walk through docs/AI_Onboarding.md for the session bootstrap checklist.
 
+> **Context update (October 15, 2025):** PathSpace documentation now assumes the “Atlas” AI context launched for this cycle; earlier references to legacy contexts should be interpreted accordingly.
+
 ## UI/Rendering — cross-reference
 
 Present policy (backend-aware) and the software progressive present are documented in docs/AI_Plan_SceneGraph_Renderer.md. This architecture document focuses on PathSpace core; rendering/presenter details live in the plan. Also see “View keys (final)” and “Target keys (final)” in docs/AI_Plan_SceneGraph_Renderer.md for the authoritative schemas, and note that RenderSettings are a single-path atomic whole-object value; ParamUpdateMode::Queue refers to client-side coalescing before one atomic write (no server-side queue in v1).

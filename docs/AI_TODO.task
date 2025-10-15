@@ -1,3 +1,5 @@
+// Context update (October 15, 2025): Task priorities now reference the “Atlas” AI context; translate legacy context identifiers when reconciling backlogs.
+
 task {
   name: "Wait/Watch Semantics [EPIC]"
   description: "Unify wait/notify semantics and read-blocking behavior under one coherent model, including glob watches, time-slicing, and backpressure guidance."

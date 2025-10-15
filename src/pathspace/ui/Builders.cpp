@@ -38,6 +38,22 @@ auto make_error(std::string message,
     return SP::Error{code, std::move(message)};
 }
 
+struct SurfaceRenderContext {
+    SP::ConcretePathString target_path;
+    SurfaceDesc            target_desc;
+    RenderSettings         settings;
+};
+
+auto prepare_surface_render_context(PathSpace& space,
+                                    SurfacePath const& surfacePath,
+                                    std::optional<RenderSettings> const& settingsOverride)
+    -> SP::Expected<SurfaceRenderContext>;
+
+auto render_into_surface(PathSpace& space,
+                         SP::ConcretePathStringView targetPath,
+                         RenderSettings const& settings,
+                         PathSurfaceSoftware& surface) -> SP::Expected<PathRenderer2D::RenderStats>;
+
 auto ensure_non_empty(std::string_view value,
                       std::string_view what) -> SP::Expected<void> {
     if (value.empty()) {
@@ -168,6 +184,97 @@ auto same_app(ConcretePathView lhs,
                                           SP::Error::Code::InvalidPath));
     }
     return {};
+}
+
+auto prepare_surface_render_context(PathSpace& space,
+                                    SurfacePath const& surfacePath,
+                                    std::optional<RenderSettings> const& settingsOverride)
+    -> SP::Expected<SurfaceRenderContext> {
+    auto surfaceRoot = derive_app_root_for(ConcretePathView{surfacePath.getPath()});
+    if (!surfaceRoot) {
+        return std::unexpected(surfaceRoot.error());
+    }
+
+    auto targetField = std::string(surfacePath.getPath()) + "/target";
+    auto targetRelative = read_value<std::string>(space, targetField);
+    if (!targetRelative) {
+        return std::unexpected(targetRelative.error());
+    }
+
+    auto targetAbsolute = SP::App::resolve_app_relative(SP::App::AppRootPathView{surfaceRoot->getPath()},
+                                                        *targetRelative);
+    if (!targetAbsolute) {
+        return std::unexpected(targetAbsolute.error());
+    }
+
+    auto descPath = targetAbsolute->getPath() + "/desc";
+    auto targetDesc = read_value<SurfaceDesc>(space, descPath);
+    if (!targetDesc) {
+        return std::unexpected(targetDesc.error());
+    }
+
+    RenderSettings effective{};
+    if (settingsOverride) {
+        effective = *settingsOverride;
+    } else {
+        auto stored = Renderer::ReadSettings(space, ConcretePathView{targetAbsolute->getPath()});
+        if (stored) {
+            effective = *stored;
+        } else {
+            auto const& error = stored.error();
+            if (error.code != SP::Error::Code::NoObjectFound
+                && error.code != SP::Error::Code::NoSuchPath) {
+                return std::unexpected(error);
+            }
+            effective.surface.size_px.width = targetDesc->size_px.width;
+            effective.surface.size_px.height = targetDesc->size_px.height;
+            effective.surface.dpi_scale = 1.0f;
+            effective.surface.visibility = true;
+            effective.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+            effective.time.time_ms = 0.0;
+            effective.time.delta_ms = 16.0;
+            effective.time.frame_index = 0;
+        }
+    }
+
+    effective.surface.size_px.width = targetDesc->size_px.width;
+    effective.surface.size_px.height = targetDesc->size_px.height;
+    if (effective.surface.dpi_scale == 0.0f) {
+        effective.surface.dpi_scale = 1.0f;
+    }
+
+    if (!settingsOverride) {
+        if (effective.time.delta_ms == 0.0) {
+            effective.time.delta_ms = 16.0;
+        }
+        effective.time.time_ms += effective.time.delta_ms;
+        effective.time.frame_index += 1;
+    }
+
+    if (auto status = Renderer::UpdateSettings(space,
+                                               ConcretePathView{targetAbsolute->getPath()},
+                                               effective); !status) {
+        return std::unexpected(status.error());
+    }
+
+    SurfaceRenderContext context{
+        .target_path = SP::ConcretePathString{targetAbsolute->getPath()},
+        .target_desc = *targetDesc,
+        .settings = effective,
+    };
+    return context;
+}
+
+auto render_into_surface(PathSpace& space,
+                         SP::ConcretePathStringView targetPath,
+                         RenderSettings const& settings,
+                         PathSurfaceSoftware& surface) -> SP::Expected<PathRenderer2D::RenderStats> {
+    PathRenderer2D renderer{space};
+    return renderer.render({
+        .target_path = targetPath,
+        .settings = settings,
+        .surface = surface,
+    });
 }
 
 auto to_epoch_ms(std::chrono::system_clock::time_point tp) -> int64_t {
@@ -502,13 +609,11 @@ auto TriggerRender(PathSpace& space,
         return std::unexpected(surfaceDesc.error());
     }
 
-    PathRenderer2D renderer{space};
     PathSurfaceSoftware surface{*surfaceDesc};
-    auto stats = renderer.render({
-        .target_path = targetPath,
-        .settings = settings,
-        .surface = surface,
-    });
+    auto stats = render_into_surface(space,
+                                     SP::ConcretePathStringView{targetPath.getPath()},
+                                     settings,
+                                     surface);
     if (!stats) {
         return std::unexpected(stats.error());
     }
@@ -648,76 +753,23 @@ auto SetScene(PathSpace& space,
 auto RenderOnce(PathSpace& space,
                  SurfacePath const& surfacePath,
                  std::optional<RenderSettings> settingsOverride) -> SP::Expected<SP::FutureAny> {
-    auto surfaceRoot = derive_app_root_for(ConcretePathView{surfacePath.getPath()});
-    if (!surfaceRoot) {
-        return std::unexpected(surfaceRoot.error());
+    auto context = prepare_surface_render_context(space, surfacePath, settingsOverride);
+    if (!context) {
+        return std::unexpected(context.error());
     }
 
-    auto targetField = std::string(surfacePath.getPath()) + "/target";
-    auto targetRelative = read_value<std::string>(space, targetField);
-    if (!targetRelative) {
-        return std::unexpected(targetRelative.error());
+    PathSurfaceSoftware surface{context->target_desc};
+    auto stats = render_into_surface(space,
+                                     SP::ConcretePathStringView{context->target_path.getPath()},
+                                     context->settings,
+                                     surface);
+    if (!stats) {
+        return std::unexpected(stats.error());
     }
 
-    auto targetAbsolute = SP::App::resolve_app_relative(SP::App::AppRootPathView{surfaceRoot->getPath()},
-                                                        *targetRelative);
-    if (!targetAbsolute) {
-        return std::unexpected(targetAbsolute.error());
-    }
-
-    auto descPath = targetAbsolute->getPath() + "/desc";
-    auto targetDesc = read_value<SurfaceDesc>(space, descPath);
-    if (!targetDesc) {
-        return std::unexpected(targetDesc.error());
-    }
-
-    RenderSettings effective{};
-    if (settingsOverride) {
-        effective = *settingsOverride;
-    } else {
-        auto stored = Renderer::ReadSettings(space, ConcretePathView{targetAbsolute->getPath()});
-        if (stored) {
-            effective = *stored;
-        } else {
-            auto const& error = stored.error();
-            if (error.code != SP::Error::Code::NoObjectFound
-                && error.code != SP::Error::Code::NoSuchPath) {
-                return std::unexpected(error);
-            }
-            effective.surface.size_px.width = targetDesc->size_px.width;
-            effective.surface.size_px.height = targetDesc->size_px.height;
-            effective.surface.dpi_scale = 1.0f;
-            effective.surface.visibility = true;
-            effective.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
-            effective.time.time_ms = 0.0;
-            effective.time.delta_ms = 16.0;
-            effective.time.frame_index = 0;
-        }
-    }
-
-    effective.surface.size_px.width = targetDesc->size_px.width;
-    effective.surface.size_px.height = targetDesc->size_px.height;
-    if (effective.surface.dpi_scale == 0.0f) {
-        effective.surface.dpi_scale = 1.0f;
-    }
-
-    if (!settingsOverride) {
-        if (effective.time.delta_ms == 0.0) {
-            effective.time.delta_ms = 16.0;
-        }
-        effective.time.time_ms += effective.time.delta_ms;
-        effective.time.frame_index += 1;
-    }
-
-    if (auto status = Renderer::UpdateSettings(space,
-                                               ConcretePathView{targetAbsolute->getPath()},
-                                               effective); !status) {
-        return std::unexpected(status.error());
-    }
-
-    return Renderer::TriggerRender(space,
-                                   ConcretePathView{targetAbsolute->getPath()},
-                                   effective);
+    auto state = std::make_shared<SP::SharedState<bool>>();
+    state->set_value(true);
+    return SP::FutureT<bool>{state}.to_any();
 }
 
 } // namespace Surface
@@ -824,13 +876,42 @@ auto Present(PathSpace& space,
 
     auto surfacePath = SP::App::resolve_app_relative(SP::App::AppRootPathView{windowRoot->getPath()},
                                                      *surfaceRel);
-    if (!surfacePath) {
-        return std::unexpected(surfacePath.error());
+   if (!surfacePath) {
+       return std::unexpected(surfacePath.error());
+   }
+
+    auto context = prepare_surface_render_context(space,
+                                                  SurfacePath{surfacePath->getPath()},
+                                                  std::nullopt);
+    if (!context) {
+        return std::unexpected(context.error());
     }
 
-    auto renderResult = Surface::RenderOnce(space, SurfacePath{surfacePath->getPath()}, std::nullopt);
-    if (!renderResult) {
-        return std::unexpected(renderResult.error());
+    PathSurfaceSoftware surface{context->target_desc};
+    auto renderStats = render_into_surface(space,
+                                           SP::ConcretePathStringView{context->target_path.getPath()},
+                                           context->settings,
+                                           surface);
+    if (!renderStats) {
+        return std::unexpected(renderStats.error());
+    }
+
+    PathWindowView presenter;
+    PathWindowView::PresentPolicy policy{};
+    std::vector<std::uint8_t> framebuffer(surface.frame_bytes(), 0);
+    auto now = std::chrono::steady_clock::now();
+    PathWindowView::PresentRequest request{
+        .now = now,
+        .vsync_deadline = now + std::chrono::milliseconds{16},
+        .framebuffer = framebuffer,
+        .dirty_tiles = {},
+    };
+    auto presentStats = presenter.present(surface, policy, request);
+
+    if (auto status = Diagnostics::WritePresentMetrics(space,
+                                                       SP::ConcretePathStringView{context->target_path.getPath()},
+                                                       presentStats); !status) {
+        return std::unexpected(status.error());
     }
 
     return {};
@@ -915,6 +996,22 @@ auto WritePresentMetrics(PathSpace& space,
         return status;
     }
     if (auto status = replace_single<bool>(space, base + "/lastPresentSkipped", stats.skipped); !status) {
+        return status;
+    }
+    if (auto status = replace_single<bool>(space, base + "/presented", stats.presented); !status) {
+        return status;
+    }
+    if (auto status = replace_single<bool>(space, base + "/bufferedFrameConsumed", stats.buffered_frame_consumed); !status) {
+        return status;
+    }
+    if (auto status = replace_single<bool>(space, base + "/usedProgressive", stats.used_progressive); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space, base + "/progressiveTilesCopied",
+                                               static_cast<uint64_t>(stats.progressive_tiles_copied)); !status) {
+        return status;
+    }
+    if (auto status = replace_single<double>(space, base + "/waitBudgetMs", stats.wait_budget_ms); !status) {
         return status;
     }
     if (auto status = replace_single<std::string>(space, base + "/lastError", stats.error); !status) {
