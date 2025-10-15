@@ -42,6 +42,8 @@ if(PATHSPACE_ENABLE_UI)
   target_sources(PathSpaceTests PRIVATE ui/test_SceneHelpers.cpp)
   target_sources(PathSpaceTests PRIVATE ui/test_Builders.cpp)
   target_sources(PathSpaceTests PRIVATE ui/test_SceneSnapshotBuilder.cpp)
+  target_sources(PathSpaceTests PRIVATE ui/test_ProgressiveSurfaceBuffer.cpp)
+  target_sources(PathSpaceTests PRIVATE ui/test_PathSurfaceSoftware.cpp)
 endif()
 
 # Opt-in debug logging for tests
