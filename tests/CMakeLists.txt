@@ -47,6 +47,7 @@ if(PATHSPACE_ENABLE_UI)
     ui/test_SceneSnapshotBuilder.cpp
     ui/test_ProgressiveSurfaceBuffer.cpp
     ui/test_PathSurfaceSoftware.cpp
+    ui/test_PathWindowView.cpp
     test_main.cpp
   )
   target_compile_definitions(PathSpaceUITests PRIVATE PATHSPACE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
