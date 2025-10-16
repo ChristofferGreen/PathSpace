@@ -120,7 +120,7 @@ auto AttachSurface(PathSpace& space,
 
 auto Present(PathSpace& space,
              WindowPath const& windowPath,
-             std::string_view viewName) -> SP::Expected<void> {
+             std::string_view viewName) -> SP::Expected<Builders::Window::WindowPresentResult> {
     return Builders::Window::Present(space, windowPath, viewName);
 }
 

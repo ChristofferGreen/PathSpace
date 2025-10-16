@@ -1,7 +1,7 @@
 #pragma once
 
-#include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/ProgressiveSurfaceBuffer.hpp>
+#include <pathspace/ui/SurfaceTypes.hpp>
 
 #include <atomic>
 #include <cstddef>

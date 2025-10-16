@@ -1266,9 +1266,9 @@ auto AttachSurface(PathSpace& space,
 
 auto Present(PathSpace& space,
               WindowPath const& windowPath,
-              std::string_view viewName) -> SP::Expected<void> {
+              std::string_view viewName) -> SP::Expected<WindowPresentResult> {
     if (auto status = ensure_identifier(viewName, "view name"); !status) {
-        return status;
+        return std::unexpected(status.error());
     }
 
     auto windowRoot = derive_app_root_for(ConcretePathView{windowPath.getPath()});
@@ -1379,7 +1379,10 @@ auto Present(PathSpace& space,
         return std::unexpected(status.error());
     }
 
-    return {};
+    WindowPresentResult result{};
+    result.stats = presentStats;
+    result.framebuffer = std::move(framebuffer);
+    return result;
 }
 
 } // namespace Window

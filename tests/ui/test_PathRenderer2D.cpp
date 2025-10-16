@@ -1501,7 +1501,7 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
         .min_y = 0.0f,
         .max_x = 2.0f,
         .max_y = 2.0f,
-        .color = {0.2f, 0.3f, 0.4f, 1.0f},
+        .color = {1.0f, 0.0f, 0.0f, 1.0f},
     };
     encode_rect_command(rect, bucket);
 
@@ -1527,8 +1527,17 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     REQUIRE(windowPath);
     REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
 
-    auto presentStatus = Builders::Window::Present(fx.space, *windowPath, "main");
-    REQUIRE(presentStatus);
+    auto presentResult = Builders::Window::Present(fx.space, *windowPath, "main");
+    REQUIRE(presentResult);
+    CHECK(presentResult->stats.presented);
+    CHECK_FALSE(presentResult->stats.skipped);
+    REQUIRE(presentResult->framebuffer.size() == surfaceDesc.size_px.width * surfaceDesc.size_px.height * 4);
+    for (std::size_t i = 0; i < presentResult->framebuffer.size(); i += 4) {
+        CHECK(presentResult->framebuffer[i + 0] == 255);
+        CHECK(presentResult->framebuffer[i + 1] == 0);
+        CHECK(presentResult->framebuffer[i + 2] == 0);
+        CHECK(presentResult->framebuffer[i + 3] == 255);
+    }
 
     auto targetPath = resolve_target(fx, surfacePath);
     auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
@@ -1617,6 +1626,7 @@ TEST_CASE("Window::Present handles repeated loop without dropping metrics") {
     for (int i = 0; i < kIterations; ++i) {
         auto present = Builders::Window::Present(fx.space, *windowPath, "main");
         REQUIRE(present);
+        CHECK(present->stats.presented);
     }
 
     auto targetPath = resolve_target(fx, surfacePath);
@@ -1695,6 +1705,8 @@ TEST_CASE("Window::Present reads present policy overrides from PathSpace") {
 
     auto presentStatus = Builders::Window::Present(fx.space, *windowPath, "main");
     REQUIRE(presentStatus);
+    CHECK(presentStatus->stats.mode == PathWindowView::PresentMode::AlwaysFresh);
+    CHECK(presentStatus->stats.wait_budget_ms == doctest::Approx(12.0).epsilon(0.1));
 
     auto targetPath = resolve_target(fx, surfacePath);
     auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";

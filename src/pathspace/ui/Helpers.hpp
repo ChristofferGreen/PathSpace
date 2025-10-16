@@ -27,6 +27,7 @@ using SurfaceDesc = Builders::SurfaceDesc;
 using SurfaceParams = Builders::SurfaceParams;
 using WindowParams = Builders::WindowParams;
 using RenderSettings = Builders::RenderSettings;
+using WindowPresentResult = Builders::Window::WindowPresentResult;
 
 namespace Scene {
 
@@ -102,7 +103,7 @@ auto AttachSurface(PathSpace& space,
 
 auto Present(PathSpace& space,
              WindowPath const& windowPath,
-             std::string_view viewName) -> SP::Expected<void>;
+             std::string_view viewName) -> SP::Expected<WindowPresentResult>;
 
 } // namespace Window
 

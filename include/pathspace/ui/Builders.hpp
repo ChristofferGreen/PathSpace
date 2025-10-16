@@ -3,6 +3,8 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/task/Future.hpp>
+#include <pathspace/ui/PathWindowView.hpp>
+#include <pathspace/ui/SurfaceTypes.hpp>
 
 #include <array>
 #include <chrono>
@@ -14,8 +16,6 @@
 #include <vector>
 
 namespace SP::UI {
-struct PathWindowPresentStats;
-struct PathWindowPresentPolicy;
 }
 
 namespace SP::UI::Builders {
@@ -50,31 +50,6 @@ enum class RendererKind {
     Software2D,
     Metal2D,
     Vulkan2D,
-};
-
-enum class PixelFormat {
-    RGBA8Unorm,
-    BGRA8Unorm,
-    RGBA8Unorm_sRGB,
-    BGRA8Unorm_sRGB,
-    RGBA16F,
-    RGBA32F,
-};
-
-enum class ColorSpace {
-    sRGB,
-    DisplayP3,
-    Linear,
-};
-
-struct SurfaceDesc {
-    struct SizePx {
-        int width = 0;
-        int height = 0;
-    } size_px;
-    PixelFormat pixel_format = PixelFormat::RGBA8Unorm;
-    ColorSpace color_space = ColorSpace::sRGB;
-    bool premultiplied_alpha = true;
 };
 
 struct SurfaceParams {
@@ -352,6 +327,11 @@ auto RenderOnce(PathSpace& space,
 
 namespace Window {
 
+struct WindowPresentResult {
+    PathWindowPresentStats stats;
+    std::vector<std::uint8_t> framebuffer;
+};
+
 auto Create(PathSpace& space,
              AppRootPathView appRoot,
              WindowParams const& params) -> SP::Expected<WindowPath>;
@@ -363,7 +343,7 @@ auto AttachSurface(PathSpace& space,
 
 auto Present(PathSpace& space,
               WindowPath const& windowPath,
-              std::string_view viewName) -> SP::Expected<void>;
+              std::string_view viewName) -> SP::Expected<WindowPresentResult>;
 
 } // namespace Window
 
