@@ -102,6 +102,21 @@ if(BUILD_PATHSPACE_EXAMPLES)
         target_link_libraries(devices_example PRIVATE "-framework Cocoa" "-framework GameController")
         target_compile_definitions(devices_example PRIVATE PATHIO_BACKEND_MACOS=1)
     endif()
+
+    add_executable(paint_example examples/paint_example.cpp)
+    target_link_libraries(paint_example PRIVATE PathSpace)
+    if(APPLE)
+        target_sources(paint_example PRIVATE examples/macos/WindowEventPump.mm)
+        if(CMAKE_OBJCXX_COMPILER_ID MATCHES "Clang")
+            set_source_files_properties(
+                examples/macos/WindowEventPump.mm
+                examples/macos/GameControllerHaptics.mm
+                PROPERTIES COMPILE_FLAGS "-fobjc-arc"
+            )
+        endif()
+        target_link_libraries(paint_example PRIVATE "-framework Cocoa" "-framework GameController")
+        target_compile_definitions(paint_example PRIVATE PATHIO_BACKEND_MACOS=1)
+    endif()
 endif()
 
 # Documentation (Doxygen)

@@ -4,6 +4,11 @@
 #include <pathspace/layer/io/PathIOMouse.hpp>
 #include <pathspace/layer/io/PathIOKeyboard.hpp>
 
+#include <dispatch/dispatch.h>
+#include <mutex>
+#include <string>
+#include <vector>
+
 using SP::PathIOMouse;
 using SP::PathIOKeyboard;
 
@@ -11,6 +16,14 @@ using SP::PathIOKeyboard;
 static PathIOMouse*    gMouseProvider    = nullptr;
 static PathIOKeyboard* gKeyboardProvider = nullptr;
 static NSWindow*       gWindow           = nil;
+static std::mutex      gFramebufferMutex;
+static std::vector<std::uint8_t> gFramebufferPixels;
+static int             gFramebufferWidth  = 0;
+static int             gFramebufferHeight = 0;
+static int             gFramebufferStride = 0;
+static int             gDesiredWindowWidth  = 640;
+static int             gDesiredWindowHeight = 360;
+static std::string     gDesiredWindowTitle  = "PathSpace Input Test";
 
 // Forward declarations
 static uint32_t PSModifiersFrom(NSEventModifierFlags flags);
@@ -185,6 +198,64 @@ static void PSEmitAbsoluteIfNeeded(NSEvent* ev);
     }
 }
 
+- (void)drawRect:(NSRect)dirtyRect {
+    [super drawRect:dirtyRect];
+
+    std::lock_guard<std::mutex> lock(gFramebufferMutex);
+    if (gFramebufferPixels.empty() || gFramebufferWidth <= 0 || gFramebufferHeight <= 0) {
+        [[NSColor whiteColor] setFill];
+        NSRectFill(dirtyRect);
+        return;
+    }
+
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    if (!ctx) {
+        return;
+    }
+
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    if (!colorSpace) {
+        return;
+    }
+
+    CGDataProviderRef provider = CGDataProviderCreateWithData(
+        nullptr,
+        gFramebufferPixels.data(),
+        gFramebufferPixels.size(),
+        nullptr);
+    if (!provider) {
+        CGColorSpaceRelease(colorSpace);
+        return;
+    }
+
+    CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedLast | kCGBitmapByteOrderDefault;
+    CGImageRef image = CGImageCreate(
+        gFramebufferWidth,
+        gFramebufferHeight,
+        8,
+        32,
+        gFramebufferStride,
+        colorSpace,
+        bitmapInfo,
+        provider,
+        nullptr,
+        false,
+        kCGRenderingIntentDefault);
+
+    if (image) {
+        CGRect dest = CGRectMake(0, 0, gFramebufferWidth, gFramebufferHeight);
+        CGContextSaveGState(ctx);
+        CGContextTranslateCTM(ctx, 0, gFramebufferHeight);
+        CGContextScaleCTM(ctx, 1.0, -1.0);
+        CGContextDrawImage(ctx, dest, image);
+        CGContextRestoreGState(ctx);
+        CGImageRelease(image);
+    }
+
+    CGDataProviderRelease(provider);
+    CGColorSpaceRelease(colorSpace);
+}
+
 @end
 
 // Helpers
@@ -237,6 +308,31 @@ static void PSEmitAbsoluteIfNeeded(NSEvent* ev) {
 
 namespace SP {
 
+void PSInitLocalEventWindow(PathIOMouse* mouse, PathIOKeyboard* keyboard);
+
+void PSConfigureLocalEventWindow(int width, int height, const char* title) {
+    gDesiredWindowWidth = width;
+    gDesiredWindowHeight = height;
+    if (title) {
+        gDesiredWindowTitle = title;
+    }
+    if (gWindow) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSRect frame = [gWindow frame];
+            frame.size = NSMakeSize(gDesiredWindowWidth, gDesiredWindowHeight);
+            [gWindow setFrame:frame display:YES animate:NO];
+            gWindow.title = [NSString stringWithUTF8String:gDesiredWindowTitle.c_str()];
+            [[gWindow contentView] setFrame:NSMakeRect(0, 0, gDesiredWindowWidth, gDesiredWindowHeight)];
+            [[gWindow contentView] setNeedsDisplay:YES];
+        });
+    }
+}
+
+void PSInitLocalEventWindowWithSize(PathIOMouse* mouse, PathIOKeyboard* keyboard, int width, int height, const char* title) {
+    PSConfigureLocalEventWindow(width, height, title);
+    PSInitLocalEventWindow(mouse, keyboard);
+}
+
 // Create a small Cocoa window and wire its events to the given providers.
 // - No threads are created; pair with PSPollLocalEventWindow() in your main loop.
 // - Calling multiple times reuses the same window and swaps the provider pointers.
@@ -249,7 +345,7 @@ void PSInitLocalEventWindow(PathIOMouse* mouse, PathIOKeyboard* keyboard) {
         [app setActivationPolicy:NSApplicationActivationPolicyRegular];
 
         if (!gWindow) {
-            NSRect frame = NSMakeRect(200, 200, 640, 360);
+            NSRect frame = NSMakeRect(200, 200, gDesiredWindowWidth, gDesiredWindowHeight);
             gWindow = [[NSWindow alloc] initWithContentRect:frame
                                                   styleMask:(NSWindowStyleMaskTitled |
                                                              NSWindowStyleMaskClosable |
@@ -257,14 +353,16 @@ void PSInitLocalEventWindow(PathIOMouse* mouse, PathIOKeyboard* keyboard) {
                                                              NSWindowStyleMaskResizable)
                                                     backing:NSBackingStoreBuffered
                                                       defer:NO];
-            gWindow.title = @"PathSpace Input Test";
-            PSEventView* view = [[PSEventView alloc] initWithFrame:((NSRect){.origin={0,0}, .size=frame.size})];
+            gWindow.title = [NSString stringWithUTF8String:gDesiredWindowTitle.c_str()];
+            PSEventView* view = [[PSEventView alloc] initWithFrame:NSMakeRect(0, 0, gDesiredWindowWidth, gDesiredWindowHeight)];
             [gWindow setContentView:view];
             [gWindow setAcceptsMouseMovedEvents:YES];
             [gWindow makeFirstResponder:view];
             [gWindow makeKeyAndOrderFront:nil];
             [NSApp activateIgnoringOtherApps:YES];
         } else {
+            [[gWindow contentView] setFrame:NSMakeRect(0, 0, gDesiredWindowWidth, gDesiredWindowHeight)];
+            gWindow.title = [NSString stringWithUTF8String:gDesiredWindowTitle.c_str()];
             [gWindow makeKeyAndOrderFront:nil];
             [NSApp activateIgnoringOtherApps:YES];
         }
@@ -284,6 +382,25 @@ void PSPollLocalEventWindow() {
             if (!ev) break;
             [app sendEvent:ev];
         }
+    }
+}
+
+void PSUpdateWindowFramebuffer(const std::uint8_t* data,
+                               int width,
+                               int height,
+                               int rowStrideBytes) {
+    if (!data || width <= 0 || height <= 0 || rowStrideBytes <= 0) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(gFramebufferMutex);
+    gFramebufferWidth = width;
+    gFramebufferHeight = height;
+    gFramebufferStride = rowStrideBytes;
+    gFramebufferPixels.assign(data, data + static_cast<std::size_t>(rowStrideBytes) * static_cast<std::size_t>(height));
+    if (gWindow) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[gWindow contentView] setNeedsDisplay:YES];
+        });
     }
 }
 

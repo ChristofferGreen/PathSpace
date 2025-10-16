@@ -1460,6 +1460,12 @@ auto ClearTargetError(PathSpace& space,
     return replace_single<std::string>(space, path, std::string{});
 }
 
+auto ReadSoftwareFramebuffer(PathSpace const& space,
+                              ConcretePathView targetPath) -> SP::Expected<SoftwareFramebuffer> {
+    auto framebufferPath = std::string(targetPath.getPath()) + "/output/v1/software/framebuffer";
+    return read_value<SoftwareFramebuffer>(space, framebufferPath);
+}
+
 auto WritePresentMetrics(PathSpace& space,
                           ConcretePathView targetPath,
                           PathWindowPresentStats const& stats,

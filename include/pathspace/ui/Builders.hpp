@@ -364,6 +364,9 @@ auto ReadTargetMetrics(PathSpace const& space,
 auto ClearTargetError(PathSpace& space,
                       ConcretePathView targetPath) -> SP::Expected<void>;
 
+auto ReadSoftwareFramebuffer(PathSpace const& space,
+                              ConcretePathView targetPath) -> SP::Expected<SoftwareFramebuffer>;
+
 auto WritePresentMetrics(PathSpace& space,
                           ConcretePathView targetPath,
                           PathWindowPresentStats const& stats,

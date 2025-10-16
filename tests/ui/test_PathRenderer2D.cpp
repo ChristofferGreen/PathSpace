@@ -1578,6 +1578,10 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     CHECK(storedFramebuffer->color_space == surfaceDesc.color_space);
     CHECK(storedFramebuffer->premultiplied_alpha == surfaceDesc.premultiplied_alpha);
     CHECK(storedFramebuffer->pixels == presentResult->framebuffer);
+
+    auto diagnosticsFramebuffer = Builders::Diagnostics::ReadSoftwareFramebuffer(fx.space, SP::ConcretePathStringView{targetPath.getPath()});
+    REQUIRE(diagnosticsFramebuffer);
+    CHECK(diagnosticsFramebuffer->pixels == storedFramebuffer->pixels);
 }
 
 TEST_CASE("Window::Present handles repeated loop without dropping metrics") {

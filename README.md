@@ -13,6 +13,7 @@ PathSpace is a C++ library inspired by tuplespaces (e.g., Linda) and reactive/da
 Links:
 - docs/AI_ARCHITECTURE.md (design and internals)
 - examples/devices_example.cpp (experimental device IO example)
+- examples/paint_example.cpp (minimal software paint demo; currently macOS-only)
 - build/docs/html/index.html (Doxygen API Reference)
 
 ## Architecture at a Glance
@@ -278,7 +279,7 @@ Tip: For high-throughput patterns, write with Immediate and read<FutureAny> to c
 
 ## Experimental IO providers (PathIO)
 
-The repository includes experimental providers under `src/pathspace/layer/io` and an example in `examples/devices_example.cpp`. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a `PathSpace` tree and serve typed event streams using the canonical `/system/devices/in/*` namespace; see `docs/AI_Plan_SceneGraph_Renderer.md` for app/device path conventions.
+The repository includes experimental providers under `src/pathspace/layer/io` and examples in `examples/devices_example.cpp` and `examples/paint_example.cpp`. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a `PathSpace` tree and serve typed event streams using the canonical `/system/devices/in/*` namespace; see `docs/AI_Plan_SceneGraph_Renderer.md` for app/device path conventions. The paint example combines those providers with the software renderer to offer a minimal mouse-driven canvas.
 
 Sketch:
 ```cpp
