@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iomanip>
+#include <limits>
 #include <numeric>
 #include <sstream>
 #include <string>
@@ -101,6 +102,45 @@ auto pipeline_flags_for(Scene::DrawableBucketSnapshot const& bucket,
         return bucket.pipeline_flags[drawable_index];
     }
     return 0;
+}
+
+constexpr double kPi = 3.14159265358979323846;
+constexpr float kSortEpsilon = 1e-5f;
+
+template <typename T>
+auto vector_value(std::vector<T> const& values, std::uint32_t index, T fallback) -> T {
+    if (index < values.size()) {
+        return values[index];
+    }
+    return fallback;
+}
+
+auto has_valid_bounds_box(Scene::DrawableBucketSnapshot const& bucket,
+                          std::uint32_t index) -> bool {
+    if (index >= bucket.bounds_boxes.size()) {
+        return false;
+    }
+    if (index < bucket.bounds_box_valid.size()) {
+        return bucket.bounds_box_valid[index] != 0;
+    }
+    return true;
+}
+
+auto approximate_drawable_area(Scene::DrawableBucketSnapshot const& bucket,
+                               std::uint32_t index) -> double {
+    if (has_valid_bounds_box(bucket, index)) {
+        auto const& box = bucket.bounds_boxes[index];
+        auto width = std::max(0.0f, box.max[0] - box.min[0]);
+        auto height = std::max(0.0f, box.max[1] - box.min[1]);
+        return static_cast<double>(width) * static_cast<double>(height);
+    }
+    if (index < bucket.bounds_spheres.size()) {
+        auto radius = bucket.bounds_spheres[index].radius;
+        if (radius > 0.0f) {
+            return static_cast<double>(radius) * static_cast<double>(radius) * kPi;
+        }
+    }
+    return 0.0;
 }
 
 struct LinearStraightColor {
@@ -759,6 +799,13 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     std::uint64_t culled_drawables = 0;
     std::uint64_t executed_commands = 0;
     std::uint64_t unsupported_commands = 0;
+    std::uint64_t opaque_sort_violations = 0;
+    std::uint64_t alpha_sort_violations = 0;
+    double approx_area_total = 0.0;
+    double approx_area_opaque = 0.0;
+    double approx_area_alpha = 0.0;
+    std::uint64_t progressive_tiles_updated = 0;
+    std::uint64_t progressive_bytes_copied = 0;
 
     auto image_asset_prefix = revisionBase + "/assets/images/";
 
@@ -923,6 +970,13 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         } else {
             ++drawn_opaque;
         }
+        auto area = approximate_drawable_area(*bucket, drawable_index);
+        approx_area_total += area;
+        if (alpha_pass) {
+            approx_area_alpha += area;
+        } else {
+            approx_area_opaque += area;
+        }
         return {};
     };
 
@@ -946,23 +1000,86 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     }
 
     auto process_pass = [&](std::vector<std::uint32_t> const& indices,
-                             bool alpha_pass) -> SP::Expected<void> {
+                            bool alpha_pass,
+                            bool explicit_order) -> SP::Expected<void> {
+        bool have_prev = false;
+        std::uint32_t prev_layer = 0;
+        std::uint32_t prev_material = 0;
+        std::uint32_t prev_flags = 0;
+        float prev_z = 0.0f;
+
         for (auto drawable_index : indices) {
             if (auto status = process_drawable(drawable_index, alpha_pass); !status) {
                 return status;
+            }
+            if (!explicit_order) {
+                continue;
+            }
+            if (alpha_pass) {
+                if (drawable_index >= bucket->layers.size()
+                    || drawable_index >= bucket->z_values.size()) {
+                    have_prev = false;
+                    continue;
+                }
+                auto layer = bucket->layers[drawable_index];
+                auto z = bucket->z_values[drawable_index];
+                if (have_prev) {
+                    if (layer < prev_layer
+                        || (layer == prev_layer && z > prev_z + kSortEpsilon)) {
+                        ++alpha_sort_violations;
+                    }
+                }
+                prev_layer = layer;
+                prev_z = z;
+                have_prev = true;
+            } else {
+                if (drawable_index >= bucket->layers.size()
+                    || drawable_index >= bucket->material_ids.size()
+                    || drawable_index >= bucket->z_values.size()) {
+                    have_prev = false;
+                    continue;
+                }
+                auto layer = bucket->layers[drawable_index];
+                auto material = bucket->material_ids[drawable_index];
+                auto flags = pipeline_flags_for(*bucket, drawable_index);
+                auto z = bucket->z_values[drawable_index];
+                if (have_prev) {
+                    bool violation = false;
+                    if (layer < prev_layer) {
+                        violation = true;
+                    } else if (layer == prev_layer) {
+                        if (material < prev_material) {
+                            violation = true;
+                        } else if (material == prev_material) {
+                            if (flags < prev_flags) {
+                                violation = true;
+                            } else if (flags == prev_flags && z < prev_z - kSortEpsilon) {
+                                violation = true;
+                            }
+                        }
+                    }
+                    if (violation) {
+                        ++opaque_sort_violations;
+                    }
+                }
+                prev_layer = layer;
+                prev_material = material;
+                prev_flags = flags;
+                prev_z = z;
+                have_prev = true;
             }
         }
         return {};
     };
 
     if (!bucket->opaque_indices.empty()) {
-        if (auto status = process_pass(bucket->opaque_indices, false); !status) {
+        if (auto status = process_pass(bucket->opaque_indices, false, true); !status) {
             (void)set_last_error(space_, params.target_path,
                                  status.error().message.value_or("failed to store present metrics"));
             return std::unexpected(status.error());
         }
     } else if (!fallback_opaque.empty()) {
-        if (auto status = process_pass(fallback_opaque, false); !status) {
+        if (auto status = process_pass(fallback_opaque, false, false); !status) {
             (void)set_last_error(space_, params.target_path,
                                  status.error().message.value_or("failed to store present metrics"));
             return std::unexpected(status.error());
@@ -970,13 +1087,13 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     }
 
     if (!bucket->alpha_indices.empty()) {
-        if (auto status = process_pass(bucket->alpha_indices, true); !status) {
+        if (auto status = process_pass(bucket->alpha_indices, true, true); !status) {
             (void)set_last_error(space_, params.target_path,
                                  status.error().message.value_or("failed to store present metrics"));
             return std::unexpected(status.error());
         }
     } else if (!fallback_alpha.empty()) {
-        if (auto status = process_pass(fallback_alpha, true); !status) {
+        if (auto status = process_pass(fallback_alpha, true, false); !status) {
             (void)set_last_error(space_, params.target_path,
                                  status.error().message.value_or("failed to store present metrics"));
             return std::unexpected(status.error());
@@ -1027,6 +1144,10 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                 }
                 writer.commit(TilePass::AlphaDone, sceneRevision->revision);
                 surface.mark_progressive_dirty(tile_index);
+                ++progressive_tiles_updated;
+                auto const tile_rows = std::max(dims.height, 0);
+                progressive_bytes_copied += static_cast<std::uint64_t>(row_pitch)
+                                            * static_cast<std::uint64_t>(tile_rows);
             }
         }
     }
@@ -1043,6 +1164,12 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         surface.publish_buffered_frame(frame_info);
     } else {
         surface.record_frame_info(frame_info);
+    }
+
+    double approx_surface_pixels = static_cast<double>(pixel_count);
+    double approx_overdraw_factor = 0.0;
+    if (approx_surface_pixels > 0.0) {
+        approx_overdraw_factor = approx_area_total / approx_surface_pixels;
     }
 
     auto metricsBase = std::string(params.target_path.getPath()) + "/output/v1/common";
@@ -1068,7 +1195,14 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/commandCount", static_cast<std::uint64_t>(bucket->command_kinds.size()));
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/commandsExecuted", executed_commands);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/unsupportedCommands", unsupported_commands);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/unsupportedCommands", unsupported_commands);
+    (void)replace_single<std::uint64_t>(space_, metricsBase + "/opaqueSortViolations", opaque_sort_violations);
+    (void)replace_single<std::uint64_t>(space_, metricsBase + "/alphaSortViolations", alpha_sort_violations);
+    (void)replace_single<double>(space_, metricsBase + "/approxOpaquePixels", approx_area_opaque);
+    (void)replace_single<double>(space_, metricsBase + "/approxAlphaPixels", approx_area_alpha);
+    (void)replace_single<double>(space_, metricsBase + "/approxDrawablePixels", approx_area_total);
+    (void)replace_single<double>(space_, metricsBase + "/approxOverdrawFactor", approx_overdraw_factor);
+    (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveTilesUpdated", progressive_tiles_updated);
+    (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveBytesCopied", progressive_bytes_copied);
 
     RenderStats stats{};
     stats.frame_index = params.settings.time.frame_index;

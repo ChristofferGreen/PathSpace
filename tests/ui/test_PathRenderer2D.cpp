@@ -541,6 +541,14 @@ TEST_CASE("render executes rect commands across passes and encodes pixels") {
     CHECK(fx.space.read<uint64_t>(metricsBase + "/culledDrawables").value() == 0);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/commandCount").value() == 2);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/commandsExecuted").value() == 2);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/opaqueSortViolations").value() == 0);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/alphaSortViolations").value() == 0);
+    CHECK(fx.space.read<double>(metricsBase + "/approxOpaquePixels").value() == doctest::Approx(16.0));
+    CHECK(fx.space.read<double>(metricsBase + "/approxAlphaPixels").value() == doctest::Approx(4.0));
+    CHECK(fx.space.read<double>(metricsBase + "/approxDrawablePixels").value() == doctest::Approx(20.0));
+    CHECK(fx.space.read<double>(metricsBase + "/approxOverdrawFactor").value() == doctest::Approx(1.25));
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveTilesUpdated").value() >= 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveBytesCopied").value() > 0);
 
     auto encode_srgb = true;
     auto clear_linear = make_linear_color(settings.clear_color);
@@ -661,6 +669,161 @@ TEST_CASE("pipeline flags partition passes when snapshot lacks explicit indices"
     CHECK(fx.space.read<uint64_t>(metricsBase + "/alphaDrawables").value() == 1);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/commandsExecuted").value() == 2);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/unsupportedCommands").value() == 0);
+}
+
+TEST_CASE("records opaque sort violations when indices are unsorted") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x200001u, 0x200002u};
+    bucket.world_transforms = {identity_transform(), identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, 2.0f},
+                             BoundingSphere{{1.0f, 1.0f, 0.0f}, 2.0f}};
+    bucket.bounds_boxes = {
+        BoundingBox{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 0.0f}},
+        BoundingBox{{0.5f, 0.5f, 0.0f}, {2.5f, 2.5f, 0.0f}},
+    };
+    bucket.bounds_box_valid = {1, 1};
+    bucket.layers = {0, 0};
+    bucket.z_values = {0.1f, 0.2f};
+    bucket.material_ids = {1, 1};
+    bucket.pipeline_flags = {0, 0};
+    bucket.visibility = {1, 1};
+    bucket.command_offsets = {0, 1};
+    bucket.command_counts = {1, 1};
+    bucket.opaque_indices = {1, 0};
+    bucket.alpha_indices = {};
+    bucket.clip_head_indices = {-1, -1};
+    bucket.authoring_map = {
+        DrawableAuthoringMapEntry{bucket.drawable_ids[0], "node/opaque0", 0, 0},
+        DrawableAuthoringMapEntry{bucket.drawable_ids[1], "node/opaque1", 0, 0},
+    };
+
+    RectCommand rect0{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 2.0f,
+        .max_y = 2.0f,
+        .color = {0.5f, 0.1f, 0.1f, 1.0f},
+    };
+    RectCommand rect1{
+        .min_x = 0.5f,
+        .min_y = 0.5f,
+        .max_x = 2.5f,
+        .max_y = 2.5f,
+        .color = {0.1f, 0.5f, 0.1f, 1.0f},
+    };
+    encode_rect_command(rect0, bucket);
+    encode_rect_command(rect1, bucket);
+
+    auto scenePath = create_scene(fx, "scene_opaque_sort_violation", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_opaque_sort_violation");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 4;
+    surfaceDesc.size_px.height = 4;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_opaque_sort_violation", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware surface{surfaceDesc};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+
+    auto result = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+    });
+    REQUIRE(result);
+
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/opaqueSortViolations").value() >= 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/alphaSortViolations").value() == 0);
+}
+
+TEST_CASE("records alpha sort violations when depth is front-to-back") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x300001u, 0x300002u};
+    bucket.world_transforms = {identity_transform(), identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, 2.0f},
+                             BoundingSphere{{1.0f, 1.0f, 0.0f}, 2.0f}};
+    bucket.bounds_boxes = {
+        BoundingBox{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 0.0f}},
+        BoundingBox{{0.5f, 0.5f, 0.0f}, {2.5f, 2.5f, 0.0f}},
+    };
+    bucket.bounds_box_valid = {1, 1};
+    bucket.layers = {0, 0};
+    bucket.z_values = {0.0f, 0.5f};
+    bucket.material_ids = {1, 1};
+    bucket.pipeline_flags = {AlphaBlend, AlphaBlend};
+    bucket.visibility = {1, 1};
+    bucket.command_offsets = {0, 1};
+    bucket.command_counts = {1, 1};
+    bucket.opaque_indices = {};
+    bucket.alpha_indices = {0, 1};
+    bucket.clip_head_indices = {-1, -1};
+    bucket.authoring_map = {
+        DrawableAuthoringMapEntry{bucket.drawable_ids[0], "node/alpha0", 0, 0},
+        DrawableAuthoringMapEntry{bucket.drawable_ids[1], "node/alpha1", 0, 0},
+    };
+
+    RectCommand rect0{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 2.0f,
+        .max_y = 2.0f,
+        .color = {0.2f, 0.2f, 0.8f, 0.5f},
+    };
+    RectCommand rect1{
+        .min_x = 0.5f,
+        .min_y = 0.5f,
+        .max_x = 2.5f,
+        .max_y = 2.5f,
+        .color = {0.8f, 0.2f, 0.2f, 0.5f},
+    };
+    encode_rect_command(rect0, bucket);
+    encode_rect_command(rect1, bucket);
+
+    auto scenePath = create_scene(fx, "scene_alpha_sort_violation", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_alpha_sort_violation");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 4;
+    surfaceDesc.size_px.height = 4;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_alpha_sort_violation", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware surface{surfaceDesc};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+
+    auto result = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+    });
+    REQUIRE(result);
+
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/alphaSortViolations").value() >= 1);
 }
 
 TEST_CASE("renders png image command") {
@@ -1266,6 +1429,7 @@ TEST_CASE("Surface::RenderOnce handles repeated loop renders") {
     auto settings = Renderer::ReadSettings(fx.space, SP::ConcretePathStringView{targetPath.getPath()});
     REQUIRE(settings);
     CHECK(settings->time.frame_index == kIterations);
+    CHECK(fx.space.read<double>(metricsBase + "/approxOverdrawFactor").value() >= 1.0);
 }
 
 TEST_CASE("Window::Present renders and presents a frame with metrics") {
@@ -1337,6 +1501,8 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveRecopyAfterSeqChange").value() == 0);
     CHECK(fx.space.read<double>(metricsBase + "/waitBudgetMs").value() == doctest::Approx(16.0).epsilon(0.1));
     CHECK(fx.space.read<double>(metricsBase + "/presentMs").value() >= 0.0);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/opaqueSortViolations").value() == 0);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/alphaSortViolations").value() == 0);
     auto lastError = fx.space.read<std::string, std::string>(metricsBase + "/lastError");
     REQUIRE(lastError);
     CHECK(lastError->empty());
@@ -1409,6 +1575,8 @@ TEST_CASE("Window::Present handles repeated loop without dropping metrics") {
     CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveTilesCopied").value() >= 1);
     CHECK(fx.space.read<double>(metricsBase + "/renderMs").value() >= 0.0);
     CHECK(fx.space.read<double>(metricsBase + "/presentMs").value() >= 0.0);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/opaqueSortViolations").value() == 0);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/alphaSortViolations").value() == 0);
 }
 
 TEST_CASE("rounded rectangles respect per-corner radii") {

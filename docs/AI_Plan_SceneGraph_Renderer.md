@@ -821,6 +821,7 @@ Device loss and recovery
 
 Observability
 - Per-frame metrics written to `output/v1/common/*`: `frameIndex`, `revision`, `renderMs`, `lastError`
+- Renderer diagnostics extend the same subtree with `opaqueSortViolations`, `alphaSortViolations`, `approxOpaquePixels`, `approxAlphaPixels`, `approxDrawablePixels`, `approxOverdrawFactor`, `progressiveTilesUpdated`, and `progressiveBytesCopied` so tooling can spot ordering regressions, overdraw spikes, and progressive-copy churn.
 - Optional GPU counters (backend-specific) may be exposed under a debug subtree for diagnostics; avoid mandatory dependencies on profiling APIs
 
 ## Error handling and observability (plan)
