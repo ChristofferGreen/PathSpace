@@ -276,6 +276,37 @@ auto encode_linear_to_bytes(LinearColor color,
 auto copy_buffer(PathSurfaceSoftware& surface) -> std::vector<std::uint8_t> {
     std::vector<std::uint8_t> buffer(surface.frame_bytes(), 0);
     auto copied = surface.copy_buffered_frame(buffer);
+    if (!copied.has_value()) {
+        auto dirty = surface.consume_progressive_dirty_tiles();
+        if (!dirty.empty() && surface.has_progressive()) {
+            auto& progressive = surface.progressive_buffer();
+            std::vector<std::uint8_t> tile_storage;
+            tile_storage.reserve(static_cast<std::size_t>(progressive.tile_size())
+                                 * static_cast<std::size_t>(progressive.tile_size()) * 4u);
+            auto row_stride = surface.row_stride_bytes();
+            for (auto tile_index : dirty) {
+                auto dims = progressive.tile_dimensions(tile_index);
+                if (dims.width <= 0 || dims.height <= 0) {
+                    continue;
+                }
+                auto const row_pitch = static_cast<std::size_t>(dims.width) * 4u;
+                tile_storage.resize(static_cast<std::size_t>(dims.height) * row_pitch);
+                auto copied_tile = progressive.copy_tile(tile_index, tile_storage);
+                if (!copied_tile) {
+                    continue;
+                }
+                for (int row = 0; row < dims.height; ++row) {
+                    auto const src_offset = static_cast<std::size_t>(row) * row_pitch;
+                    auto const dst_offset = (static_cast<std::size_t>(dims.y + row) * row_stride)
+                                            + static_cast<std::size_t>(dims.x) * 4u;
+                    std::memcpy(buffer.data() + dst_offset,
+                                tile_storage.data() + src_offset,
+                                row_pitch);
+                }
+            }
+            return buffer;
+        }
+    }
     REQUIRE(copied.has_value());
     return buffer;
 }
@@ -511,7 +542,12 @@ TEST_CASE("render executes rect commands across passes and encodes pixels") {
     REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
     auto targetPath = resolve_target(fx, surfacePath);
 
-    PathSurfaceSoftware surface{surfaceDesc};
+    PathSurfaceSoftware::Options opts{
+        .enable_progressive = true,
+        .enable_buffered = false,
+        .progressive_tile_size_px = 2,
+    };
+    PathSurfaceSoftware surface{surfaceDesc, opts};
     PathRenderer2D renderer{fx.space};
 
     RenderSettings settings{};
@@ -1503,6 +1539,15 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     CHECK(fx.space.read<double>(metricsBase + "/presentMs").value() >= 0.0);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/opaqueSortViolations").value() == 0);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/alphaSortViolations").value() == 0);
+    CHECK(fx.space.read<std::string, std::string>(metricsBase + "/presentMode").value() == "PreferLatestCompleteWithBudget");
+    CHECK(fx.space.read<double, std::string>(metricsBase + "/stalenessBudgetMs").value() == doctest::Approx(8.0));
+    CHECK(fx.space.read<double, std::string>(metricsBase + "/frameTimeoutMs").value() == doctest::Approx(20.0));
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/maxAgeFrames").value() == 1);
+    CHECK_FALSE(fx.space.read<bool>(metricsBase + "/stale").value());
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/presentedAgeFrames").value() == 0);
+    CHECK(fx.space.read<double, std::string>(metricsBase + "/presentedAgeMs").value() == doctest::Approx(0.0));
+    CHECK(fx.space.read<bool, std::string>(metricsBase + "/autoRenderOnPresent").value());
+    CHECK(fx.space.read<bool, std::string>(metricsBase + "/vsyncAlign").value());
     auto lastError = fx.space.read<std::string, std::string>(metricsBase + "/lastError");
     REQUIRE(lastError);
     CHECK(lastError->empty());
@@ -1577,6 +1622,165 @@ TEST_CASE("Window::Present handles repeated loop without dropping metrics") {
     CHECK(fx.space.read<double>(metricsBase + "/presentMs").value() >= 0.0);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/opaqueSortViolations").value() == 0);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/alphaSortViolations").value() == 0);
+    CHECK(fx.space.read<std::string, std::string>(metricsBase + "/presentMode").value() == "PreferLatestCompleteWithBudget");
+    CHECK_FALSE(fx.space.read<bool, std::string>(metricsBase + "/stale").value());
+}
+
+TEST_CASE("Window::Present reads present policy overrides from PathSpace") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x55AAu};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, 2.0f}};
+    bucket.bounds_boxes = {BoundingBox{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 0.0f}}};
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {0};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {0};
+    bucket.alpha_indices = {};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {DrawableAuthoringMapEntry{bucket.drawable_ids[0], "policy_node", 0, 0}};
+
+    RectCommand rect{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 2.0f,
+        .max_y = 2.0f,
+        .color = {0.3f, 0.6f, 0.9f, 1.0f},
+    };
+    encode_rect_command(rect, bucket);
+
+    auto scenePath = create_scene(fx, "scene_policy", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_policy");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 2;
+    surfaceDesc.size_px.height = 2;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_policy", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+
+    Builders::WindowParams windowParams{};
+    windowParams.name = "policy_window";
+    windowParams.title = "Policy";
+    windowParams.width = 320;
+    windowParams.height = 240;
+    auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+    REQUIRE(windowPath);
+    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+
+    auto viewBase = std::string(windowPath->getPath()) + "/views/main";
+    REQUIRE(fx.space.insert(viewBase + "/present/policy", std::string{"AlwaysFresh"}).errors.empty());
+    REQUIRE(fx.space.insert(viewBase + "/present/params/staleness_budget_ms", 4.5).errors.empty());
+    REQUIRE(fx.space.insert(viewBase + "/present/params/frame_timeout_ms", 12.0).errors.empty());
+    REQUIRE(fx.space.insert(viewBase + "/present/params/max_age_frames", static_cast<std::uint64_t>(2)).errors.empty());
+    REQUIRE(fx.space.insert(viewBase + "/present/params/auto_render_on_present", false).errors.empty());
+    REQUIRE(fx.space.insert(viewBase + "/present/params/vsync_align", false).errors.empty());
+
+    auto presentStatus = Builders::Window::Present(fx.space, *windowPath, "main");
+    REQUIRE(presentStatus);
+
+    auto targetPath = resolve_target(fx, surfacePath);
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    CHECK(fx.space.read<std::string, std::string>(metricsBase + "/presentMode").value() == "AlwaysFresh");
+    CHECK(fx.space.read<double, std::string>(metricsBase + "/stalenessBudgetMs").value() == doctest::Approx(4.5));
+    CHECK(fx.space.read<double, std::string>(metricsBase + "/frameTimeoutMs").value() == doctest::Approx(12.0));
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/maxAgeFrames").value() == 2);
+    CHECK_FALSE(fx.space.read<bool, std::string>(metricsBase + "/autoRenderOnPresent").value());
+    CHECK_FALSE(fx.space.read<bool, std::string>(metricsBase + "/vsyncAlign").value());
+    CHECK_FALSE(fx.space.read<bool, std::string>(metricsBase + "/stale").value());
+}
+
+TEST_CASE("PathWindowView reports progressive seqlock skips") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x330001u};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, 2.0f}};
+    bucket.bounds_boxes = {BoundingBox{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 0.0f}}};
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {AlphaBlend};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {};
+    bucket.alpha_indices = {0};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {DrawableAuthoringMapEntry{bucket.drawable_ids[0], "node/progressive", 0, 0}};
+
+    RectCommand rect{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 2.0f,
+        .max_y = 2.0f,
+        .color = {0.5f, 0.5f, 0.5f, 0.5f},
+    };
+    encode_rect_command(rect, bucket);
+
+    auto scenePath = create_scene(fx, "scene_seqlock", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_seqlock");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 2;
+    surfaceDesc.size_px.height = 2;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_seqlock", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware surface{surfaceDesc};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.clear_color = {0.0f, 0.0f, 0.0f, 0.0f};
+    settings.time.frame_index = 1;
+
+    auto stats = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+    });
+    REQUIRE(stats);
+
+    auto dirty_tiles = surface.consume_progressive_dirty_tiles();
+    REQUIRE_FALSE(dirty_tiles.empty());
+
+    auto writer = surface.begin_progressive_tile(dirty_tiles.front(), TilePass::OpaqueInProgress);
+
+    PathWindowView view;
+    PathWindowView::PresentPolicy policy{};
+    std::vector<std::uint8_t> framebuffer(surface.frame_bytes(), 0);
+    PathWindowView::PresentRequest request{
+        .now = std::chrono::steady_clock::now(),
+        .vsync_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{16},
+        .framebuffer = framebuffer,
+        .dirty_tiles = std::span<const std::size_t>(dirty_tiles.data(), dirty_tiles.size()),
+    };
+
+    auto presentStats = view.present(surface, policy, request);
+    CHECK(presentStats.progressive_skip_seq_odd >= 1);
+    CHECK(presentStats.progressive_tiles_copied == 0);
+
+    writer.abort();
 }
 
 TEST_CASE("rounded rectangles respect per-corner radii") {

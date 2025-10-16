@@ -190,6 +190,7 @@ TEST_CASE("always fresh skips when buffered frame missing") {
 TEST_CASE("WritePresentMetrics stores presenter results in PathSpace") {
     PathSpace space;
     PathWindowView::PresentStats stats{};
+    stats.mode = PathWindowView::PresentMode::AlwaysLatestComplete;
     stats.presented = true;
     stats.skipped = false;
     stats.frame.frame_index = 42;
@@ -198,34 +199,59 @@ TEST_CASE("WritePresentMetrics stores presenter results in PathSpace") {
     stats.present_ms = 2.0;
     stats.buffered_frame_consumed = true;
     stats.used_progressive = true;
+    stats.frame_age_frames = 2;
+    stats.frame_age_ms = 66.0;
+    stats.stale = true;
     stats.progressive_tiles_copied = 3;
     stats.progressive_rects_coalesced = 2;
     stats.progressive_skip_seq_odd = 1;
     stats.progressive_recopy_after_seq_change = 1;
     stats.wait_budget_ms = 1.25;
+    stats.auto_render_on_present = false;
+    stats.vsync_aligned = false;
     stats.error = "ok";
+
+    PathWindowView::PresentPolicy policy{};
+    policy.mode = PathWindowView::PresentMode::AlwaysLatestComplete;
+    policy.staleness_budget = std::chrono::milliseconds{9};
+    policy.frame_timeout = std::chrono::milliseconds{33};
+    policy.max_age_frames = 5;
+    policy.auto_render_on_present = false;
+    policy.vsync_align = false;
+    policy.staleness_budget_ms_value = 9.0;
+    policy.frame_timeout_ms_value = 33.0;
 
     auto targetPath = ConcretePathString{"/renderers/r/targets/surfaces/main"};
     auto writeStatus = Builders::Diagnostics::WritePresentMetrics(
         space,
         ConcretePathStringView{targetPath.getPath()},
-        stats);
+        stats,
+        policy);
     REQUIRE(writeStatus);
 
     auto base = std::string(targetPath.getPath()) + "/output/v1/common";
-    CHECK(space.read<uint64_t>(base + "/frameIndex").value() == 42);
-    CHECK(space.read<uint64_t>(base + "/revision").value() == 77);
-    CHECK(space.read<double>(base + "/renderMs").value() == doctest::Approx(5.5));
-    CHECK(space.read<double>(base + "/presentMs").value() == doctest::Approx(2.0));
-    CHECK_FALSE(space.read<bool>(base + "/lastPresentSkipped").value());
-    CHECK(space.read<bool>(base + "/presented").value());
-    CHECK(space.read<bool>(base + "/bufferedFrameConsumed").value());
-    CHECK(space.read<bool>(base + "/usedProgressive").value());
-    CHECK(space.read<uint64_t>(base + "/progressiveTilesCopied").value() == 3);
-    CHECK(space.read<uint64_t>(base + "/progressiveRectsCoalesced").value() == 2);
-    CHECK(space.read<uint64_t>(base + "/progressiveSkipOddSeq").value() == 1);
-    CHECK(space.read<uint64_t>(base + "/progressiveRecopyAfterSeqChange").value() == 1);
-    CHECK(space.read<double>(base + "/waitBudgetMs").value() == doctest::Approx(1.25));
+    CHECK(space.read<uint64_t, std::string>(base + "/frameIndex").value() == 42);
+    CHECK(space.read<uint64_t, std::string>(base + "/revision").value() == 77);
+    CHECK(space.read<double, std::string>(base + "/renderMs").value() == doctest::Approx(5.5));
+    CHECK(space.read<double, std::string>(base + "/presentMs").value() == doctest::Approx(2.0));
+    CHECK_FALSE(space.read<bool, std::string>(base + "/lastPresentSkipped").value());
+    CHECK(space.read<bool, std::string>(base + "/presented").value());
+    CHECK(space.read<bool, std::string>(base + "/bufferedFrameConsumed").value());
+    CHECK(space.read<bool, std::string>(base + "/usedProgressive").value());
+    CHECK(space.read<uint64_t, std::string>(base + "/progressiveTilesCopied").value() == 3);
+    CHECK(space.read<uint64_t, std::string>(base + "/progressiveRectsCoalesced").value() == 2);
+    CHECK(space.read<uint64_t, std::string>(base + "/progressiveSkipOddSeq").value() == 1);
+    CHECK(space.read<uint64_t, std::string>(base + "/progressiveRecopyAfterSeqChange").value() == 1);
+    CHECK(space.read<double, std::string>(base + "/waitBudgetMs").value() == doctest::Approx(1.25));
+    CHECK(space.read<double, std::string>(base + "/presentedAgeMs").value() == doctest::Approx(66.0));
+    CHECK(space.read<uint64_t, std::string>(base + "/presentedAgeFrames").value() == 2);
+    CHECK(space.read<bool, std::string>(base + "/stale").value());
+    CHECK(space.read<std::string, std::string>(base + "/presentMode").value() == "AlwaysLatestComplete");
+    CHECK(space.read<double, std::string>(base + "/stalenessBudgetMs").value() == doctest::Approx(9.0));
+    CHECK(space.read<double, std::string>(base + "/frameTimeoutMs").value() == doctest::Approx(33.0));
+    CHECK(space.read<uint64_t, std::string>(base + "/maxAgeFrames").value() == 5);
+    CHECK_FALSE(space.read<bool, std::string>(base + "/autoRenderOnPresent").value());
+    CHECK_FALSE(space.read<bool, std::string>(base + "/vsyncAlign").value());
     auto lastError = space.read<std::string, std::string>(base + "/lastError");
     REQUIRE(lastError);
     CHECK(*lastError == "ok");

@@ -22,6 +22,10 @@ struct PathWindowPresentPolicy {
     std::chrono::milliseconds staleness_budget{8};
     std::uint32_t max_age_frames = 1;
     std::chrono::milliseconds frame_timeout{20};
+    bool vsync_align = true;
+    bool auto_render_on_present = true;
+    double staleness_budget_ms_value = 8.0;
+    double frame_timeout_ms_value = 20.0;
 };
 
 struct PathWindowPresentRequest {
@@ -36,9 +40,15 @@ struct PathWindowPresentStats {
     bool skipped = false;
     bool buffered_frame_consumed = false;
     bool used_progressive = false;
+    bool vsync_aligned = true;
+    bool auto_render_on_present = true;
+    bool stale = false;
+    PathWindowPresentMode mode = PathWindowPresentMode::PreferLatestCompleteWithBudget;
     PathSurfaceSoftware::FrameInfo frame{};
     double wait_budget_ms = 0.0;
     double present_ms = 0.0;
+    double frame_age_ms = 0.0;
+    std::uint64_t frame_age_frames = 0;
     std::size_t progressive_tiles_copied = 0;
     std::size_t progressive_rects_coalesced = 0;
     std::size_t progressive_skip_seq_odd = 0;

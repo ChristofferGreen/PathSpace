@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cctype>
 #include <cstdint>
 #include <iomanip>
 #include <optional>
@@ -64,6 +65,117 @@ struct SurfaceRenderContext {
     SurfaceDesc            target_desc;
     RenderSettings         settings;
 };
+
+template <typename T>
+auto read_optional(PathSpace const& space,
+                   std::string const& path) -> SP::Expected<std::optional<T>>;
+
+auto present_mode_to_string(PathWindowView::PresentMode mode) -> std::string {
+    switch (mode) {
+    case PathWindowView::PresentMode::AlwaysFresh:
+        return "AlwaysFresh";
+    case PathWindowView::PresentMode::PreferLatestCompleteWithBudget:
+        return "PreferLatestCompleteWithBudget";
+    case PathWindowView::PresentMode::AlwaysLatestComplete:
+        return "AlwaysLatestComplete";
+    }
+    return "Unknown";
+}
+
+auto parse_present_mode(std::string_view text) -> SP::Expected<PathWindowView::PresentMode> {
+    std::string normalized;
+    normalized.reserve(text.size());
+    for (char ch : text) {
+        if (ch == '_' || std::isspace(static_cast<unsigned char>(ch))) {
+            continue;
+        }
+        normalized.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+    }
+    if (normalized.empty()) {
+        return std::unexpected(make_error("present policy string must not be empty",
+                                          SP::Error::Code::InvalidType));
+    }
+    if (normalized == "alwaysfresh") {
+        return PathWindowView::PresentMode::AlwaysFresh;
+    }
+    if (normalized == "preferlatestcompletewithbudget"
+        || normalized == "preferlatestcomplete") {
+        return PathWindowView::PresentMode::PreferLatestCompleteWithBudget;
+    }
+    if (normalized == "alwayslatestcomplete") {
+        return PathWindowView::PresentMode::AlwaysLatestComplete;
+    }
+    return std::unexpected(make_error("unknown present policy '" + std::string(text) + "'",
+                                      SP::Error::Code::InvalidType));
+}
+
+auto read_present_policy(PathSpace const& space,
+                         std::string const& viewBase) -> SP::Expected<PathWindowView::PresentPolicy> {
+    PathWindowView::PresentPolicy policy{};
+    auto policyPath = viewBase + "/present/policy";
+    auto policyValue = read_optional<std::string>(space, policyPath);
+    if (!policyValue) {
+        return std::unexpected(policyValue.error());
+    }
+    if (policyValue->has_value()) {
+        auto mode = parse_present_mode(**policyValue);
+        if (!mode) {
+            return std::unexpected(mode.error());
+        }
+        policy.mode = *mode;
+    }
+
+    auto read_double = [&](std::string const& path) -> SP::Expected<std::optional<double>> {
+        return read_optional<double>(space, path);
+    };
+    auto read_uint64 = [&](std::string const& path) -> SP::Expected<std::optional<std::uint64_t>> {
+        return read_optional<std::uint64_t>(space, path);
+    };
+    auto read_bool = [&](std::string const& path) -> SP::Expected<std::optional<bool>> {
+        return read_optional<bool>(space, path);
+    };
+
+    auto paramsBase = viewBase + "/present/params";
+    if (auto value = read_double(paramsBase + "/staleness_budget_ms"); !value) {
+        return std::unexpected(value.error());
+    } else if (value->has_value()) {
+        policy.staleness_budget_ms_value = **value;
+        auto duration = std::chrono::duration<double, std::milli>(**value);
+        policy.staleness_budget = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+    } else {
+        policy.staleness_budget_ms_value = static_cast<double>(policy.staleness_budget.count());
+    }
+
+    if (auto value = read_double(paramsBase + "/frame_timeout_ms"); !value) {
+        return std::unexpected(value.error());
+    } else if (value->has_value()) {
+        policy.frame_timeout_ms_value = **value;
+        auto duration = std::chrono::duration<double, std::milli>(**value);
+        policy.frame_timeout = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+    } else {
+        policy.frame_timeout_ms_value = static_cast<double>(policy.frame_timeout.count());
+    }
+
+    if (auto value = read_uint64(paramsBase + "/max_age_frames"); !value) {
+        return std::unexpected(value.error());
+    } else if (value->has_value()) {
+        policy.max_age_frames = static_cast<std::uint32_t>(**value);
+    }
+
+    if (auto value = read_bool(paramsBase + "/vsync_align"); !value) {
+        return std::unexpected(value.error());
+    } else if (value->has_value()) {
+        policy.vsync_align = **value;
+    }
+
+    if (auto value = read_bool(paramsBase + "/auto_render_on_present"); !value) {
+        return std::unexpected(value.error());
+    } else if (value->has_value()) {
+        policy.auto_render_on_present = **value;
+    }
+
+    return policy;
+}
 
 auto prepare_surface_render_context(PathSpace& space,
                                     SurfacePath const& surfacePath,
@@ -993,6 +1105,11 @@ auto Present(PathSpace& space,
         return std::unexpected(context.error());
     }
 
+    auto policy = read_present_policy(space, viewBase);
+    if (!policy) {
+        return std::unexpected(policy.error());
+    }
+
     PathSurfaceSoftware surface{context->target_desc};
     auto renderStats = render_into_surface(space,
                                            SP::ConcretePathStringView{context->target_path.getPath()},
@@ -1005,7 +1122,6 @@ auto Present(PathSpace& space,
     auto dirty_tiles = surface.consume_progressive_dirty_tiles();
 
     PathWindowView presenter;
-    PathWindowView::PresentPolicy policy{};
     std::vector<std::uint8_t> framebuffer(surface.frame_bytes(), 0);
     auto now = std::chrono::steady_clock::now();
     PathWindowView::PresentRequest request{
@@ -1014,16 +1130,34 @@ auto Present(PathSpace& space,
         .framebuffer = framebuffer,
         .dirty_tiles = dirty_tiles,
     };
-    auto presentStats = presenter.present(surface, policy, request);
+    auto presentStats = presenter.present(surface, *policy, request);
     if (renderStats) {
         presentStats.frame.frame_index = renderStats->frame_index;
         presentStats.frame.revision = renderStats->revision;
         presentStats.frame.render_ms = renderStats->render_ms;
     }
 
+    auto metricsBase = std::string(context->target_path.getPath()) + "/output/v1/common";
+    std::uint64_t previous_frame_index = 0;
+    if (auto previous = read_optional<uint64_t>(space, metricsBase + "/frameIndex"); !previous) {
+        return std::unexpected(previous.error());
+    } else if (previous->has_value()) {
+        previous_frame_index = **previous;
+    }
+
+    if (presentStats.frame.frame_index >= previous_frame_index) {
+        presentStats.frame_age_frames = presentStats.frame.frame_index - previous_frame_index;
+    } else {
+        presentStats.frame_age_frames = 0;
+    }
+    presentStats.frame_age_ms = static_cast<double>(presentStats.frame_age_frames)
+                                * static_cast<double>(policy->frame_timeout.count());
+    presentStats.stale = presentStats.frame_age_frames > policy->max_age_frames;
+
     if (auto status = Diagnostics::WritePresentMetrics(space,
                                                        SP::ConcretePathStringView{context->target_path.getPath()},
-                                                       presentStats); !status) {
+                                                       presentStats,
+                                                       *policy); !status) {
         return std::unexpected(status.error());
     }
 
@@ -1093,7 +1227,8 @@ auto ClearTargetError(PathSpace& space,
 
 auto WritePresentMetrics(PathSpace& space,
                           ConcretePathView targetPath,
-                          PathWindowPresentStats const& stats) -> SP::Expected<void> {
+                          PathWindowPresentStats const& stats,
+                          PathWindowPresentPolicy const& policy) -> SP::Expected<void> {
     auto base = std::string(targetPath.getPath()) + "/output/v1/common";
 
     if (auto status = replace_single<uint64_t>(space, base + "/frameIndex", stats.frame.frame_index); !status) {
@@ -1120,6 +1255,21 @@ auto WritePresentMetrics(PathSpace& space,
     if (auto status = replace_single<bool>(space, base + "/usedProgressive", stats.used_progressive); !status) {
         return status;
     }
+    if (auto status = replace_single<double>(space, base + "/presentedAgeMs", stats.frame_age_ms); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space, base + "/presentedAgeFrames",
+                                               stats.frame_age_frames); !status) {
+        return status;
+    }
+    if (auto status = replace_single<bool>(space, base + "/stale", stats.stale); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::string>(space,
+                                                  base + "/presentMode",
+                                                  present_mode_to_string(stats.mode)); !status) {
+        return status;
+    }
     if (auto status = replace_single<uint64_t>(space, base + "/progressiveTilesCopied",
                                                static_cast<uint64_t>(stats.progressive_tiles_copied)); !status) {
         return status;
@@ -1137,6 +1287,31 @@ auto WritePresentMetrics(PathSpace& space,
         return status;
     }
     if (auto status = replace_single<double>(space, base + "/waitBudgetMs", stats.wait_budget_ms); !status) {
+        return status;
+    }
+    if (auto status = replace_single<double>(space,
+                                             base + "/stalenessBudgetMs",
+                                             policy.staleness_budget_ms_value); !status) {
+        return status;
+    }
+    if (auto status = replace_single<double>(space,
+                                             base + "/frameTimeoutMs",
+                                             policy.frame_timeout_ms_value); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/maxAgeFrames",
+                                               static_cast<uint64_t>(policy.max_age_frames)); !status) {
+        return status;
+    }
+    if (auto status = replace_single<bool>(space,
+                                           base + "/autoRenderOnPresent",
+                                           policy.auto_render_on_present); !status) {
+        return status;
+    }
+    if (auto status = replace_single<bool>(space,
+                                           base + "/vsyncAlign",
+                                           policy.vsync_align); !status) {
         return status;
     }
     if (auto status = replace_single<std::string>(space, base + "/lastError", stats.error); !status) {

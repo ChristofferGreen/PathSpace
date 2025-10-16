@@ -15,6 +15,7 @@
 
 namespace SP::UI {
 struct PathWindowPresentStats;
+struct PathWindowPresentPolicy;
 }
 
 namespace SP::UI::Builders {
@@ -312,7 +313,8 @@ auto ClearTargetError(PathSpace& space,
 
 auto WritePresentMetrics(PathSpace& space,
                           ConcretePathView targetPath,
-                          PathWindowPresentStats const& stats) -> SP::Expected<void>;
+                          PathWindowPresentStats const& stats,
+                          PathWindowPresentPolicy const& policy) -> SP::Expected<void>;
 
 } // namespace Diagnostics
 
