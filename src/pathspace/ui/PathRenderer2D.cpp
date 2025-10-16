@@ -475,6 +475,48 @@ auto draw_image_command(Scene::ImageCommand const& command,
     return drawn;
 }
 
+auto draw_text_glyphs_command(Scene::TextGlyphsCommand const& command,
+                              std::vector<float>& buffer,
+                              int width,
+                              int height) -> bool {
+    auto color = premultiply(make_linear_straight(command.color));
+    auto min_x = std::min(command.min_x, command.max_x);
+    auto max_x = std::max(command.min_x, command.max_x);
+    auto min_y = std::min(command.min_y, command.max_y);
+    auto max_y = std::max(command.min_y, command.max_y);
+    return draw_rect_area(min_x, min_y, max_x, max_y, color, buffer, width, height);
+}
+
+auto draw_path_command(Scene::PathCommand const& command,
+                       std::vector<float>& buffer,
+                       int width,
+                       int height) -> bool {
+    auto color = premultiply(make_linear_straight(command.fill_color));
+    auto min_x = std::min(command.min_x, command.max_x);
+    auto max_x = std::max(command.min_x, command.max_x);
+    auto min_y = std::min(command.min_y, command.max_y);
+    auto max_y = std::max(command.min_y, command.max_y);
+    return draw_rect_area(min_x, min_y, max_x, max_y, color, buffer, width, height);
+}
+
+auto draw_mesh_command(Scene::MeshCommand const& command,
+                       Scene::DrawableBucketSnapshot const& bucket,
+                       std::size_t drawable_index,
+                       std::vector<float>& buffer,
+                       int width,
+                       int height) -> bool {
+    if (drawable_index >= bucket.bounds_boxes.size()) {
+        return false;
+    }
+    if (drawable_index < bucket.bounds_box_valid.size()
+        && bucket.bounds_box_valid[drawable_index] == 0) {
+        return false;
+    }
+    auto const& box = bucket.bounds_boxes[drawable_index];
+    auto color = premultiply(make_linear_straight(command.color));
+    return draw_rect_area(box.min[0], box.min[1], box.max[0], box.max[1], color, buffer, width, height);
+}
+
 auto draw_fallback_bounds_box(Scene::DrawableBucketSnapshot const& bucket,
                               std::size_t drawable_index,
                               std::vector<float>& buffer,
@@ -517,8 +559,8 @@ auto compute_command_payload_offsets(std::vector<std::uint32_t> const& kinds,
         auto kind = static_cast<Scene::DrawCommandKind>(kind_value);
         auto payload_size = Scene::payload_size_bytes(kind);
         if (payload_size == 0) {
-            return std::unexpected(make_error("unsupported draw command kind",
-                                              SP::Error::Code::InvalidType));
+            offsets.push_back(cursor);
+            continue;
         }
         if (cursor + payload_size > payload.size()) {
             return std::unexpected(make_error("command payload truncated",
@@ -798,6 +840,33 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                     ++executed_commands;
                     break;
                 }
+                case Scene::DrawCommandKind::TextGlyphs: {
+                    auto glyphs = read_struct<Scene::TextGlyphsCommand>(bucket->command_payload,
+                                                                        payload_offset);
+                    if (draw_text_glyphs_command(glyphs, linear_buffer, width, height)) {
+                        drawable_drawn = true;
+                    }
+                    ++executed_commands;
+                    break;
+                }
+                case Scene::DrawCommandKind::Path: {
+                    auto path_cmd = read_struct<Scene::PathCommand>(bucket->command_payload,
+                                                                    payload_offset);
+                    if (draw_path_command(path_cmd, linear_buffer, width, height)) {
+                        drawable_drawn = true;
+                    }
+                    ++executed_commands;
+                    break;
+                }
+                case Scene::DrawCommandKind::Mesh: {
+                    auto mesh_cmd = read_struct<Scene::MeshCommand>(bucket->command_payload,
+                                                                    payload_offset);
+                    if (draw_mesh_command(mesh_cmd, *bucket, drawable_index, linear_buffer, width, height)) {
+                        drawable_drawn = true;
+                    }
+                    ++executed_commands;
+                    break;
+                }
                 case Scene::DrawCommandKind::Image: {
                     auto image_cmd = read_struct<Scene::ImageCommand>(bucket->command_payload,
                                                                      payload_offset);
@@ -998,6 +1067,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/culledDrawables", culled_drawables);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/commandCount", static_cast<std::uint64_t>(bucket->command_kinds.size()));
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/commandsExecuted", executed_commands);
+    (void)replace_single<std::uint64_t>(space_, metricsBase + "/unsupportedCommands", unsupported_commands);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/unsupportedCommands", unsupported_commands);
 
     RenderStats stats{};

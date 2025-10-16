@@ -34,7 +34,11 @@ using SP::UI::Scene::RoundedRectCommand;
 using SP::UI::Scene::RectCommand;
 using SP::UI::Scene::DrawCommandKind;
 using SP::UI::Scene::ImageCommand;
+using SP::UI::Scene::TextGlyphsCommand;
+using SP::UI::Scene::PathCommand;
+using SP::UI::Scene::MeshCommand;
 using namespace SP::UI::PipelineFlags;
+namespace UIScene = SP::UI::Scene;
 
 namespace {
 
@@ -130,12 +134,28 @@ auto encode_rounded_rect_command(RoundedRectCommand const& rounded,
     bucket.command_kinds.push_back(static_cast<std::uint32_t>(DrawCommandKind::RoundedRect));
 }
 
-auto encode_mesh_command(SP::UI::Scene::MeshCommand const& mesh,
+auto encode_mesh_command(UIScene::MeshCommand const& mesh,
                          DrawableBucketSnapshot& bucket) -> void {
     auto offset = bucket.command_payload.size();
-    bucket.command_payload.resize(offset + sizeof(SP::UI::Scene::MeshCommand));
-    std::memcpy(bucket.command_payload.data() + offset, &mesh, sizeof(SP::UI::Scene::MeshCommand));
+    bucket.command_payload.resize(offset + sizeof(UIScene::MeshCommand));
+    std::memcpy(bucket.command_payload.data() + offset, &mesh, sizeof(UIScene::MeshCommand));
     bucket.command_kinds.push_back(static_cast<std::uint32_t>(DrawCommandKind::Mesh));
+}
+
+auto encode_text_glyphs_command(UIScene::TextGlyphsCommand const& glyphs,
+                                DrawableBucketSnapshot& bucket) -> void {
+    auto offset = bucket.command_payload.size();
+    bucket.command_payload.resize(offset + sizeof(UIScene::TextGlyphsCommand));
+    std::memcpy(bucket.command_payload.data() + offset, &glyphs, sizeof(UIScene::TextGlyphsCommand));
+    bucket.command_kinds.push_back(static_cast<std::uint32_t>(DrawCommandKind::TextGlyphs));
+}
+
+auto encode_path_command(UIScene::PathCommand const& path,
+                         DrawableBucketSnapshot& bucket) -> void {
+    auto offset = bucket.command_payload.size();
+    bucket.command_payload.resize(offset + sizeof(UIScene::PathCommand));
+    std::memcpy(bucket.command_payload.data() + offset, &path, sizeof(UIScene::PathCommand));
+    bucket.command_kinds.push_back(static_cast<std::uint32_t>(DrawCommandKind::Path));
 }
 
 auto encode_image_command(ImageCommand const& image,
@@ -566,6 +586,211 @@ TEST_CASE("renders png image command") {
     CHECK(color_sum > 0);
 }
 
+TEST_CASE("render executes text glyphs command") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x300001u};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, 2.0f}};
+    bucket.bounds_boxes = {BoundingBox{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 0.0f}}};
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {AlphaBlend};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {};
+    bucket.alpha_indices = {0};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {
+        DrawableAuthoringMapEntry{bucket.drawable_ids[0], "node/text", 0, 0},
+    };
+
+    UIScene::TextGlyphsCommand glyphs{};
+    glyphs.min_x = 0.0f;
+    glyphs.min_y = 0.0f;
+    glyphs.max_x = 2.0f;
+    glyphs.max_y = 2.0f;
+    glyphs.glyph_count = 4;
+    glyphs.color = {0.2f, 0.6f, 1.0f, 0.75f};
+    encode_text_glyphs_command(glyphs, bucket);
+
+    auto scenePath = create_scene(fx, "scene_text", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_text");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 2;
+    surfaceDesc.size_px.height = 2;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_text", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware surface{surfaceDesc};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.time.frame_index = 3;
+
+    auto stats = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+    });
+    REQUIRE(stats);
+    CHECK(stats->drawable_count == 1);
+
+    auto buffer = copy_buffer(surface);
+    auto stride = surface.row_stride_bytes();
+    auto center_offset = stride + 4;
+    CHECK(buffer[center_offset + 3] > 0);
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/commandsExecuted").value() == 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/unsupportedCommands").value() == 0);
+}
+
+TEST_CASE("render executes path command using fill color") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x400001u};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, 2.0f}};
+    bucket.bounds_boxes = {BoundingBox{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 0.0f}}};
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {AlphaBlend};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {};
+    bucket.alpha_indices = {0};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {
+        DrawableAuthoringMapEntry{bucket.drawable_ids[0], "node/path", 0, 0},
+    };
+
+    UIScene::PathCommand path{};
+    path.min_x = 0.0f;
+    path.min_y = 0.0f;
+    path.max_x = 2.0f;
+    path.max_y = 2.0f;
+    path.fill_color = {0.8f, 0.3f, 0.1f, 1.0f};
+    encode_path_command(path, bucket);
+
+    auto scenePath = create_scene(fx, "scene_path", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_path");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 2;
+    surfaceDesc.size_px.height = 2;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_path", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware surface{surfaceDesc};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.time.frame_index = 4;
+
+    auto stats = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+    });
+    REQUIRE(stats);
+
+    auto buffer = copy_buffer(surface);
+    auto stride = surface.row_stride_bytes();
+    auto center_offset = stride + 4;
+    CHECK(buffer[center_offset + 3] > 0);
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/commandsExecuted").value() == 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/unsupportedCommands").value() == 0);
+}
+
+TEST_CASE("render executes mesh command using drawable bounds") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x500001u};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, 2.0f}};
+    bucket.bounds_boxes = {BoundingBox{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 0.0f}}};
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {AlphaBlend};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {};
+    bucket.alpha_indices = {0};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {
+        DrawableAuthoringMapEntry{bucket.drawable_ids[0], "node/mesh", 0, 0},
+    };
+
+    UIScene::MeshCommand mesh{};
+    mesh.color = {0.1f, 0.8f, 0.2f, 1.0f};
+    encode_mesh_command(mesh, bucket);
+
+    auto scenePath = create_scene(fx, "scene_mesh", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_mesh");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 2;
+    surfaceDesc.size_px.height = 2;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_mesh", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware surface{surfaceDesc};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.time.frame_index = 5;
+
+    auto stats = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+    });
+    REQUIRE(stats);
+
+    auto buffer = copy_buffer(surface);
+    auto stride = surface.row_stride_bytes();
+    auto center_offset = stride + 4;
+    CHECK(buffer[center_offset + 3] > 0);
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/commandsExecuted").value() == 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/unsupportedCommands").value() == 0);
+}
+
 TEST_CASE("render tracks culled drawables and executed commands") {
     RendererFixture fx;
 
@@ -669,11 +894,7 @@ TEST_CASE("unsupported commands fall back to bounds and report metrics") {
     bucket.clip_head_indices = {-1};
     bucket.authoring_map = {DrawableAuthoringMapEntry{bucket.drawable_ids[0], "node/mesh", 0, 0}};
 
-    SP::UI::Scene::MeshCommand mesh{};
-    mesh.vertex_count = 6;
-    mesh.index_count = 6;
-    mesh.color = {0.9f, 0.1f, 0.1f, 0.5f};
-    encode_mesh_command(mesh, bucket);
+    bucket.command_kinds.push_back(999u); // invalid kind to trigger fallback
 
     auto scenePath = create_scene(fx, "scene_mesh_fallback", bucket);
     auto rendererPath = create_renderer(fx, "renderer_mesh_fallback");

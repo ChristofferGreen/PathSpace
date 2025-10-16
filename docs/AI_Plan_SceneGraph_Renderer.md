@@ -246,6 +246,7 @@ Present policy (backend-aware)
   - presentedMode: string
   - stale: bool
   - waitMs: double
+  - progressiveTilesCopied / progressiveRectsCoalesced / progressiveSkipOddSeq / progressiveRecopyAfterSeqChange (software-only)
   - skippedPresent: bool (GPU)
   - drawableUnavailable: bool (GPU)
 
@@ -386,7 +387,7 @@ Publish/adopt/GC protocol
 - Publish: atomically replace `scenes/<sid>/current_revision` with `<rev>`
 - Renderer adopts by reading `current_revision` once per frame, mapping only `/<rev>/bucket/*` for that frame; the revision is pinned until frame end
 - GC: retain last K revisions (default 3) or T minutes (default 2m), whichever greater; never delete a pinned revision. Effective deletion cutoff = min(count-cutoff, time-cutoff, (minActiveLeaseRev - 1) if leases present). Never delete `current_revision` and always retain at least one revision.
-- Observability: renderer writes `frameIndex`, `revision`, `renderMs`, `lastError` under `targets/<tid>/output/v1/common/*` (see “Target keys (final)”)
+- Observability: renderer writes `frameIndex`, `revision`, `renderMs`, `lastError`, plus counters such as `drawableCount`, `opaqueDrawables`, `alphaDrawables`, `culledDrawables`, `commandCount`, `commandsExecuted`, and `unsupportedCommands` under `targets/<tid>/output/v1/common/*` (see “Target keys (final)”).
 
 > Note — Revision allocation and error handling
 > - current_revision type and allocation: uint64, builder-assigned, strictly monotonically increasing per scene. Builders are responsible for generating new revisions; do not reuse old values.
@@ -467,7 +468,7 @@ Software renderer (2D UI)
   - Linear working space. Inputs decode per asset flags; outputs encode to target color space (e.g., sRGB) with optional dithering for 8-bit.
   - DisplayP3 handling: when assets declare DisplayP3 or targets request DisplayP3, convert between working linear space and the target/display space via ICC or well-defined matrix transforms. For software paths, encode to sRGB or DisplayP3 at store-time; for GPU, use appropriate formats and perform conversion on write-out. Avoid double conversion when using sRGB/linear attachments.
 
-> **Current implementation (October 16, 2025):** `PathRenderer2D` composites Rect and RoundedRect commands in linear light, honoring opaque/alpha pass ordering, falling back to bounds fills for unsupported kinds, and publishes drawable/command/cull metrics. Image/TextGlyphs/Path/Mesh execution, analytic coverage, and advanced blending remain planned follow-ups.
+> **Current implementation (October 17, 2025):** `PathRenderer2D` composites Rect, RoundedRect, Image, TextGlyphs, Path, and Mesh commands in linear light, honors opaque/alpha pass ordering, and records drawable/command/unsupported metrics alongside progressive-surface data. Analytic coverage improvements and advanced blending remain planned follow-ups.
 - Builders’ `Surface::RenderOnce` / `Window::Present` now call this renderer synchronously and return a ready `FutureAny`; async execution queues remain future work.
 
 ### Color management (v1)

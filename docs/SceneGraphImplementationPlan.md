@@ -34,7 +34,7 @@ Each workstream lands independently but respects shared contracts (paths, atomic
 - Future additions (Metal/HTML adapters) extend these namespaces rather than reaching into core PathSpace directly.
 
 ## Immediate Next Steps
-- Expand `PathRenderer2D` beyond bounding-box fills: interpret drawable command streams, honor layer/opaque vs alpha ordering, and validate color-management paths (with failure-handling tests and goldens).
+- ✅ (October 17, 2025) `PathRenderer2D` executes Rect, RoundedRect, Image, TextGlyphs, Path, and Mesh commands in linear light, respecting opaque/alpha ordering and updating drawable/unsupported metrics.
 - For Phase 4 follow-ups, prepare end-to-end scene→render→present scenarios, wire presenters through `Window::Present`, surface progressive-mode metrics, codify seqlock/deadline tests, and rerun the loop harness once integrations land.
 - Begin Phase 5 test authoring for hit ordering, clip-aware picking, focus routing, and event delivery latency; follow with DrawableBucket-backed picking and wait/notify integration for dirty markers and auto-render scheduling.
 - Line up Phase 6 diagnostics/tooling work: extend error/metrics coverage, normalize `PathSpaceError` reporting, expand scripts for UI log capture, and draft the debugging playbook updates before the next hardening pass.
@@ -69,7 +69,7 @@ Completed:
 
 Remaining:
 - Draft golden framebuffer comparisons, render/present concurrency loops, and failure-handling tests up front.
-- Extend `PathRenderer2D` beyond Rect/RoundedRect (Image, TextGlyphs, Path, Mesh) with full pipeline flag handling and blend semantics.
+- (Completed October 17, 2025) Extend `PathRenderer2D` beyond Rect/RoundedRect (Image, TextGlyphs, Path, Mesh) with full pipeline flag handling and blend semantics.
 - Add golden framebuffer comparisons plus richer diagnostics (sort keys, overdraw/progressive stats) for regression detection.
 - Re-run the looped test suite and inspect goldens post implementation.
 
