@@ -2,6 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
+#include <pathspace/ui/ImageCache.hpp>
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 
@@ -30,7 +31,7 @@ public:
 
 private:
     PathSpace& space_;
+    ImageCache image_cache_;
 };
 
 } // namespace SP::UI
-

@@ -61,6 +61,12 @@ auto format_revision(std::uint64_t revision) -> std::string {
     return oss.str();
 }
 
+auto fingerprint_to_hex(std::uint64_t fingerprint) -> std::string {
+    std::ostringstream oss;
+    oss << std::hex << std::setw(16) << std::setfill('0') << std::nouppercase << fingerprint;
+    return oss.str();
+}
+
 auto clamp_unit(float value) -> float {
     return std::clamp(value, 0.0f, 1.0f);
 }
@@ -97,6 +103,13 @@ auto pipeline_flags_for(Scene::DrawableBucketSnapshot const& bucket,
     return 0;
 }
 
+struct LinearStraightColor {
+    float r = 0.0f;
+    float g = 0.0f;
+    float b = 0.0f;
+    float a = 0.0f;
+};
+
 struct LinearPremulColor {
     float r = 0.0f;
     float g = 0.0f;
@@ -121,17 +134,31 @@ auto linear_to_srgb(float value) -> float {
     return 1.055f * std::pow(value, 1.0f / 2.4f) - 0.055f;
 }
 
-auto make_linear_color(std::array<float, 4> const& rgba) -> LinearPremulColor {
+auto make_linear_straight(std::array<float, 4> const& rgba) -> LinearStraightColor {
     auto alpha = clamp_unit(rgba[3]);
     auto r = srgb_to_linear(rgba[0]);
     auto g = srgb_to_linear(rgba[1]);
     auto b = srgb_to_linear(rgba[2]);
-    return LinearPremulColor{
-        .r = clamp_unit(r) * alpha,
-        .g = clamp_unit(g) * alpha,
-        .b = clamp_unit(b) * alpha,
+    return LinearStraightColor{
+        .r = clamp_unit(r),
+        .g = clamp_unit(g),
+        .b = clamp_unit(b),
         .a = alpha,
     };
+}
+
+auto premultiply(LinearStraightColor const& straight) -> LinearPremulColor {
+    auto alpha = clamp_unit(straight.a);
+    return LinearPremulColor{
+        .r = clamp_unit(straight.r) * alpha,
+        .g = clamp_unit(straight.g) * alpha,
+        .b = clamp_unit(straight.b) * alpha,
+        .a = alpha,
+    };
+}
+
+auto make_linear_color(std::array<float, 4> const& rgba) -> LinearPremulColor {
+    return premultiply(make_linear_straight(rgba));
 }
 
 auto needs_srgb_encode(Builders::SurfaceDesc const& desc) -> bool {
@@ -151,6 +178,19 @@ void blend_pixel(float* dest, LinearPremulColor const& src) {
     dest[1] = clamp_unit(src.g + dest[1] * inv_alpha);
     dest[2] = clamp_unit(src.b + dest[2] * inv_alpha);
     dest[3] = clamp_unit(src.a + dest[3] * inv_alpha);
+}
+
+auto lerp(float a, float b, float t) -> float {
+    return a + (b - a) * t;
+}
+
+auto multiply_straight(LinearStraightColor lhs, LinearStraightColor rhs) -> LinearStraightColor {
+    return LinearStraightColor{
+        .r = clamp_unit(lhs.r * rhs.r),
+        .g = clamp_unit(lhs.g * rhs.g),
+        .b = clamp_unit(lhs.b * rhs.b),
+        .a = clamp_unit(lhs.a * rhs.a),
+    };
 }
 
 auto draw_rect_area(float min_x,
@@ -301,6 +341,137 @@ auto draw_rounded_rect_command(Scene::RoundedRectCommand const& command,
             }
         }
     }
+    return drawn;
+}
+
+auto sample_image_linear(ImageCache::ImageData const& image,
+                         float u,
+                         float v) -> LinearStraightColor {
+    if (image.width == 0 || image.height == 0) {
+        return LinearStraightColor{};
+    }
+
+    auto clamp01 = [](float value) -> float {
+        return std::clamp(value, 0.0f, 1.0f);
+    };
+
+    u = clamp01(u);
+    v = clamp01(v);
+
+    auto max_x = static_cast<float>(image.width - 1);
+    auto max_y = static_cast<float>(image.height - 1);
+
+    auto x = u * max_x;
+    auto y = v * max_y;
+
+    auto x0 = static_cast<int>(std::floor(x));
+    auto y0 = static_cast<int>(std::floor(y));
+    auto x1 = std::min(x0 + 1, static_cast<int>(image.width - 1));
+    auto y1 = std::min(y0 + 1, static_cast<int>(image.height - 1));
+
+    auto tx = x - static_cast<float>(x0);
+    auto ty = y - static_cast<float>(y0);
+
+    auto fetch = [&](int ix, int iy) -> LinearStraightColor {
+        auto index = (static_cast<std::size_t>(iy) * image.width + static_cast<std::size_t>(ix)) * 4u;
+        return LinearStraightColor{
+            .r = image.pixels[index + 0],
+            .g = image.pixels[index + 1],
+            .b = image.pixels[index + 2],
+            .a = image.pixels[index + 3],
+        };
+    };
+
+    auto c00 = fetch(x0, y0);
+    auto c10 = fetch(x1, y0);
+    auto c01 = fetch(x0, y1);
+    auto c11 = fetch(x1, y1);
+
+    auto interp_row = [&](LinearStraightColor const& a,
+                          LinearStraightColor const& b) -> LinearStraightColor {
+        return LinearStraightColor{
+            .r = lerp(a.r, b.r, tx),
+            .g = lerp(a.g, b.g, tx),
+            .b = lerp(a.b, b.b, tx),
+            .a = lerp(a.a, b.a, tx),
+        };
+    };
+
+    auto top = interp_row(c00, c10);
+    auto bottom = interp_row(c01, c11);
+
+    return LinearStraightColor{
+        .r = lerp(top.r, bottom.r, ty),
+        .g = lerp(top.g, bottom.g, ty),
+        .b = lerp(top.b, bottom.b, ty),
+        .a = lerp(top.a, bottom.a, ty),
+    };
+}
+
+auto draw_image_command(Scene::ImageCommand const& command,
+                        ImageCache::ImageData const& image,
+                        LinearStraightColor const& tint,
+                        std::vector<float>& buffer,
+                        int width,
+                        int height) -> bool {
+    auto min_x = std::min(command.min_x, command.max_x);
+    auto max_x = std::max(command.min_x, command.max_x);
+    auto min_y = std::min(command.min_y, command.max_y);
+    auto max_y = std::max(command.min_y, command.max_y);
+
+    auto width_f = std::max(0.0f, max_x - min_x);
+    auto height_f = std::max(0.0f, max_y - min_y);
+    if (width_f <= 0.0f || height_f <= 0.0f) {
+        return false;
+    }
+
+    auto clamp_pixel = [](float value, int limit, bool ceiling) -> int {
+        auto pixel = ceiling ? std::ceil(value) : std::floor(value);
+        return std::clamp(static_cast<int>(pixel), 0, limit);
+    };
+
+    auto min_x_i = clamp_pixel(min_x, width, false);
+    auto max_x_i = clamp_pixel(max_x, width, true);
+    auto min_y_i = clamp_pixel(min_y, height, false);
+    auto max_y_i = clamp_pixel(max_y, height, true);
+
+    if (min_x_i >= max_x_i || min_y_i >= max_y_i) {
+        return false;
+    }
+
+    auto uv_width = command.uv_max_x - command.uv_min_x;
+    auto uv_height = command.uv_max_y - command.uv_min_y;
+    if (uv_width == 0.0f || uv_height == 0.0f) {
+        return false;
+    }
+
+    bool drawn = false;
+    auto const row_stride = static_cast<std::size_t>(width) * 4u;
+
+    for (int y = min_y_i; y < max_y_i; ++y) {
+        auto py = static_cast<float>(y) + 0.5f;
+        auto local_v = (py - min_y) / height_f;
+        auto v = command.uv_min_y + uv_height * local_v;
+
+        for (int x = min_x_i; x < max_x_i; ++x) {
+            auto px = static_cast<float>(x) + 0.5f;
+            auto local_u = (px - min_x) / width_f;
+            auto u = command.uv_min_x + uv_width * local_u;
+
+            auto sampled = sample_image_linear(image, u, v);
+            auto tinted = multiply_straight(sampled, tint);
+            auto premul = premultiply(tinted);
+            if (premul.a <= 0.0f) {
+                continue;
+            }
+
+            auto base = static_cast<std::size_t>(y) * row_stride + static_cast<std::size_t>(x) * 4u;
+            auto* dest = buffer.data() + base;
+            blend_pixel(dest, premul);
+            drawn = true;
+        }
+    }
+
     return drawn;
 }
 
@@ -547,6 +718,8 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     std::uint64_t executed_commands = 0;
     std::uint64_t unsupported_commands = 0;
 
+    auto image_asset_prefix = revisionBase + "/assets/images/";
+
     auto process_drawable = [&](std::uint32_t drawable_index,
                                 bool alpha_pass) -> SP::Expected<void> {
         if (drawable_index >= drawable_count) {
@@ -620,6 +793,34 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                     auto rounded = read_struct<Scene::RoundedRectCommand>(bucket->command_payload,
                                                                           payload_offset);
                     if (draw_rounded_rect_command(rounded, linear_buffer, width, height)) {
+                        drawable_drawn = true;
+                    }
+                    ++executed_commands;
+                    break;
+                }
+                case Scene::DrawCommandKind::Image: {
+                    auto image_cmd = read_struct<Scene::ImageCommand>(bucket->command_payload,
+                                                                     payload_offset);
+                    auto tint_straight = make_linear_straight(image_cmd.tint);
+                    auto asset_path = image_asset_prefix + fingerprint_to_hex(image_cmd.image_fingerprint) + ".png";
+                    auto texture = image_cache_.load(space_, asset_path, image_cmd.image_fingerprint);
+                    if (!texture) {
+                        auto const error = texture.error();
+                        if (error.code != SP::Error::Code::NoObjectFound
+                            && error.code != SP::Error::Code::NoSuchPath) {
+                            auto message = error.message.value_or("failed to load image asset");
+                            (void)set_last_error(space_, params.target_path, message);
+                        }
+                        ++unsupported_commands;
+                        break;
+                    }
+                    auto const& image_data = *texture;
+                    if (draw_image_command(image_cmd,
+                                           *image_data,
+                                           tint_straight,
+                                           linear_buffer,
+                                           width,
+                                           height)) {
                         drawable_drawn = true;
                     }
                     ++executed_commands;

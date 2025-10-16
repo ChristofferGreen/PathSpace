@@ -95,6 +95,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/PathSurfaceSoftware.cpp
         ui/PathRenderer2D.cpp
         ui/PathWindowView.cpp
+        ui/ImageCache.cpp
     )
     target_compile_definitions(PathSpace PUBLIC PATHSPACE_ENABLE_UI=1)
     if(PATHSPACE_UI_SOFTWARE)

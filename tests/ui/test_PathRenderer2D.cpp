@@ -10,11 +10,14 @@
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <cmath>
+#include <iomanip>
 #include <string>
+#include <sstream>
 #include <vector>
 
 using namespace SP;
@@ -30,6 +33,7 @@ using SP::UI::Scene::Transform;
 using SP::UI::Scene::RoundedRectCommand;
 using SP::UI::Scene::RectCommand;
 using SP::UI::Scene::DrawCommandKind;
+using SP::UI::Scene::ImageCommand;
 using namespace SP::UI::PipelineFlags;
 
 namespace {
@@ -133,6 +137,32 @@ auto encode_mesh_command(SP::UI::Scene::MeshCommand const& mesh,
     std::memcpy(bucket.command_payload.data() + offset, &mesh, sizeof(SP::UI::Scene::MeshCommand));
     bucket.command_kinds.push_back(static_cast<std::uint32_t>(DrawCommandKind::Mesh));
 }
+
+auto encode_image_command(ImageCommand const& image,
+                          DrawableBucketSnapshot& bucket) -> void {
+    auto offset = bucket.command_payload.size();
+    bucket.command_payload.resize(offset + sizeof(ImageCommand));
+    std::memcpy(bucket.command_payload.data() + offset, &image, sizeof(ImageCommand));
+    bucket.command_kinds.push_back(static_cast<std::uint32_t>(DrawCommandKind::Image));
+}
+
+auto format_revision(std::uint64_t revision) -> std::string {
+    std::ostringstream oss;
+    oss << std::setw(16) << std::setfill('0') << revision;
+    return oss.str();
+}
+
+auto fingerprint_hex(std::uint64_t fingerprint) -> std::string {
+    std::ostringstream oss;
+    oss << std::hex << std::setw(16) << std::setfill('0') << std::nouppercase << fingerprint;
+    return oss.str();
+}
+
+constexpr std::array<std::uint8_t, 78> kTestPngRgba = {
+    137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,8,6,0,0,0,114,182,13,36,
+    0,0,0,21,73,68,65,84,120,156,99,248,207,192,240,31,8,27,24,128,52,8,56,0,0,68,19,8,185,
+    109,230,62,33,0,0,0,0,73,69,78,68,174,66,96,130
+};
 
 struct LinearColor {
     float r = 0.0f;
@@ -439,6 +469,101 @@ TEST_CASE("pipeline flags partition passes when snapshot lacks explicit indices"
     CHECK(fx.space.read<uint64_t>(metricsBase + "/alphaDrawables").value() == 1);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/commandsExecuted").value() == 2);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/unsupportedCommands").value() == 0);
+}
+
+TEST_CASE("renders png image command") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x900001u};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, 2.0f}};
+    bucket.bounds_boxes = {BoundingBox{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 0.0f}}};
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {AlphaBlend};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {};
+    bucket.alpha_indices = {0};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {
+        DrawableAuthoringMapEntry{bucket.drawable_ids[0], "node/image", 0, 0},
+    };
+
+    ImageCommand image{};
+    image.min_x = 0.0f;
+    image.min_y = 0.0f;
+    image.max_x = 2.0f;
+    image.max_y = 2.0f;
+    image.uv_min_x = 0.0f;
+    image.uv_min_y = 0.0f;
+    image.uv_max_x = 1.0f;
+    image.uv_max_y = 1.0f;
+    image.image_fingerprint = 0xABCDEF0102030405ull;
+    image.tint = {1.0f, 1.0f, 1.0f, 1.0f};
+    encode_image_command(image, bucket);
+
+    SceneParams sceneParams{
+        .name = "scene_image",
+        .description = "Image test",
+    };
+    auto scene = Builders::Scene::Create(fx.space, fx.root_view(), sceneParams);
+    REQUIRE(scene);
+    auto revision = fx.publish_snapshot(*scene, bucket);
+
+    auto rendererPath = create_renderer(fx, "renderer_image");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 2;
+    surfaceDesc.size_px.height = 2;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_image", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, *scene));
+
+    auto revision_base = std::string(scene->getPath()) + "/builds/" + format_revision(revision);
+    auto image_path = revision_base + "/assets/images/" + fingerprint_hex(image.image_fingerprint) + ".png";
+    std::vector<std::uint8_t> png_bytes(kTestPngRgba.begin(), kTestPngRgba.end());
+    auto insert_result = fx.space.insert(image_path, png_bytes);
+    REQUIRE(insert_result.errors.empty());
+
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware surface{surfaceDesc};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.clear_color = {0.0f, 0.0f, 0.0f, 0.0f};
+    settings.time.frame_index = 42;
+
+    auto renderStats = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+    });
+    REQUIRE(renderStats);
+    CHECK(renderStats->drawable_count == 1);
+
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/commandsExecuted").value() == 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/unsupportedCommands").value() == 0);
+
+    auto buffer = copy_buffer(surface);
+    auto stride = surface.row_stride_bytes();
+    auto center_offset = stride + static_cast<std::size_t>(4); // pixel (1,1)
+    CHECK(buffer[center_offset + 3] > 0); // non-zero alpha
+    auto color_sum = static_cast<int>(buffer[center_offset + 0])
+                   + static_cast<int>(buffer[center_offset + 1])
+                   + static_cast<int>(buffer[center_offset + 2]);
+    CHECK(color_sum > 0);
 }
 
 TEST_CASE("render tracks culled drawables and executed commands") {
