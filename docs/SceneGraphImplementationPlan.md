@@ -76,13 +76,13 @@ Remaining:
 Completed:
 - ✅ (October 15, 2025) `PathSurfaceSoftware` progressive buffer + double-buffer landed with dedicated UI tests.
 - ✅ (October 15, 2025) `PathWindowView` now presents buffered/progressive frames and writes presenter metrics via `Builders::Diagnostics::WritePresentMetrics`; UI tests split into `PathSpaceUITests` for isolation.
+- ✅ (October 16, 2025) End-to-end scene → render → present doctests cover policy permutations, progressive copy assertions, and diagnostics outputs through `Builders::Window::Present`.
+- ✅ (October 16, 2025) Presenter integration routes through `Window::Present`, emitting progressive-mode metrics and wait-budget data aligned with per-view policies (auto-render scheduling still pending).
+- ✅ (October 16, 2025) Seqlock and deadline behaviour codified via `PathWindowView` and builder tests, ensuring wait-budget clamps and progressive copy skips are observable.
+- ✅ (October 16, 2025) Compile/test loop harness revalidated after presenter integration (15× repeat, 20 s timeout) confirming stability.
 
 Remaining:
-- Create end-to-end scenario tests (scene edit → render → present, policy permutations) and progressive-mode assertions before coding.
-- Integrate presenters with `Window::Present` helper so render→present happens through PathSpace (auto-render scheduling still pending).
-- Metrics for present policy outcomes and progressive copy stats; hook into diagnostics paths for renderer/presenter tooling.
-- Codify seqlock memory-ordering and deadline behavior in tests; ensure implementations follow the spec’s atomic protocols.
-- Revalidate via the loop harness and scenario suites.
+- Implement auto-render scheduling hooks once policy-driven triggers are ready.
 
 ### Phase 5 — Input, Hit Testing, and Notifications (1 sprint)
 - ✅ (October 16, 2025) Added doctest scenarios for hit ordering, clip-aware picking, focus routing, and auto-render event scheduling via `Scene::HitTest`; notifications enqueue `AutoRenderRequestEvent` under `events/renderRequested/queue`.

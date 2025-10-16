@@ -5,6 +5,7 @@
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <vector>
@@ -184,6 +185,32 @@ TEST_CASE("always fresh skips when buffered frame missing") {
     CHECK(stats.progressive_rects_coalesced == 0);
     CHECK(stats.progressive_skip_seq_odd == 0);
     CHECK(stats.progressive_recopy_after_seq_change == 0);
+    CHECK(stats.present_ms >= 0.0);
+}
+
+TEST_CASE("present clamps wait budget when deadline elapsed") {
+    PathSurfaceSoftware surface{make_desc(4, 4)};
+    auto staging = surface.staging_span();
+    std::fill(staging.begin(), staging.end(), std::uint8_t{0xEE});
+    surface.publish_buffered_frame({
+        .frame_index = 3,
+        .revision = 7,
+        .render_ms = 1.25,
+    });
+
+    PathWindowView view;
+    std::vector<std::uint8_t> framebuffer(surface.frame_bytes(), 0);
+    auto now = std::chrono::steady_clock::now();
+    PathWindowView::PresentRequest request{
+        .now = now,
+        .vsync_deadline = now - std::chrono::milliseconds{2},
+        .framebuffer = framebuffer,
+        .dirty_tiles = {},
+    };
+
+    auto stats = view.present(surface, {}, request);
+    CHECK(stats.presented);
+    CHECK(stats.wait_budget_ms == doctest::Approx(0.0));
     CHECK(stats.present_ms >= 0.0);
 }
 

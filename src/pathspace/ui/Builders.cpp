@@ -1124,9 +1124,13 @@ auto Present(PathSpace& space,
     PathWindowView presenter;
     std::vector<std::uint8_t> framebuffer(surface.frame_bytes(), 0);
     auto now = std::chrono::steady_clock::now();
+    auto vsync_budget = std::chrono::duration_cast<std::chrono::steady_clock::duration>(policy->frame_timeout);
+    if (vsync_budget < std::chrono::steady_clock::duration::zero()) {
+        vsync_budget = std::chrono::steady_clock::duration::zero();
+    }
     PathWindowView::PresentRequest request{
         .now = now,
-        .vsync_deadline = now + std::chrono::milliseconds{16},
+        .vsync_deadline = now + vsync_budget,
         .framebuffer = framebuffer,
         .dirty_tiles = dirty_tiles,
     };

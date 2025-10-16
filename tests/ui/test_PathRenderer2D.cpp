@@ -1535,7 +1535,7 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveRectsCoalesced").value() >= 1);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveSkipOddSeq").value() == 0);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveRecopyAfterSeqChange").value() == 0);
-    CHECK(fx.space.read<double>(metricsBase + "/waitBudgetMs").value() == doctest::Approx(16.0).epsilon(0.1));
+    CHECK(fx.space.read<double>(metricsBase + "/waitBudgetMs").value() == doctest::Approx(20.0).epsilon(0.1));
     CHECK(fx.space.read<double>(metricsBase + "/presentMs").value() >= 0.0);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/opaqueSortViolations").value() == 0);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/alphaSortViolations").value() == 0);
@@ -1694,6 +1694,7 @@ TEST_CASE("Window::Present reads present policy overrides from PathSpace") {
     CHECK(fx.space.read<std::string, std::string>(metricsBase + "/presentMode").value() == "AlwaysFresh");
     CHECK(fx.space.read<double, std::string>(metricsBase + "/stalenessBudgetMs").value() == doctest::Approx(4.5));
     CHECK(fx.space.read<double, std::string>(metricsBase + "/frameTimeoutMs").value() == doctest::Approx(12.0));
+    CHECK(fx.space.read<double>(metricsBase + "/waitBudgetMs").value() == doctest::Approx(12.0).epsilon(0.1));
     CHECK(fx.space.read<uint64_t>(metricsBase + "/maxAgeFrames").value() == 2);
     CHECK_FALSE(fx.space.read<bool, std::string>(metricsBase + "/autoRenderOnPresent").value());
     CHECK_FALSE(fx.space.read<bool, std::string>(metricsBase + "/vsyncAlign").value());
