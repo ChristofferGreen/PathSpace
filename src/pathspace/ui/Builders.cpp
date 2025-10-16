@@ -1379,9 +1379,23 @@ auto Present(PathSpace& space,
         return std::unexpected(status.error());
     }
 
+    SoftwareFramebuffer stored_framebuffer{};
+    stored_framebuffer.width = context->target_desc.size_px.width;
+    stored_framebuffer.height = context->target_desc.size_px.height;
+    stored_framebuffer.row_stride_bytes = static_cast<std::uint32_t>(surface.row_stride_bytes());
+    stored_framebuffer.pixel_format = context->target_desc.pixel_format;
+    stored_framebuffer.color_space = context->target_desc.color_space;
+    stored_framebuffer.premultiplied_alpha = context->target_desc.premultiplied_alpha;
+    stored_framebuffer.pixels = std::move(framebuffer);
+
+    auto framebufferPath = std::string(context->target_path.getPath()) + "/output/v1/software/framebuffer";
+    if (auto status = replace_single<SoftwareFramebuffer>(space, framebufferPath, stored_framebuffer); !status) {
+        return std::unexpected(status.error());
+    }
+
     WindowPresentResult result{};
     result.stats = presentStats;
-    result.framebuffer = std::move(framebuffer);
+    result.framebuffer = std::move(stored_framebuffer.pixels);
     return result;
 }
 

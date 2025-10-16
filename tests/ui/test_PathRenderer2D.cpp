@@ -1567,6 +1567,17 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     auto lastError = fx.space.read<std::string, std::string>(metricsBase + "/lastError");
     REQUIRE(lastError);
     CHECK(lastError->empty());
+
+    auto framebufferPath = std::string(targetPath.getPath()) + "/output/v1/software/framebuffer";
+    auto storedFramebuffer = fx.space.read<Builders::SoftwareFramebuffer, std::string>(framebufferPath);
+    REQUIRE(storedFramebuffer);
+    CHECK(storedFramebuffer->width == surfaceDesc.size_px.width);
+    CHECK(storedFramebuffer->height == surfaceDesc.size_px.height);
+    CHECK(storedFramebuffer->row_stride_bytes == static_cast<std::uint32_t>(surfaceDesc.size_px.width * 4));
+    CHECK(storedFramebuffer->pixel_format == surfaceDesc.pixel_format);
+    CHECK(storedFramebuffer->color_space == surfaceDesc.color_space);
+    CHECK(storedFramebuffer->premultiplied_alpha == surfaceDesc.premultiplied_alpha);
+    CHECK(storedFramebuffer->pixels == presentResult->framebuffer);
 }
 
 TEST_CASE("Window::Present handles repeated loop without dropping metrics") {
@@ -1641,6 +1652,11 @@ TEST_CASE("Window::Present handles repeated loop without dropping metrics") {
     CHECK(fx.space.read<uint64_t>(metricsBase + "/alphaSortViolations").value() == 0);
     CHECK(fx.space.read<std::string, std::string>(metricsBase + "/presentMode").value() == "PreferLatestCompleteWithBudget");
     CHECK_FALSE(fx.space.read<bool, std::string>(metricsBase + "/stale").value());
+
+    auto framebufferPath = std::string(targetPath.getPath()) + "/output/v1/software/framebuffer";
+    auto storedFramebuffer = fx.space.read<Builders::SoftwareFramebuffer, std::string>(framebufferPath);
+    REQUIRE(storedFramebuffer);
+    CHECK(storedFramebuffer->pixels.size() == static_cast<std::size_t>(surfaceDesc.size_px.width * surfaceDesc.size_px.height * 4));
 }
 
 TEST_CASE("Window::Present reads present policy overrides from PathSpace") {
@@ -1718,6 +1734,12 @@ TEST_CASE("Window::Present reads present policy overrides from PathSpace") {
     CHECK_FALSE(fx.space.read<bool, std::string>(metricsBase + "/autoRenderOnPresent").value());
     CHECK_FALSE(fx.space.read<bool, std::string>(metricsBase + "/vsyncAlign").value());
     CHECK_FALSE(fx.space.read<bool, std::string>(metricsBase + "/stale").value());
+
+    auto framebufferPath = std::string(targetPath.getPath()) + "/output/v1/software/framebuffer";
+    auto storedFramebuffer = fx.space.read<Builders::SoftwareFramebuffer, std::string>(framebufferPath);
+    REQUIRE(storedFramebuffer);
+    CHECK(storedFramebuffer->width == surfaceDesc.size_px.width);
+    CHECK(storedFramebuffer->height == surfaceDesc.size_px.height);
 }
 
 TEST_CASE("Window auto render scheduling enqueues render request when frame stays stale") {
