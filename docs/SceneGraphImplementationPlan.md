@@ -66,11 +66,10 @@ Completed:
 Completed:
 - ✅ (October 15, 2025) Builders `Surface::RenderOnce` / `Window::Present` now call `PathRenderer2D` synchronously via `Renderer::TriggerRender`, return ready `FutureAny` handles, and update target metrics; doctests cover the integration path.
 - ✅ (October 16, 2025) `PathRenderer2D` now executes recorded Rect and RoundedRect commands in linear light, keeps the opaque/alpha partitioning path alive, and publishes drawable/cull/command metrics with doctest coverage for success/error flows.
+- ✅ (October 16, 2025) Added a deterministic golden framebuffer harness (with `PATHSPACE_UPDATE_GOLDENS`) plus render/present loop regressions that exercise `Surface::RenderOnce` and `Window::Present` under repeated runs; comparisons are tolerance-aware to track subtle output drift.
 
 Remaining:
-- Draft golden framebuffer comparisons, render/present concurrency loops, and failure-handling tests up front.
-- (Completed October 17, 2025) Extend `PathRenderer2D` beyond Rect/RoundedRect (Image, TextGlyphs, Path, Mesh) with full pipeline flag handling and blend semantics.
-- Add golden framebuffer comparisons plus richer diagnostics (sort keys, overdraw/progressive stats) for regression detection.
+- Expand renderer diagnostics (sort keys, overdraw/progressive stats) for deeper regression detection.
 - Re-run the looped test suite and inspect goldens post implementation.
 
 ### Phase 4 — Surfaces, Presenters, and Progressive Mode (2 sprints)

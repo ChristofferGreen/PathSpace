@@ -12,10 +12,16 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cctype>
 #include <cstdint>
 #include <cstring>
 #include <cmath>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
+#include <optional>
+#include <span>
 #include <string>
 #include <sstream>
 #include <vector>
@@ -274,6 +280,169 @@ auto copy_buffer(PathSurfaceSoftware& surface) -> std::vector<std::uint8_t> {
     return buffer;
 }
 
+struct GoldenBuffer {
+    int width = 0;
+    int height = 0;
+    std::vector<std::uint8_t> bytes;
+};
+
+auto golden_dir() -> std::filesystem::path {
+    return std::filesystem::path{PATHSPACE_SOURCE_DIR} / "tests" / "ui" / "golden";
+}
+
+auto golden_path(std::string_view name) -> std::filesystem::path {
+    return golden_dir() / std::filesystem::path{name};
+}
+
+auto env_update_goldens() -> bool {
+    if (auto* value = std::getenv("PATHSPACE_UPDATE_GOLDENS")) {
+        std::string_view view{value};
+        return !(view.empty() || view == "0" || view == "false" || view == "FALSE");
+    }
+    return false;
+}
+
+auto strip_non_hex(std::string_view input) -> std::string {
+    std::string output;
+    output.reserve(input.size());
+    for (char ch : input) {
+        if (std::isxdigit(static_cast<unsigned char>(ch))) {
+            output.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+        }
+    }
+    return output;
+}
+
+auto hex_to_bytes(std::string_view hex) -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(hex.size() / 2);
+    for (std::size_t i = 0; i + 1 < hex.size(); i += 2) {
+        auto from_hex = [](unsigned char ch) -> std::uint8_t {
+            if (ch >= '0' && ch <= '9') {
+                return static_cast<std::uint8_t>(ch - '0');
+            }
+            if (ch >= 'a' && ch <= 'f') {
+                return static_cast<std::uint8_t>(10 + (ch - 'a'));
+            }
+            if (ch >= 'A' && ch <= 'F') {
+                return static_cast<std::uint8_t>(10 + (ch - 'A'));
+            }
+            return 0;
+        };
+        auto value = static_cast<std::uint8_t>((from_hex(static_cast<unsigned char>(hex[i])) << 4)
+                                               | from_hex(static_cast<unsigned char>(hex[i + 1])));
+        bytes.push_back(value);
+    }
+    return bytes;
+}
+
+auto read_golden(std::string_view name) -> std::optional<GoldenBuffer> {
+    auto path = golden_path(name);
+    std::ifstream file{path};
+    if (!file) {
+        return std::nullopt;
+    }
+
+    GoldenBuffer golden{};
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.empty() || line.front() == '#') {
+            continue;
+        }
+        std::istringstream iss{line};
+        if (!(iss >> golden.width >> golden.height)) {
+            continue;
+        }
+        break;
+    }
+
+    std::string hex_data;
+    while (std::getline(file, line)) {
+        if (line.empty() || line.front() == '#') {
+            continue;
+        }
+        hex_data += strip_non_hex(line);
+    }
+
+    golden.bytes = hex_to_bytes(hex_data);
+    return golden;
+}
+
+void write_golden(std::string_view name,
+                  Builders::SurfaceDesc const& desc,
+                  std::span<std::uint8_t const> bytes) {
+    auto dir = golden_dir();
+    std::filesystem::create_directories(dir);
+    auto path = golden_path(name);
+    std::ofstream file{path, std::ios::trunc};
+    REQUIRE(file.good());
+    file << "# PathRenderer2D golden framebuffer\n";
+    file << desc.size_px.width << ' ' << desc.size_px.height << '\n';
+    file << std::hex << std::setfill('0');
+    auto row_stride = static_cast<std::size_t>(desc.size_px.width) * 4u;
+    for (int y = 0; y < desc.size_px.height; ++y) {
+        auto base = static_cast<std::size_t>(y) * row_stride;
+        for (std::size_t i = 0; i < row_stride; ++i) {
+            auto value = bytes[base + i];
+            file << std::setw(2) << static_cast<int>(value);
+        }
+        file << '\n';
+    }
+    file << std::dec;
+}
+
+auto join_strings(std::vector<std::string> const& parts) -> std::string {
+    std::ostringstream oss;
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+        if (i > 0) {
+            oss << ", ";
+        }
+        oss << parts[i];
+    }
+    return oss.str();
+}
+
+void expect_matches_golden(std::string_view name,
+                           Builders::SurfaceDesc const& desc,
+                           std::span<std::uint8_t const> buffer,
+                           std::uint8_t tolerance = 1) {
+    if (env_update_goldens()) {
+        write_golden(name, desc, buffer);
+        return;
+    }
+
+    auto golden = read_golden(name);
+    REQUIRE_MESSAGE(golden.has_value(),
+                    "Missing golden file '" << golden_path(name).string()
+                                            << "'. Run with PATHSPACE_UPDATE_GOLDENS=1 to generate.");
+    REQUIRE(golden->width == desc.size_px.width);
+    REQUIRE(golden->height == desc.size_px.height);
+    REQUIRE(golden->bytes.size() == buffer.size());
+
+    std::vector<std::string> mismatches;
+    for (std::size_t i = 0; i < buffer.size(); ++i) {
+        auto actual = buffer[i];
+        auto expected = golden->bytes[i];
+        auto delta = static_cast<int>(actual) - static_cast<int>(expected);
+        if (std::abs(delta) > tolerance) {
+            if (mismatches.size() < 8) {
+                std::ostringstream oss;
+                oss << "idx=" << i
+                    << " actual=0x" << std::hex << std::setw(2) << std::setfill('0')
+                    << static_cast<int>(actual)
+                    << " expected=0x" << std::setw(2) << static_cast<int>(expected)
+                    << " delta=" << std::dec << delta;
+                mismatches.push_back(oss.str());
+            }
+        }
+    }
+
+    if (!mismatches.empty()) {
+        FAIL("Framebuffer diverged from golden '" << name << "': "
+             << join_strings(mismatches));
+    }
+}
+
 } // namespace
 
 TEST_SUITE("PathRenderer2D") {
@@ -360,6 +529,9 @@ TEST_CASE("render executes rect commands across passes and encodes pixels") {
     CHECK(result->drawable_count == 2);
 
     auto buffer = copy_buffer(surface);
+    expect_matches_golden("pathrenderer2d_rect_rrect_rgba8srgb.golden",
+                          surfaceDesc,
+                          std::span<std::uint8_t const>{buffer.data(), buffer.size()});
     auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
     CHECK(fx.space.read<uint64_t>(metricsBase + "/frameIndex").value() == 7);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/revision").value() == 1);
@@ -1037,6 +1209,65 @@ TEST_CASE("Surface::RenderOnce drives renderer and stores metrics") {
     CHECK(fx.space.read<uint64_t>(metricsBase + "/frameIndex").value() == 2);
 }
 
+TEST_CASE("Surface::RenderOnce handles repeated loop renders") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0xCAFE01u};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, 2.0f}};
+    bucket.bounds_boxes = {BoundingBox{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 0.0f}}};
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {0};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {0};
+    bucket.alpha_indices = {};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {DrawableAuthoringMapEntry{bucket.drawable_ids[0], "loop_node", 0, 0}};
+
+    RectCommand rect{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 2.0f,
+        .max_y = 2.0f,
+        .color = {0.2f, 0.5f, 0.8f, 1.0f},
+    };
+    encode_rect_command(rect, bucket);
+
+    auto scenePath = create_scene(fx, "scene_surface_loop", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_surface_loop");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 2;
+    surfaceDesc.size_px.height = 2;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_loop", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+
+    constexpr int kIterations = 10;
+    for (int i = 0; i < kIterations; ++i) {
+        auto future = Surface::RenderOnce(fx.space, surfacePath, std::nullopt);
+        REQUIRE(future);
+        CHECK(future->ready());
+    }
+
+    auto targetPath = resolve_target(fx, surfacePath);
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/frameIndex").value() == kIterations);
+
+    auto settings = Renderer::ReadSettings(fx.space, SP::ConcretePathStringView{targetPath.getPath()});
+    REQUIRE(settings);
+    CHECK(settings->time.frame_index == kIterations);
+}
+
 TEST_CASE("Window::Present renders and presents a frame with metrics") {
     RendererFixture fx;
 
@@ -1109,6 +1340,75 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     auto lastError = fx.space.read<std::string, std::string>(metricsBase + "/lastError");
     REQUIRE(lastError);
     CHECK(lastError->empty());
+}
+
+TEST_CASE("Window::Present handles repeated loop without dropping metrics") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0xDEADBEEFu};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, 2.0f}};
+    bucket.bounds_boxes = {BoundingBox{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 0.0f}}};
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {0};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {0};
+    bucket.alpha_indices = {};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {DrawableAuthoringMapEntry{bucket.drawable_ids[0], "window_loop_node", 0, 0}};
+
+    RectCommand rect{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 2.0f,
+        .max_y = 2.0f,
+        .color = {0.7f, 0.3f, 0.2f, 1.0f},
+    };
+    encode_rect_command(rect, bucket);
+
+    auto scenePath = create_scene(fx, "scene_window_loop", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_window_loop");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 2;
+    surfaceDesc.size_px.height = 2;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_window_loop", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+
+    Builders::WindowParams windowParams{};
+    windowParams.name = "window_loop";
+    windowParams.title = "Loop";
+    windowParams.width = 320;
+    windowParams.height = 240;
+    auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+    REQUIRE(windowPath);
+
+    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+
+    constexpr int kIterations = 6;
+    for (int i = 0; i < kIterations; ++i) {
+        auto present = Builders::Window::Present(fx.space, *windowPath, "main");
+        REQUIRE(present);
+    }
+
+    auto targetPath = resolve_target(fx, surfacePath);
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/frameIndex").value() == kIterations);
+    CHECK(fx.space.read<bool>(metricsBase + "/presented").value());
+    CHECK_FALSE(fx.space.read<bool>(metricsBase + "/lastPresentSkipped").value());
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveTilesCopied").value() >= 1);
+    CHECK(fx.space.read<double>(metricsBase + "/renderMs").value() >= 0.0);
+    CHECK(fx.space.read<double>(metricsBase + "/presentMs").value() >= 0.0);
 }
 
 TEST_CASE("rounded rectangles respect per-corner radii") {
