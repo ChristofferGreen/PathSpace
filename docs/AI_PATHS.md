@@ -128,6 +128,7 @@ Keys under a target:
 - `settings`
 - `render`
 - `output/v1/...` (see section 2)
+- `events/renderRequested/queue` — `AutoRenderRequestEvent` items enqueued by hit tests or dirty-marker scheduling
 
 ## 4) Scene build and publish protocol
 

@@ -370,6 +370,11 @@ Platform backends (unified, via compile-time macros):
 
 Note: First-class links (symlinks) are planned; in the interim, `PathAlias` offers robust forwarding/retargeting semantics without changing core trie invariants.
 
+### Hit testing and auto-render scheduling (October 16, 2025)
+- `PathSpace::UI::Builders::Scene::HitTest` reads the current snapshot (`DrawableBucketSnapshot`) for a scene, walks draw order (opaque + alpha) back-to-front, respects per-drawable clip stacks, and returns the topmost hit along with the authoring focus chain.
+- `HitTestRequest.schedule_render` enqueues `AutoRenderRequestEvent` items under `renderers/<rid>/targets/<kind>/<name>/events/renderRequested/queue`; the auto-render loop can watch this queue to trigger responsive redraws after pointer interactions.
+- Utility helpers in `src/pathspace/ui/DrawableUtils.hpp` centralize drawable bounds tests and focus-chain construction so raster and hit-test paths stay consistent.
+
 ## UI & Rendering
 
 The scene graph and renderer pipeline lives entirely on top of PathSpace paths. Applications mount their rendering tree under a single app root (see `docs/AI_Plan_SceneGraph_Renderer.md` and `docs/AI_PATHS.md`) so that tearing down the app root atomically releases windows, surfaces, scenes, and renderer targets in one operation. All references between components are app-relative strings validated through the dedicated helpers in `SP::App` (`SP::App::is_app_relative`, `SP::App::resolve_app_relative`, `SP::App::ensure_within_app`).

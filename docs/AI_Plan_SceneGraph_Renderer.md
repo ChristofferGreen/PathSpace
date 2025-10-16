@@ -719,6 +719,7 @@ Hit testing (DrawableBucket-driven)
     - Build a pick ray in view space; test per-drawable AABB (required for 3D) before invoking TLAS/BLAS traversal for precise intersections when applicable
 - Results:
   - Return the topmost hit target plus an ordered list of ancestors for routing; include local/world coords, uv (if image/text), and modifiers
+  - **Status (October 16, 2025):** `Scene::HitTest` is live for 2D UI; it walks opaque + alpha buckets back-to-front, respects rect clips, and returns the authoring focus chain. Local/world coordinate reporting and shape-specific narrow-phase tests remain future work.
 
 Event routing
 - Phases:
@@ -1067,6 +1068,7 @@ void renderTarget(const Camera& cam,
 - Modes:
   - Explicit: surfaces/presenters trigger frames
   - On-notify: renderer schedules frames for dirty targets
+- **Progress (October 16, 2025):** Pointer hit tests now queue `AutoRenderRequestEvent` values under `renderers/<rid>/targets/<kind>/<name>/events/renderRequested/queue`; extend this with dirty-mark notifications and presenter wakeups.
 
 ## Safety and validation
 
