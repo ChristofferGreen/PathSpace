@@ -2,12 +2,14 @@
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
+#include "DrawableUtils.hpp"
 
 #include "core/Out.hpp"
 #include "path/UnvalidatedPath.hpp"
 #include "task/IFutureAny.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <iomanip>
@@ -27,6 +29,8 @@ constexpr std::string_view kRenderersSegment = "/renderers/";
 constexpr std::string_view kSurfacesSegment = "/surfaces/";
 constexpr std::string_view kWindowsSegment = "/windows/";
 
+std::atomic<std::uint64_t> g_auto_render_sequence{0};
+
 struct SceneRevisionRecord {
     uint64_t    revision = 0;
     int64_t     published_at_ms = 0;
@@ -36,6 +40,23 @@ struct SceneRevisionRecord {
 auto make_error(std::string message,
                 SP::Error::Code code = SP::Error::Code::UnknownError) -> SP::Error {
     return SP::Error{code, std::move(message)};
+}
+
+auto enqueue_auto_render_event(PathSpace& space,
+                               std::string const& targetPath,
+                               std::string_view reason,
+                               std::uint64_t frame_index) -> SP::Expected<void> {
+    auto queuePath = targetPath + "/events/renderRequested/queue";
+    AutoRenderRequestEvent event{
+        .sequence = g_auto_render_sequence.fetch_add(1, std::memory_order_relaxed) + 1,
+        .reason = std::string(reason),
+        .frame_index = frame_index,
+    };
+    auto inserted = space.insert(queuePath, event);
+    if (!inserted.errors.empty()) {
+        return std::unexpected(inserted.errors.front());
+    }
+    return {};
 }
 
 struct SurfaceRenderContext {
@@ -506,6 +527,91 @@ auto WaitUntilReady(PathSpace& space,
     }
     (void)result;
     return {};
+}
+
+auto HitTest(PathSpace& space,
+             ScenePath const& scenePath,
+             HitTestRequest const& request) -> SP::Expected<HitTestResult> {
+    auto sceneRoot = derive_app_root_for(ConcretePathView{scenePath.getPath()});
+    if (!sceneRoot) {
+        return std::unexpected(sceneRoot.error());
+    }
+
+    auto revision = ReadCurrentRevision(space, scenePath);
+    if (!revision) {
+        return std::unexpected(revision.error());
+    }
+
+    auto revisionStr = format_revision(revision->revision);
+    auto revisionBase = make_revision_base(scenePath, revisionStr);
+    auto bucket = SP::UI::Scene::SceneSnapshotBuilder::decode_bucket(space, revisionBase);
+    if (!bucket) {
+        return std::unexpected(bucket.error());
+    }
+
+    std::optional<std::string> auto_render_target;
+    if (request.schedule_render) {
+        if (!request.auto_render_target) {
+            return std::unexpected(make_error("auto render target required when scheduling render",
+                                              SP::Error::Code::InvalidPath));
+        }
+        auto targetRoot = derive_app_root_for(ConcretePathView{request.auto_render_target->getPath()});
+        if (!targetRoot) {
+            return std::unexpected(targetRoot.error());
+        }
+        if (targetRoot->getPath() != sceneRoot->getPath()) {
+            return std::unexpected(make_error("auto render target must belong to the same application as the scene",
+                                              SP::Error::Code::InvalidPath));
+        }
+        auto_render_target = request.auto_render_target->getPath();
+    }
+
+    auto order = detail::build_draw_order(*bucket);
+    HitTestResult result{};
+    std::optional<std::size_t> hit_index;
+
+    for (auto it = order.rbegin(); it != order.rend(); ++it) {
+        std::size_t drawable_index = *it;
+        if (drawable_index >= bucket->drawable_ids.size()) {
+            continue;
+        }
+        if (drawable_index < bucket->visibility.size()
+            && bucket->visibility[drawable_index] == 0) {
+            continue;
+        }
+        if (!detail::point_inside_clip(request.x, request.y, *bucket, drawable_index)) {
+            continue;
+        }
+        if (!detail::point_inside_bounds(request.x, request.y, *bucket, drawable_index)) {
+            continue;
+        }
+        hit_index = drawable_index;
+        break;
+    }
+
+    if (hit_index) {
+        auto idx = *hit_index;
+        result.hit = true;
+        result.target.drawable_id = bucket->drawable_ids[idx];
+        if (idx < bucket->authoring_map.size()) {
+            auto const& author = bucket->authoring_map[idx];
+            result.target.authoring_node_id = author.authoring_node_id;
+            result.target.drawable_index_within_node = author.drawable_index_within_node;
+            result.target.generation = author.generation;
+            result.focus_chain = detail::build_focus_chain(author.authoring_node_id);
+        }
+        if (request.schedule_render && auto_render_target) {
+            auto status = enqueue_auto_render_event(space,
+                                                    *auto_render_target,
+                                                    "hit-test",
+                                                    0);
+            if (!status) {
+                return std::unexpected(status.error());
+            }
+        }
+    }
+
+    return result;
 }
 
 } // namespace Scene

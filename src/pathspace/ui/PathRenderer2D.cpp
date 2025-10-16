@@ -2,6 +2,7 @@
 
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include "DrawableUtils.hpp"
 
 #include <algorithm>
 #include <array>
@@ -318,54 +319,6 @@ auto draw_fallback_bounds_box(Scene::DrawableBucketSnapshot const& bucket,
                           height);
 }
 
-auto bounding_box_intersects(Scene::DrawableBucketSnapshot const& bucket,
-                             std::size_t drawable_index,
-                             int width,
-                             int height) -> bool {
-    if (drawable_index >= bucket.bounds_boxes.size()) {
-        return true;
-    }
-    if (drawable_index < bucket.bounds_box_valid.size()
-        && bucket.bounds_box_valid[drawable_index] == 0) {
-        return true;
-    }
-    auto const& box = bucket.bounds_boxes[drawable_index];
-    if (box.max[0] <= 0.0f || box.max[1] <= 0.0f) {
-        return false;
-    }
-    if (box.min[0] >= static_cast<float>(width)
-        || box.min[1] >= static_cast<float>(height)) {
-        return false;
-    }
-    if (box.max[0] <= box.min[0] || box.max[1] <= box.min[1]) {
-        return false;
-    }
-    return true;
-}
-
-auto bounding_sphere_intersects(Scene::DrawableBucketSnapshot const& bucket,
-                                std::size_t drawable_index,
-                                int width,
-                                int height) -> bool {
-    if (drawable_index >= bucket.bounds_spheres.size()) {
-        return true;
-    }
-    auto const& sphere = bucket.bounds_spheres[drawable_index];
-    auto const radius = std::max(0.0f, sphere.radius);
-    auto const min_x = sphere.center[0] - radius;
-    auto const max_x = sphere.center[0] + radius;
-    auto const min_y = sphere.center[1] - radius;
-    auto const max_y = sphere.center[1] + radius;
-    if (max_x <= 0.0f || max_y <= 0.0f) {
-        return false;
-    }
-    if (min_x >= static_cast<float>(width)
-        || min_y >= static_cast<float>(height)) {
-        return false;
-    }
-    return true;
-}
-
 template <typename T>
 auto read_struct(std::vector<std::uint8_t> const& payload,
                  std::size_t offset) -> T {
@@ -597,8 +550,8 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
             return {};
         }
 
-        if (!bounding_box_intersects(*bucket, drawable_index, width, height)
-            || !bounding_sphere_intersects(*bucket, drawable_index, width, height)) {
+        if (!detail::bounding_box_intersects(*bucket, drawable_index, width, height)
+            || !detail::bounding_sphere_intersects(*bucket, drawable_index, width, height)) {
             ++culled_drawables;
             return {};
         }

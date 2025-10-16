@@ -174,6 +174,12 @@ enum class ParamUpdateMode {
     ReplaceActive,
 };
 
+struct AutoRenderRequestEvent {
+    std::uint64_t sequence = 0;
+    std::string reason;
+    std::uint64_t frame_index = 0;
+};
+
 auto resolve_app_relative(AppRootPathView root,
                           UnvalidatedPathView maybeRelative) -> SP::Expected<ConcretePath>;
 
@@ -182,6 +188,26 @@ auto derive_target_base(AppRootPathView root,
                         ConcretePathView targetPath) -> SP::Expected<ConcretePath>;
 
 namespace Scene {
+
+struct HitTestRequest {
+    float x = 0.0f;
+    float y = 0.0f;
+    bool schedule_render = false;
+    std::optional<ConcretePath> auto_render_target;
+};
+
+struct HitDrawable {
+    std::uint64_t drawable_id = 0;
+    std::string authoring_node_id;
+    std::uint32_t drawable_index_within_node = 0;
+    std::uint32_t generation = 0;
+};
+
+struct HitTestResult {
+    bool hit = false;
+    HitDrawable target{};
+    std::vector<std::string> focus_chain;
+};
 
 auto Create(PathSpace& space,
              AppRootPathView appRoot,
@@ -202,6 +228,10 @@ auto ReadCurrentRevision(PathSpace const& space,
 auto WaitUntilReady(PathSpace& space,
                      ScenePath const& scenePath,
                      std::chrono::milliseconds timeout) -> SP::Expected<void>;
+
+auto HitTest(PathSpace& space,
+             ScenePath const& scenePath,
+             HitTestRequest const& request) -> SP::Expected<HitTestResult>;
 
 } // namespace Scene
 
