@@ -53,6 +53,13 @@ public:
     void publish_buffered_frame(FrameInfo info);
     void discard_staging();
 
+    void record_frame_info(FrameInfo info);
+    [[nodiscard]] auto latest_frame_info() const -> FrameInfo;
+
+    void mark_progressive_dirty(std::size_t tile_index);
+    [[nodiscard]] auto progressive_tile_count() const -> std::size_t;
+    auto consume_progressive_dirty_tiles() -> std::vector<std::size_t>;
+
     [[nodiscard]] auto copy_buffered_frame(std::span<std::uint8_t> destination) const
         -> std::optional<BufferedFrameCopy>;
 
@@ -71,6 +78,7 @@ private:
     std::vector<std::uint8_t> staging_;
     std::vector<std::uint8_t> front_;
     bool staging_dirty_ = false;
+    std::vector<std::size_t> progressive_dirty_tiles_;
 
     std::atomic<std::uint64_t> buffered_epoch_{0};
     std::atomic<std::uint64_t> buffered_frame_index_{0};

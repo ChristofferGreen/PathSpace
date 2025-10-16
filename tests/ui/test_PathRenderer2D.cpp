@@ -5,6 +5,7 @@
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/PathRenderer2D.hpp>
+#include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 
 #include <algorithm>
@@ -596,8 +597,8 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     CHECK_FALSE(fx.space.read<bool>(metricsBase + "/lastPresentSkipped").value());
     CHECK(fx.space.read<bool>(metricsBase + "/presented").value());
     CHECK(fx.space.read<bool>(metricsBase + "/bufferedFrameConsumed").value());
-    CHECK_FALSE(fx.space.read<bool>(metricsBase + "/usedProgressive").value());
-    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveTilesCopied").value() == 0);
+    CHECK(fx.space.read<bool>(metricsBase + "/usedProgressive").value());
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveTilesCopied").value() == 1);
     CHECK(fx.space.read<double>(metricsBase + "/waitBudgetMs").value() == doctest::Approx(16.0).epsilon(0.1));
     CHECK(fx.space.read<double>(metricsBase + "/presentMs").value() >= 0.0);
     auto lastError = fx.space.read<std::string, std::string>(metricsBase + "/lastError");
@@ -798,6 +799,100 @@ TEST_CASE("linear BGRA framebuffer respects color management settings") {
     auto lastError = fx.space.read<std::string, std::string>(metricsBase + "/lastError");
     REQUIRE(lastError);
     CHECK(lastError->empty());
+}
+
+TEST_CASE("progressive-only surfaces present via progressive path") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x222222u};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, 2.0f}};
+    bucket.bounds_boxes = {BoundingBox{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 0.0f}}};
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {0};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {0};
+    bucket.alpha_indices = {};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {
+        DrawableAuthoringMapEntry{bucket.drawable_ids[0], "progressive_node", 0, 0},
+    };
+
+    RectCommand rect{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 2.0f,
+        .max_y = 2.0f,
+        .color = {0.3f, 0.5f, 0.7f, 1.0f},
+    };
+    encode_rect_command(rect, bucket);
+
+    auto scenePath = create_scene(fx, "scene_progressive_only", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_progressive_only");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 2;
+    surfaceDesc.size_px.height = 2;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_progressive_only", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware::Options options{};
+    options.enable_buffered = false;
+    options.enable_progressive = true;
+    options.progressive_tile_size_px = 1;
+
+    PathSurfaceSoftware surface{surfaceDesc, options};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.time.frame_index = 3;
+
+    auto renderStats = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+    });
+    REQUIRE(renderStats);
+
+    auto dirty_tiles = surface.consume_progressive_dirty_tiles();
+    REQUIRE_FALSE(dirty_tiles.empty());
+
+    std::vector<std::uint8_t> framebuffer(surface.frame_bytes(), 0);
+    PathWindowView presenter;
+    PathWindowView::PresentPolicy policy{};
+    policy.mode = PathWindowPresentMode::AlwaysLatestComplete;
+
+    auto now = std::chrono::steady_clock::now();
+    PathWindowView::PresentRequest request{
+        .now = now,
+        .vsync_deadline = now + std::chrono::milliseconds{16},
+        .framebuffer = framebuffer,
+        .dirty_tiles = dirty_tiles,
+    };
+
+    auto stats = presenter.present(surface, policy, request);
+    CHECK(stats.presented);
+    CHECK_FALSE(stats.buffered_frame_consumed);
+    CHECK(stats.used_progressive);
+    CHECK(stats.progressive_tiles_copied == dirty_tiles.size());
+    CHECK_FALSE(stats.skipped);
+    CHECK(stats.frame.frame_index == settings.time.frame_index);
+    CHECK(stats.frame.revision == renderStats->revision);
+    CHECK(stats.present_ms >= 0.0);
+    CHECK(stats.error.empty());
 }
 
 } // TEST_SUITE

@@ -93,21 +93,61 @@ auto PathSurfaceSoftware::staging_span() -> std::span<std::uint8_t> {
 }
 
 void PathSurfaceSoftware::publish_buffered_frame(FrameInfo info) {
-    if (!has_buffered() || !staging_dirty_) {
-        return;
+    if (has_buffered()) {
+        if (!staging_dirty_) {
+            record_frame_info(info);
+            return;
+        }
+
+        front_.swap(staging_);
+        staging_dirty_ = false;
     }
 
-    front_.swap(staging_);
-    staging_dirty_ = false;
+    record_frame_info(info);
+}
 
+void PathSurfaceSoftware::discard_staging() {
+    staging_dirty_ = false;
+}
+
+void PathSurfaceSoftware::record_frame_info(FrameInfo info) {
     buffered_frame_index_.store(info.frame_index, std::memory_order_release);
     buffered_revision_.store(info.revision, std::memory_order_release);
     buffered_render_ns_.store(to_ns(info.render_ms), std::memory_order_release);
     buffered_epoch_.fetch_add(1, std::memory_order_acq_rel);
 }
 
-void PathSurfaceSoftware::discard_staging() {
-    staging_dirty_ = false;
+auto PathSurfaceSoftware::latest_frame_info() const -> FrameInfo {
+    FrameInfo info{};
+    info.frame_index = buffered_frame_index_.load(std::memory_order_acquire);
+    info.revision = buffered_revision_.load(std::memory_order_acquire);
+    info.render_ms = to_ms(buffered_render_ns_.load(std::memory_order_acquire));
+    return info;
+}
+
+void PathSurfaceSoftware::mark_progressive_dirty(std::size_t tile_index) {
+    if (!progressive_) {
+        return;
+    }
+    progressive_dirty_tiles_.push_back(tile_index);
+}
+
+auto PathSurfaceSoftware::progressive_tile_count() const -> std::size_t {
+    if (!progressive_) {
+        return 0;
+    }
+    return progressive_->tile_count();
+}
+
+auto PathSurfaceSoftware::consume_progressive_dirty_tiles() -> std::vector<std::size_t> {
+    if (progressive_dirty_tiles_.empty()) {
+        return {};
+    }
+    std::vector<std::size_t> tiles;
+    tiles.swap(progressive_dirty_tiles_);
+    std::sort(tiles.begin(), tiles.end());
+    tiles.erase(std::unique(tiles.begin(), tiles.end()), tiles.end());
+    return tiles;
 }
 
 auto PathSurfaceSoftware::copy_buffered_frame(std::span<std::uint8_t> destination) const

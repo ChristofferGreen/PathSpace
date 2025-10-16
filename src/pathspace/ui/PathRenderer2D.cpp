@@ -12,6 +12,7 @@
 #include <numeric>
 #include <sstream>
 #include <string>
+#include <span>
 #include <vector>
 
 namespace SP::UI {
@@ -496,8 +497,10 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     auto& surface = params.surface;
     auto const& desc = surface.desc();
 
-    if (!surface.has_buffered()) {
-        auto message = std::string{"surface does not expose a buffered frame"};
+    bool const has_buffered = surface.has_buffered();
+    bool const has_progressive = surface.has_progressive();
+    if (!has_buffered && !has_progressive) {
+        auto message = std::string{"surface has neither buffered nor progressive storage"};
         (void)set_last_error(space_, params.target_path, message);
         return std::unexpected(make_error(message, SP::Error::Code::InvalidType));
     }
@@ -528,11 +531,18 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     }
     }
 
-    auto staging = surface.staging_span();
-    if (staging.size() < surface.frame_bytes()) {
-        auto message = std::string{"surface staging buffer smaller than expected"};
-        (void)set_last_error(space_, params.target_path, message);
-        return std::unexpected(make_error(message, SP::Error::Code::UnknownError));
+    std::vector<std::uint8_t> local_frame_bytes;
+    std::span<std::uint8_t> staging;
+    if (has_buffered) {
+        staging = surface.staging_span();
+        if (staging.size() < surface.frame_bytes()) {
+            auto message = std::string{"surface staging buffer smaller than expected"};
+            (void)set_last_error(space_, params.target_path, message);
+            return std::unexpected(make_error(message, SP::Error::Code::UnknownError));
+        }
+    } else {
+        local_frame_bytes.resize(surface.frame_bytes());
+        staging = std::span<std::uint8_t>{local_frame_bytes.data(), local_frame_bytes.size()};
     }
 
     auto const width = desc.size_px.width;
@@ -728,14 +738,46 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         }
     }
 
+    if (surface.has_progressive()) {
+        auto tile_count = surface.progressive_tile_count();
+        if (tile_count > 0) {
+            auto& progressive = surface.progressive_buffer();
+            auto const row_stride_bytes = surface.row_stride_bytes();
+            for (std::size_t tile_index = 0; tile_index < tile_count; ++tile_index) {
+                auto dims = progressive.tile_dimensions(tile_index);
+                if (dims.width <= 0 || dims.height <= 0) {
+                    continue;
+                }
+                auto writer = surface.begin_progressive_tile(tile_index, TilePass::OpaqueInProgress);
+                auto tile_pixels = writer.pixels();
+                auto const row_pitch = static_cast<std::size_t>(dims.width) * 4u;
+                for (int row = 0; row < dims.height; ++row) {
+                    auto const src_offset = (static_cast<std::size_t>(dims.y + row) * row_stride_bytes)
+                                            + static_cast<std::size_t>(dims.x) * 4u;
+                    auto const dst_offset = static_cast<std::size_t>(row) * tile_pixels.stride_bytes;
+                    std::memcpy(tile_pixels.data + dst_offset,
+                                staging.data() + src_offset,
+                                row_pitch);
+                }
+                writer.commit(TilePass::AlphaDone, sceneRevision->revision);
+                surface.mark_progressive_dirty(tile_index);
+            }
+        }
+    }
+
     auto const end = std::chrono::steady_clock::now();
     auto render_ms = std::chrono::duration<double, std::milli>(end - start).count();
 
-    surface.publish_buffered_frame(PathSurfaceSoftware::FrameInfo{
+    PathSurfaceSoftware::FrameInfo const frame_info{
         .frame_index = params.settings.time.frame_index,
         .revision = sceneRevision->revision,
         .render_ms = render_ms,
-    });
+    };
+    if (has_buffered) {
+        surface.publish_buffered_frame(frame_info);
+    } else {
+        surface.record_frame_info(frame_info);
+    }
 
     auto metricsBase = std::string(params.target_path.getPath()) + "/output/v1/common";
     if (auto status = replace_single<std::uint64_t>(space_, metricsBase + "/frameIndex", params.settings.time.frame_index); !status) {

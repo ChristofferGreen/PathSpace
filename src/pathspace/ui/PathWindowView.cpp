@@ -17,6 +17,7 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
                              PresentRequest const& request) -> PresentStats {
     PresentStats stats{};
     auto const start_time = request.now;
+    stats.frame = surface.latest_frame_info();
 
     auto wait_budget = request.vsync_deadline - request.now;
     if (wait_budget < std::chrono::steady_clock::duration::zero()) {
@@ -34,12 +35,65 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
         return stats;
     }
 
+    auto const row_stride = surface.row_stride_bytes();
+
+    auto copy_progressive_tiles = [&](bool mark_present) -> bool {
+        if (!surface.has_progressive() || request.dirty_tiles.empty()) {
+            return false;
+        }
+        auto& progressive = surface.progressive_buffer();
+        std::vector<std::uint8_t> tile_storage;
+        std::size_t copied = 0;
+
+        for (auto tile_index : request.dirty_tiles) {
+            try {
+                auto dims = progressive.tile_dimensions(tile_index);
+                if (dims.width <= 0 || dims.height <= 0) {
+                    continue;
+                }
+                auto const tile_bytes = static_cast<std::size_t>(dims.width)
+                                        * static_cast<std::size_t>(dims.height) * kBytesPerPixel;
+                tile_storage.resize(tile_bytes);
+                auto tile_copy = progressive.copy_tile(tile_index, tile_storage);
+                if (!tile_copy) {
+                    continue;
+                }
+                auto const row_pitch = static_cast<std::size_t>(dims.width) * kBytesPerPixel;
+                for (int row = 0; row < dims.height; ++row) {
+                    auto const* src = tile_storage.data() + static_cast<std::size_t>(row) * row_pitch;
+                    auto* dst = request.framebuffer.data()
+                                + (static_cast<std::size_t>(dims.y + row) * row_stride)
+                                + static_cast<std::size_t>(dims.x) * kBytesPerPixel;
+                    std::memcpy(dst, src, row_pitch);
+                }
+                stats.used_progressive = true;
+                stats.frame.revision = std::max(stats.frame.revision, tile_copy->epoch);
+                ++copied;
+            } catch (std::exception const& ex) {
+                stats.error = ex.what();
+            } catch (...) {
+                stats.error = "unexpected exception during progressive copy";
+            }
+        }
+
+        if (copied > 0) {
+            stats.progressive_tiles_copied += copied;
+            if (mark_present) {
+                stats.presented = true;
+                stats.skipped = false;
+            }
+            return true;
+        }
+        return false;
+    };
+
     if (surface.has_buffered()) {
         auto copy = surface.copy_buffered_frame(request.framebuffer);
         if (copy) {
             stats.presented = true;
             stats.buffered_frame_consumed = true;
             stats.frame = copy->info;
+            (void)copy_progressive_tiles(false);
             auto finish = std::chrono::steady_clock::now();
             stats.present_ms = std::chrono::duration<double, std::milli>(finish - start_time).count();
             return stats;
@@ -53,53 +107,8 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
         return stats;
     }
 
-    if (!surface.has_progressive() || request.dirty_tiles.empty()) {
-        stats.skipped = true;
-        auto finish = std::chrono::steady_clock::now();
-        stats.present_ms = std::chrono::duration<double, std::milli>(finish - start_time).count();
-        return stats;
-    }
-
-    auto& progressive = surface.progressive_buffer();
-    auto const row_stride = surface.row_stride_bytes();
-    std::vector<std::uint8_t> tile_storage;
-
-    for (auto tile_index : request.dirty_tiles) {
-        try {
-            auto dims = progressive.tile_dimensions(tile_index);
-            auto const tile_bytes = static_cast<std::size_t>(dims.width) * dims.height * kBytesPerPixel;
-            if (tile_bytes == 0) {
-                continue;
-            }
-            tile_storage.resize(tile_bytes);
-            auto tile_copy = progressive.copy_tile(tile_index, tile_storage);
-            if (!tile_copy) {
-                continue;
-            }
-            stats.used_progressive = true;
-            ++stats.progressive_tiles_copied;
-            stats.frame.revision = std::max(stats.frame.revision, tile_copy->epoch);
-
-            for (int row = 0; row < dims.height; ++row) {
-                auto const* src = tile_storage.data()
-                                  + static_cast<std::size_t>(row) * static_cast<std::size_t>(dims.width) * kBytesPerPixel;
-                auto* dst = request.framebuffer.data()
-                            + (static_cast<std::size_t>(dims.y + row) * row_stride)
-                            + static_cast<std::size_t>(dims.x) * kBytesPerPixel;
-                std::memcpy(dst, src, static_cast<std::size_t>(dims.width) * kBytesPerPixel);
-            }
-        } catch (std::exception const& ex) {
-            stats.error = ex.what();
-            continue;
-        } catch (...) {
-            stats.error = "unexpected exception during progressive copy";
-            continue;
-        }
-    }
-
-    if (stats.progressive_tiles_copied > 0) {
-        stats.presented = true;
-    } else {
+    auto copied = copy_progressive_tiles(true);
+    if (!copied) {
         stats.skipped = true;
     }
     auto finish = std::chrono::steady_clock::now();

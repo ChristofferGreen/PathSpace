@@ -896,6 +896,8 @@ auto Present(PathSpace& space,
         return std::unexpected(renderStats.error());
     }
 
+    auto dirty_tiles = surface.consume_progressive_dirty_tiles();
+
     PathWindowView presenter;
     PathWindowView::PresentPolicy policy{};
     std::vector<std::uint8_t> framebuffer(surface.frame_bytes(), 0);
@@ -904,9 +906,14 @@ auto Present(PathSpace& space,
         .now = now,
         .vsync_deadline = now + std::chrono::milliseconds{16},
         .framebuffer = framebuffer,
-        .dirty_tiles = {},
+        .dirty_tiles = dirty_tiles,
     };
     auto presentStats = presenter.present(surface, policy, request);
+    if (renderStats) {
+        presentStats.frame.frame_index = renderStats->frame_index;
+        presentStats.frame.revision = renderStats->revision;
+        presentStats.frame.render_ms = renderStats->render_ms;
+    }
 
     if (auto status = Diagnostics::WritePresentMetrics(space,
                                                        SP::ConcretePathStringView{context->target_path.getPath()},
