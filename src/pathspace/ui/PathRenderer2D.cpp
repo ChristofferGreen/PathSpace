@@ -190,16 +190,107 @@ auto draw_rounded_rect_command(Scene::RoundedRectCommand const& command,
                                int width,
                                int height) -> bool {
     auto color = make_linear_color(command.color);
-    // TODO: implement analytic rounded corner coverage. For now, fill the bounding box so
-    // contributors can inspect placeholder output while other command kinds are wired up.
-    return draw_rect_area(command.min_x,
-                          command.min_y,
-                          command.max_x,
-                          command.max_y,
-                          color,
-                          buffer,
-                          width,
-                          height);
+
+    auto min_x = std::min(command.min_x, command.max_x);
+    auto max_x = std::max(command.min_x, command.max_x);
+    auto min_y = std::min(command.min_y, command.max_y);
+    auto max_y = std::max(command.min_y, command.max_y);
+
+    auto width_f = std::max(0.0f, max_x - min_x);
+    auto height_f = std::max(0.0f, max_y - min_y);
+    if (width_f <= 0.0f || height_f <= 0.0f) {
+        return false;
+    }
+
+    auto clamp_positive = [](float value) -> float {
+        return std::max(0.0f, value);
+    };
+
+    auto radius_tl = clamp_positive(command.radius_top_left);
+    auto radius_tr = clamp_positive(command.radius_top_right);
+    auto radius_br = clamp_positive(command.radius_bottom_right);
+    auto radius_bl = clamp_positive(command.radius_bottom_left);
+
+    auto adjust_pair = [](float& a, float& b, float limit) {
+        if (limit <= 0.0f) {
+            a = 0.0f;
+            b = 0.0f;
+            return;
+        }
+        auto sum = a + b;
+        if (sum > limit && sum > 0.0f) {
+            auto scale = limit / sum;
+            a *= scale;
+            b *= scale;
+        }
+    };
+
+    adjust_pair(radius_tl, radius_tr, width_f);
+    adjust_pair(radius_bl, radius_br, width_f);
+    adjust_pair(radius_tl, radius_bl, height_f);
+    adjust_pair(radius_tr, radius_br, height_f);
+
+    auto min_x_i = std::clamp(static_cast<int>(std::floor(min_x)), 0, width);
+    auto max_x_i = std::clamp(static_cast<int>(std::ceil(max_x)), 0, width);
+    auto min_y_i = std::clamp(static_cast<int>(std::floor(min_y)), 0, height);
+    auto max_y_i = std::clamp(static_cast<int>(std::ceil(max_y)), 0, height);
+
+    if (min_x_i >= max_x_i || min_y_i >= max_y_i) {
+        return false;
+    }
+
+    auto radius_squared = [](float radius) -> float {
+        return radius * radius;
+    };
+
+    auto blend_if_inside = [&](int x, int y) -> bool {
+        auto px = static_cast<float>(x) + 0.5f;
+        auto py = static_cast<float>(y) + 0.5f;
+
+        if (px < min_x || px > max_x || py < min_y || py > max_y) {
+            return false;
+        }
+
+        bool inside = true;
+
+        if (radius_tl > 0.0f && px < (min_x + radius_tl) && py < (min_y + radius_tl)) {
+            auto dx = px - (min_x + radius_tl);
+            auto dy = py - (min_y + radius_tl);
+            inside = (dx * dx + dy * dy) <= radius_squared(radius_tl);
+        } else if (radius_tr > 0.0f && px > (max_x - radius_tr) && py < (min_y + radius_tr)) {
+            auto dx = px - (max_x - radius_tr);
+            auto dy = py - (min_y + radius_tr);
+            inside = (dx * dx + dy * dy) <= radius_squared(radius_tr);
+        } else if (radius_br > 0.0f && px > (max_x - radius_br) && py > (max_y - radius_br)) {
+            auto dx = px - (max_x - radius_br);
+            auto dy = py - (max_y - radius_br);
+            inside = (dx * dx + dy * dy) <= radius_squared(radius_br);
+        } else if (radius_bl > 0.0f && px < (min_x + radius_bl) && py > (max_y - radius_bl)) {
+            auto dx = px - (min_x + radius_bl);
+            auto dy = py - (max_y - radius_bl);
+            inside = (dx * dx + dy * dy) <= radius_squared(radius_bl);
+        }
+
+        if (!inside) {
+            return false;
+        }
+
+        auto row_stride = static_cast<std::size_t>(width) * 4u;
+        auto base = static_cast<std::size_t>(y) * row_stride + static_cast<std::size_t>(x) * 4u;
+        auto* dest = buffer.data() + base;
+        blend_pixel(dest, color);
+        return true;
+    };
+
+    bool drawn = false;
+    for (int y = min_y_i; y < max_y_i; ++y) {
+        for (int x = min_x_i; x < max_x_i; ++x) {
+            if (blend_if_inside(x, y)) {
+                drawn = true;
+            }
+        }
+    }
+    return drawn;
 }
 
 auto draw_fallback_bounds_box(Scene::DrawableBucketSnapshot const& bucket,

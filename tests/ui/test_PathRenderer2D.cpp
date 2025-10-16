@@ -605,4 +605,199 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     CHECK(lastError->empty());
 }
 
+TEST_CASE("rounded rectangles respect per-corner radii") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0xABCDEFu};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{2.5f, 2.5f, 0.0f}, 3.0f}};
+    bucket.bounds_boxes = {
+        BoundingBox{{0.0f, 0.0f, 0.0f}, {5.0f, 5.0f, 0.0f}},
+    };
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {0};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {0};
+    bucket.alpha_indices = {};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {
+        DrawableAuthoringMapEntry{bucket.drawable_ids[0], "rounded_rect", 0, 0},
+    };
+
+    RoundedRectCommand rounded{
+        .min_x = 0.5f,
+        .min_y = 0.5f,
+        .max_x = 4.5f,
+        .max_y = 4.5f,
+        .radius_top_left = 1.5f,
+        .radius_top_right = 1.0f,
+        .radius_bottom_right = 1.5f,
+        .radius_bottom_left = 1.0f,
+        .color = {0.0f, 1.0f, 0.0f, 1.0f},
+    };
+    encode_rounded_rect_command(rounded, bucket);
+
+    auto scenePath = create_scene(fx, "scene_round", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_round");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 5;
+    surfaceDesc.size_px.height = 5;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_round", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware surface{surfaceDesc};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.clear_color = {0.0f, 0.0f, 0.0f, 0.0f};
+    settings.time.frame_index = 1;
+
+    auto result = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+    });
+    REQUIRE(result);
+
+    auto buffer = copy_buffer(surface);
+    auto stride = surface.row_stride_bytes();
+    auto encode_srgb = true;
+    auto desc = surfaceDesc;
+
+    auto read_pixel = [&](int x, int y) -> std::array<std::uint8_t, 4> {
+        auto offset = static_cast<std::size_t>(y) * stride + static_cast<std::size_t>(x) * 4u;
+        return {
+            buffer[offset + 0],
+            buffer[offset + 1],
+            buffer[offset + 2],
+            buffer[offset + 3]
+        };
+    };
+
+    auto clear_bytes = encode_linear_to_bytes(make_linear_color(settings.clear_color),
+                                              desc,
+                                              encode_srgb);
+    auto fill_bytes = encode_linear_to_bytes(make_linear_color(rounded.color),
+                                             desc,
+                                             encode_srgb);
+
+    // Corners should remain clear due to rounded radii.
+    CHECK(read_pixel(0, 0) == clear_bytes);
+    CHECK(read_pixel(4, 0) == clear_bytes);
+    CHECK(read_pixel(0, 4) == clear_bytes);
+    CHECK(read_pixel(4, 4) == clear_bytes);
+
+    // Interior pixels remain filled.
+    CHECK(read_pixel(2, 2) == fill_bytes);
+    CHECK(read_pixel(2, 1) == fill_bytes);
+    CHECK(read_pixel(1, 2) == fill_bytes);
+}
+
+TEST_CASE("linear BGRA framebuffer respects color management settings") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x010101u};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, 3.0f}};
+    bucket.bounds_boxes = {
+        BoundingBox{{0.0f, 0.0f, 0.0f}, {3.0f, 3.0f, 0.0f}},
+    };
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {0};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {0};
+    bucket.alpha_indices = {};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {
+        DrawableAuthoringMapEntry{bucket.drawable_ids[0], "bgra_rect", 0, 0},
+    };
+
+    RectCommand rect{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 3.0f,
+        .max_y = 3.0f,
+        .color = {0.8f, 0.2f, 0.4f, 0.5f},
+    };
+    encode_rect_command(rect, bucket);
+
+    auto scenePath = create_scene(fx, "scene_bgra", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_bgra");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 3;
+    surfaceDesc.size_px.height = 3;
+    surfaceDesc.pixel_format = PixelFormat::BGRA8Unorm;
+    surfaceDesc.color_space = ColorSpace::Linear;
+    surfaceDesc.premultiplied_alpha = false;
+
+    auto surfacePath = create_surface(fx, "surface_bgra", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware surface{surfaceDesc};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.clear_color = {0.0f, 0.0f, 0.0f, 0.0f};
+    settings.time.frame_index = 5;
+
+    auto rendered = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+    });
+    REQUIRE(rendered);
+
+    auto buffer = copy_buffer(surface);
+    auto stride = surface.row_stride_bytes();
+
+    auto expected_rgba = encode_linear_to_bytes(make_linear_color(rect.color),
+                                                surfaceDesc,
+                                                /*encode_srgb=*/false);
+
+    auto read_pixel = [&](int x, int y) -> std::array<std::uint8_t, 4> {
+        auto offset = static_cast<std::size_t>(y) * stride + static_cast<std::size_t>(x) * 4u;
+        return {
+            buffer[offset + 0],
+            buffer[offset + 1],
+            buffer[offset + 2],
+            buffer[offset + 3]
+        };
+    };
+
+    auto pixel = read_pixel(1, 1);
+    CHECK(pixel[0] == expected_rgba[2]); // B channel
+    CHECK(pixel[1] == expected_rgba[1]); // G channel
+    CHECK(pixel[2] == expected_rgba[0]); // R channel
+    CHECK(pixel[3] == expected_rgba[3]); // Alpha unchanged
+
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    auto lastError = fx.space.read<std::string, std::string>(metricsBase + "/lastError");
+    REQUIRE(lastError);
+    CHECK(lastError->empty());
+}
+
 } // TEST_SUITE
