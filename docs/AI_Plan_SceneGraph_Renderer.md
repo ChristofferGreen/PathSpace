@@ -720,7 +720,7 @@ Hit testing (DrawableBucket-driven)
     - Build a pick ray in view space; test per-drawable AABB (required for 3D) before invoking TLAS/BLAS traversal for precise intersections when applicable
 - Results:
   - Return the topmost hit target plus an ordered list of ancestors for routing; include local/world coords, uv (if image/text), and modifiers
-  - **Status (October 16, 2025):** `Scene::HitTest` is live for 2D UI; it walks opaque + alpha buckets back-to-front, respects rect clips, and returns the authoring focus chain. Local/world coordinate reporting and shape-specific narrow-phase tests remain future work.
+  - **Status (October 16, 2025):** `Scene::HitTest` now supplies scene-space and local-space coordinates alongside per-path focus metadata while walking opaque + alpha buckets back-to-front and respecting rect clips. Shape-specific narrow-phase tests (rounded rect curves, image alpha sampling, text glyph coverage) remain future work.
 
 Event routing
 - Phases:
@@ -822,7 +822,7 @@ Device loss and recovery
 Observability
 - Per-frame metrics written to `output/v1/common/*`: `frameIndex`, `revision`, `renderMs`, `lastError`
 - Renderer diagnostics extend the same subtree with `opaqueSortViolations`, `alphaSortViolations`, `approxOpaquePixels`, `approxAlphaPixels`, `approxDrawablePixels`, `approxOverdrawFactor`, `progressiveTilesUpdated`, and `progressiveBytesCopied` so tooling can spot ordering regressions, overdraw spikes, and progressive-copy churn.
-- Presenter metrics now include `presentMode`, `stalenessBudgetMs`, `frameTimeoutMs`, `maxAgeFrames`, `presentedAgeMs`, `presentedAgeFrames`, `stale`, `autoRenderOnPresent`, and `vsyncAlign` under `output/v1/common/*`, reflecting the resolved `present/policy` + `present/params` values for downstream tooling.
+- Presenter metrics now include `presentMode`, `stalenessBudgetMs`, `frameTimeoutMs`, `maxAgeFrames`, `presentedAgeMs`, `presentedAgeFrames`, `stale`, `autoRenderOnPresent`, and `vsyncAlign` under `output/v1/common/*`, reflecting the resolved `present/policy` + `present/params` values for downstream tooling. Progressive copy diagnostics now also capture `progressiveTilesUpdated` + `progressiveBytesCopied`, matching renderer-side counters.
 - Optional GPU counters (backend-specific) may be exposed under a debug subtree for diagnostics; avoid mandatory dependencies on profiling APIs
 
 ## Error handling and observability (plan)
@@ -865,6 +865,19 @@ struct PathSpaceError {
 - Frame profiler: polls `errors/live`, rings, and metrics to populate UI panels and annotate frame samples; capture requests simply snapshot these paths.
 - CLI tooling: `pathspace diag` commands can dump the same paths for CI triage without needing app-specific logic.
 - Tests: helper assertions verify that particular operations emit (or clear) expected error codes by reading the attached PathSpaceError payloads.
+
+### Presenter metrics (software path)
+
+`targets/<tid>/output/v1/common/*` now exposes a richer presenter snapshot every time `Window::Present` completes. Alongside the existing counters (`frameIndex`, `revision`, `renderMs`, `presentMs`, `lastPresentSkipped`, `lastError`, `progressive*`), the presenter writes:
+
+- `presentMode` — resolved enum string from `views/<view>/present/policy`.
+- `stalenessBudgetMs`, `frameTimeoutMs`, `maxAgeFrames` — effective policy parameters after applying overrides in `views/<view>/present/params/*`.
+- `autoRenderOnPresent`, `vsyncAlign` — booleans that document whether the presenter attempted proactive renders or vsync alignment.
+- `presentedAgeMs`, `presentedAgeFrames` — age of the output that was just displayed, relative to the prior present; derived from the policy’s frame timeout.
+- `stale` — true when `presentedAgeFrames` exceeds `maxAgeFrames` (used to gate auto-render).
+- `progressiveTilesUpdated`, `progressiveBytesCopied` — renderer-side estimates of progressive workload for the most recent render.
+
+Downstream tooling should consume these fields instead of recomputing policy state, and CI expectations should pin exact values for deterministic unit scenarios (see `tests/ui/test_PathRenderer2D.cpp` / `test_PathWindowView.cpp`).
 
 ### Minimal types (sketch)
 

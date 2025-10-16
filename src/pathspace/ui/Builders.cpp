@@ -764,6 +764,13 @@ auto HitTest(PathSpace& space,
             result.target.drawable_index_within_node = author.drawable_index_within_node;
             result.target.generation = author.generation;
             result.focus_chain = detail::build_focus_chain(author.authoring_node_id);
+            result.focus_path.reserve(result.focus_chain.size());
+            for (std::size_t i = 0; i < result.focus_chain.size(); ++i) {
+                FocusEntry entry;
+                entry.path = result.focus_chain[i];
+                entry.focusable = (i == 0);
+                result.focus_path.push_back(std::move(entry));
+            }
         }
         if (request.schedule_render && auto_render_target) {
             auto status = enqueue_auto_render_event(space,
@@ -773,6 +780,16 @@ auto HitTest(PathSpace& space,
             if (!status) {
                 return std::unexpected(status.error());
             }
+        }
+        result.position.scene_x = request.x;
+        result.position.scene_y = request.y;
+        if (idx < bucket->bounds_boxes.size()
+            && (idx >= bucket->bounds_box_valid.size()
+                || bucket->bounds_box_valid[idx] != 0)) {
+            auto const& box = bucket->bounds_boxes[idx];
+            result.position.local_x = request.x - box.min[0];
+            result.position.local_y = request.y - box.min[1];
+            result.position.has_local = true;
         }
     }
 

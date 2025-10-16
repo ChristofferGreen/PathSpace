@@ -149,6 +149,13 @@ TEST_CASE("returns topmost drawable using render order") {
     CHECK(result->target.drawable_id == bucket.drawable_ids[1]);
     REQUIRE_FALSE(result->focus_chain.empty());
     CHECK(result->focus_chain.front() == std::string("nodes/root/card/button"));
+    CHECK(result->position.has_local);
+    CHECK(result->position.scene_x == doctest::Approx(request.x));
+    CHECK(result->position.scene_y == doctest::Approx(request.y));
+    CHECK(result->position.local_x == doctest::Approx(request.x - bucket.bounds_boxes[1].min[0]));
+    CHECK(result->position.local_y == doctest::Approx(request.y - bucket.bounds_boxes[1].min[1]));
+    REQUIRE_FALSE(result->focus_path.empty());
+    CHECK(result->focus_path.front().focusable);
 }
 
 TEST_CASE("respects clip rectangles when evaluating hits") {
@@ -194,6 +201,15 @@ TEST_CASE("focus chain enumerates authoring ancestors") {
         "nodes",
     };
     CHECK(result->focus_chain == expected);
+    REQUIRE(result->focus_path.size() == expected.size());
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        CHECK(result->focus_path[i].path == expected[i]);
+        if (i == 0) {
+            CHECK(result->focus_path[i].focusable);
+        } else {
+            CHECK_FALSE(result->focus_path[i].focusable);
+        }
+    }
 }
 
 TEST_CASE("pipeline flags influence default draw order for hit testing") {

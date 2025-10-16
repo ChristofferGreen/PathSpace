@@ -83,7 +83,7 @@ Completed:
 
 ### Phase 5 — Input, Hit Testing, and Notifications (1 sprint)
 - ✅ (October 16, 2025) Added doctest scenarios for hit ordering, clip-aware picking, focus routing, and auto-render event scheduling via `Scene::HitTest`; notifications enqueue `AutoRenderRequestEvent` under `events/renderRequested/queue`.
-- Implement DrawableBucket-backed hit testing, clip stack reconstruction, and focus bookkeeping per spec. *(base implementation in place; extend with per-path focus metadata and local-space coordinates)*
+- ✅ (October 16, 2025) `Scene::HitTest` now emits scene/local coordinates and per-path focus metadata so event routing can derive local offsets without re-reading scene state; doctests cover the new fields.
 - Integrate wait/notify flows for scene dirty markers and snapshot rebuild triggers (presenter auto-render scheduling now wired through Phase 4 helpers).
 - Exercise the notification loops in the mandated test harness and document latency/ordering guarantees.
 

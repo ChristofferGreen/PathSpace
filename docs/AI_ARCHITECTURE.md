@@ -6,6 +6,8 @@ Renderer snapshot builder details have moved out of this architecture document. 
 
 Present policy (backend-aware) and the software progressive present are documented in docs/AI_Plan_SceneGraph_Renderer.md. This architecture document focuses on PathSpace core; rendering/presenter details live in the plan. Also see “View keys (final)” and “Target keys (final)” in docs/AI_Plan_SceneGraph_Renderer.md for the authoritative schemas, and note that RenderSettings are a single-path atomic whole-object value; ParamUpdateMode::Queue refers to client-side coalescing before one atomic write (no server-side queue in v1).
 
+> **Diagnostics note (October 16, 2025):** Presenter runs now persist the resolved present policy and age/staleness data (`presentMode`, `stalenessBudgetMs`, `frameTimeoutMs`, `maxAgeFrames`, `presentedAgeMs`, `presentedAgeFrames`, `stale`, `autoRenderOnPresent`, `vsyncAlign`) under `targets/<tid>/output/v1/common/*`. Renderer executions publish matching progressive statistics (`progressiveTilesUpdated`, `progressiveBytesCopied`) so tooling can correlate policy decisions with render work.
+
 See also:
 - `docs/AI_Plan_SceneGraph_Renderer.md` for the broader rendering plan and target I/O layout. If snapshot semantics change, update both documents in the same PR per `.rules`.
  - `docs/AI_PATHS.md` for the canonical path namespaces and layout conventions; update it alongside changes to path usage and target I/O layout.
@@ -371,9 +373,9 @@ Platform backends (unified, via compile-time macros):
 Note: First-class links (symlinks) are planned; in the interim, `PathAlias` offers robust forwarding/retargeting semantics without changing core trie invariants.
 
 ### Hit testing and auto-render scheduling (October 16, 2025)
-- `PathSpace::UI::Builders::Scene::HitTest` reads the current snapshot (`DrawableBucketSnapshot`) for a scene, walks draw order (opaque + alpha) back-to-front, respects per-drawable clip stacks, and returns the topmost hit along with the authoring focus chain.
+- `PathSpace::UI::Builders::Scene::HitTest` reads the current snapshot (`DrawableBucketSnapshot`) for a scene, walks draw order (opaque + alpha) back-to-front, respects per-drawable clip stacks, and returns the topmost hit along with authoring focus metadata. Results now include scene-space coordinates plus local-space offsets derived from the drawable’s bounds so input handlers can translate pointer positions without re-reading scene state.
 - `HitTestRequest.schedule_render` enqueues `AutoRenderRequestEvent` items under `renderers/<rid>/targets/<kind>/<name>/events/renderRequested/queue`; the auto-render loop can watch this queue to trigger responsive redraws after pointer interactions.
-- Utility helpers in `src/pathspace/ui/DrawableUtils.hpp` centralize drawable bounds tests and focus-chain construction so raster and hit-test paths stay consistent.
+- Utility helpers in `src/pathspace/ui/DrawableUtils.hpp` centralize drawable bounds tests, focus-chain construction, and coordinate conversions so raster and hit-test paths stay consistent.
 
 ## UI & Rendering
 

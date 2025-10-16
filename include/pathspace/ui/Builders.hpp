@@ -204,10 +204,25 @@ struct HitDrawable {
     std::uint32_t generation = 0;
 };
 
+struct HitPosition {
+    float scene_x = 0.0f;
+    float scene_y = 0.0f;
+    float local_x = 0.0f;
+    float local_y = 0.0f;
+    bool  has_local = false;
+};
+
+struct FocusEntry {
+    std::string path;
+    bool focusable = false;
+};
+
 struct HitTestResult {
     bool hit = false;
     HitDrawable target{};
+    HitPosition position{};
     std::vector<std::string> focus_chain;
+    std::vector<FocusEntry> focus_path;
 };
 
 auto Create(PathSpace& space,
