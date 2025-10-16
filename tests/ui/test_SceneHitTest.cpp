@@ -3,6 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/PipelineFlags.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 
 #include <chrono>
@@ -16,6 +17,7 @@ namespace BuildersNS = SP::UI::Builders;
 namespace UIScene = SP::UI::Scene;
 namespace BuildersScene = SP::UI::Builders::Scene;
 using namespace std::chrono_literals;
+using namespace SP::UI::PipelineFlags;
 
 namespace {
 
@@ -192,6 +194,25 @@ TEST_CASE("focus chain enumerates authoring ancestors") {
         "nodes",
     };
     CHECK(result->focus_chain == expected);
+}
+
+TEST_CASE("pipeline flags influence default draw order for hit testing") {
+    HitTestFixture fx;
+    auto bucket = make_basic_bucket();
+    bucket.opaque_indices.clear();
+    bucket.alpha_indices.clear();
+    bucket.pipeline_flags = {0u, AlphaBlend};
+
+    auto scenePath = create_scene(fx, "hit_pipeline_flags", bucket);
+
+    BuildersScene::HitTestRequest request{};
+    request.x = 1.0f;
+    request.y = 1.0f;
+
+    auto result = BuildersScene::HitTest(fx.space, scenePath, request);
+    REQUIRE(result);
+    CHECK(result->hit);
+    CHECK(result->target.drawable_id == bucket.drawable_ids[1]);
 }
 
 TEST_CASE("hit test can schedule auto-render events") {

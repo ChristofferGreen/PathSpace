@@ -1,10 +1,12 @@
 #pragma once
 
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/PipelineFlags.hpp>
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -66,9 +68,27 @@ inline std::vector<std::uint32_t> build_draw_order(Scene::DrawableBucketSnapshot
         order.insert(order.end(), bucket.alpha_indices.begin(), bucket.alpha_indices.end());
     }
     if (order.empty()) {
+        std::vector<std::uint32_t> opaque;
+        std::vector<std::uint32_t> alpha;
+        opaque.reserve(bucket.drawable_ids.size());
+        alpha.reserve(bucket.drawable_ids.size());
         for (std::uint32_t i = 0; i < bucket.drawable_ids.size(); ++i) {
-            order.push_back(i);
+            std::uint32_t flags = 0;
+            if (i < bucket.pipeline_flags.size()) {
+                flags = bucket.pipeline_flags[i];
+            }
+            if (PipelineFlags::is_alpha_pass(flags)) {
+                alpha.push_back(i);
+            } else {
+                opaque.push_back(i);
+            }
         }
+        if (opaque.empty() && alpha.empty()) {
+            opaque.resize(bucket.drawable_ids.size());
+            std::iota(opaque.begin(), opaque.end(), 0u);
+        }
+        order.insert(order.end(), opaque.begin(), opaque.end());
+        order.insert(order.end(), alpha.begin(), alpha.end());
     }
     return order;
 }

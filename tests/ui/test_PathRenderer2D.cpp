@@ -4,6 +4,7 @@
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
+#include <pathspace/ui/PipelineFlags.hpp>
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
@@ -29,6 +30,7 @@ using SP::UI::Scene::Transform;
 using SP::UI::Scene::RoundedRectCommand;
 using SP::UI::Scene::RectCommand;
 using SP::UI::Scene::DrawCommandKind;
+using namespace SP::UI::PipelineFlags;
 
 namespace {
 
@@ -122,6 +124,14 @@ auto encode_rounded_rect_command(RoundedRectCommand const& rounded,
     bucket.command_payload.resize(offset + sizeof(RoundedRectCommand));
     std::memcpy(bucket.command_payload.data() + offset, &rounded, sizeof(RoundedRectCommand));
     bucket.command_kinds.push_back(static_cast<std::uint32_t>(DrawCommandKind::RoundedRect));
+}
+
+auto encode_mesh_command(SP::UI::Scene::MeshCommand const& mesh,
+                         DrawableBucketSnapshot& bucket) -> void {
+    auto offset = bucket.command_payload.size();
+    bucket.command_payload.resize(offset + sizeof(SP::UI::Scene::MeshCommand));
+    std::memcpy(bucket.command_payload.data() + offset, &mesh, sizeof(SP::UI::Scene::MeshCommand));
+    bucket.command_kinds.push_back(static_cast<std::uint32_t>(DrawCommandKind::Mesh));
 }
 
 struct LinearColor {
@@ -348,6 +358,89 @@ TEST_CASE("render executes rect commands across passes and encodes pixels") {
     CHECK(lastError->empty());
 }
 
+TEST_CASE("pipeline flags partition passes when snapshot lacks explicit indices") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x100001u, 0x100002u};
+    bucket.world_transforms = {identity_transform(), identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, 3.0f},
+                             BoundingSphere{{1.0f, 1.0f, 0.0f}, 3.0f}};
+    bucket.bounds_boxes = {
+        BoundingBox{{0.0f, 0.0f, 0.0f}, {3.0f, 3.0f, 0.0f}},
+        BoundingBox{{0.5f, 0.5f, 0.0f}, {2.5f, 2.5f, 0.0f}},
+    };
+    bucket.bounds_box_valid = {1, 1};
+    bucket.layers = {0, 0};
+    bucket.z_values = {0.0f, 1.0f};
+    bucket.material_ids = {1, 1};
+    bucket.pipeline_flags = {0u, AlphaBlend};
+    bucket.visibility = {1, 1};
+    bucket.command_offsets = {0, 1};
+    bucket.command_counts = {1, 1};
+    bucket.opaque_indices = {};
+    bucket.alpha_indices = {};
+    bucket.clip_head_indices = {-1, -1};
+    bucket.authoring_map = {
+        DrawableAuthoringMapEntry{bucket.drawable_ids[0], "node/opaque", 0, 0},
+        DrawableAuthoringMapEntry{bucket.drawable_ids[1], "node/alpha", 0, 0},
+    };
+
+    RectCommand opaque_rect{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 3.0f,
+        .max_y = 3.0f,
+        .color = {0.6f, 0.4f, 0.2f, 1.0f},
+    };
+    encode_rect_command(opaque_rect, bucket);
+
+    RectCommand alpha_rect{
+        .min_x = 0.5f,
+        .min_y = 0.5f,
+        .max_x = 2.5f,
+        .max_y = 2.5f,
+        .color = {0.2f, 0.6f, 0.8f, 0.5f},
+    };
+    encode_rect_command(alpha_rect, bucket);
+
+    auto scenePath = create_scene(fx, "scene_pipeline_flags", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_pipeline_flags");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 3;
+    surfaceDesc.size_px.height = 3;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_pipeline_flags", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware surface{surfaceDesc};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+    settings.time.frame_index = 11;
+
+    auto result = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+    });
+    REQUIRE(result);
+
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/opaqueDrawables").value() == 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/alphaDrawables").value() == 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/commandsExecuted").value() == 2);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/unsupportedCommands").value() == 0);
+}
+
 TEST_CASE("render tracks culled drawables and executed commands") {
     RendererFixture fx;
 
@@ -428,6 +521,69 @@ TEST_CASE("render tracks culled drawables and executed commands") {
     CHECK(fx.space.read<uint64_t>(metricsBase + "/opaqueDrawables").value() == 1);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/culledDrawables").value() == 1);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/commandsExecuted").value() == 1);
+}
+
+TEST_CASE("unsupported commands fall back to bounds and report metrics") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x777777u};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, 2.0f}};
+    bucket.bounds_boxes = {BoundingBox{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 0.0f}}};
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {AlphaBlend};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {};
+    bucket.alpha_indices = {};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {DrawableAuthoringMapEntry{bucket.drawable_ids[0], "node/mesh", 0, 0}};
+
+    SP::UI::Scene::MeshCommand mesh{};
+    mesh.vertex_count = 6;
+    mesh.index_count = 6;
+    mesh.color = {0.9f, 0.1f, 0.1f, 0.5f};
+    encode_mesh_command(mesh, bucket);
+
+    auto scenePath = create_scene(fx, "scene_mesh_fallback", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_mesh_fallback");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 2;
+    surfaceDesc.size_px.height = 2;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_mesh_fallback", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware surface{surfaceDesc};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.clear_color = {0.0f, 0.0f, 0.0f, 0.0f};
+
+    auto result = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+    });
+    REQUIRE(result);
+    CHECK(result->drawable_count == 1);
+
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/culledDrawables").value() == 0);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/commandsExecuted").value() == 0);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/unsupportedCommands").value() == 1);
 }
 
 TEST_CASE("render reports error when target scene binding missing") {

@@ -1,6 +1,7 @@
 #include <pathspace/ui/PathRenderer2D.hpp>
 
 #include <pathspace/ui/DrawCommands.hpp>
+#include <pathspace/ui/PipelineFlags.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include "DrawableUtils.hpp"
 
@@ -86,6 +87,14 @@ auto color_from_drawable(std::uint64_t drawableId) -> std::array<float, 4> {
         b = 0.9f;
     }
     return {r, g, b, 1.0f};
+}
+
+auto pipeline_flags_for(Scene::DrawableBucketSnapshot const& bucket,
+                        std::size_t drawable_index) -> std::uint32_t {
+    if (drawable_index < bucket.pipeline_flags.size()) {
+        return bucket.pipeline_flags[drawable_index];
+    }
+    return 0;
 }
 
 struct LinearPremulColor {
@@ -536,6 +545,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     std::uint64_t drawn_alpha = 0;
     std::uint64_t culled_drawables = 0;
     std::uint64_t executed_commands = 0;
+    std::uint64_t unsupported_commands = 0;
 
     auto process_drawable = [&](std::uint32_t drawable_index,
                                 bool alpha_pass) -> SP::Expected<void> {
@@ -572,12 +582,15 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
 
         bool drawable_drawn = false;
 
+        bool fallback_attempted = false;
+
         if (command_count == 0) {
             drawable_drawn = draw_fallback_bounds_box(*bucket,
                                                       drawable_index,
                                                       linear_buffer,
                                                       width,
                                                       height);
+            fallback_attempted = true;
             if (!drawable_drawn) {
                 ++culled_drawables;
                 return {};
@@ -593,32 +606,43 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                                                       SP::Error::Code::InvalidType));
                 }
 
-            switch (kind) {
-            case Scene::DrawCommandKind::Rect: {
-                auto rect = read_struct<Scene::RectCommand>(bucket->command_payload,
-                                                            payload_offset);
-                if (draw_rect_command(rect, linear_buffer, width, height)) {
-                    drawable_drawn = true;
+                switch (kind) {
+                case Scene::DrawCommandKind::Rect: {
+                    auto rect = read_struct<Scene::RectCommand>(bucket->command_payload,
+                                                                payload_offset);
+                    if (draw_rect_command(rect, linear_buffer, width, height)) {
+                        drawable_drawn = true;
+                    }
+                    ++executed_commands;
+                    break;
                 }
-                ++executed_commands;
-                break;
-            }
-            case Scene::DrawCommandKind::RoundedRect: {
-                auto rounded = read_struct<Scene::RoundedRectCommand>(bucket->command_payload,
-                                                                      payload_offset);
-                if (draw_rounded_rect_command(rounded, linear_buffer, width, height)) {
-                    drawable_drawn = true;
+                case Scene::DrawCommandKind::RoundedRect: {
+                    auto rounded = read_struct<Scene::RoundedRectCommand>(bucket->command_payload,
+                                                                          payload_offset);
+                    if (draw_rounded_rect_command(rounded, linear_buffer, width, height)) {
+                        drawable_drawn = true;
+                    }
+                    ++executed_commands;
+                    break;
                 }
-                ++executed_commands;
-                break;
-            }
-            default:
-                break;
+                default:
+                    ++unsupported_commands;
+                    break;
+                }
             }
         }
 
         if (!drawable_drawn) {
-            ++culled_drawables;
+            if (!fallback_attempted) {
+                drawable_drawn = draw_fallback_bounds_box(*bucket,
+                                                          drawable_index,
+                                                          linear_buffer,
+                                                          width,
+                                                          height);
+                fallback_attempted = true;
+            }
+            if (!drawable_drawn) {
+                ++culled_drawables;
                 return {};
             }
         }
@@ -632,10 +656,23 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         return {};
     };
 
-    std::vector<std::uint32_t> fallback_indices;
+    std::vector<std::uint32_t> fallback_opaque;
+    std::vector<std::uint32_t> fallback_alpha;
     if (bucket->opaque_indices.empty() && bucket->alpha_indices.empty()) {
-        fallback_indices.resize(drawable_count);
-        std::iota(fallback_indices.begin(), fallback_indices.end(), 0u);
+        fallback_opaque.reserve(drawable_count);
+        fallback_alpha.reserve(drawable_count);
+        for (std::uint32_t i = 0; i < drawable_count; ++i) {
+            auto flags = pipeline_flags_for(*bucket, i);
+            if (PipelineFlags::is_alpha_pass(flags)) {
+                fallback_alpha.push_back(i);
+            } else {
+                fallback_opaque.push_back(i);
+            }
+        }
+        if (fallback_opaque.empty() && fallback_alpha.empty()) {
+            fallback_opaque.resize(drawable_count);
+            std::iota(fallback_opaque.begin(), fallback_opaque.end(), 0u);
+        }
     }
 
     auto process_pass = [&](std::vector<std::uint32_t> const& indices,
@@ -654,8 +691,8 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                                  status.error().message.value_or("failed to store present metrics"));
             return std::unexpected(status.error());
         }
-    } else if (!fallback_indices.empty()) {
-        if (auto status = process_pass(fallback_indices, false); !status) {
+    } else if (!fallback_opaque.empty()) {
+        if (auto status = process_pass(fallback_opaque, false); !status) {
             (void)set_last_error(space_, params.target_path,
                                  status.error().message.value_or("failed to store present metrics"));
             return std::unexpected(status.error());
@@ -664,6 +701,12 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
 
     if (!bucket->alpha_indices.empty()) {
         if (auto status = process_pass(bucket->alpha_indices, true); !status) {
+            (void)set_last_error(space_, params.target_path,
+                                 status.error().message.value_or("failed to store present metrics"));
+            return std::unexpected(status.error());
+        }
+    } else if (!fallback_alpha.empty()) {
+        if (auto status = process_pass(fallback_alpha, true); !status) {
             (void)set_last_error(space_, params.target_path,
                                  status.error().message.value_or("failed to store present metrics"));
             return std::unexpected(status.error());
@@ -754,6 +797,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/culledDrawables", culled_drawables);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/commandCount", static_cast<std::uint64_t>(bucket->command_kinds.size()));
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/commandsExecuted", executed_commands);
+    (void)replace_single<std::uint64_t>(space_, metricsBase + "/unsupportedCommands", unsupported_commands);
 
     RenderStats stats{};
     stats.frame_index = params.settings.time.frame_index;
