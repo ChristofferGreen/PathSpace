@@ -84,7 +84,7 @@ Completed:
 ### Phase 5 — Input, Hit Testing, and Notifications (1 sprint)
 - ✅ (October 16, 2025) Added doctest scenarios for hit ordering, clip-aware picking, focus routing, and auto-render event scheduling via `Scene::HitTest`; notifications enqueue `AutoRenderRequestEvent` under `events/renderRequested/queue`.
 - ✅ (October 16, 2025) `Scene::HitTest` now emits scene/local coordinates and per-path focus metadata so event routing can derive local offsets without re-reading scene state; doctests cover the new fields.
-- Integrate wait/notify flows for scene dirty markers and snapshot rebuild triggers (presenter auto-render scheduling now wired through Phase 4 helpers).
+- ✅ (October 16, 2025) `Scene::MarkDirty` / `Scene::TakeDirtyEvent` surface dirty markers via `diagnostics/dirty/state` and a queue, and tests confirm renderers can wait on the queue without polling.
 - Exercise the notification loops in the mandated test harness and document latency/ordering guarantees.
 
 ### Phase 6 — Diagnostics, Tooling, and Hardening (1 sprint)

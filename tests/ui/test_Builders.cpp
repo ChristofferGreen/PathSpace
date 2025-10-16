@@ -270,6 +270,59 @@ TEST_CASE("Surface creation binds renderer and scene") {
     CHECK(*targetScene == "scenes/main");
 }
 
+TEST_CASE("Scene dirty markers update state and queue") {
+    BuildersFixture fx;
+
+    SceneParams sceneParams{ .name = "dirty_scene", .description = "Dirty scene" };
+    auto scenePath = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    REQUIRE(scenePath);
+
+    auto initialState = Scene::ReadDirtyState(fx.space, *scenePath);
+    REQUIRE(initialState);
+    CHECK(initialState->sequence == 0);
+    CHECK(initialState->pending == Scene::DirtyKind::None);
+
+    auto seq1 = Scene::MarkDirty(fx.space, *scenePath, Scene::DirtyKind::Structure);
+    REQUIRE(seq1);
+    CHECK(*seq1 > 0);
+
+    auto stateAfterFirst = Scene::ReadDirtyState(fx.space, *scenePath);
+    REQUIRE(stateAfterFirst);
+    CHECK(stateAfterFirst->sequence == *seq1);
+    CHECK((stateAfterFirst->pending & Scene::DirtyKind::Structure) == Scene::DirtyKind::Structure);
+
+    auto event1 = Scene::TakeDirtyEvent(fx.space, *scenePath, std::chrono::milliseconds{20});
+    REQUIRE(event1);
+    CHECK(event1->sequence == *seq1);
+    CHECK(event1->kinds == Scene::DirtyKind::Structure);
+
+    auto seq2 = Scene::MarkDirty(fx.space, *scenePath, Scene::DirtyKind::Visual | Scene::DirtyKind::Text);
+    REQUIRE(seq2);
+    CHECK(*seq2 > *seq1);
+
+    auto event2 = Scene::TakeDirtyEvent(fx.space, *scenePath, std::chrono::milliseconds{20});
+    REQUIRE(event2);
+    CHECK(event2->sequence == *seq2);
+    CHECK((event2->kinds & Scene::DirtyKind::Visual) == Scene::DirtyKind::Visual);
+    CHECK((event2->kinds & Scene::DirtyKind::Text) == Scene::DirtyKind::Text);
+
+    auto stateAfterSecond = Scene::ReadDirtyState(fx.space, *scenePath);
+    REQUIRE(stateAfterSecond);
+    CHECK(stateAfterSecond->sequence == *seq2);
+    CHECK((stateAfterSecond->pending & Scene::DirtyKind::Structure) == Scene::DirtyKind::Structure);
+    CHECK((stateAfterSecond->pending & Scene::DirtyKind::Visual) == Scene::DirtyKind::Visual);
+    CHECK((stateAfterSecond->pending & Scene::DirtyKind::Text) == Scene::DirtyKind::Text);
+
+    auto cleared = Scene::ClearDirty(fx.space, *scenePath, Scene::DirtyKind::Visual);
+    REQUIRE(cleared);
+
+    auto stateAfterClear = Scene::ReadDirtyState(fx.space, *scenePath);
+    REQUIRE(stateAfterClear);
+    CHECK((stateAfterClear->pending & Scene::DirtyKind::Visual) == Scene::DirtyKind::None);
+    CHECK((stateAfterClear->pending & Scene::DirtyKind::Structure) == Scene::DirtyKind::Structure);
+    CHECK((stateAfterClear->pending & Scene::DirtyKind::Text) == Scene::DirtyKind::Text);
+}
+
 TEST_CASE("Window attach surface records binding") {
     BuildersFixture fx;
 

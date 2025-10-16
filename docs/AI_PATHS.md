@@ -45,6 +45,8 @@ The following subtrees are standardized within each application root (one of the
       - `overlays/<kind>` — optional debugging overlays (e.g., bounds violations)
       - `frame_profiler/node/<drawable-id>` — drawable-specific annotations
       - `frame_profiler/summary` — scene-level diagnostics counters and timestamps
+      - `dirty/state` — latest `Scene::DirtyState` (sequence, pending mask, timestamp)
+      - `dirty/queue` — `Scene::DirtyEvent` items enqueued by `Scene::MarkDirty`
 
 - Renderers
   - `renderers/<renderer-id>/`
@@ -100,6 +102,13 @@ The following subtrees are standardized within each application root (one of the
     - `views/<view-id>/`
       - `surface` — app-relative reference to a surface
       - `present` — execution to present the surface to the window
+      - `present/policy` — optional string selector (`AlwaysFresh`, `PreferLatestCompleteWithBudget`, `AlwaysLatestComplete`)
+      - `present/params/` — optional tuning overrides
+        - `staleness_budget_ms` — float, default 8.0
+        - `frame_timeout_ms` — float, default 20.0
+        - `max_age_frames` — uint, default 1
+        - `auto_render_on_present` — bool, default true
+        - `vsync_align` — bool, default true
     - `diagnostics/`
       - `errors/live`
       - `errors/history/<id>`
