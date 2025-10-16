@@ -46,6 +46,13 @@ using SP::UI::Scene::MeshCommand;
 using namespace SP::UI::PipelineFlags;
 namespace UIScene = SP::UI::Scene;
 
+namespace SP::UI::Builders {
+auto maybe_schedule_auto_render(PathSpace& space,
+                                std::string const& targetPath,
+                                PathWindowView::PresentStats const& stats,
+                                PathWindowView::PresentPolicy const& policy) -> SP::Expected<bool>;
+}
+
 namespace {
 
 struct RendererFixture {
@@ -1699,6 +1706,169 @@ TEST_CASE("Window::Present reads present policy overrides from PathSpace") {
     CHECK_FALSE(fx.space.read<bool, std::string>(metricsBase + "/autoRenderOnPresent").value());
     CHECK_FALSE(fx.space.read<bool, std::string>(metricsBase + "/vsyncAlign").value());
     CHECK_FALSE(fx.space.read<bool, std::string>(metricsBase + "/stale").value());
+}
+
+TEST_CASE("Window auto render scheduling enqueues render request when frame stays stale") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0xCAFEu};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, 2.0f}};
+    bucket.bounds_boxes = {BoundingBox{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 0.0f}}};
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {0};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {0};
+    bucket.alpha_indices = {};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {DrawableAuthoringMapEntry{bucket.drawable_ids[0], "auto_render/stale", 0, 0}};
+
+    RectCommand rect{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 2.0f,
+        .max_y = 2.0f,
+        .color = {0.6f, 0.4f, 0.2f, 1.0f},
+    };
+    encode_rect_command(rect, bucket);
+
+    auto scenePath = create_scene(fx, "scene_auto_render", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_auto_render");
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 2;
+    surfaceDesc.size_px.height = 2;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_auto_render", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+
+    auto targetPath = resolve_target(fx, surfacePath);
+    auto queuePath = std::string(targetPath.getPath()) + "/events/renderRequested/queue";
+    while (true) {
+        auto drained = fx.space.take<Builders::AutoRenderRequestEvent>(queuePath);
+        if (!drained) {
+            break;
+        }
+    }
+
+    PathWindowView::PresentStats stats{};
+    stats.skipped = true;
+    stats.buffered_frame_consumed = false;
+    stats.mode = PathWindowView::PresentMode::PreferLatestCompleteWithBudget;
+    stats.frame.frame_index = 7;
+    stats.frame.revision = 3;
+    stats.frame_age_frames = 2;
+    stats.frame_age_ms = 40.0;
+
+    PathWindowView::PresentPolicy policy{};
+    policy.auto_render_on_present = true;
+    policy.max_age_frames = 1;
+    policy.staleness_budget = std::chrono::milliseconds{8};
+    policy.staleness_budget_ms_value = 8.0;
+    policy.frame_timeout = std::chrono::milliseconds{20};
+    policy.frame_timeout_ms_value = 20.0;
+
+    auto scheduled = maybe_schedule_auto_render(fx.space,
+                                                std::string(targetPath.getPath()),
+                                                stats,
+                                                policy);
+    REQUIRE(scheduled);
+    CHECK(*scheduled);
+
+    auto event = fx.space.take<Builders::AutoRenderRequestEvent>(queuePath);
+    REQUIRE(event);
+    CHECK(event->frame_index == stats.frame.frame_index);
+    CHECK(event->reason.find("present-skipped") != std::string::npos);
+    CHECK(event->reason.find("age-frames") != std::string::npos);
+}
+
+TEST_CASE("Window auto render scheduling no-ops when disabled") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0xBEEFu};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, 2.0f}};
+    bucket.bounds_boxes = {BoundingBox{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 0.0f}}};
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {0};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {0};
+    bucket.alpha_indices = {};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {DrawableAuthoringMapEntry{bucket.drawable_ids[0], "auto_render/disabled", 0, 0}};
+
+    RectCommand rect{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 2.0f,
+        .max_y = 2.0f,
+        .color = {0.4f, 0.6f, 0.2f, 1.0f},
+    };
+    encode_rect_command(rect, bucket);
+
+    auto scenePath = create_scene(fx, "scene_auto_render_disabled", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_auto_render_disabled");
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 2;
+    surfaceDesc.size_px.height = 2;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_auto_render_disabled", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+
+    auto targetPath = resolve_target(fx, surfacePath);
+    auto queuePath = std::string(targetPath.getPath()) + "/events/renderRequested/queue";
+    while (true) {
+        auto drained = fx.space.take<Builders::AutoRenderRequestEvent>(queuePath);
+        if (!drained) {
+            break;
+        }
+    }
+
+    PathWindowView::PresentStats stats{};
+    stats.skipped = true;
+    stats.buffered_frame_consumed = false;
+    stats.frame.frame_index = 11;
+    stats.frame.revision = 5;
+    stats.frame_age_frames = 4;
+    stats.frame_age_ms = 80.0;
+
+    PathWindowView::PresentPolicy policy{};
+    policy.auto_render_on_present = false;
+    policy.max_age_frames = 1;
+    policy.staleness_budget_ms_value = 8.0;
+    policy.frame_timeout = std::chrono::milliseconds{20};
+    policy.frame_timeout_ms_value = 20.0;
+
+    auto scheduled = maybe_schedule_auto_render(fx.space,
+                                                std::string(targetPath.getPath()),
+                                                stats,
+                                                policy);
+    REQUIRE(scheduled);
+    CHECK_FALSE(*scheduled);
+
+    auto no_event = fx.space.take<Builders::AutoRenderRequestEvent>(queuePath);
+    CHECK_FALSE(no_event);
+    auto code = no_event.error().code;
+    bool is_expected_code = (code == Error::Code::NoObjectFound)
+                            || (code == Error::Code::NoSuchPath);
+    CHECK(is_expected_code);
 }
 
 TEST_CASE("PathWindowView reports progressive seqlock skips") {

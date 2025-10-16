@@ -77,17 +77,14 @@ Completed:
 - ✅ (October 15, 2025) `PathSurfaceSoftware` progressive buffer + double-buffer landed with dedicated UI tests.
 - ✅ (October 15, 2025) `PathWindowView` now presents buffered/progressive frames and writes presenter metrics via `Builders::Diagnostics::WritePresentMetrics`; UI tests split into `PathSpaceUITests` for isolation.
 - ✅ (October 16, 2025) End-to-end scene → render → present doctests cover policy permutations, progressive copy assertions, and diagnostics outputs through `Builders::Window::Present`.
-- ✅ (October 16, 2025) Presenter integration routes through `Window::Present`, emitting progressive-mode metrics and wait-budget data aligned with per-view policies (auto-render scheduling still pending).
+- ✅ (October 16, 2025) Presenter integration routes through `Window::Present`, emitting progressive-mode metrics, wait-budget data, and auto-render scheduling hooks that enqueue `AutoRenderRequestEvent` when frames remain stale.
 - ✅ (October 16, 2025) Seqlock and deadline behaviour codified via `PathWindowView` and builder tests, ensuring wait-budget clamps and progressive copy skips are observable.
 - ✅ (October 16, 2025) Compile/test loop harness revalidated after presenter integration (15× repeat, 20 s timeout) confirming stability.
-
-Remaining:
-- Implement auto-render scheduling hooks once policy-driven triggers are ready.
 
 ### Phase 5 — Input, Hit Testing, and Notifications (1 sprint)
 - ✅ (October 16, 2025) Added doctest scenarios for hit ordering, clip-aware picking, focus routing, and auto-render event scheduling via `Scene::HitTest`; notifications enqueue `AutoRenderRequestEvent` under `events/renderRequested/queue`.
 - Implement DrawableBucket-backed hit testing, clip stack reconstruction, and focus bookkeeping per spec. *(base implementation in place; extend with per-path focus metadata and local-space coordinates)*
-- Integrate wait/notify flows for scene dirty markers, snapshot rebuild triggers, and presenter auto-render scheduling.
+- Integrate wait/notify flows for scene dirty markers and snapshot rebuild triggers (presenter auto-render scheduling now wired through Phase 4 helpers).
 - Exercise the notification loops in the mandated test harness and document latency/ordering guarantees.
 
 ### Phase 6 — Diagnostics, Tooling, and Hardening (1 sprint)

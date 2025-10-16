@@ -60,6 +60,52 @@ auto enqueue_auto_render_event(PathSpace& space,
     return {};
 }
 
+auto maybe_schedule_auto_render_impl(PathSpace& space,
+                                     std::string const& targetPath,
+                                     PathWindowView::PresentStats const& stats,
+                                     PathWindowView::PresentPolicy const& policy) -> SP::Expected<bool> {
+    if (!policy.auto_render_on_present) {
+        return false;
+    }
+
+    std::vector<std::string> reasons;
+    if (stats.skipped) {
+        reasons.emplace_back("present-skipped");
+    }
+
+    if (!stats.buffered_frame_consumed) {
+        if (stats.frame_age_frames > policy.max_age_frames) {
+            reasons.emplace_back("age-frames");
+        }
+        if (stats.frame_age_ms > policy.staleness_budget_ms_value) {
+            reasons.emplace_back("age-ms");
+        }
+    } else {
+        if (stats.frame_age_frames > policy.max_age_frames) {
+            reasons.emplace_back("age-frames");
+        }
+        if (stats.frame_age_ms > policy.staleness_budget_ms_value) {
+            reasons.emplace_back("age-ms");
+        }
+    }
+
+    if (reasons.empty()) {
+        return false;
+    }
+
+    std::string reason = reasons.front();
+    for (std::size_t i = 1; i < reasons.size(); ++i) {
+        reason.append(",");
+        reason.append(reasons[i]);
+    }
+
+    auto status = enqueue_auto_render_event(space, targetPath, reason, stats.frame.frame_index);
+    if (!status) {
+        return std::unexpected(status.error());
+    }
+    return true;
+}
+
 struct SurfaceRenderContext {
     SP::ConcretePathString target_path;
     SurfaceDesc            target_desc;
@@ -519,6 +565,13 @@ auto ensure_within_root(AppRootPathView root,
 }
 
 } // namespace
+
+auto maybe_schedule_auto_render(PathSpace& space,
+                                std::string const& targetPath,
+                                PathWindowView::PresentStats const& stats,
+                                PathWindowView::PresentPolicy const& policy) -> SP::Expected<bool> {
+    return maybe_schedule_auto_render_impl(space, targetPath, stats, policy);
+}
 
 auto resolve_app_relative(AppRootPathView root,
                           UnvalidatedPathView maybeRelative) -> SP::Expected<ConcretePath> {
@@ -1142,21 +1195,41 @@ auto Present(PathSpace& space,
     }
 
     auto metricsBase = std::string(context->target_path.getPath()) + "/output/v1/common";
-    std::uint64_t previous_frame_index = 0;
-    if (auto previous = read_optional<uint64_t>(space, metricsBase + "/frameIndex"); !previous) {
+    std::uint64_t previous_age_frames = 0;
+    if (auto previous = read_optional<uint64_t>(space, metricsBase + "/presentedAgeFrames"); !previous) {
         return std::unexpected(previous.error());
     } else if (previous->has_value()) {
-        previous_frame_index = **previous;
+        previous_age_frames = **previous;
     }
 
-    if (presentStats.frame.frame_index >= previous_frame_index) {
-        presentStats.frame_age_frames = presentStats.frame.frame_index - previous_frame_index;
+    double previous_age_ms = 0.0;
+    if (auto previous = read_optional<double>(space, metricsBase + "/presentedAgeMs"); !previous) {
+        return std::unexpected(previous.error());
+    } else if (previous->has_value()) {
+        previous_age_ms = **previous;
+    }
+
+    auto frame_timeout_ms = static_cast<double>(policy->frame_timeout.count());
+    bool reuse_previous_frame = !presentStats.buffered_frame_consumed;
+    if (!reuse_previous_frame && presentStats.skipped) {
+        reuse_previous_frame = true;
+    }
+
+    if (reuse_previous_frame) {
+        presentStats.frame_age_frames = previous_age_frames + 1;
+        presentStats.frame_age_ms = previous_age_ms + frame_timeout_ms;
     } else {
         presentStats.frame_age_frames = 0;
+        presentStats.frame_age_ms = 0.0;
     }
-    presentStats.frame_age_ms = static_cast<double>(presentStats.frame_age_frames)
-                                * static_cast<double>(policy->frame_timeout.count());
     presentStats.stale = presentStats.frame_age_frames > policy->max_age_frames;
+
+    if (auto scheduled = maybe_schedule_auto_render(space,
+                                                    std::string(context->target_path.getPath()),
+                                                    presentStats,
+                                                    *policy); !scheduled) {
+        return std::unexpected(scheduled.error());
+    }
 
     if (auto status = Diagnostics::WritePresentMetrics(space,
                                                        SP::ConcretePathStringView{context->target_path.getPath()},
