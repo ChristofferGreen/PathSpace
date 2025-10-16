@@ -1124,6 +1124,18 @@ auto WritePresentMetrics(PathSpace& space,
                                                static_cast<uint64_t>(stats.progressive_tiles_copied)); !status) {
         return status;
     }
+    if (auto status = replace_single<uint64_t>(space, base + "/progressiveRectsCoalesced",
+                                               static_cast<uint64_t>(stats.progressive_rects_coalesced)); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space, base + "/progressiveSkipOddSeq",
+                                               static_cast<uint64_t>(stats.progressive_skip_seq_odd)); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space, base + "/progressiveRecopyAfterSeqChange",
+                                               static_cast<uint64_t>(stats.progressive_recopy_after_seq_change)); !status) {
+        return status;
+    }
     if (auto status = replace_single<double>(space, base + "/waitBudgetMs", stats.wait_budget_ms); !status) {
         return status;
     }

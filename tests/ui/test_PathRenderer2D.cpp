@@ -880,6 +880,9 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     CHECK(fx.space.read<bool>(metricsBase + "/bufferedFrameConsumed").value());
     CHECK(fx.space.read<bool>(metricsBase + "/usedProgressive").value());
     CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveTilesCopied").value() == 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveRectsCoalesced").value() >= 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveSkipOddSeq").value() == 0);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveRecopyAfterSeqChange").value() == 0);
     CHECK(fx.space.read<double>(metricsBase + "/waitBudgetMs").value() == doctest::Approx(16.0).epsilon(0.1));
     CHECK(fx.space.read<double>(metricsBase + "/presentMs").value() >= 0.0);
     auto lastError = fx.space.read<std::string, std::string>(metricsBase + "/lastError");

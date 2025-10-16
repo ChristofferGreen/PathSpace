@@ -40,6 +40,9 @@ struct PathWindowPresentStats {
     double wait_budget_ms = 0.0;
     double present_ms = 0.0;
     std::size_t progressive_tiles_copied = 0;
+    std::size_t progressive_rects_coalesced = 0;
+    std::size_t progressive_skip_seq_odd = 0;
+    std::size_t progressive_recopy_after_seq_change = 0;
     std::string error;
 };
 

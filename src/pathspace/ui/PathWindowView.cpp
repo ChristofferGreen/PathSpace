@@ -51,10 +51,21 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
                 if (dims.width <= 0 || dims.height <= 0) {
                     continue;
                 }
+                ++stats.progressive_rects_coalesced;
                 auto const tile_bytes = static_cast<std::size_t>(dims.width)
                                         * static_cast<std::size_t>(dims.height) * kBytesPerPixel;
                 tile_storage.resize(tile_bytes);
-                auto tile_copy = progressive.copy_tile(tile_index, tile_storage);
+                auto attempt_copy = [&](bool /*second_attempt*/) {
+                    return progressive.copy_tile(tile_index, tile_storage);
+                };
+                auto tile_copy = attempt_copy(false);
+                if (!tile_copy) {
+                    ++stats.progressive_skip_seq_odd;
+                    tile_copy = attempt_copy(true);
+                    if (tile_copy) {
+                        ++stats.progressive_recopy_after_seq_change;
+                    }
+                }
                 if (!tile_copy) {
                     continue;
                 }

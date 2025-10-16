@@ -56,6 +56,9 @@ TEST_CASE("present copies buffered frame") {
     CHECK(stats.presented);
     CHECK(stats.buffered_frame_consumed);
     CHECK_FALSE(stats.used_progressive);
+    CHECK(stats.progressive_rects_coalesced == 0);
+    CHECK(stats.progressive_skip_seq_odd == 0);
+    CHECK(stats.progressive_recopy_after_seq_change == 0);
     CHECK(stats.frame.frame_index == 5);
     CHECK(stats.error.empty());
     CHECK(stats.present_ms >= 0.0);
@@ -102,6 +105,9 @@ TEST_CASE("present copies progressive tiles when buffered missing") {
     CHECK_FALSE(stats.buffered_frame_consumed);
     CHECK(stats.used_progressive);
     CHECK(stats.progressive_tiles_copied == 1);
+    CHECK(stats.progressive_rects_coalesced == 1);
+    CHECK(stats.progressive_skip_seq_odd == 0);
+    CHECK(stats.progressive_recopy_after_seq_change == 0);
     CHECK(stats.frame.revision == 3);
     CHECK(stats.error.empty());
     CHECK(stats.present_ms >= 0.0);
@@ -121,6 +127,37 @@ TEST_CASE("present copies progressive tiles when buffered missing") {
     // Remaining rows untouched (still zero).
     auto base = static_cast<std::size_t>(2) * surface.row_stride_bytes();
     CHECK(framebuffer[base + 0] == 0);
+}
+
+TEST_CASE("progressive copy records skip when tile write in-flight") {
+    PathSurfaceSoftware::Options opts{
+        .enable_progressive = true,
+        .enable_buffered = false,
+        .progressive_tile_size_px = 2,
+    };
+    PathSurfaceSoftware surface{make_desc(2, 2), opts};
+    auto writer = surface.begin_progressive_tile(0, TilePass::OpaqueInProgress);
+
+    PathWindowView view;
+    std::vector<std::uint8_t> framebuffer(surface.frame_bytes(), 0);
+    std::array<std::size_t, 1> dirty_tiles{{0}};
+    PathWindowView::PresentPolicy policy{};
+    policy.mode = PathWindowView::PresentMode::AlwaysLatestComplete;
+    PathWindowView::PresentRequest request{
+        .now = std::chrono::steady_clock::now(),
+        .vsync_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{8},
+        .framebuffer = framebuffer,
+        .dirty_tiles = dirty_tiles,
+    };
+
+    auto stats = view.present(surface, policy, request);
+    CHECK(stats.skipped);
+    CHECK_FALSE(stats.presented);
+    CHECK_FALSE(stats.used_progressive);
+    CHECK(stats.progressive_tiles_copied == 0);
+    CHECK(stats.progressive_rects_coalesced == 1);
+    CHECK(stats.progressive_skip_seq_odd == 1);
+    CHECK(stats.progressive_recopy_after_seq_change == 0);
 }
 
 TEST_CASE("always fresh skips when buffered frame missing") {
@@ -144,6 +181,9 @@ TEST_CASE("always fresh skips when buffered frame missing") {
     CHECK(stats.skipped);
     CHECK_FALSE(stats.presented);
     CHECK_FALSE(stats.used_progressive);
+    CHECK(stats.progressive_rects_coalesced == 0);
+    CHECK(stats.progressive_skip_seq_odd == 0);
+    CHECK(stats.progressive_recopy_after_seq_change == 0);
     CHECK(stats.present_ms >= 0.0);
 }
 
@@ -159,6 +199,9 @@ TEST_CASE("WritePresentMetrics stores presenter results in PathSpace") {
     stats.buffered_frame_consumed = true;
     stats.used_progressive = true;
     stats.progressive_tiles_copied = 3;
+    stats.progressive_rects_coalesced = 2;
+    stats.progressive_skip_seq_odd = 1;
+    stats.progressive_recopy_after_seq_change = 1;
     stats.wait_budget_ms = 1.25;
     stats.error = "ok";
 
@@ -179,6 +222,9 @@ TEST_CASE("WritePresentMetrics stores presenter results in PathSpace") {
     CHECK(space.read<bool>(base + "/bufferedFrameConsumed").value());
     CHECK(space.read<bool>(base + "/usedProgressive").value());
     CHECK(space.read<uint64_t>(base + "/progressiveTilesCopied").value() == 3);
+    CHECK(space.read<uint64_t>(base + "/progressiveRectsCoalesced").value() == 2);
+    CHECK(space.read<uint64_t>(base + "/progressiveSkipOddSeq").value() == 1);
+    CHECK(space.read<uint64_t>(base + "/progressiveRecopyAfterSeqChange").value() == 1);
     CHECK(space.read<double>(base + "/waitBudgetMs").value() == doctest::Approx(1.25));
     auto lastError = space.read<std::string, std::string>(base + "/lastError");
     REQUIRE(lastError);
