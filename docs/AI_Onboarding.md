@@ -1,7 +1,7 @@
 # PathSpace — AI Onboarding (Fresh Session)
 
 > **Context update (October 15, 2025):** This onboarding now targets the “Atlas” AI context introduced for the current launch window; adjust legacy workflows to align with this context.
-> **Session hand-off (October 17, 2025):** Software renderer incremental paths are healthy (~140 FPS for 64 px brush hints at 4 K), but full-surface repaints are still ~6 FPS and `paint_example` can exhaust macOS IOSurface allocations during repeated fullscreen runs. The thin benchmark harness (see `build/benchmarks/path_renderer2d_benchmark`) is wired up; next steps are to instrument renderer phases (damage diff, encode, copy, publish) and tighten `paint_example`'s damage hints. 
+> **Session hand-off (October 17, 2025):** Software renderer incremental paths are healthy (~140 FPS for 64 px brush hints at 4 K) and the zero-copy path now skips redundant IOSurface→CPU copies. Use `./build/benchmarks/path_renderer2d_benchmark` for per-phase timing (damage diff, encode, progressive copy, publish, present) and `./build/paint_example --debug` to watch live frame stats. Expect FPS to dip as brush history grows because the demo keeps each stroke as a drawable; stroke compositing is logged as optional follow-up in `docs/SceneGraphImplementationPlan.md`. 
 
 This guide bootstraps a brand-new AI assistant so it can work productively in the PathSpace repository without inheriting prior conversational context. Follow these steps at the beginning of every new session.
 

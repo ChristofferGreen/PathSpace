@@ -22,7 +22,7 @@ task {
   task {
     name: "Renderer Benchmarking [PERF]"
     description: "Instrument PathRenderer2D phases (damage diff, encode, progressive copy, IOSurface publish, presenter blit) and capture 4K vs small-surface timings; reuse the new benchmark harness for automation."
-    status: planned
+    status: completed
     priority: P1
     acceptance_criteria: [
       "Benchmark harness reports per-phase timings for 4K_full, 4K_incremental, and sub-2K cases.",
@@ -53,6 +53,24 @@ task {
     "Prototype adaptive tile sizing or merge heuristics that shrink damage for narrow hints.",
     "Assess IOSurface reuse/presenter path to avoid full-buffer copies when not required.",
     "Capture before/after traces (PATHSPACE_TRACE_DAMAGE=1) and summarize in docs."
+  ]
+}
+
+task {
+  name: "Paint Demo Stroke Compositing [EXP]"
+  description: "Prototype a compositing path so paint_example bakes strokes into a persistent texture (or coalesced drawable) instead of retaining every rect command."
+  status: optional
+  priority: P2
+
+  acceptance_criteria: [
+    "Prototype keeps paint_example FPS stable during long sessions by constraining drawable growth.",
+    "Toggle or config documented so regression tests can keep exercising the existing stroke-per-drawable path."
+  ]
+
+  steps: [
+    "Investigate lightweight texture compositing or stroke decimation strategies for the demo.",
+    "Measure performance vs. current approach and capture findings in docs/SceneGraphImplementationPlan.md.",
+    "Decide whether to upstream as default or leave as optional mode."
   ]
 }
 
