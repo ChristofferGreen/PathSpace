@@ -14,10 +14,13 @@
 #include <cctype>
 #include <cstdint>
 #include <iomanip>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -47,6 +50,70 @@ struct SceneRevisionRecord {
 auto make_error(std::string message,
                 SP::Error::Code code = SP::Error::Code::UnknownError) -> SP::Error {
     return SP::Error{code, std::move(message)};
+}
+
+auto surfaces_cache() -> std::unordered_map<std::string, std::unique_ptr<PathSurfaceSoftware>>& {
+    static std::unordered_map<std::string, std::unique_ptr<PathSurfaceSoftware>> cache;
+    return cache;
+}
+
+auto surfaces_cache_mutex() -> std::mutex& {
+    static std::mutex mutex;
+    return mutex;
+}
+
+auto before_present_hook_mutex() -> std::mutex& {
+    static std::mutex mutex;
+    return mutex;
+}
+
+auto before_present_hook_storage()
+    -> Window::TestHooks::BeforePresentHook& {
+    static Window::TestHooks::BeforePresentHook hook;
+    return hook;
+}
+
+void invoke_before_present_hook(PathSurfaceSoftware& surface,
+                                PathWindowView::PresentPolicy& policy,
+                                std::vector<std::size_t>& dirty_tiles) {
+    Window::TestHooks::BeforePresentHook hook_copy;
+    {
+        std::lock_guard<std::mutex> lock{before_present_hook_mutex()};
+        hook_copy = before_present_hook_storage();
+    }
+    if (hook_copy) {
+        hook_copy(surface, policy, dirty_tiles);
+    }
+}
+
+auto acquire_surface_unlocked(std::string const& key,
+                              Builders::SurfaceDesc const& desc) -> PathSurfaceSoftware& {
+    auto& cache = surfaces_cache();
+    auto it = cache.find(key);
+    if (it == cache.end()) {
+        auto surface = std::make_unique<PathSurfaceSoftware>(desc);
+        auto* raw = surface.get();
+        cache.emplace(key, std::move(surface));
+        return *raw;
+    }
+
+    auto& surface = *it->second;
+    auto const& current = surface.desc();
+    if (current.size_px.width != desc.size_px.width
+        || current.size_px.height != desc.size_px.height
+        || current.pixel_format != desc.pixel_format
+        || current.color_space != desc.color_space
+        || current.premultiplied_alpha != desc.premultiplied_alpha) {
+        surface.resize(desc);
+    }
+    return surface;
+}
+
+auto acquire_surface(std::string const& key,
+                     Builders::SurfaceDesc const& desc) -> PathSurfaceSoftware& {
+    auto& mutex = surfaces_cache_mutex();
+    std::lock_guard<std::mutex> lock{mutex};
+    return acquire_surface_unlocked(key, desc);
 }
 
 auto enqueue_auto_render_event(PathSpace& space,
@@ -587,6 +654,16 @@ auto ensure_within_root(AppRootPathView root,
 }
 
 } // namespace
+
+void Window::TestHooks::SetBeforePresentHook(BeforePresentHook hook) {
+    std::lock_guard<std::mutex> lock{before_present_hook_mutex()};
+    before_present_hook_storage() = std::move(hook);
+}
+
+void Window::TestHooks::ResetBeforePresentHook() {
+    std::lock_guard<std::mutex> lock{before_present_hook_mutex()};
+    before_present_hook_storage() = nullptr;
+}
 
 auto maybe_schedule_auto_render(PathSpace& space,
                                 std::string const& targetPath,
@@ -1316,8 +1393,11 @@ auto Present(PathSpace& space,
     if (!policy) {
         return std::unexpected(policy.error());
     }
+    auto presentPolicy = *policy;
 
-    PathSurfaceSoftware surface{context->target_desc};
+    auto target_key = std::string(context->target_path.getPath());
+    auto& surface = acquire_surface(target_key, context->target_desc);
+
     auto renderStats = render_into_surface(space,
                                            SP::ConcretePathStringView{context->target_path.getPath()},
                                            context->settings,
@@ -1327,11 +1407,12 @@ auto Present(PathSpace& space,
     }
 
     auto dirty_tiles = surface.consume_progressive_dirty_tiles();
+    invoke_before_present_hook(surface, presentPolicy, dirty_tiles);
 
     PathWindowView presenter;
     std::vector<std::uint8_t> framebuffer(surface.frame_bytes(), 0);
     auto now = std::chrono::steady_clock::now();
-    auto vsync_budget = std::chrono::duration_cast<std::chrono::steady_clock::duration>(policy->frame_timeout);
+    auto vsync_budget = std::chrono::duration_cast<std::chrono::steady_clock::duration>(presentPolicy.frame_timeout);
     if (vsync_budget < std::chrono::steady_clock::duration::zero()) {
         vsync_budget = std::chrono::steady_clock::duration::zero();
     }
@@ -1351,7 +1432,7 @@ auto Present(PathSpace& space,
         .dirty_tiles = dirty_tiles,
     };
 #endif
-    auto presentStats = presenter.present(surface, *policy, request);
+    auto presentStats = presenter.present(surface, presentPolicy, request);
     if (renderStats) {
         presentStats.frame.frame_index = renderStats->frame_index;
         presentStats.frame.revision = renderStats->revision;
@@ -1398,7 +1479,7 @@ auto Present(PathSpace& space,
         previous_age_ms = **previous;
     }
 
-    auto frame_timeout_ms = static_cast<double>(policy->frame_timeout.count());
+    auto frame_timeout_ms = static_cast<double>(presentPolicy.frame_timeout.count());
     bool reuse_previous_frame = !presentStats.buffered_frame_consumed;
     if (!reuse_previous_frame && presentStats.skipped) {
         reuse_previous_frame = true;
@@ -1411,19 +1492,19 @@ auto Present(PathSpace& space,
         presentStats.frame_age_frames = 0;
         presentStats.frame_age_ms = 0.0;
     }
-    presentStats.stale = presentStats.frame_age_frames > policy->max_age_frames;
+    presentStats.stale = presentStats.frame_age_frames > presentPolicy.max_age_frames;
 
     if (auto scheduled = maybe_schedule_auto_render(space,
                                                     std::string(context->target_path.getPath()),
                                                     presentStats,
-                                                    *policy); !scheduled) {
+                                                    presentPolicy); !scheduled) {
         return std::unexpected(scheduled.error());
     }
 
     if (auto status = Diagnostics::WritePresentMetrics(space,
                                                        SP::ConcretePathStringView{context->target_path.getPath()},
                                                        presentStats,
-                                                       *policy); !status) {
+                                                       presentPolicy); !status) {
         return std::unexpected(status.error());
     }
 
@@ -1559,8 +1640,15 @@ auto WritePresentMetrics(PathSpace& space,
                                                   present_mode_to_string(stats.mode)); !status) {
         return status;
     }
+    auto progressive_tiles_copied = static_cast<uint64_t>(stats.progressive_tiles_copied);
+    if (progressive_tiles_copied == 0) {
+        auto existing_tiles = space.read<uint64_t>(base + "/progressiveTilesCopied");
+        if (existing_tiles) {
+            progressive_tiles_copied = *existing_tiles;
+        }
+    }
     if (auto status = replace_single<uint64_t>(space, base + "/progressiveTilesCopied",
-                                               static_cast<uint64_t>(stats.progressive_tiles_copied)); !status) {
+                                               progressive_tiles_copied); !status) {
         return status;
     }
     if (auto status = replace_single<uint64_t>(space, base + "/progressiveRectsCoalesced",

@@ -9,6 +9,7 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -357,6 +358,17 @@ auto Present(PathSpace& space,
               std::string_view viewName) -> SP::Expected<WindowPresentResult>;
 
 } // namespace Window
+
+namespace Window::TestHooks {
+
+using BeforePresentHook = std::function<void(PathSurfaceSoftware&,
+                                             PathWindowView::PresentPolicy&,
+                                             std::vector<std::size_t>&)>;
+
+void SetBeforePresentHook(BeforePresentHook hook);
+void ResetBeforePresentHook();
+
+} // namespace Window::TestHooks
 
 namespace Diagnostics {
 

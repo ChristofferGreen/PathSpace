@@ -180,6 +180,78 @@ auto encode_image_command(ImageCommand const& image,
     bucket.command_kinds.push_back(static_cast<std::uint32_t>(DrawCommandKind::Image));
 }
 
+struct RectDrawableDef {
+    std::uint64_t id = 0;
+    std::uint64_t fingerprint = 0;
+    RectCommand   rect{};
+};
+
+auto make_rect_bucket(std::vector<RectDrawableDef> const& defs) -> DrawableBucketSnapshot {
+    DrawableBucketSnapshot bucket{};
+    auto count = defs.size();
+    bucket.drawable_ids.reserve(count);
+    bucket.world_transforms.reserve(count);
+    bucket.bounds_spheres.reserve(count);
+    bucket.bounds_boxes.reserve(count);
+    bucket.bounds_box_valid.reserve(count);
+    bucket.layers.reserve(count);
+    bucket.z_values.reserve(count);
+    bucket.material_ids.reserve(count);
+    bucket.pipeline_flags.reserve(count);
+    bucket.visibility.reserve(count);
+    bucket.command_offsets.reserve(count);
+    bucket.command_counts.reserve(count);
+    bucket.clip_head_indices.reserve(count);
+    bucket.authoring_map.reserve(count);
+    bucket.drawable_fingerprints.reserve(count);
+
+    for (std::size_t index = 0; index < defs.size(); ++index) {
+        auto const& def = defs[index];
+        bucket.drawable_ids.push_back(def.id);
+        bucket.world_transforms.push_back(identity_transform());
+
+        BoundingBox box{};
+        box.min = {def.rect.min_x, def.rect.min_y, 0.0f};
+        box.max = {def.rect.max_x, def.rect.max_y, 0.0f};
+        bucket.bounds_boxes.push_back(box);
+        bucket.bounds_box_valid.push_back(1);
+
+        auto width = std::max(def.rect.max_x - def.rect.min_x, 0.0f);
+        auto height = std::max(def.rect.max_y - def.rect.min_y, 0.0f);
+        float radius = std::sqrt(width * width + height * height) * 0.5f;
+        BoundingSphere sphere{};
+        sphere.center = {(def.rect.min_x + def.rect.max_x) * 0.5f,
+                         (def.rect.min_y + def.rect.max_y) * 0.5f,
+                         0.0f};
+        sphere.radius = radius;
+        bucket.bounds_spheres.push_back(sphere);
+
+        bucket.layers.push_back(0);
+        bucket.z_values.push_back(static_cast<float>(index));
+        bucket.material_ids.push_back(0);
+        bucket.pipeline_flags.push_back(0);
+        bucket.visibility.push_back(1);
+        bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
+        bucket.command_counts.push_back(1);
+        bucket.clip_head_indices.push_back(-1);
+        bucket.authoring_map.push_back(DrawableAuthoringMapEntry{
+            def.id,
+            "drawable_" + std::to_string(index),
+            0,
+            0,
+        });
+        bucket.drawable_fingerprints.push_back(def.fingerprint);
+
+        encode_rect_command(def.rect, bucket);
+    }
+
+    bucket.opaque_indices.resize(defs.size());
+    std::iota(bucket.opaque_indices.begin(), bucket.opaque_indices.end(), 0u);
+    bucket.alpha_indices.clear();
+
+    return bucket;
+}
+
 auto format_revision(std::uint64_t revision) -> std::string {
     std::ostringstream oss;
     oss << std::setw(16) << std::setfill('0') << revision;
@@ -1982,6 +2054,142 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     CHECK(diagnosticsFramebuffer->pixels == storedFramebuffer->pixels);
 }
 
+TEST_CASE("Window::Present progressive updates preserve prior content") {
+    RendererFixture fx;
+
+    RectCommand rect_a{
+        .min_x = 10.0f,
+        .min_y = 12.0f,
+        .max_x = 18.0f,
+        .max_y = 20.0f,
+        .color = {1.0f, 0.0f, 0.0f, 1.0f},
+    };
+    RectCommand rect_b{
+        .min_x = 70.0f,
+        .min_y = 50.0f,
+        .max_x = 78.0f,
+        .max_y = 58.0f,
+        .color = {0.0f, 0.0f, 1.0f, 1.0f},
+    };
+
+    auto scenePath = create_scene(fx,
+                                  "scene_window_progressive",
+                                  make_rect_bucket({
+                                      RectDrawableDef{
+                                          .id = 0x100u,
+                                          .fingerprint = 0xAAAABBBBCCCCDDDDu,
+                                          .rect = rect_a,
+                                      },
+                                  }));
+    auto rendererPath = create_renderer(fx, "renderer_window_progressive");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 128;
+    surfaceDesc.size_px.height = 96;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_window_progressive", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+
+    Builders::WindowParams windowParams{};
+    windowParams.name = "window_progressive";
+    windowParams.title = "Progressive Window";
+    windowParams.width = surfaceDesc.size_px.width;
+    windowParams.height = surfaceDesc.size_px.height;
+    auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+    REQUIRE(windowPath);
+    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+
+    auto targetPath = resolve_target(fx, surfacePath);
+    auto submit_hint = [&](RectCommand const& rect) {
+        DirtyRectHint hint{
+            .min_x = rect.min_x,
+            .min_y = rect.min_y,
+            .max_x = rect.max_x,
+            .max_y = rect.max_y,
+        };
+        REQUIRE(Builders::Renderer::SubmitDirtyRects(fx.space,
+                                                     SP::ConcretePathStringView{targetPath.getPath()},
+                                                     std::span<const DirtyRectHint>{&hint, 1}));
+    };
+
+    auto color_to_bytes = [&](RectCommand const& rect) {
+        return encode_linear_to_bytes(make_linear_color(rect.color), surfaceDesc, true);
+    };
+    auto red_bytes = color_to_bytes(rect_a);
+    auto blue_bytes = color_to_bytes(rect_b);
+
+    auto sample_pixel = [](Builders::SoftwareFramebuffer const& fb, int x, int y) {
+        auto stride = static_cast<std::size_t>(fb.row_stride_bytes);
+        auto offset = stride * static_cast<std::size_t>(y) + static_cast<std::size_t>(x) * 4u;
+        return std::array<std::uint8_t, 4>{
+            fb.pixels[offset + 0],
+            fb.pixels[offset + 1],
+            fb.pixels[offset + 2],
+            fb.pixels[offset + 3],
+        };
+    };
+
+    // Frame 1: render rect A
+    submit_hint(rect_a);
+    auto present_first = Builders::Window::Present(fx.space, *windowPath, "main");
+    REQUIRE(present_first);
+    CHECK(present_first->stats.presented);
+
+    auto framebufferPath = std::string(targetPath.getPath()) + "/output/v1/software/framebuffer";
+    auto framebuffer_first = fx.space.read<Builders::SoftwareFramebuffer, std::string>(framebufferPath);
+    REQUIRE(framebuffer_first);
+
+    auto center_a_x = static_cast<int>((rect_a.min_x + rect_a.max_x) * 0.5f);
+    auto center_a_y = static_cast<int>((rect_a.min_y + rect_a.max_y) * 0.5f);
+    auto pixel_first_a = sample_pixel(*framebuffer_first, center_a_x, center_a_y);
+    CHECK(pixel_first_a[0] == red_bytes[0]);
+    CHECK(pixel_first_a[1] == red_bytes[1]);
+    CHECK(pixel_first_a[2] == red_bytes[2]);
+    CHECK(pixel_first_a[3] == red_bytes[3]);
+
+    // Frame 2: add rect B with hints covering only rect B.
+    fx.publish_snapshot(scenePath,
+                        make_rect_bucket({
+                            RectDrawableDef{
+                                .id = 0x100u,
+                                .fingerprint = 0xAAAABBBBCCCCDDDDu,
+                                .rect = rect_a,
+                            },
+                            RectDrawableDef{
+                                .id = 0x200u,
+                                .fingerprint = 0x1111222233334444u,
+                                .rect = rect_b,
+                            },
+                        }));
+    submit_hint(rect_b);
+
+    auto present_second = Builders::Window::Present(fx.space, *windowPath, "main");
+    REQUIRE(present_second);
+    CHECK(present_second->stats.presented);
+    CHECK(present_second->stats.progressive_tiles_copied >= 1);
+
+    auto framebuffer_second = fx.space.read<Builders::SoftwareFramebuffer, std::string>(framebufferPath);
+    REQUIRE(framebuffer_second);
+
+    auto center_b_x = static_cast<int>((rect_b.min_x + rect_b.max_x) * 0.5f);
+    auto center_b_y = static_cast<int>((rect_b.min_y + rect_b.max_y) * 0.5f);
+
+    auto pixel_second_a = sample_pixel(*framebuffer_second, center_a_x, center_a_y);
+    CHECK(pixel_second_a[0] == red_bytes[0]);
+    CHECK(pixel_second_a[1] == red_bytes[1]);
+    CHECK(pixel_second_a[2] == red_bytes[2]);
+    CHECK(pixel_second_a[3] == red_bytes[3]);
+
+    auto pixel_second_b = sample_pixel(*framebuffer_second, center_b_x, center_b_y);
+    CHECK(pixel_second_b[0] == blue_bytes[0]);
+    CHECK(pixel_second_b[1] == blue_bytes[1]);
+    CHECK(pixel_second_b[2] == blue_bytes[2]);
+    CHECK(pixel_second_b[3] == blue_bytes[3]);
+}
+
 TEST_CASE("Window::Present handles repeated loop without dropping metrics") {
     RendererFixture fx;
 
@@ -2391,6 +2599,88 @@ TEST_CASE("PathWindowView reports progressive seqlock skips") {
     CHECK(presentStats.progressive_tiles_copied == 0);
 
     writer.abort();
+}
+
+TEST_CASE("Window::Present records progressive seqlock metrics") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x440001u};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, 2.0f}};
+    bucket.bounds_boxes = {BoundingBox{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 0.0f}}};
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {AlphaBlend};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {};
+    bucket.alpha_indices = {0};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {DrawableAuthoringMapEntry{bucket.drawable_ids[0], "window/seqlock", 0, 0}};
+
+    RectCommand rect{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 2.0f,
+        .max_y = 2.0f,
+        .color = {0.6f, 0.4f, 0.8f, 0.5f},
+    };
+    encode_rect_command(rect, bucket);
+
+    auto scenePath = create_scene(fx, "scene_window_seqlock", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_window_seqlock");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 2;
+    surfaceDesc.size_px.height = 2;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_window_seqlock", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+
+    Builders::WindowParams windowParams{};
+    windowParams.name = "window_seqlock";
+    windowParams.title = "Seqlock";
+    windowParams.width = 64;
+    windowParams.height = 64;
+    auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+    REQUIRE(windowPath);
+    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+
+    std::optional<ProgressiveSurfaceBuffer::TileWriter> locked_tile;
+    struct HookReset {
+        ~HookReset() { Window::TestHooks::ResetBeforePresentHook(); }
+    } hook_reset;
+
+    Window::TestHooks::SetBeforePresentHook(
+        [&](PathSurfaceSoftware& surface,
+            PathWindowView::PresentPolicy& /*policy*/,
+            std::vector<std::size_t>& dirty_tiles) {
+            REQUIRE_FALSE(dirty_tiles.empty());
+            locked_tile.emplace(surface.begin_progressive_tile(dirty_tiles.front(),
+                                                               TilePass::OpaqueInProgress));
+        });
+
+    auto present = Builders::Window::Present(fx.space, *windowPath, "main");
+    REQUIRE(present);
+    CHECK(present->stats.progressive_skip_seq_odd >= 1);
+    CHECK(present->stats.progressive_tiles_copied == 0);
+
+    auto targetPath = resolve_target(fx, surfacePath);
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveSkipOddSeq").value() >= 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveTilesCopied").value() == 0);
+
+    if (locked_tile) {
+        locked_tile->abort();
+        locked_tile.reset();
+    }
 }
 
 TEST_CASE("rounded rectangles respect per-corner radii") {
