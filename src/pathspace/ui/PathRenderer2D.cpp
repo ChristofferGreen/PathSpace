@@ -216,6 +216,18 @@ struct DamageRect {
         return !(tile_max_x <= min_x || tile.x >= max_x
                  || tile_max_y <= min_y || tile.y >= max_y);
     }
+
+    [[nodiscard]] auto intersect(DamageRect const& other) const -> DamageRect {
+        DamageRect result{};
+        result.min_x = std::max(min_x, other.min_x);
+        result.min_y = std::max(min_y, other.min_y);
+        result.max_x = std::min(max_x, other.max_x);
+        result.max_y = std::min(max_y, other.max_y);
+        if (result.empty()) {
+            return DamageRect{};
+        }
+        return result;
+    }
 };
 
 class DamageRegion {
@@ -355,6 +367,32 @@ public:
                 }
             }
         }
+    }
+
+    void restrict_to(std::span<DamageRect const> limits) {
+        if (full_surface_ || limits.empty()) {
+            return;
+        }
+        std::vector<DamageRect> reduced;
+        reduced.reserve(rects_.size());
+        for (auto const& rect : rects_) {
+            bool intersected = false;
+            for (auto const& limit : limits) {
+                if (limit.empty()) {
+                    continue;
+                }
+                auto intersection = rect.intersect(limit);
+                if (!intersection.empty()) {
+                    reduced.push_back(intersection);
+                    intersected = true;
+                }
+            }
+            if (!intersected) {
+                reduced.push_back(rect);
+            }
+        }
+        rects_.swap(reduced);
+        merge_overlaps();
     }
 
 private:
@@ -964,6 +1002,11 @@ auto encode_pixel(float const* linear_premul,
 PathRenderer2D::PathRenderer2D(PathSpace& space)
     : space_(space) {}
 
+auto PathRenderer2D::target_cache() -> std::unordered_map<std::string, TargetState>& {
+    static std::unordered_map<std::string, TargetState> cache;
+    return cache;
+}
+
 auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     auto const start = std::chrono::steady_clock::now();
 
@@ -1057,14 +1100,16 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
 
     auto const pixel_count = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
     auto target_key = std::string(params.target_path.getPath());
-    auto& state = target_cache_[target_key];
+    auto& state = target_cache()[target_key];
 
     std::vector<Builders::DirtyRectHint> dirty_rect_hints;
+    std::vector<DamageRect> hint_rects;
     {
         auto hints_path = target_key + "/hints/dirtyRects";
         auto hints = space_.take<std::vector<Builders::DirtyRectHint>>(hints_path);
         if (hints) {
             dirty_rect_hints = std::move(*hints);
+            hint_rects.reserve(dirty_rect_hints.size());
         } else {
             auto const& error = hints.error();
             if (error.code != SP::Error::Code::NoObjectFound
@@ -1157,7 +1202,6 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
             }
 
             PathRenderer2D::DrawableState const* matched_prev = nullptr;
-            std::uint64_t matched_prev_id = 0;
             if (current_state.fingerprint != 0) {
                 auto map_it = previous_by_fingerprint.find(current_state.fingerprint);
                 if (map_it != previous_by_fingerprint.end()) {
@@ -1168,28 +1212,28 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                         if (consumed_previous_ids.contains(candidate_id)) {
                             continue;
                         }
+                        if (current_states.find(candidate_id) != current_states.end()) {
+                            continue;
+                        }
                         auto prev_found = state.drawable_states.find(candidate_id);
                         if (prev_found == state.drawable_states.end()) {
                             continue;
                         }
                         if (!matched_prev) {
                             matched_prev = &prev_found->second;
-                            matched_prev_id = candidate_id;
                             best_index = idx;
                         }
                         if (bounds_equal(current_state.bounds, prev_found->second.bounds)) {
                             matched_prev = &prev_found->second;
-                            matched_prev_id = candidate_id;
                             best_index = idx;
                             break;
                         }
                     }
                     if (best_index.has_value() && matched_prev) {
-                        consumed_previous_ids.insert(matched_prev_id);
+                        consumed_previous_ids.insert(candidates[*best_index]);
                         candidates.erase(candidates.begin() + static_cast<std::ptrdiff_t>(*best_index));
                     } else {
                         matched_prev = nullptr;
-                        matched_prev_id = 0;
                     }
                 }
             }
@@ -1219,10 +1263,48 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         rect.max_x = static_cast<int>(std::ceil(hint.max_x));
         rect.max_y = static_cast<int>(std::ceil(hint.max_y));
         damage.add_rect(rect, width, height);
+        rect.clamp(width, height);
+        if (!rect.empty()) {
+            hint_rects.push_back(rect);
+        }
+    }
+
+    if (!hint_rects.empty()) {
+        if (auto* trace = std::getenv("PATHSPACE_TRACE_DAMAGE")) {
+            (void)trace;
+            std::cout << "hint rectangles (" << hint_rects.size() << ")" << std::endl;
+            for (auto const& rect : hint_rects) {
+                std::cout << "  hint=" << rect.min_x << ',' << rect.min_y
+                          << " -> " << rect.max_x << ',' << rect.max_y << std::endl;
+            }
+        }
     }
 
     damage.finalize(width, height);
+    damage.restrict_to(hint_rects);
     bool const has_damage = !damage.empty();
+
+    if (has_damage) {
+        if (auto* trace = std::getenv("PATHSPACE_TRACE_DAMAGE")) {
+            (void)trace;
+            auto rects = damage.rectangles();
+            std::cout << "damage rectangles (" << rects.size() << ")" << std::endl;
+            for (auto const& rect : rects) {
+                std::cout << "  rect=" << rect.min_x << ',' << rect.min_y
+                          << " -> " << rect.max_x << ',' << rect.max_y << std::endl;
+            }
+        }
+    }
+
+#if defined(DEBUG_TILE_TRACE)
+    if (has_damage) {
+        auto rects = damage.rectangles();
+        for (auto const& rect : rects) {
+            std::cout << "damage rect: " << rect.min_x << ',' << rect.min_y
+                      << ' ' << rect.max_x << ',' << rect.max_y << std::endl;
+        }
+    }
+#endif
 
     std::vector<std::uint8_t> local_frame_bytes;
     std::span<std::uint8_t> staging;

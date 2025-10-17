@@ -59,7 +59,8 @@ private:
 
     PathSpace& space_;
     ImageCache image_cache_;
-    std::unordered_map<std::string, TargetState> target_cache_;
+
+    static auto target_cache() -> std::unordered_map<std::string, TargetState>&;
 };
 
 } // namespace SP::UI

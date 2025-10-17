@@ -101,6 +101,14 @@ public:
 private:
     void reallocate_buffers();
     void reset_progressive();
+    void mark_staging_sync_needed();
+    void clear_staging_sync();
+#if defined(__APPLE__)
+    bool copy_front_into_locked_staging(std::uint8_t* staging_base,
+                                        std::size_t staging_stride,
+                                        int width,
+                                        int height);
+#endif
 
     Builders::SurfaceDesc desc_{};
     Options options_{};
@@ -143,6 +151,7 @@ private:
     std::atomic<std::uint64_t> buffered_frame_index_{0};
     std::atomic<std::uint64_t> buffered_revision_{0};
     std::atomic<std::uint64_t> buffered_render_ns_{0};
+    bool staging_sync_pending_ = false;
 };
 
 } // namespace SP::UI
