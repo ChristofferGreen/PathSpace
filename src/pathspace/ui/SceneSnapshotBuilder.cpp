@@ -360,7 +360,6 @@ auto compute_drawable_fingerprints(DrawableBucketSnapshot const& bucket) -> Expe
     };
 
     auto mix_authoring_entry = [&](Fnv1a64& h, DrawableAuthoringMapEntry const& entry) {
-        h.mix_value(entry.drawable_id);
         h.mix_value(entry.drawable_index_within_node);
         h.mix_value(entry.generation);
         if (!entry.authoring_node_id.empty()) {
@@ -370,7 +369,6 @@ auto compute_drawable_fingerprints(DrawableBucketSnapshot const& bucket) -> Expe
 
     for (std::size_t i = 0; i < drawable_count; ++i) {
         Fnv1a64 hash{};
-        hash.mix_value(bucket.drawable_ids[i]);
         if (i < bucket.world_transforms.size()) {
             auto const& transform = bucket.world_transforms[i];
             for (auto value : transform.elements) {

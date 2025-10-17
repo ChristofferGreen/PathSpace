@@ -18,6 +18,8 @@
 #include <span>
 #include <vector>
 #include <optional>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace SP::UI {
 namespace {
@@ -193,8 +195,8 @@ struct DamageRect {
     }
 
     [[nodiscard]] auto overlaps_or_touches(DamageRect const& other) const -> bool {
-        return !(max_x < other.min_x || other.max_x < min_x
-                 || max_y < other.min_y || other.max_y < min_y);
+        return !(max_x <= other.min_x || other.max_x <= min_x
+                 || max_y <= other.min_y || other.max_y <= min_y);
     }
 
     [[nodiscard]] auto intersects(PathRenderer2D::DrawableBounds const& bounds) const -> bool {
@@ -432,6 +434,14 @@ auto compute_drawable_bounds(Scene::DrawableBucketSnapshot const& bucket,
     }
 
     return bounds;
+}
+
+auto bounds_equal(PathRenderer2D::DrawableBounds const& lhs,
+                  PathRenderer2D::DrawableBounds const& rhs) -> bool {
+    return lhs.min_x == rhs.min_x
+        && lhs.min_y == rhs.min_y
+        && lhs.max_x == rhs.max_x
+        && lhs.max_y == rhs.max_y;
 }
 
 struct LinearStraightColor {
@@ -1070,18 +1080,28 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
 
     auto const drawable_count = bucket->drawable_ids.size();
     std::vector<std::optional<PathRenderer2D::DrawableBounds>> bounds_by_index(drawable_count);
-    std::unordered_map<std::uint64_t, PathRenderer2D::DrawableBounds> current_bounds;
-    current_bounds.reserve(drawable_count);
+    std::unordered_map<std::uint64_t, PathRenderer2D::DrawableState> current_states;
+    current_states.reserve(drawable_count);
+
+    auto const& drawable_fingerprints = bucket->drawable_fingerprints;
 
     bool missing_bounds = false;
     for (std::uint32_t i = 0; i < drawable_count; ++i) {
         auto maybe_bounds = compute_drawable_bounds(*bucket, i, width, height);
         if (maybe_bounds) {
             bounds_by_index[i] = maybe_bounds;
-            current_bounds.emplace(bucket->drawable_ids[i], *maybe_bounds);
         } else {
             missing_bounds = true;
         }
+
+        PathRenderer2D::DrawableState drawable_state{};
+        if (maybe_bounds) {
+            drawable_state.bounds = *maybe_bounds;
+        }
+        if (i < drawable_fingerprints.size()) {
+            drawable_state.fingerprint = drawable_fingerprints[i];
+        }
+        current_states.emplace(bucket->drawable_ids[i], drawable_state);
     }
     if (missing_bounds) {
         full_repaint = true;
@@ -1091,21 +1111,89 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     if (full_repaint) {
         damage.set_full(width, height);
     } else {
-        for (auto const& [id, bounds] : current_bounds) {
-            auto it = state.drawable_bounds.find(id);
-            if (it == state.drawable_bounds.end()) {
+        std::unordered_map<std::uint64_t, std::vector<std::uint64_t>> previous_by_fingerprint;
+        previous_by_fingerprint.reserve(state.drawable_states.size());
+        for (auto const& [prev_id, prev_state] : state.drawable_states) {
+            previous_by_fingerprint[prev_state.fingerprint].push_back(prev_id);
+        }
+
+        std::unordered_set<std::uint64_t> consumed_previous_ids;
+        consumed_previous_ids.reserve(state.drawable_states.size());
+
+        auto add_bounds = [&](PathRenderer2D::DrawableBounds const& bounds) {
+            if (!bounds.empty()) {
                 damage.add(bounds, width, height, 1);
-            } else if (bounds.min_x != it->second.min_x
-                       || bounds.min_y != it->second.min_y
-                       || bounds.max_x != it->second.max_x
-                       || bounds.max_y != it->second.max_y) {
-                damage.add(bounds, width, height, 1);
-                damage.add(it->second, width, height, 1);
+            }
+        };
+
+        for (auto const& [id, current_state] : current_states) {
+            auto prev_it = state.drawable_states.find(id);
+            if (prev_it != state.drawable_states.end()) {
+                consumed_previous_ids.insert(id);
+
+                auto const& prev_state = prev_it->second;
+                bool fingerprint_changed = current_state.fingerprint != prev_state.fingerprint;
+                bool bounds_changed = !bounds_equal(current_state.bounds, prev_state.bounds);
+                if (fingerprint_changed || bounds_changed) {
+                    add_bounds(current_state.bounds);
+                    add_bounds(prev_state.bounds);
+                }
+                continue;
+            }
+
+            PathRenderer2D::DrawableState const* matched_prev = nullptr;
+            std::uint64_t matched_prev_id = 0;
+            if (current_state.fingerprint != 0) {
+                auto map_it = previous_by_fingerprint.find(current_state.fingerprint);
+                if (map_it != previous_by_fingerprint.end()) {
+                    auto& candidates = map_it->second;
+                    std::optional<std::size_t> best_index;
+                    for (std::size_t idx = 0; idx < candidates.size(); ++idx) {
+                        auto candidate_id = candidates[idx];
+                        if (consumed_previous_ids.contains(candidate_id)) {
+                            continue;
+                        }
+                        auto prev_found = state.drawable_states.find(candidate_id);
+                        if (prev_found == state.drawable_states.end()) {
+                            continue;
+                        }
+                        if (!matched_prev) {
+                            matched_prev = &prev_found->second;
+                            matched_prev_id = candidate_id;
+                            best_index = idx;
+                        }
+                        if (bounds_equal(current_state.bounds, prev_found->second.bounds)) {
+                            matched_prev = &prev_found->second;
+                            matched_prev_id = candidate_id;
+                            best_index = idx;
+                            break;
+                        }
+                    }
+                    if (best_index.has_value() && matched_prev) {
+                        consumed_previous_ids.insert(matched_prev_id);
+                        candidates.erase(candidates.begin() + static_cast<std::ptrdiff_t>(*best_index));
+                    } else {
+                        matched_prev = nullptr;
+                        matched_prev_id = 0;
+                    }
+                }
+            }
+
+            if (matched_prev) {
+                bool bounds_changed = !bounds_equal(current_state.bounds, matched_prev->bounds)
+                    || current_state.fingerprint != matched_prev->fingerprint;
+                if (bounds_changed) {
+                    add_bounds(current_state.bounds);
+                    add_bounds(matched_prev->bounds);
+                }
+            } else {
+                add_bounds(current_state.bounds);
             }
         }
-        for (auto const& [id, old_bounds] : state.drawable_bounds) {
-            if (!current_bounds.contains(id)) {
-                damage.add(old_bounds, width, height, 1);
+
+        for (auto const& [prev_id, prev_state] : state.drawable_states) {
+            if (!consumed_previous_ids.contains(prev_id)) {
+                add_bounds(prev_state.bounds);
             }
         }
     }
@@ -1588,7 +1676,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveTilesUpdated", progressive_tiles_updated);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveBytesCopied", progressive_bytes_copied);
 
-    state.drawable_bounds = std::move(current_bounds);
+    state.drawable_states = std::move(current_states);
     state.clear_color = current_clear;
     state.desc = desc;
     state.last_revision = sceneRevision->revision;

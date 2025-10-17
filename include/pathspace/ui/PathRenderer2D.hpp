@@ -44,10 +44,15 @@ public:
     auto render(RenderParams params) -> SP::Expected<RenderStats>;
 
 private:
+    struct DrawableState {
+        DrawableBounds bounds{};
+        std::uint64_t fingerprint = 0;
+    };
+
     struct TargetState {
         Builders::SurfaceDesc desc{};
         std::array<float, 4> clear_color{0.0f, 0.0f, 0.0f, 0.0f};
-        std::unordered_map<std::uint64_t, DrawableBounds> drawable_bounds;
+        std::unordered_map<std::uint64_t, DrawableState> drawable_states;
         std::vector<float> linear_buffer;
         std::uint64_t last_revision = 0;
     };

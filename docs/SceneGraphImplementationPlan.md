@@ -37,7 +37,7 @@ Each workstream lands independently but respects shared contracts (paths, atomic
 - ✅ (October 17, 2025) `PathRenderer2D` executes Rect, RoundedRect, Image, TextGlyphs, Path, and Mesh commands in linear light, respecting opaque/alpha ordering and updating drawable/unsupported metrics.
 - ✅ (October 16, 2025) Replaced the macOS window presenter’s CoreGraphics blit with the CAMetalLayer-backed zero-copy path, validated fullscreen resize/perf behaviour manually, and updated the example/docs.
  - ✅ (October 17, 2025) PathSurfaceSoftware and PathWindowView now share an IOSurface-backed framebuffer so the presenter can bind the surface without memcpy; the zero-copy path is the new default on macOS.
-- 🔄 (October 17, 2025) Software renderer still repaints the full surface per frame; introduce bounded-damage rendering so small strokes only touch their tiles and fullscreen paints stay interactive (see “Incremental software renderer” below).
+- ✅ (October 17, 2025) PathRenderer2D now limits damage to tiles touched by drawables whose fingerprints/bounds changed, so unchanged revisions (including id renames) emit zero progressive updates; fullscreen repaints are reserved for resize/clear-color changes (see “Incremental software renderer” below for remaining diagnostics and hint work).
 - For Phase 4 follow-ups, prepare end-to-end scene→render→present scenarios, wire presenters through `Window::Present`, surface progressive-mode metrics, codify seqlock/deadline tests, and rerun the loop harness once integrations land.
 - Begin Phase 5 test authoring for hit ordering, clip-aware picking, focus routing, and event delivery latency; follow with DrawableBucket-backed picking and wait/notify integration for dirty markers and auto-render scheduling.
 - Line up Phase 6 diagnostics/tooling work: extend error/metrics coverage, normalize `PathSpaceError` reporting, expand scripts for UI log capture, and draft the debugging playbook updates before the next hardening pass.
@@ -45,19 +45,19 @@ Each workstream lands independently but respects shared contracts (paths, atomic
 ### Incremental software renderer (new priority, October 17, 2025)
 - Scope: keep the zero-copy path but eliminate full-surface repaints when only a small region changes.
 - Current status:
-  - Per-target caches and damage rect plumbing landed in PathRenderer2D (October 17, 2025), but scene revisions still look “all dirty”, so fullscreen frames repaint everything.
-  - paint_example republishes a fresh snapshot each loop, preventing damage reuse.
+  - ✅ (October 17, 2025) PathRenderer2D now caches per-target drawable fingerprints/bounds and diffs revisions so unchanged drawables (including id renames) leave the damage region empty; idle frames report zero progressive tile updates in tests.
+  - ✅ (October 17, 2025) SceneSnapshotBuilder fingerprints are derived from transforms/bounds/commands (drawable ids no longer influence the hash), so renaming a drawable without changing its content reuses the cached damage state.
+  - paint_example still republishes a fresh snapshot during brush interaction, preventing us from exercising steady-state reuse until dirty bounds hints flow through; recent local runs show full-surface repaints drop a 2560 px wide canvas to ~12 FPS despite the zero-copy path, matching the expected pre-hint behavior.
 - Immediate next steps:
-  - ✅ (October 17, 2025) SceneSnapshotBuilder now emits per-drawable fingerprints (`fingerprints.bin`) hashed from transforms/bounds/commands/clip chains; legacy snapshots recompute hashes on decode and doctests assert non-zero output.
   - Lock in the progressive tiling strategy: default tile size stays 64×64 px, which yields ~510 tiles at 1080p, ~920 tiles at 1440p, and ~2 040 tiles at 4K. The renderer will treat tiles as the unit of work and feed them into a per-core queue so an 8‑core CPU gets ~250 tiles for a 4K full repaint (≈32 per core), keeping the full-surface path viable at ≥60 Hz.
   - Update paint_example (and helper builders) to skip publishing when nothing changed and to forward “dirty stroke bounds” hints.
-  - Revisit PathRenderer2D damage calculation once upstream hints exist; ensure removal/clear events repaint previous bounds and progressive tiles (use the new per-drawable fingerprints to detect unchanged drawables).
+  - Surface diagnostics around skipped tiles (damage rectangles, fingerprint match counts) so tooling can verify incremental behaviour without attaching a debugger.
 - Runtime targets:
   - Incremental updates should be the steady state: typical UI strokes touch only a handful of tiles, keeping frame cost well under the 16 ms (~60 Hz) budget.
   - Full-surface repaints remain first-class. Camera moves or scene-wide changes explicitly flip the damage region to `set_full()`, then PathRenderer2D fan-outs tiles across all CPU cores (tile-per-thread queue) so repainting a 4K surface still clears ≤16 ms once the inner loops are vectorized.
   - The software path owns these full clears; GPU assists stay optional (e.g. secondary effects), not the default “draw everything every frame,” so the hybrid design preserves the progressive/tiled CPU pipeline.
 - Validation:
-  - Add doctests that draw incremental strokes, erase strokes, and change clear color; each should report limited damage.
+  - Added renderer doctest coverage for drawable id churn (zero damage on renames); still need incremental stroke/erase/clear color scenarios with explicit damage assertions.
   - Capture comparative FPS traces (small-vs-fullscreen) to confirm the fullscreen slowdown disappears.
 
 ## Phase Plan

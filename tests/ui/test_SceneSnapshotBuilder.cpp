@@ -12,6 +12,8 @@
 #include <thread>
 #include <vector>
 #include <cstring>
+#include <iomanip>
+#include <sstream>
 
 namespace {
 
@@ -205,6 +207,67 @@ TEST_CASE("publish snapshot encodes bucket and metadata") {
     auto storedFingerprints = fx.space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/fingerprints.bin");
     REQUIRE(storedFingerprints);
     CHECK_FALSE(storedFingerprints->empty());
+}
+
+TEST_CASE("drawable fingerprints remain stable when drawable id changes") {
+    SnapshotFixture fx;
+
+    SceneParams sceneParams{ .name = "fingerprint", .description = "Fingerprint stability" };
+    auto scene = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    REQUIRE(scene);
+
+    SceneSnapshotBuilder builder{fx.space, fx.root_view(), *scene};
+
+    auto format_revision = [](std::uint64_t revision) {
+        std::ostringstream oss;
+        oss << std::setw(16) << std::setfill('0') << revision;
+        return oss.str();
+    };
+
+    auto base_bucket = make_bucket(1, 1);
+    base_bucket.drawable_ids[0] = 1234;
+    base_bucket.authoring_map[0].drawable_id = base_bucket.drawable_ids[0];
+
+    SnapshotPublishOptions opts{};
+    opts.metadata.author = "tests";
+    opts.metadata.tool_version = "tests";
+    opts.metadata.created_at = std::chrono::system_clock::now();
+    opts.metadata.drawable_count = base_bucket.drawable_ids.size();
+    opts.metadata.command_count = base_bucket.command_kinds.size();
+
+    auto first_revision = builder.publish(opts, base_bucket);
+    if (!first_revision) {
+        auto const& err = first_revision.error();
+        INFO("first publish failed: code=" << static_cast<int>(err.code)
+             << " message=" << err.message.value_or("none"));
+    }
+    REQUIRE(first_revision);
+
+    auto first_base = std::string(scene->getPath()) + "/builds/" + format_revision(*first_revision);
+    auto decoded_first = SceneSnapshotBuilder::decode_bucket(fx.space, first_base);
+    REQUIRE(decoded_first);
+    REQUIRE(decoded_first->drawable_fingerprints.size() == base_bucket.drawable_ids.size());
+
+    auto renamed_bucket = base_bucket;
+    renamed_bucket.drawable_ids[0] = 5678;
+    renamed_bucket.authoring_map[0].drawable_id = renamed_bucket.drawable_ids[0];
+
+    opts.metadata.created_at += std::chrono::milliseconds{1};
+    auto second_revision = builder.publish(opts, renamed_bucket);
+    if (!second_revision) {
+        auto const& err = second_revision.error();
+        INFO("second publish failed: code=" << static_cast<int>(err.code)
+             << " message=" << err.message.value_or("none"));
+    }
+    REQUIRE(second_revision);
+
+    auto second_base = std::string(scene->getPath()) + "/builds/" + format_revision(*second_revision);
+    auto decoded_second = SceneSnapshotBuilder::decode_bucket(fx.space, second_base);
+    REQUIRE(decoded_second);
+    REQUIRE(decoded_second->drawable_fingerprints.size() == renamed_bucket.drawable_ids.size());
+
+    CHECK(decoded_first->drawable_ids != decoded_second->drawable_ids);
+    CHECK(decoded_first->drawable_fingerprints == decoded_second->drawable_fingerprints);
 }
 
 TEST_CASE("publish enforces retention policy") {

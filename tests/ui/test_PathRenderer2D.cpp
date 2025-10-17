@@ -815,6 +815,102 @@ TEST_CASE("incremental damage tracking limits progressive tiles") {
     CHECK(*updated == expected_tiles.size());
 }
 
+TEST_CASE("renderer skips repaint when drawable id changes but content matches") {
+    RendererFixture fx;
+
+    auto make_bucket = [&](std::uint64_t drawable_id) {
+        DrawableBucketSnapshot bucket{};
+        bucket.drawable_ids = {drawable_id};
+        bucket.world_transforms = {identity_transform()};
+        bucket.bounds_boxes = {
+            BoundingBox{{1.0f, 1.0f, 0.0f}, {3.0f, 3.0f, 0.0f}},
+        };
+        bucket.bounds_box_valid = {1};
+        bucket.bounds_spheres = {
+            BoundingSphere{{2.0f, 2.0f, 0.0f}, 1.5f},
+        };
+        bucket.layers = {0};
+        bucket.z_values = {0.0f};
+        bucket.material_ids = {0};
+        bucket.pipeline_flags = {0};
+        bucket.visibility = {1};
+        bucket.command_offsets = {0};
+        bucket.command_counts = {1};
+        bucket.opaque_indices = {0};
+        bucket.alpha_indices = {};
+        bucket.clip_head_indices = {-1};
+        bucket.authoring_map = {
+            DrawableAuthoringMapEntry{drawable_id, "node", 0, 0},
+        };
+
+        RectCommand rect{
+            .min_x = 1.0f,
+            .min_y = 1.0f,
+            .max_x = 3.0f,
+            .max_y = 3.0f,
+            .color = {0.4f, 0.2f, 0.9f, 1.0f},
+        };
+        encode_rect_command(rect, bucket);
+        return bucket;
+    };
+
+    auto bucket_initial = make_bucket(0x1001u);
+    auto scenePath = create_scene(fx, "scene_id_change", bucket_initial);
+    auto rendererPath = create_renderer(fx, "renderer_id_change");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 8;
+    surfaceDesc.size_px.height = 8;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_id_change", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware::Options opts{
+        .enable_progressive = true,
+        .enable_buffered = false,
+        .progressive_tile_size_px = 2,
+    };
+    PathSurfaceSoftware surface{surfaceDesc, opts};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+    settings.time.frame_index = 1;
+
+    auto first_result = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+    });
+    REQUIRE(first_result);
+    (void)surface.consume_progressive_dirty_tiles();
+
+    auto bucket_same_shape = make_bucket(0x2002u);
+    fx.publish_snapshot(scenePath, std::move(bucket_same_shape));
+
+    settings.time.frame_index = 2;
+    auto second_result = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+    });
+    REQUIRE(second_result);
+
+    auto dirty_tiles = surface.consume_progressive_dirty_tiles();
+    CHECK(dirty_tiles.empty());
+
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    auto updated = fx.space.read<uint64_t>(metricsBase + "/progressiveTilesUpdated");
+    REQUIRE(updated);
+    CHECK(*updated == 0);
+}
+
 TEST_CASE("clear color change triggers full-surface repaint") {
     RendererFixture fx;
 
