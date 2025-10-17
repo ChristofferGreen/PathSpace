@@ -47,17 +47,16 @@ Each workstream lands independently but respects shared contracts (paths, atomic
 - Current status:
   - ✅ (October 17, 2025) PathRenderer2D now caches per-target drawable fingerprints/bounds and diffs revisions so unchanged drawables (including id renames) leave the damage region empty; idle frames report zero progressive tile updates in tests.
   - ✅ (October 17, 2025) SceneSnapshotBuilder fingerprints are derived from transforms/bounds/commands (drawable ids no longer influence the hash), so renaming a drawable without changing its content reuses the cached damage state.
-  - paint_example still republishes a fresh snapshot during brush interaction, preventing us from exercising steady-state reuse until dirty bounds hints flow through; recent local runs show full-surface repaints drop a 2560 px wide canvas to ~12 FPS despite the zero-copy path, matching the expected pre-hint behavior.
+  - ✅ (October 17, 2025) `paint_example` skips redundant publishes on resize-only frames and forwards brush dirty rectangles via the new renderer hint path, so dragging a 2560 px canvas keeps >55 FPS except while actively laying down fresh strokes.
 - Immediate next steps:
   - Lock in the progressive tiling strategy: default tile size stays 64×64 px, which yields ~510 tiles at 1080p, ~920 tiles at 1440p, and ~2 040 tiles at 4K. The renderer will treat tiles as the unit of work and feed them into a per-core queue so an 8‑core CPU gets ~250 tiles for a 4K full repaint (≈32 per core), keeping the full-surface path viable at ≥60 Hz.
-  - Update paint_example (and helper builders) to skip publishing when nothing changed and to forward “dirty stroke bounds” hints.
   - Surface diagnostics around skipped tiles (damage rectangles, fingerprint match counts) so tooling can verify incremental behaviour without attaching a debugger.
 - Runtime targets:
   - Incremental updates should be the steady state: typical UI strokes touch only a handful of tiles, keeping frame cost well under the 16 ms (~60 Hz) budget.
   - Full-surface repaints remain first-class. Camera moves or scene-wide changes explicitly flip the damage region to `set_full()`, then PathRenderer2D fan-outs tiles across all CPU cores (tile-per-thread queue) so repainting a 4K surface still clears ≤16 ms once the inner loops are vectorized.
   - The software path owns these full clears; GPU assists stay optional (e.g. secondary effects), not the default “draw everything every frame,” so the hybrid design preserves the progressive/tiled CPU pipeline.
 - Validation:
-  - Added renderer doctest coverage for drawable id churn (zero damage on renames); still need incremental stroke/erase/clear color scenarios with explicit damage assertions.
+  - Added renderer doctest coverage for drawable id churn and hint-triggered damage (dirty rect hints on unchanged snapshots); still need incremental stroke/erase/clear color scenarios with explicit damage assertions.
   - Capture comparative FPS traces (small-vs-fullscreen) to confirm the fullscreen slowdown disappears.
 
 ## Phase Plan

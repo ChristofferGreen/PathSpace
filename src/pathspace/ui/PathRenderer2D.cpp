@@ -1059,6 +1059,21 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     auto target_key = std::string(params.target_path.getPath());
     auto& state = target_cache_[target_key];
 
+    std::vector<Builders::DirtyRectHint> dirty_rect_hints;
+    {
+        auto hints_path = target_key + "/hints/dirtyRects";
+        auto hints = space_.take<std::vector<Builders::DirtyRectHint>>(hints_path);
+        if (hints) {
+            dirty_rect_hints = std::move(*hints);
+        } else {
+            auto const& error = hints.error();
+            if (error.code != SP::Error::Code::NoObjectFound
+                && error.code != SP::Error::Code::NoSuchPath) {
+                return std::unexpected(error);
+            }
+        }
+    }
+
     bool size_changed = state.desc.size_px.width != desc.size_px.width
                         || state.desc.size_px.height != desc.size_px.height;
     bool format_changed = state.desc.pixel_format != desc.pixel_format
@@ -1197,6 +1212,15 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
             }
         }
     }
+    for (auto const& hint : dirty_rect_hints) {
+        DamageRect rect{};
+        rect.min_x = static_cast<int>(std::floor(hint.min_x));
+        rect.min_y = static_cast<int>(std::floor(hint.min_y));
+        rect.max_x = static_cast<int>(std::ceil(hint.max_x));
+        rect.max_y = static_cast<int>(std::ceil(hint.max_y));
+        damage.add_rect(rect, width, height);
+    }
+
     damage.finalize(width, height);
     bool const has_damage = !damage.empty();
 

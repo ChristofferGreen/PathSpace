@@ -145,6 +145,13 @@ struct RenderSettings {
     } microtri_rt;
 };
 
+struct DirtyRectHint {
+    float min_x = 0.0f;
+    float min_y = 0.0f;
+    float max_x = 0.0f;
+    float max_y = 0.0f;
+};
+
 enum class ParamUpdateMode {
     Queue,
     ReplaceActive,
@@ -303,9 +310,13 @@ auto UpdateSettings(PathSpace& space,
 auto ReadSettings(PathSpace const& space,
                    ConcretePathView targetPath) -> SP::Expected<RenderSettings>;
 
+auto SubmitDirtyRects(PathSpace& space,
+                      ConcretePathView targetPath,
+                      std::span<DirtyRectHint const> rects) -> SP::Expected<void>;
+
 auto TriggerRender(PathSpace& space,
-                    ConcretePathView targetPath,
-                    RenderSettings const& settings) -> SP::Expected<SP::FutureAny>;
+                   ConcretePathView targetPath,
+                   RenderSettings const& settings) -> SP::Expected<SP::FutureAny>;
 
 } // namespace Renderer
 

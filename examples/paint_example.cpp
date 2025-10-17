@@ -41,6 +41,8 @@ constexpr int kInitialCanvasWidth = 320;
 constexpr int kInitialCanvasHeight = 240;
 constexpr int kBrushSizePx = 8;
 
+using DirtyRectHint = Builders::DirtyRectHint;
+
 struct Stroke {
     std::uint64_t            drawable_id = 0;
     UIScene::RectCommand     rect{};
@@ -273,9 +275,9 @@ auto add_stroke(std::vector<Stroke>& strokes,
                 int canvasHeight,
                 int x,
                 int y,
-                std::array<float, 4> const& color) -> bool {
+                std::array<float, 4> const& color) -> std::optional<DirtyRectHint> {
     if (canvasWidth <= 0 || canvasHeight <= 0) {
-        return false;
+        return std::nullopt;
     }
     int canvasX = std::clamp(x, 0, canvasWidth - 1);
     int canvasY = to_canvas_y(y, canvasHeight);
@@ -285,7 +287,7 @@ auto add_stroke(std::vector<Stroke>& strokes,
     float maxX = std::clamp(minX + static_cast<float>(kBrushSizePx), 0.0f, static_cast<float>(canvasWidth));
     float maxY = std::clamp(minY + static_cast<float>(kBrushSizePx), 0.0f, static_cast<float>(canvasHeight));
     if (maxX <= minX || maxY <= minY) {
-        return false;
+        return std::nullopt;
     }
 
     UIScene::RectCommand rectCmd{};
@@ -301,7 +303,12 @@ auto add_stroke(std::vector<Stroke>& strokes,
         .authoring_id = "nodes/paint/stroke_" + std::to_string(strokes.size()),
     };
     strokes.push_back(std::move(stroke));
-    return true;
+    return DirtyRectHint{
+        .min_x = minX,
+        .min_y = minY,
+        .max_x = maxX,
+        .max_y = maxY,
+    };
 }
 
 auto lay_down_segment(std::vector<Stroke>& strokes,
@@ -310,7 +317,8 @@ auto lay_down_segment(std::vector<Stroke>& strokes,
                       int canvasHeight,
                       std::pair<int, int> const& from,
                       std::pair<int, int> const& to,
-                      std::array<float, 4> const& color) -> bool {
+                      std::array<float, 4> const& color,
+                      std::vector<DirtyRectHint>& dirtyHints) -> bool {
     bool wrote = false;
     double x0 = static_cast<double>(from.first);
     double y0 = static_cast<double>(from.second);
@@ -325,9 +333,15 @@ auto lay_down_segment(std::vector<Stroke>& strokes,
         double t = static_cast<double>(i) / static_cast<double>(steps + 1);
         int xi = static_cast<int>(std::round(x0 + dx * t));
         int yi = static_cast<int>(std::round(y0 + dy * t));
-        wrote |= add_stroke(strokes, nextId, canvasWidth, canvasHeight, xi, yi, color);
+        if (auto hint = add_stroke(strokes, nextId, canvasWidth, canvasHeight, xi, yi, color)) {
+            dirtyHints.push_back(*hint);
+            wrote = true;
+        }
     }
-    wrote |= add_stroke(strokes, nextId, canvasWidth, canvasHeight, to.first, to.second, color);
+    if (auto hint = add_stroke(strokes, nextId, canvasWidth, canvasHeight, to.first, to.second, color)) {
+        dirtyHints.push_back(*hint);
+        wrote = true;
+    }
     return wrote;
 }
 
@@ -434,6 +448,9 @@ int main() {
             break;
         }
 
+        bool updated = false;
+        std::vector<DirtyRectHint> dirtyHints;
+
         bool sizeChanged = (requestedWidth != canvasWidth) || (requestedHeight != canvasHeight);
         if (sizeChanged) {
             canvasWidth = requestedWidth;
@@ -450,9 +467,13 @@ int main() {
                                                              SP::ConcretePathStringView{targetAbsolute.getPath()},
                                                              rendererSettings),
                           "failed to refresh renderer size on resize");
+            dirtyHints.push_back(DirtyRectHint{
+                .min_x = 0.0f,
+                .min_y = 0.0f,
+                .max_x = static_cast<float>(canvasWidth),
+                .max_y = static_cast<float>(canvasHeight),
+            });
         }
-
-        bool updated = false;
         while (auto evt = PaintInput::try_pop_mouse()) {
             auto const& e = *evt;
             switch (e.type) {
@@ -472,7 +493,8 @@ int main() {
                                                 canvasHeight,
                                                 *lastPainted,
                                                 current,
-                                                brushColor);
+                                                brushColor,
+                                                dirtyHints);
                     lastPainted = current;
                 }
                 break;
@@ -488,7 +510,16 @@ int main() {
                     if (point) {
                         lastAbsolute = *point;
                         drawing = true;
-                        updated |= add_stroke(strokes, nextId, canvasWidth, canvasHeight, point->first, point->second, brushColor);
+                        if (auto hint = add_stroke(strokes,
+                                                   nextId,
+                                                   canvasWidth,
+                                                   canvasHeight,
+                                                   point->first,
+                                                   point->second,
+                                                   brushColor)) {
+                            dirtyHints.push_back(*hint);
+                            updated = true;
+                        }
                         lastPainted = *point;
                     }
                 }
@@ -506,9 +537,16 @@ int main() {
             }
         }
 
-        if (updated || sizeChanged) {
+        if (updated) {
             bucket = build_bucket(strokes);
             publish_snapshot(space, builder, scenePath, bucket);
+        }
+
+        if (updated || sizeChanged) {
+            unwrap_or_exit(Builders::Renderer::SubmitDirtyRects(space,
+                                                                SP::ConcretePathStringView{targetAbsolute.getPath()},
+                                                                std::span<const DirtyRectHint>{dirtyHints}),
+                           "failed to submit renderer dirty hints");
             if (auto outcome = present_frame(space, windowPath, "main", canvasWidth, canvasHeight)) {
                 ++fps_frames;
                 if (outcome->used_iosurface) {
@@ -539,6 +577,8 @@ int main() {
                 }
             }
         }
+
+        dirtyHints.clear();
 
         std::this_thread::sleep_for(std::chrono::milliseconds(4));
     }

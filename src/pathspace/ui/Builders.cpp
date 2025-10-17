@@ -1017,6 +1017,14 @@ auto ReadSettings(PathSpace const& space,
     return read_value<RenderSettings>(space, settingsPath);
 }
 
+auto SubmitDirtyRects(PathSpace& space,
+                      ConcretePathView targetPath,
+                      std::span<DirtyRectHint const> rects) -> SP::Expected<void> {
+    auto hintsPath = std::string(targetPath.getPath()) + "/hints/dirtyRects";
+    std::vector<DirtyRectHint> stored(rects.begin(), rects.end());
+    return replace_single<std::vector<DirtyRectHint>>(space, hintsPath, stored);
+}
+
 auto TriggerRender(PathSpace& space,
                    ConcretePathView targetPath,
                    RenderSettings const& settings) -> SP::Expected<SP::FutureAny> {

@@ -138,6 +138,7 @@ Keys under a target:
 - `render`
 - `output/v1/...` (see section 2)
 - `events/renderRequested/queue` — `AutoRenderRequestEvent` items enqueued by hit tests or dirty-marker scheduling
+- `hints/dirtyRects` — optional array of dirty rectangles (float min/max) that renderers merge into their damage regions
 
 ## 4) Scene build and publish protocol
 
