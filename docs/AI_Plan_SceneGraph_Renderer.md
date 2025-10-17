@@ -1180,7 +1180,7 @@ Usage notes:
 - `Renderer::UpdateSettings` performs a single-path atomic replace after draining any queued settings values under `<target>/settings`; callers should coalesce state before invoking it (doctest coverage ensures stale entries are discarded).
 - `Surface::SetScene` and `Window::AttachSurface` enforce shared app roots, rejecting cross-app bindings with a typed `InvalidPath` error so misuse is caught during integration.
 - The Builders suite is exercised in the 15× compile loop (`./scripts/compile.sh --loop=15 --per-test-timeout 20`) to guarantee the helpers remain race-free under load.
-- `SceneSnapshotBuilder` serializes drawable buckets with explicit SoA fields (world transforms, bounding spheres/boxes with validity flags, material/pipeline metadata, command offsets/counts, command stream, pre-filtered opaque/alpha indices, and per-layer index blocks) plus per-revision resource fingerprints; doctests validate round-tripping and retention behaviour.
+- `SceneSnapshotBuilder` serializes drawable buckets with explicit SoA fields (world transforms, bounding spheres/boxes with validity flags, material/pipeline metadata, command offsets/counts, command stream, pre-filtered opaque/alpha indices, and per-layer index blocks) plus per-revision resource fingerprints _and_ per-drawable hashes persisted in `fingerprints.bin`; doctests validate round-tripping and retention behaviour, and legacy snapshots recompute hashes on decode.
 
 Source layout (proposed):
 - `include/pathspace/ui/Builders.hpp`

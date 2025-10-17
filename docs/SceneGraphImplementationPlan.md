@@ -48,10 +48,10 @@ Each workstream lands independently but respects shared contracts (paths, atomic
   - Per-target caches and damage rect plumbing landed in PathRenderer2D (October 17, 2025), but scene revisions still look “all dirty”, so fullscreen frames repaint everything.
   - paint_example republishes a fresh snapshot each loop, preventing damage reuse.
 - Immediate next steps:
-  0. Lock in the progressive tiling strategy: default tile size stays 64×64 px, which yields ~510 tiles at 1080p, ~920 tiles at 1440p, and ~2 040 tiles at 4K. The renderer will treat tiles as the unit of work and feed them into a per-core queue so an 8‑core CPU gets ~250 tiles for a 4K full repaint (≈32 per core), keeping the full-surface path viable at ≥60 Hz.
-  1. Teach SceneSnapshotBuilder (and the authoring path) to attach stable drawable revision ids or dirty hashes so renderers can detect unchanged drawables.
-  2. Update paint_example (and helper builders) to skip publishing when nothing changed and to forward “dirty stroke bounds” hints.
-  3. Revisit PathRenderer2D damage calculation once upstream hints exist; ensure removal/clear events repaint previous bounds and progressive tiles.
+  - ✅ (October 17, 2025) SceneSnapshotBuilder now emits per-drawable fingerprints (`fingerprints.bin`) hashed from transforms/bounds/commands/clip chains; legacy snapshots recompute hashes on decode and doctests assert non-zero output.
+  - Lock in the progressive tiling strategy: default tile size stays 64×64 px, which yields ~510 tiles at 1080p, ~920 tiles at 1440p, and ~2 040 tiles at 4K. The renderer will treat tiles as the unit of work and feed them into a per-core queue so an 8‑core CPU gets ~250 tiles for a 4K full repaint (≈32 per core), keeping the full-surface path viable at ≥60 Hz.
+  - Update paint_example (and helper builders) to skip publishing when nothing changed and to forward “dirty stroke bounds” hints.
+  - Revisit PathRenderer2D damage calculation once upstream hints exist; ensure removal/clear events repaint previous bounds and progressive tiles (use the new per-drawable fingerprints to detect unchanged drawables).
 - Runtime targets:
   - Incremental updates should be the steady state: typical UI strokes touch only a handful of tiles, keeping frame cost well under the 16 ms (~60 Hz) budget.
   - Full-surface repaints remain first-class. Camera moves or scene-wide changes explicitly flip the damage region to `set_full()`, then PathRenderer2D fan-outs tiles across all CPU cores (tile-per-thread queue) so repainting a 4K surface still clears ≤16 ms once the inner loops are vectorized.
