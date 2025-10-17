@@ -395,6 +395,19 @@ public:
         merge_overlaps();
     }
 
+    void replace_with_rects(std::span<DamageRect const> rects, int width, int height) {
+        rects_.clear();
+        full_surface_ = false;
+        rects_.reserve(rects.size());
+        for (auto rect : rects) {
+            rect.clamp(width, height);
+            if (!rect.empty()) {
+                rects_.push_back(rect);
+            }
+        }
+        merge_overlaps();
+    }
+
 private:
     void merge_overlaps() {
         for (std::size_t i = 0; i < rects_.size(); ++i) {
@@ -1256,17 +1269,62 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
             }
         }
     }
+    auto append_hint_rect = [&](DamageRect const& rect) {
+        if (rect.empty()) {
+            return;
+        }
+        if (!surface.has_progressive()) {
+            hint_rects.push_back(rect);
+            return;
+        }
+
+        auto const tile_size = surface.progressive_buffer().tile_size();
+        if (tile_size <= 1) {
+            hint_rects.push_back(rect);
+            return;
+        }
+
+        auto const clamp_max_x = std::min(rect.max_x, width);
+        auto const clamp_max_y = std::min(rect.max_y, height);
+        auto const min_x = std::max(rect.min_x, 0);
+        auto const min_y = std::max(rect.min_y, 0);
+
+        auto const start_tx = min_x / tile_size;
+        auto const start_ty = min_y / tile_size;
+        auto const end_tx = (std::max(clamp_max_x - 1, min_x) / tile_size);
+        auto const end_ty = (std::max(clamp_max_y - 1, min_y) / tile_size);
+
+        for (int ty = start_ty; ty <= end_ty; ++ty) {
+            auto const tile_min_y = ty * tile_size;
+            auto const tile_max_y = std::min(tile_min_y + tile_size, height);
+            for (int tx = start_tx; tx <= end_tx; ++tx) {
+                auto const tile_min_x = tx * tile_size;
+                auto const tile_max_x = std::min(tile_min_x + tile_size, width);
+
+                DamageRect tile_rect{
+                    .min_x = tile_min_x,
+                    .min_y = tile_min_y,
+                    .max_x = tile_max_x,
+                    .max_y = tile_max_y,
+                };
+
+                tile_rect.clamp(width, height);
+
+                if (!tile_rect.empty()) {
+                    hint_rects.push_back(tile_rect);
+                }
+            }
+        }
+    };
+
     for (auto const& hint : dirty_rect_hints) {
         DamageRect rect{};
         rect.min_x = static_cast<int>(std::floor(hint.min_x));
         rect.min_y = static_cast<int>(std::floor(hint.min_y));
         rect.max_x = static_cast<int>(std::ceil(hint.max_x));
         rect.max_y = static_cast<int>(std::ceil(hint.max_y));
-        damage.add_rect(rect, width, height);
         rect.clamp(width, height);
-        if (!rect.empty()) {
-            hint_rects.push_back(rect);
-        }
+        append_hint_rect(rect);
     }
 
     if (!hint_rects.empty()) {
@@ -1281,7 +1339,13 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     }
 
     damage.finalize(width, height);
-    damage.restrict_to(hint_rects);
+    if (!hint_rects.empty()) {
+        if (damage.empty()) {
+            damage.replace_with_rects(hint_rects, width, height);
+        } else {
+            damage.restrict_to(hint_rects);
+        }
+    }
     bool const has_damage = !damage.empty();
 
     if (has_damage) {
