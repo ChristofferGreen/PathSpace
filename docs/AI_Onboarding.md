@@ -1,7 +1,7 @@
 # PathSpace — AI Onboarding (Fresh Session)
 
 > **Context update (October 15, 2025):** This onboarding now targets the “Atlas” AI context introduced for the current launch window; adjust legacy workflows to align with this context.
-> **Session hand-off (October 17, 2025):** Incremental damage landed (fingerprints + producer hints) and `paint_example` now forwards dirty rectangles; next AI should focus on the remaining items in `docs/SceneGraphImplementationPlan.md`—expose renderer diagnostics for skipped tiles, and start parallelizing the progressive tile fan-out. Review the updated plan notes in `docs/AI_Plan_SceneGraph_Renderer.md` before touching PathRenderer2D.
+> **Session hand-off (October 17, 2025):** Progressive repaint flicker in `./build/paint_example` is fixed. Before new renderer work, run `./scripts/compile.sh --loop=15 --per-test-timeout 20` to confirm the suite stays green, then continue with the Phase 4 follow-ups in `docs/SceneGraphImplementationPlan.md`.
 
 This guide bootstraps a brand-new AI assistant so it can work productively in the PathSpace repository without inheriting prior conversational context. Follow these steps at the beginning of every new session.
 
