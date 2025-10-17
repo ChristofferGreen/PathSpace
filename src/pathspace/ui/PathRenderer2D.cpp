@@ -17,6 +17,7 @@
 #include <string>
 #include <span>
 #include <vector>
+#include <optional>
 
 namespace SP::UI {
 namespace {
@@ -141,6 +142,296 @@ auto approximate_drawable_area(Scene::DrawableBucketSnapshot const& bucket,
         }
     }
     return 0.0;
+}
+
+struct DamageRect {
+    int min_x = 0;
+    int min_y = 0;
+    int max_x = 0;
+    int max_y = 0;
+
+    static auto from_bounds(PathRenderer2D::DrawableBounds const& bounds) -> DamageRect {
+        return DamageRect{
+            .min_x = bounds.min_x,
+            .min_y = bounds.min_y,
+            .max_x = bounds.max_x,
+            .max_y = bounds.max_y,
+        };
+    }
+
+    auto clamp(int width, int height) -> void {
+        min_x = std::clamp(min_x, 0, width);
+        min_y = std::clamp(min_y, 0, height);
+        max_x = std::clamp(max_x, 0, width);
+        max_y = std::clamp(max_y, 0, height);
+    }
+
+    auto expand(int margin, int width, int height) -> void {
+        min_x = std::clamp(min_x - margin, 0, width);
+        min_y = std::clamp(min_y - margin, 0, height);
+        max_x = std::clamp(max_x + margin, 0, width);
+        max_y = std::clamp(max_y + margin, 0, height);
+    }
+
+    [[nodiscard]] auto empty() const -> bool {
+        return min_x >= max_x || min_y >= max_y;
+    }
+
+    [[nodiscard]] auto width() const -> int {
+        return empty() ? 0 : (max_x - min_x);
+    }
+
+    [[nodiscard]] auto height() const -> int {
+        return empty() ? 0 : (max_y - min_y);
+    }
+
+    auto merge(DamageRect const& other) -> void {
+        min_x = std::min(min_x, other.min_x);
+        min_y = std::min(min_y, other.min_y);
+        max_x = std::max(max_x, other.max_x);
+        max_y = std::max(max_y, other.max_y);
+    }
+
+    [[nodiscard]] auto overlaps_or_touches(DamageRect const& other) const -> bool {
+        return !(max_x < other.min_x || other.max_x < min_x
+                 || max_y < other.min_y || other.max_y < min_y);
+    }
+
+    [[nodiscard]] auto intersects(PathRenderer2D::DrawableBounds const& bounds) const -> bool {
+        if (bounds.empty() || empty()) {
+            return false;
+        }
+        return !(bounds.max_x <= min_x || bounds.min_x >= max_x
+                 || bounds.max_y <= min_y || bounds.min_y >= max_y);
+    }
+
+    [[nodiscard]] auto intersects(TileDimensions const& tile) const -> bool {
+        if (empty() || tile.width <= 0 || tile.height <= 0) {
+            return false;
+        }
+        auto tile_max_x = tile.x + tile.width;
+        auto tile_max_y = tile.y + tile.height;
+        return !(tile_max_x <= min_x || tile.x >= max_x
+                 || tile_max_y <= min_y || tile.y >= max_y);
+    }
+};
+
+class DamageRegion {
+public:
+    void set_full(int width, int height) {
+        full_surface_ = true;
+        rects_.clear();
+        rects_.push_back(DamageRect{
+            .min_x = 0,
+            .min_y = 0,
+            .max_x = width,
+            .max_y = height,
+        });
+    }
+
+    void add(PathRenderer2D::DrawableBounds const& bounds,
+             int width,
+             int height,
+             int margin) {
+        if (full_surface_ || bounds.empty()) {
+            return;
+        }
+        DamageRect rect = DamageRect::from_bounds(bounds);
+        rect.expand(margin, width, height);
+        rect.clamp(width, height);
+        if (rect.empty()) {
+            return;
+        }
+        rects_.push_back(rect);
+    }
+
+    void add_rect(DamageRect rect, int width, int height) {
+        if (full_surface_) {
+            return;
+        }
+        rect.clamp(width, height);
+        if (rect.empty()) {
+            return;
+        }
+        rects_.push_back(rect);
+    }
+
+    void finalize(int width, int height) {
+        if (full_surface_) {
+            if (!rects_.empty()) {
+                rects_.front().clamp(width, height);
+            }
+            return;
+        }
+        for (auto& rect : rects_) {
+            rect.clamp(width, height);
+        }
+        rects_.erase(std::remove_if(rects_.begin(),
+                                    rects_.end(),
+                                    [](DamageRect const& rect) { return rect.empty(); }),
+                     rects_.end());
+        merge_overlaps();
+    }
+
+    [[nodiscard]] auto empty() const -> bool {
+        return rects_.empty();
+    }
+
+    [[nodiscard]] auto intersects(PathRenderer2D::DrawableBounds const& bounds) const -> bool {
+        if (bounds.empty()) {
+            return false;
+        }
+        for (auto const& rect : rects_) {
+            if (rect.intersects(bounds)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    [[nodiscard]] auto intersects(TileDimensions const& tile) const -> bool {
+        for (auto const& rect : rects_) {
+            if (rect.intersects(tile)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    [[nodiscard]] auto rectangles() const -> std::span<DamageRect const> {
+        return rects_;
+    }
+
+    void collect_progressive_tiles(ProgressiveSurfaceBuffer const& buffer,
+                                   std::vector<std::size_t>& out) const {
+        if (rects_.empty()) {
+            return;
+        }
+        auto const tile_count = buffer.tile_count();
+        if (tile_count == 0) {
+            return;
+        }
+        auto const tiles_x = buffer.tiles_x();
+        auto const tiles_y = buffer.tiles_y();
+        auto const tile_size = std::max(buffer.tile_size(), 1);
+        std::vector<std::uint8_t> seen(tile_count, 0);
+        auto push_tile = [&](int tx, int ty) {
+            if (tx < 0 || ty < 0 || tx >= tiles_x || ty >= tiles_y) {
+                return;
+            }
+            auto index = static_cast<std::size_t>(ty) * static_cast<std::size_t>(tiles_x)
+                         + static_cast<std::size_t>(tx);
+            if (index >= tile_count || seen[index]) {
+                return;
+            }
+            seen[index] = 1;
+            out.push_back(index);
+        };
+
+        for (auto const& rect : rects_) {
+            if (rect.empty()) {
+                continue;
+            }
+            int const min_x = rect.min_x;
+            int const min_y = rect.min_y;
+            int const max_x = rect.max_x;
+            int const max_y = rect.max_y;
+
+            int min_tx = min_x / tile_size;
+            int min_ty = min_y / tile_size;
+            int max_tx = (std::max(max_x - 1, min_x) / tile_size);
+            int max_ty = (std::max(max_y - 1, min_y) / tile_size);
+
+            min_tx = std::max(min_tx, 0);
+            min_ty = std::max(min_ty, 0);
+            max_tx = std::min(max_tx, tiles_x - 1);
+            max_ty = std::min(max_ty, tiles_y - 1);
+
+            for (int ty = min_ty; ty <= max_ty; ++ty) {
+                for (int tx = min_tx; tx <= max_tx; ++tx) {
+                    push_tile(tx, ty);
+                }
+            }
+        }
+    }
+
+private:
+    void merge_overlaps() {
+        for (std::size_t i = 0; i < rects_.size(); ++i) {
+            auto& base = rects_[i];
+            std::size_t j = i + 1;
+            while (j < rects_.size()) {
+                if (base.overlaps_or_touches(rects_[j])) {
+                    base.merge(rects_[j]);
+                    rects_.erase(rects_.begin() + static_cast<std::ptrdiff_t>(j));
+                } else {
+                    ++j;
+                }
+            }
+        }
+    }
+
+    bool full_surface_ = false;
+    std::vector<DamageRect> rects_;
+};
+
+auto compute_drawable_bounds(Scene::DrawableBucketSnapshot const& bucket,
+                             std::uint32_t index,
+                             int width,
+                             int height) -> std::optional<PathRenderer2D::DrawableBounds> {
+    float min_x = 0.0f;
+    float min_y = 0.0f;
+    float max_x = 0.0f;
+    float max_y = 0.0f;
+    bool have_bounds = false;
+
+    if (has_valid_bounds_box(bucket, index)) {
+        auto const& box = bucket.bounds_boxes[index];
+        min_x = box.min[0];
+        min_y = box.min[1];
+        max_x = box.max[0];
+        max_y = box.max[1];
+        have_bounds = true;
+    } else if (index < bucket.bounds_spheres.size()) {
+        auto const& sphere = bucket.bounds_spheres[index];
+        auto radius = sphere.radius;
+        min_x = sphere.center[0] - radius;
+        max_x = sphere.center[0] + radius;
+        min_y = sphere.center[1] - radius;
+        max_y = sphere.center[1] + radius;
+        have_bounds = true;
+    }
+
+    if (!have_bounds) {
+        return std::nullopt;
+    }
+
+    auto to_min_x = std::clamp(static_cast<int>(std::floor(min_x)), 0, width);
+    auto to_max_x = std::clamp(static_cast<int>(std::ceil(max_x)), 0, width);
+    auto to_min_y = std::clamp(static_cast<int>(std::floor(min_y)), 0, height);
+    auto to_max_y = std::clamp(static_cast<int>(std::ceil(max_y)), 0, height);
+
+    PathRenderer2D::DrawableBounds bounds{
+        .min_x = to_min_x,
+        .min_y = to_min_y,
+        .max_x = to_max_x,
+        .max_y = to_max_y,
+    };
+
+    if (bounds.empty()) {
+        return std::nullopt;
+    }
+
+    bounds.min_x = std::max(0, bounds.min_x - 1);
+    bounds.min_y = std::max(0, bounds.min_y - 1);
+    bounds.max_x = std::min(width, bounds.max_x + 1);
+    bounds.max_y = std::min(height, bounds.max_y + 1);
+
+    if (bounds.empty()) {
+        return std::nullopt;
+    }
+
+    return bounds;
 }
 
 struct LinearStraightColor {
@@ -746,20 +1037,6 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     }
     }
 
-    std::vector<std::uint8_t> local_frame_bytes;
-    std::span<std::uint8_t> staging;
-    if (has_buffered) {
-        staging = surface.staging_span();
-        if (staging.size() < surface.frame_bytes()) {
-            auto message = std::string{"surface staging buffer smaller than expected"};
-            (void)set_last_error(space_, params.target_path, message);
-            return std::unexpected(make_error(message, SP::Error::Code::UnknownError));
-        }
-    } else {
-        local_frame_bytes.resize(surface.frame_bytes());
-        staging = std::span<std::uint8_t>{local_frame_bytes.data(), local_frame_bytes.size()};
-    }
-
     auto const width = desc.size_px.width;
     auto const height = desc.size_px.height;
     if (width <= 0 || height <= 0) {
@@ -769,15 +1046,112 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     }
 
     auto const pixel_count = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
-    std::vector<float> linear_buffer(pixel_count * 4u, 0.0f);
+    auto target_key = std::string(params.target_path.getPath());
+    auto& state = target_cache_[target_key];
 
-    auto clear_linear = make_linear_color(params.settings.clear_color);
-    for (std::size_t i = 0; i < pixel_count; ++i) {
-        auto* dest = linear_buffer.data() + i * 4u;
-        dest[0] = clear_linear.r;
-        dest[1] = clear_linear.g;
-        dest[2] = clear_linear.b;
-        dest[3] = clear_linear.a;
+    bool size_changed = state.desc.size_px.width != desc.size_px.width
+                        || state.desc.size_px.height != desc.size_px.height;
+    bool format_changed = state.desc.pixel_format != desc.pixel_format
+                          || state.desc.color_space != desc.color_space
+                          || state.desc.premultiplied_alpha != desc.premultiplied_alpha;
+
+    if (state.linear_buffer.size() != pixel_count * 4u) {
+        state.linear_buffer.clear();
+        state.linear_buffer.resize(pixel_count * 4u);
+        size_changed = true;
+    }
+    auto& linear_buffer = state.linear_buffer;
+
+    auto current_clear = params.settings.clear_color;
+    bool full_repaint = size_changed
+                        || format_changed
+                        || state.last_revision == 0
+                        || state.clear_color != current_clear;
+
+    auto const drawable_count = bucket->drawable_ids.size();
+    std::vector<std::optional<PathRenderer2D::DrawableBounds>> bounds_by_index(drawable_count);
+    std::unordered_map<std::uint64_t, PathRenderer2D::DrawableBounds> current_bounds;
+    current_bounds.reserve(drawable_count);
+
+    bool missing_bounds = false;
+    for (std::uint32_t i = 0; i < drawable_count; ++i) {
+        auto maybe_bounds = compute_drawable_bounds(*bucket, i, width, height);
+        if (maybe_bounds) {
+            bounds_by_index[i] = maybe_bounds;
+            current_bounds.emplace(bucket->drawable_ids[i], *maybe_bounds);
+        } else {
+            missing_bounds = true;
+        }
+    }
+    if (missing_bounds) {
+        full_repaint = true;
+    }
+
+    DamageRegion damage;
+    if (full_repaint) {
+        damage.set_full(width, height);
+    } else {
+        for (auto const& [id, bounds] : current_bounds) {
+            auto it = state.drawable_bounds.find(id);
+            if (it == state.drawable_bounds.end()) {
+                damage.add(bounds, width, height, 1);
+            } else if (bounds.min_x != it->second.min_x
+                       || bounds.min_y != it->second.min_y
+                       || bounds.max_x != it->second.max_x
+                       || bounds.max_y != it->second.max_y) {
+                damage.add(bounds, width, height, 1);
+                damage.add(it->second, width, height, 1);
+            }
+        }
+        for (auto const& [id, old_bounds] : state.drawable_bounds) {
+            if (!current_bounds.contains(id)) {
+                damage.add(old_bounds, width, height, 1);
+            }
+        }
+    }
+    damage.finalize(width, height);
+    bool const has_damage = !damage.empty();
+
+    std::vector<std::uint8_t> local_frame_bytes;
+    std::span<std::uint8_t> staging;
+    if (has_damage) {
+        if (has_buffered) {
+            staging = surface.staging_span();
+            if (staging.size() < surface.frame_bytes()) {
+                auto message = std::string{"surface staging buffer smaller than expected"};
+                (void)set_last_error(space_, params.target_path, message);
+                return std::unexpected(make_error(message, SP::Error::Code::UnknownError));
+            }
+        } else {
+            local_frame_bytes.resize(surface.frame_bytes());
+            staging = std::span<std::uint8_t>{local_frame_bytes.data(), local_frame_bytes.size()};
+        }
+    }
+
+    auto clear_linear = make_linear_color(current_clear);
+    if (has_damage) {
+        auto const row_stride = static_cast<std::size_t>(width) * 4u;
+        for (auto const& rect : damage.rectangles()) {
+            for (int y = rect.min_y; y < rect.max_y; ++y) {
+                auto base = static_cast<std::size_t>(y) * row_stride;
+                for (int x = rect.min_x; x < rect.max_x; ++x) {
+                    auto* dest = linear_buffer.data() + base + static_cast<std::size_t>(x) * 4u;
+                    dest[0] = clear_linear.r;
+                    dest[1] = clear_linear.g;
+                    dest[2] = clear_linear.b;
+                    dest[3] = clear_linear.a;
+                }
+            }
+        }
+    }
+
+    ProgressiveSurfaceBuffer* progressive_buffer = nullptr;
+    std::vector<std::size_t> progressive_dirty_tiles;
+    if (has_progressive) {
+        progressive_buffer = &surface.progressive_buffer();
+        if (has_damage) {
+            damage.collect_progressive_tiles(*progressive_buffer, progressive_dirty_tiles);
+        }
     }
 
     auto const stride = static_cast<std::size_t>(surface.row_stride_bytes());
@@ -792,7 +1166,6 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         return std::unexpected(payload_offsets.error());
     }
 
-    auto const drawable_count = bucket->drawable_ids.size();
     std::uint64_t drawn_total = 0;
     std::uint64_t drawn_opaque = 0;
     std::uint64_t drawn_alpha = 0;
@@ -843,110 +1216,121 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         }
 
         bool drawable_drawn = false;
-
         bool fallback_attempted = false;
 
-        if (command_count == 0) {
-            drawable_drawn = draw_fallback_bounds_box(*bucket,
-                                                      drawable_index,
-                                                      linear_buffer,
-                                                      width,
-                                                      height);
-            fallback_attempted = true;
-            if (!drawable_drawn) {
-                ++culled_drawables;
-                return {};
+        bool skip_draw = false;
+        if (has_damage) {
+            auto const& bounds_opt = bounds_by_index[drawable_index];
+            if (bounds_opt && !damage.intersects(*bounds_opt)) {
+                skip_draw = true;
             }
-        } else {
-            for (std::uint32_t cmd = 0; cmd < command_count; ++cmd) {
-                auto command_index = static_cast<std::size_t>(command_offset) + cmd;
-                auto kind = static_cast<Scene::DrawCommandKind>(bucket->command_kinds[command_index]);
-                auto payload_offset = (*payload_offsets)[command_index];
-                auto payload_size = Scene::payload_size_bytes(kind);
-                if (payload_offset + payload_size > bucket->command_payload.size()) {
-                    return std::unexpected(make_error("command payload exceeds buffer",
-                                                      SP::Error::Code::InvalidType));
-                }
+        }
 
-                switch (kind) {
-                case Scene::DrawCommandKind::Rect: {
-                    auto rect = read_struct<Scene::RectCommand>(bucket->command_payload,
-                                                                payload_offset);
-                    if (draw_rect_command(rect, linear_buffer, width, height)) {
-                        drawable_drawn = true;
-                    }
-                    ++executed_commands;
-                    break;
+        if (!skip_draw) {
+            if (command_count == 0) {
+                drawable_drawn = draw_fallback_bounds_box(*bucket,
+                                                          drawable_index,
+                                                          linear_buffer,
+                                                          width,
+                                                          height);
+                fallback_attempted = true;
+                if (!drawable_drawn) {
+                    ++culled_drawables;
+                    return {};
                 }
-                case Scene::DrawCommandKind::RoundedRect: {
-                    auto rounded = read_struct<Scene::RoundedRectCommand>(bucket->command_payload,
-                                                                          payload_offset);
-                    if (draw_rounded_rect_command(rounded, linear_buffer, width, height)) {
-                        drawable_drawn = true;
+            } else {
+                for (std::uint32_t cmd = 0; cmd < command_count; ++cmd) {
+                    auto command_index = static_cast<std::size_t>(command_offset) + cmd;
+                    auto kind = static_cast<Scene::DrawCommandKind>(bucket->command_kinds[command_index]);
+                    auto payload_offset = (*payload_offsets)[command_index];
+                    auto payload_size = Scene::payload_size_bytes(kind);
+                    if (payload_offset + payload_size > bucket->command_payload.size()) {
+                        return std::unexpected(make_error("command payload exceeds buffer",
+                                                          SP::Error::Code::InvalidType));
                     }
-                    ++executed_commands;
-                    break;
-                }
-                case Scene::DrawCommandKind::TextGlyphs: {
-                    auto glyphs = read_struct<Scene::TextGlyphsCommand>(bucket->command_payload,
-                                                                        payload_offset);
-                    if (draw_text_glyphs_command(glyphs, linear_buffer, width, height)) {
-                        drawable_drawn = true;
-                    }
-                    ++executed_commands;
-                    break;
-                }
-                case Scene::DrawCommandKind::Path: {
-                    auto path_cmd = read_struct<Scene::PathCommand>(bucket->command_payload,
+
+                    switch (kind) {
+                    case Scene::DrawCommandKind::Rect: {
+                        auto rect = read_struct<Scene::RectCommand>(bucket->command_payload,
                                                                     payload_offset);
-                    if (draw_path_command(path_cmd, linear_buffer, width, height)) {
-                        drawable_drawn = true;
-                    }
-                    ++executed_commands;
-                    break;
-                }
-                case Scene::DrawCommandKind::Mesh: {
-                    auto mesh_cmd = read_struct<Scene::MeshCommand>(bucket->command_payload,
-                                                                    payload_offset);
-                    if (draw_mesh_command(mesh_cmd, *bucket, drawable_index, linear_buffer, width, height)) {
-                        drawable_drawn = true;
-                    }
-                    ++executed_commands;
-                    break;
-                }
-                case Scene::DrawCommandKind::Image: {
-                    auto image_cmd = read_struct<Scene::ImageCommand>(bucket->command_payload,
-                                                                     payload_offset);
-                    auto tint_straight = make_linear_straight(image_cmd.tint);
-                    auto asset_path = image_asset_prefix + fingerprint_to_hex(image_cmd.image_fingerprint) + ".png";
-                    auto texture = image_cache_.load(space_, asset_path, image_cmd.image_fingerprint);
-                    if (!texture) {
-                        auto const error = texture.error();
-                        if (error.code != SP::Error::Code::NoObjectFound
-                            && error.code != SP::Error::Code::NoSuchPath) {
-                            auto message = error.message.value_or("failed to load image asset");
-                            (void)set_last_error(space_, params.target_path, message);
+                        if (draw_rect_command(rect, linear_buffer, width, height)) {
+                            drawable_drawn = true;
                         }
+                        ++executed_commands;
+                        break;
+                    }
+                    case Scene::DrawCommandKind::RoundedRect: {
+                        auto rounded = read_struct<Scene::RoundedRectCommand>(bucket->command_payload,
+                                                                              payload_offset);
+                        if (draw_rounded_rect_command(rounded, linear_buffer, width, height)) {
+                            drawable_drawn = true;
+                        }
+                        ++executed_commands;
+                        break;
+                    }
+                    case Scene::DrawCommandKind::TextGlyphs: {
+                        auto glyphs = read_struct<Scene::TextGlyphsCommand>(bucket->command_payload,
+                                                                            payload_offset);
+                        if (draw_text_glyphs_command(glyphs, linear_buffer, width, height)) {
+                            drawable_drawn = true;
+                        }
+                        ++executed_commands;
+                        break;
+                    }
+                    case Scene::DrawCommandKind::Path: {
+                        auto path_cmd = read_struct<Scene::PathCommand>(bucket->command_payload,
+                                                                        payload_offset);
+                        if (draw_path_command(path_cmd, linear_buffer, width, height)) {
+                            drawable_drawn = true;
+                        }
+                        ++executed_commands;
+                        break;
+                    }
+                    case Scene::DrawCommandKind::Mesh: {
+                        auto mesh_cmd = read_struct<Scene::MeshCommand>(bucket->command_payload,
+                                                                        payload_offset);
+                        if (draw_mesh_command(mesh_cmd, *bucket, drawable_index, linear_buffer, width, height)) {
+                            drawable_drawn = true;
+                        }
+                        ++executed_commands;
+                        break;
+                    }
+                    case Scene::DrawCommandKind::Image: {
+                        auto image_cmd = read_struct<Scene::ImageCommand>(bucket->command_payload,
+                                                                         payload_offset);
+                        auto tint_straight = make_linear_straight(image_cmd.tint);
+                        auto asset_path = image_asset_prefix + fingerprint_to_hex(image_cmd.image_fingerprint) + ".png";
+                        auto texture = image_cache_.load(space_, asset_path, image_cmd.image_fingerprint);
+                        if (!texture) {
+                            auto const error = texture.error();
+                            if (error.code != SP::Error::Code::NoObjectFound
+                                && error.code != SP::Error::Code::NoSuchPath) {
+                                auto message = error.message.value_or("failed to load image asset");
+                                (void)set_last_error(space_, params.target_path, message);
+                            }
+                            ++unsupported_commands;
+                            break;
+                        }
+                        auto const& image_data = *texture;
+                        if (draw_image_command(image_cmd,
+                                               *image_data,
+                                               tint_straight,
+                                               linear_buffer,
+                                               width,
+                                               height)) {
+                            drawable_drawn = true;
+                        }
+                        ++executed_commands;
+                        break;
+                    }
+                    default:
                         ++unsupported_commands;
                         break;
                     }
-                    auto const& image_data = *texture;
-                    if (draw_image_command(image_cmd,
-                                           *image_data,
-                                           tint_straight,
-                                           linear_buffer,
-                                           width,
-                                           height)) {
-                        drawable_drawn = true;
-                    }
-                    ++executed_commands;
-                    break;
-                }
-                default:
-                    ++unsupported_commands;
-                    break;
                 }
             }
+        } else {
+            drawable_drawn = true;
         }
 
         if (!drawable_drawn) {
@@ -1101,54 +1485,54 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     }
 
     auto const encode_srgb = needs_srgb_encode(desc);
-    for (int row = 0; row < height; ++row) {
-        auto* row_ptr = staging.data() + static_cast<std::size_t>(row) * stride;
-        for (int col = 0; col < width; ++col) {
-            auto pixel_index = static_cast<std::size_t>(row) * static_cast<std::size_t>(width) * 4u
-                               + static_cast<std::size_t>(col) * 4u;
-            auto encoded = encode_pixel(linear_buffer.data() + pixel_index, desc, encode_srgb);
-            auto offset = static_cast<std::size_t>(col) * 4u;
-            if (is_bgra) {
-                row_ptr[offset + 0] = encoded[2];
-                row_ptr[offset + 1] = encoded[1];
-                row_ptr[offset + 2] = encoded[0];
-            } else {
-                row_ptr[offset + 0] = encoded[0];
-                row_ptr[offset + 1] = encoded[1];
-                row_ptr[offset + 2] = encoded[2];
+    if (has_damage) {
+        for (auto const& rect : damage.rectangles()) {
+            for (int row = rect.min_y; row < rect.max_y; ++row) {
+                auto* row_ptr = staging.data() + static_cast<std::size_t>(row) * stride;
+                auto* linear_row = linear_buffer.data() + static_cast<std::size_t>(row) * static_cast<std::size_t>(width) * 4u;
+                for (int col = rect.min_x; col < rect.max_x; ++col) {
+                    auto pixel_index = static_cast<std::size_t>(col) * 4u;
+                    auto encoded = encode_pixel(linear_row + pixel_index, desc, encode_srgb);
+                    auto offset = static_cast<std::size_t>(col) * 4u;
+                    if (is_bgra) {
+                        row_ptr[offset + 0] = encoded[2];
+                        row_ptr[offset + 1] = encoded[1];
+                        row_ptr[offset + 2] = encoded[0];
+                    } else {
+                        row_ptr[offset + 0] = encoded[0];
+                        row_ptr[offset + 1] = encoded[1];
+                        row_ptr[offset + 2] = encoded[2];
+                    }
+                    row_ptr[offset + 3] = encoded[3];
+                }
             }
-            row_ptr[offset + 3] = encoded[3];
         }
     }
 
-    if (surface.has_progressive()) {
-        auto tile_count = surface.progressive_tile_count();
-        if (tile_count > 0) {
-            auto& progressive = surface.progressive_buffer();
-            auto const row_stride_bytes = surface.row_stride_bytes();
-            for (std::size_t tile_index = 0; tile_index < tile_count; ++tile_index) {
-                auto dims = progressive.tile_dimensions(tile_index);
-                if (dims.width <= 0 || dims.height <= 0) {
-                    continue;
-                }
-                auto writer = surface.begin_progressive_tile(tile_index, TilePass::OpaqueInProgress);
-                auto tile_pixels = writer.pixels();
-                auto const row_pitch = static_cast<std::size_t>(dims.width) * 4u;
-                for (int row = 0; row < dims.height; ++row) {
-                    auto const src_offset = (static_cast<std::size_t>(dims.y + row) * row_stride_bytes)
-                                            + static_cast<std::size_t>(dims.x) * 4u;
-                    auto const dst_offset = static_cast<std::size_t>(row) * tile_pixels.stride_bytes;
-                    std::memcpy(tile_pixels.data + dst_offset,
-                                staging.data() + src_offset,
-                                row_pitch);
-                }
-                writer.commit(TilePass::AlphaDone, sceneRevision->revision);
-                surface.mark_progressive_dirty(tile_index);
-                ++progressive_tiles_updated;
-                auto const tile_rows = std::max(dims.height, 0);
-                progressive_bytes_copied += static_cast<std::uint64_t>(row_pitch)
-                                            * static_cast<std::uint64_t>(tile_rows);
+    if (has_progressive && has_damage) {
+        auto const row_stride_bytes = surface.row_stride_bytes();
+        for (auto tile_index : progressive_dirty_tiles) {
+            auto dims = progressive_buffer->tile_dimensions(tile_index);
+            if (dims.width <= 0 || dims.height <= 0) {
+                continue;
             }
+            auto writer = surface.begin_progressive_tile(tile_index, TilePass::OpaqueInProgress);
+            auto tile_pixels = writer.pixels();
+            auto const row_pitch = static_cast<std::size_t>(dims.width) * 4u;
+            for (int row = 0; row < dims.height; ++row) {
+                auto const src_offset = (static_cast<std::size_t>(dims.y + row) * row_stride_bytes)
+                                        + static_cast<std::size_t>(dims.x) * 4u;
+                auto const dst_offset = static_cast<std::size_t>(row) * tile_pixels.stride_bytes;
+                std::memcpy(tile_pixels.data + dst_offset,
+                            staging.data() + src_offset,
+                            row_pitch);
+            }
+            writer.commit(TilePass::AlphaDone, sceneRevision->revision);
+            surface.mark_progressive_dirty(tile_index);
+            ++progressive_tiles_updated;
+            auto const tile_rows = std::max(dims.height, 0);
+            progressive_bytes_copied += static_cast<std::uint64_t>(row_pitch)
+                                        * static_cast<std::uint64_t>(tile_rows);
         }
     }
 
@@ -1160,7 +1544,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         .revision = sceneRevision->revision,
         .render_ms = render_ms,
     };
-    if (has_buffered) {
+    if (has_buffered && has_damage) {
         surface.publish_buffered_frame(frame_info);
     } else {
         surface.record_frame_info(frame_info);
@@ -1203,6 +1587,11 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     (void)replace_single<double>(space_, metricsBase + "/approxOverdrawFactor", approx_overdraw_factor);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveTilesUpdated", progressive_tiles_updated);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveBytesCopied", progressive_bytes_copied);
+
+    state.drawable_bounds = std::move(current_bounds);
+    state.clear_color = current_clear;
+    state.desc = desc;
+    state.last_revision = sceneRevision->revision;
 
     RenderStats stats{};
     stats.frame_index = params.settings.time.frame_index;

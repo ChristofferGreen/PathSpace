@@ -108,6 +108,9 @@ if(PATHSPACE_ENABLE_UI)
     else()
         target_compile_definitions(PathSpace PUBLIC PATHSPACE_UI_METAL=0)
     endif()
+    if(APPLE)
+        target_link_libraries(PathSpace PRIVATE "-framework IOSurface")
+    endif()
 else()
     target_compile_definitions(PathSpace PUBLIC
         PATHSPACE_ENABLE_UI=0

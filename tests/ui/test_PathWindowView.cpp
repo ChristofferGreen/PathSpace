@@ -10,6 +10,11 @@
 #include <cstdint>
 #include <vector>
 
+#if defined(__APPLE__)
+#include <CoreFoundation/CoreFoundation.h>
+#include <IOSurface/IOSurface.h>
+#endif
+
 using namespace SP::UI;
 using SP::ConcretePathString;
 using SP::ConcretePathStringView;
@@ -65,6 +70,49 @@ TEST_CASE("present copies buffered frame") {
     CHECK(stats.present_ms >= 0.0);
     CHECK(framebuffer == std::vector<std::uint8_t>(stage.begin(), stage.end()));
 }
+
+#if defined(__APPLE__)
+TEST_CASE("present shares iosurface when enabled") {
+    PathSurfaceSoftware surface{make_desc(4, 4)};
+    auto stage = surface.staging_span();
+    REQUIRE(stage.size() >= 16);
+    stage[0] = 0xAA;
+    stage[1] = 0xBB;
+    stage[2] = 0xCC;
+    stage[3] = 0xDD;
+    surface.publish_buffered_frame({
+        .frame_index = 6,
+        .revision = 11,
+        .render_ms = 2.0,
+    });
+
+    PathWindowView view;
+    PathWindowView::PresentRequest request{
+        .now = std::chrono::steady_clock::now(),
+        .vsync_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{5},
+        .framebuffer = {},
+        .dirty_tiles = {},
+        .allow_iosurface_sharing = true,
+    };
+
+    auto stats = view.present(surface, {}, request);
+    CHECK(stats.presented);
+    CHECK(stats.buffered_frame_consumed);
+    CHECK(stats.used_iosurface);
+    REQUIRE(stats.iosurface.has_value());
+    auto iosurface = stats.iosurface->retain_for_external_use();
+    REQUIRE(iosurface != nullptr);
+    REQUIRE(IOSurfaceLock(iosurface, kIOSurfaceLockAvoidSync, nullptr) == kIOReturnSuccess);
+    auto* base = static_cast<std::uint8_t*>(IOSurfaceGetBaseAddress(iosurface));
+    REQUIRE(base != nullptr);
+    CHECK(base[0] == 0xAA);
+    CHECK(base[1] == 0xBB);
+    CHECK(base[2] == 0xCC);
+    CHECK(base[3] == 0xDD);
+    IOSurfaceUnlock(iosurface, kIOSurfaceLockAvoidSync, nullptr);
+    CFRelease(iosurface);
+}
+#endif
 
 TEST_CASE("present copies progressive tiles when buffered missing") {
     PathSurfaceSoftware::Options opts{

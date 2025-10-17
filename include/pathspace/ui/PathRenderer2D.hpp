@@ -7,11 +7,25 @@
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 
 #include <chrono>
+#include <array>
+#include <unordered_map>
+#include <vector>
 
 namespace SP::UI {
 
 class PathRenderer2D {
 public:
+    struct DrawableBounds {
+        int min_x = 0;
+        int min_y = 0;
+        int max_x = 0;
+        int max_y = 0;
+
+        [[nodiscard]] auto empty() const -> bool {
+            return min_x >= max_x || min_y >= max_y;
+        }
+    };
+
     struct RenderParams {
         SP::ConcretePathStringView target_path;
         Builders::RenderSettings const& settings;
@@ -30,8 +44,17 @@ public:
     auto render(RenderParams params) -> SP::Expected<RenderStats>;
 
 private:
+    struct TargetState {
+        Builders::SurfaceDesc desc{};
+        std::array<float, 4> clear_color{0.0f, 0.0f, 0.0f, 0.0f};
+        std::unordered_map<std::uint64_t, DrawableBounds> drawable_bounds;
+        std::vector<float> linear_buffer;
+        std::uint64_t last_revision = 0;
+    };
+
     PathSpace& space_;
     ImageCache image_cache_;
+    std::unordered_map<std::string, TargetState> target_cache_;
 };
 
 } // namespace SP::UI

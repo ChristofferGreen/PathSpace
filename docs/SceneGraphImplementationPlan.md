@@ -4,7 +4,7 @@
 
 ## Context and Objectives
 - Groundwork for implementing the renderer stack described in `docs/AI_Plan_SceneGraph_Renderer.md` and the broader architecture contract in `docs/AI_ARCHITECTURE.md`.
-- Deliver an incremental path from today's codebase to the MVP (software renderer, surfaces, presenters, snapshot builder), while keeping room for Metal/Vulkan and HTML adapters outlined in the master plan.
+- Deliver an incremental path from today's codebase to the MVP (software renderer, CAMetalLayer-based presenters, surfaces, snapshot builder), while keeping room for GPU rendering backends (Metal/Vulkan) and HTML adapters outlined in the master plan.
 - Maintain app-root atomic semantics, immutable snapshot guarantees, and observability expectations throughout the rollout.
 
 Success looks like:
@@ -16,7 +16,7 @@ Success looks like:
 - **Typed wiring helpers** — `Builders.hpp` plus supporting utilities for app-relative path validation, target naming, and atomic parameter writes.
 - **Scene authoring & snapshot builder** — authoring tree schema, dirty tracking, layout, `DrawableBucket` emission, and revision lifecycle/GC.
 - **Renderer core (software first)** — target settings adoption, traversal of snapshots, draw command execution, color pipeline defaults, and concurrency controls.
-- **Surfaces & presenters** — target configuration, render execution coordination, presentation policy enforcement, progressive software mode, and UI-thread integrations.
+- **Surfaces & presenters** — target configuration, render execution coordination, CAMetalLayer-backed window presentation, progressive software mode, and UI-thread integrations.
 - **Input & hit testing** — DrawableBucket-driven hit paths, focus routing, and notification hooks for scene edits and event delivery.
 - **Diagnostics & metrics** — unified `PathSpaceError` usage, per-target metrics, progressive copy counters, and troubleshooting hooks.
 - **Resource residency & tooling** — enforce per-resource policy, adopt fingerprints across snapshots/renderers, refresh compile commands, and extend automation/test harnesses.
@@ -35,9 +35,30 @@ Each workstream lands independently but respects shared contracts (paths, atomic
 
 ## Immediate Next Steps
 - ✅ (October 17, 2025) `PathRenderer2D` executes Rect, RoundedRect, Image, TextGlyphs, Path, and Mesh commands in linear light, respecting opaque/alpha ordering and updating drawable/unsupported metrics.
+- ✅ (October 16, 2025) Replaced the macOS window presenter’s CoreGraphics blit with the CAMetalLayer-backed zero-copy path, validated fullscreen resize/perf behaviour manually, and updated the example/docs.
+ - ✅ (October 17, 2025) PathSurfaceSoftware and PathWindowView now share an IOSurface-backed framebuffer so the presenter can bind the surface without memcpy; the zero-copy path is the new default on macOS.
+- 🔄 (October 17, 2025) Software renderer still repaints the full surface per frame; introduce bounded-damage rendering so small strokes only touch their tiles and fullscreen paints stay interactive (see “Incremental software renderer” below).
 - For Phase 4 follow-ups, prepare end-to-end scene→render→present scenarios, wire presenters through `Window::Present`, surface progressive-mode metrics, codify seqlock/deadline tests, and rerun the loop harness once integrations land.
 - Begin Phase 5 test authoring for hit ordering, clip-aware picking, focus routing, and event delivery latency; follow with DrawableBucket-backed picking and wait/notify integration for dirty markers and auto-render scheduling.
 - Line up Phase 6 diagnostics/tooling work: extend error/metrics coverage, normalize `PathSpaceError` reporting, expand scripts for UI log capture, and draft the debugging playbook updates before the next hardening pass.
+
+### Incremental software renderer (new priority, October 17, 2025)
+- Scope: keep the zero-copy path but eliminate full-surface repaints when only a small region changes.
+- Current status:
+  - Per-target caches and damage rect plumbing landed in PathRenderer2D (October 17, 2025), but scene revisions still look “all dirty”, so fullscreen frames repaint everything.
+  - paint_example republishes a fresh snapshot each loop, preventing damage reuse.
+- Immediate next steps:
+  0. Lock in the progressive tiling strategy: default tile size stays 64×64 px, which yields ~510 tiles at 1080p, ~920 tiles at 1440p, and ~2 040 tiles at 4K. The renderer will treat tiles as the unit of work and feed them into a per-core queue so an 8‑core CPU gets ~250 tiles for a 4K full repaint (≈32 per core), keeping the full-surface path viable at ≥60 Hz.
+  1. Teach SceneSnapshotBuilder (and the authoring path) to attach stable drawable revision ids or dirty hashes so renderers can detect unchanged drawables.
+  2. Update paint_example (and helper builders) to skip publishing when nothing changed and to forward “dirty stroke bounds” hints.
+  3. Revisit PathRenderer2D damage calculation once upstream hints exist; ensure removal/clear events repaint previous bounds and progressive tiles.
+- Runtime targets:
+  - Incremental updates should be the steady state: typical UI strokes touch only a handful of tiles, keeping frame cost well under the 16 ms (~60 Hz) budget.
+  - Full-surface repaints remain first-class. Camera moves or scene-wide changes explicitly flip the damage region to `set_full()`, then PathRenderer2D fan-outs tiles across all CPU cores (tile-per-thread queue) so repainting a 4K surface still clears ≤16 ms once the inner loops are vectorized.
+  - The software path owns these full clears; GPU assists stay optional (e.g. secondary effects), not the default “draw everything every frame,” so the hybrid design preserves the progressive/tiled CPU pipeline.
+- Validation:
+  - Add doctests that draw incremental strokes, erase strokes, and change clear color; each should report limited damage.
+  - Capture comparative FPS traces (small-vs-fullscreen) to confirm the fullscreen slowdown disappears.
 
 ## Phase Plan
 ### Phase 0 — Foundations (1 sprint)
@@ -81,7 +102,12 @@ Completed:
 - ✅ (October 16, 2025) Seqlock and deadline behaviour codified via `PathWindowView` and builder tests, ensuring wait-budget clamps and progressive copy skips are observable.
 - ✅ (October 16, 2025) Compile/test loop harness revalidated after presenter integration (15× repeat, 20 s timeout) confirming stability.
 - ✅ (October 16, 2025) Software presenter now publishes captured framebuffers under `output/v1/software/framebuffer`, enabling downstream inspection of rendered bytes alongside metadata.
-- Add a minimal paint-style demo application that wires the scene→render→present stack together and lets users draw pixels with the mouse; this serves as an end-to-end sample for contributors.
+- ✅ (October 17, 2025) Added a minimal paint-style demo (`examples/paint_example.cpp`) that wires the scene→render→present stack together, supports dynamic canvas resizing, and interpolates mouse strokes so contributors can exercise the full software path end-to-end.
+- ✅ (October 16, 2025) macOS window presentation now uses a CAMetalLayer-backed Metal swapchain (IOSurface copies + present) instead of CoreGraphics blits; fullscreen perf is no longer CPU bound.
+
+Remaining:
+- Add fullscreen perf regression coverage in `PathSpaceUITests` to guard the CAMetalLayer path.
+- (Done) IOSurface-backed software framebuffer landed with PathSurfaceSoftware/PathWindowView zero-copy integration; future work should iterate on diagnostics rather than copy elimination.
 
 ### Phase 5 — Input, Hit Testing, and Notifications (1 sprint)
 - ✅ (October 16, 2025) Added doctest scenarios for hit ordering, clip-aware picking, focus routing, and auto-render event scheduling via `Scene::HitTest`; notifications enqueue `AutoRenderRequestEvent` under `events/renderRequested/queue`.
@@ -97,7 +123,7 @@ Completed:
 
 ### Phase 7 — Optional Backends & HTML Adapter Prep (post-MVP)
 - For each backend, author adapter-specific tests (integration replay, ObjC++ harness, HTML command parity) before the implementation.
-- Metal surface/presenter gated by `PATHSPACE_UI_METAL`; confirm ObjC++ integration and CI coverage.
+- Extended Metal renderer (GPU raster path) gated by `PATHSPACE_UI_METAL`; build atop the baseline Metal presenter, confirm ObjC++ integration, and expand CI coverage.
 - HTML adapter scaffolding (command stream emitter + replay harness) behind experimental flag.
 - Resource loader integration for fonts/images when snapshots require them.
 
@@ -128,7 +154,7 @@ Completed:
 - Finalize `DrawableBucket` binary schema (padding, endianness, checksum) before snapshot/renderer work diverges.
 - Decide on minimum color management scope for MVP (srgb8 only vs optional linear FP targets).
 - Clarify resource manager involvement for fonts/images in MVP vs deferred phases.
-- Confirm threading constraints for macOS presenters (runloop integration, CAMetalLayer adoption).
+- Validate CAMetalLayer drawable lifetime, IOSurface reuse, and runloop coordination during resize/fullscreen transitions for the Metal presenter.
 - Nail down metrics format (`output/v1/common` vs `diagnostics/metrics`) to keep profiler expectations stable.
 - Define sequencing for path-traced lighting and tetrahedral acceleration work (post-MVP vs incremental alongside GPU backends).
 

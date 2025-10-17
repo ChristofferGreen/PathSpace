@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -33,6 +34,9 @@ struct PathWindowPresentRequest {
     std::chrono::steady_clock::time_point vsync_deadline{};
     std::span<std::uint8_t> framebuffer{};
     std::span<std::size_t const> dirty_tiles{};
+#if defined(__APPLE__)
+    bool allow_iosurface_sharing = false;
+#endif
 };
 
 struct PathWindowPresentStats {
@@ -54,6 +58,10 @@ struct PathWindowPresentStats {
     std::size_t progressive_skip_seq_odd = 0;
     std::size_t progressive_recopy_after_seq_change = 0;
     std::string error;
+#if defined(__APPLE__)
+    bool used_iosurface = false;
+    std::optional<PathSurfaceSoftware::SharedIOSurface> iosurface;
+#endif
 };
 
 class PathWindowView {

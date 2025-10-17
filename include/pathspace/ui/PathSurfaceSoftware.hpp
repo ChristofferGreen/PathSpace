@@ -11,6 +11,10 @@
 #include <span>
 #include <vector>
 
+#if defined(__APPLE__)
+typedef struct __IOSurface* IOSurfaceRef;
+#endif
+
 namespace SP::UI {
 
 class PathSurfaceSoftware {
@@ -63,6 +67,37 @@ public:
     [[nodiscard]] auto copy_buffered_frame(std::span<std::uint8_t> destination) const
         -> std::optional<BufferedFrameCopy>;
 
+#if defined(__APPLE__)
+    class SharedIOSurface {
+    public:
+        SharedIOSurface() = default;
+        SharedIOSurface(IOSurfaceRef surface,
+                        int width,
+                        int height,
+                        std::size_t row_bytes);
+        SharedIOSurface(SharedIOSurface const& other);
+        SharedIOSurface& operator=(SharedIOSurface const& other);
+        SharedIOSurface(SharedIOSurface&& other) noexcept;
+        SharedIOSurface& operator=(SharedIOSurface&& other) noexcept;
+        ~SharedIOSurface();
+
+        [[nodiscard]] auto valid() const -> bool { return surface_ != nullptr; }
+        [[nodiscard]] auto surface() const -> IOSurfaceRef { return surface_; }
+        [[nodiscard]] auto width() const -> int { return width_; }
+        [[nodiscard]] auto height() const -> int { return height_; }
+        [[nodiscard]] auto row_bytes() const -> std::size_t { return row_bytes_; }
+        [[nodiscard]] auto retain_for_external_use() const -> IOSurfaceRef;
+
+    private:
+        IOSurfaceRef surface_ = nullptr;
+        int width_ = 0;
+        int height_ = 0;
+        std::size_t row_bytes_ = 0;
+    };
+
+    [[nodiscard]] auto front_iosurface() const -> std::optional<SharedIOSurface>;
+#endif
+
 private:
     void reallocate_buffers();
     void reset_progressive();
@@ -75,8 +110,32 @@ private:
 
     std::unique_ptr<ProgressiveSurfaceBuffer> progressive_;
 
+#if defined(__APPLE__)
+    class IOSurfaceHolder {
+    public:
+        IOSurfaceHolder() = default;
+        explicit IOSurfaceHolder(IOSurfaceRef surface);
+        IOSurfaceHolder(IOSurfaceHolder const& other) = delete;
+        IOSurfaceHolder& operator=(IOSurfaceHolder const& other) = delete;
+        IOSurfaceHolder(IOSurfaceHolder&& other) noexcept;
+        IOSurfaceHolder& operator=(IOSurfaceHolder&& other) noexcept;
+        ~IOSurfaceHolder();
+
+        [[nodiscard]] auto get() const -> IOSurfaceRef { return surface_; }
+        void reset(IOSurfaceRef surface = nullptr);
+        void swap(IOSurfaceHolder& other) noexcept;
+
+    private:
+        IOSurfaceRef surface_ = nullptr;
+    };
+
+    IOSurfaceHolder staging_surface_{};
+    IOSurfaceHolder front_surface_{};
+    mutable bool staging_locked_ = false;
+#else
     std::vector<std::uint8_t> staging_;
     std::vector<std::uint8_t> front_;
+#endif
     bool staging_dirty_ = false;
     std::vector<std::size_t> progressive_dirty_tiles_;
 

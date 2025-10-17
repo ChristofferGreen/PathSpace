@@ -1,10 +1,9 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/layer/io/PathIOMouse.hpp>
-#include <pathspace/layer/io/PathIOKeyboard.hpp>
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
+#include "PaintInputBridge.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -24,18 +23,22 @@ using namespace SP::UI;
 namespace UIScene = SP::UI::Scene;
 
 #if defined(__APPLE__)
+#include <CoreFoundation/CoreFoundation.h>
+#include <IOSurface/IOSurface.h>
 namespace SP {
-void PSInitLocalEventWindow(PathIOMouse*, PathIOKeyboard*);
-void PSInitLocalEventWindowWithSize(PathIOMouse*, PathIOKeyboard*, int width, int height, const char* title);
+void PSInitLocalEventWindow();
+void PSInitLocalEventWindowWithSize(int width, int height, const char* title);
 void PSPollLocalEventWindow();
 void PSUpdateWindowFramebuffer(const std::uint8_t* data, int width, int height, int rowStrideBytes);
+void PSPresentIOSurface(void* surface, int width, int height, int rowStrideBytes);
+void PSGetLocalWindowContentSize(int* width, int* height);
 } // namespace SP
 #endif
 
 namespace {
 
-constexpr int kCanvasWidth = 320;
-constexpr int kCanvasHeight = 240;
+constexpr int kInitialCanvasWidth = 320;
+constexpr int kInitialCanvasHeight = 240;
 constexpr int kBrushSizePx = 8;
 
 struct Stroke {
@@ -76,6 +79,43 @@ auto unwrap_or_exit(SP::Expected<void> value, std::string const& context) -> voi
     }
 }
 
+template <typename T>
+auto replace_value(PathSpace& space, std::string const& path, T const& value) -> bool {
+    while (true) {
+        auto taken = space.take<T>(path);
+        if (taken) {
+            continue;
+        }
+        auto const& err = taken.error();
+        if (err.code == SP::Error::Code::NoObjectFound
+            || err.code == SP::Error::Code::NoSuchPath) {
+            break;
+        }
+        std::cerr << "failed clearing '" << path << "': ";
+        if (err.message.has_value()) {
+            std::cerr << *err.message;
+        } else {
+            std::cerr << static_cast<int>(err.code);
+        }
+        std::cerr << std::endl;
+        return false;
+    }
+
+    auto result = space.insert(path, value);
+    if (!result.errors.empty()) {
+        auto const& err = result.errors.front();
+        std::cerr << "failed writing '" << path << "': ";
+        if (err.message.has_value()) {
+            std::cerr << *err.message;
+        } else {
+            std::cerr << static_cast<int>(err.code);
+        }
+        std::cerr << std::endl;
+        return false;
+    }
+    return true;
+}
+
 auto build_bucket(std::vector<Stroke> const& strokes) -> UIScene::DrawableBucketSnapshot {
     UIScene::DrawableBucketSnapshot bucket{};
     const std::size_t count = strokes.size();
@@ -95,7 +135,6 @@ auto build_bucket(std::vector<Stroke> const& strokes) -> UIScene::DrawableBucket
     bucket.command_kinds.reserve(count);
     bucket.clip_head_indices.assign(count, -1);
     bucket.authoring_map.reserve(count);
-    std::size_t payload_offset = 0;
     for (std::size_t i = 0; i < count; ++i) {
         auto const& stroke = strokes[i];
         bucket.drawable_ids.push_back(stroke.drawable_id);
@@ -123,14 +162,14 @@ auto build_bucket(std::vector<Stroke> const& strokes) -> UIScene::DrawableBucket
         bucket.pipeline_flags.push_back(0);
         bucket.visibility.push_back(1);
 
-        bucket.command_offsets.push_back(static_cast<std::uint32_t>(payload_offset));
+        auto command_index = static_cast<std::uint32_t>(bucket.command_kinds.size());
+        bucket.command_offsets.push_back(command_index);
         bucket.command_counts.push_back(1);
         bucket.command_kinds.push_back(static_cast<std::uint32_t>(UIScene::DrawCommandKind::Rect));
 
         auto previousSize = bucket.command_payload.size();
         bucket.command_payload.resize(previousSize + sizeof(UIScene::RectCommand));
         std::memcpy(bucket.command_payload.data() + previousSize, &stroke.rect, sizeof(UIScene::RectCommand));
-        payload_offset += sizeof(UIScene::RectCommand);
 
         bucket.authoring_map.push_back(UIScene::DrawableAuthoringMapEntry{
             stroke.drawable_id,
@@ -159,11 +198,17 @@ auto publish_snapshot(PathSpace& space,
     unwrap_or_exit(builder.publish(opts, bucket), "failed to publish paint scene snapshot");
 }
 
+struct PresentOutcome {
+    bool used_iosurface = false;
+    std::size_t framebuffer_bytes = 0;
+    std::size_t stride_bytes = 0;
+};
+
 auto present_frame(PathSpace& space,
                    Builders::WindowPath const& windowPath,
                    std::string_view viewName,
                    int width,
-                   int height) -> void {
+                   int height) -> std::optional<PresentOutcome> {
     auto presentResult = Builders::Window::Present(space, windowPath, viewName);
     if (!presentResult) {
         std::cerr << "present failed";
@@ -171,35 +216,74 @@ auto present_frame(PathSpace& space,
             std::cerr << ": " << *presentResult.error().message;
         }
         std::cerr << std::endl;
-        return;
+        return std::nullopt;
     }
-    if (!presentResult->framebuffer.empty()) {
 #if defined(__APPLE__)
+    bool used_iosurface = false;
+    std::size_t computed_stride = 0;
+    if (presentResult->stats.iosurface && presentResult->stats.iosurface->valid()) {
+        auto iosurface_ref = presentResult->stats.iosurface->retain_for_external_use();
+        if (iosurface_ref) {
+            SP::PSPresentIOSurface(static_cast<void*>(iosurface_ref),
+                                   width,
+                                   height,
+                                   static_cast<int>(presentResult->stats.iosurface->row_bytes()));
+            CFRelease(iosurface_ref);
+            used_iosurface = true;
+            computed_stride = presentResult->stats.iosurface->row_bytes();
+        }
+    }
+    if (!used_iosurface && !presentResult->framebuffer.empty()) {
+        int row_stride_bytes = 0;
+        if (height > 0) {
+            auto total_bytes = static_cast<int>(presentResult->framebuffer.size());
+            row_stride_bytes = total_bytes / height;
+        }
+        if (row_stride_bytes <= 0) {
+            row_stride_bytes = width * 4;
+        }
+        computed_stride = static_cast<std::size_t>(row_stride_bytes);
         SP::PSUpdateWindowFramebuffer(presentResult->framebuffer.data(),
                                       width,
                                       height,
-                                      width * 4);
-#endif
+                                      row_stride_bytes);
     }
+#else
+    (void)width;
+    (void)height;
+    std::size_t computed_stride = static_cast<std::size_t>(width) * 4;
+#endif
+    PresentOutcome outcome{};
+    outcome.used_iosurface = presentResult->stats.used_iosurface;
+    outcome.framebuffer_bytes = presentResult->framebuffer.size();
+    if (computed_stride == 0) {
+        computed_stride = static_cast<std::size_t>(width) * 4;
+    }
+    outcome.stride_bytes = computed_stride;
+    return outcome;
 }
 
-auto to_canvas_y(int viewY) -> int {
-    int clamped = std::clamp(viewY, 0, kCanvasHeight - 1);
-    return (kCanvasHeight - 1) - clamped;
+auto to_canvas_y(int viewY, int canvasHeight) -> int {
+    return std::clamp(viewY, 0, std::max(canvasHeight - 1, 0));
 }
 
 auto add_stroke(std::vector<Stroke>& strokes,
                 std::uint64_t& nextId,
+                int canvasWidth,
+                int canvasHeight,
                 int x,
                 int y,
                 std::array<float, 4> const& color) -> bool {
-    int canvasX = std::clamp(x, 0, kCanvasWidth - 1);
-    int canvasY = to_canvas_y(y);
+    if (canvasWidth <= 0 || canvasHeight <= 0) {
+        return false;
+    }
+    int canvasX = std::clamp(x, 0, canvasWidth - 1);
+    int canvasY = to_canvas_y(y, canvasHeight);
     float half = static_cast<float>(kBrushSizePx) * 0.5f;
-    float minX = std::clamp(static_cast<float>(canvasX) - half, 0.0f, static_cast<float>(kCanvasWidth));
-    float minY = std::clamp(static_cast<float>(canvasY) - half, 0.0f, static_cast<float>(kCanvasHeight));
-    float maxX = std::clamp(minX + static_cast<float>(kBrushSizePx), 0.0f, static_cast<float>(kCanvasWidth));
-    float maxY = std::clamp(minY + static_cast<float>(kBrushSizePx), 0.0f, static_cast<float>(kCanvasHeight));
+    float minX = std::clamp(static_cast<float>(canvasX) - half, 0.0f, static_cast<float>(canvasWidth));
+    float minY = std::clamp(static_cast<float>(canvasY) - half, 0.0f, static_cast<float>(canvasHeight));
+    float maxX = std::clamp(minX + static_cast<float>(kBrushSizePx), 0.0f, static_cast<float>(canvasWidth));
+    float maxY = std::clamp(minY + static_cast<float>(kBrushSizePx), 0.0f, static_cast<float>(canvasHeight));
     if (maxX <= minX || maxY <= minY) {
         return false;
     }
@@ -220,6 +304,33 @@ auto add_stroke(std::vector<Stroke>& strokes,
     return true;
 }
 
+auto lay_down_segment(std::vector<Stroke>& strokes,
+                      std::uint64_t& nextId,
+                      int canvasWidth,
+                      int canvasHeight,
+                      std::pair<int, int> const& from,
+                      std::pair<int, int> const& to,
+                      std::array<float, 4> const& color) -> bool {
+    bool wrote = false;
+    double x0 = static_cast<double>(from.first);
+    double y0 = static_cast<double>(from.second);
+    double x1 = static_cast<double>(to.first);
+    double y1 = static_cast<double>(to.second);
+    double dx = x1 - x0;
+    double dy = y1 - y0;
+    double dist = std::hypot(dx, dy);
+    double spacing = std::max(1.0, static_cast<double>(kBrushSizePx) * 0.5);
+    int steps = (dist > spacing) ? static_cast<int>(std::floor(dist / spacing)) : 0;
+    for (int i = 1; i <= steps; ++i) {
+        double t = static_cast<double>(i) / static_cast<double>(steps + 1);
+        int xi = static_cast<int>(std::round(x0 + dx * t));
+        int yi = static_cast<int>(std::round(y0 + dy * t));
+        wrote |= add_stroke(strokes, nextId, canvasWidth, canvasHeight, xi, yi, color);
+    }
+    wrote |= add_stroke(strokes, nextId, canvasWidth, canvasHeight, to.first, to.second, color);
+    return wrote;
+}
+
 } // namespace
 
 int main() {
@@ -228,32 +339,10 @@ int main() {
     return 1;
 #else
     PathSpace space;
+    int canvasWidth = kInitialCanvasWidth;
+    int canvasHeight = kInitialCanvasHeight;
 
-    auto mouse = std::make_unique<PathIOMouse>(PathIOMouse::BackendMode::Off);
-    auto keyboard = std::make_unique<PathIOKeyboard>(PathIOKeyboard::BackendMode::Off);
-    PathIOMouse* mousePtr = mouse.get();
-    PathIOKeyboard* keyboardPtr = keyboard.get();
-
-    auto insert_mouse = space.insert<"/system/devices/in/pointer/default">(std::move(mouse));
-    if (!insert_mouse.errors.empty()) {
-        std::cerr << "failed to mount mouse provider: ";
-        if (insert_mouse.errors.front().message.has_value()) {
-            std::cerr << *insert_mouse.errors.front().message;
-        }
-        std::cerr << std::endl;
-        return 1;
-    }
-    auto insert_keyboard = space.insert<"/system/devices/in/text/default">(std::move(keyboard));
-    if (!insert_keyboard.errors.empty()) {
-        std::cerr << "failed to mount keyboard provider: ";
-        if (insert_keyboard.errors.front().message.has_value()) {
-            std::cerr << *insert_keyboard.errors.front().message;
-        }
-        std::cerr << std::endl;
-        return 1;
-    }
-
-    SP::PSInitLocalEventWindowWithSize(mousePtr, keyboardPtr, kCanvasWidth, kCanvasHeight, "PathSpace Paint");
+    SP::PSInitLocalEventWindowWithSize(canvasWidth, canvasHeight, "PathSpace Paint");
 
     SP::App::AppRootPath appRoot{"/system/applications/paint"};
     auto rootView = SP::App::AppRootPathView{appRoot.getPath()};
@@ -273,8 +362,8 @@ int main() {
                                        "failed to create renderer");
 
     Builders::SurfaceDesc surfaceDesc{};
-    surfaceDesc.size_px.width = kCanvasWidth;
-    surfaceDesc.size_px.height = kCanvasHeight;
+    surfaceDesc.size_px.width = canvasWidth;
+    surfaceDesc.size_px.height = canvasHeight;
     surfaceDesc.pixel_format = Builders::PixelFormat::RGBA8Unorm_sRGB;
     surfaceDesc.color_space = Builders::ColorSpace::sRGB;
     surfaceDesc.premultiplied_alpha = true;
@@ -289,11 +378,18 @@ int main() {
     unwrap_or_exit(Builders::Surface::SetScene(space, surfacePath, scenePath),
                    "failed to bind scene to surface");
 
+    auto targetRelative = unwrap_or_exit(space.read<std::string, std::string>(std::string(surfacePath.getPath()) + "/target"),
+                                         "failed to read surface target binding");
+    auto targetAbsolute = unwrap_or_exit(SP::App::resolve_app_relative(rootView, targetRelative),
+                                         "failed to resolve surface target path");
+    std::string surfaceDescPath = std::string(surfacePath.getPath()) + "/desc";
+    std::string targetDescPath = targetAbsolute.getPath() + "/desc";
+
     Builders::WindowParams windowParams{};
     windowParams.name = "window";
     windowParams.title = "PathSpace Paint";
-    windowParams.width = kCanvasWidth;
-    windowParams.height = kCanvasHeight;
+    windowParams.width = canvasWidth;
+    windowParams.height = canvasHeight;
     auto windowPath = unwrap_or_exit(Builders::Window::Create(space, rootView, windowParams),
                                      "failed to create window");
     unwrap_or_exit(Builders::Window::AttachSurface(space, windowPath, "main", surfacePath),
@@ -303,74 +399,151 @@ int main() {
 
     std::vector<Stroke> strokes;
     std::uint64_t nextId = 1;
-    // Background stroke (white)
-    UIScene::RectCommand background{};
-    background.min_x = 0.0f;
-    background.min_y = 0.0f;
-    background.max_x = static_cast<float>(kCanvasWidth);
-    background.max_y = static_cast<float>(kCanvasHeight);
-    background.color = {1.0f, 1.0f, 1.0f, 1.0f};
-    Stroke backgroundStroke{
-        .drawable_id = nextId++,
-        .rect = background,
-        .authoring_id = "nodes/paint/background",
-    };
-    strokes.push_back(backgroundStroke);
+
+    Builders::RenderSettings rendererSettings{};
+    rendererSettings.clear_color = {1.0f, 1.0f, 1.0f, 1.0f};
+    rendererSettings.surface.size_px.width = canvasWidth;
+    rendererSettings.surface.size_px.height = canvasHeight;
+    unwrap_or_exit(Builders::Renderer::UpdateSettings(space,
+                                                     SP::ConcretePathStringView{targetAbsolute.getPath()},
+                                                     rendererSettings),
+                  "failed to set renderer clear color");
 
     auto bucket = build_bucket(strokes);
     publish_snapshot(space, builder, scenePath, bucket);
-    present_frame(space, windowPath, "main", kCanvasWidth, kCanvasHeight);
+    (void)present_frame(space, windowPath, "main", canvasWidth, canvasHeight);
+
+    auto fps_last_report = std::chrono::steady_clock::now();
+    std::uint64_t fps_frames = 0;
+    std::uint64_t fps_iosurface_frames = 0;
+    std::size_t fps_last_stride = 0;
+    std::size_t fps_last_framebuffer_bytes = 0;
 
     bool drawing = false;
     std::optional<std::pair<int, int>> lastAbsolute;
+    std::optional<std::pair<int, int>> lastPainted;
     std::array<float, 4> brushColor{0.9f, 0.1f, 0.3f, 1.0f};
 
     while (true) {
         SP::PSPollLocalEventWindow();
 
+        int requestedWidth = canvasWidth;
+        int requestedHeight = canvasHeight;
+        SP::PSGetLocalWindowContentSize(&requestedWidth, &requestedHeight);
+        if (requestedWidth <= 0 || requestedHeight <= 0) {
+            break;
+        }
+
+        bool sizeChanged = (requestedWidth != canvasWidth) || (requestedHeight != canvasHeight);
+        if (sizeChanged) {
+            canvasWidth = requestedWidth;
+            canvasHeight = requestedHeight;
+            surfaceDesc.size_px.width = canvasWidth;
+            surfaceDesc.size_px.height = canvasHeight;
+            replace_value(space, surfaceDescPath, surfaceDesc);
+            replace_value(space, targetDescPath, surfaceDesc);
+            lastPainted.reset();
+            lastAbsolute.reset();
+            rendererSettings.surface.size_px.width = canvasWidth;
+            rendererSettings.surface.size_px.height = canvasHeight;
+            unwrap_or_exit(Builders::Renderer::UpdateSettings(space,
+                                                             SP::ConcretePathStringView{targetAbsolute.getPath()},
+                                                             rendererSettings),
+                          "failed to refresh renderer size on resize");
+        }
+
         bool updated = false;
-        while (true) {
-            auto evt = space.take<"/system/devices/in/pointer/default/events", PathIOMouse::Event>();
-            if (!evt) {
-                break;
-            }
+        while (auto evt = PaintInput::try_pop_mouse()) {
             auto const& e = *evt;
             switch (e.type) {
-            case MouseEventType::AbsoluteMove:
-                lastAbsolute = std::pair<int, int>{e.x, e.y};
-                if (drawing && lastAbsolute) {
-                    updated |= add_stroke(strokes, nextId, lastAbsolute->first, lastAbsolute->second, brushColor);
+            case PaintInput::MouseEventType::AbsoluteMove: {
+                if (e.x < 0 || e.y < 0) {
+                    break;
+                }
+                std::pair<int, int> current{e.x, e.y};
+                lastAbsolute = current;
+                if (drawing) {
+                    if (!lastPainted) {
+                        lastPainted = current;
+                    }
+                    updated |= lay_down_segment(strokes,
+                                                nextId,
+                                                canvasWidth,
+                                                canvasHeight,
+                                                *lastPainted,
+                                                current,
+                                                brushColor);
+                    lastPainted = current;
                 }
                 break;
-            case MouseEventType::ButtonDown:
-                if (e.button == MouseButton::Left) {
-                    drawing = true;
-                    if (lastAbsolute) {
-                        updated |= add_stroke(strokes, nextId, lastAbsolute->first, lastAbsolute->second, brushColor);
+            }
+            case PaintInput::MouseEventType::ButtonDown:
+                if (e.button == PaintInput::MouseButton::Left) {
+                    std::optional<std::pair<int, int>> point;
+                    if (e.x >= 0 && e.y >= 0) {
+                        point = std::pair<int, int>{e.x, e.y};
+                    } else if (lastAbsolute) {
+                        point = lastAbsolute;
+                    }
+                    if (point) {
+                        lastAbsolute = *point;
+                        drawing = true;
+                        updated |= add_stroke(strokes, nextId, canvasWidth, canvasHeight, point->first, point->second, brushColor);
+                        lastPainted = *point;
                     }
                 }
                 break;
-            case MouseEventType::ButtonUp:
-                if (e.button == MouseButton::Left) {
+            case PaintInput::MouseEventType::ButtonUp:
+                if (e.button == PaintInput::MouseButton::Left) {
                     drawing = false;
+                    lastPainted.reset();
                 }
                 break;
-            case MouseEventType::Move:
-            case MouseEventType::Wheel:
-                // Ignore relative move/wheel for painting.
+            case PaintInput::MouseEventType::Move:
+            case PaintInput::MouseEventType::Wheel:
+                // Ignored for painting.
                 break;
             }
         }
 
-        if (updated) {
+        if (updated || sizeChanged) {
             bucket = build_bucket(strokes);
             publish_snapshot(space, builder, scenePath, bucket);
-            present_frame(space, windowPath, "main", kCanvasWidth, kCanvasHeight);
+            if (auto outcome = present_frame(space, windowPath, "main", canvasWidth, canvasHeight)) {
+                ++fps_frames;
+                if (outcome->used_iosurface) {
+                    ++fps_iosurface_frames;
+                }
+                fps_last_stride = outcome->stride_bytes;
+                fps_last_framebuffer_bytes = outcome->framebuffer_bytes;
+                auto report_now = std::chrono::steady_clock::now();
+                auto elapsed = report_now - fps_last_report;
+                if (elapsed >= std::chrono::seconds(1)) {
+                    double seconds = std::chrono::duration<double>(elapsed).count();
+                    if (seconds > 0.0 && fps_frames > 0) {
+                        double fps = static_cast<double>(fps_frames) / seconds;
+                        auto iosurface_frames = fps_iosurface_frames;
+                        auto frames = fps_frames;
+                        auto stride_bytes = fps_last_stride;
+                        auto framebuffer_bytes = fps_last_framebuffer_bytes;
+                        std::cout << "FPS: " << fps
+                                  << " (iosurface " << iosurface_frames << '/' << frames
+                                  << ", stride=" << stride_bytes
+                                  << ", frameBytes=" << framebuffer_bytes
+                                  << ')'
+                                  << std::endl;
+                    }
+                    fps_frames = 0;
+                    fps_iosurface_frames = 0;
+                    fps_last_report = report_now;
+                }
+            }
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(4));
     }
 
+    PaintInput::clear_mouse();
     return 0;
 #endif
 }

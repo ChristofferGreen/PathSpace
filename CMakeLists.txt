@@ -100,6 +100,10 @@ if(BUILD_PATHSPACE_EXAMPLES)
             )
         endif()
         target_link_libraries(devices_example PRIVATE "-framework Cocoa" "-framework GameController")
+        target_link_libraries(devices_example PRIVATE
+            "-framework Metal"
+            "-framework QuartzCore"
+            "-framework IOSurface")
         target_compile_definitions(devices_example PRIVATE PATHIO_BACKEND_MACOS=1)
     endif()
 
@@ -114,7 +118,12 @@ if(BUILD_PATHSPACE_EXAMPLES)
                 PROPERTIES COMPILE_FLAGS "-fobjc-arc"
             )
         endif()
-        target_link_libraries(paint_example PRIVATE "-framework Cocoa" "-framework GameController")
+        target_link_libraries(paint_example PRIVATE
+            "-framework Cocoa"
+            "-framework GameController"
+            "-framework Metal"
+            "-framework QuartzCore"
+            "-framework IOSurface")
         target_compile_definitions(paint_example PRIVATE PATHIO_BACKEND_MACOS=1)
     endif()
 endif()

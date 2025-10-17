@@ -21,6 +21,11 @@
 #include <utility>
 #include <vector>
 
+#if defined(__APPLE__)
+#include <CoreFoundation/CoreFoundation.h>
+#include <IOSurface/IOSurface.h>
+#endif
+
 namespace SP::UI::Builders {
 
 namespace {
@@ -1322,18 +1327,53 @@ auto Present(PathSpace& space,
     if (vsync_budget < std::chrono::steady_clock::duration::zero()) {
         vsync_budget = std::chrono::steady_clock::duration::zero();
     }
+#if defined(__APPLE__)
+    PathWindowView::PresentRequest request{
+        .now = now,
+        .vsync_deadline = now + vsync_budget,
+        .framebuffer = framebuffer,
+        .dirty_tiles = dirty_tiles,
+        .allow_iosurface_sharing = true,
+    };
+#else
     PathWindowView::PresentRequest request{
         .now = now,
         .vsync_deadline = now + vsync_budget,
         .framebuffer = framebuffer,
         .dirty_tiles = dirty_tiles,
     };
+#endif
     auto presentStats = presenter.present(surface, *policy, request);
     if (renderStats) {
         presentStats.frame.frame_index = renderStats->frame_index;
         presentStats.frame.revision = renderStats->revision;
         presentStats.frame.render_ms = renderStats->render_ms;
     }
+#if defined(__APPLE__)
+    if (presentStats.iosurface && presentStats.iosurface->valid()) {
+        auto retained = presentStats.iosurface->retain_for_external_use();
+        if (retained) {
+            if (IOSurfaceLock(retained, kIOSurfaceLockAvoidSync, nullptr) == kIOReturnSuccess) {
+                auto* base = static_cast<std::uint8_t*>(IOSurfaceGetBaseAddress(retained));
+                auto const row_bytes = IOSurfaceGetBytesPerRow(retained);
+                auto const height = presentStats.iosurface->height();
+                auto const row_stride = surface.row_stride_bytes();
+                auto const copy_bytes = std::min<std::size_t>(row_bytes, row_stride);
+                auto const total_bytes = row_stride * static_cast<std::size_t>(std::max(height, 0));
+                framebuffer.resize(total_bytes);
+                if (base && copy_bytes > 0 && height > 0) {
+                    for (int row = 0; row < height; ++row) {
+                        auto* dst = framebuffer.data() + static_cast<std::size_t>(row) * row_stride;
+                        auto const* src = base + static_cast<std::size_t>(row) * row_bytes;
+                        std::memcpy(dst, src, copy_bytes);
+                    }
+                }
+                IOSurfaceUnlock(retained, kIOSurfaceLockAvoidSync, nullptr);
+            }
+            CFRelease(retained);
+        }
+    }
+#endif
 
     auto metricsBase = std::string(context->target_path.getPath()) + "/output/v1/common";
     std::uint64_t previous_age_frames = 0;

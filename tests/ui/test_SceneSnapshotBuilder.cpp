@@ -3,6 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/DrawCommands.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -10,6 +11,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <cstring>
 
 namespace {
 
@@ -64,14 +66,22 @@ auto make_bucket(std::size_t drawables, std::size_t commands) -> DrawableBucketS
         bucket.material_ids[i] = static_cast<std::uint32_t>(200 + i);
         bucket.pipeline_flags[i] = static_cast<std::uint32_t>(300 + i);
         bucket.visibility[i] = static_cast<std::uint8_t>(i % 2);
-        bucket.command_offsets[i] = static_cast<std::uint32_t>(i * 2);
+        bucket.command_offsets[i] = static_cast<std::uint32_t>(i);
         bucket.command_counts[i] = 1;
     }
 
+    auto rect_size = sizeof(RectCommand);
     bucket.command_kinds.resize(commands);
-    bucket.command_payload.resize(commands, 42);
+    bucket.command_payload.resize(commands * rect_size);
     for (std::size_t i = 0; i < commands; ++i) {
-        bucket.command_kinds[i] = static_cast<std::uint32_t>(i % 3);
+        bucket.command_kinds[i] = static_cast<std::uint32_t>(DrawCommandKind::Rect);
+        RectCommand rect{};
+        rect.min_x = static_cast<float>(i);
+        rect.min_y = static_cast<float>(i + 1);
+        rect.max_x = static_cast<float>(i + 10);
+        rect.max_y = static_cast<float>(i + 20);
+        auto* dest = bucket.command_payload.data() + i * rect_size;
+        std::memcpy(dest, &rect, rect_size);
     }
 
     bucket.opaque_indices = {0};
@@ -167,6 +177,10 @@ TEST_CASE("publish snapshot encodes bucket and metadata") {
     CHECK(decodedBucket->authoring_map.size() == bucket.authoring_map.size());
     CHECK(decodedBucket->authoring_map[0].authoring_node_id == bucket.authoring_map[0].authoring_node_id);
     CHECK(decodedBucket->authoring_map[0].drawable_index_within_node == bucket.authoring_map[0].drawable_index_within_node);
+    CHECK(decodedBucket->drawable_fingerprints.size() == bucket.drawable_ids.size());
+    for (auto fingerprint : decodedBucket->drawable_fingerprints) {
+        CHECK(fingerprint != 0);
+    }
 
     auto rawMeta = fx.space.read<std::vector<std::uint8_t>>(revisionBase + "/metadata");
     REQUIRE(rawMeta);
@@ -187,6 +201,10 @@ TEST_CASE("publish snapshot encodes bucket and metadata") {
     auto storedDrawables = fx.space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/drawables.bin");
     REQUIRE(storedDrawables);
     CHECK_FALSE(storedDrawables->empty());
+
+    auto storedFingerprints = fx.space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/fingerprints.bin");
+    REQUIRE(storedFingerprints);
+    CHECK_FALSE(storedFingerprints->empty());
 }
 
 TEST_CASE("publish enforces retention policy") {

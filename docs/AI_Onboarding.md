@@ -1,6 +1,7 @@
 # PathSpace — AI Onboarding (Fresh Session)
 
 > **Context update (October 15, 2025):** This onboarding now targets the “Atlas” AI context introduced for the current launch window; adjust legacy workflows to align with this context.
+> **Session hand-off (October 17, 2025):** Zero-copy presentation is live; next AI must focus on incremental software rendering (damage-based redraw) so fullscreen canvases stay interactive. Review the new task notes in `docs/SceneGraphImplementationPlan.md` and `docs/AI_Plan_SceneGraph_Renderer.md` before touching PathRenderer2D.
 
 This guide bootstraps a brand-new AI assistant so it can work productively in the PathSpace repository without inheriting prior conversational context. Follow these steps at the beginning of every new session.
 

@@ -89,6 +89,7 @@ struct DrawableBucketSnapshot {
     std::vector<ClipNode>      clip_nodes;
     std::vector<std::int32_t>  clip_head_indices;
     std::vector<DrawableAuthoringMapEntry> authoring_map;
+    std::vector<std::uint64_t> drawable_fingerprints;
 };
 
 struct SnapshotMetadata {

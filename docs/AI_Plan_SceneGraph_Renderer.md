@@ -1,6 +1,8 @@
 # PathSpace — Scene Graph and Renderer Plan
 
 > **Context update (October 15, 2025):** All renderer milestones now track the “Atlas” AI context introduced in this launch; treat previous context references as historical.
+> **Decision update (October 16, 2025):** macOS presenters now use a CAMetalLayer-backed Metal swapchain instead of CoreGraphics blits so fullscreen windows avoid CPU copies; treat the Metal presenter as MVP-critical.
+> **Follow-up (October 17, 2025):** Present pipeline must eliminate software framebuffer copies—PathSurfaceSoftware and the presenter will move to a shared IOSurface-backed buffer so the renderer writes directly into the drawable without memcpy.
 Scope: UI surfaces, renderers, presenters, multi-scene targets; atomic params and snapshot-based rendering
 
 ## Goals
@@ -9,7 +11,7 @@ Scope: UI surfaces, renderers, presenters, multi-scene targets; atomic params an
 - Window-agnostic surfaces: offscreen render targets (software or GPU) that can be presented by multiple windows within the same application
 - Typed wiring: small C++ helpers return canonical paths; avoid string concatenation; validate same-app containment
 - Atomicity and concurrency: prepare off-thread, publish atomically, and render from immutable snapshots for both target parameters and scene data
-- Cross-platform path: start with software on macOS; add Metal; keep Vulkan as a future option
+- Cross-platform path: software renderer feeds a CAMetalLayer-backed Metal presenter on macOS for fullscreen performance; keep Vulkan as a future option and preserve software-only surfaces for tooling/tests.
 
 ## Application roots and ownership
 
@@ -173,14 +175,15 @@ Presenter (per window view):
      - Writes a whole `RenderSettings` to `renderers/<rid>/targets/surfaces/<sid>/settings`
      - Triggers `renderers/<rid>/targets/surfaces/<sid>/render`
    For windows targets:
-   - Acquire the window drawable/swapchain for `<wid>` on the platform UI/present thread; present for windowTarget occurs on that thread. Surface blits occur on the UI thread after render completes.
-3) Present:
-   - Software (surface): read framebuffer and blit to the window
-   - GPU (surface): draw a textured quad sampling the offscreen texture/image to the window drawable/swapchain
-   - GPU (windows target): present the acquired drawable/swapchain image (direct-to-window)
+   - Acquire the window drawable/swapchain for `<wid>` on the platform UI/present thread. On macOS this is `-[CAMetalLayer nextDrawable]`; presentation remains on that thread. Surface blits are limited to software-only fallbacks (tests/headless).
+3) Present (backend/platform specifics):
+   - macOS windows: bind the renderer output to an IOSurface-backed `MTLTexture`, write directly into that texture (software maps or GPU renders in-place), then call `-[CAMetalDrawable present]`. The legacy CoreGraphics blit path is retired for fullscreen.
+   - Software (offscreen/headless surfaces): read framebuffer and blit into the caller-provided buffer when no Metal surface is available.
+   - GPU (surface): draw a textured quad sampling the offscreen texture/image to the window drawable/swapchain.
+   - GPU (windows target): present the acquired drawable/swapchain image (direct-to-window).
 4) Record presenter metrics: write `frameIndex`, `revision`, `renderMs`, `presentMs`, `lastPresentSkipped`, and `lastError` under `targets/<tid>/output/v1/common/*` via `Builders::Diagnostics::WritePresentMetrics`. These values mirror the most recent present result and back diagnostics/telemetry.
 
-Implementation note: `PathWindowView` (software presenter) performs the buffered/progressive copy, returns a `PresentStats` struct, and the helpers layer persists the metrics via `WritePresentMetrics`. UI doctests live in the `PathSpaceUITests` target to keep presenter/surface coverage isolated from the core suite.
+Implementation note: `PathWindowView` now owns the CAMetalLayer, acquires `MTLDrawable` instances, and maps software framebuffers into IOSurface-backed textures so fullscreen presents are zero-copy. It still returns a `PresentStats` struct, and the helpers layer persists the metrics via `WritePresentMetrics`. UI doctests live in the `PathSpaceUITests` target to keep presenter/surface coverage isolated from the core suite.
 
 Present policy (backend-aware)
 - Modes:
@@ -219,11 +222,13 @@ Present policy (backend-aware)
 
 - Backend notes:
   - Timing source: vsync_deadline comes from platform presentation timing APIs when available (e.g., CVDisplayLink/CAMetalLayer on macOS); otherwise estimate from a monotonic clock and known refresh.
-  - Software:
-    - Keep double-buffering for buffered mode; reserve a blit_budget_ms derived from width×height×bytes_per_pixel to avoid missing vsync on large frames.
-    - Never block the UI thread longer than min(staleness_budget_ms, frame_timeout_ms) − blit_budget_ms.
+- Software:
+    - Keep double-buffering for buffered mode; when presenting to Metal windows, map the staging buffer into an IOSurface-backed `MTLTexture` so updates stream directly into the drawable instead of issuing a separate CoreGraphics blit.
+    - Never block the UI thread longer than min(staleness_budget_ms, frame_timeout_ms) − blit_budget_ms. The fallback CPU blit path is reserved for headless/tests.
+    - Zero-copy path (October 17, 2025): PathSurfaceSoftware now allocates IOSurface-backed staging/front buffers and PathWindowView exposes the shared IOSurface to CAMetalLayer presenters, eliminating the memcpy step. The legacy CPU copy path remains available for diagnostics and headless tests.
+    - Incremental damage (in progress): PathRenderer2D now tracks per-target bounds, but snapshot revisions still mark all drawables dirty. Next steps: surface stable drawable hashes/dirty bits from SceneSnapshotBuilder, avoid redundant publishes, and update paint_example to emit damage hints so large canvases remain responsive. The software path keeps a “full-surface” fallback—camera moves or wholesale scene edits flip the damage region to the whole framebuffer and fan tiles (64×64 px by default) across CPU cores (e.g., ≈510 tiles @1080p, ≈920 @1440p, ≈2 040 @4K). That keeps full clears within the 16 ms (~60 Hz) budget once the tile loop is parallelized and vectorized. GPU helpers add post effects or secondary passes; they do **not** replace the CPU-driven primary framebuffer every frame so the hybrid architecture retains its progressive advantages.
   - GPU (Metal/Vulkan):
-    - Use a fence/completion handler for offscreen completion; align waits to (vsync_deadline − ε).
+    - Use a fence/completion handler for offscreen completion; align waits to (vsync_deadline − ε). On macOS windows reuse the CAMetalLayer swapchain textures to avoid reallocations.
     - If drawable acquisition fails or is late, skip present and set a status message; keep last-complete texture for the next tick.
   - HTML:
     - Policy ignored; DOM/CSS adapter always presents the latest complete output without waiting.

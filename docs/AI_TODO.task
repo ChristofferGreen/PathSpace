@@ -1,6 +1,25 @@
 // Context update (October 15, 2025): Task priorities now reference the “Atlas” AI context; translate legacy context identifiers when reconciling backlogs.
 
 task {
+  name: "Software Presenter Zero-Copy Buffer [PERF]"
+  description: "Eliminate framebuffer memcpy by backing PathSurfaceSoftware with an IOSurface shared directly with CAMetalLayer."
+  status: completed
+  priority: P1
+
+  acceptance_criteria: [
+    "PathSurfaceSoftware allocates/owns an IOSurface that the renderer writes into directly; no std::vector memcpy in copy_buffered_frame.",
+    "Presenter binds the IOSurface (or texture alias) without copying, and the paint_example runs fullscreen without regressions.",
+    "Docs updated (AI_Plan_SceneGraph_Renderer.md, AI_ARCHITECTURE.md) to reflect the zero-copy pipeline; tests cover the new path."
+  ]
+
+  steps: [
+    "Refactor PathSurfaceSoftware to allocate IOSurface-backed memory and expose the relevant descriptors.",
+    "Update presenter/Builders to consume the shared resource, removing the fallback memcpy code path.",
+    "Add regression tests/benchmarks exercising fullscreen presents to verify zero-copy performance."
+  ]
+}
+
+task {
   name: "Wait/Watch Semantics [EPIC]"
   description: "Unify wait/notify semantics and read-blocking behavior under one coherent model, including glob watches, time-slicing, and backpressure guidance."
   status: planned
@@ -63,6 +82,27 @@ task {
       "Pointers to NodeData queues, task queues, and limits; trade-offs explained."
     ]
   }
+}
+
+task {
+  name: "Software Renderer Damage Tracking [PERF]"
+  description: "Teach PathRenderer2D to diff drawable bounds per target, compute damage rectangles, and restrict background clear, blending, and tile publication to those regions."
+  status: planned
+  priority: P1
+
+  acceptance_criteria: [
+    "Per-target cache tracks previous drawable bounds and clear color; additive strokes only update intersecting tiles.",
+    "Removed drawables repaint their previous bounds with the clear color, preventing ghosting.",
+    "Clear-color or surface-size changes trigger a safe full-surface repaint.",
+    "Tests cover incremental brush strokes, stroke removal, and background changes without regressing existing metrics."
+  ]
+
+  steps: [
+    "Cache drawable bounding boxes keyed by drawable id and target path.",
+    "Compute damage rectangles per revision and clamp rendering/encode loops to those bounds.",
+    "Mark only the intersecting progressive tiles dirty when publishing.",
+    "Add regression tests exercising incremental paints and full-repaint fallbacks."
+  ]
 }
 
 task {
