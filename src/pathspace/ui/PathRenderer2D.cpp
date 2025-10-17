@@ -12,6 +12,7 @@
 #include <cstring>
 #include <iomanip>
 #include <limits>
+#include <atomic>
 #include <numeric>
 #include <sstream>
 #include <string>
@@ -20,6 +21,9 @@
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
+#include <thread>
+#include <mutex>
+#include <exception>
 
 namespace SP::UI {
 namespace {
@@ -187,6 +191,13 @@ struct DamageRect {
         return empty() ? 0 : (max_y - min_y);
     }
 
+    [[nodiscard]] auto area() const -> std::uint64_t {
+        if (empty()) {
+            return 0;
+        }
+        return static_cast<std::uint64_t>(width()) * static_cast<std::uint64_t>(height());
+    }
+
     auto merge(DamageRect const& other) -> void {
         min_x = std::min(min_x, other.min_x);
         min_y = std::min(min_y, other.min_y);
@@ -316,6 +327,32 @@ public:
         return rects_;
     }
 
+    [[nodiscard]] auto area() const -> std::uint64_t {
+        std::uint64_t total = 0;
+        for (auto const& rect : rects_) {
+            total += rect.area();
+        }
+        return total;
+    }
+
+    [[nodiscard]] auto coverage_ratio(int width, int height) const -> double {
+        if (rects_.empty()) {
+            return 0.0;
+        }
+        if (width <= 0 || height <= 0) {
+            return 0.0;
+        }
+        auto surface = static_cast<std::uint64_t>(width) * static_cast<std::uint64_t>(height);
+        if (surface == 0) {
+            return 0.0;
+        }
+        auto damaged = area();
+        if (damaged == 0) {
+            return 0.0;
+        }
+        return static_cast<double>(damaged) / static_cast<double>(surface);
+    }
+
     void collect_progressive_tiles(ProgressiveSurfaceBuffer const& buffer,
                                    std::vector<std::size_t>& out) const {
         if (rects_.empty()) {
@@ -427,6 +464,121 @@ private:
     bool full_surface_ = false;
     std::vector<DamageRect> rects_;
 };
+
+struct ProgressiveTileCopyStats {
+    std::uint64_t tiles_updated = 0;
+    std::uint64_t bytes_copied = 0;
+};
+
+struct ProgressiveTileCopyContext {
+    PathSurfaceSoftware& surface;
+    ProgressiveSurfaceBuffer& buffer;
+    std::span<std::uint8_t const> staging;
+    std::size_t row_stride_bytes = 0;
+    std::uint64_t revision = 0;
+};
+
+auto copy_single_tile(std::size_t tile_index,
+                      ProgressiveTileCopyContext const& ctx) -> std::uint64_t {
+    auto dims = ctx.buffer.tile_dimensions(tile_index);
+    if (dims.width <= 0 || dims.height <= 0) {
+        return 0;
+    }
+    auto writer = ctx.surface.begin_progressive_tile(tile_index, TilePass::OpaqueInProgress);
+    auto tile_pixels = writer.pixels();
+    auto const row_pitch = static_cast<std::size_t>(dims.width) * 4u;
+    auto const tile_rows = std::max(dims.height, 0);
+    for (int row = 0; row < tile_rows; ++row) {
+        auto const src_offset = (static_cast<std::size_t>(dims.y + row) * ctx.row_stride_bytes)
+                                + static_cast<std::size_t>(dims.x) * 4u;
+        auto const dst_offset = static_cast<std::size_t>(row) * tile_pixels.stride_bytes;
+        std::memcpy(tile_pixels.data + dst_offset,
+                    ctx.staging.data() + src_offset,
+                    row_pitch);
+    }
+    writer.commit(TilePass::AlphaDone, ctx.revision);
+    return row_pitch * static_cast<std::uint64_t>(std::max(tile_rows, 0));
+}
+
+auto copy_progressive_tiles(std::span<std::size_t const> tile_indices,
+                            ProgressiveTileCopyContext const& ctx) -> ProgressiveTileCopyStats {
+    ProgressiveTileCopyStats stats{};
+    if (tile_indices.empty()) {
+        return stats;
+    }
+
+    auto const hardware = std::max(1u, std::thread::hardware_concurrency());
+    std::size_t worker_count = std::min<std::size_t>(tile_indices.size(),
+                                                     static_cast<std::size_t>(hardware));
+    constexpr std::size_t kMinTilesPerWorker = 16;
+    if (worker_count <= 1 || (tile_indices.size() / worker_count) < kMinTilesPerWorker) {
+        for (auto tile_index : tile_indices) {
+            stats.bytes_copied += copy_single_tile(tile_index, ctx);
+            ++stats.tiles_updated;
+        }
+        return stats;
+    }
+
+    std::atomic<std::size_t> next{0};
+    std::atomic<std::uint64_t> copied_bytes{0};
+    std::atomic<std::uint64_t> tiles_done{0};
+    std::exception_ptr error;
+    std::mutex error_mutex;
+
+    auto worker = [&]() {
+        try {
+            while (true) {
+                auto idx = next.fetch_add(1, std::memory_order_relaxed);
+                if (idx >= tile_indices.size()) {
+                    break;
+                }
+                auto tile_index = tile_indices[idx];
+                auto bytes = copy_single_tile(tile_index, ctx);
+                copied_bytes.fetch_add(bytes, std::memory_order_relaxed);
+                tiles_done.fetch_add(1, std::memory_order_relaxed);
+            }
+        } catch (...) {
+            std::lock_guard<std::mutex> lock{error_mutex};
+            if (!error) {
+                error = std::current_exception();
+            }
+        }
+    };
+
+    std::vector<std::thread> threads;
+    threads.reserve(worker_count);
+    for (std::size_t i = 0; i < worker_count; ++i) {
+        threads.emplace_back(worker);
+    }
+    for (auto& t : threads) {
+        if (t.joinable()) {
+            t.join();
+        }
+    }
+
+    if (error) {
+        std::rethrow_exception(error);
+    }
+
+    stats.tiles_updated = tiles_done.load(std::memory_order_relaxed);
+    stats.bytes_copied = copied_bytes.load(std::memory_order_relaxed);
+    return stats;
+}
+
+auto choose_progressive_tile_size(int width,
+                                  int height,
+                                  DamageRegion const& damage,
+                                  bool full_repaint,
+                                  PathSurfaceSoftware const& surface) -> int {
+    (void)damage;
+    (void)full_repaint;
+    if (!surface.has_progressive()) {
+        return surface.progressive_tile_size();
+    }
+    (void)width;
+    (void)height;
+    return 64;
+}
 
 auto compute_drawable_bounds(Scene::DrawableBucketSnapshot const& bucket,
                              std::uint32_t index,
@@ -1406,6 +1558,10 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     ProgressiveSurfaceBuffer* progressive_buffer = nullptr;
     std::vector<std::size_t> progressive_dirty_tiles;
     if (has_progressive) {
+        if (has_damage) {
+            auto desired_tile = choose_progressive_tile_size(width, height, damage, full_repaint, surface);
+            surface.ensure_progressive_tile_size(desired_tile);
+        }
         progressive_buffer = &surface.progressive_buffer();
         if (has_damage) {
             damage.collect_progressive_tiles(*progressive_buffer, progressive_dirty_tiles);
@@ -1769,28 +1925,54 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
 
     if (has_progressive && has_damage) {
         auto const row_stride_bytes = surface.row_stride_bytes();
-        for (auto tile_index : progressive_dirty_tiles) {
-            auto dims = progressive_buffer->tile_dimensions(tile_index);
-            if (dims.width <= 0 || dims.height <= 0) {
-                continue;
+        auto staging_const = std::span<std::uint8_t const>{staging.data(), staging.size()};
+        bool const prefer_parallel =
+            progressive_buffer->tile_size() > 4
+            && progressive_dirty_tiles.size() >= 16;
+
+        if (prefer_parallel) {
+            ProgressiveTileCopyContext ctx{
+                .surface = surface,
+                .buffer = *progressive_buffer,
+                .staging = staging_const,
+                .row_stride_bytes = row_stride_bytes,
+                .revision = sceneRevision->revision,
+            };
+            try {
+                auto stats_copy = copy_progressive_tiles(progressive_dirty_tiles, ctx);
+                progressive_tiles_updated += stats_copy.tiles_updated;
+                progressive_bytes_copied += stats_copy.bytes_copied;
+            } catch (std::exception const& ex) {
+                auto message = std::string{"failed to update progressive tiles: "} + ex.what();
+                (void)set_last_error(space_, params.target_path, message);
+                return std::unexpected(make_error(std::move(message), SP::Error::Code::UnknownError));
             }
-            auto writer = surface.begin_progressive_tile(tile_index, TilePass::OpaqueInProgress);
-            auto tile_pixels = writer.pixels();
-            auto const row_pitch = static_cast<std::size_t>(dims.width) * 4u;
-            for (int row = 0; row < dims.height; ++row) {
-                auto const src_offset = (static_cast<std::size_t>(dims.y + row) * row_stride_bytes)
-                                        + static_cast<std::size_t>(dims.x) * 4u;
-                auto const dst_offset = static_cast<std::size_t>(row) * tile_pixels.stride_bytes;
-                std::memcpy(tile_pixels.data + dst_offset,
-                            staging.data() + src_offset,
-                            row_pitch);
+            for (auto tile_index : progressive_dirty_tiles) {
+                surface.mark_progressive_dirty(tile_index);
             }
-            writer.commit(TilePass::AlphaDone, sceneRevision->revision);
-            surface.mark_progressive_dirty(tile_index);
-            ++progressive_tiles_updated;
-            auto const tile_rows = std::max(dims.height, 0);
-            progressive_bytes_copied += static_cast<std::uint64_t>(row_pitch)
-                                        * static_cast<std::uint64_t>(tile_rows);
+        } else {
+            for (auto tile_index : progressive_dirty_tiles) {
+                auto dims = progressive_buffer->tile_dimensions(tile_index);
+                if (dims.width <= 0 || dims.height <= 0) {
+                    continue;
+                }
+                auto writer = surface.begin_progressive_tile(tile_index, TilePass::OpaqueInProgress);
+                auto tile_pixels = writer.pixels();
+                auto const row_pitch = static_cast<std::size_t>(dims.width) * 4u;
+                auto const tile_rows = std::max(dims.height, 0);
+                for (int row = 0; row < tile_rows; ++row) {
+                    auto const src_offset = (static_cast<std::size_t>(dims.y + row) * row_stride_bytes)
+                                            + static_cast<std::size_t>(dims.x) * 4u;
+                    auto const dst_offset = static_cast<std::size_t>(row) * tile_pixels.stride_bytes;
+                    std::memcpy(tile_pixels.data + dst_offset,
+                                staging_const.data() + src_offset,
+                                row_pitch);
+                }
+                writer.commit(TilePass::AlphaDone, sceneRevision->revision);
+                surface.mark_progressive_dirty(tile_index);
+                ++progressive_tiles_updated;
+                progressive_bytes_copied += row_pitch * static_cast<std::uint64_t>(tile_rows);
+            }
         }
     }
 

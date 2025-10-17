@@ -132,6 +132,11 @@ endif()
 option(ENABLE_DOXYGEN "Enable generating Doxygen API documentation (target: docs)" OFF)
 find_package(Doxygen QUIET)
 
+option(BUILD_PATHSPACE_BENCHMARKS "Build PathSpace benchmark binaries" OFF)
+if(BUILD_PATHSPACE_BENCHMARKS)
+    add_subdirectory(benchmarks)
+endif()
+
 if(ENABLE_DOXYGEN AND DOXYGEN_FOUND)
     set(DOXYGEN_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/docs/doxygen")
     file(MAKE_DIRECTORY "${DOXYGEN_OUTPUT_DIR}")

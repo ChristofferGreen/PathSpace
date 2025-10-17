@@ -25,9 +25,6 @@ auto validate_tile_size(int tile, int width, int height) -> int {
     if (tile <= 0) {
         throw std::invalid_argument("tile size must be positive");
     }
-    if (tile > std::max(width, height) && (width > 0 && height > 0)) {
-        return std::max(width, height);
-    }
     return tile;
 }
 

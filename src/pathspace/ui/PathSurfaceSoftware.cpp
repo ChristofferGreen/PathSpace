@@ -255,14 +255,18 @@ PathSurfaceSoftware::PathSurfaceSoftware(Builders::SurfaceDesc desc)
 PathSurfaceSoftware::PathSurfaceSoftware(Builders::SurfaceDesc desc, Options options)
     : desc_(std::move(desc))
     , options_(options) {
+    options_.progressive_tile_size_px = std::max(64, options_.progressive_tile_size_px);
+    configured_progressive_tile_size_px_ = options_.progressive_tile_size_px;
     reallocate_buffers();
     reset_progressive();
 }
 
 void PathSurfaceSoftware::resize(Builders::SurfaceDesc const& desc) {
     desc_ = desc;
+    options_.progressive_tile_size_px = std::max(64, options_.progressive_tile_size_px);
     reallocate_buffers();
     reset_progressive();
+    configured_progressive_tile_size_px_ = std::max(1, options_.progressive_tile_size_px);
     staging_dirty_ = false;
     buffered_epoch_.store(0, std::memory_order_release);
     buffered_frame_index_.store(0, std::memory_order_release);
@@ -282,6 +286,28 @@ auto PathSurfaceSoftware::progressive_buffer() const -> ProgressiveSurfaceBuffer
         throw std::runtime_error("progressive buffer disabled");
     }
     return *progressive_;
+}
+
+auto PathSurfaceSoftware::progressive_tile_size() const -> int {
+    if (progressive_) {
+        return progressive_->tile_size();
+    }
+    return std::max(64, options_.progressive_tile_size_px);
+}
+
+void PathSurfaceSoftware::ensure_progressive_tile_size(int tile_size_px) {
+    if (!options_.enable_progressive) {
+        return;
+    }
+    auto const clamped = std::max(64, tile_size_px);
+    if (configured_progressive_tile_size_px_ == clamped
+        && progressive_
+        && progressive_->tile_size() == clamped) {
+        return;
+    }
+    options_.progressive_tile_size_px = clamped;
+    configured_progressive_tile_size_px_ = clamped;
+    reset_progressive();
 }
 
 auto PathSurfaceSoftware::begin_progressive_tile(std::size_t tile_index, TilePass pass)
@@ -597,12 +623,15 @@ auto PathSurfaceSoftware::front_iosurface() const -> std::optional<SharedIOSurfa
 void PathSurfaceSoftware::reset_progressive() {
     if (!options_.enable_progressive || desc_.size_px.width <= 0 || desc_.size_px.height <= 0) {
         progressive_.reset();
+        progressive_dirty_tiles_.clear();
         return;
     }
     progressive_ = std::make_unique<ProgressiveSurfaceBuffer>(
         desc_.size_px.width,
         desc_.size_px.height,
-        std::max(1, options_.progressive_tile_size_px));
+        std::max(64, options_.progressive_tile_size_px));
+    progressive_dirty_tiles_.clear();
+    configured_progressive_tile_size_px_ = std::max(64, options_.progressive_tile_size_px);
 }
 
 } // namespace SP::UI

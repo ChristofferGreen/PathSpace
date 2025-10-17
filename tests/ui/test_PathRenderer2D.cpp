@@ -878,7 +878,7 @@ TEST_CASE("incremental damage tracking limits progressive tiles") {
 
     auto dirty_tiles = surface.consume_progressive_dirty_tiles();
     std::sort(dirty_tiles.begin(), dirty_tiles.end());
-    std::vector<std::size_t> expected_tiles{0, 1, 4, 5, 10, 11, 14, 15};
+    std::vector<std::size_t> expected_tiles{0};
     CHECK(dirty_tiles == expected_tiles);
 
     auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
@@ -1072,7 +1072,7 @@ TEST_CASE("dirty rect hints trigger repaint for unchanged snapshot") {
 
     auto dirty_tiles = surface.consume_progressive_dirty_tiles();
     std::sort(dirty_tiles.begin(), dirty_tiles.end());
-    std::vector<std::size_t> expected_tiles{0, 1, 4, 5};
+    std::vector<std::size_t> expected_tiles{0};
     CHECK(dirty_tiles == expected_tiles);
 
     auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";

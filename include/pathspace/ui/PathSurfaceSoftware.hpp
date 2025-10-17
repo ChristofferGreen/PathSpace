@@ -43,6 +43,9 @@ public:
 
     void resize(Builders::SurfaceDesc const& desc);
 
+    [[nodiscard]] auto progressive_tile_size() const -> int;
+    void ensure_progressive_tile_size(int tile_size_px);
+
     [[nodiscard]] auto frame_bytes() const -> std::size_t { return frame_bytes_; }
     [[nodiscard]] auto row_stride_bytes() const -> std::size_t { return row_stride_bytes_; }
 
@@ -112,6 +115,7 @@ private:
 
     Builders::SurfaceDesc desc_{};
     Options options_{};
+    int configured_progressive_tile_size_px_ = 64;
 
     std::size_t frame_bytes_ = 0;
     std::size_t row_stride_bytes_ = 0;
