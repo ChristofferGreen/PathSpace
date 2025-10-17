@@ -1,7 +1,7 @@
 # PathSpace — AI Onboarding (Fresh Session)
 
 > **Context update (October 15, 2025):** This onboarding now targets the “Atlas” AI context introduced for the current launch window; adjust legacy workflows to align with this context.
-> **Session hand-off (October 17, 2025):** Progressive repaint flicker in `./build/paint_example` is fixed. Before new renderer work, run `./scripts/compile.sh --loop=15 --per-test-timeout 20` to confirm the suite stays green, then continue with the Phase 4 follow-ups in `docs/SceneGraphImplementationPlan.md`.
+> **Session hand-off (October 17, 2025):** Progressive repaint flicker in `./build/paint_example` is fixed and Phase 4 coverage now includes seqlock metrics, multi-target windows, dirty-hint diagnostics, and presenter tests. The outstanding priority is **P0 FPS parity**: 4K software renders still plateau around 13–14 FPS while small windows sustain ~80+ FPS. Take the next slot to parallelize progressive tile fan-out and/or trim copy work, keeping notes in `docs/SceneGraphImplementationPlan.md`. Always rerun `./scripts/compile.sh --loop=15 --per-test-timeout 20` before handing off.
 
 This guide bootstraps a brand-new AI assistant so it can work productively in the PathSpace repository without inheriting prior conversational context. Follow these steps at the beginning of every new session.
 

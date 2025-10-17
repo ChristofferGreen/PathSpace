@@ -20,6 +20,27 @@ task {
 }
 
 task {
+  name: "Software Renderer FPS Parity [PERF]"
+  description: "Bring 4K window frame rate in line with small-window performance by reducing per-frame copy work and parallelizing progressive tile fan-out."
+  status: planned
+  priority: P1
+
+  acceptance_criteria: [
+    "Progressive tile copy loop uses all available cores; per-frame copy metrics captured before/after.",
+    "Dirty-hint bucketing or adaptive tile sizing keeps copied pixel counts proportional to brush area, not full-surface area.",
+    "paint_example maintains ≥75 FPS at 2560×1600 and ≥70 FPS at 3840×2160 on reference hardware, with PATHSPACE_TRACE_DAMAGE logs confirming bounded damage regions.",
+    "Docs updated (SceneGraphImplementationPlan.md, AI_Plan_SceneGraph_Renderer.md) with the new algorithm and performance results."
+  ]
+
+  steps: [
+    "Fork progressive tile copy to a worker pool; measure scaling vs core count.",
+    "Prototype adaptive tile sizing or merge heuristics that shrink damage for narrow hints.",
+    "Assess IOSurface reuse/presenter path to avoid full-buffer copies when not required.",
+    "Capture before/after traces (PATHSPACE_TRACE_DAMAGE=1) and summarize in docs."
+  ]
+}
+
+task {
   name: "Wait/Watch Semantics [EPIC]"
   description: "Unify wait/notify semantics and read-blocking behavior under one coherent model, including glob watches, time-slicing, and backpressure guidance."
   status: planned
