@@ -2900,6 +2900,112 @@ TEST_CASE("Window::Present AlwaysFresh skip records deadline metrics") {
     CHECK(fx.space.read<uint64_t>(metricsBase + "/presentedAgeFrames").value() >= 1);
 }
 
+TEST_CASE("Window::Present progressive diagnostics reflect dirty hints") {
+    RendererFixture fx;
+
+    RectCommand rect_initial{
+        .min_x = 1.0f,
+        .min_y = 1.0f,
+        .max_x = 3.0f,
+        .max_y = 3.0f,
+        .color = {0.8f, 0.1f, 0.1f, 1.0f},
+    };
+
+    auto scenePath = create_scene(fx,
+                                  "scene_window_progressive_diagnostics",
+                                  make_rect_bucket({
+                                      RectDrawableDef{
+                                          .id = 0x301u,
+                                          .fingerprint = 0x1010101010101010u,
+                                          .rect = rect_initial,
+                                      },
+                                  }));
+    auto rendererPath = create_renderer(fx, "renderer_window_progressive_diagnostics");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 4;
+    surfaceDesc.size_px.height = 4;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx,
+                                      "surface_window_progressive_diagnostics",
+                                      surfaceDesc,
+                                      rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+
+    Builders::WindowParams windowParams{};
+    windowParams.name = "window_progressive_diagnostics";
+    windowParams.title = "Progressive Diagnostics";
+    windowParams.width = 160;
+    windowParams.height = 160;
+    auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+    REQUIRE(windowPath);
+    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+
+    auto targetPath = resolve_target(fx, surfacePath);
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+
+    auto submit_hint = [&](RectCommand const& rect) {
+        DirtyRectHint hint{
+            .min_x = rect.min_x,
+            .min_y = rect.min_y,
+            .max_x = rect.max_x,
+            .max_y = rect.max_y,
+        };
+        auto status = Builders::Renderer::SubmitDirtyRects(
+            fx.space,
+            SP::ConcretePathStringView{targetPath.getPath()},
+            std::span<const DirtyRectHint>{&hint, 1});
+        REQUIRE(status);
+    };
+
+    submit_hint(rect_initial);
+    auto firstPresent = Builders::Window::Present(fx.space, *windowPath, "main");
+    REQUIRE(firstPresent);
+    CHECK(firstPresent->stats.presented);
+    CHECK(firstPresent->stats.progressive_tiles_copied >= 1);
+    CHECK(firstPresent->stats.progressive_rects_coalesced >= 1);
+    CHECK(firstPresent->stats.progressive_rects_coalesced >= 1);
+
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveTilesCopied").value() >= 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveRectsCoalesced").value() >= 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveSkipOddSeq").value() == 0);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveRecopyAfterSeqChange").value() == 0);
+    CHECK(fx.space.read<std::string, std::string>(metricsBase + "/lastError").value().empty());
+
+    RectCommand rect_update{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 2.0f,
+        .max_y = 2.0f,
+        .color = {0.1f, 0.8f, 0.1f, 1.0f},
+    };
+    fx.publish_snapshot(scenePath,
+                        make_rect_bucket({
+                            RectDrawableDef{
+                                .id = 0x301u,
+                                .fingerprint = 0x2020202020202020u,
+                                .rect = rect_update,
+                            },
+                        }));
+    submit_hint(rect_update);
+
+    auto secondPresent = Builders::Window::Present(fx.space, *windowPath, "main");
+    REQUIRE(secondPresent);
+    CHECK(secondPresent->stats.presented);
+    CHECK(secondPresent->stats.progressive_tiles_copied >= 1);
+    CHECK(secondPresent->stats.progressive_rects_coalesced >= 1);
+    CHECK(secondPresent->stats.progressive_rects_coalesced >= 1);
+
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/frameIndex").value() >= 2);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveTilesCopied").value() >= 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveRectsCoalesced").value() >= 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveBytesCopied").value() > 0);
+    CHECK(fx.space.read<std::string, std::string>(metricsBase + "/lastError").value().empty());
+}
+
 TEST_CASE("rounded rectangles respect per-corner radii") {
     RendererFixture fx;
 
