@@ -1174,6 +1174,10 @@ auto PathRenderer2D::target_cache() -> std::unordered_map<std::string, TargetSta
 
 auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     auto const start = std::chrono::steady_clock::now();
+    double damage_ms = 0.0;
+    double encode_ms = 0.0;
+    double progressive_copy_ms = 0.0;
+    double publish_ms = 0.0;
 
     auto app_root = SP::App::derive_app_root(params.target_path);
     if (!app_root) {
@@ -1303,6 +1307,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                         || state.last_revision == 0
                         || state.clear_color != current_clear;
 
+    auto const damage_phase_start = std::chrono::steady_clock::now();
     auto const drawable_count = bucket->drawable_ids.size();
     std::vector<std::optional<PathRenderer2D::DrawableBounds>> bounds_by_index(drawable_count);
     std::unordered_map<std::uint64_t, PathRenderer2D::DrawableState> current_states;
@@ -1499,6 +1504,8 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         }
     }
     bool const has_damage = !damage.empty();
+    auto const damage_phase_end = std::chrono::steady_clock::now();
+    damage_ms = std::chrono::duration<double, std::milli>(damage_phase_end - damage_phase_start).count();
 
     if (has_damage) {
         if (auto* trace = std::getenv("PATHSPACE_TRACE_DAMAGE")) {
@@ -1900,6 +1907,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
 
     auto const encode_srgb = needs_srgb_encode(desc);
     if (has_damage) {
+        auto const encode_start = std::chrono::steady_clock::now();
         for (auto const& rect : damage.rectangles()) {
             for (int row = rect.min_y; row < rect.max_y; ++row) {
                 auto* row_ptr = staging.data() + static_cast<std::size_t>(row) * stride;
@@ -1921,9 +1929,12 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                 }
             }
         }
+        auto const encode_end = std::chrono::steady_clock::now();
+        encode_ms = std::chrono::duration<double, std::milli>(encode_end - encode_start).count();
     }
 
     if (has_progressive && has_damage) {
+        auto const progressive_start = std::chrono::steady_clock::now();
         auto const row_stride_bytes = surface.row_stride_bytes();
         auto staging_const = std::span<std::uint8_t const>{staging.data(), staging.size()};
         bool const prefer_parallel =
@@ -1974,6 +1985,8 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                 progressive_bytes_copied += row_pitch * static_cast<std::uint64_t>(tile_rows);
             }
         }
+        auto const progressive_end = std::chrono::steady_clock::now();
+        progressive_copy_ms = std::chrono::duration<double, std::milli>(progressive_end - progressive_start).count();
     }
 
     auto const end = std::chrono::steady_clock::now();
@@ -1984,11 +1997,14 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         .revision = sceneRevision->revision,
         .render_ms = render_ms,
     };
+    auto const publish_start = std::chrono::steady_clock::now();
     if (has_buffered && has_damage) {
         surface.publish_buffered_frame(frame_info);
     } else {
         surface.record_frame_info(frame_info);
     }
+    auto const publish_end = std::chrono::steady_clock::now();
+    publish_ms = std::chrono::duration<double, std::milli>(publish_end - publish_start).count();
 
     double approx_surface_pixels = static_cast<double>(pixel_count);
     double approx_overdraw_factor = 0.0;
@@ -2012,6 +2028,10 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     if (auto status = replace_single<std::string>(space_, metricsBase + "/lastError", std::string{}); !status) {
         return std::unexpected(status.error());
     }
+    (void)replace_single<double>(space_, metricsBase + "/damageMs", damage_ms);
+    (void)replace_single<double>(space_, metricsBase + "/encodeMs", encode_ms);
+    (void)replace_single<double>(space_, metricsBase + "/progressiveCopyMs", progressive_copy_ms);
+    (void)replace_single<double>(space_, metricsBase + "/publishMs", publish_ms);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/drawableCount", static_cast<std::uint64_t>(drawable_count));
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/opaqueDrawables", drawn_opaque);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/alphaDrawables", drawn_alpha);
@@ -2038,6 +2058,10 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     stats.revision = sceneRevision->revision;
     stats.render_ms = render_ms;
     stats.drawable_count = drawn_total;
+    stats.damage_ms = damage_ms;
+    stats.encode_ms = encode_ms;
+    stats.progressive_copy_ms = progressive_copy_ms;
+    stats.publish_ms = publish_ms;
 
     return stats;
 }

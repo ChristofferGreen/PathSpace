@@ -37,6 +37,10 @@ public:
         std::uint64_t revision = 0;
         double render_ms = 0.0;
         std::size_t drawable_count = 0;
+        double damage_ms = 0.0;
+        double encode_ms = 0.0;
+        double progressive_copy_ms = 0.0;
+        double publish_ms = 0.0;
     };
 
     explicit PathRenderer2D(PathSpace& space);

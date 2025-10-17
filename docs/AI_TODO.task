@@ -19,6 +19,22 @@ task {
   ]
 }
 
+  task {
+    name: "Renderer Benchmarking [PERF]"
+    description: "Instrument PathRenderer2D phases (damage diff, encode, progressive copy, IOSurface publish, presenter blit) and capture 4K vs small-surface timings; reuse the new benchmark harness for automation."
+    status: planned
+    priority: P1
+    acceptance_criteria: [
+      "Benchmark harness reports per-phase timings for 4K_full, 4K_incremental, and sub-2K cases.",
+      "Results summarized in docs/SceneGraphImplementationPlan.md with bottleneck callouts."
+    ]
+    steps: [
+      "Instrument damage diff and encode loops with timers in benchmark build.",
+      "Capture IOSurface allocation/publish metrics under repeated full-surface runs.",
+      "Document findings and update paint_example plan."
+    ]
+  }
+
 task {
   name: "Software Renderer FPS Parity [PERF]"
   description: "Bring 4K window frame rate in line with small-window performance by reducing per-frame copy work and parallelizing progressive tile fan-out."

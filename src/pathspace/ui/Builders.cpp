@@ -1410,7 +1410,12 @@ auto Present(PathSpace& space,
     invoke_before_present_hook(surface, presentPolicy, dirty_tiles);
 
     PathWindowView presenter;
-    std::vector<std::uint8_t> framebuffer(surface.frame_bytes(), 0);
+    std::vector<std::uint8_t> framebuffer;
+    std::span<std::uint8_t> framebuffer_span{};
+#if !defined(__APPLE__)
+    framebuffer.resize(surface.frame_bytes(), 0);
+    framebuffer_span = std::span<std::uint8_t>{framebuffer.data(), framebuffer.size()};
+#endif
     auto now = std::chrono::steady_clock::now();
     auto vsync_budget = std::chrono::duration_cast<std::chrono::steady_clock::duration>(presentPolicy.frame_timeout);
     if (vsync_budget < std::chrono::steady_clock::duration::zero()) {
@@ -1420,7 +1425,7 @@ auto Present(PathSpace& space,
     PathWindowView::PresentRequest request{
         .now = now,
         .vsync_deadline = now + vsync_budget,
-        .framebuffer = framebuffer,
+        .framebuffer = framebuffer_span,
         .dirty_tiles = dirty_tiles,
         .allow_iosurface_sharing = true,
     };
@@ -1428,7 +1433,7 @@ auto Present(PathSpace& space,
     PathWindowView::PresentRequest request{
         .now = now,
         .vsync_deadline = now + vsync_budget,
-        .framebuffer = framebuffer,
+        .framebuffer = framebuffer_span,
         .dirty_tiles = dirty_tiles,
     };
 #endif
@@ -1440,26 +1445,38 @@ auto Present(PathSpace& space,
     }
 #if defined(__APPLE__)
     if (presentStats.iosurface && presentStats.iosurface->valid()) {
-        auto retained = presentStats.iosurface->retain_for_external_use();
-        if (retained) {
-            if (IOSurfaceLock(retained, kIOSurfaceLockAvoidSync, nullptr) == kIOReturnSuccess) {
-                auto* base = static_cast<std::uint8_t*>(IOSurfaceGetBaseAddress(retained));
-                auto const row_bytes = IOSurfaceGetBytesPerRow(retained);
-                auto const height = presentStats.iosurface->height();
-                auto const row_stride = surface.row_stride_bytes();
-                auto const copy_bytes = std::min<std::size_t>(row_bytes, row_stride);
-                auto const total_bytes = row_stride * static_cast<std::size_t>(std::max(height, 0));
-                framebuffer.resize(total_bytes);
-                if (base && copy_bytes > 0 && height > 0) {
-                    for (int row = 0; row < height; ++row) {
-                        auto* dst = framebuffer.data() + static_cast<std::size_t>(row) * row_stride;
-                        auto const* src = base + static_cast<std::size_t>(row) * row_bytes;
-                        std::memcpy(dst, src, copy_bytes);
+        if (presentStats.used_iosurface) {
+            framebuffer.clear();
+        } else {
+            auto retained = presentStats.iosurface->retain_for_external_use();
+            if (retained) {
+                if (IOSurfaceLock(retained, kIOSurfaceLockAvoidSync, nullptr) == kIOReturnSuccess) {
+                    auto* base = static_cast<std::uint8_t*>(IOSurfaceGetBaseAddress(retained));
+                    auto const row_bytes = IOSurfaceGetBytesPerRow(retained);
+                    auto const height = presentStats.iosurface->height();
+                    auto const row_stride = surface.row_stride_bytes();
+                    auto const copy_bytes = std::min<std::size_t>(row_bytes, row_stride);
+                    auto const total_bytes = row_stride * static_cast<std::size_t>(std::max(height, 0));
+                    framebuffer.resize(total_bytes);
+                    if (base && copy_bytes > 0 && height > 0) {
+                        for (int row = 0; row < height; ++row) {
+                            auto* dst = framebuffer.data() + static_cast<std::size_t>(row) * row_stride;
+                            auto const* src = base + static_cast<std::size_t>(row) * row_bytes;
+                            std::memcpy(dst, src, copy_bytes);
+                        }
                     }
+                    IOSurfaceUnlock(retained, kIOSurfaceLockAvoidSync, nullptr);
                 }
-                IOSurfaceUnlock(retained, kIOSurfaceLockAvoidSync, nullptr);
+                CFRelease(retained);
             }
-            CFRelease(retained);
+        }
+    }
+    if (presentStats.buffered_frame_consumed && framebuffer.empty()) {
+        auto required = static_cast<std::size_t>(surface.frame_bytes());
+        framebuffer.resize(required);
+        auto copy = surface.copy_buffered_frame(framebuffer);
+        if (!copy) {
+            framebuffer.clear();
         }
     }
 #endif

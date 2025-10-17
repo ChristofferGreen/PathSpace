@@ -3,6 +3,7 @@
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
+#include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <path/UnvalidatedPath.hpp>
@@ -20,6 +21,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <span>
 #include <vector>
 
 using namespace SP;
@@ -145,6 +147,11 @@ auto build_bucket(std::vector<Stroke> const& strokes) -> UIScene::DrawableBucket
 
 struct FrameMetrics {
     double render_ms = 0.0;
+    double damage_ms = 0.0;
+    double encode_ms = 0.0;
+    double progressive_copy_ms = 0.0;
+    double publish_ms = 0.0;
+    double present_ms = 0.0;
     std::uint64_t tiles = 0;
     std::uint64_t bytes = 0;
 };
@@ -163,6 +170,8 @@ auto render_frame(PathRenderer2D& renderer,
                   Builders::ConcretePathView targetPath,
                   Builders::RenderSettings& settings,
                   std::uint64_t frame_index) -> FrameMetrics {
+    using namespace std::chrono_literals;
+
     settings.time.frame_index = frame_index;
     auto stats = renderer.render({
         .target_path = targetPath,
@@ -177,8 +186,42 @@ auto render_frame(PathRenderer2D& renderer,
     auto metrics_base = std::string(targetPath.getPath()) + "/output/v1/common";
     FrameMetrics metrics{};
     metrics.render_ms = stats->render_ms;
+    metrics.damage_ms = stats->damage_ms;
+    metrics.encode_ms = stats->encode_ms;
+    metrics.progressive_copy_ms = stats->progressive_copy_ms;
+    metrics.publish_ms = stats->publish_ms;
     metrics.tiles = read_metric(space, metrics_base, "progressiveTilesUpdated");
     metrics.bytes = read_metric(space, metrics_base, "progressiveBytesCopied");
+
+    static std::vector<std::uint8_t> present_buffer;
+    auto const frame_bytes = surface.frame_bytes();
+    std::span<std::uint8_t> framebuffer_span{};
+    if (frame_bytes > 0) {
+        if (present_buffer.size() < frame_bytes) {
+            present_buffer.resize(frame_bytes);
+        }
+        framebuffer_span = std::span<std::uint8_t>{present_buffer.data(), frame_bytes};
+    }
+
+    auto dirty_tiles = surface.consume_progressive_dirty_tiles();
+    PathWindowView window_view;
+    PathWindowView::PresentPolicy present_policy{};
+    present_policy.auto_render_on_present = false;
+    auto const now = std::chrono::steady_clock::now();
+    auto const vsync_deadline = now + 16ms;
+
+    PathWindowView::PresentRequest present_request{};
+    present_request.now = now;
+    present_request.vsync_deadline = vsync_deadline;
+    present_request.framebuffer = framebuffer_span;
+    present_request.dirty_tiles = std::span<std::size_t const>{dirty_tiles.data(), dirty_tiles.size()};
+#if defined(__APPLE__)
+    present_request.allow_iosurface_sharing = true;
+#endif
+
+    auto present_stats = window_view.present(surface, present_policy, present_request);
+    metrics.present_ms = present_stats.present_ms;
+
     return metrics;
 }
 
@@ -188,16 +231,31 @@ auto format_result(std::vector<FrameMetrics> const& frames) -> std::string {
     }
     auto count = static_cast<double>(frames.size());
     double sum_ms = 0.0;
+    double sum_damage = 0.0;
+    double sum_encode = 0.0;
+    double sum_progressive = 0.0;
+    double sum_publish = 0.0;
+    double sum_present = 0.0;
     double sum_tiles = 0.0;
     double sum_bytes = 0.0;
     double worst_ms = 0.0;
     for (auto const& frame : frames) {
         sum_ms += frame.render_ms;
+        sum_damage += frame.damage_ms;
+        sum_encode += frame.encode_ms;
+        sum_progressive += frame.progressive_copy_ms;
+        sum_publish += frame.publish_ms;
+        sum_present += frame.present_ms;
         sum_tiles += static_cast<double>(frame.tiles);
         sum_bytes += static_cast<double>(frame.bytes);
         worst_ms = std::max(worst_ms, frame.render_ms);
     }
     double avg_ms = sum_ms / count;
+    double avg_damage = sum_damage / count;
+    double avg_encode = sum_encode / count;
+    double avg_copy = sum_progressive / count;
+    double avg_publish = sum_publish / count;
+    double avg_present = sum_present / count;
     double avg_tiles = sum_tiles / count;
     double avg_bytes = sum_bytes / count;
     double fps = avg_ms > 0.0 ? 1000.0 / avg_ms : 0.0;
@@ -208,6 +266,11 @@ auto format_result(std::vector<FrameMetrics> const& frames) -> std::string {
         << " avg_ms=" << avg_ms
         << " fps=" << fps
         << " worst_ms=" << worst_ms
+        << " avg_damage_ms=" << avg_damage
+        << " avg_encode_ms=" << avg_encode
+        << " avg_copy_ms=" << avg_copy
+        << " avg_publish_ms=" << avg_publish
+        << " avg_present_ms=" << avg_present
         << " avg_tiles=" << avg_tiles
         << " avg_bytes=" << avg_bytes / 1'000'000.0 << "MB";
     return oss.str();

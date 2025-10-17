@@ -41,6 +41,24 @@ constexpr int kInitialCanvasWidth = 320;
 constexpr int kInitialCanvasHeight = 240;
 constexpr int kBrushSizePx = 8;
 
+struct RuntimeOptions {
+    bool debug = false;
+};
+
+auto parse_runtime_options(int argc, char** argv) -> RuntimeOptions {
+    RuntimeOptions opts{};
+    for (int i = 1; i < argc; ++i) {
+        std::string_view arg{argv[i]};
+        if (arg == "--debug") {
+            opts.debug = true;
+        } else if (arg == "--help" || arg == "-h") {
+            std::cout << "Usage: paint_example [--debug]\n";
+            std::exit(0);
+        }
+    }
+    return opts;
+}
+
 using DirtyRectHint = Builders::DirtyRectHint;
 
 struct Stroke {
@@ -210,7 +228,8 @@ auto present_frame(PathSpace& space,
                    Builders::WindowPath const& windowPath,
                    std::string_view viewName,
                    int width,
-                   int height) -> std::optional<PresentOutcome> {
+                   int height,
+                   bool debug) -> std::optional<PresentOutcome> {
     auto presentResult = Builders::Window::Present(space, windowPath, viewName);
     if (!presentResult) {
         std::cerr << "present failed";
@@ -262,6 +281,20 @@ auto present_frame(PathSpace& space,
         computed_stride = static_cast<std::size_t>(width) * 4;
     }
     outcome.stride_bytes = computed_stride;
+
+    if (debug) {
+        auto const& stats = presentResult->stats;
+        std::cout << "[present] frame=" << stats.frame.frame_index
+                  << " render_ms=" << stats.frame.render_ms
+                  << " present_ms=" << stats.present_ms
+                  << " tiles=" << stats.progressive_tiles_copied
+                  << " rects=" << stats.progressive_rects_coalesced
+                  << " skipped=" << stats.skipped
+                  << " buffered=" << stats.buffered_frame_consumed
+                  << " dirty_bytes=" << outcome.framebuffer_bytes
+                  << " stride=" << outcome.stride_bytes
+                  << std::endl;
+    }
     return outcome;
 }
 
@@ -347,11 +380,12 @@ auto lay_down_segment(std::vector<Stroke>& strokes,
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
 #if !defined(__APPLE__)
     std::cerr << "paint_example currently supports only macOS builds." << std::endl;
     return 1;
 #else
+    auto options = parse_runtime_options(argc, argv);
     PathSpace space;
     int canvasWidth = kInitialCanvasWidth;
     int canvasHeight = kInitialCanvasHeight;
@@ -425,7 +459,12 @@ int main() {
 
     auto bucket = build_bucket(strokes);
     publish_snapshot(space, builder, scenePath, bucket);
-    (void)present_frame(space, windowPath, "main", canvasWidth, canvasHeight);
+    (void)present_frame(space,
+                       windowPath,
+                       "main",
+                       canvasWidth,
+                       canvasHeight,
+                       options.debug);
 
     auto fps_last_report = std::chrono::steady_clock::now();
     std::uint64_t fps_frames = 0;
@@ -547,7 +586,12 @@ int main() {
                                                                 SP::ConcretePathStringView{targetAbsolute.getPath()},
                                                                 std::span<const DirtyRectHint>{dirtyHints}),
                            "failed to submit renderer dirty hints");
-            if (auto outcome = present_frame(space, windowPath, "main", canvasWidth, canvasHeight)) {
+            if (auto outcome = present_frame(space,
+                                             windowPath,
+                                             "main",
+                                             canvasWidth,
+                                             canvasHeight,
+                                             options.debug)) {
                 ++fps_frames;
                 if (outcome->used_iosurface) {
                     ++fps_iosurface_frames;

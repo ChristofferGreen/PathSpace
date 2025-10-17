@@ -143,7 +143,7 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
         stats.iosurface = *shared_surface;
         stats.used_iosurface = true;
         stats.presented = true;
-        stats.buffered_frame_consumed = true;
+        stats.buffered_frame_consumed = false;
         stats.frame = surface.latest_frame_info();
         (void)copy_progressive_tiles(iosurface_base, iosurface_stride, false);
         auto finish = std::chrono::steady_clock::now();
