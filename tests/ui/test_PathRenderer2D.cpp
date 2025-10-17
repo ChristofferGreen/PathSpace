@@ -2272,6 +2272,121 @@ TEST_CASE("Window::Present handles repeated loop without dropping metrics") {
     CHECK(storedFramebuffer->pixels.size() == static_cast<std::size_t>(storedStride) * static_cast<std::size_t>(surfaceDesc.size_px.height));
 }
 
+TEST_CASE("Window::Present handles multiple renderer targets") {
+    RendererFixture fx;
+
+    RectCommand left_rect{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 4.0f,
+        .max_y = 4.0f,
+        .color = {1.0f, 0.0f, 0.0f, 1.0f},
+    };
+    RectCommand right_rect{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 4.0f,
+        .max_y = 4.0f,
+        .color = {0.0f, 1.0f, 0.0f, 1.0f},
+    };
+
+    auto sceneLeft = create_scene(fx,
+                                  "scene_multi_left",
+                                  make_rect_bucket({
+                                      RectDrawableDef{
+                                          .id = 0x10u,
+                                          .fingerprint = 0x1111222233334444u,
+                                          .rect = left_rect,
+                                      },
+                                  }));
+    auto sceneRight = create_scene(fx,
+                                   "scene_multi_right",
+                                   make_rect_bucket({
+                                       RectDrawableDef{
+                                           .id = 0x20u,
+                                           .fingerprint = 0x5555666677778888u,
+                                           .rect = right_rect,
+                                       },
+                                   }));
+    auto rendererPath = create_renderer(fx, "renderer_multi_target");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 4;
+    surfaceDesc.size_px.height = 4;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfaceLeft = create_surface(fx, "surface_multi_left", surfaceDesc, rendererPath.getPath());
+    auto surfaceRight = create_surface(fx, "surface_multi_right", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfaceLeft, sceneLeft));
+    REQUIRE(Surface::SetScene(fx.space, surfaceRight, sceneRight));
+
+    Builders::WindowParams windowParams{};
+    windowParams.name = "multi_target_window";
+    windowParams.title = "MultiTarget";
+    windowParams.width = surfaceDesc.size_px.width * 2;
+    windowParams.height = surfaceDesc.size_px.height;
+    auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+    REQUIRE(windowPath);
+    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "left", surfaceLeft));
+    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "right", surfaceRight));
+
+    auto targetLeft = resolve_target(fx, surfaceLeft);
+    auto targetRight = resolve_target(fx, surfaceRight);
+    auto metricsBaseLeft = std::string(targetLeft.getPath()) + "/output/v1/common";
+    auto metricsBaseRight = std::string(targetRight.getPath()) + "/output/v1/common";
+
+    auto expected_left_bytes = encode_linear_to_bytes(make_linear_color(left_rect.color),
+                                                      surfaceDesc,
+                                                      true);
+    auto expected_right_bytes = encode_linear_to_bytes(make_linear_color(right_rect.color),
+                                                       surfaceDesc,
+                                                       true);
+
+    auto sample_pixel = [](Builders::SoftwareFramebuffer const& fb, int x, int y) {
+        auto stride = static_cast<std::size_t>(fb.row_stride_bytes);
+        auto offset = stride * static_cast<std::size_t>(y) + static_cast<std::size_t>(x) * 4u;
+        return std::array<std::uint8_t, 4>{
+            fb.pixels[offset + 0],
+            fb.pixels[offset + 1],
+            fb.pixels[offset + 2],
+            fb.pixels[offset + 3],
+        };
+    };
+
+    auto presentLeft = Builders::Window::Present(fx.space, *windowPath, "left");
+    REQUIRE(presentLeft);
+    CHECK(presentLeft->stats.presented);
+    CHECK(presentLeft->stats.progressive_tiles_copied >= 1);
+    CHECK(fx.space.read<uint64_t>(metricsBaseLeft + "/frameIndex").value() == 1);
+
+    auto framebufferLeft = Builders::Diagnostics::ReadSoftwareFramebuffer(fx.space,
+                                                                          SP::ConcretePathStringView{targetLeft.getPath()});
+    REQUIRE(framebufferLeft);
+    auto center = surfaceDesc.size_px.width / 2;
+    auto pixelLeft = sample_pixel(*framebufferLeft, center, center);
+    CHECK(pixelLeft == expected_left_bytes);
+
+    auto presentRight = Builders::Window::Present(fx.space, *windowPath, "right");
+    REQUIRE(presentRight);
+    CHECK(presentRight->stats.presented);
+    CHECK(presentRight->stats.progressive_tiles_copied >= 1);
+    CHECK(fx.space.read<uint64_t>(metricsBaseRight + "/frameIndex").value() == 1);
+
+    auto framebufferRight = Builders::Diagnostics::ReadSoftwareFramebuffer(fx.space,
+                                                                           SP::ConcretePathStringView{targetRight.getPath()});
+    REQUIRE(framebufferRight);
+    auto pixelRight = sample_pixel(*framebufferRight, center, center);
+    CHECK(pixelRight == expected_right_bytes);
+
+    auto presentLeftAgain = Builders::Window::Present(fx.space, *windowPath, "left");
+    REQUIRE(presentLeftAgain);
+    CHECK(presentLeftAgain->stats.presented);
+    CHECK(fx.space.read<uint64_t>(metricsBaseLeft + "/frameIndex").value() == 2);
+    CHECK(fx.space.read<uint64_t>(metricsBaseRight + "/frameIndex").value() == 1);
+}
+
 TEST_CASE("Window::Present reads present policy overrides from PathSpace") {
     RendererFixture fx;
 
@@ -2681,6 +2796,108 @@ TEST_CASE("Window::Present records progressive seqlock metrics") {
         locked_tile->abort();
         locked_tile.reset();
     }
+}
+
+TEST_CASE("Window::Present AlwaysFresh skip records deadline metrics") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x501u};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, 2.0f}};
+    bucket.bounds_boxes = {BoundingBox{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 0.0f}}};
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {0};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {0};
+    bucket.alpha_indices = {};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {DrawableAuthoringMapEntry{bucket.drawable_ids[0], "always_fresh/node", 0, 0}};
+
+    RectCommand rect{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 2.0f,
+        .max_y = 2.0f,
+        .color = {0.4f, 0.3f, 0.7f, 1.0f},
+    };
+    encode_rect_command(rect, bucket);
+
+    auto scenePath = create_scene(fx, "scene_window_always_fresh", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_window_always_fresh");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 2;
+    surfaceDesc.size_px.height = 2;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_window_always_fresh", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+
+    Builders::WindowParams windowParams{};
+    windowParams.name = "window_always_fresh";
+    windowParams.title = "AlwaysFresh";
+    windowParams.width = 320;
+    windowParams.height = 240;
+    auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+    REQUIRE(windowPath);
+    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+
+    auto baseline = Builders::Window::Present(fx.space, *windowPath, "main");
+    REQUIRE(baseline);
+    CHECK(baseline->stats.presented);
+
+    auto targetPath = resolve_target(fx, surfacePath);
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/frameIndex").value() == 1);
+
+    struct HookGuard {
+        ~HookGuard() { Window::TestHooks::ResetBeforePresentHook(); }
+    } guard{};
+
+    Window::TestHooks::SetBeforePresentHook(
+        [&](PathSurfaceSoftware& surface,
+            PathWindowView::PresentPolicy& policy,
+            std::vector<std::size_t>& dirty_tiles) {
+            policy.mode = PathWindowView::PresentMode::AlwaysFresh;
+            policy.frame_timeout = std::chrono::milliseconds{1};
+            policy.frame_timeout_ms_value = 1.0;
+            policy.staleness_budget_ms_value = 1.0;
+            policy.auto_render_on_present = false;
+            dirty_tiles.clear();
+            surface.resize(surface.desc());
+        });
+
+    auto skipped = Builders::Window::Present(fx.space, *windowPath, "main");
+    REQUIRE(skipped);
+    CHECK_FALSE(skipped->stats.presented);
+    CHECK(skipped->stats.skipped);
+    CHECK(skipped->stats.mode == PathWindowView::PresentMode::AlwaysFresh);
+    CHECK_FALSE(skipped->stats.buffered_frame_consumed);
+    CHECK(skipped->stats.wait_budget_ms == doctest::Approx(1.0).epsilon(0.2));
+
+    auto queuePath = std::string(targetPath.getPath()) + "/events/renderRequested/queue";
+    auto autoRenderEvent = fx.space.take<Builders::AutoRenderRequestEvent>(queuePath);
+    CHECK_FALSE(autoRenderEvent);
+    auto code = autoRenderEvent.error().code;
+    bool expected_code = (code == Error::Code::NoObjectFound)
+                         || (code == Error::Code::NoSuchPath);
+    CHECK(expected_code);
+
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/frameIndex").value() >= 2);
+    CHECK(fx.space.read<bool>(metricsBase + "/lastPresentSkipped").value());
+    CHECK_FALSE(fx.space.read<bool>(metricsBase + "/presented").value());
+    CHECK_FALSE(fx.space.read<bool>(metricsBase + "/bufferedFrameConsumed").value());
+    CHECK(fx.space.read<std::string, std::string>(metricsBase + "/presentMode").value() == "AlwaysFresh");
+    CHECK(fx.space.read<double>(metricsBase + "/waitBudgetMs").value() == doctest::Approx(1.0).epsilon(0.2));
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/presentedAgeFrames").value() >= 1);
 }
 
 TEST_CASE("rounded rectangles respect per-corner radii") {
