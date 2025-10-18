@@ -309,6 +309,12 @@ auto read_present_policy(PathSpace const& space,
         policy.auto_render_on_present = **value;
     }
 
+    if (auto value = read_bool(paramsBase + "/capture_framebuffer"); !value) {
+        return std::unexpected(value.error());
+    } else if (value->has_value()) {
+        policy.capture_framebuffer = **value;
+    }
+
     return policy;
 }
 
@@ -1415,6 +1421,11 @@ auto Present(PathSpace& space,
 #if !defined(__APPLE__)
     framebuffer.resize(surface.frame_bytes(), 0);
     framebuffer_span = std::span<std::uint8_t>{framebuffer.data(), framebuffer.size()};
+#else
+    if (presentPolicy.capture_framebuffer || !surface.has_buffered()) {
+        framebuffer.resize(surface.frame_bytes(), 0);
+        framebuffer_span = std::span<std::uint8_t>{framebuffer.data(), framebuffer.size()};
+    }
 #endif
     auto now = std::chrono::steady_clock::now();
     auto vsync_budget = std::chrono::duration_cast<std::chrono::steady_clock::duration>(presentPolicy.frame_timeout);
@@ -1444,31 +1455,46 @@ auto Present(PathSpace& space,
         presentStats.frame.render_ms = renderStats->render_ms;
     }
 #if defined(__APPLE__)
-    if (presentStats.iosurface && presentStats.iosurface->valid()) {
-        if (presentStats.used_iosurface) {
-            framebuffer.clear();
-        } else {
-            auto retained = presentStats.iosurface->retain_for_external_use();
-            if (retained) {
-                if (IOSurfaceLock(retained, kIOSurfaceLockAvoidSync, nullptr) == kIOReturnSuccess) {
-                    auto* base = static_cast<std::uint8_t*>(IOSurfaceGetBaseAddress(retained));
-                    auto const row_bytes = IOSurfaceGetBytesPerRow(retained);
-                    auto const height = presentStats.iosurface->height();
-                    auto const row_stride = surface.row_stride_bytes();
-                    auto const copy_bytes = std::min<std::size_t>(row_bytes, row_stride);
-                    auto const total_bytes = row_stride * static_cast<std::size_t>(std::max(height, 0));
-                    framebuffer.resize(total_bytes);
-                    if (base && copy_bytes > 0 && height > 0) {
-                        for (int row = 0; row < height; ++row) {
-                            auto* dst = framebuffer.data() + static_cast<std::size_t>(row) * row_stride;
-                            auto const* src = base + static_cast<std::size_t>(row) * row_bytes;
-                            std::memcpy(dst, src, copy_bytes);
-                        }
-                    }
-                    IOSurfaceUnlock(retained, kIOSurfaceLockAvoidSync, nullptr);
-                }
-                CFRelease(retained);
+    auto copy_iosurface_into = [&](PathSurfaceSoftware::SharedIOSurface const& handle,
+                                   std::vector<std::uint8_t>& out) {
+        auto retained = handle.retain_for_external_use();
+        if (!retained) {
+            return;
+        }
+        bool locked = IOSurfaceLock(retained, kIOSurfaceLockAvoidSync, nullptr) == kIOReturnSuccess;
+        auto* base = static_cast<std::uint8_t*>(IOSurfaceGetBaseAddress(retained));
+        auto const row_bytes = IOSurfaceGetBytesPerRow(retained);
+        auto const height = handle.height();
+        auto const row_stride = surface.row_stride_bytes();
+        auto const copy_bytes = std::min<std::size_t>(row_bytes, row_stride);
+        auto const total_bytes = row_stride * static_cast<std::size_t>(std::max(height, 0));
+        if (locked && base && copy_bytes > 0 && height > 0) {
+            out.resize(total_bytes);
+            for (int row = 0; row < height; ++row) {
+                auto* dst = out.data() + static_cast<std::size_t>(row) * row_stride;
+                auto const* src = base + static_cast<std::size_t>(row) * row_bytes;
+                std::memcpy(dst, src, copy_bytes);
             }
+        }
+        if (locked) {
+            IOSurfaceUnlock(retained, kIOSurfaceLockAvoidSync, nullptr);
+        }
+        CFRelease(retained);
+    };
+
+    if (presentStats.iosurface && presentStats.iosurface->valid()) {
+        auto const row_stride = surface.row_stride_bytes();
+        auto const height = presentStats.iosurface->height();
+        auto const total_bytes = row_stride * static_cast<std::size_t>(std::max(height, 0));
+
+        if (presentStats.used_iosurface) {
+            if (presentPolicy.capture_framebuffer) {
+                copy_iosurface_into(*presentStats.iosurface, framebuffer);
+            } else {
+                framebuffer.clear();
+            }
+        } else if (framebuffer.empty() && presentPolicy.capture_framebuffer && total_bytes > 0) {
+            copy_iosurface_into(*presentStats.iosurface, framebuffer);
         }
     }
     if (presentStats.buffered_frame_consumed && framebuffer.empty()) {
@@ -1498,6 +1524,11 @@ auto Present(PathSpace& space,
 
     auto frame_timeout_ms = static_cast<double>(presentPolicy.frame_timeout.count());
     bool reuse_previous_frame = !presentStats.buffered_frame_consumed;
+#if defined(__APPLE__)
+    if (presentStats.used_iosurface) {
+        reuse_previous_frame = false;
+    }
+#endif
     if (!reuse_previous_frame && presentStats.skipped) {
         reuse_previous_frame = true;
     }

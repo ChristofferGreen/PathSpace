@@ -25,6 +25,7 @@ struct PathWindowPresentPolicy {
     std::chrono::milliseconds frame_timeout{20};
     bool vsync_align = true;
     bool auto_render_on_present = true;
+    bool capture_framebuffer = false;
     double staleness_budget_ms_value = 8.0;
     double frame_timeout_ms_value = 20.0;
 };

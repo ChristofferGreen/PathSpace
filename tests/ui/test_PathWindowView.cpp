@@ -6,6 +6,7 @@
 #include <pathspace/ui/PathWindowView.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <vector>
@@ -97,7 +98,7 @@ TEST_CASE("present shares iosurface when enabled") {
 
     auto stats = view.present(surface, {}, request);
     CHECK(stats.presented);
-    CHECK(stats.buffered_frame_consumed);
+    CHECK_FALSE(stats.buffered_frame_consumed);
     CHECK(stats.used_iosurface);
     REQUIRE(stats.iosurface.has_value());
     auto iosurface = stats.iosurface->retain_for_external_use();
@@ -111,6 +112,93 @@ TEST_CASE("present shares iosurface when enabled") {
     CHECK(base[3] == 0xDD);
     IOSurfaceUnlock(iosurface, kIOSurfaceLockAvoidSync, nullptr);
     CFRelease(iosurface);
+}
+#endif
+
+#if defined(__APPLE__)
+TEST_CASE("fullscreen iosurface present protects zero-copy perf") {
+    constexpr int width = 3840;
+    constexpr int height = 2160;
+
+    PathSurfaceSoftware surface{make_desc(width, height)};
+
+    std::array<std::uint8_t, 16> iosurface_pattern{};
+    for (std::size_t i = 0; i < iosurface_pattern.size(); ++i) {
+        iosurface_pattern[i] = static_cast<std::uint8_t>(0xA0 + static_cast<int>(i));
+    }
+    {
+        auto stage = surface.staging_span();
+        REQUIRE(stage.size() >= iosurface_pattern.size());
+        std::copy(iosurface_pattern.begin(), iosurface_pattern.end(), stage.begin());
+        surface.publish_buffered_frame({
+            .frame_index = 12,
+            .revision = 5,
+            .render_ms = 4.0,
+        });
+    }
+
+    PathWindowView view;
+    PathWindowView::PresentPolicy policy{};
+    PathWindowView::PresentRequest iosurface_request{
+        .now = std::chrono::steady_clock::now(),
+        .vsync_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{8},
+        .framebuffer = {},
+        .dirty_tiles = {},
+        .allow_iosurface_sharing = true,
+    };
+
+    auto iosurface_stats = view.present(surface, policy, iosurface_request);
+    REQUIRE(iosurface_stats.presented);
+    CHECK(iosurface_stats.used_iosurface);
+    CHECK_FALSE(iosurface_stats.buffered_frame_consumed);
+    REQUIRE(iosurface_stats.iosurface.has_value());
+
+    auto iosurface = iosurface_stats.iosurface->retain_for_external_use();
+    REQUIRE(iosurface != nullptr);
+    REQUIRE(IOSurfaceLock(iosurface, kIOSurfaceLockAvoidSync, nullptr) == kIOReturnSuccess);
+    auto* iosurface_base = static_cast<std::uint8_t*>(IOSurfaceGetBaseAddress(iosurface));
+    REQUIRE(iosurface_base != nullptr);
+    for (std::size_t i = 0; i < iosurface_pattern.size(); ++i) {
+        CHECK(iosurface_base[i] == iosurface_pattern[i]);
+    }
+    IOSurfaceUnlock(iosurface, kIOSurfaceLockAvoidSync, nullptr);
+    CFRelease(iosurface);
+
+    std::array<std::uint8_t, 16> copy_pattern{};
+    for (std::size_t i = 0; i < copy_pattern.size(); ++i) {
+        copy_pattern[i] = static_cast<std::uint8_t>(0x40 + static_cast<int>(i));
+    }
+    {
+        auto stage = surface.staging_span();
+        REQUIRE(stage.size() >= copy_pattern.size());
+        std::copy(copy_pattern.begin(), copy_pattern.end(), stage.begin());
+        surface.publish_buffered_frame({
+            .frame_index = 13,
+            .revision = 6,
+            .render_ms = 4.0,
+        });
+    }
+
+    std::vector<std::uint8_t> framebuffer(surface.frame_bytes(), 0);
+    PathWindowView::PresentRequest copy_request{
+        .now = std::chrono::steady_clock::now(),
+        .vsync_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{8},
+        .framebuffer = framebuffer,
+        .dirty_tiles = {},
+        .allow_iosurface_sharing = false,
+    };
+
+    auto copy_stats = view.present(surface, policy, copy_request);
+    REQUIRE(copy_stats.presented);
+    CHECK(copy_stats.buffered_frame_consumed);
+    CHECK_FALSE(copy_stats.used_iosurface);
+
+    for (std::size_t i = 0; i < copy_pattern.size(); ++i) {
+        CHECK(framebuffer[i] == copy_pattern[i]);
+    }
+
+    CHECK(copy_stats.present_ms >= iosurface_stats.present_ms);
+    CHECK((copy_stats.present_ms - iosurface_stats.present_ms) >= 0.1);
 }
 #endif
 
@@ -162,20 +250,19 @@ TEST_CASE("present copies progressive tiles when buffered missing") {
     CHECK(stats.present_ms >= 0.0);
 
     auto row_stride = surface.row_stride_bytes();
-    for (int row = 0; row < 2; ++row) {
-        auto base = static_cast<std::size_t>(row) * row_stride;
-        CHECK(framebuffer[base + 0] == 10);
-        CHECK(framebuffer[base + 1] == 20);
-        CHECK(framebuffer[base + 2] == 30);
-        CHECK(framebuffer[base + 3] == 255);
-        CHECK(framebuffer[base + 4] == 10);
-        CHECK(framebuffer[base + 5] == 20);
-        CHECK(framebuffer[base + 6] == 30);
-        CHECK(framebuffer[base + 7] == 255);
+    auto tile_dims = surface.progressive_buffer().tile_dimensions(0);
+    auto affected_rows = tile_dims.height;
+    auto affected_cols = tile_dims.width;
+    for (int row = 0; row < affected_rows; ++row) {
+        auto base = static_cast<std::size_t>(row + tile_dims.y) * row_stride;
+        for (int col = 0; col < affected_cols; ++col) {
+            auto idx = base + static_cast<std::size_t>(col + tile_dims.x) * 4u;
+            CHECK(framebuffer[idx + 0] == 10);
+            CHECK(framebuffer[idx + 1] == 20);
+            CHECK(framebuffer[idx + 2] == 30);
+            CHECK(framebuffer[idx + 3] == 255);
+        }
     }
-    // Remaining rows untouched (still zero).
-    auto base = static_cast<std::size_t>(2) * surface.row_stride_bytes();
-    CHECK(framebuffer[base + 0] == 0);
 }
 
 TEST_CASE("progressive copy records skip when tile write in-flight") {

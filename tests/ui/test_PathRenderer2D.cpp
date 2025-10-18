@@ -25,6 +25,7 @@
 #include <span>
 #include <string>
 #include <sstream>
+#include <string_view>
 #include <vector>
 
 using namespace SP;
@@ -78,6 +79,14 @@ struct RendererFixture {
         return *revision;
     }
 };
+
+void enable_framebuffer_capture(PathSpace& space,
+                                WindowPath const& windowPath,
+                                std::string_view viewName) {
+    auto viewBase = std::string(windowPath.getPath()) + "/views/" + std::string(viewName);
+    auto result = space.insert(viewBase + "/present/params/capture_framebuffer", true);
+    REQUIRE(result.errors.empty());
+}
 
 auto create_scene(RendererFixture& fx,
                   std::string const& name,
@@ -1987,6 +1996,8 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(windowPath);
     REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+    enable_framebuffer_capture(fx.space, *windowPath, "main");
+    enable_framebuffer_capture(fx.space, *windowPath, "main");
 
     auto presentResult = Builders::Window::Present(fx.space, *windowPath, "main");
     REQUIRE(presentResult);
@@ -2014,7 +2025,8 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     CHECK(fx.space.read<uint64_t>(metricsBase + "/commandCount").value() == 1);
     CHECK_FALSE(fx.space.read<bool>(metricsBase + "/lastPresentSkipped").value());
     CHECK(fx.space.read<bool>(metricsBase + "/presented").value());
-    CHECK(fx.space.read<bool>(metricsBase + "/bufferedFrameConsumed").value());
+    CHECK(fx.space.read<bool>(metricsBase + "/bufferedFrameConsumed").value()
+          == !presentResult->stats.used_iosurface);
     CHECK(fx.space.read<bool>(metricsBase + "/usedProgressive").value());
     CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveTilesCopied").value() == 1);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveRectsCoalesced").value() >= 1);
@@ -2101,6 +2113,7 @@ TEST_CASE("Window::Present progressive updates preserve prior content") {
     auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(windowPath);
     REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+    enable_framebuffer_capture(fx.space, *windowPath, "main");
 
     auto targetPath = resolve_target(fx, surfacePath);
     auto submit_hint = [&](RectCommand const& rect) {
@@ -2242,6 +2255,7 @@ TEST_CASE("Window::Present handles repeated loop without dropping metrics") {
     REQUIRE(windowPath);
 
     REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+    enable_framebuffer_capture(fx.space, *windowPath, "main");
 
     constexpr int kIterations = 6;
     for (int i = 0; i < kIterations; ++i) {
@@ -2330,7 +2344,9 @@ TEST_CASE("Window::Present handles multiple renderer targets") {
     auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(windowPath);
     REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "left", surfaceLeft));
+    enable_framebuffer_capture(fx.space, *windowPath, "left");
     REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "right", surfaceRight));
+    enable_framebuffer_capture(fx.space, *windowPath, "right");
 
     auto targetLeft = resolve_target(fx, surfaceLeft);
     auto targetRight = resolve_target(fx, surfaceRight);
@@ -2438,6 +2454,8 @@ TEST_CASE("Window::Present reads present policy overrides from PathSpace") {
     auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(windowPath);
     REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+    enable_framebuffer_capture(fx.space, *windowPath, "main");
+    enable_framebuffer_capture(fx.space, *windowPath, "main");
 
     auto viewBase = std::string(windowPath->getPath()) + "/views/main";
     REQUIRE(fx.space.insert(viewBase + "/present/policy", std::string{"AlwaysFresh"}).errors.empty());
@@ -2767,6 +2785,7 @@ TEST_CASE("Window::Present records progressive seqlock metrics") {
     auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(windowPath);
     REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+    enable_framebuffer_capture(fx.space, *windowPath, "main");
 
     std::optional<ProgressiveSurfaceBuffer::TileWriter> locked_tile;
     struct HookReset {
@@ -2849,6 +2868,7 @@ TEST_CASE("Window::Present AlwaysFresh skip records deadline metrics") {
     auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(windowPath);
     REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+    enable_framebuffer_capture(fx.space, *windowPath, "main");
 
     auto baseline = Builders::Window::Present(fx.space, *windowPath, "main");
     REQUIRE(baseline);
