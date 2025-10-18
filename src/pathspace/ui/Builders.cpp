@@ -24,6 +24,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <cstdlib>
 
 #if defined(__APPLE__)
 #include <CoreFoundation/CoreFoundation.h>
@@ -729,11 +730,20 @@ auto store_renderer_kind(PathSpace& space,
     }
 
     auto const& error = status.error();
-    if (error.code != SP::Error::Code::TypeMismatch) {
+    auto is_type_mismatch = (error.code == SP::Error::Code::TypeMismatch
+                             || error.code == SP::Error::Code::InvalidType);
+    if (!is_type_mismatch) {
+        std::cerr << "store_renderer_kind: replace_single failed code="
+                  << static_cast<int>(error.code)
+                  << " message=" << error.message.value_or("<none>") << std::endl;
         return status;
     }
 
     if (auto cleared = drain_queue<std::string>(space, path); !cleared) {
+        std::cerr << "store_renderer_kind: drain_queue<string> failed code="
+                  << static_cast<int>(cleared.error().code)
+                  << " message=" << cleared.error().message.value_or("<none>")
+                  << std::endl;
         return cleared;
     }
 
@@ -810,6 +820,10 @@ auto upload_to_metal_surface(PathSurfaceSoftware& software,
     scratch.resize(frame_bytes);
     auto copy = software.copy_buffered_frame(std::span<std::uint8_t>{scratch.data(), scratch.size()});
     if (!copy) {
+        return {};
+    }
+
+    if (std::getenv("PATHSPACE_ENABLE_METAL_UPLOADS") == nullptr) {
         return {};
     }
 

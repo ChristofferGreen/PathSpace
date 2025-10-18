@@ -2,10 +2,13 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/DrawCommands.hpp>
 
 #include <array>
 #include <chrono>
 #include <cstddef>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -16,12 +19,87 @@ using namespace SP::UI::Builders;
 using SP::UI::PathWindowPresentPolicy;
 using SP::UI::PathWindowPresentStats;
 using SP::UI::PathWindowView;
+namespace UIScene = SP::UI::Scene;
+
+using UIScene::DrawableBucketSnapshot;
+using UIScene::SceneSnapshotBuilder;
+using UIScene::SnapshotPublishOptions;
+using UIScene::RectCommand;
+using UIScene::DrawCommandKind;
+using UIScene::Transform;
+using UIScene::BoundingSphere;
+using UIScene::BoundingBox;
+using UIScene::DrawableAuthoringMapEntry;
 
 struct BuildersFixture {
     PathSpace     space;
     AppRootPath   app_root{"/system/applications/test_app"};
     auto root_view() const -> SP::App::AppRootPathView { return SP::App::AppRootPathView{app_root.getPath()}; }
 };
+
+auto identity_transform() -> Transform {
+    Transform t{};
+    for (std::size_t i = 0; i < t.elements.size(); ++i) {
+        t.elements[i] = (i % 5 == 0) ? 1.0f : 0.0f;
+    }
+    return t;
+}
+
+auto encode_rect_command(RectCommand const& rect,
+                         DrawableBucketSnapshot& bucket) -> void {
+    auto offset = bucket.command_payload.size();
+    bucket.command_payload.resize(offset + sizeof(RectCommand));
+    std::memcpy(bucket.command_payload.data() + offset, &rect, sizeof(RectCommand));
+    bucket.command_kinds.push_back(static_cast<std::uint32_t>(DrawCommandKind::Rect));
+}
+
+auto make_rect_bucket() -> DrawableBucketSnapshot {
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0xABCDu};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{0.0f, 0.0f, 0.0f}, 1.0f}};
+    bucket.bounds_boxes = {BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}}};
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {0};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {0};
+    bucket.alpha_indices = {};
+    bucket.layer_indices = {};
+    bucket.clip_nodes = {};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {DrawableAuthoringMapEntry{bucket.drawable_ids[0], "node", 0, 0}};
+    bucket.drawable_fingerprints = {0};
+
+    RectCommand rect{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 1.0f,
+        .max_y = 1.0f,
+        .color = {0.4f, 0.4f, 0.4f, 1.0f},
+    };
+    encode_rect_command(rect, bucket);
+    return bucket;
+}
+
+auto publish_minimal_scene(BuildersFixture& fx, ScenePath const& scenePath) -> void {
+    auto bucket = make_rect_bucket();
+    SceneSnapshotBuilder builder{fx.space, fx.root_view(), scenePath};
+    SnapshotPublishOptions opts{};
+    opts.metadata.author = "tests";
+    opts.metadata.tool_version = "tests";
+    opts.metadata.created_at = std::chrono::system_clock::time_point{};
+    opts.metadata.drawable_count = bucket.drawable_ids.size();
+    opts.metadata.command_count = bucket.command_kinds.size();
+    auto revision = builder.publish(opts, bucket);
+    REQUIRE(revision);
+    auto ready = Scene::WaitUntilReady(fx.space, scenePath, std::chrono::milliseconds{10});
+    REQUIRE(ready);
+}
 
 template <typename T>
 auto read_value(PathSpace const& space, std::string const& path) -> SP::Expected<T> {
@@ -211,6 +289,10 @@ TEST_CASE("Renderer::Create upgrades legacy string kind metadata") {
 
     RendererParams params{ .name = "legacy", .description = "Upgraded renderer" };
     auto created = Renderer::Create(fx.space, fx.root_view(), params, RendererKind::Software2D);
+    if (!created) {
+        INFO("Renderer::Create error code = " << static_cast<int>(created.error().code));
+        INFO("Renderer::Create error message = " << created.error().message.value_or("<none>"));
+    }
     REQUIRE(created);
     CHECK(created->getPath() == rendererPath);
 
@@ -233,8 +315,21 @@ TEST_CASE("Surface::RenderOnce handles metal renderer targets") {
     auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
     REQUIRE(surface);
 
+    SceneParams sceneParams{ .name = "main", .description = "scene" };
+    auto scene = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    REQUIRE(scene);
+
+    publish_minimal_scene(fx, *scene);
+
+    auto linked = Surface::SetScene(fx.space, *surface, *scene);
+    REQUIRE(linked);
+
     auto render = Surface::RenderOnce(fx.space, *surface, std::nullopt);
 #if PATHSPACE_UI_METAL
+    if (!render) {
+        INFO("Surface::RenderOnce error code = " << static_cast<int>(render.error().code));
+        INFO("Surface::RenderOnce error message = " << render.error().message.value_or("<none>"));
+    }
     CHECK(render);
 #else
     CHECK_FALSE(render);
@@ -259,6 +354,8 @@ TEST_CASE("Window::Present handles metal renderer targets") {
     auto scene = Scene::Create(fx.space, fx.root_view(), sceneParams);
     REQUIRE(scene);
 
+    publish_minimal_scene(fx, *scene);
+
     auto linked = Surface::SetScene(fx.space, *surface, *scene);
     REQUIRE(linked);
 
@@ -271,6 +368,10 @@ TEST_CASE("Window::Present handles metal renderer targets") {
 
     auto present = Window::Present(fx.space, *window, "view");
 #if PATHSPACE_UI_METAL
+    if (!present) {
+        INFO("Window::Present error code = " << static_cast<int>(present.error().code));
+        INFO("Window::Present error message = " << present.error().message.value_or("<none>"));
+    }
     CHECK(present);
 #else
     CHECK_FALSE(present);
