@@ -1516,6 +1516,14 @@ Goals
 - Provide DOM/CSS shims only for widgets that map directly (text, simple rects) and layer them on top of the Canvas runtime for accessibility tooling; keep parity by sourcing from the same manifest.
 - Publish fidelity metadata alongside `output/v1/html/commands` so presenters can pick the highest supported mode and tooling can diff frames irrespective of runtime choice.
 
+### Implementation roadmap (Oct 18, 2025)
+1. Finalize `Html::Adapter` emit API, option struct, and experimental flag exposure in builders so HTML targets opt in explicitly.
+2. Implement DOM serializer with node budget enforcement, clip/transform support, and Canvas JSON fallback encoder that reuses the draw traversal order.
+3. Wire resource fingerprints (images/fonts/shaders) into `output/v1/html/assets/*`, deferring heavy loaders to the resource-integration follow-up.
+4. Add replay harness (headless DOM + Canvas verifier) and doctest coverage that compares adapter output with software framebuffer golden samples; keep tests skipped until harness is wired.
+5. Integrate with present pipeline: renderer writes HTML outputs, presenters treat HTML targets as latest-complete, and diagnostics/errors mirror the software path.
+6. Provide CI coverage (headless replay) and troubleshooting guidance once parity is validated.
+
 ## MVP plan
 
 1) Scaffolding and helpers

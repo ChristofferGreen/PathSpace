@@ -154,7 +154,23 @@ Completed:
   6. **Follow-ups**
      - Shader/material system parity (reuse software pipeline flags).
      - Resource residency (textures/fonts) loading for GPU path.
-- HTML adapter scaffolding (command stream emitter + replay harness) behind experimental flag.
+- HTML adapter scaffolding (command stream emitter + replay harness) behind experimental flag. **Implementation plan map (Oct 18, 2025):**
+  1. **Adapter core API**
+     - Define `Html::Adapter` emit API (DOM/CSS/canvas/assets) and persist options in `Builders` metadata.
+     - Ensure snapshot traversal supplies drawable buckets + fingerprints to the adapter.
+  2. **Command stream emitter**
+     - Implement DOM serializer (respect max node budget, clip handling) and Canvas JSON fallback, reusing PathRenderer2D draw traversal.
+     - Emit asset blobs (images/fonts) via fingerprint paths; integrate with resource loader follow-up.
+  3. **Replay harness**
+     - Add standalone HTML runner (tests/ui + examples) that replays command streams, verifying parity with software renderer output.
+     - Provide doctest coverage that compares software framebuffer vs. adapter DOM/Canvas render using golden expectations.
+  4. **Builder integration**
+     - Extend renderer target wiring to write HTML outputs under `output/v1/html/{dom,css,commands,assets}` behind experimental flag.
+     - Add present pipeline hooks for HTML targets (always latest complete) and diagnostics/errors surfaces.
+  5. **Tooling & CI**
+     - Add headless verification step (e.g., Node/JS or WebKit snapshot) in CI to catch regressions; skip gracefully when tooling absent.
+  6. **Documentation**
+     - Update HTML adapter decision section with fidelity tiers, options, and troubleshooting guidance once implementation lands.
 - Resource loader integration for fonts/images when snapshots require them.
 
 ## Dependencies and Ordering

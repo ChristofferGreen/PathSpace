@@ -3,6 +3,7 @@
 #ifdef PATHSPACE_UI_METAL
 #include <pathspace/ui/PathSurfaceMetal.hpp>
 #endif
+#include <pathspace/ui/HtmlAdapter.hpp>
 
 TEST_CASE("Renderer integration replay retains framebuffer parity" * doctest::skip(true)) {
     /* Placeholder: populate once GPU/HTML integration replay harness exists. */

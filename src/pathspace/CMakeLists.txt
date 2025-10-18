@@ -96,6 +96,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/PathRenderer2D.cpp
         ui/PathWindowView.cpp
         ui/ImageCache.cpp
+        ui/HtmlAdapter.cpp
         $<$<AND:$<BOOL:PATHSPACE_UI_METAL>,$<BOOL:APPLE>>:ui/PathSurfaceMetal.mm>
     )
     target_compile_definitions(PathSpace PUBLIC PATHSPACE_ENABLE_UI=1)
