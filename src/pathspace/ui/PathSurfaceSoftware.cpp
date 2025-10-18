@@ -567,21 +567,33 @@ void PathSurfaceSoftware::reallocate_buffers() {
         IOSurfaceUnlock(staging_surface_.get(), kIOSurfaceLockAvoidSync, nullptr);
         staging_locked_ = false;
     }
-    staging_surface_.reset();
-    front_surface_.reset();
-    if (options_.enable_buffered && width > 0 && height > 0 && frame_bytes_ > 0) {
-        staging_surface_.reset(make_iosurface(width, height));
-        front_surface_.reset(make_iosurface(width, height));
-        zero_iosurface(staging_surface_.get(), height);
-        zero_iosurface(front_surface_.get(), height);
+    if (!options_.enable_buffered || width <= 0 || height <= 0 || frame_bytes_ == 0) {
+        staging_surface_.reset();
+        front_surface_.reset();
+        frame_bytes_ = static_cast<std::size_t>(width)
+                       * static_cast<std::size_t>(height) * kBytesPerPixel;
+        row_stride_bytes_ = stride_for(desc_);
+    } else {
+        auto reset_surface = [&](IOSurfaceHolder& holder) {
+            auto* surface = holder.get();
+            if (surface) {
+                auto surface_width = IOSurfaceGetWidth(surface);
+                auto surface_height = IOSurfaceGetHeight(surface);
+                if (surface_width != width || surface_height != height) {
+                    holder.reset(make_iosurface(width, height));
+                    zero_iosurface(holder.get(), height);
+                }
+            } else {
+                holder.reset(make_iosurface(width, height));
+                zero_iosurface(holder.get(), height);
+            }
+        };
+        reset_surface(staging_surface_);
+        reset_surface(front_surface_);
         if (auto* s = staging_surface_.get()) {
             row_stride_bytes_ = IOSurfaceGetBytesPerRow(s);
             frame_bytes_ = iosurface_span_size(s, height);
         }
-    } else {
-        frame_bytes_ = static_cast<std::size_t>(width)
-                       * static_cast<std::size_t>(height) * kBytesPerPixel;
-        row_stride_bytes_ = stride_for(desc_);
     }
 #else
     if (options_.enable_buffered) {
