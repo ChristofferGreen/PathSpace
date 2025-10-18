@@ -168,6 +168,108 @@ TEST_CASE("Renderer settings round-trip") {
     CHECK(stored->microtri_rt.seed == settings.microtri_rt.seed);
 }
 
+TEST_CASE("Renderer::Create stores renderer kind metadata and updates existing renderer") {
+    BuildersFixture fx;
+
+    RendererParams params{ .name = "2d", .description = "Renderer" };
+
+    auto first = Renderer::Create(fx.space, fx.root_view(), params, RendererKind::Software2D);
+    REQUIRE(first);
+
+    auto kindPath = std::string(first->getPath()) + "/meta/kind";
+    auto storedKind = read_value<RendererKind>(fx.space, kindPath);
+    REQUIRE(storedKind);
+    CHECK(*storedKind == RendererKind::Software2D);
+
+    auto second = Renderer::Create(fx.space, fx.root_view(), params, RendererKind::Metal2D);
+    REQUIRE(second);
+    CHECK(second->getPath() == first->getPath());
+
+    auto updatedKind = read_value<RendererKind>(fx.space, kindPath);
+    REQUIRE(updatedKind);
+    CHECK(*updatedKind == RendererKind::Metal2D);
+}
+
+TEST_CASE("Renderer::Create upgrades legacy string kind metadata") {
+    BuildersFixture fx;
+
+    auto rendererPath = std::string(fx.app_root.getPath()) + "/renderers/legacy";
+    auto metaBase = rendererPath + "/meta";
+
+    {
+        auto result = fx.space.insert(metaBase + "/name", std::string{"legacy"});
+        REQUIRE(result.errors.empty());
+    }
+    {
+        auto result = fx.space.insert(metaBase + "/description", std::string{"Legacy renderer"});
+        REQUIRE(result.errors.empty());
+    }
+    {
+        auto result = fx.space.insert(metaBase + "/kind", std::string{"software"});
+        REQUIRE(result.errors.empty());
+    }
+
+    RendererParams params{ .name = "legacy", .description = "Upgraded renderer" };
+    auto created = Renderer::Create(fx.space, fx.root_view(), params, RendererKind::Software2D);
+    REQUIRE(created);
+    CHECK(created->getPath() == rendererPath);
+
+    auto storedKind = read_value<RendererKind>(fx.space, metaBase + "/kind");
+    REQUIRE(storedKind);
+    CHECK(*storedKind == RendererKind::Software2D);
+}
+
+TEST_CASE("Surface::RenderOnce rejects metal renderer targets until backend lands") {
+    BuildersFixture fx;
+
+    RendererParams params{ .name = "metal", .description = "Metal renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), params, RendererKind::Metal2D);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc;
+    desc.size_px = {640, 360};
+    desc.pixel_format = PixelFormat::BGRA8Unorm;
+    SurfaceParams surfaceParams{ .name = "panel", .desc = desc, .renderer = "renderers/metal" };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    auto render = Surface::RenderOnce(fx.space, *surface, std::nullopt);
+    CHECK_FALSE(render);
+    CHECK(render.error().code == Error::Code::InvalidType);
+}
+
+TEST_CASE("Window::Present rejects metal renderer targets until backend lands") {
+    BuildersFixture fx;
+
+    RendererParams params{ .name = "metal", .description = "Metal renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), params, RendererKind::Metal2D);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc;
+    desc.size_px = {800, 600};
+    SurfaceParams surfaceParams{ .name = "panel", .desc = desc, .renderer = "renderers/metal" };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    SceneParams sceneParams{ .name = "main", .description = "scene" };
+    auto scene = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    REQUIRE(scene);
+
+    auto linked = Surface::SetScene(fx.space, *surface, *scene);
+    REQUIRE(linked);
+
+    WindowParams windowParams{ .name = "Main", .title = "Window", .width = 1024, .height = 768, .scale = 1.0f, .background = "#000" };
+    auto window = Window::Create(fx.space, fx.root_view(), windowParams);
+    REQUIRE(window);
+
+    auto attached = Window::AttachSurface(fx.space, *window, "view", *surface);
+    REQUIRE(attached);
+
+    auto present = Window::Present(fx.space, *window, "view");
+    CHECK_FALSE(present);
+    CHECK(present.error().code == Error::Code::InvalidType);
+}
+
 TEST_CASE("Scene::Create is idempotent and preserves metadata") {
     BuildersFixture fx;
 

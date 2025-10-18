@@ -197,8 +197,10 @@ constexpr auto make_dirty_kind(std::uint32_t mask) -> Scene::DirtyKind {
 
 struct SurfaceRenderContext {
     SP::ConcretePathString target_path;
+    SP::ConcretePathString renderer_path;
     SurfaceDesc            target_desc;
     RenderSettings         settings;
+    RendererKind           renderer_kind = RendererKind::Software2D;
 };
 
 template <typename T>
@@ -327,6 +329,10 @@ auto render_into_surface(PathSpace& space,
                          SP::ConcretePathStringView targetPath,
                          RenderSettings const& settings,
                          PathSurfaceSoftware& surface) -> SP::Expected<PathRenderer2D::RenderStats>;
+
+auto parse_renderer_kind(std::string_view text) -> std::optional<RendererKind>;
+auto read_renderer_kind(PathSpace& space,
+                        std::string const& path) -> SP::Expected<RendererKind>;
 
 auto ensure_non_empty(std::string_view value,
                       std::string_view what) -> SP::Expected<void> {
@@ -487,6 +493,23 @@ auto prepare_surface_render_context(PathSpace& space,
         return std::unexpected(targetDesc.error());
     }
 
+    auto const& targetStr = targetAbsolute->getPath();
+    auto targetsPos = targetStr.find("/targets/");
+    if (targetsPos == std::string::npos) {
+        return std::unexpected(make_error("target path '" + targetStr + "' missing /targets/ segment",
+                                          SP::Error::Code::InvalidPath));
+    }
+    auto rendererPathStr = targetStr.substr(0, targetsPos);
+    if (rendererPathStr.empty()) {
+        return std::unexpected(make_error("renderer path derived from target is empty",
+                                          SP::Error::Code::InvalidPath));
+    }
+
+    auto rendererKind = read_renderer_kind(space, rendererPathStr + "/meta/kind");
+    if (!rendererKind) {
+        return std::unexpected(rendererKind.error());
+    }
+
     RenderSettings effective{};
     if (settingsOverride) {
         effective = *settingsOverride;
@@ -533,8 +556,10 @@ auto prepare_surface_render_context(PathSpace& space,
 
     SurfaceRenderContext context{
         .target_path = SP::ConcretePathString{targetAbsolute->getPath()},
+        .renderer_path = SP::ConcretePathString{rendererPathStr},
         .target_desc = *targetDesc,
         .settings = effective,
+        .renderer_kind = *rendererKind,
     };
     return context;
 }
@@ -648,6 +673,84 @@ auto store_desc(PathSpace& space,
                 std::string const& path,
                 SurfaceDesc const& desc) -> SP::Expected<void> {
     return replace_single<SurfaceDesc>(space, path, desc);
+}
+
+auto store_renderer_kind(PathSpace& space,
+                         std::string const& path,
+                         RendererKind kind) -> SP::Expected<void> {
+    auto status = replace_single<RendererKind>(space, path, kind);
+    if (status) {
+        return status;
+    }
+
+    auto const& error = status.error();
+    if (error.code != SP::Error::Code::TypeMismatch) {
+        return status;
+    }
+
+    if (auto cleared = drain_queue<std::string>(space, path); !cleared) {
+        return cleared;
+    }
+
+    return replace_single<RendererKind>(space, path, kind);
+}
+
+auto parse_renderer_kind(std::string_view text) -> std::optional<RendererKind> {
+    std::string normalized;
+    normalized.reserve(text.size());
+    for (char ch : text) {
+        if (std::isspace(static_cast<unsigned char>(ch)) || ch == '_' || ch == '-') {
+            continue;
+        }
+        normalized.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+    }
+
+    if (normalized == "software" || normalized == "software2d") {
+        return RendererKind::Software2D;
+    }
+    if (normalized == "metal" || normalized == "metal2d") {
+        return RendererKind::Metal2D;
+    }
+    if (normalized == "vulkan" || normalized == "vulkan2d") {
+        return RendererKind::Vulkan2D;
+    }
+    return std::nullopt;
+}
+
+auto read_renderer_kind(PathSpace& space,
+                        std::string const& path) -> SP::Expected<RendererKind> {
+    auto stored = read_value<RendererKind>(space, path);
+    if (stored) {
+        return *stored;
+    }
+
+    auto const& error = stored.error();
+    if (error.code == SP::Error::Code::TypeMismatch) {
+        auto legacy = read_value<std::string>(space, path);
+        if (!legacy) {
+            return std::unexpected(legacy.error());
+        }
+        auto parsed = parse_renderer_kind(*legacy);
+        if (!parsed) {
+            return std::unexpected(make_error("unable to parse renderer kind '" + *legacy + "'",
+                                              SP::Error::Code::InvalidType));
+        }
+        if (auto status = store_renderer_kind(space, path, *parsed); !status) {
+            return std::unexpected(status.error());
+        }
+        return *parsed;
+    }
+
+    if (error.code == SP::Error::Code::NoObjectFound
+        || error.code == SP::Error::Code::NoSuchPath) {
+        auto fallback = RendererKind::Software2D;
+        if (auto status = store_renderer_kind(space, path, fallback); !status) {
+            return std::unexpected(status.error());
+        }
+        return fallback;
+    }
+
+    return std::unexpected(error);
 }
 
 auto ensure_within_root(AppRootPathView root,
@@ -1032,6 +1135,22 @@ auto Create(PathSpace& space,
         return std::unexpected(existing.error());
     }
     if (existing->has_value()) {
+        auto ensureDescription = read_optional<std::string>(space, metaBase + "/description");
+        if (!ensureDescription) {
+            return std::unexpected(ensureDescription.error());
+        }
+        if (!ensureDescription->has_value()) {
+            auto descStatus = replace_single<std::string>(space, metaBase + "/description", params.description);
+            if (!descStatus) {
+                return std::unexpected(descStatus.error());
+            }
+        }
+
+        auto kindStatus = store_renderer_kind(space, metaBase + "/kind", kind);
+        if (!kindStatus) {
+            return std::unexpected(kindStatus.error());
+        }
+
         return RendererPath{resolved->getPath()};
     }
 
@@ -1041,7 +1160,7 @@ auto Create(PathSpace& space,
     if (auto status = replace_single<std::string>(space, metaBase + "/description", params.description); !status) {
         return std::unexpected(status.error());
     }
-    if (auto status = replace_single<RendererKind>(space, metaBase + "/kind", kind); !status) {
+    if (auto status = store_renderer_kind(space, metaBase + "/kind", kind); !status) {
         return std::unexpected(status.error());
     }
 
@@ -1343,6 +1462,11 @@ auto RenderOnce(PathSpace& space,
         return std::unexpected(context.error());
     }
 
+    if (context->renderer_kind != RendererKind::Software2D) {
+        return std::unexpected(make_error("Surface::RenderOnce currently supports only software renderer targets",
+                                          SP::Error::Code::InvalidType));
+    }
+
     PathSurfaceSoftware surface{context->target_desc};
     auto stats = render_into_surface(space,
                                      SP::ConcretePathStringView{context->target_path.getPath()},
@@ -1470,6 +1594,11 @@ auto Present(PathSpace& space,
                                                   std::nullopt);
     if (!context) {
         return std::unexpected(context.error());
+    }
+
+    if (context->renderer_kind != RendererKind::Software2D) {
+        return std::unexpected(make_error("Window::Present currently supports only software renderer targets",
+                                          SP::Error::Code::InvalidType));
     }
 
     auto policy = read_present_policy(space, viewBase);
