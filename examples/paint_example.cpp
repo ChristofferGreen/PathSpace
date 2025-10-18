@@ -39,24 +39,20 @@ namespace {
 
 using DirtyRectHint = Builders::DirtyRectHint;
 
-constexpr int kInitialCanvasWidth = 320;
-constexpr int kInitialCanvasHeight = 240;
-constexpr int kBrushSizePx = 8;
-constexpr int kProgressiveTileSizePx = 64;
-
-auto align_down_to_tile(float value) -> float {
-    auto const tile = static_cast<float>(kProgressiveTileSizePx);
+auto align_down_to_tile(float value, int tileSizePx) -> float {
+    auto const tile = static_cast<float>(std::max(1, tileSizePx));
     return std::floor(value / tile) * tile;
 }
 
-auto align_up_to_tile(float value) -> float {
-    auto const tile = static_cast<float>(kProgressiveTileSizePx);
+auto align_up_to_tile(float value, int tileSizePx) -> float {
+    auto const tile = static_cast<float>(std::max(1, tileSizePx));
     return std::ceil(value / tile) * tile;
 }
 
 auto clamp_and_align_hint(DirtyRectHint const& hint,
                           int canvasWidth,
-                          int canvasHeight) -> std::optional<DirtyRectHint> {
+                          int canvasHeight,
+                          int tileSizePx) -> std::optional<DirtyRectHint> {
     if (canvasWidth <= 0 || canvasHeight <= 0) {
         return std::nullopt;
     }
@@ -65,16 +61,16 @@ auto clamp_and_align_hint(DirtyRectHint const& hint,
     auto const maxY = static_cast<float>(canvasHeight);
     auto const minX = std::clamp(hint.min_x, 0.0f, maxX);
     auto const minY = std::clamp(hint.min_y, 0.0f, maxY);
-    auto const alignedMaxX = std::clamp(align_up_to_tile(std::clamp(hint.max_x, 0.0f, maxX)), 0.0f, maxX);
-    auto const alignedMaxY = std::clamp(align_up_to_tile(std::clamp(hint.max_y, 0.0f, maxY)), 0.0f, maxY);
-    auto const alignedMinX = std::clamp(align_down_to_tile(minX), 0.0f, maxX);
-    auto const alignedMinY = std::clamp(align_down_to_tile(minY), 0.0f, maxY);
+    auto const alignedMaxX = std::clamp(align_up_to_tile(std::clamp(hint.max_x, 0.0f, maxX), tileSizePx), 0.0f, maxX);
+    auto const alignedMaxY = std::clamp(align_up_to_tile(std::clamp(hint.max_y, 0.0f, maxY), tileSizePx), 0.0f, maxY);
+    auto const alignedMinX = std::clamp(align_down_to_tile(minX, tileSizePx), 0.0f, maxX);
+    auto const alignedMinY = std::clamp(align_down_to_tile(minY, tileSizePx), 0.0f, maxY);
 
     if (alignedMaxX <= alignedMinX || alignedMaxY <= alignedMinY) {
         return std::nullopt;
     }
 
-    return DirtyRectHint{
+return DirtyRectHint{
         .min_x = alignedMinX,
         .min_y = alignedMinY,
         .max_x = alignedMaxX,
@@ -82,13 +78,75 @@ auto clamp_and_align_hint(DirtyRectHint const& hint,
     };
 }
 
+template <typename T>
+auto replace_value(PathSpace& space, std::string const& path, T const& value) -> bool {
+    while (true) {
+        auto taken = space.take<T>(path);
+        if (taken) {
+            continue;
+        }
+        auto const& err = taken.error();
+        if (err.code == SP::Error::Code::NoObjectFound
+            || err.code == SP::Error::Code::NoSuchPath) {
+            break;
+        }
+        std::cerr << "failed clearing '" << path << "': ";
+        if (err.message.has_value()) {
+            std::cerr << *err.message;
+        } else {
+            std::cerr << static_cast<int>(err.code);
+        }
+        std::cerr << std::endl;
+        return false;
+    }
+
+    auto result = space.insert(path, value);
+    if (!result.errors.empty()) {
+        auto const& err = result.errors.front();
+        std::cerr << "failed writing '" << path << "': ";
+        if (err.message.has_value()) {
+            std::cerr << *err.message;
+        } else {
+            std::cerr << static_cast<int>(err.code);
+        }
+        std::cerr << std::endl;
+        return false;
+    }
+    return true;
+}
+
+void ensure_config_value(PathSpace& space,
+                         std::string const& path,
+                         int defaultValue) {
+    auto value = space.read<int>(path);
+    if (value) {
+        return;
+    }
+    auto const& err = value.error();
+    if (err.code == SP::Error::Code::NoObjectFound
+        || err.code == SP::Error::Code::NoSuchPath) {
+        replace_value(space, path, defaultValue);
+    }
+}
+
+auto read_config_value(PathSpace& space,
+                       std::string const& path,
+                       int fallback) -> int {
+    auto value = space.read<int>(path);
+    if (value) {
+        return std::max(1, *value);
+    }
+    return std::max(1, fallback);
+}
+
 void coalesce_dirty_hints(std::vector<DirtyRectHint>& hints,
                           int canvasWidth,
-                          int canvasHeight) {
+                          int canvasHeight,
+                          int tileSizePx) {
     std::vector<DirtyRectHint> normalized;
     normalized.reserve(hints.size());
     for (auto const& hint : hints) {
-        if (auto normalizedHint = clamp_and_align_hint(hint, canvasWidth, canvasHeight)) {
+        if (auto normalizedHint = clamp_and_align_hint(hint, canvasWidth, canvasHeight, tileSizePx)) {
             normalized.push_back(*normalizedHint);
         }
     }
@@ -175,43 +233,6 @@ auto unwrap_or_exit(SP::Expected<void> value, std::string const& context) -> voi
         std::cerr << std::endl;
         std::exit(1);
     }
-}
-
-template <typename T>
-auto replace_value(PathSpace& space, std::string const& path, T const& value) -> bool {
-    while (true) {
-        auto taken = space.take<T>(path);
-        if (taken) {
-            continue;
-        }
-        auto const& err = taken.error();
-        if (err.code == SP::Error::Code::NoObjectFound
-            || err.code == SP::Error::Code::NoSuchPath) {
-            break;
-        }
-        std::cerr << "failed clearing '" << path << "': ";
-        if (err.message.has_value()) {
-            std::cerr << *err.message;
-        } else {
-            std::cerr << static_cast<int>(err.code);
-        }
-        std::cerr << std::endl;
-        return false;
-    }
-
-    auto result = space.insert(path, value);
-    if (!result.errors.empty()) {
-        auto const& err = result.errors.front();
-        std::cerr << "failed writing '" << path << "': ";
-        if (err.message.has_value()) {
-            std::cerr << *err.message;
-        } else {
-            std::cerr << static_cast<int>(err.code);
-        }
-        std::cerr << std::endl;
-        return false;
-    }
-    return true;
 }
 
 auto build_bucket(std::vector<Stroke> const& strokes) -> UIScene::DrawableBucketSnapshot {
@@ -386,17 +407,18 @@ auto add_stroke(std::vector<Stroke>& strokes,
                 int canvasHeight,
                 int x,
                 int y,
-                std::array<float, 4> const& color) -> std::optional<DirtyRectHint> {
+                std::array<float, 4> const& color,
+                int brushSizePx) -> std::optional<DirtyRectHint> {
     if (canvasWidth <= 0 || canvasHeight <= 0) {
         return std::nullopt;
     }
     int canvasX = std::clamp(x, 0, canvasWidth - 1);
     int canvasY = to_canvas_y(y, canvasHeight);
-    float half = static_cast<float>(kBrushSizePx) * 0.5f;
+    float half = static_cast<float>(brushSizePx) * 0.5f;
     float minX = std::clamp(static_cast<float>(canvasX) - half, 0.0f, static_cast<float>(canvasWidth));
     float minY = std::clamp(static_cast<float>(canvasY) - half, 0.0f, static_cast<float>(canvasHeight));
-    float maxX = std::clamp(minX + static_cast<float>(kBrushSizePx), 0.0f, static_cast<float>(canvasWidth));
-    float maxY = std::clamp(minY + static_cast<float>(kBrushSizePx), 0.0f, static_cast<float>(canvasHeight));
+    float maxX = std::clamp(minX + static_cast<float>(brushSizePx), 0.0f, static_cast<float>(canvasWidth));
+    float maxY = std::clamp(minY + static_cast<float>(brushSizePx), 0.0f, static_cast<float>(canvasHeight));
     if (maxX <= minX || maxY <= minY) {
         return std::nullopt;
     }
@@ -429,7 +451,8 @@ auto lay_down_segment(std::vector<Stroke>& strokes,
                       std::pair<int, int> const& from,
                       std::pair<int, int> const& to,
                       std::array<float, 4> const& color,
-                      std::vector<DirtyRectHint>& dirtyHints) -> bool {
+                      std::vector<DirtyRectHint>& dirtyHints,
+                      int brushSizePx) -> bool {
     bool wrote = false;
     double x0 = static_cast<double>(from.first);
     double y0 = static_cast<double>(from.second);
@@ -438,18 +461,32 @@ auto lay_down_segment(std::vector<Stroke>& strokes,
     double dx = x1 - x0;
     double dy = y1 - y0;
     double dist = std::hypot(dx, dy);
-    double spacing = std::max(1.0, static_cast<double>(kBrushSizePx) * 0.5);
+    double spacing = std::max(1.0, static_cast<double>(brushSizePx) * 0.5);
     int steps = (dist > spacing) ? static_cast<int>(std::floor(dist / spacing)) : 0;
     for (int i = 1; i <= steps; ++i) {
         double t = static_cast<double>(i) / static_cast<double>(steps + 1);
         int xi = static_cast<int>(std::round(x0 + dx * t));
         int yi = static_cast<int>(std::round(y0 + dy * t));
-        if (auto hint = add_stroke(strokes, nextId, canvasWidth, canvasHeight, xi, yi, color)) {
+        if (auto hint = add_stroke(strokes,
+                                   nextId,
+                                   canvasWidth,
+                                   canvasHeight,
+                                   xi,
+                                   yi,
+                                   color,
+                                   brushSizePx)) {
             dirtyHints.push_back(*hint);
             wrote = true;
         }
     }
-    if (auto hint = add_stroke(strokes, nextId, canvasWidth, canvasHeight, to.first, to.second, color)) {
+    if (auto hint = add_stroke(strokes,
+                               nextId,
+                               canvasWidth,
+                               canvasHeight,
+                               to.first,
+                               to.second,
+                               color,
+                               brushSizePx)) {
         dirtyHints.push_back(*hint);
         wrote = true;
     }
@@ -465,13 +502,24 @@ int main(int argc, char** argv) {
 #else
     auto options = parse_runtime_options(argc, argv);
     PathSpace space;
-    int canvasWidth = kInitialCanvasWidth;
-    int canvasHeight = kInitialCanvasHeight;
-
-    SP::PSInitLocalEventWindowWithSize(canvasWidth, canvasHeight, "PathSpace Paint");
-
     SP::App::AppRootPath appRoot{"/system/applications/paint"};
     auto rootView = SP::App::AppRootPathView{appRoot.getPath()};
+
+    const std::string configBasePath = std::string(rootView.getPath()) + "/config";
+    const std::string canvasWidthPath = configBasePath + "/canvasWidthPx";
+    const std::string canvasHeightPath = configBasePath + "/canvasHeightPx";
+    const std::string brushSizePath = configBasePath + "/brushSizePx";
+    const std::string tileSizePath = configBasePath + "/progressiveTileSizePx";
+
+    ensure_config_value(space, canvasWidthPath, 320);
+    ensure_config_value(space, canvasHeightPath, 240);
+    ensure_config_value(space, brushSizePath, 8);
+    ensure_config_value(space, tileSizePath, 64);
+
+    int canvasWidth = read_config_value(space, canvasWidthPath, 320);
+    int canvasHeight = read_config_value(space, canvasHeightPath, 240);
+
+    SP::PSInitLocalEventWindowWithSize(canvasWidth, canvasHeight, "PathSpace Paint");
 
     Builders::SceneParams sceneParams{
         .name = "canvas",
@@ -555,7 +603,6 @@ int main(int argc, char** argv) {
     std::optional<std::pair<int, int>> lastPainted;
     std::array<float, 4> brushColor{0.9f, 0.1f, 0.3f, 1.0f};
     std::vector<DirtyRectHint> dirtyHints;
-    dirtyHints.reserve(64);
 
     while (true) {
         SP::PSPollLocalEventWindow();
@@ -570,6 +617,9 @@ int main(int argc, char** argv) {
         bool updated = false;
         dirtyHints.clear();
 
+        const int brushSizePx = read_config_value(space, brushSizePath, 8);
+        const int progressiveTileSizePx = read_config_value(space, tileSizePath, 64);
+
         bool sizeChanged = (requestedWidth != canvasWidth) || (requestedHeight != canvasHeight);
         if (sizeChanged) {
             canvasWidth = requestedWidth;
@@ -578,6 +628,8 @@ int main(int argc, char** argv) {
             surfaceDesc.size_px.height = canvasHeight;
             replace_value(space, surfaceDescPath, surfaceDesc);
             replace_value(space, targetDescPath, surfaceDesc);
+            replace_value(space, canvasWidthPath, canvasWidth);
+            replace_value(space, canvasHeightPath, canvasHeight);
             lastPainted.reset();
             lastAbsolute.reset();
             rendererSettings.surface.size_px.width = canvasWidth;
@@ -614,7 +666,8 @@ int main(int argc, char** argv) {
                                                 *lastPainted,
                                                 current,
                                                 brushColor,
-                                                dirtyHints);
+                                                dirtyHints,
+                                                brushSizePx);
                     lastPainted = current;
                 }
                 break;
@@ -636,7 +689,8 @@ int main(int argc, char** argv) {
                                                    canvasHeight,
                                                    point->first,
                                                    point->second,
-                                                   brushColor)) {
+                                                   brushColor,
+                                                   brushSizePx)) {
                             dirtyHints.push_back(*hint);
                             updated = true;
                         }
@@ -662,7 +716,7 @@ int main(int argc, char** argv) {
             publish_snapshot(space, builder, scenePath, bucket);
         }
 
-        coalesce_dirty_hints(dirtyHints, canvasWidth, canvasHeight);
+        coalesce_dirty_hints(dirtyHints, canvasWidth, canvasHeight, progressiveTileSizePx);
 
         if (updated || sizeChanged) {
             if (!dirtyHints.empty()) {

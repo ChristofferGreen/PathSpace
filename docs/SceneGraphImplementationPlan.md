@@ -43,12 +43,14 @@ Each workstream lands independently but respects shared contracts (paths, atomic
 - ✅ (October 17, 2025) Added multi-target `Window::Present` scenarios to ensure renderer caches stay per-target: two surfaces backed by the same renderer now exercise independent frame indices, stored framebuffers, and progressive metrics through the builders API.
 - ✅ (October 17, 2025) Automated the AlwaysFresh/deadline regression by reusing the before-present hook to force buffered-frame drops, asserting the skip path (`lastPresentSkipped`, `presentedAge*`, `waitBudgetMs`) and guarding against unintended auto-render enqueues.
 - ✅ (October 17, 2025) Dirty hint buckets snap to progressive tile boundaries so `PATHSPACE_TRACE_DAMAGE=1` logs stay readable at 4K; doctests cover the presenter metrics emitted when hints restrict the damage region.
-- ⚠️ (October 17, 2025) **High priority:** Achieve FPS parity between small and 4K windows. Software renderer still drops to ~13 FPS at 3840×2160 because full-surface damage forces ~22 MB IOSurface copies every frame; `paint_example` can exhaust macOS IOSurface segments after long fullscreen runs. Required steps (2025-10-18: parity regained at 4K, but keep the item open while we harden the diagnostics tooling and confirm no regressions).
+- ✅ (October 18, 2025) Achieved FPS parity between small and 4K windows and hardened diagnostics to catch regressions; keep monitoring traces but no longer treat as an open blocker.
 - ✅ (October 17, 2025) Progressive tile fan-out now distributes work across all available CPU cores with a fixed 64 px tile size so incremental strokes remain ~140 FPS, and metrics continue to surface `progressiveTilesUpdated` / `progressiveBytesCopied`.
   - ✅ (October 17, 2025) Instrumented the fine-grained benchmark suite with per-phase timings (damage diff, encode, progressive copy, IOSurface publish, presenter present) to pinpoint 4 K full-clear hotspots; benchmark output now reports these averages.
   - 🔜 Harden `paint_example`: tighten dirty-rect hints, avoid idle full-surface publishes, and reuse IOSurface allocations so the demo runs indefinitely without exhausting the range group.
   - 🔜 Skip redundant IOSurface-to-CPU copies after successful zero-copy presents so macOS paint_example no longer spends ~22 MB per frame memcpying pixels; expose a debug knob for fallback copies instead.
   - 💤 (Optional) Add stroke-compositing to `paint_example` so successive brush strokes bake into a persistent texture (or coalesced drawable) rather than growing the snapshot unbounded; keeps long-running demos at steady FPS without exhausting IOSurface range groups.
+  - 🔜 Move dirty-rect normalization/coalescing into Builders: provide a helper (or upgrade `SubmitDirtyRects`) that snaps rectangles to progressive tiles and merges overlaps so demos no longer carry bespoke hint code.
+  - 🔜 Once the helper lands, strip the manual hint coalescing from `examples/paint_example.cpp` so the sample reflects the streamlined API.
 - For Phase 4 follow-ups, finish the broader end-to-end scene→render→present scenarios, expand presenter wiring through `Window::Present`, surface the remaining progressive-mode diagnostics, and rerun the loop harness once integrations land.
 - Begin Phase 5 test authoring for hit ordering, clip-aware picking, focus routing, and event delivery latency; follow with DrawableBucket-backed picking and wait/notify integration for dirty markers and auto-render scheduling.
 - Line up Phase 6 diagnostics/tooling work: extend error/metrics coverage, normalize `PathSpaceError` reporting, expand scripts for UI log capture, and draft the debugging playbook updates before the next hardening pass.
@@ -172,6 +174,27 @@ Completed:
   6. **Documentation**
      - Update HTML adapter decision section with fidelity tiers, options, and troubleshooting guidance once implementation lands.
 - Resource loader integration for fonts/images when snapshots require them.
+
+### Phase 8 — Widget Toolkit & Interaction Surfaces (post-MVP)
+- **Objective:** ship reusable UI widgets (button, toggle, slider, list) that sit on top of the existing scene/render/present stack while reusing PathSpace paths for state and events.
+- **Scene authoring**
+  - Define canonical widget scene snippets under `scenes/widgets/<widget>/` with snapshot builders that emit visual states (idle, hover, pressed, disabled).
+  - Add lightweight widget builders (e.g., `Builders::Widget::Button`) that publish authoring data, bind to app-relative state paths, and express layout metadata (bounds, z-order).
+  - Provide styling hooks (colors, corner radius, typography) so demos can skin widgets without forking scenes.
+- **Interaction contract**
+  - Wrap Phase 5 hit-test data into a widget interaction API that normalizes hover/press/release and routes to app-defined `ops/` inbox paths.
+  - Expose focus navigation helpers (keyboard/gamepad) that reuse the existing `Scene::HitTest` focus metadata and auto-render events to redraw highlight states.
+  - Document the path schema for widget state (e.g., `/.../widgets/<id>/{state,enabled,label}`) and ensure updates stay atomic.
+- **State binding & data flow**
+  - Introduce a small binding layer that watches widget state paths, diffing payloads and pushing dirty hints instead of full-surface republishes.
+  - Provide sample reducers that translate widget ops into app state mutations, showcasing wait/notify usage to wake render loops.
+- **Testing**
+  - Extend `PathSpaceUITests` with golden snapshots and interaction sequences for each widget (hover, press, disabled) using the 15× loop to guard against race regressions.
+  - Add doctest coverage for the binding helpers to confirm dirty-hint emission, focus routing, and auto-render scheduling.
+- **Tooling & docs**
+  - Expand `examples/` with a `widgets_demo` showcasing button/toggle interactions, FPS diagnostics, and the zero-copy presenter path.
+  - Update `docs/AI_Plan_SceneGraph_Renderer.md` and `docs/AI_ARCHITECTURE.md` with widget path conventions, builder usage, and troubleshooting steps.
+  - Capture authoring guidelines in `docs/SceneGraphImplementationPlan.md`'s appendix so contributors can add new widgets consistently.
 
 ## Dependencies and Ordering
 - Helpers (Phase 1) unblock snapshot builder and surfaces/presenters by standardizing paths.
