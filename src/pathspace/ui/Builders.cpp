@@ -1487,14 +1487,10 @@ auto Present(PathSpace& space,
         auto const height = presentStats.iosurface->height();
         auto const total_bytes = row_stride * static_cast<std::size_t>(std::max(height, 0));
 
-        if (presentStats.used_iosurface) {
-            if (presentPolicy.capture_framebuffer) {
-                copy_iosurface_into(*presentStats.iosurface, framebuffer);
-            } else {
-                framebuffer.clear();
-            }
-        } else if (framebuffer.empty() && presentPolicy.capture_framebuffer && total_bytes > 0) {
+        if (presentPolicy.capture_framebuffer) {
             copy_iosurface_into(*presentStats.iosurface, framebuffer);
+        } else {
+            framebuffer.clear();
         }
     }
     if (presentStats.buffered_frame_consumed && framebuffer.empty()) {
