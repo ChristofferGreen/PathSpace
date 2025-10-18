@@ -10,6 +10,7 @@ Present policy (backend-aware) and the software progressive present are document
 > **Diagnostics follow-up (October 18, 2025):** A broader tile/damage metric set (`progressiveTile*`, `damage*`, `fingerprint*`) was prototyped but temporarily rolled back after fullscreen FPS tanked; revisit once we have a low-overhead path or developer-only flag.
 > **Diagnostics update (2025-10-17):** Software renderer incremental perf (64 px hints) holds ~140 FPS even at 4K, but full-surface damage and IOSurface reuse remain bottlenecks; see docs/SceneGraphImplementationPlan.md for the profiling/benchmark plan and docs/AI_Onboarding.md for the latest hand-off notes.
 > **Presenter update (October 18, 2025):** CAMetalLayer presents remain zero-copy by default. Builders expose a `capture_framebuffer` flag under `windows/<win>/views/<view>/present/params/capture_framebuffer`; only when the flag is true do presenters copy the IOSurface back to RAM for diagnostics/tests.
+> **Diagnostics update (October 18, 2025):** Presenter/renderer errors now populate `diagnostics/errors/live` with a structured `PathSpaceError` (code, severity, message, revision, timestamp). `output/v1/common/lastError` remains as a compatibility mirror, but tooling should consume `diagnostics/errors/live` for full context.
 
 See also:
 - `docs/AI_Plan_SceneGraph_Renderer.md` for the broader rendering plan and target I/O layout. If snapshot semantics change, update both documents in the same PR per `.rules`.

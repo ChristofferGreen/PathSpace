@@ -127,7 +127,7 @@ Completed:
 
 ### Phase 6 — Diagnostics, Tooling, and Hardening (1 sprint)
 - ✅ (October 18, 2025) Extended diagnostics coverage with unit tests that write/read present metrics (`Diagnostics::WritePresentMetrics`/`ReadTargetMetrics`) and verify error clearing; tooling now has regression coverage for metric persistence.
-- Normalize error reporting through `PathSpaceError`; surface last error + revision info.
+- ✅ (October 18, 2025) Normalized presenter/renderer error reporting around `PathSpaceError`, wiring `diagnostics/errors/live` and exposing codes/revisions via `Diagnostics::ReadTargetMetrics`.
 - Expand scripts/tests (`compile.sh`, CTest targets) to cover UI components and gather logs on failure.
 - Document debugging playbook (how to inspect metrics/errors) in `docs/` and re-run test loops to confirm.
 

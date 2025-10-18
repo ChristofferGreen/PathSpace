@@ -862,6 +862,7 @@ struct PathSpaceError {
 ### Diagnostics layout
 
 - Latest error per domain stored under `diagnostics/errors/live`; significant errors optionally appended under `diagnostics/errors/history/<id>` with the same payload.
+- (October 18, 2025) Presenters and renderers now always write a canonical `PathSpaceError` to `diagnostics/errors/live`, mirroring the message string to `output/v1/common/lastError` for legacy consumers.
 - Structured logs use small immutable ring segments (`diagnostics/log/ring/<segment>`) with timestamped entries (category, severity, message, optional detail). Segments roll at fixed size so the profiler can tail them cheaply.
 - Rolling metrics live under `diagnostics/metrics/live` (render/present timings, drawable counts, cull stats, resource residency, etc.). Writers update once per frame; consumers can compute aggregates on demand.
 - Debug overlays (when enabled via `debug.flags`) publish drawable overlays to `diagnostics/overlays/<kind>` so both in-app views and tooling can visualize issues in-frame.

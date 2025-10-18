@@ -2,6 +2,7 @@
 
 > **Context update (October 15, 2025):** This onboarding now targets the “Atlas” AI context introduced for the current launch window; adjust legacy workflows to align with this context.
 > **Session hand-off (October 17, 2025):** Software renderer incremental paths are healthy (~140 FPS for 64 px brush hints at 4 K) and the zero-copy path now skips redundant IOSurface→CPU copies. Use `./build/benchmarks/path_renderer2d_benchmark` for per-phase timing (damage diff, encode, progressive copy, publish, present) and `./build/paint_example --debug` to watch live frame stats. Expect FPS to dip as brush history grows because the demo keeps each stroke as a drawable; stroke compositing is logged as optional follow-up in `docs/SceneGraphImplementationPlan.md`. 
+> **Session hand-off (October 18, 2025):** CAMetalLayer fullscreen perf is covered by `PathSpaceUITests`, `capture_framebuffer` defaults to off, and diagnostics now surface structured `PathSpaceError` payloads under `diagnostics/errors/live`. Next focus: expand automation (`scripts/compile.sh`, CI docs) to collect UI logs and document the debugging playbook before moving deeper into Phase 6.
 
 This guide bootstraps a brand-new AI assistant so it can work productively in the PathSpace repository without inheriting prior conversational context. Follow these steps at the beginning of every new session.
 
