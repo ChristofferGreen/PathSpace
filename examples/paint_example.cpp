@@ -37,9 +37,89 @@ void PSGetLocalWindowContentSize(int* width, int* height);
 
 namespace {
 
+using DirtyRectHint = Builders::DirtyRectHint;
+
 constexpr int kInitialCanvasWidth = 320;
 constexpr int kInitialCanvasHeight = 240;
 constexpr int kBrushSizePx = 8;
+constexpr int kProgressiveTileSizePx = 64;
+
+auto align_down_to_tile(float value) -> float {
+    auto const tile = static_cast<float>(kProgressiveTileSizePx);
+    return std::floor(value / tile) * tile;
+}
+
+auto align_up_to_tile(float value) -> float {
+    auto const tile = static_cast<float>(kProgressiveTileSizePx);
+    return std::ceil(value / tile) * tile;
+}
+
+auto clamp_and_align_hint(DirtyRectHint const& hint,
+                          int canvasWidth,
+                          int canvasHeight) -> std::optional<DirtyRectHint> {
+    if (canvasWidth <= 0 || canvasHeight <= 0) {
+        return std::nullopt;
+    }
+
+    auto const maxX = static_cast<float>(canvasWidth);
+    auto const maxY = static_cast<float>(canvasHeight);
+    auto const minX = std::clamp(hint.min_x, 0.0f, maxX);
+    auto const minY = std::clamp(hint.min_y, 0.0f, maxY);
+    auto const alignedMaxX = std::clamp(align_up_to_tile(std::clamp(hint.max_x, 0.0f, maxX)), 0.0f, maxX);
+    auto const alignedMaxY = std::clamp(align_up_to_tile(std::clamp(hint.max_y, 0.0f, maxY)), 0.0f, maxY);
+    auto const alignedMinX = std::clamp(align_down_to_tile(minX), 0.0f, maxX);
+    auto const alignedMinY = std::clamp(align_down_to_tile(minY), 0.0f, maxY);
+
+    if (alignedMaxX <= alignedMinX || alignedMaxY <= alignedMinY) {
+        return std::nullopt;
+    }
+
+    return DirtyRectHint{
+        .min_x = alignedMinX,
+        .min_y = alignedMinY,
+        .max_x = alignedMaxX,
+        .max_y = alignedMaxY,
+    };
+}
+
+void coalesce_dirty_hints(std::vector<DirtyRectHint>& hints,
+                          int canvasWidth,
+                          int canvasHeight) {
+    std::vector<DirtyRectHint> normalized;
+    normalized.reserve(hints.size());
+    for (auto const& hint : hints) {
+        if (auto normalizedHint = clamp_and_align_hint(hint, canvasWidth, canvasHeight)) {
+            normalized.push_back(*normalizedHint);
+        }
+    }
+    if (normalized.empty()) {
+        hints.clear();
+        return;
+    }
+
+    std::vector<DirtyRectHint> merged;
+    merged.reserve(normalized.size());
+    for (auto const& hint : normalized) {
+        bool mergedExisting = false;
+        for (auto& existing : merged) {
+            auto const xOverlap = !(hint.max_x <= existing.min_x || hint.min_x >= existing.max_x);
+            auto const yOverlap = !(hint.max_y <= existing.min_y || hint.min_y >= existing.max_y);
+            if (xOverlap && yOverlap) {
+                existing.min_x = std::min(existing.min_x, hint.min_x);
+                existing.min_y = std::min(existing.min_y, hint.min_y);
+                existing.max_x = std::max(existing.max_x, hint.max_x);
+                existing.max_y = std::max(existing.max_y, hint.max_y);
+                mergedExisting = true;
+                break;
+            }
+        }
+        if (!mergedExisting) {
+            merged.push_back(hint);
+        }
+    }
+
+    hints = std::move(merged);
+}
 
 struct RuntimeOptions {
     bool debug = false;
@@ -58,8 +138,6 @@ auto parse_runtime_options(int argc, char** argv) -> RuntimeOptions {
     }
     return opts;
 }
-
-using DirtyRectHint = Builders::DirtyRectHint;
 
 struct Stroke {
     std::uint64_t            drawable_id = 0;
@@ -476,6 +554,8 @@ int main(int argc, char** argv) {
     std::optional<std::pair<int, int>> lastAbsolute;
     std::optional<std::pair<int, int>> lastPainted;
     std::array<float, 4> brushColor{0.9f, 0.1f, 0.3f, 1.0f};
+    std::vector<DirtyRectHint> dirtyHints;
+    dirtyHints.reserve(64);
 
     while (true) {
         SP::PSPollLocalEventWindow();
@@ -488,7 +568,7 @@ int main(int argc, char** argv) {
         }
 
         bool updated = false;
-        std::vector<DirtyRectHint> dirtyHints;
+        dirtyHints.clear();
 
         bool sizeChanged = (requestedWidth != canvasWidth) || (requestedHeight != canvasHeight);
         if (sizeChanged) {
@@ -512,6 +592,7 @@ int main(int argc, char** argv) {
                 .max_x = static_cast<float>(canvasWidth),
                 .max_y = static_cast<float>(canvasHeight),
             });
+            updated = true;
         }
         while (auto evt = PaintInput::try_pop_mouse()) {
             auto const& e = *evt;
@@ -581,11 +662,15 @@ int main(int argc, char** argv) {
             publish_snapshot(space, builder, scenePath, bucket);
         }
 
+        coalesce_dirty_hints(dirtyHints, canvasWidth, canvasHeight);
+
         if (updated || sizeChanged) {
-            unwrap_or_exit(Builders::Renderer::SubmitDirtyRects(space,
-                                                                SP::ConcretePathStringView{targetAbsolute.getPath()},
-                                                                std::span<const DirtyRectHint>{dirtyHints}),
-                           "failed to submit renderer dirty hints");
+            if (!dirtyHints.empty()) {
+                unwrap_or_exit(Builders::Renderer::SubmitDirtyRects(space,
+                                                                    SP::ConcretePathStringView{targetAbsolute.getPath()},
+                                                                    std::span<const DirtyRectHint>{dirtyHints}),
+                               "failed to submit renderer dirty hints");
+            }
             if (auto outcome = present_frame(space,
                                              windowPath,
                                              "main",
@@ -621,8 +706,6 @@ int main(int argc, char** argv) {
                 }
             }
         }
-
-        dirtyHints.clear();
 
         std::this_thread::sleep_for(std::chrono::milliseconds(4));
     }
