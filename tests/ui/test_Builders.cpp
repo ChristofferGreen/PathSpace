@@ -6,10 +6,12 @@
 #include <pathspace/ui/DrawCommands.hpp>
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstring>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -535,6 +537,51 @@ TEST_CASE("Scene dirty markers update state and queue") {
     CHECK((stateAfterClear->pending & Scene::DirtyKind::Visual) == Scene::DirtyKind::None);
     CHECK((stateAfterClear->pending & Scene::DirtyKind::Structure) == Scene::DirtyKind::Structure);
     CHECK((stateAfterClear->pending & Scene::DirtyKind::Text) == Scene::DirtyKind::Text);
+}
+
+TEST_CASE("Scene dirty event wait-notify latency stays within budget") {
+    using namespace std::chrono_literals;
+
+    BuildersFixture fx;
+
+    SceneParams sceneParams{ .name = "dirty_notify_scene", .description = "Dirty notifications" };
+    auto scenePath = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    REQUIRE(scenePath);
+
+    std::atomic<bool> waiterReady{false};
+    bool              eventSucceeded = false;
+    Scene::DirtyEvent event{};
+    std::chrono::milliseconds observedLatency{0};
+
+    std::thread waiter([&]() {
+        waiterReady.store(true, std::memory_order_release);
+        auto start = std::chrono::steady_clock::now();
+        auto taken = Scene::TakeDirtyEvent(fx.space, *scenePath, 500ms);
+        auto end = std::chrono::steady_clock::now();
+
+        observedLatency = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        if (taken) {
+            event = *taken;
+            eventSucceeded = true;
+        }
+    });
+
+    while (!waiterReady.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+
+    std::this_thread::sleep_for(20ms);
+
+    auto seq = Scene::MarkDirty(fx.space, *scenePath, Scene::DirtyKind::Structure);
+    REQUIRE(seq);
+
+    waiter.join();
+
+    REQUIRE(eventSucceeded);
+    CHECK(event.sequence == *seq);
+    CHECK(event.kinds == Scene::DirtyKind::Structure);
+    CHECK(observedLatency >= 20ms);
+    CHECK(observedLatency < 200ms);
 }
 
 TEST_CASE("Window attach surface records binding") {
