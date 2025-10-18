@@ -50,6 +50,7 @@ if(PATHSPACE_ENABLE_UI)
     ui/test_PathRenderer2D.cpp
     ui/test_SceneHitTest.cpp
     ui/test_PathWindowView.cpp
+    ui/test_BackendAdapters.cpp
     test_main.cpp
   )
   target_compile_definitions(PathSpaceUITests PRIVATE PATHSPACE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")

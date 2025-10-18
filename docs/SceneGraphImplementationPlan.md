@@ -132,7 +132,7 @@ Completed:
 - ✅ (October 18, 2025) Published `docs/DebuggingPlaybook.md` with the end-to-end diagnostics workflow and re-validated the 15× loop harness (`./scripts/compile.sh --test --loop=15 --per-test-timeout=20`).
 
 ### Phase 7 — Optional Backends & HTML Adapter Prep (post-MVP)
-- For each backend, author adapter-specific tests (integration replay, ObjC++ harness, HTML command parity) before the implementation.
+- 🚧 (October 18, 2025) Added skipped `PathSpaceUITests` scaffolding for integration replay, ObjC++ Metal harness, and HTML command parity; populate with assertions once the backends land.
 - Extended Metal renderer (GPU raster path) gated by `PATHSPACE_UI_METAL`; build atop the baseline Metal presenter, confirm ObjC++ integration, and expand CI coverage.
 - HTML adapter scaffolding (command stream emitter + replay harness) behind experimental flag.
 - Resource loader integration for fonts/images when snapshots require them.
