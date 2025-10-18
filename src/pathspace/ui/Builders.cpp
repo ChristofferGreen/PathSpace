@@ -1,7 +1,8 @@
 #include <pathspace/ui/Builders.hpp>
-#include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/PathRenderer2D.hpp>
+#include <pathspace/ui/PathSurfaceMetal.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
+#include <pathspace/ui/PathWindowView.hpp>
 #include "DrawableUtils.hpp"
 
 #include "core/Out.hpp"
@@ -62,6 +63,18 @@ auto surfaces_cache_mutex() -> std::mutex& {
     return mutex;
 }
 
+#if PATHSPACE_UI_METAL
+auto metal_surfaces_cache() -> std::unordered_map<std::string, std::unique_ptr<PathSurfaceMetal>>& {
+    static std::unordered_map<std::string, std::unique_ptr<PathSurfaceMetal>> cache;
+    return cache;
+}
+
+auto metal_surfaces_cache_mutex() -> std::mutex& {
+    static std::mutex mutex;
+    return mutex;
+}
+#endif
+
 auto before_present_hook_mutex() -> std::mutex& {
     static std::mutex mutex;
     return mutex;
@@ -115,6 +128,38 @@ auto acquire_surface(std::string const& key,
     std::lock_guard<std::mutex> lock{mutex};
     return acquire_surface_unlocked(key, desc);
 }
+
+#if PATHSPACE_UI_METAL
+auto acquire_metal_surface_unlocked(std::string const& key,
+                                    Builders::SurfaceDesc const& desc) -> PathSurfaceMetal& {
+    auto& cache = metal_surfaces_cache();
+    auto it = cache.find(key);
+    if (it == cache.end()) {
+        auto surface = std::make_unique<PathSurfaceMetal>(desc);
+        auto* raw = surface.get();
+        cache.emplace(key, std::move(surface));
+        return *raw;
+    }
+
+    auto& surface = *it->second;
+    auto const& current = surface.desc();
+    if (current.size_px.width != desc.size_px.width
+        || current.size_px.height != desc.size_px.height
+        || current.pixel_format != desc.pixel_format
+        || current.color_space != desc.color_space
+        || current.premultiplied_alpha != desc.premultiplied_alpha) {
+        surface.resize(desc);
+    }
+    return surface;
+}
+
+auto acquire_metal_surface(std::string const& key,
+                           Builders::SurfaceDesc const& desc) -> PathSurfaceMetal& {
+    auto& mutex = metal_surfaces_cache_mutex();
+    std::lock_guard<std::mutex> lock{mutex};
+    return acquire_metal_surface_unlocked(key, desc);
+}
+#endif
 
 auto enqueue_auto_render_event(PathSpace& space,
                                std::string const& targetPath,
@@ -752,6 +797,29 @@ auto read_renderer_kind(PathSpace& space,
 
     return std::unexpected(error);
 }
+
+#if PATHSPACE_UI_METAL
+auto upload_to_metal_surface(PathSurfaceSoftware& software,
+                             PathSurfaceMetal& metal,
+                             std::vector<std::uint8_t>& scratch) -> SP::Expected<void> {
+    auto const frame_bytes = software.frame_bytes();
+    if (frame_bytes == 0) {
+        return {};
+    }
+
+    scratch.resize(frame_bytes);
+    auto copy = software.copy_buffered_frame(std::span<std::uint8_t>{scratch.data(), scratch.size()});
+    if (!copy) {
+        return {};
+    }
+
+    metal.update_from_rgba8(std::span<std::uint8_t const>{scratch.data(), scratch.size()},
+                            software.row_stride_bytes(),
+                            copy->info.frame_index,
+                            copy->info.revision);
+    return {};
+}
+#endif
 
 auto ensure_within_root(AppRootPathView root,
                         ConcretePathView path) -> SP::Expected<void> {
@@ -1462,12 +1530,11 @@ auto RenderOnce(PathSpace& space,
         return std::unexpected(context.error());
     }
 
-    if (context->renderer_kind != RendererKind::Software2D) {
-        return std::unexpected(make_error("Surface::RenderOnce currently supports only software renderer targets",
-                                          SP::Error::Code::InvalidType));
-    }
+#if PATHSPACE_UI_METAL
+    std::vector<std::uint8_t> metal_scratch;
+#endif
 
-    PathSurfaceSoftware surface{context->target_desc};
+    auto& surface = acquire_surface(std::string(context->target_path.getPath()), context->target_desc);
     auto stats = render_into_surface(space,
                                      SP::ConcretePathStringView{context->target_path.getPath()},
                                      context->settings,
@@ -1475,6 +1542,26 @@ auto RenderOnce(PathSpace& space,
     if (!stats) {
         return std::unexpected(stats.error());
     }
+    auto stats_value = *stats;
+
+#if PATHSPACE_UI_METAL
+    if (context->renderer_kind == RendererKind::Metal2D) {
+        auto& metal_surface = acquire_metal_surface(std::string(context->target_path.getPath()),
+                                                    context->target_desc);
+        if (auto upload = upload_to_metal_surface(surface, metal_surface, metal_scratch); !upload) {
+            return std::unexpected(upload.error());
+        }
+        metal_surface.present_completed(stats_value.frame_index, stats_value.revision);
+    } else if (context->renderer_kind != RendererKind::Software2D) {
+        return std::unexpected(make_error("Surface::RenderOnce currently supports only software or metal renderer targets",
+                                          SP::Error::Code::InvalidType));
+    }
+#else
+    if (context->renderer_kind != RendererKind::Software2D) {
+        return std::unexpected(make_error("Surface::RenderOnce currently supports only software renderer targets",
+                                          SP::Error::Code::InvalidType));
+    }
+#endif
 
     auto state = std::make_shared<SP::SharedState<bool>>();
     state->set_value(true);
@@ -1596,11 +1683,6 @@ auto Present(PathSpace& space,
         return std::unexpected(context.error());
     }
 
-    if (context->renderer_kind != RendererKind::Software2D) {
-        return std::unexpected(make_error("Window::Present currently supports only software renderer targets",
-                                          SP::Error::Code::InvalidType));
-    }
-
     auto policy = read_present_policy(space, viewBase);
     if (!policy) {
         return std::unexpected(policy.error());
@@ -1610,6 +1692,22 @@ auto Present(PathSpace& space,
     auto target_key = std::string(context->target_path.getPath());
     auto& surface = acquire_surface(target_key, context->target_desc);
 
+#if PATHSPACE_UI_METAL
+    PathSurfaceMetal* metal_surface = nullptr;
+    std::vector<std::uint8_t> metal_scratch;
+    if (context->renderer_kind == RendererKind::Metal2D) {
+        metal_surface = &acquire_metal_surface(target_key, context->target_desc);
+    } else if (context->renderer_kind != RendererKind::Software2D) {
+        return std::unexpected(make_error("Window::Present currently supports only software or metal renderer targets",
+                                          SP::Error::Code::InvalidType));
+    }
+#else
+    if (context->renderer_kind != RendererKind::Software2D) {
+        return std::unexpected(make_error("Window::Present currently supports only software renderer targets",
+                                          SP::Error::Code::InvalidType));
+    }
+#endif
+
     auto renderStats = render_into_surface(space,
                                            SP::ConcretePathStringView{context->target_path.getPath()},
                                            context->settings,
@@ -1617,6 +1715,16 @@ auto Present(PathSpace& space,
     if (!renderStats) {
         return std::unexpected(renderStats.error());
     }
+    auto stats_value = *renderStats;
+
+#if PATHSPACE_UI_METAL
+    if (metal_surface) {
+        if (auto upload = upload_to_metal_surface(surface, *metal_surface, metal_scratch); !upload) {
+            return std::unexpected(upload.error());
+        }
+        metal_surface->present_completed(stats_value.frame_index, stats_value.revision);
+    }
+#endif
 
     auto dirty_tiles = surface.consume_progressive_dirty_tiles();
     invoke_before_present_hook(surface, presentPolicy, dirty_tiles);
@@ -1624,11 +1732,21 @@ auto Present(PathSpace& space,
     PathWindowView presenter;
     std::vector<std::uint8_t> framebuffer;
     std::span<std::uint8_t> framebuffer_span{};
+#if PATHSPACE_UI_METAL
+    if (metal_surface) {
+        framebuffer.swap(metal_scratch);
+        framebuffer.resize(surface.frame_bytes(), 0);
+        framebuffer_span = std::span<std::uint8_t>{framebuffer.data(), framebuffer.size()};
+    }
+#endif
 #if !defined(__APPLE__)
-    framebuffer.resize(surface.frame_bytes(), 0);
+    if (framebuffer.empty()) {
+        framebuffer.resize(surface.frame_bytes(), 0);
+    }
     framebuffer_span = std::span<std::uint8_t>{framebuffer.data(), framebuffer.size()};
 #else
-    if (presentPolicy.capture_framebuffer || !surface.has_buffered()) {
+    if (framebuffer_span.empty()
+        && (presentPolicy.capture_framebuffer || !surface.has_buffered())) {
         framebuffer.resize(surface.frame_bytes(), 0);
         framebuffer_span = std::span<std::uint8_t>{framebuffer.data(), framebuffer.size()};
     }

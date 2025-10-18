@@ -219,7 +219,7 @@ TEST_CASE("Renderer::Create upgrades legacy string kind metadata") {
     CHECK(*storedKind == RendererKind::Software2D);
 }
 
-TEST_CASE("Surface::RenderOnce rejects metal renderer targets until backend lands") {
+TEST_CASE("Surface::RenderOnce handles metal renderer targets") {
     BuildersFixture fx;
 
     RendererParams params{ .name = "metal", .description = "Metal renderer" };
@@ -234,11 +234,15 @@ TEST_CASE("Surface::RenderOnce rejects metal renderer targets until backend land
     REQUIRE(surface);
 
     auto render = Surface::RenderOnce(fx.space, *surface, std::nullopt);
+#if PATHSPACE_UI_METAL
+    CHECK(render);
+#else
     CHECK_FALSE(render);
     CHECK(render.error().code == Error::Code::InvalidType);
+#endif
 }
 
-TEST_CASE("Window::Present rejects metal renderer targets until backend lands") {
+TEST_CASE("Window::Present handles metal renderer targets") {
     BuildersFixture fx;
 
     RendererParams params{ .name = "metal", .description = "Metal renderer" };
@@ -266,8 +270,12 @@ TEST_CASE("Window::Present rejects metal renderer targets until backend lands") 
     REQUIRE(attached);
 
     auto present = Window::Present(fx.space, *window, "view");
+#if PATHSPACE_UI_METAL
+    CHECK(present);
+#else
     CHECK_FALSE(present);
     CHECK(present.error().code == Error::Code::InvalidType);
+#endif
 }
 
 TEST_CASE("Scene::Create is idempotent and preserves metadata") {

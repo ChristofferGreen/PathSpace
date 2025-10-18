@@ -1,5 +1,7 @@
 #import <Metal/Metal.h>
 
+#include <algorithm>
+
 #include <pathspace/ui/PathSurfaceMetal.hpp>
 
 namespace SP::UI {
@@ -112,6 +114,42 @@ auto PathSurfaceMetal::acquire_texture() -> TextureInfo {
     info.frame_index = impl_->frame_index;
     info.revision = impl_->revision;
     return info;
+}
+
+void PathSurfaceMetal::update_from_rgba8(std::span<std::uint8_t const> pixels,
+                                         std::size_t bytes_per_row,
+                                         std::uint64_t frame_index,
+                                         std::uint64_t revision) {
+    if (!impl_) {
+        return;
+    }
+    if (!impl_->texture) {
+        impl_->ensure_texture();
+    }
+    if (!impl_->texture) {
+        return;
+    }
+
+    auto const width = std::max(impl_->desc.size_px.width, 1);
+    auto const height = std::max(impl_->desc.size_px.height, 1);
+    auto const min_row_bytes = static_cast<std::size_t>(width) * 4u;
+    if (bytes_per_row == 0) {
+        bytes_per_row = min_row_bytes;
+    }
+    if (bytes_per_row < min_row_bytes) {
+        bytes_per_row = min_row_bytes;
+    }
+    if (pixels.size() < bytes_per_row * static_cast<std::size_t>(height)) {
+        return;
+    }
+
+    MTLRegion region = MTLRegionMake2D(0, 0, clamp_dimension(width), clamp_dimension(height));
+    [impl_->texture replaceRegion:region
+                      mipmapLevel:0
+                      withBytes:pixels.data()
+                    bytesPerRow:bytes_per_row];
+    impl_->frame_index = frame_index;
+    impl_->revision = revision;
 }
 
 void PathSurfaceMetal::present_completed(std::uint64_t frame_index, std::uint64_t revision) {
