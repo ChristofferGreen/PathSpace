@@ -139,46 +139,6 @@ auto read_config_value(PathSpace& space,
     return std::max(1, fallback);
 }
 
-void coalesce_dirty_hints(std::vector<DirtyRectHint>& hints,
-                          int canvasWidth,
-                          int canvasHeight,
-                          int tileSizePx) {
-    std::vector<DirtyRectHint> normalized;
-    normalized.reserve(hints.size());
-    for (auto const& hint : hints) {
-        if (auto normalizedHint = clamp_and_align_hint(hint, canvasWidth, canvasHeight, tileSizePx)) {
-            normalized.push_back(*normalizedHint);
-        }
-    }
-    if (normalized.empty()) {
-        hints.clear();
-        return;
-    }
-
-    std::vector<DirtyRectHint> merged;
-    merged.reserve(normalized.size());
-    for (auto const& hint : normalized) {
-        bool mergedExisting = false;
-        for (auto& existing : merged) {
-            auto const xOverlap = !(hint.max_x <= existing.min_x || hint.min_x >= existing.max_x);
-            auto const yOverlap = !(hint.max_y <= existing.min_y || hint.min_y >= existing.max_y);
-            if (xOverlap && yOverlap) {
-                existing.min_x = std::min(existing.min_x, hint.min_x);
-                existing.min_y = std::min(existing.min_y, hint.min_y);
-                existing.max_x = std::max(existing.max_x, hint.max_x);
-                existing.max_y = std::max(existing.max_y, hint.max_y);
-                mergedExisting = true;
-                break;
-            }
-        }
-        if (!mergedExisting) {
-            merged.push_back(hint);
-        }
-    }
-
-    hints = std::move(merged);
-}
-
 struct RuntimeOptions {
     bool debug = false;
 };
@@ -634,8 +594,7 @@ int main(int argc, char** argv) {
         bool updated = false;
         dirtyHints.clear();
 
-        const int brushSizePx = read_config_value(space, brushSizePath, 8);
-        const int progressiveTileSizePx = read_config_value(space, tileSizePath, 64);
+    const int brushSizePx = read_config_value(space, brushSizePath, 8);
 
         bool sizeChanged = (requestedWidth != canvasWidth) || (requestedHeight != canvasHeight);
         if (sizeChanged) {
@@ -732,8 +691,6 @@ int main(int argc, char** argv) {
             bucket = build_bucket(strokes);
             publish_snapshot(space, builder, scenePath, bucket);
         }
-
-        coalesce_dirty_hints(dirtyHints, canvasWidth, canvasHeight, progressiveTileSizePx);
 
         if (updated || sizeChanged) {
             if (!dirtyHints.empty()) {

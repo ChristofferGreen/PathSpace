@@ -28,6 +28,7 @@ struct SurfaceDesc {
     PixelFormat pixel_format = PixelFormat::RGBA8Unorm;
     ColorSpace color_space = ColorSpace::sRGB;
     bool premultiplied_alpha = true;
+    int progressive_tile_size_px = 64;
 };
 
 struct SoftwareFramebuffer {

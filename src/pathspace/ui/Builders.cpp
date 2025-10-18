@@ -1100,11 +1100,88 @@ auto ReadSettings(PathSpace const& space,
     return read_value<RenderSettings>(space, settingsPath);
 }
 
+auto merge_hints(std::vector<DirtyRectHint>& hints) -> void {
+    if (hints.empty()) {
+        return;
+    }
+    std::vector<DirtyRectHint> merged;
+    merged.reserve(hints.size());
+    for (auto const& hint : hints) {
+        bool mergedExisting = false;
+        for (auto& existing : merged) {
+            auto const overlap_x = !(hint.max_x <= existing.min_x || hint.min_x >= existing.max_x);
+            auto const overlap_y = !(hint.max_y <= existing.min_y || hint.min_y >= existing.max_y);
+            if (overlap_x && overlap_y) {
+                existing.min_x = std::min(existing.min_x, hint.min_x);
+                existing.min_y = std::min(existing.min_y, hint.min_y);
+                existing.max_x = std::max(existing.max_x, hint.max_x);
+                existing.max_y = std::max(existing.max_y, hint.max_y);
+                mergedExisting = true;
+                break;
+            }
+        }
+        if (!mergedExisting) {
+            merged.push_back(hint);
+        }
+    }
+    hints = std::move(merged);
+}
+
+auto snap_hint_to_tiles(DirtyRectHint hint, float tile_size) -> DirtyRectHint {
+    if (tile_size <= 1.0f) {
+        return hint;
+    }
+    auto align_down = [tile_size](float value) {
+        return std::floor(value / tile_size) * tile_size;
+    };
+    auto align_up = [tile_size](float value) {
+        return std::ceil(value / tile_size) * tile_size;
+    };
+    DirtyRectHint snapped{};
+    snapped.min_x = align_down(hint.min_x);
+    snapped.min_y = align_down(hint.min_y);
+    snapped.max_x = align_up(hint.max_x);
+    snapped.max_y = align_up(hint.max_y);
+    if (snapped.max_x <= snapped.min_x || snapped.max_y <= snapped.min_y) {
+        return {};
+    }
+    return snapped;
+}
+
 auto SubmitDirtyRects(PathSpace& space,
                       ConcretePathView targetPath,
                       std::span<DirtyRectHint const> rects) -> SP::Expected<void> {
+    if (rects.empty()) {
+        return SP::Expected<void>{};
+    }
     auto hintsPath = std::string(targetPath.getPath()) + "/hints/dirtyRects";
-    std::vector<DirtyRectHint> stored(rects.begin(), rects.end());
+
+    auto descPath = std::string(targetPath.getPath()) + "/desc";
+    auto desc = read_value<SurfaceDesc>(space, descPath);
+    if (!desc) {
+        return std::unexpected(desc.error());
+    }
+    auto const tile_size = static_cast<float>(std::max(1, (*desc).progressive_tile_size_px));
+    auto const width = static_cast<float>(std::max(0, (*desc).size_px.width));
+    auto const height = static_cast<float>(std::max(0, (*desc).size_px.height));
+
+    std::vector<DirtyRectHint> stored;
+    stored.reserve(rects.size());
+    for (auto const& hint : rects) {
+        auto snapped = snap_hint_to_tiles(hint, tile_size);
+        if (snapped.max_x <= snapped.min_x || snapped.max_y <= snapped.min_y) {
+            continue;
+        }
+        snapped.min_x = std::clamp(snapped.min_x, 0.0f, width);
+        snapped.min_y = std::clamp(snapped.min_y, 0.0f, height);
+        snapped.max_x = std::clamp(snapped.max_x, 0.0f, width);
+        snapped.max_y = std::clamp(snapped.max_y, 0.0f, height);
+        if (snapped.max_x <= snapped.min_x || snapped.max_y <= snapped.min_y) {
+            continue;
+        }
+        stored.push_back(snapped);
+    }
+    merge_hints(stored);
     return replace_single<std::vector<DirtyRectHint>>(space, hintsPath, stored);
 }
 
