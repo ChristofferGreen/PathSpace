@@ -128,8 +128,8 @@ Completed:
 ### Phase 6 — Diagnostics, Tooling, and Hardening (1 sprint)
 - ✅ (October 18, 2025) Extended diagnostics coverage with unit tests that write/read present metrics (`Diagnostics::WritePresentMetrics`/`ReadTargetMetrics`) and verify error clearing; tooling now has regression coverage for metric persistence.
 - ✅ (October 18, 2025) Normalized presenter/renderer error reporting around `PathSpaceError`, wiring `diagnostics/errors/live` and exposing codes/revisions via `Diagnostics::ReadTargetMetrics`.
-- Expand scripts/tests (`compile.sh`, CTest targets) to cover UI components and gather logs on failure.
-- Document debugging playbook (how to inspect metrics/errors) in `docs/` and re-run test loops to confirm.
+- ✅ (October 18, 2025) Expanded `scripts/compile.sh`/CTest to cover UI components and capture failure logs via `scripts/run-test-with-logs.sh`, ensuring loop runs retain artifacts on failure.
+- ✅ (October 18, 2025) Published `docs/DebuggingPlaybook.md` with the end-to-end diagnostics workflow and re-validated the 15× loop harness (`./scripts/compile.sh --test --loop=15 --per-test-timeout=20`).
 
 ### Phase 7 — Optional Backends & HTML Adapter Prep (post-MVP)
 - For each backend, author adapter-specific tests (integration replay, ObjC++ harness, HTML command parity) before the implementation.

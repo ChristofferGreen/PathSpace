@@ -18,7 +18,8 @@ Review these documents (order matters):
 3. `docs/AI_PATHS.md` — canonical namespace/layout conventions.
 4. `docs/AI_Plan_SceneGraph_Renderer.md` — renderer stack plan, snapshot semantics, target contracts.
 5. `docs/SceneGraphImplementationPlan.md` — current phase status and outstanding tasks.
-6. Any task-specific plans under `docs/` (e.g., `AI_Plan_CartaLinea.md`) when relevant.
+6. `docs/DebuggingPlaybook.md` — hands-on troubleshooting steps, log capture workflow, and diagnostics quick reference.
+7. Any task-specific plans under `docs/` (e.g., `AI_Plan_CartaLinea.md`) when relevant.
 
 Skim `docs/AI_TODO.task` for open epics/features and cross-check the implementation plan.
 
@@ -42,7 +43,7 @@ Investigate and resolve failures prior to new development.
 - Keep edits ASCII unless the file already uses Unicode.
 - Always cite relevant docs in commit messages and PR summaries.
 - Run the full compile loop after meaningful code changes (tests-only edits may skip).
-- Update documentation alongside code when behavior or contracts change.
+- Update documentation alongside code when behavior or contracts change. Use `docs/DebuggingPlaybook.md` to capture new log paths, diagnostics, or repro procedures whenever tooling changes.
 
 ## 6. Rapid Context Refresh Commands
 Use these when resuming work mid-session:
