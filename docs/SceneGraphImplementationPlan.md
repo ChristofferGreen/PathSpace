@@ -133,7 +133,27 @@ Completed:
 
 ### Phase 7 — Optional Backends & HTML Adapter Prep (post-MVP)
 - 🚧 (October 18, 2025) Added skipped `PathSpaceUITests` scaffolding for integration replay, ObjC++ Metal harness, and HTML command parity; populate with assertions once the backends land.
-- Extended Metal renderer (GPU raster path) gated by `PATHSPACE_UI_METAL`; build atop the baseline Metal presenter, confirm ObjC++ integration, and expand CI coverage.
+- 🚧 (October 18, 2025) Introduced `PathSurfaceMetal` stub (texture allocation + resize) gated behind `PATHSPACE_UI_METAL`, linked Metal/QuartzCore, ready for presenter integration.
+- Extended Metal renderer (GPU raster path) gated by `PATHSPACE_UI_METAL`; build atop the baseline Metal presenter, confirm ObjC++ integration, and expand CI coverage. **Implementation plan map (Oct 18, 2025):**
+  1. **Renderer kind plumbing**
+     - Teach `Builder::Renderer::Create` / metadata to persist `RendererKind::Metal2D`.
+     - Resolve renderer kind in `prepare_surface_render_context`, route to software vs. metal code.
+  2. **Surface cache & rendering loop**
+     - Introduce `MetalSurfaceCache` (mirroring software cache) storing `PathSurfaceMetal` instances.
+     - Split `render_into_surface` into backend-specific paths; metal path builds render command buffer for MTLTexture, software path stays unchanged.
+     - PathRenderer2D: add backend abstraction so draw traversal fills either CPU framebuffer or Metal encoders; reuse command building, add Metal-specific upload/shader binding (initially simple textured quad pipeline).
+  3. **Presenter integration**
+     - Extend `PathWindowView::Present` (Apple) to accept either `PathSurfaceSoftware` or `PathSurfaceMetal` stats; when Metal, acquire CAMetalLayer drawable and blit/encode GPU texture to drawable using Metal command queue (move logic from WindowEventPump into core presenter).
+     - Update macOS harness (`WindowEventPump.mm`) to detect Metal backend via stats and avoid redundant CPU copies.
+  4. **Settings & diagnostics**
+     - Define Metal target descriptors (`SurfaceDesc` additions if necessary), ensure RenderSettings/diagnostics include GPU timings and error paths.
+     - Persist `diagnostics/errors/live` / `output/v1/common` updates for Metal frames (frameIndex, renderMs, GPU encode time).
+  5. **Testing & CI**
+     - Add ObjC++ harness tests (PathSpaceUITests) with Metal flag to validate presenter path (can start as skipped until GPU encoding lands).
+     - Update scripts/CI docs to run Metal-enabled tests on macOS jobs; ensure graceful skip when Metal unavailable.
+  6. **Follow-ups**
+     - Shader/material system parity (reuse software pipeline flags).
+     - Resource residency (textures/fonts) loading for GPU path.
 - HTML adapter scaffolding (command stream emitter + replay harness) behind experimental flag.
 - Resource loader integration for fonts/images when snapshots require them.
 

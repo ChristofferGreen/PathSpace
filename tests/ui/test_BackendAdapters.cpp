@@ -1,5 +1,9 @@
 #include "ext/doctest.h"
 
+#ifdef PATHSPACE_UI_METAL
+#include <pathspace/ui/PathSurfaceMetal.hpp>
+#endif
+
 TEST_CASE("Renderer integration replay retains framebuffer parity" * doctest::skip(true)) {
     /* Placeholder: populate once GPU/HTML integration replay harness exists. */
 }

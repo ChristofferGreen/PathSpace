@@ -1537,8 +1537,14 @@ Goals
    - Concurrency tests (hammer edits while rendering)
    - Update `docs/AI_ARCHITECTURE.md` if any core semantics change
 6) Metal backend (next)
-   - `PathSurfaceMetal` producing an offscreen `MTLTexture`
+   - `PathSurfaceMetal` producing an offscreen `MTLTexture` *(stub scaffold committed October 18, 2025; currently allocates/owns a private texture and reports frame/revision indices)*
    - Presenter draws textured quad into `CAMetalLayer` drawable on the UI thread
+   - **Integration roadmap (Oct 18, 2025):**
+     1. Persist `RendererKind::Metal2D` in renderer metadata; resolve backend in builder context.
+     2. Introduce metal surface cache & render flow: PathRenderer2D dispatches Metal path (command buffer encode, minimal pipeline) when backend == Metal2D.
+     3. Extend `PathWindowView::Present` / macOS presenter to accept Metal surface handles and present CAMetalLayer drawables without IOSurface copies.
+     4. Record Metal timings/errors in `output/v1/common` + diagnostics mirrors.
+     5. Provide ObjC++ harness/CI coverage with Metal enabled; skip gracefully off-Apple.
 
 ## Open questions
 
