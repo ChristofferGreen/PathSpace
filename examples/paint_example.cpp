@@ -454,6 +454,20 @@ auto lay_down_segment(std::vector<Stroke>& strokes,
                       std::vector<DirtyRectHint>& dirtyHints,
                       int brushSizePx) -> bool {
     bool wrote = false;
+    DirtyRectHint segmentBounds{};
+    bool haveBounds = false;
+
+    auto accumulate_hint = [&](DirtyRectHint const& hint) {
+        if (!haveBounds) {
+            segmentBounds = hint;
+            haveBounds = true;
+        } else {
+            segmentBounds.min_x = std::min(segmentBounds.min_x, hint.min_x);
+            segmentBounds.min_y = std::min(segmentBounds.min_y, hint.min_y);
+            segmentBounds.max_x = std::max(segmentBounds.max_x, hint.max_x);
+            segmentBounds.max_y = std::max(segmentBounds.max_y, hint.max_y);
+        }
+    };
     double x0 = static_cast<double>(from.first);
     double y0 = static_cast<double>(from.second);
     double x1 = static_cast<double>(to.first);
@@ -475,7 +489,7 @@ auto lay_down_segment(std::vector<Stroke>& strokes,
                                    yi,
                                    color,
                                    brushSizePx)) {
-            dirtyHints.push_back(*hint);
+            accumulate_hint(*hint);
             wrote = true;
         }
     }
@@ -487,8 +501,11 @@ auto lay_down_segment(std::vector<Stroke>& strokes,
                                to.second,
                                color,
                                brushSizePx)) {
-        dirtyHints.push_back(*hint);
+        accumulate_hint(*hint);
         wrote = true;
+    }
+    if (wrote && haveBounds) {
+        dirtyHints.push_back(segmentBounds);
     }
     return wrote;
 }
