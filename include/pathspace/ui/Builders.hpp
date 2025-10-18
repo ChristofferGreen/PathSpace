@@ -379,6 +379,20 @@ struct TargetMetrics {
     double present_ms = 0.0;
     bool last_present_skipped = false;
     std::string last_error;
+    int last_error_code = 0;
+    uint64_t last_error_revision = 0;
+};
+
+struct PathSpaceError {
+    enum class Severity : std::uint32_t { Info = 0, Warning, Recoverable, Fatal };
+
+    int code = 0;
+    Severity severity = Severity::Info;
+    std::string message;
+    std::string path;
+    std::uint64_t revision = 0;
+    std::uint64_t timestamp_ns = 0;
+    std::string detail;
 };
 
 auto ReadTargetMetrics(PathSpace const& space,
@@ -386,6 +400,13 @@ auto ReadTargetMetrics(PathSpace const& space,
 
 auto ClearTargetError(PathSpace& space,
                       ConcretePathView targetPath) -> SP::Expected<void>;
+
+auto WriteTargetError(PathSpace& space,
+                      ConcretePathView targetPath,
+                      PathSpaceError const& error) -> SP::Expected<void>;
+
+auto ReadTargetError(PathSpace const& space,
+                     ConcretePathView targetPath) -> SP::Expected<std::optional<PathSpaceError>>;
 
 auto ReadSoftwareFramebuffer(PathSpace const& space,
                               ConcretePathView targetPath) -> SP::Expected<SoftwareFramebuffer>;

@@ -1621,11 +1621,24 @@ auto ReadTargetMetrics(PathSpace const& space,
         return std::unexpected(value.error());
     }
 
-    if (auto value = read_value<std::string>(space, base + "/lastError"); value) {
-        metrics.last_error = *value;
-    } else if (value.error().code != SP::Error::Code::NoObjectFound
-               && value.error().code != SP::Error::Code::NoSuchPath) {
-        return std::unexpected(value.error());
+    metrics.last_error.clear();
+    metrics.last_error_code = 0;
+    metrics.last_error_revision = 0;
+
+    auto diagPath = std::string(targetPath.getPath()) + "/diagnostics/errors/live";
+    if (auto errorValue = read_optional<PathSpaceError>(space, diagPath); !errorValue) {
+        return std::unexpected(errorValue.error());
+    } else if (errorValue->has_value() && !(*errorValue)->message.empty()) {
+        metrics.last_error = (*errorValue)->message;
+        metrics.last_error_code = (*errorValue)->code;
+        metrics.last_error_revision = (*errorValue)->revision;
+    } else {
+        if (auto value = read_value<std::string>(space, base + "/lastError"); value) {
+            metrics.last_error = *value;
+        } else if (value.error().code != SP::Error::Code::NoObjectFound
+                   && value.error().code != SP::Error::Code::NoSuchPath) {
+            return std::unexpected(value.error());
+        }
     }
 
     return metrics;
@@ -1633,8 +1646,44 @@ auto ReadTargetMetrics(PathSpace const& space,
 
 auto ClearTargetError(PathSpace& space,
                       ConcretePathView targetPath) -> SP::Expected<void> {
-    auto path = std::string(targetPath.getPath()) + "/output/v1/common/lastError";
-    return replace_single<std::string>(space, path, std::string{});
+    auto livePath = std::string(targetPath.getPath()) + "/diagnostics/errors/live";
+    PathSpaceError cleared{};
+    if (auto status = replace_single<PathSpaceError>(space, livePath, cleared); !status) {
+        return status;
+    }
+    auto lastErrorPath = std::string(targetPath.getPath()) + "/output/v1/common/lastError";
+    return replace_single<std::string>(space, lastErrorPath, std::string{});
+}
+
+auto WriteTargetError(PathSpace& space,
+                      ConcretePathView targetPath,
+                      PathSpaceError const& error) -> SP::Expected<void> {
+    if (error.message.empty()) {
+        return ClearTargetError(space, targetPath);
+    }
+
+    PathSpaceError stored = error;
+    if (stored.path.empty()) {
+        stored.path = std::string(targetPath.getPath());
+    }
+    if (stored.timestamp_ns == 0) {
+        auto now = std::chrono::steady_clock::now().time_since_epoch();
+        stored.timestamp_ns = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
+    }
+
+    auto livePath = std::string(targetPath.getPath()) + "/diagnostics/errors/live";
+    if (auto status = replace_single<PathSpaceError>(space, livePath, stored); !status) {
+        return status;
+    }
+    auto lastErrorPath = std::string(targetPath.getPath()) + "/output/v1/common/lastError";
+    return replace_single<std::string>(space, lastErrorPath, stored.message);
+}
+
+auto ReadTargetError(PathSpace const& space,
+                     ConcretePathView targetPath) -> SP::Expected<std::optional<PathSpaceError>> {
+    auto livePath = std::string(targetPath.getPath()) + "/diagnostics/errors/live";
+    return read_optional<PathSpaceError>(space, livePath);
 }
 
 auto ReadSoftwareFramebuffer(PathSpace const& space,
@@ -1739,8 +1788,21 @@ auto WritePresentMetrics(PathSpace& space,
                                            policy.vsync_align); !status) {
         return status;
     }
-    if (auto status = replace_single<std::string>(space, base + "/lastError", stats.error); !status) {
-        return status;
+
+    if (!stats.error.empty()) {
+        PathSpaceError error{};
+        error.code = 3000;
+        error.severity = PathSpaceError::Severity::Recoverable;
+        error.message = stats.error;
+        error.path = std::string(targetPath.getPath());
+        error.revision = stats.frame.revision;
+        if (auto status = WriteTargetError(space, targetPath, error); !status) {
+            return status;
+        }
+    } else {
+        if (auto status = ClearTargetError(space, targetPath); !status) {
+            return status;
+        }
     }
     return {};
 }

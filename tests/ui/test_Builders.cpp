@@ -408,6 +408,8 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(metrics->present_ms == 0.0);
     CHECK(metrics->last_present_skipped == false);
     CHECK(metrics->last_error.empty());
+    CHECK(metrics->last_error_code == 0);
+    CHECK(metrics->last_error_revision == 0);
 
     auto common = std::string(targetBase->getPath()) + "/output/v1/common";
     fx.space.insert(common + "/frameIndex", uint64_t{7});
@@ -425,6 +427,8 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(updated->present_ms == doctest::Approx(4.25));
     CHECK(updated->last_present_skipped == true);
     CHECK(updated->last_error == "failure");
+    CHECK(updated->last_error_code == 0);
+    CHECK(updated->last_error_revision == 0);
 
     auto cleared = Diagnostics::ClearTargetError(fx.space, ConcretePathView{targetBase->getPath()});
     REQUIRE(cleared);
@@ -432,6 +436,12 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     auto clearedValue = read_value<std::string>(fx.space, common + "/lastError");
     REQUIRE(clearedValue);
     CHECK(clearedValue->empty());
+
+    auto afterClear = Diagnostics::ReadTargetMetrics(fx.space, ConcretePathView{targetBase->getPath()});
+    REQUIRE(afterClear);
+    CHECK(afterClear->last_error.empty());
+    CHECK(afterClear->last_error_code == 0);
+    CHECK(afterClear->last_error_revision == 0);
 
     PathWindowPresentStats writeStats{};
     writeStats.presented = true;
@@ -477,6 +487,8 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(afterWrite->present_ms == doctest::Approx(8.75));
     CHECK_FALSE(afterWrite->last_present_skipped);
     CHECK(afterWrite->last_error == "post-write-error");
+    CHECK(afterWrite->last_error_code == 3000);
+    CHECK(afterWrite->last_error_revision == 9);
 
     auto staleFlag = read_value<bool>(fx.space, common + "/stale");
     REQUIRE(staleFlag);

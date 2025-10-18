@@ -86,9 +86,21 @@ auto to_byte(float value) -> std::uint8_t {
 
 auto set_last_error(PathSpace& space,
                     SP::ConcretePathStringView targetPath,
-                    std::string const& message) -> SP::Expected<void> {
-    auto base = std::string(targetPath.getPath()) + "/output/v1/common/lastError";
-    return replace_single<std::string>(space, base, message);
+                    std::string const& message,
+                    std::uint64_t revision = 0,
+                    Builders::Diagnostics::PathSpaceError::Severity severity = Builders::Diagnostics::PathSpaceError::Severity::Recoverable,
+                    int code = 3000) -> SP::Expected<void> {
+    if (message.empty()) {
+        return Builders::Diagnostics::ClearTargetError(space, targetPath);
+    }
+
+    Builders::Diagnostics::PathSpaceError error{};
+    error.code = code;
+    error.severity = severity;
+    error.message = message;
+    error.path = std::string(targetPath.getPath());
+    error.revision = revision;
+    return Builders::Diagnostics::WriteTargetError(space, targetPath, error);
 }
 
 auto color_from_drawable(std::uint64_t drawableId) -> std::array<float, 4> {
@@ -2038,6 +2050,10 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/culledDrawables", culled_drawables);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/commandCount", static_cast<std::uint64_t>(bucket->command_kinds.size()));
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/commandsExecuted", executed_commands);
+
+    if (auto status = set_last_error(space_, params.target_path, "", sceneRevision->revision, Builders::Diagnostics::PathSpaceError::Severity::Info); !status) {
+        return std::unexpected(status.error());
+    }
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/unsupportedCommands", unsupported_commands);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/opaqueSortViolations", opaque_sort_violations);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/alphaSortViolations", alpha_sort_violations);
