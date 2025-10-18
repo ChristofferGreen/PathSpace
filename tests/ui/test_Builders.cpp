@@ -13,6 +13,9 @@ namespace {
 
 using namespace SP;
 using namespace SP::UI::Builders;
+using SP::UI::PathWindowPresentPolicy;
+using SP::UI::PathWindowPresentStats;
+using SP::UI::PathWindowView;
 
 struct BuildersFixture {
     PathSpace     space;
@@ -429,6 +432,75 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     auto clearedValue = read_value<std::string>(fx.space, common + "/lastError");
     REQUIRE(clearedValue);
     CHECK(clearedValue->empty());
+
+    PathWindowPresentStats writeStats{};
+    writeStats.presented = true;
+    writeStats.buffered_frame_consumed = true;
+    writeStats.used_progressive = true;
+    writeStats.wait_budget_ms = 7.5;
+    writeStats.present_ms = 8.75;
+    writeStats.frame_age_ms = 3.0;
+    writeStats.frame_age_frames = 2;
+    writeStats.stale = true;
+    writeStats.mode = PathWindowView::PresentMode::AlwaysLatestComplete;
+    writeStats.progressive_tiles_copied = 4;
+    writeStats.progressive_rects_coalesced = 3;
+    writeStats.progressive_skip_seq_odd = 1;
+    writeStats.progressive_recopy_after_seq_change = 2;
+    writeStats.frame.frame_index = 21;
+    writeStats.frame.revision = 9;
+    writeStats.frame.render_ms = 6.25;
+    writeStats.error = "post-write-error";
+
+    PathWindowPresentPolicy writePolicy{};
+    writePolicy.mode = PathWindowView::PresentMode::AlwaysLatestComplete;
+    writePolicy.staleness_budget = std::chrono::milliseconds{12};
+    writePolicy.staleness_budget_ms_value = 12.0;
+    writePolicy.frame_timeout = std::chrono::milliseconds{24};
+    writePolicy.frame_timeout_ms_value = 24.0;
+    writePolicy.max_age_frames = 3;
+    writePolicy.auto_render_on_present = false;
+    writePolicy.vsync_align = false;
+    writePolicy.capture_framebuffer = true;
+
+    auto write = Diagnostics::WritePresentMetrics(fx.space,
+                                                  ConcretePathView{targetBase->getPath()},
+                                                  writeStats,
+                                                  writePolicy);
+    REQUIRE(write);
+
+    auto afterWrite = Diagnostics::ReadTargetMetrics(fx.space, ConcretePathView{targetBase->getPath()});
+    REQUIRE(afterWrite);
+    CHECK(afterWrite->frame_index == 21);
+    CHECK(afterWrite->revision == 9);
+    CHECK(afterWrite->render_ms == doctest::Approx(6.25));
+    CHECK(afterWrite->present_ms == doctest::Approx(8.75));
+    CHECK_FALSE(afterWrite->last_present_skipped);
+    CHECK(afterWrite->last_error == "post-write-error");
+
+    auto staleFlag = read_value<bool>(fx.space, common + "/stale");
+    REQUIRE(staleFlag);
+    CHECK(*staleFlag);
+
+    auto modeString = read_value<std::string>(fx.space, common + "/presentMode");
+    REQUIRE(modeString);
+    CHECK(*modeString == "AlwaysLatestComplete");
+
+    auto autoRender = read_value<bool>(fx.space, common + "/autoRenderOnPresent");
+    REQUIRE(autoRender);
+    CHECK_FALSE(*autoRender);
+
+    auto vsyncAlign = read_value<bool>(fx.space, common + "/vsyncAlign");
+    REQUIRE(vsyncAlign);
+    CHECK_FALSE(*vsyncAlign);
+
+    auto stalenessMs = read_value<double>(fx.space, common + "/stalenessBudgetMs");
+    REQUIRE(stalenessMs);
+    CHECK(*stalenessMs == doctest::Approx(12.0));
+
+    auto frameTimeoutMs = read_value<double>(fx.space, common + "/frameTimeoutMs");
+    REQUIRE(frameTimeoutMs);
+    CHECK(*frameTimeoutMs == doctest::Approx(24.0));
 }
 
 } // TEST_SUITE

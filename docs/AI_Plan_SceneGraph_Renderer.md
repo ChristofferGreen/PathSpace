@@ -241,6 +241,7 @@ Present policy (backend-aware)
     - frame_timeout_ms: float
     - vsync_align: bool
     - auto_render_on_present: bool
+    - capture_framebuffer: bool (default false; enable only for diagnostics/tests that need CPU-visible pixels)
 
 - Per-call overrides (Builders):
   - present_view(..., optional policyOverride, optional paramsOverride)
@@ -827,6 +828,7 @@ Device loss and recovery
 Observability
 - Per-frame metrics written to `output/v1/common/*`: `frameIndex`, `revision`, `renderMs`, `lastError`
 - Renderer diagnostics extend the same subtree with `opaqueSortViolations`, `alphaSortViolations`, `approxOpaquePixels`, `approxAlphaPixels`, `approxDrawablePixels`, `approxOverdrawFactor`, `progressiveTilesUpdated`, and `progressiveBytesCopied` so tooling can spot ordering regressions, overdraw spikes, and progressive-copy churn.
+- Renderer diagnostics extend the same subtree with `opaqueSortViolations`, `alphaSortViolations`, `approxOpaquePixels`, `approxAlphaPixels`, `approxDrawablePixels`, `approxOverdrawFactor`, `progressiveTilesUpdated`, and `progressiveBytesCopied` so tooling can spot ordering regressions, overdraw spikes, and progressive-copy churn. (2025-10-18: a richer tile/damage/fingerprint metric set was prototyped but rolled back after fullscreen perf regressed; reintroduce behind a perf-safe guard.)
 - Presenter metrics now include `presentMode`, `stalenessBudgetMs`, `frameTimeoutMs`, `maxAgeFrames`, `presentedAgeMs`, `presentedAgeFrames`, `stale`, `autoRenderOnPresent`, and `vsyncAlign` under `output/v1/common/*`, reflecting the resolved `present/policy` + `present/params` values for downstream tooling. Progressive copy diagnostics now also capture `progressiveTilesUpdated` + `progressiveBytesCopied`, matching renderer-side counters.
 - Optional GPU counters (backend-specific) may be exposed under a debug subtree for diagnostics; avoid mandatory dependencies on profiling APIs
 

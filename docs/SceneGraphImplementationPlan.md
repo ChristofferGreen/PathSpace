@@ -43,11 +43,11 @@ Each workstream lands independently but respects shared contracts (paths, atomic
 - ✅ (October 17, 2025) Added multi-target `Window::Present` scenarios to ensure renderer caches stay per-target: two surfaces backed by the same renderer now exercise independent frame indices, stored framebuffers, and progressive metrics through the builders API.
 - ✅ (October 17, 2025) Automated the AlwaysFresh/deadline regression by reusing the before-present hook to force buffered-frame drops, asserting the skip path (`lastPresentSkipped`, `presentedAge*`, `waitBudgetMs`) and guarding against unintended auto-render enqueues.
 - ✅ (October 17, 2025) Dirty hint buckets snap to progressive tile boundaries so `PATHSPACE_TRACE_DAMAGE=1` logs stay readable at 4K; doctests cover the presenter metrics emitted when hints restrict the damage region.
-- ⚠️ (October 17, 2025) **High priority:** Achieve FPS parity between small and 4K windows. Software renderer still drops to ~13 FPS at 3840×2160 because full-surface damage forces ~22 MB IOSurface copies every frame; `paint_example` can exhaust macOS IOSurface segments after long fullscreen runs. Required steps:
+- ⚠️ (October 17, 2025) **High priority:** Achieve FPS parity between small and 4K windows. Software renderer still drops to ~13 FPS at 3840×2160 because full-surface damage forces ~22 MB IOSurface copies every frame; `paint_example` can exhaust macOS IOSurface segments after long fullscreen runs. Required steps (2025-10-18: parity regained at 4K, but keep the item open while we harden the diagnostics tooling and confirm no regressions).
 - ✅ (October 17, 2025) Progressive tile fan-out now distributes work across all available CPU cores with a fixed 64 px tile size so incremental strokes remain ~140 FPS, and metrics continue to surface `progressiveTilesUpdated` / `progressiveBytesCopied`.
   - ✅ (October 17, 2025) Instrumented the fine-grained benchmark suite with per-phase timings (damage diff, encode, progressive copy, IOSurface publish, presenter present) to pinpoint 4 K full-clear hotspots; benchmark output now reports these averages.
   - 🔜 Harden `paint_example`: tighten dirty-rect hints, avoid idle full-surface publishes, and reuse IOSurface allocations so the demo runs indefinitely without exhausting the range group.
-  - ✅ (October 17, 2025) Skip redundant IOSurface-to-CPU copies after successful zero-copy presents so macOS paint_example no longer spends ~22 MB per frame memcpying pixels; fallback copies remain available behind the existing presenter logic.
+  - 🔜 Skip redundant IOSurface-to-CPU copies after successful zero-copy presents so macOS paint_example no longer spends ~22 MB per frame memcpying pixels; expose a debug knob for fallback copies instead.
   - 💤 (Optional) Add stroke-compositing to `paint_example` so successive brush strokes bake into a persistent texture (or coalesced drawable) rather than growing the snapshot unbounded; keeps long-running demos at steady FPS without exhausting IOSurface range groups.
 - For Phase 4 follow-ups, finish the broader end-to-end scene→render→present scenarios, expand presenter wiring through `Window::Present`, surface the remaining progressive-mode diagnostics, and rerun the loop harness once integrations land.
 - Begin Phase 5 test authoring for hit ordering, clip-aware picking, focus routing, and event delivery latency; follow with DrawableBucket-backed picking and wait/notify integration for dirty markers and auto-render scheduling.
@@ -60,8 +60,8 @@ Each workstream lands independently but respects shared contracts (paths, atomic
   - ✅ (October 17, 2025) SceneSnapshotBuilder fingerprints are derived from transforms/bounds/commands (drawable ids no longer influence the hash), so renaming a drawable without changing its content reuses the cached damage state.
   - ✅ (October 17, 2025) `paint_example` skips redundant publishes on resize-only frames and forwards brush dirty rectangles via the new renderer hint path, so dragging a 2560 px canvas keeps >55 FPS except while actively laying down fresh strokes.
 - Immediate next steps:
-  - Lock in the progressive tiling strategy: default tile size stays 64×64 px, which yields ~510 tiles at 1080p, ~920 tiles at 1440p, and ~2 040 tiles at 4K. The renderer will treat tiles as the unit of work and feed them into a per-core queue so an 8‑core CPU gets ~250 tiles for a 4K full repaint (≈32 per core), keeping the full-surface path viable at ≥60 Hz.
-  - Surface diagnostics around skipped tiles (damage rectangles, fingerprint match counts) so tooling can verify incremental behaviour without attaching a debugger.
+  - Lock in the progressive tiling strategy: default tile size stays 64×64 px, which yields ~510 tiles at 1080p, ~920 tiles at 1440p, and ~2 040 tiles at 4K. The renderer will treat tiles as the unit of work and feed them into a per-core queue so an 8‑core CPU gets ~250 tiles for a 4K full repaint (≈32 per core), keeping the full-surface path viable at ≥60 Hz. (2025-10-18: verified post-regression rollback; keep monitoring.)
+  - Surface diagnostics around skipped tiles (damage rectangles, fingerprint match counts) so tooling can verify incremental behaviour without attaching a debugger. (2025-10-18: first implementation regressed fullscreen FPS; metrics removed—revisit behind a developer flag and keep an eye on `out.log` for performance while iterating.)
 - Runtime targets:
   - Incremental updates should be the steady state: typical UI strokes touch only a handful of tiles, keeping frame cost well under the 16 ms (~60 Hz) budget.
   - Full-surface repaints remain first-class. Camera moves or scene-wide changes explicitly flip the damage region to `set_full()`, then PathRenderer2D fan-outs tiles across all CPU cores (tile-per-thread queue) so repainting a 4K surface still clears ≤16 ms once the inner loops are vectorized.
@@ -115,8 +115,8 @@ Completed:
 - ✅ (October 17, 2025) Added a minimal paint-style demo (`examples/paint_example.cpp`) that wires the scene→render→present stack together, supports dynamic canvas resizing, and interpolates mouse strokes so contributors can exercise the full software path end-to-end.
 - ✅ (October 16, 2025) macOS window presentation now uses a CAMetalLayer-backed Metal swapchain (IOSurface copies + present) instead of CoreGraphics blits; fullscreen perf is no longer CPU bound.
 
-Remaining:
-- Add fullscreen perf regression coverage in `PathSpaceUITests` to guard the CAMetalLayer path.
+Completed:
+- ✅ (October 18, 2025) Added fullscreen CAMetalLayer regression coverage in `PathSpaceUITests` and defaulted the presenter to zero-copy unless `capture_framebuffer` is explicitly enabled; perf regressions now fail under the UI harness.
 - (Done) IOSurface-backed software framebuffer landed with PathSurfaceSoftware/PathWindowView zero-copy integration; future work should iterate on diagnostics rather than copy elimination.
 
 ### Phase 5 — Input, Hit Testing, and Notifications (1 sprint)
@@ -126,7 +126,7 @@ Remaining:
 - Exercise the notification loops in the mandated test harness and document latency/ordering guarantees.
 
 ### Phase 6 — Diagnostics, Tooling, and Hardening (1 sprint)
-- Extend diagnostics-focused tests (error propagation, metrics publication) prior to implementation changes.
+- ✅ (October 18, 2025) Extended diagnostics coverage with unit tests that write/read present metrics (`Diagnostics::WritePresentMetrics`/`ReadTargetMetrics`) and verify error clearing; tooling now has regression coverage for metric persistence.
 - Normalize error reporting through `PathSpaceError`; surface last error + revision info.
 - Expand scripts/tests (`compile.sh`, CTest targets) to cover UI components and gather logs on failure.
 - Document debugging playbook (how to inspect metrics/errors) in `docs/` and re-run test loops to confirm.
