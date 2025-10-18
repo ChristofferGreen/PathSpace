@@ -19,6 +19,25 @@ task {
   ]
 }
 
+task {
+  name: "CAMetalLayer Range Group Reuse [PERF]"
+  description: "Reuse IOSurface instances during CAMetalLayer presents so extended UI sessions do not exhaust range groups."
+  status: completed
+  priority: P1
+
+  acceptance_criteria: [
+    "Presenter reuses a bounded IOSurface pool; no per-frame allocations during steady-state painting.",
+    "Long-duration paint_example runs show no 'Failed to allocate segment' errors.",
+    "Instrumentation gated behind PATHSPACE_DEBUG_IOSURFACE=1 captures resize/allocation events."
+  ]
+
+  steps: [
+    "Introduce a small IOSurface reuse pool in WindowEventPump, rotating through surfaces matching the current drawable size.",
+    "Ensure PathSurfaceSoftware only reallocates IOSurfaces when the size changes.",
+    "Add optional logging to confirm allocation behaviour during debugging runs."
+  ]
+}
+
   task {
     name: "Renderer Benchmarking [PERF]"
     description: "Instrument PathRenderer2D phases (damage diff, encode, progressive copy, IOSurface publish, presenter blit) and capture 4K vs small-surface timings; reuse the new benchmark harness for automation."
