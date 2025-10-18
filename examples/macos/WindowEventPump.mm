@@ -29,6 +29,8 @@ static int gFramebufferStride = 0;
 static IOSurfaceRef gPresentedIOSurface = nullptr;
 static int gIOSurfaceWidth = 0;
 static int gIOSurfaceHeight = 0;
+static std::vector<IOSurfaceRef> gIOSurfacePool;
+static std::size_t gIOSurfacePoolIndex = 0;
 static int gDesiredWindowWidth = 640;
 static int gDesiredWindowHeight = 360;
 static std::string gDesiredWindowTitle = "PathSpace Input Test";
@@ -155,11 +157,36 @@ static void ScheduleMetalPresent() {
                     gPresentedIOSurface = nullptr;
                     gIOSurfaceWidth = 0;
                     gIOSurfaceHeight = 0;
+                } else {
+                    auto const poolSize = gIOSurfacePool.size();
+                    if (poolSize > 0) {
+                        auto tryCount = poolSize;
+                        while (tryCount--) {
+                            auto idx = gIOSurfacePoolIndex % poolSize;
+                            IOSurfaceRef candidate = gIOSurfacePool[idx];
+                            gIOSurfacePoolIndex = (gIOSurfacePoolIndex + 1) % poolSize;
+                            if (!candidate) {
+                                continue;
+                            }
+                            auto candidateWidth = IOSurfaceGetWidth(candidate);
+                            auto candidateHeight = IOSurfaceGetHeight(candidate);
+                            if (candidateWidth == width && candidateHeight == height) {
+                                sharedSurface = candidate;
+                                iosWidth = candidateWidth;
+                                iosHeight = candidateHeight;
+                                gIOSurfacePool[idx] = nullptr;
+                                break;
+                            }
+                        }
+                    }
                 }
 #endif
             }
 
 #if defined(__APPLE__)
+            static NSUInteger gPresentCounter = 0;
+            static const NSUInteger kRecycleThreshold = 120; // ~2 seconds at 60 FPS
+
             if (sharedSurface && iosWidth > 0 && iosHeight > 0 && gMetalDevice) {
                 CGFloat scale = windowStrong.backingScaleFactor;
                 if (scale < (CGFloat)1.0) {
@@ -194,8 +221,20 @@ static void ScheduleMetalPresent() {
                         [blit endEncoding];
                         [commandBuffer presentDrawable:drawable];
                         [commandBuffer commit];
+                        gPresentCounter++;
+                        if (gPresentCounter >= kRecycleThreshold) {
+                            CFRelease(sharedSurface);
+                            gPresentCounter = 0;
+                        } else {
+                            std::lock_guard<std::mutex> lock(gFramebufferMutex);
+                            if (gPresentedIOSurface) {
+                                gIOSurfacePool.push_back(gPresentedIOSurface);
+                            }
+                            gPresentedIOSurface = sharedSurface;
+                            gIOSurfaceWidth = iosWidth;
+                            gIOSurfaceHeight = iosHeight;
+                        }
                         sourceTexture = nil;
-                        CFRelease(sharedSurface);
                         return;
                     }
                 }
@@ -625,7 +664,7 @@ void PSUpdateWindowFramebuffer(const std::uint8_t* data,
     {
         std::lock_guard<std::mutex> lock(gFramebufferMutex);
         if (gPresentedIOSurface) {
-            CFRelease(gPresentedIOSurface);
+            gIOSurfacePool.push_back(gPresentedIOSurface);
             gPresentedIOSurface = nullptr;
         }
         gFramebufferWidth = width;

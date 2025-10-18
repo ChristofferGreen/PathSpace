@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
+#include <iostream>
 #include <stdexcept>
 #include <utility>
 
@@ -64,6 +66,30 @@ auto align_to(std::int32_t value, std::int32_t alignment) -> std::int32_t {
 auto make_cf_number(std::int32_t value) -> CFNumberRef {
     return CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &value);
 }
+
+namespace {
+
+auto debug_iosurface_logging_enabled() -> bool {
+    static bool enabled = [] {
+        if (const char* env = std::getenv("PATHSPACE_DEBUG_IOSURFACE")) {
+            return std::strcmp(env, "0") != 0 && std::strcmp(env, "false") != 0;
+        }
+        return false;
+    }();
+    return enabled;
+}
+
+auto log_iosurface_event(char const* label, int width, int height) -> void {
+    if (!debug_iosurface_logging_enabled()) {
+        return;
+    }
+    std::cerr << "[PathSurfaceSoftware] " << label
+              << " w=" << width
+              << " h=" << height
+              << std::endl;
+}
+
+} // namespace
 
 auto make_iosurface(int width, int height) -> IOSurfaceRef {
     if (width <= 0 || height <= 0) {
@@ -574,7 +600,7 @@ void PathSurfaceSoftware::reallocate_buffers() {
                        * static_cast<std::size_t>(height) * kBytesPerPixel;
         row_stride_bytes_ = stride_for(desc_);
     } else {
-        auto reset_surface = [&](IOSurfaceHolder& holder) {
+        auto reset_surface = [&](IOSurfaceHolder& holder, char const* label) {
             auto* surface = holder.get();
             if (surface) {
                 auto surface_width = IOSurfaceGetWidth(surface);
@@ -582,14 +608,16 @@ void PathSurfaceSoftware::reallocate_buffers() {
                 if (surface_width != width || surface_height != height) {
                     holder.reset(make_iosurface(width, height));
                     zero_iosurface(holder.get(), height);
+                    log_iosurface_event(label, width, height);
                 }
             } else {
                 holder.reset(make_iosurface(width, height));
                 zero_iosurface(holder.get(), height);
+                log_iosurface_event(label, width, height);
             }
         };
-        reset_surface(staging_surface_);
-        reset_surface(front_surface_);
+        reset_surface(staging_surface_, "stagingReset");
+        reset_surface(front_surface_, "frontReset");
         if (auto* s = staging_surface_.get()) {
             row_stride_bytes_ = IOSurfaceGetBytesPerRow(s);
             frame_bytes_ = iosurface_span_size(s, height);
