@@ -351,102 +351,120 @@ fi
 
 # Friendly pointers
 if [[ -d "$BUILD_DIR/tests" ]]; then
-  TEST_EXE="$BUILD_DIR/tests/PathSpaceTests"
-  if [[ -x "$TEST_EXE" ]]; then
-    info "Test executable: $TEST_EXE"
-    if [[ "$TEST" -eq 1 ]]; then
-      if [[ "$LOOP" -gt 0 ]]; then
-        COUNT="$LOOP"
-        info "Running tests in a loop ($COUNT iterations)..."
-        export PATHSPACE_TEST_TIMEOUT="${PATHSPACE_TEST_TIMEOUT:-1}"
-        # Reduce VM pressure in massive thread creation scenarios
-        export MallocNanoZone=${MallocNanoZone:-0}
-        # Optional: enable core dumps/backtraces for debugging crashes
-        if [[ "${PATHSPACE_ENABLE_CORES:-0}" == "1" ]]; then
-          # Best-effort: increase core dump size on systems that support ulimit -c
-          (ulimit -c unlimited) 2>/dev/null || true
-          export ASAN_OPTIONS="${ASAN_OPTIONS:-} detect_leaks=0 fast_unwind_on_malloc=0 symbolize=1"
-          export UBSAN_OPTIONS="${UBSAN_OPTIONS:-} print_stacktrace=1 halt_on_error=1"
-        fi
-        for i in $(seq 1 "$COUNT"); do
-          info "Loop $i/$COUNT: starting"
-          if [[ "${USE_CLI_TIMEOUT:-0}" == "1" ]] && command -v timeout >/dev/null 2>&1; then
-            timeout "${PER_TEST_TIMEOUT}s" "$TEST_EXE" ${EXTRA_ARGS}
+  TEST_RUNNER="$ROOT_DIR/scripts/run-test-with-logs.sh"
+  CORE_TEST_EXE="$BUILD_DIR/tests/PathSpaceTests"
+  UI_TEST_EXE="$BUILD_DIR/tests/PathSpaceUITests"
+
+  if [[ -x "$CORE_TEST_EXE" ]]; then
+    info "Test executable: $CORE_TEST_EXE"
+  fi
+  if [[ -x "$UI_TEST_EXE" ]]; then
+    info "UI test executable: $UI_TEST_EXE"
+  else
+    info "UI test executable: not found (will skip PathSpaceUITests unless built)."
+  fi
+
+  if [[ "$TEST" -eq 1 ]]; then
+    if [[ ! -x "$TEST_RUNNER" ]]; then
+      die "Test runner helper not executable: $TEST_RUNNER"
+    fi
+    if [[ ! -x "$CORE_TEST_EXE" ]]; then
+      die "Test executable not found or not executable: $CORE_TEST_EXE"
+    fi
+
+    TEST_PATHS=("$CORE_TEST_EXE")
+    TEST_NAMES=("PathSpaceTests")
+    if [[ -x "$UI_TEST_EXE" ]]; then
+      TEST_PATHS+=("$UI_TEST_EXE")
+      TEST_NAMES+=("PathSpaceUITests")
+    fi
+
+    TEST_LOG_DIR="$BUILD_DIR/test-logs"
+    mkdir -p "$TEST_LOG_DIR"
+
+    if [[ -n "$EXTRA_ARGS" ]]; then
+      IFS=' ' read -r -a EXTRA_ARGS_ARRAY <<< "$EXTRA_ARGS"
+    else
+      EXTRA_ARGS_ARRAY=()
+    fi
+
+    PATHSPACE_TEST_TIMEOUT_VALUE="${PATHSPACE_TEST_TIMEOUT:-1}"
+    MALLOC_NANO_ZONE_VALUE="${MallocNanoZone:-0}"
+    PATHSPACE_LOG_VALUE="${PATHSPACE_LOG:-1}"
+
+    TEST_ENV_FLAGS=(
+      "--env" "PATHSPACE_LOG=${PATHSPACE_LOG_VALUE}"
+      "--env" "PATHSPACE_TEST_TIMEOUT=${PATHSPACE_TEST_TIMEOUT_VALUE}"
+      "--env" "MallocNanoZone=${MALLOC_NANO_ZONE_VALUE}"
+    )
+
+    # Optional: enable core dumps/backtraces for debugging crashes
+    if [[ "${PATHSPACE_ENABLE_CORES:-0}" == "1" ]]; then
+      (ulimit -c unlimited) 2>/dev/null || true
+      export ASAN_OPTIONS="${ASAN_OPTIONS:-} detect_leaks=0 fast_unwind_on_malloc=0 symbolize=1"
+      export UBSAN_OPTIONS="${UBSAN_OPTIONS:-} print_stacktrace=1 halt_on_error=1"
+    fi
+
+    export USE_CLI_TIMEOUT="${USE_CLI_TIMEOUT:-0}"
+
+    run_test_binary() {
+      local exe_path="$1"
+      local display_name="$2"
+      local iteration="$3"
+      local total="$4"
+
+      local args=("$TEST_RUNNER" "--label" "$display_name" "--log-dir" "$TEST_LOG_DIR" "--timeout" "$PER_TEST_TIMEOUT")
+      if [[ -n "$iteration" && -n "$total" && "$total" -gt 0 ]]; then
+        args+=("--iteration" "$iteration" "--iterations" "$total")
+      fi
+      args+=("${TEST_ENV_FLAGS[@]}")
+      args+=("--")
+      args+=("$exe_path")
+      if [[ ${#EXTRA_ARGS_ARRAY[@]} -gt 0 ]]; then
+        args+=("${EXTRA_ARGS_ARRAY[@]}")
+      fi
+
+      "${args[@]}"
+      return $?
+    }
+
+    if [[ "$LOOP" -gt 0 ]]; then
+      COUNT="$LOOP"
+      info "Running tests in a loop ($COUNT iterations)..."
+      for i in $(seq 1 "$COUNT"); do
+        info "Loop $i/$COUNT: starting"
+        for idx in "${!TEST_PATHS[@]}"; do
+          name="${TEST_NAMES[$idx]}"
+          path="${TEST_PATHS[$idx]}"
+          info "  Running ${name}..."
+          if ! run_test_binary "$path" "$name" "$i" "$COUNT"; then
             RC=$?
-          else
-            # Fallback manual timeout if 'timeout' is not available
-            "$TEST_EXE" ${EXTRA_ARGS} & pid=$!
-            SECS=0
-            while kill -0 "$pid" 2>/dev/null; do
-              sleep 1
-              SECS=$((SECS+1))
-              if [[ $SECS -ge $PER_TEST_TIMEOUT ]]; then
-                echo "Error: tests timed out after ${PER_TEST_TIMEOUT} seconds"
-                kill -TERM "$pid" 2>/dev/null || true
-                wait "$pid" 2>/dev/null || true
-                RC=124
-                break
-              fi
-            done
-            if [[ -z "${RC:-}" ]]; then
-              wait "$pid"
-              RC=$?
+            if [[ $RC -eq 124 ]]; then
+              die "Loop $i failed (${name} timed out after ${PER_TEST_TIMEOUT} seconds)"
+            else
+              die "Loop $i failed (${name} exit code $RC)"
             fi
-          fi
-          if [[ $RC -eq 0 ]]; then
-            info "Loop $i/$COUNT: passed"
-          elif [[ $RC -eq 124 ]]; then
-            die "Loop $i failed (timeout after ${PER_TEST_TIMEOUT} seconds)"
-          else
-            die "Loop $i failed (non-zero exit code $RC)"
           fi
         done
-        info "All $COUNT iterations passed."
-      else
-        info "Running tests..."
-        export PATHSPACE_TEST_TIMEOUT="${PATHSPACE_TEST_TIMEOUT:-1}"
-        # Reduce VM pressure in massive thread creation scenarios
-        export MallocNanoZone=${MallocNanoZone:-0}
-        # Optional: enable core dumps/backtraces for debugging crashes
-        if [[ "${PATHSPACE_ENABLE_CORES:-0}" == "1" ]]; then
-          (ulimit -c unlimited) 2>/dev/null || true
-          export ASAN_OPTIONS="${ASAN_OPTIONS:-} detect_leaks=0 fast_unwind_on_malloc=0 symbolize=1"
-          export UBSAN_OPTIONS="${UBSAN_OPTIONS:-} print_stacktrace=1 halt_on_error=1"
-        fi
-        if [[ "${USE_CLI_TIMEOUT:-0}" == "1" ]] && command -v timeout >/dev/null 2>&1; then
-          timeout "${PER_TEST_TIMEOUT}s" "$TEST_EXE" ${EXTRA_ARGS}
+        info "Loop $i/$COUNT: passed"
+      done
+      info "All $COUNT iterations passed."
+    else
+      for idx in "${!TEST_PATHS[@]}"; do
+        name="${TEST_NAMES[$idx]}"
+        path="${TEST_PATHS[$idx]}"
+        info "Running ${name}..."
+        if ! run_test_binary "$path" "$name" "" ""; then
           RC=$?
-        else
-          # Fallback manual timeout if 'timeout' is not available
-          "$TEST_EXE" ${EXTRA_ARGS} & pid=$!
-          SECS=0
-          while kill -0 "$pid" 2>/dev/null; do
-            sleep 1
-            SECS=$((SECS+1))
-            if [[ $SECS -ge $PER_TEST_TIMEOUT ]]; then
-              echo "Error: tests timed out after ${PER_TEST_TIMEOUT} seconds"
-              kill -TERM "$pid" 2>/dev/null || true
-              wait "$pid" 2>/dev/null || true
-              RC=124
-              break
-            fi
-          done
-          if [[ -z "${RC:-}" ]]; then
-            wait "$pid"
-            RC=$?
+          if [[ $RC -eq 124 ]]; then
+            die "${name} timed out after ${PER_TEST_TIMEOUT} seconds"
+          else
+            die "${name} failed with exit code $RC"
           fi
         fi
-        if [[ $RC -eq 0 ]]; then
-          info "Tests completed successfully."
-        elif [[ $RC -eq 124 ]]; then
-          die "Tests timed out after ${PER_TEST_TIMEOUT} seconds"
-        else
-          die "Tests failed with exit code $RC"
-        fi
-      fi
+      done
+      info "Tests completed successfully."
     fi
-  elif [[ "$TEST" -eq 1 ]]; then
-    die "Test executable not found or not executable: $TEST_EXE"
   fi
 elif [[ "$TEST" -eq 1 ]]; then
   die "Tests directory not found: $BUILD_DIR/tests"

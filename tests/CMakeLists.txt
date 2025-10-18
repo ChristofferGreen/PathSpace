@@ -70,11 +70,39 @@ target_link_libraries(PathSpaceTests
 )
 
 include(CTest)
-add_test(NAME PathSpaceTests COMMAND PathSpaceTests)
+
+set(PATHSPACE_TEST_RUNNER "${CMAKE_SOURCE_DIR}/scripts/run-test-with-logs.sh")
+if(NOT EXISTS "${PATHSPACE_TEST_RUNNER}")
+  message(FATAL_ERROR "Test runner script missing: ${PATHSPACE_TEST_RUNNER}")
+endif()
+
+set(PATHSPACE_TEST_LOG_DIR "$<SHELL_PATH:${CMAKE_BINARY_DIR}/test-logs>")
+
+add_test(NAME PathSpaceTests
+  COMMAND "${PATHSPACE_TEST_RUNNER}"
+          --label PathSpaceTests
+          --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+          --timeout 120
+          --env PATHSPACE_LOG=1
+          --env PATHSPACE_TEST_TIMEOUT=1
+          --env MallocNanoZone=0
+          --
+          "$<TARGET_FILE:PathSpaceTests>"
+)
 
 set_tests_properties(PathSpaceTests PROPERTIES LABELS core)
 
 if(PATHSPACE_ENABLE_UI)
-  add_test(NAME PathSpaceUITests COMMAND PathSpaceUITests)
+  add_test(NAME PathSpaceUITests
+    COMMAND "${PATHSPACE_TEST_RUNNER}"
+            --label PathSpaceUITests
+            --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+            --timeout 120
+            --env PATHSPACE_LOG=1
+            --env PATHSPACE_TEST_TIMEOUT=1
+            --env MallocNanoZone=0
+            --
+            "$<TARGET_FILE:PathSpaceUITests>"
+  )
   set_tests_properties(PathSpaceUITests PROPERTIES LABELS ui)
 endif()
