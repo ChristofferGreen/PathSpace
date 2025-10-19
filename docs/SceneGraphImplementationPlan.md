@@ -190,11 +190,11 @@ Completed:
      - Provide doctest coverage that compares software framebuffer vs. adapter DOM/Canvas render using golden expectations.
   4. **Builder integration**
      - ✅ (October 19, 2025) Renderer targets now emit HTML outputs under `output/v1/html/{dom,css,commands,assets}` using the adapter and persist the applied options.
-     - Add present pipeline hooks for HTML targets (always latest complete) and diagnostics/errors surfaces.
+     - TODO: Add present pipeline hooks for HTML targets (always latest complete) and diagnostics/errors surfaces.
   5. **Tooling & CI**
-     - Add headless verification step (e.g., Node/JS or WebKit snapshot) in CI to catch regressions; skip gracefully when tooling absent.
+     - TODO: Add headless verification step (e.g., Node/JS or WebKit snapshot) in CI to catch regressions; skip gracefully when tooling absent.
   6. **Documentation**
-     - Update HTML adapter decision section with fidelity tiers, options, and troubleshooting guidance once implementation lands.
+     - TODO: Update HTML adapter decision section with fidelity tiers, options, and troubleshooting guidance once implementation lands.
 - Resource loader integration for fonts/images when snapshots require them.
 
 ### Phase 8 — Widget Toolkit & Interaction Surfaces (post-MVP)

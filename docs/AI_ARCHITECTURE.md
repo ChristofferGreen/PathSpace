@@ -20,6 +20,7 @@ Present policy (backend-aware) and the software progressive present are document
 See also:
 - `docs/AI_Plan_SceneGraph_Renderer.md` for the broader rendering plan and target I/O layout. If snapshot semantics change, update both documents in the same PR per `.rules`.
  - `docs/AI_PATHS.md` for the canonical path namespaces and layout conventions; update it alongside changes to path usage and target I/O layout.
+- HTML render targets now persist adapter output under `renderers/<rid>/targets/html/<name>/output/v1/html/{dom,css,commands,assets,mode,usedCanvasFallback}`; see `Html::Adapter` for the serialization rules and SceneGraph plan Phase 7 for outstanding replay/CI work.
 
 
 ## Contributing to PathSpace
