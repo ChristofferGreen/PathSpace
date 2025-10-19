@@ -588,6 +588,118 @@ auto copy_progressive_tiles(std::span<std::size_t const> tile_indices,
     return stats;
 }
 
+auto encode_pixel(float const* linear_premul,
+                  Builders::SurfaceDesc const& desc,
+                  bool encode_srgb) -> std::array<std::uint8_t, 4>;
+
+struct EncodeJob {
+    int min_x = 0;
+    int max_x = 0;
+    int start_y = 0;
+    int end_y = 0;
+
+    [[nodiscard]] auto empty() const -> bool {
+        return min_x >= max_x || start_y >= end_y;
+    }
+};
+
+struct EncodeContext {
+    std::uint8_t* staging = nullptr;
+    std::size_t row_stride_bytes = 0;
+    float const* linear = nullptr;
+    int width = 0;
+    int height = 0;
+    Builders::SurfaceDesc const* desc = nullptr;
+    bool encode_srgb = false;
+    bool is_bgra = false;
+};
+
+void encode_rows(EncodeJob const& job, EncodeContext const& ctx) {
+    if (job.empty() || !ctx.staging || !ctx.linear || !ctx.desc || ctx.width <= 0 || ctx.height <= 0) {
+        return;
+    }
+    auto const& desc = *ctx.desc;
+    auto const width_u = static_cast<std::size_t>(ctx.width);
+    for (int row = job.start_y; row < job.end_y; ++row) {
+        if (row < 0 || row >= ctx.height) {
+            continue;
+        }
+        auto* row_ptr = ctx.staging + static_cast<std::size_t>(row) * ctx.row_stride_bytes;
+        auto const* linear_row = ctx.linear + static_cast<std::size_t>(row) * width_u * 4u;
+        for (int col = job.min_x; col < job.max_x; ++col) {
+            if (col < 0 || col >= ctx.width) {
+                continue;
+            }
+            auto pixel_index = static_cast<std::size_t>(col) * 4u;
+            auto encoded = encode_pixel(linear_row + pixel_index, desc, ctx.encode_srgb);
+            auto offset = static_cast<std::size_t>(col) * 4u;
+            if (ctx.is_bgra) {
+                row_ptr[offset + 0] = encoded[2];
+                row_ptr[offset + 1] = encoded[1];
+                row_ptr[offset + 2] = encoded[0];
+            } else {
+                row_ptr[offset + 0] = encoded[0];
+                row_ptr[offset + 1] = encoded[1];
+                row_ptr[offset + 2] = encoded[2];
+            }
+            row_ptr[offset + 3] = encoded[3];
+        }
+    }
+}
+
+void run_encode_jobs(std::span<EncodeJob const> jobs, EncodeContext const& ctx) {
+    if (jobs.empty()) {
+        return;
+    }
+
+    auto const hardware = std::max(1u, std::thread::hardware_concurrency());
+    std::size_t worker_count = std::min<std::size_t>(jobs.size(),
+                                                     static_cast<std::size_t>(hardware));
+    constexpr std::size_t kMinJobsPerWorker = 4;
+    if (worker_count <= 1 || (jobs.size() / worker_count) < kMinJobsPerWorker) {
+        for (auto const& job : jobs) {
+            encode_rows(job, ctx);
+        }
+        return;
+    }
+
+    std::atomic<std::size_t> next{0};
+    std::exception_ptr error;
+    std::mutex error_mutex;
+
+    auto worker = [&]() {
+        try {
+            while (true) {
+                auto idx = next.fetch_add(1, std::memory_order_relaxed);
+                if (idx >= jobs.size()) {
+                    break;
+                }
+                encode_rows(jobs[idx], ctx);
+            }
+        } catch (...) {
+            std::lock_guard<std::mutex> lock{error_mutex};
+            if (!error) {
+                error = std::current_exception();
+            }
+        }
+    };
+
+    std::vector<std::thread> threads;
+    threads.reserve(worker_count);
+    for (std::size_t i = 0; i < worker_count; ++i) {
+        threads.emplace_back(worker);
+    }
+    for (auto& t : threads) {
+        if (t.joinable()) {
+            t.join();
+        }
+    }
+
+    if (error) {
+        std::rethrow_exception(error);
+    }
+}
+
 auto choose_progressive_tile_size(int width,
                                   int height,
                                   DamageRegion const& damage,
@@ -2157,27 +2269,89 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     auto const encode_srgb = needs_srgb_encode(desc);
     if (has_damage) {
         auto const encode_start = std::chrono::steady_clock::now();
-        for (auto const& rect : damage.rectangles()) {
-            for (int row = rect.min_y; row < rect.max_y; ++row) {
-                auto* row_ptr = staging.data() + static_cast<std::size_t>(row) * stride;
-                auto* linear_row = linear_buffer.data() + static_cast<std::size_t>(row) * static_cast<std::size_t>(width) * 4u;
-                for (int col = rect.min_x; col < rect.max_x; ++col) {
-                    auto pixel_index = static_cast<std::size_t>(col) * 4u;
-                    auto encoded = encode_pixel(linear_row + pixel_index, desc, encode_srgb);
-                    auto offset = static_cast<std::size_t>(col) * 4u;
-                    if (is_bgra) {
-                        row_ptr[offset + 0] = encoded[2];
-                        row_ptr[offset + 1] = encoded[1];
-                        row_ptr[offset + 2] = encoded[0];
-                    } else {
-                        row_ptr[offset + 0] = encoded[0];
-                        row_ptr[offset + 1] = encoded[1];
-                        row_ptr[offset + 2] = encoded[2];
+        std::vector<EncodeJob> encode_jobs;
+        encode_jobs.reserve(std::max<std::size_t>(damage.rectangles().size(),
+                                                  progressive_dirty_tiles.size()));
+
+        auto clamp_x = [&](int value) {
+            return std::clamp(value, 0, width);
+        };
+        auto clamp_y = [&](int value) {
+            return std::clamp(value, 0, height);
+        };
+
+        if (progressive_buffer && !progressive_dirty_tiles.empty()) {
+            for (auto tile_index : progressive_dirty_tiles) {
+                auto dims = progressive_buffer->tile_dimensions(tile_index);
+                if (dims.width <= 0 || dims.height <= 0) {
+                    continue;
+                }
+                int min_x = clamp_x(dims.x);
+                int max_x = clamp_x(dims.x + dims.width);
+                int start_y = clamp_y(dims.y);
+                int end_y = clamp_y(dims.y + dims.height);
+                EncodeJob job{
+                    .min_x = min_x,
+                    .max_x = max_x,
+                    .start_y = start_y,
+                    .end_y = end_y,
+                };
+                if (!job.empty()) {
+                    encode_jobs.push_back(job);
+                }
+            }
+        } else {
+            constexpr int kEncodeRowChunk = 64;
+            for (auto const& rect : damage.rectangles()) {
+                int min_x = clamp_x(rect.min_x);
+                int max_x = clamp_x(rect.max_x);
+                if (max_x <= min_x) {
+                    continue;
+                }
+                int start_y = clamp_y(rect.min_y);
+                int end_y = clamp_y(rect.max_y);
+                if (end_y <= start_y) {
+                    continue;
+                }
+                int row = start_y;
+                while (row < end_y) {
+                    int chunk_end = std::min(row + kEncodeRowChunk, end_y);
+                    EncodeJob job{
+                        .min_x = min_x,
+                        .max_x = max_x,
+                        .start_y = row,
+                        .end_y = chunk_end,
+                    };
+                    if (!job.empty()) {
+                        encode_jobs.push_back(job);
                     }
-                    row_ptr[offset + 3] = encoded[3];
+                    row = chunk_end;
                 }
             }
         }
+
+        EncodeContext encode_ctx{
+            .staging = staging.data(),
+            .row_stride_bytes = stride,
+            .linear = linear_buffer.data(),
+            .width = width,
+            .height = height,
+            .desc = &desc,
+            .encode_srgb = encode_srgb,
+            .is_bgra = is_bgra,
+        };
+
+        if (!encode_jobs.empty()) {
+            try {
+                run_encode_jobs(std::span<EncodeJob const>{encode_jobs.data(), encode_jobs.size()},
+                                encode_ctx);
+            } catch (std::exception const& ex) {
+                auto message = std::string{"failed to encode surface pixels: "} + ex.what();
+                (void)set_last_error(space_, params.target_path, message);
+                return std::unexpected(make_error(std::move(message), SP::Error::Code::UnknownError));
+            }
+        }
+
         auto const encode_end = std::chrono::steady_clock::now();
         encode_ms = std::chrono::duration<double, std::milli>(encode_end - encode_start).count();
     }

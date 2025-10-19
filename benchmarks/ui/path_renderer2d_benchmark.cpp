@@ -8,6 +8,7 @@
 #include <pathspace/ui/DrawCommands.hpp>
 #include <path/UnvalidatedPath.hpp>
 
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -22,6 +23,7 @@
 #include <string>
 #include <string_view>
 #include <span>
+#include <optional>
 #include <vector>
 
 using namespace SP;
@@ -276,13 +278,64 @@ auto format_result(std::vector<FrameMetrics> const& frames) -> std::string {
     return oss.str();
 }
 
+auto parse_int(std::string_view value) -> std::optional<int> {
+    int result = 0;
+    auto const* begin = value.data();
+    auto const* end = value.data() + value.size();
+    auto [ptr, ec] = std::from_chars(begin, end, result);
+    if (ec != std::errc{} || ptr != end) {
+        return std::nullopt;
+    }
+    return result;
+}
+
+void print_usage(char const* program) {
+    std::cout << "Usage: " << program << " [--canvas=WIDTHxHEIGHT]" << std::endl;
+    std::cout << "  --canvas   Set canvas dimensions (default 3840x2160)" << std::endl;
+}
+
 } // namespace
 
-int main() try {
-    constexpr int canvas_width = 3840;
-    constexpr int canvas_height = 2160;
+int main(int argc, char** argv) try {
+    int canvas_width = 3840;
+    int canvas_height = 2160;
     constexpr int brush_size = 64;
     constexpr int incremental_frames = 48;
+
+    for (int i = 1; i < argc; ++i) {
+        std::string_view arg{argv[i]};
+        if (arg == "--help" || arg == "-h") {
+            print_usage(argv[0]);
+            return 0;
+        }
+        if (arg.rfind("--canvas=", 0) == 0) {
+            auto dims = arg.substr(std::string_view{"--canvas="}.size());
+            auto sep = dims.find('x');
+            if (sep == std::string_view::npos) {
+                std::cerr << "invalid canvas argument (expected WIDTHxHEIGHT)" << std::endl;
+                return 1;
+            }
+            auto width_sv = dims.substr(0, sep);
+            auto height_sv = dims.substr(sep + 1);
+            auto width = parse_int(width_sv);
+            auto height = parse_int(height_sv);
+            if (!width || !height || *width <= 0 || *height <= 0) {
+                std::cerr << "invalid canvas dimensions: " << dims << std::endl;
+                return 1;
+            }
+            canvas_width = *width;
+            canvas_height = *height;
+            continue;
+        }
+        std::cerr << "unknown argument: " << arg << std::endl;
+        print_usage(argv[0]);
+        return 1;
+    }
+
+    if (canvas_width <= brush_size || canvas_height <= brush_size) {
+        std::cerr << "canvas must be larger than brush size (" << brush_size << "px)" << std::endl;
+        return 1;
+    }
 
     PathSpace space;
     SP::App::AppRootPath app_root{"/system/applications/bench_app"};
