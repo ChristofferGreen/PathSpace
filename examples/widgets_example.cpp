@@ -10,7 +10,7 @@ int main() {
     using namespace SP::UI::Builders;
 
     PathSpace space;
-    AppRootPath appRoot{"/system/applications/widgets_demo"};
+    AppRootPath appRoot{"/system/applications/widgets_example"};
 
     Widgets::ButtonParams primary{};
     primary.name = "primary";
@@ -34,7 +34,7 @@ int main() {
         return 2;
     }
 
-    std::cout << "widgets_demo published button widget:\n"
+    std::cout << "widgets_example published button widget:\n"
               << "  scene: " << button->scene.getPath() << " (revision "
               << buttonRevision->revision << ")\n"
               << "  state path: " << button->state.getPath() << "\n"
@@ -68,7 +68,7 @@ int main() {
         return 5;
     }
 
-    std::cout << "widgets_demo published toggle widget:\n"
+    std::cout << "widgets_example published toggle widget:\n"
               << "  scene: " << toggle->scene.getPath() << " (revision "
               << toggleRevision->revision << ")\n"
               << "  state path: " << toggle->state.getPath() << "\n"

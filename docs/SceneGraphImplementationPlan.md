@@ -208,7 +208,8 @@ Completed:
 - **Objective:** ship reusable UI widgets (button, toggle, slider, list) that sit on top of the existing scene/render/present stack while reusing PathSpace paths for state and events.
 - **Scene authoring**
   - Define canonical widget scene snippets under `scenes/widgets/<widget>/` with snapshot builders that emit visual states (idle, hover, pressed, disabled).
-  - ✅ (October 19, 2025) Added lightweight builders for buttons and toggles (`Builders::Widgets::CreateButton`, `CreateToggle`) that publish authoring data, bind to app-relative state paths, and express layout metadata (bounds, z-order).
+- ✅ (October 19, 2025) Added lightweight builders for buttons and toggles (`Builders::Widgets::CreateButton`, `CreateToggle`) that publish authoring data, bind to app-relative state paths, and express layout metadata (bounds, z-order).
+- Add a reusable stroke primitive (polyline/triangle strip) so paint examples track a point list per stroke instead of emitting per-dab rects; update renderer + HTML adapter to consume the new command once landed.
   - Provide styling hooks (colors, corner radius, typography) so demos can skin widgets without forking scenes.
 - **Interaction contract**
   - Wrap Phase 5 hit-test data into a widget interaction API that normalizes hover/press/release and routes to app-defined `ops/` inbox paths.
@@ -222,7 +223,7 @@ Completed:
   - Extend `PathSpaceUITests` with golden snapshots and interaction sequences for each widget (hover, press, disabled) using the 15× loop to guard against race regressions.
   - Add doctest coverage for the binding helpers to confirm dirty-hint emission, focus routing, and auto-render scheduling.
 - **Tooling & docs**
-  - ✅ (October 19, 2025) Expanded `examples/widgets_demo.cpp` to publish button + toggle widgets and demonstrate state updates; grow into a full gallery as additional widgets land.
+  - ✅ (October 19, 2025) Expanded `examples/widgets_example.cpp` to publish button + toggle widgets and demonstrate state updates; grow into a full gallery as additional widgets land.
   - Expand the demo to cover sliders, lists, and interaction telemetry alongside FPS diagnostics and the zero-copy presenter path so contributors can exercise the full toolkit in one app.
   - Update `docs/AI_Plan_SceneGraph_Renderer.md` and `docs/AI_ARCHITECTURE.md` with widget path conventions, builder usage, and troubleshooting steps.
   - Capture authoring guidelines in `docs/SceneGraphImplementationPlan.md`'s appendix so contributors can add new widgets consistently.

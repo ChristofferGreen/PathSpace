@@ -10,13 +10,13 @@ task {
   acceptance_criteria: [
     "Builders::Widgets::CreateSlider and CreateList publish canonical scenes under scenes/widgets/<name> with styling hooks and per-widget state paths (value selections, enabled flags).",
     "Widgets::UpdateSliderState / UpdateListState coalesce redundant writes and mark owning scenes DirtyKind::Visual when values change.",
-    "Unit tests cover builder outputs, default state, and update helpers; widgets_demo showcases both new widgets."
+    "Unit tests cover builder outputs, default state, and update helpers; widgets_example showcases both new widgets."
   ]
 
   steps: [
     "Author DrawableBucket snapshots for slider track/thumb and list rows (including selection highlighting).",
     "Add style/state structs mirroring button/toggle conventions.",
-    "Update widgets_demo to instantiate the new widgets pending the gallery expansion task."
+    "Update widgets_example to instantiate the new widgets pending the gallery expansion task."
   ]
 }
 
@@ -40,13 +40,32 @@ task {
 }
 
 task {
-  name: "Widgets Demo Gallery [DOCS]"
-  description: "Promote examples/widgets_demo.cpp into a full widget gallery that opens a PathWindowView, renders all widgets, and documents interaction diagnostics."
+  name: "App Builder Defaults [DX]"
+  description: "Provide helper APIs that scaffold a minimal PathSpace application (renderer, surface, window bindings) to reduce boilerplate in examples/tests."
   status: planned
   priority: P2
 
   acceptance_criteria: [
-    "widgets_demo wires published widget scenes into a renderer target + window, rendering button/toggle/slider/list states in a single app.",
+    "New helper(s) create a renderer + surface + window wiring with sensible defaults (software backend, AlwaysLatestComplete policy) given an app root and scene path.",
+    "Examples/widgets_example.cpp (or successor) consumes the helper to keep demo code concise.",
+    "Documentation explains how to override defaults (e.g., Metal enablement, HTML targets)."
+  ]
+
+  steps: [
+    "Design a small builder in Builders::App (or similar) that validates app roots, creates renderer/surface/window, and returns typed handles.",
+    "Add unit coverage ensuring the helper configures desc/settings consistently with existing manual setup.",
+    "Update docs/AI_Onboarding_Next.md to reference the helper for new contributors." 
+  ]
+}
+
+task {
+  name: "Widgets Demo Gallery [DOCS]"
+  description: "Promote examples/widgets_example.cpp into a full widget gallery that opens a PathWindowView, renders all widgets, and documents interaction diagnostics."
+  status: planned
+  priority: P2
+
+  acceptance_criteria: [
+    "widgets_example wires published widget scenes into a renderer target + window, rendering button/toggle/slider/list states in a single app.",
     "CLI continues to print widget paths while also opening the window when PATHSPACE_ENABLE_UI is ON.",
     "README-style instructions embedded in the demo (or docs) explain how to run the gallery and inspect widget state updates."
   ]
@@ -54,7 +73,7 @@ task {
   steps: [
     "Attach widget scenes to a software renderer target and present via PathWindowView.",
     "Add command-line flag or env toggle to skip the window when running in headless/test contexts.",
-    "Update docs/SceneGraphImplementationPlan.md and widgets_demo comments with run instructions and follow-ups."
+    "Update docs/SceneGraphImplementationPlan.md and widgets_example comments with run instructions and follow-ups."
   ]
 }
 
