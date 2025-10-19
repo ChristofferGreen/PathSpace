@@ -48,6 +48,7 @@ if(PATHSPACE_ENABLE_UI)
     ui/test_ProgressiveSurfaceBuffer.cpp
     ui/test_PathSurfaceSoftware.cpp
     ui/test_PathRenderer2D.cpp
+    ui/test_HtmlAdapter.cpp
     ui/test_SceneHitTest.cpp
     ui/test_PathWindowView.cpp
     ui/test_BackendAdapters.cpp

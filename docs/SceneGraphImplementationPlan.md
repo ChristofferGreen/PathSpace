@@ -180,10 +180,10 @@ Completed:
 - **Next hand-off focus (October 19, 2025):** lock down shader/material parity (shared descriptors, telemetry) before enabling GPU shading, keep CAMetalLayer presents stable, and wire the residency/cache metrics into dashboards/CI so GPU runs validate resource limits automatically.
 - HTML adapter scaffolding (command stream emitter + replay harness) behind experimental flag. **Implementation plan map (Oct 18, 2025):**
   1. **Adapter core API**
-     - Define `Html::Adapter` emit API (DOM/CSS/canvas/assets) and persist options in `Builders` metadata.
-     - Ensure snapshot traversal supplies drawable buckets + fingerprints to the adapter.
+     - ✅ (October 19, 2025) `Html::Adapter::emit` now produces DOM/CSS/canvas outputs and honours emit options.
+     - ✅ (October 19, 2025) Snapshot traversal supplies drawable buckets and fingerprints directly to the adapter.
   2. **Command stream emitter**
-     - Implement DOM serializer (respect max node budget, clip handling) and Canvas JSON fallback, reusing PathRenderer2D draw traversal.
+     - ✅ (October 19, 2025) DOM serializer and canvas JSON fallback reuse the drawable command stream while respecting node budgets and fallback policy.
      - Emit asset blobs (images/fonts) via fingerprint paths; integrate with resource loader follow-up.
   3. **Replay harness**
      - Add standalone HTML runner (tests/ui + examples) that replays command streams, verifying parity with software renderer output.
