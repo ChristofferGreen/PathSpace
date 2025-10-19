@@ -1,5 +1,5 @@
 #define DOCTEST_CONFIG_IMPLEMENT
-#include "ext/doctest.h"
+#include "third_party/doctest.h"
 #include "log/TaggedLogger.hpp"
 #include <cstdlib>
 #include <cstring>

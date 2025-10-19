@@ -1,4 +1,4 @@
-#include "ext/doctest.h"
+#include "third_party/doctest.h"
 
 #ifdef PATHSPACE_UI_METAL
 #include <pathspace/ui/PathSurfaceMetal.hpp>

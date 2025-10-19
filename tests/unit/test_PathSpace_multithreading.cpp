@@ -4,7 +4,7 @@
 #include <pathspace/core/In.hpp>
 #include <pathspace/core/Out.hpp>
 
-#include "ext/doctest.h"
+#include "third_party/doctest.h"
 
 #include <atomic>
 #include <chrono>

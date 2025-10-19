@@ -1,4 +1,4 @@
-#include "ext/doctest.h"
+#include "third_party/doctest.h"
 #include <pathspace/PathSpace.hpp>
 
 // Standard library containers

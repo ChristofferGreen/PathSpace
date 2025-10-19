@@ -3,7 +3,7 @@
 #include <string>
 
 #include "core/Out.hpp"
-#include "ext/doctest.h"
+#include "third_party/doctest.h"
 
 using namespace SP;
 /*SUBCASE("Dining Philosophers") {
