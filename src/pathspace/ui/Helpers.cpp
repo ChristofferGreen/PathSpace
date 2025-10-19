@@ -118,6 +118,13 @@ auto AttachSurface(PathSpace& space,
     return Builders::Window::AttachSurface(space, windowPath, viewName, surfacePath);
 }
 
+auto AttachHtmlTarget(PathSpace& space,
+                      WindowPath const& windowPath,
+                      std::string_view viewName,
+                      HtmlTargetPath const& targetPath) -> SP::Expected<void> {
+    return Builders::Window::AttachHtmlTarget(space, windowPath, viewName, targetPath);
+}
+
 auto Present(PathSpace& space,
              WindowPath const& windowPath,
              std::string_view viewName) -> SP::Expected<Builders::Window::WindowPresentResult> {

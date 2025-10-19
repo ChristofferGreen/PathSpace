@@ -3,6 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/task/Future.hpp>
+#include <pathspace/ui/HtmlAdapter.hpp>
 #include <pathspace/ui/MaterialDescriptor.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/SurfaceTypes.hpp>
@@ -16,9 +17,6 @@
 #include <string>
 #include <string_view>
 #include <vector>
-
-namespace SP::UI {
-}
 
 namespace SP::UI::Builders {
 
@@ -371,6 +369,16 @@ namespace Window {
 struct WindowPresentResult {
     PathWindowPresentStats stats;
     std::vector<std::uint8_t> framebuffer;
+    struct HtmlPayload {
+        uint64_t revision = 0;
+        std::string dom;
+        std::string css;
+        std::string commands;
+        std::string mode;
+        bool used_canvas_fallback = false;
+        std::vector<Html::Asset> assets;
+    };
+    std::optional<HtmlPayload> html;
 };
 
 auto Create(PathSpace& space,
@@ -381,6 +389,11 @@ auto AttachSurface(PathSpace& space,
                     WindowPath const& windowPath,
                     std::string_view viewName,
                     SurfacePath const& surfacePath) -> SP::Expected<void>;
+
+auto AttachHtmlTarget(PathSpace& space,
+                       WindowPath const& windowPath,
+                       std::string_view viewName,
+                       HtmlTargetPath const& targetPath) -> SP::Expected<void>;
 
 auto Present(PathSpace& space,
               WindowPath const& windowPath,

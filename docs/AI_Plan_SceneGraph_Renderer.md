@@ -1526,9 +1526,11 @@ Goals
 1. Finalize `Html::Adapter` emit API, option struct, and experimental flag exposure in builders so HTML targets opt in explicitly.
 2. Implement DOM serializer with node budget enforcement, clip/transform support, and Canvas JSON fallback encoder that reuses the draw traversal order.
 3. Wire resource fingerprints (images/fonts/shaders) into `output/v1/html/assets/*`, deferring heavy loaders to the resource-integration follow-up.
-4. Add replay harness (headless DOM + Canvas verifier) and doctest coverage that compares adapter output with software framebuffer golden samples; keep tests skipped until harness is wired.
-5. Integrate with present pipeline: renderer writes HTML outputs, presenters treat HTML targets as latest-complete, and diagnostics/errors mirror the software path.
-6. Provide CI coverage (headless replay) and troubleshooting guidance once parity is validated.
+4. ✅ (October 19, 2025) Added replay harness: doctests compare adapter output against the software renderer, a standalone dump tool emits the canvas command stream, and replay parity is enforced in-tree.
+5. ✅ (October 19, 2025) Integrated with the present pipeline: renderer targets publish HTML outputs plus diagnostics/errors, window views bind to `htmlTarget`, and presenters always consume the latest-complete frame.
+6. ✅ (October 19, 2025) Added headless verification (Node-based canvas replay script) to CI with graceful skips when Node.js is unavailable and documented operator-facing troubleshooting steps.
+
+Headless verification now runs through `scripts/verify_html_canvas.js`, which spawns the `html_canvas_dump` helper to emit the latest Canvas command stream and asserts structural correctness (types, dimensions, radii). The CTest entry `HtmlCanvasVerify` executes the script when Node.js is available and emits a skip message otherwise, keeping CI stable on minimal builders.
 
 ## MVP plan
 
@@ -2214,6 +2216,8 @@ Keys under a target:
   - `metal/texture` or `vulkan/image` — opaque GPU handles and metadata
   - `window/presentInfo` — present metadata (image_count, present_mode, suboptimal)
   - `html/dom`, `html/css`, `html/commands`, `html/assets/*` — optional web outputs
+  - `html/mode`, `html/commandCount`, `html/usedCanvasFallback` — adapter fidelity metadata
+  - `html/metadata/activeMode` — resolved runtime mode (dom | canvas | webgl)
 
 ## View keys (final)
 
@@ -2223,15 +2227,16 @@ View base:
 Keys under a view:
 - surface — app-relative path to renderers/<rid>/targets/surfaces/<name>
 - windowTarget — app-relative path to renderers/<rid>/targets/windows/<name>
+- htmlTarget — app-relative path to renderers/<rid>/targets/html/<name>
 - present/policy — AlwaysFresh | PreferLatestCompleteWithBudget | AlwaysLatestComplete
 - present/params — backend-aware parameters such as staleness_budget_ms, frame_timeout_ms
 - status/* — latest present metadata (e.g., chosenMode, waitMs); optional
 
 Semantics:
-- Exactly one of surface or windowTarget must be set at a time; switching is atomic and should notify the presenter.
+- Exactly one of surface, windowTarget, or htmlTarget must be set at a time; switching is atomic and should notify the presenter.
 - Presenters read binding and policy once per present; no mid-present re-reads.
 - Threading: windowTarget presents must occur on the platform UI/present thread; surface blits occur on the UI thread after render completes.
-- HTML adapters ignore present policy and always present latest-complete.
+- HTML views ignore present policy (always latest-complete) and simply expose the current DOM/CSS/Canvas payload.
 
 Cross-references:
 - See “Decision: Present Policy (resolved)” for policy semantics.

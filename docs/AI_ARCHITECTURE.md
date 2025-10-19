@@ -408,7 +408,7 @@ Build toggles (CMake options, default in parenthesis):
 - `scenes/<scene-id>/` — authoring source (`src/`), immutable builds (`builds/<revision>/`), and `current_revision` pointing at the latest published snapshot.
 - `renderers/<renderer-id>/targets/<kind>/<name>/` — renderer targets. Each target binds to a scene, drains whole-frame `RenderSettings`, executes `render`, and publishes the most recent outputs under `output/v1/...`.
 - `surfaces/<surface-id>/` — offscreen render entry. Surfaces coordinate with a renderer target, provide per-frame execution (`render`), and surface the output handles/buffers the presenters consume.
-- `windows/<window-id>/views/<view-id>/` — presenters that resolve a `surface`, optionally trigger a frame, and blit/draw into the platform window shell.
+- `windows/<window-id>/views/<view-id>/` — presenters that resolve a `surface`, `windowTarget`, or `htmlTarget`; surface/window bindings drive native presents, while HTML bindings expose the most recent DOM/CSS/Canvas payload for web presenters and tooling.
 - Upcoming C++ stubs ship under `src/pathspace/ui/` (`PathRenderer2D`, `PathSurfaceSoftware`, `PathWindowView`) and will wire directly into these paths. Keep this section updated as the implementations land.
 
 ### Data flow

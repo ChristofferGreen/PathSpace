@@ -49,6 +49,7 @@ if(PATHSPACE_ENABLE_UI)
     ui/test_PathSurfaceSoftware.cpp
     ui/test_PathRenderer2D.cpp
     ui/test_HtmlAdapter.cpp
+    ui/test_HtmlPresent.cpp
     ui/test_HtmlReplay.cpp
     ui/test_SceneHitTest.cpp
     ui/test_PathWindowView.cpp
@@ -56,11 +57,26 @@ if(PATHSPACE_ENABLE_UI)
     test_main.cpp
   )
   if(APPLE AND PATHSPACE_UI_METAL)
-    target_sources(PathSpaceUITests PRIVATE ui/test_PathWindowView_Metal.mm)
-    set_source_files_properties(ui/test_PathWindowView_Metal.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+  target_sources(PathSpaceUITests PRIVATE ui/test_PathWindowView_Metal.mm)
+  set_source_files_properties(ui/test_PathWindowView_Metal.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
   endif()
   target_compile_definitions(PathSpaceUITests PRIVATE PATHSPACE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
   target_link_libraries(PathSpaceUITests PRIVATE PathSpace)
+
+  add_executable(html_canvas_dump tools/html_canvas_dump.cpp)
+  target_link_libraries(html_canvas_dump PRIVATE PathSpace)
+
+  find_program(PATHSPACE_NODE_EXEC node)
+  if(PATHSPACE_NODE_EXEC)
+    add_test(NAME HtmlCanvasVerify
+      COMMAND ${PATHSPACE_NODE_EXEC} ${CMAKE_SOURCE_DIR}/scripts/verify_html_canvas.js
+              $<TARGET_FILE:html_canvas_dump>)
+    set_tests_properties(HtmlCanvasVerify PROPERTIES LABELS html)
+  else()
+    add_test(NAME HtmlCanvasVerify
+      COMMAND ${CMAKE_COMMAND} -E echo "Skipping HTML canvas verification (node not found)")
+    set_tests_properties(HtmlCanvasVerify PROPERTIES LABELS html)
+  endif()
 endif()
 
 # Opt-in debug logging for tests

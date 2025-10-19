@@ -1,7 +1,7 @@
 #pragma once
 
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/app/AppPaths.hpp>
 
 #include <array>
 #include <chrono>
@@ -15,8 +15,8 @@
 
 namespace SP::UI::Scene {
 
-using AppRootPathView = Builders::AppRootPathView;
-using ScenePath = Builders::ScenePath;
+using AppRootPathView = SP::App::AppRootPathView;
+using ScenePath = SP::ConcretePathString;
 
 struct Transform {
     std::array<float, 16> elements{};

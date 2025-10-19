@@ -105,6 +105,7 @@ The following subtrees are standardized within each application root (one of the
     - `window` — platform-native window shell
     - `views/<view-id>/`
       - `surface` — app-relative reference to a surface
+      - `htmlTarget` — app-relative reference to an HTML renderer target
       - `present` — execution to present the surface to the window
       - `present/policy` — optional string selector (`AlwaysFresh`, `PreferLatestCompleteWithBudget`, `AlwaysLatestComplete`)
       - `present/params/` — optional tuning overrides

@@ -18,6 +18,7 @@ using ScenePath = Builders::ScenePath;
 using RendererPath = Builders::RendererPath;
 using SurfacePath = Builders::SurfacePath;
 using WindowPath = Builders::WindowPath;
+using HtmlTargetPath = Builders::HtmlTargetPath;
 
 using SceneParams = Builders::SceneParams;
 using SceneRevisionDesc = Builders::SceneRevisionDesc;
@@ -100,6 +101,11 @@ auto AttachSurface(PathSpace& space,
                    WindowPath const& windowPath,
                    std::string_view viewName,
                    SurfacePath const& surfacePath) -> SP::Expected<void>;
+
+auto AttachHtmlTarget(PathSpace& space,
+                      WindowPath const& windowPath,
+                      std::string_view viewName,
+                      HtmlTargetPath const& targetPath) -> SP::Expected<void>;
 
 auto Present(PathSpace& space,
              WindowPath const& windowPath,
