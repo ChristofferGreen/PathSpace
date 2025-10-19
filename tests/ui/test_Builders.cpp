@@ -5,6 +5,7 @@
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/MaterialShaderKey.hpp>
+#include <pathspace/ui/HtmlAdapter.hpp>
 
 #include <array>
 #include <atomic>
@@ -38,6 +39,7 @@ using UIScene::DrawableAuthoringMapEntry;
 using SP::UI::MaterialDescriptor;
 namespace Pipeline = SP::UI::PipelineFlags;
 using SP::UI::MaterialResourceResidency;
+using SP::UI::Html::Asset;
 
 struct BuildersFixture {
     PathSpace     space;
@@ -983,6 +985,117 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     auto frameTimeoutMs = read_value<double>(fx.space, common + "/frameTimeoutMs");
     REQUIRE(frameTimeoutMs);
     CHECK(*frameTimeoutMs == doctest::Approx(24.0));
+}
+
+TEST_CASE("Renderer::RenderHtml writes DOM outputs for html targets") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{ .name = "html_renderer", .description = "HTML" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    REQUIRE(renderer);
+
+    SceneParams sceneParams{ .name = "scene_html_dom", .description = "html dom" };
+    auto scene = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    REQUIRE(scene);
+    publish_minimal_scene(fx, *scene);
+
+    HtmlTargetParams targetParams{};
+    targetParams.name = "preview";
+    targetParams.scene = std::string("scenes/") + sceneParams.name;
+    auto target = Renderer::CreateHtmlTarget(fx.space, fx.root_view(), *renderer, targetParams);
+    REQUIRE(target);
+
+    auto render_html = Renderer::RenderHtml(fx.space, ConcretePathView{target->getPath()});
+    REQUIRE(render_html);
+
+    auto htmlBase = std::string(target->getPath()) + "/output/v1/html";
+    auto dom = read_value<std::string>(fx.space, htmlBase + "/dom");
+    REQUIRE(dom);
+    CHECK_FALSE(dom->empty());
+    auto css = read_value<std::string>(fx.space, htmlBase + "/css");
+    REQUIRE(css);
+    CHECK_FALSE(css->empty());
+    auto usedCanvas = read_value<bool>(fx.space, htmlBase + "/usedCanvasFallback");
+    REQUIRE(usedCanvas);
+    CHECK_FALSE(*usedCanvas);
+    auto assets = read_value<std::vector<Asset>>(fx.space, htmlBase + "/assets");
+    REQUIRE(assets);
+    if (!assets->empty()) {
+        CHECK(assets->front().logical_path.find("images/") == 0);
+    }
+}
+
+TEST_CASE("Renderer::RenderHtml falls back to canvas when DOM budget exceeded") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{ .name = "html_renderer_canvas", .description = "HTML" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    REQUIRE(renderer);
+
+    SceneParams sceneParams{ .name = "scene_html_canvas", .description = "html canvas" };
+    auto scene = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    REQUIRE(scene);
+    publish_minimal_scene(fx, *scene);
+
+    HtmlTargetParams targetParams{};
+    targetParams.name = "preview_canvas";
+    targetParams.scene = std::string("scenes/") + sceneParams.name;
+    targetParams.desc.max_dom_nodes = 0;
+    targetParams.desc.prefer_dom = false;
+    auto target = Renderer::CreateHtmlTarget(fx.space, fx.root_view(), *renderer, targetParams);
+    REQUIRE(target);
+
+    auto render_html = Renderer::RenderHtml(fx.space, ConcretePathView{target->getPath()});
+    REQUIRE(render_html);
+
+    auto htmlBase = std::string(target->getPath()) + "/output/v1/html";
+    auto usedCanvas = read_value<bool>(fx.space, htmlBase + "/usedCanvasFallback");
+    REQUIRE(usedCanvas);
+    CHECK(*usedCanvas);
+    auto commands = read_value<std::string>(fx.space, htmlBase + "/commands");
+    REQUIRE(commands);
+    CHECK_FALSE(commands->empty());
+    auto dom = read_value<std::string>(fx.space, htmlBase + "/dom");
+    REQUIRE(dom);
+    CHECK(dom->empty());
+}
+
+TEST_CASE("Renderer::RenderHtml writes DOM outputs for html targets") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{ .name = "html_renderer", .description = "HTML" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    REQUIRE(renderer);
+
+    SceneParams sceneParams{ .name = "scene_html_dom", .description = "html dom" };
+    auto scene = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    REQUIRE(scene);
+    publish_minimal_scene(fx, *scene);
+
+    HtmlTargetParams targetParams{};
+    targetParams.name = "preview";
+    targetParams.scene = std::string("scenes/") + sceneParams.name;
+    auto target = Renderer::CreateHtmlTarget(fx.space, fx.root_view(), *renderer, targetParams);
+    REQUIRE(target);
+
+    auto render_html = Renderer::RenderHtml(fx.space, ConcretePathView{target->getPath()});
+    REQUIRE(render_html);
+
+    auto htmlBase = std::string(target->getPath()) + "/output/v1/html";
+    auto dom = read_value<std::string>(fx.space, htmlBase + "/dom");
+    REQUIRE(dom);
+    CHECK_FALSE(dom->empty());
+    auto css = read_value<std::string>(fx.space, htmlBase + "/css");
+    REQUIRE(css);
+    CHECK_FALSE(css->empty());
+    auto usedCanvas = read_value<bool>(fx.space, htmlBase + "/usedCanvasFallback");
+    REQUIRE(usedCanvas);
+    CHECK_FALSE(*usedCanvas);
+    auto assets = read_value<std::vector<Asset>>(fx.space, htmlBase + "/assets");
+    REQUIRE(assets);
+    if (!assets->empty()) {
+        CHECK(assets->front().logical_path.find("images/") == 0);
+    }
 }
 
 TEST_CASE("SubmitDirtyRects coalesces tile-aligned hints") {

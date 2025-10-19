@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -52,6 +53,12 @@ struct MetalSurfaceOptions {
                                  | static_cast<std::uint8_t>(MetalTextureUsage::ShaderWrite)
                                  | static_cast<std::uint8_t>(MetalTextureUsage::RenderTarget);
     bool iosurface_backing = true;
+};
+
+struct HtmlTargetDesc {
+    std::size_t max_dom_nodes = 10'000;
+    bool prefer_dom = true;
+    bool allow_canvas_fallback = true;
 };
 
 struct SurfaceDesc {

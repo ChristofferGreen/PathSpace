@@ -31,6 +31,7 @@ using ScenePath = ConcretePath;
 using RendererPath = ConcretePath;
 using SurfacePath = ConcretePath;
 using WindowPath = ConcretePath;
+using HtmlTargetPath = ConcretePath;
 
 struct SceneParams {
     std::string name;
@@ -58,6 +59,12 @@ struct SurfaceParams {
     std::string name;
     SurfaceDesc desc;
     std::string renderer; // name, app-relative, or absolute path
+};
+
+struct HtmlTargetParams {
+    std::string name;
+    HtmlTargetDesc desc;
+    std::string scene; // app-relative scene path (e.g., "scenes/main")
 };
 
 struct WindowParams {
@@ -332,6 +339,14 @@ auto SubmitDirtyRects(PathSpace& space,
 auto TriggerRender(PathSpace& space,
                    ConcretePathView targetPath,
                    RenderSettings const& settings) -> SP::Expected<SP::FutureAny>;
+
+auto CreateHtmlTarget(PathSpace& space,
+                      AppRootPathView appRoot,
+                      RendererPath const& rendererPath,
+                      HtmlTargetParams const& params) -> SP::Expected<HtmlTargetPath>;
+
+auto RenderHtml(PathSpace& space,
+                ConcretePathView targetPath) -> SP::Expected<void>;
 
 } // namespace Renderer
 

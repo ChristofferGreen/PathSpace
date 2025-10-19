@@ -189,7 +189,7 @@ Completed:
      - Add standalone HTML runner (tests/ui + examples) that replays command streams, verifying parity with software renderer output.
      - Provide doctest coverage that compares software framebuffer vs. adapter DOM/Canvas render using golden expectations.
   4. **Builder integration**
-     - Extend renderer target wiring to write HTML outputs under `output/v1/html/{dom,css,commands,assets}` behind experimental flag.
+     - ✅ (October 19, 2025) Renderer targets now emit HTML outputs under `output/v1/html/{dom,css,commands,assets}` using the adapter and persist the applied options.
      - Add present pipeline hooks for HTML targets (always latest complete) and diagnostics/errors surfaces.
   5. **Tooling & CI**
      - Add headless verification step (e.g., Node/JS or WebKit snapshot) in CI to catch regressions; skip gracefully when tooling absent.

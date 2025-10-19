@@ -3,6 +3,7 @@
 #include <pathspace/ui/PathSurfaceMetal.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
+#include <pathspace/ui/HtmlAdapter.hpp>
 #include "DrawableUtils.hpp"
 
 #include "core/Out.hpp"
@@ -1356,6 +1357,63 @@ auto Create(PathSpace& space,
     return RendererPath{resolved->getPath()};
 }
 
+auto CreateHtmlTarget(PathSpace& space,
+                      AppRootPathView appRoot,
+                      RendererPath const& rendererPath,
+                      HtmlTargetParams const& params) -> SP::Expected<HtmlTargetPath> {
+    if (auto status = ensure_identifier(params.name, "html target name"); !status) {
+        return std::unexpected(status.error());
+    }
+    if (params.scene.empty()) {
+        return std::unexpected(make_error("html target scene must not be empty",
+                                          SP::Error::Code::InvalidPath));
+    }
+
+    auto rendererRoot = derive_app_root_for(ConcretePathView{rendererPath.getPath()});
+    if (!rendererRoot) {
+        return std::unexpected(rendererRoot.error());
+    }
+
+    auto sceneAbsolute = SP::App::resolve_app_relative(SP::App::AppRootPathView{rendererRoot->getPath()},
+                                                       params.scene);
+    if (!sceneAbsolute) {
+        return std::unexpected(sceneAbsolute.error());
+    }
+
+    if (auto status = same_app(ConcretePathView{sceneAbsolute->getPath()},
+                               ConcretePathView{rendererPath.getPath()}); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto rendererView = SP::App::AppRootPathView{rendererRoot->getPath()};
+    auto rendererRelative = relative_to_root(rendererView, ConcretePathView{rendererPath.getPath()});
+    if (!rendererRelative) {
+        return std::unexpected(rendererRelative.error());
+    }
+
+    std::string targetRelative = *rendererRelative;
+    if (!targetRelative.empty()) {
+        targetRelative.push_back('/');
+    }
+    targetRelative.append("targets/html/");
+    targetRelative.append(params.name);
+
+    auto targetAbsolute = combine_relative(rendererView, std::move(targetRelative));
+    if (!targetAbsolute) {
+        return std::unexpected(targetAbsolute.error());
+    }
+
+    auto base = targetAbsolute->getPath();
+    if (auto status = replace_single<HtmlTargetDesc>(space, base + "/desc", params.desc); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single<std::string>(space, base + "/scene", params.scene); !status) {
+        return std::unexpected(status.error());
+    }
+
+    return HtmlTargetPath{base};
+}
+
 auto ResolveTargetBase(PathSpace const& /*space*/,
                         AppRootPathView appRoot,
                         RendererPath const& rendererPath,
@@ -1629,6 +1687,103 @@ auto TriggerRender(PathSpace& space,
     auto state = std::make_shared<SP::SharedState<bool>>();
     state->set_value(true);
     return SP::FutureT<bool>{state}.to_any();
+}
+
+auto RenderHtml(PathSpace& space,
+                ConcretePathView targetPath) -> SP::Expected<void> {
+    auto targetRoot = derive_app_root_for(targetPath);
+    if (!targetRoot) {
+        return std::unexpected(targetRoot.error());
+    }
+
+    auto base = std::string(targetPath.getPath());
+    auto descPath = base + "/desc";
+    auto desc = read_value<HtmlTargetDesc>(space, descPath);
+    if (!desc) {
+        return std::unexpected(desc.error());
+    }
+
+    auto sceneRel = read_value<std::string>(space, base + "/scene");
+    if (!sceneRel) {
+        return std::unexpected(sceneRel.error());
+    }
+
+    auto sceneAbsolute = SP::App::resolve_app_relative(SP::App::AppRootPathView{targetRoot->getPath()},
+                                                       *sceneRel);
+    if (!sceneAbsolute) {
+        return std::unexpected(sceneAbsolute.error());
+    }
+
+    auto sceneRevision = Scene::ReadCurrentRevision(space, ScenePath{sceneAbsolute->getPath()});
+    if (!sceneRevision) {
+        return std::unexpected(sceneRevision.error());
+    }
+
+    auto revisionBase = std::string(sceneAbsolute->getPath()) + "/builds/" + format_revision(sceneRevision->revision);
+    auto bucket = SP::UI::Scene::SceneSnapshotBuilder::decode_bucket(space, revisionBase);
+    if (!bucket) {
+        return std::unexpected(bucket.error());
+    }
+
+    Html::EmitOptions options{};
+    options.max_dom_nodes = desc->max_dom_nodes;
+    options.prefer_dom = desc->prefer_dom;
+    options.allow_canvas_fallback = desc->allow_canvas_fallback;
+
+    Html::Adapter adapter;
+    auto emitted = adapter.emit(*bucket, options);
+    if (!emitted) {
+        return std::unexpected(emitted.error());
+    }
+
+    auto htmlBase = base + "/output/v1/html";
+    if (auto status = replace_single<uint64_t>(space, htmlBase + "/revision", sceneRevision->revision); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single<std::string>(space, htmlBase + "/dom", emitted->dom); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single<std::string>(space, htmlBase + "/css", emitted->css); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single<std::string>(space, htmlBase + "/commands", emitted->canvas_commands); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single<bool>(space, htmlBase + "/usedCanvasFallback", emitted->used_canvas_fallback); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single<uint64_t>(space,
+                                               htmlBase + "/domNodeCount",
+                                               static_cast<uint64_t>(bucket->drawable_ids.size())); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single<uint64_t>(space,
+                                               htmlBase + "/assetCount",
+                                               static_cast<uint64_t>(emitted->assets.size())); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single<std::vector<Html::Asset>>(space,
+                                                               htmlBase + "/assets",
+                                                               emitted->assets); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single<uint64_t>(space,
+                                               htmlBase + "/options/maxDomNodes",
+                                               static_cast<uint64_t>(desc->max_dom_nodes)); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single<bool>(space, htmlBase + "/options/preferDom", desc->prefer_dom); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single<bool>(space, htmlBase + "/options/allowCanvasFallback", desc->allow_canvas_fallback); !status) {
+        return std::unexpected(status.error());
+    }
+    auto mode = emitted->used_canvas_fallback ? std::string{"canvas"} : std::string{"dom"};
+    if (auto status = replace_single<std::string>(space, htmlBase + "/mode", mode); !status) {
+        return std::unexpected(status.error());
+    }
+
+    return {};
 }
 
 } // namespace Renderer
