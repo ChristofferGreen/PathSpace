@@ -474,6 +474,14 @@ auto CreateToggle(PathSpace& space,
                   AppRootPathView appRoot,
                   ToggleParams const& params) -> SP::Expected<TogglePaths>;
 
+auto UpdateButtonState(PathSpace& space,
+                       ButtonPaths const& paths,
+                       ButtonState const& new_state) -> SP::Expected<bool>;
+
+auto UpdateToggleState(PathSpace& space,
+                       TogglePaths const& paths,
+                       ToggleState const& new_state) -> SP::Expected<bool>;
+
 } // namespace Widgets
 
 namespace Diagnostics {

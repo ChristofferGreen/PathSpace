@@ -1209,6 +1209,21 @@ TEST_CASE("Widgets::CreateButton publishes snapshot and state") {
     auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
     REQUIRE(revision);
     CHECK(revision->revision > 0);
+
+    Widgets::ButtonState pressed_state = *state;
+    pressed_state.pressed = true;
+    auto changed = Widgets::UpdateButtonState(fx.space, *created, pressed_state);
+    REQUIRE(changed);
+    CHECK(*changed);
+
+    auto updated = read_value<Widgets::ButtonState>(fx.space,
+                                                    std::string(created->state.getPath()));
+    REQUIRE(updated);
+    CHECK(updated->pressed);
+
+    auto unchanged = Widgets::UpdateButtonState(fx.space, *created, pressed_state);
+    REQUIRE(unchanged);
+    CHECK_FALSE(*unchanged);
 }
 
 TEST_CASE("Widgets::CreateToggle publishes snapshot and state") {
@@ -1240,6 +1255,21 @@ TEST_CASE("Widgets::CreateToggle publishes snapshot and state") {
     auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
     REQUIRE(revision);
     CHECK(revision->revision > 0);
+
+    Widgets::ToggleState toggled = *state;
+    toggled.checked = true;
+    auto toggle_changed = Widgets::UpdateToggleState(fx.space, *created, toggled);
+    REQUIRE(toggle_changed);
+    CHECK(*toggle_changed);
+
+    auto toggle_state = read_value<Widgets::ToggleState>(fx.space,
+                                                         std::string(created->state.getPath()));
+    REQUIRE(toggle_state);
+    CHECK(toggle_state->checked);
+
+    auto toggle_unchanged = Widgets::UpdateToggleState(fx.space, *created, toggled);
+    REQUIRE(toggle_unchanged);
+    CHECK_FALSE(*toggle_unchanged);
 }
 
 TEST_CASE("Renderer::RenderHtml hydrates image assets into output") {

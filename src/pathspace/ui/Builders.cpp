@@ -74,6 +74,20 @@ auto make_scene_meta(ScenePath const& scenePath, std::string const& leaf) -> std
 template <typename T>
 auto read_optional(PathSpace const& space, std::string const& path) -> SP::Expected<std::optional<T>>;
 
+auto button_states_equal(Widgets::ButtonState const& lhs,
+                         Widgets::ButtonState const& rhs) -> bool {
+    return lhs.enabled == rhs.enabled
+        && lhs.pressed == rhs.pressed
+        && lhs.hovered == rhs.hovered;
+}
+
+auto toggle_states_equal(Widgets::ToggleState const& lhs,
+                         Widgets::ToggleState const& rhs) -> bool {
+    return lhs.enabled == rhs.enabled
+        && lhs.hovered == rhs.hovered
+        && lhs.checked == rhs.checked;
+}
+
 auto make_identity_transform() -> SceneData::Transform {
     SceneData::Transform transform{};
     for (std::size_t i = 0; i < transform.elements.size(); ++i) {
@@ -2883,6 +2897,48 @@ auto CreateToggle(PathSpace& space,
         .state = ConcretePath{widgetRoot->getPath() + "/state"},
     };
     return paths;
+}
+
+auto UpdateButtonState(PathSpace& space,
+                       Widgets::ButtonPaths const& paths,
+                       Widgets::ButtonState const& new_state) -> SP::Expected<bool> {
+    auto statePath = std::string(paths.state.getPath());
+    auto current = read_optional<Widgets::ButtonState>(space, statePath);
+    if (!current) {
+        return std::unexpected(current.error());
+    }
+    bool changed = !current->has_value() || !button_states_equal(**current, new_state);
+    if (!changed) {
+        return false;
+    }
+    if (auto status = replace_single<Widgets::ButtonState>(space, statePath, new_state); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto mark = Scene::MarkDirty(space, paths.scene, Scene::DirtyKind::Visual); !mark) {
+        return std::unexpected(mark.error());
+    }
+    return true;
+}
+
+auto UpdateToggleState(PathSpace& space,
+                       Widgets::TogglePaths const& paths,
+                       Widgets::ToggleState const& new_state) -> SP::Expected<bool> {
+    auto statePath = std::string(paths.state.getPath());
+    auto current = read_optional<Widgets::ToggleState>(space, statePath);
+    if (!current) {
+        return std::unexpected(current.error());
+    }
+    bool changed = !current->has_value() || !toggle_states_equal(**current, new_state);
+    if (!changed) {
+        return false;
+    }
+    if (auto status = replace_single<Widgets::ToggleState>(space, statePath, new_state); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto mark = Scene::MarkDirty(space, paths.scene, Scene::DirtyKind::Visual); !mark) {
+        return std::unexpected(mark.error());
+    }
+    return true;
 }
 
 } // namespace Widgets
