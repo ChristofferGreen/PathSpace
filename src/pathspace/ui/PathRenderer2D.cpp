@@ -34,16 +34,13 @@ auto make_error(std::string message, SP::Error::Code code) -> SP::Error {
 }
 
 auto damage_metrics_enabled() -> bool {
-    static bool enabled = [] {
-        if (auto* env = std::getenv("PATHSPACE_UI_DAMAGE_METRICS")) {
-            if (std::strcmp(env, "0") == 0 || std::strcmp(env, "false") == 0 || std::strcmp(env, "off") == 0) {
-                return false;
-            }
-            return true;
+    if (auto* env = std::getenv("PATHSPACE_UI_DAMAGE_METRICS")) {
+        if (std::strcmp(env, "0") == 0 || std::strcmp(env, "false") == 0 || std::strcmp(env, "off") == 0) {
+            return false;
         }
-        return false;
-    }();
-    return enabled;
+        return true;
+    }
+    return false;
 }
 
 template <typename T>
@@ -614,7 +611,6 @@ auto choose_progressive_tile_size(int width,
     int base_size = std::max(64, surface.progressive_tile_size());
     double coverage = damage.coverage_ratio(width, height);
     constexpr std::uint64_t kMaxTiles = 4096;
-    constexpr std::uint64_t kMinTiles = 256;
 
     int tile_size = base_size;
 
@@ -627,7 +623,7 @@ auto choose_progressive_tile_size(int width,
     };
 
     auto reduce_if_small_damage = [&]() {
-        if (coverage <= 0.0 || coverage >= 0.05 || full_repaint) {
+        if (coverage <= 0.0 || coverage >= 0.10 || full_repaint) {
             return;
         }
         tile_size = std::min(tile_size, 64);
@@ -656,7 +652,9 @@ auto choose_progressive_tile_size(int width,
         if (!(full_repaint || coverage > 0.5)) {
             return;
         }
-        while (tiles < kMinTiles && tile_size > 64) {
+        auto hardware = std::max(1u, std::thread::hardware_concurrency());
+        std::uint64_t min_tiles_target = std::max<std::uint64_t>(hardware * 8u, 96u);
+        while (tiles < min_tiles_target && tile_size > 64) {
             tile_size = std::max(64, tile_size - 32);
             tiles = tiles_for(tile_size);
         }
