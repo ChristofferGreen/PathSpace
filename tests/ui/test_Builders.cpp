@@ -1211,6 +1211,37 @@ TEST_CASE("Widgets::CreateButton publishes snapshot and state") {
     CHECK(revision->revision > 0);
 }
 
+TEST_CASE("Widgets::CreateToggle publishes snapshot and state") {
+    BuildersFixture fx;
+
+    Widgets::ToggleParams params{};
+    params.name = "toggle_primary";
+    params.style.width = 60.0f;
+    params.style.height = 32.0f;
+    params.style.track_on_color = {0.2f, 0.6f, 0.3f, 1.0f};
+
+    auto created = Widgets::CreateToggle(fx.space, fx.root_view(), params);
+    REQUIRE(created);
+
+    auto state = read_value<Widgets::ToggleState>(fx.space,
+                                                  std::string(created->state.getPath()));
+    REQUIRE(state);
+    CHECK(state->enabled);
+    CHECK_FALSE(state->hovered);
+    CHECK_FALSE(state->checked);
+
+    auto style = read_value<Widgets::ToggleStyle>(fx.space,
+                                                 std::string(created->root.getPath()) + "/meta/style");
+    REQUIRE(style);
+    CHECK(style->width == doctest::Approx(params.style.width));
+    CHECK(style->height == doctest::Approx(params.style.height));
+    CHECK(style->track_on_color[0] == doctest::Approx(params.style.track_on_color[0]));
+
+    auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    REQUIRE(revision);
+    CHECK(revision->revision > 0);
+}
+
 TEST_CASE("Renderer::RenderHtml hydrates image assets into output") {
     BuildersFixture fx;
 

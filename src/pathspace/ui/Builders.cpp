@@ -137,6 +137,97 @@ auto make_button_bucket(ButtonSnapshotConfig const& config) -> SceneData::Drawab
     return bucket;
 }
 
+struct ToggleSnapshotConfig {
+    float width = 56.0f;
+    float height = 32.0f;
+    bool checked = false;
+    std::array<float, 4> track_off_color{0.75f, 0.75f, 0.78f, 1.0f};
+    std::array<float, 4> track_on_color{0.176f, 0.353f, 0.914f, 1.0f};
+    std::array<float, 4> thumb_color{1.0f, 1.0f, 1.0f, 1.0f};
+};
+
+auto make_toggle_bucket(ToggleSnapshotConfig const& config) -> SceneData::DrawableBucketSnapshot {
+    SceneData::DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x701701u, 0x701702u};
+    bucket.world_transforms = {make_identity_transform(), make_identity_transform()};
+
+    SceneData::BoundingSphere trackSphere{};
+    trackSphere.center = {config.width * 0.5f, config.height * 0.5f, 0.0f};
+    trackSphere.radius = std::sqrt(trackSphere.center[0] * trackSphere.center[0]
+                                   + trackSphere.center[1] * trackSphere.center[1]);
+
+    SceneData::BoundingSphere thumbSphere{};
+    float thumbRadius = config.height * 0.5f - 2.0f;
+    float thumbCenterX = config.checked ? (config.width - thumbRadius - 2.0f) : (thumbRadius + 2.0f);
+    thumbSphere.center = {thumbCenterX, config.height * 0.5f, 0.0f};
+    thumbSphere.radius = thumbRadius;
+
+    bucket.bounds_spheres = {trackSphere, thumbSphere};
+
+    SceneData::BoundingBox trackBox{};
+    trackBox.min = {0.0f, 0.0f, 0.0f};
+    trackBox.max = {config.width, config.height, 0.0f};
+
+    SceneData::BoundingBox thumbBox{};
+    thumbBox.min = {thumbCenterX - thumbRadius, config.height * 0.5f - thumbRadius, 0.0f};
+    thumbBox.max = {thumbCenterX + thumbRadius, config.height * 0.5f + thumbRadius, 0.0f};
+
+    bucket.bounds_boxes = {trackBox, thumbBox};
+    bucket.bounds_box_valid = {1, 1};
+    bucket.layers = {0, 1};
+    bucket.z_values = {0.0f, 0.1f};
+    bucket.material_ids = {0, 0};
+    bucket.pipeline_flags = {0, 0};
+    bucket.visibility = {1, 1};
+    bucket.command_offsets = {0, 1};
+    bucket.command_counts = {1, 1};
+    bucket.opaque_indices = {0, 1};
+    bucket.alpha_indices.clear();
+    bucket.layer_indices.clear();
+    bucket.clip_nodes.clear();
+    bucket.clip_head_indices = {-1, -1};
+    bucket.authoring_map = {
+        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[0], "widget/toggle/track", 0, 0},
+        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[1], "widget/toggle/thumb", 0, 0},
+    };
+    bucket.drawable_fingerprints = {0x701701u, 0x701702u};
+
+    auto trackColor = config.checked ? config.track_on_color : config.track_off_color;
+
+    SceneData::RoundedRectCommand trackRect{};
+    trackRect.min_x = 0.0f;
+    trackRect.min_y = 0.0f;
+    trackRect.max_x = config.width;
+    trackRect.max_y = config.height;
+    trackRect.radius_top_left = config.height * 0.5f;
+    trackRect.radius_top_right = config.height * 0.5f;
+    trackRect.radius_bottom_right = config.height * 0.5f;
+    trackRect.radius_bottom_left = config.height * 0.5f;
+    trackRect.color = trackColor;
+
+    SceneData::RoundedRectCommand thumbRect{};
+    thumbRect.min_x = thumbBox.min[0];
+    thumbRect.min_y = thumbBox.min[1];
+    thumbRect.max_x = thumbBox.max[0];
+    thumbRect.max_y = thumbBox.max[1];
+    thumbRect.radius_top_left = thumbRadius;
+    thumbRect.radius_top_right = thumbRadius;
+    thumbRect.radius_bottom_right = thumbRadius;
+    thumbRect.radius_bottom_left = thumbRadius;
+    thumbRect.color = config.thumb_color;
+
+    auto payload_track = sizeof(SceneData::RoundedRectCommand);
+    auto payload_thumb = sizeof(SceneData::RoundedRectCommand);
+    bucket.command_payload.resize(payload_track + payload_thumb);
+    std::memcpy(bucket.command_payload.data(), &trackRect, payload_track);
+    std::memcpy(bucket.command_payload.data() + payload_track, &thumbRect, payload_thumb);
+    bucket.command_kinds = {
+        static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect),
+        static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect),
+    };
+    return bucket;
+}
+
 auto ensure_widget_root(PathSpace& /*space*/,
                         AppRootPathView appRoot) -> SP::Expected<ConcretePath> {
     return combine_relative(appRoot, "widgets");
@@ -2706,11 +2797,90 @@ auto CreateButton(PathSpace& space,
         return std::unexpected(ready.error());
     }
 
-    ButtonPaths paths{
+ButtonPaths paths{
+    .scene = *scenePath,
+    .root = WidgetPath{widgetRoot->getPath()},
+    .state = ConcretePath{widgetRoot->getPath() + "/state"},
+    .label = ConcretePath{widgetRoot->getPath() + "/meta/label"},
+};
+return paths;
+}
+
+auto write_toggle_metadata(PathSpace& space,
+                           std::string const& rootPath,
+                           Widgets::ToggleState const& state,
+                           Widgets::ToggleStyle const& style) -> SP::Expected<void> {
+    auto statePath = rootPath + "/state";
+    if (auto status = replace_single<Widgets::ToggleState>(space, statePath, state); !status) {
+        return std::unexpected(status.error());
+    }
+    auto stylePath = rootPath + "/meta/style";
+    if (auto status = replace_single<Widgets::ToggleStyle>(space, stylePath, style); !status) {
+        return std::unexpected(status.error());
+    }
+    return {};
+}
+
+auto ensure_toggle_scene(PathSpace& space,
+                         AppRootPathView appRoot,
+                         std::string_view name) -> SP::Expected<ScenePath> {
+    return ensure_widget_scene(space, appRoot, name, "Widget toggle");
+}
+
+auto CreateToggle(PathSpace& space,
+                  AppRootPathView appRoot,
+                  Widgets::ToggleParams const& params) -> SP::Expected<Widgets::TogglePaths> {
+    if (auto status = ensure_identifier(params.name, "widget name"); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto widgetRoot = combine_relative(appRoot, std::string("widgets/") + params.name);
+    if (!widgetRoot) {
+        return std::unexpected(widgetRoot.error());
+    }
+
+    Widgets::ToggleState defaultState{};
+    if (auto status = write_toggle_metadata(space, widgetRoot->getPath(), defaultState, params.style); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto scenePath = ensure_toggle_scene(space, appRoot, params.name);
+    if (!scenePath) {
+        return std::unexpected(scenePath.error());
+    }
+
+    ToggleSnapshotConfig config{
+        .width = std::max(params.style.width, 16.0f),
+        .height = std::max(params.style.height, 16.0f),
+        .checked = defaultState.checked,
+        .track_off_color = params.style.track_off_color,
+        .track_on_color = params.style.track_on_color,
+        .thumb_color = params.style.thumb_color,
+    };
+    auto bucket = make_toggle_bucket(config);
+
+    SceneData::SnapshotPublishOptions publishOpts{};
+    publishOpts.metadata.author = "widgets";
+    publishOpts.metadata.tool_version = "widgets-toolkit";
+    publishOpts.metadata.created_at = std::chrono::system_clock::now();
+    publishOpts.metadata.drawable_count = bucket.drawable_ids.size();
+    publishOpts.metadata.command_count = bucket.command_kinds.size();
+
+    SceneData::SceneSnapshotBuilder builder{space, appRoot, *scenePath};
+    auto revision = builder.publish(publishOpts, bucket);
+    if (!revision) {
+        return std::unexpected(revision.error());
+    }
+
+    auto ready = Scene::WaitUntilReady(space, *scenePath, std::chrono::milliseconds{50});
+    if (!ready) {
+        return std::unexpected(ready.error());
+    }
+
+    Widgets::TogglePaths paths{
         .scene = *scenePath,
         .root = WidgetPath{widgetRoot->getPath()},
         .state = ConcretePath{widgetRoot->getPath() + "/state"},
-        .label = ConcretePath{widgetRoot->getPath() + "/meta/label"},
     };
     return paths;
 }

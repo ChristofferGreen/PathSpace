@@ -445,6 +445,35 @@ auto CreateButton(PathSpace& space,
                   AppRootPathView appRoot,
                   ButtonParams const& params) -> SP::Expected<ButtonPaths>;
 
+struct ToggleStyle {
+    float width = 56.0f;
+    float height = 32.0f;
+    std::array<float, 4> track_off_color{0.75f, 0.75f, 0.78f, 1.0f};
+    std::array<float, 4> track_on_color{0.176f, 0.353f, 0.914f, 1.0f};
+    std::array<float, 4> thumb_color{1.0f, 1.0f, 1.0f, 1.0f};
+};
+
+struct ToggleState {
+    bool enabled = true;
+    bool hovered = false;
+    bool checked = false;
+};
+
+struct ToggleParams {
+    std::string name;
+    ToggleStyle style{};
+};
+
+struct TogglePaths {
+    ScenePath scene;
+    WidgetPath root;
+    ConcretePath state;
+};
+
+auto CreateToggle(PathSpace& space,
+                  AppRootPathView appRoot,
+                  ToggleParams const& params) -> SP::Expected<TogglePaths>;
+
 } // namespace Widgets
 
 namespace Diagnostics {
