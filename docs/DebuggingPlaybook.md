@@ -38,6 +38,7 @@ Environment knobs (all respected by the wrapper and the logger):
 | `PATHSPACE_LOG_SKIP_TAGS` | Comma-separated blocklist. |
 | `PATHSPACE_TEST_TIMEOUT` | Millisecond poll interval for blocking tests (default `1`). |
 | `MallocNanoZone` | Set to `0` to reduce allocation overhead on macOS (default from helper). |
+| `PATHSPACE_ENABLE_METAL_UPLOADS` | Opt-in Metal texture uploads during UI tests; leave unset in CI/headless runs so builders fall back to the software raster. |
 
 ## 2. Inspecting Collected Logs
 
@@ -48,7 +49,7 @@ Environment knobs (all respected by the wrapper and the logger):
 ## 3. PathSpace Runtime Diagnostics
 
 - **Structured errors:** Renderer/presenter components publish `PathSpaceError` payloads under `renderers/<rid>/targets/<tid>/diagnostics/errors/live`. In tests, call `Diagnostics::ReadTargetMetrics` to fetch the payload and correlate with frame indices.
-- **Per-target metrics:** `renderers/<rid>/targets/<tid>/output/v1/common/*` stores the latest `frameIndex`, `revision`, `renderMs`, progressive copy counters, and present policy outcomes. Use `PathWindowView` doctest helpers or the builders’ diagnostics reader to dump these values.
+- **Per-target metrics:** `renderers/<rid>/targets/<tid>/output/v1/common/*` stores the latest `frameIndex`, `revision`, `renderMs`, progressive copy counters, backend telemetry (`backendKind`, `usedMetalTexture`), GPU timings (`gpuEncodeMs`, `gpuPresentMs`), and present policy outcomes. Use `PathWindowView` doctest helpers or the builders’ diagnostics reader to dump these values.
 - **Scene dirty state:** `scenes/<sid>/diagnostics/dirty/state` and `scenes/<sid>/diagnostics/dirty/queue` expose layout/build notifications. The `Scene::MarkDirty` doctests show how to wait on these paths without polling.
 - **HTML/IO logs:** Application surfaces write to `<app>/io/log/{error,warn,info,debug}`. The global mirrors live at `/system/io/std{out,err}`; see `docs/AI_PATHS.md` §2 for the canonical layout.
 

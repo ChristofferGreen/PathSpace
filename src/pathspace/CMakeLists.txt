@@ -94,7 +94,8 @@ if(PATHSPACE_ENABLE_UI)
         ui/ProgressiveSurfaceBuffer.cpp
         ui/PathSurfaceSoftware.cpp
         ui/PathRenderer2D.cpp
-        ui/PathWindowView.cpp
+        $<$<BOOL:APPLE>:ui/PathWindowView.mm>
+        $<$<NOT:$<BOOL:APPLE>>:ui/PathWindowView.cpp>
         ui/ImageCache.cpp
         ui/HtmlAdapter.cpp
         $<$<AND:$<BOOL:PATHSPACE_UI_METAL>,$<BOOL:APPLE>>:ui/PathSurfaceMetal.mm>
@@ -109,6 +110,7 @@ if(PATHSPACE_ENABLE_UI)
         target_compile_definitions(PathSpace PUBLIC PATHSPACE_UI_METAL=1)
         if(APPLE)
             set_source_files_properties(ui/PathSurfaceMetal.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+            set_source_files_properties(ui/PathWindowView.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
             target_link_libraries(PathSpace PRIVATE
                 "-framework Metal"
                 "-framework QuartzCore"
@@ -118,6 +120,7 @@ if(PATHSPACE_ENABLE_UI)
         target_compile_definitions(PathSpace PUBLIC PATHSPACE_UI_METAL=0)
     endif()
     if(APPLE)
+        target_link_libraries(PathSpace PRIVATE "-framework Foundation")
         target_link_libraries(PathSpace PRIVATE "-framework IOSurface")
     endif()
 else()

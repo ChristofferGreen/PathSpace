@@ -884,6 +884,8 @@ struct PathSpaceError {
 - `presentedAgeMs`, `presentedAgeFrames` — age of the output that was just displayed, relative to the prior present; derived from the policy’s frame timeout.
 - `stale` — true when `presentedAgeFrames` exceeds `maxAgeFrames` (used to gate auto-render).
 - `progressiveTilesUpdated`, `progressiveBytesCopied` — renderer-side estimates of progressive workload for the most recent render.
+- `backendKind`, `usedMetalTexture` — backend telemetry (Software2D vs Metal2D and whether a Metal texture was presented) so dashboards can spot software fallbacks while GPU upload remains gated behind `PATHSPACE_ENABLE_METAL_UPLOADS`.
+- `gpuEncodeMs`, `gpuPresentMs` — CPU-sampled durations for Metal blit encoding and drawable present scheduling when the Metal presenter path runs; zero on software presents.
 
 Downstream tooling should consume these fields instead of recomputing policy state, and CI expectations should pin exact values for deterministic unit scenarios (see `tests/ui/test_PathRenderer2D.cpp` / `test_PathWindowView.cpp`).
 
@@ -1545,14 +1547,14 @@ Goals
    - Concurrency tests (hammer edits while rendering)
    - Update `docs/AI_ARCHITECTURE.md` if any core semantics change
 6) Metal backend (next)
-   - `PathSurfaceMetal` producing an offscreen `MTLTexture` *(stub scaffold committed October 18, 2025; currently allocates/owns a private texture and reports frame/revision indices)*
-   - Presenter draws textured quad into `CAMetalLayer` drawable on the UI thread
-   - **Integration roadmap (Oct 18, 2025):**
-     1. Persist `RendererKind::Metal2D` in renderer metadata; resolve backend in builder context.
-     2. Introduce metal surface cache & render flow: PathRenderer2D dispatches Metal path (command buffer encode, minimal pipeline) when backend == Metal2D.
+   - `PathSurfaceMetal` allocates/owns an offscreen `MTLTexture` and tracks frame/revision indices. Builders can already create Metal targets; by default they replay the software raster output onto the Metal surface, with optional GPU uploads gated on the environment variable `PATHSPACE_ENABLE_METAL_UPLOADS=1`.
+   - Presenter draws textured quad into `CAMetalLayer` drawable on the UI thread.
+   - **Integration roadmap (Oct 18, 2025; updated Oct 19):**
+     1. Persist `RendererKind::Metal2D` in renderer metadata; resolve backend in builder context (landed).
+     2. Introduce metal surface cache & render flow: PathRenderer2D dispatches Metal path (command buffer encode, minimal pipeline) when backend == Metal2D. Until the GPU encoder is complete we reuse the software raster and optionally upload into the Metal texture when `PATHSPACE_ENABLE_METAL_UPLOADS` is set.
      3. Extend `PathWindowView::Present` / macOS presenter to accept Metal surface handles and present CAMetalLayer drawables without IOSurface copies.
-     4. Record Metal timings/errors in `output/v1/common` + diagnostics mirrors.
-     5. Provide ObjC++ harness/CI coverage with Metal enabled; skip gracefully off-Apple.
+     4. Record Metal timings/errors in `output/v1/common` + diagnostics mirrors once GPU rendering is active.
+     5. Provide ObjC++ harness/CI coverage with Metal enabled; keep the environment variable unset in CI so tests continue to run purely in software.
 
 ## Open questions
 

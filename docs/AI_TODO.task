@@ -57,7 +57,7 @@ task {
 task {
   name: "Software Renderer FPS Parity [PERF]"
   description: "Bring 4K window frame rate in line with small-window performance by reducing per-frame copy work and parallelizing progressive tile fan-out."
-  status: planned
+  status: in_progress
   priority: P1
 
   acceptance_criteria: [
@@ -609,6 +609,25 @@ task {
       "CITATION.cff and docs/citation.md with BibTeX entry and examples."
     ]
   }
+}
+
+task {
+  name: "WindowEventPump UI Migration [UI]"
+  description: "Fold the macOS WindowEventPump presenter/event bridge into the PathSpace UI library so examples stay platform-neutral."
+  status: planned
+  priority: P1
+
+  acceptance_criteria: [
+    "PathWindowView (and supporting UI library code) owns the CAMetalLayer drawable acquisition, Metal/IOSurface present path, and event-loop integration currently implemented in examples/macos/WindowEventPump.mm.",
+    "examples/macos/* no longer compile any platform-specific presenter code; they reuse the shared UI bridge.",
+    "Docs updated (SceneGraphImplementationPlan.md, AI_ARCHITECTURE.md) to reference the shared presenter instead of the example harness."
+  ]
+
+  steps: [
+    "Refactor WindowEventPump.mm logic into PathSpace UI components (ObjC++ shim + C++ presenters) while preserving current Metal gating.",
+    "Provide a thin example harness that only wires app-specific input/scene setup.",
+    "Update examples and tests to consume the shared bridge; remove redundant platform code."
+  ]
 }
 
 task {

@@ -1896,6 +1896,8 @@ auto Present(PathSpace& space,
         .vsync_deadline = now + vsync_budget,
         .framebuffer = framebuffer_span,
         .dirty_tiles = dirty_tiles,
+        .surface_width_px = context->target_desc.size_px.width,
+        .surface_height_px = context->target_desc.size_px.height,
         .has_metal_texture = has_metal_texture,
         .metal_texture = metal_texture,
         .allow_iosurface_sharing = true,
@@ -1906,6 +1908,8 @@ auto Present(PathSpace& space,
         .vsync_deadline = now + vsync_budget,
         .framebuffer = framebuffer_span,
         .dirty_tiles = dirty_tiles,
+        .surface_width_px = context->target_desc.size_px.width,
+        .surface_height_px = context->target_desc.size_px.height,
         .has_metal_texture = has_metal_texture,
         .metal_texture = metal_texture,
     };
@@ -2073,6 +2077,20 @@ auto ReadTargetMetrics(PathSpace const& space,
         return std::unexpected(value.error());
     }
 
+    if (auto value = read_value<double>(space, base + "/gpuEncodeMs"); value) {
+        metrics.gpu_encode_ms = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<double>(space, base + "/gpuPresentMs"); value) {
+        metrics.gpu_present_ms = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
     if (auto value = read_value<bool>(space, base + "/usedMetalTexture"); value) {
         metrics.used_metal_texture = *value;
     } else if (value.error().code != SP::Error::Code::NoObjectFound
@@ -2181,6 +2199,12 @@ auto WritePresentMetrics(PathSpace& space,
         return status;
     }
     if (auto status = replace_single<double>(space, base + "/presentMs", stats.present_ms); !status) {
+        return status;
+    }
+    if (auto status = replace_single<double>(space, base + "/gpuEncodeMs", stats.gpu_encode_ms); !status) {
+        return status;
+    }
+    if (auto status = replace_single<double>(space, base + "/gpuPresentMs", stats.gpu_present_ms); !status) {
         return status;
     }
     if (auto status = replace_single<bool>(space, base + "/lastPresentSkipped", stats.skipped); !status) {

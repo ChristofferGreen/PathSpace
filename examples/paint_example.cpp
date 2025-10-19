@@ -314,6 +314,9 @@ auto present_frame(PathSpace& space,
         }
     }
     if (!used_iosurface && !presentResult->framebuffer.empty()) {
+        if (presentResult->stats.used_metal_texture) {
+            presentResult->framebuffer.clear();
+        } else {
         int row_stride_bytes = 0;
         if (height > 0) {
             auto total_bytes = static_cast<int>(presentResult->framebuffer.size());
@@ -327,6 +330,7 @@ auto present_frame(PathSpace& space,
                                       width,
                                       height,
                                       row_stride_bytes);
+        }
     }
 #else
     (void)width;
@@ -594,7 +598,7 @@ int main(int argc, char** argv) {
         bool updated = false;
         dirtyHints.clear();
 
-    const int brushSizePx = read_config_value(space, brushSizePath, 8);
+        const int brushSizePx = read_config_value(space, brushSizePath, 8);
 
         bool sizeChanged = (requestedWidth != canvasWidth) || (requestedHeight != canvasHeight);
         if (sizeChanged) {

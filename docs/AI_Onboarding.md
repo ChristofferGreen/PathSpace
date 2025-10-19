@@ -3,6 +3,7 @@
 > **Context update (October 15, 2025):** This onboarding now targets the “Atlas” AI context introduced for the current launch window; adjust legacy workflows to align with this context.
 > **Session hand-off (October 17, 2025):** Software renderer incremental paths are healthy (~140 FPS for 64 px brush hints at 4 K) and the zero-copy path now skips redundant IOSurface→CPU copies. Use `./build/benchmarks/path_renderer2d_benchmark` for per-phase timing (damage diff, encode, progressive copy, publish, present) and `./build/paint_example --debug` to watch live frame stats. Expect FPS to dip as brush history grows because the demo keeps each stroke as a drawable; stroke compositing is logged as optional follow-up in `docs/SceneGraphImplementationPlan.md`. 
 > **Session hand-off (October 18, 2025):** CAMetalLayer fullscreen perf is covered by `PathSpaceUITests`, `capture_framebuffer` defaults to off, diagnostics now surface structured `PathSpaceError` payloads under `diagnostics/errors/live`, and the presenter reuses a bounded IOSurface pool so long paint sessions no longer exhaust range groups. Next focus: expand automation (`scripts/compile.sh`, CI docs) to collect UI logs and document the debugging playbook before moving deeper into Phase 6.
+> **Session hand-off (October 19, 2025 — late):** PathWindowView now drives the CAMetalLayer presenter path, records `gpuEncodeMs`/`gpuPresentMs`, and example apps simply forward the window’s layer/queue. Keep `PATHSPACE_ENABLE_METAL_UPLOADS=1` gated for manual Metal runs while CI stays on the software fallback. Next focus: add Metal UITest coverage and continue trimming the macOS-specific event pump down to input only.
 
 This guide bootstraps a brand-new AI assistant so it can work productively in the PathSpace repository without inheriting prior conversational context. Follow these steps at the beginning of every new session.
 
@@ -57,6 +58,11 @@ rg "TODO" -n
 
 ## 7. Hand-off Notes
 Before ending a session, record progress in the relevant plan (e.g., `docs/SceneGraphImplementationPlan.md`) and leave explicit next steps in the conversation or a README snippet for the next AI instance.
+
+### Immediate next steps (October 19, 2025)
+1. Land the Metal-enabled UITest/CI toggle so CAMetalLayer presents get continuous coverage without breaking headless automation.
+2. Migrate remaining presenter scaffolding out of `examples/macos/WindowEventPump.mm`, leaving only input/event bridging in the example harness.
+3. Document the new presenter metrics (`gpuEncodeMs`, `gpuPresentMs`) in the debugging playbook and profiler tooling notes once dashboards are updated.
 
 ---
 **Need a deeper dive?** Start with `docs/AI_ARCHITECTURE.md` and follow the cross-references. For renderer-specific tasks, consult `docs/AI_Plan_SceneGraph_Renderer.md` and its linked plans.

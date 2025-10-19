@@ -4,6 +4,7 @@
 #import <IOSurface/IOSurface.h>
 
 #include "../PaintInputBridge.hpp"
+#include <pathspace/ui/PathWindowView.hpp>
 
 #include <atomic>
 #include <algorithm>
@@ -48,12 +49,14 @@ static void EnsureMetalDevice() {
     gMetalDevice = MTLCreateSystemDefaultDevice();
     if (!gMetalDevice) {
         gMetalAvailable = false;
+        SP::UI::PathWindowView::ResetMetalPresenter();
         return;
     }
     gMetalCommandQueue = [gMetalDevice newCommandQueue];
     if (!gMetalCommandQueue) {
         gMetalDevice = nil;
         gMetalAvailable = false;
+        SP::UI::PathWindowView::ResetMetalPresenter();
         return;
     }
     gMetalAvailable = true;
@@ -292,6 +295,13 @@ static void UpdateMetalDrawableSize() {
         layer.contentsScale = scale;
         layer.drawableSize = CGSizeMake(boundsSize.width * scale,
                                         boundsSize.height * scale);
+
+        SP::UI::PathWindowView::MetalPresenterConfig config{};
+        config.layer = (__bridge void*)layer;
+        config.device = (__bridge void*)gMetalDevice;
+        config.command_queue = (__bridge void*)gMetalCommandQueue;
+        config.contents_scale = static_cast<double>(scale);
+        SP::UI::PathWindowView::ConfigureMetalPresenter(config);
     });
 }
 
@@ -327,6 +337,7 @@ static void UpdateMetalDrawableSize() {
         gMetalAvailable = false;
         self.psMetalLayer = nil;
         gMetalLayer = nil;
+        SP::UI::PathWindowView::ResetMetalPresenter();
         return;
     }
 
@@ -355,6 +366,13 @@ static void UpdateMetalDrawableSize() {
     self.psMetalLayer = layer;
     gMetalLayer = layer;
     gMetalAvailable = true;
+
+    SP::UI::PathWindowView::MetalPresenterConfig config{};
+    config.layer = (__bridge void*)layer;
+    config.device = (__bridge void*)gMetalDevice;
+    config.command_queue = (__bridge void*)gMetalCommandQueue;
+    config.contents_scale = static_cast<double>(scale);
+    SP::UI::PathWindowView::ConfigureMetalPresenter(config);
 }
 
 - (void)viewDidMoveToWindow {
@@ -370,6 +388,14 @@ static void UpdateMetalDrawableSize() {
 - (void)setFrameSize:(NSSize)newSize {
     [super setFrameSize:newSize];
     UpdateMetalDrawableSize();
+    if (gMetalLayer) {
+        SP::UI::PathWindowView::MetalPresenterConfig config{};
+        config.layer = (__bridge void*)gMetalLayer;
+        config.device = (__bridge void*)gMetalDevice;
+        config.command_queue = (__bridge void*)gMetalCommandQueue;
+        config.contents_scale = static_cast<double>(gBackingScale);
+        SP::UI::PathWindowView::ConfigureMetalPresenter(config);
+    }
 }
 
 - (void)enqueueMouseEvent:(PaintInput::MouseEvent)event {

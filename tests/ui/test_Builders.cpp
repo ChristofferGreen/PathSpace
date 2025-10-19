@@ -654,6 +654,8 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(metrics->revision == 0);
     CHECK(metrics->render_ms == 0.0);
     CHECK(metrics->present_ms == 0.0);
+    CHECK(metrics->gpu_encode_ms == 0.0);
+    CHECK(metrics->gpu_present_ms == 0.0);
     CHECK(metrics->last_present_skipped == false);
     CHECK(metrics->used_metal_texture == false);
     CHECK(metrics->backend_kind.empty());
@@ -667,6 +669,8 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     fx.space.insert(common + "/renderMs", 8.5);
     fx.space.insert(common + "/presentMs", 4.25);
     fx.space.insert(common + "/lastPresentSkipped", true);
+    fx.space.insert(common + "/gpuEncodeMs", 1.5);
+    fx.space.insert(common + "/gpuPresentMs", 2.0);
     fx.space.insert(common + "/usedMetalTexture", true);
     fx.space.insert(common + "/backendKind", std::string{"Software2D"});
     fx.space.insert(common + "/lastError", std::string{"failure"});
@@ -677,6 +681,8 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(updated->revision == 13);
     CHECK(updated->render_ms == doctest::Approx(8.5));
     CHECK(updated->present_ms == doctest::Approx(4.25));
+    CHECK(updated->gpu_encode_ms == doctest::Approx(1.5));
+    CHECK(updated->gpu_present_ms == doctest::Approx(2.0));
     CHECK(updated->last_present_skipped == true);
     CHECK(updated->used_metal_texture == true);
     CHECK(updated->backend_kind == "Software2D");
@@ -704,6 +710,8 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     writeStats.used_metal_texture = true;
     writeStats.wait_budget_ms = 7.5;
     writeStats.present_ms = 8.75;
+    writeStats.gpu_encode_ms = 4.5;
+    writeStats.gpu_present_ms = 5.25;
     writeStats.frame_age_ms = 3.0;
     writeStats.frame_age_frames = 2;
     writeStats.stale = true;
@@ -741,6 +749,8 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(afterWrite->revision == 9);
     CHECK(afterWrite->render_ms == doctest::Approx(6.25));
     CHECK(afterWrite->present_ms == doctest::Approx(8.75));
+    CHECK(afterWrite->gpu_encode_ms == doctest::Approx(4.5));
+    CHECK(afterWrite->gpu_present_ms == doctest::Approx(5.25));
     CHECK_FALSE(afterWrite->last_present_skipped);
     CHECK(afterWrite->used_metal_texture);
     CHECK(afterWrite->backend_kind == "Metal2D");

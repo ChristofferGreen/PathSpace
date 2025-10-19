@@ -36,6 +36,8 @@ struct PathWindowPresentRequest {
     std::chrono::steady_clock::time_point vsync_deadline{};
     std::span<std::uint8_t> framebuffer{};
     std::span<std::size_t const> dirty_tiles{};
+    int surface_width_px = 0;
+    int surface_height_px = 0;
     bool has_metal_texture = false;
 #if defined(__APPLE__)
     PathSurfaceMetal::TextureInfo metal_texture{};
@@ -60,6 +62,8 @@ struct PathWindowPresentStats {
     PathSurfaceSoftware::FrameInfo frame{};
     double wait_budget_ms = 0.0;
     double present_ms = 0.0;
+    double gpu_encode_ms = 0.0;
+    double gpu_present_ms = 0.0;
     double frame_age_ms = 0.0;
     std::uint64_t frame_age_frames = 0;
     std::size_t progressive_tiles_copied = 0;
@@ -80,6 +84,18 @@ public:
     using PresentPolicy = PathWindowPresentPolicy;
     using PresentRequest = PathWindowPresentRequest;
     using PresentStats = PathWindowPresentStats;
+
+#if defined(__APPLE__)
+    struct MetalPresenterConfig {
+        void* layer = nullptr;
+        void* device = nullptr;
+        void* command_queue = nullptr;
+        double contents_scale = 1.0;
+    };
+
+    static void ConfigureMetalPresenter(MetalPresenterConfig const& config);
+    static void ResetMetalPresenter();
+#endif
 
     [[nodiscard]] auto present(PathSurfaceSoftware& surface,
                                PresentPolicy const& policy,

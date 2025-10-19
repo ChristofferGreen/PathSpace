@@ -3,9 +3,15 @@
 #include <algorithm>
 #include <cstring>
 #include <exception>
+#include <mutex>
+#include <string>
 #include <vector>
 
 #if defined(__APPLE__)
+#include <Foundation/Foundation.h>
+#include <Metal/Metal.h>
+#include <QuartzCore/CAMetalLayer.h>
+#include <dispatch/dispatch.h>
 #include <IOSurface/IOSurface.h>
 #endif
 
@@ -15,7 +21,151 @@ namespace {
 
 constexpr std::size_t kBytesPerPixel = 4u;
 
+#if defined(__APPLE__)
+struct MetalPresenterState {
+    CAMetalLayer* layer = nil;
+    id<MTLDevice> device = nil;
+    id<MTLCommandQueue> command_queue = nil;
+    double contents_scale = 1.0;
+};
+
+std::mutex gMetalPresenterMutex;
+MetalPresenterState gMetalPresenterState{};
+
+auto copy_presenter_state() -> MetalPresenterState {
+    std::lock_guard<std::mutex> lock(gMetalPresenterMutex);
+    return gMetalPresenterState;
+}
+#endif
+
 } // namespace
+
+#if defined(__APPLE__)
+void PathWindowView::ConfigureMetalPresenter(MetalPresenterConfig const& config) {
+    std::lock_guard<std::mutex> lock(gMetalPresenterMutex);
+    gMetalPresenterState.layer = (__bridge CAMetalLayer*)config.layer;
+    gMetalPresenterState.device = (__bridge id<MTLDevice>)config.device;
+    gMetalPresenterState.command_queue = (__bridge id<MTLCommandQueue>)config.command_queue;
+    gMetalPresenterState.contents_scale = config.contents_scale > 0.0 ? config.contents_scale : 1.0;
+}
+
+void PathWindowView::ResetMetalPresenter() {
+    std::lock_guard<std::mutex> lock(gMetalPresenterMutex);
+    gMetalPresenterState = {};
+}
+
+static auto present_metal_texture(PathSurfaceSoftware& surface,
+                                  PathWindowView::PresentStats& stats,
+                                  PathWindowView::PresentRequest const& request) -> bool {
+    if (!request.has_metal_texture || request.metal_texture.texture == nullptr) {
+        return false;
+    }
+
+    auto state = copy_presenter_state();
+    if (state.layer == nil || state.command_queue == nil) {
+        return false;
+    }
+
+    auto const& desc = surface.desc();
+    int width_px = request.surface_width_px > 0 ? request.surface_width_px : std::max(desc.size_px.width, 0);
+    int height_px = request.surface_height_px > 0 ? request.surface_height_px : std::max(desc.size_px.height, 0);
+    if (width_px <= 0 || height_px <= 0) {
+        return false;
+    }
+
+    __block bool success = false;
+    __block std::string error_message;
+    __block double encode_ms = 0.0;
+    __block double present_ms = 0.0;
+
+    auto present_block = ^{
+        @autoreleasepool {
+            CAMetalLayer* layer = state.layer;
+            if (!layer) {
+                error_message = "CAMetalLayer unavailable";
+                return;
+            }
+            id<MTLCommandQueue> queue = state.command_queue;
+            if (!queue) {
+                error_message = "Metal command queue unavailable";
+                return;
+            }
+            id<MTLTexture> source = (__bridge id<MTLTexture>)request.metal_texture.texture;
+            if (!source) {
+                error_message = "Metal texture unavailable";
+                return;
+            }
+
+            CGFloat scale = state.contents_scale > 0.0 ? static_cast<CGFloat>(state.contents_scale) : (CGFloat)1.0;
+            layer.contentsScale = scale;
+            layer.drawableSize = CGSizeMake(static_cast<CGFloat>(width_px), static_cast<CGFloat>(height_px));
+
+            id<CAMetalDrawable> drawable = [layer nextDrawable];
+            if (!drawable) {
+                error_message = "failed to acquire CAMetalDrawable";
+                return;
+            }
+
+            id<MTLCommandBuffer> commandBuffer = [queue commandBuffer];
+            if (!commandBuffer) {
+                error_message = "failed to create Metal command buffer";
+                return;
+            }
+
+            auto encode_start = std::chrono::steady_clock::now();
+            id<MTLBlitCommandEncoder> blit = [commandBuffer blitCommandEncoder];
+            if (!blit) {
+                error_message = "failed to create Metal blit encoder";
+                return;
+            }
+            MTLSize size = MTLSizeMake(width_px, height_px, 1);
+            [blit copyFromTexture:source
+                       sourceSlice:0
+                        sourceLevel:0
+                       sourceOrigin:MTLOriginMake(0, 0, 0)
+                         sourceSize:size
+                         toTexture:drawable.texture
+                  destinationSlice:0
+                   destinationLevel:0
+                  destinationOrigin:MTLOriginMake(0, 0, 0)];
+            [blit endEncoding];
+            auto encode_finish = std::chrono::steady_clock::now();
+            encode_ms = std::chrono::duration<double, std::milli>(encode_finish - encode_start).count();
+
+            auto present_start = std::chrono::steady_clock::now();
+            [commandBuffer presentDrawable:drawable];
+            [commandBuffer commit];
+            [commandBuffer waitUntilScheduled];
+            auto present_finish = std::chrono::steady_clock::now();
+            present_ms = std::chrono::duration<double, std::milli>(present_finish - present_start).count();
+            success = true;
+        }
+    };
+
+    auto call_start = std::chrono::steady_clock::now();
+    if ([NSThread isMainThread]) {
+        present_block();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), present_block);
+    }
+    auto call_finish = std::chrono::steady_clock::now();
+
+    if (success) {
+        stats.presented = true;
+        stats.used_metal_texture = true;
+        stats.buffered_frame_consumed = false;
+        stats.gpu_encode_ms = encode_ms;
+        stats.gpu_present_ms = present_ms;
+        stats.present_ms = std::chrono::duration<double, std::milli>(call_finish - call_start).count();
+        stats.skipped = false;
+        stats.error.clear();
+    } else if (!error_message.empty()) {
+        stats.error = std::move(error_message);
+    }
+
+    return success;
+}
+#endif
 
 auto PathWindowView::present(PathSurfaceSoftware& surface,
                              PresentPolicy const& policy,
@@ -27,6 +177,12 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
     stats.auto_render_on_present = policy.auto_render_on_present;
     stats.vsync_aligned = policy.vsync_align;
     stats.frame = surface.latest_frame_info();
+#if defined(__APPLE__)
+    if (request.has_metal_texture) {
+        stats.frame.frame_index = request.metal_texture.frame_index;
+        stats.frame.revision = request.metal_texture.revision;
+    }
+#endif
 
     auto wait_budget = request.vsync_deadline - request.now;
     if (wait_budget < std::chrono::steady_clock::duration::zero()) {
@@ -34,6 +190,12 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
     }
     stats.wait_budget_ms =
         std::chrono::duration<double, std::milli>(wait_budget).count();
+
+#if defined(__APPLE__)
+    if (present_metal_texture(surface, stats, request)) {
+        return stats;
+    }
+#endif
 
     auto const required_bytes = surface.frame_bytes();
     auto const row_stride = surface.row_stride_bytes();

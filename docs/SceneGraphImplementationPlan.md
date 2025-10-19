@@ -145,9 +145,10 @@ Completed:
   2. **Surface cache & rendering loop**
      - ✅ (October 19, 2025) Split render helpers so Metal targets reuse the shared cache but funnel through a backend-aware `render_into_target`; contexts fall back to software when uploads are disabled and tests exercise the unified path.
      - PathRenderer2D: add backend abstraction so draw traversal fills either CPU framebuffer or Metal encoders; reuse command building, add Metal-specific upload/shader binding (initially simple textured quad pipeline).
-  3. **Presenter integration**
+ 3. **Presenter integration**
      - Extend `PathWindowView::Present` (Apple) to accept either `PathSurfaceSoftware` or `PathSurfaceMetal` stats; when Metal uploads are enabled, acquire CAMetalLayer drawable and blit/encode GPU texture to drawable using Metal command queue (move logic from WindowEventPump into core presenter).
      - Update macOS harness (`WindowEventPump.mm`) to detect Metal backend via stats and avoid redundant CPU copies.
+     - ✅ (October 19, 2025) PathWindowView now drives CAMetalLayer presents via the UI library, records GPU encode/present timings, and exposes configuration hooks; example harnesses only forward window/layer handles. Remaining platform scaffolding will shrink to input/event dispatch as the shared bridge matures.
  4. **Settings & diagnostics**
      - Define Metal target descriptors (`SurfaceDesc` additions if necessary), ensure RenderSettings/diagnostics include GPU timings and error paths.
      - Persist `diagnostics/errors/live` / `output/v1/common` updates for Metal frames (frameIndex, renderMs, GPU encode time).
@@ -155,9 +156,10 @@ Completed:
   5. **Testing & CI**
      - Add ObjC++ harness tests (PathSpaceUITests) with Metal flag to validate presenter path (can start as skipped until GPU encoding lands).
      - Update scripts/CI docs to run Metal-enabled tests on macOS jobs; ensure graceful skip when Metal unavailable.
-  6. **Follow-ups**
+ 6. **Follow-ups**
      - Shader/material system parity (reuse software pipeline flags).
      - Resource residency (textures/fonts) loading for GPU path.
+- **Next hand-off focus (October 19, 2025):** wire CAMetalLayer presentation so Metal textures reach the window without IOSurface copies, record GPU encode/present timings (and errors) in `output/v1/common`, and add Metal-enabled UITests/CI toggles while keeping software fallback as the default path.
 - HTML adapter scaffolding (command stream emitter + replay harness) behind experimental flag. **Implementation plan map (Oct 18, 2025):**
   1. **Adapter core API**
      - Define `Html::Adapter` emit API (DOM/CSS/canvas/assets) and persist options in `Builders` metadata.

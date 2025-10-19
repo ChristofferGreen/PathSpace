@@ -377,6 +377,8 @@ struct TargetMetrics {
     uint64_t revision = 0;
     double render_ms = 0.0;
     double present_ms = 0.0;
+    double gpu_encode_ms = 0.0;
+    double gpu_present_ms = 0.0;
     bool last_present_skipped = false;
     bool used_metal_texture = false;
     std::string backend_kind;
