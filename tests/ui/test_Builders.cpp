@@ -11,7 +11,11 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
+#include <iomanip>
+#include <cmath>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -26,12 +30,14 @@ using SP::UI::PathWindowPresentStats;
 using SP::UI::PathWindowView;
 namespace UIScene = SP::UI::Scene;
 using SP::UI::Builders::Diagnostics::PathSpaceError;
+namespace Widgets = SP::UI::Builders::Widgets;
 
 using UIScene::DrawableBucketSnapshot;
 using UIScene::SceneSnapshotBuilder;
 using UIScene::SnapshotPublishOptions;
 using UIScene::RectCommand;
 using UIScene::DrawCommandKind;
+using UIScene::ImageCommand;
 using UIScene::Transform;
 using UIScene::BoundingSphere;
 using UIScene::BoundingBox;
@@ -47,6 +53,24 @@ struct BuildersFixture {
     auto root_view() const -> SP::App::AppRootPathView { return SP::App::AppRootPathView{app_root.getPath()}; }
 };
 
+constexpr std::array<std::uint8_t, 78> kTestPngRgba = {
+    137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,8,6,0,0,0,114,182,13,36,
+    0,0,0,21,73,68,65,84,120,156,99,248,207,192,240,31,8,27,24,128,52,8,56,0,0,68,19,8,185,
+    109,230,62,33,0,0,0,0,73,69,78,68,174,66,96,130
+};
+
+auto format_revision(std::uint64_t revision) -> std::string {
+    std::ostringstream oss;
+    oss << std::setw(16) << std::setfill('0') << revision;
+    return oss.str();
+}
+
+auto fingerprint_hex(std::uint64_t fingerprint) -> std::string {
+    std::ostringstream oss;
+    oss << std::hex << std::setw(16) << std::setfill('0') << std::nouppercase << fingerprint;
+    return oss.str();
+}
+
 auto identity_transform() -> Transform {
     Transform t{};
     for (std::size_t i = 0; i < t.elements.size(); ++i) {
@@ -61,6 +85,52 @@ auto encode_rect_command(RectCommand const& rect,
     bucket.command_payload.resize(offset + sizeof(RectCommand));
     std::memcpy(bucket.command_payload.data() + offset, &rect, sizeof(RectCommand));
     bucket.command_kinds.push_back(static_cast<std::uint32_t>(DrawCommandKind::Rect));
+}
+
+auto encode_image_command(ImageCommand const& image,
+                          DrawableBucketSnapshot& bucket) -> void {
+    auto offset = bucket.command_payload.size();
+    bucket.command_payload.resize(offset + sizeof(ImageCommand));
+    std::memcpy(bucket.command_payload.data() + offset, &image, sizeof(ImageCommand));
+    bucket.command_kinds.push_back(static_cast<std::uint32_t>(DrawCommandKind::Image));
+}
+
+auto make_image_bucket(std::uint64_t fingerprint) -> DrawableBucketSnapshot {
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x1234u};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, std::sqrt(2.0f)}};
+    bucket.bounds_boxes = {BoundingBox{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 0.0f}}};
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {0};
+    bucket.pipeline_flags = {0};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {};
+    bucket.alpha_indices = {0};
+    bucket.layer_indices = {};
+    bucket.clip_nodes = {};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {DrawableAuthoringMapEntry{bucket.drawable_ids.front(), "image_node", 0, 0}};
+    bucket.drawable_fingerprints = {fingerprint};
+
+    ImageCommand image{};
+    image.min_x = 0.0f;
+    image.min_y = 0.0f;
+    image.max_x = 2.0f;
+    image.max_y = 2.0f;
+    image.uv_min_x = 0.0f;
+    image.uv_min_y = 0.0f;
+    image.uv_max_x = 1.0f;
+    image.uv_max_y = 1.0f;
+    image.image_fingerprint = fingerprint;
+    image.tint = {1.0f, 1.0f, 1.0f, 1.0f};
+
+    encode_image_command(image, bucket);
+    return bucket;
 }
 
 auto make_rect_bucket() -> DrawableBucketSnapshot {
@@ -1027,6 +1097,8 @@ TEST_CASE("Renderer::RenderHtml writes DOM outputs for html targets") {
     REQUIRE(assets);
     if (!assets->empty()) {
         CHECK(assets->front().logical_path.find("images/") == 0);
+        CHECK(assets->front().mime_type != "application/vnd.pathspace.image+ref");
+        CHECK_FALSE(assets->front().bytes.empty());
     }
 }
 
@@ -1100,7 +1172,96 @@ TEST_CASE("Renderer::RenderHtml writes DOM outputs for html targets") {
     REQUIRE(assets);
     if (!assets->empty()) {
         CHECK(assets->front().logical_path.find("images/") == 0);
+        CHECK(assets->front().mime_type != "application/vnd.pathspace.image+ref");
+        CHECK_FALSE(assets->front().bytes.empty());
     }
+}
+
+TEST_CASE("Widgets::CreateButton publishes snapshot and state") {
+    BuildersFixture fx;
+
+    Widgets::ButtonParams params{};
+    params.name = "primary";
+    params.label = "Primary";
+    params.style.width = 180.0f;
+    params.style.height = 44.0f;
+
+    auto created = Widgets::CreateButton(fx.space, fx.root_view(), params);
+    REQUIRE(created);
+
+    auto state = read_value<Widgets::ButtonState>(fx.space,
+                                                  std::string(created->state.getPath()));
+    REQUIRE(state);
+    CHECK(state->enabled);
+    CHECK_FALSE(state->pressed);
+    CHECK_FALSE(state->hovered);
+
+    auto label = read_value<std::string>(fx.space, std::string(created->label.getPath()));
+    REQUIRE(label);
+    CHECK(*label == params.label);
+
+    auto style = read_value<Widgets::ButtonStyle>(fx.space,
+                                                 std::string(created->root.getPath()) + "/meta/style");
+    REQUIRE(style);
+    CHECK(style->width == doctest::Approx(params.style.width));
+    CHECK(style->height == doctest::Approx(params.style.height));
+
+    auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    REQUIRE(revision);
+    CHECK(revision->revision > 0);
+}
+
+TEST_CASE("Renderer::RenderHtml hydrates image assets into output") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{ .name = "html_renderer_assets", .kind = RendererKind::Software2D, .description = "HTML" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SceneParams sceneParams{ .name = "scene_html_assets", .description = "html assets" };
+    auto scene = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    REQUIRE(scene);
+
+    constexpr std::uint64_t kImageFingerprint = 0xABCDEF0102030405ull;
+    auto bucket = make_image_bucket(kImageFingerprint);
+
+    SceneSnapshotBuilder builder{fx.space, fx.root_view(), *scene};
+    SnapshotPublishOptions opts{};
+    opts.metadata.author = "tests";
+    opts.metadata.tool_version = "tests";
+    opts.metadata.created_at = std::chrono::system_clock::time_point{};
+    opts.metadata.drawable_count = bucket.drawable_ids.size();
+    opts.metadata.command_count = bucket.command_kinds.size();
+    auto revision = builder.publish(opts, bucket);
+    REQUIRE(revision);
+
+    auto ready = Scene::WaitUntilReady(fx.space, *scene, std::chrono::milliseconds{10});
+    REQUIRE(ready);
+
+    auto revision_base = std::string(scene->getPath()) + "/builds/" + format_revision(*revision);
+    auto logical_path = std::string("images/") + fingerprint_hex(kImageFingerprint) + ".png";
+    auto image_path = revision_base + "/assets/" + logical_path;
+    std::vector<std::uint8_t> png_bytes(kTestPngRgba.begin(), kTestPngRgba.end());
+    auto insert_result = fx.space.insert(image_path, png_bytes);
+    REQUIRE(insert_result.errors.empty());
+
+    HtmlTargetParams targetParams{};
+    targetParams.name = "preview_assets";
+    targetParams.scene = std::string("scenes/") + sceneParams.name;
+    auto target = Renderer::CreateHtmlTarget(fx.space, fx.root_view(), *renderer, targetParams);
+    REQUIRE(target);
+
+    auto render_html = Renderer::RenderHtml(fx.space, ConcretePathView{target->getPath()});
+    REQUIRE(render_html);
+
+    auto htmlBase = std::string(target->getPath()) + "/output/v1/html";
+    auto assets = read_value<std::vector<Asset>>(fx.space, htmlBase + "/assets");
+    REQUIRE(assets);
+    REQUIRE(assets->size() == 1);
+    auto const& asset = assets->front();
+    CHECK(asset.logical_path == logical_path);
+    CHECK(asset.mime_type == "image/png");
+    CHECK(asset.bytes == std::vector<std::uint8_t>(kTestPngRgba.begin(), kTestPngRgba.end()));
 }
 
 TEST_CASE("SubmitDirtyRects coalesces tile-aligned hints") {

@@ -3,6 +3,8 @@
 #include <pathspace/ui/PathSurfaceMetal.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
+#include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/HtmlAdapter.hpp>
 #include "DrawableUtils.hpp"
 
@@ -11,11 +13,14 @@
 #include "task/IFutureAny.hpp"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cctype>
 #include <cstdint>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include <iomanip>
 #include <memory>
 #include <mutex>
@@ -26,7 +31,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <cstdlib>
 
 #if defined(__APPLE__)
 #include <CoreFoundation/CoreFoundation.h>
@@ -41,6 +45,8 @@ constexpr std::string_view kScenesSegment = "/scenes/";
 constexpr std::string_view kRenderersSegment = "/renderers/";
 constexpr std::string_view kSurfacesSegment = "/surfaces/";
 constexpr std::string_view kWindowsSegment = "/windows/";
+constexpr std::string_view kImageAssetRefMime = "application/vnd.pathspace.image+ref";
+constexpr std::string_view kFontAssetRefMime  = "application/vnd.pathspace.font+ref";
 
 std::atomic<std::uint64_t> g_auto_render_sequence{0};
 std::atomic<std::uint64_t> g_scene_dirty_sequence{0};
@@ -54,6 +60,136 @@ struct SceneRevisionRecord {
 auto make_error(std::string message,
                 SP::Error::Code code = SP::Error::Code::UnknownError) -> SP::Error {
     return SP::Error{code, std::move(message)};
+}
+
+namespace SceneData = SP::UI::Scene;
+
+template <typename T>
+auto replace_single(PathSpace& space, std::string const& path, T const& value) -> SP::Expected<void>;
+
+auto combine_relative(AppRootPathView root, std::string spec) -> SP::Expected<ConcretePath>;
+
+auto make_scene_meta(ScenePath const& scenePath, std::string const& leaf) -> std::string;
+
+template <typename T>
+auto read_optional(PathSpace const& space, std::string const& path) -> SP::Expected<std::optional<T>>;
+
+auto make_identity_transform() -> SceneData::Transform {
+    SceneData::Transform transform{};
+    for (std::size_t i = 0; i < transform.elements.size(); ++i) {
+        transform.elements[i] = (i % 5 == 0) ? 1.0f : 0.0f;
+    }
+    return transform;
+}
+
+struct ButtonSnapshotConfig {
+    float width = 200.0f;
+    float height = 48.0f;
+    std::array<float, 4> color{0.176f, 0.353f, 0.914f, 1.0f};
+};
+
+auto make_button_bucket(ButtonSnapshotConfig const& config) -> SceneData::DrawableBucketSnapshot {
+    SceneData::DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0xB17B0001ull};
+    bucket.world_transforms = {make_identity_transform()};
+
+    SceneData::BoundingSphere sphere{};
+    float center_x = config.width * 0.5f;
+    float center_y = config.height * 0.5f;
+    sphere.center = {center_x, center_y, 0.0f};
+    sphere.radius = std::sqrt(center_x * center_x + center_y * center_y);
+    bucket.bounds_spheres = {sphere};
+
+    SceneData::BoundingBox box{};
+    box.min = {0.0f, 0.0f, 0.0f};
+    box.max = {config.width, config.height, 0.0f};
+    bucket.bounds_boxes = {box};
+    bucket.bounds_box_valid = {1};
+
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {0};
+    bucket.pipeline_flags = {0};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {0};
+    bucket.alpha_indices.clear();
+    bucket.layer_indices.clear();
+    bucket.clip_nodes.clear();
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {SceneData::DrawableAuthoringMapEntry{
+        bucket.drawable_ids.front(), "widget/button/background", 0, 0}};
+    bucket.drawable_fingerprints = {0xB17B0001ull};
+
+    SceneData::RectCommand rect{};
+    rect.min_x = 0.0f;
+    rect.min_y = 0.0f;
+    rect.max_x = config.width;
+    rect.max_y = config.height;
+    rect.color = config.color;
+
+    auto const payload_size = sizeof(SceneData::RectCommand);
+    bucket.command_payload.resize(payload_size);
+    std::memcpy(bucket.command_payload.data(), &rect, payload_size);
+    bucket.command_kinds = {static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect)};
+
+    return bucket;
+}
+
+auto ensure_widget_root(PathSpace& /*space*/,
+                        AppRootPathView appRoot) -> SP::Expected<ConcretePath> {
+    return combine_relative(appRoot, "widgets");
+}
+
+auto ensure_widget_scene(PathSpace& space,
+                         AppRootPathView appRoot,
+                         std::string_view name,
+                         std::string_view description) -> SP::Expected<ScenePath> {
+    auto resolved = combine_relative(appRoot, std::string("scenes/widgets/") + std::string(name));
+    if (!resolved) {
+        return std::unexpected(resolved.error());
+    }
+
+    ScenePath scenePath{resolved->getPath()};
+    auto metaNamePath = make_scene_meta(scenePath, "name");
+    auto existing = read_optional<std::string>(space, metaNamePath);
+    if (!existing) {
+        return std::unexpected(existing.error());
+    }
+    if (!existing->has_value()) {
+        if (auto status = replace_single<std::string>(space, metaNamePath, std::string{name}); !status) {
+            return std::unexpected(status.error());
+        }
+        auto metaDescPath = make_scene_meta(scenePath, "description");
+        if (auto status = replace_single<std::string>(space, metaDescPath, std::string(description)); !status) {
+            return std::unexpected(status.error());
+        }
+    }
+    return scenePath;
+}
+
+auto write_button_metadata(PathSpace& space,
+                           std::string const& rootPath,
+                           std::string const& label,
+                           Widgets::ButtonState const& state,
+                           Widgets::ButtonStyle const& style) -> SP::Expected<void> {
+    auto statePath = rootPath + "/state";
+    if (auto status = replace_single<Widgets::ButtonState>(space, statePath, state); !status) {
+        return status;
+    }
+
+    auto labelPath = rootPath + "/meta/label";
+    if (auto status = replace_single<std::string>(space, labelPath, label); !status) {
+        return status;
+    }
+
+    auto stylePath = rootPath + "/meta/style";
+    if (auto status = replace_single<Widgets::ButtonStyle>(space, stylePath, style); !status) {
+        return status;
+    }
+
+    return {};
 }
 
 auto surfaces_cache() -> std::unordered_map<std::string, std::unique_ptr<PathSurfaceSoftware>>& {
@@ -696,6 +832,93 @@ auto format_revision(uint64_t revision) -> std::string {
     std::ostringstream oss;
     oss << std::setw(16) << std::setfill('0') << revision;
     return oss.str();
+}
+
+auto is_safe_asset_path(std::string_view path) -> bool {
+    if (path.empty()) {
+        return false;
+    }
+    if (path.front() == '/' || path.front() == '\\') {
+        return false;
+    }
+    if (path.find("..") != std::string_view::npos) {
+        return false;
+    }
+    return true;
+}
+
+auto guess_mime_type(std::string_view logical_path) -> std::string {
+    auto dot = logical_path.find_last_of('.');
+    if (dot == std::string_view::npos || dot + 1 >= logical_path.size()) {
+        return "application/octet-stream";
+    }
+    std::string ext;
+    ext.reserve(logical_path.size() - (dot + 1));
+    for (std::size_t i = dot + 1; i < logical_path.size(); ++i) {
+        ext.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(logical_path[i]))));
+    }
+
+    if (ext == "png")  return "image/png";
+    if (ext == "jpg" || ext == "jpeg") return "image/jpeg";
+    if (ext == "webp") return "image/webp";
+    if (ext == "gif")  return "image/gif";
+    if (ext == "svg")  return "image/svg+xml";
+    if (ext == "avif") return "image/avif";
+    if (ext == "bmp")  return "image/bmp";
+
+    if (ext == "woff2") return "font/woff2";
+    if (ext == "woff")  return "font/woff";
+    if (ext == "ttf")   return "font/ttf";
+    if (ext == "otf")   return "font/otf";
+
+    if (ext == "css")   return "text/css";
+    if (ext == "js" || ext == "mjs") return "text/javascript";
+    if (ext == "json")  return "application/json";
+
+    return "application/octet-stream";
+}
+
+auto hydrate_html_assets(PathSpace& space,
+                         std::string const& revisionBase,
+                         std::vector<Html::Asset>& assets) -> SP::Expected<void> {
+    for (auto& asset : assets) {
+        bool const needs_lookup = asset.bytes.empty()
+                                  || asset.mime_type == kImageAssetRefMime
+                                  || asset.mime_type == kFontAssetRefMime;
+        if (!needs_lookup) {
+            continue;
+        }
+
+        if (!is_safe_asset_path(asset.logical_path)) {
+            return std::unexpected(make_error("html asset logical path unsafe: " + asset.logical_path,
+                                              SP::Error::Code::InvalidPath));
+        }
+
+        std::string full_path = revisionBase;
+        if (asset.logical_path.rfind("assets/", 0) == 0) {
+            full_path.append("/").append(asset.logical_path);
+        } else {
+            full_path.append("/assets/").append(asset.logical_path);
+        }
+
+        auto bytes = space.read<std::vector<std::uint8_t>>(full_path);
+        if (!bytes) {
+            auto const error = bytes.error();
+            std::string message = "read html asset '" + asset.logical_path + "'";
+            if (error.message) {
+                message.append(": ").append(*error.message);
+            }
+            return std::unexpected(make_error(std::move(message), error.code));
+        }
+
+        asset.bytes = std::move(*bytes);
+        if (asset.mime_type == kImageAssetRefMime
+            || asset.mime_type == kFontAssetRefMime
+            || asset.mime_type.empty()) {
+            asset.mime_type = guess_mime_type(asset.logical_path);
+        }
+    }
+    return {};
 }
 
 auto make_revision_base(ScenePath const& scenePath,
@@ -1672,6 +1895,10 @@ auto RenderHtml(PathSpace& space,
         return report_error(emitted.error(), "emit html adapter output");
     }
 
+    if (auto status = hydrate_html_assets(space, revisionBase, emitted->assets); !status) {
+        return report_error(status.error(), "hydrate html assets");
+    }
+
     auto htmlBase = base + "/output/v1/html";
     if (auto status = replace_single<uint64_t>(space, htmlBase + "/revision", sceneRevision->revision); !status) {
         return report_error(status.error(), "write html revision");
@@ -2422,6 +2649,73 @@ auto Present(PathSpace& space,
 }
 
 } // namespace Window
+
+namespace Widgets {
+
+auto CreateButton(PathSpace& space,
+                  AppRootPathView appRoot,
+                  ButtonParams const& params) -> SP::Expected<ButtonPaths> {
+    if (auto status = ensure_identifier(params.name, "widget name"); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto widgetRoot = combine_relative(appRoot, std::string("widgets/") + params.name);
+    if (!widgetRoot) {
+        return std::unexpected(widgetRoot.error());
+    }
+
+    Widgets::ButtonState defaultState{};
+    if (auto status = write_button_metadata(space,
+                                            widgetRoot->getPath(),
+                                            params.label,
+                                            defaultState,
+                                            params.style); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto scenePath = ensure_widget_scene(space,
+                                         appRoot,
+                                         params.name,
+                                         std::string("Widget button: ") + params.label);
+    if (!scenePath) {
+        return std::unexpected(scenePath.error());
+    }
+
+    ButtonSnapshotConfig config{
+        .width = std::max(params.style.width, 1.0f),
+        .height = std::max(params.style.height, 1.0f),
+        .color = params.style.background_color,
+    };
+    auto bucket = make_button_bucket(config);
+
+    SceneData::SnapshotPublishOptions publishOpts{};
+    publishOpts.metadata.author = "widgets";
+    publishOpts.metadata.tool_version = "widgets-toolkit";
+    publishOpts.metadata.created_at = std::chrono::system_clock::now();
+    publishOpts.metadata.drawable_count = bucket.drawable_ids.size();
+    publishOpts.metadata.command_count = bucket.command_kinds.size();
+
+    SceneData::SceneSnapshotBuilder builder{space, appRoot, *scenePath};
+    auto revision = builder.publish(publishOpts, bucket);
+    if (!revision) {
+        return std::unexpected(revision.error());
+    }
+
+    auto ready = Scene::WaitUntilReady(space, *scenePath, std::chrono::milliseconds{50});
+    if (!ready) {
+        return std::unexpected(ready.error());
+    }
+
+    ButtonPaths paths{
+        .scene = *scenePath,
+        .root = WidgetPath{widgetRoot->getPath()},
+        .state = ConcretePath{widgetRoot->getPath() + "/state"},
+        .label = ConcretePath{widgetRoot->getPath() + "/meta/label"},
+    };
+    return paths;
+}
+
+} // namespace Widgets
 
 namespace Diagnostics {
 

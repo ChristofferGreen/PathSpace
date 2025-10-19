@@ -1532,6 +1532,19 @@ Goals
 
 Headless verification now runs through `scripts/verify_html_canvas.js`, which spawns the `html_canvas_dump` helper to emit the latest Canvas command stream and asserts structural correctness (types, dimensions, radii). The CTest entry `HtmlCanvasVerify` executes the script when Node.js is available and emits a skip message otherwise, keeping CI stable on minimal builders.
 
+### HTML adapter configuration & troubleshooting (October 19, 2025)
+
+- Target knobs  
+  - `HtmlTargetDesc::max_dom_nodes` caps DOM output complexity. When the adapter exceeds the limit it automatically downgrades to the Canvas JSON path; `output/v1/html/mode` flips to `canvas` and `usedCanvasFallback=true` so dashboards can alert on fidelity drops.  
+  - `HtmlTargetDesc::prefer_dom` selects DOM as the first-choice fidelity even if Canvas would also succeed; set `false` when you want Canvas replay for deterministic testing.  
+  - `HtmlTargetDesc::allow_canvas_fallback` controls whether the adapter is allowed to emit Canvas output at all—disabling it forces an error when DOM limits are exceeded, useful for aggressively surfacing missing shims.
+- Asset hydration  
+  - `Html::Adapter::emit` records every referenced asset under `output/v1/html/assets`. Renderer::RenderHtml now resolves those logical paths against the latched scene revision (`scenes/<sid>/builds/<rev>/assets/...`) so the final payload carries real bytes and accurate MIME types (PNG, WOFF2, etc.) instead of placeholder `application/vnd.pathspace.*` stubs. Consumers can stream assets directly from the PathSpace tree without touching scene snapshots.
+- Debug workflow  
+  - Inspect `output/v1/html/{mode,commandCount,domNodeCount,usedCanvasFallback}` plus the per-target diagnostics to understand why a fallback triggered.  
+  - Run `ctest -R HtmlCanvasVerify` (or invoke `scripts/verify_html_canvas.js <build/bin/html_canvas_dump>`) to check both DOM and Canvas outputs locally; the script mirrors the CI harness and skips automatically when Node.js is missing.  
+  - When assets go missing, verify the revision-mounted `assets/` subtree (e.g., `scenes/<sid>/builds/<rev>/assets/images/<fingerprint>.png`) and confirm the adapter’s `assets` array includes populated `bytes` fields.
+
 ## MVP plan
 
 1) Scaffolding and helpers

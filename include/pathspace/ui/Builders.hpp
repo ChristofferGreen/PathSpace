@@ -10,6 +10,7 @@
 
 #include <array>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -30,6 +31,7 @@ using RendererPath = ConcretePath;
 using SurfacePath = ConcretePath;
 using WindowPath = ConcretePath;
 using HtmlTargetPath = ConcretePath;
+using WidgetPath = ConcretePath;
 
 struct SceneParams {
     std::string name;
@@ -410,6 +412,40 @@ void SetBeforePresentHook(BeforePresentHook hook);
 void ResetBeforePresentHook();
 
 } // namespace Window::TestHooks
+
+namespace Widgets {
+
+struct ButtonStyle {
+    float width = 200.0f;
+    float height = 48.0f;
+    std::array<float, 4> background_color{0.176f, 0.353f, 0.914f, 1.0f};
+    std::array<float, 4> text_color{1.0f, 1.0f, 1.0f, 1.0f};
+};
+
+struct ButtonState {
+    bool enabled = true;
+    bool pressed = false;
+    bool hovered = false;
+};
+
+struct ButtonParams {
+    std::string name;
+    std::string label;
+    ButtonStyle style{};
+};
+
+struct ButtonPaths {
+    ScenePath scene;
+    WidgetPath root;
+    ConcretePath state;
+    ConcretePath label;
+};
+
+auto CreateButton(PathSpace& space,
+                  AppRootPathView appRoot,
+                  ButtonParams const& params) -> SP::Expected<ButtonPaths>;
+
+} // namespace Widgets
 
 namespace Diagnostics {
 

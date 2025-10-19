@@ -199,9 +199,9 @@ Completed:
      - ✅ (October 19, 2025) Renderer targets now emit HTML outputs under `output/v1/html/{dom,css,commands,assets}` using the adapter and persist the applied options.
      - ✅ (October 19, 2025) HTML `Window::Present` now enforces the `AlwaysLatestComplete` policy, writes diagnostics/residency metrics, and is covered by doctests (`Window::Present writes HTML present metrics and residency`).
   5. **Tooling & CI**
-     - TODO: Add headless verification step (e.g., Node/JS or WebKit snapshot) in CI to catch regressions; skip gracefully when tooling absent.
+     - ✅ (October 19, 2025) Added the Node-based `HtmlCanvasVerify` CTest (backed by `scripts/verify_html_canvas.js`) so CI exercises DOM vs Canvas outputs when `node` is present and emits a skip notice otherwise.
   6. **Documentation**
-     - TODO: Update HTML adapter decision section with fidelity tiers, options, and troubleshooting guidance once implementation lands.
+     - ✅ (October 19, 2025) Documented HTML adapter fidelity tiers, configuration knobs (`max_dom_nodes`, `prefer_dom`, `allow_canvas_fallback`), asset hydration, and debugging steps in `docs/AI_Plan_SceneGraph_Renderer.md`; keep the section current as adapter behavior evolves.
 - Resource loader integration for fonts/images when snapshots require them.
 
 ### Phase 8 — Widget Toolkit & Interaction Surfaces (post-MVP)
@@ -221,7 +221,7 @@ Completed:
   - Extend `PathSpaceUITests` with golden snapshots and interaction sequences for each widget (hover, press, disabled) using the 15× loop to guard against race regressions.
   - Add doctest coverage for the binding helpers to confirm dirty-hint emission, focus routing, and auto-render scheduling.
 - **Tooling & docs**
-  - Expand `examples/` with a `widgets_demo` showcasing button/toggle interactions, FPS diagnostics, and the zero-copy presenter path.
+  - Expand `examples/` with a `widgets_demo` showcasing every shipped widget (button, toggle, slider, list, etc.), FPS diagnostics, and the zero-copy presenter path so contributors can exercise the full toolkit in one app.
   - Update `docs/AI_Plan_SceneGraph_Renderer.md` and `docs/AI_ARCHITECTURE.md` with widget path conventions, builder usage, and troubleshooting steps.
   - Capture authoring guidelines in `docs/SceneGraphImplementationPlan.md`'s appendix so contributors can add new widgets consistently.
 
