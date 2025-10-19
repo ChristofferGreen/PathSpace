@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cctype>
 #include <cstdint>
+#include <cmath>
 #include <iomanip>
 #include <memory>
 #include <mutex>
@@ -1407,31 +1408,101 @@ auto ReadSettings(PathSpace const& space,
     return read_value<RenderSettings>(space, settingsPath);
 }
 
-auto merge_hints(std::vector<DirtyRectHint>& hints) -> void {
+auto rectangles_touch_or_overlap(DirtyRectHint const& a, DirtyRectHint const& b) -> bool {
+    auto overlaps_axis = [](float min_a, float max_a, float min_b, float max_b) {
+        return !(max_a < min_b || min_a > max_b);
+    };
+    return overlaps_axis(a.min_x, a.max_x, b.min_x, b.max_x)
+        && overlaps_axis(a.min_y, a.max_y, b.min_y, b.max_y);
+}
+
+auto merge_hints(std::vector<DirtyRectHint>& hints,
+                 float tile_size,
+                 float width,
+                 float height) -> void {
     if (hints.empty()) {
         return;
     }
-    std::vector<DirtyRectHint> merged;
-    merged.reserve(hints.size());
-    for (auto const& hint : hints) {
-        bool mergedExisting = false;
-        for (auto& existing : merged) {
-            auto const overlap_x = !(hint.max_x <= existing.min_x || hint.min_x >= existing.max_x);
-            auto const overlap_y = !(hint.max_y <= existing.min_y || hint.min_y >= existing.max_y);
-            if (overlap_x && overlap_y) {
-                existing.min_x = std::min(existing.min_x, hint.min_x);
-                existing.min_y = std::min(existing.min_y, hint.min_y);
-                existing.max_x = std::max(existing.max_x, hint.max_x);
-                existing.max_y = std::max(existing.max_y, hint.max_y);
-                mergedExisting = true;
+    auto fallback_to_full_surface = [&]() {
+        hints.clear();
+        if (width <= 0.0f || height <= 0.0f) {
+            return;
+        }
+        hints.push_back(DirtyRectHint{
+            .min_x = 0.0f,
+            .min_y = 0.0f,
+            .max_x = width,
+            .max_y = height,
+        });
+    };
+    if (width <= 0.0f || height <= 0.0f) {
+        hints.clear();
+        return;
+    }
+    bool merged_any = true;
+    while (merged_any) {
+        merged_any = false;
+        for (std::size_t i = 0; i < hints.size(); ++i) {
+            for (std::size_t j = i + 1; j < hints.size(); ++j) {
+                if (rectangles_touch_or_overlap(hints[i], hints[j])) {
+                    hints[i].min_x = std::min(hints[i].min_x, hints[j].min_x);
+                    hints[i].min_y = std::min(hints[i].min_y, hints[j].min_y);
+                    hints[i].max_x = std::max(hints[i].max_x, hints[j].max_x);
+                    hints[i].max_y = std::max(hints[i].max_y, hints[j].max_y);
+                    hints.erase(hints.begin() + static_cast<std::ptrdiff_t>(j));
+                    merged_any = true;
+                    break;
+                }
+            }
+            if (merged_any) {
                 break;
             }
         }
-        if (!mergedExisting) {
-            merged.push_back(hint);
+    }
+    constexpr std::size_t kMaxStoredHints = 128;
+    if (hints.size() > kMaxStoredHints) {
+        fallback_to_full_surface();
+        return;
+    }
+    double total_area = 0.0;
+    for (auto const& rect : hints) {
+        auto const width_px = std::max(0.0f, rect.max_x - rect.min_x);
+        auto const height_px = std::max(0.0f, rect.max_y - rect.min_y);
+        total_area += static_cast<double>(width_px) * static_cast<double>(height_px);
+    }
+    auto const surface_area = static_cast<double>(width) * static_cast<double>(height);
+    if (surface_area > 0.0 && total_area >= surface_area * 0.9) {
+        fallback_to_full_surface();
+        return;
+    }
+
+    auto approximately = [tile_size](float a, float b) {
+        auto const epsilon = std::max(tile_size * 0.001f, 1e-5f);
+        return std::fabs(a - b) <= epsilon;
+    };
+
+    for (auto& rect : hints) {
+        if (approximately(rect.min_x, 0.0f)) {
+            rect.min_x = 0.0f;
+        }
+        if (approximately(rect.min_y, 0.0f)) {
+            rect.min_y = 0.0f;
+        }
+        if (approximately(rect.max_x, width)) {
+            rect.max_x = width;
+        }
+        if (approximately(rect.max_y, height)) {
+            rect.max_y = height;
         }
     }
-    hints = std::move(merged);
+    std::sort(hints.begin(),
+              hints.end(),
+              [](DirtyRectHint const& lhs, DirtyRectHint const& rhs) {
+                  if (lhs.min_y == rhs.min_y) {
+                      return lhs.min_x < rhs.min_x;
+                  }
+                  return lhs.min_y < rhs.min_y;
+              });
 }
 
 auto snap_hint_to_tiles(DirtyRectHint hint, float tile_size) -> DirtyRectHint {
@@ -1488,7 +1559,7 @@ auto SubmitDirtyRects(PathSpace& space,
         }
         stored.push_back(snapped);
     }
-    merge_hints(stored);
+    merge_hints(stored, tile_size, width, height);
     return replace_single<std::vector<DirtyRectHint>>(space, hintsPath, stored);
 }
 

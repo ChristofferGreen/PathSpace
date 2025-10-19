@@ -13,6 +13,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <span>
 
 namespace {
 
@@ -867,6 +868,101 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     auto frameTimeoutMs = read_value<double>(fx.space, common + "/frameTimeoutMs");
     REQUIRE(frameTimeoutMs);
     CHECK(*frameTimeoutMs == doctest::Approx(24.0));
+}
+
+TEST_CASE("SubmitDirtyRects coalesces tile-aligned hints") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{ .name = "2d", .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc{};
+    desc.size_px = {256, 128};
+    desc.progressive_tile_size_px = 32;
+
+    SurfaceParams surfaceParams{ .name = "dirty_rects", .desc = desc, .renderer = "renderers/2d" };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    auto target = Renderer::ResolveTargetBase(fx.space,
+                                              fx.root_view(),
+                                              *renderer,
+                                              "targets/surfaces/dirty_rects");
+    REQUIRE(target);
+
+    std::vector<DirtyRectHint> hints{
+        DirtyRectHint{0.0f, 0.0f, 32.0f, 32.0f},
+        DirtyRectHint{32.0f, 0.0f, 64.0f, 32.0f},
+        DirtyRectHint{0.0f, 32.0f, 32.0f, 64.0f},
+        DirtyRectHint{32.0f, 32.0f, 64.0f, 64.0f},
+    };
+
+    auto submit = Renderer::SubmitDirtyRects(fx.space,
+                                             SP::ConcretePathStringView{target->getPath()},
+                                             std::span<const DirtyRectHint>(hints.data(), hints.size()));
+    REQUIRE(submit);
+
+    auto stored = read_value<std::vector<DirtyRectHint>>(fx.space,
+                                                         std::string(target->getPath()) + "/hints/dirtyRects");
+    REQUIRE(stored);
+    REQUIRE(stored->size() == 1);
+    auto const& rect = stored->front();
+    CHECK(rect.min_x == doctest::Approx(0.0f));
+    CHECK(rect.min_y == doctest::Approx(0.0f));
+    CHECK(rect.max_x == doctest::Approx(64.0f));
+    CHECK(rect.max_y == doctest::Approx(64.0f));
+}
+
+TEST_CASE("SubmitDirtyRects collapses excessive hints to full surface") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{ .name = "2d", .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc{};
+    desc.size_px = {320, 192};
+    desc.progressive_tile_size_px = 32;
+
+    SurfaceParams surfaceParams{ .name = "many_dirty_rects", .desc = desc, .renderer = "renderers/2d" };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    auto target = Renderer::ResolveTargetBase(fx.space,
+                                              fx.root_view(),
+                                              *renderer,
+                                              "targets/surfaces/many_dirty_rects");
+    REQUIRE(target);
+
+    std::vector<DirtyRectHint> hints;
+    hints.reserve(256);
+    for (int y = 0; y < 12; ++y) {
+        for (int x = 0; x < 20; ++x) {
+            DirtyRectHint hint{
+                .min_x = static_cast<float>(x * 16),
+                .min_y = static_cast<float>(y * 16),
+                .max_x = static_cast<float>((x + 1) * 16),
+                .max_y = static_cast<float>((y + 1) * 16),
+            };
+            hints.push_back(hint);
+        }
+    }
+
+    auto submit = Renderer::SubmitDirtyRects(fx.space,
+                                             SP::ConcretePathStringView{target->getPath()},
+                                             std::span<const DirtyRectHint>(hints.data(), hints.size()));
+    REQUIRE(submit);
+
+    auto stored = read_value<std::vector<DirtyRectHint>>(fx.space,
+                                                         std::string(target->getPath()) + "/hints/dirtyRects");
+    REQUIRE(stored);
+    REQUIRE(stored->size() == 1);
+    auto const& rect = stored->front();
+    CHECK(rect.min_x == doctest::Approx(0.0f));
+    CHECK(rect.min_y == doctest::Approx(0.0f));
+    CHECK(rect.max_x == doctest::Approx(static_cast<float>(desc.size_px.width)));
+    CHECK(rect.max_y == doctest::Approx(static_cast<float>(desc.size_px.height)));
 }
 
 } // TEST_SUITE

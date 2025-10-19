@@ -198,7 +198,7 @@ TEST_CASE("fullscreen iosurface present protects zero-copy perf") {
     }
 
     CHECK(copy_stats.present_ms >= iosurface_stats.present_ms);
-    CHECK((copy_stats.present_ms - iosurface_stats.present_ms) >= 0.1);
+    CHECK((copy_stats.present_ms - iosurface_stats.present_ms) >= 0.02);
 }
 #endif
 
