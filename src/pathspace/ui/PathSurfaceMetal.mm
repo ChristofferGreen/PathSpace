@@ -1,4 +1,5 @@
 #import <Metal/Metal.h>
+#include <TargetConditionals.h>
 
 #include <algorithm>
 
@@ -33,6 +34,50 @@ auto clamp_dimension(int value) -> NSUInteger {
         return 1;
     }
     return static_cast<NSUInteger>(value);
+}
+
+auto to_mtl_storage_mode(Builders::MetalStorageMode mode) -> MTLStorageMode {
+    switch (mode) {
+    case Builders::MetalStorageMode::Private:
+        return MTLStorageModePrivate;
+    case Builders::MetalStorageMode::Shared:
+        return MTLStorageModeShared;
+    case Builders::MetalStorageMode::Managed:
+#if TARGET_OS_OSX
+        return MTLStorageModeManaged;
+#else
+        return MTLStorageModeShared;
+#endif
+    case Builders::MetalStorageMode::Memoryless:
+#if TARGET_OS_IPHONE
+        return MTLStorageModeMemoryless;
+#else
+        return MTLStorageModePrivate;
+#endif
+    }
+    return MTLStorageModePrivate;
+}
+
+auto to_mtl_usage(std::uint8_t usageFlags) -> MTLTextureUsage {
+    MTLTextureUsage usage = 0;
+    if (Builders::metal_usage_contains(usageFlags, Builders::MetalTextureUsage::ShaderRead)) {
+        usage |= MTLTextureUsageShaderRead;
+    }
+    if (Builders::metal_usage_contains(usageFlags, Builders::MetalTextureUsage::ShaderWrite)) {
+        usage |= MTLTextureUsageShaderWrite;
+    }
+    if (Builders::metal_usage_contains(usageFlags, Builders::MetalTextureUsage::RenderTarget)) {
+        usage |= MTLTextureUsageRenderTarget;
+    }
+#ifdef MTLTextureUsageBlit
+    if (Builders::metal_usage_contains(usageFlags, Builders::MetalTextureUsage::Blit)) {
+        usage |= MTLTextureUsageBlit;
+    }
+#endif
+    if (usage == 0) {
+        usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+    }
+    return usage;
 }
 
 } // namespace
@@ -74,8 +119,8 @@ struct PathSurfaceMetal::Impl {
                                                                width:clamp_dimension(desc.size_px.width)
                                                               height:clamp_dimension(desc.size_px.height)
                                                            mipmapped:NO];
-        descriptor.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
-        descriptor.storageMode = MTLStorageModePrivate;
+        descriptor.usage = to_mtl_usage(desc.metal.texture_usage);
+        descriptor.storageMode = to_mtl_storage_mode(desc.metal.storage_mode);
 
         texture = [device newTextureWithDescriptor:descriptor];
     }

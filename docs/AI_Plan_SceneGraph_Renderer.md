@@ -1137,7 +1137,7 @@ using UnvalidatedPathView = SP::UnvalidatedPathView;
 struct SceneParams    { std::string name; std::string description; };
 enum class RendererKind { Software2D, Metal2D, Vulkan2D };
 struct RendererParams { std::string name; RendererKind kind; std::string description; };
-struct SurfaceDesc    { /* backend, size, format, colorSpace, etc. */ };
+struct SurfaceDesc    { SizePx size; PixelFormat format; ColorSpace color; bool premultiplied; int progressive_tile_size_px; MetalSurfaceOptions metal; };
 struct SurfaceParams  { std::string name; SurfaceDesc desc; std::string renderer; };
 struct WindowParams   { std::string name, title; int width=0, height=0; float scale=1.0f; std::string background; };
 
@@ -2132,6 +2132,8 @@ C++ types per key:
     - `color_space` (enum): `sRGB | DisplayP3 | Linear`
       - Write-out obeys pipeline flags (`SrgbFramebuffer` vs `LinearFramebuffer`); sRGB textures are linearized on sample.
     - `premultiplied_alpha` (bool) — default true for UI; renderers expect premultiplied inputs. If false, sources are converted at draw time (see `UnpremultipliedSrc`).
+    - `progressive_tile_size_px` (int, default 64) — tile dimensions used by the progressive software presenter.
+    - `metal { storage_mode (enum: Private | Shared | Managed | Memoryless), texture_usage (bitmask flags ShaderRead | ShaderWrite | RenderTarget | Blit), iosurface_backing (bool) }`
   - `TextureDesc`:
     - `size_px { int w, int h }`
     - `pixel_format` (enum): `RGBA8Unorm | BGRA8Unorm | RGBA8Unorm_sRGB | BGRA8Unorm_sRGB | RGBA16F | RGBA32F`
@@ -2157,10 +2159,11 @@ C++ types per key:
   - `RenderSettingsV1`:
     - `time { double time_ms, double delta_ms, uint64_t frame_index }`
     - `pacing { std::optional<double> user_cap_fps }` (effective = min(display, cap))
-    - `surface { {int w,int h} size_px, float dpi_scale, bool visibility }`
+    - `surface { {int w,int h} size_px, float dpi_scale, bool visibility, metal SurfaceDesc::MetalSurfaceOptions }`
     - `std::array<float,4> clear_color`
     - `camera` (optional): `{ enum Projection { Orthographic, Perspective }, float zNear, float zFar }`
     - `debug { uint32_t flags }` (optional)
+    - `renderer { backend_kind (RendererKind), metal_uploads_enabled: bool }`
 
 - `render` — execution that renders one frame for this target (no payload)
 - `output/v1/common/*` — single-value registers with latest metadata:

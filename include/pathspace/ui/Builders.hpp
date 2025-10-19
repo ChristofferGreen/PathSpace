@@ -87,6 +87,7 @@ struct RenderSettings {
         } size_px;
         float dpi_scale = 1.0f;
         bool  visibility = true;
+        MetalSurfaceOptions metal;
     } surface;
 
     std::array<float, 4> clear_color{0.0f, 0.0f, 0.0f, 1.0f};
@@ -105,6 +106,11 @@ struct RenderSettings {
         uint32_t flags   = 0;
         bool     enabled = false;
     } debug;
+
+    struct RendererState {
+        RendererKind backend_kind = RendererKind::Software2D;
+        bool metal_uploads_enabled = false;
+    } renderer;
 
     struct MicrotriRT {
         enum class HardwareMode {

@@ -119,6 +119,10 @@ auto make_sample_settings() -> RenderSettings {
     settings.surface.size_px = {1920, 1080};
     settings.surface.dpi_scale = 2.0f;
     settings.surface.visibility = false;
+    settings.surface.metal.storage_mode = MetalStorageMode::Shared;
+    settings.surface.metal.texture_usage = static_cast<std::uint8_t>(MetalTextureUsage::ShaderRead)
+                                           | static_cast<std::uint8_t>(MetalTextureUsage::RenderTarget);
+    settings.surface.metal.iosurface_backing = true;
     settings.clear_color = {0.1f, 0.2f, 0.3f, 0.4f};
     RenderSettings::Camera camera;
     camera.projection = RenderSettings::Camera::Projection::Perspective;
@@ -148,6 +152,8 @@ auto make_sample_settings() -> RenderSettings {
     settings.microtri_rt.progressive_accumulation = true;
     settings.microtri_rt.vertex_accum_half_life = 0.4f;
     settings.microtri_rt.seed = 12345u;
+    settings.renderer.backend_kind = RendererKind::Software2D;
+    settings.renderer.metal_uploads_enabled = false;
     return settings;
 }
 
@@ -337,6 +343,19 @@ TEST_CASE("Surface::RenderOnce handles metal renderer targets") {
         INFO("Surface::RenderOnce error message = " << render.error().message.value_or("<none>"));
     }
     CHECK(render);
+
+    auto targetBase = Renderer::ResolveTargetBase(fx.space,
+                                                  fx.root_view(),
+                                                  *renderer,
+                                                  "targets/surfaces/panel");
+    REQUIRE(targetBase);
+
+    auto storedSettings = Renderer::ReadSettings(fx.space, ConcretePathView{targetBase->getPath()});
+    REQUIRE(storedSettings);
+    CHECK(storedSettings->renderer.backend_kind == RendererKind::Software2D);
+    CHECK_FALSE(storedSettings->renderer.metal_uploads_enabled);
+    CHECK(storedSettings->surface.metal.storage_mode == desc.metal.storage_mode);
+    CHECK(storedSettings->surface.metal.texture_usage == desc.metal.texture_usage);
 }
 
 TEST_CASE("Window::Present handles metal renderer targets") {
@@ -379,6 +398,16 @@ TEST_CASE("Window::Present handles metal renderer targets") {
         INFO("Window::Present error message = " << present.error().message.value_or("<none>"));
     }
     CHECK(present);
+
+    auto targetBase = Renderer::ResolveTargetBase(fx.space,
+                                                  fx.root_view(),
+                                                  *renderer,
+                                                  "targets/surfaces/panel");
+    REQUIRE(targetBase);
+    auto storedSettings = Renderer::ReadSettings(fx.space, ConcretePathView{targetBase->getPath()});
+    REQUIRE(storedSettings);
+    CHECK(storedSettings->renderer.backend_kind == RendererKind::Software2D);
+    CHECK_FALSE(storedSettings->renderer.metal_uploads_enabled);
 }
 
 TEST_CASE("Scene::Create is idempotent and preserves metadata") {
@@ -427,6 +456,10 @@ TEST_CASE("Renderer::UpdateSettings replaces any queued values atomically") {
     auto taken = fx.space.take<RenderSettings>(settingsPath);
     REQUIRE(taken);
     CHECK(taken->time.frame_index == latest.time.frame_index);
+    CHECK(taken->surface.metal.storage_mode == latest.surface.metal.storage_mode);
+    CHECK(taken->surface.metal.texture_usage == latest.surface.metal.texture_usage);
+    CHECK(taken->renderer.backend_kind == latest.renderer.backend_kind);
+    CHECK(taken->renderer.metal_uploads_enabled == latest.renderer.metal_uploads_enabled);
 
     auto empty = fx.space.take<RenderSettings>(settingsPath);
     CHECK_FALSE(empty);
@@ -447,6 +480,10 @@ TEST_CASE("Surface creation binds renderer and scene") {
     desc.pixel_format = PixelFormat::BGRA8Unorm;
     desc.color_space = ColorSpace::DisplayP3;
     desc.premultiplied_alpha = false;
+    desc.metal.storage_mode = MetalStorageMode::Shared;
+    desc.metal.texture_usage = static_cast<std::uint8_t>(MetalTextureUsage::ShaderRead)
+                               | static_cast<std::uint8_t>(MetalTextureUsage::RenderTarget);
+    desc.metal.iosurface_backing = true;
 
     SurfaceParams surfaceParams{ .name = "editor", .desc = desc, .renderer = "renderers/2d" };
     auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
@@ -459,6 +496,9 @@ TEST_CASE("Surface creation binds renderer and scene") {
     CHECK(storedDesc->pixel_format == desc.pixel_format);
     CHECK(storedDesc->color_space == desc.color_space);
     CHECK(storedDesc->premultiplied_alpha == desc.premultiplied_alpha);
+    CHECK(storedDesc->metal.storage_mode == desc.metal.storage_mode);
+    CHECK(storedDesc->metal.texture_usage == desc.metal.texture_usage);
+    CHECK(storedDesc->metal.iosurface_backing == desc.metal.iosurface_backing);
 
     auto rendererStr = read_value<std::string>(fx.space, std::string(surface->getPath()) + "/renderer");
     REQUIRE(rendererStr);

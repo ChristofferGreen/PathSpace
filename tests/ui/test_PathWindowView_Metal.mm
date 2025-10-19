@@ -60,6 +60,9 @@ TEST_CASE("PathWindowView presents Metal texture when uploads enabled") {
         PathWindowView::ConfigureMetalPresenter(config);
 
         auto desc = make_surface_desc();
+        desc.metal.storage_mode = Builders::MetalStorageMode::Shared;
+        desc.metal.texture_usage = static_cast<std::uint8_t>(Builders::MetalTextureUsage::ShaderRead)
+                                   | static_cast<std::uint8_t>(Builders::MetalTextureUsage::RenderTarget);
         PathSurfaceSoftware software{desc};
         PathSurfaceMetal metal{desc};
 
@@ -88,6 +91,13 @@ TEST_CASE("PathWindowView presents Metal texture when uploads enabled") {
         CHECK(stats.gpu_present_ms >= 0.0);
         CHECK(stats.present_ms >= 0.0);
         CHECK_FALSE(stats.skipped);
+
+        id<MTLTexture> tex = (__bridge id<MTLTexture>)texture.texture;
+        bool hasTexture = (tex != nil);
+        CHECK(hasTexture);
+        CHECK(tex.storageMode == MTLStorageModeShared);
+        CHECK((tex.usage & MTLTextureUsageShaderRead) != 0);
+        CHECK((tex.usage & MTLTextureUsageRenderTarget) != 0);
 
         PathWindowView::ResetMetalPresenter();
     }

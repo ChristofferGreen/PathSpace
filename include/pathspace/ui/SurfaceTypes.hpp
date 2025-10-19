@@ -20,6 +20,40 @@ enum class ColorSpace {
     Linear,
 };
 
+enum class MetalStorageMode {
+    Private,
+    Shared,
+    Managed,
+    Memoryless,
+};
+
+enum class MetalTextureUsage : std::uint8_t {
+    ShaderRead   = 1u << 0,
+    ShaderWrite  = 1u << 1,
+    RenderTarget = 1u << 2,
+    Blit         = 1u << 3,
+};
+
+constexpr inline auto operator|(MetalTextureUsage lhs, MetalTextureUsage rhs) -> MetalTextureUsage {
+    return static_cast<MetalTextureUsage>(static_cast<std::uint8_t>(lhs) | static_cast<std::uint8_t>(rhs));
+}
+
+constexpr inline auto operator&(MetalTextureUsage lhs, MetalTextureUsage rhs) -> std::uint8_t {
+    return static_cast<std::uint8_t>(lhs) & static_cast<std::uint8_t>(rhs);
+}
+
+constexpr inline auto metal_usage_contains(std::uint8_t usage, MetalTextureUsage flag) -> bool {
+    return (usage & static_cast<std::uint8_t>(flag)) != 0;
+}
+
+struct MetalSurfaceOptions {
+    MetalStorageMode storage_mode = MetalStorageMode::Private;
+    std::uint8_t texture_usage = static_cast<std::uint8_t>(MetalTextureUsage::ShaderRead)
+                                 | static_cast<std::uint8_t>(MetalTextureUsage::ShaderWrite)
+                                 | static_cast<std::uint8_t>(MetalTextureUsage::RenderTarget);
+    bool iosurface_backing = true;
+};
+
 struct SurfaceDesc {
     struct SizePx {
         int width = 0;
@@ -29,6 +63,7 @@ struct SurfaceDesc {
     ColorSpace color_space = ColorSpace::sRGB;
     bool premultiplied_alpha = true;
     int progressive_tile_size_px = 64;
+    MetalSurfaceOptions metal{};
 };
 
 struct SoftwareFramebuffer {

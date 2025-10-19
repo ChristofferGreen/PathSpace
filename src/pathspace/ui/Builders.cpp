@@ -591,6 +591,7 @@ auto prepare_surface_render_context(PathSpace& space,
             effective.surface.size_px.height = targetDesc->size_px.height;
             effective.surface.dpi_scale = 1.0f;
             effective.surface.visibility = true;
+            effective.surface.metal = targetDesc->metal;
             effective.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
             effective.time.time_ms = 0.0;
             effective.time.delta_ms = 16.0;
@@ -600,6 +601,7 @@ auto prepare_surface_render_context(PathSpace& space,
 
     effective.surface.size_px.width = targetDesc->size_px.width;
     effective.surface.size_px.height = targetDesc->size_px.height;
+    effective.surface.metal = targetDesc->metal;
     if (effective.surface.dpi_scale == 0.0f) {
         effective.surface.dpi_scale = 1.0f;
     }
@@ -611,6 +613,14 @@ auto prepare_surface_render_context(PathSpace& space,
         effective.time.time_ms += effective.time.delta_ms;
         effective.time.frame_index += 1;
     }
+
+    effective.renderer.backend_kind = effectiveKind;
+#if PATHSPACE_UI_METAL
+    effective.renderer.metal_uploads_enabled = (effectiveKind == RendererKind::Metal2D)
+        && std::getenv("PATHSPACE_ENABLE_METAL_UPLOADS") != nullptr;
+#else
+    effective.renderer.metal_uploads_enabled = false;
+#endif
 
     if (auto status = Renderer::UpdateSettings(space,
                                                ConcretePathView{targetAbsolute->getPath()},
