@@ -32,7 +32,7 @@ Welcome! This repository just transitioned away from the “Atlas” assistant. 
 | --- | --- | --- |
 | Software renderer parity | Finish progressive tile parallelism & encode sharding | See `docs/SceneGraphImplementationPlan.md` (“Software Renderer FPS Parity”). |
 | GPU readiness | Material telemetry & residency now unified; next focus is GPU shading execution path | Track follow-up tasks in `docs/AI_TODO.task`. |
-| Diagnostics | Ensure dashboards ingest new `materialDescriptors` and residency metrics | Coordinate with tooling owners before schema changes. |
+| Diagnostics | Ensure dashboards ingest new `materialDescriptors`, residency metrics, and HTML adapter fidelity metadata | Coordinate with tooling owners before schema changes. |
 | HTML adapter | Wire replay harness + pipeline hooks, then land CI/headless verification | See SceneGraph plan Phase 7 for remaining tasks. |
 
 ## 3. Communication & Handoff Hygiene
@@ -56,6 +56,6 @@ Welcome! This repository just transitioned away from the “Atlas” assistant. 
 
 - Confirm the build/test loop passes locally.
 - Align your planned work with an entry in `docs/AI_TODO.task` (add one if missing).
-- Announce the scope in your PR description and keep doc updates synchronized with code changes.
+- Announce the scope in your PR description and keep doc updates synchronized with code changes. Remember to run `ctest -R HtmlCanvasVerify` when touching the adapter or HTML outputs so the headless replay harness stays green.
 
 Welcome aboard and thank you for keeping the PathSpace docs in sync for the next AI maintainer.
