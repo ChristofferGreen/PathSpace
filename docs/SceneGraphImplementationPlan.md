@@ -153,8 +153,8 @@ Completed:
      - Define Metal target descriptors (`SurfaceDesc` additions if necessary), ensure RenderSettings/diagnostics include GPU timings and error paths.
      - Persist `diagnostics/errors/live` / `output/v1/common` updates for Metal frames (frameIndex, renderMs, GPU encode time).
      - 🚧 (October 19, 2025) PathRenderer2D stats now record the backend kind actually used during render, so diagnostics can distinguish software fallback from Metal execution while we build out the GPU encoder.
-  5. **Testing & CI**
-     - Add ObjC++ harness tests (PathSpaceUITests) with Metal flag to validate presenter path (can start as skipped until GPU encoding lands).
+ 5. **Testing & CI**
+     - ✅ (October 19, 2025) Added a PATHSPACE_ENABLE_METAL_UPLOADS-gated ObjC++ PathSpaceUITest (`test_PathWindowView_Metal.mm`) that exercises the CAMetalLayer presenter when Metal uploads are enabled.
      - Update scripts/CI docs to run Metal-enabled tests on macOS jobs; ensure graceful skip when Metal unavailable.
  6. **Follow-ups**
      - Shader/material system parity (reuse software pipeline flags).

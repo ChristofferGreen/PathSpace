@@ -60,9 +60,9 @@ rg "TODO" -n
 Before ending a session, record progress in the relevant plan (e.g., `docs/SceneGraphImplementationPlan.md`) and leave explicit next steps in the conversation or a README snippet for the next AI instance.
 
 ### Immediate next steps (October 19, 2025)
-1. Land the Metal-enabled UITest/CI toggle so CAMetalLayer presents get continuous coverage without breaking headless automation.
-2. Migrate remaining presenter scaffolding out of `examples/macos/WindowEventPump.mm`, leaving only input/event bridging in the example harness.
-3. Document the new presenter metrics (`gpuEncodeMs`, `gpuPresentMs`) in the debugging playbook and profiler tooling notes once dashboards are updated.
+1. Migrate the remaining macOS event-pump scaffolding out of `examples/macos/WindowEventPump.mm` now that the shared presenter owns Metal presents.
+2. Fold PATHSPACE_ENABLE_METAL_UPLOADS toggles into CI/docs once macOS GPU jobs are provisioned so the new UITest runs automatically on capable runners.
+3. Backfill profiler/dashboard docs for the new presenter metrics (`gpuEncodeMs`, `gpuPresentMs`) and verify telemetry ingestion downstream.
 
 ---
 **Need a deeper dive?** Start with `docs/AI_ARCHITECTURE.md` and follow the cross-references. For renderer-specific tasks, consult `docs/AI_Plan_SceneGraph_Renderer.md` and its linked plans.

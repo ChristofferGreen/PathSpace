@@ -885,7 +885,7 @@ struct PathSpaceError {
 - `stale` — true when `presentedAgeFrames` exceeds `maxAgeFrames` (used to gate auto-render).
 - `progressiveTilesUpdated`, `progressiveBytesCopied` — renderer-side estimates of progressive workload for the most recent render.
 - `backendKind`, `usedMetalTexture` — backend telemetry (Software2D vs Metal2D and whether a Metal texture was presented) so dashboards can spot software fallbacks while GPU upload remains gated behind `PATHSPACE_ENABLE_METAL_UPLOADS`.
-- `gpuEncodeMs`, `gpuPresentMs` — CPU-sampled durations for Metal blit encoding and drawable present scheduling when the Metal presenter path runs; zero on software presents.
+- `gpuEncodeMs`, `gpuPresentMs` — CPU-sampled durations for Metal blit encoding and drawable scheduling when the CAMetalLayer path runs (0.0 for software presents). A PathSpaceUITest (`test_PathWindowView_Metal.mm`) covers this path when `PATHSPACE_ENABLE_METAL_UPLOADS=1` is set on macOS Metal runners.
 
 Downstream tooling should consume these fields instead of recomputing policy state, and CI expectations should pin exact values for deterministic unit scenarios (see `tests/ui/test_PathRenderer2D.cpp` / `test_PathWindowView.cpp`).
 

@@ -614,7 +614,7 @@ task {
 task {
   name: "WindowEventPump UI Migration [UI]"
   description: "Fold the macOS WindowEventPump presenter/event bridge into the PathSpace UI library so examples stay platform-neutral."
-  status: planned
+  status: in_progress
   priority: P1
 
   acceptance_criteria: [
@@ -627,6 +627,25 @@ task {
     "Refactor WindowEventPump.mm logic into PathSpace UI components (ObjC++ shim + C++ presenters) while preserving current Metal gating.",
     "Provide a thin example harness that only wires app-specific input/scene setup.",
     "Update examples and tests to consume the shared bridge; remove redundant platform code."
+  ]
+}
+
+task {
+  name: "Metal Presenter UITest [TESTS]"
+  description: "Add a PATHSPACE_ENABLE_METAL_UPLOADS-gated UITest that exercises the CAMetalLayer presenter path."
+  status: completed
+  priority: P1
+
+  acceptance_criteria: [
+    "PathSpaceUITests builds an ObjC++ test that configures PathWindowView with a CAMetalLayer and records Metal present stats when PATHSPACE_ENABLE_METAL_UPLOADS=1.",
+    "The test skips gracefully when Metal uploads remain disabled (default CI/headless runs).",
+    "Docs reference the new UITest and its gating so contributors know how to enable it locally."
+  ]
+
+  steps: [
+    "Create ui/test_PathWindowView_Metal.mm under PathSpaceUITests to configure a CAMetalLayer and invoke the presenter.",
+    "Guard the test behind PATHSPACE_UI_METAL, APPLE, and PATHSPACE_ENABLE_METAL_UPLOADS so CI remains stable.",
+    "Update planning/docs to track the new coverage and remaining CI toggle work."
   ]
 }
 
