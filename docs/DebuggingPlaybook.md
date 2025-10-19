@@ -1,3 +1,7 @@
+# Handoff Notice
+
+> **Handoff note (October 19, 2025):** These troubleshooting steps remain accurate but assume the Atlas-era tooling defaults. Confirm any helper script changes in `docs/AI_Onboarding_Next.md` before relying on this playbook.
+
 # PathSpace — Debugging Playbook
 
 > **Context update (October 18, 2025):** The test harness now captures detailed logs for every failure via `scripts/run-test-with-logs.sh`. Use this playbook to triage regressions, inspect diagnostics, and close the loop with the mandated 15× test runs.

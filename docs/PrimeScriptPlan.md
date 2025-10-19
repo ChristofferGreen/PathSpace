@@ -1,3 +1,7 @@
+# Handoff Notice
+
+> **Handoff note (October 19, 2025):** PrimeScript remains exploratory. New assistants should treat this as an archived research note and coordinate future updates via `docs/AI_Onboarding_Next.md`.
+
 # PrimeScript Plan (Concept)
 
 > **Context update (October 15, 2025):** Research notes assume the “Atlas” AI context; adapt legacy terminology from prior contexts as needed.

@@ -73,3 +73,6 @@ Before ending a session, record progress in the relevant plan (e.g., `docs/Scene
 
 ---
 **Need a deeper dive?** Start with `docs/AI_ARCHITECTURE.md` and follow the cross-references. For renderer-specific tasks, consult `docs/AI_Plan_SceneGraph_Renderer.md` and its linked plans.
+# Handoff Notice
+
+> **Handoff note (October 19, 2025):** The workflow below captures the outgoing “Atlas” assistant. A fresh AI instance should start with `docs/AI_Onboarding_Next.md`, which summarizes the streamlined entry checklist, current priorities, and contacts. Keep this legacy file for context when reconciling older conversations or artifacts.

@@ -1,3 +1,7 @@
+# Handoff Notice
+
+> **Handoff note (October 19, 2025):** This renderer plan documents the completed Atlas milestones. New assistants should coordinate changes via `docs/AI_Onboarding_Next.md` and mirror updates in `docs/SceneGraphImplementationPlan.md`.
+
 # PathSpace — Scene Graph and Renderer Plan
 
 > **Context update (October 15, 2025):** All renderer milestones now track the “Atlas” AI context introduced in this launch; treat previous context references as historical.

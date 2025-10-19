@@ -1,3 +1,7 @@
+# Handoff Notice
+
+> **Handoff note (October 19, 2025):** Carta Linea planning is paused during the assistant transition. Update this plan only after confirming scope with the new maintainer; see `docs/AI_Onboarding_Next.md` for current priorities.
+
 # PathSpace — Carta Linea Plan
 
 > **Context update (October 15, 2025):** Planning assumptions now align with the “Atlas” AI context launched for this release; map any legacy context terms to their Atlas counterparts.

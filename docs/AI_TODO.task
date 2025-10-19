@@ -1,4 +1,5 @@
 // Context update (October 15, 2025): Task priorities now reference the “Atlas” AI context; translate legacy context identifiers when reconciling backlogs.
+// Handoff note (October 19, 2025): This backlog is frozen pending the new assistant’s triage. Review each task with docs/AI_Onboarding_Next.md before starting work.
 
 task {
   name: "Software Presenter Zero-Copy Buffer [PERF]"

@@ -1,3 +1,7 @@
+# Handoff Notice
+
+> **Handoff note (October 19, 2025):** Namespace conventions remain valid, but this file represents the legacy “Atlas” run. Cross-check any edits with `docs/AI_Onboarding_Next.md` and record deviations while the new assistant spins up.
+
 # PathSpace — Standard Paths
 
 > **Context update (October 15, 2025):** Path conventions documented here assume the newly launched “Atlas” AI context; translate prior context names to the closest Atlas equivalents.

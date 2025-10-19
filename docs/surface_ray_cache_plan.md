@@ -1,3 +1,7 @@
+# Handoff Notice
+
+> **Handoff note (October 19, 2025):** Ray cache work is deferred until the new assistant cycle prioritizes GPU rendering. Treat this plan as archival unless reactivated via `docs/AI_Onboarding_Next.md`.
+
 # Surface Ray Cache Plan (Draft)
 
 > **Context update (October 15, 2025):** Ray cache milestones are evaluated within the “Atlas” AI context launched for this cycle; align earlier terminology with Atlas standards.

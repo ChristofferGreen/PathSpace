@@ -1,3 +1,7 @@
+# Handoff Notice
+
+> **Handoff note (October 19, 2025):** This roadmap captures the state at the end of the Atlas cycle. New assistants should record fresh status updates here after consulting `docs/AI_Onboarding_Next.md`.
+
 # Scene Graph Implementation Plan
 
 > **Context update (October 15, 2025):** Implementation phases now assume the “Atlas” AI context; convert prior context cues to the Atlas vocabulary during execution.
