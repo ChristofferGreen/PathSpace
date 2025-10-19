@@ -1252,6 +1252,123 @@ TEST_CASE("damage metrics capture drawable removal") {
     CHECK(*damageCoverage == doctest::Approx(0.05).epsilon(0.3));
 }
 
+TEST_CASE("damage metrics detect clear color repaint") {
+    ScopedEnv metrics_env{"PATHSPACE_UI_DAMAGE_METRICS", "1"};
+
+    RendererFixture fx;
+
+    constexpr int kWidth = 256;
+    constexpr int kHeight = 128;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x0E0000u};
+    bucket.drawable_fingerprints = {0x0701u};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{static_cast<float>(kWidth) * 0.5f,
+                                             static_cast<float>(kHeight) * 0.5f,
+                                             0.0f},
+                                            static_cast<float>(std::max(kWidth, kHeight))}};
+    bucket.bounds_boxes = {
+        BoundingBox{{0.0f, 0.0f, 0.0f},
+                    {static_cast<float>(kWidth), static_cast<float>(kHeight), 0.0f}},
+    };
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {0};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {0};
+    bucket.alpha_indices = {};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {
+        DrawableAuthoringMapEntry{bucket.drawable_ids[0], "fullsurface", 0, 0},
+    };
+
+    RectCommand fill{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = static_cast<float>(kWidth),
+        .max_y = static_cast<float>(kHeight),
+        .color = {0.4f, 0.4f, 0.4f, 1.0f},
+    };
+    encode_rect_command(fill, bucket);
+
+    auto scenePath = create_scene(fx, "scene_clear_color_damage", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_clear_color_damage");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = kWidth;
+    surfaceDesc.size_px.height = kHeight;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_clear_color_damage", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware::Options opts{
+        .enable_progressive = true,
+        .enable_buffered = false,
+        .progressive_tile_size_px = 64,
+    };
+    PathSurfaceSoftware surface{surfaceDesc, opts};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.clear_color = {0.1f, 0.1f, 0.1f, 1.0f};
+    settings.time.frame_index = 1;
+
+    auto first = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+        .backend_kind = RendererKind::Software2D,
+    });
+    REQUIRE(first);
+
+    settings.time.frame_index = 2;
+    settings.clear_color = {0.6f, 0.2f, 0.2f, 1.0f};
+
+    auto second = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+        .backend_kind = RendererKind::Software2D,
+    });
+    REQUIRE(second);
+
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    auto damageRects = fx.space.read<uint64_t>(metricsBase + "/damageRectangles");
+    REQUIRE(damageRects);
+    CHECK(*damageRects == 1);
+
+    auto damageCoverage = fx.space.read<double>(metricsBase + "/damageCoverageRatio");
+    REQUIRE(damageCoverage);
+    CHECK(*damageCoverage == doctest::Approx(1.0));
+
+    auto fingerprintChanges = fx.space.read<uint64_t>(metricsBase + "/fingerprintChanges");
+    REQUIRE(fingerprintChanges);
+    CHECK(*fingerprintChanges == 1);
+
+    auto fingerprintMatches = fx.space.read<uint64_t>(metricsBase + "/fingerprintMatchesExact");
+    REQUIRE(fingerprintMatches);
+    CHECK(*fingerprintMatches == 0);
+
+    auto fingerprintRemoved = fx.space.read<uint64_t>(metricsBase + "/fingerprintRemoved");
+    REQUIRE(fingerprintRemoved);
+    CHECK(*fingerprintRemoved == 1);
+
+    auto fingerprintNew = fx.space.read<uint64_t>(metricsBase + "/fingerprintNew");
+    REQUIRE(fingerprintNew);
+    CHECK(*fingerprintNew == 0);
+}
+
 TEST_CASE("pipeline flags partition passes when snapshot lacks explicit indices") {
     RendererFixture fx;
 
