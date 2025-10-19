@@ -675,6 +675,7 @@ auto render_into_metal_surface(PathSpace& space,
     if (auto upload = upload_to_metal_surface(software_surface, metal_surface, scratch); !upload) {
         return std::unexpected(upload.error());
     }
+    metal_surface.update_material_descriptors(stats->materials);
     metal_surface.present_completed(stats->frame_index, stats->revision);
     stats->backend_kind = RendererKind::Metal2D;
     stats->resource_cpu_bytes = software_surface.resident_cpu_bytes();

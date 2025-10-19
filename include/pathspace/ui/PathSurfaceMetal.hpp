@@ -1,11 +1,13 @@
 #pragma once
 
+#include <pathspace/ui/MaterialDescriptor.hpp>
 #include <pathspace/ui/SurfaceTypes.hpp>
 
 #include <cstdint>
 #include <span>
 #include <memory>
 #include <stdexcept>
+#include <vector>
 
 namespace SP::UI {
 
@@ -38,6 +40,8 @@ public:
                            std::uint64_t frame_index,
                            std::uint64_t revision);
     void present_completed(std::uint64_t frame_index, std::uint64_t revision);
+    void update_material_descriptors(std::span<MaterialDescriptor const> descriptors);
+    [[nodiscard]] auto material_descriptors() const -> std::span<MaterialDescriptor const>;
     [[nodiscard]] auto resident_gpu_bytes() const -> std::size_t;
 
 private:
@@ -63,6 +67,10 @@ public:
     }
     void update_from_rgba8(std::span<std::uint8_t const>, std::size_t, std::uint64_t, std::uint64_t) {}
     void present_completed(std::uint64_t, std::uint64_t) {}
+    void update_material_descriptors(std::span<MaterialDescriptor const>) {}
+    [[nodiscard]] auto material_descriptors() const -> std::span<MaterialDescriptor const> {
+        return {};
+    }
     [[nodiscard]] auto resident_gpu_bytes() const -> std::size_t { return 0; }
 };
 

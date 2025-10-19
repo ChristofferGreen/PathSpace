@@ -5,6 +5,8 @@
 
 #include "third_party/doctest.h"
 
+#include <pathspace/ui/DrawCommands.hpp>
+#include <pathspace/ui/MaterialDescriptor.hpp>
 #include <pathspace/ui/PathSurfaceMetal.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
@@ -15,6 +17,7 @@
 #include <vector>
 
 using namespace SP::UI;
+namespace UIScene = SP::UI::Scene;
 
 namespace {
 
@@ -67,6 +70,19 @@ TEST_CASE("PathWindowView presents Metal texture when uploads enabled") {
         PathSurfaceSoftware software{desc};
         PathSurfaceMetal metal{desc};
 
+        std::vector<MaterialDescriptor> materials;
+        MaterialDescriptor descriptor{};
+        descriptor.material_id = 5;
+        descriptor.pipeline_flags = 0x10;
+        descriptor.primary_draw_kind = static_cast<std::uint32_t>(UIScene::DrawCommandKind::Rect);
+        descriptor.drawable_count = 2;
+        descriptor.command_count = 3;
+        descriptor.tint_rgba = {1.0f, 1.0f, 1.0f, 1.0f};
+        descriptor.color_rgba = {0.2f, 0.4f, 0.6f, 0.8f};
+        descriptor.uses_image = false;
+        materials.push_back(descriptor);
+        metal.update_material_descriptors(materials);
+
         std::vector<std::uint8_t> pixels(4u * 4u * 4u, 0x7Fu);
         metal.update_from_rgba8(pixels, 4u * 4u, 5, 9);
         auto texture = metal.acquire_texture();
@@ -99,6 +115,10 @@ TEST_CASE("PathWindowView presents Metal texture when uploads enabled") {
         CHECK(tex.storageMode == MTLStorageModeShared);
         CHECK((tex.usage & MTLTextureUsageShaderRead) != 0);
         CHECK((tex.usage & MTLTextureUsageRenderTarget) != 0);
+
+        auto material_span = metal.material_descriptors();
+        CHECK(material_span.size() == materials.size());
+        CHECK(material_span.front().material_id == materials.front().material_id);
 
         PathWindowView::ResetMetalPresenter();
     }

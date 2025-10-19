@@ -89,6 +89,7 @@ struct PathSurfaceMetal::Impl {
     id<MTLTexture> texture = nil;
     std::uint64_t frame_index = 0;
     std::uint64_t revision = 0;
+    std::vector<MaterialDescriptor> materials{};
 
     explicit Impl(Builders::SurfaceDesc d)
         : desc(d)
@@ -225,6 +226,20 @@ auto PathSurfaceMetal::resident_gpu_bytes() const -> std::size_t {
     auto const width = std::max(impl_->desc.size_px.width, 0);
     auto const height = std::max(impl_->desc.size_px.height, 0);
     return static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4u;
+}
+
+void PathSurfaceMetal::update_material_descriptors(std::span<MaterialDescriptor const> descriptors) {
+    if (!impl_) {
+        return;
+    }
+    impl_->materials.assign(descriptors.begin(), descriptors.end());
+}
+
+auto PathSurfaceMetal::material_descriptors() const -> std::span<MaterialDescriptor const> {
+    if (!impl_) {
+        return {};
+    }
+    return std::span<MaterialDescriptor const>{impl_->materials.data(), impl_->materials.size()};
 }
 
 #endif // defined(__APPLE__)
