@@ -211,4 +211,8 @@ auto ProgressiveSurfaceBuffer::byte_offset(TileDimensions const& dims) const -> 
            * kBytesPerPixel;
 }
 
+auto ProgressiveSurfaceBuffer::resident_bytes() const -> std::size_t {
+    return pixels_.size();
+}
+
 } // namespace SP::UI

@@ -70,6 +70,8 @@ public:
     [[nodiscard]] auto copy_buffered_frame(std::span<std::uint8_t> destination) const
         -> std::optional<BufferedFrameCopy>;
 
+    [[nodiscard]] auto resident_cpu_bytes() const -> std::size_t;
+
 #if defined(__APPLE__)
     class SharedIOSurface {
     public:

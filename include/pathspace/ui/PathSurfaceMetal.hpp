@@ -38,6 +38,7 @@ public:
                            std::uint64_t frame_index,
                            std::uint64_t revision);
     void present_completed(std::uint64_t frame_index, std::uint64_t revision);
+    [[nodiscard]] auto resident_gpu_bytes() const -> std::size_t;
 
 private:
     struct Impl;
@@ -62,6 +63,7 @@ public:
     }
     void update_from_rgba8(std::span<std::uint8_t const>, std::size_t, std::uint64_t, std::uint64_t) {}
     void present_completed(std::uint64_t, std::uint64_t) {}
+    [[nodiscard]] auto resident_gpu_bytes() const -> std::size_t { return 0; }
 };
 
 #endif

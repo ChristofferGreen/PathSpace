@@ -205,6 +205,28 @@ void PathSurfaceMetal::present_completed(std::uint64_t frame_index, std::uint64_
     impl_->revision = revision;
 }
 
+auto PathSurfaceMetal::resident_gpu_bytes() const -> std::size_t {
+    if (!impl_ || !impl_->texture) {
+        return 0;
+    }
+    std::size_t allocated_bytes = 0;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunguarded-availability"
+    if ([impl_->texture respondsToSelector:@selector(allocatedSize)]) {
+        auto const size = impl_->texture.allocatedSize;
+        if (size > 0) {
+            allocated_bytes = static_cast<std::size_t>(size);
+        }
+    }
+#pragma clang diagnostic pop
+    if (allocated_bytes != 0) {
+        return allocated_bytes;
+    }
+    auto const width = std::max(impl_->desc.size_px.width, 0);
+    auto const height = std::max(impl_->desc.size_px.height, 0);
+    return static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4u;
+}
+
 #endif // defined(__APPLE__)
 
 } // namespace SP::UI

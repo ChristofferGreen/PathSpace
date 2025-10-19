@@ -74,6 +74,8 @@ public:
     auto copy_tile(std::size_t tile_index, std::span<std::uint8_t> destination) const
         -> std::optional<TileCopyResult>;
 
+    [[nodiscard]] auto resident_bytes() const -> std::size_t;
+
 private:
     struct TileMetadata {
         std::atomic<std::uint32_t> seq{0};

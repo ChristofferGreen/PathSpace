@@ -43,6 +43,8 @@ public:
         double progressive_copy_ms = 0.0;
         double publish_ms = 0.0;
         Builders::RendererKind backend_kind = Builders::RendererKind::Software2D;
+        std::uint64_t resource_cpu_bytes = 0;
+        std::uint64_t resource_gpu_bytes = 0;
     };
 
     explicit PathRenderer2D(PathSpace& space);

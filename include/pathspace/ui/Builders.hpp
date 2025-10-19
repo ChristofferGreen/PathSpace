@@ -391,6 +391,13 @@ struct TargetMetrics {
     std::string last_error;
     int last_error_code = 0;
     uint64_t last_error_revision = 0;
+    // Residency metrics are optional; zero indicates unavailable.
+    std::uint64_t cpu_bytes = 0;
+    std::uint64_t cpu_soft_bytes = 0;
+    std::uint64_t cpu_hard_bytes = 0;
+    std::uint64_t gpu_bytes = 0;
+    std::uint64_t gpu_soft_bytes = 0;
+    std::uint64_t gpu_hard_bytes = 0;
 };
 
 struct PathSpaceError {
@@ -425,6 +432,15 @@ auto WritePresentMetrics(PathSpace& space,
                           ConcretePathView targetPath,
                           PathWindowPresentStats const& stats,
                           PathWindowPresentPolicy const& policy) -> SP::Expected<void>;
+
+auto WriteResidencyMetrics(PathSpace& space,
+                           ConcretePathView targetPath,
+                           std::uint64_t cpu_bytes,
+                           std::uint64_t gpu_bytes,
+                           std::uint64_t cpu_soft_bytes = 0,
+                           std::uint64_t cpu_hard_bytes = 0,
+                           std::uint64_t gpu_soft_bytes = 0,
+                           std::uint64_t gpu_hard_bytes = 0) -> SP::Expected<void>;
 
 } // namespace Diagnostics
 

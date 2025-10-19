@@ -643,12 +643,18 @@ auto render_into_software_surface(PathSpace& space,
                                   RenderSettings const& settings,
                                   PathSurfaceSoftware& surface) -> SP::Expected<PathRenderer2D::RenderStats> {
     PathRenderer2D renderer{space};
-    return renderer.render({
+    auto stats = renderer.render({
         .target_path = targetPath,
         .settings = settings,
         .surface = surface,
         .backend_kind = RendererKind::Software2D,
     });
+    if (!stats) {
+        return stats;
+    }
+    stats->resource_cpu_bytes = surface.resident_cpu_bytes();
+    stats->resource_gpu_bytes = 0;
+    return stats;
 }
 
 #if PATHSPACE_UI_METAL
@@ -670,6 +676,8 @@ auto render_into_metal_surface(PathSpace& space,
     }
     metal_surface.present_completed(stats->frame_index, stats->revision);
     stats->backend_kind = RendererKind::Metal2D;
+    stats->resource_cpu_bytes = software_surface.resident_cpu_bytes();
+    stats->resource_gpu_bytes = metal_surface.resident_gpu_bytes();
     return stats;
 }
 #endif
@@ -2028,6 +2036,12 @@ auto Present(PathSpace& space,
                                                        presentPolicy); !status) {
         return std::unexpected(status.error());
     }
+    if (auto status = Diagnostics::WriteResidencyMetrics(space,
+                                                         SP::ConcretePathStringView{context->target_path.getPath()},
+                                                         stats_value.resource_cpu_bytes,
+                                                         stats_value.resource_gpu_bytes); !status) {
+        return std::unexpected(status.error());
+    }
 
     SoftwareFramebuffer stored_framebuffer{};
     stored_framebuffer.width = context->target_desc.size_px.width;
@@ -2116,7 +2130,51 @@ auto ReadTargetMetrics(PathSpace const& space,
     }
 
     if (auto value = read_value<bool>(space, base + "/lastPresentSkipped"); value) {
-        metrics.last_present_skipped = *value;
+       metrics.last_present_skipped = *value;
+   } else if (value.error().code != SP::Error::Code::NoObjectFound
+              && value.error().code != SP::Error::Code::NoSuchPath) {
+       return std::unexpected(value.error());
+   }
+
+    auto residencyBase = std::string(targetPath.getPath()) + "/diagnostics/metrics/residency";
+
+    if (auto value = read_value<uint64_t>(space, residencyBase + "/cpuBytes"); value) {
+        metrics.cpu_bytes = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, residencyBase + "/cpuSoftBytes"); value) {
+        metrics.cpu_soft_bytes = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, residencyBase + "/cpuHardBytes"); value) {
+        metrics.cpu_hard_bytes = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, residencyBase + "/gpuBytes"); value) {
+        metrics.gpu_bytes = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, residencyBase + "/gpuSoftBytes"); value) {
+        metrics.gpu_soft_bytes = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, residencyBase + "/gpuHardBytes"); value) {
+        metrics.gpu_hard_bytes = *value;
     } else if (value.error().code != SP::Error::Code::NoObjectFound
                && value.error().code != SP::Error::Code::NoSuchPath) {
         return std::unexpected(value.error());
@@ -2315,8 +2373,38 @@ auto WritePresentMetrics(PathSpace& space,
         }
     } else {
         if (auto status = ClearTargetError(space, targetPath); !status) {
-            return status;
-        }
+           return status;
+       }
+    }
+    return {};
+}
+
+auto WriteResidencyMetrics(PathSpace& space,
+                           ConcretePathView targetPath,
+                           std::uint64_t cpu_bytes,
+                           std::uint64_t gpu_bytes,
+                           std::uint64_t cpu_soft_bytes,
+                           std::uint64_t cpu_hard_bytes,
+                           std::uint64_t gpu_soft_bytes,
+                           std::uint64_t gpu_hard_bytes) -> SP::Expected<void> {
+    auto base = std::string(targetPath.getPath()) + "/diagnostics/metrics/residency";
+    if (auto status = replace_single<std::uint64_t>(space, base + "/cpuBytes", cpu_bytes); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::uint64_t>(space, base + "/cpuSoftBytes", cpu_soft_bytes); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::uint64_t>(space, base + "/cpuHardBytes", cpu_hard_bytes); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::uint64_t>(space, base + "/gpuBytes", gpu_bytes); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::uint64_t>(space, base + "/gpuSoftBytes", gpu_soft_bytes); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::uint64_t>(space, base + "/gpuHardBytes", gpu_hard_bytes); !status) {
+        return status;
     }
     return {};
 }

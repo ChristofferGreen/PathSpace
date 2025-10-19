@@ -712,6 +712,12 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(metrics->last_error.empty());
     CHECK(metrics->last_error_code == 0);
     CHECK(metrics->last_error_revision == 0);
+    CHECK(metrics->cpu_bytes == 0);
+    CHECK(metrics->cpu_soft_bytes == 0);
+    CHECK(metrics->cpu_hard_bytes == 0);
+    CHECK(metrics->gpu_bytes == 0);
+    CHECK(metrics->gpu_soft_bytes == 0);
+    CHECK(metrics->gpu_hard_bytes == 0);
 
     auto common = std::string(targetBase->getPath()) + "/output/v1/common";
     fx.space.insert(common + "/frameIndex", uint64_t{7});
@@ -724,6 +730,14 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     fx.space.insert(common + "/usedMetalTexture", true);
     fx.space.insert(common + "/backendKind", std::string{"Software2D"});
     fx.space.insert(common + "/lastError", std::string{"failure"});
+
+    auto residency = std::string(targetBase->getPath()) + "/diagnostics/metrics/residency";
+    fx.space.insert(residency + "/cpuBytes", uint64_t{64});
+    fx.space.insert(residency + "/cpuSoftBytes", uint64_t{128});
+    fx.space.insert(residency + "/cpuHardBytes", uint64_t{256});
+    fx.space.insert(residency + "/gpuBytes", uint64_t{32});
+    fx.space.insert(residency + "/gpuSoftBytes", uint64_t{96});
+    fx.space.insert(residency + "/gpuHardBytes", uint64_t{192});
 
     auto updated = Diagnostics::ReadTargetMetrics(fx.space, ConcretePathView{targetBase->getPath()});
     REQUIRE(updated);
@@ -739,6 +753,12 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(updated->last_error == "failure");
     CHECK(updated->last_error_code == 0);
     CHECK(updated->last_error_revision == 0);
+    CHECK(updated->cpu_bytes == 64);
+    CHECK(updated->cpu_soft_bytes == 128);
+    CHECK(updated->cpu_hard_bytes == 256);
+    CHECK(updated->gpu_bytes == 32);
+    CHECK(updated->gpu_soft_bytes == 96);
+    CHECK(updated->gpu_hard_bytes == 192);
 
     auto cleared = Diagnostics::ClearTargetError(fx.space, ConcretePathView{targetBase->getPath()});
     REQUIRE(cleared);
@@ -793,6 +813,16 @@ TEST_CASE("Diagnostics read metrics and clear error") {
                                                   writePolicy);
     REQUIRE(write);
 
+    auto writeResidency = Diagnostics::WriteResidencyMetrics(fx.space,
+                                                            ConcretePathView{targetBase->getPath()},
+                                                            /*cpu_bytes*/ 512,
+                                                            /*gpu_bytes*/ 1024,
+                                                            /*cpu_soft_bytes*/ 384,
+                                                            /*cpu_hard_bytes*/ 768,
+                                                            /*gpu_soft_bytes*/ 2048,
+                                                            /*gpu_hard_bytes*/ 4096);
+    REQUIRE(writeResidency);
+
     auto afterWrite = Diagnostics::ReadTargetMetrics(fx.space, ConcretePathView{targetBase->getPath()});
     REQUIRE(afterWrite);
     CHECK(afterWrite->frame_index == 21);
@@ -807,6 +837,12 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(afterWrite->last_error == "post-write-error");
     CHECK(afterWrite->last_error_code == 3000);
     CHECK(afterWrite->last_error_revision == 9);
+    CHECK(afterWrite->cpu_bytes == 512);
+    CHECK(afterWrite->cpu_soft_bytes == 384);
+    CHECK(afterWrite->cpu_hard_bytes == 768);
+    CHECK(afterWrite->gpu_bytes == 1024);
+    CHECK(afterWrite->gpu_soft_bytes == 2048);
+    CHECK(afterWrite->gpu_hard_bytes == 4096);
 
     auto staleFlag = read_value<bool>(fx.space, common + "/stale");
     REQUIRE(staleFlag);

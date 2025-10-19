@@ -583,6 +583,24 @@ auto PathSurfaceSoftware::copy_buffered_frame(std::span<std::uint8_t> destinatio
     };
 }
 
+auto PathSurfaceSoftware::resident_cpu_bytes() const -> std::size_t {
+#if defined(__APPLE__)
+    std::size_t total = frame_bytes_;
+    if (options_.enable_buffered && frame_bytes_ > 0) {
+        total += frame_bytes_;
+    }
+#else
+    std::size_t total = staging_.size();
+    if (options_.enable_buffered) {
+        total += front_.size();
+    }
+#endif
+    if (progressive_) {
+        total += progressive_->resident_bytes();
+    }
+    return total;
+}
+
 void PathSurfaceSoftware::reallocate_buffers() {
     frame_bytes_ = frame_bytes_for(desc_);
     row_stride_bytes_ = stride_for(desc_);
