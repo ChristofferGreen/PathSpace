@@ -508,9 +508,10 @@ int main(int argc, char** argv) try {
     // Renderer + surface setup
     Builders::RendererParams renderer_params{
         .name = "renderer_bench",
+        .kind = Builders::RendererKind::Software2D,
         .description = "Benchmark renderer",
     };
-    auto renderer_path = Builders::Renderer::Create(space, root_view, renderer_params, Builders::RendererKind::Software2D);
+    auto renderer_path = Builders::Renderer::Create(space, root_view, renderer_params);
     if (!renderer_path) {
         throw std::runtime_error(renderer_path.error().message.value_or("failed to create renderer"));
     }
@@ -737,8 +738,12 @@ int main(int argc, char** argv) try {
             throw std::runtime_error("failed to publish small snapshot");
         }
 
-        Builders::RendererParams sp_renderer_params{.name = "small_renderer", .description = ""};
-        auto sp_renderer = Builders::Renderer::Create(small_space, small_root_view, sp_renderer_params, Builders::RendererKind::Software2D);
+        Builders::RendererParams sp_renderer_params{
+            .name = "small_renderer",
+            .kind = Builders::RendererKind::Software2D,
+            .description = "",
+        };
+        auto sp_renderer = Builders::Renderer::Create(small_space, small_root_view, sp_renderer_params);
         if (!sp_renderer) {
             throw std::runtime_error("failed to create small renderer");
         }

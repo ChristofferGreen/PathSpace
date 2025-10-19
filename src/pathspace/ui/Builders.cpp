@@ -1306,9 +1306,8 @@ auto TakeDirtyEvent(PathSpace& space,
 namespace Renderer {
 
 auto Create(PathSpace& space,
-             AppRootPathView appRoot,
-             RendererParams const& params,
-             RendererKind kind) -> SP::Expected<RendererPath> {
+            AppRootPathView appRoot,
+            RendererParams const& params) -> SP::Expected<RendererPath> {
     if (auto status = ensure_identifier(params.name, "renderer name"); !status) {
         return std::unexpected(status.error());
     }
@@ -1336,7 +1335,7 @@ auto Create(PathSpace& space,
             }
         }
 
-        auto kindStatus = store_renderer_kind(space, metaBase + "/kind", kind);
+        auto kindStatus = store_renderer_kind(space, metaBase + "/kind", params.kind);
         if (!kindStatus) {
             return std::unexpected(kindStatus.error());
         }
@@ -1350,7 +1349,7 @@ auto Create(PathSpace& space,
     if (auto status = replace_single<std::string>(space, metaBase + "/description", params.description); !status) {
         return std::unexpected(status.error());
     }
-    if (auto status = store_renderer_kind(space, metaBase + "/kind", kind); !status) {
+    if (auto status = store_renderer_kind(space, metaBase + "/kind", params.kind); !status) {
         return std::unexpected(status.error());
     }
 

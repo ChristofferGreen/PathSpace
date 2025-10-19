@@ -125,8 +125,8 @@ TEST_CASE("Window::Present returns HTML payload") {
     auto bucket = make_bucket();
     auto scenePath = fx.publish_scene(bucket);
 
-    RendererParams rendererParams{.name = "html_renderer", .description = "Renderer"};
-    auto rendererPath = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    RendererParams rendererParams{.name = "html_renderer", .kind = RendererKind::Software2D, .description = "Renderer"};
+    auto rendererPath = Renderer::Create(fx.space, fx.root_view(), rendererParams);
     REQUIRE(rendererPath);
 
     HtmlTargetParams htmlParams{};
@@ -183,8 +183,8 @@ TEST_CASE("Window::Present writes HTML present metrics and residency") {
     auto bucket = make_bucket();
     auto scenePath = fx.publish_scene(bucket);
 
-    RendererParams rendererParams{.name = "html_renderer_metrics", .description = "Renderer"};
-    auto rendererPath = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    RendererParams rendererParams{.name = "html_renderer_metrics", .kind = RendererKind::Software2D, .description = "Renderer"};
+    auto rendererPath = Renderer::Create(fx.space, fx.root_view(), rendererParams);
     REQUIRE(rendererPath);
 
     HtmlTargetParams htmlParams{};

@@ -557,9 +557,10 @@ int main(int argc, char** argv) {
 
     Builders::RendererParams rendererParams{
         .name = "software2d",
+        .kind = Builders::RendererKind::Software2D,
         .description = "paint renderer",
     };
-    auto rendererPath = unwrap_or_exit(Builders::Renderer::Create(space, rootView, rendererParams, Builders::RendererKind::Software2D),
+    auto rendererPath = unwrap_or_exit(Builders::Renderer::Create(space, rootView, rendererParams),
                                        "failed to create renderer");
 
     Builders::SurfaceDesc surfaceDesc{};

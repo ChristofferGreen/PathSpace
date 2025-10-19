@@ -131,9 +131,10 @@ auto create_scene(RendererFixture& fx,
 auto create_renderer(RendererFixture& fx, std::string const& name) -> RendererPath {
     RendererParams params{
         .name = name,
+        .kind = RendererKind::Software2D,
         .description = "Test renderer",
     };
-    auto renderer = Renderer::Create(fx.space, fx.root_view(), params, RendererKind::Software2D);
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), params);
     REQUIRE(renderer);
     return *renderer;
 }

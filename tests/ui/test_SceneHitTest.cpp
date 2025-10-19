@@ -60,9 +60,10 @@ auto create_scene(HitTestFixture& fx,
 auto create_renderer(HitTestFixture& fx, std::string const& name) -> BuildersNS::RendererPath {
     BuildersNS::RendererParams params{
         .name = name,
+        .kind = BuildersNS::RendererKind::Software2D,
         .description = "Hit test renderer",
     };
-    auto renderer = BuildersNS::Renderer::Create(fx.space, fx.root_view(), params, BuildersNS::RendererKind::Software2D);
+    auto renderer = BuildersNS::Renderer::Create(fx.space, fx.root_view(), params);
     REQUIRE(renderer);
     return *renderer;
 }

@@ -42,17 +42,17 @@ struct SceneRevisionDesc {
     std::string author;
 };
 
-struct RendererParams {
-    std::string name;
-    std::string description;
-};
-
 enum class RendererKind {
     Software2D,
     Metal2D,
     Vulkan2D,
 };
 
+struct RendererParams {
+    std::string name;
+    RendererKind kind = RendererKind::Software2D;
+    std::string description;
+};
 struct SurfaceParams {
     std::string name;
     SurfaceDesc desc;
@@ -314,9 +314,8 @@ auto TakeDirtyEvent(PathSpace& space,
 namespace Renderer {
 
 auto Create(PathSpace& space,
-             AppRootPathView appRoot,
-             RendererParams const& params,
-             RendererKind kind) -> SP::Expected<RendererPath>;
+            AppRootPathView appRoot,
+            RendererParams const& params) -> SP::Expected<RendererPath>;
 
 auto ResolveTargetBase(PathSpace const& space,
                         AppRootPathView appRoot,

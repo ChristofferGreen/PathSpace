@@ -58,11 +58,12 @@ TEST_CASE("Renderer::ResolveTargetBase builds relative target path") {
     SceneHelpersFixture fx;
     RendererParams rendererParams{
         .name = "2d",
+        .kind = RendererKind::Software2D,
         .description = "Renderer",
     };
-    auto helperRenderer = Renderer::Create(fx.space, fx.app_root, rendererParams, RendererKind::Software2D);
+    auto helperRenderer = Renderer::Create(fx.space, fx.app_root, rendererParams);
     REQUIRE(helperRenderer.has_value());
-    auto builderRenderer = SP::UI::Builders::Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    auto builderRenderer = SP::UI::Builders::Renderer::Create(fx.space, fx.root_view(), rendererParams);
     REQUIRE(builderRenderer.has_value());
     CHECK(builderRenderer->getPath() == helperRenderer->getPath());
 

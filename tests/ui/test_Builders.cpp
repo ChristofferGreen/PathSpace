@@ -246,8 +246,12 @@ TEST_CASE("Scene publish and read current revision") {
 TEST_CASE("Renderer settings round-trip") {
     BuildersFixture fx;
 
-    RendererParams rendererParams{ .name = "2d", .description = "Software renderer" };
-    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    RendererParams rendererParams{
+        .name = "2d",
+        .kind = RendererKind::Software2D,
+        .description = "Software renderer",
+    };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
     REQUIRE(renderer);
 
     auto targetBase = Renderer::ResolveTargetBase(fx.space,
@@ -303,9 +307,9 @@ TEST_CASE("Renderer settings round-trip") {
 TEST_CASE("Renderer::Create stores renderer kind metadata and updates existing renderer") {
     BuildersFixture fx;
 
-    RendererParams params{ .name = "2d", .description = "Renderer" };
+    RendererParams params{ .name = "2d", .kind = RendererKind::Software2D, .description = "Renderer" };
 
-    auto first = Renderer::Create(fx.space, fx.root_view(), params, RendererKind::Software2D);
+    auto first = Renderer::Create(fx.space, fx.root_view(), params);
     REQUIRE(first);
 
     auto kindPath = std::string(first->getPath()) + "/meta/kind";
@@ -313,7 +317,8 @@ TEST_CASE("Renderer::Create stores renderer kind metadata and updates existing r
     REQUIRE(storedKind);
     CHECK(*storedKind == RendererKind::Software2D);
 
-    auto second = Renderer::Create(fx.space, fx.root_view(), params, RendererKind::Metal2D);
+    params.kind = RendererKind::Metal2D;
+    auto second = Renderer::Create(fx.space, fx.root_view(), params);
     REQUIRE(second);
     CHECK(second->getPath() == first->getPath());
 
@@ -341,8 +346,8 @@ TEST_CASE("Renderer::Create upgrades legacy string kind metadata") {
         REQUIRE(result.errors.empty());
     }
 
-    RendererParams params{ .name = "legacy", .description = "Upgraded renderer" };
-    auto created = Renderer::Create(fx.space, fx.root_view(), params, RendererKind::Software2D);
+    RendererParams params{ .name = "legacy", .kind = RendererKind::Software2D, .description = "Upgraded renderer" };
+    auto created = Renderer::Create(fx.space, fx.root_view(), params);
     if (!created) {
         INFO("Renderer::Create error code = " << static_cast<int>(created.error().code));
         INFO("Renderer::Create error message = " << created.error().message.value_or("<none>"));
@@ -363,8 +368,8 @@ TEST_CASE("Surface::RenderOnce handles metal renderer targets") {
         return;
     }
 
-    RendererParams params{ .name = "metal", .description = "Metal renderer" };
-    auto renderer = Renderer::Create(fx.space, fx.root_view(), params, RendererKind::Metal2D);
+    RendererParams params{ .name = "metal", .kind = RendererKind::Metal2D, .description = "Metal renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), params);
     REQUIRE(renderer);
 
     SurfaceDesc desc;
@@ -412,8 +417,8 @@ TEST_CASE("Window::Present handles metal renderer targets") {
         return;
     }
 
-    RendererParams params{ .name = "metal", .description = "Metal renderer" };
-    auto renderer = Renderer::Create(fx.space, fx.root_view(), params, RendererKind::Metal2D);
+    RendererParams params{ .name = "metal", .kind = RendererKind::Metal2D, .description = "Metal renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), params);
     REQUIRE(renderer);
 
     SurfaceDesc desc;
@@ -476,8 +481,8 @@ TEST_CASE("Scene::Create is idempotent and preserves metadata") {
 TEST_CASE("Renderer::UpdateSettings replaces any queued values atomically") {
     BuildersFixture fx;
 
-    RendererParams rendererParams{ .name = "2d", .description = "Renderer" };
-    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    RendererParams rendererParams{ .name = "2d", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
     REQUIRE(renderer);
 
     auto targetBase = Renderer::ResolveTargetBase(fx.space,
@@ -517,8 +522,8 @@ TEST_CASE("Renderer::UpdateSettings replaces any queued values atomically") {
 TEST_CASE("Surface creation binds renderer and scene") {
     BuildersFixture fx;
 
-    RendererParams rendererParams{ .name = "2d", .description = "Renderer" };
-    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    RendererParams rendererParams{ .name = "2d", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
     REQUIRE(renderer);
 
     SurfaceDesc desc;
@@ -673,8 +678,8 @@ TEST_CASE("Scene dirty event wait-notify latency stays within budget") {
 TEST_CASE("Window attach surface records binding") {
     BuildersFixture fx;
 
-    RendererParams rendererParams{ .name = "2d", .description = "Renderer" };
-    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    RendererParams rendererParams{ .name = "2d", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
     REQUIRE(renderer);
 
     SurfaceDesc desc;
@@ -701,8 +706,8 @@ TEST_CASE("Window attach surface records binding") {
 
 TEST_CASE("Renderer::ResolveTargetBase rejects empty specifications") {
     BuildersFixture fx;
-    RendererParams rendererParams{ .name = "2d", .description = "Renderer" };
-    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    RendererParams rendererParams{ .name = "2d", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
     REQUIRE(renderer);
 
     auto target = Renderer::ResolveTargetBase(fx.space, fx.root_view(), *renderer, "");
@@ -713,8 +718,8 @@ TEST_CASE("Renderer::ResolveTargetBase rejects empty specifications") {
 TEST_CASE("Window::AttachSurface enforces shared app roots") {
     BuildersFixture fx;
 
-    RendererParams rendererParams{ .name = "2d", .description = "Renderer" };
-    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    RendererParams rendererParams{ .name = "2d", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
     REQUIRE(renderer);
 
     SurfaceParams surfaceParams{ .name = "pane", .desc = {}, .renderer = "renderers/2d" };
@@ -734,8 +739,8 @@ TEST_CASE("Window::AttachSurface enforces shared app roots") {
 TEST_CASE("Diagnostics read metrics and clear error") {
     BuildersFixture fx;
 
-    RendererParams rendererParams{ .name = "2d", .description = "Renderer" };
-    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    RendererParams rendererParams{ .name = "2d", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
     REQUIRE(renderer);
 
     auto targetBase = Renderer::ResolveTargetBase(fx.space,
@@ -990,8 +995,8 @@ TEST_CASE("Diagnostics read metrics and clear error") {
 TEST_CASE("Renderer::RenderHtml writes DOM outputs for html targets") {
     BuildersFixture fx;
 
-    RendererParams rendererParams{ .name = "html_renderer", .description = "HTML" };
-    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    RendererParams rendererParams{ .name = "html_renderer", .kind = RendererKind::Software2D, .description = "HTML" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
     REQUIRE(renderer);
 
     SceneParams sceneParams{ .name = "scene_html_dom", .description = "html dom" };
@@ -1028,8 +1033,8 @@ TEST_CASE("Renderer::RenderHtml writes DOM outputs for html targets") {
 TEST_CASE("Renderer::RenderHtml falls back to canvas when DOM budget exceeded") {
     BuildersFixture fx;
 
-    RendererParams rendererParams{ .name = "html_renderer_canvas", .description = "HTML" };
-    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    RendererParams rendererParams{ .name = "html_renderer_canvas", .kind = RendererKind::Software2D, .description = "HTML" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
     REQUIRE(renderer);
 
     SceneParams sceneParams{ .name = "scene_html_canvas", .description = "html canvas" };
@@ -1063,8 +1068,8 @@ TEST_CASE("Renderer::RenderHtml falls back to canvas when DOM budget exceeded") 
 TEST_CASE("Renderer::RenderHtml writes DOM outputs for html targets") {
     BuildersFixture fx;
 
-    RendererParams rendererParams{ .name = "html_renderer", .description = "HTML" };
-    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    RendererParams rendererParams{ .name = "html_renderer", .kind = RendererKind::Software2D, .description = "HTML" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
     REQUIRE(renderer);
 
     SceneParams sceneParams{ .name = "scene_html_dom", .description = "html dom" };
@@ -1101,8 +1106,8 @@ TEST_CASE("Renderer::RenderHtml writes DOM outputs for html targets") {
 TEST_CASE("SubmitDirtyRects coalesces tile-aligned hints") {
     BuildersFixture fx;
 
-    RendererParams rendererParams{ .name = "2d", .description = "Renderer" };
-    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    RendererParams rendererParams{ .name = "2d", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
     REQUIRE(renderer);
 
     SurfaceDesc desc{};
@@ -1145,8 +1150,8 @@ TEST_CASE("SubmitDirtyRects coalesces tile-aligned hints") {
 TEST_CASE("SubmitDirtyRects collapses excessive hints to full surface") {
     BuildersFixture fx;
 
-    RendererParams rendererParams{ .name = "2d", .description = "Renderer" };
-    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    RendererParams rendererParams{ .name = "2d", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
     REQUIRE(renderer);
 
     SurfaceDesc desc{};

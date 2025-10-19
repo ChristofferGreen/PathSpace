@@ -225,9 +225,10 @@ auto create_renderer(MetalBuildersFixture& fx,
                      Builders::RendererKind kind) -> Builders::RendererPath {
     Builders::RendererParams params{
         .name = name,
+        .kind = kind,
         .description = "Renderer",
     };
-    auto renderer = Builders::Renderer::Create(fx.space, fx.root_view(), params, kind);
+    auto renderer = Builders::Renderer::Create(fx.space, fx.root_view(), params);
     REQUIRE(renderer);
     return *renderer;
 }

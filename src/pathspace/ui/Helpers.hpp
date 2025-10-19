@@ -54,8 +54,7 @@ namespace Renderer {
 
 auto Create(PathSpace& space,
             AppRootPath const& appRoot,
-            RendererParams const& params,
-            RendererKind kind) -> SP::Expected<RendererPath>;
+            RendererParams const& params) -> SP::Expected<RendererPath>;
 
 auto ResolveTargetBase(PathSpace const& space,
                        AppRootPath const& appRoot,
