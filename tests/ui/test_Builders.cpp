@@ -33,6 +33,7 @@ using UIScene::Transform;
 using UIScene::BoundingSphere;
 using UIScene::BoundingBox;
 using UIScene::DrawableAuthoringMapEntry;
+using SP::UI::MaterialDescriptor;
 
 struct BuildersFixture {
     PathSpace     space;
@@ -713,6 +714,8 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(metrics->last_error.empty());
     CHECK(metrics->last_error_code == 0);
     CHECK(metrics->last_error_revision == 0);
+    CHECK(metrics->material_count == 0);
+    CHECK(metrics->materials.empty());
     CHECK(metrics->cpu_bytes == 0);
     CHECK(metrics->cpu_soft_bytes == 0);
     CHECK(metrics->cpu_hard_bytes == 0);
@@ -731,6 +734,31 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     fx.space.insert(common + "/usedMetalTexture", true);
     fx.space.insert(common + "/backendKind", std::string{"Software2D"});
     fx.space.insert(common + "/lastError", std::string{"failure"});
+    fx.space.insert(common + "/materialCount", uint64_t{2});
+    std::vector<MaterialDescriptor> expected_descriptors{};
+    MaterialDescriptor mat0{};
+    mat0.material_id = 7;
+    mat0.pipeline_flags = 0x10u;
+    mat0.primary_draw_kind = static_cast<std::uint32_t>(DrawCommandKind::Rect);
+    mat0.command_count = 3;
+    mat0.drawable_count = 2;
+    mat0.color_rgba = {0.1f, 0.2f, 0.3f, 0.4f};
+    mat0.tint_rgba = {1.0f, 1.0f, 1.0f, 1.0f};
+    mat0.resource_fingerprint = 0u;
+    mat0.uses_image = false;
+    expected_descriptors.push_back(mat0);
+    MaterialDescriptor mat1{};
+    mat1.material_id = 12;
+    mat1.pipeline_flags = 0x20u;
+    mat1.primary_draw_kind = static_cast<std::uint32_t>(DrawCommandKind::Image);
+    mat1.command_count = 5;
+    mat1.drawable_count = 1;
+    mat1.color_rgba = {0.0f, 0.0f, 0.0f, 0.0f};
+    mat1.tint_rgba = {0.7f, 0.8f, 0.9f, 1.0f};
+    mat1.resource_fingerprint = 0xABCDEFu;
+    mat1.uses_image = true;
+    expected_descriptors.push_back(mat1);
+    fx.space.insert(common + "/materialDescriptors", expected_descriptors);
 
     auto residency = std::string(targetBase->getPath()) + "/diagnostics/metrics/residency";
     fx.space.insert(residency + "/cpuBytes", uint64_t{64});
@@ -754,6 +782,17 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(updated->last_error == "failure");
     CHECK(updated->last_error_code == 0);
     CHECK(updated->last_error_revision == 0);
+    CHECK(updated->material_count == 2);
+    REQUIRE(updated->materials.size() == 2);
+    CHECK(updated->materials[0].material_id == 7);
+    CHECK(updated->materials[0].pipeline_flags == 0x10u);
+    CHECK(updated->materials[0].primary_draw_kind == static_cast<std::uint32_t>(DrawCommandKind::Rect));
+    CHECK(updated->materials[0].drawable_count == 2);
+    CHECK(updated->materials[0].command_count == 3);
+    CHECK(updated->materials[0].uses_image == false);
+    CHECK(updated->materials[1].material_id == 12);
+    CHECK(updated->materials[1].uses_image == true);
+    CHECK(updated->materials[1].resource_fingerprint == 0xABCDEFu);
     CHECK(updated->cpu_bytes == 64);
     CHECK(updated->cpu_soft_bytes == 128);
     CHECK(updated->cpu_hard_bytes == 256);
@@ -838,6 +877,10 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(afterWrite->last_error == "post-write-error");
     CHECK(afterWrite->last_error_code == 3000);
     CHECK(afterWrite->last_error_revision == 9);
+    CHECK(afterWrite->material_count == 2);
+    REQUIRE(afterWrite->materials.size() == 2);
+    CHECK(afterWrite->materials[0].material_id == 7);
+    CHECK(afterWrite->materials[1].material_id == 12);
     CHECK(afterWrite->cpu_bytes == 512);
     CHECK(afterWrite->cpu_soft_bytes == 384);
     CHECK(afterWrite->cpu_hard_bytes == 768);

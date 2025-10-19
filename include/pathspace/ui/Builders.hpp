@@ -3,6 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/task/Future.hpp>
+#include <pathspace/ui/MaterialDescriptor.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/SurfaceTypes.hpp>
 
@@ -398,6 +399,8 @@ struct TargetMetrics {
     std::string last_error;
     int last_error_code = 0;
     uint64_t last_error_revision = 0;
+    uint64_t material_count = 0;
+    std::vector<MaterialDescriptor> materials;
     // Residency metrics are optional; zero indicates unavailable.
     std::uint64_t cpu_bytes = 0;
     std::uint64_t cpu_soft_bytes = 0;

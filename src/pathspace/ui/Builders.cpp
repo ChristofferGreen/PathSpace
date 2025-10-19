@@ -2211,6 +2211,22 @@ auto ReadTargetMetrics(PathSpace const& space,
        return std::unexpected(value.error());
    }
 
+    if (auto value = read_value<uint64_t>(space, base + "/materialCount"); value) {
+        metrics.material_count = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto descriptors = read_optional<std::vector<MaterialDescriptor>>(space, base + "/materialDescriptors"); !descriptors) {
+        return std::unexpected(descriptors.error());
+    } else if (descriptors->has_value()) {
+        metrics.materials = std::move(**descriptors);
+        if (metrics.material_count == 0) {
+            metrics.material_count = static_cast<uint64_t>(metrics.materials.size());
+        }
+    }
+
     auto residencyBase = std::string(targetPath.getPath()) + "/diagnostics/metrics/residency";
 
     if (auto value = read_value<uint64_t>(space, residencyBase + "/cpuBytes"); value) {
