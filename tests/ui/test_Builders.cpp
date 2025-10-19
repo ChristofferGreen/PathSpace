@@ -306,6 +306,11 @@ TEST_CASE("Renderer::Create upgrades legacy string kind metadata") {
 TEST_CASE("Surface::RenderOnce handles metal renderer targets") {
     BuildersFixture fx;
 
+    if (std::getenv("PATHSPACE_ENABLE_METAL_UPLOADS") != nullptr) {
+        INFO("Surface::RenderOnce metal path exercised by dedicated PATHSPACE_ENABLE_METAL_UPLOADS UITest; skipping builders coverage");
+        return;
+    }
+
     RendererParams params{ .name = "metal", .description = "Metal renderer" };
     auto renderer = Renderer::Create(fx.space, fx.root_view(), params, RendererKind::Metal2D);
     REQUIRE(renderer);
@@ -336,6 +341,11 @@ TEST_CASE("Surface::RenderOnce handles metal renderer targets") {
 
 TEST_CASE("Window::Present handles metal renderer targets") {
     BuildersFixture fx;
+
+    if (std::getenv("PATHSPACE_ENABLE_METAL_UPLOADS") != nullptr) {
+        INFO("Window::Present metal path exercised by dedicated PATHSPACE_ENABLE_METAL_UPLOADS UITest; skipping builders coverage");
+        return;
+    }
 
     RendererParams params{ .name = "metal", .description = "Metal renderer" };
     auto renderer = Renderer::Create(fx.space, fx.root_view(), params, RendererKind::Metal2D);

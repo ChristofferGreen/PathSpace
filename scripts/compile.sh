@@ -35,6 +35,7 @@ LOOP=0        # run tests in a loop N times (default 15 if provided without valu
 PER_TEST_TIMEOUT=""  # override seconds per test; default 60 (single), 120 (when --loop is used)
 EXTRA_ARGS=""        # extra args passed to test executable (doctest)
 DOCS=0               # generate Doxygen docs if 1
+ENABLE_METAL_TESTS=0 # opt-in Metal presenter tests
 
 # ----------------------------
 # Helpers
@@ -67,6 +68,7 @@ Options:
       --per-test-timeout SECS  Override per-test timeout (default: 60; 120 when --loop is used).
       --docs                 Generate Doxygen docs into build/docs/html (requires doxygen).
       --args "..."           Extra arguments passed to the test runner (doctest)
+      --enable-metal-tests   Build with PATHSPACE_UI_METAL and run tests with PATHSPACE_ENABLE_METAL_UPLOADS=1 (requires macOS + Metal GPU).
   -h, --help                 Show this help and exit.
 
 Sanitizers (mutually exclusive, maps to CMake options in this repo):
@@ -197,6 +199,9 @@ while [[ $# -gt 0 ]]; do
     --args=*)
       EXTRA_ARGS="${1#*=}"
       ;;
+    --enable-metal-tests)
+      ENABLE_METAL_TESTS=1
+      ;;
     -h|--help)
       print_help
       exit 0
@@ -212,6 +217,11 @@ done
 # Validations and setup
 # ----------------------------
 require_tool cmake
+if [[ "$ENABLE_METAL_TESTS" -eq 1 ]]; then
+  if [[ "$(uname)" != "Darwin" ]]; then
+    die "--enable-metal-tests is only supported on macOS hosts"
+  fi
+fi
 
 if [[ -z "$BUILD_DIR" ]]; then
   BUILD_DIR="$BUILD_DIR_DEFAULT"
@@ -253,6 +263,9 @@ esac
 CMAKE_FLAGS+=("-DCMAKE_EXPORT_COMPILE_COMMANDS=ON")
 # Always enable UI tests when building via this helper so CI/push runs cover them.
 CMAKE_FLAGS+=("-DPATHSPACE_ENABLE_UI=ON" "-DPATHSPACE_UI_SOFTWARE=ON")
+if [[ "$ENABLE_METAL_TESTS" -eq 1 ]]; then
+  CMAKE_FLAGS+=("-DPATHSPACE_UI_METAL=ON")
+fi
 
 # ----------------------------
 # Clean if requested
@@ -285,6 +298,9 @@ if [[ -n "$GENERATOR" ]]; then
   CONFIGURE_CMD+=( -G "$GENERATOR" )
 fi
 CONFIGURE_CMD+=( "${CMAKE_FLAGS[@]}" )
+if [[ "$ENABLE_METAL_TESTS" -eq 1 ]]; then
+  info "Metal presenter tests enabled (PATHSPACE_UI_METAL=ON, PATHSPACE_ENABLE_METAL_UPLOADS=1 for test runs)"
+fi
 
 if [[ "$VERBOSE" -eq 1 ]]; then
   echo "Configure: ${CONFIGURE_CMD[*]}"
@@ -397,6 +413,9 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
       "--env" "PATHSPACE_TEST_TIMEOUT=${PATHSPACE_TEST_TIMEOUT_VALUE}"
       "--env" "MallocNanoZone=${MALLOC_NANO_ZONE_VALUE}"
     )
+    if [[ "$ENABLE_METAL_TESTS" -eq 1 ]]; then
+      TEST_ENV_FLAGS+=("--env" "PATHSPACE_ENABLE_METAL_UPLOADS=1")
+    fi
 
     # Optional: enable core dumps/backtraces for debugging crashes
     if [[ "${PATHSPACE_ENABLE_CORES:-0}" == "1" ]]; then

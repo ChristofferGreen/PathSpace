@@ -40,6 +40,8 @@ cmake --build build -j
 ```
 Investigate and resolve failures prior to new development.
 
+> **Metal presenter coverage:** On macOS hosts with Metal GPUs, run `./scripts/compile.sh --enable-metal-tests --test` to compile with `PATHSPACE_UI_METAL=ON` and execute the Metal-enabled UITest (`test_PathWindowView_Metal`). Leave the flag off in CI/headless runs so automation stays on the software fallback.
+
 ## 5. Working Practices (AI Session)
 - Keep edits ASCII unless the file already uses Unicode.
 - Always cite relevant docs in commit messages and PR summaries.

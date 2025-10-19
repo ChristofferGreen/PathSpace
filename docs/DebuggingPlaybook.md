@@ -15,6 +15,7 @@ This guide consolidates the practical steps for investigating failures across un
 - Runs both `PathSpaceTests` and `PathSpaceUITests` each iteration.
 - Logs land under `build/test-logs/` using the pattern `<test>_loop<iteration>of<total>_<timestamp>.log` if a failure occurs.
 - `PATHSPACE_LOG` defaults to `1` in the helper so tagged logging is enabled when an error surfaces; adjust via `--env PATHSPACE_LOG=0` if you need silence.
+- Want to exercise the Metal presenter path locally? Append `--enable-metal-tests` (macOS only) so the helper sets `PATHSPACE_UI_METAL=ON` during configuration and runs the suites with `PATHSPACE_ENABLE_METAL_UPLOADS=1`.
 
 ### 1.2 Single test reproduction
 
@@ -73,6 +74,7 @@ Environment knobs (all respected by the wrapper and the logger):
 | --- | --- |
 | Run both suites once with logs | `./scripts/compile.sh --test` |
 | Run both suites 15× with 20 s timeout | `./scripts/compile.sh --test --loop=15 --per-test-timeout=20` |
+| Run suites once with Metal presenter enabled (macOS) | `./scripts/compile.sh --enable-metal-tests --test` |
 | Run a single suite via CTest | `ctest --output-on-failure -R PathSpaceUITests` |
 | Re-run failed tests only | `ctest --rerun-failed --output-on-failure` |
 | Tail latest failure log | `ls -t build/test-logs | head -1 | xargs -I{} tail -n 80 build/test-logs/{}` |
