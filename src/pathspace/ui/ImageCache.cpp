@@ -64,6 +64,18 @@ void ImageCache::clear() {
     cache_.clear();
 }
 
+auto ImageCache::resident_bytes() const -> std::size_t {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::size_t total = 0;
+    for (auto const& entry : cache_) {
+        auto const& image = entry.second;
+        if (image) {
+            total += image->pixels.size() * sizeof(float);
+        }
+    }
+    return total;
+}
+
 auto ImageCache::decode_png(std::vector<std::uint8_t> const& png_bytes) const -> SP::Expected<std::shared_ptr<ImageData const>> {
     int width = 0;
     int height = 0;

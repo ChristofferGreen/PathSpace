@@ -3,6 +3,7 @@
 #include <pathspace/core/Error.hpp>
 #include <pathspace/PathSpace.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -28,6 +29,8 @@ public:
               std::uint64_t fingerprint) -> SP::Expected<std::shared_ptr<ImageData const>>;
 
     void clear();
+
+    [[nodiscard]] auto resident_bytes() const -> std::size_t;
 
 private:
     SP::Expected<std::shared_ptr<ImageData const>> decode_png(std::vector<std::uint8_t> const& png_bytes) const;

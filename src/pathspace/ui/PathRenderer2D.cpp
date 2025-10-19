@@ -2299,6 +2299,10 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     stats.publish_ms = publish_ms;
     stats.backend_kind = params.backend_kind;
     stats.materials = std::move(material_list);
+    auto const surface_bytes = surface.resident_cpu_bytes();
+    auto const cache_bytes = image_cache_.resident_bytes();
+    stats.resource_cpu_bytes = static_cast<std::uint64_t>(surface_bytes + cache_bytes);
+    stats.resource_gpu_bytes = 0;
 
     return stats;
 }

@@ -2076,6 +2076,11 @@ TEST_CASE("renders png image command") {
     });
     REQUIRE(renderStats);
     CHECK(renderStats->drawable_count == 1);
+    auto const surface_bytes = surface.resident_cpu_bytes();
+    constexpr std::size_t kImageCacheBytes = 2u * 2u * 4u * sizeof(float);
+    auto const expected_cpu_bytes = static_cast<std::uint64_t>(surface_bytes + kImageCacheBytes);
+    CHECK(renderStats->resource_cpu_bytes == expected_cpu_bytes);
+    CHECK(renderStats->resource_gpu_bytes == 0);
 
     auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
     CHECK(fx.space.read<uint64_t>(metricsBase + "/commandsExecuted").value() == 1);

@@ -653,7 +653,6 @@ auto render_into_software_surface(PathSpace& space,
     if (!stats) {
         return stats;
     }
-    stats->resource_cpu_bytes = surface.resident_cpu_bytes();
     stats->resource_gpu_bytes = 0;
     return stats;
 }
@@ -678,7 +677,6 @@ auto render_into_metal_surface(PathSpace& space,
     metal_surface.update_material_descriptors(stats->materials);
     metal_surface.present_completed(stats->frame_index, stats->revision);
     stats->backend_kind = RendererKind::Metal2D;
-    stats->resource_cpu_bytes = software_surface.resident_cpu_bytes();
     stats->resource_gpu_bytes = metal_surface.resident_gpu_bytes();
     return stats;
 }
