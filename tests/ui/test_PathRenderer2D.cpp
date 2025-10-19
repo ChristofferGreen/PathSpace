@@ -1372,6 +1372,140 @@ TEST_CASE("damage metrics detect clear color repaint") {
     CHECK(*fingerprintNew == 0);
 }
 
+TEST_CASE("damage metrics respect dirty rect hints") {
+    ScopedEnv metrics_env{"PATHSPACE_UI_DAMAGE_METRICS", "1"};
+
+    RendererFixture fx;
+
+    constexpr int kWidth = 512;
+    constexpr int kHeight = 512;
+    constexpr int kTile = 64;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x0F0000u};
+    bucket.drawable_fingerprints = {0x0801u};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {
+        BoundingSphere{{static_cast<float>(kWidth) * 0.5f,
+                        static_cast<float>(kHeight) * 0.5f,
+                        0.0f},
+                       static_cast<float>(std::max(kWidth, kHeight))},
+    };
+    bucket.bounds_boxes = {
+        BoundingBox{{0.0f, 0.0f, 0.0f},
+                    {static_cast<float>(kWidth), static_cast<float>(kHeight), 0.0f}},
+    };
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {0};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {0};
+    bucket.alpha_indices = {};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {
+        DrawableAuthoringMapEntry{bucket.drawable_ids[0], "background", 0, 0},
+    };
+
+    RectCommand fill{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = static_cast<float>(kWidth),
+        .max_y = static_cast<float>(kHeight),
+        .color = {0.25f, 0.25f, 0.25f, 1.0f},
+    };
+    encode_rect_command(fill, bucket);
+
+    auto scenePath = create_scene(fx, "scene_dirty_rect_hints", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_dirty_rect_hints");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = kWidth;
+    surfaceDesc.size_px.height = kHeight;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_dirty_rect_hints", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware::Options opts{
+        .enable_progressive = true,
+        .enable_buffered = false,
+        .progressive_tile_size_px = kTile,
+    };
+    PathSurfaceSoftware surface{surfaceDesc, opts};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+
+    settings.time.frame_index = 1;
+    auto first = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+        .backend_kind = RendererKind::Software2D,
+    });
+    REQUIRE(first);
+
+    Builders::DirtyRectHint hint{};
+    hint.min_x = 64.0f;
+    hint.min_y = 64.0f;
+    hint.max_x = 128.0f;
+    hint.max_y = 128.0f;
+    std::vector<Builders::DirtyRectHint> hints{hint};
+    auto hintsPath = std::string(targetPath.getPath()) + "/hints/dirtyRects";
+    auto insert = fx.space.insert(hintsPath, hints);
+    REQUIRE(insert.errors.empty());
+
+    settings.time.frame_index = 2;
+    auto second = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+        .backend_kind = RendererKind::Software2D,
+    });
+    REQUIRE(second);
+
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    auto coverage = fx.space.read<double>(metricsBase + "/damageCoverageRatio");
+    REQUIRE(coverage);
+    double expectedCoverage = (static_cast<double>(kTile) * static_cast<double>(kTile))
+                              / (static_cast<double>(kWidth) * static_cast<double>(kHeight));
+    CHECK(*coverage == doctest::Approx(expectedCoverage).epsilon(0.1));
+
+    auto rects = fx.space.read<uint64_t>(metricsBase + "/damageRectangles");
+    REQUIRE(rects);
+    CHECK(*rects == 0);
+
+    auto tilesTotal = fx.space.read<uint64_t>(metricsBase + "/progressiveTilesTotal");
+    REQUIRE(tilesTotal);
+    CHECK(*tilesTotal == 64);
+
+    auto tilesDirty = fx.space.read<uint64_t>(metricsBase + "/progressiveTilesDirty");
+    REQUIRE(tilesDirty);
+    CHECK(*tilesDirty == 1);
+
+    auto tilesSkipped = fx.space.read<uint64_t>(metricsBase + "/progressiveTilesSkipped");
+    REQUIRE(tilesSkipped);
+    CHECK(*tilesSkipped == *tilesTotal - *tilesDirty);
+
+    auto fingerprintExact = fx.space.read<uint64_t>(metricsBase + "/fingerprintMatchesExact");
+    REQUIRE(fingerprintExact);
+    CHECK(*fingerprintExact == 1);
+
+    auto fingerprintChanged = fx.space.read<uint64_t>(metricsBase + "/fingerprintChanges");
+    REQUIRE(fingerprintChanged);
+    CHECK(*fingerprintChanged == 0);
+}
+
 TEST_CASE("pipeline flags partition passes when snapshot lacks explicit indices") {
     RendererFixture fx;
 

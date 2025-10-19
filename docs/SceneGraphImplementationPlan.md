@@ -85,7 +85,7 @@ Each workstream lands independently but respects shared contracts (paths, atomic
   - Full-surface repaints remain first-class. Camera moves or scene-wide changes explicitly flip the damage region to `set_full()`, then PathRenderer2D fan-outs tiles across all CPU cores (tile-per-thread queue) so repainting a 4K surface still clears ≤16 ms once the inner loops are vectorized.
   - The software path owns these full clears; GPU assists stay optional (e.g. secondary effects), not the default “draw everything every frame,” so the hybrid design preserves the progressive/tiled CPU pipeline.
 - Validation:
-  - Added renderer doctest coverage for drawable id churn and hint-triggered damage (dirty rect hints on unchanged snapshots); still need incremental stroke/erase/clear color scenarios with explicit damage assertions.
+  - ✅ (October 19, 2025) Added renderer doctest coverage for incremental stroke, erase, clear-color, and dirty rect hint scenarios (see `tests/ui/test_PathRenderer2D.cpp`), with explicit assertions on damage coverage, fingerprint deltas, and progressive tile counts.
   - Capture comparative FPS traces (small-vs-fullscreen) to confirm the fullscreen slowdown disappears.
 
 ## Phase Plan
