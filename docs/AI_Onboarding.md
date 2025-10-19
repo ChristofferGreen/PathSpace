@@ -61,6 +61,8 @@ rg "TODO" -n
 ## 7. Hand-off Notes
 Before ending a session, record progress in the relevant plan (e.g., `docs/SceneGraphImplementationPlan.md`) and leave explicit next steps in the conversation or a README snippet for the next AI instance.
 
+> **Quick status snapshot:** see `docs/AI_Status_2025-10-19.md` for the latest build/test pointers, Metal presenter status, and open follow-ups.
+
 ### Immediate next steps (October 19, 2025)
 1. Migrate the remaining macOS event-pump scaffolding out of `examples/macos/WindowEventPump.mm` now that the shared presenter owns Metal presents.
 2. Fold PATHSPACE_ENABLE_METAL_UPLOADS toggles into CI/docs once macOS GPU jobs are provisioned so the new UITest runs automatically on capable runners.
