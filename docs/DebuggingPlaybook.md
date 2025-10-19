@@ -84,6 +84,7 @@ Environment knobs (all respected by the wrapper and the logger):
 | Re-run failed tests only | `ctest --rerun-failed --output-on-failure` |
 | Tail latest failure log | `ls -t build/test-logs | head -1 | xargs -I{} tail -n 80 build/test-logs/{}` |
 | Inspect renderer metrics path | `build/tests/PathSpaceUITests --test-case Diagnostics::ReadTargetMetrics` |
+| Benchmark damage/fingerprint metrics | `./build/benchmarks/path_renderer2d_benchmark --metrics [--canvas=WIDTHxHEIGHT]` |
 
 ## 6. Closing the Loop
 

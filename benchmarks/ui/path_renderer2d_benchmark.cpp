@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <cstdlib>
 #include <exception>
 #include <iomanip>
 #include <iostream>
@@ -147,6 +148,27 @@ auto build_bucket(std::vector<Stroke> const& strokes) -> UIScene::DrawableBucket
     return bucket;
 }
 
+struct DamageMetrics {
+    double coverage = 0.0;
+    std::uint64_t rectangles = 0;
+    std::uint64_t fingerprint_exact = 0;
+    std::uint64_t fingerprint_remap = 0;
+    std::uint64_t fingerprint_changed = 0;
+    std::uint64_t fingerprint_new = 0;
+    std::uint64_t fingerprint_removed = 0;
+    std::uint64_t tiles_dirty = 0;
+    std::uint64_t tiles_total = 0;
+    std::uint64_t tiles_skipped = 0;
+
+    [[nodiscard]] auto dirty_ratio() const -> double {
+        return tiles_total > 0 ? static_cast<double>(tiles_dirty) / static_cast<double>(tiles_total) : 0.0;
+    }
+
+    [[nodiscard]] auto skipped_ratio() const -> double {
+        return tiles_total > 0 ? static_cast<double>(tiles_skipped) / static_cast<double>(tiles_total) : 0.0;
+    }
+};
+
 struct FrameMetrics {
     double render_ms = 0.0;
     double damage_ms = 0.0;
@@ -156,6 +178,7 @@ struct FrameMetrics {
     double present_ms = 0.0;
     std::uint64_t tiles = 0;
     std::uint64_t bytes = 0;
+    std::optional<DamageMetrics> damage;
 };
 
 auto read_metric(PathSpace const& space, std::string const& base, std::string const& leaf) -> std::uint64_t {
@@ -166,12 +189,120 @@ auto read_metric(PathSpace const& space, std::string const& base, std::string co
     return 0;
 }
 
+auto read_optional_u64(PathSpace const& space, std::string const& base, std::string const& leaf) -> std::optional<std::uint64_t> {
+    auto value = space.read<std::uint64_t>(base + "/" + leaf);
+    if (value) {
+        return *value;
+    }
+    auto const err = value.error();
+    if (err.code == Error::Code::NoObjectFound || err.code == Error::Code::NoSuchPath) {
+        return std::nullopt;
+    }
+    throw std::runtime_error(err.message.value_or("failed to read metric: " + leaf));
+}
+
+auto read_optional_double(PathSpace const& space, std::string const& base, std::string const& leaf) -> std::optional<double> {
+    auto value = space.read<double>(base + "/" + leaf);
+    if (value) {
+        return *value;
+    }
+    auto const err = value.error();
+    if (err.code == Error::Code::NoObjectFound || err.code == Error::Code::NoSuchPath) {
+        return std::nullopt;
+    }
+    throw std::runtime_error(err.message.value_or("failed to read metric: " + leaf));
+}
+
+auto read_damage_metrics(PathSpace const& space, std::string const& base) -> std::optional<DamageMetrics> {
+    auto coverage = read_optional_double(space, base, "damageCoverageRatio");
+    if (!coverage) {
+        return std::nullopt;
+    }
+
+    DamageMetrics metrics{};
+    metrics.coverage = *coverage;
+    metrics.rectangles = read_optional_u64(space, base, "damageRectangles").value_or(0);
+    metrics.fingerprint_exact = read_optional_u64(space, base, "fingerprintMatchesExact").value_or(0);
+    metrics.fingerprint_remap = read_optional_u64(space, base, "fingerprintMatchesRemap").value_or(0);
+    metrics.fingerprint_changed = read_optional_u64(space, base, "fingerprintChanges").value_or(0);
+    metrics.fingerprint_new = read_optional_u64(space, base, "fingerprintNew").value_or(0);
+    metrics.fingerprint_removed = read_optional_u64(space, base, "fingerprintRemoved").value_or(0);
+    metrics.tiles_dirty = read_optional_u64(space, base, "progressiveTilesDirty").value_or(0);
+    metrics.tiles_total = read_optional_u64(space, base, "progressiveTilesTotal").value_or(0);
+    metrics.tiles_skipped = read_optional_u64(space, base, "progressiveTilesSkipped").value_or(0);
+    return metrics;
+}
+
+struct DamageAccumulator {
+    std::size_t samples = 0;
+    double coverage_sum = 0.0;
+    double dirty_ratio_sum = 0.0;
+    double skipped_ratio_sum = 0.0;
+    std::uint64_t rectangles_sum = 0;
+    std::uint64_t fingerprint_exact_sum = 0;
+    std::uint64_t fingerprint_remap_sum = 0;
+    std::uint64_t fingerprint_changed_sum = 0;
+    std::uint64_t fingerprint_new_sum = 0;
+    std::uint64_t fingerprint_removed_sum = 0;
+    std::uint64_t tiles_dirty_sum = 0;
+    std::uint64_t tiles_total_sum = 0;
+    std::uint64_t tiles_skipped_sum = 0;
+
+    void add(DamageMetrics const& metrics) {
+        ++samples;
+        coverage_sum += metrics.coverage;
+        dirty_ratio_sum += metrics.dirty_ratio();
+        skipped_ratio_sum += metrics.skipped_ratio();
+        rectangles_sum += metrics.rectangles;
+        fingerprint_exact_sum += metrics.fingerprint_exact;
+        fingerprint_remap_sum += metrics.fingerprint_remap;
+        fingerprint_changed_sum += metrics.fingerprint_changed;
+        fingerprint_new_sum += metrics.fingerprint_new;
+        fingerprint_removed_sum += metrics.fingerprint_removed;
+        tiles_dirty_sum += metrics.tiles_dirty;
+        tiles_total_sum += metrics.tiles_total;
+        tiles_skipped_sum += metrics.tiles_skipped;
+    }
+
+    [[nodiscard]] auto empty() const -> bool {
+        return samples == 0;
+    }
+
+    [[nodiscard]] auto summary(std::string_view label) const -> std::string {
+        std::ostringstream oss;
+        if (empty()) {
+            oss << label << ": metrics unavailable (enable --metrics)";
+            return oss.str();
+        }
+        auto avg = [&](std::uint64_t value_sum) {
+            return static_cast<double>(value_sum) / static_cast<double>(samples);
+        };
+        auto pct = [](double value) {
+            return value * 100.0;
+        };
+        double avg_coverage = coverage_sum / static_cast<double>(samples);
+        double avg_dirty_ratio = dirty_ratio_sum / static_cast<double>(samples);
+        double avg_skipped_ratio = skipped_ratio_sum / static_cast<double>(samples);
+
+        oss << label << ": coverage " << std::fixed << std::setprecision(2) << pct(avg_coverage) << "% avg, "
+            << "dirty tiles " << std::setprecision(2) << pct(avg_dirty_ratio) << "%, "
+            << "skipped " << std::setprecision(2) << pct(avg_skipped_ratio) << "%; "
+            << "rectangles avg " << std::setprecision(2) << avg(rectangles_sum)
+            << ", fingerprints Δ " << std::setprecision(2) << avg(fingerprint_changed_sum)
+            << " / remap " << std::setprecision(2) << avg(fingerprint_remap_sum)
+            << " / new " << std::setprecision(2) << avg(fingerprint_new_sum)
+            << " / removed " << std::setprecision(2) << avg(fingerprint_removed_sum);
+        return oss.str();
+    }
+};
+
 auto render_frame(PathRenderer2D& renderer,
                   PathSurfaceSoftware& surface,
                   PathSpace& space,
                   Builders::ConcretePathView targetPath,
                   Builders::RenderSettings& settings,
-                  std::uint64_t frame_index) -> FrameMetrics {
+                  std::uint64_t frame_index,
+                  bool collect_damage_metrics) -> FrameMetrics {
     using namespace std::chrono_literals;
 
     settings.time.frame_index = frame_index;
@@ -194,6 +325,9 @@ auto render_frame(PathRenderer2D& renderer,
     metrics.publish_ms = stats->publish_ms;
     metrics.tiles = read_metric(space, metrics_base, "progressiveTilesUpdated");
     metrics.bytes = read_metric(space, metrics_base, "progressiveBytesCopied");
+    if (collect_damage_metrics) {
+        metrics.damage = read_damage_metrics(space, metrics_base);
+    }
 
     static std::vector<std::uint8_t> present_buffer;
     auto const frame_bytes = surface.frame_bytes();
@@ -290,8 +424,17 @@ auto parse_int(std::string_view value) -> std::optional<int> {
 }
 
 void print_usage(char const* program) {
-    std::cout << "Usage: " << program << " [--canvas=WIDTHxHEIGHT]" << std::endl;
+    std::cout << "Usage: " << program << " [--canvas=WIDTHxHEIGHT] [--metrics]" << std::endl;
     std::cout << "  --canvas   Set canvas dimensions (default 3840x2160)" << std::endl;
+    std::cout << "  --metrics  Enable PATHSPACE_UI_DAMAGE_METRICS and emit damage/fingerprint summaries" << std::endl;
+}
+
+void enable_damage_metrics_env() {
+#if defined(_WIN32)
+    _putenv_s("PATHSPACE_UI_DAMAGE_METRICS", "1");
+#else
+    ::setenv("PATHSPACE_UI_DAMAGE_METRICS", "1", 1);
+#endif
 }
 
 } // namespace
@@ -301,12 +444,17 @@ int main(int argc, char** argv) try {
     int canvas_height = 2160;
     constexpr int brush_size = 64;
     constexpr int incremental_frames = 48;
+    bool enable_metrics = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string_view arg{argv[i]};
         if (arg == "--help" || arg == "-h") {
             print_usage(argv[0]);
             return 0;
+        }
+        if (arg == "--metrics" || arg == "--enable-metrics") {
+            enable_metrics = true;
+            continue;
         }
         if (arg.rfind("--canvas=", 0) == 0) {
             auto dims = arg.substr(std::string_view{"--canvas="}.size());
@@ -335,6 +483,10 @@ int main(int argc, char** argv) try {
     if (canvas_width <= brush_size || canvas_height <= brush_size) {
         std::cerr << "canvas must be larger than brush size (" << brush_size << "px)" << std::endl;
         return 1;
+    }
+
+    if (enable_metrics) {
+        enable_damage_metrics_env();
     }
 
     PathSpace space;
@@ -449,10 +601,18 @@ int main(int argc, char** argv) try {
     full_frames.reserve(4);
     std::vector<FrameMetrics> incremental_frames_metrics;
     incremental_frames_metrics.reserve(incremental_frames);
+    DamageAccumulator full_damage_acc;
+    DamageAccumulator incremental_damage_acc;
 
     std::uint64_t frame_index = 1;
     // Initial full repaint (background publish).
-    full_frames.push_back(render_frame(renderer, surface, space, target_path_view, render_settings, frame_index++));
+    {
+        auto frame = render_frame(renderer, surface, space, target_path_view, render_settings, frame_index++, enable_metrics);
+        if (enable_metrics && frame.damage) {
+            full_damage_acc.add(*frame.damage);
+        }
+        full_frames.push_back(frame);
+    }
 
     // Simulate incremental brush strokes.
     std::mt19937 rng{0xC0FFEE};
@@ -483,15 +643,24 @@ int main(int argc, char** argv) try {
         std::vector<Builders::DirtyRectHint> hints{hint};
         replace_value(space, hints_path, hints);
 
-        incremental_frames_metrics.push_back(
-            render_frame(renderer, surface, space, target_path_view, render_settings, frame_index++));
+        auto frame = render_frame(renderer, surface, space, target_path_view, render_settings, frame_index++, enable_metrics);
+        if (enable_metrics && frame.damage) {
+            incremental_damage_acc.add(*frame.damage);
+        }
+        incremental_frames_metrics.push_back(frame);
     }
 
     // Force a full repaint by clearing hints and changing clear color.
     render_settings.clear_color = {0.02f, 0.02f, 0.02f, 1.0f};
     replace_value<std::vector<Builders::DirtyRectHint>>(space, hints_path, {});
     publish_scene();
-    full_frames.push_back(render_frame(renderer, surface, space, target_path_view, render_settings, frame_index++));
+    {
+        auto frame = render_frame(renderer, surface, space, target_path_view, render_settings, frame_index++, enable_metrics);
+        if (enable_metrics && frame.damage) {
+            full_damage_acc.add(*frame.damage);
+        }
+        full_frames.push_back(frame);
+    }
 
     std::cout << "=== PathRenderer2D Benchmark ===" << std::endl;
     std::cout << "Canvas: " << canvas_width << "x" << canvas_height
@@ -499,6 +668,11 @@ int main(int argc, char** argv) try {
               << " initial tile size=" << surface.progressive_tile_size() << "px" << std::endl;
     std::cout << "Full repaint stats: " << format_result(full_frames) << std::endl;
     std::cout << "Incremental stroke stats: " << format_result(incremental_frames_metrics) << std::endl;
+
+    if (enable_metrics) {
+        std::cout << full_damage_acc.summary("Full repaint damage metrics") << std::endl;
+        std::cout << incremental_damage_acc.summary("Incremental damage metrics") << std::endl;
+    }
 
     // Small-surface diagnostic matching regression tests
     {
