@@ -1,6 +1,7 @@
 # PathSpace — Debugging Playbook
 
 > **Context update (October 18, 2025):** The test harness now captures detailed logs for every failure via `scripts/run-test-with-logs.sh`. Use this playbook to triage regressions, inspect diagnostics, and close the loop with the mandated 15× test runs.
+> **Diagnostics refresh (October 19, 2025):** Dirty-rect hints are coalesced server-side, and the extended damage/fingerprint/progressive metrics are available when `PATHSPACE_UI_DAMAGE_METRICS=1`. Keep the flag unset during perf runs—the software encode pass is still single-threaded today, so we’re focusing on parallelising it next.
 
 This guide consolidates the practical steps for investigating failures across unit tests, UI targets, and runtime metrics. Pair it with the architecture docs (`docs/AI_ARCHITECTURE.md`, `docs/AI_Plan_SceneGraph_Renderer.md`) when you need deeper background.
 
@@ -50,7 +51,7 @@ Environment knobs (all respected by the wrapper and the logger):
 ## 3. PathSpace Runtime Diagnostics
 
 - **Structured errors:** Renderer/presenter components publish `PathSpaceError` payloads under `renderers/<rid>/targets/<tid>/diagnostics/errors/live`. In tests, call `Diagnostics::ReadTargetMetrics` to fetch the payload and correlate with frame indices.
-- **Per-target metrics:** `renderers/<rid>/targets/<tid>/output/v1/common/*` stores the latest `frameIndex`, `revision`, `renderMs`, progressive copy counters, backend telemetry (`backendKind`, `usedMetalTexture`), GPU timings (`gpuEncodeMs`, `gpuPresentMs`), and present policy outcomes. Use `PathWindowView` doctest helpers or the builders’ diagnostics reader to dump these values.
+- **Per-target metrics:** `renderers/<rid>/targets/<tid>/output/v1/common/*` stores the latest `frameIndex`, `revision`, `renderMs`, progressive copy counters, backend telemetry (`backendKind`, `usedMetalTexture`), GPU timings (`gpuEncodeMs`, `gpuPresentMs`), present policy outcomes, and—when `PATHSPACE_UI_DAMAGE_METRICS=1` is set—damage/fingerprint telemetry (`damageRectangles`, `damageCoverageRatio`, `fingerprint*`, `progressiveTiles*`). Use `PathWindowView` doctest helpers or the builders’ diagnostics reader to dump these values.
 - **Scene dirty state:** `scenes/<sid>/diagnostics/dirty/state` and `scenes/<sid>/diagnostics/dirty/queue` expose layout/build notifications. The `Scene::MarkDirty` doctests show how to wait on these paths without polling.
 - **HTML/IO logs:** Application surfaces write to `<app>/io/log/{error,warn,info,debug}`. The global mirrors live at `/system/io/std{out,err}`; see `docs/AI_PATHS.md` §2 for the canonical layout.
 

@@ -64,14 +64,16 @@ task {
     "Progressive tile copy loop uses all available cores; per-frame copy metrics captured before/after.",
     "Dirty-hint bucketing or adaptive tile sizing keeps copied pixel counts proportional to brush area, not full-surface area.",
     "paint_example maintains ≥75 FPS at 2560×1600 and ≥70 FPS at 3840×2160 on reference hardware, with PATHSPACE_TRACE_DAMAGE logs confirming bounded damage regions.",
-    "Docs updated (SceneGraphImplementationPlan.md, AI_Plan_SceneGraph_Renderer.md) with the new algorithm and performance results."
+    "Encode/raster pass is parallelised across dirty tiles; benchmark captures show full-repaint FPS on the reference Mac Studio more than doubles vs the current single-threaded baseline.",
+    "Docs updated (SceneGraphImplementationPlan.md, AI_Plan_SceneGraph_Renderer.md, DebuggingPlaybook.md) with the new algorithm, metrics flag guidance, and measured results."
   ]
 
   steps: [
     "Fork progressive tile copy to a worker pool; measure scaling vs core count.",
     "Prototype adaptive tile sizing or merge heuristics that shrink damage for narrow hints.",
     "Assess IOSurface reuse/presenter path to avoid full-buffer copies when not required.",
-    "Capture before/after traces (PATHSPACE_TRACE_DAMAGE=1) and summarize in docs."
+    "Shard PathRenderer2D encode work across per-tile jobs, ensure blending remains deterministic, and measure encode_ms deltas.",
+    "Capture before/after traces (PATHSPACE_TRACE_DAMAGE=1, PATHSPACE_UI_DAMAGE_METRICS=1) and summarize in docs."
   ]
 }
 
