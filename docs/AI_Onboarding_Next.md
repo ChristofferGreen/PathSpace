@@ -67,9 +67,8 @@ Welcome! This repository just transitioned away from the “Atlas” assistant. 
 - Announce the scope in your PR description and keep doc updates synchronized with code changes. Remember to run `ctest -R HtmlCanvasVerify` when touching the adapter or HTML outputs so the headless replay harness stays green.
 - When you spot a gap in test coverage, either add the test immediately or log a follow-up in `docs/SceneGraphImplementationPlan.md` / `docs/AI_TODO.task` so the need is visible to the next maintainer.
 
-### Latest Highlights (Metal streaming)
-- `Renderer::TriggerRender` and `PathRenderer2D` now stream Metal targets directly into the cached CAMetalLayer texture.
-- Metrics add `textureGpuBytes`, `resourceGpuBytes`, and richer residency data—dashboards should ingest these before the next cycle.
-- The Metal UITest (`Metal pipeline publishes residency metrics and material descriptors`) exercises the streaming path; keep it green whenever touching renderer code.
+### Latest Highlights (October 19, 2025)
+- Metal streaming remains the top renderer follow-up: `Renderer::TriggerRender` + `PathRenderer2D` stream Metal targets into the cached CAMetalLayer texture, with residency telemetry (`textureGpuBytes`, `resourceGpuBytes`) in CI/dashboards. Keep the Metal UITest (`Metal pipeline publishes residency metrics and material descriptors`) green after renderer edits.
+- Widget toolkit bootstrap is underway: button and toggle builders now publish canonical widget scenes, `Widgets::UpdateButtonState/UpdateToggleState` surface dirty events only when state changes, and `examples/widgets_demo.cpp` publishes both widgets (toggle defaults to checked via the helper). Next maintainer should continue with slider/list widgets, interaction bindings, and UI gallery coverage per `docs/SceneGraphImplementationPlan.md` Phase 8.
 
 Welcome aboard and thank you for keeping the PathSpace docs in sync for the next AI maintainer.

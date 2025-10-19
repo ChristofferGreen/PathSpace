@@ -435,6 +435,7 @@ Cross-references
   - A stable `DrawCommands` object + `contentEpoch`, or
   - A prepare function to (re)build commands into a command allocator off-thread when `contentEpoch` changes
 - Renderer requests commands only when `contentEpoch` differs from last seen (retained rendering). Software UI may still redraw every frame; dirty-rects can follow later. Command preparation should be off-thread to avoid blocking the render loop
+- October 19, 2025 status: `Builders::Widgets::CreateButton` / `CreateToggle` publish canonical widget scenes, and `UpdateButtonState` / `UpdateToggleState` gate dirty markers on actual state changes. Extend the pattern to sliders/lists and route interaction events through the forthcoming ops inbox model.
 
 ### Sorting and batching
 

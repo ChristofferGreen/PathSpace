@@ -208,20 +208,22 @@ Completed:
 - **Objective:** ship reusable UI widgets (button, toggle, slider, list) that sit on top of the existing scene/render/present stack while reusing PathSpace paths for state and events.
 - **Scene authoring**
   - Define canonical widget scene snippets under `scenes/widgets/<widget>/` with snapshot builders that emit visual states (idle, hover, pressed, disabled).
-  - Add lightweight widget builders (e.g., `Builders::Widget::Button`) that publish authoring data, bind to app-relative state paths, and express layout metadata (bounds, z-order).
+  - ✅ (October 19, 2025) Added lightweight builders for buttons and toggles (`Builders::Widgets::CreateButton`, `CreateToggle`) that publish authoring data, bind to app-relative state paths, and express layout metadata (bounds, z-order).
   - Provide styling hooks (colors, corner radius, typography) so demos can skin widgets without forking scenes.
 - **Interaction contract**
   - Wrap Phase 5 hit-test data into a widget interaction API that normalizes hover/press/release and routes to app-defined `ops/` inbox paths.
   - Expose focus navigation helpers (keyboard/gamepad) that reuse the existing `Scene::HitTest` focus metadata and auto-render events to redraw highlight states.
   - Document the path schema for widget state (e.g., `/.../widgets/<id>/{state,enabled,label}`) and ensure updates stay atomic.
 - **State binding & data flow**
-  - Introduce a small binding layer that watches widget state paths, diffing payloads and pushing dirty hints instead of full-surface republishes.
+  - ✅ (October 19, 2025) Introduced initial state update helpers for buttons/toggles that coalesce redundant writes and mark the owning scene `DirtyKind::Visual` only when values change.
+  - Introduce a fuller binding layer that watches widget state paths, diffing payloads and pushing dirty hints instead of full-surface republishes.
   - Provide sample reducers that translate widget ops into app state mutations, showcasing wait/notify usage to wake render loops.
 - **Testing**
   - Extend `PathSpaceUITests` with golden snapshots and interaction sequences for each widget (hover, press, disabled) using the 15× loop to guard against race regressions.
   - Add doctest coverage for the binding helpers to confirm dirty-hint emission, focus routing, and auto-render scheduling.
 - **Tooling & docs**
-  - Expand `examples/` with a `widgets_demo` showcasing every shipped widget (button, toggle, slider, list, etc.), FPS diagnostics, and the zero-copy presenter path so contributors can exercise the full toolkit in one app.
+  - ✅ (October 19, 2025) Expanded `examples/widgets_demo.cpp` to publish button + toggle widgets and demonstrate state updates; grow into a full gallery as additional widgets land.
+  - Expand the demo to cover sliders, lists, and interaction telemetry alongside FPS diagnostics and the zero-copy presenter path so contributors can exercise the full toolkit in one app.
   - Update `docs/AI_Plan_SceneGraph_Renderer.md` and `docs/AI_ARCHITECTURE.md` with widget path conventions, builder usage, and troubleshooting steps.
   - Capture authoring guidelines in `docs/SceneGraphImplementationPlan.md`'s appendix so contributors can add new widgets consistently.
 

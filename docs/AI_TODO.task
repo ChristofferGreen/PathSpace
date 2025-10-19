@@ -2,6 +2,63 @@
 // Handoff note (October 19, 2025): This backlog is frozen pending the new assistant’s triage. Review each task with docs/AI_Onboarding_Next.md before starting work.
 
 task {
+  name: "Widget Slider & List Builders [FEATURE]"
+  description: "Extend the widget toolkit with slider and list builders that publish canonical scenes and metadata alongside the existing button/toggle support."
+  status: planned
+  priority: P2
+
+  acceptance_criteria: [
+    "Builders::Widgets::CreateSlider and CreateList publish canonical scenes under scenes/widgets/<name> with styling hooks and per-widget state paths (value selections, enabled flags).",
+    "Widgets::UpdateSliderState / UpdateListState coalesce redundant writes and mark owning scenes DirtyKind::Visual when values change.",
+    "Unit tests cover builder outputs, default state, and update helpers; widgets_demo showcases both new widgets."
+  ]
+
+  steps: [
+    "Author DrawableBucket snapshots for slider track/thumb and list rows (including selection highlighting).",
+    "Add style/state structs mirroring button/toggle conventions.",
+    "Update widgets_demo to instantiate the new widgets pending the gallery expansion task."
+  ]
+}
+
+task {
+  name: "Widget Interaction Bindings [FEATURE]"
+  description: "Route widget interactions through a binding layer that watches widget state paths, emits dirty hints, and pushes events into ops inboxes."
+  status: planned
+  priority: P1
+
+  acceptance_criteria: [
+    "Binding helper API diff state payloads and emits dirty hints (instead of full republishes) when widget states change.",
+    "Ops inbox schema documented; sample reducers translate button/toggle ops into app state mutations.",
+    "Tests exercise hover/press/release flows and confirm auto-render scheduling remains stable (loop=15)."
+  ]
+
+  steps: [
+    "Implement binding helper that subscribes to widget state paths, diffing payloads and enqueueing dirty hints.",
+    "Define ops inbox payload schema for button/toggle/slider/list interactions.",
+    "Add doctests covering binding helper behavior and interaction flows."
+  ]
+}
+
+task {
+  name: "Widgets Demo Gallery [DOCS]"
+  description: "Promote examples/widgets_demo.cpp into a full widget gallery that opens a PathWindowView, renders all widgets, and documents interaction diagnostics."
+  status: planned
+  priority: P2
+
+  acceptance_criteria: [
+    "widgets_demo wires published widget scenes into a renderer target + window, rendering button/toggle/slider/list states in a single app.",
+    "CLI continues to print widget paths while also opening the window when PATHSPACE_ENABLE_UI is ON.",
+    "README-style instructions embedded in the demo (or docs) explain how to run the gallery and inspect widget state updates."
+  ]
+
+  steps: [
+    "Attach widget scenes to a software renderer target and present via PathWindowView.",
+    "Add command-line flag or env toggle to skip the window when running in headless/test contexts.",
+    "Update docs/SceneGraphImplementationPlan.md and widgets_demo comments with run instructions and follow-ups."
+  ]
+}
+
+task {
   name: "Software Presenter Zero-Copy Buffer [PERF]"
   description: "Eliminate framebuffer memcpy by backing PathSurfaceSoftware with an IOSurface shared directly with CAMetalLayer."
   status: completed
