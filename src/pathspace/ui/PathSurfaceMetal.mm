@@ -91,6 +91,7 @@ struct PathSurfaceMetal::Impl {
     std::uint64_t revision = 0;
     std::vector<MaterialDescriptor> materials{};
     std::vector<MaterialShaderKey> shader_keys{};
+    std::vector<MaterialResourceResidency> material_resources{};
 
     explicit Impl(Builders::SurfaceDesc d)
         : desc(d)
@@ -222,11 +223,18 @@ auto PathSurfaceMetal::resident_gpu_bytes() const -> std::size_t {
     }
 #pragma clang diagnostic pop
     if (allocated_bytes != 0) {
+        for (auto const& resource : impl_->material_resources) {
+            allocated_bytes += resource.gpu_bytes;
+        }
         return allocated_bytes;
     }
     auto const width = std::max(impl_->desc.size_px.width, 0);
     auto const height = std::max(impl_->desc.size_px.height, 0);
-    return static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4u;
+    auto bytes = static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4u;
+    for (auto const& resource : impl_->material_resources) {
+        bytes += resource.gpu_bytes;
+    }
+    return bytes;
 }
 
 void PathSurfaceMetal::update_material_descriptors(std::span<MaterialDescriptor const> descriptors) {
@@ -246,6 +254,21 @@ auto PathSurfaceMetal::material_descriptors() const -> std::span<MaterialDescrip
         return {};
     }
     return std::span<MaterialDescriptor const>{impl_->materials.data(), impl_->materials.size()};
+}
+
+void PathSurfaceMetal::update_resource_residency(std::span<MaterialResourceResidency const> resources) {
+    if (!impl_) {
+        return;
+    }
+    impl_->material_resources.assign(resources.begin(), resources.end());
+}
+
+auto PathSurfaceMetal::resource_residency() const -> std::span<MaterialResourceResidency const> {
+    if (!impl_) {
+        return {};
+    }
+    return std::span<MaterialResourceResidency const>{impl_->material_resources.data(),
+                                                      impl_->material_resources.size()};
 }
 
 auto PathSurfaceMetal::shader_keys() const -> std::span<MaterialShaderKey const> {

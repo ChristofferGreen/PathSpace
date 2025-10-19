@@ -18,6 +18,15 @@ struct MaterialShaderKey {
     auto operator==(MaterialShaderKey const&) const -> bool = default;
 };
 
+struct MaterialResourceResidency {
+    std::uint64_t fingerprint = 0;
+    std::uint64_t cpu_bytes = 0;
+    std::uint64_t gpu_bytes = 0;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    bool uses_image = false;
+};
+
 [[nodiscard]] auto make_shader_key(MaterialDescriptor const& material,
                                    Builders::SurfaceDesc const& surface) -> MaterialShaderKey;
 

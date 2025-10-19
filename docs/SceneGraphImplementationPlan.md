@@ -176,7 +176,7 @@ Completed:
 6. **Follow-ups**
      - ✅ (October 19, 2025) Renderer stats and diagnostics now cover GPU error paths end-to-end; tests assert Diagnostics::ReadTargetMetrics surfaces Metal presenter failures.
      - ✅ (October 19, 2025) Shader/material system parity established by deriving shared shader keys from software pipeline flags and exposing them to the Metal surface.
-     - Resource residency (textures/fonts) loading for GPU path.
+     - ✅ (October 19, 2025) Resource residency metrics now aggregate texture usage for GPU paths; Metal surfaces track resource fingerprints and publish residency totals.
 - **Next hand-off focus (October 19, 2025):** lock down shader/material parity (shared descriptors, telemetry) before enabling GPU shading, keep CAMetalLayer presents stable, and wire the residency/cache metrics into dashboards/CI so GPU runs validate resource limits automatically.
 - HTML adapter scaffolding (command stream emitter + replay harness) behind experimental flag. **Implementation plan map (Oct 18, 2025):**
   1. **Adapter core API**

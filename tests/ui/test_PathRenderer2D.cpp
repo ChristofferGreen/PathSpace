@@ -8,6 +8,7 @@
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/MaterialDescriptor.hpp>
+#include <pathspace/ui/MaterialShaderKey.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 
 #include <algorithm>
@@ -32,6 +33,7 @@
 using namespace SP;
 using namespace SP::UI;
 using namespace SP::UI::Builders;
+using SP::UI::MaterialResourceResidency;
 using SP::UI::Scene::BoundingBox;
 using SP::UI::Scene::BoundingSphere;
 using SP::UI::Scene::DrawableAuthoringMapEntry;
@@ -2080,11 +2082,18 @@ TEST_CASE("renders png image command") {
     constexpr std::size_t kImageCacheBytes = 2u * 2u * 4u * sizeof(float);
     auto const expected_cpu_bytes = static_cast<std::uint64_t>(surface_bytes + kImageCacheBytes);
     CHECK(renderStats->resource_cpu_bytes == expected_cpu_bytes);
-    CHECK(renderStats->resource_gpu_bytes == 0);
+    CHECK(renderStats->resource_gpu_bytes == 16);
+    REQUIRE(renderStats->resource_residency.size() == 1);
+    CHECK(renderStats->resource_residency.front().fingerprint == image.image_fingerprint);
+    CHECK(renderStats->resource_residency.front().gpu_bytes == 16);
+    CHECK(renderStats->resource_residency.front().cpu_bytes == kImageCacheBytes);
 
     auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
     CHECK(fx.space.read<uint64_t>(metricsBase + "/commandsExecuted").value() == 1);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/unsupportedCommands").value() == 0);
+    auto resource_count = fx.space.read<uint64_t>(metricsBase + "/materialResourceCount");
+    REQUIRE(resource_count);
+    CHECK(*resource_count >= 1);
 
     auto buffer = copy_buffer(surface);
     auto stride = surface.row_stride_bytes();

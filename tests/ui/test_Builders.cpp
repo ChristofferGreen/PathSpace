@@ -37,6 +37,7 @@ using UIScene::BoundingBox;
 using UIScene::DrawableAuthoringMapEntry;
 using SP::UI::MaterialDescriptor;
 namespace Pipeline = SP::UI::PipelineFlags;
+using SP::UI::MaterialResourceResidency;
 
 struct BuildersFixture {
     PathSpace     space;
@@ -803,6 +804,17 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     mat1.uses_image = true;
     expected_descriptors.push_back(mat1);
     fx.space.insert(common + "/materialDescriptors", expected_descriptors);
+    std::vector<MaterialResourceResidency> expected_resources{};
+    MaterialResourceResidency res0{};
+    res0.fingerprint = 0xABCDEFu;
+    res0.cpu_bytes = 4096;
+    res0.gpu_bytes = 2048;
+    res0.width = 64;
+    res0.height = 16;
+    res0.uses_image = true;
+    expected_resources.push_back(res0);
+    fx.space.insert(common + "/materialResourceCount", static_cast<uint64_t>(expected_resources.size()));
+    fx.space.insert(common + "/materialResources", expected_resources);
 
     auto residency = std::string(targetBase->getPath()) + "/diagnostics/metrics/residency";
     fx.space.insert(residency + "/cpuBytes", uint64_t{64});
@@ -829,6 +841,9 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(updated->last_error_severity == PathSpaceError::Severity::Info);
     CHECK(updated->last_error_timestamp_ns == 0);
     CHECK(updated->last_error_detail.empty());
+    CHECK(updated->material_resource_count == expected_resources.size());
+    REQUIRE(updated->material_resources.size() == expected_resources.size());
+    CHECK(updated->material_resources.front().fingerprint == expected_resources.front().fingerprint);
     CHECK(updated->material_count == 2);
     REQUIRE(updated->materials.size() == 2);
     CHECK(updated->materials[0].material_id == 7);
@@ -934,6 +949,10 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     REQUIRE(afterWrite->materials.size() == 2);
     CHECK(afterWrite->materials[0].material_id == 7);
     CHECK(afterWrite->materials[1].material_id == 12);
+    CHECK(afterWrite->material_resource_count == expected_resources.size());
+    REQUIRE(afterWrite->material_resources.size() == expected_resources.size());
+    CHECK(afterWrite->material_resources.front().fingerprint == expected_resources.front().fingerprint);
+    CHECK(afterWrite->material_resources.front().gpu_bytes == expected_resources.front().gpu_bytes);
     CHECK(afterWrite->cpu_bytes == 512);
     CHECK(afterWrite->cpu_soft_bytes == 384);
     CHECK(afterWrite->cpu_hard_bytes == 768);

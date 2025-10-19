@@ -675,6 +675,7 @@ auto render_into_metal_surface(PathSpace& space,
         return std::unexpected(upload.error());
     }
     metal_surface.update_material_descriptors(stats->materials);
+    metal_surface.update_resource_residency(stats->resource_residency);
     metal_surface.present_completed(stats->frame_index, stats->revision);
     stats->backend_kind = RendererKind::Metal2D;
     stats->resource_gpu_bytes = metal_surface.resident_gpu_bytes();
@@ -2223,6 +2224,22 @@ auto ReadTargetMetrics(PathSpace const& space,
         metrics.materials = std::move(**descriptors);
         if (metrics.material_count == 0) {
             metrics.material_count = static_cast<uint64_t>(metrics.materials.size());
+        }
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/materialResourceCount"); value) {
+        metrics.material_resource_count = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto resources = read_optional<std::vector<MaterialResourceResidency>>(space, base + "/materialResources"); !resources) {
+        return std::unexpected(resources.error());
+    } else if (resources->has_value()) {
+        metrics.material_resources = std::move(**resources);
+        if (metrics.material_resource_count == 0) {
+            metrics.material_resource_count = static_cast<uint64_t>(metrics.material_resources.size());
         }
     }
 

@@ -416,6 +416,8 @@ struct TargetMetrics {
     std::string last_error_detail;
     uint64_t material_count = 0;
     std::vector<MaterialDescriptor> materials;
+    uint64_t material_resource_count = 0;
+    std::vector<MaterialResourceResidency> material_resources;
     // Residency metrics are optional; zero indicates unavailable.
     std::uint64_t cpu_bytes = 0;
     std::uint64_t cpu_soft_bytes = 0;

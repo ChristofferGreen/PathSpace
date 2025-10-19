@@ -43,6 +43,8 @@ public:
     void present_completed(std::uint64_t frame_index, std::uint64_t revision);
     void update_material_descriptors(std::span<MaterialDescriptor const> descriptors);
     [[nodiscard]] auto material_descriptors() const -> std::span<MaterialDescriptor const>;
+    void update_resource_residency(std::span<MaterialResourceResidency const> resources);
+    [[nodiscard]] auto resource_residency() const -> std::span<MaterialResourceResidency const>;
     [[nodiscard]] auto shader_keys() const -> std::span<MaterialShaderKey const>;
     [[nodiscard]] auto resident_gpu_bytes() const -> std::size_t;
 
@@ -71,6 +73,10 @@ public:
     void present_completed(std::uint64_t, std::uint64_t) {}
     void update_material_descriptors(std::span<MaterialDescriptor const>) {}
     [[nodiscard]] auto material_descriptors() const -> std::span<MaterialDescriptor const> {
+        return {};
+    }
+    void update_resource_residency(std::span<MaterialResourceResidency const>) {}
+    [[nodiscard]] auto resource_residency() const -> std::span<MaterialResourceResidency const> {
         return {};
     }
     [[nodiscard]] auto shader_keys() const -> std::span<MaterialShaderKey const> {

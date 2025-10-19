@@ -1397,6 +1397,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     if (!bucket->material_ids.empty()) {
         material_descriptors.reserve(bucket->material_ids.size());
     }
+    std::unordered_map<std::uint64_t, MaterialResourceResidency> resource_residency;
 
     std::vector<Builders::DirtyRectHint> dirty_rect_hints;
     std::vector<DamageRect> hint_rects;
@@ -1977,6 +1978,15 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                                                height)) {
                             drawable_drawn = true;
                         }
+                        auto& residency = resource_residency[image_cmd.image_fingerprint];
+                        residency.fingerprint = image_cmd.image_fingerprint;
+                        residency.uses_image = true;
+                        residency.width = image_data->width;
+                        residency.height = image_data->height;
+                        residency.cpu_bytes = static_cast<std::uint64_t>(image_data->pixels.size()) * sizeof(float);
+                        residency.gpu_bytes = static_cast<std::uint64_t>(image_data->width)
+                                              * static_cast<std::uint64_t>(image_data->height)
+                                              * 4u;
                         ++executed_commands;
                         break;
                     }
@@ -2263,6 +2273,21 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                   return lhs.material_id < rhs.material_id;
               });
 
+    std::vector<MaterialResourceResidency> resource_list;
+    resource_list.reserve(resource_residency.size());
+    for (auto const& entry : resource_residency) {
+        resource_list.push_back(entry.second);
+    }
+    std::sort(resource_list.begin(),
+              resource_list.end(),
+              [](MaterialResourceResidency const& lhs, MaterialResourceResidency const& rhs) {
+                  return lhs.fingerprint < rhs.fingerprint;
+              });
+    std::uint64_t total_texture_gpu_bytes = 0;
+    for (auto const& info : resource_list) {
+        total_texture_gpu_bytes += info.gpu_bytes;
+    }
+
     auto metricsBase = std::string(params.target_path.getPath()) + "/output/v1/common";
     if (auto status = replace_single<std::uint64_t>(space_, metricsBase + "/frameIndex", params.settings.time.frame_index); !status) {
         (void)set_last_error(space_, params.target_path, "failed to store frame index");
@@ -2305,6 +2330,9 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/materialCount",
                                         static_cast<std::uint64_t>(material_list.size()));
     (void)replace_single(space_, metricsBase + "/materialDescriptors", material_list);
+    (void)replace_single<std::uint64_t>(space_, metricsBase + "/materialResourceCount",
+                                        static_cast<std::uint64_t>(resource_list.size()));
+    (void)replace_single(space_, metricsBase + "/materialResources", resource_list);
     if (collect_damage_metrics) {
         (void)replace_single<std::uint64_t>(space_, metricsBase + "/damageRectangles", damage_rect_count);
         (void)replace_single<double>(space_, metricsBase + "/damageCoverageRatio", damage_coverage_ratio);
@@ -2334,10 +2362,12 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     stats.publish_ms = publish_ms;
     stats.backend_kind = params.backend_kind;
     stats.materials = material_list;
+    stats.texture_gpu_bytes = total_texture_gpu_bytes;
+    stats.resource_residency = std::move(resource_list);
     auto const surface_bytes = surface.resident_cpu_bytes();
     auto const cache_bytes = image_cache_.resident_bytes();
     stats.resource_cpu_bytes = static_cast<std::uint64_t>(surface_bytes + cache_bytes);
-    stats.resource_gpu_bytes = 0;
+    stats.resource_gpu_bytes = total_texture_gpu_bytes;
 
     return stats;
 }
