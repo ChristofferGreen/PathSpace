@@ -202,7 +202,10 @@ Completed:
      - ✅ (October 19, 2025) Added the Node-based `HtmlCanvasVerify` CTest (backed by `scripts/verify_html_canvas.js`) so CI exercises DOM vs Canvas outputs when `node` is present and emits a skip notice otherwise.
   6. **Documentation**
      - ✅ (October 19, 2025) Documented HTML adapter fidelity tiers, configuration knobs (`max_dom_nodes`, `prefer_dom`, `allow_canvas_fallback`), asset hydration, and debugging steps in `docs/AI_Plan_SceneGraph_Renderer.md`; keep the section current as adapter behavior evolves.
-- Resource loader integration for fonts/images when snapshots require them.
+- **Resource loader integration (HTML + renderers)**  
+  - Wire scene revisions to publish required font/image fingerprints (and point at the per-app `resources/` namespace) so renderer + HTML adapter prefetch assets deterministically.  
+  - Update `Html::Adapter` / `Renderer::RenderHtml` to hydrate fonts alongside images, surface load diagnostics, and add tests verifying missing assets emit actionable errors.  
+  - Document operator steps (where assets live, how hydration behaves) once the pipeline lands.
 
 ### Phase 8 — Widget Toolkit & Interaction Surfaces (post-MVP)
 - **Objective:** ship reusable UI widgets (button, toggle, slider, list) that sit on top of the existing scene/render/present stack while reusing PathSpace paths for state and events.
@@ -217,15 +220,14 @@ Completed:
   - Document the path schema for widget state (e.g., `/.../widgets/<id>/{state,enabled,label}`) and ensure updates stay atomic.
 - **State binding & data flow**
   - ✅ (October 19, 2025) Introduced initial state update helpers for buttons/toggles that coalesce redundant writes and mark the owning scene `DirtyKind::Visual` only when values change.
-  - Introduce a fuller binding layer that watches widget state paths, diffing payloads and pushing dirty hints instead of full-surface republishes.
-  - Provide sample reducers that translate widget ops into app state mutations, showcasing wait/notify usage to wake render loops.
+  - Introduce a fuller binding layer that watches widget state paths, diffing payloads and pushing dirty hints instead of full-surface republishes. Document ops inbox schemas (button/toggle/slider/list) and sample reducers that translate widget ops into app state mutations via wait/notify.
 - **Testing**
   - Extend `PathSpaceUITests` with golden snapshots and interaction sequences for each widget (hover, press, disabled) using the 15× loop to guard against race regressions.
   - Add doctest coverage for the binding helpers to confirm dirty-hint emission, focus routing, and auto-render scheduling.
 - **Tooling & docs**
   - ✅ (October 19, 2025) Expanded `examples/widgets_example.cpp` to publish button + toggle widgets and demonstrate state updates; grow into a full gallery as additional widgets land.
   - Expand the demo to cover sliders, lists, and interaction telemetry alongside FPS diagnostics and the zero-copy presenter path so contributors can exercise the full toolkit in one app.
-  - Introduce an app bootstrap helper that wires renderer/surface/window defaults for a given app root/scene so examples/tests can avoid boilerplate while still exposing escape hatches.
+  - Introduce an app bootstrap helper that wires renderer/surface/window defaults for a given app root/scene so examples/tests can avoid boilerplate while still exposing escape hatches; update onboarding/docs once available.
   - Update `docs/AI_Plan_SceneGraph_Renderer.md` and `docs/AI_ARCHITECTURE.md` with widget path conventions, builder usage, and troubleshooting steps.
   - Capture authoring guidelines in `docs/SceneGraphImplementationPlan.md`'s appendix so contributors can add new widgets consistently.
 
