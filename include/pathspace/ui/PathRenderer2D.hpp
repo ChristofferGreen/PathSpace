@@ -30,6 +30,7 @@ public:
         SP::ConcretePathStringView target_path;
         Builders::RenderSettings const& settings;
         PathSurfaceSoftware& surface;
+        Builders::RendererKind backend_kind = Builders::RendererKind::Software2D;
     };
 
     struct RenderStats {
@@ -41,6 +42,7 @@ public:
         double encode_ms = 0.0;
         double progressive_copy_ms = 0.0;
         double publish_ms = 0.0;
+        Builders::RendererKind backend_kind = Builders::RendererKind::Software2D;
     };
 
     explicit PathRenderer2D(PathSpace& space);

@@ -636,6 +636,7 @@ auto render_into_software_surface(PathSpace& space,
         .target_path = targetPath,
         .settings = settings,
         .surface = surface,
+        .backend_kind = RendererKind::Software2D,
     });
 }
 
@@ -657,6 +658,7 @@ auto render_into_metal_surface(PathSpace& space,
         return std::unexpected(upload.error());
     }
     metal_surface.present_completed(stats->frame_index, stats->revision);
+    stats->backend_kind = RendererKind::Metal2D;
     return stats;
 }
 #endif

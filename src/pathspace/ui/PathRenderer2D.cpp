@@ -2076,8 +2076,9 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     stats.drawable_count = drawn_total;
     stats.damage_ms = damage_ms;
     stats.encode_ms = encode_ms;
-    stats.progressive_copy_ms = progressive_copy_ms;
-    stats.publish_ms = publish_ms;
+   stats.progressive_copy_ms = progressive_copy_ms;
+   stats.publish_ms = publish_ms;
+    stats.backend_kind = params.backend_kind;
 
     return stats;
 }

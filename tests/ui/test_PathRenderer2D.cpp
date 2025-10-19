@@ -649,9 +649,11 @@ TEST_CASE("render executes rect commands across passes and encodes pixels") {
         .target_path = SP::ConcretePathStringView{targetPath.getPath()},
         .settings = settings,
         .surface = surface,
+        .backend_kind = RendererKind::Software2D,
     });
     REQUIRE(result);
     CHECK(result->drawable_count == 2);
+    CHECK(result->backend_kind == RendererKind::Software2D);
 
     auto buffer = copy_buffer(surface);
     expect_matches_golden("pathrenderer2d_rect_rrect_rgba8srgb.golden",

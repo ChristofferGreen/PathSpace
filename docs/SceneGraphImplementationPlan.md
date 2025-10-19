@@ -148,9 +148,10 @@ Completed:
   3. **Presenter integration**
      - Extend `PathWindowView::Present` (Apple) to accept either `PathSurfaceSoftware` or `PathSurfaceMetal` stats; when Metal uploads are enabled, acquire CAMetalLayer drawable and blit/encode GPU texture to drawable using Metal command queue (move logic from WindowEventPump into core presenter).
      - Update macOS harness (`WindowEventPump.mm`) to detect Metal backend via stats and avoid redundant CPU copies.
-  4. **Settings & diagnostics**
+ 4. **Settings & diagnostics**
      - Define Metal target descriptors (`SurfaceDesc` additions if necessary), ensure RenderSettings/diagnostics include GPU timings and error paths.
      - Persist `diagnostics/errors/live` / `output/v1/common` updates for Metal frames (frameIndex, renderMs, GPU encode time).
+     - 🚧 (October 19, 2025) PathRenderer2D stats now record the backend kind actually used during render, so diagnostics can distinguish software fallback from Metal execution while we build out the GPU encoder.
   5. **Testing & CI**
      - Add ObjC++ harness tests (PathSpaceUITests) with Metal flag to validate presenter path (can start as skipped until GPU encoding lands).
      - Update scripts/CI docs to run Metal-enabled tests on macOS jobs; ensure graceful skip when Metal unavailable.
