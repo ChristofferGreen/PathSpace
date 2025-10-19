@@ -163,6 +163,7 @@ Completed:
     - ✅ (October 19, 2025) `prepare_surface_render_context` resolves renderer kind per target, routing targets through cached software or Metal surfaces while keeping the software fallback as default when uploads stay disabled.
 2. **Surface cache & rendering loop**
     - ✅ (October 19, 2025) Split render helpers so Metal targets reuse the shared cache but funnel through a backend-aware `render_into_target`; contexts fall back to software when uploads are disabled and tests exercise the unified path.
+    - ✅ (October 19, 2025) PathRenderer2D now streams Metal frames directly into the cached CAMetalLayer texture (skipping the software upload hop when Metal uploads are enabled) while keeping residency metrics in sync.
     - ✅ (October 19, 2025) `Renderer::TriggerRender` now reuses the shared surface caches (software and Metal) so ad-hoc renders avoid reallocating per call.
     - PathRenderer2D: add backend abstraction so draw traversal fills either CPU framebuffer or Metal encoders; reuse command building, add Metal-specific upload/shader binding (initially simple textured quad pipeline).
  3. **Presenter integration**

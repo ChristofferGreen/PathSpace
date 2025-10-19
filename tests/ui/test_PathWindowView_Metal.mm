@@ -512,6 +512,11 @@ TEST_CASE("Metal pipeline publishes residency metrics and material descriptors")
         REQUIRE(Builders::Window::AttachSurface(fx.space, *window, "main", surface));
 
         auto renderFuture = Builders::Surface::RenderOnce(fx.space, surface, std::nullopt);
+        if (!renderFuture) {
+            auto err = renderFuture.error();
+            INFO("Surface::RenderOnce error code = " << static_cast<int>(err.code));
+            INFO("Surface::RenderOnce error message = " << err.message.value_or("<none>"));
+        }
         REQUIRE(renderFuture);
         CHECK(renderFuture->ready());
 
@@ -535,6 +540,10 @@ TEST_CASE("Metal pipeline publishes residency metrics and material descriptors")
         CHECK(metrics->render_ms >= 0.0);
         CHECK(metrics->gpu_bytes > 0);
         CHECK(metrics->cpu_bytes > 0);
+        auto textureBytesPath = std::string(targetPath.getPath()) + "/output/v1/common/textureGpuBytes";
+        auto textureBytes = fx.space.read<std::uint64_t>(textureBytesPath);
+        REQUIRE(textureBytes);
+        CHECK(*textureBytes > 0);
 
         REQUIRE(metrics->material_count == 1);
         REQUIRE(metrics->materials.size() == 1);
@@ -674,6 +683,11 @@ TEST_CASE("Metal pipeline publishes image residency watermarks") {
         overrides.cache.gpu_hard_bytes = kGpuHardBytes;
 
         auto renderFuture = Builders::Surface::RenderOnce(fx.space, surface, overrides);
+        if (!renderFuture) {
+            auto err = renderFuture.error();
+            INFO("Surface::RenderOnce error code = " << static_cast<int>(err.code));
+            INFO("Surface::RenderOnce error message = " << err.message.value_or("<none>"));
+        }
         REQUIRE(renderFuture);
         CHECK(renderFuture->ready());
 
@@ -695,6 +709,10 @@ TEST_CASE("Metal pipeline publishes image residency watermarks") {
         CHECK(metrics->used_metal_texture);
         CHECK(metrics->gpu_bytes > 0);
         CHECK(metrics->cpu_bytes > 0);
+        auto textureBytesPath = std::string(targetPath.getPath()) + "/output/v1/common/textureGpuBytes";
+        auto textureBytes = fx.space.read<std::uint64_t>(textureBytesPath);
+        REQUIRE(textureBytes);
+        CHECK(*textureBytes > 0);
 
         REQUIRE(metrics->material_count == 1);
         REQUIRE(metrics->materials.size() == 1);

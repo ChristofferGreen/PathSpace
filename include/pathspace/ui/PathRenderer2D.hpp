@@ -8,12 +8,15 @@
 #include <pathspace/ui/MaterialShaderKey.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 
-#include <chrono>
 #include <array>
+#include <chrono>
+#include <cstdint>
 #include <unordered_map>
 #include <vector>
 
 namespace SP::UI {
+
+class PathSurfaceMetal;
 
 class PathRenderer2D {
 public:
@@ -33,6 +36,7 @@ public:
         Builders::RenderSettings const& settings;
         PathSurfaceSoftware& surface;
         Builders::RendererKind backend_kind = Builders::RendererKind::Software2D;
+        PathSurfaceMetal* metal_surface = nullptr;
     };
 
     struct RenderStats {

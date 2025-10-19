@@ -3,6 +3,7 @@
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/PipelineFlags.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/PathSurfaceMetal.hpp>
 #include "DrawableUtils.hpp"
 
 #include <algorithm>
@@ -1602,6 +1603,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     std::uint64_t progressive_tiles_dirty = 0;
     std::uint64_t progressive_tiles_total = 0;
     std::uint64_t progressive_tiles_skipped = 0;
+    std::uint64_t target_texture_bytes = 0;
 
     DamageRegion damage;
     if (full_repaint) {
@@ -1829,6 +1831,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
 
     std::vector<std::uint8_t> local_frame_bytes;
     std::span<std::uint8_t> staging;
+    std::span<std::uint8_t const> frame_pixels;
     if (has_damage) {
         if (has_buffered) {
             staging = surface.staging_span();
@@ -1837,9 +1840,11 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                 (void)set_last_error(space_, params.target_path, message);
                 return std::unexpected(make_error(message, SP::Error::Code::UnknownError));
             }
+            frame_pixels = std::span<std::uint8_t const>{staging.data(), staging.size()};
         } else {
             local_frame_bytes.resize(surface.frame_bytes());
             staging = std::span<std::uint8_t>{local_frame_bytes.data(), local_frame_bytes.size()};
+            frame_pixels = std::span<std::uint8_t const>{local_frame_bytes.data(), local_frame_bytes.size()};
         }
     }
 
@@ -2500,6 +2505,28 @@ if (has_damage) {
     for (auto const& info : resource_list) {
         total_texture_gpu_bytes += info.gpu_bytes;
     }
+    std::uint64_t total_gpu_bytes = total_texture_gpu_bytes;
+
+#if PATHSPACE_UI_METAL
+    if (params.backend_kind == Builders::RendererKind::Metal2D && params.metal_surface != nullptr) {
+        params.metal_surface->update_material_descriptors(material_list);
+        params.metal_surface->update_resource_residency(resource_list);
+        if (has_damage && !frame_pixels.empty()) {
+            params.metal_surface->update_from_rgba8(frame_pixels,
+                                                    static_cast<std::size_t>(surface.row_stride_bytes()),
+                                                    frame_info.frame_index,
+                                                    frame_info.revision);
+        }
+        params.metal_surface->present_completed(frame_info.frame_index, frame_info.revision);
+        auto const total_gpu = static_cast<std::uint64_t>(params.metal_surface->resident_gpu_bytes());
+        total_gpu_bytes = total_gpu;
+        if (total_gpu >= total_texture_gpu_bytes) {
+            target_texture_bytes = total_gpu - total_texture_gpu_bytes;
+        } else {
+            target_texture_bytes = total_gpu;
+        }
+    }
+#endif
 
     auto metricsBase = std::string(params.target_path.getPath()) + "/output/v1/common";
     if (auto status = replace_single<std::uint64_t>(space_, metricsBase + "/frameIndex", params.settings.time.frame_index); !status) {
@@ -2577,15 +2604,20 @@ if (has_damage) {
     stats.damage_ms = damage_ms;
     stats.encode_ms = encode_ms;
     stats.progressive_copy_ms = progressive_copy_ms;
-    stats.publish_ms = publish_ms;
-    stats.backend_kind = params.backend_kind;
-    stats.materials = material_list;
-    stats.texture_gpu_bytes = total_texture_gpu_bytes;
+   stats.publish_ms = publish_ms;
+   stats.backend_kind = params.backend_kind;
+   stats.materials = material_list;
     stats.resource_residency = std::move(resource_list);
     auto const surface_bytes = surface.resident_cpu_bytes();
     auto const cache_bytes = image_cache_.resident_bytes();
+    auto const reported_texture_bytes = (target_texture_bytes != 0) ? target_texture_bytes : total_texture_gpu_bytes;
+    stats.texture_gpu_bytes = reported_texture_bytes;
     stats.resource_cpu_bytes = static_cast<std::uint64_t>(surface_bytes + cache_bytes);
-    stats.resource_gpu_bytes = total_texture_gpu_bytes;
+    stats.resource_gpu_bytes = total_gpu_bytes;
+
+    (void)replace_single<std::uint64_t>(space_, metricsBase + "/resourceCpuBytes", stats.resource_cpu_bytes);
+    (void)replace_single<std::uint64_t>(space_, metricsBase + "/resourceGpuBytes", stats.resource_gpu_bytes);
+    (void)replace_single<std::uint64_t>(space_, metricsBase + "/textureGpuBytes", reported_texture_bytes);
 
     return stats;
 }

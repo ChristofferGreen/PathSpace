@@ -373,16 +373,6 @@ auto prepare_surface_render_context(PathSpace& space,
                                     std::optional<RenderSettings> const& settingsOverride)
     -> SP::Expected<SurfaceRenderContext>;
 
-auto render_into_software_surface(PathSpace& space,
-                                  SP::ConcretePathStringView targetPath,
-                                  RenderSettings const& settings,
-                                  PathSurfaceSoftware& surface) -> SP::Expected<PathRenderer2D::RenderStats>;
-#if PATHSPACE_UI_METAL
-auto upload_to_metal_surface(PathSurfaceSoftware& software,
-                             PathSurfaceMetal& metal,
-                             std::vector<std::uint8_t>& scratch) -> SP::Expected<void>;
-#endif
-
 auto parse_renderer_kind(std::string_view text) -> std::optional<RendererKind>;
 auto read_renderer_kind(PathSpace& space,
                         std::string const& path) -> SP::Expected<RendererKind>;
@@ -640,57 +630,12 @@ auto prepare_surface_render_context(PathSpace& space,
     return context;
 }
 
-auto render_into_software_surface(PathSpace& space,
-                                  SP::ConcretePathStringView targetPath,
-                                  RenderSettings const& settings,
-                                  PathSurfaceSoftware& surface) -> SP::Expected<PathRenderer2D::RenderStats> {
-    PathRenderer2D renderer{space};
-    auto stats = renderer.render({
-        .target_path = targetPath,
-        .settings = settings,
-        .surface = surface,
-        .backend_kind = RendererKind::Software2D,
-    });
-    if (!stats) {
-        return stats;
-    }
-    stats->resource_gpu_bytes = 0;
-    return stats;
-}
-
-#if PATHSPACE_UI_METAL
-auto render_into_metal_surface(PathSpace& space,
-                               SurfaceRenderContext const& context,
-                               PathSurfaceSoftware& software_surface,
-                               PathSurfaceMetal& metal_surface,
-                               std::vector<std::uint8_t>& scratch) -> SP::Expected<PathRenderer2D::RenderStats> {
-    auto stats = render_into_software_surface(space,
-                                              SP::ConcretePathStringView{context.target_path.getPath()},
-                                              context.settings,
-                                              software_surface);
-    if (!stats) {
-        return stats;
-    }
-
-    if (auto upload = upload_to_metal_surface(software_surface, metal_surface, scratch); !upload) {
-        return std::unexpected(upload.error());
-    }
-    metal_surface.update_material_descriptors(stats->materials);
-    metal_surface.update_resource_residency(stats->resource_residency);
-    metal_surface.present_completed(stats->frame_index, stats->revision);
-    stats->backend_kind = RendererKind::Metal2D;
-    stats->resource_gpu_bytes = metal_surface.resident_gpu_bytes();
-    return stats;
-}
-#endif
-
 auto render_into_target(PathSpace& space,
                         SurfaceRenderContext const& context,
                         PathSurfaceSoftware& software_surface
 #if PATHSPACE_UI_METAL
                         ,
-                        PathSurfaceMetal* metal_surface,
-                        std::vector<std::uint8_t>& metal_scratch
+                        PathSurfaceMetal* metal_surface
 #endif
                         ) -> SP::Expected<PathRenderer2D::RenderStats> {
 #if PATHSPACE_UI_METAL
@@ -699,9 +644,7 @@ auto render_into_target(PathSpace& space,
             return std::unexpected(make_error("metal renderer requested without metal surface cache",
                                               SP::Error::Code::InvalidType));
         }
-        return render_into_metal_surface(space, context, software_surface, *metal_surface, metal_scratch);
-    }
-    if (context.renderer_kind != RendererKind::Software2D) {
+    } else if (context.renderer_kind != RendererKind::Software2D) {
         return std::unexpected(make_error("Unsupported renderer kind for render target",
                                           SP::Error::Code::InvalidType));
     }
@@ -712,10 +655,17 @@ auto render_into_target(PathSpace& space,
     }
 #endif
 
-    return render_into_software_surface(space,
-                                        SP::ConcretePathStringView{context.target_path.getPath()},
-                                        context.settings,
-                                        software_surface);
+    PathRenderer2D renderer{space};
+    PathRenderer2D::RenderParams params{
+        .target_path = SP::ConcretePathStringView{context.target_path.getPath()},
+        .settings = context.settings,
+        .surface = software_surface,
+        .backend_kind = context.renderer_kind,
+#if PATHSPACE_UI_METAL
+        .metal_surface = metal_surface,
+#endif
+    };
+    return renderer.render(params);
 }
 
 auto to_epoch_ms(std::chrono::system_clock::time_point tp) -> int64_t {
@@ -915,33 +865,6 @@ auto renderer_kind_to_string(RendererKind kind) -> std::string {
     }
     return "Unknown";
 }
-
-#if PATHSPACE_UI_METAL
-auto upload_to_metal_surface(PathSurfaceSoftware& software,
-                             PathSurfaceMetal& metal,
-                             std::vector<std::uint8_t>& scratch) -> SP::Expected<void> {
-    auto const frame_bytes = software.frame_bytes();
-    if (frame_bytes == 0) {
-        return {};
-    }
-
-    scratch.resize(frame_bytes);
-    auto copy = software.copy_buffered_frame(std::span<std::uint8_t>{scratch.data(), scratch.size()});
-    if (!copy) {
-        return {};
-    }
-
-    if (std::getenv("PATHSPACE_ENABLE_METAL_UPLOADS") == nullptr) {
-        return {};
-    }
-
-    metal.update_from_rgba8(std::span<std::uint8_t const>{scratch.data(), scratch.size()},
-                            software.row_stride_bytes(),
-                            copy->info.frame_index,
-                            copy->info.revision);
-    return {};
-}
-#endif
 
 auto ensure_within_root(AppRootPathView root,
                         ConcretePathView path) -> SP::Expected<void> {
@@ -1670,12 +1593,11 @@ auto TriggerRender(PathSpace& space,
     auto& surface = acquire_surface(surface_key, context.target_desc);
 
 #if PATHSPACE_UI_METAL
-    std::vector<std::uint8_t> metal_scratch;
     PathSurfaceMetal* metal_surface = nullptr;
     if (context.renderer_kind == RendererKind::Metal2D) {
         metal_surface = &acquire_metal_surface(surface_key, context.target_desc);
     }
-    auto stats = render_into_target(space, context, surface, metal_surface, metal_scratch);
+    auto stats = render_into_target(space, context, surface, metal_surface);
 #else
     auto stats = render_into_target(space, context, surface);
 #endif
@@ -1946,10 +1868,6 @@ auto RenderOnce(PathSpace& space,
         return std::unexpected(context.error());
     }
 
-#if PATHSPACE_UI_METAL
-    std::vector<std::uint8_t> metal_scratch;
-#endif
-
     auto& surface = acquire_surface(std::string(context->target_path.getPath()), context->target_desc);
 #if PATHSPACE_UI_METAL
     PathSurfaceMetal* metal_surface = nullptr;
@@ -1960,8 +1878,7 @@ auto RenderOnce(PathSpace& space,
     auto stats = render_into_target(space,
                                     *context,
                                     surface,
-                                    metal_surface,
-                                    metal_scratch);
+                                    metal_surface);
 #else
     auto stats = render_into_target(space, *context, surface);
 #endif
@@ -2289,7 +2206,6 @@ auto Present(PathSpace& space,
 
 #if PATHSPACE_UI_METAL
     PathSurfaceMetal* metal_surface = nullptr;
-    std::vector<std::uint8_t> metal_scratch;
     if (context->renderer_kind == RendererKind::Metal2D) {
         metal_surface = &acquire_metal_surface(target_key, context->target_desc);
     }
@@ -2299,8 +2215,7 @@ auto Present(PathSpace& space,
     auto renderStats = render_into_target(space,
                                           *context,
                                           surface,
-                                          metal_surface,
-                                          metal_scratch);
+                                          metal_surface);
 #else
     auto renderStats = render_into_target(space, *context, surface);
 #endif
@@ -2326,7 +2241,6 @@ auto Present(PathSpace& space,
     std::span<std::uint8_t> framebuffer_span{};
 #if PATHSPACE_UI_METAL
     if (metal_surface) {
-        framebuffer.swap(metal_scratch);
         framebuffer.resize(surface.frame_bytes(), 0);
         framebuffer_span = std::span<std::uint8_t>{framebuffer.data(), framebuffer.size()};
     }
