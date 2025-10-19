@@ -622,6 +622,39 @@ auto choose_progressive_tile_size(int width,
         return ((value / kStep) + 1) * kStep;
     };
 
+    auto adapt_for_localized_damage = [&]() {
+        if (full_repaint || coverage >= 0.05) {
+            return;
+        }
+        auto rects = damage.rectangles();
+        if (rects.empty()) {
+            return;
+        }
+        DamageRect bounds = rects.front();
+        for (std::size_t i = 1; i < rects.size(); ++i) {
+            bounds.merge(rects[i]);
+        }
+        auto span_w = std::max(1, bounds.max_x - bounds.min_x);
+        auto span_h = std::max(1, bounds.max_y - bounds.min_y);
+        auto longest = std::max(span_w, span_h);
+        auto shortest = std::min(span_w, span_h);
+
+        auto shrink_to = [&](int desired) {
+            desired = std::max(32, desired);
+            tile_size = std::min(tile_size, clamp_to_step(desired));
+        };
+
+        if (longest <= 192 && shortest <= 128) {
+            shrink_to(tile_size / 2);
+        }
+        if (longest <= 128 && shortest <= 96) {
+            shrink_to(48);
+        }
+        if (longest <= 96 && shortest <= 64) {
+            shrink_to(32);
+        }
+    };
+
     auto reduce_if_small_damage = [&]() {
         if (coverage <= 0.0 || coverage >= 0.10 || full_repaint) {
             return;
@@ -663,6 +696,7 @@ auto choose_progressive_tile_size(int width,
     widen_for_extreme_dimensions();
     widen_for_large_surfaces();
     ensure_minimum_concurrency();
+    adapt_for_localized_damage();
     reduce_if_small_damage();
 
     return tile_size;
