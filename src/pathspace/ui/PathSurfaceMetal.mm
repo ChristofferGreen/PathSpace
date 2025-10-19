@@ -90,6 +90,7 @@ struct PathSurfaceMetal::Impl {
     std::uint64_t frame_index = 0;
     std::uint64_t revision = 0;
     std::vector<MaterialDescriptor> materials{};
+    std::vector<MaterialShaderKey> shader_keys{};
 
     explicit Impl(Builders::SurfaceDesc d)
         : desc(d)
@@ -233,6 +234,11 @@ void PathSurfaceMetal::update_material_descriptors(std::span<MaterialDescriptor 
         return;
     }
     impl_->materials.assign(descriptors.begin(), descriptors.end());
+    impl_->shader_keys.clear();
+    impl_->shader_keys.reserve(impl_->materials.size());
+    for (auto const& material : impl_->materials) {
+        impl_->shader_keys.push_back(make_shader_key(material, impl_->desc));
+    }
 }
 
 auto PathSurfaceMetal::material_descriptors() const -> std::span<MaterialDescriptor const> {
@@ -240,6 +246,13 @@ auto PathSurfaceMetal::material_descriptors() const -> std::span<MaterialDescrip
         return {};
     }
     return std::span<MaterialDescriptor const>{impl_->materials.data(), impl_->materials.size()};
+}
+
+auto PathSurfaceMetal::shader_keys() const -> std::span<MaterialShaderKey const> {
+    if (!impl_) {
+        return {};
+    }
+    return std::span<MaterialShaderKey const>{impl_->shader_keys.data(), impl_->shader_keys.size()};
 }
 
 #endif // defined(__APPLE__)

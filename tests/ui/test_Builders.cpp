@@ -4,6 +4,7 @@
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
+#include <pathspace/ui/MaterialShaderKey.hpp>
 
 #include <array>
 #include <atomic>
@@ -35,6 +36,7 @@ using UIScene::BoundingSphere;
 using UIScene::BoundingBox;
 using UIScene::DrawableAuthoringMapEntry;
 using SP::UI::MaterialDescriptor;
+namespace Pipeline = SP::UI::PipelineFlags;
 
 struct BuildersFixture {
     PathSpace     space;
@@ -89,6 +91,44 @@ auto make_rect_bucket() -> DrawableBucketSnapshot {
     };
     encode_rect_command(rect, bucket);
     return bucket;
+}
+
+TEST_CASE("Material shader key derives from pipeline flags") {
+    MaterialDescriptor blended{};
+    blended.pipeline_flags = Pipeline::AlphaBlend | Pipeline::ClipRect | Pipeline::DebugWireframe;
+    blended.uses_image = true;
+
+    SurfaceDesc srgb_desc{};
+    srgb_desc.color_space = ColorSpace::sRGB;
+    srgb_desc.premultiplied_alpha = true;
+
+    auto blended_key = make_shader_key(blended, srgb_desc);
+    CHECK(blended_key.pipeline_flags == blended.pipeline_flags);
+    CHECK(blended_key.alpha_blend);
+    CHECK_FALSE(blended_key.requires_unpremultiplied);
+    CHECK(blended_key.srgb_framebuffer);
+    CHECK(blended_key.uses_image);
+    CHECK_FALSE(blended_key.debug_overdraw);
+    CHECK(blended_key.debug_wireframe);
+
+    MaterialDescriptor unpremult{};
+    unpremult.pipeline_flags = Pipeline::AlphaBlend
+                               | Pipeline::UnpremultipliedSrc
+                               | Pipeline::DebugOverdraw;
+    unpremult.uses_image = false;
+
+    SurfaceDesc linear_desc{};
+    linear_desc.color_space = ColorSpace::Linear;
+    linear_desc.premultiplied_alpha = false;
+
+    auto unpremult_key = make_shader_key(unpremult, linear_desc);
+    CHECK(unpremult_key.pipeline_flags == unpremult.pipeline_flags);
+    CHECK(unpremult_key.alpha_blend);
+    CHECK(unpremult_key.requires_unpremultiplied);
+    CHECK_FALSE(unpremult_key.srgb_framebuffer);
+    CHECK_FALSE(unpremult_key.uses_image);
+    CHECK(unpremult_key.debug_overdraw);
+    CHECK_FALSE(unpremult_key.debug_wireframe);
 }
 
 auto publish_minimal_scene(BuildersFixture& fx, ScenePath const& scenePath) -> void {

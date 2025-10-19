@@ -85,6 +85,10 @@ TEST_CASE("PathWindowView presents Metal texture when uploads enabled") {
         descriptor.uses_image = false;
         materials.push_back(descriptor);
         metal.update_material_descriptors(materials);
+        auto shader_keys = metal.shader_keys();
+        CHECK(shader_keys.size() == materials.size());
+        CHECK(shader_keys.front().pipeline_flags == materials.front().pipeline_flags);
+        CHECK(shader_keys.front().uses_image == materials.front().uses_image);
 
         std::vector<std::uint8_t> pixels(4u * 4u * 4u, 0x7Fu);
         metal.update_from_rgba8(pixels, 4u * 4u, 5, 9);

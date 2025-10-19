@@ -1,6 +1,7 @@
 #pragma once
 
 #include <pathspace/ui/MaterialDescriptor.hpp>
+#include <pathspace/ui/MaterialShaderKey.hpp>
 #include <pathspace/ui/SurfaceTypes.hpp>
 
 #include <cstdint>
@@ -42,6 +43,7 @@ public:
     void present_completed(std::uint64_t frame_index, std::uint64_t revision);
     void update_material_descriptors(std::span<MaterialDescriptor const> descriptors);
     [[nodiscard]] auto material_descriptors() const -> std::span<MaterialDescriptor const>;
+    [[nodiscard]] auto shader_keys() const -> std::span<MaterialShaderKey const>;
     [[nodiscard]] auto resident_gpu_bytes() const -> std::size_t;
 
 private:
@@ -69,6 +71,9 @@ public:
     void present_completed(std::uint64_t, std::uint64_t) {}
     void update_material_descriptors(std::span<MaterialDescriptor const>) {}
     [[nodiscard]] auto material_descriptors() const -> std::span<MaterialDescriptor const> {
+        return {};
+    }
+    [[nodiscard]] auto shader_keys() const -> std::span<MaterialShaderKey const> {
         return {};
     }
     [[nodiscard]] auto resident_gpu_bytes() const -> std::size_t { return 0; }
