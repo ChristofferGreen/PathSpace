@@ -30,9 +30,8 @@ using TextInputDeviceEvent = PathIOKeyboard::Event;
 using GamepadEvent = PathIOGamepad::Event;
 // Stream events via operator<<; no custom print overloads
 #if defined(__APPLE__)
+#include <pathspace/ui/LocalWindowBridge.hpp>
 namespace SP {
-    void PSInitLocalEventWindow(PathIOMouse*, PathIOKeyboard*);
-    void PSPollLocalEventWindow();
     void PSInitGameControllerInput(PathIOGamepad*);
 }
 #endif
@@ -72,7 +71,10 @@ static inline void initialize_devices(PathSpace& space) {
     space.insert<"/system/devices/in/text/default">(std::move(keyboard));
     space.insert<"/system/devices/in/gamepad/default">(std::move(gamepad));
 
-    PSInitLocalEventWindow(mousePtr, keyboardPtr);
+    (void)mousePtr;
+    (void)keyboardPtr;
+    SP::UI::SetLocalWindowCallbacks({});
+    SP::UI::InitLocalWindow();
     PSInitGameControllerInput(gamepadPtr);
 #else
     auto mouse = std::make_unique<PathIOMouse>(PathIOMouse::BackendMode::Auto);
@@ -95,7 +97,7 @@ int main() {
     }
     while(true) {
 #if defined(__APPLE__)
-        SP::PSPollLocalEventWindow();
+        SP::UI::PollLocalWindow();
 #endif
         bool printed = false;
         if (auto pe = space.take<"/system/devices/in/pointer/default/events", PointerDeviceEvent>(); pe.has_value()) {

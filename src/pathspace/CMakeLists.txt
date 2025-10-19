@@ -94,6 +94,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/ProgressiveSurfaceBuffer.cpp
         ui/PathSurfaceSoftware.cpp
         ui/PathRenderer2D.cpp
+        $<$<BOOL:APPLE>:ui/LocalWindowBridge.mm>
         $<$<BOOL:APPLE>:ui/PathWindowView.mm>
         $<$<NOT:$<BOOL:APPLE>>:ui/PathWindowView.cpp>
         ui/ImageCache.cpp
@@ -110,7 +111,6 @@ if(PATHSPACE_ENABLE_UI)
         target_compile_definitions(PathSpace PUBLIC PATHSPACE_UI_METAL=1)
         if(APPLE)
             set_source_files_properties(ui/PathSurfaceMetal.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-            set_source_files_properties(ui/PathWindowView.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
             target_link_libraries(PathSpace PRIVATE
                 "-framework Metal"
                 "-framework QuartzCore"
@@ -120,8 +120,11 @@ if(PATHSPACE_ENABLE_UI)
         target_compile_definitions(PathSpace PUBLIC PATHSPACE_UI_METAL=0)
     endif()
     if(APPLE)
+        set_source_files_properties(ui/PathWindowView.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+        set_source_files_properties(ui/LocalWindowBridge.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
         target_link_libraries(PathSpace PRIVATE "-framework Foundation")
         target_link_libraries(PathSpace PRIVATE "-framework IOSurface")
+        target_link_libraries(PathSpace PRIVATE "-framework Cocoa")
     endif()
 else()
     target_compile_definitions(PathSpace PUBLIC

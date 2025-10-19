@@ -614,7 +614,7 @@ task {
 task {
   name: "WindowEventPump UI Migration [UI]"
   description: "Fold the macOS WindowEventPump presenter/event bridge into the PathSpace UI library so examples stay platform-neutral."
-  status: in_progress
+  status: completed
   priority: P1
 
   acceptance_criteria: [

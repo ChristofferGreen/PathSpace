@@ -25,19 +25,64 @@ namespace UIScene = SP::UI::Scene;
 #if defined(__APPLE__)
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOSurface/IOSurface.h>
-namespace SP {
-void PSInitLocalEventWindow();
-void PSInitLocalEventWindowWithSize(int width, int height, const char* title);
-void PSPollLocalEventWindow();
-void PSUpdateWindowFramebuffer(const std::uint8_t* data, int width, int height, int rowStrideBytes);
-void PSPresentIOSurface(void* surface, int width, int height, int rowStrideBytes);
-void PSGetLocalWindowContentSize(int* width, int* height);
-} // namespace SP
+#include <pathspace/ui/LocalWindowBridge.hpp>
 #endif
 
 namespace {
 
 using DirtyRectHint = Builders::DirtyRectHint;
+
+#if defined(__APPLE__)
+void handle_local_mouse(SP::UI::LocalMouseEvent const& ev, void*) {
+    PaintInput::MouseEvent out{};
+    switch (ev.type) {
+    case SP::UI::LocalMouseEventType::Move:
+        out.type = PaintInput::MouseEventType::Move;
+        out.dx = ev.dx;
+        out.dy = ev.dy;
+        break;
+    case SP::UI::LocalMouseEventType::AbsoluteMove:
+        out.type = PaintInput::MouseEventType::AbsoluteMove;
+        break;
+    case SP::UI::LocalMouseEventType::ButtonDown:
+        out.type = PaintInput::MouseEventType::ButtonDown;
+        break;
+    case SP::UI::LocalMouseEventType::ButtonUp:
+        out.type = PaintInput::MouseEventType::ButtonUp;
+        break;
+    case SP::UI::LocalMouseEventType::Wheel:
+        out.type = PaintInput::MouseEventType::Wheel;
+        out.wheel = ev.wheel;
+        break;
+    }
+
+    switch (ev.button) {
+    case SP::UI::LocalMouseButton::Left:
+        out.button = PaintInput::MouseButton::Left;
+        break;
+    case SP::UI::LocalMouseButton::Right:
+        out.button = PaintInput::MouseButton::Right;
+        break;
+    case SP::UI::LocalMouseButton::Middle:
+        out.button = PaintInput::MouseButton::Middle;
+        break;
+    case SP::UI::LocalMouseButton::Button4:
+        out.button = PaintInput::MouseButton::Button4;
+        break;
+    case SP::UI::LocalMouseButton::Button5:
+        out.button = PaintInput::MouseButton::Button5;
+        break;
+    }
+
+    out.x = ev.x;
+    out.y = ev.y;
+    PaintInput::enqueue_mouse(out);
+}
+
+void clear_local_mouse(void*) {
+    PaintInput::clear_mouse();
+}
+#endif
 
 auto align_down_to_tile(float value, int tileSizePx) -> float {
     auto const tile = static_cast<float>(std::max(1, tileSizePx));
@@ -304,10 +349,10 @@ auto present_frame(PathSpace& space,
     if (presentResult->stats.iosurface && presentResult->stats.iosurface->valid()) {
         auto iosurface_ref = presentResult->stats.iosurface->retain_for_external_use();
         if (iosurface_ref) {
-            SP::PSPresentIOSurface(static_cast<void*>(iosurface_ref),
-                                   width,
-                                   height,
-                                   static_cast<int>(presentResult->stats.iosurface->row_bytes()));
+            SP::UI::PresentLocalWindowIOSurface(static_cast<void*>(iosurface_ref),
+                                                width,
+                                                height,
+                                                static_cast<int>(presentResult->stats.iosurface->row_bytes()));
             CFRelease(iosurface_ref);
             used_iosurface = true;
             computed_stride = presentResult->stats.iosurface->row_bytes();
@@ -317,19 +362,19 @@ auto present_frame(PathSpace& space,
         if (presentResult->stats.used_metal_texture) {
             presentResult->framebuffer.clear();
         } else {
-        int row_stride_bytes = 0;
-        if (height > 0) {
-            auto total_bytes = static_cast<int>(presentResult->framebuffer.size());
-            row_stride_bytes = total_bytes / height;
-        }
-        if (row_stride_bytes <= 0) {
-            row_stride_bytes = width * 4;
-        }
-        computed_stride = static_cast<std::size_t>(row_stride_bytes);
-        SP::PSUpdateWindowFramebuffer(presentResult->framebuffer.data(),
-                                      width,
-                                      height,
-                                      row_stride_bytes);
+            int row_stride_bytes = 0;
+            if (height > 0) {
+                auto total_bytes = static_cast<int>(presentResult->framebuffer.size());
+                row_stride_bytes = total_bytes / height;
+            }
+            if (row_stride_bytes <= 0) {
+                row_stride_bytes = width * 4;
+            }
+            computed_stride = static_cast<std::size_t>(row_stride_bytes);
+            SP::UI::PresentLocalWindowFramebuffer(presentResult->framebuffer.data(),
+                                                  width,
+                                                  height,
+                                                  row_stride_bytes);
         }
     }
 #else
@@ -500,7 +545,8 @@ int main(int argc, char** argv) {
     int canvasWidth = read_config_value(space, canvasWidthPath, 320);
     int canvasHeight = read_config_value(space, canvasHeightPath, 240);
 
-    SP::PSInitLocalEventWindowWithSize(canvasWidth, canvasHeight, "PathSpace Paint");
+    SP::UI::SetLocalWindowCallbacks({&handle_local_mouse, &clear_local_mouse, nullptr});
+    SP::UI::InitLocalWindowWithSize(canvasWidth, canvasHeight, "PathSpace Paint");
 
     Builders::SceneParams sceneParams{
         .name = "canvas",
@@ -586,11 +632,11 @@ int main(int argc, char** argv) {
     std::vector<DirtyRectHint> dirtyHints;
 
     while (true) {
-        SP::PSPollLocalEventWindow();
+        SP::UI::PollLocalWindow();
 
         int requestedWidth = canvasWidth;
         int requestedHeight = canvasHeight;
-        SP::PSGetLocalWindowContentSize(&requestedWidth, &requestedHeight);
+        SP::UI::GetLocalWindowContentSize(&requestedWidth, &requestedHeight);
         if (requestedWidth <= 0 || requestedHeight <= 0) {
             break;
         }

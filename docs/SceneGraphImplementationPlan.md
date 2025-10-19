@@ -147,20 +147,22 @@ Completed:
      - PathRenderer2D: add backend abstraction so draw traversal fills either CPU framebuffer or Metal encoders; reuse command building, add Metal-specific upload/shader binding (initially simple textured quad pipeline).
  3. **Presenter integration**
      - Extend `PathWindowView::Present` (Apple) to accept either `PathSurfaceSoftware` or `PathSurfaceMetal` stats; when Metal uploads are enabled, acquire CAMetalLayer drawable and blit/encode GPU texture to drawable using Metal command queue (move logic from WindowEventPump into core presenter).
-     - Update macOS harness (`WindowEventPump.mm`) to detect Metal backend via stats and avoid redundant CPU copies.
+     - ✅ (October 19, 2025) Replaced the sample-specific `WindowEventPump.mm` with the shared `LocalWindowBridge` in the UI library; examples now consume the bridge and keep only input wiring.
      - ✅ (October 19, 2025) PathWindowView now drives CAMetalLayer presents via the UI library, records GPU encode/present timings, and exposes configuration hooks; example harnesses only forward window/layer handles. Remaining platform scaffolding will shrink to input/event dispatch as the shared bridge matures.
- 4. **Settings & diagnostics**
+4. **Settings & diagnostics**
      - ✅ (October 19, 2025) Extended `SurfaceDesc`/`RenderSettings` with Metal options (storage mode, usage flags, iosurface backing) and recorded the resolved backend/Metal upload state per frame so diagnostics retain GPU context alongside timings/errors.
-     - Persist `diagnostics/errors/live` / `output/v1/common` updates for Metal frames (frameIndex, renderMs, GPU encode time).
-     - 🚧 (October 19, 2025) PathRenderer2D stats now record the backend kind actually used during render, so diagnostics can distinguish software fallback from Metal execution while we build out the GPU encoder.
+     - ✅ (October 19, 2025) Persist `diagnostics/errors/live` / `output/v1/common` updates for Metal frames (frameIndex, renderMs, GPU timings) and gate residency/cache metrics under `diagnostics/metrics/residency` so dashboards can track resource pressure.
+     - 🚧 (October 19, 2025) PathRenderer2D needs a shared material descriptor so Metal and software paths emit identical shading telemetry once GPU rendering comes online.
 5. **Testing & CI**
-     - ✅ (October 19, 2025) Added a PATHSPACE_ENABLE_METAL_UPLOADS-gated ObjC++ PathSpaceUITest (`test_PathWindowView_Metal.mm`) that exercises the CAMetalLayer presenter when Metal uploads are enabled.
+    - ✅ (October 19, 2025) Added a PATHSPACE_ENABLE_METAL_UPLOADS-gated ObjC++ PathSpaceUITest (`tests/ui/test_PathWindowView_Metal.mm`) that exercises the CAMetalLayer presenter when Metal uploads are enabled.
      - ✅ (October 19, 2025) Local `pre-push` hook now auto-enables Metal presenter coverage (`--enable-metal-tests`) on macOS hosts, while respecting `DISABLE_METAL_TESTS=1` to fall back when GPU access is unavailable.
      - ✅ (October 19, 2025) GitHub Actions now runs a macOS job that invokes `./scripts/compile.sh --enable-metal-tests --test --loop=1`, while tests continue to skip gracefully when Metal uploads remain disabled or unsupported.
- 6. **Follow-ups**
+     - Builders/UI diagnostic suites leave Metal-specific assertions to the gated UITest so the core builders coverage stays backend-agnostic even when PATHSPACE_ENABLE_METAL_UPLOADS=1.
+6. **Follow-ups**
+     - Verify renderer stats/diagnostics cover GPU error paths end-to-end so Diagnostics::ReadTargetMetrics surfaces failures consistently.
      - Shader/material system parity (reuse software pipeline flags).
      - Resource residency (textures/fonts) loading for GPU path.
-- **Next hand-off focus (October 19, 2025):** wire CAMetalLayer presentation so Metal textures reach the window without IOSurface copies, record GPU encode/present timings (and errors) in `output/v1/common`, and add Metal-enabled UITests/CI toggles while keeping software fallback as the default path.
+- **Next hand-off focus (October 19, 2025):** lock down shader/material parity (shared descriptors, telemetry) before enabling GPU shading, keep CAMetalLayer presents stable, and wire the residency/cache metrics into dashboards/CI so GPU runs validate resource limits automatically.
 - HTML adapter scaffolding (command stream emitter + replay harness) behind experimental flag. **Implementation plan map (Oct 18, 2025):**
   1. **Adapter core API**
      - Define `Html::Adapter` emit API (DOM/CSS/canvas/assets) and persist options in `Builders` metadata.
@@ -219,6 +221,11 @@ Completed:
 - **Documentation discipline** — Mirror behavioral changes in `AI_ARCHITECTURE.md`, update diagrams as necessary, and capture CLI/tool scripts.
 
 ## Testing Strategy
+### Current Automation Snapshot (October 19, 2025)
+- `./scripts/compile.sh --test --loop=1 --per-test-timeout 20` offers a fast smoke run when chasing regressions.
+- `./scripts/compile.sh --enable-metal-tests --test --loop=1 --per-test-timeout 20` exercises the Metal presenter path on macOS hosts; keep it gated behind `PATHSPACE_ENABLE_METAL_UPLOADS` in CI.
+- The local `pre-push` hook (`scripts/git-hooks/pre-push.local.sh`) enables Metal presenter coverage by default; export `DISABLE_METAL_TESTS=1` when GPU access is unavailable.
+- CI currently runs the Linux matrix plus a macOS job invoking `./scripts/compile.sh --enable-metal-tests --test --loop=1` to guard the presenter path.
 - Extend `scripts/compile.sh` to cover new targets and maintain the 15× loop with 20 s timeout.
 - Add deterministic golden outputs (framebuffers, DrawableBucket metadata) with tolerance-aware comparisons.
 - Stress tests: concurrent edits vs renders, present policy edge cases, progressive tile churn, input-routing races, error-path validation (missing revisions, bad settings).
@@ -237,6 +244,7 @@ Completed:
 - Keep `docs/AI_Plan_SceneGraph_Renderer.md` cross-references aligned; link to this implementation plan from that doc and vice versa.
 - Add developer onboarding snippets (how to run tests, inspect outputs) to `docs/`.
 - Track milestone completion in `AI_TODO.task` or equivalent planning artifact.
+- As of October 19, 2025, `docs/AI_Onboarding.md`, `docs/AI_ARCHITECTURE.md`, `docs/AI_Plan_SceneGraph_Renderer.md`, and `docs/DebuggingPlaybook.md` already capture the Metal presenter metrics, residency counters, and looped test workflow; keep future changes synchronized across those references.
 
 ## Related Documents
 - Specification: `docs/AI_Plan_SceneGraph_Renderer.md`

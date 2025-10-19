@@ -61,12 +61,12 @@ rg "TODO" -n
 ## 7. Hand-off Notes
 Before ending a session, record progress in the relevant plan (e.g., `docs/SceneGraphImplementationPlan.md`) and leave explicit next steps in the conversation or a README snippet for the next AI instance.
 
-> **Quick status snapshot:** see `docs/AI_Status_2025-10-19.md` for the latest build/test pointers, Metal presenter status, and open follow-ups.
+> **Quick status snapshot:** the latest build/test pointers, Metal presenter status, and open follow-ups now live in `docs/SceneGraphImplementationPlan.md`.
 
-### Immediate next steps (October 19, 2025)
-1. Migrate the remaining macOS event-pump scaffolding out of `examples/macos/WindowEventPump.mm` now that the shared presenter owns Metal presents.
-2. Fold PATHSPACE_ENABLE_METAL_UPLOADS toggles into CI/docs once macOS GPU jobs are provisioned so the new UITest runs automatically on capable runners.
-3. Backfill profiler/dashboard docs for the new presenter metrics (`gpuEncodeMs`, `gpuPresentMs`) and verify telemetry ingestion downstream.
+### Immediate next steps (October 19, 2025 — updated)
+1. Finish trimming the macOS event pump now that the shared presenter handles CAMetalLayer presents; keep the example focused on input plumbing only.
+2. Drive shader/material parity so Metal uploads consume the same material descriptors and diagnostics as the software path; land the shared material schema before enabling GPU-side shading.
+3. Fold `PATHSPACE_ENABLE_METAL_UPLOADS` into CI/docs (macOS GPU runners) and extend dashboards to ingest the new residency/cache metrics published under `diagnostics/metrics/residency`.
 
 ---
 **Need a deeper dive?** Start with `docs/AI_ARCHITECTURE.md` and follow the cross-references. For renderer-specific tasks, consult `docs/AI_Plan_SceneGraph_Renderer.md` and its linked plans.

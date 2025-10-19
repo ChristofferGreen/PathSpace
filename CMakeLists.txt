@@ -91,10 +91,8 @@ if(BUILD_PATHSPACE_EXAMPLES)
     add_executable(devices_example examples/devices_example.cpp)
     target_link_libraries(devices_example PRIVATE PathSpace)
     if(APPLE)
-        target_sources(devices_example PRIVATE examples/macos/WindowEventPump.mm)
         if(CMAKE_OBJCXX_COMPILER_ID MATCHES "Clang")
             set_source_files_properties(
-                examples/macos/WindowEventPump.mm
                 examples/macos/GameControllerHaptics.mm
                 PROPERTIES COMPILE_FLAGS "-fobjc-arc"
             )
@@ -110,10 +108,8 @@ if(BUILD_PATHSPACE_EXAMPLES)
     add_executable(paint_example examples/paint_example.cpp)
     target_link_libraries(paint_example PRIVATE PathSpace)
     if(APPLE)
-        target_sources(paint_example PRIVATE examples/macos/WindowEventPump.mm)
         if(CMAKE_OBJCXX_COMPILER_ID MATCHES "Clang")
             set_source_files_properties(
-                examples/macos/WindowEventPump.mm
                 examples/macos/GameControllerHaptics.mm
                 PROPERTIES COMPILE_FLAGS "-fobjc-arc"
             )
