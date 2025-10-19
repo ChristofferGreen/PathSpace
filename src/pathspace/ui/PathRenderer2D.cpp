@@ -491,6 +491,7 @@ private:
 struct ProgressiveTileCopyStats {
     std::uint64_t tiles_updated = 0;
     std::uint64_t bytes_copied = 0;
+    std::size_t workers_used = 0;
 };
 
 struct ProgressiveTileCopyContext {
@@ -535,6 +536,7 @@ auto copy_progressive_tiles(std::span<std::size_t const> tile_indices,
                                                      static_cast<std::size_t>(hardware));
     constexpr std::size_t kMinTilesPerWorker = 16;
     if (worker_count <= 1 || (tile_indices.size() / worker_count) < kMinTilesPerWorker) {
+        stats.workers_used = tile_indices.empty() ? 0 : 1;
         for (auto tile_index : tile_indices) {
             stats.bytes_copied += copy_single_tile(tile_index, ctx);
             ++stats.tiles_updated;
@@ -583,6 +585,7 @@ auto copy_progressive_tiles(std::span<std::size_t const> tile_indices,
         std::rethrow_exception(error);
     }
 
+    stats.workers_used = worker_count;
     stats.tiles_updated = tiles_done.load(std::memory_order_relaxed);
     stats.bytes_copied = copied_bytes.load(std::memory_order_relaxed);
     return stats;
@@ -647,9 +650,16 @@ void encode_rows(EncodeJob const& job, EncodeContext const& ctx) {
     }
 }
 
-void run_encode_jobs(std::span<EncodeJob const> jobs, EncodeContext const& ctx) {
+struct EncodeRunStats {
+    std::size_t workers_used = 0;
+    std::size_t jobs = 0;
+};
+
+auto run_encode_jobs(std::span<EncodeJob const> jobs, EncodeContext const& ctx) -> EncodeRunStats {
+    EncodeRunStats stats{};
+    stats.jobs = jobs.size();
     if (jobs.empty()) {
-        return;
+        return stats;
     }
 
     auto const hardware = std::max(1u, std::thread::hardware_concurrency());
@@ -660,7 +670,8 @@ void run_encode_jobs(std::span<EncodeJob const> jobs, EncodeContext const& ctx) 
         for (auto const& job : jobs) {
             encode_rows(job, ctx);
         }
-        return;
+        stats.workers_used = 1;
+        return stats;
     }
 
     std::atomic<std::size_t> next{0};
@@ -698,6 +709,9 @@ void run_encode_jobs(std::span<EncodeJob const> jobs, EncodeContext const& ctx) 
     if (error) {
         std::rethrow_exception(error);
     }
+
+    stats.workers_used = worker_count;
+    return stats;
 }
 
 auto choose_progressive_tile_size(int width,
@@ -1893,6 +1907,11 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     double approx_area_alpha = 0.0;
     std::uint64_t progressive_tiles_updated = 0;
     std::uint64_t progressive_bytes_copied = 0;
+    std::size_t progressive_workers_used = 0;
+    std::size_t progressive_tile_size_px = 0;
+    std::size_t progressive_jobs = 0;
+    std::size_t encode_workers_used = 0;
+    std::size_t encode_jobs_used = 0;
 
     auto image_asset_prefix = revisionBase + "/assets/images/";
 
@@ -2266,12 +2285,13 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         }
     }
 
-    auto const encode_srgb = needs_srgb_encode(desc);
-    if (has_damage) {
-        auto const encode_start = std::chrono::steady_clock::now();
-        std::vector<EncodeJob> encode_jobs;
-        encode_jobs.reserve(std::max<std::size_t>(damage.rectangles().size(),
-                                                  progressive_dirty_tiles.size()));
+auto const encode_srgb = needs_srgb_encode(desc);
+EncodeRunStats encode_stats{};
+if (has_damage) {
+    auto const encode_start = std::chrono::steady_clock::now();
+    std::vector<EncodeJob> encode_jobs;
+    encode_jobs.reserve(std::max<std::size_t>(damage.rectangles().size(),
+                                              progressive_dirty_tiles.size()));
 
         auto clamp_x = [&](int value) {
             return std::clamp(value, 0, width);
@@ -2343,17 +2363,23 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
 
         if (!encode_jobs.empty()) {
             try {
-                run_encode_jobs(std::span<EncodeJob const>{encode_jobs.data(), encode_jobs.size()},
-                                encode_ctx);
+                encode_stats = run_encode_jobs(std::span<EncodeJob const>{encode_jobs.data(), encode_jobs.size()},
+                                               encode_ctx);
             } catch (std::exception const& ex) {
                 auto message = std::string{"failed to encode surface pixels: "} + ex.what();
                 (void)set_last_error(space_, params.target_path, message);
                 return std::unexpected(make_error(std::move(message), SP::Error::Code::UnknownError));
             }
         }
+        encode_jobs_used = encode_stats.jobs;
+        encode_workers_used = encode_stats.workers_used;
 
         auto const encode_end = std::chrono::steady_clock::now();
         encode_ms = std::chrono::duration<double, std::milli>(encode_end - encode_start).count();
+    }
+    if (!has_damage) {
+        encode_jobs_used = encode_stats.jobs;
+        encode_workers_used = encode_stats.workers_used;
     }
 
     if (has_progressive && has_damage) {
@@ -2363,6 +2389,8 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         bool const prefer_parallel =
             progressive_buffer->tile_size() > 4
             && progressive_dirty_tiles.size() >= 16;
+        progressive_tile_size_px = progressive_buffer->tile_size();
+        progressive_jobs = progressive_dirty_tiles.size();
 
         if (prefer_parallel) {
             ProgressiveTileCopyContext ctx{
@@ -2376,6 +2404,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                 auto stats_copy = copy_progressive_tiles(progressive_dirty_tiles, ctx);
                 progressive_tiles_updated += stats_copy.tiles_updated;
                 progressive_bytes_copied += stats_copy.bytes_copied;
+                progressive_workers_used = stats_copy.workers_used;
             } catch (std::exception const& ex) {
                 auto message = std::string{"failed to update progressive tiles: "} + ex.what();
                 (void)set_last_error(space_, params.target_path, message);
@@ -2385,6 +2414,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                 surface.mark_progressive_dirty(tile_index);
             }
         } else {
+            progressive_workers_used = progressive_dirty_tiles.empty() ? 0 : 1;
             for (auto tile_index : progressive_dirty_tiles) {
                 auto dims = progressive_buffer->tile_dimensions(tile_index);
                 if (dims.width <= 0 || dims.height <= 0) {
@@ -2410,6 +2440,15 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         }
         auto const progressive_end = std::chrono::steady_clock::now();
         progressive_copy_ms = std::chrono::duration<double, std::milli>(progressive_end - progressive_start).count();
+    }
+    if (progressive_buffer && progressive_tile_size_px == 0) {
+        progressive_tile_size_px = progressive_buffer->tile_size();
+    }
+    if (progressive_jobs == 0) {
+        progressive_jobs = progressive_dirty_tiles.size();
+    }
+    if (progressive_jobs == 0) {
+        progressive_workers_used = 0;
     }
 
     auto const end = std::chrono::steady_clock::now();
@@ -2501,6 +2540,11 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     (void)replace_single<double>(space_, metricsBase + "/approxOverdrawFactor", approx_overdraw_factor);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveTilesUpdated", progressive_tiles_updated);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveBytesCopied", progressive_bytes_copied);
+    (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveTileSize", static_cast<std::uint64_t>(progressive_tile_size_px));
+    (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveWorkersUsed", static_cast<std::uint64_t>(progressive_workers_used));
+    (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveJobs", static_cast<std::uint64_t>(progressive_jobs));
+    (void)replace_single<std::uint64_t>(space_, metricsBase + "/encodeWorkersUsed", static_cast<std::uint64_t>(encode_workers_used));
+    (void)replace_single<std::uint64_t>(space_, metricsBase + "/encodeJobs", static_cast<std::uint64_t>(encode_jobs_used));
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/materialCount",
                                         static_cast<std::uint64_t>(material_list.size()));
     (void)replace_single(space_, metricsBase + "/materialDescriptors", material_list);
