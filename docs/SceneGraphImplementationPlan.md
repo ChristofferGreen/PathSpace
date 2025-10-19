@@ -156,7 +156,7 @@ Completed:
 5. **Testing & CI**
      - ✅ (October 19, 2025) Added a PATHSPACE_ENABLE_METAL_UPLOADS-gated ObjC++ PathSpaceUITest (`test_PathWindowView_Metal.mm`) that exercises the CAMetalLayer presenter when Metal uploads are enabled.
      - ✅ (October 19, 2025) Local `pre-push` hook now auto-enables Metal presenter coverage (`--enable-metal-tests`) on macOS hosts, while respecting `DISABLE_METAL_TESTS=1` to fall back when GPU access is unavailable.
-     - Update scripts/CI docs to run Metal-enabled tests on macOS jobs; ensure graceful skip when Metal unavailable.
+     - ✅ (October 19, 2025) GitHub Actions now runs a macOS job that invokes `./scripts/compile.sh --enable-metal-tests --test --loop=1`, while tests continue to skip gracefully when Metal uploads remain disabled or unsupported.
  6. **Follow-ups**
      - Shader/material system parity (reuse software pipeline flags).
      - Resource residency (textures/fonts) loading for GPU path.

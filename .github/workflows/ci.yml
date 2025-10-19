@@ -56,3 +56,16 @@ jobs:
 
       - name: Test (${{ matrix.config.name }})
         run: ctest --test-dir build-${{ matrix.config.name }} --output-on-failure
+
+  metal-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install cmake ninja || true
+
+      - name: Build & Test (metal presenter)
+        run: ./scripts/compile.sh --release --test --loop=1 --per-test-timeout 20 --enable-metal-tests
