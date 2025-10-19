@@ -596,14 +596,78 @@ auto choose_progressive_tile_size(int width,
                                   DamageRegion const& damage,
                                   bool full_repaint,
                                   PathSurfaceSoftware const& surface) -> int {
-    (void)damage;
-    (void)full_repaint;
     if (!surface.has_progressive()) {
         return surface.progressive_tile_size();
     }
-    (void)width;
-    (void)height;
-    return 64;
+    auto clamp_dimension = [](int value) {
+        return std::max(value, 1);
+    };
+    width = clamp_dimension(width);
+    height = clamp_dimension(height);
+
+    auto tiles_for = [&](int candidate) -> std::uint64_t {
+        auto tiles_x = static_cast<std::uint64_t>((width + candidate - 1) / candidate);
+        auto tiles_y = static_cast<std::uint64_t>((height + candidate - 1) / candidate);
+        return tiles_x * tiles_y;
+    };
+
+    int base_size = std::max(64, surface.progressive_tile_size());
+    double coverage = damage.coverage_ratio(width, height);
+    constexpr std::uint64_t kMaxTiles = 4096;
+    constexpr std::uint64_t kMinTiles = 256;
+
+    int tile_size = base_size;
+
+    auto clamp_to_step = [](int value) {
+        constexpr int kStep = 32;
+        if (value % kStep == 0) {
+            return value;
+        }
+        return ((value / kStep) + 1) * kStep;
+    };
+
+    auto reduce_if_small_damage = [&]() {
+        if (coverage <= 0.0 || coverage >= 0.05 || full_repaint) {
+            return;
+        }
+        tile_size = std::min(tile_size, 64);
+    };
+
+    auto widen_for_large_surfaces = [&]() {
+        if (!(full_repaint || coverage > 0.5)) {
+            return;
+        }
+        auto tiles = tiles_for(tile_size);
+        while (tiles > kMaxTiles && tile_size < 256) {
+            tile_size = clamp_to_step(tile_size + 32);
+            tiles = tiles_for(tile_size);
+        }
+    };
+
+    auto widen_for_extreme_dimensions = [&]() {
+        auto longest = std::max(width, height);
+        if (longest >= 6144 && tile_size < 128) {
+            tile_size = clamp_to_step(128);
+        }
+    };
+
+    auto ensure_minimum_concurrency = [&]() {
+        auto tiles = tiles_for(tile_size);
+        if (!(full_repaint || coverage > 0.5)) {
+            return;
+        }
+        while (tiles < kMinTiles && tile_size > 64) {
+            tile_size = std::max(64, tile_size - 32);
+            tiles = tiles_for(tile_size);
+        }
+    };
+
+    widen_for_extreme_dimensions();
+    widen_for_large_surfaces();
+    ensure_minimum_concurrency();
+    reduce_if_small_damage();
+
+    return tile_size;
 }
 
 auto compute_drawable_bounds(Scene::DrawableBucketSnapshot const& bucket,

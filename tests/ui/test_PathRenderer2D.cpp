@@ -771,6 +771,199 @@ TEST_CASE("render executes rect commands across passes and encodes pixels") {
     CHECK(lastError->empty());
 }
 
+TEST_CASE("progressive tile size widens for high resolution surfaces") {
+    RendererFixture fx;
+
+    constexpr int kWidth = 6144;
+    constexpr int kHeight = 256;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x0A0000u};
+    bucket.drawable_fingerprints = {0x0101u};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{static_cast<float>(kWidth) * 0.5f,
+                                             static_cast<float>(kHeight) * 0.5f,
+                                             0.0f},
+                                            static_cast<float>(std::max(kWidth, kHeight))}};
+    bucket.bounds_boxes = {
+        BoundingBox{{0.0f, 0.0f, 0.0f},
+                    {static_cast<float>(kWidth), static_cast<float>(kHeight), 0.0f}},
+    };
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {0};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {0};
+    bucket.alpha_indices = {};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {
+        DrawableAuthoringMapEntry{bucket.drawable_ids[0], "large", 0, 0},
+    };
+
+    RectCommand background{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = static_cast<float>(kWidth),
+        .max_y = static_cast<float>(kHeight),
+        .color = {0.2f, 0.2f, 0.2f, 1.0f},
+    };
+    encode_rect_command(background, bucket);
+
+    auto scenePath = create_scene(fx, "scene_large_surface", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_large_surface");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = kWidth;
+    surfaceDesc.size_px.height = kHeight;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_large_surface", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware::Options opts{
+        .enable_progressive = true,
+        .enable_buffered = false,
+        .progressive_tile_size_px = 64,
+    };
+    PathSurfaceSoftware surface{surfaceDesc, opts};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+    settings.time.frame_index = 1;
+
+    auto result = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+        .backend_kind = RendererKind::Software2D,
+    });
+    REQUIRE(result);
+    CHECK(surface.progressive_buffer().tile_size() == 128);
+}
+
+TEST_CASE("progressive tile size collapses after localized damage") {
+    RendererFixture fx;
+
+    constexpr int kWidth = 6144;
+    constexpr int kHeight = 256;
+
+    auto make_bucket = [&](std::array<float, 4> overlay_color, std::uint64_t overlay_fp) {
+        DrawableBucketSnapshot bucket{};
+        bucket.drawable_ids = {0x0B0000u, 0x0B0001u};
+        bucket.drawable_fingerprints = {0x0201u, overlay_fp};
+        bucket.world_transforms = {identity_transform(), identity_transform()};
+        bucket.bounds_spheres = {
+            BoundingSphere{{static_cast<float>(kWidth) * 0.5f,
+                            static_cast<float>(kHeight) * 0.5f,
+                            0.0f},
+                           static_cast<float>(std::max(kWidth, kHeight))},
+            BoundingSphere{{192.0f, 80.0f, 0.0f}, 64.0f},
+        };
+        bucket.bounds_boxes = {
+            BoundingBox{{0.0f, 0.0f, 0.0f},
+                        {static_cast<float>(kWidth), static_cast<float>(kHeight), 0.0f}},
+            BoundingBox{{128.0f, 32.0f, 0.0f}, {192.0f, 96.0f, 0.0f}},
+        };
+        bucket.bounds_box_valid = {1, 1};
+        bucket.layers = {0, 0};
+        bucket.z_values = {0.0f, 0.5f};
+        bucket.material_ids = {1, 1};
+        bucket.pipeline_flags = {0, 0};
+        bucket.visibility = {1, 1};
+        bucket.command_offsets = {0, 1};
+        bucket.command_counts = {1, 1};
+        bucket.opaque_indices = {0};
+        bucket.alpha_indices = {1};
+        bucket.clip_head_indices = {-1, -1};
+        bucket.authoring_map = {
+            DrawableAuthoringMapEntry{bucket.drawable_ids[0], "bg", 0, 0},
+            DrawableAuthoringMapEntry{bucket.drawable_ids[1], "overlay", 0, 0},
+        };
+
+        RectCommand background{
+            .min_x = 0.0f,
+            .min_y = 0.0f,
+            .max_x = static_cast<float>(kWidth),
+            .max_y = static_cast<float>(kHeight),
+            .color = {0.15f, 0.15f, 0.15f, 1.0f},
+        };
+        encode_rect_command(background, bucket);
+
+        RectCommand overlay{
+            .min_x = 128.0f,
+            .min_y = 32.0f,
+            .max_x = 192.0f,
+            .max_y = 96.0f,
+            .color = overlay_color,
+        };
+        encode_rect_command(overlay, bucket);
+
+        return bucket;
+    };
+
+    auto initial_bucket = make_bucket({0.0f, 1.0f, 0.0f, 1.0f}, 0x0301u);
+    auto scenePath = create_scene(fx, "scene_tile_retarget", initial_bucket);
+    auto rendererPath = create_renderer(fx, "renderer_tile_retarget");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = kWidth;
+    surfaceDesc.size_px.height = kHeight;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_tile_retarget", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware::Options opts{
+        .enable_progressive = true,
+        .enable_buffered = false,
+        .progressive_tile_size_px = 64,
+    };
+    PathSurfaceSoftware surface{surfaceDesc, opts};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+    settings.time.frame_index = 1;
+
+    auto first = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+        .backend_kind = RendererKind::Software2D,
+    });
+    REQUIRE(first);
+    CHECK(surface.progressive_buffer().tile_size() == 128);
+
+    auto updated_bucket = make_bucket({0.0f, 0.0f, 1.0f, 1.0f}, 0x0302u);
+    auto revision = fx.publish_snapshot(scenePath, updated_bucket);
+    REQUIRE(revision >= 2);
+
+    settings.time.frame_index = 2;
+    auto second = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+        .backend_kind = RendererKind::Software2D,
+    });
+    REQUIRE(second);
+    CHECK(surface.progressive_buffer().tile_size() == 64);
+}
+
 TEST_CASE("pipeline flags partition passes when snapshot lacks explicit indices") {
     RendererFixture fx;
 
