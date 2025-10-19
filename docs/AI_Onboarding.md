@@ -4,6 +4,7 @@
 > **Session hand-off (October 17, 2025):** Software renderer incremental paths are healthy (~140 FPS for 64 px brush hints at 4 K) and the zero-copy path now skips redundant IOSurface→CPU copies. Use `./build/benchmarks/path_renderer2d_benchmark [--canvas=WIDTHxHEIGHT] [--metrics]` for per-phase timing (damage diff, encode, progressive copy, publish, present) and `./build/paint_example --debug` to watch live frame stats. Expect FPS to dip as brush history grows because the demo keeps each stroke as a drawable; stroke compositing is logged as optional follow-up in `docs/SceneGraphImplementationPlan.md`. 
 > **Session hand-off (October 18, 2025):** CAMetalLayer fullscreen perf is covered by `PathSpaceUITests`, `capture_framebuffer` defaults to off, diagnostics now surface structured `PathSpaceError` payloads under `diagnostics/errors/live`, and the presenter reuses a bounded IOSurface pool so long paint sessions no longer exhaust range groups. Next focus: expand automation (`scripts/compile.sh`, CI docs) to collect UI logs and document the debugging playbook before moving deeper into Phase 6.
 > **Session hand-off (October 19, 2025 — late):** PathWindowView now drives the CAMetalLayer presenter path, records `gpuEncodeMs`/`gpuPresentMs`, and example apps simply forward the window’s layer/queue. Keep `PATHSPACE_ENABLE_METAL_UPLOADS=1` gated for manual Metal runs while CI stays on the software fallback. Next focus: add Metal UITest coverage and continue trimming the macOS-specific event pump down to input only.
+> **Streaming update (October 19, 2025 — night):** RendererTrigger + PathRenderer2D stream Metal targets directly into the cached CAMetalLayer texture and publish `textureGpuBytes`/`resourceGpuBytes` metrics. The next iteration is the dedicated Metal encoder path so we can bypass CPU raster entirely.
 > **Diagnostics toggle (October 19, 2025):** Set `PATHSPACE_UI_DAMAGE_METRICS=1` when you need the incremental renderer’s damage/fingerprint/progressive tile counters (`damageRectangles`, `damageCoverageRatio`, `fingerprint{MatchesExact,MatchesRemap,Changes,New,Removed}`, `progressiveTiles{Dirty,Total,Skipped}`) written under `output/v1/common`. Leave it unset for normal runs to avoid the extra bookkeeping overhead.
 > **Encode roadmap (October 19, 2025 — evening):** Dirty-rect hints now coalesce tile-aligned regions automatically; benchmark traces show encode still dominating full-surface work. Next implementation target is to parallelise the encode loop across dirty tiles so multi-core hosts climb past the current ~0.7 FPS full-repaint ceiling at 4K.
 
@@ -67,9 +68,9 @@ Before ending a session, record progress in the relevant plan (e.g., `docs/Scene
 > **Quick status snapshot:** the latest build/test pointers, Metal presenter status, and open follow-ups now live in `docs/SceneGraphImplementationPlan.md`.
 
 ### Immediate next steps (October 19, 2025 — refreshed)
-1. Verify the shared `LocalWindowBridge` across examples (`paint_example`, `devices_example`) and capture any bridge regressions in UI diagnostics.
-2. Drive shader/material parity so Metal uploads consume the same material descriptors and diagnostics as the software path; land the shared material schema before enabling GPU-side shading.
-3. Fold `PATHSPACE_ENABLE_METAL_UPLOADS` into CI/docs (macOS GPU runners) and extend dashboards to ingest the residency/cache metrics published under `diagnostics/metrics/residency`.
+1. Land the Metal encoder path so Metal2D renders bypass the CPU framebuffer copy; update tests/metrics once streaming is GPU-backed.
+2. Verify the shared `LocalWindowBridge` across examples (`paint_example`, `devices_example`) and capture any bridge regressions in UI diagnostics.
+3. Fold `PATHSPACE_ENABLE_METAL_UPLOADS` into CI/docs (macOS GPU runners) and extend dashboards to ingest the refreshed residency metrics (`resourceGpuBytes`, `textureGpuBytes`, per-target cache totals).
 4. Document the compiled artifact expectations for the new cycle (start with `./scripts/compile_paint.sh` and the 15× loop harness) so the next hand-off can validate quickly.
 
 ---

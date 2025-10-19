@@ -1,6 +1,6 @@
 # PathSpace — New AI Onboarding (Post-Atlas)
 
-_Last updated: October 19, 2025_
+_Last updated: October 19, 2025 (evening)_
 
 Welcome! This repository just transitioned away from the “Atlas” assistant. The notes below get a fresh AI agent productive quickly while we stabilize the hand-off.
 
@@ -12,8 +12,8 @@ Welcome! This repository just transitioned away from the “Atlas” assistant. 
 
 2. **Read-before-you-touch**
    - `docs/AI_ARCHITECTURE.md` (legacy, but now annotated with hand-off notes).
-   - `docs/SceneGraphImplementationPlan.md` — shows the active renderer roadmap.
-   - `docs/AI_TODO.task` — verify priority ordering.
+   - `docs/SceneGraphImplementationPlan.md` — check Phase 7 for the freshly completed Metal streaming work and remaining GPU milestones.
+   - `docs/AI_TODO.task` — verify priority ordering and align new work with open items.
 
 3. **Build/Test Baseline**
    ```bash
@@ -23,17 +23,25 @@ Welcome! This repository just transitioned away from the “Atlas” assistant. 
    ```
 
 4. **Verify Environment Flags**
-   - Leave `PATHSPACE_ENABLE_METAL_UPLOADS` unset unless you are explicitly testing Metal uploads.
+   - Export `PATHSPACE_ENABLE_METAL_UPLOADS=1` when exercising the Metal2D streaming path locally; leave it unset for CI/headless runs so tests fall back to software.
    - Use `PATHSPACE_UI_DAMAGE_METRICS=1` only when collecting diagnostics; disable for perf runs.
+
+5. **Quick Test Pass (recommended)**
+   ```bash
+   ./build/tests/PathSpaceTests
+   ./build/tests/PathSpaceUITests
+   ./build/tests/PathSpaceUITests --test-case "Metal pipeline publishes residency metrics and material descriptors"
+   ```
+   The targeted Metal UITest ensures the new streaming path and telemetry stay healthy.
 
 ## 2. Current Priorities (Oct 19, 2025)
 
 | Area | Action | Notes |
 | --- | --- | --- |
+| Metal renderer | Implement the dedicated Metal encoder path so Metal2D skips CPU raster uploads entirely | Track under `docs/SceneGraphImplementationPlan.md` Phase 7 follow-ups. |
+| Diagnostics | Wire dashboards to consume `textureGpuBytes`, `resourceGpuBytes`, and refreshed residency metrics | Coordinate with tooling owners before schema changes. |
 | Software renderer parity | Finish progressive tile parallelism & encode sharding | See `docs/SceneGraphImplementationPlan.md` (“Software Renderer FPS Parity”). |
-| GPU readiness | Material telemetry & residency now unified; next focus is GPU shading execution path | Track follow-up tasks in `docs/AI_TODO.task`. |
-| Diagnostics | Ensure dashboards ingest new `materialDescriptors`, residency metrics, and HTML adapter fidelity metadata | Coordinate with tooling owners before schema changes. |
-| HTML adapter | Wire replay harness + pipeline hooks, then land CI/headless verification | See SceneGraph plan Phase 7 for remaining tasks. |
+| HTML adapter | Finalize headless verification and resource loader integration | See SceneGraph plan Phase 7 for remaining tasks. |
 
 ## 3. Communication & Handoff Hygiene
 
@@ -54,9 +62,14 @@ Welcome! This repository just transitioned away from the “Atlas” assistant. 
 
 ## 5. Ready to Work?
 
-- Confirm the build/test loop passes locally.
+- Confirm the build/test loop passes locally (see the quick test pass above).
 - Align your planned work with an entry in `docs/AI_TODO.task` (add one if missing).
 - Announce the scope in your PR description and keep doc updates synchronized with code changes. Remember to run `ctest -R HtmlCanvasVerify` when touching the adapter or HTML outputs so the headless replay harness stays green.
 - When you spot a gap in test coverage, either add the test immediately or log a follow-up in `docs/SceneGraphImplementationPlan.md` / `docs/AI_TODO.task` so the need is visible to the next maintainer.
+
+### Latest Highlights (Metal streaming)
+- `Renderer::TriggerRender` and `PathRenderer2D` now stream Metal targets directly into the cached CAMetalLayer texture.
+- Metrics add `textureGpuBytes`, `resourceGpuBytes`, and richer residency data—dashboards should ingest these before the next cycle.
+- The Metal UITest (`Metal pipeline publishes residency metrics and material descriptors`) exercises the streaming path; keep it green whenever touching renderer code.
 
 Welcome aboard and thank you for keeping the PathSpace docs in sync for the next AI maintainer.
