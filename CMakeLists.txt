@@ -122,6 +122,17 @@ if(BUILD_PATHSPACE_EXAMPLES)
             "-framework IOSurface")
         target_compile_definitions(paint_example PRIVATE PATHIO_BACKEND_MACOS=1)
     endif()
+
+    add_executable(html_replay_example examples/html_replay_example.cpp)
+    target_link_libraries(html_replay_example PRIVATE PathSpace)
+    if(APPLE)
+        target_link_libraries(html_replay_example PRIVATE
+            "-framework Cocoa"
+            "-framework Metal"
+            "-framework QuartzCore"
+            "-framework IOSurface")
+        target_compile_definitions(html_replay_example PRIVATE PATHIO_BACKEND_MACOS=1)
+    endif()
 endif()
 
 # Documentation (Doxygen)

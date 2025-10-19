@@ -189,8 +189,8 @@ Completed:
      - ✅ (October 19, 2025) DOM serializer and canvas JSON fallback reuse the drawable command stream while respecting node budgets and fallback policy.
      - Emit asset blobs (images/fonts) via fingerprint paths; integrate with resource loader follow-up.
   3. **Replay harness**
-     - Add standalone HTML runner (tests/ui + examples) that replays command streams, verifying parity with software renderer output.
-     - Provide doctest coverage that compares software framebuffer vs. adapter DOM/Canvas render using golden expectations.
+     - ✅ (October 19, 2025) Added standalone HTML runner (tests/ui + example) that replays canvas command streams and checks parity with PathRenderer2D output.
+     - ✅ (October 19, 2025) Doctest coverage compares PathRenderer2D framebuffer against replayed canvas output to guard regressions.
   4. **Builder integration**
      - ✅ (October 19, 2025) Renderer targets now emit HTML outputs under `output/v1/html/{dom,css,commands,assets}` using the adapter and persist the applied options.
      - TODO: Add present pipeline hooks for HTML targets (always latest complete) and diagnostics/errors surfaces.

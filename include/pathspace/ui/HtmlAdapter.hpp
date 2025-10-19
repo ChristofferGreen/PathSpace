@@ -3,6 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -18,6 +19,30 @@ struct EmitOptions {
     bool allow_canvas_fallback = true;
 };
 
+enum class CanvasCommandType : std::uint8_t {
+    Rect,
+    RoundedRect,
+    Image,
+    Text,
+    Path,
+    Mesh,
+};
+
+struct CanvasCommand {
+    CanvasCommandType type = CanvasCommandType::Rect;
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 0.0f;
+    float height = 0.0f;
+    std::array<float, 4> color{0.0f, 0.0f, 0.0f, 1.0f};
+    std::array<float, 4> corner_radii{0.0f, 0.0f, 0.0f, 0.0f};
+    std::uint64_t fingerprint = 0;
+    std::uint32_t glyph_count = 0;
+    std::uint32_t vertex_count = 0;
+    float opacity = 1.0f;
+    bool has_fingerprint = false;
+};
+
 struct Asset {
     std::string logical_path;
     std::string mime_type;
@@ -30,6 +55,7 @@ struct EmitResult {
     std::string canvas_commands;
     bool used_canvas_fallback = false;
     std::vector<Asset> assets;
+    std::vector<CanvasCommand> canvas_replay_commands;
 };
 
 class Adapter {

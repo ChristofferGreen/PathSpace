@@ -69,8 +69,60 @@ struct HtmlNode {
     bool has_fingerprint = false;
 };
 
+auto nodes_to_canvas_commands(std::vector<HtmlNode> const& nodes) -> std::vector<CanvasCommand> {
+    std::vector<CanvasCommand> commands;
+    commands.reserve(nodes.size());
+    for (auto const& node : nodes) {
+        CanvasCommand command{};
+        command.x = node.min_x;
+        command.y = node.min_y;
+        command.width = std::max(0.0f, node.max_x - node.min_x);
+        command.height = std::max(0.0f, node.max_y - node.min_y);
+        switch (node.kind) {
+        case HtmlNode::Kind::Rect:
+            command.type = CanvasCommandType::Rect;
+            command.color = node.color;
+            command.opacity = node.color[3];
+            break;
+        case HtmlNode::Kind::RoundedRect:
+            command.type = CanvasCommandType::RoundedRect;
+            command.color = node.color;
+            command.corner_radii = node.corner_radius;
+            command.opacity = node.color[3];
+            break;
+        case HtmlNode::Kind::Image:
+            command.type = CanvasCommandType::Image;
+            command.fingerprint = node.fingerprint;
+            command.has_fingerprint = node.has_fingerprint;
+            command.color = node.tint;
+            command.opacity = node.tint[3];
+            break;
+        case HtmlNode::Kind::Text:
+            command.type = CanvasCommandType::Text;
+            command.color = node.color;
+            command.opacity = node.color[3];
+            command.glyph_count = node.glyph_count;
+            break;
+        case HtmlNode::Kind::Path:
+            command.type = CanvasCommandType::Path;
+            command.color = node.color;
+            command.opacity = node.color[3];
+            break;
+        case HtmlNode::Kind::Mesh:
+            command.type = CanvasCommandType::Mesh;
+            command.color = node.color;
+            command.opacity = node.color[3];
+            command.vertex_count = node.vertex_count;
+            break;
+        }
+        commands.push_back(command);
+    }
+    return commands;
+}
+
 auto build_dom(std::vector<HtmlNode> const& nodes,
-               std::unordered_map<std::uint64_t, Asset> const& asset_map) -> EmitResult {
+               std::unordered_map<std::uint64_t, Asset> const& asset_map,
+               std::vector<CanvasCommand> const& commands) -> EmitResult {
     EmitResult result{};
     std::ostringstream dom;
     dom << "<div class=\"ps-scene\" data-node-count=\"" << nodes.size() << "\">\n";
@@ -169,11 +221,13 @@ auto build_dom(std::vector<HtmlNode> const& nodes,
     for (auto const& entry : asset_map) {
         result.assets.push_back(entry.second);
     }
+    result.canvas_replay_commands = commands;
     return result;
 }
 
 auto build_canvas(std::vector<HtmlNode> const& nodes,
-                  std::unordered_map<std::uint64_t, Asset> const& asset_map) -> EmitResult {
+                  std::unordered_map<std::uint64_t, Asset> const& asset_map,
+                  std::vector<CanvasCommand> const& commands) -> EmitResult {
     EmitResult result{};
     std::ostringstream canvas;
     canvas << "[";
@@ -248,6 +302,7 @@ auto build_canvas(std::vector<HtmlNode> const& nodes,
     for (auto const& entry : asset_map) {
         result.assets.push_back(entry.second);
     }
+    result.canvas_replay_commands = commands;
     return result;
 }
 
@@ -407,8 +462,10 @@ auto Adapter::emit(Scene::DrawableBucketSnapshot const& snapshot,
     bool dom_within_budget = options.max_dom_nodes == 0
                              || dom_node_count <= options.max_dom_nodes;
 
+    auto replay_commands = nodes_to_canvas_commands(nodes);
+
     if (dom_allowed && dom_within_budget) {
-        return build_dom(nodes, assets);
+        return build_dom(nodes, assets, replay_commands);
     }
 
     if (!options.allow_canvas_fallback) {
@@ -416,7 +473,7 @@ auto Adapter::emit(Scene::DrawableBucketSnapshot const& snapshot,
                                          "DOM node budget exceeded and canvas fallback is disabled"});
     }
 
-    return build_canvas(nodes, assets);
+    return build_canvas(nodes, assets, replay_commands);
 }
 
 } // namespace SP::UI::Html
