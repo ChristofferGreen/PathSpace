@@ -1310,6 +1310,11 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         return std::unexpected(bucket.error());
     }
 
+    std::unordered_map<std::uint32_t, MaterialDescriptor> material_descriptors;
+    if (!bucket->material_ids.empty()) {
+        material_descriptors.reserve(bucket->material_ids.size());
+    }
+
     auto& surface = params.surface;
     auto const& desc = surface.desc();
 
@@ -1777,6 +1782,21 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                                               SP::Error::Code::InvalidType));
         }
 
+        auto material_id = std::uint32_t{0};
+        if (drawable_index < bucket->material_ids.size()) {
+            material_id = bucket->material_ids[drawable_index];
+        }
+        auto pipeline_flags = pipeline_flags_for(*bucket, drawable_index);
+        MaterialDescriptor* material_desc = nullptr;
+        {
+            auto [it, inserted] = material_descriptors.try_emplace(material_id, MaterialDescriptor{});
+            if (inserted) {
+                it->second.material_id = material_id;
+            }
+            it->second.pipeline_flags |= pipeline_flags;
+            material_desc = &it->second;
+        }
+
         bool drawable_drawn = false;
         bool fallback_attempted = false;
 
@@ -1787,6 +1807,16 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                 skip_draw = true;
             }
         }
+
+        auto record_material_kind = [&](Scene::DrawCommandKind kind) {
+            if (!material_desc) {
+                return;
+            }
+            if (material_desc->command_count == 0) {
+                material_desc->primary_draw_kind = static_cast<std::uint32_t>(kind);
+            }
+            material_desc->command_count += 1;
+        };
 
         if (!skip_draw) {
             if (command_count == 0) {
@@ -1815,6 +1845,11 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                     case Scene::DrawCommandKind::Rect: {
                         auto rect = read_struct<Scene::RectCommand>(bucket->command_payload,
                                                                     payload_offset);
+                        record_material_kind(Scene::DrawCommandKind::Rect);
+                        if (material_desc) {
+                            material_desc->color_rgba = rect.color;
+                            material_desc->uses_image = false;
+                        }
                         if (draw_rect_command(rect, linear_buffer, width, height)) {
                             drawable_drawn = true;
                         }
@@ -1824,6 +1859,11 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                     case Scene::DrawCommandKind::RoundedRect: {
                         auto rounded = read_struct<Scene::RoundedRectCommand>(bucket->command_payload,
                                                                               payload_offset);
+                        record_material_kind(Scene::DrawCommandKind::RoundedRect);
+                        if (material_desc) {
+                            material_desc->color_rgba = rounded.color;
+                            material_desc->uses_image = false;
+                        }
                         if (draw_rounded_rect_command(rounded, linear_buffer, width, height)) {
                             drawable_drawn = true;
                         }
@@ -1833,6 +1873,11 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                     case Scene::DrawCommandKind::TextGlyphs: {
                         auto glyphs = read_struct<Scene::TextGlyphsCommand>(bucket->command_payload,
                                                                             payload_offset);
+                        record_material_kind(Scene::DrawCommandKind::TextGlyphs);
+                        if (material_desc) {
+                            material_desc->color_rgba = glyphs.color;
+                            material_desc->uses_image = false;
+                        }
                         if (draw_text_glyphs_command(glyphs, linear_buffer, width, height)) {
                             drawable_drawn = true;
                         }
@@ -1842,6 +1887,11 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                     case Scene::DrawCommandKind::Path: {
                         auto path_cmd = read_struct<Scene::PathCommand>(bucket->command_payload,
                                                                         payload_offset);
+                        record_material_kind(Scene::DrawCommandKind::Path);
+                        if (material_desc) {
+                            material_desc->color_rgba = path_cmd.fill_color;
+                            material_desc->uses_image = false;
+                        }
                         if (draw_path_command(path_cmd, linear_buffer, width, height)) {
                             drawable_drawn = true;
                         }
@@ -1851,6 +1901,11 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                     case Scene::DrawCommandKind::Mesh: {
                         auto mesh_cmd = read_struct<Scene::MeshCommand>(bucket->command_payload,
                                                                         payload_offset);
+                        record_material_kind(Scene::DrawCommandKind::Mesh);
+                        if (material_desc) {
+                            material_desc->color_rgba = mesh_cmd.color;
+                            material_desc->uses_image = false;
+                        }
                         if (draw_mesh_command(mesh_cmd, *bucket, drawable_index, linear_buffer, width, height)) {
                             drawable_drawn = true;
                         }
@@ -1860,6 +1915,12 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                     case Scene::DrawCommandKind::Image: {
                         auto image_cmd = read_struct<Scene::ImageCommand>(bucket->command_payload,
                                                                          payload_offset);
+                        record_material_kind(Scene::DrawCommandKind::Image);
+                        if (material_desc) {
+                            material_desc->uses_image = true;
+                            material_desc->resource_fingerprint = image_cmd.image_fingerprint;
+                            material_desc->tint_rgba = image_cmd.tint;
+                        }
                         auto tint_straight = make_linear_straight(image_cmd.tint);
                         auto asset_path = image_asset_prefix + fingerprint_to_hex(image_cmd.image_fingerprint) + ".png";
                         auto texture = image_cache_.load(space_, asset_path, image_cmd.image_fingerprint);
@@ -1922,6 +1983,9 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
             approx_area_alpha += area;
         } else {
             approx_area_opaque += area;
+        }
+        if (drawable_drawn && material_desc) {
+            material_desc->drawable_count += 1;
         }
         return {};
     };
@@ -2153,6 +2217,17 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         approx_overdraw_factor = approx_area_total / approx_surface_pixels;
     }
 
+    std::vector<MaterialDescriptor> material_list;
+    material_list.reserve(material_descriptors.size());
+    for (auto const& entry : material_descriptors) {
+        material_list.push_back(entry.second);
+    }
+    std::sort(material_list.begin(),
+              material_list.end(),
+              [](MaterialDescriptor const& lhs, MaterialDescriptor const& rhs) {
+                  return lhs.material_id < rhs.material_id;
+              });
+
     auto metricsBase = std::string(params.target_path.getPath()) + "/output/v1/common";
     if (auto status = replace_single<std::uint64_t>(space_, metricsBase + "/frameIndex", params.settings.time.frame_index); !status) {
         (void)set_last_error(space_, params.target_path, "failed to store frame index");
@@ -2192,6 +2267,9 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     (void)replace_single<double>(space_, metricsBase + "/approxOverdrawFactor", approx_overdraw_factor);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveTilesUpdated", progressive_tiles_updated);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveBytesCopied", progressive_bytes_copied);
+    (void)replace_single<std::uint64_t>(space_, metricsBase + "/materialCount",
+                                        static_cast<std::uint64_t>(material_list.size()));
+    (void)replace_single(space_, metricsBase + "/materialDescriptors", material_list);
     if (collect_damage_metrics) {
         (void)replace_single<std::uint64_t>(space_, metricsBase + "/damageRectangles", damage_rect_count);
         (void)replace_single<double>(space_, metricsBase + "/damageCoverageRatio", damage_coverage_ratio);
@@ -2217,9 +2295,10 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     stats.drawable_count = drawn_total;
     stats.damage_ms = damage_ms;
     stats.encode_ms = encode_ms;
-   stats.progressive_copy_ms = progressive_copy_ms;
-   stats.publish_ms = publish_ms;
+    stats.progressive_copy_ms = progressive_copy_ms;
+    stats.publish_ms = publish_ms;
     stats.backend_kind = params.backend_kind;
+    stats.materials = std::move(material_list);
 
     return stats;
 }

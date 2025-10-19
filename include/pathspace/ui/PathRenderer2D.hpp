@@ -4,6 +4,7 @@
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/ui/ImageCache.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/MaterialDescriptor.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 
 #include <chrono>
@@ -45,6 +46,7 @@ public:
         Builders::RendererKind backend_kind = Builders::RendererKind::Software2D;
         std::uint64_t resource_cpu_bytes = 0;
         std::uint64_t resource_gpu_bytes = 0;
+        std::vector<MaterialDescriptor> materials;
     };
 
     explicit PathRenderer2D(PathSpace& space);

@@ -7,6 +7,7 @@
 #include <pathspace/ui/PipelineFlags.hpp>
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
+#include <pathspace/ui/MaterialDescriptor.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 
 #include <algorithm>
@@ -2539,6 +2540,69 @@ TEST_CASE("Surface::RenderOnce drives renderer and stores metrics") {
     REQUIRE(second);
     CHECK(second->ready());
     CHECK(fx.space.read<uint64_t>(metricsBase + "/frameIndex").value() == 2);
+}
+
+TEST_CASE("PathRenderer2D records material descriptors metrics") {
+    RendererFixture fx;
+
+    RectDrawableDef def{};
+    def.id = 0x1111u;
+    def.fingerprint = 0x2222u;
+    def.rect = RectCommand{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 4.0f,
+        .max_y = 4.0f,
+        .color = {0.25f, 0.5f, 0.75f, 1.0f},
+    };
+
+    auto bucket = make_rect_bucket({def});
+    REQUIRE(bucket.material_ids.size() == 1);
+    bucket.material_ids[0] = 42;
+
+    auto scenePath = create_scene(fx, "scene_material_metrics", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_material_metrics");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 4;
+    surfaceDesc.size_px.height = 4;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_material_metrics", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+
+    auto renderFuture = Surface::RenderOnce(fx.space, surfacePath, std::nullopt);
+    REQUIRE(renderFuture);
+    CHECK(renderFuture->ready());
+
+    auto targetPath = resolve_target(fx, surfacePath);
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+
+    auto materialCount = fx.space.read<uint64_t>(metricsBase + "/materialCount");
+    REQUIRE(materialCount);
+    CHECK(*materialCount == 1);
+
+    auto materialDescriptors = fx.space.read<std::vector<MaterialDescriptor>>(metricsBase + "/materialDescriptors");
+    REQUIRE(materialDescriptors);
+    REQUIRE(materialDescriptors->size() == 1);
+    auto const& descriptor = materialDescriptors->front();
+    CHECK(descriptor.material_id == 42);
+    CHECK(descriptor.pipeline_flags == 0);
+    CHECK(descriptor.primary_draw_kind == static_cast<std::uint32_t>(DrawCommandKind::Rect));
+    CHECK(descriptor.drawable_count == 1);
+    CHECK(descriptor.command_count >= 1);
+    CHECK(descriptor.uses_image == false);
+    CHECK(descriptor.resource_fingerprint == 0);
+    CHECK(descriptor.tint_rgba[0] == doctest::Approx(1.0f));
+    CHECK(descriptor.tint_rgba[1] == doctest::Approx(1.0f));
+    CHECK(descriptor.tint_rgba[2] == doctest::Approx(1.0f));
+    CHECK(descriptor.tint_rgba[3] == doctest::Approx(1.0f));
+    CHECK(descriptor.color_rgba[0] == doctest::Approx(0.25f));
+    CHECK(descriptor.color_rgba[1] == doctest::Approx(0.5f));
+    CHECK(descriptor.color_rgba[2] == doctest::Approx(0.75f));
+    CHECK(descriptor.color_rgba[3] == doctest::Approx(1.0f));
 }
 
 TEST_CASE("Surface::RenderOnce handles repeated loop renders") {
