@@ -16,22 +16,29 @@
 #include <Cocoa/Cocoa.h>
 #include <dispatch/dispatch.h>
 #include <Foundation/Foundation.h>
+#include <IOSurface/IOSurface.h>
 #include <Metal/Metal.h>
 #include <QuartzCore/CAMetalLayer.h>
-#include <IOSurface/IOSurface.h>
 #endif
 
-namespace SP::UI {
+#if defined(__APPLE__)
+@class PSLocalWindowDelegate;
+using SP::UI::LocalMouseButton;
+using SP::UI::LocalMouseEvent;
+using SP::UI::LocalMouseEventType;
+using SP::UI::LocalWindowCallbacks;
+#endif
+
+namespace {
 
 #if defined(__APPLE__)
-namespace {
 
 struct CallbackState {
     LocalWindowCallbacks callbacks{};
     std::mutex mutex;
 };
 
-CallbackState& callback_state() {
+auto callback_state() -> CallbackState& {
     static CallbackState state{};
     return state;
 }
@@ -73,28 +80,12 @@ struct WindowState {
     int desired_width = 640;
     int desired_height = 360;
     std::string desired_title = "PathSpace Window";
+    PSLocalWindowDelegate* window_delegate = nil;
 };
 
-WindowState& window_state() {
+auto window_state() -> WindowState& {
     static WindowState state{};
     return state;
-}
-
-NSWindowDelegate*& global_window_delegate_storage() {
-    static NSWindowDelegate* delegate = nil;
-    return delegate;
-}
-
-NSWindowDelegate* global_window_delegate() {
-    return global_window_delegate_storage();
-}
-
-void set_global_window_delegate(NSWindowDelegate* delegate) {
-    global_window_delegate_storage() = delegate;
-}
-
-NSWindowDelegate* get_delegate() {
-    return global_window_delegate();
 }
 
 void ensure_metal_device(WindowState& state) {
@@ -104,20 +95,20 @@ void ensure_metal_device(WindowState& state) {
     state.metal_device = MTLCreateSystemDefaultDevice();
     if (!state.metal_device) {
         state.metal_available = false;
-        PathWindowView::ResetMetalPresenter();
+        SP::UI::PathWindowView::ResetMetalPresenter();
         return;
     }
     state.metal_queue = [state.metal_device newCommandQueue];
     if (!state.metal_queue) {
         state.metal_device = nil;
         state.metal_available = false;
-        PathWindowView::ResetMetalPresenter();
+        SP::UI::PathWindowView::ResetMetalPresenter();
         return;
     }
     state.metal_available = true;
 }
 
-bool compute_pixel_coordinates(WindowState& state, NSEvent* ev, int& out_x, int& out_y) {
+auto compute_pixel_coordinates(WindowState& state, NSEvent* ev, int& out_x, int& out_y) -> bool {
     NSWindow* window = ev.window ?: state.window;
     if (!window) return false;
     NSView* view = window.contentView;
@@ -150,7 +141,7 @@ bool compute_pixel_coordinates(WindowState& state, NSEvent* ev, int& out_x, int&
     return true;
 }
 
-LocalMouseButton button_from_event(NSEvent* ev) {
+auto button_from_event(NSEvent* ev) -> LocalMouseButton {
     switch (ev.type) {
         case NSEventTypeLeftMouseDown:
         case NSEventTypeLeftMouseUp:
@@ -189,12 +180,12 @@ void update_presenter_config(WindowState& state) {
         layer.drawableSize = CGSizeMake(bounds_size.width * scale,
                                         bounds_size.height * scale);
 
-        PathWindowView::MetalPresenterConfig config{};
+        SP::UI::PathWindowView::MetalPresenterConfig config{};
         config.layer = (__bridge void*)layer;
         config.device = (__bridge void*)st.metal_device;
         config.command_queue = (__bridge void*)st.metal_queue;
         config.contents_scale = static_cast<double>(scale);
-        PathWindowView::ConfigureMetalPresenter(config);
+        SP::UI::PathWindowView::ConfigureMetalPresenter(config);
     });
 }
 
@@ -357,10 +348,15 @@ void schedule_metal_present(WindowState& state) {
     });
 }
 
+#endif // defined(__APPLE__)
+
+} // namespace
+
+#if defined(__APPLE__)
+
 @interface PSLocalEventView : NSView
 @property(nonatomic, strong) CAMetalLayer* psMetalLayer;
 - (void)configureMetalLayerIfPossible;
-- (void)enqueueMouseEvent:(LocalMouseEvent const&)event;
 - (void)handleMoveEvent:(NSEvent *)event;
 - (void)pushButtonEvent:(NSEvent *)event type:(LocalMouseEventType)type;
 - (void)pushWheelEvent:(NSEvent *)event;
@@ -393,7 +389,7 @@ void schedule_metal_present(WindowState& state) {
         state.metal_available = false;
         self.psMetalLayer = nil;
         state.metal_layer = nil;
-        PathWindowView::ResetMetalPresenter();
+        SP::UI::PathWindowView::ResetMetalPresenter();
         return;
     }
 
@@ -423,12 +419,12 @@ void schedule_metal_present(WindowState& state) {
     state.metal_layer = layer;
     state.metal_available = true;
 
-    PathWindowView::MetalPresenterConfig config{};
+    SP::UI::PathWindowView::MetalPresenterConfig config{};
     config.layer = (__bridge void*)layer;
     config.device = (__bridge void*)state.metal_device;
     config.command_queue = (__bridge void*)state.metal_queue;
     config.contents_scale = static_cast<double>(scale);
-    PathWindowView::ConfigureMetalPresenter(config);
+    SP::UI::PathWindowView::ConfigureMetalPresenter(config);
 }
 
 - (void)viewDidMoveToWindow {
@@ -446,10 +442,6 @@ void schedule_metal_present(WindowState& state) {
     update_presenter_config(window_state());
 }
 
-- (void)enqueueMouseEvent:(LocalMouseEvent const&)event {
-    emit_mouse_event(event);
-}
-
 - (void)handleMoveEvent:(NSEvent *)event {
     WindowState& state = window_state();
     int xi = 0;
@@ -464,14 +456,14 @@ void schedule_metal_present(WindowState& state) {
         rel.x = xi;
         rel.y = yi;
     }
-    [self enqueueMouseEvent:rel];
+    emit_mouse_event(rel);
 
     if (has_coords) {
         LocalMouseEvent abs{};
         abs.type = LocalMouseEventType::AbsoluteMove;
         abs.x = xi;
         abs.y = yi;
-        [self enqueueMouseEvent:abs];
+        emit_mouse_event(abs);
     }
 }
 
@@ -482,25 +474,6 @@ void schedule_metal_present(WindowState& state) {
 
 - (void)scrollWheel:(NSEvent *)event {
     [self pushWheelEvent:event];
-}
-
-- (void)pushWheelEvent:(NSEvent *)event {
-    WindowState& state = window_state();
-    CGFloat dy = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.deltaY;
-    int ticks = static_cast<int>(std::llround(dy));
-    if (ticks == 0) {
-        return;
-    }
-    LocalMouseEvent ev{};
-    ev.type = LocalMouseEventType::Wheel;
-    ev.wheel = ticks;
-    int xi = 0;
-    int yi = 0;
-    if (compute_pixel_coordinates(state, event, xi, yi)) {
-        ev.x = xi;
-        ev.y = yi;
-    }
-    [self enqueueMouseEvent:ev];
 }
 
 - (void)mouseDown:(NSEvent *)event { [self pushButtonEvent:event type:LocalMouseEventType::ButtonDown]; }
@@ -521,7 +494,26 @@ void schedule_metal_present(WindowState& state) {
         ev.x = xi;
         ev.y = yi;
     }
-    [self enqueueMouseEvent:ev];
+    emit_mouse_event(ev);
+}
+
+- (void)pushWheelEvent:(NSEvent *)event {
+    WindowState& state = window_state();
+    CGFloat dy = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.deltaY;
+    int ticks = static_cast<int>(std::llround(dy));
+    if (ticks == 0) {
+        return;
+    }
+    LocalMouseEvent ev{};
+    ev.type = LocalMouseEventType::Wheel;
+    ev.wheel = ticks;
+    int xi = 0;
+    int yi = 0;
+    if (compute_pixel_coordinates(state, event, xi, yi)) {
+        ev.x = xi;
+        ev.y = yi;
+    }
+    emit_mouse_event(ev);
 }
 
 - (void)drawRect:(NSRect)dirtyRect {
@@ -614,11 +606,13 @@ void schedule_metal_present(WindowState& state) {
         state.framebuffer_stride = 0;
     }
     state.window = nil;
-    set_global_window_delegate(nil);
+    state.window_delegate = nil;
 }
 @end
 
 #endif // defined(__APPLE__)
+
+namespace SP::UI {
 
 void SetLocalWindowCallbacks(LocalWindowCallbacks const& callbacks) {
 #if defined(__APPLE__)
@@ -689,10 +683,10 @@ void InitLocalWindowWithSize(int width, int height, char const* title) {
                                                          backing:NSBackingStoreBuffered
                                                            defer:NO];
             state.window.title = [NSString stringWithUTF8String:state.desired_title.c_str()];
-            auto* delegate = [[PSLocalWindowDelegate alloc] init];
+            PSLocalWindowDelegate* delegate = [[PSLocalWindowDelegate alloc] init];
             state.window.delegate = delegate;
-            set_global_window_delegate(delegate);
-            auto* view = [[PSLocalEventView alloc] initWithFrame:NSMakeRect(0, 0, state.desired_width, state.desired_height)];
+            state.window_delegate = delegate;
+            PSLocalEventView* view = [[PSLocalEventView alloc] initWithFrame:NSMakeRect(0, 0, state.desired_width, state.desired_height)];
             [state.window setContentView:view];
             [state.window setAcceptsMouseMovedEvents:YES];
             [state.window makeFirstResponder:view];
@@ -702,9 +696,10 @@ void InitLocalWindowWithSize(int width, int height, char const* title) {
         } else {
             [[state.window contentView] setFrame:NSMakeRect(0, 0, state.desired_width, state.desired_height)];
             state.window.title = [NSString stringWithUTF8String:state.desired_title.c_str()];
-            auto* delegate = get_delegate();
+            PSLocalWindowDelegate* delegate = state.window_delegate;
             if (!delegate) {
                 delegate = [[PSLocalWindowDelegate alloc] init];
+                state.window_delegate = delegate;
             }
             state.window.delegate = delegate;
             [state.window makeKeyAndOrderFront:nil];
