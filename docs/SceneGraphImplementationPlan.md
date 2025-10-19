@@ -126,7 +126,7 @@ Completed:
 - ✅ (October 16, 2025) Added doctest scenarios for hit ordering, clip-aware picking, focus routing, and auto-render event scheduling via `Scene::HitTest`; notifications enqueue `AutoRenderRequestEvent` under `events/renderRequested/queue`.
 - ✅ (October 16, 2025) `Scene::HitTest` now emits scene/local coordinates and per-path focus metadata so event routing can derive local offsets without re-reading scene state; doctests cover the new fields.
 - ✅ (October 16, 2025) `Scene::MarkDirty` / `Scene::TakeDirtyEvent` surface dirty markers via `diagnostics/dirty/state` and a queue, and tests confirm renderers can wait on the queue without polling.
-- ✅ (October 18, 2025) Exercised the blocking dirty-event wait/notify loop under the mandated 15× harness; the `Scene dirty event wait-notify latency stays within budget` doctest asserts <200 ms wake latency and preserves sequence ordering, and architecture docs now capture the latency/ordering guarantee.
+- ✅ (October 18, 2025) Exercised the blocking dirty-event wait/notify loop under the mandated 15× harness; the `Scene dirty event wait-notify latency stays within budget` doctest asserts <200 ms wake latency, preserves sequence ordering, and architecture docs now capture the latency/ordering guarantee plus the Metal→software fallback rule when uploads are disabled.
 
 ### Phase 6 — Diagnostics, Tooling, and Hardening (1 sprint)
 - ✅ (October 18, 2025) Extended diagnostics coverage with unit tests that write/read present metrics (`Diagnostics::WritePresentMetrics`/`ReadTargetMetrics`) and verify error clearing; tooling now has regression coverage for metric persistence.
@@ -137,16 +137,16 @@ Completed:
 ### Phase 7 — Optional Backends & HTML Adapter Prep (post-MVP)
 - 🚧 (October 18, 2025) Added skipped `PathSpaceUITests` scaffolding for integration replay, ObjC++ Metal harness, and HTML command parity; populate with assertions once the backends land.
 - 🚧 (October 18, 2025) Introduced `PathSurfaceMetal` stub (texture allocation + resize) gated behind `PATHSPACE_UI_METAL`, linked Metal/QuartzCore, ready for presenter integration.
-- Extended Metal renderer (GPU raster path) gated by `PATHSPACE_UI_METAL`; build atop the baseline Metal presenter, confirm ObjC++ integration, and expand CI coverage. **Implementation plan map (Oct 18, 2025):**
-  1. **Renderer kind plumbing**
+- 🚧 (October 19, 2025) Builders can now provision Metal targets end-to-end; the software renderer still populates Metal surfaces, and optional GPU uploads are gated on `PATHSPACE_ENABLE_METAL_UPLOADS=1` so CI remains headless-safe. Builder/UI tests publish a minimal snapshot before touching Metal paths to guarantee the software renderer has drawables to consume.
+- Extended Metal renderer (GPU raster path) gated by `PATHSPACE_UI_METAL`; build atop the baseline Metal presenter, confirm ObjC++ integration, and expand CI coverage. **Implementation plan map (Oct 18, 2025, updated Oct 19):**
+ 1. **Renderer kind plumbing**
      - Teach `Builder::Renderer::Create` / metadata to persist `RendererKind::Metal2D`.
-     - Resolve renderer kind in `prepare_surface_render_context`, route to software vs. metal code.
+     - Resolve renderer kind in `prepare_surface_render_context`, route to software vs. metal code; ensure software fallback remains the default until GPU uploads are enabled explicitly.
   2. **Surface cache & rendering loop**
-     - Introduce `MetalSurfaceCache` (mirroring software cache) storing `PathSurfaceMetal` instances.
-     - Split `render_into_surface` into backend-specific paths; metal path builds render command buffer for MTLTexture, software path stays unchanged.
+     - ✅ (October 19, 2025) Split render helpers so Metal targets reuse the shared cache but funnel through a backend-aware `render_into_target`; contexts fall back to software when uploads are disabled and tests exercise the unified path.
      - PathRenderer2D: add backend abstraction so draw traversal fills either CPU framebuffer or Metal encoders; reuse command building, add Metal-specific upload/shader binding (initially simple textured quad pipeline).
   3. **Presenter integration**
-     - Extend `PathWindowView::Present` (Apple) to accept either `PathSurfaceSoftware` or `PathSurfaceMetal` stats; when Metal, acquire CAMetalLayer drawable and blit/encode GPU texture to drawable using Metal command queue (move logic from WindowEventPump into core presenter).
+     - Extend `PathWindowView::Present` (Apple) to accept either `PathSurfaceSoftware` or `PathSurfaceMetal` stats; when Metal uploads are enabled, acquire CAMetalLayer drawable and blit/encode GPU texture to drawable using Metal command queue (move logic from WindowEventPump into core presenter).
      - Update macOS harness (`WindowEventPump.mm`) to detect Metal backend via stats and avoid redundant CPU copies.
   4. **Settings & diagnostics**
      - Define Metal target descriptors (`SurfaceDesc` additions if necessary), ensure RenderSettings/diagnostics include GPU timings and error paths.

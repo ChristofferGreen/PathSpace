@@ -327,16 +327,11 @@ TEST_CASE("Surface::RenderOnce handles metal renderer targets") {
     REQUIRE(linked);
 
     auto render = Surface::RenderOnce(fx.space, *surface, std::nullopt);
-#if PATHSPACE_UI_METAL
     if (!render) {
         INFO("Surface::RenderOnce error code = " << static_cast<int>(render.error().code));
         INFO("Surface::RenderOnce error message = " << render.error().message.value_or("<none>"));
     }
     CHECK(render);
-#else
-    CHECK_FALSE(render);
-    CHECK(render.error().code == Error::Code::InvalidType);
-#endif
 }
 
 TEST_CASE("Window::Present handles metal renderer targets") {
@@ -369,16 +364,11 @@ TEST_CASE("Window::Present handles metal renderer targets") {
     REQUIRE(attached);
 
     auto present = Window::Present(fx.space, *window, "view");
-#if PATHSPACE_UI_METAL
     if (!present) {
         INFO("Window::Present error code = " << static_cast<int>(present.error().code));
         INFO("Window::Present error message = " << present.error().message.value_or("<none>"));
     }
     CHECK(present);
-#else
-    CHECK_FALSE(present);
-    CHECK(present.error().code == Error::Code::InvalidType);
-#endif
 }
 
 TEST_CASE("Scene::Create is idempotent and preserves metadata") {

@@ -371,10 +371,15 @@ auto prepare_surface_render_context(PathSpace& space,
                                     std::optional<RenderSettings> const& settingsOverride)
     -> SP::Expected<SurfaceRenderContext>;
 
-auto render_into_surface(PathSpace& space,
-                         SP::ConcretePathStringView targetPath,
-                         RenderSettings const& settings,
-                         PathSurfaceSoftware& surface) -> SP::Expected<PathRenderer2D::RenderStats>;
+auto render_into_software_surface(PathSpace& space,
+                                  SP::ConcretePathStringView targetPath,
+                                  RenderSettings const& settings,
+                                  PathSurfaceSoftware& surface) -> SP::Expected<PathRenderer2D::RenderStats>;
+#if PATHSPACE_UI_METAL
+auto upload_to_metal_surface(PathSurfaceSoftware& software,
+                             PathSurfaceMetal& metal,
+                             std::vector<std::uint8_t>& scratch) -> SP::Expected<void>;
+#endif
 
 auto parse_renderer_kind(std::string_view text) -> std::optional<RendererKind>;
 auto read_renderer_kind(PathSpace& space,
@@ -556,6 +561,18 @@ auto prepare_surface_render_context(PathSpace& space,
         return std::unexpected(rendererKind.error());
     }
 
+    auto effectiveKind = *rendererKind;
+#if !PATHSPACE_UI_METAL
+    if (effectiveKind == RendererKind::Metal2D) {
+        effectiveKind = RendererKind::Software2D;
+    }
+#else
+    if (effectiveKind == RendererKind::Metal2D
+        && std::getenv("PATHSPACE_ENABLE_METAL_UPLOADS") == nullptr) {
+        effectiveKind = RendererKind::Software2D;
+    }
+#endif
+
     RenderSettings effective{};
     if (settingsOverride) {
         effective = *settingsOverride;
@@ -605,21 +622,77 @@ auto prepare_surface_render_context(PathSpace& space,
         .renderer_path = SP::ConcretePathString{rendererPathStr},
         .target_desc = *targetDesc,
         .settings = effective,
-        .renderer_kind = *rendererKind,
+        .renderer_kind = effectiveKind,
     };
     return context;
 }
 
-auto render_into_surface(PathSpace& space,
-                         SP::ConcretePathStringView targetPath,
-                         RenderSettings const& settings,
-                         PathSurfaceSoftware& surface) -> SP::Expected<PathRenderer2D::RenderStats> {
+auto render_into_software_surface(PathSpace& space,
+                                  SP::ConcretePathStringView targetPath,
+                                  RenderSettings const& settings,
+                                  PathSurfaceSoftware& surface) -> SP::Expected<PathRenderer2D::RenderStats> {
     PathRenderer2D renderer{space};
     return renderer.render({
         .target_path = targetPath,
         .settings = settings,
         .surface = surface,
     });
+}
+
+#if PATHSPACE_UI_METAL
+auto render_into_metal_surface(PathSpace& space,
+                               SurfaceRenderContext const& context,
+                               PathSurfaceSoftware& software_surface,
+                               PathSurfaceMetal& metal_surface,
+                               std::vector<std::uint8_t>& scratch) -> SP::Expected<PathRenderer2D::RenderStats> {
+    auto stats = render_into_software_surface(space,
+                                              SP::ConcretePathStringView{context.target_path.getPath()},
+                                              context.settings,
+                                              software_surface);
+    if (!stats) {
+        return stats;
+    }
+
+    if (auto upload = upload_to_metal_surface(software_surface, metal_surface, scratch); !upload) {
+        return std::unexpected(upload.error());
+    }
+    metal_surface.present_completed(stats->frame_index, stats->revision);
+    return stats;
+}
+#endif
+
+auto render_into_target(PathSpace& space,
+                        SurfaceRenderContext const& context,
+                        PathSurfaceSoftware& software_surface
+#if PATHSPACE_UI_METAL
+                        ,
+                        PathSurfaceMetal* metal_surface,
+                        std::vector<std::uint8_t>& metal_scratch
+#endif
+                        ) -> SP::Expected<PathRenderer2D::RenderStats> {
+#if PATHSPACE_UI_METAL
+    if (context.renderer_kind == RendererKind::Metal2D) {
+        if (metal_surface == nullptr) {
+            return std::unexpected(make_error("metal renderer requested without metal surface cache",
+                                              SP::Error::Code::InvalidType));
+        }
+        return render_into_metal_surface(space, context, software_surface, *metal_surface, metal_scratch);
+    }
+    if (context.renderer_kind != RendererKind::Software2D) {
+        return std::unexpected(make_error("Unsupported renderer kind for render target",
+                                          SP::Error::Code::InvalidType));
+    }
+#else
+    if (context.renderer_kind != RendererKind::Software2D) {
+        return std::unexpected(make_error("Unsupported renderer kind for render target",
+                                          SP::Error::Code::InvalidType));
+    }
+#endif
+
+    return render_into_software_surface(space,
+                                        SP::ConcretePathStringView{context.target_path.getPath()},
+                                        context.settings,
+                                        software_surface);
 }
 
 auto to_epoch_ms(std::chrono::system_clock::time_point tp) -> int64_t {
@@ -1395,11 +1468,56 @@ auto TriggerRender(PathSpace& space,
         return std::unexpected(surfaceDesc.error());
     }
 
+    auto const targetStr = std::string(targetPath.getPath());
+    auto targetsPos = targetStr.find("/targets/");
+    if (targetsPos == std::string::npos) {
+        return std::unexpected(make_error("target path '" + targetStr + "' missing /targets/ segment",
+                                          SP::Error::Code::InvalidPath));
+    }
+    auto rendererPathStr = targetStr.substr(0, targetsPos);
+    if (rendererPathStr.empty()) {
+        return std::unexpected(make_error("renderer path derived from target is empty",
+                                          SP::Error::Code::InvalidPath));
+    }
+
+    auto rendererKind = read_renderer_kind(space, rendererPathStr + "/meta/kind");
+    if (!rendererKind) {
+        return std::unexpected(rendererKind.error());
+    }
+
+    auto effectiveKind = *rendererKind;
+#if !PATHSPACE_UI_METAL
+    if (effectiveKind == RendererKind::Metal2D) {
+        effectiveKind = RendererKind::Software2D;
+    }
+#else
+    if (effectiveKind == RendererKind::Metal2D
+        && std::getenv("PATHSPACE_ENABLE_METAL_UPLOADS") == nullptr) {
+        effectiveKind = RendererKind::Software2D;
+    }
+#endif
+
     PathSurfaceSoftware surface{*surfaceDesc};
-    auto stats = render_into_surface(space,
-                                     SP::ConcretePathStringView{targetPath.getPath()},
-                                     settings,
-                                     surface);
+    SurfaceRenderContext context{
+        .target_path = SP::ConcretePathString{std::string{targetPath.getPath()}},
+        .renderer_path = SP::ConcretePathString{rendererPathStr},
+        .target_desc = *surfaceDesc,
+        .settings = settings,
+        .renderer_kind = effectiveKind,
+    };
+
+#if PATHSPACE_UI_METAL
+    std::vector<std::uint8_t> metal_scratch;
+    PathSurfaceMetal* metal_surface = nullptr;
+    std::unique_ptr<PathSurfaceMetal> metal_owned;
+    if (context.renderer_kind == RendererKind::Metal2D) {
+        metal_owned = std::make_unique<PathSurfaceMetal>(*surfaceDesc);
+        metal_surface = metal_owned.get();
+    }
+    auto stats = render_into_target(space, context, surface, metal_surface, metal_scratch);
+#else
+    auto stats = render_into_target(space, context, surface);
+#endif
     if (!stats) {
         return std::unexpected(stats.error());
     }
@@ -1549,33 +1667,23 @@ auto RenderOnce(PathSpace& space,
 #endif
 
     auto& surface = acquire_surface(std::string(context->target_path.getPath()), context->target_desc);
-    auto stats = render_into_surface(space,
-                                     SP::ConcretePathStringView{context->target_path.getPath()},
-                                     context->settings,
-                                     surface);
+#if PATHSPACE_UI_METAL
+    PathSurfaceMetal* metal_surface = nullptr;
+    if (context->renderer_kind == RendererKind::Metal2D) {
+        metal_surface = &acquire_metal_surface(std::string(context->target_path.getPath()),
+                                               context->target_desc);
+    }
+    auto stats = render_into_target(space,
+                                    *context,
+                                    surface,
+                                    metal_surface,
+                                    metal_scratch);
+#else
+    auto stats = render_into_target(space, *context, surface);
+#endif
     if (!stats) {
         return std::unexpected(stats.error());
     }
-    auto stats_value = *stats;
-
-#if PATHSPACE_UI_METAL
-    if (context->renderer_kind == RendererKind::Metal2D) {
-        auto& metal_surface = acquire_metal_surface(std::string(context->target_path.getPath()),
-                                                    context->target_desc);
-        if (auto upload = upload_to_metal_surface(surface, metal_surface, metal_scratch); !upload) {
-            return std::unexpected(upload.error());
-        }
-        metal_surface.present_completed(stats_value.frame_index, stats_value.revision);
-    } else if (context->renderer_kind != RendererKind::Software2D) {
-        return std::unexpected(make_error("Surface::RenderOnce currently supports only software or metal renderer targets",
-                                          SP::Error::Code::InvalidType));
-    }
-#else
-    if (context->renderer_kind != RendererKind::Software2D) {
-        return std::unexpected(make_error("Surface::RenderOnce currently supports only software renderer targets",
-                                          SP::Error::Code::InvalidType));
-    }
-#endif
 
     auto state = std::make_shared<SP::SharedState<bool>>();
     state->set_value(true);
@@ -1711,34 +1819,22 @@ auto Present(PathSpace& space,
     std::vector<std::uint8_t> metal_scratch;
     if (context->renderer_kind == RendererKind::Metal2D) {
         metal_surface = &acquire_metal_surface(target_key, context->target_desc);
-    } else if (context->renderer_kind != RendererKind::Software2D) {
-        return std::unexpected(make_error("Window::Present currently supports only software or metal renderer targets",
-                                          SP::Error::Code::InvalidType));
-    }
-#else
-    if (context->renderer_kind != RendererKind::Software2D) {
-        return std::unexpected(make_error("Window::Present currently supports only software renderer targets",
-                                          SP::Error::Code::InvalidType));
     }
 #endif
 
-    auto renderStats = render_into_surface(space,
-                                           SP::ConcretePathStringView{context->target_path.getPath()},
-                                           context->settings,
-                                           surface);
+#if PATHSPACE_UI_METAL
+    auto renderStats = render_into_target(space,
+                                          *context,
+                                          surface,
+                                          metal_surface,
+                                          metal_scratch);
+#else
+    auto renderStats = render_into_target(space, *context, surface);
+#endif
     if (!renderStats) {
         return std::unexpected(renderStats.error());
     }
     auto stats_value = *renderStats;
-
-#if PATHSPACE_UI_METAL
-    if (metal_surface) {
-        if (auto upload = upload_to_metal_surface(surface, *metal_surface, metal_scratch); !upload) {
-            return std::unexpected(upload.error());
-        }
-        metal_surface->present_completed(stats_value.frame_index, stats_value.revision);
-    }
-#endif
 
     auto dirty_tiles = surface.consume_progressive_dirty_tiles();
     invoke_before_present_hook(surface, presentPolicy, dirty_tiles);
