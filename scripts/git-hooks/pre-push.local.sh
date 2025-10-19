@@ -12,6 +12,7 @@
 #   JOBS=N                  -> parallel build jobs (Default: nproc/sysctl)
 #   PATHSPACE_CMAKE_ARGS=.. -> extra CMake args (quoted)
 #   ENABLE_PATHIO_MACOS=ON  -> on macOS, enable PathIO macOS backends in the example build
+#   DISABLE_METAL_TESTS=1   -> skip Metal presenter coverage even on macOS
 
 set -euo pipefail
 
@@ -109,9 +110,14 @@ BUILD_TYPE="${BUILD_TYPE:-Release}"
 
 CLANGXX_BIN="$(command -v clang++ || true)"
 PATHSPACE_CMAKE_ARGS="${PATHSPACE_CMAKE_ARGS:-}"
-PATHSPACE_CMAKE_ARGS+=" -DPATHSPACE_UI_METAL=ON"
 PATHSPACE_CMAKE_ARGS+=" -DCMAKE_CXX_COMPILER=${CLANGXX_BIN}"
 PATHSPACE_CMAKE_ARGS+=" -DCMAKE_OBJCXX_COMPILER=${CLANGXX_BIN}"
+
+METAL_TEST_ARGS=()
+if [[ "$(uname)" == "Darwin" ]] && [[ "${DISABLE_METAL_TESTS:-0}" != "1" ]]; then
+  PATHSPACE_CMAKE_ARGS+=" -DPATHSPACE_UI_METAL=ON"
+  METAL_TEST_ARGS+=(--enable-metal-tests)
+fi
 
 say "Repository root: $ROOT"
 say "Jobs: $JOBS  Build type: $BUILD_TYPE"
@@ -121,7 +127,7 @@ if [[ "${SKIP_LOOP_TESTS:-0}" != "1" ]]; then
   say "Building and running tests with loop=15"
   # scripts/compile.sh takes care of configure+build+tests
   # Prefer Apple clang for both C++ and ObjC++ to support ObjC headers/blocks
-  PATHSPACE_CMAKE_ARGS="$PATHSPACE_CMAKE_ARGS" ./scripts/compile.sh --clean --test --loop=15 --${BUILD_TYPE,,} --jobs "$JOBS"
+  PATHSPACE_CMAKE_ARGS="$PATHSPACE_CMAKE_ARGS" ./scripts/compile.sh --clean --test --loop=15 --${BUILD_TYPE,,} --jobs "$JOBS" "${METAL_TEST_ARGS[@]}"
   ok "Test loop completed successfully"
 else
   warn "Skipping test loop (SKIP_LOOP_TESTS=1)"
