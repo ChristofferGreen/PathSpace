@@ -23,6 +23,7 @@ using SP::UI::PathWindowPresentPolicy;
 using SP::UI::PathWindowPresentStats;
 using SP::UI::PathWindowView;
 namespace UIScene = SP::UI::Scene;
+using SP::UI::Builders::Diagnostics::PathSpaceError;
 
 using UIScene::DrawableBucketSnapshot;
 using UIScene::SceneSnapshotBuilder;
@@ -714,6 +715,9 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(metrics->last_error.empty());
     CHECK(metrics->last_error_code == 0);
     CHECK(metrics->last_error_revision == 0);
+    CHECK(metrics->last_error_severity == PathSpaceError::Severity::Info);
+    CHECK(metrics->last_error_timestamp_ns == 0);
+    CHECK(metrics->last_error_detail.empty());
     CHECK(metrics->material_count == 0);
     CHECK(metrics->materials.empty());
     CHECK(metrics->cpu_bytes == 0);
@@ -782,6 +786,9 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(updated->last_error == "failure");
     CHECK(updated->last_error_code == 0);
     CHECK(updated->last_error_revision == 0);
+    CHECK(updated->last_error_severity == PathSpaceError::Severity::Info);
+    CHECK(updated->last_error_timestamp_ns == 0);
+    CHECK(updated->last_error_detail.empty());
     CHECK(updated->material_count == 2);
     REQUIRE(updated->materials.size() == 2);
     CHECK(updated->materials[0].material_id == 7);
@@ -812,6 +819,9 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(afterClear->last_error.empty());
     CHECK(afterClear->last_error_code == 0);
     CHECK(afterClear->last_error_revision == 0);
+    CHECK(afterClear->last_error_severity == PathSpaceError::Severity::Info);
+    CHECK(afterClear->last_error_timestamp_ns == 0);
+    CHECK(afterClear->last_error_detail.empty());
 
     PathWindowPresentStats writeStats{};
     writeStats.presented = true;
@@ -877,6 +887,9 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(afterWrite->last_error == "post-write-error");
     CHECK(afterWrite->last_error_code == 3000);
     CHECK(afterWrite->last_error_revision == 9);
+    CHECK(afterWrite->last_error_severity == PathSpaceError::Severity::Recoverable);
+    CHECK(afterWrite->last_error_timestamp_ns > 0);
+    CHECK(afterWrite->last_error_detail.empty());
     CHECK(afterWrite->material_count == 2);
     REQUIRE(afterWrite->materials.size() == 2);
     CHECK(afterWrite->materials[0].material_id == 7);

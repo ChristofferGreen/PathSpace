@@ -167,14 +167,14 @@ Completed:
 4. **Settings & diagnostics**
      - ✅ (October 19, 2025) Extended `SurfaceDesc`/`RenderSettings` with Metal options (storage mode, usage flags, iosurface backing) and recorded the resolved backend/Metal upload state per frame so diagnostics retain GPU context alongside timings/errors.
      - ✅ (October 19, 2025) Persist `diagnostics/errors/live` / `output/v1/common` updates for Metal frames (frameIndex, renderMs, GPU timings) and gate residency/cache metrics under `diagnostics/metrics/residency` so dashboards can track resource pressure.
-     - 🚧 (October 19, 2025) PathRenderer2D needs a shared material descriptor so Metal and software paths emit identical shading telemetry once GPU rendering comes online.
+     - ✅ (October 19, 2025) PathRenderer2D now maintains a shared material descriptor cache so Metal and software paths emit identical shading telemetry across backends.
 5. **Testing & CI**
     - ✅ (October 19, 2025) Added a PATHSPACE_ENABLE_METAL_UPLOADS-gated ObjC++ PathSpaceUITest (`tests/ui/test_PathWindowView_Metal.mm`) that exercises the CAMetalLayer presenter when Metal uploads are enabled.
      - ✅ (October 19, 2025) Local `pre-push` hook now auto-enables Metal presenter coverage (`--enable-metal-tests`) on macOS hosts, while respecting `DISABLE_METAL_TESTS=1` to fall back when GPU access is unavailable.
      - ✅ (October 19, 2025) GitHub Actions now runs a macOS job that invokes `./scripts/compile.sh --enable-metal-tests --test --loop=1`, while tests continue to skip gracefully when Metal uploads remain disabled or unsupported.
      - Builders/UI diagnostic suites leave Metal-specific assertions to the gated UITest so the core builders coverage stays backend-agnostic even when PATHSPACE_ENABLE_METAL_UPLOADS=1.
 6. **Follow-ups**
-     - Verify renderer stats/diagnostics cover GPU error paths end-to-end so Diagnostics::ReadTargetMetrics surfaces failures consistently.
+     - ✅ (October 19, 2025) Renderer stats and diagnostics now cover GPU error paths end-to-end; tests assert Diagnostics::ReadTargetMetrics surfaces Metal presenter failures.
      - Shader/material system parity (reuse software pipeline flags).
      - Resource residency (textures/fonts) loading for GPU path.
 - **Next hand-off focus (October 19, 2025):** lock down shader/material parity (shared descriptors, telemetry) before enabling GPU shading, keep CAMetalLayer presents stable, and wire the residency/cache metrics into dashboards/CI so GPU runs validate resource limits automatically.

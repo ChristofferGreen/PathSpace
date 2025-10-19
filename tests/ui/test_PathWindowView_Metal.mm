@@ -5,6 +5,8 @@
 
 #include "third_party/doctest.h"
 
+#include <pathspace/PathSpace.hpp>
+#include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/MaterialDescriptor.hpp>
 #include <pathspace/ui/PathSurfaceMetal.hpp>
@@ -18,6 +20,7 @@
 
 using namespace SP::UI;
 namespace UIScene = SP::UI::Scene;
+using SP::UI::Builders::Diagnostics::PathSpaceError;
 
 namespace {
 
@@ -184,6 +187,37 @@ TEST_CASE("PathWindowView surfaces Metal presenter errors and falls back") {
         CHECK(stats.error == "Metal command queue unavailable");
         CHECK(stats.gpu_encode_ms == doctest::Approx(0.0));
         CHECK(stats.gpu_present_ms == doctest::Approx(0.0));
+
+        // Surface the error via diagnostics so GPU failures are visible to callers.
+        SP::PathSpace space;
+        SP::ConcretePathString targetPath{"/system/applications/test/renderers/2d/targets/surfaces/canvas"};
+        auto targetView = SP::ConcretePathStringView{targetPath.getPath().c_str()};
+
+        stats.backend_kind = "Metal2D";
+        stats.present_ms = 1.0;
+        stats.frame.render_ms = 0.5;
+
+        PathWindowPresentPolicy policy{};
+        policy.mode = PathWindowView::PresentMode::AlwaysLatestComplete;
+        policy.frame_timeout = std::chrono::milliseconds{5};
+        policy.frame_timeout_ms_value = 5.0;
+        policy.staleness_budget = std::chrono::milliseconds{2};
+        policy.staleness_budget_ms_value = 2.0;
+
+        auto writeMetrics = Builders::Diagnostics::WritePresentMetrics(space,
+                                                                       targetView,
+                                                                       stats,
+                                                                       policy);
+        REQUIRE(writeMetrics);
+
+        auto metrics = Builders::Diagnostics::ReadTargetMetrics(space, targetView);
+        REQUIRE(metrics);
+        CHECK(metrics->backend_kind == "Metal2D");
+        CHECK_FALSE(metrics->used_metal_texture);
+        CHECK(metrics->last_error == "Metal command queue unavailable");
+        CHECK(metrics->last_error_code == 3000);
+        CHECK(metrics->last_error_severity == PathSpaceError::Severity::Recoverable);
+        CHECK(metrics->last_error_timestamp_ns > 0);
 
         PathWindowView::ResetMetalPresenter();
     }

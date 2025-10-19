@@ -2273,6 +2273,9 @@ auto ReadTargetMetrics(PathSpace const& space,
     metrics.last_error.clear();
     metrics.last_error_code = 0;
     metrics.last_error_revision = 0;
+    metrics.last_error_severity = PathSpaceError::Severity::Info;
+    metrics.last_error_timestamp_ns = 0;
+    metrics.last_error_detail.clear();
 
     auto diagPath = std::string(targetPath.getPath()) + "/diagnostics/errors/live";
     if (auto errorValue = read_optional<PathSpaceError>(space, diagPath); !errorValue) {
@@ -2281,6 +2284,9 @@ auto ReadTargetMetrics(PathSpace const& space,
         metrics.last_error = (*errorValue)->message;
         metrics.last_error_code = (*errorValue)->code;
         metrics.last_error_revision = (*errorValue)->revision;
+        metrics.last_error_severity = (*errorValue)->severity;
+        metrics.last_error_timestamp_ns = (*errorValue)->timestamp_ns;
+        metrics.last_error_detail = (*errorValue)->detail;
     } else {
         if (auto value = read_value<std::string>(space, base + "/lastError"); value) {
             metrics.last_error = *value;

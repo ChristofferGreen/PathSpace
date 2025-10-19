@@ -386,6 +386,18 @@ void ResetBeforePresentHook();
 
 namespace Diagnostics {
 
+struct PathSpaceError {
+    enum class Severity : std::uint32_t { Info = 0, Warning, Recoverable, Fatal };
+
+    int code = 0;
+    Severity severity = Severity::Info;
+    std::string message;
+    std::string path;
+    std::uint64_t revision = 0;
+    std::uint64_t timestamp_ns = 0;
+    std::string detail;
+};
+
 struct TargetMetrics {
     uint64_t frame_index = 0;
     uint64_t revision = 0;
@@ -399,6 +411,9 @@ struct TargetMetrics {
     std::string last_error;
     int last_error_code = 0;
     uint64_t last_error_revision = 0;
+    PathSpaceError::Severity last_error_severity = PathSpaceError::Severity::Info;
+    uint64_t last_error_timestamp_ns = 0;
+    std::string last_error_detail;
     uint64_t material_count = 0;
     std::vector<MaterialDescriptor> materials;
     // Residency metrics are optional; zero indicates unavailable.
@@ -408,18 +423,6 @@ struct TargetMetrics {
     std::uint64_t gpu_bytes = 0;
     std::uint64_t gpu_soft_bytes = 0;
     std::uint64_t gpu_hard_bytes = 0;
-};
-
-struct PathSpaceError {
-    enum class Severity : std::uint32_t { Info = 0, Warning, Recoverable, Fatal };
-
-    int code = 0;
-    Severity severity = Severity::Info;
-    std::string message;
-    std::string path;
-    std::uint64_t revision = 0;
-    std::uint64_t timestamp_ns = 0;
-    std::string detail;
 };
 
 auto ReadTargetMetrics(PathSpace const& space,

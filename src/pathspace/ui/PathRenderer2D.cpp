@@ -1344,11 +1344,6 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         return std::unexpected(bucket.error());
     }
 
-    std::unordered_map<std::uint32_t, MaterialDescriptor> material_descriptors;
-    if (!bucket->material_ids.empty()) {
-        material_descriptors.reserve(bucket->material_ids.size());
-    }
-
     auto& surface = params.surface;
     auto const& desc = surface.desc();
 
@@ -1397,6 +1392,11 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     auto const pixel_count = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
     auto target_key = std::string(params.target_path.getPath());
     auto& state = target_cache()[target_key];
+    auto& material_descriptors = state.material_descriptors;
+    material_descriptors.clear();
+    if (!bucket->material_ids.empty()) {
+        material_descriptors.reserve(bucket->material_ids.size());
+    }
 
     std::vector<Builders::DirtyRectHint> dirty_rect_hints;
     std::vector<DamageRect> hint_rects;
@@ -2251,7 +2251,8 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         approx_overdraw_factor = approx_area_total / approx_surface_pixels;
     }
 
-    std::vector<MaterialDescriptor> material_list;
+    auto& material_list = state.material_list;
+    material_list.clear();
     material_list.reserve(material_descriptors.size());
     for (auto const& entry : material_descriptors) {
         material_list.push_back(entry.second);
@@ -2332,7 +2333,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     stats.progressive_copy_ms = progressive_copy_ms;
     stats.publish_ms = publish_ms;
     stats.backend_kind = params.backend_kind;
-    stats.materials = std::move(material_list);
+    stats.materials = material_list;
     auto const surface_bytes = surface.resident_cpu_bytes();
     auto const cache_bytes = image_cache_.resident_bytes();
     stats.resource_cpu_bytes = static_cast<std::uint64_t>(surface_bytes + cache_bytes);

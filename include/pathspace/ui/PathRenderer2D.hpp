@@ -64,6 +64,8 @@ private:
         std::array<float, 4> clear_color{0.0f, 0.0f, 0.0f, 0.0f};
         std::unordered_map<std::uint64_t, DrawableState> drawable_states;
         std::vector<float> linear_buffer;
+        std::unordered_map<std::uint32_t, MaterialDescriptor> material_descriptors;
+        std::vector<MaterialDescriptor> material_list;
         std::uint64_t last_revision = 0;
     };
 
