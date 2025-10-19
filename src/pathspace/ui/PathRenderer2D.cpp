@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <cstdlib>
 #include <iomanip>
 #include <limits>
 #include <atomic>
@@ -30,6 +31,19 @@ namespace {
 
 auto make_error(std::string message, SP::Error::Code code) -> SP::Error {
     return SP::Error{code, std::move(message)};
+}
+
+auto damage_metrics_enabled() -> bool {
+    static bool enabled = [] {
+        if (auto* env = std::getenv("PATHSPACE_UI_DAMAGE_METRICS")) {
+            if (std::strcmp(env, "0") == 0 || std::strcmp(env, "false") == 0 || std::strcmp(env, "off") == 0) {
+                return false;
+            }
+            return true;
+        }
+        return false;
+    }();
+    return enabled;
 }
 
 template <typename T>
@@ -1349,6 +1363,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         full_repaint = true;
     }
 
+    bool const collect_damage_metrics = damage_metrics_enabled();
     std::uint64_t fingerprint_matches_exact = 0;
     std::uint64_t fingerprint_matches_remap = 0;
     std::uint64_t fingerprint_changed = 0;
@@ -1363,11 +1378,13 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     DamageRegion damage;
     if (full_repaint) {
         damage.set_full(width, height);
-        fingerprint_removed = static_cast<std::uint64_t>(state.drawable_states.size());
-        if (state.drawable_states.empty()) {
-            fingerprint_new = static_cast<std::uint64_t>(current_states.size());
-        } else {
-            fingerprint_changed = static_cast<std::uint64_t>(current_states.size());
+        if (collect_damage_metrics) {
+            fingerprint_removed = static_cast<std::uint64_t>(state.drawable_states.size());
+            if (state.drawable_states.empty()) {
+                fingerprint_new = static_cast<std::uint64_t>(current_states.size());
+            } else {
+                fingerprint_changed = static_cast<std::uint64_t>(current_states.size());
+            }
         }
     } else {
         std::unordered_map<std::uint64_t, std::vector<std::uint64_t>> previous_by_fingerprint;
@@ -1396,9 +1413,13 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                 if (fingerprint_changed_now || bounds_changed) {
                     add_bounds(current_state.bounds);
                     add_bounds(prev_state.bounds);
-                    ++fingerprint_changed;
+                    if (collect_damage_metrics) {
+                        ++fingerprint_changed;
+                    }
                 } else {
-                    ++fingerprint_matches_exact;
+                    if (collect_damage_metrics) {
+                        ++fingerprint_matches_exact;
+                    }
                 }
                 continue;
             }
@@ -1446,20 +1467,28 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                 if (fingerprint_changed_now || bounds_changed) {
                     add_bounds(current_state.bounds);
                     add_bounds(matched_prev->bounds);
-                    ++fingerprint_changed;
+                    if (collect_damage_metrics) {
+                        ++fingerprint_changed;
+                    }
                 } else {
-                    ++fingerprint_matches_remap;
+                    if (collect_damage_metrics) {
+                        ++fingerprint_matches_remap;
+                    }
                 }
             } else {
                 add_bounds(current_state.bounds);
-                ++fingerprint_new;
+                if (collect_damage_metrics) {
+                    ++fingerprint_new;
+                }
             }
         }
 
         for (auto const& [prev_id, prev_state] : state.drawable_states) {
             if (!consumed_previous_ids.contains(prev_id)) {
                 add_bounds(prev_state.bounds);
-                ++fingerprint_removed;
+                if (collect_damage_metrics) {
+                    ++fingerprint_removed;
+                }
             }
         }
     }
@@ -1533,8 +1562,10 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     }
 
     damage.finalize(width, height);
-    damage_rect_count = static_cast<std::uint64_t>(damage.rectangles().size());
-    damage_coverage_ratio = damage.coverage_ratio(width, height);
+    if (collect_damage_metrics) {
+        damage_rect_count = static_cast<std::uint64_t>(damage.rectangles().size());
+        damage_coverage_ratio = damage.coverage_ratio(width, height);
+    }
     if (!hint_rects.empty()) {
         if (damage.empty()) {
             damage.replace_with_rects(hint_rects, width, height);
@@ -1613,7 +1644,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
             damage.collect_progressive_tiles(*progressive_buffer, progressive_dirty_tiles);
         }
     }
-    if (progressive_buffer) {
+    if (progressive_buffer && collect_damage_metrics) {
         progressive_tiles_total = static_cast<std::uint64_t>(progressive_buffer->tile_count());
         progressive_tiles_dirty = static_cast<std::uint64_t>(progressive_dirty_tiles.size());
         if (progressive_tiles_total > progressive_tiles_dirty) {
@@ -2099,16 +2130,18 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     (void)replace_single<double>(space_, metricsBase + "/approxOverdrawFactor", approx_overdraw_factor);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveTilesUpdated", progressive_tiles_updated);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveBytesCopied", progressive_bytes_copied);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/damageRectangles", damage_rect_count);
-    (void)replace_single<double>(space_, metricsBase + "/damageCoverageRatio", damage_coverage_ratio);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/fingerprintMatchesExact", fingerprint_matches_exact);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/fingerprintMatchesRemap", fingerprint_matches_remap);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/fingerprintChanges", fingerprint_changed);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/fingerprintNew", fingerprint_new);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/fingerprintRemoved", fingerprint_removed);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveTilesDirty", progressive_tiles_dirty);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveTilesTotal", progressive_tiles_total);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveTilesSkipped", progressive_tiles_skipped);
+    if (collect_damage_metrics) {
+        (void)replace_single<std::uint64_t>(space_, metricsBase + "/damageRectangles", damage_rect_count);
+        (void)replace_single<double>(space_, metricsBase + "/damageCoverageRatio", damage_coverage_ratio);
+        (void)replace_single<std::uint64_t>(space_, metricsBase + "/fingerprintMatchesExact", fingerprint_matches_exact);
+        (void)replace_single<std::uint64_t>(space_, metricsBase + "/fingerprintMatchesRemap", fingerprint_matches_remap);
+        (void)replace_single<std::uint64_t>(space_, metricsBase + "/fingerprintChanges", fingerprint_changed);
+        (void)replace_single<std::uint64_t>(space_, metricsBase + "/fingerprintNew", fingerprint_new);
+        (void)replace_single<std::uint64_t>(space_, metricsBase + "/fingerprintRemoved", fingerprint_removed);
+        (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveTilesDirty", progressive_tiles_dirty);
+        (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveTilesTotal", progressive_tiles_total);
+        (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveTilesSkipped", progressive_tiles_skipped);
+    }
 
     state.drawable_states = std::move(current_states);
     state.clear_color = current_clear;

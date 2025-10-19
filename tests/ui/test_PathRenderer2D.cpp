@@ -57,6 +57,30 @@ auto maybe_schedule_auto_render(PathSpace& space,
 
 namespace {
 
+struct ScopedEnv {
+    std::string name;
+    std::optional<std::string> previous;
+
+    ScopedEnv(char const* key, char const* value) : name(key) {
+        if (auto* existing = std::getenv(key)) {
+            previous = std::string(existing);
+        }
+        if (value) {
+            ::setenv(name.c_str(), value, 1);
+        } else {
+            ::unsetenv(name.c_str());
+        }
+    }
+
+    ~ScopedEnv() {
+        if (previous.has_value()) {
+            ::setenv(name.c_str(), previous->c_str(), 1);
+        } else {
+            ::unsetenv(name.c_str());
+        }
+    }
+};
+
 struct RendererFixture {
     PathSpace   space;
     AppRootPath app_root{"/system/applications/test_app"};
@@ -568,6 +592,8 @@ void expect_matches_golden(std::string_view name,
 TEST_SUITE("PathRenderer2D") {
 
 TEST_CASE("render executes rect commands across passes and encodes pixels") {
+    ScopedEnv metrics_env{"PATHSPACE_UI_DAMAGE_METRICS", "1"};
+
     RendererFixture fx;
 
     DrawableBucketSnapshot bucket{};

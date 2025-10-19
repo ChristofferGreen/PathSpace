@@ -63,10 +63,11 @@ Before ending a session, record progress in the relevant plan (e.g., `docs/Scene
 
 > **Quick status snapshot:** the latest build/test pointers, Metal presenter status, and open follow-ups now live in `docs/SceneGraphImplementationPlan.md`.
 
-### Immediate next steps (October 19, 2025 — updated)
-1. Finish trimming the macOS event pump now that the shared presenter handles CAMetalLayer presents; keep the example focused on input plumbing only.
+### Immediate next steps (October 19, 2025 — refreshed)
+1. Verify the shared `LocalWindowBridge` across examples (`paint_example`, `devices_example`) and capture any bridge regressions in UI diagnostics.
 2. Drive shader/material parity so Metal uploads consume the same material descriptors and diagnostics as the software path; land the shared material schema before enabling GPU-side shading.
-3. Fold `PATHSPACE_ENABLE_METAL_UPLOADS` into CI/docs (macOS GPU runners) and extend dashboards to ingest the new residency/cache metrics published under `diagnostics/metrics/residency`.
+3. Fold `PATHSPACE_ENABLE_METAL_UPLOADS` into CI/docs (macOS GPU runners) and extend dashboards to ingest the residency/cache metrics published under `diagnostics/metrics/residency`.
+4. Document the compiled artifact expectations for the new cycle (start with `./scripts/compile_paint.sh` and the 15× loop harness) so the next hand-off can validate quickly.
 
 ---
 **Need a deeper dive?** Start with `docs/AI_ARCHITECTURE.md` and follow the cross-references. For renderer-specific tasks, consult `docs/AI_Plan_SceneGraph_Renderer.md` and its linked plans.

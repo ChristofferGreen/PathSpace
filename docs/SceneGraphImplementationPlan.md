@@ -12,6 +12,12 @@ Success looks like:
 - Repeatable end-to-end tests (including 15× loop runs) covering snapshot publish/adopt, render, and present flows.
 - Documentation, metrics, and diagnostics that let maintainers debug renderer issues without spelunking through the code.
 
+## Status Snapshot (October 19, 2025)
+- Shared macOS local window handling now lives in `src/pathspace/ui/LocalWindowBridge.mm`; examples call the bridge, and the legacy `WindowEventPump` code has been removed.
+- `./scripts/compile_paint.sh` builds cleanly; keep using it plus the 15× loop harness to validate UI changes before hand-off.
+- Metal uploads remain gated behind `PATHSPACE_ENABLE_METAL_UPLOADS`; the next milestone is establishing shared material descriptors so software/Metal telemetry matches.
+- Residency metrics published under `diagnostics/metrics/residency/*` are live—wire them into dashboards/CI as we expand GPU coverage.
+
 ## Workstream Overview
 - **Typed wiring helpers** — `Builders.hpp` plus supporting utilities for app-relative path validation, target naming, and atomic parameter writes.
 - **Scene authoring & snapshot builder** — authoring tree schema, dirty tracking, layout, `DrawableBucket` emission, and revision lifecycle/GC.
