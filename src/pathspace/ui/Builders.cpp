@@ -2039,7 +2039,11 @@ auto Present(PathSpace& space,
     if (auto status = Diagnostics::WriteResidencyMetrics(space,
                                                          SP::ConcretePathStringView{context->target_path.getPath()},
                                                          stats_value.resource_cpu_bytes,
-                                                         stats_value.resource_gpu_bytes); !status) {
+                                                         stats_value.resource_gpu_bytes,
+                                                         context->settings.cache.cpu_soft_bytes,
+                                                         context->settings.cache.cpu_hard_bytes,
+                                                         context->settings.cache.gpu_soft_bytes,
+                                                         context->settings.cache.gpu_hard_bytes); !status) {
         return std::unexpected(status.error());
     }
 

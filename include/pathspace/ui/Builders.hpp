@@ -112,6 +112,13 @@ struct RenderSettings {
         bool metal_uploads_enabled = false;
     } renderer;
 
+    struct Cache {
+        std::uint64_t cpu_soft_bytes = 0;
+        std::uint64_t cpu_hard_bytes = 0;
+        std::uint64_t gpu_soft_bytes = 0;
+        std::uint64_t gpu_hard_bytes = 0;
+    } cache;
+
     struct MicrotriRT {
         enum class HardwareMode {
             Auto,

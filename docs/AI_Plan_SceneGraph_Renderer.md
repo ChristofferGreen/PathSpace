@@ -2241,6 +2241,7 @@ Cross-references:
 - `clear_color: [float,4]`
 - `camera: { enabled: bool, projection: Orthographic | Perspective, zNear:float, zFar:float }`
 - `debug: { enabled: bool, flags: uint32 }`
+- `cache: { cpuSoftBytes:uint64, cpuHardBytes:uint64, gpuSoftBytes:uint64, gpuHardBytes:uint64 }`
 - `ray_cache: { budget:{primary_rays_per_frame:uint32, refinement_pixels_per_frame:uint32, rt_bounces_per_frame:uint32}, path:{max_bounces:uint32, rr_start_bounce:uint32}, cache:{search_radius_px:float, invalidate_on_epoch_change:bool}, seed:uint64 }`
 
 Invariants:
