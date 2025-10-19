@@ -964,6 +964,294 @@ TEST_CASE("progressive tile size collapses after localized damage") {
     CHECK(surface.progressive_buffer().tile_size() == 64);
 }
 
+TEST_CASE("damage metrics reflect localized drawable updates") {
+    ScopedEnv metrics_env{"PATHSPACE_UI_DAMAGE_METRICS", "1"};
+
+    RendererFixture fx;
+
+    constexpr int kWidth = 512;
+    constexpr int kHeight = 512;
+
+    auto make_bucket = [&](std::array<float, 4> overlay_color, std::uint64_t overlay_fp) {
+        DrawableBucketSnapshot bucket{};
+        bucket.drawable_ids = {0x0C0000u, 0x0C0001u};
+        bucket.drawable_fingerprints = {0x0401u, overlay_fp};
+        bucket.world_transforms = {identity_transform(), identity_transform()};
+        bucket.bounds_spheres = {
+            BoundingSphere{{static_cast<float>(kWidth) * 0.5f,
+                            static_cast<float>(kHeight) * 0.5f,
+                            0.0f},
+                           static_cast<float>(std::max(kWidth, kHeight))},
+            BoundingSphere{{256.0f, 256.0f, 0.0f}, 96.0f},
+        };
+        bucket.bounds_boxes = {
+            BoundingBox{{0.0f, 0.0f, 0.0f},
+                        {static_cast<float>(kWidth), static_cast<float>(kHeight), 0.0f}},
+            BoundingBox{{192.0f, 192.0f, 0.0f}, {320.0f, 320.0f, 0.0f}},
+        };
+        bucket.bounds_box_valid = {1, 1};
+        bucket.layers = {0, 0};
+        bucket.z_values = {0.0f, 0.5f};
+        bucket.material_ids = {1, 1};
+        bucket.pipeline_flags = {0, 0};
+        bucket.visibility = {1, 1};
+        bucket.command_offsets = {0, 1};
+        bucket.command_counts = {1, 1};
+        bucket.opaque_indices = {0};
+        bucket.alpha_indices = {1};
+        bucket.clip_head_indices = {-1, -1};
+        bucket.authoring_map = {
+            DrawableAuthoringMapEntry{bucket.drawable_ids[0], "background", 0, 0},
+            DrawableAuthoringMapEntry{bucket.drawable_ids[1], "overlay", 0, 0},
+        };
+
+        RectCommand background{
+            .min_x = 0.0f,
+            .min_y = 0.0f,
+            .max_x = static_cast<float>(kWidth),
+            .max_y = static_cast<float>(kHeight),
+            .color = {0.10f, 0.10f, 0.10f, 1.0f},
+        };
+        encode_rect_command(background, bucket);
+
+        RectCommand overlay{
+            .min_x = 192.0f,
+            .min_y = 192.0f,
+            .max_x = 320.0f,
+            .max_y = 320.0f,
+            .color = overlay_color,
+        };
+        encode_rect_command(overlay, bucket);
+
+        return bucket;
+    };
+
+    auto initial_bucket = make_bucket({0.2f, 0.6f, 0.9f, 1.0f}, 0x0501u);
+    auto scenePath = create_scene(fx, "scene_damage_metrics", initial_bucket);
+    auto rendererPath = create_renderer(fx, "renderer_damage_metrics");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = kWidth;
+    surfaceDesc.size_px.height = kHeight;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_damage_metrics", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware::Options opts{
+        .enable_progressive = true,
+        .enable_buffered = false,
+        .progressive_tile_size_px = 64,
+    };
+    PathSurfaceSoftware surface{surfaceDesc, opts};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+    settings.time.frame_index = 1;
+
+    auto first = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+        .backend_kind = RendererKind::Software2D,
+    });
+    REQUIRE(first);
+
+    auto updated_bucket = make_bucket({0.9f, 0.3f, 0.2f, 1.0f}, 0x0502u);
+    auto revision = fx.publish_snapshot(scenePath, updated_bucket);
+    REQUIRE(revision >= 2);
+
+    settings.time.frame_index = 2;
+    auto second = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+        .backend_kind = RendererKind::Software2D,
+    });
+    REQUIRE(second);
+
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    auto damageRects = fx.space.read<uint64_t>(metricsBase + "/damageRectangles");
+    REQUIRE(damageRects);
+    CHECK(*damageRects == 1);
+
+    auto damageCoverage = fx.space.read<double>(metricsBase + "/damageCoverageRatio");
+    REQUIRE(damageCoverage);
+    CHECK(*damageCoverage == doctest::Approx(0.065).epsilon(0.2));
+
+    auto matchesExact = fx.space.read<uint64_t>(metricsBase + "/fingerprintMatchesExact");
+    REQUIRE(matchesExact);
+    CHECK(*matchesExact == 1);
+
+    auto fingerprintChanges = fx.space.read<uint64_t>(metricsBase + "/fingerprintChanges");
+    REQUIRE(fingerprintChanges);
+    CHECK(*fingerprintChanges == 1);
+
+    auto fingerprintRemoved = fx.space.read<uint64_t>(metricsBase + "/fingerprintRemoved");
+    REQUIRE(fingerprintRemoved);
+    CHECK(*fingerprintRemoved == 0);
+
+    auto progressiveDirty = fx.space.read<uint64_t>(metricsBase + "/progressiveTilesDirty");
+    REQUIRE(progressiveDirty);
+    CHECK(*progressiveDirty >= 1);
+}
+
+TEST_CASE("damage metrics capture drawable removal") {
+    ScopedEnv metrics_env{"PATHSPACE_UI_DAMAGE_METRICS", "1"};
+
+    RendererFixture fx;
+
+    constexpr int kWidth = 512;
+    constexpr int kHeight = 512;
+
+    DrawableBucketSnapshot initial{};
+    initial.drawable_ids = {0x0D0000u, 0x0D0001u};
+    initial.drawable_fingerprints = {0x0601u, 0x0602u};
+    initial.world_transforms = {identity_transform(), identity_transform()};
+    initial.bounds_spheres = {
+        BoundingSphere{{static_cast<float>(kWidth) * 0.5f,
+                        static_cast<float>(kHeight) * 0.5f,
+                        0.0f},
+                       static_cast<float>(std::max(kWidth, kHeight))},
+        BoundingSphere{{128.0f, 128.0f, 0.0f}, 64.0f},
+    };
+    initial.bounds_boxes = {
+        BoundingBox{{0.0f, 0.0f, 0.0f},
+                    {static_cast<float>(kWidth), static_cast<float>(kHeight), 0.0f}},
+        BoundingBox{{96.0f, 96.0f, 0.0f}, {160.0f, 160.0f, 0.0f}},
+    };
+    initial.bounds_box_valid = {1, 1};
+    initial.layers = {0, 0};
+    initial.z_values = {0.0f, 0.5f};
+    initial.material_ids = {1, 1};
+    initial.pipeline_flags = {0, 0};
+    initial.visibility = {1, 1};
+    initial.command_offsets = {0, 1};
+    initial.command_counts = {1, 1};
+    initial.opaque_indices = {0};
+    initial.alpha_indices = {1};
+    initial.clip_head_indices = {-1, -1};
+    initial.authoring_map = {
+        DrawableAuthoringMapEntry{initial.drawable_ids[0], "background", 0, 0},
+        DrawableAuthoringMapEntry{initial.drawable_ids[1], "marker", 0, 0},
+    };
+
+    RectCommand background{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = static_cast<float>(kWidth),
+        .max_y = static_cast<float>(kHeight),
+        .color = {0.05f, 0.05f, 0.05f, 1.0f},
+    };
+    encode_rect_command(background, initial);
+
+    RectCommand marker{
+        .min_x = 96.0f,
+        .min_y = 96.0f,
+        .max_x = 160.0f,
+        .max_y = 160.0f,
+        .color = {0.9f, 0.1f, 0.2f, 1.0f},
+    };
+    encode_rect_command(marker, initial);
+
+    auto scenePath = create_scene(fx, "scene_damage_removal", initial);
+    auto rendererPath = create_renderer(fx, "renderer_damage_removal");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = kWidth;
+    surfaceDesc.size_px.height = kHeight;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_damage_removal", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware::Options opts{
+        .enable_progressive = true,
+        .enable_buffered = false,
+        .progressive_tile_size_px = 64,
+    };
+    PathSurfaceSoftware surface{surfaceDesc, opts};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+    settings.time.frame_index = 1;
+
+    auto first = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+        .backend_kind = RendererKind::Software2D,
+    });
+    REQUIRE(first);
+
+    DrawableBucketSnapshot removal{};
+    removal.drawable_ids = {0x0D0000u};
+    removal.drawable_fingerprints = {0x0601u};
+    removal.world_transforms = {identity_transform()};
+    removal.bounds_spheres = {initial.bounds_spheres[0]};
+    removal.bounds_boxes = {initial.bounds_boxes[0]};
+    removal.bounds_box_valid = {1};
+    removal.layers = {0};
+    removal.z_values = {0.0f};
+    removal.material_ids = {1};
+    removal.pipeline_flags = {0};
+    removal.visibility = {1};
+    removal.command_offsets = {0};
+    removal.command_counts = {1};
+    removal.opaque_indices = {0};
+    removal.alpha_indices = {};
+    removal.clip_head_indices = {-1};
+    removal.authoring_map = {
+        DrawableAuthoringMapEntry{removal.drawable_ids[0], "background", 0, 0},
+    };
+    encode_rect_command(background, removal);
+
+    auto revision = fx.publish_snapshot(scenePath, removal);
+    REQUIRE(revision >= 2);
+
+    settings.time.frame_index = 2;
+    auto second = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+        .backend_kind = RendererKind::Software2D,
+    });
+    REQUIRE(second);
+
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    auto fingerprintRemoved = fx.space.read<uint64_t>(metricsBase + "/fingerprintRemoved");
+    REQUIRE(fingerprintRemoved);
+    CHECK(*fingerprintRemoved == 1);
+
+    auto fingerprintMatchesExact = fx.space.read<uint64_t>(metricsBase + "/fingerprintMatchesExact");
+    REQUIRE(fingerprintMatchesExact);
+    CHECK(*fingerprintMatchesExact == 1);
+
+    auto fingerprintNew = fx.space.read<uint64_t>(metricsBase + "/fingerprintNew");
+    REQUIRE(fingerprintNew);
+    CHECK(*fingerprintNew == 0);
+
+    auto damageRects = fx.space.read<uint64_t>(metricsBase + "/damageRectangles");
+    REQUIRE(damageRects);
+    CHECK(*damageRects == 1);
+
+    auto damageCoverage = fx.space.read<double>(metricsBase + "/damageCoverageRatio");
+    REQUIRE(damageCoverage);
+    CHECK(*damageCoverage == doctest::Approx(0.05).epsilon(0.3));
+}
+
 TEST_CASE("pipeline flags partition passes when snapshot lacks explicit indices") {
     RendererFixture fx;
 
