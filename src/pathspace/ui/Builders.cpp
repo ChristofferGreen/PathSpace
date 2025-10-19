@@ -2145,11 +2145,14 @@ auto Present(PathSpace& space,
             return std::unexpected(htmlPath.error());
         }
 
+        auto html_render_start = std::chrono::steady_clock::now();
         auto renderStatus = Renderer::RenderHtml(space,
                                                  ConcretePathView{htmlPath->getPath()});
         if (!renderStatus) {
             return std::unexpected(renderStatus.error());
         }
+        auto html_render_end = std::chrono::steady_clock::now();
+        auto render_ms = std::chrono::duration<double, std::milli>(html_render_end - html_render_start).count();
 
         auto htmlBase = std::string(htmlPath->getPath()) + "/output/v1/html";
 
@@ -2196,8 +2199,42 @@ auto Present(PathSpace& space,
         } else if (assetsValue->has_value()) {
             assets = std::move(**assetsValue);
         }
+        auto commonBase = std::string(htmlPath->getPath()) + "/output/v1/common";
+        uint64_t next_frame_index = 1;
+        if (auto previousFrame = read_optional<uint64_t>(space, commonBase + "/frameIndex"); !previousFrame) {
+            return std::unexpected(previousFrame.error());
+        } else if (previousFrame->has_value()) {
+            next_frame_index = **previousFrame + 1;
+        }
+
+        PathWindowPresentStats presentStats{};
+        presentStats.presented = true;
+        presentStats.mode = PathWindowPresentMode::AlwaysLatestComplete;
+        presentStats.auto_render_on_present = false;
+        presentStats.vsync_aligned = false;
+        presentStats.backend_kind = "Html";
+        presentStats.frame.frame_index = next_frame_index;
+        presentStats.frame.revision = revision;
+        presentStats.frame.render_ms = render_ms;
+        presentStats.present_ms = 0.0;
+        presentStats.gpu_encode_ms = 0.0;
+        presentStats.gpu_present_ms = 0.0;
+        presentStats.wait_budget_ms = 0.0;
+        presentStats.frame_age_ms = 0.0;
+        presentStats.frame_age_frames = 0;
+
+        PathWindowPresentPolicy htmlPolicy{};
+        htmlPolicy.mode = PathWindowPresentMode::AlwaysLatestComplete;
+        htmlPolicy.auto_render_on_present = false;
+        htmlPolicy.vsync_align = false;
+        htmlPolicy.staleness_budget = std::chrono::milliseconds{0};
+        htmlPolicy.staleness_budget_ms_value = 0.0;
+        htmlPolicy.frame_timeout = std::chrono::milliseconds{0};
+        htmlPolicy.frame_timeout_ms_value = 0.0;
+        htmlPolicy.max_age_frames = 0;
 
         WindowPresentResult result{};
+        result.stats = presentStats;
         result.html = WindowPresentResult::HtmlPayload{
             .revision = revision,
             .dom = std::move(*domValue),
@@ -2207,6 +2244,24 @@ auto Present(PathSpace& space,
             .used_canvas_fallback = usedCanvas,
             .assets = std::move(assets),
         };
+
+        if (auto status = Diagnostics::WritePresentMetrics(space,
+                                                           ConcretePathView{htmlPath->getPath()},
+                                                           presentStats,
+                                                           htmlPolicy); !status) {
+            return std::unexpected(status.error());
+        }
+        if (auto status = Diagnostics::WriteResidencyMetrics(space,
+                                                             ConcretePathView{htmlPath->getPath()},
+                                                             0,
+                                                             0,
+                                                             0,
+                                                             0,
+                                                             0,
+                                                             0); !status) {
+            return std::unexpected(status.error());
+        }
+
         return result;
     }
 

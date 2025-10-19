@@ -195,7 +195,7 @@ Completed:
      - ✅ (October 19, 2025) Doctest coverage compares PathRenderer2D framebuffer against replayed canvas output to guard regressions.
   4. **Builder integration**
      - ✅ (October 19, 2025) Renderer targets now emit HTML outputs under `output/v1/html/{dom,css,commands,assets}` using the adapter and persist the applied options.
-     - TODO: Add present pipeline hooks for HTML targets (always latest complete) and diagnostics/errors surfaces.
+     - ✅ (October 19, 2025) HTML `Window::Present` now enforces the `AlwaysLatestComplete` policy, writes diagnostics/residency metrics, and is covered by doctests (`Window::Present writes HTML present metrics and residency`).
   5. **Tooling & CI**
      - TODO: Add headless verification step (e.g., Node/JS or WebKit snapshot) in CI to catch regressions; skip gracefully when tooling absent.
   6. **Documentation**

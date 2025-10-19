@@ -176,3 +176,75 @@ TEST_CASE("Window::Present returns HTML payload") {
     }
     CHECK_FALSE(has_error_message);
 }
+
+TEST_CASE("Window::Present writes HTML present metrics and residency") {
+    HtmlFixture fx;
+
+    auto bucket = make_bucket();
+    auto scenePath = fx.publish_scene(bucket);
+
+    RendererParams rendererParams{.name = "html_renderer_metrics", .description = "Renderer"};
+    auto rendererPath = Renderer::Create(fx.space, fx.root_view(), rendererParams, RendererKind::Software2D);
+    REQUIRE(rendererPath);
+
+    HtmlTargetParams htmlParams{};
+    htmlParams.name = "metrics";
+    htmlParams.scene = "scenes/html_scene";
+    htmlParams.desc.max_dom_nodes = 16;
+    htmlParams.desc.prefer_dom = true;
+    auto htmlTarget = Renderer::CreateHtmlTarget(fx.space, fx.root_view(), *rendererPath, htmlParams);
+    REQUIRE(htmlTarget);
+
+    WindowParams windowParams{.name = "metrics_window", .title = "HTML Metrics", .width = 800, .height = 600, .scale = 1.0f, .background = "#111"};
+    auto windowPath = Window::Create(fx.space, fx.root_view(), windowParams);
+    REQUIRE(windowPath);
+
+    REQUIRE(Window::AttachHtmlTarget(fx.space, *windowPath, "view", *htmlTarget));
+
+    auto present = Window::Present(fx.space, *windowPath, "view");
+    REQUIRE(present);
+    CHECK(present->framebuffer.empty());
+    CHECK_FALSE(present->html->dom.empty());
+
+    auto const& stats = present->stats;
+    CHECK(stats.presented);
+    CHECK_FALSE(stats.skipped);
+    CHECK(stats.backend_kind == "Html");
+    CHECK(stats.mode == PathWindowPresentMode::AlwaysLatestComplete);
+    CHECK_FALSE(stats.auto_render_on_present);
+    CHECK_FALSE(stats.vsync_aligned);
+    CHECK(stats.frame.frame_index == 1);
+    CHECK(stats.frame.revision == 1);
+    CHECK(stats.frame.render_ms >= 0.0);
+
+    auto commonBase = std::string(htmlTarget->getPath()) + "/output/v1/common";
+    auto backendKind = fx.space.read<std::string, std::string>(commonBase + "/backendKind");
+    REQUIRE(backendKind);
+    CHECK(*backendKind == "Html");
+    auto presentMode = fx.space.read<std::string, std::string>(commonBase + "/presentMode");
+    REQUIRE(presentMode);
+    CHECK(*presentMode == "AlwaysLatestComplete");
+    auto presentedValue = fx.space.read<bool>(commonBase + "/presented");
+    REQUIRE(presentedValue);
+    CHECK(*presentedValue);
+    auto vsyncAlign = fx.space.read<bool>(commonBase + "/vsyncAlign");
+    REQUIRE(vsyncAlign);
+    CHECK_FALSE(*vsyncAlign);
+    auto autoRender = fx.space.read<bool>(commonBase + "/autoRenderOnPresent");
+    REQUIRE(autoRender);
+    CHECK_FALSE(*autoRender);
+    auto frameIndex = fx.space.read<uint64_t>(commonBase + "/frameIndex");
+    REQUIRE(frameIndex);
+    CHECK(*frameIndex == 1);
+    auto revision = fx.space.read<uint64_t>(commonBase + "/revision");
+    REQUIRE(revision);
+    CHECK(*revision == 1);
+
+    auto residencyBase = std::string(htmlTarget->getPath()) + "/diagnostics/metrics/residency";
+    auto cpuBytes = fx.space.read<uint64_t>(residencyBase + "/cpuBytes");
+    REQUIRE(cpuBytes);
+    CHECK(*cpuBytes == 0);
+    auto gpuBytes = fx.space.read<uint64_t>(residencyBase + "/gpuBytes");
+    REQUIRE(gpuBytes);
+    CHECK(*gpuBytes == 0);
+}

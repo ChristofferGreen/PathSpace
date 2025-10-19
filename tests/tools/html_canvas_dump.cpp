@@ -4,7 +4,9 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <cstdio>
 #include <iostream>
+#include <string>
 
 using namespace SP::UI;
 namespace UIScene = SP::UI::Scene;
@@ -71,11 +73,69 @@ UIScene::DrawableBucketSnapshot make_bucket() {
 }
 } // namespace
 
-int main() {
+namespace {
+
+auto escape_json(std::string const& input) -> std::string {
+    std::string escaped;
+    escaped.reserve(input.size());
+    for (char ch : input) {
+        switch (ch) {
+        case '\"':
+            escaped.append("\\\"");
+            break;
+        case '\\':
+            escaped.append("\\\\");
+            break;
+        case '\b':
+            escaped.append("\\b");
+            break;
+        case '\f':
+            escaped.append("\\f");
+            break;
+        case '\n':
+            escaped.append("\\n");
+            break;
+        case '\r':
+            escaped.append("\\r");
+            break;
+        case '\t':
+            escaped.append("\\t");
+            break;
+        default:
+            if (static_cast<unsigned char>(ch) < 0x20) {
+                char buffer[7];
+                std::snprintf(buffer, sizeof(buffer), "\\u%04x", static_cast<unsigned char>(ch));
+                escaped.append(buffer);
+            } else {
+                escaped.push_back(ch);
+            }
+            break;
+        }
+    }
+    return escaped;
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    bool prefer_dom = false;
+    for (int i = 1; i < argc; ++i) {
+        auto* arg = argv[i];
+        if (std::strcmp(arg, "--prefer-dom") == 0) {
+            prefer_dom = true;
+        } else if (std::strcmp(arg, "--help") == 0) {
+            std::cout << "Usage: html_canvas_dump [--prefer-dom]\n";
+            return EXIT_SUCCESS;
+        } else {
+            std::cerr << "Unknown argument: " << arg << "\n";
+            return EXIT_FAILURE;
+        }
+    }
+
     auto bucket = make_bucket();
     Html::Adapter adapter;
     Html::EmitOptions options{};
-    options.prefer_dom = false; // ensure canvas path available
+    options.prefer_dom = prefer_dom;
     auto emitted = adapter.emit(bucket, options);
     if (!emitted) {
         std::cerr << "Failed to emit HTML: "
@@ -83,6 +143,12 @@ int main() {
         return EXIT_FAILURE;
     }
 
-    std::cout << emitted->canvas_commands << std::endl;
+    std::string canvas = emitted->canvas_commands.empty() ? "[]" : emitted->canvas_commands;
+    std::cout << "{"
+              << "\"preferDom\":" << (prefer_dom ? "true" : "false") << ","
+              << "\"usedCanvasFallback\":" << (emitted->used_canvas_fallback ? "true" : "false") << ","
+              << "\"dom\":\"" << escape_json(emitted->dom) << "\","
+              << "\"canvas\":" << canvas
+              << "}" << std::endl;
     return EXIT_SUCCESS;
 }
