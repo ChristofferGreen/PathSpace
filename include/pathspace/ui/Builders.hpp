@@ -378,6 +378,8 @@ struct TargetMetrics {
     double render_ms = 0.0;
     double present_ms = 0.0;
     bool last_present_skipped = false;
+    bool used_metal_texture = false;
+    std::string backend_kind;
     std::string last_error;
     int last_error_code = 0;
     uint64_t last_error_revision = 0;

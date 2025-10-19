@@ -655,6 +655,8 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(metrics->render_ms == 0.0);
     CHECK(metrics->present_ms == 0.0);
     CHECK(metrics->last_present_skipped == false);
+    CHECK(metrics->used_metal_texture == false);
+    CHECK(metrics->backend_kind.empty());
     CHECK(metrics->last_error.empty());
     CHECK(metrics->last_error_code == 0);
     CHECK(metrics->last_error_revision == 0);
@@ -665,6 +667,8 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     fx.space.insert(common + "/renderMs", 8.5);
     fx.space.insert(common + "/presentMs", 4.25);
     fx.space.insert(common + "/lastPresentSkipped", true);
+    fx.space.insert(common + "/usedMetalTexture", true);
+    fx.space.insert(common + "/backendKind", std::string{"Software2D"});
     fx.space.insert(common + "/lastError", std::string{"failure"});
 
     auto updated = Diagnostics::ReadTargetMetrics(fx.space, ConcretePathView{targetBase->getPath()});
@@ -674,6 +678,8 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(updated->render_ms == doctest::Approx(8.5));
     CHECK(updated->present_ms == doctest::Approx(4.25));
     CHECK(updated->last_present_skipped == true);
+    CHECK(updated->used_metal_texture == true);
+    CHECK(updated->backend_kind == "Software2D");
     CHECK(updated->last_error == "failure");
     CHECK(updated->last_error_code == 0);
     CHECK(updated->last_error_revision == 0);
@@ -695,6 +701,7 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     writeStats.presented = true;
     writeStats.buffered_frame_consumed = true;
     writeStats.used_progressive = true;
+    writeStats.used_metal_texture = true;
     writeStats.wait_budget_ms = 7.5;
     writeStats.present_ms = 8.75;
     writeStats.frame_age_ms = 3.0;
@@ -708,6 +715,7 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     writeStats.frame.frame_index = 21;
     writeStats.frame.revision = 9;
     writeStats.frame.render_ms = 6.25;
+    writeStats.backend_kind = "Metal2D";
     writeStats.error = "post-write-error";
 
     PathWindowPresentPolicy writePolicy{};
@@ -734,6 +742,8 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(afterWrite->render_ms == doctest::Approx(6.25));
     CHECK(afterWrite->present_ms == doctest::Approx(8.75));
     CHECK_FALSE(afterWrite->last_present_skipped);
+    CHECK(afterWrite->used_metal_texture);
+    CHECK(afterWrite->backend_kind == "Metal2D");
     CHECK(afterWrite->last_error == "post-write-error");
     CHECK(afterWrite->last_error_code == 3000);
     CHECK(afterWrite->last_error_revision == 9);

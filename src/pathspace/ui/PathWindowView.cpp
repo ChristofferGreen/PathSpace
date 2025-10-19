@@ -20,11 +20,18 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
                              PresentPolicy const& policy,
                              PresentRequest const& request) -> PresentStats {
     PresentStats stats{};
+    stats.used_metal_texture = request.has_metal_texture;
     auto const start_time = request.now;
     stats.mode = policy.mode;
     stats.auto_render_on_present = policy.auto_render_on_present;
     stats.vsync_aligned = policy.vsync_align;
     stats.frame = surface.latest_frame_info();
+#if defined(__APPLE__)
+    if (request.has_metal_texture) {
+        stats.frame.frame_index = request.metal_texture.frame_index;
+        stats.frame.revision = request.metal_texture.revision;
+    }
+#endif
 
     auto wait_budget = request.vsync_deadline - request.now;
     if (wait_budget < std::chrono::steady_clock::duration::zero()) {

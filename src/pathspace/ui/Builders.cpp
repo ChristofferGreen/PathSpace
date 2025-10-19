@@ -384,6 +384,7 @@ auto upload_to_metal_surface(PathSurfaceSoftware& software,
 auto parse_renderer_kind(std::string_view text) -> std::optional<RendererKind>;
 auto read_renderer_kind(PathSpace& space,
                         std::string const& path) -> SP::Expected<RendererKind>;
+auto renderer_kind_to_string(RendererKind kind) -> std::string;
 
 auto ensure_non_empty(std::string_view value,
                       std::string_view what) -> SP::Expected<void> {
@@ -881,6 +882,18 @@ auto read_renderer_kind(PathSpace& space,
     }
 
     return std::unexpected(error);
+}
+
+auto renderer_kind_to_string(RendererKind kind) -> std::string {
+    switch (kind) {
+    case RendererKind::Software2D:
+        return "Software2D";
+    case RendererKind::Metal2D:
+        return "Metal2D";
+    case RendererKind::Vulkan2D:
+        return "Vulkan2D";
+    }
+    return "Unknown";
 }
 
 #if PATHSPACE_UI_METAL
@@ -1838,6 +1851,15 @@ auto Present(PathSpace& space,
     }
     auto stats_value = *renderStats;
 
+    PathSurfaceMetal::TextureInfo metal_texture{};
+    bool has_metal_texture = false;
+#if PATHSPACE_UI_METAL
+    if (metal_surface) {
+        metal_texture = metal_surface->acquire_texture();
+        has_metal_texture = (metal_texture.texture != nullptr);
+    }
+#endif
+
     auto dirty_tiles = surface.consume_progressive_dirty_tiles();
     invoke_before_present_hook(surface, presentPolicy, dirty_tiles);
 
@@ -1874,6 +1896,8 @@ auto Present(PathSpace& space,
         .vsync_deadline = now + vsync_budget,
         .framebuffer = framebuffer_span,
         .dirty_tiles = dirty_tiles,
+        .has_metal_texture = has_metal_texture,
+        .metal_texture = metal_texture,
         .allow_iosurface_sharing = true,
     };
 #else
@@ -1882,6 +1906,8 @@ auto Present(PathSpace& space,
         .vsync_deadline = now + vsync_budget,
         .framebuffer = framebuffer_span,
         .dirty_tiles = dirty_tiles,
+        .has_metal_texture = has_metal_texture,
+        .metal_texture = metal_texture,
     };
 #endif
     auto presentStats = presenter.present(surface, presentPolicy, request);
@@ -1889,6 +1915,7 @@ auto Present(PathSpace& space,
         presentStats.frame.frame_index = renderStats->frame_index;
         presentStats.frame.revision = renderStats->revision;
         presentStats.frame.render_ms = renderStats->render_ms;
+        presentStats.backend_kind = renderer_kind_to_string(renderStats->backend_kind);
     }
 #if defined(__APPLE__)
     auto copy_iosurface_into = [&](PathSurfaceSoftware::SharedIOSurface const& handle,
@@ -2046,6 +2073,20 @@ auto ReadTargetMetrics(PathSpace const& space,
         return std::unexpected(value.error());
     }
 
+    if (auto value = read_value<bool>(space, base + "/usedMetalTexture"); value) {
+        metrics.used_metal_texture = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<std::string>(space, base + "/backendKind"); value) {
+        metrics.backend_kind = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
     if (auto value = read_value<bool>(space, base + "/lastPresentSkipped"); value) {
         metrics.last_present_skipped = *value;
     } else if (value.error().code != SP::Error::Code::NoObjectFound
@@ -2143,6 +2184,13 @@ auto WritePresentMetrics(PathSpace& space,
         return status;
     }
     if (auto status = replace_single<bool>(space, base + "/lastPresentSkipped", stats.skipped); !status) {
+        return status;
+    }
+    if (auto status = replace_single<bool>(space, base + "/usedMetalTexture", stats.used_metal_texture); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::string>(space, base + "/backendKind",
+                                                  stats.backend_kind); !status) {
         return status;
     }
     if (auto status = replace_single<bool>(space, base + "/presented", stats.presented); !status) {
