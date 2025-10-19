@@ -2934,6 +2934,115 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     CHECK(diagnosticsFramebuffer->pixels == storedFramebuffer->pixels);
 }
 
+TEST_CASE("Window::Present software path publishes residency watermarks") {
+    RendererFixture fx;
+
+    RectDrawableDef def{};
+    def.id = 0xCAFEu;
+    def.fingerprint = 0xBEEFu;
+    def.rect = RectCommand{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 2.0f,
+        .max_y = 2.0f,
+        .color = {0.6f, 0.3f, 0.2f, 1.0f},
+    };
+
+    auto bucket = make_rect_bucket({def});
+    auto scenePath = create_scene(fx, "scene_software_residency", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_software_residency");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 4;
+    surfaceDesc.size_px.height = 4;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_software_residency", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+
+    Builders::WindowParams windowParams{};
+    windowParams.name = "residency_window";
+    windowParams.title = "Residency";
+    windowParams.width = 256;
+    windowParams.height = 256;
+    auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+    REQUIRE(windowPath);
+    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+
+    constexpr std::uint64_t kCpuSoftBytes = 1024;
+    constexpr std::uint64_t kCpuHardBytes = 4096;
+    constexpr std::uint64_t kGpuSoftBytes = 512;
+    constexpr std::uint64_t kGpuHardBytes = 1024;
+
+    Builders::RenderSettings overrides{};
+    overrides.surface.size_px.width = surfaceDesc.size_px.width;
+    overrides.surface.size_px.height = surfaceDesc.size_px.height;
+    overrides.surface.dpi_scale = 1.0f;
+    overrides.surface.visibility = true;
+    overrides.surface.metal = surfaceDesc.metal;
+    overrides.clear_color = {0.1f, 0.1f, 0.1f, 1.0f};
+    overrides.time.delta_ms = 16.0;
+    overrides.time.frame_index = 0;
+    overrides.time.time_ms = 0.0;
+    overrides.renderer.backend_kind = Builders::RendererKind::Software2D;
+    overrides.renderer.metal_uploads_enabled = false;
+    overrides.cache.cpu_soft_bytes = kCpuSoftBytes;
+    overrides.cache.cpu_hard_bytes = kCpuHardBytes;
+    overrides.cache.gpu_soft_bytes = kGpuSoftBytes;
+    overrides.cache.gpu_hard_bytes = kGpuHardBytes;
+
+    auto renderFuture = Surface::RenderOnce(fx.space, surfacePath, overrides);
+    REQUIRE(renderFuture);
+    CHECK(renderFuture->ready());
+
+    auto present = Builders::Window::Present(fx.space, *windowPath, "main");
+    if (!present) {
+        INFO("Window::Present error code = " << static_cast<int>(present.error().code));
+        INFO("Window::Present error message = " << present.error().message.value_or("<none>"));
+    }
+    REQUIRE(present);
+    CHECK(present->stats.presented);
+    CHECK_FALSE(present->stats.used_metal_texture);
+    CHECK(present->stats.backend_kind == "Software2D");
+
+    auto targetPath = resolve_target(fx, surfacePath);
+    auto metrics = Builders::Diagnostics::ReadTargetMetrics(fx.space,
+                                                            SP::ConcretePathStringView{targetPath.getPath()});
+    REQUIRE(metrics);
+    CHECK(metrics->backend_kind == "Software2D");
+    CHECK_FALSE(metrics->used_metal_texture);
+    CHECK(metrics->cpu_bytes > 0);
+    CHECK(metrics->cpu_soft_bytes == kCpuSoftBytes);
+    CHECK(metrics->cpu_hard_bytes == kCpuHardBytes);
+    CHECK(metrics->gpu_soft_bytes == kGpuSoftBytes);
+    CHECK(metrics->gpu_hard_bytes == kGpuHardBytes);
+
+    auto residencyBase = std::string(targetPath.getPath()) + "/diagnostics/metrics/residency";
+    auto cpuSoft = fx.space.read<std::uint64_t>(residencyBase + "/cpuSoftBytes");
+    REQUIRE(cpuSoft);
+    CHECK(*cpuSoft == kCpuSoftBytes);
+    auto cpuHard = fx.space.read<std::uint64_t>(residencyBase + "/cpuHardBytes");
+    REQUIRE(cpuHard);
+    CHECK(*cpuHard == kCpuHardBytes);
+    auto gpuSoft = fx.space.read<std::uint64_t>(residencyBase + "/gpuSoftBytes");
+    REQUIRE(gpuSoft);
+    CHECK(*gpuSoft == kGpuSoftBytes);
+    auto gpuHard = fx.space.read<std::uint64_t>(residencyBase + "/gpuHardBytes");
+    REQUIRE(gpuHard);
+    CHECK(*gpuHard == kGpuHardBytes);
+
+    auto settings = Builders::Renderer::ReadSettings(fx.space, SP::ConcretePathStringView{targetPath.getPath()});
+    REQUIRE(settings);
+    CHECK(settings->renderer.backend_kind == Builders::RendererKind::Software2D);
+    CHECK_FALSE(settings->renderer.metal_uploads_enabled);
+    CHECK(settings->cache.cpu_soft_bytes == kCpuSoftBytes);
+    CHECK(settings->cache.cpu_hard_bytes == kCpuHardBytes);
+    CHECK(settings->cache.gpu_soft_bytes == kGpuSoftBytes);
+    CHECK(settings->cache.gpu_hard_bytes == kGpuHardBytes);
+}
+
 TEST_CASE("Window::Present progressive updates preserve prior content") {
     RendererFixture fx;
 

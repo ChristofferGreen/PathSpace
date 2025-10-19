@@ -49,6 +49,7 @@ Investigate and resolve failures prior to new development.
 - Always cite relevant docs in commit messages and PR summaries.
 - Run the full compile loop after meaningful code changes (tests-only edits may skip).
 - Update documentation alongside code when behavior or contracts change. Use `docs/DebuggingPlaybook.md` to capture new log paths, diagnostics, or repro procedures whenever tooling changes.
+- When you notice a missing or thin test, either land the coverage or file the follow-up in `docs/SceneGraphImplementationPlan.md` / `docs/AI_TODO.task` so the gap is tracked for the next session.
 
 ## 6. Rapid Context Refresh Commands
 Use these when resuming work mid-session:
