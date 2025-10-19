@@ -1658,7 +1658,6 @@ auto TriggerRender(PathSpace& space,
     }
 #endif
 
-    PathSurfaceSoftware surface{*surfaceDesc};
     SurfaceRenderContext context{
         .target_path = SP::ConcretePathString{std::string{targetPath.getPath()}},
         .renderer_path = SP::ConcretePathString{rendererPathStr},
@@ -1667,13 +1666,14 @@ auto TriggerRender(PathSpace& space,
         .renderer_kind = effectiveKind,
     };
 
+    auto surface_key = std::string(context.target_path.getPath());
+    auto& surface = acquire_surface(surface_key, context.target_desc);
+
 #if PATHSPACE_UI_METAL
     std::vector<std::uint8_t> metal_scratch;
     PathSurfaceMetal* metal_surface = nullptr;
-    std::unique_ptr<PathSurfaceMetal> metal_owned;
     if (context.renderer_kind == RendererKind::Metal2D) {
-        metal_owned = std::make_unique<PathSurfaceMetal>(*surfaceDesc);
-        metal_surface = metal_owned.get();
+        metal_surface = &acquire_metal_surface(surface_key, context.target_desc);
     }
     auto stats = render_into_target(space, context, surface, metal_surface, metal_scratch);
 #else
