@@ -36,6 +36,24 @@ auto copy_presenter_state() -> MetalPresenterState {
     std::lock_guard<std::mutex> lock(gMetalPresenterMutex);
     return gMetalPresenterState;
 }
+
+auto command_buffer_status_string(MTLCommandBufferStatus status) -> char const* {
+    switch (status) {
+    case MTLCommandBufferStatusNotEnqueued:
+        return "not enqueued";
+    case MTLCommandBufferStatusEnqueued:
+        return "enqueued";
+    case MTLCommandBufferStatusCommitted:
+        return "committed";
+    case MTLCommandBufferStatusScheduled:
+        return "scheduled";
+    case MTLCommandBufferStatusCompleted:
+        return "completed";
+    case MTLCommandBufferStatusError:
+        return "error";
+    }
+    return "unknown";
+}
 #endif
 
 } // namespace
@@ -62,7 +80,12 @@ static auto present_metal_texture(PathSurfaceSoftware& surface,
     }
 
     auto state = copy_presenter_state();
-    if (state.layer == nil || state.command_queue == nil) {
+    if (state.layer == nil) {
+        stats.error = "CAMetalLayer unavailable";
+        return false;
+    }
+    if (state.command_queue == nil) {
+        stats.error = "Metal command queue unavailable";
         return false;
     }
 
@@ -77,6 +100,7 @@ static auto present_metal_texture(PathSurfaceSoftware& surface,
     __block std::string error_message;
     __block double encode_ms = 0.0;
     __block double present_ms = 0.0;
+    __block MTLCommandBufferStatus command_status = MTLCommandBufferStatusNotEnqueued;
 
     auto present_block = ^{
         @autoreleasepool {
@@ -138,6 +162,23 @@ static auto present_metal_texture(PathSurfaceSoftware& surface,
             [commandBuffer waitUntilScheduled];
             auto present_finish = std::chrono::steady_clock::now();
             present_ms = std::chrono::duration<double, std::milli>(present_finish - present_start).count();
+            [commandBuffer waitUntilCompleted];
+            command_status = commandBuffer.status;
+            if (command_status != MTLCommandBufferStatusCompleted) {
+                NSError* command_error = commandBuffer.error;
+                if (command_error) {
+                    auto const* localized = [[command_error localizedDescription] UTF8String];
+                    if (localized) {
+                        error_message = std::string("Metal command buffer error: ") + localized;
+                    } else {
+                        error_message = "Metal command buffer error";
+                    }
+                } else {
+                    error_message = std::string("Metal command buffer completed with status ")
+                                    + command_buffer_status_string(command_status);
+                }
+                return;
+            }
             success = true;
         }
     };
@@ -156,6 +197,7 @@ static auto present_metal_texture(PathSurfaceSoftware& surface,
         stats.buffered_frame_consumed = false;
         stats.gpu_encode_ms = encode_ms;
         stats.gpu_present_ms = present_ms;
+        stats.backend_kind = "Metal2D";
         stats.present_ms = std::chrono::duration<double, std::milli>(call_finish - call_start).count();
         stats.skipped = false;
         stats.error.clear();

@@ -9,6 +9,7 @@
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <vector>
@@ -98,6 +99,71 @@ TEST_CASE("PathWindowView presents Metal texture when uploads enabled") {
         CHECK(tex.storageMode == MTLStorageModeShared);
         CHECK((tex.usage & MTLTextureUsageShaderRead) != 0);
         CHECK((tex.usage & MTLTextureUsageRenderTarget) != 0);
+
+        PathWindowView::ResetMetalPresenter();
+    }
+}
+
+TEST_CASE("PathWindowView surfaces Metal presenter errors and falls back") {
+    @autoreleasepool {
+        id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+        if (!device) {
+            INFO("No Metal device available; skipping Metal presenter error verification");
+            return;
+        }
+
+        CAMetalLayer* layer = [CAMetalLayer layer];
+        layer.device = device;
+        layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+        layer.framebufferOnly = NO;
+        layer.contentsScale = 1.0;
+        layer.drawableSize = CGSizeMake(4.0, 4.0);
+
+        PathWindowView::MetalPresenterConfig config{
+            .layer = (__bridge void*)layer,
+            .device = (__bridge void*)device,
+            .command_queue = nullptr, // intentionally missing to trigger presenter error
+            .contents_scale = 1.0,
+        };
+        PathWindowView::ConfigureMetalPresenter(config);
+
+        auto desc = make_surface_desc();
+        PathSurfaceSoftware software{desc};
+
+        // Seed the buffered frame so the CPU fallback can succeed.
+        auto staging = software.staging_span();
+        std::fill(staging.begin(), staging.end(), 0x3Fu);
+        software.publish_buffered_frame({
+            .frame_index = 12,
+            .revision = 34,
+            .render_ms = 1.0,
+        });
+
+        PathSurfaceMetal metal{desc};
+        auto texture = metal.acquire_texture();
+
+        std::vector<std::uint8_t> framebuffer(software.frame_bytes(), 0);
+        PathWindowView::PresentRequest request{
+            .now = std::chrono::steady_clock::now(),
+            .vsync_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{5},
+            .framebuffer = std::span<std::uint8_t>{framebuffer.data(), framebuffer.size()},
+            .dirty_tiles = {},
+            .surface_width_px = desc.size_px.width,
+            .surface_height_px = desc.size_px.height,
+            .has_metal_texture = texture.texture != nullptr,
+            .metal_texture = texture,
+            .allow_iosurface_sharing = false,
+        };
+
+        PathWindowView view;
+        auto stats = view.present(software, {}, request);
+
+        CHECK(stats.presented);
+        CHECK(stats.buffered_frame_consumed);
+        CHECK_FALSE(stats.used_metal_texture);
+        CHECK(stats.error == "Metal command queue unavailable");
+        CHECK(stats.gpu_encode_ms == doctest::Approx(0.0));
+        CHECK(stats.gpu_present_ms == doctest::Approx(0.0));
 
         PathWindowView::ResetMetalPresenter();
     }

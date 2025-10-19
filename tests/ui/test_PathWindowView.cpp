@@ -363,6 +363,10 @@ TEST_CASE("WritePresentMetrics stores presenter results in PathSpace") {
     stats.used_progressive = true;
     stats.frame_age_frames = 2;
     stats.frame_age_ms = 66.0;
+    stats.gpu_encode_ms = 1.5;
+    stats.gpu_present_ms = 2.5;
+    stats.used_metal_texture = true;
+    stats.backend_kind = "Metal2D";
     stats.stale = true;
     stats.progressive_tiles_copied = 3;
     stats.progressive_rects_coalesced = 2;
@@ -396,10 +400,13 @@ TEST_CASE("WritePresentMetrics stores presenter results in PathSpace") {
     CHECK(space.read<uint64_t, std::string>(base + "/revision").value() == 77);
     CHECK(space.read<double, std::string>(base + "/renderMs").value() == doctest::Approx(5.5));
     CHECK(space.read<double, std::string>(base + "/presentMs").value() == doctest::Approx(2.0));
+    CHECK(space.read<double, std::string>(base + "/gpuEncodeMs").value() == doctest::Approx(1.5));
+    CHECK(space.read<double, std::string>(base + "/gpuPresentMs").value() == doctest::Approx(2.5));
     CHECK_FALSE(space.read<bool, std::string>(base + "/lastPresentSkipped").value());
     CHECK(space.read<bool, std::string>(base + "/presented").value());
     CHECK(space.read<bool, std::string>(base + "/bufferedFrameConsumed").value());
     CHECK(space.read<bool, std::string>(base + "/usedProgressive").value());
+    CHECK(space.read<bool, std::string>(base + "/usedMetalTexture").value());
     CHECK(space.read<uint64_t, std::string>(base + "/progressiveTilesCopied").value() == 3);
     CHECK(space.read<uint64_t, std::string>(base + "/progressiveRectsCoalesced").value() == 2);
     CHECK(space.read<uint64_t, std::string>(base + "/progressiveSkipOddSeq").value() == 1);
@@ -414,9 +421,18 @@ TEST_CASE("WritePresentMetrics stores presenter results in PathSpace") {
     CHECK(space.read<uint64_t, std::string>(base + "/maxAgeFrames").value() == 5);
     CHECK_FALSE(space.read<bool, std::string>(base + "/autoRenderOnPresent").value());
     CHECK_FALSE(space.read<bool, std::string>(base + "/vsyncAlign").value());
+    CHECK(space.read<std::string, std::string>(base + "/backendKind").value() == "Metal2D");
     auto lastError = space.read<std::string, std::string>(base + "/lastError");
     REQUIRE(lastError);
     CHECK(*lastError == "ok");
+
+    auto diag = Builders::Diagnostics::ReadTargetError(
+        space,
+        ConcretePathStringView{targetPath.getPath()});
+    REQUIRE(diag);
+    REQUIRE(diag->has_value());
+    CHECK(diag->value().message == "ok");
+    CHECK(diag->value().code == 3000);
 }
 
 } // TEST_SUITE
