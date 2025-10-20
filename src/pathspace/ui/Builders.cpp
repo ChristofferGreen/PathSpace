@@ -3452,6 +3452,83 @@ auto ReadTargetMetrics(PathSpace const& space,
         return std::unexpected(value.error());
     }
 
+    if (auto value = read_value<double>(space, residencyBase + "/cpuSoftBudgetRatio"); value) {
+        metrics.cpu_soft_budget_ratio = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<double>(space, residencyBase + "/cpuHardBudgetRatio"); value) {
+        metrics.cpu_hard_budget_ratio = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<double>(space, residencyBase + "/gpuSoftBudgetRatio"); value) {
+        metrics.gpu_soft_budget_ratio = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<double>(space, residencyBase + "/gpuHardBudgetRatio"); value) {
+        metrics.gpu_hard_budget_ratio = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<bool>(space, residencyBase + "/cpuSoftExceeded"); value) {
+        metrics.cpu_soft_exceeded = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<bool>(space, residencyBase + "/cpuHardExceeded"); value) {
+        metrics.cpu_hard_exceeded = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<bool>(space, residencyBase + "/gpuSoftExceeded"); value) {
+        metrics.gpu_soft_exceeded = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<bool>(space, residencyBase + "/gpuHardExceeded"); value) {
+        metrics.gpu_hard_exceeded = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<std::string>(space, residencyBase + "/cpuStatus"); value) {
+        metrics.cpu_residency_status = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<std::string>(space, residencyBase + "/gpuStatus"); value) {
+        metrics.gpu_residency_status = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<std::string>(space, residencyBase + "/overallStatus"); value) {
+        metrics.residency_overall_status = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
     metrics.last_error.clear();
     metrics.last_error_code = 0;
     metrics.last_error_revision = 0;
@@ -3684,6 +3761,81 @@ auto WriteResidencyMetrics(PathSpace& space,
     if (auto status = replace_single<std::uint64_t>(space, base + "/gpuHardBytes", gpu_hard_bytes); !status) {
         return status;
     }
+
+    auto safe_ratio = [](std::uint64_t value, std::uint64_t limit) -> double {
+        if (limit == 0) {
+            return 0.0;
+        }
+        return static_cast<double>(value) / static_cast<double>(limit);
+    };
+    auto classify = [](std::uint64_t value, std::uint64_t soft, std::uint64_t hard) -> std::string {
+        if (hard > 0 && value >= hard) {
+            return "hard";
+        }
+        if (soft > 0 && value >= soft) {
+            return "soft";
+        }
+        return "ok";
+    };
+    auto severity_rank = [](std::string_view status) {
+        if (status == "hard") {
+            return 2;
+        }
+        if (status == "soft") {
+            return 1;
+        }
+        return 0;
+    };
+
+    const double cpu_soft_ratio = safe_ratio(cpu_bytes, cpu_soft_bytes);
+    const double cpu_hard_ratio = safe_ratio(cpu_bytes, cpu_hard_bytes);
+    const double gpu_soft_ratio = safe_ratio(gpu_bytes, gpu_soft_bytes);
+    const double gpu_hard_ratio = safe_ratio(gpu_bytes, gpu_hard_bytes);
+
+    const bool cpu_soft_exceeded = cpu_soft_bytes > 0 && cpu_bytes >= cpu_soft_bytes;
+    const bool cpu_hard_exceeded = cpu_hard_bytes > 0 && cpu_bytes >= cpu_hard_bytes;
+    const bool gpu_soft_exceeded = gpu_soft_bytes > 0 && gpu_bytes >= gpu_soft_bytes;
+    const bool gpu_hard_exceeded = gpu_hard_bytes > 0 && gpu_bytes >= gpu_hard_bytes;
+
+    const std::string cpu_status = classify(cpu_bytes, cpu_soft_bytes, cpu_hard_bytes);
+    const std::string gpu_status = classify(gpu_bytes, gpu_soft_bytes, gpu_hard_bytes);
+    const std::string overall_status =
+        severity_rank(cpu_status) >= severity_rank(gpu_status) ? cpu_status : gpu_status;
+
+    if (auto status = replace_single<double>(space, base + "/cpuSoftBudgetRatio", cpu_soft_ratio); !status) {
+        return status;
+    }
+    if (auto status = replace_single<double>(space, base + "/cpuHardBudgetRatio", cpu_hard_ratio); !status) {
+        return status;
+    }
+    if (auto status = replace_single<double>(space, base + "/gpuSoftBudgetRatio", gpu_soft_ratio); !status) {
+        return status;
+    }
+    if (auto status = replace_single<double>(space, base + "/gpuHardBudgetRatio", gpu_hard_ratio); !status) {
+        return status;
+    }
+    if (auto status = replace_single<bool>(space, base + "/cpuSoftExceeded", cpu_soft_exceeded); !status) {
+        return status;
+    }
+    if (auto status = replace_single<bool>(space, base + "/cpuHardExceeded", cpu_hard_exceeded); !status) {
+        return status;
+    }
+    if (auto status = replace_single<bool>(space, base + "/gpuSoftExceeded", gpu_soft_exceeded); !status) {
+        return status;
+    }
+    if (auto status = replace_single<bool>(space, base + "/gpuHardExceeded", gpu_hard_exceeded); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::string>(space, base + "/cpuStatus", cpu_status); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::string>(space, base + "/gpuStatus", gpu_status); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::string>(space, base + "/overallStatus", overall_status); !status) {
+        return status;
+    }
+
     return {};
 }
 

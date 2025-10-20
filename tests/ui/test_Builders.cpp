@@ -1028,6 +1028,17 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     CHECK(afterWrite->materials[1].material_id == 12);
     CHECK(afterWrite->material_resource_count == expected_resources.size());
     REQUIRE(afterWrite->material_resources.size() == expected_resources.size());
+    CHECK(afterWrite->cpu_soft_budget_ratio == doctest::Approx(static_cast<double>(512) / 384.0));
+    CHECK(afterWrite->cpu_hard_budget_ratio == doctest::Approx(static_cast<double>(512) / 768.0));
+    CHECK(afterWrite->gpu_soft_budget_ratio == doctest::Approx(static_cast<double>(1024) / 2048.0));
+    CHECK(afterWrite->gpu_hard_budget_ratio == doctest::Approx(static_cast<double>(1024) / 4096.0));
+    CHECK(afterWrite->cpu_soft_exceeded);
+    CHECK_FALSE(afterWrite->cpu_hard_exceeded);
+    CHECK_FALSE(afterWrite->gpu_soft_exceeded);
+    CHECK_FALSE(afterWrite->gpu_hard_exceeded);
+    CHECK(afterWrite->cpu_residency_status == "soft");
+    CHECK(afterWrite->gpu_residency_status == "ok");
+    CHECK(afterWrite->residency_overall_status == "soft");
     CHECK(afterWrite->material_resources.front().fingerprint == expected_resources.front().fingerprint);
     CHECK(afterWrite->material_resources.front().gpu_bytes == expected_resources.front().gpu_bytes);
     CHECK(afterWrite->cpu_bytes == 512);
@@ -1060,6 +1071,37 @@ TEST_CASE("Diagnostics read metrics and clear error") {
     auto frameTimeoutMs = read_value<double>(fx.space, common + "/frameTimeoutMs");
     REQUIRE(frameTimeoutMs);
     CHECK(*frameTimeoutMs == doctest::Approx(24.0));
+}
+
+TEST_CASE("Diagnostics::WriteResidencyMetrics handles zero limits without alerts") {
+    BuildersFixture fx;
+    auto targetPath = SP::ConcretePathString{std::string(fx.app_root.getPath()) + "/renderers/test/targets/surfaces/zero"};
+
+    auto status = Diagnostics::WriteResidencyMetrics(fx.space,
+                                                     SP::ConcretePathStringView{targetPath.getPath()},
+                                                     /*cpu_bytes*/128,
+                                                     /*gpu_bytes*/64,
+                                                     /*cpu_soft_bytes*/0,
+                                                     /*cpu_hard_bytes*/0,
+                                                     /*gpu_soft_bytes*/0,
+                                                     /*gpu_hard_bytes*/0);
+    REQUIRE(status);
+
+    auto metrics = Diagnostics::ReadTargetMetrics(fx.space, SP::ConcretePathStringView{targetPath.getPath()});
+    REQUIRE(metrics);
+    CHECK(metrics->cpu_bytes == 128);
+    CHECK(metrics->gpu_bytes == 64);
+    CHECK(metrics->cpu_soft_budget_ratio == doctest::Approx(0.0));
+    CHECK(metrics->cpu_hard_budget_ratio == doctest::Approx(0.0));
+    CHECK(metrics->gpu_soft_budget_ratio == doctest::Approx(0.0));
+    CHECK(metrics->gpu_hard_budget_ratio == doctest::Approx(0.0));
+    CHECK_FALSE(metrics->cpu_soft_exceeded);
+    CHECK_FALSE(metrics->cpu_hard_exceeded);
+    CHECK_FALSE(metrics->gpu_soft_exceeded);
+    CHECK_FALSE(metrics->gpu_hard_exceeded);
+    CHECK(metrics->cpu_residency_status == "ok");
+    CHECK(metrics->gpu_residency_status == "ok");
+    CHECK(metrics->residency_overall_status == "ok");
 }
 
 TEST_CASE("Renderer::RenderHtml writes DOM outputs for html targets") {

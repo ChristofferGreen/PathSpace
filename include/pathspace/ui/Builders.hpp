@@ -573,6 +573,17 @@ struct TargetMetrics {
     std::uint64_t gpu_bytes = 0;
     std::uint64_t gpu_soft_bytes = 0;
     std::uint64_t gpu_hard_bytes = 0;
+    double cpu_soft_budget_ratio = 0.0;
+    double cpu_hard_budget_ratio = 0.0;
+    double gpu_soft_budget_ratio = 0.0;
+    double gpu_hard_budget_ratio = 0.0;
+    bool cpu_soft_exceeded = false;
+    bool cpu_hard_exceeded = false;
+    bool gpu_soft_exceeded = false;
+    bool gpu_hard_exceeded = false;
+    std::string cpu_residency_status;
+    std::string gpu_residency_status;
+    std::string residency_overall_status;
 };
 
 auto ReadTargetMetrics(PathSpace const& space,

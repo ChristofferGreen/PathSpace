@@ -1,6 +1,6 @@
 # Handoff Notice
 
-> **Handoff note (October 20, 2025):** SceneGraph material/shader bindings just landed for the Metal renderer. The remaining high-priority focus areas are diagnostics dashboard wiring and the widget/tooling follow-ups captured below. Record fresh status notes after consulting `docs/AI_Onboarding_Next.md`.
+> **Handoff note (October 20, 2025):** SceneGraph material/shader bindings just landed for the Metal renderer. Residency dashboards now publish status/alert fields under `diagnostics/metrics/residency` (see Phase 6 update); the remaining high-priority focus areas are the widget/tooling follow-ups captured below. Record fresh status notes after consulting `docs/AI_Onboarding_Next.md`.
 
 # Scene Graph Implementation Plan
 
@@ -19,8 +19,9 @@ Success looks like:
 ## Status Snapshot (October 20, 2025)
 - Material/shader bindings now flow through the shared descriptor cache, and Metal draws mirror the software renderer’s telemetry (`PathRenderer2DMetal::bind_material`, GPU blending UITest in place).
 - Metal presenters remain enabled by default; the 15× loop harness (20 s timeout) is green with both software and Metal suites.
-- Residency metrics under `diagnostics/metrics/residency/*` ship live data—next maintainer should wire dashboards/alerts to those paths and extend telemetry where gaps remain.
+- Residency metrics under `diagnostics/metrics/residency/*` now expose raw byte counts alongside dashboard ratios/alerts; extend telemetry where gaps remain.
 - Widget gallery, HTML tooling, and diagnostics backlog items are tracked in `docs/AI_Todo.task`; no open P0 work after the binding milestone.
+- ✅ (October 20, 2025) Residency dashboard wiring publishes CPU/GPU soft & hard budget ratios plus status flags under `diagnostics/metrics/residency`, enabling external alerts without bespoke parsers.
 
 ## Workstream Overview
 - **Typed wiring helpers** — `Builders.hpp` plus supporting utilities for app-relative path validation, target naming, and atomic parameter writes.
@@ -150,6 +151,7 @@ Completed:
 - ✅ (October 18, 2025) Normalized presenter/renderer error reporting around `PathSpaceError`, wiring `diagnostics/errors/live` and exposing codes/revisions via `Diagnostics::ReadTargetMetrics`.
 - ✅ (October 18, 2025) Expanded `scripts/compile.sh`/CTest to cover UI components and capture failure logs via `scripts/run-test-with-logs.sh`, ensuring loop runs retain artifacts on failure.
 - ✅ (October 18, 2025) Published `docs/AI_Debugging_Playbook.md` with the end-to-end diagnostics workflow and re-validated the 15× loop harness (`./scripts/compile.sh --test --loop=15 --per-test-timeout=20`).
+- ✅ (October 20, 2025) Added residency dashboard outputs: `cpuSoftBudgetRatio`, `cpuHardBudgetRatio`, `gpuSoftBudgetRatio`, `gpuHardBudgetRatio`, per-budget exceed flags, and `overallStatus` now live under `diagnostics/metrics/residency/` for every target, allowing dashboards/alerts to trigger without bespoke queries.
 
 ### Phase 7 — Optional Backends & HTML Adapter Prep (post-MVP)
 - ✅ (October 20, 2025) `PathSpaceUITests` now cover HTML canvas replay parity and the ObjC++ Metal presenter harness, replacing the skipped scaffolding.

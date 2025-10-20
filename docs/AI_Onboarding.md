@@ -71,7 +71,7 @@ Before ending a session, record progress in the relevant plan (e.g., `docs/Plan_
 ### Immediate next steps (October 19, 2025 — refreshed)
 1. Extend the new Metal encoder (currently rect-only) to cover rounded rects, images, glyph batches, and material/shader binding so Metal2D can stay on-GPU for full scenes; keep residency metrics and UITests in sync.
 2. Verify the shared `LocalWindowBridge` across examples (`paint_example`, `devices_example`) and capture any bridge regressions in UI diagnostics.
-3. Fold `PATHSPACE_ENABLE_METAL_UPLOADS` into CI/docs (macOS GPU runners) and extend dashboards to ingest the refreshed residency metrics (`resourceGpuBytes`, `textureGpuBytes`, per-target cache totals).
+3. Fold `PATHSPACE_ENABLE_METAL_UPLOADS` into CI/docs (macOS GPU runners) and keep dashboards ingesting the refreshed residency metrics plus new residency ratios/status nodes (`resourceGpuBytes`, `textureGpuBytes`, `diagnostics/metrics/residency/*` — updated October 20, 2025).
 4. Document the compiled artifact expectations for the new cycle (start with `./scripts/compile_paint.sh` and the 15× loop harness) so the next hand-off can validate quickly.
 
 ---

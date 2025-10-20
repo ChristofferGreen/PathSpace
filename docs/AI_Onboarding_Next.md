@@ -40,7 +40,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 | Area | Action | Notes |
 | --- | --- | --- |
 | Metal renderer | ✅ Completed (October 20, 2025) — material/shader bindings now flow through the shared descriptor cache | `PathRenderer2DMetal` covers rects, rounded rects, text quads, and images (see Phase 7); continue tracking glyph/material parity on the descriptor cache. |
-| Diagnostics | Wire dashboards to consume `textureGpuBytes`, `resourceGpuBytes`, and refreshed residency metrics | Coordinate with tooling owners before schema changes. |
+| Diagnostics | ✅ Completed (October 20, 2025) — dashboards consume `textureGpuBytes`/`resourceGpuBytes` plus residency ratios/status under `diagnostics/metrics/residency` | Coordinate with tooling owners before schema changes. |
 | Widgets | Finish Phase 8: add list widget snapshots, interaction bindings, and gallery wiring | Slider builder landed; list/binding work remains (see `docs/Plan_SceneGraph_Implementation.md`). |
 | HTML tooling | Add HSAT inspection CLI/tests and extend coverage when new asset fields appear | Legacy serializer removed; HSAT is mandatory. |
 
@@ -73,6 +73,6 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Paint demo ships with a `--metal` flag that selects the Metal2D backend and auto-enables uploads for developers; software remains the default for CI.
 - `./scripts/compile.sh` always builds with Metal support enabled and runs the Metal UITests unless `--disable-metal-tests` is passed. This keeps the GPU path green by default on macOS hosts.
 - HTML adapter parity tests landed, so DOM and canvas command streams stay lock-step with the renderer geometry.
-- Residency metrics are live under `diagnostics/metrics/residency/*`; next cycle should wire dashboards/alerts to those counters.
+- Residency metrics are live under `diagnostics/metrics/residency/*`; dashboards now read the published ratios/status fields—extend telemetry when new counters appear.
 
 Welcome aboard and thank you for keeping the PathSpace docs in sync for the next AI maintainer.
