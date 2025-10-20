@@ -1,5 +1,24 @@
 // Context update (October 15, 2025): Task priorities now reference the current assistant context; translate legacy context identifiers when reconciling backlogs.
-// Handoff note (October 19, 2025): This backlog is frozen pending the new assistant’s triage. Review each task with docs/AI_Onboarding_Next.md before starting work.
+// Handoff note (October 20, 2025): Backlog refreshed after Metal UITests landed and build tooling defaults changed. Review docs/AI_Onboarding_Next.md before resuming work.
+
+task {
+  name: "Metal Renderer Material Bindings [BLOCKER]"
+  description: "Finish GPU parity by wiring PathRenderer2DMetal into the shared material/shader descriptor cache so Metal draws stay feature-complete with the software pipeline."
+  status: planned
+  priority: P0
+
+  acceptance_criteria: [
+    "PathRenderer2DMetal uses shared material/shader keys so GPU frames mirror software material telemetry (including glyph batches and textured pipelines).",
+    "Metal path covers glyph batches and material-driven pipelines without falling back to the CPU, barring explicitly unsupported commands.",
+    "UITests assert GPU material telemetry (descriptor count, shader keys, residency) and capture GPU error handling."
+  ]
+
+  steps: [
+    "Plumb Builders::MaterialDescriptor/MaterialShaderKey through the Metal encoder and bind textures/shaders per drawable batch.",
+    "Extend GPU command coverage to glyph batches and material-driven pipelines; document any remaining fallbacks.",
+    "Augment PathSpaceUITests with GPU material telemetry assertions once bindings land."
+  ]
+}
 
 task {
   name: "HTML Asset Hydration Bug [BLOCKER]"

@@ -1,6 +1,6 @@
 # PathSpace — New AI Onboarding
 
-_Last updated: October 20, 2025 (evening)_
+_Last updated: October 20, 2025 (shutdown)_
 
 Welcome! This repository just transitioned away from a previous assistant. The notes below get a fresh AI agent productive quickly while we stabilize the hand-off.
 
@@ -19,26 +19,27 @@ Welcome! This repository just transitioned away from a previous assistant. The n
    ```bash
    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
    cmake --build build -j
-   ./scripts/compile.sh --test --loop=15 --per-test-timeout 20
+   ./scripts/compile.sh --loop=15 --per-test-timeout 20
    ```
 
 4. **Verify Environment Flags**
-   - Export `PATHSPACE_ENABLE_METAL_UPLOADS=1` when exercising the Metal2D streaming path locally; leave it unset for CI/headless runs so tests fall back to software.
+   - `./scripts/compile.sh` now enables Metal presenter tests by default (builds with `PATHSPACE_UI_METAL=ON` and runs the Metal UITests). Use `--disable-metal-tests` only when the host lacks a compatible GPU.
+   - Manual command line runs still respect `PATHSPACE_ENABLE_METAL_UPLOADS=1`; unset it when you explicitly want the software fallback.
    - Use `PATHSPACE_UI_DAMAGE_METRICS=1` only when collecting diagnostics; disable for perf runs.
 
 5. **Quick Test Pass (recommended)**
    ```bash
    ./build/tests/PathSpaceTests
    ./build/tests/PathSpaceUITests
-   ./build/tests/PathSpaceUITests --test-case "Metal pipeline publishes residency metrics and material descriptors"
+   ./build/tests/PathSpaceUITests --test-case "PathSurfaceMetal integrates with ObjC++ presenter harness"
    ```
-   The targeted Metal UITest ensures the new streaming path and telemetry stay healthy.
+   The targeted Metal UITest ensures the GPU bridge stays healthy after the latest ObjC++ harness updates.
 
 ## 2. Current Priorities (October 20, 2025)
 
 | Area | Action | Notes |
 | --- | --- | --- |
-| Metal renderer | Finish Metal encoder coverage (rounded rects, images, glyph batches) and tie in material/shader bindings | `PathRenderer2DMetal` now handles rects; expand coverage per `docs/Plan_SceneGraph_Implementation.md` Phase 7 follow-ups. |
+| Metal renderer | Wire true material/shader bindings and expand GPU encode beyond the new rounded-rect/image path | `PathRenderer2DMetal` now handles rects, rounded rects, text quads, and images (see Phase 7); material cache integration is the remaining blocker. |
 | Diagnostics | Wire dashboards to consume `textureGpuBytes`, `resourceGpuBytes`, and refreshed residency metrics | Coordinate with tooling owners before schema changes. |
 | Widgets | Finish Phase 8: add list widget snapshots, interaction bindings, and gallery wiring | Slider builder landed; list/binding work remains (see `docs/Plan_SceneGraph_Implementation.md`). |
 | HTML tooling | Add HSAT inspection CLI/tests and extend coverage when new asset fields appear | Legacy serializer removed; HSAT is mandatory. |
@@ -68,9 +69,9 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - When you spot a gap in test coverage, either add the test immediately or log a follow-up in `docs/Plan_SceneGraph_Implementation.md` / `docs/AI_Todo.task` so the need is visible to the next maintainer.
 
 ### Latest Highlights (October 20, 2025)
-- Metal renderer now includes a first-cut GPU encoder: `PathRenderer2DMetal` bypasses the CPU framebuffer for rect-only scenes, while falling back to the software pipeline for other drawables. Next iteration expands support to rounded rects, images, and glyph batches and wires material/shader caches to the GPU path. Residency telemetry (`textureGpuBytes`, `resourceGpuBytes`) continues to gate CI.
-- Widget toolkit now covers button, toggle, and slider builders with theme metadata, state helpers, and snapshot publishing. Next up: list widget scenes, interaction bindings, and gallery wiring (`docs/Plan_SceneGraph_Implementation.md`, Phase 8).
-- HTML asset pipeline ships with the HSAT codec and no longer accepts legacy Alpaca payloads. UITests cover hydration (`Renderer::RenderHtml hydrates image assets into output`); remaining work is HSAT inspection tooling and future asset-field coverage.
-- Documentation refreshed across the plans/todo backlog so the next session can pick up Phase 8 widgets and HSAT tooling immediately.
+- Metal renderer coverage expanded: `PathRenderer2DMetal` now draws rounded rects, text quads, and textured images directly on the GPU, and the new ObjC++ UITest (`PathSurfaceMetal integrates with ObjC++ presenter harness`) keeps the CAMetalLayer bridge honest. Next milestone is wiring true material/shader bindings so the GPU path stays feature-parity with software.
+- Paint demo ships with a `--metal` flag that selects the Metal2D backend and auto-enables uploads for developers; software remains the default for CI.
+- `./scripts/compile.sh` always builds with Metal support enabled and runs the Metal UITests unless `--disable-metal-tests` is passed. This keeps the GPU path green by default on macOS hosts.
+- HTML adapter parity tests landed, so DOM and canvas command streams stay lock-step with the renderer geometry.
 
 Welcome aboard and thank you for keeping the PathSpace docs in sync for the next AI maintainer.

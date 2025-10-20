@@ -769,7 +769,7 @@ HTML adapter differences
 Scope
 - Applies to GPU targets (Metal first; Vulkan later). Focuses on device/queue ownership, thread affinity, synchronization, resources/reconfigure, command encoding, pipeline caches, color formats, device loss, and observability.
 
-> **Status (October 20, 2025):** `PathRenderer2DMetal` now executes rect drawables directly on the GPU, skipping the CPU framebuffer when Metal2D is active. Rounded rects, images, glyphs, and material-bound pipelines still fall back to the software encoder until their GPU paths land.
+> **Status (October 20, 2025):** `PathRenderer2DMetal` now executes rects, rounded rects, text quads, and textured images directly on the GPU. Material/shader bindings (and glyph/material pipelines) remain on the roadmap; until then the renderer falls back to software for unsupported drawables.
 
 Device and queue ownership
 - Each renderer instance owns its GPU device/context and one or more queues:
