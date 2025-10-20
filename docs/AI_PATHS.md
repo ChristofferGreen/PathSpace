@@ -1,10 +1,10 @@
 # Handoff Notice
 
-> **Handoff note (October 19, 2025):** Namespace conventions remain valid, but this file represents the legacy “Atlas” run. Cross-check any edits with `docs/AI_Onboarding_Next.md` and record deviations while the new assistant spins up.
+> **Handoff note (October 19, 2025):** Namespace conventions remain valid, but this file reflects the prior assistant cycle. Cross-check any edits with `docs/AI_Onboarding_Next.md` and record deviations while the new assistant spins up.
 
 # PathSpace — Standard Paths
 
-> **Context update (October 15, 2025):** Path conventions documented here assume the newly launched “Atlas” AI context; translate prior context names to the closest Atlas equivalents.
+> **Context update (October 15, 2025):** Path conventions documented here reflect the recently introduced assistant context; translate earlier terminology to the updated vocabulary as needed.
 
 This file gathers the canonical path namespaces and layout conventions referenced across the docs. Paths are grouped by domain and use placeholders in angle brackets. Absolute paths begin with “/”. App-internal paths are app-relative (no leading slash) and must resolve within the app root. Sources: see docs/AI_Architecture.md and docs/Plan_SceneGraph_Renderer.md. Keep these in sync when path conventions change.
 

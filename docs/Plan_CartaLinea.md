@@ -4,7 +4,7 @@
 
 # PathSpace — Carta Linea Plan
 
-> **Context update (October 15, 2025):** Planning assumptions now align with the “Atlas” AI context launched for this release; map any legacy context terms to their Atlas counterparts.
+> **Context update (October 15, 2025):** Planning assumptions now align with the assistant context launched for this release; map any legacy terminology to the updated vocabulary.
 
 Status: Active concept (MVP-focused)
 Scope: Cross-app model for cards, timeline, and filesystem projections backed by paths

@@ -1,8 +1,8 @@
-> **Handoff note (October 19, 2025):** This document reflects the outgoing “Atlas” assistant cycle and is retained for historical reference. New AI maintainers should begin with `docs/AI_Onboarding_Next.md` for current workflow expectations and update this file only after aligning with the latest plan.
+> **Handoff note (October 19, 2025):** This document reflects the outgoing assistant cycle and is retained for historical reference. New AI maintainers should begin with `docs/AI_Onboarding_Next.md` for current workflow expectations and update this file only after aligning with the latest plan.
 
 Renderer snapshot builder details have moved out of this architecture document. See docs/Plan_SceneGraph_Renderer.md (“Decision: Snapshot Builder”) for the authoritative policy, rebuild triggers, publish/GC protocol, and performance notes. This file focuses on PathSpace core (paths, trie storage, concurrency/wait/notify, views/alias layers, and OS I/O). New AI assistants should first walk through docs/AI_Onboarding.md for the session bootstrap checklist.
 
-> **Context update (October 15, 2025):** PathSpace documentation now assumes the “Atlas” AI context launched for this cycle; earlier references to legacy contexts should be interpreted accordingly.
+> **Context update (October 15, 2025):** PathSpace documentation now assumes the assistant context launched for this cycle; earlier references to legacy contexts should be interpreted accordingly.
 
 ## UI/Rendering — cross-reference
 

@@ -1,6 +1,6 @@
 # Handoff Notice
 
-> **Drafted:** October 20, 2025 — overview of PathSpace planning documents for the post-Atlas cycle.
+> **Drafted:** October 20, 2025 — overview of PathSpace planning documents for the current post-handoff cycle.
 
 # PathSpace Plans Overview
 
@@ -40,6 +40,11 @@ Provide a single index of active planning documents, ordered by current priority
 4. **Plan_PathSpace_Inspector.md** — prototype the read-only inspector after distributed mounts, JSON serialization, and web server infrastructure are in place.
 5. **Plan_Surface_Ray_Cache.md** — revisit once core rendering + web requirements are satisfied (deferred).
 6. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
+
+## Status Snapshot — October 20, 2025
+- HSAT (HTML asset codec) is mandatory and documented; legacy serializer removed.
+- Slider widget builder, state/theme metadata, and tests landed; list widget + interaction bindings remain.
+- Backlog (`docs/AI_Todo.task`) and implementation plan capture the remaining follow-ups so the next session can continue Phase 8 widgets and tooling work immediately.
 
 ## Supporting Documents
 - `docs/AI_Architecture.md` — Core PathSpace architecture reference.

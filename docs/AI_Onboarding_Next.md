@@ -1,8 +1,8 @@
-# PathSpace — New AI Onboarding (Post-Atlas)
+# PathSpace — New AI Onboarding
 
 _Last updated: October 20, 2025 (evening)_
 
-Welcome! This repository just transitioned away from the “Atlas” assistant. The notes below get a fresh AI agent productive quickly while we stabilize the hand-off.
+Welcome! This repository just transitioned away from a previous assistant. The notes below get a fresh AI agent productive quickly while we stabilize the hand-off.
 
 ## 1. Immediate Checklist
 
@@ -34,14 +34,14 @@ Welcome! This repository just transitioned away from the “Atlas” assistant. 
    ```
    The targeted Metal UITest ensures the new streaming path and telemetry stay healthy.
 
-## 2. Current Priorities (Oct 19, 2025)
+## 2. Current Priorities (October 20, 2025)
 
 | Area | Action | Notes |
 | --- | --- | --- |
 | Metal renderer | Implement the dedicated Metal encoder path so Metal2D skips CPU raster uploads entirely | Track under `docs/Plan_SceneGraph_Implementation.md` Phase 7 follow-ups. |
 | Diagnostics | Wire dashboards to consume `textureGpuBytes`, `resourceGpuBytes`, and refreshed residency metrics | Coordinate with tooling owners before schema changes. |
-| Software renderer parity | Finish progressive tile parallelism & encode sharding | See `docs/Plan_SceneGraph_Implementation.md` (“Software Renderer FPS Parity”). |
-| HTML adapter | Investigate HTML asset serialization & re-run UITests | Current branch: `Renderer::RenderHtml hydrates image assets into output` fails; `output/v1/html/assets` stays empty even though the adapter emits locators (see `docs/Plan_SceneGraph_Implementation.md`). |
+| Widgets | Finish Phase 8: add list widget snapshots, interaction bindings, and gallery wiring | Slider builder landed; list/binding work remains (see `docs/Plan_SceneGraph_Implementation.md`). |
+| HTML tooling | Add HSAT inspection CLI/tests and extend coverage when new asset fields appear | Legacy serializer removed; HSAT is mandatory. |
 
 ## 3. Communication & Handoff Hygiene
 
@@ -69,8 +69,8 @@ Welcome! This repository just transitioned away from the “Atlas” assistant. 
 
 ### Latest Highlights (October 20, 2025)
 - Metal streaming remains the top renderer follow-up: `Renderer::TriggerRender` + `PathRenderer2D` stream Metal targets into the cached CAMetalLayer texture, with residency telemetry (`textureGpuBytes`, `resourceGpuBytes`) in CI/dashboards. Keep the Metal UITest (`Metal pipeline publishes residency metrics and material descriptors`) green after renderer edits.
-- Widget toolkit bootstrap is underway: button and toggle builders now publish canonical widget scenes, `Widgets::UpdateButtonState/UpdateToggleState` surface dirty events only when state changes, and `examples/widgets_example.cpp` publishes both widgets (toggle defaults to checked via the helper). Next maintainer should continue with slider/list widgets, interaction bindings, and UI gallery coverage per `docs/Plan_SceneGraph_Implementation.md` Phase 8.
-- HTML resource loader integration now hydrates bytes end-to-end: the dedicated codec in `include/pathspace/ui/HtmlSerialization.hpp` keeps PathSpace vectors intact and the UITests/doc coverage are green. Keep an eye on legacy Alpaca payloads during migrations and update docs when new asset fields (descriptor fingerprints, cache telemetry) land.
-- **Update (Oct 20, 2025 — resolved):** HTML asset hydration now relies on a dedicated `Html::Asset` codec (`include/pathspace/ui/HtmlSerialization.hpp`) plus fresh regression coverage. Run `PathSpaceUITests` (watch the `Html::Asset vectors survive PathSpace round-trip` case) before handing off any renderer/html branches.
+- Widget toolkit now covers button, toggle, and slider builders with theme metadata, state helpers, and snapshot publishing. Next up: list widget scenes, interaction bindings, and gallery wiring (`docs/Plan_SceneGraph_Implementation.md`, Phase 8).
+- HTML asset pipeline ships with the HSAT codec and no longer accepts legacy Alpaca payloads. UITests cover hydration (`Renderer::RenderHtml hydrates image assets into output`); remaining work is HSAT inspection tooling and future asset-field coverage.
+- Documentation refreshed across the plans/todo backlog so the next session can pick up Phase 8 widgets and HSAT tooling immediately.
 
 Welcome aboard and thank you for keeping the PathSpace docs in sync for the next AI maintainer.

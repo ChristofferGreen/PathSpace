@@ -4,7 +4,7 @@
 
 # PrimeScript Plan (Concept)
 
-> **Context update (October 15, 2025):** Research notes assume the “Atlas” AI context; adapt legacy terminology from prior contexts as needed.
+> **Context update (October 15, 2025):** Research notes assume the assistant context introduced for this cycle; adapt legacy terminology from prior contexts as needed.
 
 > **Status:** Exploratory. PrimeScript would be a unified scripting/shading language targeting C++, GLSL, and a VM runtime. Not part of the current implementation roadmap; captured here for future research.
 

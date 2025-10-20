@@ -4,7 +4,7 @@
 
 # Surface Ray Cache Plan (Draft)
 
-> **Context update (October 15, 2025):** Ray cache milestones are evaluated within the “Atlas” AI context launched for this cycle; align earlier terminology with Atlas standards.
+> **Context update (October 15, 2025):** Ray cache milestones are evaluated within the assistant context launched for this cycle; align earlier terminology with the updated standards.
 
 > **Status:** Working draft. Describes the ray-query + sample cache approach that replaces the earlier “microtriangle” tessellation idea. We will defer implementation until the baseline “set pixel color” renderer path is stable.
 

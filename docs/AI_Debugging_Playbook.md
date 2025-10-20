@@ -1,6 +1,6 @@
 # Handoff Notice
 
-> **Handoff note (October 19, 2025):** These troubleshooting steps remain accurate but assume the Atlas-era tooling defaults. Confirm any helper script changes in `docs/AI_Onboarding_Next.md` before relying on this playbook.
+> **Handoff note (October 19, 2025):** These troubleshooting steps remain accurate but assume the prior tooling defaults. Confirm any helper script changes in `docs/AI_Onboarding_Next.md` before relying on this playbook.
 
 # PathSpace — Debugging Playbook
 

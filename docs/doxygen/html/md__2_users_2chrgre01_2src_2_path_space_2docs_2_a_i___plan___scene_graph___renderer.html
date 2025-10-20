@@ -1958,7 +1958,7 @@ Decision: Text shaping, bidi, and font fallback (resolved)</h1>
 <li>Cache shaped runs keyed by <span class="tt">{fontFace+features+script+direction+text}</span>; invalidate on style/font change.</li>
 </ul>
 </li>
-<li>Atlases:<ul>
+<li>Glyph atlases:<ul>
 <li>MSDF generation from FreeType outlines (msdfgen or equivalent). Choose <span class="tt">pxRange</span> 8–12 (UI) or 12–16 (heavy zoom); padding ≥ ceil(pxRange)+2 texels.</li>
 <li>Separate pages by <span class="tt">{fontFace, pxRange}</span>; pack with skyline/guillotine; generate mipmaps. Evict via LRU; persist pages on disk keyed by <span class="tt">{font hash, face index, style, pxRange, tool versions}</span>.</li>
 <li>Small text threshold (~16–20 px): switch to bitmap atlases (optional LCD subpixel on desktop).</li>
