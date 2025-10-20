@@ -2,43 +2,6 @@
 // Handoff note (October 20, 2025): Backlog refreshed after Metal UITests landed and build tooling defaults changed. Review docs/AI_Onboarding_Next.md before resuming work.
 
 task {
-  name: "Metal Renderer Material Bindings [BLOCKER]"
-  description: "Finish GPU parity by wiring PathRenderer2DMetal into the shared material/shader descriptor cache so Metal draws stay feature-complete with the software pipeline."
-  status: planned
-  priority: P0
-
-  acceptance_criteria: [
-    "PathRenderer2DMetal uses shared material/shader keys so GPU frames mirror software material telemetry (including glyph batches and textured pipelines).",
-    "Metal path covers glyph batches and material-driven pipelines without falling back to the CPU, barring explicitly unsupported commands.",
-    "UITests assert GPU material telemetry (descriptor count, shader keys, residency) and capture GPU error handling."
-  ]
-
-  steps: [
-    "Plumb Builders::MaterialDescriptor/MaterialShaderKey through the Metal encoder and bind textures/shaders per drawable batch.",
-    "Extend GPU command coverage to glyph batches and material-driven pipelines; document any remaining fallbacks.",
-    "Augment PathSpaceUITests with GPU material telemetry assertions once bindings land."
-  ]
-}
-
-task {
-  name: "HTML Asset Hydration Bug [BLOCKER]"
-  description: "Resolved October 20, 2025 by introducing a dedicated Html::Asset codec (include/pathspace/ui/HtmlSerialization.hpp) so PathSpace round-trips asset vectors without loss."
-  status: completed
-  priority: P0
-
-  acceptance_criteria: [
-    "PathSpace core fix lands so `PathSpace::read<std::vector<Html::Asset>>` returns the same data that was inserted.",
-    "`Renderer::RenderHtml hydrates image assets into output` passes without UI-side workarounds; asset bytes persist under `output/v1/html/assets`.",
-    "Docs (AI_Debugging_Playbook, AI_Onboarding_Next) updated to reflect the resolution and any new knobs/tests."
-  ]
-
-  steps: [
-    "Verified with PathSpaceUITests (loop=15) and the new Html::Asset regression on October 20, 2025.",
-    "Legacy Alpaca fallback remains for backwards compatibility; schedule removal once historical data migrates."
-  ]
-}
-
-task {
   name: "Distributed PathSpace Mounts [FEATURE]"
   description: "Implement remote mount support so PathSpace instances can mount/export subtrees over the network."
   status: planned
@@ -171,60 +134,6 @@ task {
     "Update docs/Plan_SceneGraph_Implementation.md and widgets_example comments with run instructions and follow-ups."
   ]
 }
-
-task {
-  name: "Software Presenter Zero-Copy Buffer [PERF]"
-  description: "Eliminate framebuffer memcpy by backing PathSurfaceSoftware with an IOSurface shared directly with CAMetalLayer."
-  status: completed
-  priority: P1
-
-  acceptance_criteria: [
-    "PathSurfaceSoftware allocates/owns an IOSurface that the renderer writes into directly; no std::vector memcpy in copy_buffered_frame.",
-    "Presenter binds the IOSurface (or texture alias) without copying, and the paint_example runs fullscreen without regressions.",
-    "Docs updated (Plan_SceneGraph_Renderer.md, AI_Architecture.md) to reflect the zero-copy pipeline; tests cover the new path."
-  ]
-
-  steps: [
-    "Refactor PathSurfaceSoftware to allocate IOSurface-backed memory and expose the relevant descriptors.",
-    "Update presenter/Builders to consume the shared resource, removing the fallback memcpy code path.",
-    "Add regression tests/benchmarks exercising fullscreen presents to verify zero-copy performance."
-  ]
-}
-
-task {
-  name: "CAMetalLayer Range Group Reuse [PERF]"
-  description: "Reuse IOSurface instances during CAMetalLayer presents so extended UI sessions do not exhaust range groups."
-  status: completed
-  priority: P1
-
-  acceptance_criteria: [
-    "Presenter reuses a bounded IOSurface pool; no per-frame allocations during steady-state painting.",
-    "Long-duration paint_example runs show no 'Failed to allocate segment' errors.",
-    "Instrumentation gated behind PATHSPACE_DEBUG_IOSURFACE=1 captures resize/allocation events."
-  ]
-
-  steps: [
-    "Introduce a small IOSurface reuse pool in WindowEventPump, rotating through surfaces matching the current drawable size.",
-    "Ensure PathSurfaceSoftware only reallocates IOSurfaces when the size changes.",
-    "Add optional logging to confirm allocation behaviour during debugging runs."
-  ]
-}
-
-  task {
-    name: "Renderer Benchmarking [PERF]"
-    description: "Instrument PathRenderer2D phases (damage diff, encode, progressive copy, IOSurface publish, presenter blit) and capture 4K vs small-surface timings; reuse the new benchmark harness for automation."
-    status: completed
-    priority: P1
-    acceptance_criteria: [
-      "Benchmark harness reports per-phase timings for 4K_full, 4K_incremental, and sub-2K cases.",
-      "Results summarized in docs/Plan_SceneGraph_Implementation.md with bottleneck callouts."
-    ]
-    steps: [
-      "Instrument damage diff and encode loops with timers in benchmark build.",
-      "Capture IOSurface allocation/publish metrics under repeated full-surface runs.",
-      "Document findings and update paint_example plan."
-    ]
-  }
 
 task {
   name: "Software Renderer FPS Parity [PERF]"
@@ -783,44 +692,6 @@ task {
       "CITATION.cff and docs/citation.md with BibTeX entry and examples."
     ]
   }
-}
-
-task {
-  name: "WindowEventPump UI Migration [UI]"
-  description: "Fold the macOS WindowEventPump presenter/event bridge into the PathSpace UI library so examples stay platform-neutral."
-  status: completed
-  priority: P1
-
-  acceptance_criteria: [
-    "PathWindowView (and supporting UI library code) owns the CAMetalLayer drawable acquisition, Metal/IOSurface present path, and event-loop integration currently implemented in examples/macos/WindowEventPump.mm.",
-    "examples/macos/* no longer compile any platform-specific presenter code; they reuse the shared UI bridge.",
-    "Docs updated (Plan_SceneGraph_Implementation.md, AI_Architecture.md) to reference the shared presenter instead of the example harness."
-  ]
-
-  steps: [
-    "Refactor WindowEventPump.mm logic into PathSpace UI components (ObjC++ shim + C++ presenters) while preserving current Metal gating.",
-    "Provide a thin example harness that only wires app-specific input/scene setup.",
-    "Update examples and tests to consume the shared bridge; remove redundant platform code."
-  ]
-}
-
-task {
-  name: "Metal Presenter UITest [TESTS]"
-  description: "Add a PATHSPACE_ENABLE_METAL_UPLOADS-gated UITest that exercises the CAMetalLayer presenter path."
-  status: completed
-  priority: P1
-
-  acceptance_criteria: [
-    "PathSpaceUITests builds an ObjC++ test that configures PathWindowView with a CAMetalLayer and records Metal present stats when PATHSPACE_ENABLE_METAL_UPLOADS=1.",
-    "The test skips gracefully when Metal uploads remain disabled (default CI/headless runs).",
-    "Docs reference the new UITest and its gating so contributors know how to enable it locally."
-  ]
-
-  steps: [
-    "Create ui/test_PathWindowView_Metal.mm under PathSpaceUITests to configure a CAMetalLayer and invoke the presenter.",
-    "Guard the test behind PATHSPACE_UI_METAL, APPLE, and PATHSPACE_ENABLE_METAL_UPLOADS so CI remains stable.",
-    "Update planning/docs to track the new coverage and remaining CI toggle work."
-  ]
 }
 
 task {

@@ -39,7 +39,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 
 | Area | Action | Notes |
 | --- | --- | --- |
-| Metal renderer | Wire true material/shader bindings and expand GPU encode beyond the new rounded-rect/image path | `PathRenderer2DMetal` now handles rects, rounded rects, text quads, and images (see Phase 7); material cache integration is the remaining blocker. |
+| Metal renderer | ✅ Completed (October 20, 2025) — material/shader bindings now flow through the shared descriptor cache | `PathRenderer2DMetal` covers rects, rounded rects, text quads, and images (see Phase 7); continue tracking glyph/material parity on the descriptor cache. |
 | Diagnostics | Wire dashboards to consume `textureGpuBytes`, `resourceGpuBytes`, and refreshed residency metrics | Coordinate with tooling owners before schema changes. |
 | Widgets | Finish Phase 8: add list widget snapshots, interaction bindings, and gallery wiring | Slider builder landed; list/binding work remains (see `docs/Plan_SceneGraph_Implementation.md`). |
 | HTML tooling | Add HSAT inspection CLI/tests and extend coverage when new asset fields appear | Legacy serializer removed; HSAT is mandatory. |

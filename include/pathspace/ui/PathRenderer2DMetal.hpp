@@ -6,6 +6,7 @@
 #include <memory>
 
 #include <pathspace/ui/SurfaceTypes.hpp>
+#include <pathspace/ui/MaterialDescriptor.hpp>
 
 namespace SP::UI {
 
@@ -58,6 +59,8 @@ public:
     auto finish(PathSurfaceMetal& surface,
                 std::uint64_t frame_index,
                 std::uint64_t revision) -> bool;
+
+    auto bind_material(MaterialDescriptor const& descriptor) -> bool;
 
 private:
     struct Impl;

@@ -10,6 +10,8 @@
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/MaterialDescriptor.hpp>
+#include <pathspace/ui/PipelineFlags.hpp>
+#include <pathspace/ui/PathRenderer2DMetal.hpp>
 #include <pathspace/ui/PathSurfaceMetal.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
@@ -351,6 +353,87 @@ TEST_CASE("PathWindowView presents Metal texture when uploads enabled") {
         CHECK(material_span.front().material_id == materials.front().material_id);
 
         PathWindowView::ResetMetalPresenter();
+    }
+}
+
+TEST_CASE("PathRenderer2DMetal honors material blending state") {
+    if (std::getenv("PATHSPACE_ENABLE_METAL_UPLOADS") == nullptr) {
+        INFO("PATHSPACE_ENABLE_METAL_UPLOADS is not set; skipping Metal renderer verification");
+        return;
+    }
+
+    @autoreleasepool {
+        id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+        if (!device) {
+            INFO("No Metal device available; skipping Metal renderer verification");
+            return;
+        }
+
+        Builders::SurfaceDesc desc{};
+        desc.size_px.width = 4;
+        desc.size_px.height = 4;
+        desc.pixel_format = Builders::PixelFormat::RGBA32F;
+        desc.color_space = Builders::ColorSpace::Linear;
+        desc.metal.storage_mode = Builders::MetalStorageMode::Shared;
+
+        PathSurfaceMetal surface{desc};
+        PathRenderer2DMetal renderer;
+
+        CHECK(renderer.begin_frame(surface, desc, {0.0f, 0.0f, 0.0f, 1.0f}));
+
+        PathRenderer2DMetal::Rect base_rect{0.0f, 0.0f, 4.0f, 4.0f};
+        CHECK(renderer.draw_rect(base_rect, {0.0f, 0.0f, 1.0f, 1.0f}));
+
+        MaterialDescriptor blend_desc{};
+        blend_desc.material_id = 1;
+        blend_desc.pipeline_flags = PipelineFlags::AlphaBlend;
+        blend_desc.uses_image = false;
+        CHECK(renderer.bind_material(blend_desc));
+
+        PathRenderer2DMetal::Rect left_rect{0.0f, 0.0f, 2.0f, 4.0f};
+        std::array<float, 4> red_half_alpha{0.5f, 0.0f, 0.0f, 0.5f};
+        CHECK(renderer.draw_rect(left_rect, red_half_alpha));
+
+        MaterialDescriptor opaque_desc{};
+        opaque_desc.material_id = 2;
+        opaque_desc.pipeline_flags = 0;
+        opaque_desc.uses_image = false;
+        CHECK(renderer.bind_material(opaque_desc));
+
+        PathRenderer2DMetal::Rect right_rect{2.0f, 0.0f, 4.0f, 4.0f};
+        CHECK(renderer.draw_rect(right_rect, red_half_alpha));
+
+        CHECK(renderer.finish(surface, /*frame_index=*/1, /*revision=*/1));
+
+        auto texture_info = surface.acquire_texture();
+        id<MTLTexture> texture = (__bridge id<MTLTexture>)texture_info.texture;
+        REQUIRE(static_cast<bool>(texture));
+        CHECK(texture.pixelFormat == MTLPixelFormatRGBA32Float);
+
+        constexpr std::size_t kPixelCount = 4u * 4u;
+        std::vector<float> pixels(kPixelCount * 4u);
+        MTLRegion region = MTLRegionMake2D(0, 0, 4, 4);
+        [texture getBytes:pixels.data()
+               bytesPerRow:4u * 4u * sizeof(float)
+               fromRegion:region
+              mipmapLevel:0];
+
+        auto sample_pixel = [&](int x, int y) -> std::array<float, 4> {
+            auto idx = static_cast<std::size_t>(y * 4 + x) * 4u;
+            return {pixels[idx + 0], pixels[idx + 1], pixels[idx + 2], pixels[idx + 3]};
+        };
+
+        auto left = sample_pixel(1, 2);
+        CHECK(left[0] == doctest::Approx(0.5f).epsilon(0.05f));
+        CHECK(left[1] == doctest::Approx(0.0f).epsilon(0.05f));
+        CHECK(left[2] == doctest::Approx(0.5f).epsilon(0.05f));
+        CHECK(left[3] == doctest::Approx(1.0f).epsilon(0.05f));
+
+        auto right = sample_pixel(3, 2);
+        CHECK(right[0] == doctest::Approx(0.5f).epsilon(0.05f));
+        CHECK(right[1] == doctest::Approx(0.0f).epsilon(0.05f));
+        CHECK(right[2] == doctest::Approx(0.0f).epsilon(0.05f));
+        CHECK(right[3] == doctest::Approx(0.5f).epsilon(0.05f));
     }
 }
 

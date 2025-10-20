@@ -9,12 +9,16 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/MaterialDescriptor.hpp>
+#include <pathspace/ui/MaterialShaderKey.hpp>
+#include <pathspace/ui/PipelineFlags.hpp>
 #include <pathspace/ui/PathRenderer2DMetal.hpp>
 #include <pathspace/ui/PathSurfaceMetal.hpp>
 
@@ -25,6 +29,11 @@ namespace {
 constexpr std::uint32_t kDrawModeSolid = 0u;
 constexpr std::uint32_t kDrawModeRoundedRect = 1u;
 constexpr std::uint32_t kDrawModeImage = 2u;
+
+constexpr std::uint32_t kDrawFlagRequiresUnpremultiplied = 1u << 0;
+constexpr std::uint32_t kDrawFlagDebugOverdraw = 1u << 1;
+constexpr std::uint32_t kDrawFlagDebugWireframe = 1u << 2;
+constexpr std::uint32_t kDrawFlagEncodeSrgb = 1u << 3;
 
 struct Vertex {
     simd::float2 position;
@@ -37,8 +46,11 @@ struct DrawCall {
     std::uint32_t start = 0;
     std::uint32_t count = 0;
     std::uint32_t mode = kDrawModeSolid;
+    std::uint32_t flags = 0;
     simd::float4 params0 = {0.0f, 0.0f, 0.0f, 0.0f};
     simd::float4 params1 = {0.0f, 0.0f, 0.0f, 0.0f};
+    MTLTriangleFillMode fill_mode = MTLTriangleFillModeFill;
+    __strong id<MTLRenderPipelineState> pipeline = nil;
     __strong id<MTLTexture> texture = nil;
 };
 
@@ -51,7 +63,7 @@ struct FrameUniforms {
 
 struct DrawUniforms {
     std::uint32_t mode = kDrawModeSolid;
-    std::uint32_t padding0 = 0;
+    std::uint32_t flags = 0;
     float padding1 = 0.0f;
     float padding2 = 0.0f;
     simd::float4 params0 = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -97,17 +109,9 @@ auto needs_srgb_encode(Builders::SurfaceDesc const& desc) -> bool {
     return desc.color_space == Builders::ColorSpace::sRGB;
 }
 
-auto compile_pipeline(id<MTLDevice> device, MTLPixelFormat color_format) -> id<MTLRenderPipelineState> {
-    struct CacheKey {
-        MTLPixelFormat format;
-    };
-
-    static std::unordered_map<MTLPixelFormat, id<MTLRenderPipelineState>> cache;
-    auto cached = cache.find(color_format);
-    if (cached != cache.end()) {
-        return cached->second;
-    }
-
+auto compile_pipeline(id<MTLDevice> device,
+                      MTLPixelFormat color_format,
+                      MaterialShaderKey const& shader_key) -> id<MTLRenderPipelineState> {
     static NSString* const kShaderSource = @R"(
         #include <metal_stdlib>
         using namespace metal;
@@ -135,12 +139,17 @@ auto compile_pipeline(id<MTLDevice> device, MTLPixelFormat color_format) -> id<M
 
         struct DrawUniforms {
             uint mode;
-            uint padding0;
+            uint flags;
             float padding1;
             float padding2;
             float4 params0;
             float4 params1;
         };
+
+        constant uint kFlagRequiresUnpremultiplied = 1u << 0;
+        constant uint kFlagDebugOverdraw = 1u << 1;
+        constant uint kFlagDebugWireframe = 1u << 2;
+        constant uint kFlagEncodeSrgb = 1u << 3;
 
         float linear_to_srgb(float value) {
             value = clamp(value, 0.0f, 1.0f);
@@ -165,6 +174,9 @@ auto compile_pipeline(id<MTLDevice> device, MTLPixelFormat color_format) -> id<M
                                          texture2d<float> image_tex [[texture(0)]],
                                          sampler image_sampler [[sampler(0)]]) {
             float4 color = in.color;
+            bool requires_unpremultiplied = (draw.flags & kFlagRequiresUnpremultiplied) != 0u;
+            bool debug_overdraw = (draw.flags & kFlagDebugOverdraw) != 0u;
+            bool encode_srgb = (frame.encode_mode != 0u) || ((draw.flags & kFlagEncodeSrgb) != 0u);
 
             if (draw.mode == 1u) {
                 float min_x = draw.params0.x;
@@ -200,14 +212,31 @@ auto compile_pipeline(id<MTLDevice> device, MTLPixelFormat color_format) -> id<M
             } else if (draw.mode == 2u) {
                 float4 tint = draw.params0;
                 float4 sampled = image_tex.sample(image_sampler, in.uv);
-                float4 straight = clamp(float4(sampled.rgb * tint.rgb, sampled.a * tint.a), 0.0f, 1.0f);
-                float alpha = straight.a;
-                float3 premul = straight.rgb * alpha;
-                color = float4(premul, alpha);
+                float3 rgb = clamp(sampled.rgb * tint.rgb, 0.0f, 1.0f);
+                float alpha = clamp(sampled.a * tint.a, 0.0f, 1.0f);
+                if (requires_unpremultiplied) {
+                    rgb *= alpha;
+                } else {
+                    float tint_alpha = clamp(tint.a, 0.0f, 1.0f);
+                    rgb *= tint_alpha;
+                }
+                color = float4(clamp(rgb, 0.0f, 1.0f), alpha);
+            } else {
+                float alpha = clamp(color.a, 0.0f, 1.0f);
+                if (requires_unpremultiplied) {
+                    color = float4(clamp(color.rgb * alpha, 0.0f, 1.0f), alpha);
+                } else {
+                    color = float4(clamp(color.rgb, 0.0f, 1.0f), alpha);
+                }
+            }
+
+            if (debug_overdraw) {
+                float intensity = clamp(color.a, 0.0f, 1.0f);
+                color = float4(intensity, 0.0f, 0.0f, max(intensity, 0.1f));
             }
 
             color = clamp(color, 0.0f, 1.0f);
-            if (frame.encode_mode != 0u) {
+            if (encode_srgb) {
                 color = float4(linear_to_srgb(color.r),
                                linear_to_srgb(color.g),
                                linear_to_srgb(color.b),
@@ -258,20 +287,22 @@ auto compile_pipeline(id<MTLDevice> device, MTLPixelFormat color_format) -> id<M
     descriptor.fragmentFunction = fragment_fn;
     descriptor.vertexDescriptor = vertex_desc;
     descriptor.colorAttachments[0].pixelFormat = color_format;
-    descriptor.colorAttachments[0].blendingEnabled = YES;
-    descriptor.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorOne;
-    descriptor.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-    descriptor.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
-    descriptor.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
-    descriptor.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-    descriptor.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
+    if (shader_key.alpha_blend) {
+        descriptor.colorAttachments[0].blendingEnabled = YES;
+        descriptor.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorOne;
+        descriptor.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        descriptor.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
+        descriptor.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+        descriptor.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        descriptor.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
+    } else {
+        descriptor.colorAttachments[0].blendingEnabled = NO;
+    }
 
     id<MTLRenderPipelineState> pipeline = [device newRenderPipelineStateWithDescriptor:descriptor error:&error];
     if (!pipeline) {
         return nil;
     }
-
-    cache.emplace(color_format, pipeline);
     return pipeline;
 }
 
@@ -293,6 +324,48 @@ auto to_clip_y(float y, int height) -> float {
     return 1.0f - (y / static_cast<float>(height)) * 2.0f;
 }
 
+struct PipelineKey {
+    MTLPixelFormat format = MTLPixelFormatInvalid;
+    MaterialShaderKey shader_key{};
+    auto operator==(PipelineKey const&) const -> bool = default;
+};
+
+struct PipelineKeyHash {
+    auto operator()(PipelineKey const& key) const noexcept -> std::size_t {
+        using FormatType = std::underlying_type_t<MTLPixelFormat>;
+        std::size_t h = std::hash<FormatType>{}(static_cast<FormatType>(key.format));
+        auto mix = [&](auto value) {
+            std::size_t v = std::hash<std::decay_t<decltype(value)>>{}(value);
+            h ^= v + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        };
+        mix(key.shader_key.pipeline_flags);
+        mix(key.shader_key.alpha_blend);
+        mix(key.shader_key.requires_unpremultiplied);
+        mix(key.shader_key.srgb_framebuffer);
+        mix(key.shader_key.uses_image);
+        mix(key.shader_key.debug_overdraw);
+        mix(key.shader_key.debug_wireframe);
+        return h;
+    }
+};
+
+auto compute_draw_flags(MaterialShaderKey const& key) -> std::uint32_t {
+    std::uint32_t flags = 0;
+    if (key.requires_unpremultiplied) {
+        flags |= kDrawFlagRequiresUnpremultiplied;
+    }
+    if (key.debug_overdraw) {
+        flags |= kDrawFlagDebugOverdraw;
+    }
+    if (key.debug_wireframe) {
+        flags |= kDrawFlagDebugWireframe;
+    }
+    if (key.srgb_framebuffer) {
+        flags |= kDrawFlagEncodeSrgb;
+    }
+    return flags;
+}
+
 } // namespace
 
 struct PathRenderer2DMetal::Impl {
@@ -300,7 +373,7 @@ struct PathRenderer2DMetal::Impl {
     id<MTLCommandQueue> command_queue = nil;
     id<MTLCommandBuffer> command_buffer = nil;
     id<MTLRenderCommandEncoder> encoder = nil;
-    id<MTLRenderPipelineState> pipeline = nil;
+    id<MTLRenderPipelineState> default_pipeline = nil;
     id<MTLSamplerState> sampler = nil;
     id<MTLBuffer> frame_uniform_buffer = nil;
     id<MTLBuffer> vertex_buffer = nil;
@@ -308,9 +381,33 @@ struct PathRenderer2DMetal::Impl {
     std::vector<Vertex> vertices{};
     std::vector<DrawCall> draw_calls{};
     std::unordered_map<std::uint64_t, ImageEntry> image_textures{};
+    std::unordered_map<PipelineKey, id<MTLRenderPipelineState>, PipelineKeyHash> pipeline_cache{};
+    MaterialShaderKey active_key{};
+    bool active_key_valid = false;
+    std::uint32_t active_material_id = 0;
+    __strong id<MTLRenderPipelineState> current_pipeline = nil;
+    std::uint32_t current_draw_flags = 0;
+    MTLTriangleFillMode current_fill_mode = MTLTriangleFillModeFill;
     MTLPixelFormat pixel_format = MTLPixelFormatInvalid;
     bool valid = false;
     bool encode_srgb = false;
+
+    auto pipeline_for(MaterialShaderKey const& key) -> id<MTLRenderPipelineState> {
+        PipelineKey cache_key{pixel_format, key};
+        auto it = pipeline_cache.find(cache_key);
+        if (it != pipeline_cache.end()) {
+            return it->second;
+        }
+        if (!device) {
+            return nil;
+        }
+        id<MTLRenderPipelineState> pipeline = compile_pipeline(device, pixel_format, key);
+        if (!pipeline) {
+            return nil;
+        }
+        pipeline_cache.emplace(cache_key, pipeline);
+        return pipeline;
+    }
 };
 
 PathRenderer2DMetal::PathRenderer2DMetal()
@@ -349,10 +446,19 @@ auto PathRenderer2DMetal::begin_frame(PathSurfaceMetal& surface,
         return false;
     }
 
-    impl->pipeline = compile_pipeline(impl->device, impl->pixel_format);
-    if (!impl->pipeline) {
+    MaterialShaderKey default_key{};
+    default_key.pipeline_flags = 0u;
+    default_key.alpha_blend = true;
+    default_key.srgb_framebuffer = impl->encode_srgb;
+    impl->default_pipeline = impl->pipeline_for(default_key);
+    if (!impl->default_pipeline) {
         return false;
     }
+    impl->current_pipeline = nil;
+    impl->current_draw_flags = 0;
+    impl->current_fill_mode = MTLTriangleFillModeFill;
+    impl->active_key_valid = false;
+    impl->active_material_id = 0;
 
     if (!impl->sampler) {
         MTLSamplerDescriptor* sampler_desc = [[MTLSamplerDescriptor alloc] init];
@@ -386,7 +492,7 @@ auto PathRenderer2DMetal::begin_frame(PathSurfaceMetal& surface,
     if (!impl->encoder) {
         return false;
     }
-    [impl->encoder setRenderPipelineState:impl->pipeline];
+    [impl->encoder setRenderPipelineState:impl->default_pipeline];
 
     MTLViewport viewport{};
     viewport.originX = 0.0;
@@ -419,6 +525,14 @@ auto PathRenderer2DMetal::draw_rect(Rect const& rect,
         return false;
     }
 
+    id<MTLRenderPipelineState> pipeline = impl->current_pipeline ? impl->current_pipeline
+                                                                : impl->default_pipeline;
+    if (!pipeline) {
+        return false;
+    }
+    auto const draw_flags = impl->current_draw_flags;
+    auto const fill_mode = impl->current_fill_mode;
+
     auto width = std::max(impl->desc.size_px.width, 1);
     auto height = std::max(impl->desc.size_px.height, 1);
 
@@ -448,6 +562,9 @@ auto PathRenderer2DMetal::draw_rect(Rect const& rect,
     call.start = start;
     call.count = 6;
     call.mode = kDrawModeSolid;
+    call.flags = draw_flags;
+    call.pipeline = pipeline;
+    call.fill_mode = fill_mode;
     impl->draw_calls.push_back(call);
     return true;
 }
@@ -527,6 +644,13 @@ auto PathRenderer2DMetal::draw_image(Scene::ImageCommand const& command,
     if (!impl || !impl->valid) {
         return false;
     }
+    id<MTLRenderPipelineState> pipeline = impl->current_pipeline ? impl->current_pipeline
+                                                                : impl->default_pipeline;
+    if (!pipeline) {
+        return false;
+    }
+    auto const draw_flags = impl->current_draw_flags;
+    auto const fill_mode = impl->current_fill_mode;
     if (width == 0 || height == 0 || pixels == nullptr) {
         return false;
     }
@@ -589,7 +713,43 @@ auto PathRenderer2DMetal::draw_image(Scene::ImageCommand const& command,
     call.mode = kDrawModeImage;
     call.texture = entry.texture;
     call.params0 = to_simd(tint_linear_straight);
+    call.flags = draw_flags;
+    call.pipeline = pipeline;
+    call.fill_mode = fill_mode;
     impl->draw_calls.push_back(call);
+    return true;
+}
+
+auto PathRenderer2DMetal::bind_material(MaterialDescriptor const& descriptor) -> bool {
+    auto* impl = impl_.get();
+    if (!impl || !impl->valid) {
+        return false;
+    }
+
+    MaterialShaderKey key = make_shader_key(descriptor, impl->desc);
+    bool reuse_current = impl->active_key_valid
+                         && impl->active_material_id == descriptor.material_id
+                         && impl->active_key == key
+                         && impl->current_pipeline != nil;
+
+    if (!reuse_current) {
+        id<MTLRenderPipelineState> pipeline = impl->pipeline_for(key);
+        if (!pipeline) {
+            impl->current_pipeline = nil;
+            impl->current_draw_flags = 0;
+            impl->current_fill_mode = MTLTriangleFillModeFill;
+            impl->active_key_valid = false;
+            impl->active_material_id = 0;
+            return false;
+        }
+        impl->current_pipeline = pipeline;
+        impl->active_key = key;
+        impl->active_key_valid = true;
+        impl->active_material_id = descriptor.material_id;
+    }
+
+    impl->current_draw_flags = compute_draw_flags(key);
+    impl->current_fill_mode = key.debug_wireframe ? MTLTriangleFillModeLines : MTLTriangleFillModeFill;
     return true;
 }
 
@@ -618,8 +778,17 @@ auto PathRenderer2DMetal::finish(PathSurfaceMetal& surface,
         [impl->encoder setVertexBuffer:impl->vertex_buffer offset:0 atIndex:0];
 
         for (auto const& call : impl->draw_calls) {
+            id<MTLRenderPipelineState> pipeline = call.pipeline ? call.pipeline : impl->default_pipeline;
+            if (!pipeline) {
+                impl->valid = false;
+                return false;
+            }
+            [impl->encoder setRenderPipelineState:pipeline];
+            [impl->encoder setTriangleFillMode:call.fill_mode];
+
             DrawUniforms uniforms{};
             uniforms.mode = call.mode;
+            uniforms.flags = call.flags;
             uniforms.params0 = call.params0;
             uniforms.params1 = call.params1;
             [impl->encoder setFragmentBytes:&uniforms length:sizeof(DrawUniforms) atIndex:2];
@@ -647,6 +816,12 @@ auto PathRenderer2DMetal::finish(PathSurfaceMetal& surface,
     impl->command_buffer = nil;
     impl->vertex_buffer = nil;
     impl->frame_uniform_buffer = nil;
+
+    impl->current_pipeline = nil;
+    impl->current_draw_flags = 0;
+    impl->current_fill_mode = MTLTriangleFillModeFill;
+    impl->active_key_valid = false;
+    impl->active_material_id = 0;
 
     impl->valid = false;
     return true;

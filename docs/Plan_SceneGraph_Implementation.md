@@ -166,7 +166,7 @@ Completed:
     - ✅ (October 19, 2025) Split render helpers so Metal targets reuse the shared cache but funnel through a backend-aware `render_into_target`; contexts fall back to software when uploads are disabled and tests exercise the unified path.
     - ✅ (October 19, 2025) PathRenderer2D now streams Metal frames directly into the cached CAMetalLayer texture (skipping the software upload hop when Metal uploads are enabled) while keeping residency metrics in sync.
     - ✅ (October 19, 2025) `Renderer::TriggerRender` now reuses the shared surface caches (software and Metal) so ad-hoc renders avoid reallocating per call.
-    - ✅ (October 20, 2025) `PathRenderer2DMetal` now renders rects, rounded rects, text quads, and textured images directly on the GPU; remaining work is wiring true material/shader bindings (and glyph/material pipelines) before enabling full-scene GPU parity.
+    - ✅ (October 20, 2025) `PathRenderer2DMetal` now renders rects, rounded rects, text quads, and textured images directly on the GPU, with shared material/shader keys driving pipeline state so GPU frames mirror software telemetry; glyph/material pipeline parity will continue to build on the descriptor cache.
  3. **Presenter integration**
      - Extend `PathWindowView::Present` (Apple) to accept either `PathSurfaceSoftware` or `PathSurfaceMetal` stats; when Metal uploads are enabled, acquire CAMetalLayer drawable and blit/encode GPU texture to drawable using Metal command queue (move logic from WindowEventPump into core presenter).
      - ✅ (October 19, 2025) Replaced the sample-specific `WindowEventPump.mm` with the shared `LocalWindowBridge` in the UI library; examples now consume the bridge and keep only input wiring.
@@ -177,6 +177,7 @@ Completed:
      - ✅ (October 19, 2025) PathRenderer2D now maintains a shared material descriptor cache so Metal and software paths emit identical shading telemetry across backends.
 5. **Testing & CI**
     - ✅ (October 19, 2025) Added a PATHSPACE_ENABLE_METAL_UPLOADS-gated ObjC++ PathSpaceUITest (`tests/ui/test_PathWindowView_Metal.mm`) that exercises the CAMetalLayer presenter when Metal uploads are enabled.
+    - ✅ (October 20, 2025) Added GPU blending coverage (`tests/ui/test_PathWindowView_Metal.mm`: "PathRenderer2DMetal honors material blending state") to confirm material-driven pipeline state matches software behaviour.
      - ✅ (October 19, 2025) Local `pre-push` hook now auto-enables Metal presenter coverage (`--enable-metal-tests`) on macOS hosts, while respecting `DISABLE_METAL_TESTS=1` to fall back when GPU access is unavailable.
      - ✅ (October 19, 2025) GitHub Actions now runs a macOS job that invokes `./scripts/compile.sh --enable-metal-tests --test --loop=1`, while tests continue to skip gracefully when Metal uploads remain disabled or unsupported.
      - Builders/UI diagnostic suites leave Metal-specific assertions to the gated UITest so the core builders coverage stays backend-agnostic even when PATHSPACE_ENABLE_METAL_UPLOADS=1.

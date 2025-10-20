@@ -2137,15 +2137,21 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                         bool handled = false;
 #if defined(__APPLE__) && PATHSPACE_UI_METAL
                         if (metal_active && metal_backend) {
-                            PathRenderer2DMetal::Rect gpu_rect{
-                                .min_x = rect.min_x,
-                                .min_y = rect.min_y,
-                                .max_x = rect.max_x,
-                                .max_y = rect.max_y,
-                            };
-                            if (metal_backend->draw_rect(gpu_rect, to_array(rect_linear))) {
-                                drawable_drawn = true;
-                                handled = true;
+                            bool material_bound = true;
+                            if (material_desc) {
+                                material_bound = metal_backend->bind_material(*material_desc);
+                            }
+                            if (material_bound) {
+                                PathRenderer2DMetal::Rect gpu_rect{
+                                    .min_x = rect.min_x,
+                                    .min_y = rect.min_y,
+                                    .max_x = rect.max_x,
+                                    .max_y = rect.max_y,
+                                };
+                                if (metal_backend->draw_rect(gpu_rect, to_array(rect_linear))) {
+                                    drawable_drawn = true;
+                                    handled = true;
+                                }
                             }
                         }
 #endif
@@ -2172,7 +2178,12 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                         bool handled = false;
 #if defined(__APPLE__) && PATHSPACE_UI_METAL
                         if (metal_active && metal_backend) {
-                            if (metal_backend->draw_rounded_rect(rounded, to_array(rounded_linear))) {
+                            bool material_bound = true;
+                            if (material_desc) {
+                                material_bound = metal_backend->bind_material(*material_desc);
+                            }
+                            if (material_bound
+                                && metal_backend->draw_rounded_rect(rounded, to_array(rounded_linear))) {
                                 drawable_drawn = true;
                                 handled = true;
                             }
@@ -2201,7 +2212,12 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                         bool handled = false;
 #if defined(__APPLE__) && PATHSPACE_UI_METAL
                         if (metal_active && metal_backend) {
-                            if (metal_backend->draw_text_quad(glyphs, to_array(glyph_linear))) {
+                            bool material_bound = true;
+                            if (material_desc) {
+                                material_bound = metal_backend->bind_material(*material_desc);
+                            }
+                            if (material_bound
+                                && metal_backend->draw_text_quad(glyphs, to_array(glyph_linear))) {
                                 drawable_drawn = true;
                                 handled = true;
                             }
@@ -2272,12 +2288,17 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                         bool handled = false;
 #if defined(__APPLE__) && PATHSPACE_UI_METAL
                         if (metal_active && metal_backend) {
-                            if (metal_backend->draw_image(image_cmd,
-                                                          image_data->width,
-                                                          image_data->height,
-                                                          image_data->pixels.data(),
-                                                          image_data->pixels.size(),
-                                                          to_array(tint_straight))) {
+                            bool material_bound = true;
+                            if (material_desc) {
+                                material_bound = metal_backend->bind_material(*material_desc);
+                            }
+                            if (material_bound
+                                && metal_backend->draw_image(image_cmd,
+                                                              image_data->width,
+                                                              image_data->height,
+                                                              image_data->pixels.data(),
+                                                              image_data->pixels.size(),
+                                                              to_array(tint_straight))) {
                                 drawable_drawn = true;
                                 handled = true;
                             }
