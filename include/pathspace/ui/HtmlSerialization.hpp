@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -54,9 +55,25 @@ constexpr auto from_le32(std::uint32_t value) -> std::uint32_t {
     return to_le32(value);
 }
 
+struct HtmlAssetDecodeResult {
+    std::vector<UI::Html::Asset> assets;
+    size_t                       bytes_consumed = 0;
+    bool                         legacy_encoding = false;
+};
+
+inline thread_local bool g_last_html_asset_legacy_decode = false;
+
 inline auto fallback_deserialize_html_assets(SlidingBuffer const& buffer)
-    -> Expected<std::pair<std::vector<UI::Html::Asset>, size_t>> {
-    return detail::deserialize_with_alpaca<std::vector<UI::Html::Asset>>(buffer);
+    -> Expected<HtmlAssetDecodeResult> {
+    auto decoded = detail::deserialize_with_alpaca<std::vector<UI::Html::Asset>>(buffer);
+    if (!decoded) {
+        return std::unexpected(decoded.error());
+    }
+    return HtmlAssetDecodeResult{
+        .assets = std::move(decoded->first),
+        .bytes_consumed = decoded->second,
+        .legacy_encoding = true,
+    };
 }
 
 inline auto check_length(std::string_view label, std::size_t length)
@@ -134,7 +151,7 @@ inline auto serialize<std::vector<UI::Html::Asset>>(std::vector<UI::Html::Asset>
 }
 
 inline auto decode_html_assets_payload(SlidingBuffer const& buffer)
-    -> Expected<std::pair<std::vector<UI::Html::Asset>, size_t>> {
+    -> Expected<detail::HtmlAssetDecodeResult> {
     auto const total_size = buffer.size();
     if (total_size < sizeof(std::uint32_t) + sizeof(std::uint16_t) + sizeof(std::uint32_t)) {
         return detail::fallback_deserialize_html_assets(buffer);
@@ -226,8 +243,26 @@ inline auto decode_html_assets_payload(SlidingBuffer const& buffer)
         assets.emplace_back(std::move(asset));
     }
 
-    return std::pair<std::vector<UI::Html::Asset>, size_t>{std::move(assets), offset};
+    return detail::HtmlAssetDecodeResult{
+        .assets = std::move(assets),
+        .bytes_consumed = offset,
+        .legacy_encoding = false,
+    };
 }
+
+namespace UI::Html {
+
+inline auto consume_html_asset_legacy_decode_flag() -> bool {
+    bool const was_legacy = detail::g_last_html_asset_legacy_decode;
+    detail::g_last_html_asset_legacy_decode = false;
+    return was_legacy;
+}
+
+inline auto reset_html_asset_legacy_decode_flag() -> void {
+    detail::g_last_html_asset_legacy_decode = false;
+}
+
+} // namespace UI::Html
 
 template <>
 inline auto deserialize<std::vector<UI::Html::Asset>>(SlidingBuffer const& buffer)
@@ -236,7 +271,8 @@ inline auto deserialize<std::vector<UI::Html::Asset>>(SlidingBuffer const& buffe
     if (!decoded) {
         return std::unexpected(decoded.error());
     }
-    return std::move(decoded->first);
+    detail::g_last_html_asset_legacy_decode = decoded->legacy_encoding;
+    return std::move(decoded->assets);
 }
 
 template <>
@@ -246,9 +282,9 @@ inline auto deserialize_pop<std::vector<UI::Html::Asset>>(SlidingBuffer& buffer)
     if (!decoded) {
         return std::unexpected(decoded.error());
     }
-    buffer.advance(decoded->second);
-    return std::move(decoded->first);
+    detail::g_last_html_asset_legacy_decode = decoded->legacy_encoding;
+    buffer.advance(decoded->bytes_consumed);
+    return std::move(decoded->assets);
 }
 
 } // namespace SP
-

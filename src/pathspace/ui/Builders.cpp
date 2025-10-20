@@ -2501,10 +2501,17 @@ auto Present(PathSpace& space,
         bool usedCanvas = usedCanvasValue->value_or(false);
 
         std::vector<Html::Asset> assets;
+        Html::reset_html_asset_legacy_decode_flag();
         if (auto assetsValue = read_optional<std::vector<Html::Asset>>(space, htmlBase + "/assets"); !assetsValue) {
             return std::unexpected(assetsValue.error());
         } else if (assetsValue->has_value()) {
             assets = std::move(**assetsValue);
+        }
+        bool const legacy_assets = Html::consume_html_asset_legacy_decode_flag();
+        if (legacy_assets) {
+            if (auto rewrite = replace_single<std::vector<Html::Asset>>(space, htmlBase + "/assets", assets); !rewrite) {
+                return std::unexpected(rewrite.error());
+            }
         }
         auto commonBase = std::string(htmlPath->getPath()) + "/output/v1/common";
         uint64_t next_frame_index = 1;

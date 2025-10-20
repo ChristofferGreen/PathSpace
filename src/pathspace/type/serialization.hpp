@@ -28,12 +28,7 @@ inline auto serialize_with_alpaca(T const& obj, SlidingBuffer& buffer) -> std::o
     try {
         Wrapper<T> wrapper{static_cast<T const&>(obj)};
         std::vector<uint8_t> tempBuffer;
-        std::error_code      ec;
-
-        alpaca::serialize<Wrapper<T>, 1>(wrapper, tempBuffer, ec);
-        if (ec) {
-            return Error{Error::Code::SerializationFunctionMissing, ec.message()};
-        }
+        (void)alpaca::serialize<Wrapper<T>, 1>(wrapper, tempBuffer);
 
         Header header{.size = static_cast<uint32_t>(tempBuffer.size())};
         buffer.append(reinterpret_cast<const uint8_t*>(&header), sizeof(header));
