@@ -4,6 +4,7 @@
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/task/Future.hpp>
 #include <pathspace/ui/HtmlAdapter.hpp>
+#include <pathspace/ui/HtmlSerialization.hpp>
 #include <pathspace/ui/MaterialDescriptor.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/SurfaceTypes.hpp>

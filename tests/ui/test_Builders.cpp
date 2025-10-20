@@ -1272,6 +1272,47 @@ TEST_CASE("Widgets::CreateToggle publishes snapshot and state") {
     CHECK_FALSE(*toggle_unchanged);
 }
 
+TEST_CASE("Html::Asset vectors survive PathSpace round-trip") {
+    BuildersFixture fx;
+
+    auto const base = std::string(fx.app_root.getPath()) + "/html/test/assets";
+
+    std::vector<Asset> assets;
+    Asset image{};
+    image.logical_path = "images/example.png";
+    image.mime_type = "image/png";
+    image.bytes = {0u, 17u, 34u, 0u, 255u, 128u};
+    assets.emplace_back(image);
+
+    Asset font{};
+    font.logical_path = "fonts/display.woff2";
+    font.mime_type = "font/woff2";
+    font.bytes = {1u, 3u, 3u, 7u};
+    assets.emplace_back(font);
+
+    auto inserted = fx.space.insert(base, assets);
+    REQUIRE(inserted.errors.empty());
+
+    auto read_back = fx.space.read<std::vector<Asset>>(base);
+    REQUIRE(read_back);
+    REQUIRE(read_back->size() == assets.size());
+    for (std::size_t index = 0; index < assets.size(); ++index) {
+        CHECK((*read_back)[index].logical_path == assets[index].logical_path);
+        CHECK((*read_back)[index].mime_type == assets[index].mime_type);
+        CHECK((*read_back)[index].bytes == assets[index].bytes);
+    }
+
+    auto taken = fx.space.take<std::vector<Asset>>(base);
+    REQUIRE(taken);
+    REQUIRE(taken->size() == assets.size());
+    CHECK((*taken)[0].bytes == assets[0].bytes);
+    CHECK((*taken)[1].logical_path == assets[1].logical_path);
+
+    auto missing = fx.space.read<std::vector<Asset>>(base);
+    REQUIRE_FALSE(missing);
+    CHECK(missing.error().code == SP::Error::Code::NoObjectFound);
+}
+
 TEST_CASE("Renderer::RenderHtml hydrates image assets into output") {
     BuildersFixture fx;
 
