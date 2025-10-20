@@ -1339,7 +1339,10 @@ TEST_CASE("PathSpace Multithreading - Task Execution Suite") {
         // Now try reading from a slow execution- should timeout
         auto timeout_result = space.read<int>("/slow_task", Block(100ms));
 
-        CHECK_MESSAGE(!timeout_result.has_value(), std::format("Expected timeout for slow task, result has value: {}", timeout_result.value()));
+        auto timeout_message = timeout_result.has_value()
+                                   ? std::format("Expected timeout for slow task, result has value: {}", timeout_result.value())
+                                   : std::string("Expected timeout for slow task");
+        CHECK_MESSAGE(!timeout_result.has_value(), timeout_message);
 
         if (!timeout_result.has_value()) {
             CHECK_MESSAGE(timeout_result.error().code == Error::Code::Timeout, "Expected timeout error but got: ", static_cast<int>(timeout_result.error().code));
