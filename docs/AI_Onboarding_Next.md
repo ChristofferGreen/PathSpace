@@ -69,9 +69,10 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - When you spot a gap in test coverage, either add the test immediately or log a follow-up in `docs/Plan_SceneGraph_Implementation.md` / `docs/AI_Todo.task` so the need is visible to the next maintainer.
 
 ### Latest Highlights (October 20, 2025)
-- Metal renderer coverage expanded: `PathRenderer2DMetal` now draws rounded rects, text quads, and textured images directly on the GPU, and the new ObjC++ UITest (`PathSurfaceMetal integrates with ObjC++ presenter harness`) keeps the CAMetalLayer bridge honest. Next milestone is wiring true material/shader bindings so the GPU path stays feature-parity with software.
+- Metal renderer is now material-aware: `PathRenderer2DMetal` consumes shared descriptors via `bind_material`, GPU frames stay in lock-step with software telemetry, and a new blending UITest asserts pipeline parity (`PathRenderer2DMetal honors material blending state`).
 - Paint demo ships with a `--metal` flag that selects the Metal2D backend and auto-enables uploads for developers; software remains the default for CI.
 - `./scripts/compile.sh` always builds with Metal support enabled and runs the Metal UITests unless `--disable-metal-tests` is passed. This keeps the GPU path green by default on macOS hosts.
 - HTML adapter parity tests landed, so DOM and canvas command streams stay lock-step with the renderer geometry.
+- Residency metrics are live under `diagnostics/metrics/residency/*`; next cycle should wire dashboards/alerts to those counters.
 
 Welcome aboard and thank you for keeping the PathSpace docs in sync for the next AI maintainer.
