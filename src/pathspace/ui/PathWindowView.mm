@@ -75,7 +75,25 @@ void PathWindowView::ResetMetalPresenter() {
 static auto present_metal_texture(PathSurfaceSoftware& surface,
                                   PathWindowView::PresentStats& stats,
                                   PathWindowView::PresentRequest const& request) -> bool {
-    if (!request.has_metal_texture || request.metal_texture.texture == nullptr) {
+    PathSurfaceMetal::TextureInfo texture{};
+    bool has_texture = false;
+#if PATHSPACE_UI_METAL
+    if (request.metal_surface != nullptr) {
+        texture = request.metal_surface->acquire_texture();
+        if (texture.texture != nullptr) {
+            has_texture = true;
+            stats.frame.frame_index = texture.frame_index;
+            stats.frame.revision = texture.revision;
+        }
+    }
+#endif
+    if (!has_texture && request.has_metal_texture && request.metal_texture.texture != nullptr) {
+        texture = request.metal_texture;
+        has_texture = true;
+        stats.frame.frame_index = texture.frame_index;
+        stats.frame.revision = texture.revision;
+    }
+    if (!has_texture) {
         return false;
     }
 
@@ -114,7 +132,7 @@ static auto present_metal_texture(PathSurfaceSoftware& surface,
                 error_message = "Metal command queue unavailable";
                 return;
             }
-            id<MTLTexture> source = (__bridge id<MTLTexture>)request.metal_texture.texture;
+            id<MTLTexture> source = (__bridge id<MTLTexture>)texture.texture;
             if (!source) {
                 error_message = "Metal texture unavailable";
                 return;
@@ -219,12 +237,6 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
     stats.auto_render_on_present = policy.auto_render_on_present;
     stats.vsync_aligned = policy.vsync_align;
     stats.frame = surface.latest_frame_info();
-#if defined(__APPLE__)
-    if (request.has_metal_texture) {
-        stats.frame.frame_index = request.metal_texture.frame_index;
-        stats.frame.revision = request.metal_texture.revision;
-    }
-#endif
 
     auto wait_budget = request.vsync_deadline - request.now;
     if (wait_budget < std::chrono::steady_clock::duration::zero()) {

@@ -324,6 +324,7 @@ TEST_CASE("PathWindowView presents Metal texture when uploads enabled") {
             .surface_width_px = desc.size_px.width,
             .surface_height_px = desc.size_px.height,
             .has_metal_texture = texture.texture != nullptr,
+            .metal_surface = &metal,
             .metal_texture = texture,
             .allow_iosurface_sharing = false,
         };
@@ -400,6 +401,7 @@ TEST_CASE("PathWindowView surfaces Metal presenter errors and falls back") {
             .surface_width_px = desc.size_px.width,
             .surface_height_px = desc.size_px.height,
             .has_metal_texture = texture.texture != nullptr,
+            .metal_surface = &metal,
             .metal_texture = texture,
             .allow_iosurface_sharing = false,
         };

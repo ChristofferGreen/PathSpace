@@ -2789,8 +2789,7 @@ auto Present(PathSpace& space,
     bool has_metal_texture = false;
 #if PATHSPACE_UI_METAL
     if (metal_surface) {
-        metal_texture = metal_surface->acquire_texture();
-        has_metal_texture = (metal_texture.texture != nullptr);
+        has_metal_texture = true;
     }
 #endif
 
@@ -2800,12 +2799,6 @@ auto Present(PathSpace& space,
     PathWindowView presenter;
     std::vector<std::uint8_t> framebuffer;
     std::span<std::uint8_t> framebuffer_span{};
-#if PATHSPACE_UI_METAL
-    if (metal_surface) {
-        framebuffer.resize(surface.frame_bytes(), 0);
-        framebuffer_span = std::span<std::uint8_t>{framebuffer.data(), framebuffer.size()};
-    }
-#endif
 #if !defined(__APPLE__)
     if (framebuffer.empty()) {
         framebuffer.resize(surface.frame_bytes(), 0);
@@ -2832,6 +2825,7 @@ auto Present(PathSpace& space,
         .surface_width_px = context->target_desc.size_px.width,
         .surface_height_px = context->target_desc.size_px.height,
         .has_metal_texture = has_metal_texture,
+        .metal_surface = metal_surface,
         .metal_texture = metal_texture,
         .allow_iosurface_sharing = true,
     };
@@ -2844,6 +2838,7 @@ auto Present(PathSpace& space,
         .surface_width_px = context->target_desc.size_px.width,
         .surface_height_px = context->target_desc.size_px.height,
         .has_metal_texture = has_metal_texture,
+        .metal_surface = metal_surface,
         .metal_texture = metal_texture,
     };
 #endif

@@ -39,11 +39,10 @@ struct PathWindowPresentRequest {
     int surface_width_px = 0;
     int surface_height_px = 0;
     bool has_metal_texture = false;
-#if defined(__APPLE__)
-    PathSurfaceMetal::TextureInfo metal_texture{};
-#else
-    PathSurfaceMetal::TextureInfo metal_texture{};
+#if PATHSPACE_UI_METAL
+    PathSurfaceMetal* metal_surface = nullptr;
 #endif
+    PathSurfaceMetal::TextureInfo metal_texture{};
 #if defined(__APPLE__)
     bool allow_iosurface_sharing = false;
 #endif
