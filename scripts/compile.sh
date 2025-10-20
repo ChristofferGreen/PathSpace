@@ -35,7 +35,7 @@ LOOP=0        # run tests in a loop N times (default 15 if provided without valu
 PER_TEST_TIMEOUT=""  # override seconds per test; default 60 (single), 120 (when --loop is used)
 EXTRA_ARGS=""        # extra args passed to test executable (doctest)
 DOCS=0               # generate Doxygen docs if 1
-ENABLE_METAL_TESTS=0 # opt-in Metal presenter tests
+ENABLE_METAL_TESTS=1 # Metal presenter tests run by default
 
 # ----------------------------
 # Helpers
@@ -68,7 +68,8 @@ Options:
       --per-test-timeout SECS  Override per-test timeout (default: 60; 120 when --loop is used).
       --docs                 Generate Doxygen docs into build/docs/html (requires doxygen).
       --args "..."           Extra arguments passed to the test runner (doctest)
-      --enable-metal-tests   Build with PATHSPACE_UI_METAL and run tests with PATHSPACE_ENABLE_METAL_UPLOADS=1 (requires macOS + Metal GPU).
+      --enable-metal-tests   (default) Build with PATHSPACE_UI_METAL and run Metal presenter tests.
+      --disable-metal-tests  Skip building/running the Metal presenter tests.
   -h, --help                 Show this help and exit.
 
 Sanitizers (mutually exclusive, maps to CMake options in this repo):
@@ -201,6 +202,9 @@ while [[ $# -gt 0 ]]; do
       ;;
     --enable-metal-tests)
       ENABLE_METAL_TESTS=1
+      ;;
+    --disable-metal-tests)
+      ENABLE_METAL_TESTS=0
       ;;
     -h|--help)
       print_help
