@@ -109,7 +109,7 @@ Application roots and ownership</h1>
 <li>System-owned: <span class="tt">/system/applications/&lt;app&gt;</span></li>
 <li>User-owned: <span class="tt">/users/&lt;user&gt;/system/applications/&lt;app&gt;</span></li>
 </ul>
-<p>Everything an application needs is a subtree below the app root. No cross-app sharing of surfaces or renderers. All references are app-relative (no leading slash) and must resolve within the app root. See <a class="el" href="_a_i___p_a_t_h_s_8md.html">docs/AI_PATHS.md</a> for the canonical path namespaces and layout conventions.</p>
+<p>Everything an application needs is a subtree below the app root. No cross-app sharing of surfaces or renderers. All references are app-relative (no leading slash) and must resolve within the app root. See <a class="el" href="_a_i___p_a_t_h_s_8md.html">docs/AI_Paths.md</a> for the canonical path namespaces and layout conventions.</p>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md81"></a>
 App-internal layout (standardized)</h1>
 <p>Path shorthand guide</p><ul>
@@ -547,7 +547,7 @@ Snapshot layout (builds/&lt;revision&gt;)</h3>
 </ul>
 </blockquote>
 <p>Cross-references</p><ul>
-<li>Changes to publish/adopt, snapshot schema, or DrawableBucket invariants must be reflected in <span class="tt"><a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_ARCHITECTURE.md</a></span> and associated tests</li>
+<li>Changes to publish/adopt, snapshot schema, or DrawableBucket invariants must be reflected in <span class="tt"><a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_Architecture.md</a></span> and associated tests</li>
 <li>For output paths and timings, see “Target keys (final)” and “RenderSettings v1 (final)”; keep examples and path references stable</li>
 </ul>
 <h2 class="doxsection"><a class="anchor" id="autotoc_md92"></a>
@@ -801,7 +801,7 @@ Progressive present (software, non-buffered)</h2>
 <div class="line">};</div>
 </div><!-- fragment --><p>Notes</p><ul>
 <li>Materials own shader program and textures; <span class="tt">materialId</span> selects programs and resource bindings. <span class="tt">pipelineFlags</span> selects pipeline variants and state bits.</li>
-<li>If this section changes (blend behavior, flags, or color pipeline), update examples and tests, and reflect any core behavior impacts in <span class="tt"><a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_ARCHITECTURE.md</a></span>.</li>
+<li>If this section changes (blend behavior, flags, or color pipeline), update examples and tests, and reflect any core behavior impacts in <span class="tt"><a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_Architecture.md</a></span>.</li>
 </ul>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md99"></a>
 Culling and spatial acceleration (v1)</h1>
@@ -906,7 +906,7 @@ Coordinate systems and cameras (v1)</h1>
 </ul>
 <p>Cross-references</p><ul>
 <li>See “RenderSettings v1 (final)” for camera fields and invariants; “Rendering pipeline specifics (v1)” for pass sorting and blending rules.</li>
-<li>Changes that affect coordinate systems or camera semantics should be reflected in <span class="tt"><a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_ARCHITECTURE.md</a></span>.</li>
+<li>Changes that affect coordinate systems or camera semantics should be reflected in <span class="tt"><a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_Architecture.md</a></span>.</li>
 </ul>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md101"></a>
 Input, hit testing, and focus (v1)</h1>
@@ -1580,7 +1580,7 @@ Software renderer — path tracing with tetrahedral acceleration</h1>
 <li>If adjacency is non-manifold/degenerate in a region: fall back to BVH traversal there; log once</li>
 </ul>
 <p>Cross-reference:</p><ul>
-<li>When snapshot semantics or acceleration formats evolve, reflect changes in <span class="tt"><a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_ARCHITECTURE.md</a></span> (Snapshot Builder and Rebuild Policy)</li>
+<li>When snapshot semantics or acceleration formats evolve, reflect changes in <span class="tt"><a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_Architecture.md</a></span> (Snapshot Builder and Rebuild Policy)</li>
 </ul>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md116"></a>
 Tetrahedral face adjacency</h1>
@@ -1666,13 +1666,13 @@ MVP plan</h1>
 <li>Optional renderer auto-schedule on notify; otherwise explicit trigger via surface/frame 5) Tests and docs</li>
 <li>Golden tests for snapshots and target param atomicity</li>
 <li>Concurrency tests (hammer edits while rendering)</li>
-<li>Update <span class="tt"><a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_ARCHITECTURE.md</a></span> if any core semantics change 6) Metal backend (next)</li>
+<li>Update <span class="tt"><a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_Architecture.md</a></span> if any core semantics change 6) Metal backend (next)</li>
 <li><span class="tt">PathSurfaceMetal</span> producing an offscreen <span class="tt">MTLTexture</span></li>
 <li>Presenter draws textured quad into <span class="tt">CAMetalLayer</span> drawable on the UI thread</li>
 </ul>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md118"></a>
 Gaps and Decisions (unresolved areas)</h1>
-<p>The following items are intentionally unresolved and tracked as backlog. Promote items to “Decision” when resolved and keep in sync with <span class="tt">docs/AI_TODO.task</span> and code/tests.</p>
+<p>The following items are intentionally unresolved and tracked as backlog. Promote items to “Decision” when resolved and keep in sync with <span class="tt">docs/AI_Todo.task</span> and code/tests.</p>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md119"></a>
 Decision: HTML adapter fidelity (resolved)</h1>
 <p>Summary:</p><ul>
@@ -1755,7 +1755,7 @@ Decision: HTML adapter fidelity (resolved)</h1>
 </ul>
 <p>Cross-references:</p><ul>
 <li>Update HTML/Web output section to mention tiers and selection logic.</li>
-<li>Reflect adapter behavior in <a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_ARCHITECTURE.md</a>.</li>
+<li>Reflect adapter behavior in <a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_Architecture.md</a>.</li>
 </ul>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md120"></a>
 Decision: Lighting and shadows (resolved)</h1>
@@ -1859,7 +1859,7 @@ Decision: Lighting and shadows (resolved)</h1>
 <li>Microtri density and budget control; fixed-seed determinism for per-vertex lighting; clean fallback when hardware RT is unavailable; concurrency loop=15 remains green.</li>
 </ul>
 <p>Docs and examples:</p><ul>
-<li>Add “Hybrid Microtri + RT” to <a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_ARCHITECTURE.md</a> with dataflow and buffer lifetimes; provide sample scenes showing area lights, glossy/refraction, and environment lighting.</li>
+<li>Add “Hybrid Microtri + RT” to <a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_Architecture.md</a> with dataflow and buffer lifetimes; provide sample scenes showing area lights, glossy/refraction, and environment lighting.</li>
 </ul>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md121"></a>
 Decision: Snapshot Builder (resolved)</h1>
@@ -1886,7 +1886,7 @@ Decision: Snapshot Builder (resolved)</h1>
 </ul>
 <p>Notes:</p><ul>
 <li>Renderer behavior is unchanged; it consumes the latest revision agnostic to patch vs rebuild</li>
-<li>If any core semantics change, reflect them in <span class="tt"><a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_ARCHITECTURE.md</a></span> and update tests accordingly</li>
+<li>If any core semantics change, reflect them in <span class="tt"><a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_Architecture.md</a></span> and update tests accordingly</li>
 </ul>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md122"></a>
 Decision: Direct-to-Window targets (resolved)</h1>
@@ -1939,7 +1939,7 @@ Decision: Present Policy (resolved)</h1>
 <li>Metrics: output/v1/common includes presentedRevision, presentedAgeMs, presentedMode, stale, waitMs; GPU may add skippedPresent and drawableUnavailable.</li>
 </ul>
 <p>Cross-reference:</p><ul>
-<li>Full semantics, parameters, and progressive mode details are specified in <a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_ARCHITECTURE.md</a> under:<ul>
+<li>Full semantics, parameters, and progressive mode details are specified in <a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_Architecture.md</a> under:<ul>
 <li>“UI/Rendering — Present Policy (backend-aware)”</li>
 <li>“Software Renderer — Progressive Present (non-buffered)”</li>
 </ul>
@@ -1989,7 +1989,7 @@ Decision: Text shaping, bidi, and font fallback (resolved)</h1>
 <li>Metrics: shapedRunCache hit/miss, atlas hit/miss, bake/upload latency, evictions, LCD downgrade counts.</li>
 </ul>
 <p>Cross-references:</p><ul>
-<li>Update <span class="tt"><a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_ARCHITECTURE.md</a></span> to document <span class="tt">TextShaper</span>/atlas abstractions and builder style fields (<span class="tt">font_family</span>, <span class="tt">font_size_px</span>, <span class="tt">font_features</span>, <span class="tt">lang</span>, <span class="tt">direction</span>, <span class="tt">wrap_mode</span>).</li>
+<li>Update <span class="tt"><a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_Architecture.md</a></span> to document <span class="tt">TextShaper</span>/atlas abstractions and builder style fields (<span class="tt">font_family</span>, <span class="tt">font_size_px</span>, <span class="tt">font_features</span>, <span class="tt">lang</span>, <span class="tt">direction</span>, <span class="tt">wrap_mode</span>).</li>
 <li>Keep snapshot schema stable; <span class="tt">TextGlyphs</span> payload includes atlas and <span class="tt">pxRange</span> metadata.</li>
 </ul>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md125"></a>
@@ -2043,7 +2043,7 @@ Decision: Entity Residency and Snapshot Storage Policy (resolved)</h1>
 <li>Residency decisions respect allowed/preferred and watermarks; eviction degrades gracefully (e.g., proxy textures).</li>
 </ul>
 <p>Cross-reference:</p><ul>
-<li>Update <a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_ARCHITECTURE.md</a> to reflect Entity residency keys and the proposed/resolved authoring model. Keep existing path shapes and invariants intact.</li>
+<li>Update <a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_Architecture.md</a> to reflect Entity residency keys and the proposed/resolved authoring model. Keep existing path shapes and invariants intact.</li>
 </ul>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md126"></a>
 Decision: Snapshot GC and Leases (resolved)</h1>
@@ -2463,11 +2463,11 @@ Glossary</h1>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md135"></a>
 Cross-references</h1>
 <ul>
-<li>Update <span class="tt"><a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_ARCHITECTURE.md</a></span> when changes affect core behavior (paths, NodeData, WaitMap, TaskPool, serialization). Keep examples and path references stable; if files move, update references in the same change.</li>
+<li>Update <span class="tt"><a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_Architecture.md</a></span> when changes affect core behavior (paths, NodeData, WaitMap, TaskPool, serialization). Keep examples and path references stable; if files move, update references in the same change.</li>
 </ul>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md136"></a>
 TODO — Clarifications and Follow-ups</h1>
-<p>These items clarify edge cases or finalize small inconsistencies. Resolve and reflect updates in <span class="tt"><a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_ARCHITECTURE.md</a></span>, tests, and any affected examples. (Items already reflected in the main text have been removed from this list.)</p>
+<p>These items clarify edge cases or finalize small inconsistencies. Resolve and reflect updates in <span class="tt"><a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_Architecture.md</a></span>, tests, and any affected examples. (Items already reflected in the main text have been removed from this list.)</p>
 <ul>
 <li>HTML outputs: unify keys and document Canvas JSON<ul>
 <li>Standardize the outputs to include:<ul>

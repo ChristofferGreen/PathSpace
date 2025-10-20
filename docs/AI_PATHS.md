@@ -6,7 +6,7 @@
 
 > **Context update (October 15, 2025):** Path conventions documented here assume the newly launched “Atlas” AI context; translate prior context names to the closest Atlas equivalents.
 
-This file gathers the canonical path namespaces and layout conventions referenced across the docs. Paths are grouped by domain and use placeholders in angle brackets. Absolute paths begin with “/”. App-internal paths are app-relative (no leading slash) and must resolve within the app root. Sources: see docs/AI_ARCHITECTURE.md and docs/AI_Plan_SceneGraph_Renderer.md. Keep these in sync when path conventions change.
+This file gathers the canonical path namespaces and layout conventions referenced across the docs. Paths are grouped by domain and use placeholders in angle brackets. Absolute paths begin with “/”. App-internal paths are app-relative (no leading slash) and must resolve within the app root. Sources: see docs/AI_Architecture.md and docs/Plan_SceneGraph_Renderer.md. Keep these in sync when path conventions change.
 
 Conventions:
 - Placeholders: <app>, <user>, <scene-id>, <renderer-id>, <surface-id>, <view-id>, <target-id>, <revision>, <id>, <rendererName>, <kind>, <name>
@@ -34,7 +34,7 @@ Conventions:
 
 ## 2) Application subtree layout (app-relative)
 
-The following subtrees are standardized within each application root (one of the absolute roots above). See docs/AI_Plan_SceneGraph_Renderer.md for detailed semantics and responsibilities.
+The following subtrees are standardized within each application root (one of the absolute roots above). See docs/Plan_SceneGraph_Renderer.md for detailed semantics and responsibilities.
 
 - Scenes
   - `scenes/<scene-id>/`

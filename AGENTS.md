@@ -3,7 +3,7 @@
 This guide collects the conventions and scripts used when pairing with the PathSpace maintainer. Treat it as the quick-start you consult before touching the repository.
 
 ## Quick Checklist
-- Confirm the assignment scope and skim `docs/AI_ARCHITECTURE.md` plus any relevant plan documents under `docs/`.
+- Confirm the assignment scope and skim `docs/AI_Architecture.md`, `docs/Plan_Overview.md`, plus any relevant plan documents under `docs/` (renderer, distributed PathSpace, inspector, web server).
 - Sync locally: `git fetch origin` then branch from `origin/master`.
 - Keep changes ASCII unless the file already uses Unicode.
 - Run the full test suite with the mandated loop/timeout before requesting review.
@@ -23,17 +23,17 @@ This guide collects the conventions and scripts used when pairing with the PathS
 ## Repository Map
 - `src/` — production sources.
 - `tests/`, `Testing/` — unit/functional tests managed by CTest.
-- `docs/` — architecture notes, renderer plan, path semantics; start with `docs/AI_ARCHITECTURE.md`.
+- `docs/` — architecture notes, renderer plan, path semantics; start with `docs/AI_Architecture.md`.
 - `scripts/` — automation (`create_pr.sh`, `compile.sh`, tooling helpers).
 - `examples/` — small usage demonstrations.
 
 ## Architecture Snapshot
-- **Core space** — `PathSpace` owns a trie of `Node` objects keyed by path component. Each node holds serialized values plus queued `Task` executions; insert/read/take manage the front element without global locks. Node payloads marshal through `NodeData` (contiguous byte/storage lanes with companion type metadata) using Alpaca today and migrating to C++26 serialization when available (`docs/AI_ARCHITECTURE.md`).
+- **Core space** — `PathSpace` owns a trie of `Node` objects keyed by path component. Each node holds serialized values plus queued `Task` executions; insert/read/take manage the front element without global locks. Node payloads marshal through `NodeData` (contiguous byte/storage lanes with companion type metadata) using Alpaca today and migrating to C++26 serialization when available (`docs/AI_Architecture.md`).
 - **Paths** — type-safe `ConcretePath`/`GlobPath` wrappers provide component iterators and globbing (`*`, `**`, ranges). Pattern matching is component-wise for predictable performance (`src/pathspace/path/`).
-- **Concurrency & notifications** — children are kept in a sharded concurrent map, while per-node mutexes guard payload updates. Waiters register in concrete and glob registries; notifications flow through a `NotificationSink` token so late completions drop safely during shutdown ("Wait/notify" in `docs/AI_ARCHITECTURE.md`).
-- **Executions** — inserts accept callables and scheduling metadata (`In`, `Execution`, `Block`). Tasks can execute immediately or lazily; completion can trigger reinsertions or wake waiters ("Operations" → insert/read/take in `docs/AI_ARCHITECTURE.md`).
-- **Layers & views** — `src/pathspace/layer/` hosts permission-checked views (`PathView`), path rewriting mounts (`PathAlias`), and OS/event bridges via PathIO adapters. Enable the macOS backends with `-DENABLE_PATHIO_MACOS=ON` (see `README.md` build options) and review the PathIO backend notes in `docs/AI_ARCHITECTURE.md` when touching input/presenter code; follow the renderer plan for present/publish semantics (`docs/AI_Plan_SceneGraph_Renderer.md`).
-- **Canonical namespaces** — `docs/AI_PATHS.md` defines standard system, renderer, and scene subtrees. Keep code/docs in sync when touching surface/target/path conventions.
+- **Concurrency & notifications** — children are kept in a sharded concurrent map, while per-node mutexes guard payload updates. Waiters register in concrete and glob registries; notifications flow through a `NotificationSink` token so late completions drop safely during shutdown ("Wait/notify" in `docs/AI_Architecture.md`).
+- **Executions** — inserts accept callables and scheduling metadata (`In`, `Execution`, `Block`). Tasks can execute immediately or lazily; completion can trigger reinsertions or wake waiters ("Operations" → insert/read/take in `docs/AI_Architecture.md`).
+- **Layers & views** — `src/pathspace/layer/` hosts permission-checked views (`PathView`), path rewriting mounts (`PathAlias`), and OS/event bridges via PathIO adapters. Enable the macOS backends with `-DENABLE_PATHIO_MACOS=ON` (see `README.md` build options) and review the PathIO backend notes in `docs/AI_Architecture.md` when touching input/presenter code; follow the renderer plan for present/publish semantics (`docs/Plan_SceneGraph_Renderer.md`).
+- **Canonical namespaces** — `docs/AI_Paths.md` defines standard system, renderer, and scene subtrees. Keep code/docs in sync when touching surface/target/path conventions.
 
 ## Day-to-day Flow
 1. **Understand the task** – read the relevant docs and existing code; prefer `rg` for searching.
@@ -47,7 +47,7 @@ This guide collects the conventions and scripts used when pairing with the PathS
 - Always execute the full suite after any code modification (docs-only edits are exempt).
 - Run the suite in a loop: minimum 15 iterations with timeout protection.
 - Target runtime: < 10 s per iteration; use a 20 s timeout to catch hangs.
-- Preferred helper: `./scripts/compile.sh --loop=15 --timeout=20` wraps the CTest invocation and is tuned for the WaitMap/task race scenarios described in `docs/AI_ARCHITECTURE.md`.
+- Preferred helper: `./scripts/compile.sh --loop=15 --timeout=20` wraps the CTest invocation and is tuned for the WaitMap/task race scenarios described in `docs/AI_Architecture.md`.
 - Recommended command (after configuring the `build/` tree):
   ```bash
   ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20
@@ -101,4 +101,4 @@ This guide collects the conventions and scripts used when pairing with the PathS
 - Collect logs: `./scripts/run_log.sh`.
 - Count lines (sanity check for scope): `./scripts/lines_of_code.sh`.
 
-Stay in sync with `docs/AI_ARCHITECTURE.md` and the related plan documents when touching architecture, path semantics, or rendering logic. Update both the code and documentation in the same branch whenever behaviour changes.
+Stay in sync with `docs/AI_Architecture.md` and the related plan documents when touching architecture, path semantics, or rendering logic. Update both the code and documentation in the same branch whenever behaviour changes.

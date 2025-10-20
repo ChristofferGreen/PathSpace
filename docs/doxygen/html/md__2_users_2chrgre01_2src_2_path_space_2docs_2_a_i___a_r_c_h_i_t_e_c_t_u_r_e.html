@@ -91,13 +91,13 @@ $(function(){initNavTree('md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___
   <div class="headertitle"><div class="title">AI_ARCHITECTURE </div></div>
 </div><!--header-->
 <div class="contents">
-<div class="textblock"><p>Renderer snapshot builder details have moved out of this architecture document. See <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/AI_Plan_SceneGraph_Renderer.md</a> (“Decision: Snapshot Builder”) for the authoritative policy, rebuild triggers, publish/GC protocol, and performance notes. This file focuses on PathSpace core (paths, trie storage, concurrency/wait/notify, views/alias layers, and OS I/O).</p>
+<div class="textblock"><p>Renderer snapshot builder details have moved out of this architecture document. See <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a> (“Decision: Snapshot Builder”) for the authoritative policy, rebuild triggers, publish/GC protocol, and performance notes. This file focuses on PathSpace core (paths, trie storage, concurrency/wait/notify, views/alias layers, and OS I/O).</p>
 <h2 class="doxsection"><a class="anchor" id="autotoc_md21"></a>
 UI/Rendering — cross-reference</h2>
-<p>Present policy (backend-aware) and the software progressive present are documented in <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/AI_Plan_SceneGraph_Renderer.md</a>. This architecture document focuses on PathSpace core; rendering/presenter details live in the plan. Also see “View keys (final)” and “Target keys (final)” in <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/AI_Plan_SceneGraph_Renderer.md</a> for the authoritative schemas, and note that RenderSettings are a single-path atomic whole-object value; ParamUpdateMode::Queue refers to client-side coalescing before one atomic write (no server-side queue in v1).</p>
+<p>Present policy (backend-aware) and the software progressive present are documented in <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a>. This architecture document focuses on PathSpace core; rendering/presenter details live in the plan. Also see “View keys (final)” and “Target keys (final)” in <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a> for the authoritative schemas, and note that RenderSettings are a single-path atomic whole-object value; ParamUpdateMode::Queue refers to client-side coalescing before one atomic write (no server-side queue in v1).</p>
 <p>See also:</p><ul>
-<li><span class="tt"><a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/AI_Plan_SceneGraph_Renderer.md</a></span> for the broader rendering plan and target I/O layout. If snapshot semantics change, update both documents in the same PR per <span class="tt">.rules</span>.<ul>
-<li><span class="tt"><a class="el" href="_a_i___p_a_t_h_s_8md.html">docs/AI_PATHS.md</a></span> for the canonical path namespaces and layout conventions; update it alongside changes to path usage and target I/O layout.</li>
+<li><span class="tt"><a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a></span> for the broader rendering plan and target I/O layout. If snapshot semantics change, update both documents in the same PR per <span class="tt">.rules</span>.<ul>
+<li><span class="tt"><a class="el" href="_a_i___p_a_t_h_s_8md.html">docs/AI_Paths.md</a></span> for the canonical path namespaces and layout conventions; update it alongside changes to path usage and target I/O layout.</li>
 </ul>
 </li>
 </ul>
@@ -440,7 +440,7 @@ Operating System</h2>
 <ul>
 <li>Keep <span class="tt">PathIO</span> base and current providers (mouse, keyboard, pointer mixer, stdout, discovery, gamepad).</li>
 <li>Event providers deliver typed events via <span class="tt">out()</span>/<span class="tt">take()</span>; blocking semantics are controlled by <span class="tt">Out{doBlock, timeout}</span> and pop-vs-peek by <span class="tt">Out.doPop</span>.</li>
-<li>Canonical device namespace (aligned with SceneGraph plan; see <span class="tt"><a class="el" href="_a_i___p_a_t_h_s_8md.html">docs/AI_PATHS.md</a></span>):<ul>
+<li>Canonical device namespace (aligned with SceneGraph plan; see <span class="tt"><a class="el" href="_a_i___p_a_t_h_s_8md.html">docs/AI_Paths.md</a></span>):<ul>
 <li>Inputs:<ul>
 <li><span class="tt">/system/devices/in/pointer/default/events</span></li>
 <li><span class="tt">/system/devices/in/text/default/events</span></li>

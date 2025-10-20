@@ -2,6 +2,82 @@
 // Handoff note (October 19, 2025): This backlog is frozen pending the new assistant’s triage. Review each task with docs/AI_Onboarding_Next.md before starting work.
 
 task {
+  name: "HTML Asset Hydration Bug [BLOCKER]"
+  description: "Resolved October 20, 2025 by introducing a dedicated Html::Asset codec (include/pathspace/ui/HtmlSerialization.hpp) so PathSpace round-trips asset vectors without loss."
+  status: completed
+  priority: P0
+
+  acceptance_criteria: [
+    "PathSpace core fix lands so `PathSpace::read<std::vector<Html::Asset>>` returns the same data that was inserted.",
+    "`Renderer::RenderHtml hydrates image assets into output` passes without UI-side workarounds; asset bytes persist under `output/v1/html/assets`.",
+    "Docs (AI_Debugging_Playbook, AI_Onboarding_Next) updated to reflect the resolution and any new knobs/tests."
+  ]
+
+  steps: [
+    "Verified with PathSpaceUITests (loop=15) and the new Html::Asset regression on October 20, 2025.",
+    "Legacy Alpaca fallback remains for backwards compatibility; schedule removal once historical data migrates."
+  ]
+}
+
+task {
+  name: "Distributed PathSpace Mounts [FEATURE]"
+  description: "Implement remote mount support so PathSpace instances can mount/export subtrees over the network."
+  status: planned
+  priority: P1
+
+  acceptance_criteria: [
+    "Mount manager can attach remote PathSpace subtree under /remote/<alias>/... with read/write parity",
+    "Wait/notify and diagnostics propagate across the network",
+    "Connections use TLS with authenticated clients and enforce per-subtree ACLs"
+  ]
+
+  steps: [
+    "Finalize protocol schema and security requirements (Plan_Distributed_PathSpace.md Phase 0)",
+    "Build Asio-based secure transport layer and server export + client mount prototype (read/wait)",
+    "Extend to full operations, metrics, and error handling",
+    "Document usage and update web server plan dependency"
+  ]
+}
+
+task {
+  name: "Web Server Google Sign-In [FEATURE]"
+  description: "Add Google OAuth2 (Authorization Code + PKCE) support to the web server authentication flow."
+  status: planned
+  priority: P1
+
+  acceptance_criteria: [
+    "Users can authenticate via Google Sign-In and receive standard PathSpace sessions",
+    "Google ID tokens verified (signature, audience) and mapped to PathSpace users",
+    "Failure cases (unregistered user, expired token) handled gracefully with audit logs"
+  ]
+
+  steps: [
+    "Register application in Google Cloud Console; document redirect URIs and config fields",
+    "Implement OAuth2 PKCE flow in web server (login redirect, callback handler, session issuance)",
+    "Add automated tests mocking Google endpoints; update documentation and debugging playbook"
+  ]
+}
+
+task {
+  name: "JSON Serialization Support [FEATURE]"
+  description: "Export PathSpace subtrees to JSON for REST APIs, debugging, and remote inspection."
+  status: planned
+  priority: P1
+
+  acceptance_criteria: [
+    "Expose an API to serialize a subtree (value + children) into JSON with configurable depth/filters",
+    "Integrate serialization into web server /api/path responses and SSE payloads",
+    "Provide CLI tooling or helper to dump a PathSpace subtree to JSON for debugging"
+  ]
+
+  steps: [
+    "Design a JSON schema for PathSpace nodes (values, metadata, children, diagnostics)",
+    "Implement serializer leveraging NodeData codecs; ensure performance and accurate type representation",
+    "Update Plan_WebServer_Adapter.md and docs to reference JSON output, covering debugging workflows"
+  ]
+}
+
+task {
   name: "Widget Slider & List Builders [FEATURE]"
   description: "Extend the widget toolkit with slider and list builders that publish canonical scenes and metadata alongside the existing button/toggle support."
   status: planned
@@ -73,7 +149,7 @@ task {
   steps: [
     "Attach widget scenes to a software renderer target and present via PathWindowView.",
     "Add command-line flag or env toggle to skip the window when running in headless/test contexts.",
-    "Update docs/SceneGraphImplementationPlan.md and widgets_example comments with run instructions and follow-ups."
+    "Update docs/Plan_SceneGraph_Implementation.md and widgets_example comments with run instructions and follow-ups."
   ]
 }
 
@@ -86,7 +162,7 @@ task {
   acceptance_criteria: [
     "PathSurfaceSoftware allocates/owns an IOSurface that the renderer writes into directly; no std::vector memcpy in copy_buffered_frame.",
     "Presenter binds the IOSurface (or texture alias) without copying, and the paint_example runs fullscreen without regressions.",
-    "Docs updated (AI_Plan_SceneGraph_Renderer.md, AI_ARCHITECTURE.md) to reflect the zero-copy pipeline; tests cover the new path."
+    "Docs updated (Plan_SceneGraph_Renderer.md, AI_Architecture.md) to reflect the zero-copy pipeline; tests cover the new path."
   ]
 
   steps: [
@@ -122,7 +198,7 @@ task {
     priority: P1
     acceptance_criteria: [
       "Benchmark harness reports per-phase timings for 4K_full, 4K_incremental, and sub-2K cases.",
-      "Results summarized in docs/SceneGraphImplementationPlan.md with bottleneck callouts."
+      "Results summarized in docs/Plan_SceneGraph_Implementation.md with bottleneck callouts."
     ]
     steps: [
       "Instrument damage diff and encode loops with timers in benchmark build.",
@@ -142,7 +218,7 @@ task {
     "Dirty-hint bucketing or adaptive tile sizing keeps copied pixel counts proportional to brush area, not full-surface area.",
     "paint_example maintains ≥75 FPS at 2560×1600 and ≥70 FPS at 3840×2160 on reference hardware, with PATHSPACE_TRACE_DAMAGE logs confirming bounded damage regions.",
     "Encode/raster pass is parallelised across dirty tiles; benchmark captures show full-repaint FPS on the reference Mac Studio more than doubles vs the current single-threaded baseline.",
-    "Docs updated (SceneGraphImplementationPlan.md, AI_Plan_SceneGraph_Renderer.md, DebuggingPlaybook.md) with the new algorithm, metrics flag guidance, and measured results."
+    "Docs updated (Plan_SceneGraph_Implementation.md, Plan_SceneGraph_Renderer.md, AI_Debugging_Playbook.md) with the new algorithm, metrics flag guidance, and measured results."
   ]
 
   steps: [
@@ -167,7 +243,7 @@ task {
 
   steps: [
     "Investigate lightweight texture compositing or stroke decimation strategies for the demo.",
-    "Measure performance vs. current approach and capture findings in docs/SceneGraphImplementationPlan.md.",
+    "Measure performance vs. current approach and capture findings in docs/Plan_SceneGraph_Implementation.md.",
     "Decide whether to upstream as default or leave as optional mode."
   ]
 }
@@ -231,7 +307,7 @@ task {
     status: planned
     priority: P1
     acceptance_criteria: [
-      "AI_ARCHITECTURE.md backpressure section documents queue growth, behavior, and mitigation.",
+      "AI_Architecture.md backpressure section documents queue growth, behavior, and mitigation.",
       "Pointers to NodeData queues, task queues, and limits; trade-offs explained."
     ]
   }
@@ -592,20 +668,20 @@ task {
   priority: P1
 
   acceptance_criteria: [
-    "AI_ARCHITECTURE.md includes a short 'AI pull request workflow' section with concrete git commands.",
+    "AI_Architecture.md includes a short 'AI pull request workflow' section with concrete git commands.",
     "Instructions cover: branching from origin/master, keeping the branch rebased, creating a clean branch and cherry-picking if started from an old topic branch, and using scripts/create_pr.sh.",
     "Guidance includes how to skip heavy local hooks (SKIP_LOOP_TESTS/SKIP_EXAMPLE) and how to handle non-fast-forward pushes."
   ]
 
   steps: [
-    "Add 'AI pull request workflow' section to docs/AI_ARCHITECTURE.md with exact commands.",
+    "Add 'AI pull request workflow' section to docs/AI_Architecture.md with exact commands.",
     "Reference scripts/create_pr.sh and examples for typical flows.",
     "Call out how to recover from starting work on an old branch using cherry-pick onto a fresh branch from origin/master.",
     "Note env toggles for local hooks (SKIP_LOOP_TESTS=1, SKIP_EXAMPLE=1) and when to use them."
   ]
 
   links: [
-    "docs/AI_ARCHITECTURE.md"
+    "docs/AI_Architecture.md"
   ]
 
   task {
@@ -699,7 +775,7 @@ task {
   acceptance_criteria: [
     "PathWindowView (and supporting UI library code) owns the CAMetalLayer drawable acquisition, Metal/IOSurface present path, and event-loop integration currently implemented in examples/macos/WindowEventPump.mm.",
     "examples/macos/* no longer compile any platform-specific presenter code; they reuse the shared UI bridge.",
-    "Docs updated (SceneGraphImplementationPlan.md, AI_ARCHITECTURE.md) to reference the shared presenter instead of the example harness."
+    "Docs updated (Plan_SceneGraph_Implementation.md, AI_Architecture.md) to reference the shared presenter instead of the example harness."
   ]
 
   steps: [
@@ -810,8 +886,44 @@ task {
   status: planned
   priority: P1
   acceptance_criteria: [
-    "docs/AI_ARCHITECTURE.md#html-adapter-modes describes adapter_mode values, shared command stream, and downgrade rules.",
+    "docs/AI_Architecture.md#html-adapter-modes describes adapter_mode values, shared command stream, and downgrade rules.",
     "Manifest schema example covers runtime module, capability flags, dom_overlays, and schema_version handling.",
-    "docs/AI_Plan_SceneGraph_Renderer.md references stay aligned when adapter milestones land."
+    "docs/Plan_SceneGraph_Renderer.md references stay aligned when adapter milestones land."
+  ]
+}
+task {
+  name: "Adopt std::serialization when available [TECHDEBT]"
+  description: "Track the standard C++ serialization facility and plan migration away from Alpaca/manual serializers once compilers ship stable support."
+  status: planned
+  priority: P3
+
+  acceptance_criteria: [
+    "Evaluate compiler support for std::serialization (Networking/Serialization TS or subsequent standard)",
+    "Prototype migrating NodeData serialization to the standard facility without regressing performance",
+    "Document migration plan and compatibility strategy for older compilers"
+  ]
+
+  steps: [
+    "Monitor WG21 progress; update this task when serialization ships in mainstream toolchains",
+    "Draft migration checklist (feature flags, fallback to Alpaca)",
+    "Run benchmarks comparing standard serialization vs current implementation"
+  ]
+}
+task {
+  name: "PathSpace Symlinks Support [FEATURE]"
+  description: "Introduce symlink-like aliases so nodes can appear under multiple paths, enabling observability mirrors and flexible mounts."
+  status: planned
+  priority: P3
+
+  acceptance_criteria: [
+    "Design and document symlink semantics (creation, resolution, loop detection)",
+    "Implement symlink storage/resolution in PathSpace with capability checks",
+    "Demonstrate mirroring of diagnostics paths via symlinks (used by distributed mounts/inspector)"
+  ]
+
+  steps: [
+    "Draft symlink design doc covering lifecycle and security",
+    "Prototype symlink nodes and resolver in PathSpace",
+    "Integrate with distributed mount diagnostics once stable"
   ]
 }

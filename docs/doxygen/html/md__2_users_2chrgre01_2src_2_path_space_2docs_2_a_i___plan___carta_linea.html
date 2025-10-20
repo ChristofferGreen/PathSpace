@@ -141,7 +141,7 @@ Core model (MVP)</h1>
 Foundations: PathSpace storage and SceneGraph UI</h1>
 <p>PathSpace provides the storage substrate and path-based API used by Carta Linea. Storing indices and operations as paths makes the model scriptable, testable, and safe for multithreaded producers/consumers via write-then-rename semantics used across the project. Because storage is path-addressable, replication across processes or machines can be provided by underlying PathSpace mechanisms without changing Carta Linea’s data model or APIs.</p>
 <p>Cards, Lifestream, and Filesystem are presented using the SceneGraph and Renderer. A card is a SceneGraph application/scene bound to an object id (or a stack) and reading from <span class="tt">index/builds/&lt;revision&gt;/*</span> selected via <span class="tt">index/current_revision</span>; the exact equivalence of “task” and “application” is intentionally flexible and may vary per app.</p>
-<p>See <a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_ARCHITECTURE.md</a> and <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/AI_Plan_SceneGraph_Renderer.md</a> for details. Scenes operate on app-relative paths inside the Carta app root and consume derived assets published under <span class="tt">index/builds/&lt;revision&gt;/...</span> via <span class="tt">index/current_revision</span>; they should not traverse arbitrary OS paths during rendering.</p>
+<p>See <a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_Architecture.md</a> and <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a> for details. Scenes operate on app-relative paths inside the Carta app root and consume derived assets published under <span class="tt">index/builds/&lt;revision&gt;/...</span> via <span class="tt">index/current_revision</span>; they should not traverse arbitrary OS paths during rendering.</p>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md66"></a>
 Card forms: typed vs freeform (SceneGraph subtrees)</h1>
 <ul>
@@ -160,7 +160,7 @@ Card forms: typed vs freeform (SceneGraph subtrees)</h1>
 </ul>
 <p>Path layout (under Carta app root):</p><ul>
 <li><span class="tt">scenes/card_forms/&lt;form-id&gt;/</span><ul>
-<li><span class="tt">src/...</span>, <span class="tt">builds/&lt;revision&gt;/...</span>, <span class="tt">current_revision</span> (see <a class="el" href="_a_i___p_a_t_h_s_8md.html">docs/AI_PATHS.md</a>)</li>
+<li><span class="tt">src/...</span>, <span class="tt">builds/&lt;revision&gt;/...</span>, <span class="tt">current_revision</span> (see <a class="el" href="_a_i___p_a_t_h_s_8md.html">docs/AI_Paths.md</a>)</li>
 </ul>
 </li>
 <li><span class="tt">index/forms/selectors/</span><ul>
@@ -173,7 +173,7 @@ Card forms: typed vs freeform (SceneGraph subtrees)</h1>
 <p>SceneGraph contract (v1):</p><ul>
 <li>Inputs: object id; card scene reads <span class="tt">index/builds/&lt;revision&gt;/objects/&lt;id&gt;/*</span> and uses derived assets under <span class="tt">index/builds/&lt;revision&gt;/objects/&lt;id&gt;/derived/*</span>. Scenes must read only app-relative paths under the Carta app root and must not open arbitrary filesystem paths at render time.</li>
 <li>Standard slots: header, body, footer. Typed forms fill these consistently; freeform fills minimally.</li>
-<li>Output: drawable subtree authored under the form’s scene; rendering/publishing follows the snapshot rules in <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/AI_Plan_SceneGraph_Renderer.md</a>.</li>
+<li>Output: drawable subtree authored under the form’s scene; rendering/publishing follows the snapshot rules in <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a>.</li>
 </ul>
 <p>Examples (non-normative):</p><ul>
 <li>email: header(from, subject, time), body preview, actions (reply/archive).</li>
@@ -229,7 +229,7 @@ Decks (applications and explicit)</h1>
 </ul>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md68"></a>
 Path layout</h1>
-<p>System-owned and user-owned application roots (see <a class="el" href="_a_i___p_a_t_h_s_8md.html">docs/AI_PATHS.md</a>):</p><ul>
+<p>System-owned and user-owned application roots (see <a class="el" href="_a_i___p_a_t_h_s_8md.html">docs/AI_Paths.md</a>):</p><ul>
 <li><span class="tt">/system/applications/&lt;app&gt;</span></li>
 <li><span class="tt">/users/&lt;user&gt;/system/applications/&lt;app&gt;</span></li>
 </ul>
@@ -363,7 +363,7 @@ Integration</h1>
 <li>Apps can write <span class="tt">.carta/meta.json</span> with stable tags or display hints.</li>
 <li>If desired, apps can manage <span class="tt">.carta/id</span> on copy/duplicate workflows.</li>
 </ul>
-<p>UI surfaces (built within the existing rendering system; see <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/AI_Plan_SceneGraph_Renderer.md</a>):</p><ul>
+<p>UI surfaces (built within the existing rendering system; see <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a>):</p><ul>
 <li><span class="tt">scenes/cards</span> — renders <span class="tt">index/builds/&lt;revision&gt;/cards/*</span> selected via <span class="tt">index/current_revision</span> with stacking and pin order.</li>
 <li><span class="tt">scenes/deck</span> — renders <span class="tt">index/builds/&lt;revision&gt;/decks/&lt;deck-id&gt;/cards/*</span> selected via <span class="tt">index/current_revision</span> as a deck (application or explicit) and composes child card forms.</li>
 <li><span class="tt">scenes/lifestream</span> — renders <span class="tt">index/builds/&lt;revision&gt;/stream/*</span> selected via <span class="tt">index/current_revision</span> with date buckets.</li>
@@ -424,8 +424,8 @@ Open questions</h1>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md77"></a>
 Cross-references</h1>
 <ul>
-<li>See <a class="el" href="_a_i___p_a_t_h_s_8md.html">docs/AI_PATHS.md</a> for canonical path conventions and app roots.</li>
-<li>See <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/AI_Plan_SceneGraph_Renderer.md</a> for scene/surface organization; Carta views should adopt the same atomic publication and snapshot patterns. </li>
+<li>See <a class="el" href="_a_i___p_a_t_h_s_8md.html">docs/AI_Paths.md</a> for canonical path conventions and app roots.</li>
+<li>See <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a> for scene/surface organization; Carta views should adopt the same atomic publication and snapshot patterns. </li>
 </ul>
 </div></div><!-- contents -->
 </div><!-- PageDoc -->

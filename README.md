@@ -11,17 +11,21 @@ PathSpace is a C++ library inspired by tuplespaces (e.g., Linda) and reactive/da
 - Thread-safe from the ground up
 
 Links:
-- docs/AI_ARCHITECTURE.md (design and internals)
+- docs/AI_Architecture.md (design and internals)
+- docs/AI_Paths.md (canonical namespace/layout conventions)
+- docs/Plan_Overview.md (index of active plan documents and priorities)
+- docs/Plan_Distributed_PathSpace.md (distributed mounting/network plan)
+- docs/Plan_PathSpace_Inspector.md (live PathSpace inspector roadmap)
 - examples/devices_example.cpp (experimental device IO example)
 - examples/paint_example.cpp (minimal software paint demo; currently macOS-only)
 - build/docs/html/index.html (Doxygen API Reference)
 
 ## Architecture at a Glance
-- **Trie-backed space** — `PathSpace` stores data in a concurrent trie of `Node` objects. Each node owns serialized `NodeData` payloads plus queued `Task` executions; inserts append, reads copy, and takes pop without global locks. See “Internal Data” in `docs/AI_ARCHITECTURE.md`.
+- **Trie-backed space** — `PathSpace` stores data in a concurrent trie of `Node` objects. Each node owns serialized `NodeData` payloads plus queued `Task` executions; inserts append, reads copy, and takes pop without global locks. See “Internal Data” in `docs/AI_Architecture.md`.
 - **Paths & globbing** — Strongly-typed `ConcretePath`/`GlobPath` wrappers provide component iterators, pattern matching (`*`, `**`, ranges), and validation (`src/pathspace/path/`).
 - **Wait/notify** — Blocking reads register waiters in concrete/glob registries and wake via a `NotificationSink` token; timeouts surface as `Error::Timeout` (`Wait/notify` + `Blocking` in the architecture doc).
-- **Layers & PathIO** — Permission-checked views (`PathView`), alias mounts (`PathAlias`), and OS/event bridges live in `src/pathspace/layer/`. Enable macOS backends with `-DENABLE_PATHIO_MACOS=ON` and review the PathIO guidance near the end of `docs/AI_ARCHITECTURE.md`.
-- **Canonical namespaces** — `docs/AI_PATHS.md` defines system/app/render targets; renderer and presenter plans live in `docs/AI_Plan_SceneGraph_Renderer.md`.
+- **Layers & PathIO** — Permission-checked views (`PathView`), alias mounts (`PathAlias`), and OS/event bridges live in `src/pathspace/layer/`. Enable macOS backends with `-DENABLE_PATHIO_MACOS=ON` and review the PathIO guidance near the end of `docs/AI_Architecture.md`.
+- **Canonical namespaces** — `docs/AI_Paths.md` defines system/app/render targets; renderer and presenter plans live in `docs/Plan_SceneGraph_Renderer.md`.
 
 ## Quick start
 
@@ -42,7 +46,7 @@ cmake --build build -j
 ```bash
 ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20
 ```
-or use the helper that wraps the loop/timeout policy from `docs/AI_ARCHITECTURE.md`:
+or use the helper that wraps the loop/timeout policy from `docs/AI_Architecture.md`:
 ```bash
 ./scripts/compile.sh --loop=15 --timeout=20
 ```
@@ -61,7 +65,7 @@ Build options:
 - ENABLE_PATHIO_MACOS=ON|OFF (compile-time defines for experimental macOS PathIO)
 - BUILD_PATHSPACE_EXAMPLES=ON|OFF
 
-Tip: Enable sanitizers when debugging concurrency/path issues, and pair `ENABLE_PATHIO_MACOS=ON` with the PathIO section in `docs/AI_ARCHITECTURE.md` if you need native device backends.
+Tip: Enable sanitizers when debugging concurrency/path issues, and pair `ENABLE_PATHIO_MACOS=ON` with the PathIO section in `docs/AI_Architecture.md` if you need native device backends.
 
 Scripts:
 - ./scripts/compile.sh
@@ -279,7 +283,7 @@ Tip: For high-throughput patterns, write with Immediate and read<FutureAny> to c
 
 ## Experimental IO providers (PathIO)
 
-The repository includes experimental providers under `src/pathspace/layer/io` and examples in `examples/devices_example.cpp` and `examples/paint_example.cpp`. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a `PathSpace` tree and serve typed event streams using the canonical `/system/devices/in/*` namespace; see `docs/AI_Plan_SceneGraph_Renderer.md` for app/device path conventions. The paint example combines those providers with the software renderer to offer a minimal mouse-driven canvas.
+The repository includes experimental providers under `src/pathspace/layer/io` and examples in `examples/devices_example.cpp` and `examples/paint_example.cpp`. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a `PathSpace` tree and serve typed event streams using the canonical `/system/devices/in/*` namespace; see `docs/Plan_SceneGraph_Renderer.md` for app/device path conventions. The paint example combines those providers with the software renderer to offer a minimal mouse-driven canvas.
 
 Sketch:
 ```cpp
@@ -346,6 +350,6 @@ See LICENSE for details.
 
 ## Contributing
 
-- Keep docs and code consistent; if you change core behavior or APIs (paths, NodeData, WaitMap, TaskPool, serialization), update docs/AI_ARCHITECTURE.md
+- Keep docs and code consistent; if you change core behavior or APIs (paths, NodeData, WaitMap, TaskPool, serialization), update docs/AI_Architecture.md
 - Run tests: `./scripts/compile.sh && ctest --test-dir build -j`
 - PRs should include a short “Purpose” and an “AI Change Log” when applicable

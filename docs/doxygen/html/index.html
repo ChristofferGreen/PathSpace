@@ -102,18 +102,18 @@ $(function(){initNavTree('index.html','',''); });
 <li>Thread-safe from the ground up</li>
 </ul>
 <p>Links:</p><ul>
-<li>docs/AI_ARCHITECTURE.md (design and internals)</li>
+<li>docs/AI_Architecture.md (design and internals)</li>
 <li>examples/devices_example.cpp (experimental device IO example)</li>
 <li>build/docs/html/index.html (Doxygen API Reference)</li>
 </ul>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md8"></a>
 Architecture at a Glance</h1>
 <ul>
-<li><b>Trie-backed space</b> — <span class="tt">PathSpace</span> stores data in a concurrent trie of <span class="tt">Node</span> objects. Each node owns serialized <span class="tt">NodeData</span> payloads plus queued <span class="tt">Task</span> executions; inserts append, reads copy, and takes pop without global locks. See “Internal Data” in <span class="tt">docs/AI_ARCHITECTURE.md</span>.</li>
+<li><b>Trie-backed space</b> — <span class="tt">PathSpace</span> stores data in a concurrent trie of <span class="tt">Node</span> objects. Each node owns serialized <span class="tt">NodeData</span> payloads plus queued <span class="tt">Task</span> executions; inserts append, reads copy, and takes pop without global locks. See “Internal Data” in <span class="tt">docs/AI_Architecture.md</span>.</li>
 <li><b>Paths &amp; globbing</b> — Strongly-typed <span class="tt">ConcretePath</span>/<span class="tt">GlobPath</span> wrappers provide component iterators, pattern matching (<span class="tt">*</span>, <span class="tt">**</span>, ranges), and validation (<span class="tt">src/pathspace/path/</span>).</li>
 <li><b>Wait/notify</b> — Blocking reads register waiters in concrete/glob registries and wake via a <span class="tt">NotificationSink</span> token; timeouts surface as <span class="tt">Error::Timeout</span> (<span class="tt">Wait/notify</span> + <span class="tt">Blocking</span> in the architecture doc).</li>
-<li><b>Layers &amp; PathIO</b> — Permission-checked views (<span class="tt">PathView</span>), alias mounts (<span class="tt">PathAlias</span>), and OS/event bridges live in <span class="tt">src/pathspace/layer/</span>. Enable macOS backends with <span class="tt">-DENABLE_PATHIO_MACOS=ON</span> and review the PathIO guidance near the end of <span class="tt">docs/AI_ARCHITECTURE.md</span>.</li>
-<li><b>Canonical namespaces</b> — <span class="tt">docs/AI_PATHS.md</span> defines system/app/render targets; renderer and presenter plans live in <span class="tt">docs/AI_Plan_SceneGraph_Renderer.md</span>.</li>
+<li><b>Layers &amp; PathIO</b> — Permission-checked views (<span class="tt">PathView</span>), alias mounts (<span class="tt">PathAlias</span>), and OS/event bridges live in <span class="tt">src/pathspace/layer/</span>. Enable macOS backends with <span class="tt">-DENABLE_PATHIO_MACOS=ON</span> and review the PathIO guidance near the end of <span class="tt">docs/AI_Architecture.md</span>.</li>
+<li><b>Canonical namespaces</b> — <span class="tt">docs/AI_Paths.md</span> defines system/app/render targets; renderer and presenter plans live in <span class="tt">docs/Plan_SceneGraph_Renderer.md</span>.</li>
 </ul>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md9"></a>
 Quick start</h1>
@@ -127,7 +127,7 @@ Quick start</h1>
 <div class="line">cmake -S . -B build -DCMAKE_BUILD_TYPE=Release</div>
 <div class="line">cmake --build build -j</div>
 </div><!-- fragment --><p>3) Run tests (recommended) </p><div class="fragment"><div class="line">ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20</div>
-</div><!-- fragment --><p> or use the helper that wraps the loop/timeout policy from <span class="tt">docs/AI_ARCHITECTURE.md</span>: </p><div class="fragment"><div class="line">./scripts/compile.sh --loop=15 --timeout=20</div>
+</div><!-- fragment --><p> or use the helper that wraps the loop/timeout policy from <span class="tt">docs/AI_Architecture.md</span>: </p><div class="fragment"><div class="line">./scripts/compile.sh --loop=15 --timeout=20</div>
 </div><!-- fragment --><p>4) Use in your project</p><ul>
 <li>Link against the <span class="tt">PathSpace</span> target (installed or via add_subdirectory)</li>
 <li>Include headers from <span class="tt">src/pathspace</span>: <div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="_path_space_8hpp.html">pathspace/PathSpace.hpp</a>&gt;</span></div>
@@ -141,7 +141,7 @@ Quick start</h1>
 <li>ENABLE_PATHIO_MACOS=ON|OFF (compile-time defines for experimental macOS PathIO)</li>
 <li>BUILD_PATHSPACE_EXAMPLES=ON|OFF</li>
 </ul>
-<p>Tip: Enable sanitizers when debugging concurrency/path issues, and pair <span class="tt">ENABLE_PATHIO_MACOS=ON</span> with the PathIO section in <span class="tt">docs/AI_ARCHITECTURE.md</span> if you need native device backends.</p>
+<p>Tip: Enable sanitizers when debugging concurrency/path issues, and pair <span class="tt">ENABLE_PATHIO_MACOS=ON</span> with the PathIO section in <span class="tt">docs/AI_Architecture.md</span> if you need native device backends.</p>
 <p>Scripts:</p><ul>
 <li>./scripts/compile.sh</li>
 <li>./scripts/update_compile_commands.sh (keeps compile_commands.json in repo root)</li>
@@ -344,7 +344,7 @@ Threading model</h1>
 <p>Tip: For high-throughput patterns, write with Immediate and read&lt;FutureAny&gt; to coordinate downstream consumers.</p>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md16"></a>
 Experimental IO providers (PathIO)</h1>
-<p>The repository includes experimental providers under <span class="tt">src/pathspace/layer/io</span> and an example in <span class="tt">examples/devices_example.cpp</span>. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a <span class="tt">PathSpace</span> tree and serve typed event streams using the canonical <span class="tt">/system/devices/in/*</span> namespace; see <span class="tt">docs/AI_Plan_SceneGraph_Renderer.md</span> for app/device path conventions.</p>
+<p>The repository includes experimental providers under <span class="tt">src/pathspace/layer/io</span> and an example in <span class="tt">examples/devices_example.cpp</span>. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a <span class="tt">PathSpace</span> tree and serve typed event streams using the canonical <span class="tt">/system/devices/in/*</span> namespace; see <span class="tt">docs/Plan_SceneGraph_Renderer.md</span> for app/device path conventions.</p>
 <p>Sketch: </p><div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="_path_space_8hpp.html">pathspace/PathSpace.hpp</a>&gt;</span></div>
 <div class="line"><span class="preprocessor">#include &lt;<a class="code" href="_path_i_o_mouse_8hpp.html">pathspace/layer/io/PathIOMouse.hpp</a>&gt;</span></div>
 <div class="line"><span class="preprocessor">#include &lt;<a class="code" href="_path_i_o_keyboard_8hpp.html">pathspace/layer/io/PathIOKeyboard.hpp</a>&gt;</span></div>
@@ -405,7 +405,7 @@ License</h1>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md20"></a>
 Contributing</h1>
 <ul>
-<li>Keep docs and code consistent; if you change core behavior or APIs (paths, NodeData, WaitMap, TaskPool, serialization), update docs/AI_ARCHITECTURE.md</li>
+<li>Keep docs and code consistent; if you change core behavior or APIs (paths, NodeData, WaitMap, TaskPool, serialization), update docs/AI_Architecture.md</li>
 <li>Run tests: <span class="tt">./scripts/compile.sh &amp;&amp; ctest --test-dir build -j</span></li>
 <li>PRs should include a short “Purpose” and an “AI Change Log” when applicable </li>
 </ul>

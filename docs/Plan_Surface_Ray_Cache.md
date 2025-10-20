@@ -271,4 +271,4 @@ Flow:
 
 ## Future Work: PrimeScript
 
-Longer-term we may adopt **PrimeScript**, a unified language that can emit C++, GLSL, and VM bytecode for both gameplay scripting and shading. See `docs/PrimeScriptPlan.md` for early thoughts. This sits beyond the current roadmap (C API → PSL) but remains a target for consolidating authoring workflows.
+Longer-term we may adopt **PrimeScript**, a unified language that can emit C++, GLSL, and VM bytecode for both gameplay scripting and shading. See `docs/Plan_PrimeScript.md` for early thoughts. This sits beyond the current roadmap (C API → PSL) but remains a target for consolidating authoring workflows.
