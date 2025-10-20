@@ -29,6 +29,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -2005,6 +2006,64 @@ auto RenderHtml(PathSpace& space,
     }
 
     auto htmlBase = base + "/output/v1/html";
+
+    // Track existing asset manifest to clear stale blobs/metadata.
+    std::vector<std::string> previous_asset_manifest;
+    auto manifestPath = htmlBase + "/assets/manifest";
+    if (auto existingManifest = read_optional<std::vector<std::string>>(space, manifestPath); !existingManifest) {
+        return report_error(existingManifest.error(), "read html asset manifest");
+    } else if (existingManifest->has_value()) {
+        previous_asset_manifest = std::move(**existingManifest);
+    }
+
+    std::vector<std::string> current_manifest;
+    current_manifest.reserve(emitted->assets.size());
+    for (auto const& asset : emitted->assets) {
+        current_manifest.push_back(asset.logical_path);
+    }
+
+    std::unordered_set<std::string> current_asset_set{current_manifest.begin(), current_manifest.end()};
+    std::unordered_set<std::string> previous_asset_set{previous_asset_manifest.begin(), previous_asset_manifest.end()};
+
+    auto assetsDataBase = htmlBase + "/assets/data";
+    auto assetsMetaBase = htmlBase + "/assets/meta";
+
+    // Remove stale asset payloads.
+    for (auto const& logical : previous_asset_set) {
+        if (current_asset_set.find(logical) != current_asset_set.end()) {
+            continue;
+        }
+        auto const dataPath = assetsDataBase + "/" + logical;
+        if (auto status = drain_queue<std::vector<std::uint8_t>>(space, dataPath); !status) {
+            return report_error(status.error(), "clear stale html asset bytes");
+        }
+        auto const mimePath = assetsMetaBase + "/" + logical;
+        if (auto status = drain_queue<std::string>(space, mimePath); !status) {
+            return report_error(status.error(), "clear stale html asset mime");
+        }
+    }
+
+    for (auto const& asset : emitted->assets) {
+        auto const dataPath = assetsDataBase + "/" + asset.logical_path;
+        if (auto status = replace_single<std::vector<std::uint8_t>>(space, dataPath, asset.bytes); !status) {
+            return report_error(status.error(), "write html asset bytes");
+        }
+        auto const mimePath = assetsMetaBase + "/" + asset.logical_path;
+        if (auto status = replace_single<std::string>(space, mimePath, asset.mime_type); !status) {
+            return report_error(status.error(), "write html asset mime");
+        }
+    }
+
+    if (current_manifest.empty()) {
+        if (auto status = drain_queue<std::vector<std::string>>(space, manifestPath); !status) {
+            return report_error(status.error(), "clear html asset manifest");
+        }
+    } else {
+        if (auto status = replace_single<std::vector<std::string>>(space, manifestPath, current_manifest); !status) {
+            return report_error(status.error(), "write html asset manifest");
+        }
+    }
+
     if (auto status = replace_single<uint64_t>(space, htmlBase + "/revision", sceneRevision->revision); !status) {
         return report_error(status.error(), "write html revision");
     }

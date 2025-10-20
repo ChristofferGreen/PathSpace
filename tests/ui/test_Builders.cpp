@@ -1323,6 +1323,105 @@ TEST_CASE("Renderer::RenderHtml hydrates image assets into output") {
     CHECK(asset.logical_path == logical_path);
     CHECK(asset.mime_type == "image/png");
     CHECK(asset.bytes == std::vector<std::uint8_t>(kTestPngRgba.begin(), kTestPngRgba.end()));
+
+    auto manifest = read_value<std::vector<std::string>>(fx.space, htmlBase + "/assets/manifest");
+    REQUIRE(manifest);
+    REQUIRE(manifest->size() == 1);
+    CHECK(manifest->front() == logical_path);
+
+    auto dataPath = htmlBase + "/assets/data/" + logical_path;
+    auto storedBytes = read_value<std::vector<std::uint8_t>>(fx.space, dataPath);
+    REQUIRE(storedBytes);
+    CHECK(*storedBytes == std::vector<std::uint8_t>(kTestPngRgba.begin(), kTestPngRgba.end()));
+
+    auto mimePath = htmlBase + "/assets/meta/" + logical_path;
+    auto storedMime = read_value<std::string>(fx.space, mimePath);
+    REQUIRE(storedMime);
+    CHECK(*storedMime == std::string{"image/png"});
+}
+
+TEST_CASE("Renderer::RenderHtml clears stale asset payloads") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{ .name = "html_renderer_stale", .kind = RendererKind::Software2D, .description = "HTML" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SceneParams sceneParams{ .name = "scene_html_stale", .description = "html stale assets" };
+    auto scene = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    REQUIRE(scene);
+
+    constexpr std::uint64_t kImageFingerprint = 0xABCDEF0102030405ull;
+    auto bucket_with_image = make_image_bucket(kImageFingerprint);
+
+    SceneSnapshotBuilder builder{fx.space, fx.root_view(), *scene};
+    SnapshotPublishOptions opts{};
+    opts.metadata.author = "tests";
+    opts.metadata.tool_version = "tests";
+    opts.metadata.created_at = std::chrono::system_clock::time_point{};
+    opts.metadata.drawable_count = bucket_with_image.drawable_ids.size();
+    opts.metadata.command_count = bucket_with_image.command_kinds.size();
+    auto revision = builder.publish(opts, bucket_with_image);
+    REQUIRE(revision);
+
+    auto ready = Scene::WaitUntilReady(fx.space, *scene, std::chrono::milliseconds{10});
+    REQUIRE(ready);
+
+    auto revision_base = std::string(scene->getPath()) + "/builds/" + format_revision(*revision);
+    auto logical_path = std::string("images/") + fingerprint_hex(kImageFingerprint) + ".png";
+    auto image_path = revision_base + "/assets/" + logical_path;
+    std::vector<std::uint8_t> png_bytes(kTestPngRgba.begin(), kTestPngRgba.end());
+    auto insert_result = fx.space.insert(image_path, png_bytes);
+    REQUIRE(insert_result.errors.empty());
+
+    HtmlTargetParams targetParams{};
+    targetParams.name = "preview_stale";
+    targetParams.scene = std::string("scenes/") + sceneParams.name;
+    auto target = Renderer::CreateHtmlTarget(fx.space, fx.root_view(), *renderer, targetParams);
+    REQUIRE(target);
+
+    auto render_html = Renderer::RenderHtml(fx.space, ConcretePathView{target->getPath()});
+    REQUIRE(render_html);
+
+    auto htmlBase = std::string(target->getPath()) + "/output/v1/html";
+    auto manifest = read_value<std::vector<std::string>>(fx.space, htmlBase + "/assets/manifest");
+    REQUIRE(manifest);
+    REQUIRE(manifest->size() == 1);
+
+    // Publish a new revision with no assets and render again.
+    auto bucket_no_assets = make_rect_bucket();
+    SnapshotPublishOptions opts2 = opts;
+    opts2.metadata.drawable_count = bucket_no_assets.drawable_ids.size();
+    opts2.metadata.command_count = bucket_no_assets.command_kinds.size();
+    auto revision2 = builder.publish(opts2, bucket_no_assets);
+    REQUIRE(revision2);
+
+    auto ready2 = Scene::WaitUntilReady(fx.space, *scene, std::chrono::milliseconds{10});
+    REQUIRE(ready2);
+
+    auto render_html2 = Renderer::RenderHtml(fx.space, ConcretePathView{target->getPath()});
+    REQUIRE(render_html2);
+
+    auto manifest_after = fx.space.read<std::vector<std::string>, std::string>(htmlBase + "/assets/manifest");
+    CHECK_FALSE(manifest_after.has_value());
+    if (!manifest_after.has_value()) {
+        CHECK((manifest_after.error().code == Error::Code::NoSuchPath
+               || manifest_after.error().code == Error::Code::NoObjectFound));
+    }
+
+    auto dataPath = htmlBase + "/assets/data/" + logical_path;
+    auto dataResult = fx.space.read<std::vector<std::uint8_t>, std::string>(dataPath);
+    CHECK_FALSE(dataResult.has_value());
+    if (!dataResult.has_value()) {
+        CHECK((dataResult.error().code == Error::Code::NoObjectFound || dataResult.error().code == Error::Code::NoSuchPath));
+    }
+
+    auto mimePath = htmlBase + "/assets/meta/" + logical_path;
+    auto mimeResult = fx.space.read<std::string, std::string>(mimePath);
+    CHECK_FALSE(mimeResult.has_value());
+    if (!mimeResult.has_value()) {
+        CHECK((mimeResult.error().code == Error::Code::NoObjectFound || mimeResult.error().code == Error::Code::NoSuchPath));
+    }
 }
 
 TEST_CASE("SubmitDirtyRects coalesces tile-aligned hints") {
