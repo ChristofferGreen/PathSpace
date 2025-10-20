@@ -1522,7 +1522,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     auto& surface = params.surface;
     auto const& desc = surface.desc();
 
-    bool const has_buffered = surface.has_buffered();
+    bool has_buffered = surface.has_buffered();
     bool const has_progressive = surface.has_progressive();
     if (!has_buffered && !has_progressive) {
         auto message = std::string{"surface has neither buffered nor progressive storage"};
@@ -1929,10 +1929,11 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
             if (has_buffered) {
                 staging = surface.staging_span();
                 if (staging.size() < surface.frame_bytes()) {
-                    auto message = std::string{"surface staging buffer smaller than expected"};
-                    (void)set_last_error(space_, params.target_path, message);
-                    return std::unexpected(make_error(message, SP::Error::Code::UnknownError));
+                    surface.discard_staging();
+                    has_buffered = false;
                 }
+            }
+            if (has_buffered) {
                 frame_pixels = std::span<std::uint8_t const>{staging.data(), staging.size()};
             } else {
                 local_frame_bytes.resize(surface.frame_bytes());

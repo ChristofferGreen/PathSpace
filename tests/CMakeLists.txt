@@ -60,8 +60,9 @@ if(PATHSPACE_ENABLE_UI)
   target_sources(PathSpaceUITests PRIVATE
     ui/test_PathWindowView_Metal.mm
     ui/test_PathRenderer2DMetal.mm
+    ui/test_BackendAdaptersMetal.mm
   )
-  set_source_files_properties(ui/test_PathWindowView_Metal.mm ui/test_PathRenderer2DMetal.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+  set_source_files_properties(ui/test_PathWindowView_Metal.mm ui/test_PathRenderer2DMetal.mm ui/test_BackendAdaptersMetal.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
   endif()
   target_compile_definitions(PathSpaceUITests PRIVATE PATHSPACE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
   target_link_libraries(PathSpaceUITests PRIVATE PathSpace)
