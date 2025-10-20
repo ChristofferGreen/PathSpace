@@ -79,6 +79,25 @@ task {
 }
 
 task {
+  name: "Widget Reducer Helpers [FEATURE]"
+  description: "Provide reusable reducers that translate widget ops into app-visible actions." 
+  status: completed
+  priority: P2
+
+  acceptance_criteria: [
+    "Helpers drain widgets/<id>/ops/inbox/queue into ops/actions/inbox/queue with stable action structs.",
+    "Examples/tests cover at least button activation and list selection flows.",
+    "Plan/Onboarding docs reference reducer entry points and follow-up telemetry work." 
+  ]
+
+  steps: [
+    "DONE (Oct 20, 2025) Implement Widgets::Reducers::{WidgetOpsQueue, ReducePending, PublishActions} helpers with doctest coverage.",
+    "DONE (Oct 20, 2025) Update widgets_example.cpp to seed a sample action and print reducer results.",
+    "DONE (Oct 20, 2025) Document reducer queues in Plan_SceneGraph_Implementation.md and AI_Onboarding_Next.md." 
+  ]
+}
+
+task {
   name: "Widget Interaction Bindings [FEATURE]"
   description: "Route widget interactions through a binding layer that watches widget state paths, emits dirty hints, and pushes events into ops inboxes."
   status: completed

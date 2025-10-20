@@ -9,6 +9,8 @@
 int main() {
     using namespace SP;
     using namespace SP::UI::Builders;
+    namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
+    namespace WidgetReducers = SP::UI::Builders::Widgets::Reducers;
 
     PathSpace space;
     AppRootPath appRoot{"/system/applications/widgets_example"};
@@ -150,6 +152,60 @@ int main() {
               << listRevision->revision << ")\n"
               << "  state path: " << list->state.getPath() << "\n"
               << "  items path: " << list->items.getPath() << "\n";
+
+    // Demonstrate reducer helpers by simulating an activation on the button.
+    auto buttonOpsQueue = WidgetReducers::WidgetOpsQueue(button->root);
+    WidgetBindings::WidgetOp activate{};
+    activate.kind = WidgetBindings::WidgetOpKind::Activate;
+    activate.widget_path = button->root.getPath();
+    activate.pointer = {};
+    activate.value = 1.0f;
+    activate.sequence = 1;
+    activate.timestamp_ns = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
+
+    auto inserted = space.insert(buttonOpsQueue.getPath(), activate);
+    if (!inserted.errors.empty()) {
+        std::cerr << "Failed to enqueue sample widget op: "
+                  << inserted.errors.front().message.value_or("unknown error") << "\n";
+        return 12;
+    }
+
+    auto reduced = WidgetReducers::ReducePending(space,
+                                                 SP::ConcretePathStringView{buttonOpsQueue.getPath()});
+    if (!reduced) {
+        std::cerr << "Reducer failed: "
+                  << reduced.error().message.value_or("unknown error") << "\n";
+        return 13;
+    }
+
+    if (!reduced->empty()) {
+        auto actionsQueue = WidgetReducers::DefaultActionsQueue(button->root);
+        auto span = std::span<const WidgetReducers::WidgetAction>(reduced->data(), reduced->size());
+        auto published = WidgetReducers::PublishActions(space,
+                                                        SP::ConcretePathStringView{actionsQueue.getPath()},
+                                                        span);
+        if (!published) {
+            std::cerr << "Failed to publish widget actions: "
+                      << published.error().message.value_or("unknown error") << "\n";
+            return 14;
+        }
+
+        auto action = space.take<WidgetReducers::WidgetAction, std::string>(actionsQueue.getPath());
+        if (action) {
+            std::cout << "Reducer emitted action:\n"
+                      << "  widget: " << action->widget_path << "\n"
+                      << "  kind: " << static_cast<int>(action->kind) << "\n"
+                      << "  value: " << action->analog_value << "\n";
+        } else {
+            std::cerr << "Expected reducer action but queue was empty.\n";
+            return 15;
+        }
+    } else {
+        std::cerr << "No reducer actions were generated.\n";
+        return 16;
+    }
 
     return 0;
 }

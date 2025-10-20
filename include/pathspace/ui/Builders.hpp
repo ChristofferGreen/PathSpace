@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string>
@@ -693,6 +694,32 @@ auto DispatchList(PathSpace& space,
                   float scroll_delta = 0.0f) -> SP::Expected<bool>;
 
 } // namespace Bindings
+
+namespace Reducers {
+
+struct WidgetAction {
+    Bindings::WidgetOpKind kind = Bindings::WidgetOpKind::HoverEnter;
+    std::string widget_path;
+    Bindings::PointerInfo pointer{};
+    float analog_value = 0.0f;
+    std::int32_t discrete_index = -1;
+    std::uint64_t sequence = 0;
+    std::uint64_t timestamp_ns = 0;
+};
+
+auto WidgetOpsQueue(WidgetPath const& widget_root) -> ConcretePath;
+
+auto DefaultActionsQueue(WidgetPath const& widget_root) -> ConcretePath;
+
+auto ReducePending(PathSpace& space,
+                   ConcretePathView ops_queue,
+                   std::size_t max_actions = std::numeric_limits<std::size_t>::max()) -> SP::Expected<std::vector<WidgetAction>>;
+
+auto PublishActions(PathSpace& space,
+                    ConcretePathView actions_queue,
+                    std::span<WidgetAction const> actions) -> SP::Expected<void>;
+
+} // namespace Reducers
 
 } // namespace Widgets
 

@@ -32,6 +32,7 @@ namespace UIScene = SP::UI::Scene;
 using SP::UI::Builders::Diagnostics::PathSpaceError;
 namespace Widgets = SP::UI::Builders::Widgets;
 namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
+namespace WidgetReducers = SP::UI::Builders::Widgets::Reducers;
 
 using UIScene::DrawableBucketSnapshot;
 using UIScene::SceneSnapshotBuilder;
@@ -1737,6 +1738,130 @@ TEST_CASE("Widgets::Bindings::DispatchList enqueues ops and schedules renders") 
     REQUIRE(scrollOp);
     CHECK(scrollOp->kind == WidgetBindings::WidgetOpKind::ListScroll);
     CHECK(scrollOp->value >= 0.0f);
+}
+
+TEST_CASE("Widgets::Reducers::ReducePending routes widget ops to action queues") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{ .name = "reducers_renderer", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc{};
+    desc.size_px = {320, 200};
+    desc.progressive_tile_size_px = 32;
+
+    SurfaceParams surfaceParams{ .name = "reducers_surface", .desc = desc, .renderer = "renderers/reducers_renderer" };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    auto target = Renderer::ResolveTargetBase(fx.space,
+                                              fx.root_view(),
+                                              *renderer,
+                                              "targets/surfaces/reducers_surface");
+    REQUIRE(target);
+
+    Widgets::ButtonParams buttonParams{};
+    buttonParams.name = "reducers_button";
+    buttonParams.label = "Reducers";
+    auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
+    REQUIRE(button);
+
+    auto buttonBinding = WidgetBindings::CreateButtonBinding(fx.space,
+                                                             fx.root_view(),
+                                                             *button,
+                                                             SP::ConcretePathStringView{target->getPath()});
+    REQUIRE(buttonBinding);
+
+    WidgetBindings::PointerInfo pointer{};
+    pointer.inside = true;
+    pointer.scene_x = 4.0f;
+    pointer.scene_y = 5.0f;
+
+    Widgets::ButtonState pressed{};
+    pressed.pressed = true;
+    pressed.hovered = true;
+
+    auto dispatched = WidgetBindings::DispatchButton(fx.space,
+                                                     *buttonBinding,
+                                                     pressed,
+                                                     WidgetBindings::WidgetOpKind::Press,
+                                                     pointer);
+    REQUIRE(dispatched);
+    CHECK(*dispatched);
+
+    auto buttonOpsQueue = WidgetReducers::WidgetOpsQueue(button->root);
+    auto reduceResult = WidgetReducers::ReducePending(fx.space,
+                                                      SP::ConcretePathStringView{buttonOpsQueue.getPath()});
+    REQUIRE(reduceResult);
+    REQUIRE(reduceResult->size() == 1);
+
+    auto const& action = reduceResult->front();
+    CHECK(action.kind == WidgetBindings::WidgetOpKind::Press);
+    CHECK(action.widget_path == button->root.getPath());
+    CHECK(action.pointer.inside);
+    CHECK(action.analog_value == doctest::Approx(1.0f));
+    CHECK(action.discrete_index == -1);
+
+    auto buttonActionsQueue = WidgetReducers::DefaultActionsQueue(button->root);
+    auto spanActions = std::span<const WidgetReducers::WidgetAction>(reduceResult->data(), reduceResult->size());
+    auto publish = WidgetReducers::PublishActions(fx.space,
+                                                  SP::ConcretePathStringView{buttonActionsQueue.getPath()},
+                                                  spanActions);
+    REQUIRE(publish);
+
+    auto storedAction = fx.space.take<WidgetReducers::WidgetAction, std::string>(buttonActionsQueue.getPath());
+    REQUIRE(storedAction);
+    CHECK(storedAction->widget_path == button->root.getPath());
+    CHECK(storedAction->analog_value == doctest::Approx(1.0f));
+
+    Widgets::ListParams listParams{};
+    listParams.name = "reducers_list";
+    listParams.items = {
+        Widgets::ListItem{.id = "alpha", .label = "Alpha", .enabled = true},
+        Widgets::ListItem{.id = "beta", .label = "Beta", .enabled = true},
+    };
+    auto list = Widgets::CreateList(fx.space, fx.root_view(), listParams);
+    REQUIRE(list);
+
+    auto listBinding = WidgetBindings::CreateListBinding(fx.space,
+                                                         fx.root_view(),
+                                                         *list,
+                                                         SP::ConcretePathStringView{target->getPath()});
+    REQUIRE(listBinding);
+
+    Widgets::ListState listState{};
+    listState.selected_index = 1;
+    auto listDispatch = WidgetBindings::DispatchList(fx.space,
+                                                     *listBinding,
+                                                     listState,
+                                                     WidgetBindings::WidgetOpKind::ListSelect,
+                                                     pointer,
+                                                     1);
+    REQUIRE(listDispatch);
+    CHECK(*listDispatch);
+
+    auto listOpsQueue = WidgetReducers::WidgetOpsQueue(list->root);
+    auto listReduce = WidgetReducers::ReducePending(fx.space,
+                                                    SP::ConcretePathStringView{listOpsQueue.getPath()});
+    REQUIRE(listReduce);
+    REQUIRE(listReduce->size() == 1);
+    auto const& listAction = listReduce->front();
+    CHECK(listAction.kind == WidgetBindings::WidgetOpKind::ListSelect);
+    CHECK(listAction.discrete_index == 1);
+    CHECK(listAction.analog_value == doctest::Approx(1.0f));
+
+    auto listActionsQueue = WidgetReducers::DefaultActionsQueue(list->root);
+    auto listSpan = std::span<const WidgetReducers::WidgetAction>(listReduce->data(), listReduce->size());
+    auto listPublish = WidgetReducers::PublishActions(fx.space,
+                                                      SP::ConcretePathStringView{listActionsQueue.getPath()},
+                                                      listSpan);
+    REQUIRE(listPublish);
+
+    auto storedListAction = fx.space.take<WidgetReducers::WidgetAction, std::string>(listActionsQueue.getPath());
+    REQUIRE(storedListAction);
+    CHECK(storedListAction->discrete_index == 1);
+    CHECK(storedListAction->widget_path == list->root.getPath());
 }
 
 TEST_CASE("Html::Asset vectors survive PathSpace round-trip") {

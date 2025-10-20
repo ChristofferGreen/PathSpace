@@ -1,6 +1,6 @@
 # Handoff Notice
 
-> **Handoff note (October 20, 2025 @ shutdown):** SceneGraph material/shader bindings just landed for the Metal renderer. Residency dashboards now publish status/alert fields under `diagnostics/metrics/residency` (see Phase 6 update). Widget interaction bindings shipped today (`feat(widgets): add interaction bindings`). Next pass should resume with gallery wiring and reducer/tooling follow-ups called out below. Consult `docs/AI_Onboarding_Next.md` §6 for the shutdown snapshot before resuming.
+> **Handoff note (October 20, 2025 @ shutdown):** SceneGraph material/shader bindings just landed for the Metal renderer. Residency dashboards now publish status/alert fields under `diagnostics/metrics/residency` (see Phase 6 update). Widget reducers shipped in `feat(widgets): add reducer helpers for widget ops`; lists/buttons now emit actions under `widgets/<id>/ops/actions/inbox/queue`. Next pass should resume with gallery wiring + presenter telemetry (see Phase 8 + docs/AI_Onboarding_Next.md §6) so the widget demo opens a window and streams interaction metrics.
 
 # Scene Graph Implementation Plan
 
@@ -21,6 +21,7 @@ Success looks like:
 - Metal presenters remain enabled by default; the 15× loop harness (20 s timeout) is green with both software and Metal suites.
 - Residency metrics under `diagnostics/metrics/residency/*` now expose raw byte counts alongside dashboard ratios/alerts; extend telemetry where gaps remain.
 - Widget bindings publish dirty hints and ops inbox events (`widgets/<id>/ops/inbox/queue`) so interaction reducers can react without full-scene republishes.
+- Widgets reducers drain op queues into `widgets/<id>/ops/actions/inbox/queue`; examples/tests confirm button/list actions round-trip through the helpers.
 - Widget gallery, HTML tooling, and diagnostics backlog items are tracked in `docs/AI_Todo.task`; no open P0 work after the binding milestone.
 - ✅ (October 20, 2025) Residency dashboard wiring publishes CPU/GPU soft & hard budget ratios plus status flags under `diagnostics/metrics/residency`, enabling external alerts without bespoke parsers.
 
@@ -232,6 +233,7 @@ Completed:
 - ✅ (October 19, 2025) Introduced initial state update helpers for buttons/toggles that coalesce redundant writes and mark the owning scene `DirtyKind::Visual` only when values change.
 - ✅ (October 20, 2025) Binding layer (`Widgets::Bindings::Dispatch{Button,Toggle,Slider}`) watches widget state, emits dirty hints, and writes interaction ops (press/release/hover/toggle/slider events) into `widgets/<id>/ops/inbox/queue`. Reducer samples live in this plan’s appendix; schema covers `WidgetOpKind`, pointer metadata, value payloads, and timestamps for reducers to consume via wait/notify.
 - ✅ (October 20, 2025) Added list state/update helpers (`Widgets::UpdateListState`) plus bindings (`CreateListBinding`/`DispatchList`) that emit `ListHover`, `ListSelect`, `ListActivate`, and `ListScroll` ops with dirty rect + auto-render integration.
+- ✅ (October 20, 2025) Introduced reducer helpers (`Widgets::Reducers::ReducePending` / `PublishActions`) so apps can drain widget op queues into `ops/actions/inbox/queue`; example + doctests cover button activation and list selection flows.
 - **Testing**
   - Extend `PathSpaceUITests` with golden snapshots and interaction sequences for each widget (hover, press, disabled) using the 15× loop to guard against race regressions.
   - Add doctest coverage for the binding helpers to confirm dirty-hint emission, focus routing, and auto-render scheduling.
@@ -242,6 +244,7 @@ Completed:
 - Introduce an app bootstrap helper that wires renderer/surface/window defaults for a given app root/scene so examples/tests can avoid boilerplate while still exposing escape hatches; update onboarding/docs once available.
 - Update `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage, and troubleshooting steps.
 - Document widget ops schema: queue path (`widgets/<id>/ops/inbox/queue`), `WidgetOp` fields (kind, pointer metadata, value, timestamp) and reducer sample wiring.
+- ✅ (October 20, 2025) Reducer samples now live in `Widgets::Reducers`, publishing actions under `widgets/<id>/ops/actions/inbox/queue`; keep telemetry/docs in sync when new action fields or op kinds land.
 
 **Widget ops schema (October 20, 2025)**
 - Queue path: `widgets/<id>/ops/inbox/queue` (per-widget FIFO consumed via `take<WidgetOp>`).

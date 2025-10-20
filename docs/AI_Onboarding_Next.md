@@ -41,7 +41,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 | --- | --- | --- |
 | Metal renderer | ✅ Completed (October 20, 2025) — material/shader bindings now flow through the shared descriptor cache | `PathRenderer2DMetal` covers rects, rounded rects, text quads, and images (see Phase 7); continue tracking glyph/material parity on the descriptor cache. |
 | Diagnostics | ✅ Completed (October 20, 2025) — dashboards consume `textureGpuBytes`/`resourceGpuBytes` plus residency ratios/status under `diagnostics/metrics/residency` | Coordinate with tooling owners before schema changes. |
-| Widgets | Finish Phase 8: wire gallery + reducer/tooling follow-ups atop the widget builders | Button/toggle/slider/list builders and bindings are live as of October 20, 2025; next focus is gallery wiring, reducer samples, and telemetry (see `docs/Plan_SceneGraph_Implementation.md`). |
+| Widgets | Finish Phase 8: wire gallery + telemetry atop the widget builders | Button/toggle/slider/list builders, bindings, and reducer helpers (`Widgets::Reducers`) are live as of October 20, 2025; next focus is gallery wiring and presenter/telemetry follow-ups (see `docs/Plan_SceneGraph_Implementation.md`). |
 | HTML tooling | Add HSAT inspection CLI/tests and extend coverage when new asset fields appear | Legacy serializer removed; HSAT is mandatory. |
 
 ## 3. Communication & Handoff Hygiene
@@ -76,12 +76,13 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Residency metrics are live under `diagnostics/metrics/residency/*`; dashboards now read the published ratios/status fields—extend telemetry when new counters appear.
 - Widget binding helpers (`Widgets::Bindings::Dispatch{Button,Toggle,Slider,List}`) emit dirty rect hints, auto-schedule renders, and enqueue ops under `widgets/<id>/ops/inbox/queue` so reducers can react without republishing entire scenes.
 - List widget builder (`Builders::Widgets::CreateList`) plus `UpdateListState` and `DispatchList` land with doctest coverage, enabling selection/hover/scroll ops and expanding `widgets_example`.
+- Reducer helpers (`Widgets::Reducers::ReducePending`/`PublishActions`) drain widget ops into `ops/actions/inbox/queue`; widgets_example seeds a sample action and prints the reducer output.
 
 ## 6. Shutdown Snapshot (October 20, 2025 @ 18:20 UTC)
-- Latest commit: `feat(widgets): add interaction bindings` (local branch `master`, unpushed). The new binding helpers ship with doctest coverage and documented queue schema.
+- Latest commit: `feat(widgets): add reducer helpers for widget ops` (local branch `master`, unpushed). Reducers now translate widget ops into actions and have doctest + example coverage.
 - Outstanding widget work before resuming:
-  1. Wire reducers/demo app to consume `widgets/<id>/ops/inbox/queue` events (see Phase 8 follow-ups in `docs/Plan_SceneGraph_Implementation.md`).
-  2. Expand `examples/widgets_example.cpp` into the gallery with interaction telemetry and presenter wiring (Phase 8 tooling/doc bullet).
+  1. Expand `examples/widgets_example.cpp` into the gallery with interaction telemetry and presenter wiring (Phase 8 tooling/doc bullet).
+  2. Carry gallery telemetry into docs (`Plan_SceneGraph_Implementation.md`, `AI_Debugging_Playbook.md`) once presenter wiring lands.
 - HTML adapter follow-up remains open: add HSAT inspection CLI/tests when new asset fields land (tracked in `docs/AI_Todo.task`).
 - Local worktree still holds edits to `docs/Plan_PrimeScript.md` and `src/pathspace/PathSpaceBase.hpp` (pre-existing; confirm intent before next commit).
 - Next session checklist:
