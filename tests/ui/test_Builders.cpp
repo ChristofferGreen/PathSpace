@@ -6,8 +6,6 @@
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/MaterialShaderKey.hpp>
 #include <pathspace/ui/HtmlAdapter.hpp>
-#include <pathspace/ui/HtmlSerialization.hpp>
-#include <pathspace/type/SlidingBuffer.hpp>
 
 #include <array>
 #include <atomic>
@@ -1316,51 +1314,6 @@ TEST_CASE("Html::Asset vectors survive PathSpace round-trip") {
     bool const missingOk = missingCode == SP::Error::Code::NoObjectFound
                            || missingCode == SP::Error::Code::NoSuchPath;
     CHECK(missingOk);
-}
-
-TEST_CASE("Html::Asset legacy decode sets migration flag") {
-    std::vector<Asset> assets;
-    assets.push_back(Asset{
-        .logical_path = "images/legacy.png",
-        .mime_type = "image/png",
-        .bytes = {0x89, 0x50, 0x4E, 0x47},
-    });
-    assets.push_back(Asset{
-        .logical_path = "fonts/legacy.woff2",
-        .mime_type = "font/woff2",
-        .bytes = {0x00, 0x01, 0x02},
-    });
-
-    // Encode using the legacy Alpaca path to simulate historical payloads.
-    SP::SlidingBuffer legacyBuffer;
-    auto legacyErr = SP::detail::serialize_with_alpaca<std::vector<Asset>>(assets, legacyBuffer);
-    REQUIRE_FALSE(legacyErr.has_value());
-
-    SP::UI::Html::reset_html_asset_legacy_decode_flag();
-    auto legacyDecoded = SP::deserialize<std::vector<Asset>>(legacyBuffer);
-    REQUIRE(legacyDecoded);
-    REQUIRE(legacyDecoded->size() == assets.size());
-    for (std::size_t i = 0; i < assets.size(); ++i) {
-        CHECK(legacyDecoded->at(i).logical_path == assets[i].logical_path);
-        CHECK(legacyDecoded->at(i).mime_type == assets[i].mime_type);
-        CHECK(legacyDecoded->at(i).bytes == assets[i].bytes);
-    }
-    CHECK(SP::UI::Html::consume_html_asset_legacy_decode_flag());
-
-    // Fresh encoding should not set the legacy flag.
-    SP::SlidingBuffer currentBuffer;
-    auto currentErr = SP::serialize<std::vector<Asset>>(assets, currentBuffer);
-    REQUIRE_FALSE(currentErr.has_value());
-
-    auto currentDecoded = SP::deserialize<std::vector<Asset>>(currentBuffer);
-    REQUIRE(currentDecoded);
-    REQUIRE(currentDecoded->size() == assets.size());
-    for (std::size_t i = 0; i < assets.size(); ++i) {
-        CHECK(currentDecoded->at(i).logical_path == assets[i].logical_path);
-        CHECK(currentDecoded->at(i).mime_type == assets[i].mime_type);
-        CHECK(currentDecoded->at(i).bytes == assets[i].bytes);
-    }
-    CHECK_FALSE(SP::UI::Html::consume_html_asset_legacy_decode_flag());
 }
 
 TEST_CASE("Renderer::RenderHtml hydrates image assets into output") {

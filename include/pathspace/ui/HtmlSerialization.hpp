@@ -58,23 +58,7 @@ constexpr auto from_le32(std::uint32_t value) -> std::uint32_t {
 struct HtmlAssetDecodeResult {
     std::vector<UI::Html::Asset> assets;
     size_t                       bytes_consumed = 0;
-    bool                         legacy_encoding = false;
 };
-
-inline thread_local bool g_last_html_asset_legacy_decode = false;
-
-inline auto fallback_deserialize_html_assets(SlidingBuffer const& buffer)
-    -> Expected<HtmlAssetDecodeResult> {
-    auto decoded = detail::deserialize_with_alpaca<std::vector<UI::Html::Asset>>(buffer);
-    if (!decoded) {
-        return std::unexpected(decoded.error());
-    }
-    return HtmlAssetDecodeResult{
-        .assets = std::move(decoded->first),
-        .bytes_consumed = decoded->second,
-        .legacy_encoding = true,
-    };
-}
 
 inline auto check_length(std::string_view label, std::size_t length)
     -> std::optional<Error> {
@@ -154,7 +138,8 @@ inline auto decode_html_assets_payload(SlidingBuffer const& buffer)
     -> Expected<detail::HtmlAssetDecodeResult> {
     auto const total_size = buffer.size();
     if (total_size < sizeof(std::uint32_t) + sizeof(std::uint16_t) + sizeof(std::uint32_t)) {
-        return detail::fallback_deserialize_html_assets(buffer);
+        return std::unexpected(Error{Error::Code::MalformedInput,
+                                     "Buffer too small for HTML asset header"});
     }
 
     auto const* raw = buffer.data();
@@ -164,8 +149,8 @@ inline auto decode_html_assets_payload(SlidingBuffer const& buffer)
     std::memcpy(&magic_raw, raw + offset, sizeof(magic_raw));
     offset += sizeof(magic_raw);
     if (detail::from_le32(magic_raw) != detail::kHtmlAssetMagic) {
-        // Legacy alpaca-encoded payload.
-        return detail::fallback_deserialize_html_assets(buffer);
+        return std::unexpected(Error{Error::Code::MalformedInput,
+                                     "Invalid HTML asset magic"});
     }
 
     std::uint16_t version_raw = 0;
@@ -246,23 +231,8 @@ inline auto decode_html_assets_payload(SlidingBuffer const& buffer)
     return detail::HtmlAssetDecodeResult{
         .assets = std::move(assets),
         .bytes_consumed = offset,
-        .legacy_encoding = false,
     };
 }
-
-namespace UI::Html {
-
-inline auto consume_html_asset_legacy_decode_flag() -> bool {
-    bool const was_legacy = detail::g_last_html_asset_legacy_decode;
-    detail::g_last_html_asset_legacy_decode = false;
-    return was_legacy;
-}
-
-inline auto reset_html_asset_legacy_decode_flag() -> void {
-    detail::g_last_html_asset_legacy_decode = false;
-}
-
-} // namespace UI::Html
 
 template <>
 inline auto deserialize<std::vector<UI::Html::Asset>>(SlidingBuffer const& buffer)
@@ -271,7 +241,6 @@ inline auto deserialize<std::vector<UI::Html::Asset>>(SlidingBuffer const& buffe
     if (!decoded) {
         return std::unexpected(decoded.error());
     }
-    detail::g_last_html_asset_legacy_decode = decoded->legacy_encoding;
     return std::move(decoded->assets);
 }
 
@@ -282,7 +251,6 @@ inline auto deserialize_pop<std::vector<UI::Html::Asset>>(SlidingBuffer& buffer)
     if (!decoded) {
         return std::unexpected(decoded.error());
     }
-    detail::g_last_html_asset_legacy_decode = decoded->legacy_encoding;
     buffer.advance(decoded->bytes_consumed);
     return std::move(decoded->assets);
 }
