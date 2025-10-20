@@ -9,6 +9,7 @@
 #include <memory>
 #include <stdexcept>
 #include <vector>
+#include <string>
 
 namespace SP::UI {
 
@@ -19,6 +20,8 @@ struct PathSurfaceMetalTextureInfo {
 };
 
 #if defined(__APPLE__)
+
+typedef struct __IOSurface* IOSurfaceRef;
 
 class PathSurfaceMetal {
 public:
@@ -47,6 +50,10 @@ public:
     [[nodiscard]] auto resource_residency() const -> std::span<MaterialResourceResidency const>;
     [[nodiscard]] auto shader_keys() const -> std::span<MaterialShaderKey const>;
     [[nodiscard]] auto resident_gpu_bytes() const -> std::size_t;
+    [[nodiscard]] auto blit_from_iosurface(IOSurfaceRef surface,
+                                           std::uint64_t frame_index,
+                                           std::uint64_t revision,
+                                           std::string* error_message = nullptr) -> bool;
 
 private:
     struct Impl;

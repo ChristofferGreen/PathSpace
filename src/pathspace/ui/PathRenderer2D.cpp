@@ -27,6 +27,11 @@
 #include <mutex>
 #include <exception>
 
+#if defined(__APPLE__)
+#include <CoreFoundation/CoreFoundation.h>
+#include <IOSurface/IOSurface.h>
+#endif
+
 namespace SP::UI {
 namespace {
 
@@ -2506,16 +2511,35 @@ if (has_damage) {
         total_texture_gpu_bytes += info.gpu_bytes;
     }
     std::uint64_t total_gpu_bytes = total_texture_gpu_bytes;
+    bool render_error_recorded = false;
 
 #if PATHSPACE_UI_METAL
     if (params.backend_kind == Builders::RendererKind::Metal2D && params.metal_surface != nullptr) {
         params.metal_surface->update_material_descriptors(material_list);
         params.metal_surface->update_resource_residency(resource_list);
-        if (has_damage && !frame_pixels.empty()) {
+        bool metal_updated = false;
+        std::string metal_error;
+#if defined(__APPLE__)
+        if (has_buffered && has_damage) {
+            if (auto iosurface_opt = surface.front_iosurface()) {
+                auto iosurface_ref = iosurface_opt->retain_for_external_use();
+                if (iosurface_ref != nullptr) {
+                    metal_updated = params.metal_surface->blit_from_iosurface(iosurface_ref,
+                                                                              frame_info.frame_index,
+                                                                              frame_info.revision,
+                                                                              &metal_error);
+                    CFRelease(iosurface_ref);
+                }
+            }
+        }
+#endif
+        if (!metal_updated && has_damage && !frame_pixels.empty()) {
             params.metal_surface->update_from_rgba8(frame_pixels,
                                                     static_cast<std::size_t>(surface.row_stride_bytes()),
                                                     frame_info.frame_index,
                                                     frame_info.revision);
+            metal_updated = true;
+            metal_error.clear();
         }
         params.metal_surface->present_completed(frame_info.frame_index, frame_info.revision);
         auto const total_gpu = static_cast<std::uint64_t>(params.metal_surface->resident_gpu_bytes());
@@ -2524,6 +2548,15 @@ if (has_damage) {
             target_texture_bytes = total_gpu - total_texture_gpu_bytes;
         } else {
             target_texture_bytes = total_gpu;
+        }
+        if (!metal_updated && !metal_error.empty()) {
+            (void)set_last_error(space_,
+                                 params.target_path,
+                                 metal_error,
+                                 frame_info.revision,
+                                 Builders::Diagnostics::PathSpaceError::Severity::Recoverable,
+                                 3201);
+            render_error_recorded = true;
         }
     }
 #endif
@@ -2555,8 +2588,10 @@ if (has_damage) {
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/commandCount", static_cast<std::uint64_t>(bucket->command_kinds.size()));
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/commandsExecuted", executed_commands);
 
-    if (auto status = set_last_error(space_, params.target_path, "", sceneRevision->revision, Builders::Diagnostics::PathSpaceError::Severity::Info); !status) {
-        return std::unexpected(status.error());
+    if (!render_error_recorded) {
+        if (auto status = set_last_error(space_, params.target_path, "", sceneRevision->revision, Builders::Diagnostics::PathSpaceError::Severity::Info); !status) {
+            return std::unexpected(status.error());
+        }
     }
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/unsupportedCommands", unsupported_commands);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/opaqueSortViolations", opaque_sort_violations);

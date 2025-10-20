@@ -2,6 +2,8 @@
 #include <TargetConditionals.h>
 
 #include <algorithm>
+#include <string>
+#include <IOSurface/IOSurface.h>
 
 #include <pathspace/ui/PathSurfaceMetal.hpp>
 
@@ -276,6 +278,121 @@ auto PathSurfaceMetal::shader_keys() const -> std::span<MaterialShaderKey const>
         return {};
     }
     return std::span<MaterialShaderKey const>{impl_->shader_keys.data(), impl_->shader_keys.size()};
+}
+
+auto PathSurfaceMetal::blit_from_iosurface(IOSurfaceRef surface,
+                                           std::uint64_t frame_index,
+                                           std::uint64_t revision,
+                                           std::string* error_message) -> bool {
+    if (!impl_ || !surface) {
+        if (error_message) {
+            *error_message = "IOSurface unavailable for Metal upload";
+        }
+        return false;
+    }
+    if (!impl_->device || !impl_->command_queue) {
+        if (error_message) {
+            *error_message = "Metal device or command queue unavailable";
+        }
+        return false;
+    }
+
+    impl_->ensure_texture();
+    if (!impl_->texture) {
+        if (error_message) {
+            *error_message = "Failed to allocate Metal render texture";
+        }
+        return false;
+    }
+
+    auto width = clamp_dimension(IOSurfaceGetWidth(surface));
+    auto height = clamp_dimension(IOSurfaceGetHeight(surface));
+    if (width == 0 || height == 0) {
+        if (error_message) {
+            *error_message = "IOSurface has invalid dimensions";
+        }
+        return false;
+    }
+
+    auto mtl_format = to_pixel_format(impl_->desc.pixel_format);
+    if (mtl_format == MTLPixelFormatInvalid) {
+        mtl_format = impl_->texture.pixelFormat;
+    }
+
+    @autoreleasepool {
+        MTLTextureDescriptor* descriptor =
+            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:mtl_format
+                                                               width:width
+                                                              height:height
+                                                           mipmapped:NO];
+        descriptor.storageMode = MTLStorageModeShared;
+#ifdef MTLTextureUsageBlit
+        descriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageBlit;
+#else
+        descriptor.usage = MTLTextureUsageShaderRead;
+#endif
+
+        id<MTLTexture> source =
+            [impl_->device newTextureWithDescriptor:descriptor iosurface:surface plane:0];
+        if (!source) {
+            if (error_message) {
+                *error_message = "Failed to create Metal texture view for IOSurface";
+            }
+            return false;
+        }
+
+        id<MTLCommandBuffer> command_buffer = [impl_->command_queue commandBuffer];
+        if (!command_buffer) {
+            if (error_message) {
+                *error_message = "Failed to create Metal command buffer";
+            }
+            return false;
+        }
+
+        id<MTLBlitCommandEncoder> blit_encoder = [command_buffer blitCommandEncoder];
+        if (!blit_encoder) {
+            if (error_message) {
+                *error_message = "Failed to create Metal blit encoder";
+            }
+            return false;
+        }
+
+        MTLSize copy_size = MTLSizeMake(width, height, 1);
+        [blit_encoder copyFromTexture:source
+                           sourceSlice:0
+                            sourceLevel:0
+                           sourceOrigin:MTLOriginMake(0, 0, 0)
+                             sourceSize:copy_size
+                             toTexture:impl_->texture
+                      destinationSlice:0
+                       destinationLevel:0
+                      destinationOrigin:MTLOriginMake(0, 0, 0)];
+        [blit_encoder endEncoding];
+
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+        if (command_buffer.status != MTLCommandBufferStatusCompleted) {
+            if (error_message) {
+                NSError* command_error = command_buffer.error;
+                if (command_error) {
+                    auto const* text = [[command_error localizedDescription] UTF8String];
+                    if (text) {
+                        *error_message = std::string{"Metal blit failed: "} + text;
+                    } else {
+                        *error_message = "Metal blit failed: unknown error";
+                    }
+                } else {
+                    *error_message = "Metal blit failed with status "
+                                     + std::to_string(static_cast<int>(command_buffer.status));
+                }
+            }
+            return false;
+        }
+    }
+
+    impl_->frame_index = frame_index;
+    impl_->revision = revision;
+    return true;
 }
 
 #endif // defined(__APPLE__)
