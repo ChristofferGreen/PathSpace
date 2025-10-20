@@ -213,6 +213,7 @@ Completed:
 - **Scene authoring**
   - Define canonical widget scene snippets under `scenes/widgets/<widget>/` with snapshot builders that emit visual states (idle, hover, pressed, disabled).
 - ✅ (October 19, 2025) Added lightweight builders for buttons and toggles (`Builders::Widgets::CreateButton`, `CreateToggle`) that publish authoring data, bind to app-relative state paths, and express layout metadata (bounds, z-order).
+- ✅ (October 20, 2025) Added a slider builder (`Builders::Widgets::CreateSlider`) with theme metadata, range/state storage, and snapshot generation for the minimal 2D theme.
 - Add a reusable stroke primitive (polyline/triangle strip) so paint examples track a point list per stroke instead of emitting per-dab rects; update renderer + HTML adapter to consume the new command once landed.
   - Provide styling hooks (colors, corner radius, typography) so demos can skin widgets without forking scenes.
 - **Interaction contract**

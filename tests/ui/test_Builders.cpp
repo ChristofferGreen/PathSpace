@@ -1272,6 +1272,68 @@ TEST_CASE("Widgets::CreateToggle publishes snapshot and state") {
     CHECK_FALSE(*toggle_unchanged);
 }
 
+TEST_CASE("Widgets::CreateSlider publishes snapshot and state") {
+    BuildersFixture fx;
+
+    Widgets::SliderParams params{};
+    params.name = "slider_primary";
+    params.minimum = -1.0f;
+    params.maximum = 1.0f;
+    params.value = 0.25f;
+    params.step = 0.25f;
+    params.style.width = 320.0f;
+    params.style.height = 36.0f;
+    params.style.track_height = 8.0f;
+    params.style.thumb_radius = 14.0f;
+
+    auto created = Widgets::CreateSlider(fx.space, fx.root_view(), params);
+    REQUIRE(created);
+
+    auto state = read_value<Widgets::SliderState>(fx.space,
+                                                 std::string(created->state.getPath()));
+    REQUIRE(state);
+    CHECK(state->enabled);
+    CHECK_FALSE(state->hovered);
+    CHECK_FALSE(state->dragging);
+    CHECK(state->value == doctest::Approx(0.25f));
+
+    auto style = read_value<Widgets::SliderStyle>(fx.space,
+                                                 std::string(created->root.getPath()) + "/meta/style");
+    REQUIRE(style);
+    CHECK(style->width == doctest::Approx(320.0f));
+    CHECK(style->height == doctest::Approx(36.0f));
+    CHECK(style->track_height == doctest::Approx(8.0f));
+    CHECK(style->thumb_radius == doctest::Approx(14.0f));
+
+    auto range = read_value<Widgets::SliderRange>(fx.space,
+                                                  std::string(created->range.getPath()));
+    REQUIRE(range);
+    CHECK(range->minimum == doctest::Approx(-1.0f));
+    CHECK(range->maximum == doctest::Approx(1.0f));
+    CHECK(range->step == doctest::Approx(0.25f));
+
+    auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    REQUIRE(revision);
+    CHECK(revision->revision > 0);
+
+    Widgets::SliderState dragged = *state;
+    dragged.dragging = true;
+    dragged.value = 0.63f;
+    auto slider_changed = Widgets::UpdateSliderState(fx.space, *created, dragged);
+    REQUIRE(slider_changed);
+    CHECK(*slider_changed);
+
+    auto updated = read_value<Widgets::SliderState>(fx.space,
+                                                   std::string(created->state.getPath()));
+    REQUIRE(updated);
+    CHECK(updated->value == doctest::Approx(0.75f));
+    CHECK(updated->dragging);
+
+    auto slider_unchanged = Widgets::UpdateSliderState(fx.space, *created, *updated);
+    REQUIRE(slider_unchanged);
+    CHECK_FALSE(*slider_unchanged);
+}
+
 TEST_CASE("Html::Asset vectors survive PathSpace round-trip") {
     BuildersFixture fx;
 

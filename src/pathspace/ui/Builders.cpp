@@ -89,6 +89,14 @@ auto toggle_states_equal(Widgets::ToggleState const& lhs,
         && lhs.checked == rhs.checked;
 }
 
+auto slider_states_equal(Widgets::SliderState const& lhs,
+                         Widgets::SliderState const& rhs) -> bool {
+    return lhs.enabled == rhs.enabled
+        && lhs.hovered == rhs.hovered
+        && lhs.dragging == rhs.dragging
+        && lhs.value == rhs.value;
+}
+
 auto make_identity_transform() -> SceneData::Transform {
     SceneData::Transform transform{};
     for (std::size_t i = 0; i < transform.elements.size(); ++i) {
@@ -248,6 +256,139 @@ auto ensure_widget_root(PathSpace& /*space*/,
     return combine_relative(appRoot, "widgets");
 }
 
+struct SliderSnapshotConfig {
+    float width = 240.0f;
+    float height = 32.0f;
+    float track_height = 6.0f;
+    float thumb_radius = 10.0f;
+    float min = 0.0f;
+    float max = 1.0f;
+    float value = 0.5f;
+    std::array<float, 4> track_color{0.75f, 0.75f, 0.78f, 1.0f};
+    std::array<float, 4> fill_color{0.176f, 0.353f, 0.914f, 1.0f};
+    std::array<float, 4> thumb_color{1.0f, 1.0f, 1.0f, 1.0f};
+};
+
+auto make_slider_bucket(SliderSnapshotConfig const& config) -> SceneData::DrawableBucketSnapshot {
+    SceneData::DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x51D301u, 0x51D302u, 0x51D303u};
+    bucket.world_transforms = {make_identity_transform(), make_identity_transform(), make_identity_transform()};
+
+    float const clamped_min = std::min(config.min, config.max);
+    float const clamped_max = std::max(config.min, config.max);
+    float const range = std::max(clamped_max - clamped_min, 1e-6f);
+    float const clamped_value = std::clamp(config.value, clamped_min, clamped_max);
+    float progress = (clamped_value - clamped_min) / range;
+    progress = std::clamp(progress, 0.0f, 1.0f);
+
+    float const width = std::max(config.width, 1.0f);
+    float const height = std::max(config.height, 1.0f);
+    float const track_height = std::clamp(config.track_height, 1.0f, height);
+    float const thumb_radius = std::clamp(config.thumb_radius, track_height * 0.5f, height * 0.5f);
+
+    float const center_y = height * 0.5f;
+    float const track_half = track_height * 0.5f;
+    float const track_radius = track_half;
+    float const fill_width = std::max(progress * width, 0.0f);
+    float thumb_x = progress * width;
+    thumb_x = std::clamp(thumb_x, thumb_radius, width - thumb_radius);
+
+    SceneData::BoundingSphere trackSphere{};
+    trackSphere.center = {width * 0.5f, center_y, 0.0f};
+    trackSphere.radius = std::sqrt(trackSphere.center[0] * trackSphere.center[0]
+                                   + track_half * track_half);
+
+    SceneData::BoundingSphere fillSphere{};
+    fillSphere.center = {std::max(fill_width * 0.5f, 0.0f), center_y, 0.0f};
+    fillSphere.radius = std::sqrt(fillSphere.center[0] * fillSphere.center[0]
+                                  + track_half * track_half);
+
+    SceneData::BoundingSphere thumbSphere{};
+    thumbSphere.center = {thumb_x, center_y, 0.0f};
+    thumbSphere.radius = thumb_radius;
+
+    bucket.bounds_spheres = {trackSphere, fillSphere, thumbSphere};
+
+    SceneData::BoundingBox trackBox{};
+    trackBox.min = {0.0f, center_y - track_half, 0.0f};
+    trackBox.max = {width, center_y + track_half, 0.0f};
+
+    SceneData::BoundingBox fillBox{};
+    fillBox.min = {0.0f, center_y - track_half, 0.0f};
+    fillBox.max = {fill_width, center_y + track_half, 0.0f};
+
+    SceneData::BoundingBox thumbBox{};
+    thumbBox.min = {thumb_x - thumb_radius, center_y - thumb_radius, 0.0f};
+    thumbBox.max = {thumb_x + thumb_radius, center_y + thumb_radius, 0.0f};
+
+    bucket.bounds_boxes = {trackBox, fillBox, thumbBox};
+    bucket.bounds_box_valid = {1, 1, 1};
+    bucket.layers = {0, 1, 2};
+    bucket.z_values = {0.0f, 0.05f, 0.1f};
+    bucket.material_ids = {0, 0, 0};
+    bucket.pipeline_flags = {0, 0, 0};
+    bucket.visibility = {1, 1, 1};
+    bucket.command_offsets = {0, 1, 2};
+    bucket.command_counts = {1, 1, 1};
+    bucket.opaque_indices = {0, 1, 2};
+    bucket.alpha_indices.clear();
+    bucket.layer_indices.clear();
+    bucket.clip_nodes.clear();
+    bucket.clip_head_indices = {-1, -1, -1};
+    bucket.authoring_map = {
+        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[0], "widget/slider/track", 0, 0},
+        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[1], "widget/slider/fill", 0, 0},
+        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[2], "widget/slider/thumb", 0, 0},
+    };
+    bucket.drawable_fingerprints = {0x51D301u, 0x51D302u, 0x51D303u};
+
+    SceneData::RoundedRectCommand trackRect{};
+    trackRect.min_x = 0.0f;
+    trackRect.min_y = center_y - track_half;
+    trackRect.max_x = width;
+    trackRect.max_y = center_y + track_half;
+    trackRect.radius_top_left = track_radius;
+    trackRect.radius_top_right = track_radius;
+    trackRect.radius_bottom_right = track_radius;
+    trackRect.radius_bottom_left = track_radius;
+    trackRect.color = config.track_color;
+
+    SceneData::RectCommand fillRect{};
+    fillRect.min_x = 0.0f;
+    fillRect.min_y = center_y - track_half;
+    fillRect.max_x = fill_width;
+    fillRect.max_y = center_y + track_half;
+    fillRect.color = config.fill_color;
+
+    SceneData::RoundedRectCommand thumbRect{};
+    thumbRect.min_x = thumbBox.min[0];
+    thumbRect.min_y = thumbBox.min[1];
+    thumbRect.max_x = thumbBox.max[0];
+    thumbRect.max_y = thumbBox.max[1];
+    thumbRect.radius_top_left = thumb_radius;
+    thumbRect.radius_top_right = thumb_radius;
+    thumbRect.radius_bottom_right = thumb_radius;
+    thumbRect.radius_bottom_left = thumb_radius;
+    thumbRect.color = config.thumb_color;
+
+    auto payload_track = sizeof(SceneData::RoundedRectCommand);
+    auto payload_fill = sizeof(SceneData::RectCommand);
+    auto payload_thumb = sizeof(SceneData::RoundedRectCommand);
+    bucket.command_payload.resize(payload_track + payload_fill + payload_thumb);
+    std::uint8_t* payload_ptr = bucket.command_payload.data();
+    std::memcpy(payload_ptr, &trackRect, payload_track);
+    std::memcpy(payload_ptr + payload_track, &fillRect, payload_fill);
+    std::memcpy(payload_ptr + payload_track + payload_fill, &thumbRect, payload_thumb);
+
+    bucket.command_kinds = {
+        static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect),
+        static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect),
+        static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect),
+    };
+
+    return bucket;
+}
+
 auto ensure_widget_scene(PathSpace& space,
                          AppRootPathView appRoot,
                          std::string_view name,
@@ -275,6 +416,12 @@ auto ensure_widget_scene(PathSpace& space,
     return scenePath;
 }
 
+auto ensure_slider_scene(PathSpace& space,
+                         AppRootPathView appRoot,
+                         std::string_view name) -> SP::Expected<ScenePath> {
+    return ensure_widget_scene(space, appRoot, name, "Widget slider");
+}
+
 auto write_button_metadata(PathSpace& space,
                            std::string const& rootPath,
                            std::string const& label,
@@ -292,6 +439,29 @@ auto write_button_metadata(PathSpace& space,
 
     auto stylePath = rootPath + "/meta/style";
     if (auto status = replace_single<Widgets::ButtonStyle>(space, stylePath, style); !status) {
+        return status;
+    }
+
+    return {};
+}
+
+auto write_slider_metadata(PathSpace& space,
+                           std::string const& rootPath,
+                           Widgets::SliderState const& state,
+                           Widgets::SliderStyle const& style,
+                           Widgets::SliderRange const& range) -> SP::Expected<void> {
+    auto statePath = rootPath + "/state";
+    if (auto status = replace_single<Widgets::SliderState>(space, statePath, state); !status) {
+        return status;
+    }
+
+    auto stylePath = rootPath + "/meta/style";
+    if (auto status = replace_single<Widgets::SliderStyle>(space, stylePath, style); !status) {
+        return status;
+    }
+
+    auto rangePath = rootPath + "/meta/range";
+    if (auto status = replace_single<Widgets::SliderRange>(space, rangePath, range); !status) {
         return status;
     }
 
@@ -2958,6 +3128,95 @@ auto CreateToggle(PathSpace& space,
     return paths;
 }
 
+auto CreateSlider(PathSpace& space,
+                  AppRootPathView appRoot,
+                  Widgets::SliderParams const& params) -> SP::Expected<Widgets::SliderPaths> {
+    if (auto status = ensure_identifier(params.name, "widget name"); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto widgetRoot = combine_relative(appRoot, std::string("widgets/") + params.name);
+    if (!widgetRoot) {
+        return std::unexpected(widgetRoot.error());
+    }
+
+    Widgets::SliderRange range{};
+    range.minimum = std::min(params.minimum, params.maximum);
+    range.maximum = std::max(params.minimum, params.maximum);
+    if (range.minimum == range.maximum) {
+        range.maximum = range.minimum + 1.0f;
+    }
+    range.step = std::max(params.step, 0.0f);
+
+    auto clamp_value = [&](float v) {
+        float clamped = std::clamp(v, range.minimum, range.maximum);
+        if (range.step > 0.0f) {
+            float steps = std::round((clamped - range.minimum) / range.step);
+            clamped = range.minimum + steps * range.step;
+            clamped = std::clamp(clamped, range.minimum, range.maximum);
+        }
+        return clamped;
+    };
+
+    Widgets::SliderStyle style = params.style;
+    style.width = std::max(style.width, 32.0f);
+    style.height = std::max(style.height, 16.0f);
+    style.track_height = std::clamp(style.track_height, 1.0f, style.height);
+    style.thumb_radius = std::clamp(style.thumb_radius, style.track_height * 0.5f, style.height * 0.5f);
+
+    Widgets::SliderState defaultState{};
+    defaultState.value = clamp_value(params.value);
+
+    if (auto status = write_slider_metadata(space, widgetRoot->getPath(), defaultState, style, range); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto scenePath = ensure_slider_scene(space, appRoot, params.name);
+    if (!scenePath) {
+        return std::unexpected(scenePath.error());
+    }
+
+    SliderSnapshotConfig config{
+        .width = style.width,
+        .height = style.height,
+        .track_height = style.track_height,
+        .thumb_radius = style.thumb_radius,
+        .min = range.minimum,
+        .max = range.maximum,
+        .value = defaultState.value,
+        .track_color = style.track_color,
+        .fill_color = style.fill_color,
+        .thumb_color = style.thumb_color,
+    };
+    auto bucket = make_slider_bucket(config);
+
+    SceneData::SnapshotPublishOptions publishOpts{};
+    publishOpts.metadata.author = "widgets";
+    publishOpts.metadata.tool_version = "widgets-toolkit";
+    publishOpts.metadata.created_at = std::chrono::system_clock::now();
+    publishOpts.metadata.drawable_count = bucket.drawable_ids.size();
+    publishOpts.metadata.command_count = bucket.command_kinds.size();
+
+    SceneData::SceneSnapshotBuilder builder{space, appRoot, *scenePath};
+    auto revision = builder.publish(publishOpts, bucket);
+    if (!revision) {
+        return std::unexpected(revision.error());
+    }
+
+    auto ready = Scene::WaitUntilReady(space, *scenePath, std::chrono::milliseconds{50});
+    if (!ready) {
+        return std::unexpected(ready.error());
+    }
+
+    Widgets::SliderPaths paths{
+        .scene = *scenePath,
+        .root = WidgetPath{widgetRoot->getPath()},
+        .state = ConcretePath{widgetRoot->getPath() + "/state"},
+        .range = ConcretePath{widgetRoot->getPath() + "/meta/range"},
+    };
+    return paths;
+}
+
 auto UpdateButtonState(PathSpace& space,
                        Widgets::ButtonPaths const& paths,
                        Widgets::ButtonState const& new_state) -> SP::Expected<bool> {
@@ -2992,6 +3251,53 @@ auto UpdateToggleState(PathSpace& space,
         return false;
     }
     if (auto status = replace_single<Widgets::ToggleState>(space, statePath, new_state); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto mark = Scene::MarkDirty(space, paths.scene, Scene::DirtyKind::Visual); !mark) {
+        return std::unexpected(mark.error());
+    }
+    return true;
+}
+
+auto UpdateSliderState(PathSpace& space,
+                       Widgets::SliderPaths const& paths,
+                       Widgets::SliderState const& new_state) -> SP::Expected<bool> {
+    auto rangePath = std::string(paths.range.getPath());
+    auto rangeValue = read_optional<Widgets::SliderRange>(space, rangePath);
+    if (!rangeValue) {
+        return std::unexpected(rangeValue.error());
+    }
+    Widgets::SliderRange range = rangeValue->value_or(Widgets::SliderRange{});
+    if (range.minimum > range.maximum) {
+        std::swap(range.minimum, range.maximum);
+    }
+    if (range.minimum == range.maximum) {
+        range.maximum = range.minimum + 1.0f;
+    }
+
+    auto clamp_value = [&](float v) {
+        float clamped = std::clamp(v, range.minimum, range.maximum);
+        if (range.step > 0.0f) {
+            float steps = std::round((clamped - range.minimum) / range.step);
+            clamped = range.minimum + steps * range.step;
+            clamped = std::clamp(clamped, range.minimum, range.maximum);
+        }
+        return clamped;
+    };
+
+    Widgets::SliderState sanitized = new_state;
+    sanitized.value = clamp_value(new_state.value);
+
+    auto statePath = std::string(paths.state.getPath());
+    auto current = read_optional<Widgets::SliderState>(space, statePath);
+    if (!current) {
+        return std::unexpected(current.error());
+    }
+    bool changed = !current->has_value() || !slider_states_equal(**current, sanitized);
+    if (!changed) {
+        return false;
+    }
+    if (auto status = replace_single<Widgets::SliderState>(space, statePath, sanitized); !status) {
         return std::unexpected(status.error());
     }
     if (auto mark = Scene::MarkDirty(space, paths.scene, Scene::DirtyKind::Visual); !mark) {

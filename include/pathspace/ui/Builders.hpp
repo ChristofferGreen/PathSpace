@@ -483,6 +483,53 @@ auto UpdateToggleState(PathSpace& space,
                        TogglePaths const& paths,
                        ToggleState const& new_state) -> SP::Expected<bool>;
 
+struct SliderStyle {
+    float width = 240.0f;
+    float height = 32.0f;
+    float track_height = 6.0f;
+    float thumb_radius = 10.0f;
+    std::array<float, 4> track_color{0.75f, 0.75f, 0.78f, 1.0f};
+    std::array<float, 4> fill_color{0.176f, 0.353f, 0.914f, 1.0f};
+    std::array<float, 4> thumb_color{1.0f, 1.0f, 1.0f, 1.0f};
+};
+
+struct SliderState {
+    bool enabled = true;
+    bool hovered = false;
+    bool dragging = false;
+    float value = 0.0f;
+};
+
+struct SliderParams {
+    std::string name;
+    float minimum = 0.0f;
+    float maximum = 1.0f;
+    float value = 0.5f;
+    float step = 0.0f; // 0 => continuous
+    SliderStyle style{};
+};
+
+struct SliderRange {
+    float minimum = 0.0f;
+    float maximum = 1.0f;
+    float step = 0.0f;
+};
+
+struct SliderPaths {
+    ScenePath scene;
+    WidgetPath root;
+    ConcretePath state;
+    ConcretePath range;
+};
+
+auto CreateSlider(PathSpace& space,
+                  AppRootPathView appRoot,
+                  SliderParams const& params) -> SP::Expected<SliderPaths>;
+
+auto UpdateSliderState(PathSpace& space,
+                       SliderPaths const& paths,
+                       SliderState const& new_state) -> SP::Expected<bool>;
+
 } // namespace Widgets
 
 namespace Diagnostics {
