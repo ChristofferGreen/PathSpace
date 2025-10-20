@@ -98,6 +98,17 @@ auto slider_states_equal(Widgets::SliderState const& lhs,
         && lhs.value == rhs.value;
 }
 
+auto list_states_equal(Widgets::ListState const& lhs,
+                       Widgets::ListState const& rhs) -> bool {
+    auto equal_float = [](float a, float b) {
+        return std::fabs(a - b) <= 1e-6f;
+    };
+    return lhs.enabled == rhs.enabled
+        && lhs.hovered_index == rhs.hovered_index
+        && lhs.selected_index == rhs.selected_index
+        && equal_float(lhs.scroll_offset, rhs.scroll_offset);
+}
+
 auto make_default_dirty_rect(float width, float height) -> DirtyRectHint {
     DirtyRectHint hint{};
     hint.min_x = 0.0f;
@@ -406,6 +417,157 @@ auto make_slider_bucket(SliderSnapshotConfig const& config) -> SceneData::Drawab
     return bucket;
 }
 
+struct ListSnapshotConfig {
+    float width = 240.0f;
+    float item_height = 36.0f;
+    float corner_radius = 8.0f;
+    float border_thickness = 1.0f;
+    std::size_t item_count = 0;
+    std::int32_t selected_index = -1;
+    std::int32_t hovered_index = -1;
+    std::array<float, 4> background_color{};
+    std::array<float, 4> border_color{};
+    std::array<float, 4> item_color{};
+    std::array<float, 4> item_hover_color{};
+    std::array<float, 4> item_selected_color{};
+    std::array<float, 4> separator_color{};
+};
+
+auto make_list_bucket(ListSnapshotConfig const& config) -> SceneData::DrawableBucketSnapshot {
+    auto const item_count = static_cast<std::size_t>(std::max<std::int32_t>(static_cast<std::int32_t>(config.item_count), 0));
+    float const base_height = std::max(config.item_height * static_cast<float>(std::max<std::size_t>(item_count, 1u)),
+                                       config.item_height);
+    float const height = base_height + config.border_thickness * 2.0f;
+    float const width = std::max(config.width, 1.0f);
+
+    SceneData::DrawableBucketSnapshot bucket{};
+    // background + per-item rectangles
+    std::size_t drawable_count = 1 + std::max<std::size_t>(item_count, 1u);
+    bucket.drawable_ids.reserve(drawable_count);
+    bucket.world_transforms.reserve(drawable_count);
+    bucket.bounds_spheres.reserve(drawable_count);
+    bucket.bounds_boxes.reserve(drawable_count);
+    bucket.bounds_box_valid.reserve(drawable_count);
+    bucket.layers.reserve(drawable_count);
+    bucket.z_values.reserve(drawable_count);
+    bucket.material_ids.reserve(drawable_count);
+    bucket.pipeline_flags.reserve(drawable_count);
+    bucket.visibility.reserve(drawable_count);
+    bucket.command_offsets.reserve(drawable_count);
+    bucket.command_counts.reserve(drawable_count);
+    bucket.opaque_indices.reserve(drawable_count);
+    bucket.clip_head_indices.reserve(drawable_count);
+    bucket.authoring_map.reserve(drawable_count);
+    bucket.drawable_fingerprints.reserve(drawable_count);
+
+    auto push_common = [&](std::uint64_t drawable_id,
+                           SceneData::BoundingBox const& box,
+                           SceneData::BoundingSphere const& sphere,
+                           int layer,
+                           float z) {
+        bucket.drawable_ids.push_back(drawable_id);
+        bucket.world_transforms.push_back(make_identity_transform());
+        bucket.bounds_boxes.push_back(box);
+        bucket.bounds_box_valid.push_back(1);
+        bucket.bounds_spheres.push_back(sphere);
+        bucket.layers.push_back(layer);
+        bucket.z_values.push_back(z);
+        bucket.material_ids.push_back(0);
+        bucket.pipeline_flags.push_back(0);
+        bucket.visibility.push_back(1);
+        bucket.command_counts.push_back(1);
+        bucket.opaque_indices.push_back(static_cast<std::uint32_t>(bucket.opaque_indices.size()));
+        bucket.clip_head_indices.push_back(-1);
+    };
+
+    // Background rounded rect.
+    SceneData::BoundingBox background_box{};
+    background_box.min = {0.0f, 0.0f, 0.0f};
+    background_box.max = {width, height, 0.0f};
+
+    SceneData::BoundingSphere background_sphere{};
+    background_sphere.center = {width * 0.5f, height * 0.5f, 0.0f};
+    background_sphere.radius = std::sqrt(background_sphere.center[0] * background_sphere.center[0]
+                                         + background_sphere.center[1] * background_sphere.center[1]);
+
+    push_common(0x11570001ull, background_box, background_sphere, 0, 0.0f);
+    bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
+    bucket.command_kinds.push_back(static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect));
+
+    SceneData::RoundedRectCommand background{};
+    background.min_x = 0.0f;
+    background.min_y = 0.0f;
+    background.max_x = width;
+    background.max_y = height;
+    background.radius_top_left = config.corner_radius;
+    background.radius_top_right = config.corner_radius;
+    background.radius_bottom_right = config.corner_radius;
+    background.radius_bottom_left = config.corner_radius;
+    background.color = config.background_color;
+
+    auto const background_offset = bucket.command_payload.size();
+    bucket.command_payload.resize(background_offset + sizeof(SceneData::RoundedRectCommand));
+    std::memcpy(bucket.command_payload.data() + background_offset,
+                &background,
+                sizeof(SceneData::RoundedRectCommand));
+
+    bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
+        bucket.drawable_ids.back(), "widget/list/background", 0, 0});
+    bucket.drawable_fingerprints.push_back(0x11570001ull);
+
+    // Item rows.
+    std::size_t const rows = std::max<std::size_t>(item_count, 1u);
+    float const content_top = config.border_thickness;
+    for (std::size_t index = 0; index < rows; ++index) {
+        float const top = content_top + config.item_height * static_cast<float>(index);
+        float const bottom = top + config.item_height;
+        SceneData::BoundingBox row_box{};
+        row_box.min = {config.border_thickness, top, 0.0f};
+        row_box.max = {width - config.border_thickness, bottom, 0.0f};
+
+        SceneData::BoundingSphere row_sphere{};
+        row_sphere.center = {(row_box.min[0] + row_box.max[0]) * 0.5f,
+                             (row_box.min[1] + row_box.max[1]) * 0.5f,
+                             0.0f};
+        row_sphere.radius = std::sqrt(std::pow(row_box.max[0] - row_sphere.center[0], 2.0f)
+                                      + std::pow(row_box.max[1] - row_sphere.center[1], 2.0f));
+
+        std::uint64_t drawable_id = 0x11570010ull + static_cast<std::uint64_t>(index);
+        push_common(drawable_id, row_box, row_sphere, 1, 0.05f + static_cast<float>(index) * 0.001f);
+        bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
+        bucket.command_kinds.push_back(static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect));
+
+        std::array<float, 4> color = config.item_color;
+        if (static_cast<std::int32_t>(index) == config.selected_index) {
+            color = config.item_selected_color;
+        } else if (static_cast<std::int32_t>(index) == config.hovered_index) {
+            color = config.item_hover_color;
+        }
+
+        SceneData::RectCommand row_rect{};
+        row_rect.min_x = row_box.min[0];
+        row_rect.min_y = row_box.min[1];
+        row_rect.max_x = row_box.max[0];
+        row_rect.max_y = row_box.max[1];
+        row_rect.color = color;
+
+        auto const payload_offset = bucket.command_payload.size();
+        bucket.command_payload.resize(payload_offset + sizeof(SceneData::RectCommand));
+        std::memcpy(bucket.command_payload.data() + payload_offset,
+                    &row_rect,
+                    sizeof(SceneData::RectCommand));
+
+        auto label = std::string("widget/list/item/") + std::to_string(index);
+        bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
+            drawable_id, label, 0, 0});
+        bucket.drawable_fingerprints.push_back(drawable_id);
+    }
+
+    bucket.alpha_indices.clear();
+    bucket.layer_indices.clear();
+    return bucket;
+}
+
 auto ensure_widget_scene(PathSpace& space,
                          AppRootPathView appRoot,
                          std::string_view name,
@@ -437,6 +599,12 @@ auto ensure_slider_scene(PathSpace& space,
                          AppRootPathView appRoot,
                          std::string_view name) -> SP::Expected<ScenePath> {
     return ensure_widget_scene(space, appRoot, name, "Widget slider");
+}
+
+auto ensure_list_scene(PathSpace& space,
+                       AppRootPathView appRoot,
+                       std::string_view name) -> SP::Expected<ScenePath> {
+    return ensure_widget_scene(space, appRoot, name, "Widget list");
 }
 
 auto write_button_metadata(PathSpace& space,
@@ -482,6 +650,26 @@ auto write_slider_metadata(PathSpace& space,
         return status;
     }
 
+    return {};
+}
+
+auto write_list_metadata(PathSpace& space,
+                         std::string const& rootPath,
+                         Widgets::ListState const& state,
+                         Widgets::ListStyle const& style,
+                         std::vector<Widgets::ListItem> const& items) -> SP::Expected<void> {
+    auto statePath = rootPath + "/state";
+    if (auto status = replace_single<Widgets::ListState>(space, statePath, state); !status) {
+        return status;
+    }
+    auto stylePath = rootPath + "/meta/style";
+    if (auto status = replace_single<Widgets::ListStyle>(space, stylePath, style); !status) {
+        return status;
+    }
+    auto itemsPath = rootPath + "/meta/items";
+    if (auto status = replace_single<std::vector<Widgets::ListItem>>(space, itemsPath, items); !status) {
+        return status;
+    }
     return {};
 }
 
@@ -3236,6 +3424,118 @@ auto CreateSlider(PathSpace& space,
     return paths;
 }
 
+auto CreateList(PathSpace& space,
+                AppRootPathView appRoot,
+                Widgets::ListParams const& params) -> SP::Expected<Widgets::ListPaths> {
+    if (auto status = ensure_identifier(params.name, "widget name"); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto widgetRoot = combine_relative(appRoot, std::string("widgets/") + params.name);
+    if (!widgetRoot) {
+        return std::unexpected(widgetRoot.error());
+    }
+
+    std::vector<Widgets::ListItem> items = params.items;
+    if (items.empty()) {
+        items.push_back(Widgets::ListItem{
+            .id = "item-0",
+            .label = "Item 1",
+            .enabled = true,
+        });
+    }
+
+    std::unordered_set<std::string> ids;
+    ids.reserve(items.size());
+    for (std::size_t index = 0; index < items.size(); ++index) {
+        auto& item = items[index];
+        if (item.id.empty()) {
+            item.id = "item-" + std::to_string(index);
+        }
+        if (auto status = ensure_identifier(item.id, "list item id"); !status) {
+            return std::unexpected(status.error());
+        }
+        if (!ids.insert(item.id).second) {
+            return std::unexpected(make_error("list item ids must be unique",
+                                              SP::Error::Code::MalformedInput));
+        }
+    }
+
+    Widgets::ListStyle style = params.style;
+    style.width = std::max(style.width, 96.0f);
+    style.item_height = std::max(style.item_height, 24.0f);
+    style.corner_radius = std::clamp(style.corner_radius, 0.0f, std::min(style.width, style.item_height * static_cast<float>(std::max<std::size_t>(items.size(), 1u))) * 0.5f);
+    style.border_thickness = std::clamp(style.border_thickness, 0.0f, style.item_height * 0.5f);
+
+    auto first_enabled = std::find_if(items.begin(), items.end(), [](auto const& entry) {
+        return entry.enabled;
+    });
+
+    Widgets::ListState defaultState{};
+    defaultState.selected_index = (first_enabled != items.end())
+        ? static_cast<std::int32_t>(std::distance(items.begin(), first_enabled))
+        : -1;
+    defaultState.hovered_index = -1;
+    defaultState.scroll_offset = 0.0f;
+
+    if (auto status = write_list_metadata(space,
+                                          widgetRoot->getPath(),
+                                          defaultState,
+                                          style,
+                                          items); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto scenePath = ensure_list_scene(space, appRoot, params.name);
+    if (!scenePath) {
+        return std::unexpected(scenePath.error());
+    }
+
+    ListSnapshotConfig config{
+        .width = style.width,
+        .item_height = style.item_height,
+        .corner_radius = style.corner_radius,
+        .border_thickness = style.border_thickness,
+        .item_count = items.size(),
+        .selected_index = defaultState.selected_index,
+        .hovered_index = defaultState.hovered_index,
+        .background_color = style.background_color,
+        .border_color = style.border_color,
+        .item_color = style.item_color,
+        .item_hover_color = style.item_hover_color,
+        .item_selected_color = style.item_selected_color,
+        .separator_color = style.separator_color,
+    };
+
+    auto bucket = make_list_bucket(config);
+
+    SceneData::SnapshotPublishOptions publishOpts{};
+    publishOpts.metadata.author = "widgets";
+    publishOpts.metadata.tool_version = "widgets-toolkit";
+    publishOpts.metadata.created_at = std::chrono::system_clock::now();
+    publishOpts.metadata.drawable_count = bucket.drawable_ids.size();
+    publishOpts.metadata.command_count = bucket.command_kinds.size();
+
+    SceneData::SceneSnapshotBuilder builder{space, appRoot, *scenePath};
+    auto revision = builder.publish(publishOpts, bucket);
+    if (!revision) {
+        return std::unexpected(revision.error());
+    }
+
+    auto ready = Scene::WaitUntilReady(space, *scenePath, std::chrono::milliseconds{50});
+    if (!ready) {
+        return std::unexpected(ready.error());
+    }
+
+    Widgets::ListPaths paths{
+        .scene = *scenePath,
+        .root = WidgetPath{widgetRoot->getPath()},
+        .state = ConcretePath{widgetRoot->getPath() + "/state"},
+        .items = ConcretePath{widgetRoot->getPath() + "/meta/items"},
+    };
+    return paths;
+}
+
 auto UpdateButtonState(PathSpace& space,
                        Widgets::ButtonPaths const& paths,
                        Widgets::ButtonState const& new_state) -> SP::Expected<bool> {
@@ -3317,6 +3617,83 @@ auto UpdateSliderState(PathSpace& space,
         return false;
     }
     if (auto status = replace_single<Widgets::SliderState>(space, statePath, sanitized); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto mark = Scene::MarkDirty(space, paths.scene, Scene::DirtyKind::Visual); !mark) {
+        return std::unexpected(mark.error());
+    }
+    return true;
+}
+
+auto UpdateListState(PathSpace& space,
+                     Widgets::ListPaths const& paths,
+                     Widgets::ListState const& new_state) -> SP::Expected<bool> {
+    auto itemsPath = std::string(paths.root.getPath()) + "/meta/items";
+    auto itemsValue = read_optional<std::vector<Widgets::ListItem>>(space, itemsPath);
+    if (!itemsValue) {
+        return std::unexpected(itemsValue.error());
+    }
+    std::vector<Widgets::ListItem> items;
+    if (itemsValue->has_value()) {
+        items = **itemsValue;
+    }
+
+    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto styleValue = space.read<Widgets::ListStyle, std::string>(stylePath);
+    if (!styleValue) {
+        return std::unexpected(styleValue.error());
+    }
+
+    auto sanitize_index = [&](std::int32_t index) -> std::int32_t {
+        if (items.empty()) {
+            return -1;
+        }
+        if (index < 0) {
+            return -1;
+        }
+        if (index >= static_cast<std::int32_t>(items.size())) {
+            index = static_cast<std::int32_t>(items.size()) - 1;
+        }
+        auto is_enabled = [&](std::int32_t candidate) -> bool {
+            auto const idx = static_cast<std::size_t>(candidate);
+            return idx < items.size() && items[idx].enabled;
+        };
+        if (is_enabled(index)) {
+            return index;
+        }
+        for (std::int32_t forward = index + 1; forward < static_cast<std::int32_t>(items.size()); ++forward) {
+            if (is_enabled(forward)) {
+                return forward;
+            }
+        }
+        for (std::int32_t backward = index - 1; backward >= 0; --backward) {
+            if (is_enabled(backward)) {
+                return backward;
+            }
+        }
+        return -1;
+    };
+
+    Widgets::ListState sanitized = new_state;
+    sanitized.enabled = new_state.enabled;
+    sanitized.hovered_index = sanitize_index(new_state.hovered_index);
+    sanitized.selected_index = sanitize_index(new_state.selected_index);
+    sanitized.scroll_offset = std::max(new_state.scroll_offset, 0.0f);
+
+    float const content_span = styleValue->item_height * static_cast<float>(std::max<std::size_t>(items.size(), 1u));
+    float const max_scroll = std::max(0.0f, content_span - styleValue->item_height);
+    sanitized.scroll_offset = std::clamp(sanitized.scroll_offset, 0.0f, max_scroll);
+
+    auto statePath = std::string(paths.state.getPath());
+    auto current = read_optional<Widgets::ListState>(space, statePath);
+    if (!current) {
+        return std::unexpected(current.error());
+    }
+    bool changed = !current->has_value() || !list_states_equal(**current, sanitized);
+    if (!changed) {
+        return false;
+    }
+    if (auto status = replace_single<Widgets::ListState>(space, statePath, sanitized); !status) {
         return std::unexpected(status.error());
     }
     if (auto mark = Scene::MarkDirty(space, paths.scene, Scene::DirtyKind::Visual); !mark) {
@@ -3426,6 +3803,18 @@ auto read_slider_style(PathSpace& space,
     return space.read<Widgets::SliderStyle, std::string>(stylePath);
 }
 
+auto read_list_style(PathSpace& space,
+                     ListPaths const& paths) -> SP::Expected<Widgets::ListStyle> {
+    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    return space.read<Widgets::ListStyle, std::string>(stylePath);
+}
+
+auto read_list_items(PathSpace& space,
+                     ListPaths const& paths) -> SP::Expected<std::vector<Widgets::ListItem>> {
+    auto itemsPath = std::string(paths.root.getPath()) + "/meta/items";
+    return space.read<std::vector<Widgets::ListItem>, std::string>(itemsPath);
+}
+
 } // namespace
 
 auto CreateButtonBinding(PathSpace& space,
@@ -3476,6 +3865,31 @@ auto CreateSliderBinding(PathSpace& space,
     }
     DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(style->width, style->height));
     SliderBinding binding{
+        .widget = paths,
+        .options = build_options(paths.root, targetPath, hint, auto_render),
+    };
+    return binding;
+}
+
+auto CreateListBinding(PathSpace& space,
+                       AppRootPathView,
+                       ListPaths const& paths,
+                       ConcretePathView targetPath,
+                       std::optional<DirtyRectHint> dirty_override,
+                       bool auto_render) -> SP::Expected<ListBinding> {
+    auto style = read_list_style(space, paths);
+    if (!style) {
+        return std::unexpected(style.error());
+    }
+    auto items = read_list_items(space, paths);
+    if (!items) {
+        return std::unexpected(items.error());
+    }
+
+    auto item_count = std::max<std::size_t>(items->size(), 1u);
+    float height = style->item_height * static_cast<float>(item_count) + style->border_thickness * 2.0f;
+    DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(style->width, height));
+    ListBinding binding{
         .widget = paths,
         .options = build_options(paths.root, targetPath, hint, auto_render),
     };
@@ -3608,6 +4022,95 @@ auto DispatchSlider(PathSpace& space,
                                         op_kind,
                                         pointer,
                                         current_state->value); !status) {
+        return std::unexpected(status.error());
+    }
+    return *changed;
+}
+
+auto DispatchList(PathSpace& space,
+                  ListBinding const& binding,
+                  ListState const& new_state,
+                  WidgetOpKind op_kind,
+                  PointerInfo const& pointer,
+                  std::int32_t item_index,
+                  float scroll_delta) -> SP::Expected<bool> {
+    switch (op_kind) {
+    case WidgetOpKind::ListHover:
+    case WidgetOpKind::ListSelect:
+    case WidgetOpKind::ListActivate:
+    case WidgetOpKind::ListScroll:
+        break;
+    default:
+        return std::unexpected(make_error("Unsupported widget op kind for list binding",
+                                          SP::Error::Code::InvalidType));
+    }
+
+    auto current_state = space.read<ListState, std::string>(binding.widget.state.getPath());
+    if (!current_state) {
+        return std::unexpected(current_state.error());
+    }
+
+    Widgets::ListState desired = new_state;
+    switch (op_kind) {
+    case WidgetOpKind::ListHover:
+        desired.hovered_index = item_index;
+        break;
+    case WidgetOpKind::ListSelect:
+    case WidgetOpKind::ListActivate:
+        if (item_index >= 0) {
+            desired.selected_index = item_index;
+        }
+        break;
+    case WidgetOpKind::ListScroll:
+        desired.scroll_offset = current_state->scroll_offset + scroll_delta;
+        break;
+    default:
+        break;
+    }
+
+    auto changed = Widgets::UpdateListState(space, binding.widget, desired);
+    if (!changed) {
+        return std::unexpected(changed.error());
+    }
+
+    auto updated_state = space.read<ListState, std::string>(binding.widget.state.getPath());
+    if (!updated_state) {
+        return std::unexpected(updated_state.error());
+    }
+
+    if (*changed) {
+        if (auto status = submit_dirty_hint(space, binding.options); !status) {
+            return std::unexpected(status.error());
+        }
+        if (auto status = schedule_auto_render(space,
+                                               binding.options,
+                                               "widget/list"); !status) {
+            return std::unexpected(status.error());
+        }
+    }
+
+    float op_value = 0.0f;
+    switch (op_kind) {
+    case WidgetOpKind::ListHover:
+        op_value = static_cast<float>(updated_state->hovered_index);
+        break;
+    case WidgetOpKind::ListSelect:
+    case WidgetOpKind::ListActivate:
+        op_value = static_cast<float>(updated_state->selected_index);
+        break;
+    case WidgetOpKind::ListScroll:
+        op_value = updated_state->scroll_offset;
+        break;
+    default:
+        break;
+    }
+
+    if (auto status = enqueue_widget_op(space,
+                                        binding.options,
+                                        binding.widget.root.getPath(),
+                                        op_kind,
+                                        pointer,
+                                        op_value); !status) {
         return std::unexpected(status.error());
     }
     return *changed;

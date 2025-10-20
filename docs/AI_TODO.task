@@ -62,7 +62,7 @@ task {
 task {
   name: "Widget Slider & List Builders [FEATURE]"
   description: "Extend the widget toolkit with slider and list builders that publish canonical scenes and metadata alongside the existing button/toggle support."
-  status: in_progress
+  status: completed
   priority: P2
 
   acceptance_criteria: [
@@ -74,7 +74,7 @@ task {
   steps: [
     "DONE (Oct 20, 2025) Author DrawableBucket snapshots for slider track/thumb and list rows (including selection highlighting).",
     "DONE (Oct 20, 2025) Add style/state structs mirroring button/toggle conventions for the slider; repeat for list when implementing it.",
-    "Update widgets_example to instantiate the new widgets pending the gallery expansion task."
+    "DONE (Oct 20, 2025) Update widgets_example to instantiate the new widgets pending the gallery expansion task."
   ]
 }
 

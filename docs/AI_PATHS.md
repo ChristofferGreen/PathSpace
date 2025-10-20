@@ -90,8 +90,8 @@ The following subtrees are standardized within each application root (one of the
         - `dump/*` — optional blobs captured for that request (framebuffers, GPU counters)
 - Widgets
   - `widgets/<widget-id>/`
-    - `state` — current widget state payload (button/toggle/slider structs)
-    - `meta/*` — style, label, range metadata authored by widget builders
+    - `state` — current widget state payload (button/toggle/slider/list structs)
+    - `meta/*` — style, label, range/list metadata authored by widget builders
     - `ops/inbox/queue` — `WidgetOp` FIFO written by `Widgets::Bindings` helpers (hover/press/toggle/slider events)
 
 - Surfaces (offscreen targets)

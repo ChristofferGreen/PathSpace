@@ -530,6 +530,53 @@ auto UpdateSliderState(PathSpace& space,
                        SliderPaths const& paths,
                        SliderState const& new_state) -> SP::Expected<bool>;
 
+struct ListStyle {
+    float width = 240.0f;
+    float item_height = 36.0f;
+    float corner_radius = 8.0f;
+    float border_thickness = 1.0f;
+    std::array<float, 4> background_color{0.121f, 0.129f, 0.145f, 1.0f};
+    std::array<float, 4> border_color{0.239f, 0.247f, 0.266f, 1.0f};
+    std::array<float, 4> item_color{0.176f, 0.184f, 0.204f, 1.0f};
+    std::array<float, 4> item_hover_color{0.247f, 0.278f, 0.349f, 1.0f};
+    std::array<float, 4> item_selected_color{0.176f, 0.353f, 0.914f, 1.0f};
+    std::array<float, 4> separator_color{0.224f, 0.231f, 0.247f, 1.0f};
+};
+
+struct ListItem {
+    std::string id;
+    std::string label;
+    bool enabled = true;
+};
+
+struct ListState {
+    bool enabled = true;
+    std::int32_t hovered_index = -1;
+    std::int32_t selected_index = -1;
+    float scroll_offset = 0.0f;
+};
+
+struct ListParams {
+    std::string name;
+    std::vector<ListItem> items;
+    ListStyle style{};
+};
+
+struct ListPaths {
+    ScenePath scene;
+    WidgetPath root;
+    ConcretePath state;
+    ConcretePath items;
+};
+
+auto CreateList(PathSpace& space,
+                AppRootPathView appRoot,
+                ListParams const& params) -> SP::Expected<ListPaths>;
+
+auto UpdateListState(PathSpace& space,
+                     ListPaths const& paths,
+                     ListState const& new_state) -> SP::Expected<bool>;
+
 namespace Bindings {
 
 enum class WidgetOpKind : std::uint32_t {
@@ -542,6 +589,10 @@ enum class WidgetOpKind : std::uint32_t {
     SliderBegin,
     SliderUpdate,
     SliderCommit,
+    ListHover,
+    ListSelect,
+    ListActivate,
+    ListScroll,
 };
 
 struct PointerInfo {
@@ -579,6 +630,11 @@ struct ToggleBinding {
 
 struct SliderBinding {
     SliderPaths widget;
+    BindingOptions options;
+};
+
+struct ListBinding {
+    ListPaths widget;
     BindingOptions options;
 };
 
@@ -620,6 +676,21 @@ auto DispatchSlider(PathSpace& space,
                     SliderState const& new_state,
                     WidgetOpKind op_kind,
                     PointerInfo const& pointer = {}) -> SP::Expected<bool>;
+
+auto CreateListBinding(PathSpace& space,
+                       AppRootPathView appRoot,
+                       ListPaths const& paths,
+                       ConcretePathView targetPath,
+                       std::optional<DirtyRectHint> dirty_override = std::nullopt,
+                       bool auto_render = true) -> SP::Expected<ListBinding>;
+
+auto DispatchList(PathSpace& space,
+                  ListBinding const& binding,
+                  ListState const& new_state,
+                  WidgetOpKind op_kind,
+                  PointerInfo const& pointer = {},
+                  std::int32_t item_index = -1,
+                  float scroll_delta = 0.0f) -> SP::Expected<bool>;
 
 } // namespace Bindings
 

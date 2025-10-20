@@ -4,6 +4,7 @@
 #include <chrono>
 #include <iostream>
 #include <string>
+#include <vector>
 
 int main() {
     using namespace SP;
@@ -74,6 +75,81 @@ int main() {
               << "  state path: " << toggle->state.getPath() << "\n"
               << "  initial checked state applied via UpdateToggleState\n"
               << "Inspect the PathSpace tree to wire widgets into a renderer target.\n";
+
+    Widgets::SliderParams sliderParams{};
+    sliderParams.name = "volume_slider";
+    sliderParams.minimum = 0.0f;
+    sliderParams.maximum = 100.0f;
+    sliderParams.value = 25.0f;
+    sliderParams.step = 5.0f;
+
+    auto slider = Widgets::CreateSlider(space, appRootView, sliderParams);
+    if (!slider) {
+        std::cerr << "Failed to create slider widget: "
+                  << slider.error().message.value_or("unspecified error") << "\n";
+        return 6;
+    }
+
+    Widgets::SliderState sliderState{};
+    sliderState.value = 45.0f;
+    auto sliderChanged = Widgets::UpdateSliderState(space, *slider, sliderState);
+    if (!sliderChanged) {
+        std::cerr << "Failed to update slider state: "
+                  << sliderChanged.error().message.value_or("unspecified error") << "\n";
+        return 7;
+    }
+
+    auto sliderRevision = Scene::ReadCurrentRevision(space, slider->scene);
+    if (!sliderRevision) {
+        std::cerr << "Slider scene published but revision unreadable: "
+                  << sliderRevision.error().message.value_or("unspecified error") << "\n";
+        return 8;
+    }
+
+    std::cout << "widgets_example published slider widget:\n"
+              << "  scene: " << slider->scene.getPath() << " (revision "
+              << sliderRevision->revision << ")\n"
+              << "  state path: " << slider->state.getPath() << "\n"
+              << "  range path: " << slider->range.getPath() << "\n";
+
+    Widgets::ListParams listParams{};
+    listParams.name = "inventory_list";
+    listParams.items = {
+        Widgets::ListItem{.id = "potion", .label = "Potion", .enabled = true},
+        Widgets::ListItem{.id = "ether", .label = "Ether", .enabled = true},
+        Widgets::ListItem{.id = "elixir", .label = "Elixir", .enabled = true},
+    };
+    listParams.style.width = 240.0f;
+    listParams.style.item_height = 36.0f;
+
+    auto list = Widgets::CreateList(space, appRootView, listParams);
+    if (!list) {
+        std::cerr << "Failed to create list widget: "
+                  << list.error().message.value_or("unspecified error") << "\n";
+        return 9;
+    }
+
+    Widgets::ListState listState{};
+    listState.selected_index = 1;
+    auto listChanged = Widgets::UpdateListState(space, *list, listState);
+    if (!listChanged) {
+        std::cerr << "Failed to update list state: "
+                  << listChanged.error().message.value_or("unspecified error") << "\n";
+        return 10;
+    }
+
+    auto listRevision = Scene::ReadCurrentRevision(space, list->scene);
+    if (!listRevision) {
+        std::cerr << "List scene published but revision unreadable: "
+                  << listRevision.error().message.value_or("unspecified error") << "\n";
+        return 11;
+    }
+
+    std::cout << "widgets_example published list widget:\n"
+              << "  scene: " << list->scene.getPath() << " (revision "
+              << listRevision->revision << ")\n"
+              << "  state path: " << list->state.getPath() << "\n"
+              << "  items path: " << list->items.getPath() << "\n";
 
     return 0;
 }

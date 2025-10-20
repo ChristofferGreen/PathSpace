@@ -1568,6 +1568,177 @@ TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
     }
 }
 
+TEST_CASE("Widgets::CreateList publishes snapshot and metadata") {
+    BuildersFixture fx;
+
+    Widgets::ListParams listParams{};
+    listParams.name = "inventory";
+    listParams.items = {
+        Widgets::ListItem{.id = "potion", .label = "Potion", .enabled = true},
+        Widgets::ListItem{.id = "ether", .label = "Ether", .enabled = true},
+        Widgets::ListItem{.id = "elixir", .label = "Elixir", .enabled = false},
+    };
+    listParams.style.width = 220.0f;
+    listParams.style.item_height = 40.0f;
+
+    auto created = Widgets::CreateList(fx.space, fx.root_view(), listParams);
+    REQUIRE(created);
+
+    auto state = read_value<Widgets::ListState>(fx.space, created->state.getPath());
+    REQUIRE(state);
+    CHECK(state->selected_index == 0);
+    CHECK(state->hovered_index == -1);
+
+    auto storedItems = read_value<std::vector<Widgets::ListItem>>(fx.space, created->items.getPath());
+    REQUIRE(storedItems);
+    REQUIRE(storedItems->size() == 3);
+    CHECK((*storedItems)[1].label == "Ether");
+    CHECK_FALSE((*storedItems)[2].enabled);
+
+    auto stylePath = std::string(created->root.getPath()) + "/meta/style";
+    auto storedStyle = read_value<Widgets::ListStyle>(fx.space, stylePath);
+    REQUIRE(storedStyle);
+    CHECK(storedStyle->width == doctest::Approx(220.0f));
+    CHECK(storedStyle->item_height == doctest::Approx(40.0f));
+
+    auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    REQUIRE(revision);
+    CHECK(revision->revision != 0);
+}
+
+TEST_CASE("Widgets::UpdateListState clamps indices and marks dirty") {
+    BuildersFixture fx;
+
+    Widgets::ListParams listParams{};
+    listParams.name = "inventory_updates";
+    listParams.items = {
+        Widgets::ListItem{.id = "sword", .label = "Sword", .enabled = false},
+        Widgets::ListItem{.id = "shield", .label = "Shield", .enabled = true},
+        Widgets::ListItem{.id = "bow", .label = "Bow", .enabled = true},
+    };
+    listParams.style.item_height = 32.0f;
+
+    auto created = Widgets::CreateList(fx.space, fx.root_view(), listParams);
+    REQUIRE(created);
+
+    Widgets::ListState desired{};
+    desired.enabled = true;
+    desired.selected_index = 0;
+    desired.hovered_index = 5;
+    desired.scroll_offset = 120.0f;
+
+    auto changed = Widgets::UpdateListState(fx.space, *created, desired);
+    REQUIRE(changed);
+    CHECK(*changed);
+
+    auto updated = read_value<Widgets::ListState>(fx.space, created->state.getPath());
+    REQUIRE(updated);
+    CHECK(updated->selected_index == 1);
+    CHECK(updated->hovered_index == 2);
+    CHECK(updated->scroll_offset == doctest::Approx(64.0f)); // two rows * 32 - 32
+
+    auto unchanged = Widgets::UpdateListState(fx.space, *created, *updated);
+    REQUIRE(unchanged);
+    CHECK_FALSE(*unchanged);
+}
+
+TEST_CASE("Widgets::Bindings::DispatchList enqueues ops and schedules renders") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{ .name = "bindings_list_renderer", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc{};
+    desc.size_px = {320, 240};
+    desc.progressive_tile_size_px = 32;
+
+    SurfaceParams surfaceParams{ .name = "bindings_list_surface", .desc = desc, .renderer = "renderers/bindings_list_renderer" };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    auto target = Renderer::ResolveTargetBase(fx.space,
+                                              fx.root_view(),
+                                              *renderer,
+                                              "targets/surfaces/bindings_list_surface");
+    REQUIRE(target);
+
+    Widgets::ListParams listParams{};
+    listParams.name = "inventory_bindings";
+    listParams.items = {
+        Widgets::ListItem{.id = "potion", .label = "Potion", .enabled = true},
+        Widgets::ListItem{.id = "ether", .label = "Ether", .enabled = true},
+    };
+    auto listWidget = Widgets::CreateList(fx.space, fx.root_view(), listParams);
+    REQUIRE(listWidget);
+
+    auto binding = WidgetBindings::CreateListBinding(fx.space,
+                                                     fx.root_view(),
+                                                     *listWidget,
+                                                     SP::ConcretePathStringView{target->getPath()});
+    REQUIRE(binding);
+
+    WidgetBindings::PointerInfo pointer{};
+    pointer.scene_x = 10.0f;
+    pointer.scene_y = 18.0f;
+    pointer.inside = true;
+
+    Widgets::ListState selectState{};
+    selectState.selected_index = 1;
+
+    auto selectResult = WidgetBindings::DispatchList(fx.space,
+                                                     *binding,
+                                                     selectState,
+                                                     WidgetBindings::WidgetOpKind::ListSelect,
+                                                     pointer,
+                                                     1);
+    REQUIRE(selectResult);
+    CHECK(*selectResult);
+
+    auto renderQueuePath = std::string(target->getPath()) + "/events/renderRequested/queue";
+    auto renderEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    REQUIRE(renderEvent);
+    CHECK(renderEvent->reason == "widget/list");
+
+    auto opQueuePath = binding->options.ops_queue.getPath();
+    auto selectOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(selectOp);
+    CHECK(selectOp->kind == WidgetBindings::WidgetOpKind::ListSelect);
+    CHECK(selectOp->value == doctest::Approx(1.0f));
+
+    Widgets::ListState hoverState{};
+    auto hoverResult = WidgetBindings::DispatchList(fx.space,
+                                                    *binding,
+                                                    hoverState,
+                                                    WidgetBindings::WidgetOpKind::ListHover,
+                                                    pointer,
+                                                    0);
+    REQUIRE(hoverResult);
+    CHECK(*hoverResult);
+
+    auto hoverOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(hoverOp);
+    CHECK(hoverOp->kind == WidgetBindings::WidgetOpKind::ListHover);
+    CHECK(hoverOp->value == doctest::Approx(0.0f));
+
+    Widgets::ListState scrollState{};
+    scrollState.scroll_offset = 40.0f;
+    auto scrollResult = WidgetBindings::DispatchList(fx.space,
+                                                     *binding,
+                                                     scrollState,
+                                                     WidgetBindings::WidgetOpKind::ListScroll,
+                                                     pointer,
+                                                     -1,
+                                                     12.0f);
+    REQUIRE(scrollResult);
+    CHECK(*scrollResult);
+
+    auto scrollOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(scrollOp);
+    CHECK(scrollOp->kind == WidgetBindings::WidgetOpKind::ListScroll);
+    CHECK(scrollOp->value >= 0.0f);
+}
+
 TEST_CASE("Html::Asset vectors survive PathSpace round-trip") {
     BuildersFixture fx;
 

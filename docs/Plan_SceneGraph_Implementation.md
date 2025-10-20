@@ -1,6 +1,6 @@
 # Handoff Notice
 
-> **Handoff note (October 20, 2025):** SceneGraph material/shader bindings just landed for the Metal renderer. Residency dashboards now publish status/alert fields under `diagnostics/metrics/residency` (see Phase 6 update); the remaining high-priority focus areas are the widget/tooling follow-ups captured below. Record fresh status notes after consulting `docs/AI_Onboarding_Next.md`.
+> **Handoff note (October 20, 2025 @ shutdown):** SceneGraph material/shader bindings just landed for the Metal renderer. Residency dashboards now publish status/alert fields under `diagnostics/metrics/residency` (see Phase 6 update). Widget interaction bindings shipped today (`feat(widgets): add interaction bindings`). Next pass should resume with gallery wiring and reducer/tooling follow-ups called out below. Consult `docs/AI_Onboarding_Next.md` §6 for the shutdown snapshot before resuming.
 
 # Scene Graph Implementation Plan
 
@@ -221,6 +221,7 @@ Completed:
   - Define canonical widget scene snippets under `scenes/widgets/<widget>/` with snapshot builders that emit visual states (idle, hover, pressed, disabled).
 - ✅ (October 19, 2025) Added lightweight builders for buttons and toggles (`Builders::Widgets::CreateButton`, `CreateToggle`) that publish authoring data, bind to app-relative state paths, and express layout metadata (bounds, z-order).
 - ✅ (October 20, 2025) Added a slider builder (`Builders::Widgets::CreateSlider`) with theme metadata, range/state storage, and snapshot generation for the minimal 2D theme.
+- ✅ (October 20, 2025) Added a list builder (`Builders::Widgets::CreateList`) that publishes canonical list scenes, metadata (`meta/style`, `meta/items`), and default selection state while validating item identifiers.
 - Add a reusable stroke primitive (polyline/triangle strip) so paint examples track a point list per stroke instead of emitting per-dab rects; update renderer + HTML adapter to consume the new command once landed.
   - Provide styling hooks (colors, corner radius, typography) so demos can skin widgets without forking scenes.
 - **Interaction contract**
@@ -228,13 +229,15 @@ Completed:
   - Expose focus navigation helpers (keyboard/gamepad) that reuse the existing `Scene::HitTest` focus metadata and auto-render events to redraw highlight states.
   - Document the path schema for widget state (e.g., `/.../widgets/<id>/{state,enabled,label}`) and ensure updates stay atomic.
 - **State binding & data flow**
-  - ✅ (October 19, 2025) Introduced initial state update helpers for buttons/toggles that coalesce redundant writes and mark the owning scene `DirtyKind::Visual` only when values change.
-  - ✅ (October 20, 2025) Binding layer (`Widgets::Bindings::Dispatch{Button,Toggle,Slider}`) watches widget state, emits dirty hints, and writes interaction ops (press/release/hover/toggle/slider events) into `widgets/<id>/ops/inbox/queue`. Reducer samples live in this plan’s appendix; schema covers `WidgetOpKind`, pointer metadata, value payloads, and timestamps for reducers to consume via wait/notify.
+- ✅ (October 19, 2025) Introduced initial state update helpers for buttons/toggles that coalesce redundant writes and mark the owning scene `DirtyKind::Visual` only when values change.
+- ✅ (October 20, 2025) Binding layer (`Widgets::Bindings::Dispatch{Button,Toggle,Slider}`) watches widget state, emits dirty hints, and writes interaction ops (press/release/hover/toggle/slider events) into `widgets/<id>/ops/inbox/queue`. Reducer samples live in this plan’s appendix; schema covers `WidgetOpKind`, pointer metadata, value payloads, and timestamps for reducers to consume via wait/notify.
+- ✅ (October 20, 2025) Added list state/update helpers (`Widgets::UpdateListState`) plus bindings (`CreateListBinding`/`DispatchList`) that emit `ListHover`, `ListSelect`, `ListActivate`, and `ListScroll` ops with dirty rect + auto-render integration.
 - **Testing**
   - Extend `PathSpaceUITests` with golden snapshots and interaction sequences for each widget (hover, press, disabled) using the 15× loop to guard against race regressions.
   - Add doctest coverage for the binding helpers to confirm dirty-hint emission, focus routing, and auto-render scheduling.
 - **Tooling & docs**
 - ✅ (October 19, 2025) Expanded `examples/widgets_example.cpp` to publish button + toggle widgets and demonstrate state updates; grow into a full gallery as additional widgets land.
+- ✅ (October 20, 2025) widgets_example now instantiates slider and list widgets, exercises the state helpers, and prints the relevant path wiring to guide gallery expansion; continue instrumenting interaction telemetry in follow-up work.
 - Expand the demo to cover sliders, lists, and interaction telemetry alongside FPS diagnostics and the zero-copy presenter path so contributors can exercise the full toolkit in one app.
 - Introduce an app bootstrap helper that wires renderer/surface/window defaults for a given app root/scene so examples/tests can avoid boilerplate while still exposing escape hatches; update onboarding/docs once available.
 - Update `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage, and troubleshooting steps.
@@ -243,7 +246,7 @@ Completed:
 **Widget ops schema (October 20, 2025)**
 - Queue path: `widgets/<id>/ops/inbox/queue` (per-widget FIFO consumed via `take<WidgetOp>`).
 - `WidgetOp` payload: `{ kind: WidgetOpKind, widget_path: string, pointer: { scene_x, scene_y, inside, primary }, value: float, sequence: uint64, timestamp_ns: uint64 }`.
-- Supported kinds: `HoverEnter`, `HoverExit`, `Press`, `Release`, `Activate`, `Toggle`, `SliderBegin`, `SliderUpdate`, `SliderCommit` (extensible; document new ones alongside widget additions).
+- Supported kinds (October 20, 2025): `HoverEnter`, `HoverExit`, `Press`, `Release`, `Activate`, `Toggle`, `SliderBegin`, `SliderUpdate`, `SliderCommit`, `ListHover`, `ListSelect`, `ListActivate`, `ListScroll` (document new ones alongside widget additions and clamp indices via widget metadata before mutating app state).
 - Reducer shape: wait/notify loop blocks on the queue, translates ops into app actions (`ops/<action>/inbox`) and calls `Widgets::Update*State` helpers to keep scenes in sync without republishing whole snapshots.
   - Capture authoring guidelines in `docs/Plan_SceneGraph_Implementation.md`'s appendix so contributors can add new widgets consistently.
 
