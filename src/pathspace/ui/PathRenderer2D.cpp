@@ -32,6 +32,10 @@
 #include <IOSurface/IOSurface.h>
 #endif
 
+#if defined(__APPLE__) && PATHSPACE_UI_METAL
+#include <pathspace/ui/PathRenderer2DMetal.hpp>
+#endif
+
 namespace SP::UI {
 namespace {
 
@@ -970,6 +974,23 @@ auto needs_srgb_encode(Builders::SurfaceDesc const& desc) -> bool {
     return desc.color_space == Builders::ColorSpace::sRGB;
 }
 
+auto encode_linear_color_to_output(LinearPremulColor const& color,
+                                   Builders::SurfaceDesc const& desc) -> std::array<float, 4> {
+    std::array<float, 4> premul{
+        clamp_unit(color.r),
+        clamp_unit(color.g),
+        clamp_unit(color.b),
+        clamp_unit(color.a),
+    };
+    auto encoded = encode_pixel(premul.data(), desc, needs_srgb_encode(desc));
+    return {
+        static_cast<float>(encoded[0]) / 255.0f,
+        static_cast<float>(encoded[1]) / 255.0f,
+        static_cast<float>(encoded[2]) / 255.0f,
+        static_cast<float>(encoded[3]) / 255.0f,
+    };
+}
+
 void blend_pixel(float* dest, LinearPremulColor const& src) {
     auto const inv_alpha = 1.0f - src.a;
     dest[0] = clamp_unit(src.r + dest[0] * inv_alpha);
@@ -1522,6 +1543,16 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     }
 
     auto const pixel_count = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    bool metal_active = false;
+#if defined(__APPLE__) && PATHSPACE_UI_METAL
+    bool prefer_metal_backend = params.backend_kind == Builders::RendererKind::Metal2D
+                                && params.metal_surface != nullptr;
+    std::unique_ptr<PathRenderer2DMetal> metal_backend;
+    std::array<float, 4> metal_clear_rgba{};
+    if (prefer_metal_backend) {
+        metal_backend = std::make_unique<PathRenderer2DMetal>();
+    }
+#endif
     auto target_key = std::string(params.target_path.getPath());
     auto& state = target_cache()[target_key];
     auto& material_descriptors = state.material_descriptors;
@@ -1562,10 +1593,24 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     auto& linear_buffer = state.linear_buffer;
 
     auto current_clear = params.settings.clear_color;
+    auto clear_linear = make_linear_color(current_clear);
+
+#if defined(__APPLE__) && PATHSPACE_UI_METAL
+    if (prefer_metal_backend && metal_backend) {
+        metal_clear_rgba = encode_linear_color_to_output(clear_linear, desc);
+        if (metal_backend->begin_frame(*params.metal_surface, desc, metal_clear_rgba)) {
+            metal_active = true;
+        } else {
+            metal_backend.reset();
+        }
+    }
+#endif
+
     bool full_repaint = size_changed
                         || format_changed
                         || state.last_revision == 0
-                        || state.clear_color != current_clear;
+                        || state.clear_color != current_clear
+                        || metal_active;
 
     auto const damage_phase_start = std::chrono::steady_clock::now();
     auto const drawable_count = bucket->drawable_ids.size();
@@ -1812,6 +1857,23 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     auto const damage_phase_end = std::chrono::steady_clock::now();
     damage_ms = std::chrono::duration<double, std::milli>(damage_phase_end - damage_phase_start).count();
 
+#if defined(__APPLE__) && PATHSPACE_UI_METAL
+    if (metal_active) {
+        bool metal_supported = true;
+        for (auto kind_value : bucket->command_kinds) {
+            auto kind = static_cast<Scene::DrawCommandKind>(kind_value);
+            if (kind != Scene::DrawCommandKind::Rect) {
+                metal_supported = false;
+                break;
+            }
+        }
+        if (!metal_supported) {
+            metal_backend.reset();
+            metal_active = false;
+        }
+    }
+#endif
+
     if (has_damage) {
         if (auto* trace = std::getenv("PATHSPACE_TRACE_DAMAGE")) {
             (void)trace;
@@ -1834,52 +1896,54 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     }
 #endif
 
+    ProgressiveSurfaceBuffer* progressive_buffer = nullptr;
+    std::vector<std::size_t> progressive_dirty_tiles;
     std::vector<std::uint8_t> local_frame_bytes;
     std::span<std::uint8_t> staging;
     std::span<std::uint8_t const> frame_pixels;
-    if (has_damage) {
-        if (has_buffered) {
-            staging = surface.staging_span();
-            if (staging.size() < surface.frame_bytes()) {
-                auto message = std::string{"surface staging buffer smaller than expected"};
-                (void)set_last_error(space_, params.target_path, message);
-                return std::unexpected(make_error(message, SP::Error::Code::UnknownError));
-            }
-            frame_pixels = std::span<std::uint8_t const>{staging.data(), staging.size()};
-        } else {
-            local_frame_bytes.resize(surface.frame_bytes());
-            staging = std::span<std::uint8_t>{local_frame_bytes.data(), local_frame_bytes.size()};
-            frame_pixels = std::span<std::uint8_t const>{local_frame_bytes.data(), local_frame_bytes.size()};
-        }
-    }
 
-    auto clear_linear = make_linear_color(current_clear);
-    if (has_damage) {
-        auto const row_stride = static_cast<std::size_t>(width) * 4u;
-        for (auto const& rect : damage.rectangles()) {
-            for (int y = rect.min_y; y < rect.max_y; ++y) {
-                auto base = static_cast<std::size_t>(y) * row_stride;
-                for (int x = rect.min_x; x < rect.max_x; ++x) {
-                    auto* dest = linear_buffer.data() + base + static_cast<std::size_t>(x) * 4u;
-                    dest[0] = clear_linear.r;
-                    dest[1] = clear_linear.g;
-                    dest[2] = clear_linear.b;
-                    dest[3] = clear_linear.a;
+    if (!metal_active) {
+        if (has_damage) {
+            if (has_buffered) {
+                staging = surface.staging_span();
+                if (staging.size() < surface.frame_bytes()) {
+                    auto message = std::string{"surface staging buffer smaller than expected"};
+                    (void)set_last_error(space_, params.target_path, message);
+                    return std::unexpected(make_error(message, SP::Error::Code::UnknownError));
+                }
+                frame_pixels = std::span<std::uint8_t const>{staging.data(), staging.size()};
+            } else {
+                local_frame_bytes.resize(surface.frame_bytes());
+                staging = std::span<std::uint8_t>{local_frame_bytes.data(), local_frame_bytes.size()};
+                frame_pixels = std::span<std::uint8_t const>{local_frame_bytes.data(), local_frame_bytes.size()};
+            }
+        }
+
+        if (has_damage) {
+            auto const row_stride = static_cast<std::size_t>(width) * 4u;
+            for (auto const& rect : damage.rectangles()) {
+                for (int y = rect.min_y; y < rect.max_y; ++y) {
+                    auto base = static_cast<std::size_t>(y) * row_stride;
+                    for (int x = rect.min_x; x < rect.max_x; ++x) {
+                        auto* dest = linear_buffer.data() + base + static_cast<std::size_t>(x) * 4u;
+                        dest[0] = clear_linear.r;
+                        dest[1] = clear_linear.g;
+                        dest[2] = clear_linear.b;
+                        dest[3] = clear_linear.a;
+                    }
                 }
             }
         }
-    }
 
-    ProgressiveSurfaceBuffer* progressive_buffer = nullptr;
-    std::vector<std::size_t> progressive_dirty_tiles;
-    if (has_progressive) {
-        if (has_damage) {
-            auto desired_tile = choose_progressive_tile_size(width, height, damage, full_repaint, surface);
-            surface.ensure_progressive_tile_size(desired_tile);
-        }
-        progressive_buffer = &surface.progressive_buffer();
-        if (has_damage) {
-            damage.collect_progressive_tiles(*progressive_buffer, progressive_dirty_tiles);
+        if (has_progressive) {
+            if (has_damage) {
+                auto desired_tile = choose_progressive_tile_size(width, height, damage, full_repaint, surface);
+                surface.ensure_progressive_tile_size(desired_tile);
+            }
+            progressive_buffer = &surface.progressive_buffer();
+            if (has_damage) {
+                damage.collect_progressive_tiles(*progressive_buffer, progressive_dirty_tiles);
+            }
         }
     }
     if (progressive_buffer && collect_damage_metrics) {
@@ -1996,15 +2060,36 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
 
         if (!skip_draw) {
             if (command_count == 0) {
-                drawable_drawn = draw_fallback_bounds_box(*bucket,
-                                                          drawable_index,
-                                                          linear_buffer,
-                                                          width,
-                                                          height);
-                fallback_attempted = true;
+#if defined(__APPLE__) && PATHSPACE_UI_METAL
+                if (metal_active && metal_backend) {
+                    auto const& maybe_bounds = bounds_by_index[drawable_index];
+                    if (maybe_bounds.has_value() && !maybe_bounds->empty()) {
+                        PathRenderer2DMetal::Rect gpu_rect{
+                            .min_x = static_cast<float>(maybe_bounds->min_x),
+                            .min_y = static_cast<float>(maybe_bounds->min_y),
+                            .max_x = static_cast<float>(maybe_bounds->max_x),
+                            .max_y = static_cast<float>(maybe_bounds->max_y),
+                        };
+                        auto fallback_color = make_linear_color(color_from_drawable(bucket->drawable_ids[drawable_index]));
+                        auto encoded_color = encode_linear_color_to_output(fallback_color, desc);
+                        if (metal_backend->draw_rect(gpu_rect, encoded_color)) {
+                            drawable_drawn = true;
+                            fallback_attempted = true;
+                        }
+                    }
+                }
+#endif
                 if (!drawable_drawn) {
-                    ++culled_drawables;
-                    return {};
+                    drawable_drawn = draw_fallback_bounds_box(*bucket,
+                                                              drawable_index,
+                                                              linear_buffer,
+                                                              width,
+                                                              height);
+                    fallback_attempted = true;
+                    if (!drawable_drawn) {
+                        ++culled_drawables;
+                        return {};
+                    }
                 }
             } else {
                 for (std::uint32_t cmd = 0; cmd < command_count; ++cmd) {
@@ -2026,10 +2111,32 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                             material_desc->color_rgba = rect.color;
                             material_desc->uses_image = false;
                         }
-                        if (draw_rect_command(rect, linear_buffer, width, height)) {
-                            drawable_drawn = true;
+                        bool handled = false;
+#if defined(__APPLE__) && PATHSPACE_UI_METAL
+                        if (metal_active && metal_backend) {
+                            PathRenderer2DMetal::Rect gpu_rect{
+                                .min_x = rect.min_x,
+                                .min_y = rect.min_y,
+                                .max_x = rect.max_x,
+                                .max_y = rect.max_y,
+                            };
+                            auto rect_linear = make_linear_color(rect.color);
+                            auto encoded_color = encode_linear_color_to_output(rect_linear, desc);
+                            if (metal_backend->draw_rect(gpu_rect, encoded_color)) {
+                                drawable_drawn = true;
+                                handled = true;
+                            }
                         }
-                        ++executed_commands;
+#endif
+                        if (!handled) {
+                            if (draw_rect_command(rect, linear_buffer, width, height)) {
+                                drawable_drawn = true;
+                                handled = true;
+                            }
+                        }
+                        if (handled) {
+                            ++executed_commands;
+                        }
                         break;
                     }
                     case Scene::DrawCommandKind::RoundedRect: {
@@ -2297,7 +2404,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
 
 auto const encode_srgb = needs_srgb_encode(desc);
 EncodeRunStats encode_stats{};
-if (has_damage) {
+if (!metal_active && has_damage) {
     auto const encode_start = std::chrono::steady_clock::now();
     std::vector<EncodeJob> encode_jobs;
     encode_jobs.reserve(std::max<std::size_t>(damage.rectangles().size(),
@@ -2392,7 +2499,7 @@ if (has_damage) {
         encode_workers_used = encode_stats.workers_used;
     }
 
-    if (has_progressive && has_damage) {
+    if (!metal_active && has_progressive && has_damage) {
         auto const progressive_start = std::chrono::steady_clock::now();
         auto const row_stride_bytes = surface.row_stride_bytes();
         auto staging_const = std::span<std::uint8_t const>{staging.data(), staging.size()};
@@ -2470,8 +2577,12 @@ if (has_damage) {
         .render_ms = render_ms,
     };
     auto const publish_start = std::chrono::steady_clock::now();
-    if (has_buffered && has_damage) {
-        surface.publish_buffered_frame(frame_info);
+    if (!metal_active) {
+        if (has_buffered && has_damage) {
+            surface.publish_buffered_frame(frame_info);
+        } else {
+            surface.record_frame_info(frame_info);
+        }
     } else {
         surface.record_frame_info(frame_info);
     }
@@ -2520,28 +2631,37 @@ if (has_damage) {
         bool metal_updated = false;
         std::string metal_error;
 #if defined(__APPLE__)
-        if (has_buffered && has_damage) {
-            if (auto iosurface_opt = surface.front_iosurface()) {
-                auto iosurface_ref = iosurface_opt->retain_for_external_use();
-                if (iosurface_ref != nullptr) {
-                    metal_updated = params.metal_surface->blit_from_iosurface(iosurface_ref,
-                                                                              frame_info.frame_index,
-                                                                              frame_info.revision,
-                                                                              &metal_error);
-                    CFRelease(iosurface_ref);
+        if (metal_active && metal_backend) {
+            metal_updated = metal_backend->finish(*params.metal_surface,
+                                                  frame_info.frame_index,
+                                                  frame_info.revision);
+            if (!metal_updated) {
+                metal_error = "failed to encode Metal frame";
+            }
+        } else {
+            if (has_buffered && has_damage) {
+                if (auto iosurface_opt = surface.front_iosurface()) {
+                    auto iosurface_ref = iosurface_opt->retain_for_external_use();
+                    if (iosurface_ref != nullptr) {
+                        metal_updated = params.metal_surface->blit_from_iosurface(iosurface_ref,
+                                                                                  frame_info.frame_index,
+                                                                                  frame_info.revision,
+                                                                                  &metal_error);
+                        CFRelease(iosurface_ref);
+                    }
                 }
             }
+            if (!metal_updated && has_damage && !frame_pixels.empty()) {
+                params.metal_surface->update_from_rgba8(frame_pixels,
+                                                        static_cast<std::size_t>(surface.row_stride_bytes()),
+                                                        frame_info.frame_index,
+                                                        frame_info.revision);
+                metal_updated = true;
+                metal_error.clear();
+            }
+            params.metal_surface->present_completed(frame_info.frame_index, frame_info.revision);
         }
 #endif
-        if (!metal_updated && has_damage && !frame_pixels.empty()) {
-            params.metal_surface->update_from_rgba8(frame_pixels,
-                                                    static_cast<std::size_t>(surface.row_stride_bytes()),
-                                                    frame_info.frame_index,
-                                                    frame_info.revision);
-            metal_updated = true;
-            metal_error.clear();
-        }
-        params.metal_surface->present_completed(frame_info.frame_index, frame_info.revision);
         auto const total_gpu = static_cast<std::uint64_t>(params.metal_surface->resident_gpu_bytes());
         total_gpu_bytes = total_gpu;
         if (total_gpu >= total_texture_gpu_bytes) {

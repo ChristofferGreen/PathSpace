@@ -54,6 +54,8 @@ public:
                                            std::uint64_t frame_index,
                                            std::uint64_t revision,
                                            std::string* error_message = nullptr) -> bool;
+    [[nodiscard]] auto device() const -> void*;
+    [[nodiscard]] auto command_queue() const -> void*;
 
 private:
     struct Impl;

@@ -395,6 +395,20 @@ auto PathSurfaceMetal::blit_from_iosurface(IOSurfaceRef surface,
     return true;
 }
 
+auto PathSurfaceMetal::device() const -> void* {
+    if (!impl_ || !impl_->device) {
+        return nullptr;
+    }
+    return (__bridge void*)impl_->device;
+}
+
+auto PathSurfaceMetal::command_queue() const -> void* {
+    if (!impl_ || !impl_->command_queue) {
+        return nullptr;
+    }
+    return (__bridge void*)impl_->command_queue;
+}
+
 #endif // defined(__APPLE__)
 
 } // namespace SP::UI

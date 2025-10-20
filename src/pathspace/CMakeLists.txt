@@ -102,6 +102,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/HtmlAdapter.cpp
         ui/HtmlRunner.cpp
         $<$<AND:$<BOOL:PATHSPACE_UI_METAL>,$<BOOL:APPLE>>:ui/PathSurfaceMetal.mm>
+        $<$<AND:$<BOOL:PATHSPACE_UI_METAL>,$<BOOL:APPLE>>:ui/PathRenderer2DMetal.mm>
     )
     target_compile_definitions(PathSpace PUBLIC PATHSPACE_ENABLE_UI=1)
     if(PATHSPACE_UI_SOFTWARE)
@@ -113,6 +114,7 @@ if(PATHSPACE_ENABLE_UI)
         target_compile_definitions(PathSpace PUBLIC PATHSPACE_UI_METAL=1)
         if(APPLE)
             set_source_files_properties(ui/PathSurfaceMetal.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+            set_source_files_properties(ui/PathRenderer2DMetal.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
             target_link_libraries(PathSpace PRIVATE
                 "-framework Metal"
                 "-framework QuartzCore"
