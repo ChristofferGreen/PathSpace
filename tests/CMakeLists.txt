@@ -57,8 +57,11 @@ if(PATHSPACE_ENABLE_UI)
     test_main.cpp
   )
   if(APPLE AND PATHSPACE_UI_METAL)
-  target_sources(PathSpaceUITests PRIVATE ui/test_PathWindowView_Metal.mm)
-  set_source_files_properties(ui/test_PathWindowView_Metal.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+  target_sources(PathSpaceUITests PRIVATE
+    ui/test_PathWindowView_Metal.mm
+    ui/test_PathRenderer2DMetal.mm
+  )
+  set_source_files_properties(ui/test_PathWindowView_Metal.mm ui/test_PathRenderer2DMetal.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
   endif()
   target_compile_definitions(PathSpaceUITests PRIVATE PATHSPACE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
   target_link_libraries(PathSpaceUITests PRIVATE PathSpace)

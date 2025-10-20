@@ -963,6 +963,28 @@ auto make_linear_color(std::array<float, 4> const& rgba) -> LinearPremulColor {
     return premultiply(make_linear_straight(rgba));
 }
 
+auto to_array(LinearPremulColor const& color) -> std::array<float, 4> {
+    return {color.r, color.g, color.b, color.a};
+}
+
+auto to_array(LinearStraightColor const& color) -> std::array<float, 4> {
+    return {color.r, color.g, color.b, color.a};
+}
+
+#if defined(__APPLE__) && PATHSPACE_UI_METAL
+auto metal_supports_command(Scene::DrawCommandKind kind) -> bool {
+    switch (kind) {
+    case Scene::DrawCommandKind::Rect:
+    case Scene::DrawCommandKind::RoundedRect:
+    case Scene::DrawCommandKind::Image:
+    case Scene::DrawCommandKind::TextGlyphs:
+        return true;
+    default:
+        return false;
+    }
+}
+#endif
+
 auto needs_srgb_encode(Builders::SurfaceDesc const& desc) -> bool {
     switch (desc.pixel_format) {
     case Builders::PixelFormat::RGBA8Unorm_sRGB:
@@ -1862,7 +1884,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         bool metal_supported = true;
         for (auto kind_value : bucket->command_kinds) {
             auto kind = static_cast<Scene::DrawCommandKind>(kind_value);
-            if (kind != Scene::DrawCommandKind::Rect) {
+            if (!metal_supports_command(kind)) {
                 metal_supported = false;
                 break;
             }
@@ -2071,8 +2093,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                             .max_y = static_cast<float>(maybe_bounds->max_y),
                         };
                         auto fallback_color = make_linear_color(color_from_drawable(bucket->drawable_ids[drawable_index]));
-                        auto encoded_color = encode_linear_color_to_output(fallback_color, desc);
-                        if (metal_backend->draw_rect(gpu_rect, encoded_color)) {
+                        if (metal_backend->draw_rect(gpu_rect, to_array(fallback_color))) {
                             drawable_drawn = true;
                             fallback_attempted = true;
                         }
@@ -2111,6 +2132,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                             material_desc->color_rgba = rect.color;
                             material_desc->uses_image = false;
                         }
+                        auto rect_linear = make_linear_color(rect.color);
                         bool handled = false;
 #if defined(__APPLE__) && PATHSPACE_UI_METAL
                         if (metal_active && metal_backend) {
@@ -2120,9 +2142,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                                 .max_x = rect.max_x,
                                 .max_y = rect.max_y,
                             };
-                            auto rect_linear = make_linear_color(rect.color);
-                            auto encoded_color = encode_linear_color_to_output(rect_linear, desc);
-                            if (metal_backend->draw_rect(gpu_rect, encoded_color)) {
+                            if (metal_backend->draw_rect(gpu_rect, to_array(rect_linear))) {
                                 drawable_drawn = true;
                                 handled = true;
                             }
@@ -2147,10 +2167,25 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                             material_desc->color_rgba = rounded.color;
                             material_desc->uses_image = false;
                         }
-                        if (draw_rounded_rect_command(rounded, linear_buffer, width, height)) {
-                            drawable_drawn = true;
+                        auto rounded_linear = make_linear_color(rounded.color);
+                        bool handled = false;
+#if defined(__APPLE__) && PATHSPACE_UI_METAL
+                        if (metal_active && metal_backend) {
+                            if (metal_backend->draw_rounded_rect(rounded, to_array(rounded_linear))) {
+                                drawable_drawn = true;
+                                handled = true;
+                            }
                         }
-                        ++executed_commands;
+#endif
+                        if (!handled) {
+                            if (draw_rounded_rect_command(rounded, linear_buffer, width, height)) {
+                                drawable_drawn = true;
+                                handled = true;
+                            }
+                        }
+                        if (handled) {
+                            ++executed_commands;
+                        }
                         break;
                     }
                     case Scene::DrawCommandKind::TextGlyphs: {
@@ -2161,10 +2196,25 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                             material_desc->color_rgba = glyphs.color;
                             material_desc->uses_image = false;
                         }
-                        if (draw_text_glyphs_command(glyphs, linear_buffer, width, height)) {
-                            drawable_drawn = true;
+                        auto glyph_linear = make_linear_color(glyphs.color);
+                        bool handled = false;
+#if defined(__APPLE__) && PATHSPACE_UI_METAL
+                        if (metal_active && metal_backend) {
+                            if (metal_backend->draw_text_quad(glyphs, to_array(glyph_linear))) {
+                                drawable_drawn = true;
+                                handled = true;
+                            }
                         }
-                        ++executed_commands;
+#endif
+                        if (!handled) {
+                            if (draw_text_glyphs_command(glyphs, linear_buffer, width, height)) {
+                                drawable_drawn = true;
+                                handled = true;
+                            }
+                        }
+                        if (handled) {
+                            ++executed_commands;
+                        }
                         break;
                     }
                     case Scene::DrawCommandKind::Path: {
@@ -2218,13 +2268,30 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                             break;
                         }
                         auto const& image_data = *texture;
-                        if (draw_image_command(image_cmd,
-                                               *image_data,
-                                               tint_straight,
-                                               linear_buffer,
-                                               width,
-                                               height)) {
-                            drawable_drawn = true;
+                        bool handled = false;
+#if defined(__APPLE__) && PATHSPACE_UI_METAL
+                        if (metal_active && metal_backend) {
+                            if (metal_backend->draw_image(image_cmd,
+                                                          image_data->width,
+                                                          image_data->height,
+                                                          image_data->pixels.data(),
+                                                          image_data->pixels.size(),
+                                                          to_array(tint_straight))) {
+                                drawable_drawn = true;
+                                handled = true;
+                            }
+                        }
+#endif
+                        if (!handled) {
+                            if (draw_image_command(image_cmd,
+                                                   *image_data,
+                                                   tint_straight,
+                                                   linear_buffer,
+                                                   width,
+                                                   height)) {
+                                drawable_drawn = true;
+                                handled = true;
+                            }
                         }
                         auto& residency = resource_residency[image_cmd.image_fingerprint];
                         residency.fingerprint = image_cmd.image_fingerprint;
@@ -2235,7 +2302,11 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                         residency.gpu_bytes = static_cast<std::uint64_t>(image_data->width)
                                               * static_cast<std::uint64_t>(image_data->height)
                                               * 4u;
-                        ++executed_commands;
+                        if (handled) {
+                            ++executed_commands;
+                        } else {
+                            ++unsupported_commands;
+                        }
                         break;
                     }
                     default:
