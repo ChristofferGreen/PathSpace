@@ -51,6 +51,7 @@ constexpr std::string_view kFontAssetRefMime  = "application/vnd.pathspace.font+
 
 std::atomic<std::uint64_t> g_auto_render_sequence{0};
 std::atomic<std::uint64_t> g_scene_dirty_sequence{0};
+std::atomic<std::uint64_t> g_widget_op_sequence{0};
 
 struct SceneRevisionRecord {
     uint64_t    revision = 0;
@@ -95,6 +96,22 @@ auto slider_states_equal(Widgets::SliderState const& lhs,
         && lhs.hovered == rhs.hovered
         && lhs.dragging == rhs.dragging
         && lhs.value == rhs.value;
+}
+
+auto make_default_dirty_rect(float width, float height) -> DirtyRectHint {
+    DirtyRectHint hint{};
+    hint.min_x = 0.0f;
+    hint.min_y = 0.0f;
+    hint.max_x = std::max(width, 1.0f);
+    hint.max_y = std::max(height, 1.0f);
+    return hint;
+}
+
+auto ensure_valid_hint(DirtyRectHint hint) -> DirtyRectHint {
+    if (hint.max_x <= hint.min_x || hint.max_y <= hint.min_y) {
+        return DirtyRectHint{0.0f, 0.0f, 0.0f, 0.0f};
+    }
+    return hint;
 }
 
 auto make_identity_transform() -> SceneData::Transform {
@@ -1082,6 +1099,11 @@ auto render_into_target(PathSpace& space,
 
 auto to_epoch_ms(std::chrono::system_clock::time_point tp) -> int64_t {
     return std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count();
+}
+
+auto to_epoch_ns(std::chrono::system_clock::time_point tp) -> std::uint64_t {
+    return static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(tp.time_since_epoch()).count());
 }
 
 auto from_epoch_ms(int64_t ms) -> std::chrono::system_clock::time_point {
@@ -3304,6 +3326,294 @@ auto UpdateSliderState(PathSpace& space,
 }
 
 } // namespace Widgets
+
+namespace Widgets::Bindings {
+
+namespace {
+
+auto compute_ops_queue(WidgetPath const& root) -> ConcretePath {
+    return ConcretePath{std::string(root.getPath()) + "/ops/inbox/queue"};
+}
+
+auto build_options(WidgetPath const& root,
+                   ConcretePathView targetPath,
+                   DirtyRectHint hint,
+                   bool auto_render) -> BindingOptions {
+    BindingOptions options{
+        .target = ConcretePath{std::string(targetPath.getPath())},
+        .ops_queue = compute_ops_queue(root),
+        .dirty_rect = ensure_valid_hint(hint),
+        .auto_render = auto_render,
+    };
+    return options;
+}
+
+auto read_frame_index(PathSpace& space, std::string const& target) -> SP::Expected<std::uint64_t> {
+    auto frame = read_optional<std::uint64_t>(space, target + "/output/v1/common/frameIndex");
+    if (!frame) {
+        return std::unexpected(frame.error());
+    }
+    if (frame->has_value()) {
+        return **frame;
+    }
+    return std::uint64_t{0};
+}
+
+auto submit_dirty_hint(PathSpace& space,
+                       BindingOptions const& options) -> SP::Expected<void> {
+    auto const& rect = options.dirty_rect;
+    if (rect.max_x <= rect.min_x || rect.max_y <= rect.min_y) {
+        return {};
+    }
+    std::array<DirtyRectHint, 1> hints{rect};
+    return Renderer::SubmitDirtyRects(space,
+                                      SP::ConcretePathStringView{options.target.getPath()},
+                                      std::span<const DirtyRectHint>(hints.data(), hints.size()));
+}
+
+auto schedule_auto_render(PathSpace& space,
+                          BindingOptions const& options,
+                          std::string_view reason) -> SP::Expected<void> {
+    if (!options.auto_render) {
+        return {};
+    }
+    auto frame_index = read_frame_index(space, options.target.getPath());
+    if (!frame_index) {
+        return std::unexpected(frame_index.error());
+    }
+    return enqueue_auto_render_event(space,
+                                     options.target.getPath(),
+                                     reason,
+                                     *frame_index);
+}
+
+auto enqueue_widget_op(PathSpace& space,
+                       BindingOptions const& options,
+                       std::string const& widget_path,
+                       WidgetOpKind kind,
+                       PointerInfo const& pointer,
+                       float value) -> SP::Expected<void> {
+    WidgetOp op{};
+    op.kind = kind;
+    op.widget_path = widget_path;
+    op.pointer = pointer;
+    op.value = value;
+    op.sequence = g_widget_op_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
+    op.timestamp_ns = to_epoch_ns(std::chrono::system_clock::now());
+
+    auto inserted = space.insert(options.ops_queue.getPath(), op);
+    if (!inserted.errors.empty()) {
+        return std::unexpected(inserted.errors.front());
+    }
+    return {};
+}
+
+auto read_button_style(PathSpace& space,
+                       ButtonPaths const& paths) -> SP::Expected<Widgets::ButtonStyle> {
+    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    return space.read<Widgets::ButtonStyle, std::string>(stylePath);
+}
+
+auto read_toggle_style(PathSpace& space,
+                       TogglePaths const& paths) -> SP::Expected<Widgets::ToggleStyle> {
+    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    return space.read<Widgets::ToggleStyle, std::string>(stylePath);
+}
+
+auto read_slider_style(PathSpace& space,
+                       SliderPaths const& paths) -> SP::Expected<Widgets::SliderStyle> {
+    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    return space.read<Widgets::SliderStyle, std::string>(stylePath);
+}
+
+} // namespace
+
+auto CreateButtonBinding(PathSpace& space,
+                         AppRootPathView,
+                         ButtonPaths const& paths,
+                         ConcretePathView targetPath,
+                         std::optional<DirtyRectHint> dirty_override,
+                         bool auto_render) -> SP::Expected<ButtonBinding> {
+    auto style = read_button_style(space, paths);
+    if (!style) {
+        return std::unexpected(style.error());
+    }
+    DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(style->width, style->height));
+    ButtonBinding binding{
+        .widget = paths,
+        .options = build_options(paths.root, targetPath, hint, auto_render),
+    };
+    return binding;
+}
+
+auto CreateToggleBinding(PathSpace& space,
+                         AppRootPathView,
+                         TogglePaths const& paths,
+                         ConcretePathView targetPath,
+                         std::optional<DirtyRectHint> dirty_override,
+                         bool auto_render) -> SP::Expected<ToggleBinding> {
+    auto style = read_toggle_style(space, paths);
+    if (!style) {
+        return std::unexpected(style.error());
+    }
+    DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(style->width, style->height));
+    ToggleBinding binding{
+        .widget = paths,
+        .options = build_options(paths.root, targetPath, hint, auto_render),
+    };
+    return binding;
+}
+
+auto CreateSliderBinding(PathSpace& space,
+                         AppRootPathView,
+                         SliderPaths const& paths,
+                         ConcretePathView targetPath,
+                         std::optional<DirtyRectHint> dirty_override,
+                         bool auto_render) -> SP::Expected<SliderBinding> {
+    auto style = read_slider_style(space, paths);
+    if (!style) {
+        return std::unexpected(style.error());
+    }
+    DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(style->width, style->height));
+    SliderBinding binding{
+        .widget = paths,
+        .options = build_options(paths.root, targetPath, hint, auto_render),
+    };
+    return binding;
+}
+
+auto DispatchButton(PathSpace& space,
+                    ButtonBinding const& binding,
+                    ButtonState const& new_state,
+                    WidgetOpKind op_kind,
+                    PointerInfo const& pointer) -> SP::Expected<bool> {
+    switch (op_kind) {
+    case WidgetOpKind::HoverEnter:
+    case WidgetOpKind::HoverExit:
+    case WidgetOpKind::Press:
+    case WidgetOpKind::Release:
+    case WidgetOpKind::Activate:
+        break;
+    default:
+        return std::unexpected(make_error("Unsupported widget op kind for button binding",
+                                          SP::Error::Code::InvalidType));
+    }
+
+    auto changed = Widgets::UpdateButtonState(space, binding.widget, new_state);
+    if (!changed) {
+        return std::unexpected(changed.error());
+    }
+
+    if (*changed) {
+        if (auto status = submit_dirty_hint(space, binding.options); !status) {
+            return std::unexpected(status.error());
+        }
+        if (auto status = schedule_auto_render(space, binding.options, "widget/button"); !status) {
+            return std::unexpected(status.error());
+        }
+    }
+
+    float value = new_state.pressed ? 1.0f : 0.0f;
+    if (auto status = enqueue_widget_op(space,
+                                        binding.options,
+                                        binding.widget.root.getPath(),
+                                        op_kind,
+                                        pointer,
+                                        value); !status) {
+        return std::unexpected(status.error());
+    }
+    return *changed;
+}
+
+auto DispatchToggle(PathSpace& space,
+                    ToggleBinding const& binding,
+                    ToggleState const& new_state,
+                    WidgetOpKind op_kind,
+                    PointerInfo const& pointer) -> SP::Expected<bool> {
+    switch (op_kind) {
+    case WidgetOpKind::HoverEnter:
+    case WidgetOpKind::HoverExit:
+    case WidgetOpKind::Press:
+    case WidgetOpKind::Release:
+    case WidgetOpKind::Toggle:
+        break;
+    default:
+        return std::unexpected(make_error("Unsupported widget op kind for toggle binding",
+                                          SP::Error::Code::InvalidType));
+    }
+
+    auto changed = Widgets::UpdateToggleState(space, binding.widget, new_state);
+    if (!changed) {
+        return std::unexpected(changed.error());
+    }
+
+    if (*changed) {
+        if (auto status = submit_dirty_hint(space, binding.options); !status) {
+            return std::unexpected(status.error());
+        }
+        if (auto status = schedule_auto_render(space, binding.options, "widget/toggle"); !status) {
+            return std::unexpected(status.error());
+        }
+    }
+
+    float value = new_state.checked ? 1.0f : 0.0f;
+    if (auto status = enqueue_widget_op(space,
+                                        binding.options,
+                                        binding.widget.root.getPath(),
+                                        op_kind,
+                                        pointer,
+                                        value); !status) {
+        return std::unexpected(status.error());
+    }
+    return *changed;
+}
+
+auto DispatchSlider(PathSpace& space,
+                    SliderBinding const& binding,
+                    SliderState const& new_state,
+                    WidgetOpKind op_kind,
+                    PointerInfo const& pointer) -> SP::Expected<bool> {
+    switch (op_kind) {
+    case WidgetOpKind::SliderBegin:
+    case WidgetOpKind::SliderUpdate:
+    case WidgetOpKind::SliderCommit:
+        break;
+    default:
+        return std::unexpected(make_error("Unsupported widget op kind for slider binding",
+                                          SP::Error::Code::InvalidType));
+    }
+
+    auto changed = Widgets::UpdateSliderState(space, binding.widget, new_state);
+    if (!changed) {
+        return std::unexpected(changed.error());
+    }
+
+    auto current_state = space.read<SliderState, std::string>(binding.widget.state.getPath());
+    if (!current_state) {
+        return std::unexpected(current_state.error());
+    }
+
+    if (*changed) {
+        if (auto status = submit_dirty_hint(space, binding.options); !status) {
+            return std::unexpected(status.error());
+        }
+        if (auto status = schedule_auto_render(space, binding.options, "widget/slider"); !status) {
+            return std::unexpected(status.error());
+        }
+    }
+
+    if (auto status = enqueue_widget_op(space,
+                                        binding.options,
+                                        binding.widget.root.getPath(),
+                                        op_kind,
+                                        pointer,
+                                        current_state->value); !status) {
+        return std::unexpected(status.error());
+    }
+    return *changed;
+}
+
+} // namespace Widgets::Bindings
 
 namespace Diagnostics {
 

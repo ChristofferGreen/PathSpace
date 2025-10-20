@@ -73,6 +73,7 @@ Before ending a session, record progress in the relevant plan (e.g., `docs/Plan_
 2. Verify the shared `LocalWindowBridge` across examples (`paint_example`, `devices_example`) and capture any bridge regressions in UI diagnostics.
 3. Fold `PATHSPACE_ENABLE_METAL_UPLOADS` into CI/docs (macOS GPU runners) and keep dashboards ingesting the refreshed residency metrics plus new residency ratios/status nodes (`resourceGpuBytes`, `textureGpuBytes`, `diagnostics/metrics/residency/*` — updated October 20, 2025).
 4. Document the compiled artifact expectations for the new cycle (start with `./scripts/compile_paint.sh` and the 15× loop harness) so the next hand-off can validate quickly.
+5. Connect widget reducers to the new binding helpers (`Widgets::Bindings::Dispatch{Button,Toggle,Slider}`) so UI interactions emit dirty hints and ops under `widgets/<id>/ops/inbox/queue` instead of republishing full scenes.
 
 ---
 **Need a deeper dive?** Start with `docs/AI_Architecture.md` and follow the cross-references. For renderer-specific tasks, consult `docs/Plan_SceneGraph_Renderer.md` and its linked plans.

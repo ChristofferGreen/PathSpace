@@ -31,6 +31,7 @@ using SP::UI::PathWindowView;
 namespace UIScene = SP::UI::Scene;
 using SP::UI::Builders::Diagnostics::PathSpaceError;
 namespace Widgets = SP::UI::Builders::Widgets;
+namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
 
 using UIScene::DrawableBucketSnapshot;
 using UIScene::SceneSnapshotBuilder;
@@ -1374,6 +1375,197 @@ TEST_CASE("Widgets::CreateSlider publishes snapshot and state") {
     auto slider_unchanged = Widgets::UpdateSliderState(fx.space, *created, *updated);
     REQUIRE(slider_unchanged);
     CHECK_FALSE(*slider_unchanged);
+}
+
+TEST_CASE("Widgets::Bindings::DispatchButton emits dirty hints and widget ops") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{ .name = "bindings_button_renderer", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc{};
+    desc.size_px = {256, 128};
+    desc.progressive_tile_size_px = 32;
+
+    SurfaceParams surfaceParams{ .name = "bindings_button_surface", .desc = desc, .renderer = "renderers/bindings_button_renderer" };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    auto target = Renderer::ResolveTargetBase(fx.space,
+                                              fx.root_view(),
+                                              *renderer,
+                                              "targets/surfaces/bindings_button_surface");
+    REQUIRE(target);
+
+    Widgets::ButtonParams buttonParams{};
+    buttonParams.name = "primary_button";
+    buttonParams.label = "Primary";
+    auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
+    REQUIRE(button);
+
+    auto binding = WidgetBindings::CreateButtonBinding(fx.space,
+                                                       fx.root_view(),
+                                                       *button,
+                                                       SP::ConcretePathStringView{target->getPath()});
+    REQUIRE(binding);
+
+    WidgetBindings::PointerInfo pointer{};
+    pointer.scene_x = 12.0f;
+    pointer.scene_y = 6.0f;
+    pointer.inside = true;
+
+    Widgets::ButtonState pressed{};
+    pressed.hovered = true;
+    pressed.pressed = true;
+
+    auto pressResult = WidgetBindings::DispatchButton(fx.space,
+                                                      *binding,
+                                                      pressed,
+                                                      WidgetBindings::WidgetOpKind::Press,
+                                                      pointer);
+    REQUIRE(pressResult);
+    CHECK(*pressResult);
+
+    auto hints = fx.space.read<std::vector<DirtyRectHint>, std::string>(std::string(target->getPath()) + "/hints/dirtyRects");
+    REQUIRE(hints);
+    REQUIRE_FALSE(hints->empty());
+    auto const& hint = hints->front();
+    auto buttonStyle = fx.space.read<Widgets::ButtonStyle, std::string>(std::string(button->root.getPath()) + "/meta/style");
+    REQUIRE(buttonStyle);
+    auto tile = static_cast<float>(desc.progressive_tile_size_px);
+    auto expected_width = std::ceil(buttonStyle->width / tile) * tile;
+    auto expected_height = std::ceil(buttonStyle->height / tile) * tile;
+    CHECK(hint.min_x == doctest::Approx(0.0f));
+    CHECK(hint.min_y == doctest::Approx(0.0f));
+    CHECK(hint.max_x == doctest::Approx(expected_width));
+    CHECK(hint.max_y == doctest::Approx(expected_height));
+
+    auto renderQueuePath = std::string(target->getPath()) + "/events/renderRequested/queue";
+    auto renderEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    REQUIRE(renderEvent);
+    CHECK(renderEvent->reason == "widget/button");
+
+    auto opQueuePath = binding->options.ops_queue.getPath();
+    auto pressOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(pressOp);
+    CHECK(pressOp->kind == WidgetBindings::WidgetOpKind::Press);
+    CHECK(pressOp->pointer.inside);
+    CHECK(pressOp->value == doctest::Approx(1.0f));
+    CHECK(pressOp->widget_path == binding->widget.root.getPath());
+
+    Widgets::ButtonState released = pressed;
+    released.pressed = false;
+
+    auto releaseResult = WidgetBindings::DispatchButton(fx.space,
+                                                        *binding,
+                                                        released,
+                                                        WidgetBindings::WidgetOpKind::Release,
+                                                        pointer);
+    REQUIRE(releaseResult);
+    CHECK(*releaseResult);
+
+    auto releaseEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    REQUIRE(releaseEvent);
+    CHECK(releaseEvent->reason == "widget/button");
+
+    auto releaseOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(releaseOp);
+    CHECK(releaseOp->kind == WidgetBindings::WidgetOpKind::Release);
+    CHECK(releaseOp->value == doctest::Approx(0.0f));
+    CHECK(releaseOp->sequence > pressOp->sequence);
+
+    auto hoverExit = WidgetBindings::DispatchButton(fx.space,
+                                                    *binding,
+                                                    released,
+                                                    WidgetBindings::WidgetOpKind::HoverExit,
+                                                    pointer);
+    REQUIRE(hoverExit);
+    CHECK_FALSE(*hoverExit);
+
+    auto hoverOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(hoverOp);
+    CHECK(hoverOp->kind == WidgetBindings::WidgetOpKind::HoverExit);
+
+    auto noEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    CHECK_FALSE(noEvent);
+    if (!noEvent) {
+        CHECK((noEvent.error().code == Error::Code::NoObjectFound || noEvent.error().code == Error::Code::NoSuchPath));
+    }
+}
+
+TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{ .name = "bindings_slider_renderer", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc{};
+    desc.size_px = {320, 192};
+    desc.progressive_tile_size_px = 32;
+
+    SurfaceParams surfaceParams{ .name = "bindings_slider_surface", .desc = desc, .renderer = "renderers/bindings_slider_renderer" };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    auto target = Renderer::ResolveTargetBase(fx.space,
+                                              fx.root_view(),
+                                              *renderer,
+                                              "targets/surfaces/bindings_slider_surface");
+    REQUIRE(target);
+
+    Widgets::SliderParams sliderParams{};
+    sliderParams.name = "volume";
+    sliderParams.maximum = 1.0f;
+    sliderParams.value = 0.25f;
+    auto slider = Widgets::CreateSlider(fx.space, fx.root_view(), sliderParams);
+    REQUIRE(slider);
+
+    auto binding = WidgetBindings::CreateSliderBinding(fx.space,
+                                                       fx.root_view(),
+                                                       *slider,
+                                                       SP::ConcretePathStringView{target->getPath()});
+    REQUIRE(binding);
+
+    WidgetBindings::PointerInfo pointer{};
+    pointer.scene_x = 120.0f;
+    pointer.scene_y = 12.0f;
+    pointer.primary = true;
+
+    Widgets::SliderState dragState{};
+    dragState.enabled = true;
+    dragState.dragging = true;
+    dragState.value = 2.0f;
+
+    auto updateResult = WidgetBindings::DispatchSlider(fx.space,
+                                                       *binding,
+                                                       dragState,
+                                                       WidgetBindings::WidgetOpKind::SliderUpdate,
+                                                       pointer);
+    REQUIRE(updateResult);
+    CHECK(*updateResult);
+
+    auto renderQueuePath = std::string(target->getPath()) + "/events/renderRequested/queue";
+    auto renderEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    REQUIRE(renderEvent);
+    CHECK(renderEvent->reason == "widget/slider");
+
+    auto opQueuePath = binding->options.ops_queue.getPath();
+    auto sliderOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(sliderOp);
+    CHECK(sliderOp->kind == WidgetBindings::WidgetOpKind::SliderUpdate);
+    CHECK(sliderOp->value == doctest::Approx(1.0f));
+
+    auto hints = fx.space.read<std::vector<DirtyRectHint>, std::string>(std::string(target->getPath()) + "/hints/dirtyRects");
+    REQUIRE(hints);
+    REQUIRE_FALSE(hints->empty());
+
+    auto noExtraEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    CHECK_FALSE(noExtraEvent);
+    if (!noExtraEvent) {
+        CHECK((noExtraEvent.error().code == Error::Code::NoObjectFound || noExtraEvent.error().code == Error::Code::NoSuchPath));
+    }
 }
 
 TEST_CASE("Html::Asset vectors survive PathSpace round-trip") {

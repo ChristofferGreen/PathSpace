@@ -517,9 +517,9 @@ struct SliderRange {
 
 struct SliderPaths {
     ScenePath scene;
-    WidgetPath root;
-    ConcretePath state;
-    ConcretePath range;
+   WidgetPath root;
+   ConcretePath state;
+   ConcretePath range;
 };
 
 auto CreateSlider(PathSpace& space,
@@ -529,6 +529,99 @@ auto CreateSlider(PathSpace& space,
 auto UpdateSliderState(PathSpace& space,
                        SliderPaths const& paths,
                        SliderState const& new_state) -> SP::Expected<bool>;
+
+namespace Bindings {
+
+enum class WidgetOpKind : std::uint32_t {
+    HoverEnter = 0,
+    HoverExit,
+    Press,
+    Release,
+    Activate,
+    Toggle,
+    SliderBegin,
+    SliderUpdate,
+    SliderCommit,
+};
+
+struct PointerInfo {
+    float scene_x = 0.0f;
+    float scene_y = 0.0f;
+    bool inside = false;
+    bool primary = true;
+};
+
+struct WidgetOp {
+    WidgetOpKind kind = WidgetOpKind::HoverEnter;
+    std::string widget_path;
+    PointerInfo pointer;
+    float value = 0.0f;
+    std::uint64_t sequence = 0;
+    std::uint64_t timestamp_ns = 0;
+};
+
+struct BindingOptions {
+    ConcretePath target;
+    ConcretePath ops_queue;
+    DirtyRectHint dirty_rect;
+    bool auto_render = true;
+};
+
+struct ButtonBinding {
+    ButtonPaths widget;
+    BindingOptions options;
+};
+
+struct ToggleBinding {
+    TogglePaths widget;
+    BindingOptions options;
+};
+
+struct SliderBinding {
+    SliderPaths widget;
+    BindingOptions options;
+};
+
+auto CreateButtonBinding(PathSpace& space,
+                         AppRootPathView appRoot,
+                         ButtonPaths const& paths,
+                         ConcretePathView targetPath,
+                         std::optional<DirtyRectHint> dirty_override = std::nullopt,
+                         bool auto_render = true) -> SP::Expected<ButtonBinding>;
+
+auto CreateToggleBinding(PathSpace& space,
+                         AppRootPathView appRoot,
+                         TogglePaths const& paths,
+                         ConcretePathView targetPath,
+                         std::optional<DirtyRectHint> dirty_override = std::nullopt,
+                         bool auto_render = true) -> SP::Expected<ToggleBinding>;
+
+auto CreateSliderBinding(PathSpace& space,
+                         AppRootPathView appRoot,
+                         SliderPaths const& paths,
+                         ConcretePathView targetPath,
+                         std::optional<DirtyRectHint> dirty_override = std::nullopt,
+                         bool auto_render = true) -> SP::Expected<SliderBinding>;
+
+auto DispatchButton(PathSpace& space,
+                    ButtonBinding const& binding,
+                    ButtonState const& new_state,
+                    WidgetOpKind op_kind,
+                    PointerInfo const& pointer = {}) -> SP::Expected<bool>;
+
+auto DispatchToggle(PathSpace& space,
+                    ToggleBinding const& binding,
+                    ToggleState const& new_state,
+                    WidgetOpKind op_kind,
+                    PointerInfo const& pointer = {}) -> SP::Expected<bool>;
+
+auto DispatchSlider(PathSpace& space,
+                    SliderBinding const& binding,
+                    SliderState const& new_state,
+                    WidgetOpKind op_kind,
+                    PointerInfo const& pointer = {}) -> SP::Expected<bool>;
+
+} // namespace Bindings
 
 } // namespace Widgets
 

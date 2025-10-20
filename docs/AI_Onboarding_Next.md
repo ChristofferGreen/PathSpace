@@ -74,5 +74,6 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - `./scripts/compile.sh` always builds with Metal support enabled and runs the Metal UITests unless `--disable-metal-tests` is passed. This keeps the GPU path green by default on macOS hosts.
 - HTML adapter parity tests landed, so DOM and canvas command streams stay lock-step with the renderer geometry.
 - Residency metrics are live under `diagnostics/metrics/residency/*`; dashboards now read the published ratios/status fields—extend telemetry when new counters appear.
+- Widget binding helpers (`Widgets::Bindings::Dispatch{Button,Toggle,Slider}`) emit dirty rect hints, auto-schedule renders, and enqueue ops under `widgets/<id>/ops/inbox/queue` so reducers can react without republishing entire scenes.
 
 Welcome aboard and thank you for keeping the PathSpace docs in sync for the next AI maintainer.

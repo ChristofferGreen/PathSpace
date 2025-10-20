@@ -20,6 +20,7 @@ Success looks like:
 - Material/shader bindings now flow through the shared descriptor cache, and Metal draws mirror the software renderer’s telemetry (`PathRenderer2DMetal::bind_material`, GPU blending UITest in place).
 - Metal presenters remain enabled by default; the 15× loop harness (20 s timeout) is green with both software and Metal suites.
 - Residency metrics under `diagnostics/metrics/residency/*` now expose raw byte counts alongside dashboard ratios/alerts; extend telemetry where gaps remain.
+- Widget bindings publish dirty hints and ops inbox events (`widgets/<id>/ops/inbox/queue`) so interaction reducers can react without full-scene republishes.
 - Widget gallery, HTML tooling, and diagnostics backlog items are tracked in `docs/AI_Todo.task`; no open P0 work after the binding milestone.
 - ✅ (October 20, 2025) Residency dashboard wiring publishes CPU/GPU soft & hard budget ratios plus status flags under `diagnostics/metrics/residency`, enabling external alerts without bespoke parsers.
 
@@ -152,6 +153,7 @@ Completed:
 - ✅ (October 18, 2025) Expanded `scripts/compile.sh`/CTest to cover UI components and capture failure logs via `scripts/run-test-with-logs.sh`, ensuring loop runs retain artifacts on failure.
 - ✅ (October 18, 2025) Published `docs/AI_Debugging_Playbook.md` with the end-to-end diagnostics workflow and re-validated the 15× loop harness (`./scripts/compile.sh --test --loop=15 --per-test-timeout=20`).
 - ✅ (October 20, 2025) Added residency dashboard outputs: `cpuSoftBudgetRatio`, `cpuHardBudgetRatio`, `gpuSoftBudgetRatio`, `gpuHardBudgetRatio`, per-budget exceed flags, and `overallStatus` now live under `diagnostics/metrics/residency/` for every target, allowing dashboards/alerts to trigger without bespoke queries.
+- ✅ (October 20, 2025) Widget interaction bindings land: `Widgets::Bindings::Dispatch{Button,Toggle,Slider}` diff widget state, submit targeted dirty rect hints, enqueue ops (`WidgetOp` values) under `widgets/<id>/ops/inbox/queue`, and auto-schedule renders when configured.
 
 ### Phase 7 — Optional Backends & HTML Adapter Prep (post-MVP)
 - ✅ (October 20, 2025) `PathSpaceUITests` now cover HTML canvas replay parity and the ObjC++ Metal presenter harness, replacing the skipped scaffolding.
@@ -227,15 +229,22 @@ Completed:
   - Document the path schema for widget state (e.g., `/.../widgets/<id>/{state,enabled,label}`) and ensure updates stay atomic.
 - **State binding & data flow**
   - ✅ (October 19, 2025) Introduced initial state update helpers for buttons/toggles that coalesce redundant writes and mark the owning scene `DirtyKind::Visual` only when values change.
-  - Introduce a fuller binding layer that watches widget state paths, diffing payloads and pushing dirty hints instead of full-surface republishes. Document ops inbox schemas (button/toggle/slider/list) and sample reducers that translate widget ops into app state mutations via wait/notify.
+  - ✅ (October 20, 2025) Binding layer (`Widgets::Bindings::Dispatch{Button,Toggle,Slider}`) watches widget state, emits dirty hints, and writes interaction ops (press/release/hover/toggle/slider events) into `widgets/<id>/ops/inbox/queue`. Reducer samples live in this plan’s appendix; schema covers `WidgetOpKind`, pointer metadata, value payloads, and timestamps for reducers to consume via wait/notify.
 - **Testing**
   - Extend `PathSpaceUITests` with golden snapshots and interaction sequences for each widget (hover, press, disabled) using the 15× loop to guard against race regressions.
   - Add doctest coverage for the binding helpers to confirm dirty-hint emission, focus routing, and auto-render scheduling.
 - **Tooling & docs**
-  - ✅ (October 19, 2025) Expanded `examples/widgets_example.cpp` to publish button + toggle widgets and demonstrate state updates; grow into a full gallery as additional widgets land.
-  - Expand the demo to cover sliders, lists, and interaction telemetry alongside FPS diagnostics and the zero-copy presenter path so contributors can exercise the full toolkit in one app.
-  - Introduce an app bootstrap helper that wires renderer/surface/window defaults for a given app root/scene so examples/tests can avoid boilerplate while still exposing escape hatches; update onboarding/docs once available.
-  - Update `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage, and troubleshooting steps.
+- ✅ (October 19, 2025) Expanded `examples/widgets_example.cpp` to publish button + toggle widgets and demonstrate state updates; grow into a full gallery as additional widgets land.
+- Expand the demo to cover sliders, lists, and interaction telemetry alongside FPS diagnostics and the zero-copy presenter path so contributors can exercise the full toolkit in one app.
+- Introduce an app bootstrap helper that wires renderer/surface/window defaults for a given app root/scene so examples/tests can avoid boilerplate while still exposing escape hatches; update onboarding/docs once available.
+- Update `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage, and troubleshooting steps.
+- Document widget ops schema: queue path (`widgets/<id>/ops/inbox/queue`), `WidgetOp` fields (kind, pointer metadata, value, timestamp) and reducer sample wiring.
+
+**Widget ops schema (October 20, 2025)**
+- Queue path: `widgets/<id>/ops/inbox/queue` (per-widget FIFO consumed via `take<WidgetOp>`).
+- `WidgetOp` payload: `{ kind: WidgetOpKind, widget_path: string, pointer: { scene_x, scene_y, inside, primary }, value: float, sequence: uint64, timestamp_ns: uint64 }`.
+- Supported kinds: `HoverEnter`, `HoverExit`, `Press`, `Release`, `Activate`, `Toggle`, `SliderBegin`, `SliderUpdate`, `SliderCommit` (extensible; document new ones alongside widget additions).
+- Reducer shape: wait/notify loop blocks on the queue, translates ops into app actions (`ops/<action>/inbox`) and calls `Widgets::Update*State` helpers to keep scenes in sync without republishing whole snapshots.
   - Capture authoring guidelines in `docs/Plan_SceneGraph_Implementation.md`'s appendix so contributors can add new widgets consistently.
 
 ## Dependencies and Ordering

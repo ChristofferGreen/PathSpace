@@ -150,3 +150,22 @@ task {
     "Added `PathRenderer2DMetal::bind_material`, per-draw pipeline selection, and a Metal UITest that verifies blending vs opaque material pipelines."
   ]
 }
+
+task {
+  name: "Widget Interaction Bindings [FEATURE]"
+  description: "Bind widget interactions to dirty-hint and ops queues so UI updates avoid full scene republishes."
+  status: completed
+  priority: P1
+
+  acceptance_criteria: [
+    "Binding helper API diffed widget state (button/toggle/slider) and submitted dirty rect hints instead of full-scene republishes.",
+    "Ops inbox schema documented; reducers have a stable `WidgetOp` payload (kind, pointer metadata, value, timestamp).",
+    "Tests exercised hover/press/release and slider flows, confirming auto-render scheduling stays stable under the 15× loop harness."
+  ]
+
+  steps: [
+    "Added `Widgets::Bindings::Dispatch{Button,Toggle,Slider}` helpers that coalesce state changes, submit dirty rect hints, and enqueue ops under `widgets/<id>/ops/inbox/queue`.",
+    "Documented the `WidgetOp` schema/path layout (Plan_SceneGraph_Implementation.md, AI_Paths.md) for reducers and tooling.",
+    "Extended doctests to cover button/toggle/slider interaction flows and verified auto-render queues remain stable in the 15× loop harness."
+  ]
+}

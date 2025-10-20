@@ -81,7 +81,7 @@ task {
 task {
   name: "Widget Interaction Bindings [FEATURE]"
   description: "Route widget interactions through a binding layer that watches widget state paths, emits dirty hints, and pushes events into ops inboxes."
-  status: planned
+  status: completed
   priority: P1
 
   acceptance_criteria: [
@@ -91,9 +91,9 @@ task {
   ]
 
   steps: [
-    "Implement binding helper that subscribes to widget state paths, diffing payloads and enqueueing dirty hints.",
-    "Define ops inbox payload schema for button/toggle/slider/list interactions.",
-    "Add doctests covering binding helper behavior and interaction flows."
+    "DONE (Oct 20, 2025) Implemented `Widgets::Bindings::Dispatch{Button,Toggle,Slider}` helpers that diff widget state, submit dirty rect hints, and auto-schedule renders.",
+    "DONE (Oct 20, 2025) Defined `WidgetOp` schema under `widgets/<id>/ops/inbox/queue` (documented in Plan_SceneGraph_Implementation.md & AI_Paths.md).",
+    "DONE (Oct 20, 2025) Added doctest coverage exercising hover/press/release and slider updates (loop=15 harness)."
   ]
 }
 
