@@ -1,10 +1,10 @@
 # Handoff Notice
 
-> **Handoff note (October 19, 2025):** This roadmap captures the state at the end of the Atlas cycle. New assistants should record fresh status updates here after consulting `docs/AI_Onboarding_Next.md`.
+> **Handoff note (October 19, 2025):** This roadmap captures the state at the end of the previous assistant cycle. New assistants should record fresh status updates here after consulting `docs/AI_Onboarding_Next.md`.
 
 # Scene Graph Implementation Plan
 
-> **Context update (October 15, 2025):** Implementation phases now assume the “Atlas” AI context; convert prior context cues to the Atlas vocabulary during execution.
+> **Context update (October 15, 2025):** Implementation phases now assume the assistant context introduced for this cycle; convert prior context cues to the updated vocabulary during execution.
 
 ## Context and Objectives
 - Groundwork for implementing the renderer stack described in `docs/Plan_SceneGraph_Renderer.md` and the broader architecture contract in `docs/AI_Architecture.md`.
@@ -204,7 +204,8 @@ Completed:
   6. **Documentation**
      - ✅ (October 19, 2025) Documented HTML adapter fidelity tiers, configuration knobs (`max_dom_nodes`, `prefer_dom`, `allow_canvas_fallback`), asset hydration, and debugging steps in `docs/Plan_SceneGraph_Renderer.md`; keep the section current as adapter behavior evolves.
 - ✅ (October 20, 2025) Resource loader integration (HTML + renderers) now hydrates image/font assets and persists them under `output/v1/html/assets` using a stable binary `Html::Asset` codec; `Renderer::RenderHtml hydrates image assets into output` and the new `Html::Asset vectors survive PathSpace round-trip` doctest both pass with hydrated bytes.
-- ➡️ Next steps: remove the legacy Alpaca fallback once historical data is migrated, document the HTML asset codec versioning in `docs/Plan_SceneGraph_Renderer.md`, and extend coverage when additional asset fields (e.g., material descriptors) land.
+- ✅ (October 20, 2025) Documented the HTML asset codec (HSAT framing, legacy migration) in `docs/Plan_SceneGraph_Renderer.md`; update the renderer plan when fields or versions change.
+- ➡️ Next steps: remove the legacy Alpaca fallback once historical data is migrated and extend coverage when additional asset fields (e.g., material descriptors) land.
 
 ### Phase 8 — Widget Toolkit & Interaction Surfaces (post-MVP)
 - **Objective:** ship reusable UI widgets (button, toggle, slider, list) that sit on top of the existing scene/render/present stack while reusing PathSpace paths for state and events.

@@ -1,10 +1,10 @@
 # Handoff Notice
 
-> **Handoff note (October 19, 2025):** This renderer plan documents the completed Atlas milestones. New assistants should coordinate changes via `docs/AI_Onboarding_Next.md` and mirror updates in `docs/SceneGraphImplementationPlan.md`.
+> **Handoff note (October 19, 2025):** This renderer plan documents the milestones completed before the current hand-off. New assistants should coordinate changes via `docs/AI_Onboarding_Next.md` and mirror updates in `docs/SceneGraphImplementationPlan.md`.
 
 # PathSpace — Scene Graph and Renderer Plan
 
-> **Context update (October 15, 2025):** All renderer milestones now track the “Atlas” AI context introduced in this launch; treat previous context references as historical.
+> **Context update (October 15, 2025):** All renderer milestones now track the assistant context introduced in this launch; treat previous context references as historical.
 > **Decision update (October 16, 2025):** macOS presenters now use a CAMetalLayer-backed Metal swapchain instead of CoreGraphics blits so fullscreen windows avoid CPU copies; treat the Metal presenter as MVP-critical.
 > **Follow-up (October 17, 2025):** Present pipeline must eliminate software framebuffer copies—PathSurfaceSoftware and the presenter will move to a shared IOSurface-backed buffer so the renderer writes directly into the drawable without memcpy.
 Scope: UI surfaces, renderers, presenters, multi-scene targets; atomic params and snapshot-based rendering
@@ -1540,6 +1540,8 @@ Headless verification now runs through `scripts/verify_html_canvas.js`, which sp
   - `HtmlTargetDesc::allow_canvas_fallback` controls whether the adapter is allowed to emit Canvas output at all—disabling it forces an error when DOM limits are exceeded, useful for aggressively surfacing missing shims.
 - Asset hydration  
   - `Html::Adapter::emit` records every referenced asset under `output/v1/html/assets`. Renderer::RenderHtml now resolves those logical paths against the latched scene revision (`scenes/<sid>/builds/<rev>/assets/...`) so the final payload carries real bytes and accurate MIME types (PNG, WOFF2, etc.) instead of placeholder `application/vnd.pathspace.*` stubs. Consumers can stream assets directly from the PathSpace tree without touching scene snapshots.
+  - Asset payloads are serialized with the `HSAT` (Html Surface Asset Table) framing: 4-byte magic (`0x48534154`), 2-byte version (`0x0001`), 4-byte little-endian asset count, followed by per-asset triplets of `[logical_path_length, mime_length, bytes_length]` (each `uint32_le`) and the corresponding UTF-8 strings plus raw byte payload. Writers clamp lengths to ≤4 GiB; readers must treat all integers as little-endian regardless of host endianness.
+  - Legacy payloads written via the pre-October 2025 Alpaca serializer are still accepted. When a read detects the legacy format, `Renderer::RenderHtml` immediately rewrites `output/v1/html/assets` using HSAT so storage converges after the next successful render. Once telemetry shows zero legacy decodes, delete the fallback to shrink I/O and simplify tooling.
 - Debug workflow  
   - Inspect `output/v1/html/{mode,commandCount,domNodeCount,usedCanvasFallback}` plus the per-target diagnostics to understand why a fallback triggered.  
   - Run `ctest -R HtmlCanvasVerify` (or invoke `scripts/verify_html_canvas.js <build/bin/html_canvas_dump>`) to check both DOM and Canvas outputs locally; the script mirrors the CI harness and skips automatically when Node.js is missing.  
@@ -1847,7 +1849,7 @@ Approach:
 - Shaping:
   - HarfBuzz shapes runs with script, direction (UAX#9 bidi), language, and OpenType features; outputs glyph ids, advances, offsets, clusters.
   - Cache shaped runs keyed by `{fontFace+features+script+direction+text}`; invalidate on style/font change.
-- Atlases:
+- Glyph atlases:
   - MSDF generation from FreeType outlines (msdfgen or equivalent). Choose `pxRange` 8–12 (UI) or 12–16 (heavy zoom); padding ≥ ceil(pxRange)+2 texels.
   - Separate pages by `{fontFace, pxRange}`; pack with skyline/guillotine; generate mipmaps. Evict via LRU; persist pages on disk keyed by `{font hash, face index, style, pxRange, tool versions}`.
   - Small text threshold (~16–20 px): switch to bitmap atlases (optional LCD subpixel on desktop).
