@@ -25,7 +25,7 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
     auto const start_time = request.now;
     stats.mode = policy.mode;
     stats.auto_render_on_present = policy.auto_render_on_present;
-    stats.vsync_aligned = policy.vsync_align;
+    stats.vsync_aligned = request.vsync_align;
     stats.frame = surface.latest_frame_info();
 
     auto wait_budget = request.vsync_deadline - request.now;

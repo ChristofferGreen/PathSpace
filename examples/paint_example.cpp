@@ -242,6 +242,7 @@ auto read_config_value(PathSpace& space,
 struct RuntimeOptions {
     bool debug = false;
     bool metal = false;
+    double uncapped_present_hz = 60.0;
 };
 
 auto parse_runtime_options(int argc, char** argv) -> RuntimeOptions {
@@ -252,10 +253,29 @@ auto parse_runtime_options(int argc, char** argv) -> RuntimeOptions {
             opts.debug = true;
         } else if (arg == "--metal") {
             opts.metal = true;
+        } else if (arg.rfind("--present-hz=", 0) == 0) {
+            auto value = std::string(arg.substr(std::string_view("--present-hz=").size()));
+            char* end = nullptr;
+            double parsed = std::strtod(value.c_str(), &end);
+            if (end && *end == '\0' && std::isfinite(parsed)) {
+                opts.uncapped_present_hz = parsed;
+            }
+        } else if (arg == "--present-hz") {
+            if (i + 1 < argc) {
+                ++i;
+                char* end = nullptr;
+                double parsed = std::strtod(argv[i], &end);
+                if (end && *end == '\0' && std::isfinite(parsed)) {
+                    opts.uncapped_present_hz = parsed;
+                }
+            }
         } else if (arg == "--help" || arg == "-h") {
-            std::cout << "Usage: paint_example [--debug] [--metal]\n";
+            std::cout << "Usage: paint_example [--debug] [--metal] [--present-hz=<value|0>]\n";
             std::exit(0);
         }
+    }
+    if (!(opts.uncapped_present_hz > 0.0)) {
+        opts.uncapped_present_hz = 0.0;
     }
     return opts;
 }
@@ -392,7 +412,8 @@ auto present_frame(PathSpace& space,
                    std::string_view viewName,
                    int width,
                    int height,
-                   bool debug) -> std::optional<PresentOutcome> {
+                   bool debug,
+                   double uncapped_present_hz) -> std::optional<PresentOutcome> {
     auto presentResult = Builders::Window::Present(space, windowPath, viewName);
     if (!presentResult) {
         std::cerr << "present failed";
@@ -402,10 +423,26 @@ auto present_frame(PathSpace& space,
         std::cerr << std::endl;
         return std::nullopt;
     }
+    static std::chrono::steady_clock::time_point last_present_time{};
+    static bool last_present_time_valid = false;
 #if defined(__APPLE__)
     bool used_iosurface = false;
     std::size_t computed_stride = 0;
-    if (presentResult->stats.iosurface && presentResult->stats.iosurface->valid()) {
+    bool allow_present = true;
+    bool presented = false;
+    auto decision_time = std::chrono::steady_clock::time_point{};
+    bool decision_time_valid = false;
+    if (!presentResult->stats.vsync_aligned && uncapped_present_hz > 0.0) {
+        decision_time = std::chrono::steady_clock::now();
+        decision_time_valid = true;
+        auto min_interval = std::chrono::duration<double>(1.0 / uncapped_present_hz);
+        if (last_present_time_valid && (decision_time - last_present_time) < min_interval) {
+            allow_present = false;
+        }
+    } else if (presentResult->stats.vsync_aligned) {
+        last_present_time_valid = false;
+    }
+    if (allow_present && presentResult->stats.iosurface && presentResult->stats.iosurface->valid()) {
         auto iosurface_ref = presentResult->stats.iosurface->retain_for_external_use();
         if (iosurface_ref) {
             SP::UI::PresentLocalWindowIOSurface(static_cast<void*>(iosurface_ref),
@@ -413,11 +450,12 @@ auto present_frame(PathSpace& space,
                                                 height,
                                                 static_cast<int>(presentResult->stats.iosurface->row_bytes()));
             used_iosurface = true;
+            presented = true;
             CFRelease(iosurface_ref);
             computed_stride = presentResult->stats.iosurface->row_bytes();
         }
     }
-    if (!used_iosurface && !presentResult->framebuffer.empty()) {
+    if (allow_present && !used_iosurface && !presentResult->framebuffer.empty()) {
         if (presentResult->stats.used_metal_texture) {
             presentResult->framebuffer.clear();
         } else {
@@ -434,6 +472,16 @@ auto present_frame(PathSpace& space,
                                                   width,
                                                   height,
                                                   row_stride_bytes);
+            presented = true;
+        }
+    }
+    if (!presentResult->stats.vsync_aligned && presented) {
+        if (decision_time_valid) {
+            last_present_time = decision_time;
+            last_present_time_valid = true;
+        } else {
+            last_present_time = std::chrono::steady_clock::now();
+            last_present_time_valid = true;
         }
     }
 #else
@@ -695,7 +743,6 @@ int main(int argc, char** argv) {
     rendererSettings.clear_color = {1.0f, 1.0f, 1.0f, 1.0f};
     rendererSettings.surface.size_px.width = canvasWidth;
     rendererSettings.surface.size_px.height = canvasHeight;
-    rendererSettings.surface.metal = surfaceDesc.metal;
 #if defined(PATHSPACE_UI_METAL)
     if (options.metal) {
         rendererSettings.renderer.backend_kind = Builders::RendererKind::Metal2D;
@@ -714,7 +761,8 @@ int main(int argc, char** argv) {
                        "main",
                        canvasWidth,
                        canvasHeight,
-                       options.debug);
+                       options.debug,
+                       options.uncapped_present_hz);
 
     auto fps_last_report = std::chrono::steady_clock::now();
     std::uint64_t fps_frames = 0;
@@ -757,7 +805,6 @@ int main(int argc, char** argv) {
             lastAbsolute.reset();
             rendererSettings.surface.size_px.width = canvasWidth;
             rendererSettings.surface.size_px.height = canvasHeight;
-            rendererSettings.surface.metal = surfaceDesc.metal;
             unwrap_or_exit(Builders::Renderer::UpdateSettings(space,
                                                              SP::ConcretePathStringView{targetAbsolute.getPath()},
                                                              rendererSettings),
@@ -852,7 +899,8 @@ int main(int argc, char** argv) {
                                          "main",
                                          canvasWidth,
                                          canvasHeight,
-                                         options.debug)) {
+                                         options.debug,
+                                         options.uncapped_present_hz)) {
             if (!outcome->skipped) {
                 ++fps_frames;
                 if (outcome->used_iosurface) {

@@ -1,4 +1,4 @@
-// Context update (October 15, 2025): Task priorities now reference the “Atlas” AI context; translate legacy context identifiers when reconciling backlogs.
+// Context update (October 15, 2025): Task priorities now reference the current assistant context; translate legacy context identifiers when reconciling backlogs.
 // Handoff note (October 19, 2025): This backlog is frozen pending the new assistant’s triage. Review each task with docs/AI_Onboarding_Next.md before starting work.
 
 task {
@@ -80,7 +80,7 @@ task {
 task {
   name: "Widget Slider & List Builders [FEATURE]"
   description: "Extend the widget toolkit with slider and list builders that publish canonical scenes and metadata alongside the existing button/toggle support."
-  status: planned
+  status: in_progress
   priority: P2
 
   acceptance_criteria: [
@@ -90,8 +90,8 @@ task {
   ]
 
   steps: [
-    "Author DrawableBucket snapshots for slider track/thumb and list rows (including selection highlighting).",
-    "Add style/state structs mirroring button/toggle conventions.",
+    "DONE (Oct 20, 2025) Author DrawableBucket snapshots for slider track/thumb and list rows (including selection highlighting).",
+    "DONE (Oct 20, 2025) Add style/state structs mirroring button/toggle conventions for the slider; repeat for list when implementing it.",
     "Update widgets_example to instantiate the new widgets pending the gallery expansion task."
   ]
 }

@@ -38,7 +38,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 
 | Area | Action | Notes |
 | --- | --- | --- |
-| Metal renderer | Implement the dedicated Metal encoder path so Metal2D skips CPU raster uploads entirely | Track under `docs/Plan_SceneGraph_Implementation.md` Phase 7 follow-ups. |
+| Metal renderer | Finish Metal encoder coverage (rounded rects, images, glyph batches) and tie in material/shader bindings | `PathRenderer2DMetal` now handles rects; expand coverage per `docs/Plan_SceneGraph_Implementation.md` Phase 7 follow-ups. |
 | Diagnostics | Wire dashboards to consume `textureGpuBytes`, `resourceGpuBytes`, and refreshed residency metrics | Coordinate with tooling owners before schema changes. |
 | Widgets | Finish Phase 8: add list widget snapshots, interaction bindings, and gallery wiring | Slider builder landed; list/binding work remains (see `docs/Plan_SceneGraph_Implementation.md`). |
 | HTML tooling | Add HSAT inspection CLI/tests and extend coverage when new asset fields appear | Legacy serializer removed; HSAT is mandatory. |
@@ -68,7 +68,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - When you spot a gap in test coverage, either add the test immediately or log a follow-up in `docs/Plan_SceneGraph_Implementation.md` / `docs/AI_Todo.task` so the need is visible to the next maintainer.
 
 ### Latest Highlights (October 20, 2025)
-- Metal streaming remains the top renderer follow-up: `Renderer::TriggerRender` + `PathRenderer2D` stream Metal targets into the cached CAMetalLayer texture, with residency telemetry (`textureGpuBytes`, `resourceGpuBytes`) in CI/dashboards. Keep the Metal UITest (`Metal pipeline publishes residency metrics and material descriptors`) green after renderer edits.
+- Metal renderer now includes a first-cut GPU encoder: `PathRenderer2DMetal` bypasses the CPU framebuffer for rect-only scenes, while falling back to the software pipeline for other drawables. Next iteration expands support to rounded rects, images, and glyph batches and wires material/shader caches to the GPU path. Residency telemetry (`textureGpuBytes`, `resourceGpuBytes`) continues to gate CI.
 - Widget toolkit now covers button, toggle, and slider builders with theme metadata, state helpers, and snapshot publishing. Next up: list widget scenes, interaction bindings, and gallery wiring (`docs/Plan_SceneGraph_Implementation.md`, Phase 8).
 - HTML asset pipeline ships with the HSAT codec and no longer accepts legacy Alpaca payloads. UITests cover hydration (`Renderer::RenderHtml hydrates image assets into output`); remaining work is HSAT inspection tooling and future asset-field coverage.
 - Documentation refreshed across the plans/todo backlog so the next session can pick up Phase 8 widgets and HSAT tooling immediately.

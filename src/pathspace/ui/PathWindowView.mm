@@ -141,6 +141,7 @@ static auto present_metal_texture(PathSurfaceSoftware& surface,
             CGFloat scale = state.contents_scale > 0.0 ? static_cast<CGFloat>(state.contents_scale) : (CGFloat)1.0;
             layer.contentsScale = scale;
             layer.drawableSize = CGSizeMake(static_cast<CGFloat>(width_px), static_cast<CGFloat>(height_px));
+            layer.displaySyncEnabled = request.vsync_align ? YES : NO;
 
             id<CAMetalDrawable> drawable = [layer nextDrawable];
             if (!drawable) {
@@ -177,25 +178,29 @@ static auto present_metal_texture(PathSurfaceSoftware& surface,
             auto present_start = std::chrono::steady_clock::now();
             [commandBuffer presentDrawable:drawable];
             [commandBuffer commit];
-            [commandBuffer waitUntilScheduled];
-            auto present_finish = std::chrono::steady_clock::now();
-            present_ms = std::chrono::duration<double, std::milli>(present_finish - present_start).count();
-            [commandBuffer waitUntilCompleted];
-            command_status = commandBuffer.status;
-            if (command_status != MTLCommandBufferStatusCompleted) {
-                NSError* command_error = commandBuffer.error;
-                if (command_error) {
-                    auto const* localized = [[command_error localizedDescription] UTF8String];
-                    if (localized) {
-                        error_message = std::string("Metal command buffer error: ") + localized;
+            if (request.vsync_align) {
+                [commandBuffer waitUntilScheduled];
+                auto present_finish = std::chrono::steady_clock::now();
+                present_ms = std::chrono::duration<double, std::milli>(present_finish - present_start).count();
+                [commandBuffer waitUntilCompleted];
+                command_status = commandBuffer.status;
+                if (command_status != MTLCommandBufferStatusCompleted) {
+                    NSError* command_error = commandBuffer.error;
+                    if (command_error) {
+                        auto const* localized = [[command_error localizedDescription] UTF8String];
+                        if (localized) {
+                            error_message = std::string("Metal command buffer error: ") + localized;
+                        } else {
+                            error_message = "Metal command buffer error";
+                        }
                     } else {
-                        error_message = "Metal command buffer error";
+                        error_message = std::string("Metal command buffer completed with status ")
+                                        + command_buffer_status_string(command_status);
                     }
-                } else {
-                    error_message = std::string("Metal command buffer completed with status ")
-                                    + command_buffer_status_string(command_status);
+                    return;
                 }
-                return;
+            } else {
+                present_ms = 0.0;
             }
             success = true;
         }
@@ -235,7 +240,7 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
     auto const start_time = request.now;
     stats.mode = policy.mode;
     stats.auto_render_on_present = policy.auto_render_on_present;
-    stats.vsync_aligned = policy.vsync_align;
+    stats.vsync_aligned = request.vsync_align;
     stats.frame = surface.latest_frame_info();
 
     auto wait_budget = request.vsync_deadline - request.now;

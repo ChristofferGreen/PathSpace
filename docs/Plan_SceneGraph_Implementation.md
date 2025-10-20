@@ -165,7 +165,7 @@ Completed:
     - ✅ (October 19, 2025) Split render helpers so Metal targets reuse the shared cache but funnel through a backend-aware `render_into_target`; contexts fall back to software when uploads are disabled and tests exercise the unified path.
     - ✅ (October 19, 2025) PathRenderer2D now streams Metal frames directly into the cached CAMetalLayer texture (skipping the software upload hop when Metal uploads are enabled) while keeping residency metrics in sync.
     - ✅ (October 19, 2025) `Renderer::TriggerRender` now reuses the shared surface caches (software and Metal) so ad-hoc renders avoid reallocating per call.
-    - PathRenderer2D: add backend abstraction so draw traversal fills either CPU framebuffer or Metal encoders; reuse command building, add Metal-specific upload/shader binding (initially simple textured quad pipeline).
+    - 🚧 (October 20, 2025) Added `PathRenderer2DMetal` so Metal2D targets bypass the CPU raster when scenes contain only rect drawables; falls back to the software path for unsupported commands. Extend the encoder to rounded rects, images, glyph batches, and true material bindings next.
  3. **Presenter integration**
      - Extend `PathWindowView::Present` (Apple) to accept either `PathSurfaceSoftware` or `PathSurfaceMetal` stats; when Metal uploads are enabled, acquire CAMetalLayer drawable and blit/encode GPU texture to drawable using Metal command queue (move logic from WindowEventPump into core presenter).
      - ✅ (October 19, 2025) Replaced the sample-specific `WindowEventPump.mm` with the shared `LocalWindowBridge` in the UI library; examples now consume the bridge and keep only input wiring.

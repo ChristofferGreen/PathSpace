@@ -34,6 +34,7 @@ struct PathWindowPresentPolicy {
 struct PathWindowPresentRequest {
     std::chrono::steady_clock::time_point now{};
     std::chrono::steady_clock::time_point vsync_deadline{};
+    bool vsync_align = true;
     std::span<std::uint8_t> framebuffer{};
     std::span<std::size_t const> dirty_tiles{};
     int surface_width_px = 0;
