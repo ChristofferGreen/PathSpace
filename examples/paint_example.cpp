@@ -3,15 +3,17 @@
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
-#include "PaintInputBridge.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
+#include <deque>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <mutex>
 #include <numeric>
 #include <optional>
 #include <string>
@@ -21,6 +23,59 @@
 using namespace SP;
 using namespace SP::UI;
 namespace UIScene = SP::UI::Scene;
+
+namespace PaintInput {
+
+enum class MouseButton : int {
+    Left = 1,
+    Right = 2,
+    Middle = 3,
+    Button4 = 4,
+    Button5 = 5,
+};
+
+enum class MouseEventType {
+    Move,
+    AbsoluteMove,
+    ButtonDown,
+    ButtonUp,
+    Wheel,
+};
+
+struct MouseEvent {
+    MouseEventType type = MouseEventType::Move;
+    MouseButton button = MouseButton::Left;
+    int dx = 0;
+    int dy = 0;
+    int x = -1;
+    int y = -1;
+    int wheel = 0;
+};
+
+std::mutex gMouseMutex;
+std::deque<MouseEvent> gMouseQueue;
+
+void enqueue_mouse(MouseEvent const& ev) {
+    std::lock_guard<std::mutex> lock(gMouseMutex);
+    gMouseQueue.push_back(ev);
+}
+
+auto try_pop_mouse() -> std::optional<MouseEvent> {
+    std::lock_guard<std::mutex> lock(gMouseMutex);
+    if (gMouseQueue.empty()) {
+        return std::nullopt;
+    }
+    MouseEvent ev = gMouseQueue.front();
+    gMouseQueue.pop_front();
+    return ev;
+}
+
+void clear_mouse() {
+    std::lock_guard<std::mutex> lock(gMouseMutex);
+    gMouseQueue.clear();
+}
+
+} // namespace PaintInput
 
 #if defined(__APPLE__)
 #include <CoreFoundation/CoreFoundation.h>
@@ -186,6 +241,7 @@ auto read_config_value(PathSpace& space,
 
 struct RuntimeOptions {
     bool debug = false;
+    bool metal = false;
 };
 
 auto parse_runtime_options(int argc, char** argv) -> RuntimeOptions {
@@ -194,8 +250,10 @@ auto parse_runtime_options(int argc, char** argv) -> RuntimeOptions {
         std::string_view arg{argv[i]};
         if (arg == "--debug") {
             opts.debug = true;
+        } else if (arg == "--metal") {
+            opts.metal = true;
         } else if (arg == "--help" || arg == "-h") {
-            std::cout << "Usage: paint_example [--debug]\n";
+            std::cout << "Usage: paint_example [--debug] [--metal]\n";
             std::exit(0);
         }
     }
@@ -326,6 +384,7 @@ struct PresentOutcome {
     bool used_iosurface = false;
     std::size_t framebuffer_bytes = 0;
     std::size_t stride_bytes = 0;
+    bool skipped = false;
 };
 
 auto present_frame(PathSpace& space,
@@ -353,8 +412,8 @@ auto present_frame(PathSpace& space,
                                                 width,
                                                 height,
                                                 static_cast<int>(presentResult->stats.iosurface->row_bytes()));
-            CFRelease(iosurface_ref);
             used_iosurface = true;
+            CFRelease(iosurface_ref);
             computed_stride = presentResult->stats.iosurface->row_bytes();
         }
     }
@@ -383,6 +442,7 @@ auto present_frame(PathSpace& space,
     std::size_t computed_stride = static_cast<std::size_t>(width) * 4;
 #endif
     PresentOutcome outcome{};
+    outcome.skipped = presentResult->stats.skipped;
     outcome.used_iosurface = presentResult->stats.used_iosurface;
     outcome.framebuffer_bytes = presentResult->framebuffer.size();
     if (computed_stride == 0) {
@@ -527,6 +587,20 @@ int main(int argc, char** argv) {
     return 1;
 #else
     auto options = parse_runtime_options(argc, argv);
+#if !defined(PATHSPACE_UI_METAL)
+    if (options.metal) {
+        std::cerr << "--metal requested, but this build was compiled without PATHSPACE_UI_METAL support." << std::endl;
+        return 1;
+    }
+#else
+    if (options.metal) {
+        if (std::getenv("PATHSPACE_ENABLE_METAL_UPLOADS") == nullptr) {
+            if (::setenv("PATHSPACE_ENABLE_METAL_UPLOADS", "1", 1) != 0) {
+                std::cerr << "warning: failed to set PATHSPACE_ENABLE_METAL_UPLOADS=1; Metal uploads may remain disabled." << std::endl;
+            }
+        }
+    }
+#endif
     PathSpace space;
     SP::App::AppRootPath appRoot{"/system/applications/paint"};
     auto rootView = SP::App::AppRootPathView{appRoot.getPath()};
@@ -556,9 +630,9 @@ int main(int argc, char** argv) {
                                     "failed to create paint scene");
 
     Builders::RendererParams rendererParams{
-        .name = "software2d",
-        .kind = Builders::RendererKind::Software2D,
-        .description = "paint renderer",
+        .name = options.metal ? "metal2d" : "software2d",
+        .kind = options.metal ? Builders::RendererKind::Metal2D : Builders::RendererKind::Software2D,
+        .description = options.metal ? "paint renderer (Metal2D)" : "paint renderer",
     };
     auto rendererPath = unwrap_or_exit(Builders::Renderer::Create(space, rootView, rendererParams),
                                        "failed to create renderer");
@@ -569,6 +643,14 @@ int main(int argc, char** argv) {
     surfaceDesc.pixel_format = Builders::PixelFormat::RGBA8Unorm_sRGB;
     surfaceDesc.color_space = Builders::ColorSpace::sRGB;
     surfaceDesc.premultiplied_alpha = true;
+#if defined(PATHSPACE_UI_METAL)
+    if (options.metal) {
+        surfaceDesc.metal.storage_mode = Builders::MetalStorageMode::Shared;
+        surfaceDesc.metal.texture_usage = static_cast<std::uint8_t>(Builders::MetalTextureUsage::ShaderRead)
+                                          | static_cast<std::uint8_t>(Builders::MetalTextureUsage::RenderTarget);
+        surfaceDesc.metal.iosurface_backing = true;
+    }
+#endif
 
     Builders::SurfaceParams surfaceParams{};
     surfaceParams.name = "canvas_surface";
@@ -597,6 +679,13 @@ int main(int argc, char** argv) {
     unwrap_or_exit(Builders::Window::AttachSurface(space, windowPath, "main", surfacePath),
                    "failed to attach surface to window");
 
+    std::string viewBase = std::string(windowPath.getPath()) + "/views/main";
+    replace_value(space, viewBase + "/present/policy", std::string{"AlwaysLatestComplete"});
+    replace_value(space, viewBase + "/present/params/vsync_align", false);
+    replace_value(space, viewBase + "/present/params/frame_timeout_ms", 0.0);
+    replace_value(space, viewBase + "/present/params/staleness_budget_ms", 0.0);
+    replace_value(space, viewBase + "/present/params/max_age_frames", static_cast<std::uint64_t>(0));
+
     UIScene::SceneSnapshotBuilder builder{space, rootView, scenePath};
 
     std::vector<Stroke> strokes;
@@ -606,6 +695,13 @@ int main(int argc, char** argv) {
     rendererSettings.clear_color = {1.0f, 1.0f, 1.0f, 1.0f};
     rendererSettings.surface.size_px.width = canvasWidth;
     rendererSettings.surface.size_px.height = canvasHeight;
+    rendererSettings.surface.metal = surfaceDesc.metal;
+#if defined(PATHSPACE_UI_METAL)
+    if (options.metal) {
+        rendererSettings.renderer.backend_kind = Builders::RendererKind::Metal2D;
+        rendererSettings.renderer.metal_uploads_enabled = true;
+    }
+#endif
     unwrap_or_exit(Builders::Renderer::UpdateSettings(space,
                                                      SP::ConcretePathStringView{targetAbsolute.getPath()},
                                                      rendererSettings),
@@ -661,6 +757,7 @@ int main(int argc, char** argv) {
             lastAbsolute.reset();
             rendererSettings.surface.size_px.width = canvasWidth;
             rendererSettings.surface.size_px.height = canvasHeight;
+            rendererSettings.surface.metal = surfaceDesc.metal;
             unwrap_or_exit(Builders::Renderer::UpdateSettings(space,
                                                              SP::ConcretePathStringView{targetAbsolute.getPath()},
                                                              rendererSettings),
@@ -743,50 +840,50 @@ int main(int argc, char** argv) {
             publish_snapshot(space, builder, scenePath, bucket);
         }
 
-        if (updated || sizeChanged) {
-            if (!dirtyHints.empty()) {
-                unwrap_or_exit(Builders::Renderer::SubmitDirtyRects(space,
-                                                                    SP::ConcretePathStringView{targetAbsolute.getPath()},
-                                                                    std::span<const DirtyRectHint>{dirtyHints}),
-                               "failed to submit renderer dirty hints");
-            }
-            if (auto outcome = present_frame(space,
-                                             windowPath,
-                                             "main",
-                                             canvasWidth,
-                                             canvasHeight,
-                                             options.debug)) {
+        if (!dirtyHints.empty()) {
+            unwrap_or_exit(Builders::Renderer::SubmitDirtyRects(space,
+                                                                SP::ConcretePathStringView{targetAbsolute.getPath()},
+                                                                std::span<const DirtyRectHint>{dirtyHints}),
+                           "failed to submit renderer dirty hints");
+        }
+
+        if (auto outcome = present_frame(space,
+                                         windowPath,
+                                         "main",
+                                         canvasWidth,
+                                         canvasHeight,
+                                         options.debug)) {
+            if (!outcome->skipped) {
                 ++fps_frames;
                 if (outcome->used_iosurface) {
                     ++fps_iosurface_frames;
                 }
                 fps_last_stride = outcome->stride_bytes;
                 fps_last_framebuffer_bytes = outcome->framebuffer_bytes;
-                auto report_now = std::chrono::steady_clock::now();
-                auto elapsed = report_now - fps_last_report;
-                if (elapsed >= std::chrono::seconds(1)) {
-                    double seconds = std::chrono::duration<double>(elapsed).count();
-                    if (seconds > 0.0 && fps_frames > 0) {
-                        double fps = static_cast<double>(fps_frames) / seconds;
-                        auto iosurface_frames = fps_iosurface_frames;
-                        auto frames = fps_frames;
-                        auto stride_bytes = fps_last_stride;
-                        auto framebuffer_bytes = fps_last_framebuffer_bytes;
-                        std::cout << "FPS: " << fps
-                                  << " (iosurface " << iosurface_frames << '/' << frames
-                                  << ", stride=" << stride_bytes
-                                  << ", frameBytes=" << framebuffer_bytes
-                                  << ')'
-                                  << std::endl;
-                    }
-                    fps_frames = 0;
-                    fps_iosurface_frames = 0;
-                    fps_last_report = report_now;
+            }
+            auto report_now = std::chrono::steady_clock::now();
+            auto elapsed = report_now - fps_last_report;
+            if (elapsed >= std::chrono::seconds(1)) {
+                double seconds = std::chrono::duration<double>(elapsed).count();
+                if (seconds > 0.0 && fps_frames > 0) {
+                    double fps = static_cast<double>(fps_frames) / seconds;
+                    auto iosurface_frames = fps_iosurface_frames;
+                    auto frames = fps_frames;
+                    auto stride_bytes = fps_last_stride;
+                    auto framebuffer_bytes = fps_last_framebuffer_bytes;
+                    std::cout << "FPS: " << fps
+                              << " (iosurface " << iosurface_frames << '/' << frames
+                              << ", stride=" << stride_bytes
+                              << ", frameBytes=" << framebuffer_bytes
+                              << ')'
+                              << std::endl;
                 }
+                fps_frames = 0;
+                fps_iosurface_frames = 0;
+                fps_last_report = report_now;
             }
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(4));
     }
 
     PaintInput::clear_mouse();
