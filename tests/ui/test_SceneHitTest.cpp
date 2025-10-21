@@ -150,6 +150,9 @@ TEST_CASE("returns topmost drawable using render order") {
     REQUIRE(result);
     CHECK(result->hit);
     CHECK(result->target.drawable_id == bucket.drawable_ids[1]);
+    REQUIRE(result->hits.size() == 2);
+    CHECK(result->hits[0].target.drawable_id == bucket.drawable_ids[1]);
+    CHECK(result->hits[1].target.drawable_id == bucket.drawable_ids[0]);
     REQUIRE_FALSE(result->focus_chain.empty());
     CHECK(result->focus_chain.front() == std::string("nodes/root/card/button"));
     CHECK(result->position.has_local);
@@ -159,6 +162,29 @@ TEST_CASE("returns topmost drawable using render order") {
     CHECK(result->position.local_y == doctest::Approx(request.y - bucket.bounds_boxes[1].min[1]));
     REQUIRE_FALSE(result->focus_path.empty());
     CHECK(result->focus_path.front().focusable);
+}
+
+TEST_CASE("max_results limits collected hits") {
+    HitTestFixture fx;
+    auto bucket = make_basic_bucket();
+    auto scenePath = create_scene(fx, "hit_max_results", bucket);
+
+    BuildersScene::HitTestRequest request{};
+    request.x = 1.0f;
+    request.y = 1.0f;
+    request.max_results = 1;
+
+    auto result = BuildersScene::HitTest(fx.space, scenePath, request);
+    REQUIRE(result);
+    CHECK(result->hit);
+    REQUIRE(result->hits.size() == 1);
+    CHECK(result->hits.front().target.drawable_id == bucket.drawable_ids[1]);
+
+    request.max_results = 0;
+    auto fallback = BuildersScene::HitTest(fx.space, scenePath, request);
+    REQUIRE(fallback);
+    CHECK(fallback->hit);
+    REQUIRE(fallback->hits.size() == 1);
 }
 
 TEST_CASE("respects clip rectangles when evaluating hits") {
@@ -174,6 +200,9 @@ TEST_CASE("respects clip rectangles when evaluating hits") {
     REQUIRE(insideResult);
     CHECK(insideResult->hit);
     CHECK(insideResult->target.drawable_id == bucket.drawable_ids[1]);
+    REQUIRE(insideResult->hits.size() == 2);
+    CHECK(insideResult->hits[0].target.drawable_id == bucket.drawable_ids[1]);
+    CHECK(insideResult->hits[1].target.drawable_id == bucket.drawable_ids[0]);
 
     BuildersScene::HitTestRequest outside{};
     outside.x = 1.2f;
@@ -183,6 +212,7 @@ TEST_CASE("respects clip rectangles when evaluating hits") {
     REQUIRE(outsideResult);
     CHECK(outsideResult->hit);
     CHECK(outsideResult->target.drawable_id == bucket.drawable_ids[0]);
+    CHECK(outsideResult->hits.size() == 1);
 }
 
 TEST_CASE("focus chain enumerates authoring ancestors") {

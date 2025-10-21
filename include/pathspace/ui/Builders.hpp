@@ -199,6 +199,7 @@ namespace Scene {
 struct HitTestRequest {
     float x = 0.0f;
     float y = 0.0f;
+    std::size_t max_results = 8;
     bool schedule_render = false;
     std::optional<ConcretePath> auto_render_target;
 };
@@ -264,12 +265,20 @@ struct FocusEntry {
     bool focusable = false;
 };
 
+struct HitCandidate {
+    HitDrawable target{};
+    HitPosition position{};
+    std::vector<std::string> focus_chain;
+    std::vector<FocusEntry> focus_path;
+};
+
 struct HitTestResult {
     bool hit = false;
     HitDrawable target{};
     HitPosition position{};
     std::vector<std::string> focus_chain;
     std::vector<FocusEntry> focus_path;
+    std::vector<HitCandidate> hits;
 };
 
 auto Create(PathSpace& space,

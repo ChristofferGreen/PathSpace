@@ -1,6 +1,6 @@
 # Handoff Notice
 
-> **Handoff note (October 21, 2025 @ shutdown):** Hit-test coverage now spans ordering, clip-aware picking, focus routing, and the auto-render wait/notify path (`tests/ui/test_SceneHitTest.cpp` asserts ≤200 ms wake latency). Presenter diagnostics continue to mirror into `windows/<win>/diagnostics/metrics/live/views/<view>/present`, and widgets gallery interactions remain green. Next pass should tighten DrawableBucket-backed picking (multi-hit collection, z-layer drill-down), expand HTML tooling (HSAT inspectors), and carry forward the Phase 5 interaction scheduling milestones.
+> **Handoff note (October 21, 2025 @ shutdown):** Hit-test coverage now spans ordering, clip-aware picking, focus routing, the auto-render wait/notify path (`tests/ui/test_SceneHitTest.cpp` asserts ≤200 ms wake latency), and DrawableBucket-backed multi-hit stacks (`HitTestResult::hits` with `HitTestRequest::max_results`). Presenter diagnostics continue to mirror into `windows/<win>/diagnostics/metrics/live/views/<view>/present`, and widgets gallery interactions remain green. Next pass should expand HTML tooling (HSAT inspectors) and carry forward the Phase 5 interaction scheduling/focus navigation milestones.
 
 # Scene Graph Implementation Plan
 
@@ -23,6 +23,7 @@ Success looks like:
 - Widget bindings publish dirty hints and ops inbox events (`widgets/<id>/ops/inbox/queue`) so interaction reducers can react without full-scene republishes.
 - Widgets reducers drain op queues into `widgets/<id>/ops/actions/inbox/queue`; examples/tests confirm button/list actions round-trip through the helpers.
 - Widget gallery, HTML tooling, and diagnostics backlog items are tracked in `docs/AI_Todo.task`; no open P0 work after the binding milestone.
+- ✅ (October 21, 2025) Scene hit tests now gather z-ordered multi-hit stacks, expose `HitTestResult::hits`, and honour `HitTestRequest::max_results` for drill-down; doctests cover default ordering, clipping, and bounded stacks.
 - ✅ (October 21, 2025) Widgets gallery now supports keyboard focus cycling, arrow-key slider/list control, and logs reducer-emitted actions each frame for diagnostics.
 - ✅ (October 21, 2025) Window diagnostics sinks mirror presenter metrics under `windows/<win>/diagnostics/metrics/live/views/<view>/present`, keeping central telemetry aligned with per-target `output/v1/common/*` updates.
 - ✅ (October 20, 2025) Residency dashboard wiring publishes CPU/GPU soft & hard budget ratios plus status flags under `diagnostics/metrics/residency`, enabling external alerts without bespoke parsers.
@@ -153,6 +154,7 @@ Completed:
 - ✅ (October 16, 2025) `Scene::HitTest` now emits scene/local coordinates and per-path focus metadata so event routing can derive local offsets without re-reading scene state; doctests cover the new fields.
 - ✅ (October 16, 2025) `Scene::MarkDirty` / `Scene::TakeDirtyEvent` surface dirty markers via `diagnostics/dirty/state` and a queue, and tests confirm renderers can wait on the queue without polling.
 - ✅ (October 18, 2025) Exercised the blocking dirty-event wait/notify loop under the mandated 15× harness; the `Scene dirty event wait-notify latency stays within budget` doctest asserts <200 ms wake latency, preserves sequence ordering, and architecture docs now capture the latency/ordering guarantee plus the Metal→software fallback rule when uploads are disabled.
+- ✅ (October 21, 2025) DrawableBucket hit tests collect z-ordered stacks via `HitTestResult::hits` and respect `HitTestRequest::max_results`, enabling drill-down while keeping top-level fields backwards-compatible; doctests cover overlap, clipping, and bounded queries.
 
 ### Phase 6 — Diagnostics, Tooling, and Hardening (1 sprint)
 - ✅ (October 18, 2025) Extended diagnostics coverage with unit tests that write/read present metrics (`Diagnostics::WritePresentMetrics`/`ReadTargetMetrics`) and verify error clearing; tooling now has regression coverage for metric persistence.

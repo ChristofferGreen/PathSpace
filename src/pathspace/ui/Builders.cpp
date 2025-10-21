@@ -2321,7 +2321,9 @@ auto HitTest(PathSpace& space,
 
     auto order = detail::build_draw_order(*bucket);
     HitTestResult result{};
-    std::optional<std::size_t> hit_index;
+    auto max_results = request.max_results == 0 ? std::size_t{1} : request.max_results;
+    bool const enqueue_render = request.schedule_render && auto_render_target.has_value();
+    bool render_enqueued = false;
 
     for (auto it = order.rbegin(); it != order.rend(); ++it) {
         std::size_t drawable_index = *it;
@@ -2338,29 +2340,37 @@ auto HitTest(PathSpace& space,
         if (!detail::point_inside_bounds(request.x, request.y, *bucket, drawable_index)) {
             continue;
         }
-        hit_index = drawable_index;
-        break;
-    }
 
-    if (hit_index) {
-        auto idx = *hit_index;
-        result.hit = true;
-        result.target.drawable_id = bucket->drawable_ids[idx];
-        if (idx < bucket->authoring_map.size()) {
-            auto const& author = bucket->authoring_map[idx];
-            result.target.authoring_node_id = author.authoring_node_id;
-            result.target.drawable_index_within_node = author.drawable_index_within_node;
-            result.target.generation = author.generation;
-            result.focus_chain = detail::build_focus_chain(author.authoring_node_id);
-            result.focus_path.reserve(result.focus_chain.size());
-            for (std::size_t i = 0; i < result.focus_chain.size(); ++i) {
+        HitCandidate candidate{};
+        candidate.target.drawable_id = bucket->drawable_ids[drawable_index];
+
+        if (drawable_index < bucket->authoring_map.size()) {
+            auto const& author = bucket->authoring_map[drawable_index];
+            candidate.target.authoring_node_id = author.authoring_node_id;
+            candidate.target.drawable_index_within_node = author.drawable_index_within_node;
+            candidate.target.generation = author.generation;
+            candidate.focus_chain = detail::build_focus_chain(author.authoring_node_id);
+            candidate.focus_path.reserve(candidate.focus_chain.size());
+            for (std::size_t i = 0; i < candidate.focus_chain.size(); ++i) {
                 FocusEntry entry;
-                entry.path = result.focus_chain[i];
+                entry.path = candidate.focus_chain[i];
                 entry.focusable = (i == 0);
-                result.focus_path.push_back(std::move(entry));
+                candidate.focus_path.push_back(std::move(entry));
             }
         }
-        if (request.schedule_render && auto_render_target) {
+
+        candidate.position.scene_x = request.x;
+        candidate.position.scene_y = request.y;
+        if (drawable_index < bucket->bounds_boxes.size()
+            && (drawable_index >= bucket->bounds_box_valid.size()
+                || bucket->bounds_box_valid[drawable_index] != 0)) {
+            auto const& box = bucket->bounds_boxes[drawable_index];
+            candidate.position.local_x = request.x - box.min[0];
+            candidate.position.local_y = request.y - box.min[1];
+            candidate.position.has_local = true;
+        }
+
+        if (enqueue_render && !render_enqueued) {
             auto status = enqueue_auto_render_event(space,
                                                     *auto_render_target,
                                                     "hit-test",
@@ -2368,17 +2378,22 @@ auto HitTest(PathSpace& space,
             if (!status) {
                 return std::unexpected(status.error());
             }
+            render_enqueued = true;
         }
-        result.position.scene_x = request.x;
-        result.position.scene_y = request.y;
-        if (idx < bucket->bounds_boxes.size()
-            && (idx >= bucket->bounds_box_valid.size()
-                || bucket->bounds_box_valid[idx] != 0)) {
-            auto const& box = bucket->bounds_boxes[idx];
-            result.position.local_x = request.x - box.min[0];
-            result.position.local_y = request.y - box.min[1];
-            result.position.has_local = true;
+
+        result.hits.push_back(std::move(candidate));
+        if (result.hits.size() >= max_results) {
+            break;
         }
+    }
+
+    if (!result.hits.empty()) {
+        result.hit = true;
+        auto const& primary = result.hits.front();
+        result.target = primary.target;
+        result.position = primary.position;
+        result.focus_chain = primary.focus_chain;
+        result.focus_path = primary.focus_path;
     }
 
     return result;
