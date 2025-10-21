@@ -177,7 +177,7 @@ Completed:
     - ✅ (October 19, 2025) `Renderer::TriggerRender` now reuses the shared surface caches (software and Metal) so ad-hoc renders avoid reallocating per call.
     - ✅ (October 20, 2025) `PathRenderer2DMetal` now renders rects, rounded rects, text quads, and textured images directly on the GPU, with shared material/shader keys driving pipeline state so GPU frames mirror software telemetry; glyph/material pipeline parity will continue to build on the descriptor cache.
  3. **Presenter integration**
-     - Extend `PathWindowView::Present` (Apple) to accept either `PathSurfaceSoftware` or `PathSurfaceMetal` stats; when Metal uploads are enabled, acquire CAMetalLayer drawable and blit/encode GPU texture to drawable using Metal command queue (move logic from WindowEventPump into core presenter).
+     - ✅ (October 21, 2025) `PathWindowView::Present` (Apple) now handles both `PathSurfaceSoftware` and `PathSurfaceMetal` stats, acquiring the CAMetalLayer drawable and issuing the Metal blit inside the presenter so builders/tests exercise the shared path instead of relying on the legacy window pump.
      - ✅ (October 19, 2025) Replaced the sample-specific `WindowEventPump.mm` with the shared `LocalWindowBridge` in the UI library; examples now consume the bridge and keep only input wiring.
      - ✅ (October 19, 2025) PathWindowView now drives CAMetalLayer presents via the UI library, records GPU encode/present timings, and exposes configuration hooks; example harnesses only forward window/layer handles. Remaining platform scaffolding will shrink to input/event dispatch as the shared bridge matures.
 4. **Settings & diagnostics**

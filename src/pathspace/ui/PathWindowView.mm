@@ -1,6 +1,7 @@
 #include <pathspace/ui/PathWindowView.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <exception>
 #include <mutex>
@@ -72,19 +73,32 @@ void PathWindowView::ResetMetalPresenter() {
     gMetalPresenterState = {};
 }
 
-static auto present_metal_texture(PathSurfaceSoftware& surface,
+static auto present_metal_texture(PathSurfaceMetal* metal_surface,
+                                  PathSurfaceSoftware* software_surface,
                                   PathWindowView::PresentStats& stats,
                                   PathWindowView::PresentRequest const& request) -> bool {
     PathSurfaceMetal::TextureInfo texture{};
     bool has_texture = false;
 #if PATHSPACE_UI_METAL
-    if (request.metal_surface != nullptr) {
-        texture = request.metal_surface->acquire_texture();
-        if (texture.texture != nullptr) {
-            has_texture = true;
-            stats.frame.frame_index = texture.frame_index;
-            stats.frame.revision = texture.revision;
+    auto try_acquire = [&](PathSurfaceMetal* candidate) {
+        if (candidate == nullptr) {
+            return false;
         }
+        auto info = candidate->acquire_texture();
+        if (info.texture == nullptr) {
+            return false;
+        }
+        texture = info;
+        stats.frame.frame_index = info.frame_index;
+        stats.frame.revision = info.revision;
+        return true;
+    };
+
+    if (!has_texture) {
+        has_texture = try_acquire(metal_surface);
+    }
+    if (!has_texture) {
+        has_texture = try_acquire(request.metal_surface);
     }
 #endif
     if (!has_texture && request.has_metal_texture && request.metal_texture.texture != nullptr) {
@@ -107,9 +121,42 @@ static auto present_metal_texture(PathSurfaceSoftware& surface,
         return false;
     }
 
-    auto const& desc = surface.desc();
-    int width_px = request.surface_width_px > 0 ? request.surface_width_px : std::max(desc.size_px.width, 0);
-    int height_px = request.surface_height_px > 0 ? request.surface_height_px : std::max(desc.size_px.height, 0);
+    int width_px = request.surface_width_px;
+    int height_px = request.surface_height_px;
+
+#if PATHSPACE_UI_METAL
+    if ((width_px <= 0 || height_px <= 0) && metal_surface != nullptr) {
+        auto const& desc = metal_surface->desc();
+        if (width_px <= 0) {
+            width_px = std::max(desc.size_px.width, 0);
+        }
+        if (height_px <= 0) {
+            height_px = std::max(desc.size_px.height, 0);
+        }
+    }
+    if ((width_px <= 0 || height_px <= 0) && request.metal_surface != nullptr) {
+        auto const& desc = request.metal_surface->desc();
+        if (width_px <= 0) {
+            width_px = std::max(desc.size_px.width, 0);
+        }
+        if (height_px <= 0) {
+            height_px = std::max(desc.size_px.height, 0);
+        }
+    }
+#endif
+    if ((width_px <= 0 || height_px <= 0) && software_surface != nullptr) {
+        auto const& desc = software_surface->desc();
+        if (width_px <= 0) {
+            width_px = std::max(desc.size_px.width, 0);
+        }
+        if (height_px <= 0) {
+            height_px = std::max(desc.size_px.height, 0);
+        }
+    }
+    if (width_px <= 0 || height_px <= 0) {
+        return false;
+    }
+
     if (width_px <= 0 || height_px <= 0) {
         return false;
     }
@@ -251,7 +298,11 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
         std::chrono::duration<double, std::milli>(wait_budget).count();
 
 #if defined(__APPLE__)
-    if (present_metal_texture(surface, stats, request)) {
+    PathSurfaceMetal* metal_surface_ptr = nullptr;
+#if PATHSPACE_UI_METAL
+    metal_surface_ptr = request.metal_surface;
+#endif
+    if (present_metal_texture(metal_surface_ptr, &surface, stats, request)) {
         return stats;
     }
 #endif
@@ -414,5 +465,38 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
     stats.present_ms = std::chrono::duration<double, std::milli>(finish - start_time).count();
     return stats;
 }
+
+#if PATHSPACE_UI_METAL
+auto PathWindowView::present(PathSurfaceMetal& surface,
+                             PresentPolicy const& policy,
+                             PresentRequest const& request) -> PresentStats {
+    PresentStats stats{};
+    stats.used_metal_texture = false;
+    auto const start_time = request.now;
+    stats.mode = policy.mode;
+    stats.auto_render_on_present = policy.auto_render_on_present;
+    stats.vsync_aligned = request.vsync_align;
+
+    auto wait_budget = request.vsync_deadline - request.now;
+    if (wait_budget < std::chrono::steady_clock::duration::zero()) {
+        wait_budget = std::chrono::steady_clock::duration::zero();
+    }
+    stats.wait_budget_ms =
+        std::chrono::duration<double, std::milli>(wait_budget).count();
+
+    if (present_metal_texture(&surface, nullptr, stats, request)) {
+        return stats;
+    }
+
+    auto finish = std::chrono::steady_clock::now();
+    stats.present_ms = std::chrono::duration<double, std::milli>(finish - start_time).count();
+    stats.skipped = true;
+    if (stats.error.empty()) {
+        stats.error = "Metal presenter unavailable";
+    }
+    stats.backend_kind = "Metal2D";
+    return stats;
+}
+#endif
 
 } // namespace SP::UI

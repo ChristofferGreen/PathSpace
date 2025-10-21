@@ -100,6 +100,12 @@ public:
     [[nodiscard]] auto present(PathSurfaceSoftware& surface,
                                PresentPolicy const& policy,
                                PresentRequest const& request) -> PresentStats;
+
+#if defined(__APPLE__) && PATHSPACE_UI_METAL
+    [[nodiscard]] auto present(PathSurfaceMetal& surface,
+                               PresentPolicy const& policy,
+                               PresentRequest const& request) -> PresentStats;
+#endif
 };
 
 } // namespace SP::UI

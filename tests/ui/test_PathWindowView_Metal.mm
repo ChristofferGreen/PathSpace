@@ -332,7 +332,24 @@ TEST_CASE("PathWindowView presents Metal texture when uploads enabled") {
         };
 
         PathWindowView view;
-        auto stats = view.present(software, {}, request);
+        auto metal_only_stats = view.present(metal, {}, request);
+
+        CHECK(metal_only_stats.presented);
+        CHECK_FALSE(metal_only_stats.skipped);
+        CHECK(metal_only_stats.used_metal_texture);
+        CHECK_FALSE(metal_only_stats.buffered_frame_consumed);
+        CHECK(metal_only_stats.gpu_encode_ms >= 0.0);
+        CHECK(metal_only_stats.gpu_present_ms >= 0.0);
+        CHECK(metal_only_stats.present_ms >= 0.0);
+        CHECK(metal_only_stats.backend_kind == "Metal2D");
+        CHECK(metal_only_stats.error.empty());
+
+        texture = metal.acquire_texture();
+        request.metal_texture = texture;
+        request.has_metal_texture = texture.texture != nullptr;
+
+        PathWindowView view_with_software;
+        auto stats = view_with_software.present(software, {}, request);
 
         CHECK(stats.presented);
         CHECK(stats.used_metal_texture);
