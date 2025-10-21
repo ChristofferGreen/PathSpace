@@ -92,6 +92,7 @@ The following subtrees are standardized within each application root (one of the
   - `widgets/<widget-id>/`
     - `state` — current widget state payload (button/toggle/slider/list structs)
     - `meta/*` — style, label, range/list metadata authored by widget builders
+    - `authoring/<component>` — canonical authoring nodes written by widget builders and consumed by hit testing (`Widgets::ResolveHitTarget`)
     - `ops/actions/inbox/queue` — reduced widget actions emitted by `Widgets::Reducers`
     - `ops/inbox/queue` — `WidgetOp` FIFO written by `Widgets::Bindings` helpers (hover/press/toggle/slider events)
 

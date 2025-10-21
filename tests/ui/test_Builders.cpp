@@ -1789,6 +1789,36 @@ TEST_CASE("Widgets::UpdateListState clamps indices and marks dirty") {
     CHECK_FALSE(*unchanged);
 }
 
+TEST_CASE("Widgets::ResolveHitTarget extracts canonical widget path from hit test") {
+    BuildersFixture fx;
+
+    Widgets::ButtonParams params{};
+    params.name = "resolve_hit_button";
+    params.label = "Resolve";
+
+    auto button = Widgets::CreateButton(fx.space, fx.root_view(), params);
+    REQUIRE(button);
+
+    Scene::HitTestRequest request{};
+    request.x = 12.0f;
+    request.y = 16.0f;
+
+    auto hit = Scene::HitTest(fx.space, button->scene, request);
+    REQUIRE(hit);
+    REQUIRE(hit->hit);
+
+    auto resolved = Widgets::ResolveHitTarget(*hit);
+    REQUIRE(resolved);
+    CHECK(resolved->widget.getPath() == button->root.getPath());
+    CHECK(resolved->component == std::string{"button/background"});
+
+    auto pointer = WidgetBindings::PointerFromHit(*hit);
+    CHECK(pointer.scene_x == doctest::Approx(request.x));
+    CHECK(pointer.scene_y == doctest::Approx(request.y));
+    CHECK(pointer.inside);
+    CHECK(pointer.primary);
+}
+
 TEST_CASE("Widgets::Bindings::DispatchList enqueues ops and schedules renders") {
     BuildersFixture fx;
 

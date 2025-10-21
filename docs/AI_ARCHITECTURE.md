@@ -510,7 +510,7 @@ Atomicity rules:
 
 ### Contributor checklist
 - Mount new UI components under the application root and use the typed path helpers to validate app-relative references before storing them.
-- Widget toolkit: prefer the shared builder APIs (`Builders::Widgets::CreateButton`, `CreateToggle`, etc.) when adding UI primitives. Keep state paths (`/widgets/<id>/state`, `/meta/style`, etc.) and update helpers (`UpdateButtonState`, `UpdateToggleState`) in sync with any new widgets.
+- Widget toolkit: prefer the shared builder APIs (`Builders::Widgets::CreateButton`, `CreateToggle`, etc.) when adding UI primitives. Keep state paths (`/widgets/<id>/state`, `/meta/style`, etc.), canonical authoring nodes (`/widgets/<id>/authoring/...`), and update helpers (`UpdateButtonState`, `UpdateToggleState`) in sync with any new widgets.
 - When adding renderer targets or surfaces, document the path contract in `docs/Plan_SceneGraph_Renderer.md` and ensure tests cover atomic settings adoption and output publication (loop=15).
 - Update the Mermaid sources in `docs/images/` if data flow or pipeline steps change; keep the inline diagrams in this section synchronized.
 - Cross-link new C++ entry points (`PathRenderer2D`, `PathSurface*`, `PathWindowView`, etc.) from this section so contributors can navigate between docs and code.

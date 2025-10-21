@@ -657,6 +657,13 @@ auto UpdateListState(PathSpace& space,
                      ListPaths const& paths,
                      ListState const& new_state) -> SP::Expected<bool>;
 
+struct HitTarget {
+    WidgetPath widget;
+    std::string component;
+};
+
+auto ResolveHitTarget(Scene::HitTestResult const& hit) -> std::optional<HitTarget>;
+
 namespace Bindings {
 
 enum class WidgetOpKind : std::uint32_t {
@@ -771,6 +778,8 @@ auto DispatchList(PathSpace& space,
                   PointerInfo const& pointer = {},
                   std::int32_t item_index = -1,
                   float scroll_delta = 0.0f) -> SP::Expected<bool>;
+
+auto PointerFromHit(Scene::HitTestResult const& hit) -> PointerInfo;
 
 } // namespace Bindings
 

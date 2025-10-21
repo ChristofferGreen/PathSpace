@@ -46,6 +46,7 @@ constexpr std::string_view kScenesSegment = "/scenes/";
 constexpr std::string_view kRenderersSegment = "/renderers/";
 constexpr std::string_view kSurfacesSegment = "/surfaces/";
 constexpr std::string_view kWindowsSegment = "/windows/";
+constexpr std::string_view kWidgetAuthoringMarker = "/authoring/";
 std::atomic<std::uint64_t> g_auto_render_sequence{0};
 std::atomic<std::uint64_t> g_scene_dirty_sequence{0};
 std::atomic<std::uint64_t> g_widget_op_sequence{0};
@@ -164,13 +165,32 @@ auto make_identity_transform() -> SceneData::Transform {
     return transform;
 }
 
+auto make_widget_authoring_id(std::string_view base_path,
+                               std::string_view suffix) -> std::string {
+    if (base_path.empty()) {
+        std::string id = "widget/";
+        id.append(suffix);
+        return id;
+    }
+    std::string id;
+    id.reserve(base_path.size() + std::size_t{11} + suffix.size());
+    id.append(base_path);
+    if (!base_path.empty() && base_path.back() != '/') {
+        id.push_back('/');
+    }
+    id.append("authoring/");
+    id.append(suffix);
+    return id;
+}
+
 struct ButtonSnapshotConfig {
     float width = 200.0f;
     float height = 48.0f;
     std::array<float, 4> color{0.176f, 0.353f, 0.914f, 1.0f};
 };
 
-auto make_button_bucket(ButtonSnapshotConfig const& config) -> SceneData::DrawableBucketSnapshot {
+auto make_button_bucket(ButtonSnapshotConfig const& config,
+                        std::string_view authoring_root = {}) -> SceneData::DrawableBucketSnapshot {
     SceneData::DrawableBucketSnapshot bucket{};
     bucket.drawable_ids = {0xB17B0001ull};
     bucket.world_transforms = {make_identity_transform()};
@@ -201,7 +221,10 @@ auto make_button_bucket(ButtonSnapshotConfig const& config) -> SceneData::Drawab
     bucket.clip_nodes.clear();
     bucket.clip_head_indices = {-1};
     bucket.authoring_map = {SceneData::DrawableAuthoringMapEntry{
-        bucket.drawable_ids.front(), "widget/button/background", 0, 0}};
+        bucket.drawable_ids.front(),
+        make_widget_authoring_id(authoring_root, "button/background"),
+        0,
+        0}};
     bucket.drawable_fingerprints = {0xB17B0001ull};
 
     SceneData::RectCommand rect{};
@@ -228,7 +251,8 @@ struct ToggleSnapshotConfig {
     std::array<float, 4> thumb_color{1.0f, 1.0f, 1.0f, 1.0f};
 };
 
-auto make_toggle_bucket(ToggleSnapshotConfig const& config) -> SceneData::DrawableBucketSnapshot {
+auto make_toggle_bucket(ToggleSnapshotConfig const& config,
+                        std::string_view authoring_root = {}) -> SceneData::DrawableBucketSnapshot {
     SceneData::DrawableBucketSnapshot bucket{};
     bucket.drawable_ids = {0x701701u, 0x701702u};
     bucket.world_transforms = {make_identity_transform(), make_identity_transform()};
@@ -269,8 +293,16 @@ auto make_toggle_bucket(ToggleSnapshotConfig const& config) -> SceneData::Drawab
     bucket.clip_nodes.clear();
     bucket.clip_head_indices = {-1, -1};
     bucket.authoring_map = {
-        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[0], "widget/toggle/track", 0, 0},
-        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[1], "widget/toggle/thumb", 0, 0},
+        SceneData::DrawableAuthoringMapEntry{
+            bucket.drawable_ids[0],
+            make_widget_authoring_id(authoring_root, "toggle/track"),
+            0,
+            0},
+        SceneData::DrawableAuthoringMapEntry{
+            bucket.drawable_ids[1],
+            make_widget_authoring_id(authoring_root, "toggle/thumb"),
+            0,
+            0},
     };
     bucket.drawable_fingerprints = {0x701701u, 0x701702u};
 
@@ -328,7 +360,8 @@ struct SliderSnapshotConfig {
     std::array<float, 4> thumb_color{1.0f, 1.0f, 1.0f, 1.0f};
 };
 
-auto make_slider_bucket(SliderSnapshotConfig const& config) -> SceneData::DrawableBucketSnapshot {
+auto make_slider_bucket(SliderSnapshotConfig const& config,
+                        std::string_view authoring_root = {}) -> SceneData::DrawableBucketSnapshot {
     SceneData::DrawableBucketSnapshot bucket{};
     bucket.drawable_ids = {0x51D301u, 0x51D302u, 0x51D303u};
     bucket.world_transforms = {make_identity_transform(), make_identity_transform(), make_identity_transform()};
@@ -395,9 +428,21 @@ auto make_slider_bucket(SliderSnapshotConfig const& config) -> SceneData::Drawab
     bucket.clip_nodes.clear();
     bucket.clip_head_indices = {-1, -1, -1};
     bucket.authoring_map = {
-        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[0], "widget/slider/track", 0, 0},
-        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[1], "widget/slider/fill", 0, 0},
-        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[2], "widget/slider/thumb", 0, 0},
+        SceneData::DrawableAuthoringMapEntry{
+            bucket.drawable_ids[0],
+            make_widget_authoring_id(authoring_root, "slider/track"),
+            0,
+            0},
+        SceneData::DrawableAuthoringMapEntry{
+            bucket.drawable_ids[1],
+            make_widget_authoring_id(authoring_root, "slider/fill"),
+            0,
+            0},
+        SceneData::DrawableAuthoringMapEntry{
+            bucket.drawable_ids[2],
+            make_widget_authoring_id(authoring_root, "slider/thumb"),
+            0,
+            0},
     };
     bucket.drawable_fingerprints = {0x51D301u, 0x51D302u, 0x51D303u};
 
@@ -464,7 +509,8 @@ struct ListSnapshotConfig {
     std::array<float, 4> separator_color{};
 };
 
-auto make_list_bucket(ListSnapshotConfig const& config) -> SceneData::DrawableBucketSnapshot {
+auto make_list_bucket(ListSnapshotConfig const& config,
+                      std::string_view authoring_root = {}) -> SceneData::DrawableBucketSnapshot {
     auto const item_count = static_cast<std::size_t>(std::max<std::int32_t>(static_cast<std::int32_t>(config.item_count), 0));
     float const base_height = std::max(config.item_height * static_cast<float>(std::max<std::size_t>(item_count, 1u)),
                                        config.item_height);
@@ -543,7 +589,10 @@ auto make_list_bucket(ListSnapshotConfig const& config) -> SceneData::DrawableBu
                 sizeof(SceneData::RoundedRectCommand));
 
     bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
-        bucket.drawable_ids.back(), "widget/list/background", 0, 0});
+        bucket.drawable_ids.back(),
+        make_widget_authoring_id(authoring_root, "list/background"),
+        0,
+        0});
     bucket.drawable_fingerprints.push_back(0x11570001ull);
 
     // Item rows.
@@ -588,9 +637,10 @@ auto make_list_bucket(ListSnapshotConfig const& config) -> SceneData::DrawableBu
                     &row_rect,
                     sizeof(SceneData::RectCommand));
 
-        auto label = std::string("widget/list/item/") + std::to_string(index);
+        auto label = make_widget_authoring_id(authoring_root,
+                                              std::string("list/item/") + std::to_string(index));
         bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
-            drawable_id, label, 0, 0});
+            drawable_id, std::move(label), 0, 0});
         bucket.drawable_fingerprints.push_back(drawable_id);
     }
 
@@ -671,17 +721,24 @@ auto button_background_color(Widgets::ButtonStyle const& style,
 }
 
 auto build_button_bucket(Widgets::ButtonStyle const& style,
-                         Widgets::ButtonState const& state) -> SceneData::DrawableBucketSnapshot {
+                         Widgets::ButtonState const& state,
+                         std::string_view authoring_root) -> SceneData::DrawableBucketSnapshot {
     ButtonSnapshotConfig config{
         .width = std::max(style.width, 1.0f),
         .height = std::max(style.height, 1.0f),
         .color = button_background_color(style, state),
     };
-    return make_button_bucket(config);
+    return make_button_bucket(config, authoring_root);
+}
+
+auto build_button_bucket(Widgets::ButtonStyle const& style,
+                         Widgets::ButtonState const& state) -> SceneData::DrawableBucketSnapshot {
+    return build_button_bucket(style, state, {});
 }
 
 auto build_toggle_bucket(Widgets::ToggleStyle const& style,
-                         Widgets::ToggleState const& state) -> SceneData::DrawableBucketSnapshot {
+                         Widgets::ToggleState const& state,
+                         std::string_view authoring_root) -> SceneData::DrawableBucketSnapshot {
     ToggleSnapshotConfig config{
         .width = std::max(style.width, 1.0f),
         .height = std::max(style.height, 1.0f),
@@ -704,7 +761,12 @@ auto build_toggle_bucket(Widgets::ToggleStyle const& style,
         config.track_on_color = lighten_color(config.track_on_color, 0.08f);
     }
 
-    return make_toggle_bucket(config);
+    return make_toggle_bucket(config, authoring_root);
+}
+
+auto build_toggle_bucket(Widgets::ToggleStyle const& style,
+                         Widgets::ToggleState const& state) -> SceneData::DrawableBucketSnapshot {
+    return build_toggle_bucket(style, state, {});
 }
 
 auto clamp_slider_value(Widgets::SliderRange const& range, float value) -> float {
@@ -724,7 +786,8 @@ auto clamp_slider_value(Widgets::SliderRange const& range, float value) -> float
 
 auto build_slider_bucket(Widgets::SliderStyle const& style,
                          Widgets::SliderRange const& range,
-                         Widgets::SliderState const& state) -> SceneData::DrawableBucketSnapshot {
+                         Widgets::SliderState const& state,
+                         std::string_view authoring_root) -> SceneData::DrawableBucketSnapshot {
     Widgets::SliderState applied = state;
     applied.value = clamp_slider_value(range, state.value);
 
@@ -755,7 +818,13 @@ auto build_slider_bucket(Widgets::SliderStyle const& style,
         config.thumb_color = lighten_color(config.thumb_color, 0.06f);
     }
 
-    return make_slider_bucket(config);
+    return make_slider_bucket(config, authoring_root);
+}
+
+auto build_slider_bucket(Widgets::SliderStyle const& style,
+                         Widgets::SliderRange const& range,
+                         Widgets::SliderState const& state) -> SceneData::DrawableBucketSnapshot {
+    return build_slider_bucket(style, range, state, {});
 }
 
 auto first_enabled_index(std::vector<Widgets::ListItem> const& items) -> std::int32_t {
@@ -770,7 +839,8 @@ auto first_enabled_index(std::vector<Widgets::ListItem> const& items) -> std::in
 
 auto build_list_bucket(Widgets::ListStyle const& style,
                        std::vector<Widgets::ListItem> const& items,
-                       Widgets::ListState const& state) -> SceneData::DrawableBucketSnapshot {
+                       Widgets::ListState const& state,
+                       std::string_view authoring_root) -> SceneData::DrawableBucketSnapshot {
     Widgets::ListStyle appliedStyle = style;
     Widgets::ListState appliedState = state;
     if (!appliedState.enabled) {
@@ -808,10 +878,22 @@ auto build_list_bucket(Widgets::ListStyle const& style,
     return make_list_bucket(config);
 }
 
+auto build_list_bucket(Widgets::ListStyle const& style,
+                       std::vector<Widgets::ListItem> const& items,
+                       Widgets::ListState const& state) -> SceneData::DrawableBucketSnapshot {
+    return build_list_bucket(style, items, state, {});
+}
+
 auto publish_button_state_scenes(PathSpace& space,
                                  AppRootPathView appRoot,
                                  std::string_view name,
                                  Widgets::ButtonStyle const& style) -> SP::Expected<Widgets::WidgetStateScenes> {
+    auto widgetRoot = combine_relative(appRoot, std::string("widgets/") + std::string(name));
+    if (!widgetRoot) {
+        return std::unexpected(widgetRoot.error());
+    }
+    auto const& authoring_root = widgetRoot->getPath();
+
     Widgets::WidgetStateScenes scenes{};
     struct Variant {
         std::string_view state;
@@ -835,7 +917,7 @@ auto publish_button_state_scenes(PathSpace& space,
         if (!scenePath) {
             return std::unexpected(scenePath.error());
         }
-        auto bucket = build_button_bucket(style, variant.button_state);
+        auto bucket = build_button_bucket(style, variant.button_state, authoring_root);
         if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
             return std::unexpected(status.error());
         }
@@ -848,6 +930,12 @@ auto publish_toggle_state_scenes(PathSpace& space,
                                  AppRootPathView appRoot,
                                  std::string_view name,
                                  Widgets::ToggleStyle const& style) -> SP::Expected<Widgets::WidgetStateScenes> {
+    auto widgetRoot = combine_relative(appRoot, std::string("widgets/") + std::string(name));
+    if (!widgetRoot) {
+        return std::unexpected(widgetRoot.error());
+    }
+    auto const& authoring_root = widgetRoot->getPath();
+
     Widgets::WidgetStateScenes scenes{};
     struct Variant {
         std::string_view state;
@@ -871,7 +959,7 @@ auto publish_toggle_state_scenes(PathSpace& space,
         if (!scenePath) {
             return std::unexpected(scenePath.error());
         }
-        auto bucket = build_toggle_bucket(style, variant.toggle_state);
+        auto bucket = build_toggle_bucket(style, variant.toggle_state, authoring_root);
         if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
             return std::unexpected(status.error());
         }
@@ -886,6 +974,12 @@ auto publish_slider_state_scenes(PathSpace& space,
                                  Widgets::SliderStyle const& style,
                                  Widgets::SliderRange const& range,
                                  Widgets::SliderState const& default_state) -> SP::Expected<Widgets::WidgetStateScenes> {
+    auto widgetRoot = combine_relative(appRoot, std::string("widgets/") + std::string(name));
+    if (!widgetRoot) {
+        return std::unexpected(widgetRoot.error());
+    }
+    auto const& authoring_root = widgetRoot->getPath();
+
     Widgets::WidgetStateScenes scenes{};
     struct Variant {
         std::string_view state;
@@ -918,7 +1012,7 @@ auto publish_slider_state_scenes(PathSpace& space,
         if (!scenePath) {
             return std::unexpected(scenePath.error());
         }
-        auto bucket = build_slider_bucket(style, range, variant.slider_state);
+        auto bucket = build_slider_bucket(style, range, variant.slider_state, authoring_root);
         if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
             return std::unexpected(status.error());
         }
@@ -933,6 +1027,12 @@ auto publish_list_state_scenes(PathSpace& space,
                                Widgets::ListStyle const& style,
                                std::vector<Widgets::ListItem> const& items,
                                Widgets::ListState const& default_state) -> SP::Expected<Widgets::WidgetStateScenes> {
+    auto widgetRoot = combine_relative(appRoot, std::string("widgets/") + std::string(name));
+    if (!widgetRoot) {
+        return std::unexpected(widgetRoot.error());
+    }
+    auto const& authoring_root = widgetRoot->getPath();
+
     Widgets::WidgetStateScenes scenes{};
 
     auto normalize_index = [&](std::int32_t index) -> std::int32_t {
@@ -987,7 +1087,7 @@ auto publish_list_state_scenes(PathSpace& space,
         if (!scenePath) {
             return std::unexpected(scenePath.error());
         }
-        auto bucket = build_list_bucket(style, items, variant.list_state);
+        auto bucket = build_list_bucket(style, items, variant.list_state, authoring_root);
         if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
             return std::unexpected(status.error());
         }
@@ -3904,6 +4004,34 @@ auto Bootstrap(PathSpace& space,
 
 namespace Widgets {
 
+auto ResolveHitTarget(Scene::HitTestResult const& hit) -> std::optional<HitTarget> {
+    if (!hit.hit) {
+        return std::nullopt;
+    }
+
+    std::string_view authoring = hit.target.authoring_node_id;
+    auto marker = authoring.find(kWidgetAuthoringMarker);
+    if (marker == std::string::npos || marker == 0) {
+        return std::nullopt;
+    }
+
+    std::string widget_root = std::string(authoring.substr(0, marker));
+    if (widget_root.empty() || widget_root.front() != '/') {
+        return std::nullopt;
+    }
+
+    std::string component;
+    auto component_pos = marker + kWidgetAuthoringMarker.size();
+    if (component_pos < authoring.size()) {
+        component.assign(authoring.substr(component_pos));
+    }
+
+    HitTarget target{};
+    target.widget = WidgetPath{std::move(widget_root)};
+    target.component = std::move(component);
+    return target;
+}
+
 auto CreateButton(PathSpace& space,
                   AppRootPathView appRoot,
                   ButtonParams const& params) -> SP::Expected<ButtonPaths> {
@@ -3938,7 +4066,7 @@ auto CreateButton(PathSpace& space,
         return std::unexpected(stateScenes.error());
     }
 
-    auto bucket = build_button_bucket(params.style, defaultState);
+    auto bucket = build_button_bucket(params.style, defaultState, widgetRoot->getPath());
     if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
         return std::unexpected(status.error());
     }
@@ -4001,7 +4129,7 @@ auto CreateToggle(PathSpace& space,
         return std::unexpected(stateScenes.error());
     }
 
-    auto bucket = build_toggle_bucket(params.style, defaultState);
+    auto bucket = build_toggle_bucket(params.style, defaultState, widgetRoot->getPath());
     if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
         return std::unexpected(status.error());
     }
@@ -4073,7 +4201,7 @@ auto CreateSlider(PathSpace& space,
         return std::unexpected(stateScenes.error());
     }
 
-    auto bucket = build_slider_bucket(style, range, defaultState);
+    auto bucket = build_slider_bucket(style, range, defaultState, widgetRoot->getPath());
     if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
         return std::unexpected(status.error());
     }
@@ -4165,7 +4293,7 @@ auto CreateList(PathSpace& space,
         return std::unexpected(stateScenes.error());
     }
 
-    auto bucket = build_list_bucket(style, items, defaultState);
+    auto bucket = build_list_bucket(style, items, defaultState, widgetRoot->getPath());
     if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
         return std::unexpected(status.error());
     }
@@ -4206,7 +4334,7 @@ auto UpdateButtonState(PathSpace& space,
         return std::unexpected(appRootPath.error());
     }
     auto appRootView = SP::App::AppRootPathView{appRootPath->getPath()};
-    auto bucket = build_button_bucket(*styleValue, new_state);
+    auto bucket = build_button_bucket(*styleValue, new_state, paths.root.getPath());
     if (auto status = publish_scene_snapshot(space, appRootView, paths.scene, bucket); !status) {
         return std::unexpected(status.error());
     }
@@ -4243,7 +4371,7 @@ auto UpdateToggleState(PathSpace& space,
         return std::unexpected(appRootPath.error());
     }
     auto appRootView = SP::App::AppRootPathView{appRootPath->getPath()};
-    auto bucket = build_toggle_bucket(*styleValue, new_state);
+    auto bucket = build_toggle_bucket(*styleValue, new_state, paths.root.getPath());
     if (auto status = publish_scene_snapshot(space, appRootView, paths.scene, bucket); !status) {
         return std::unexpected(status.error());
     }
@@ -4306,7 +4434,7 @@ auto UpdateSliderState(PathSpace& space,
         return std::unexpected(appRootPath.error());
     }
     auto appRootView = SP::App::AppRootPathView{appRootPath->getPath()};
-    auto bucket = build_slider_bucket(*styleValue, range, sanitized);
+    auto bucket = build_slider_bucket(*styleValue, range, sanitized, paths.root.getPath());
     if (auto status = publish_scene_snapshot(space, appRootView, paths.scene, bucket); !status) {
         return std::unexpected(status.error());
     }
@@ -4394,7 +4522,7 @@ auto UpdateListState(PathSpace& space,
         return std::unexpected(appRootPath.error());
     }
     auto appRootView = SP::App::AppRootPathView{appRootPath->getPath()};
-    auto bucket = build_list_bucket(*styleValue, items, sanitized);
+    auto bucket = build_list_bucket(*styleValue, items, sanitized, paths.root.getPath());
     if (auto status = publish_scene_snapshot(space, appRootView, paths.scene, bucket); !status) {
         return std::unexpected(status.error());
     }
@@ -4519,6 +4647,15 @@ auto read_list_items(PathSpace& space,
 }
 
 } // namespace
+
+auto PointerFromHit(Scene::HitTestResult const& hit) -> PointerInfo {
+    PointerInfo info{};
+    info.scene_x = hit.position.scene_x;
+    info.scene_y = hit.position.scene_y;
+    info.inside = hit.hit;
+    info.primary = true;
+    return info;
+}
 
 auto CreateButtonBinding(PathSpace& space,
                          AppRootPathView,
