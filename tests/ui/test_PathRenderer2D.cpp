@@ -3469,6 +3469,141 @@ TEST_CASE("Window::Present handles multiple renderer targets") {
     CHECK(fx.space.read<uint64_t>(metricsBaseRight + "/frameIndex").value() == 1);
 }
 
+TEST_CASE("Window::Present handles multi-window multi-surface wiring") {
+    RendererFixture fx;
+
+    RectCommand red_rect{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 4.0f,
+        .max_y = 4.0f,
+        .color = {1.0f, 0.0f, 0.0f, 1.0f},
+    };
+    RectCommand blue_rect{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 4.0f,
+        .max_y = 4.0f,
+        .color = {0.0f, 0.0f, 1.0f, 1.0f},
+    };
+
+    auto sceneRed = create_scene(fx,
+                                 "scene_multi_window_red",
+                                 make_rect_bucket({
+                                     RectDrawableDef{
+                                         .id = 0x31u,
+                                         .fingerprint = 0xAAAA555533337777u,
+                                         .rect = red_rect,
+                                     },
+                                 }));
+    auto sceneBlue = create_scene(fx,
+                                  "scene_multi_window_blue",
+                                  make_rect_bucket({
+                                      RectDrawableDef{
+                                          .id = 0x32u,
+                                          .fingerprint = 0xBBBB666644448888u,
+                                          .rect = blue_rect,
+                                      },
+                                  }));
+    auto rendererPath = create_renderer(fx, "renderer_multi_window");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 4;
+    surfaceDesc.size_px.height = 4;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfaceRed = create_surface(fx, "surface_multi_window_red", surfaceDesc, rendererPath.getPath());
+    auto surfaceBlue = create_surface(fx, "surface_multi_window_blue", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfaceRed, sceneRed));
+    REQUIRE(Surface::SetScene(fx.space, surfaceBlue, sceneBlue));
+
+    Builders::WindowParams primaryWindow{};
+    primaryWindow.name = "primary_window";
+    primaryWindow.title = "Primary";
+    primaryWindow.width = surfaceDesc.size_px.width;
+    primaryWindow.height = surfaceDesc.size_px.height;
+    auto windowPrimary = Builders::Window::Create(fx.space, fx.root_view(), primaryWindow);
+    REQUIRE(windowPrimary);
+
+    Builders::WindowParams mirrorWindow{};
+    mirrorWindow.name = "mirror_window";
+    mirrorWindow.title = "Mirror";
+    mirrorWindow.width = surfaceDesc.size_px.width;
+    mirrorWindow.height = surfaceDesc.size_px.height;
+    auto windowMirror = Builders::Window::Create(fx.space, fx.root_view(), mirrorWindow);
+    REQUIRE(windowMirror);
+
+    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPrimary, "main", surfaceRed));
+    enable_framebuffer_capture(fx.space, *windowPrimary, "main");
+    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowMirror, "main", surfaceBlue));
+    enable_framebuffer_capture(fx.space, *windowMirror, "main");
+    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowMirror, "mirror", surfaceRed));
+    enable_framebuffer_capture(fx.space, *windowMirror, "mirror");
+
+    auto targetRed = resolve_target(fx, surfaceRed);
+    auto targetBlue = resolve_target(fx, surfaceBlue);
+    auto metricsBaseRed = std::string(targetRed.getPath()) + "/output/v1/common";
+    auto metricsBaseBlue = std::string(targetBlue.getPath()) + "/output/v1/common";
+
+    auto expected_red_bytes = encode_linear_to_bytes(make_linear_color(red_rect.color),
+                                                     surfaceDesc,
+                                                     true);
+    auto expected_blue_bytes = encode_linear_to_bytes(make_linear_color(blue_rect.color),
+                                                      surfaceDesc,
+                                                      true);
+
+    auto sample_pixel = [](Builders::SoftwareFramebuffer const& fb, int x, int y) {
+        auto stride = static_cast<std::size_t>(fb.row_stride_bytes);
+        auto offset = stride * static_cast<std::size_t>(y) + static_cast<std::size_t>(x) * 4u;
+        return std::array<std::uint8_t, 4>{
+            fb.pixels[offset + 0],
+            fb.pixels[offset + 1],
+            fb.pixels[offset + 2],
+            fb.pixels[offset + 3],
+        };
+    };
+
+    auto presentPrimary = Builders::Window::Present(fx.space, *windowPrimary, "main");
+    REQUIRE(presentPrimary);
+    CHECK(presentPrimary->stats.presented);
+    CHECK(presentPrimary->stats.frame.frame_index == 1);
+    CHECK(fx.space.read<uint64_t>(metricsBaseRed + "/frameIndex").value() == 1);
+
+    auto framebufferRed = Builders::Diagnostics::ReadSoftwareFramebuffer(fx.space,
+                                                                         SP::ConcretePathStringView{targetRed.getPath()});
+    REQUIRE(framebufferRed);
+    auto center = surfaceDesc.size_px.width / 2;
+    auto pixelRed = sample_pixel(*framebufferRed, center, center);
+    CHECK(pixelRed == expected_red_bytes);
+
+    auto presentMirrorMain = Builders::Window::Present(fx.space, *windowMirror, "main");
+    REQUIRE(presentMirrorMain);
+    CHECK(presentMirrorMain->stats.presented);
+    CHECK(presentMirrorMain->stats.frame.frame_index == 1);
+    CHECK(fx.space.read<uint64_t>(metricsBaseBlue + "/frameIndex").value() == 1);
+
+    auto framebufferBlue = Builders::Diagnostics::ReadSoftwareFramebuffer(fx.space,
+                                                                          SP::ConcretePathStringView{targetBlue.getPath()});
+    REQUIRE(framebufferBlue);
+    auto pixelBlue = sample_pixel(*framebufferBlue, center, center);
+    CHECK(pixelBlue == expected_blue_bytes);
+
+    auto presentMirrorShared = Builders::Window::Present(fx.space, *windowMirror, "mirror");
+    REQUIRE(presentMirrorShared);
+    CHECK(presentMirrorShared->stats.presented);
+    CHECK(presentMirrorShared->stats.frame.frame_index == 2);
+    CHECK(fx.space.read<uint64_t>(metricsBaseRed + "/frameIndex").value() == 2);
+    CHECK(fx.space.read<uint64_t>(metricsBaseBlue + "/frameIndex").value() == 1);
+
+    auto sharedFramebuffer = Builders::Diagnostics::ReadSoftwareFramebuffer(fx.space,
+                                                                            SP::ConcretePathStringView{targetRed.getPath()});
+    REQUIRE(sharedFramebuffer);
+    auto sharedPixel = sample_pixel(*sharedFramebuffer, center, center);
+    CHECK(sharedPixel == expected_red_bytes);
+}
+
 TEST_CASE("Window::Present reads present policy overrides from PathSpace") {
     RendererFixture fx;
 
