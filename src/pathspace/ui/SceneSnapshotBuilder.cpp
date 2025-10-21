@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdint>
+#include <cstring>
 #include <exception>
 #include <iterator>
 #include <mutex>
@@ -69,6 +70,10 @@ struct BucketStateBinary {
 struct BucketCommandBufferBinary {
     std::vector<std::uint32_t> command_kinds;
     std::vector<std::uint8_t>  command_payload;
+};
+
+struct BucketStrokePointsBinary {
+    std::vector<StrokePoint> stroke_points;
 };
 
 struct BucketClipHeadsBinary {
@@ -242,6 +247,38 @@ auto ensure_valid_bucket(DrawableBucketSnapshot const& bucket) -> Expected<void>
         return std::unexpected(make_error("drawable_fingerprints size mismatch",
                                           Error::Code::InvalidType));
     }
+
+    std::size_t payload_cursor = 0;
+    for (std::size_t command_index = 0; command_index < bucket.command_kinds.size(); ++command_index) {
+        auto kind = static_cast<DrawCommandKind>(bucket.command_kinds[command_index]);
+        auto payload_size = payload_size_bytes(kind);
+        if (payload_cursor + payload_size > bucket.command_payload.size()) {
+            return std::unexpected(make_error("command payload buffer too small for recorded kinds",
+                                              Error::Code::InvalidType));
+        }
+        if (kind == DrawCommandKind::Stroke) {
+            StrokeCommand stroke{};
+            std::memcpy(&stroke, bucket.command_payload.data() + payload_cursor, sizeof(StrokeCommand));
+            auto offset = static_cast<std::size_t>(stroke.point_offset);
+            auto count = static_cast<std::size_t>(stroke.point_count);
+            if (stroke.thickness < 0.0f) {
+                return std::unexpected(make_error("stroke command thickness must be non-negative",
+                                                  Error::Code::InvalidType));
+            }
+            if (offset > bucket.stroke_points.size()
+                || count > bucket.stroke_points.size()
+                || offset + count > bucket.stroke_points.size()) {
+                return std::unexpected(make_error("stroke command references point buffer out of range",
+                                                  Error::Code::InvalidType));
+            }
+        }
+        payload_cursor += payload_size;
+    }
+    if (payload_cursor != bucket.command_payload.size()) {
+        return std::unexpected(make_error("command payload contains trailing bytes",
+                                          Error::Code::InvalidType));
+    }
+
     return {};
 }
 
@@ -433,6 +470,23 @@ auto compute_drawable_fingerprints(DrawableBucketSnapshot const& bucket) -> Expe
                 auto [ptr, available] = clamp_payload_span(payload_offset, payload_size);
                 if (ptr && available > 0) {
                     hash.mix_bytes(ptr, available);
+                    if (kind == DrawCommandKind::Stroke && available >= sizeof(StrokeCommand)) {
+                        StrokeCommand stroke{};
+                        std::memcpy(&stroke, ptr, sizeof(StrokeCommand));
+                        hash.mix_value(stroke.thickness);
+                        auto offset = static_cast<std::size_t>(stroke.point_offset);
+                        auto count = static_cast<std::size_t>(stroke.point_count);
+                        if (offset + count <= bucket.stroke_points.size()) {
+                            auto begin = bucket.stroke_points.data() + offset;
+                            auto end = begin + count;
+                            for (auto it = begin; it != end; ++it) {
+                                hash.mix_value(it->x);
+                                hash.mix_value(it->y);
+                            }
+                        } else {
+                            hash.mix_value(static_cast<std::uint32_t>(0xDEADBEEF));
+                        }
+                    }
                 }
                 if (available < payload_size) {
                     hash.mix_value(static_cast<std::uint32_t>(payload_size - available));
@@ -591,6 +645,24 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
     auto cmdDecoded = from_bytes<BucketCommandBufferBinary>(*cmdBytes);
     if (!cmdDecoded) return std::unexpected(cmdDecoded.error());
 
+    std::vector<StrokePoint> stroke_points;
+    {
+        auto strokeBytes = space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/strokes.bin");
+        if (strokeBytes) {
+            auto decoded = from_bytes<BucketStrokePointsBinary>(*strokeBytes);
+            if (!decoded) {
+                return std::unexpected(decoded.error());
+            }
+            stroke_points = std::move(decoded->stroke_points);
+        } else {
+            auto const& error = strokeBytes.error();
+            if (error.code != Error::Code::NoObjectFound
+                && error.code != Error::Code::NoSuchPath) {
+                return std::unexpected(error);
+            }
+        }
+    }
+
     auto opaque = space.read<std::vector<std::uint32_t>>(revisionBase + "/bucket/indices/opaque.bin");
     if (!opaque) return std::unexpected(opaque.error());
     auto alpha = space.read<std::vector<std::uint32_t>>(revisionBase + "/bucket/indices/alpha.bin");
@@ -679,6 +751,7 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
     bucket.alpha_indices    = *alpha;
     bucket.command_kinds    = std::move(cmdDecoded->command_kinds);
     bucket.command_payload  = std::move(cmdDecoded->command_payload);
+    bucket.stroke_points    = std::move(stroke_points);
     bucket.clip_head_indices = std::move(clip_head_indices);
     bucket.clip_nodes        = std::move(clip_nodes);
     bucket.authoring_map     = std::move(authoring_map);
@@ -862,6 +935,14 @@ auto SceneSnapshotBuilder::store_bucket(std::uint64_t revision,
         return std::unexpected(cmdBytes.error());
     }
     if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/cmd-buffer.bin", *cmdBytes); !status) {
+        return status;
+    }
+
+    auto strokeBytes = to_bytes(BucketStrokePointsBinary{ .stroke_points = bucket.stroke_points });
+    if (!strokeBytes) {
+        return std::unexpected(strokeBytes.error());
+    }
+    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/strokes.bin", *strokeBytes); !status) {
         return status;
     }
 

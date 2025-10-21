@@ -171,7 +171,7 @@ auto color_to_css(std::array<float, 4> const& rgba, bool premultiplied = false) 
 }
 
 struct HtmlNode {
-    enum class Kind { Rect, RoundedRect, Image, Text, Path, Mesh };
+    enum class Kind { Rect, RoundedRect, Image, Text, Path, Mesh, Stroke };
 
     Kind kind = Kind::Rect;
     float min_x = 0.0f;
@@ -185,6 +185,9 @@ struct HtmlNode {
     std::uint32_t glyph_count = 0;
     std::uint32_t vertex_count = 0;
     bool has_fingerprint = false;
+    float stroke_width = 0.0f;
+    std::uint32_t stroke_point_offset = 0;
+    std::uint32_t stroke_point_count = 0;
 };
 
 auto nodes_to_canvas_commands(std::vector<HtmlNode> const& nodes) -> std::vector<CanvasCommand> {
@@ -231,6 +234,14 @@ auto nodes_to_canvas_commands(std::vector<HtmlNode> const& nodes) -> std::vector
             command.color = node.color;
             command.opacity = node.color[3];
             command.vertex_count = node.vertex_count;
+            break;
+        case HtmlNode::Kind::Stroke:
+            command.type = CanvasCommandType::Stroke;
+            command.color = node.color;
+            command.opacity = node.color[3];
+            command.stroke_width = node.stroke_width;
+            command.stroke_point_offset = node.stroke_point_offset;
+            command.stroke_point_count = node.stroke_point_count;
             break;
         }
         commands.push_back(command);
@@ -324,6 +335,17 @@ auto build_dom(std::vector<HtmlNode> const& nodes,
             dom << " data-vertices=\"" << node.vertex_count << "\"></div>\n";
             break;
         }
+        case HtmlNode::Kind::Stroke: {
+            auto width = std::max(0.0f, node.max_x - node.min_x);
+            auto height = std::max(0.0f, node.max_y - node.min_y);
+            dom << "  <div class=\"ps-node ps-stroke\"";
+            dom << " style=\"left:" << node.min_x << "px;top:" << node.min_y << "px;";
+            dom << "width:" << width << "px;height:" << height << "px;";
+            dom << "border:1px solid " << color_css << ";\"";
+            dom << " data-stroke-width=\"" << node.stroke_width << "\"";
+            dom << "></div>\n";
+            break;
+        }
         }
     }
     dom << "</div>\n";
@@ -345,7 +367,8 @@ auto build_dom(std::vector<HtmlNode> const& nodes,
 
 auto build_canvas(std::vector<HtmlNode> const& nodes,
                   std::unordered_map<std::uint64_t, Asset> const& asset_map,
-                  std::vector<CanvasCommand> const& commands) -> EmitResult {
+                  std::vector<CanvasCommand> const& commands,
+                  std::span<Scene::StrokePoint const> stroke_points) -> EmitResult {
     EmitResult result{};
     std::ostringstream canvas;
     canvas << "[";
@@ -407,6 +430,30 @@ auto build_canvas(std::vector<HtmlNode> const& nodes,
             canvas << ",\"color\":\"" << color_to_css(node.color) << "\"";
             canvas << ",\"vertices\":" << node.vertex_count;
             break;
+        case HtmlNode::Kind::Stroke: {
+            canvas << "\"type\":\"stroke\",";
+            append_rect_fields(node);
+            canvas << ",\"color\":\"" << color_to_css(node.color) << "\"";
+            canvas << ",\"strokeWidth\":" << node.stroke_width;
+            canvas << ",\"points\":[";
+            bool first_point = true;
+            auto offset = static_cast<std::size_t>(node.stroke_point_offset);
+            auto count = static_cast<std::size_t>(node.stroke_point_count);
+            if (offset + count > stroke_points.size()) {
+                count = 0;
+            }
+            for (std::size_t idx = 0; idx < count; ++idx) {
+                auto const& pt = stroke_points[offset + idx];
+                if (!first_point) {
+                    canvas << ",";
+                } else {
+                    first_point = false;
+                }
+                canvas << "[" << pt.x << "," << pt.y << "]";
+            }
+            canvas << "]";
+            break;
+        }
         }
         canvas << "}";
     }
@@ -421,6 +468,7 @@ auto build_canvas(std::vector<HtmlNode> const& nodes,
         result.assets.push_back(entry.second);
     }
     result.canvas_replay_commands = commands;
+    result.stroke_points.assign(stroke_points.begin(), stroke_points.end());
     return result;
 }
 
@@ -448,6 +496,7 @@ auto Adapter::emit(Scene::DrawableBucketSnapshot const& snapshot,
     std::unordered_map<std::uint64_t, Asset> image_assets;
     std::unordered_map<std::string, Asset> font_assets;
     std::unordered_set<std::string> font_paths;
+    bool requires_canvas_only = false;
 
     auto ensure_payload = [&](std::size_t command_index,
                               Scene::DrawCommandKind kind) -> SP::Expected<std::size_t> {
@@ -554,22 +603,43 @@ auto Adapter::emit(Scene::DrawableBucketSnapshot const& snapshot,
                 nodes.push_back(node);
                 break;
             }
-            case Scene::DrawCommandKind::Path: {
-                auto path = read_struct<Scene::PathCommand>(snapshot.command_payload, *payload_offset);
-                node.kind = HtmlNode::Kind::Path;
-                node.min_x = path.min_x;
-                node.min_y = path.min_y;
-                node.max_x = path.max_x;
-                node.max_y = path.max_y;
-                node.color = path.fill_color;
-                nodes.push_back(node);
-                break;
+        case Scene::DrawCommandKind::Path: {
+            auto path = read_struct<Scene::PathCommand>(snapshot.command_payload, *payload_offset);
+            node.kind = HtmlNode::Kind::Path;
+            node.min_x = path.min_x;
+            node.min_y = path.min_y;
+            node.max_x = path.max_x;
+            node.max_y = path.max_y;
+            node.color = path.fill_color;
+            nodes.push_back(node);
+            break;
+        }
+        case Scene::DrawCommandKind::Stroke: {
+            auto stroke = read_struct<Scene::StrokeCommand>(snapshot.command_payload, *payload_offset);
+            node.kind = HtmlNode::Kind::Stroke;
+            node.min_x = stroke.min_x;
+            node.min_y = stroke.min_y;
+            node.max_x = stroke.max_x;
+            node.max_y = stroke.max_y;
+            node.color = stroke.color;
+            node.stroke_width = std::max(stroke.thickness, 0.0f);
+            node.stroke_point_offset = stroke.point_offset;
+            node.stroke_point_count = stroke.point_count;
+            auto offset = static_cast<std::size_t>(stroke.point_offset);
+            auto count = static_cast<std::size_t>(stroke.point_count);
+            if (offset + count > snapshot.stroke_points.size()) {
+                return std::unexpected(SP::Error{SP::Error::Code::InvalidType,
+                                                 "stroke command references out-of-range point buffer"});
             }
-            case Scene::DrawCommandKind::Mesh: {
-                auto mesh = read_struct<Scene::MeshCommand>(snapshot.command_payload, *payload_offset);
-                node.kind = HtmlNode::Kind::Mesh;
-                node.min_x = 0.0f;
-                node.min_y = 0.0f;
+            nodes.push_back(node);
+            requires_canvas_only = true;
+            break;
+        }
+        case Scene::DrawCommandKind::Mesh: {
+            auto mesh = read_struct<Scene::MeshCommand>(snapshot.command_payload, *payload_offset);
+            node.kind = HtmlNode::Kind::Mesh;
+            node.min_x = 0.0f;
+            node.min_y = 0.0f;
                 node.max_x = 0.0f;
                 node.max_y = 0.0f;
                 node.color = mesh.color;
@@ -599,6 +669,13 @@ auto Adapter::emit(Scene::DrawableBucketSnapshot const& snapshot,
     bool dom_allowed = options.prefer_dom;
     bool dom_within_budget = options.max_dom_nodes == 0
                              || dom_node_count <= options.max_dom_nodes;
+    if (requires_canvas_only) {
+        dom_allowed = false;
+    }
+    if (requires_canvas_only && !options.allow_canvas_fallback) {
+        return std::unexpected(SP::Error{SP::Error::Code::InvalidType,
+                                         "stroke commands require canvas fallback but it is disabled"});
+    }
 
     auto replay_commands = nodes_to_canvas_commands(nodes);
     EmitResult result{};
@@ -610,7 +687,7 @@ auto Adapter::emit(Scene::DrawableBucketSnapshot const& snapshot,
             return std::unexpected(SP::Error{SP::Error::Code::InvalidType,
                                              "DOM node budget exceeded and canvas fallback is disabled"});
         }
-        result = build_canvas(nodes, image_assets, replay_commands);
+        result = build_canvas(nodes, image_assets, replay_commands, snapshot.stroke_points);
     }
 
     for (auto const& entry : font_assets) {
@@ -633,6 +710,10 @@ auto Adapter::emit(Scene::DrawableBucketSnapshot const& snapshot,
             result.css += format;
             result.css += "');font-display:swap;}\n";
         }
+    }
+
+    if (result.stroke_points.empty() && !snapshot.stroke_points.empty()) {
+        result.stroke_points.assign(snapshot.stroke_points.begin(), snapshot.stroke_points.end());
     }
 
     return result;

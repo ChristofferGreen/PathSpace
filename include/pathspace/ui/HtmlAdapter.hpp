@@ -41,6 +41,7 @@ enum class CanvasCommandType : std::uint8_t {
     Text,
     Path,
     Mesh,
+    Stroke,
 };
 
 struct CanvasCommand {
@@ -56,6 +57,9 @@ struct CanvasCommand {
     std::uint32_t vertex_count = 0;
     float opacity = 1.0f;
     bool has_fingerprint = false;
+    float stroke_width = 0.0f;
+    std::uint32_t stroke_point_offset = 0;
+    std::uint32_t stroke_point_count = 0;
 };
 
 struct Asset {
@@ -71,6 +75,7 @@ struct EmitResult {
     bool used_canvas_fallback = false;
     std::vector<Asset> assets;
     std::vector<CanvasCommand> canvas_replay_commands;
+    std::vector<Scene::StrokePoint> stroke_points;
 };
 
 class Adapter {

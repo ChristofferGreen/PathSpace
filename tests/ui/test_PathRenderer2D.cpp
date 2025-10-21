@@ -48,6 +48,7 @@ using SP::UI::Scene::ImageCommand;
 using SP::UI::Scene::TextGlyphsCommand;
 using SP::UI::Scene::PathCommand;
 using SP::UI::Scene::MeshCommand;
+using SP::UI::Scene::StrokeCommand;
 using namespace SP::UI::PipelineFlags;
 namespace UIScene = SP::UI::Scene;
 
@@ -207,6 +208,14 @@ auto encode_path_command(UIScene::PathCommand const& path,
     bucket.command_payload.resize(offset + sizeof(UIScene::PathCommand));
     std::memcpy(bucket.command_payload.data() + offset, &path, sizeof(UIScene::PathCommand));
     bucket.command_kinds.push_back(static_cast<std::uint32_t>(DrawCommandKind::Path));
+}
+
+auto encode_stroke_command(UIScene::StrokeCommand const& stroke,
+                           DrawableBucketSnapshot& bucket) -> void {
+    auto offset = bucket.command_payload.size();
+    bucket.command_payload.resize(offset + sizeof(UIScene::StrokeCommand));
+    std::memcpy(bucket.command_payload.data() + offset, &stroke, sizeof(UIScene::StrokeCommand));
+    bucket.command_kinds.push_back(static_cast<std::uint32_t>(DrawCommandKind::Stroke));
 }
 
 auto encode_image_command(ImageCommand const& image,
@@ -2440,6 +2449,85 @@ TEST_CASE("render executes mesh command using drawable bounds") {
     auto stride = surface.row_stride_bytes();
     auto center_offset = stride + 4;
     CHECK(buffer[center_offset + 3] > 0);
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/commandsExecuted").value() == 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/unsupportedCommands").value() == 0);
+}
+
+TEST_CASE("render executes stroke command draws polyline") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x600001u};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{4.0f, 4.0f, 0.0f}, 6.0f}};
+    bucket.bounds_boxes = {BoundingBox{{0.0f, 0.0f, 0.0f}, {8.0f, 8.0f, 0.0f}}};
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {0};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {0};
+    bucket.alpha_indices.clear();
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {
+        DrawableAuthoringMapEntry{bucket.drawable_ids[0], "node/stroke", 0, 0},
+    };
+    bucket.stroke_points = {
+        UIScene::StrokePoint{1.0f, 1.0f},
+        UIScene::StrokePoint{6.0f, 6.0f},
+    };
+
+    UIScene::StrokeCommand stroke{};
+    stroke.min_x = 0.0f;
+    stroke.min_y = 0.0f;
+    stroke.max_x = 7.0f;
+    stroke.max_y = 7.0f;
+    stroke.thickness = 2.0f;
+    stroke.point_offset = 0;
+    stroke.point_count = static_cast<std::uint32_t>(bucket.stroke_points.size());
+    stroke.color = {1.0f, 0.0f, 0.0f, 1.0f};
+    encode_stroke_command(stroke, bucket);
+
+    auto scenePath = create_scene(fx, "scene_stroke", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_stroke");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 8;
+    surfaceDesc.size_px.height = 8;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_stroke", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware surface{surfaceDesc};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.clear_color = {0.0f, 0.0f, 0.0f, 0.0f};
+    settings.time.frame_index = 3;
+
+    auto stats = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+        .backend_kind = RendererKind::Software2D,
+    });
+    REQUIRE(stats);
+
+    auto buffer = copy_buffer(surface);
+    auto stride = surface.row_stride_bytes();
+    auto pixel_offset = static_cast<std::size_t>(3) * stride + static_cast<std::size_t>(3) * 4u;
+    CHECK(buffer[pixel_offset] > 0);
+
     auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
     CHECK(fx.space.read<uint64_t>(metricsBase + "/commandsExecuted").value() == 1);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/unsupportedCommands").value() == 0);

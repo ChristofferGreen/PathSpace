@@ -241,7 +241,9 @@ TEST_CASE("HTML canvas replay matches PathRenderer2D output") {
     REQUIRE(emitted->used_canvas_fallback);
     REQUIRE_FALSE(emitted->canvas_replay_commands.empty());
 
-    auto replay_bucket = Html::commands_to_bucket(emitted->canvas_replay_commands);
+    Html::CanvasReplayOptions replay_opts{};
+    replay_opts.stroke_points = emitted->stroke_points;
+    auto replay_bucket = Html::commands_to_bucket(emitted->canvas_replay_commands, replay_opts);
     REQUIRE(replay_bucket);
 
     auto replay_buffer = render_to_buffer(fx,

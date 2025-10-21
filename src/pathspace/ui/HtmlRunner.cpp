@@ -54,6 +54,10 @@ auto commands_to_bucket(std::span<CanvasCommand const> commands,
     opaque_indices.reserve(commands.size());
     alpha_indices.reserve(commands.size());
 
+    if (!options.stroke_points.empty()) {
+        bucket.stroke_points.assign(options.stroke_points.begin(), options.stroke_points.end());
+    }
+
     for (std::size_t i = 0; i < commands.size(); ++i) {
         auto const& command = commands[i];
 
@@ -114,6 +118,37 @@ auto commands_to_bucket(std::span<CanvasCommand const> commands,
             rounded.radius_bottom_left = command.corner_radii[3];
             rounded.color = command.color;
             append_command(bucket, Scene::DrawCommandKind::RoundedRect, rounded);
+            bucket.command_counts.push_back(1);
+            break;
+        }
+        case CanvasCommandType::Stroke: {
+            if (command.stroke_point_count == 0) {
+                // Treat as a degenerate disc at the origin point.
+                Scene::RectCommand fallback{};
+                fallback.min_x = command.x;
+                fallback.min_y = command.y;
+                fallback.max_x = command.x + command.width;
+                fallback.max_y = command.y + command.height;
+                fallback.color = command.color;
+                append_command(bucket, Scene::DrawCommandKind::Rect, fallback);
+                bucket.command_counts.push_back(1);
+                break;
+            }
+            if (bucket.stroke_points.empty()
+                || command.stroke_point_offset + command.stroke_point_count > bucket.stroke_points.size()) {
+                return std::unexpected(SP::Error{SP::Error::Code::InvalidType,
+                                                 "Stroke canvas command references out-of-range points"});
+            }
+            Scene::StrokeCommand stroke{};
+            stroke.min_x = command.x;
+            stroke.min_y = command.y;
+            stroke.max_x = command.x + command.width;
+            stroke.max_y = command.y + command.height;
+            stroke.thickness = command.stroke_width;
+            stroke.point_offset = command.stroke_point_offset;
+            stroke.point_count = command.stroke_point_count;
+            stroke.color = command.color;
+            append_command(bucket, Scene::DrawCommandKind::Stroke, stroke);
             bucket.command_counts.push_back(1);
             break;
         }

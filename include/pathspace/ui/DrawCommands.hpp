@@ -13,6 +13,7 @@ enum class DrawCommandKind : std::uint32_t {
     TextGlyphs = 3,
     Path = 4,
     Mesh = 5,
+    Stroke = 6,
 };
 
 struct RectCommand {
@@ -74,10 +75,21 @@ struct PathCommand {
 
 struct MeshCommand {
     std::uint32_t vertex_offset = 0;
-    std::uint32_t vertex_count = 0;
+   std::uint32_t vertex_count = 0;
     std::uint32_t index_offset = 0;
     std::uint32_t index_count = 0;
     std::array<float, 4> color{1.0f, 1.0f, 1.0f, 1.0f};
+};
+
+struct StrokeCommand {
+    float min_x = 0.0f;
+    float min_y = 0.0f;
+    float max_x = 0.0f;
+    float max_y = 0.0f;
+    float thickness = 1.0f;
+    std::uint32_t point_offset = 0;
+    std::uint32_t point_count = 0;
+    std::array<float, 4> color{0.0f, 0.0f, 0.0f, 1.0f};
 };
 
 constexpr auto payload_size_bytes(DrawCommandKind kind) -> std::size_t {
@@ -94,6 +106,8 @@ constexpr auto payload_size_bytes(DrawCommandKind kind) -> std::size_t {
         return sizeof(PathCommand);
     case DrawCommandKind::Mesh:
         return sizeof(MeshCommand);
+    case DrawCommandKind::Stroke:
+        return sizeof(StrokeCommand);
     }
     return 0;
 }

@@ -241,11 +241,13 @@ TEST_CASE("Renderer integration replay retains framebuffer parity") {
 
     Html::Adapter adapter;
     Html::EmitOptions options{};
-    options.prefer_dom = false;
-    auto emitted = adapter.emit(bucket, options);
-    REQUIRE(emitted);
+   options.prefer_dom = false;
+   auto emitted = adapter.emit(bucket, options);
+   REQUIRE(emitted);
 
-    auto replay_bucket = Html::commands_to_bucket(emitted->canvas_replay_commands);
+    Html::CanvasReplayOptions replay_opts{};
+    replay_opts.stroke_points = emitted->stroke_points;
+    auto replay_bucket = Html::commands_to_bucket(emitted->canvas_replay_commands, replay_opts);
     REQUIRE(replay_bucket);
 
     settings.time.frame_index = 1;

@@ -237,7 +237,9 @@ int main() {
     options.prefer_dom = false;
     auto emitted = adapter.emit(bucket, options);
     assert(emitted.has_value());
-    auto replay_bucket = Html::commands_to_bucket(emitted->canvas_replay_commands);
+    Html::CanvasReplayOptions replay_opts{};
+    replay_opts.stroke_points = emitted->stroke_points;
+    auto replay_bucket = Html::commands_to_bucket(emitted->canvas_replay_commands, replay_opts);
     assert(replay_bucket.has_value());
 
     auto replay = render_to_buffer(fx,

@@ -63,6 +63,11 @@ struct DrawableAuthoringMapEntry {
     std::uint32_t generation = 0;
 };
 
+struct StrokePoint {
+    float x = 0.0f;
+    float y = 0.0f;
+};
+
 struct LayerIndices {
     std::uint32_t             layer = 0;
     std::vector<std::uint32_t> indices;
@@ -86,6 +91,7 @@ struct DrawableBucketSnapshot {
     std::vector<LayerIndices>  layer_indices;
     std::vector<std::uint32_t> command_kinds;
     std::vector<std::uint8_t>  command_payload;
+    std::vector<StrokePoint>   stroke_points;
     std::vector<ClipNode>      clip_nodes;
     std::vector<std::int32_t>  clip_head_indices;
     std::vector<DrawableAuthoringMapEntry> authoring_map;

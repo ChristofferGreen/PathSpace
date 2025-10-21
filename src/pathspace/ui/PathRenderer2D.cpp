@@ -1358,6 +1358,135 @@ auto draw_mesh_command(Scene::MeshCommand const& command,
     return draw_rect_area(box.min[0], box.min[1], box.max[0], box.max[1], color, buffer, width, height);
 }
 
+auto draw_disc(float center_x,
+               float center_y,
+               float radius,
+               LinearPremulColor const& color,
+               std::vector<float>& buffer,
+               int width,
+               int height) -> bool {
+    if (radius <= 0.0f) {
+        return draw_rect_area(center_x, center_y, center_x + 1.0f, center_y + 1.0f, color, buffer, width, height);
+    }
+    auto min_x = std::clamp(static_cast<int>(std::floor(center_x - radius)), 0, width);
+    auto max_x = std::clamp(static_cast<int>(std::ceil(center_x + radius)), 0, width);
+    auto min_y = std::clamp(static_cast<int>(std::floor(center_y - radius)), 0, height);
+    auto max_y = std::clamp(static_cast<int>(std::ceil(center_y + radius)), 0, height);
+    if (min_x >= max_x || min_y >= max_y) {
+        return false;
+    }
+    auto radius_sq = radius * radius;
+    bool drawn = false;
+    auto row_stride = static_cast<std::size_t>(width) * 4u;
+    for (int y = min_y; y < max_y; ++y) {
+        auto py = static_cast<float>(y) + 0.5f;
+        auto base = static_cast<std::size_t>(y) * row_stride;
+        for (int x = min_x; x < max_x; ++x) {
+            auto px = static_cast<float>(x) + 0.5f;
+            auto dx = px - center_x;
+            auto dy = py - center_y;
+            auto dist_sq = dx * dx + dy * dy;
+            if (dist_sq <= radius_sq) {
+                auto* dest = buffer.data() + base + static_cast<std::size_t>(x) * 4u;
+                blend_pixel(dest, color);
+                drawn = true;
+            }
+        }
+    }
+    return drawn;
+}
+
+auto distance_to_segment_sq(float px,
+                            float py,
+                            float ax,
+                            float ay,
+                            float bx,
+                            float by) -> float {
+    auto vx = bx - ax;
+    auto vy = by - ay;
+    auto ux = px - ax;
+    auto uy = py - ay;
+    auto len_sq = vx * vx + vy * vy;
+    float t = 0.0f;
+    if (len_sq > 0.0f) {
+        t = (ux * vx + uy * vy) / len_sq;
+    }
+    t = std::clamp(t, 0.0f, 1.0f);
+    auto proj_x = ax + vx * t;
+    auto proj_y = ay + vy * t;
+    auto dx = proj_x - px;
+    auto dy = proj_y - py;
+    return dx * dx + dy * dy;
+}
+
+auto draw_stroke_segment(Scene::StrokePoint const& a,
+                         Scene::StrokePoint const& b,
+                         float half_width,
+                         LinearPremulColor const& color,
+                         std::vector<float>& buffer,
+                         int width,
+                         int height) -> bool {
+    auto min_x = std::clamp(static_cast<int>(std::floor(std::min(a.x, b.x) - half_width)), 0, width);
+    auto max_x = std::clamp(static_cast<int>(std::ceil(std::max(a.x, b.x) + half_width)), 0, width);
+    auto min_y = std::clamp(static_cast<int>(std::floor(std::min(a.y, b.y) - half_width)), 0, height);
+    auto max_y = std::clamp(static_cast<int>(std::ceil(std::max(a.y, b.y) + half_width)), 0, height);
+    if (min_x >= max_x || min_y >= max_y) {
+        return false;
+    }
+    auto radius_sq = half_width * half_width;
+    bool drawn = false;
+    auto row_stride = static_cast<std::size_t>(width) * 4u;
+    for (int y = min_y; y < max_y; ++y) {
+        auto py = static_cast<float>(y) + 0.5f;
+        auto base = static_cast<std::size_t>(y) * row_stride;
+        for (int x = min_x; x < max_x; ++x) {
+            auto px = static_cast<float>(x) + 0.5f;
+            auto dist_sq = distance_to_segment_sq(px, py, a.x, a.y, b.x, b.y);
+            if (dist_sq <= radius_sq) {
+                auto* dest = buffer.data() + base + static_cast<std::size_t>(x) * 4u;
+                blend_pixel(dest, color);
+                drawn = true;
+            }
+        }
+    }
+    return drawn;
+}
+
+auto draw_stroke_command(Scene::StrokeCommand const& command,
+                         Scene::DrawableBucketSnapshot const& bucket,
+                         std::vector<float>& buffer,
+                         int width,
+                         int height) -> bool {
+    auto offset = static_cast<std::size_t>(command.point_offset);
+    auto count = static_cast<std::size_t>(command.point_count);
+    if (count == 0 || offset + count > bucket.stroke_points.size()) {
+        return false;
+    }
+    auto half_width = std::max(command.thickness * 0.5f, 0.0f);
+    if (half_width <= 0.0f) {
+        half_width = 0.5f;
+    }
+    auto color = make_linear_color(command.color);
+    auto const* points = bucket.stroke_points.data() + offset;
+
+    bool drawn = false;
+    if (count == 1) {
+        drawn |= draw_disc(points[0].x, points[0].y, half_width, color, buffer, width, height);
+        return drawn;
+    }
+
+    for (std::size_t index = 0; index + 1 < count; ++index) {
+        auto const& a = points[index];
+        auto const& b = points[index + 1];
+        drawn |= draw_stroke_segment(a, b, half_width, color, buffer, width, height);
+    }
+
+    // Draw round caps for the first and last points.
+    drawn |= draw_disc(points[0].x, points[0].y, half_width, color, buffer, width, height);
+    drawn |= draw_disc(points[count - 1].x, points[count - 1].y, half_width, color, buffer, width, height);
+    return drawn;
+}
+
 auto draw_fallback_bounds_box(Scene::DrawableBucketSnapshot const& bucket,
                               std::size_t drawable_index,
                               std::vector<float>& buffer,
@@ -2257,6 +2386,20 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                             material_desc->uses_image = false;
                         }
                         if (draw_mesh_command(mesh_cmd, *bucket, drawable_index, linear_buffer, width, height)) {
+                            drawable_drawn = true;
+                        }
+                        ++executed_commands;
+                        break;
+                    }
+                    case Scene::DrawCommandKind::Stroke: {
+                        auto stroke_cmd = read_struct<Scene::StrokeCommand>(bucket->command_payload,
+                                                                            payload_offset);
+                        record_material_kind(Scene::DrawCommandKind::Stroke);
+                        if (material_desc) {
+                            material_desc->color_rgba = stroke_cmd.color;
+                            material_desc->uses_image = false;
+                        }
+                        if (draw_stroke_command(stroke_cmd, *bucket, linear_buffer, width, height)) {
                             drawable_drawn = true;
                         }
                         ++executed_commands;

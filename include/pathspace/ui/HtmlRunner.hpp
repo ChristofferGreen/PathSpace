@@ -11,6 +11,7 @@ struct CanvasReplayOptions {
     std::uint64_t base_drawable_id = 1;
     std::uint32_t default_layer = 0;
     float z_step = 0.01f;
+    std::span<Scene::StrokePoint const> stroke_points{};
 };
 
 auto commands_to_bucket(std::span<CanvasCommand const> commands,

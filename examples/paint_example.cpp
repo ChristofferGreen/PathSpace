@@ -281,9 +281,12 @@ auto parse_runtime_options(int argc, char** argv) -> RuntimeOptions {
 }
 
 struct Stroke {
-    std::uint64_t            drawable_id = 0;
-    UIScene::RectCommand     rect{};
-    std::string              authoring_id;
+    std::uint64_t drawable_id = 0;
+    std::vector<UIScene::StrokePoint> points;
+    std::array<float, 4> color{0.0f, 0.0f, 0.0f, 1.0f};
+    float thickness = 1.0f;
+    DirtyRectHint bounds{0.0f, 0.0f, 0.0f, 0.0f};
+    std::string authoring_id;
 };
 
 auto identity_transform() -> UIScene::Transform {
@@ -320,68 +323,100 @@ auto unwrap_or_exit(SP::Expected<void> value, std::string const& context) -> voi
 
 auto build_bucket(std::vector<Stroke> const& strokes) -> UIScene::DrawableBucketSnapshot {
     UIScene::DrawableBucketSnapshot bucket{};
-    const std::size_t count = strokes.size();
 
-    bucket.drawable_ids.reserve(count);
-    bucket.world_transforms.reserve(count);
-    bucket.bounds_spheres.reserve(count);
-    bucket.bounds_boxes.reserve(count);
-    bucket.bounds_box_valid.reserve(count);
-    bucket.layers.reserve(count);
-    bucket.z_values.reserve(count);
-    bucket.material_ids.reserve(count);
-    bucket.pipeline_flags.reserve(count);
-    bucket.visibility.reserve(count);
-    bucket.command_offsets.reserve(count);
-    bucket.command_counts.reserve(count);
-    bucket.command_kinds.reserve(count);
-    bucket.clip_head_indices.assign(count, -1);
-    bucket.authoring_map.reserve(count);
-    for (std::size_t i = 0; i < count; ++i) {
-        auto const& stroke = strokes[i];
+    std::size_t drawable_count = 0;
+    std::size_t total_points = 0;
+    for (auto const& stroke : strokes) {
+        if (!stroke.points.empty()) {
+            ++drawable_count;
+            total_points += stroke.points.size();
+        }
+    }
+
+    bucket.drawable_ids.reserve(drawable_count);
+    bucket.world_transforms.reserve(drawable_count);
+    bucket.bounds_spheres.reserve(drawable_count);
+    bucket.bounds_boxes.reserve(drawable_count);
+    bucket.bounds_box_valid.reserve(drawable_count);
+    bucket.layers.reserve(drawable_count);
+    bucket.z_values.reserve(drawable_count);
+    bucket.material_ids.reserve(drawable_count);
+    bucket.pipeline_flags.reserve(drawable_count);
+    bucket.visibility.reserve(drawable_count);
+    bucket.command_offsets.reserve(drawable_count);
+    bucket.command_counts.reserve(drawable_count);
+    bucket.command_kinds.reserve(drawable_count);
+    bucket.clip_head_indices.reserve(drawable_count);
+    bucket.authoring_map.reserve(drawable_count);
+    bucket.drawable_fingerprints.reserve(drawable_count);
+    bucket.stroke_points.reserve(total_points);
+
+    for (auto const& stroke : strokes) {
+        if (stroke.points.empty()) {
+            continue;
+        }
+
+        auto drawable_index = bucket.drawable_ids.size();
         bucket.drawable_ids.push_back(stroke.drawable_id);
         bucket.world_transforms.push_back(identity_transform());
 
+        DirtyRectHint bounds = stroke.bounds;
+        bounds.min_x = std::max(0.0f, bounds.min_x);
+        bounds.min_y = std::max(0.0f, bounds.min_y);
+        bounds.max_x = std::max(bounds.min_x, bounds.max_x);
+        bounds.max_y = std::max(bounds.min_y, bounds.max_y);
+
         UIScene::BoundingBox box{};
-        box.min = {stroke.rect.min_x, stroke.rect.min_y, 0.0f};
-        box.max = {stroke.rect.max_x, stroke.rect.max_y, 0.0f};
+        box.min = {bounds.min_x, bounds.min_y, 0.0f};
+        box.max = {bounds.max_x, bounds.max_y, 0.0f};
         bucket.bounds_boxes.push_back(box);
         bucket.bounds_box_valid.push_back(1);
 
-        auto width = std::max(0.0f, stroke.rect.max_x - stroke.rect.min_x);
-        auto height = std::max(0.0f, stroke.rect.max_y - stroke.rect.min_y);
-        float radius = std::sqrt(width * width + height * height) * 0.5f;
+        auto half_width = std::max(0.0f, bounds.max_x - bounds.min_x) * 0.5f;
+        auto half_height = std::max(0.0f, bounds.max_y - bounds.min_y) * 0.5f;
         UIScene::BoundingSphere sphere{};
-        sphere.center = {(stroke.rect.min_x + stroke.rect.max_x) * 0.5f,
-                         (stroke.rect.min_y + stroke.rect.max_y) * 0.5f,
-                         0.0f};
-        sphere.radius = radius;
+        sphere.center = {bounds.min_x + half_width, bounds.min_y + half_height, 0.0f};
+        sphere.radius = std::sqrt(half_width * half_width + half_height * half_height);
         bucket.bounds_spheres.push_back(sphere);
 
         bucket.layers.push_back(0);
-        bucket.z_values.push_back(static_cast<float>(i));
+        bucket.z_values.push_back(static_cast<float>(drawable_index));
         bucket.material_ids.push_back(0);
         bucket.pipeline_flags.push_back(0);
         bucket.visibility.push_back(1);
 
-        auto command_index = static_cast<std::uint32_t>(bucket.command_kinds.size());
-        bucket.command_offsets.push_back(command_index);
+        bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
         bucket.command_counts.push_back(1);
-        bucket.command_kinds.push_back(static_cast<std::uint32_t>(UIScene::DrawCommandKind::Rect));
+        bucket.command_kinds.push_back(static_cast<std::uint32_t>(UIScene::DrawCommandKind::Stroke));
+        bucket.clip_head_indices.push_back(-1);
 
-        auto previousSize = bucket.command_payload.size();
-        bucket.command_payload.resize(previousSize + sizeof(UIScene::RectCommand));
-        std::memcpy(bucket.command_payload.data() + previousSize, &stroke.rect, sizeof(UIScene::RectCommand));
+        UIScene::StrokeCommand stroke_cmd{};
+        stroke_cmd.min_x = bounds.min_x;
+        stroke_cmd.min_y = bounds.min_y;
+        stroke_cmd.max_x = bounds.max_x;
+        stroke_cmd.max_y = bounds.max_y;
+        stroke_cmd.thickness = stroke.thickness;
+        stroke_cmd.point_offset = static_cast<std::uint32_t>(bucket.stroke_points.size());
+        stroke_cmd.point_count = static_cast<std::uint32_t>(stroke.points.size());
+        stroke_cmd.color = stroke.color;
+
+        auto payload_offset = bucket.command_payload.size();
+        bucket.command_payload.resize(payload_offset + sizeof(UIScene::StrokeCommand));
+        std::memcpy(bucket.command_payload.data() + payload_offset, &stroke_cmd, sizeof(UIScene::StrokeCommand));
+
+        bucket.stroke_points.insert(bucket.stroke_points.end(), stroke.points.begin(), stroke.points.end());
 
         bucket.authoring_map.push_back(UIScene::DrawableAuthoringMapEntry{
             stroke.drawable_id,
             stroke.authoring_id,
             0,
             0});
+        bucket.drawable_fingerprints.push_back(stroke.drawable_id);
     }
 
-    bucket.opaque_indices.resize(count);
-    std::iota(bucket.opaque_indices.begin(), bucket.opaque_indices.end(), 0);
+    auto final_count = bucket.drawable_ids.size();
+    bucket.opaque_indices.resize(final_count);
+    std::iota(bucket.opaque_indices.begin(), bucket.opaque_indices.end(), 0u);
     bucket.alpha_indices.clear();
 
     return bucket;
@@ -518,73 +553,138 @@ auto to_canvas_y(int viewY, int canvasHeight) -> int {
     return std::clamp(viewY, 0, std::max(canvasHeight - 1, 0));
 }
 
-auto add_stroke(std::vector<Stroke>& strokes,
-                std::uint64_t& nextId,
-                int canvasWidth,
-                int canvasHeight,
-                int x,
-                int y,
-                std::array<float, 4> const& color,
-                int brushSizePx) -> std::optional<DirtyRectHint> {
+auto start_stroke(std::vector<Stroke>& strokes,
+                  std::uint64_t& nextId,
+                  int canvasWidth,
+                  int canvasHeight,
+                  int x,
+                  int y,
+                  std::array<float, 4> const& color,
+                  int brushSizePx) -> std::optional<DirtyRectHint> {
     if (canvasWidth <= 0 || canvasHeight <= 0) {
         return std::nullopt;
     }
-    int canvasX = std::clamp(x, 0, canvasWidth - 1);
-    int canvasY = to_canvas_y(y, canvasHeight);
-    float half = static_cast<float>(brushSizePx) * 0.5f;
-    float minX = std::clamp(static_cast<float>(canvasX) - half, 0.0f, static_cast<float>(canvasWidth));
-    float minY = std::clamp(static_cast<float>(canvasY) - half, 0.0f, static_cast<float>(canvasHeight));
-    float maxX = std::clamp(minX + static_cast<float>(brushSizePx), 0.0f, static_cast<float>(canvasWidth));
-    float maxY = std::clamp(minY + static_cast<float>(brushSizePx), 0.0f, static_cast<float>(canvasHeight));
-    if (maxX <= minX || maxY <= minY) {
-        return std::nullopt;
+    if (brushSizePx <= 0) {
+        brushSizePx = 1;
     }
 
-    UIScene::RectCommand rectCmd{};
-    rectCmd.min_x = minX;
-    rectCmd.min_y = minY;
-    rectCmd.max_x = maxX;
-    rectCmd.max_y = maxY;
-    rectCmd.color = color;
+    int canvasX = std::clamp(x, 0, canvasWidth - 1);
+    int canvasY = to_canvas_y(y, canvasHeight);
+    float point_x = static_cast<float>(canvasX);
+    float point_y = static_cast<float>(canvasY);
+    float thickness = static_cast<float>(std::max(1, brushSizePx));
+    float half = thickness * 0.5f;
 
-    Stroke stroke{
-        .drawable_id = nextId++,
-        .rect = rectCmd,
-        .authoring_id = "nodes/paint/stroke_" + std::to_string(strokes.size()),
+    auto clamp_extent = [&](float value, float delta, float limit) {
+        return std::clamp(value + delta, 0.0f, limit);
     };
+
+    DirtyRectHint bounds{};
+    bounds.min_x = clamp_extent(point_x, -half, static_cast<float>(canvasWidth));
+    bounds.min_y = clamp_extent(point_y, -half, static_cast<float>(canvasHeight));
+    bounds.max_x = clamp_extent(point_x, half, static_cast<float>(canvasWidth));
+    bounds.max_y = clamp_extent(point_y, half, static_cast<float>(canvasHeight));
+    if (bounds.max_x <= bounds.min_x) {
+        bounds.max_x = std::min(static_cast<float>(canvasWidth), bounds.min_x + thickness);
+    }
+    if (bounds.max_y <= bounds.min_y) {
+        bounds.max_y = std::min(static_cast<float>(canvasHeight), bounds.min_y + thickness);
+    }
+
+    Stroke stroke{};
+    stroke.drawable_id = nextId++;
+    stroke.points.push_back(UIScene::StrokePoint{point_x, point_y});
+    stroke.color = color;
+    stroke.thickness = thickness;
+    stroke.bounds = bounds;
+    stroke.authoring_id = "nodes/paint/stroke_" + std::to_string(strokes.size());
     strokes.push_back(std::move(stroke));
-    return DirtyRectHint{
-        .min_x = minX,
-        .min_y = minY,
-        .max_x = maxX,
-        .max_y = maxY,
-    };
+
+    return bounds;
 }
 
-auto lay_down_segment(std::vector<Stroke>& strokes,
-                      std::uint64_t& nextId,
-                      int canvasWidth,
-                      int canvasHeight,
-                      std::pair<int, int> const& from,
-                      std::pair<int, int> const& to,
-                      std::array<float, 4> const& color,
-                      std::vector<DirtyRectHint>& dirtyHints,
-                      int brushSizePx) -> bool {
-    bool wrote = false;
+auto extend_stroke(Stroke& stroke,
+                   int canvasWidth,
+                   int canvasHeight,
+                   std::pair<int, int> const& from,
+                   std::pair<int, int> const& to,
+                   std::vector<DirtyRectHint>& dirtyHints,
+                   int brushSizePx) -> bool {
+    if (canvasWidth <= 0 || canvasHeight <= 0) {
+        return false;
+    }
+    if (stroke.points.empty()) {
+        return false;
+    }
+
+    if (brushSizePx <= 0) {
+        brushSizePx = 1;
+    }
+
     DirtyRectHint segmentBounds{};
     bool haveBounds = false;
 
-    auto accumulate_hint = [&](DirtyRectHint const& hint) {
+    auto expand_hint = [&](DirtyRectHint& target, DirtyRectHint const& hint) {
         if (!haveBounds) {
-            segmentBounds = hint;
+            target = hint;
             haveBounds = true;
         } else {
-            segmentBounds.min_x = std::min(segmentBounds.min_x, hint.min_x);
-            segmentBounds.min_y = std::min(segmentBounds.min_y, hint.min_y);
-            segmentBounds.max_x = std::max(segmentBounds.max_x, hint.max_x);
-            segmentBounds.max_y = std::max(segmentBounds.max_y, hint.max_y);
+            target.min_x = std::min(target.min_x, hint.min_x);
+            target.min_y = std::min(target.min_y, hint.min_y);
+            target.max_x = std::max(target.max_x, hint.max_x);
+            target.max_y = std::max(target.max_y, hint.max_y);
         }
     };
+
+    auto apply_bounds_growth = [&](float new_thickness) {
+        if (new_thickness <= stroke.thickness) {
+            return;
+        }
+        float delta = (new_thickness - stroke.thickness) * 0.5f;
+        stroke.bounds.min_x = std::max(0.0f, stroke.bounds.min_x - delta);
+        stroke.bounds.min_y = std::max(0.0f, stroke.bounds.min_y - delta);
+        stroke.bounds.max_x = std::min(static_cast<float>(canvasWidth), stroke.bounds.max_x + delta);
+        stroke.bounds.max_y = std::min(static_cast<float>(canvasHeight), stroke.bounds.max_y + delta);
+        stroke.thickness = new_thickness;
+    };
+
+    auto append_point = [&](int xi, int yi) -> bool {
+        int clamped_x = std::clamp(xi, 0, canvasWidth - 1);
+        int clamped_y = to_canvas_y(yi, canvasHeight);
+        float px = static_cast<float>(clamped_x);
+        float py = static_cast<float>(clamped_y);
+        if (!stroke.points.empty()) {
+            auto const& last = stroke.points.back();
+            if (std::fabs(last.x - px) < 0.1f && std::fabs(last.y - py) < 0.1f) {
+                return false;
+            }
+        }
+
+        float half = stroke.thickness * 0.5f;
+        DirtyRectHint hint{};
+        hint.min_x = std::clamp(px - half, 0.0f, static_cast<float>(canvasWidth));
+        hint.min_y = std::clamp(py - half, 0.0f, static_cast<float>(canvasHeight));
+        hint.max_x = std::clamp(px + half, 0.0f, static_cast<float>(canvasWidth));
+        hint.max_y = std::clamp(py + half, 0.0f, static_cast<float>(canvasHeight));
+        if (hint.max_x <= hint.min_x) {
+            hint.max_x = std::min(static_cast<float>(canvasWidth), hint.min_x + stroke.thickness);
+        }
+        if (hint.max_y <= hint.min_y) {
+            hint.max_y = std::min(static_cast<float>(canvasHeight), hint.min_y + stroke.thickness);
+        }
+
+        stroke.points.push_back(UIScene::StrokePoint{px, py});
+        stroke.bounds.min_x = std::min(stroke.bounds.min_x, hint.min_x);
+        stroke.bounds.min_y = std::min(stroke.bounds.min_y, hint.min_y);
+        stroke.bounds.max_x = std::max(stroke.bounds.max_x, hint.max_x);
+        stroke.bounds.max_y = std::max(stroke.bounds.max_y, hint.max_y);
+        expand_hint(segmentBounds, hint);
+        return true;
+    };
+
+    float new_thickness = static_cast<float>(std::max(1, brushSizePx));
+    apply_bounds_growth(new_thickness);
+
     double x0 = static_cast<double>(from.first);
     double y0 = static_cast<double>(from.second);
     double x1 = static_cast<double>(to.first);
@@ -594,33 +694,16 @@ auto lay_down_segment(std::vector<Stroke>& strokes,
     double dist = std::hypot(dx, dy);
     double spacing = std::max(1.0, static_cast<double>(brushSizePx) * 0.5);
     int steps = (dist > spacing) ? static_cast<int>(std::floor(dist / spacing)) : 0;
+
+    bool wrote = false;
     for (int i = 1; i <= steps; ++i) {
         double t = static_cast<double>(i) / static_cast<double>(steps + 1);
         int xi = static_cast<int>(std::round(x0 + dx * t));
         int yi = static_cast<int>(std::round(y0 + dy * t));
-        if (auto hint = add_stroke(strokes,
-                                   nextId,
-                                   canvasWidth,
-                                   canvasHeight,
-                                   xi,
-                                   yi,
-                                   color,
-                                   brushSizePx)) {
-            accumulate_hint(*hint);
-            wrote = true;
-        }
+        wrote |= append_point(xi, yi);
     }
-    if (auto hint = add_stroke(strokes,
-                               nextId,
-                               canvasWidth,
-                               canvasHeight,
-                               to.first,
-                               to.second,
-                               color,
-                               brushSizePx)) {
-        accumulate_hint(*hint);
-        wrote = true;
-    }
+    wrote |= append_point(to.first, to.second);
+
     if (wrote && haveBounds) {
         dirtyHints.push_back(segmentBounds);
     }
@@ -830,15 +913,15 @@ int main(int argc, char** argv) {
                     if (!lastPainted) {
                         lastPainted = current;
                     }
-                    updated |= lay_down_segment(strokes,
-                                                nextId,
-                                                canvasWidth,
-                                                canvasHeight,
-                                                *lastPainted,
-                                                current,
-                                                brushColor,
-                                                dirtyHints,
-                                                brushSizePx);
+                    if (!strokes.empty()) {
+                        updated |= extend_stroke(strokes.back(),
+                                                 canvasWidth,
+                                                 canvasHeight,
+                                                 *lastPainted,
+                                                 current,
+                                                 dirtyHints,
+                                                 brushSizePx);
+                    }
                     lastPainted = current;
                 }
                 break;
@@ -854,14 +937,14 @@ int main(int argc, char** argv) {
                     if (point) {
                         lastAbsolute = *point;
                         drawing = true;
-                        if (auto hint = add_stroke(strokes,
-                                                   nextId,
-                                                   canvasWidth,
-                                                   canvasHeight,
-                                                   point->first,
-                                                   point->second,
-                                                   brushColor,
-                                                   brushSizePx)) {
+                        if (auto hint = start_stroke(strokes,
+                                                     nextId,
+                                                     canvasWidth,
+                                                     canvasHeight,
+                                                     point->first,
+                                                     point->second,
+                                                     brushColor,
+                                                     brushSizePx)) {
                             dirtyHints.push_back(*hint);
                             updated = true;
                         }
