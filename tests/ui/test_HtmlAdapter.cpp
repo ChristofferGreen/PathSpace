@@ -7,6 +7,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 using namespace SP::UI;
 namespace UIScene = SP::UI::Scene;
@@ -80,7 +81,36 @@ TEST_CASE("HtmlAdapter emits DOM for rect and image") {
 
     REQUIRE(emitted->assets.size() == 1);
     CHECK(emitted->assets.front().logical_path == "images/abcdef0102030405.png");
-    CHECK(emitted->assets.front().mime_type == "application/vnd.pathspace.image+ref");
+    CHECK(emitted->assets.front().mime_type == Html::kImageAssetReferenceMime);
+}
+
+TEST_CASE("HtmlAdapter resolves assets via callback when provided") {
+    auto bucket = make_basic_bucket();
+
+    Html::Adapter adapter;
+    Html::EmitOptions options{};
+    bool resolver_called = false;
+    options.resolve_asset =
+        [&](std::string_view logical_path,
+            std::uint64_t fingerprint,
+            Html::AssetKind kind) -> SP::Expected<Html::Asset> {
+            resolver_called = true;
+            CHECK(kind == Html::AssetKind::Image);
+            CHECK(fingerprint == 0xABCDEF0102030405ull);
+            CHECK(logical_path == "images/abcdef0102030405.png");
+            Html::Asset asset{};
+            asset.logical_path = std::string(logical_path);
+            asset.mime_type = "image/png";
+            asset.bytes = {1u, 2u, 3u, 4u};
+            return asset;
+        };
+
+    auto emitted = adapter.emit(bucket, options);
+    REQUIRE(emitted);
+    CHECK(resolver_called);
+    REQUIRE(emitted->assets.size() == 1);
+    CHECK(emitted->assets.front().mime_type == "image/png");
+    CHECK(emitted->assets.front().bytes == std::vector<std::uint8_t>({1u, 2u, 3u, 4u}));
 }
 
 TEST_CASE("HtmlAdapter falls back to canvas when DOM budget exceeded") {

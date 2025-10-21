@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -12,11 +13,24 @@
 
 namespace SP::UI::Html {
 
+inline constexpr std::string_view kImageAssetReferenceMime = "application/vnd.pathspace.image+ref";
+inline constexpr std::string_view kFontAssetReferenceMime  = "application/vnd.pathspace.font+ref";
+
+enum class AssetKind {
+    Image,
+    Font,
+};
+
+struct Asset;
+
 struct EmitOptions {
     bool prefer_dom = true;
     bool allow_clip_path = true;
     std::size_t max_dom_nodes = 10'000;
     bool allow_canvas_fallback = true;
+    std::function<SP::Expected<Asset>(std::string_view logical_path,
+                                      std::uint64_t fingerprint,
+                                      AssetKind kind)> resolve_asset;
 };
 
 enum class CanvasCommandType : std::uint8_t {

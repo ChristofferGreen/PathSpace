@@ -46,9 +46,6 @@ constexpr std::string_view kScenesSegment = "/scenes/";
 constexpr std::string_view kRenderersSegment = "/renderers/";
 constexpr std::string_view kSurfacesSegment = "/surfaces/";
 constexpr std::string_view kWindowsSegment = "/windows/";
-constexpr std::string_view kImageAssetRefMime = "application/vnd.pathspace.image+ref";
-constexpr std::string_view kFontAssetRefMime  = "application/vnd.pathspace.font+ref";
-
 std::atomic<std::uint64_t> g_auto_render_sequence{0};
 std::atomic<std::uint64_t> g_scene_dirty_sequence{0};
 std::atomic<std::uint64_t> g_widget_op_sequence{0};
@@ -1369,8 +1366,8 @@ auto hydrate_html_assets(PathSpace& space,
                          std::vector<Html::Asset>& assets) -> SP::Expected<void> {
     for (auto& asset : assets) {
         bool const needs_lookup = asset.bytes.empty()
-                                  || asset.mime_type == kImageAssetRefMime
-                                  || asset.mime_type == kFontAssetRefMime;
+                                  || asset.mime_type == Html::kImageAssetReferenceMime
+                                  || asset.mime_type == Html::kFontAssetReferenceMime;
         if (!needs_lookup) {
             continue;
         }
@@ -1398,8 +1395,8 @@ auto hydrate_html_assets(PathSpace& space,
         }
 
         asset.bytes = std::move(*bytes);
-        if (asset.mime_type == kImageAssetRefMime
-            || asset.mime_type == kFontAssetRefMime
+        if (asset.mime_type == Html::kImageAssetReferenceMime
+            || asset.mime_type == Html::kFontAssetReferenceMime
             || asset.mime_type.empty()) {
             asset.mime_type = guess_mime_type(asset.logical_path);
         }
@@ -2374,6 +2371,42 @@ auto RenderHtml(PathSpace& space,
     options.max_dom_nodes = desc->max_dom_nodes;
     options.prefer_dom = desc->prefer_dom;
     options.allow_canvas_fallback = desc->allow_canvas_fallback;
+    options.resolve_asset =
+        [&](std::string_view logical_path,
+            std::uint64_t /*fingerprint*/,
+            Html::AssetKind /*kind*/) -> SP::Expected<Html::Asset> {
+            Html::Asset asset{};
+            asset.logical_path = std::string(logical_path);
+
+            if (!is_safe_asset_path(asset.logical_path)) {
+                return std::unexpected(make_error("html asset logical path unsafe: " + asset.logical_path,
+                                                  SP::Error::Code::InvalidPath));
+            }
+
+            std::string full_path = revisionBase;
+            if (asset.logical_path.rfind("assets/", 0) == 0) {
+                full_path.append("/").append(asset.logical_path);
+            } else {
+                full_path.append("/assets/").append(asset.logical_path);
+            }
+
+            auto bytes = space.read<std::vector<std::uint8_t>>(full_path);
+            if (!bytes) {
+                auto const error = bytes.error();
+                std::string message = "read html asset '" + asset.logical_path + "'";
+                if (error.message) {
+                    message.append(": ").append(*error.message);
+                }
+                return std::unexpected(make_error(std::move(message), error.code));
+            }
+
+            asset.bytes = std::move(*bytes);
+            asset.mime_type = guess_mime_type(asset.logical_path);
+            if (asset.mime_type.empty()) {
+                asset.mime_type = "application/octet-stream";
+            }
+            return asset;
+        };
 
     Html::Adapter adapter;
     auto emitted = adapter.emit(*bucket, options);

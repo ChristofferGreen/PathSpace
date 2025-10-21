@@ -30,6 +30,40 @@ auto fingerprint_to_hex(std::uint64_t fingerprint) -> std::string {
     return oss.str();
 }
 
+auto make_placeholder_asset(std::string logical_path,
+                            Html::AssetKind kind) -> Asset {
+    Asset asset{};
+    asset.logical_path = std::move(logical_path);
+    switch (kind) {
+    case Html::AssetKind::Image:
+        asset.mime_type = std::string(kImageAssetReferenceMime);
+        break;
+    case Html::AssetKind::Font:
+        asset.mime_type = std::string(kFontAssetReferenceMime);
+        break;
+    }
+    auto bytes_view = std::string_view(asset.logical_path);
+    asset.bytes.assign(bytes_view.begin(), bytes_view.end());
+    return asset;
+}
+
+auto resolve_asset(Html::EmitOptions const& options,
+                   std::string const& logical_path,
+                   std::uint64_t fingerprint,
+                   Html::AssetKind kind) -> SP::Expected<Asset> {
+    if (options.resolve_asset) {
+        auto resolved = options.resolve_asset(logical_path, fingerprint, kind);
+        if (!resolved) {
+            return std::unexpected(resolved.error());
+        }
+        if (resolved->logical_path.empty()) {
+            resolved->logical_path = logical_path;
+        }
+        return resolved;
+    }
+    return make_placeholder_asset(logical_path, kind);
+}
+
 auto color_to_css(std::array<float, 4> const& rgba, bool premultiplied = false) -> std::string {
     auto clamp = [](float v) {
         return std::clamp(v, 0.0f, 1.0f);
@@ -408,12 +442,16 @@ auto Adapter::emit(Scene::DrawableBucketSnapshot const& snapshot,
                 node.has_fingerprint = true;
                 node.fingerprint = image.image_fingerprint;
                 if (assets.find(image.image_fingerprint) == assets.end()) {
-                    Asset asset{};
-                    asset.logical_path = "images/" + fingerprint_to_hex(image.image_fingerprint) + ".png";
-                    asset.mime_type = "application/vnd.pathspace.image+ref";
-                    auto path_bytes = std::string_view(asset.logical_path);
-                    asset.bytes.assign(path_bytes.begin(), path_bytes.end());
-                    assets.emplace(image.image_fingerprint, std::move(asset));
+                    auto logical_path = std::string("images/")
+                                        + fingerprint_to_hex(image.image_fingerprint) + ".png";
+                    auto asset = resolve_asset(options,
+                                               logical_path,
+                                               image.image_fingerprint,
+                                               Html::AssetKind::Image);
+                    if (!asset) {
+                        return std::unexpected(asset.error());
+                    }
+                    assets.emplace(image.image_fingerprint, std::move(*asset));
                 }
                 nodes.push_back(node);
                 break;
