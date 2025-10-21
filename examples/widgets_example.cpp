@@ -48,9 +48,45 @@ using namespace SP::UI;
 using namespace SP::UI::Builders;
 namespace SceneData = SP::UI::Scene;
 namespace SceneBuilders = SP::UI::Builders::Scene;
+namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
+namespace WidgetReducers = SP::UI::Builders::Widgets::Reducers;
 
 constexpr int kGlyphRows = 7;
 constexpr float kDefaultMargin = 32.0f;
+
+struct WidgetBounds {
+    float min_x = 0.0f;
+    float min_y = 0.0f;
+    float max_x = 0.0f;
+    float max_y = 0.0f;
+
+    auto contains(float x, float y) const -> bool {
+        return x >= min_x && x <= max_x && y >= min_y && y <= max_y;
+    }
+
+    auto width() const -> float {
+        return std::max(0.0f, max_x - min_x);
+    }
+
+    auto height() const -> float {
+        return std::max(0.0f, max_y - min_y);
+    }
+};
+
+struct ListLayout {
+    WidgetBounds bounds;
+    std::vector<WidgetBounds> item_bounds;
+    float content_top = 0.0f;
+    float item_height = 0.0f;
+};
+
+struct GalleryLayout {
+    WidgetBounds button;
+    WidgetBounds toggle;
+    WidgetBounds slider;
+    WidgetBounds slider_track;
+    ListLayout list;
+};
 
 struct GlyphPattern {
     char ch = ' ';
@@ -520,6 +556,7 @@ struct GalleryBuildResult {
     SceneData::DrawableBucketSnapshot bucket;
     int width = 0;
     int height = 0;
+    GalleryLayout layout;
 };
 
 auto build_gallery_bucket(PathSpace& space,
@@ -542,6 +579,7 @@ auto build_gallery_bucket(PathSpace& space,
     float max_width = 0.0f;
     float max_height = 0.0f;
     std::uint64_t next_drawable_id = 0xA1000000ull;
+    GalleryLayout layout{};
 
     // Title text
     auto title_text = build_text_bucket("PathSpace Widgets",
@@ -568,6 +606,12 @@ auto build_gallery_bucket(PathSpace& space,
         float widget_height = button_style.height;
         max_width = std::max(max_width, left + button_style.width);
         max_height = std::max(max_height, cursor_y + widget_height);
+        layout.button = WidgetBounds{
+            left,
+            cursor_y,
+            left + button_style.width,
+            cursor_y + widget_height,
+        };
 
         float label_width = measure_text_width(button_label, 4.0f);
         float label_height = 4.0f * static_cast<float>(kGlyphRows);
@@ -596,6 +640,12 @@ auto build_gallery_bucket(PathSpace& space,
         pending.emplace_back(std::move(bucket));
         max_width = std::max(max_width, left + toggle_style.width);
         max_height = std::max(max_height, cursor_y + toggle_style.height);
+        layout.toggle = WidgetBounds{
+            left,
+            cursor_y,
+            left + toggle_style.width,
+            cursor_y + toggle_style.height,
+        };
 
         auto label = build_text_bucket("Toggle",
                                        left + toggle_style.width + 24.0f,
@@ -636,6 +686,20 @@ auto build_gallery_bucket(PathSpace& space,
         pending.emplace_back(std::move(bucket));
         max_width = std::max(max_width, left + slider_style.width);
         max_height = std::max(max_height, cursor_y + slider_style.height);
+        layout.slider = WidgetBounds{
+            left,
+            cursor_y,
+            left + slider_style.width,
+            cursor_y + slider_style.height,
+        };
+        float slider_center_y = cursor_y + slider_style.height * 0.5f;
+        float slider_half_track = slider_style.track_height * 0.5f;
+        layout.slider_track = WidgetBounds{
+            left,
+            slider_center_y - slider_half_track,
+            left + slider_style.width,
+            slider_center_y + slider_half_track,
+        };
         cursor_y += slider_style.height + 48.0f;
     }
 
@@ -663,6 +727,16 @@ auto build_gallery_bucket(PathSpace& space,
         pending.emplace_back(std::move(bucket));
         max_width = std::max(max_width, left + list_style.width);
         max_height = std::max(max_height, cursor_y + list_height);
+        layout.list.bounds = WidgetBounds{
+            left,
+            cursor_y,
+            left + list_style.width,
+            cursor_y + list_height,
+        };
+        layout.list.item_height = list_style.item_height;
+        layout.list.content_top = cursor_y + list_style.border_thickness;
+        layout.list.item_bounds.clear();
+        layout.list.item_bounds.reserve(list_items.size());
 
         float text_scale = 3.0f;
         float content_top = cursor_y + list_style.border_thickness;
@@ -686,6 +760,16 @@ auto build_gallery_bucket(PathSpace& space,
                 max_width = std::max(max_width, text_x + label->width);
                 max_height = std::max(max_height, text_y + label->height);
             }
+
+            float row_bottom = row_top + list_style.item_height;
+            float row_min_x = left + list_style.border_thickness;
+            float row_max_x = left + list_style.width - list_style.border_thickness;
+            layout.list.item_bounds.push_back(WidgetBounds{
+                row_min_x,
+                row_top,
+                row_max_x,
+                row_bottom,
+            });
         }
         cursor_y += list_height + 48.0f;
     }
@@ -721,6 +805,7 @@ auto build_gallery_bucket(PathSpace& space,
     result.bucket = std::move(gallery);
     result.width = static_cast<int>(std::ceil(canvas_width));
     result.height = static_cast<int>(std::ceil(canvas_height));
+    result.layout = std::move(layout);
     return result;
 }
 
@@ -728,6 +813,7 @@ struct GallerySceneResult {
     ScenePath scene;
     int width = 0;
     int height = 0;
+    GalleryLayout layout;
 };
 
 auto publish_gallery_scene(PathSpace& space,
@@ -782,7 +868,412 @@ auto publish_gallery_scene(PathSpace& space,
         .scene = gallery_scene,
         .width = build.width,
         .height = build.height,
+        .layout = std::move(build.layout),
     };
+}
+
+struct WidgetsExampleContext {
+    PathSpace* space = nullptr;
+    SP::App::AppRootPath app_root{std::string{}};
+    Widgets::ButtonPaths button_paths;
+    Widgets::TogglePaths toggle_paths;
+    Widgets::SliderPaths slider_paths;
+    Widgets::ListPaths list_paths;
+    Widgets::ButtonStyle button_style{};
+    std::string button_label;
+    Widgets::ToggleStyle toggle_style{};
+    Widgets::SliderStyle slider_style{};
+    Widgets::ListStyle list_style{};
+    Widgets::SliderRange slider_range{};
+    std::vector<Widgets::ListItem> list_items;
+    WidgetBindings::ButtonBinding button_binding{};
+    WidgetBindings::ToggleBinding toggle_binding{};
+    WidgetBindings::SliderBinding slider_binding{};
+    WidgetBindings::ListBinding list_binding{};
+    Widgets::ButtonState button_state{};
+    Widgets::ToggleState toggle_state{};
+    Widgets::SliderState slider_state{};
+    Widgets::ListState list_state{};
+    GallerySceneResult gallery{};
+    std::string target_path;
+    bool pointer_down = false;
+    bool slider_dragging = false;
+    float pointer_x = 0.0f;
+    float pointer_y = 0.0f;
+};
+
+static auto make_pointer_info(WidgetsExampleContext const& ctx, bool inside) -> WidgetBindings::PointerInfo {
+    WidgetBindings::PointerInfo info{};
+    info.scene_x = ctx.pointer_x;
+    info.scene_y = ctx.pointer_y;
+    info.inside = inside;
+    info.primary = true;
+    return info;
+}
+
+static auto slider_value_from_position(WidgetsExampleContext const& ctx, float x) -> float {
+    auto const& bounds = ctx.gallery.layout.slider;
+    float width = bounds.width();
+    if (width <= 0.0f) {
+        return ctx.slider_range.minimum;
+    }
+    float t = (x - bounds.min_x) / width;
+    t = std::clamp(t, 0.0f, 1.0f);
+    return ctx.slider_range.minimum + t * (ctx.slider_range.maximum - ctx.slider_range.minimum);
+}
+
+static auto list_index_from_position(WidgetsExampleContext const& ctx, float y) -> int {
+    auto const& layout = ctx.gallery.layout.list;
+    if (layout.item_height <= 0.0f || layout.item_bounds.empty()) {
+        return -1;
+    }
+    float relative = y - layout.content_top;
+    if (relative < 0.0f) {
+        return -1;
+    }
+    int index = static_cast<int>(std::floor(relative / layout.item_height));
+    if (index < 0 || index >= static_cast<int>(layout.item_bounds.size())) {
+        return -1;
+    }
+    return index;
+}
+
+static void refresh_gallery(WidgetsExampleContext& ctx) {
+    auto view = SP::App::AppRootPathView{ctx.app_root.getPath()};
+    ctx.gallery = publish_gallery_scene(*ctx.space,
+                                        view,
+                                        ctx.button_paths,
+                                        ctx.button_style,
+                                        ctx.button_label,
+                                        ctx.toggle_paths,
+                                        ctx.toggle_style,
+                                        ctx.slider_paths,
+                                        ctx.slider_style,
+                                        ctx.slider_state,
+                                        ctx.list_paths,
+                                        ctx.list_style,
+                                        ctx.list_items);
+}
+
+static auto dispatch_button(WidgetsExampleContext& ctx,
+                            Widgets::ButtonState const& desired,
+                            WidgetBindings::WidgetOpKind kind,
+                            bool inside) -> bool {
+    auto pointer = make_pointer_info(ctx, inside);
+    auto result = WidgetBindings::DispatchButton(*ctx.space,
+                                                 ctx.button_binding,
+                                                 desired,
+                                                 kind,
+                                                 pointer);
+    if (!result) {
+        std::cerr << "widgets_example: button dispatch failed: "
+                  << result.error().message.value_or("unknown error") << "\n";
+        return false;
+    }
+    if (*result) {
+        ctx.button_state = desired;
+    }
+    return *result;
+}
+
+static auto dispatch_toggle(WidgetsExampleContext& ctx,
+                             Widgets::ToggleState const& desired,
+                             WidgetBindings::WidgetOpKind kind,
+                             bool inside) -> bool {
+    auto pointer = make_pointer_info(ctx, inside);
+    auto result = WidgetBindings::DispatchToggle(*ctx.space,
+                                                 ctx.toggle_binding,
+                                                 desired,
+                                                 kind,
+                                                 pointer);
+    if (!result) {
+        std::cerr << "widgets_example: toggle dispatch failed: "
+                  << result.error().message.value_or("unknown error") << "\n";
+        return false;
+    }
+    if (*result) {
+        ctx.toggle_state = desired;
+    }
+    return *result;
+}
+
+static auto dispatch_slider(WidgetsExampleContext& ctx,
+                             Widgets::SliderState const& desired,
+                             WidgetBindings::WidgetOpKind kind,
+                             bool inside) -> bool {
+    auto pointer = make_pointer_info(ctx, inside);
+    auto result = WidgetBindings::DispatchSlider(*ctx.space,
+                                                 ctx.slider_binding,
+                                                 desired,
+                                                 kind,
+                                                 pointer);
+    if (!result) {
+        std::cerr << "widgets_example: slider dispatch failed: "
+                  << result.error().message.value_or("unknown error") << "\n";
+        return false;
+    }
+    if (*result) {
+        auto updated = ctx.space->read<Widgets::SliderState, std::string>(std::string(ctx.slider_paths.state.getPath()));
+        if (updated) {
+            ctx.slider_state = *updated;
+        } else {
+            ctx.slider_state = desired;
+        }
+    }
+    return *result;
+}
+
+static auto dispatch_list(WidgetsExampleContext& ctx,
+                           Widgets::ListState const& desired,
+                           WidgetBindings::WidgetOpKind kind,
+                           bool inside,
+                           int item_index,
+                           float scroll_delta) -> bool {
+    auto pointer = make_pointer_info(ctx, inside);
+    auto result = WidgetBindings::DispatchList(*ctx.space,
+                                               ctx.list_binding,
+                                               desired,
+                                               kind,
+                                               pointer,
+                                               item_index,
+                                               scroll_delta);
+    if (!result) {
+        std::cerr << "widgets_example: list dispatch failed: "
+                  << result.error().message.value_or("unknown error") << "\n";
+        return false;
+    }
+    if (*result) {
+        auto updated = ctx.space->read<Widgets::ListState, std::string>(std::string(ctx.list_paths.state.getPath()));
+        if (updated) {
+            ctx.list_state = *updated;
+        } else {
+            ctx.list_state = desired;
+        }
+    }
+    return *result;
+}
+
+static void handle_pointer_move(WidgetsExampleContext& ctx, float x, float y) {
+    ctx.pointer_x = x;
+    ctx.pointer_y = y;
+    bool changed = false;
+
+    bool inside_button = ctx.gallery.layout.button.contains(x, y);
+    if (!ctx.pointer_down) {
+        if (inside_button != ctx.button_state.hovered) {
+            Widgets::ButtonState desired = ctx.button_state;
+            desired.hovered = inside_button;
+            auto op = inside_button ? WidgetBindings::WidgetOpKind::HoverEnter
+                                    : WidgetBindings::WidgetOpKind::HoverExit;
+            changed |= dispatch_button(ctx, desired, op, inside_button);
+        }
+    } else if (ctx.button_state.pressed && !inside_button && ctx.button_state.hovered) {
+        Widgets::ButtonState desired = ctx.button_state;
+        desired.hovered = false;
+        changed |= dispatch_button(ctx, desired, WidgetBindings::WidgetOpKind::HoverExit, false);
+    }
+
+    bool inside_toggle = ctx.gallery.layout.toggle.contains(x, y);
+    if (inside_toggle != ctx.toggle_state.hovered) {
+        Widgets::ToggleState desired = ctx.toggle_state;
+        desired.hovered = inside_toggle;
+        auto op = inside_toggle ? WidgetBindings::WidgetOpKind::HoverEnter
+                                : WidgetBindings::WidgetOpKind::HoverExit;
+        changed |= dispatch_toggle(ctx, desired, op, inside_toggle);
+    }
+
+    bool inside_list = ctx.gallery.layout.list.bounds.contains(x, y);
+    int hover_index = inside_list ? list_index_from_position(ctx, y) : -1;
+    if (hover_index != ctx.list_state.hovered_index) {
+        Widgets::ListState desired = ctx.list_state;
+        desired.hovered_index = hover_index;
+        changed |= dispatch_list(ctx,
+                                 desired,
+                                 WidgetBindings::WidgetOpKind::ListHover,
+                                 inside_list,
+                                 hover_index,
+                                 0.0f);
+    }
+
+    if (ctx.slider_dragging) {
+        Widgets::SliderState desired = ctx.slider_state;
+        desired.dragging = true;
+        desired.hovered = ctx.gallery.layout.slider.contains(x, y);
+        desired.value = slider_value_from_position(ctx, x);
+        changed |= dispatch_slider(ctx, desired, WidgetBindings::WidgetOpKind::SliderUpdate, desired.hovered);
+    }
+
+    if (changed) {
+        refresh_gallery(ctx);
+    }
+}
+
+static void handle_pointer_down(WidgetsExampleContext& ctx) {
+    ctx.pointer_down = true;
+    bool changed = false;
+
+    if (ctx.gallery.layout.button.contains(ctx.pointer_x, ctx.pointer_y)) {
+        Widgets::ButtonState desired = ctx.button_state;
+        desired.hovered = true;
+        desired.pressed = true;
+        changed |= dispatch_button(ctx, desired, WidgetBindings::WidgetOpKind::Press, true);
+    }
+
+    if (ctx.gallery.layout.toggle.contains(ctx.pointer_x, ctx.pointer_y)) {
+        Widgets::ToggleState desired = ctx.toggle_state;
+        desired.hovered = true;
+        changed |= dispatch_toggle(ctx, desired, WidgetBindings::WidgetOpKind::Press, true);
+    }
+
+    if (ctx.gallery.layout.slider.contains(ctx.pointer_x, ctx.pointer_y)) {
+        ctx.slider_dragging = true;
+        Widgets::SliderState desired = ctx.slider_state;
+        desired.dragging = true;
+        desired.hovered = true;
+        desired.value = slider_value_from_position(ctx, ctx.pointer_x);
+        changed |= dispatch_slider(ctx, desired, WidgetBindings::WidgetOpKind::SliderBegin, true);
+    }
+
+    if (ctx.gallery.layout.list.bounds.contains(ctx.pointer_x, ctx.pointer_y)) {
+        int index = list_index_from_position(ctx, ctx.pointer_y);
+        Widgets::ListState desired = ctx.list_state;
+        desired.hovered_index = index;
+        changed |= dispatch_list(ctx,
+                                 desired,
+                                 WidgetBindings::WidgetOpKind::ListHover,
+                                 true,
+                                 index,
+                                 0.0f);
+    }
+
+    if (changed) {
+        refresh_gallery(ctx);
+    }
+}
+
+static void handle_pointer_up(WidgetsExampleContext& ctx) {
+    bool changed = false;
+
+    bool inside_button = ctx.gallery.layout.button.contains(ctx.pointer_x, ctx.pointer_y);
+    if (ctx.button_state.pressed) {
+        Widgets::ButtonState desired = ctx.button_state;
+        desired.pressed = false;
+        desired.hovered = inside_button;
+        changed |= dispatch_button(ctx, desired, WidgetBindings::WidgetOpKind::Release, inside_button);
+        if (inside_button) {
+            changed |= dispatch_button(ctx, desired, WidgetBindings::WidgetOpKind::Activate, true);
+        }
+    }
+
+    bool inside_toggle = ctx.gallery.layout.toggle.contains(ctx.pointer_x, ctx.pointer_y);
+    if (inside_toggle) {
+        Widgets::ToggleState desired = ctx.toggle_state;
+        desired.hovered = true;
+        desired.checked = !ctx.toggle_state.checked;
+        changed |= dispatch_toggle(ctx, desired, WidgetBindings::WidgetOpKind::Toggle, true);
+    }
+
+    if (ctx.slider_dragging) {
+        ctx.slider_dragging = false;
+        bool inside_slider = ctx.gallery.layout.slider.contains(ctx.pointer_x, ctx.pointer_y);
+        Widgets::SliderState desired = ctx.slider_state;
+        desired.dragging = false;
+        desired.hovered = inside_slider;
+        desired.value = slider_value_from_position(ctx, ctx.pointer_x);
+        changed |= dispatch_slider(ctx, desired, WidgetBindings::WidgetOpKind::SliderCommit, inside_slider);
+    }
+
+    bool inside_list = ctx.gallery.layout.list.bounds.contains(ctx.pointer_x, ctx.pointer_y);
+    int index = inside_list ? list_index_from_position(ctx, ctx.pointer_y) : -1;
+    if (inside_list && index >= 0) {
+        Widgets::ListState desired = ctx.list_state;
+        desired.selected_index = index;
+        changed |= dispatch_list(ctx,
+                                 desired,
+                                 WidgetBindings::WidgetOpKind::ListSelect,
+                                 true,
+                                 index,
+                                 0.0f);
+        changed |= dispatch_list(ctx,
+                                 desired,
+                                 WidgetBindings::WidgetOpKind::ListActivate,
+                                 true,
+                                 index,
+                                 0.0f);
+    }
+
+    ctx.pointer_down = false;
+
+    if (changed) {
+        refresh_gallery(ctx);
+    }
+}
+
+static void handle_pointer_wheel(WidgetsExampleContext& ctx, int wheel_delta) {
+    if (wheel_delta == 0) {
+        return;
+    }
+    if (!ctx.gallery.layout.list.bounds.contains(ctx.pointer_x, ctx.pointer_y)) {
+        return;
+    }
+    float scroll_pixels = static_cast<float>(-wheel_delta) * (ctx.gallery.layout.list.item_height * 0.25f);
+    Widgets::ListState desired = ctx.list_state;
+    bool changed = dispatch_list(ctx,
+                                 desired,
+                                 WidgetBindings::WidgetOpKind::ListScroll,
+                                 true,
+                                 ctx.list_state.hovered_index,
+                                 scroll_pixels);
+    if (changed) {
+        refresh_gallery(ctx);
+    }
+}
+
+static void handle_local_mouse(SP::UI::LocalMouseEvent const& ev, void* user_data) {
+    auto* ctx = static_cast<WidgetsExampleContext*>(user_data);
+    if (!ctx) {
+        return;
+    }
+    switch (ev.type) {
+    case SP::UI::LocalMouseEventType::AbsoluteMove:
+        if (ev.x >= 0 && ev.y >= 0) {
+            handle_pointer_move(*ctx, static_cast<float>(ev.x), static_cast<float>(ev.y));
+        }
+        break;
+    case SP::UI::LocalMouseEventType::Move:
+        handle_pointer_move(*ctx,
+                            ctx->pointer_x + static_cast<float>(ev.dx),
+                            ctx->pointer_y + static_cast<float>(ev.dy));
+        break;
+    case SP::UI::LocalMouseEventType::ButtonDown:
+        if (ev.x >= 0 && ev.y >= 0) {
+            handle_pointer_move(*ctx, static_cast<float>(ev.x), static_cast<float>(ev.y));
+        }
+        if (ev.button == SP::UI::LocalMouseButton::Left) {
+            handle_pointer_down(*ctx);
+        }
+        break;
+    case SP::UI::LocalMouseEventType::ButtonUp:
+        if (ev.x >= 0 && ev.y >= 0) {
+            handle_pointer_move(*ctx, static_cast<float>(ev.x), static_cast<float>(ev.y));
+        }
+        if (ev.button == SP::UI::LocalMouseButton::Left) {
+            handle_pointer_up(*ctx);
+        }
+        break;
+    case SP::UI::LocalMouseEventType::Wheel:
+        handle_pointer_wheel(*ctx, ev.wheel);
+        break;
+    }
+}
+
+static void clear_local_mouse(void* user_data) {
+    auto* ctx = static_cast<WidgetsExampleContext*>(user_data);
+    if (!ctx) {
+        return;
+    }
+    ctx->pointer_down = false;
+    ctx->slider_dragging = false;
 }
 
 struct PresentTelemetry {
@@ -870,9 +1361,6 @@ auto present_frame(PathSpace& space,
 int main() {
     using namespace SP;
     using namespace SP::UI::Builders;
-    namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
-    namespace WidgetReducers = SP::UI::Builders::Widgets::Reducers;
-
     PathSpace space;
     AppRootPath appRoot{"/system/applications/widgets_example"};
     AppRootPathView appRootView{appRoot.getPath()};
@@ -1025,6 +1513,16 @@ int main() {
         return 0;
     }
 
+    auto slider_range_live = unwrap_or_exit(space.read<Widgets::SliderRange, std::string>(std::string(slider.range.getPath())),
+                                            "read slider range");
+    auto button_state_live = unwrap_or_exit(space.read<Widgets::ButtonState, std::string>(std::string(button.state.getPath())),
+                                            "read button state");
+    auto toggle_state_live = unwrap_or_exit(space.read<Widgets::ToggleState, std::string>(std::string(toggle.state.getPath())),
+                                            "read toggle state");
+    auto slider_state_live = unwrap_or_exit(space.read<Widgets::SliderState, std::string>(std::string(slider.state.getPath())),
+                                            "read slider state");
+    auto list_state_live = unwrap_or_exit(space.read<Widgets::ListState, std::string>(std::string(list.state.getPath())),
+                                          "read list state");
     SP::UI::SetLocalWindowCallbacks({});
     SP::UI::InitLocalWindowWithSize(gallery.width,
                                     gallery.height,
@@ -1061,11 +1559,72 @@ int main() {
     auto target_absolute = unwrap_or_exit(SP::App::resolve_app_relative(appRootView, target_relative),
                                           "resolve surface target path");
 
+    WidgetsExampleContext ctx{};
+    ctx.space = &space;
+    ctx.app_root = appRoot;
+    ctx.button_paths = button;
+    ctx.toggle_paths = toggle;
+    ctx.slider_paths = slider;
+    ctx.list_paths = list;
+    ctx.button_style = button_params.style;
+    ctx.button_label = button_params.label;
+    ctx.toggle_style = toggle_params.style;
+    ctx.slider_style = slider_params.style;
+    ctx.list_style = list_params.style;
+    ctx.slider_range = slider_range_live;
+    ctx.list_items = list_params.items;
+    ctx.button_state = button_state_live;
+    ctx.toggle_state = toggle_state_live;
+    ctx.slider_state = slider_state_live;
+    ctx.list_state = list_state_live;
+    ctx.gallery = gallery;
+    ctx.target_path = target_absolute.getPath();
+
+    auto target_view = SP::ConcretePathStringView{ctx.target_path};
+    auto make_dirty_hint = [](WidgetBounds const& bounds) {
+        Builders::DirtyRectHint hint{};
+        hint.min_x = bounds.min_x;
+        hint.min_y = bounds.min_y;
+        hint.max_x = bounds.max_x;
+        hint.max_y = bounds.max_y;
+        return hint;
+    };
+
+    ctx.button_binding = unwrap_or_exit(WidgetBindings::CreateButtonBinding(space,
+                                                                            appRootView,
+                                                                            ctx.button_paths,
+                                                                            target_view,
+                                                                            make_dirty_hint(ctx.gallery.layout.button)),
+                                        "create button binding");
+
+    ctx.toggle_binding = unwrap_or_exit(WidgetBindings::CreateToggleBinding(space,
+                                                                            appRootView,
+                                                                            ctx.toggle_paths,
+                                                                            target_view,
+                                                                            make_dirty_hint(ctx.gallery.layout.toggle)),
+                                        "create toggle binding");
+
+    ctx.slider_binding = unwrap_or_exit(WidgetBindings::CreateSliderBinding(space,
+                                                                            appRootView,
+                                                                            ctx.slider_paths,
+                                                                            target_view,
+                                                                            make_dirty_hint(ctx.gallery.layout.slider)),
+                                        "create slider binding");
+
+    ctx.list_binding = unwrap_or_exit(WidgetBindings::CreateListBinding(space,
+                                                                        appRootView,
+                                                                        ctx.list_paths,
+                                                                        target_view,
+                                                                        make_dirty_hint(ctx.gallery.layout.list.bounds)),
+                                      "create list binding");
+
+    SP::UI::SetLocalWindowCallbacks({&handle_local_mouse, &clear_local_mouse, &ctx});
+
     WindowParams window_params{
         .name = "gallery_window",
         .title = "PathSpace Widgets Gallery",
-        .width = gallery.width,
-        .height = gallery.height,
+        .width = ctx.gallery.width,
+        .height = ctx.gallery.height,
         .scale = 1.0f,
         .background = "#1f232b",
     };
@@ -1083,8 +1642,8 @@ int main() {
 
     RenderSettings renderer_settings{};
     renderer_settings.clear_color = {0.11f, 0.12f, 0.15f, 1.0f};
-    renderer_settings.surface.size_px.width = gallery.width;
-    renderer_settings.surface.size_px.height = gallery.height;
+    renderer_settings.surface.size_px.width = ctx.gallery.width;
+    renderer_settings.surface.size_px.height = ctx.gallery.height;
     unwrap_or_exit(Renderer::UpdateSettings(space,
                                             ConcretePathStringView{target_absolute.getPath()},
                                             renderer_settings),
@@ -1093,8 +1652,8 @@ int main() {
     Builders::DirtyRectHint initial_hint{
         .min_x = 0.0f,
         .min_y = 0.0f,
-        .max_x = static_cast<float>(gallery.width),
-        .max_y = static_cast<float>(gallery.height),
+        .max_x = static_cast<float>(ctx.gallery.width),
+        .max_y = static_cast<float>(ctx.gallery.height),
     };
     unwrap_or_exit(Renderer::SubmitDirtyRects(space,
                                               ConcretePathStringView{target_absolute.getPath()},
@@ -1108,8 +1667,8 @@ int main() {
     std::uint64_t frames_presented = 0;
     double total_render_ms = 0.0;
     double total_present_ms = 0.0;
-    int window_width = gallery.width;
-    int window_height = gallery.height;
+    int window_width = ctx.gallery.width;
+    int window_height = ctx.gallery.height;
 
     while (true) {
         SP::UI::PollLocalWindow();

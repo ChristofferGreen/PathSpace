@@ -1,6 +1,6 @@
 # Handoff Notice
 
-> **Handoff note (October 21, 2025 @ shutdown):** `examples/widgets_example` now opens the gallery window, renders button/toggle/slider/list widgets with software text overlays, and streams FPS/present telemetry to stdout. Residency dashboards remain current under `diagnostics/metrics/residency`. Next pass should focus on wiring real input/hit testing through the gallery (Phase 8) and extending presenter telemetry into the central diagnostics sinks per docs/AI_Onboarding_Next.md §6.
+> **Handoff note (October 21, 2025 @ shutdown):** `examples/widgets_example` now opens the gallery window, renders button/toggle/slider/list widgets with software text overlays, streams FPS/present telemetry to stdout, and routes LocalWindow mouse events into widget bindings. Residency dashboards remain current under `diagnostics/metrics/residency`. Next pass should extend presenter telemetry into the central diagnostics sinks (docs/AI_Onboarding_Next.md §6) and broaden gallery input coverage (keyboard/focus, reducer diagnostics).
 
 # Scene Graph Implementation Plan
 
@@ -24,7 +24,7 @@ Success looks like:
 - Widgets reducers drain op queues into `widgets/<id>/ops/actions/inbox/queue`; examples/tests confirm button/list actions round-trip through the helpers.
 - Widget gallery, HTML tooling, and diagnostics backlog items are tracked in `docs/AI_Todo.task`; no open P0 work after the binding milestone.
 - ✅ (October 20, 2025) Residency dashboard wiring publishes CPU/GPU soft & hard budget ratios plus status flags under `diagnostics/metrics/residency`, enabling external alerts without bespoke parsers.
-- ✅ (October 21, 2025) `examples/widgets_example.cpp` opens the widgets gallery window, renders button/toggle/slider/list widgets with software text overlays, and streams present/FPS telemetry to stdout.
+- ✅ (October 21, 2025) `examples/widgets_example.cpp` opens the widgets gallery window, renders button/toggle/slider/list widgets with software text overlays, streams present/FPS telemetry to stdout, and republishes the gallery snapshot when LocalWindow mouse events update widget state.
 
 ## Workstream Overview
 - **Typed wiring helpers** — `Builders.hpp` plus supporting utilities for app-relative path validation, target naming, and atomic parameter writes.
@@ -241,7 +241,7 @@ Completed:
 - **Tooling & docs**
 - ✅ (October 19, 2025) Expanded `examples/widgets_example.cpp` to publish button + toggle widgets and demonstrate state updates; grow into a full gallery as additional widgets land.
 - ✅ (October 20, 2025) widgets_example now instantiates slider and list widgets, exercises the state helpers, and prints the relevant path wiring to guide gallery expansion; continue instrumenting interaction telemetry in follow-up work.
-- ✅ (October 21, 2025) widgets_example now drives the gallery window, renders all shipped widgets with inline text labels, and logs per-second FPS/present telemetry using the software presenter.
+- ✅ (October 21, 2025) widgets_example now drives the gallery window, renders all shipped widgets with inline text labels, logs per-second FPS/present telemetry using the software presenter, and feeds LocalWindow mouse input through widget bindings to republish the gallery snapshot on interaction.
 - Introduce an app bootstrap helper that wires renderer/surface/window defaults for a given app root/scene so examples/tests can avoid boilerplate while still exposing escape hatches; update onboarding/docs once available.
 - Update `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage, and troubleshooting steps.
 - Document widget ops schema: queue path (`widgets/<id>/ops/inbox/queue`), `WidgetOp` fields (kind, pointer metadata, value, timestamp) and reducer sample wiring.
