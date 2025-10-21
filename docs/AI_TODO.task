@@ -138,7 +138,7 @@ task {
 task {
   name: "Widgets Demo Gallery [DOCS]"
   description: "Promote examples/widgets_example.cpp into a full widget gallery that opens a PathWindowView, renders all widgets, and documents interaction diagnostics."
-  status: planned
+  status: completed
   priority: P2
 
   acceptance_criteria: [
@@ -148,9 +148,9 @@ task {
   ]
 
   steps: [
-    "Attach widget scenes to a software renderer target and present via PathWindowView.",
-    "Add command-line flag or env toggle to skip the window when running in headless/test contexts.",
-    "Update docs/Plan_SceneGraph_Implementation.md and widgets_example comments with run instructions and follow-ups."
+    "DONE (Oct 21, 2025) Attach widget scenes to a software renderer target and present via PathWindowView while streaming present/FPS telemetry.",
+    "DONE (Oct 21, 2025) Added WIDGETS_EXAMPLE_HEADLESS env toggle so headless/test contexts can skip the gallery window.",
+    "DONE (Oct 21, 2025) Updated docs/Plan_SceneGraph_Implementation.md with gallery guidance and telemetry follow-ups."
   ]
 }
 

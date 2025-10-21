@@ -1,6 +1,6 @@
 # Handoff Notice
 
-> **Handoff note (October 20, 2025 @ shutdown):** SceneGraph material/shader bindings just landed for the Metal renderer. Residency dashboards now publish status/alert fields under `diagnostics/metrics/residency` (see Phase 6 update). Widget reducers shipped in `feat(widgets): add reducer helpers for widget ops`; lists/buttons now emit actions under `widgets/<id>/ops/actions/inbox/queue`. Next pass should resume with gallery wiring + presenter telemetry (see Phase 8 + docs/AI_Onboarding_Next.md §6) so the widget demo opens a window and streams interaction metrics.
+> **Handoff note (October 21, 2025 @ shutdown):** `examples/widgets_example` now opens the gallery window, renders button/toggle/slider/list widgets with software text overlays, and streams FPS/present telemetry to stdout. Residency dashboards remain current under `diagnostics/metrics/residency`. Next pass should focus on wiring real input/hit testing through the gallery (Phase 8) and extending presenter telemetry into the central diagnostics sinks per docs/AI_Onboarding_Next.md §6.
 
 # Scene Graph Implementation Plan
 
@@ -16,7 +16,7 @@ Success looks like:
 - Repeatable end-to-end tests (including 15× loop runs) covering snapshot publish/adopt, render, and present flows.
 - Documentation, metrics, and diagnostics that let maintainers debug renderer issues without spelunking through the code.
 
-## Status Snapshot (October 20, 2025)
+## Status Snapshot (October 21, 2025)
 - Material/shader bindings now flow through the shared descriptor cache, and Metal draws mirror the software renderer’s telemetry (`PathRenderer2DMetal::bind_material`, GPU blending UITest in place).
 - Metal presenters remain enabled by default; the 15× loop harness (20 s timeout) is green with both software and Metal suites.
 - Residency metrics under `diagnostics/metrics/residency/*` now expose raw byte counts alongside dashboard ratios/alerts; extend telemetry where gaps remain.
@@ -24,6 +24,7 @@ Success looks like:
 - Widgets reducers drain op queues into `widgets/<id>/ops/actions/inbox/queue`; examples/tests confirm button/list actions round-trip through the helpers.
 - Widget gallery, HTML tooling, and diagnostics backlog items are tracked in `docs/AI_Todo.task`; no open P0 work after the binding milestone.
 - ✅ (October 20, 2025) Residency dashboard wiring publishes CPU/GPU soft & hard budget ratios plus status flags under `diagnostics/metrics/residency`, enabling external alerts without bespoke parsers.
+- ✅ (October 21, 2025) `examples/widgets_example.cpp` opens the widgets gallery window, renders button/toggle/slider/list widgets with software text overlays, and streams present/FPS telemetry to stdout.
 
 ## Workstream Overview
 - **Typed wiring helpers** — `Builders.hpp` plus supporting utilities for app-relative path validation, target naming, and atomic parameter writes.
@@ -240,7 +241,7 @@ Completed:
 - **Tooling & docs**
 - ✅ (October 19, 2025) Expanded `examples/widgets_example.cpp` to publish button + toggle widgets and demonstrate state updates; grow into a full gallery as additional widgets land.
 - ✅ (October 20, 2025) widgets_example now instantiates slider and list widgets, exercises the state helpers, and prints the relevant path wiring to guide gallery expansion; continue instrumenting interaction telemetry in follow-up work.
-- Expand the demo to cover sliders, lists, and interaction telemetry alongside FPS diagnostics and the zero-copy presenter path so contributors can exercise the full toolkit in one app.
+- ✅ (October 21, 2025) widgets_example now drives the gallery window, renders all shipped widgets with inline text labels, and logs per-second FPS/present telemetry using the software presenter.
 - Introduce an app bootstrap helper that wires renderer/surface/window defaults for a given app root/scene so examples/tests can avoid boilerplate while still exposing escape hatches; update onboarding/docs once available.
 - Update `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage, and troubleshooting steps.
 - Document widget ops schema: queue path (`widgets/<id>/ops/inbox/queue`), `WidgetOp` fields (kind, pointer metadata, value, timestamp) and reducer sample wiring.
