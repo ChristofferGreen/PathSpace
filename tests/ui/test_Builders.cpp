@@ -7,6 +7,7 @@
 #include <pathspace/ui/MaterialShaderKey.hpp>
 #include <pathspace/ui/HtmlAdapter.hpp>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -33,6 +34,7 @@ using SP::UI::Builders::Diagnostics::PathSpaceError;
 namespace Widgets = SP::UI::Builders::Widgets;
 namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
 namespace WidgetReducers = SP::UI::Builders::Widgets::Reducers;
+namespace Html = SP::UI::Html;
 
 using UIScene::DrawableBucketSnapshot;
 using UIScene::SceneSnapshotBuilder;
@@ -1124,10 +1126,23 @@ TEST_CASE("Renderer::RenderHtml writes DOM outputs for html targets") {
     auto target = Renderer::CreateHtmlTarget(fx.space, fx.root_view(), *renderer, targetParams);
     REQUIRE(target);
 
-    auto render_html = Renderer::RenderHtml(fx.space, ConcretePathView{target->getPath()});
-    REQUIRE(render_html);
-
     auto htmlBase = std::string(target->getPath()) + "/output/v1/html";
+    auto render_html = Renderer::RenderHtml(fx.space, ConcretePathView{target->getPath()});
+    if (!render_html.has_value()) {
+        auto const& err = render_html.error();
+        CAPTURE(static_cast<int>(err.code));
+        CAPTURE(err.message.value_or("RenderHtml failed"));
+        auto diagValue = fx.space.read<PathSpaceError>(htmlBase + "/diagnostics/errors/live");
+        if (diagValue) {
+            CAPTURE(diagValue->message);
+            CAPTURE(diagValue->detail);
+        } else {
+            CAPTURE(static_cast<int>(diagValue.error().code));
+            CAPTURE(diagValue.error().message.value_or("diagnostics read failed"));
+        }
+    }
+    REQUIRE(render_html.has_value());
+
     auto dom = read_value<std::string>(fx.space, htmlBase + "/dom");
     REQUIRE(dom);
     CHECK_FALSE(dom->empty());
@@ -1166,10 +1181,22 @@ TEST_CASE("Renderer::RenderHtml falls back to canvas when DOM budget exceeded") 
     auto target = Renderer::CreateHtmlTarget(fx.space, fx.root_view(), *renderer, targetParams);
     REQUIRE(target);
 
-    auto render_html = Renderer::RenderHtml(fx.space, ConcretePathView{target->getPath()});
-    REQUIRE(render_html);
-
     auto htmlBase = std::string(target->getPath()) + "/output/v1/html";
+    auto render_html = Renderer::RenderHtml(fx.space, ConcretePathView{target->getPath()});
+    if (!render_html.has_value()) {
+        auto const& err = render_html.error();
+        CAPTURE(static_cast<int>(err.code));
+        CAPTURE(err.message.value_or("RenderHtml failed"));
+        auto diagValue = fx.space.read<PathSpaceError>(htmlBase + "/diagnostics/errors/live");
+        if (diagValue) {
+            CAPTURE(diagValue->message);
+            CAPTURE(diagValue->detail);
+        } else {
+            CAPTURE(static_cast<int>(diagValue.error().code));
+            CAPTURE(diagValue.error().message.value_or("diagnostics read failed"));
+        }
+    }
+    REQUIRE(render_html.has_value());
     auto usedCanvas = read_value<bool>(fx.space, htmlBase + "/usedCanvasFallback");
     REQUIRE(usedCanvas);
     CHECK(*usedCanvas);
@@ -1199,10 +1226,22 @@ TEST_CASE("Renderer::RenderHtml writes DOM outputs for html targets") {
     auto target = Renderer::CreateHtmlTarget(fx.space, fx.root_view(), *renderer, targetParams);
     REQUIRE(target);
 
-    auto render_html = Renderer::RenderHtml(fx.space, ConcretePathView{target->getPath()});
-    REQUIRE(render_html);
-
     auto htmlBase = std::string(target->getPath()) + "/output/v1/html";
+    auto render_html = Renderer::RenderHtml(fx.space, ConcretePathView{target->getPath()});
+    if (!render_html.has_value()) {
+        auto const& err = render_html.error();
+        CAPTURE(static_cast<int>(err.code));
+        CAPTURE(err.message.value_or("RenderHtml failed"));
+        auto diagValue = fx.space.read<PathSpaceError>(htmlBase + "/diagnostics/errors/live");
+        if (diagValue) {
+            CAPTURE(diagValue->message);
+            CAPTURE(diagValue->detail);
+        } else {
+            CAPTURE(static_cast<int>(diagValue.error().code));
+            CAPTURE(diagValue.error().message.value_or("diagnostics read failed"));
+        }
+    }
+    REQUIRE(render_html.has_value());
     auto dom = read_value<std::string>(fx.space, htmlBase + "/dom");
     REQUIRE(dom);
     CHECK_FALSE(dom->empty());
@@ -1942,28 +1981,69 @@ TEST_CASE("Renderer::RenderHtml hydrates image assets into output") {
     auto insert_result = fx.space.insert(image_path, png_bytes);
     REQUIRE(insert_result.errors.empty());
 
+    auto font_manifest_path = revision_base + "/assets/font-manifest";
+    std::vector<Html::Asset> font_manifest;
+    Html::Asset font_asset{};
+    font_asset.logical_path = "fonts/display.woff2";
+    font_asset.mime_type = "font/woff2";
+    font_manifest.push_back(font_asset);
+    auto font_manifest_insert = fx.space.insert(font_manifest_path, font_manifest);
+    REQUIRE(font_manifest_insert.errors.empty());
+
+    auto manifest_check = fx.space.read<std::vector<Html::Asset>>(font_manifest_path);
+    REQUIRE(manifest_check);
+
+    auto font_bytes_path = revision_base + "/assets/fonts/display.woff2";
+    std::vector<std::uint8_t> font_bytes{0xF0u, 0x0Du, 0xC0u, 0xDEu};
+    auto font_bytes_insert = fx.space.insert(font_bytes_path, font_bytes);
+    REQUIRE(font_bytes_insert.errors.empty());
+
     HtmlTargetParams targetParams{};
     targetParams.name = "preview_assets";
     targetParams.scene = std::string("scenes/") + sceneParams.name;
     auto target = Renderer::CreateHtmlTarget(fx.space, fx.root_view(), *renderer, targetParams);
     REQUIRE(target);
 
-    auto render_html = Renderer::RenderHtml(fx.space, ConcretePathView{target->getPath()});
-    REQUIRE(render_html);
-
     auto htmlBase = std::string(target->getPath()) + "/output/v1/html";
+    auto render_html = Renderer::RenderHtml(fx.space, ConcretePathView{target->getPath()});
+    if (!render_html.has_value()) {
+        auto const& err = render_html.error();
+        CAPTURE(static_cast<int>(err.code));
+        CAPTURE(err.message.value_or("RenderHtml failed"));
+        auto diagValue = fx.space.read<PathSpaceError>(htmlBase + "/diagnostics/errors/live");
+        if (diagValue) {
+            CAPTURE(diagValue->message);
+            CAPTURE(diagValue->detail);
+        } else {
+            CAPTURE(static_cast<int>(diagValue.error().code));
+            CAPTURE(diagValue.error().message.value_or("diagnostics read failed"));
+        }
+    }
+    REQUIRE(render_html.has_value());
     auto assets = read_value<std::vector<Asset>>(fx.space, htmlBase + "/assets");
     REQUIRE(assets);
-    REQUIRE(assets->size() == 1);
-    auto const& asset = assets->front();
-    CHECK(asset.logical_path == logical_path);
-    CHECK(asset.mime_type == "image/png");
-    CHECK(asset.bytes == std::vector<std::uint8_t>(kTestPngRgba.begin(), kTestPngRgba.end()));
+    REQUIRE(assets->size() == 2);
+    bool found_image = false;
+    bool found_font = false;
+    for (auto const& asset : *assets) {
+        if (asset.logical_path == logical_path) {
+            found_image = true;
+            CHECK(asset.mime_type == "image/png");
+            CHECK(asset.bytes == std::vector<std::uint8_t>(kTestPngRgba.begin(), kTestPngRgba.end()));
+        } else if (asset.logical_path == "fonts/display.woff2") {
+            found_font = true;
+            CHECK(asset.mime_type == "font/woff2");
+            CHECK(asset.bytes == font_bytes);
+        }
+    }
+    CHECK(found_image);
+    CHECK(found_font);
 
     auto manifest = read_value<std::vector<std::string>>(fx.space, htmlBase + "/assets/manifest");
     REQUIRE(manifest);
-    REQUIRE(manifest->size() == 1);
-    CHECK(manifest->front() == logical_path);
+    REQUIRE(manifest->size() == 2);
+    CHECK(std::find(manifest->begin(), manifest->end(), logical_path) != manifest->end());
+    CHECK(std::find(manifest->begin(), manifest->end(), std::string{"fonts/display.woff2"}) != manifest->end());
 
     auto dataPath = htmlBase + "/assets/data/" + logical_path;
     auto storedBytes = read_value<std::vector<std::uint8_t>>(fx.space, dataPath);
@@ -1974,6 +2054,21 @@ TEST_CASE("Renderer::RenderHtml hydrates image assets into output") {
     auto storedMime = read_value<std::string>(fx.space, mimePath);
     REQUIRE(storedMime);
     CHECK(*storedMime == std::string{"image/png"});
+
+    auto fontDataPath = htmlBase + "/assets/data/fonts/display.woff2";
+    auto storedFontBytes = read_value<std::vector<std::uint8_t>>(fx.space, fontDataPath);
+    REQUIRE(storedFontBytes);
+    CHECK(*storedFontBytes == font_bytes);
+
+    auto fontMimePath = htmlBase + "/assets/meta/fonts/display.woff2";
+    auto storedFontMime = read_value<std::string>(fx.space, fontMimePath);
+    REQUIRE(storedFontMime);
+    CHECK(*storedFontMime == std::string{"font/woff2"});
+
+    auto cssValue = read_value<std::string>(fx.space, htmlBase + "/css");
+    REQUIRE(cssValue);
+    CHECK(cssValue->find("@font-face") != std::string::npos);
+    CHECK(cssValue->find("assets/fonts/display.woff2") != std::string::npos);
 }
 
 TEST_CASE("Renderer::RenderHtml clears stale asset payloads") {
@@ -2010,6 +2105,23 @@ TEST_CASE("Renderer::RenderHtml clears stale asset payloads") {
     auto insert_result = fx.space.insert(image_path, png_bytes);
     REQUIRE(insert_result.errors.empty());
 
+    auto font_manifest_path = revision_base + "/assets/font-manifest";
+    std::vector<Html::Asset> font_manifest_initial;
+    Html::Asset font_asset_initial{};
+    font_asset_initial.logical_path = "fonts/display.woff2";
+    font_asset_initial.mime_type = "font/woff2";
+    font_manifest_initial.push_back(font_asset_initial);
+    auto font_manifest_insert = fx.space.insert(font_manifest_path, font_manifest_initial);
+    REQUIRE(font_manifest_insert.errors.empty());
+
+    auto manifest_check = fx.space.read<std::vector<Html::Asset>>(font_manifest_path);
+    REQUIRE(manifest_check);
+
+    auto font_bytes_path = revision_base + "/assets/fonts/display.woff2";
+    std::vector<std::uint8_t> font_bytes{0xF0u, 0x0Du, 0xC0u, 0xDEu};
+    auto font_bytes_insert = fx.space.insert(font_bytes_path, font_bytes);
+    REQUIRE(font_bytes_insert.errors.empty());
+
     HtmlTargetParams targetParams{};
     targetParams.name = "preview_stale";
     targetParams.scene = std::string("scenes/") + sceneParams.name;
@@ -2022,7 +2134,9 @@ TEST_CASE("Renderer::RenderHtml clears stale asset payloads") {
     auto htmlBase = std::string(target->getPath()) + "/output/v1/html";
     auto manifest = read_value<std::vector<std::string>>(fx.space, htmlBase + "/assets/manifest");
     REQUIRE(manifest);
-    REQUIRE(manifest->size() == 1);
+    REQUIRE(manifest->size() == 2);
+    CHECK(std::find(manifest->begin(), manifest->end(), logical_path) != manifest->end());
+    CHECK(std::find(manifest->begin(), manifest->end(), std::string{"fonts/display.woff2"}) != manifest->end());
 
     // Publish a new revision with no assets and render again.
     auto bucket_no_assets = make_rect_bucket();
@@ -2036,7 +2150,20 @@ TEST_CASE("Renderer::RenderHtml clears stale asset payloads") {
     REQUIRE(ready2);
 
     auto render_html2 = Renderer::RenderHtml(fx.space, ConcretePathView{target->getPath()});
-    REQUIRE(render_html2);
+    if (!render_html2.has_value()) {
+        auto const& err = render_html2.error();
+        CAPTURE(static_cast<int>(err.code));
+        CAPTURE(err.message.value_or("RenderHtml failed"));
+        auto diagValue = fx.space.read<PathSpaceError>(htmlBase + "/diagnostics/errors/live");
+        if (diagValue) {
+            CAPTURE(diagValue->message);
+            CAPTURE(diagValue->detail);
+        } else {
+            CAPTURE(static_cast<int>(diagValue.error().code));
+            CAPTURE(diagValue.error().message.value_or("diagnostics read failed"));
+        }
+    }
+    REQUIRE(render_html2.has_value());
 
     auto manifest_after = fx.space.read<std::vector<std::string>, std::string>(htmlBase + "/assets/manifest");
     CHECK_FALSE(manifest_after.has_value());
@@ -2057,6 +2184,20 @@ TEST_CASE("Renderer::RenderHtml clears stale asset payloads") {
     CHECK_FALSE(mimeResult.has_value());
     if (!mimeResult.has_value()) {
         CHECK((mimeResult.error().code == Error::Code::NoObjectFound || mimeResult.error().code == Error::Code::NoSuchPath));
+    }
+
+    auto fontDataPath = htmlBase + "/assets/data/fonts/display.woff2";
+    auto fontDataResult = fx.space.read<std::vector<std::uint8_t>, std::string>(fontDataPath);
+    CHECK_FALSE(fontDataResult.has_value());
+    if (!fontDataResult.has_value()) {
+        CHECK((fontDataResult.error().code == Error::Code::NoObjectFound || fontDataResult.error().code == Error::Code::NoSuchPath));
+    }
+
+    auto fontMimePath = htmlBase + "/assets/meta/fonts/display.woff2";
+    auto fontMimeResult = fx.space.read<std::string, std::string>(fontMimePath);
+    CHECK_FALSE(fontMimeResult.has_value());
+    if (!fontMimeResult.has_value()) {
+        CHECK((fontMimeResult.error().code == Error::Code::NoObjectFound || fontMimeResult.error().code == Error::Code::NoSuchPath));
     }
 }
 

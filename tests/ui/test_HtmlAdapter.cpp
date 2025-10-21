@@ -4,6 +4,7 @@
 #include <pathspace/ui/DrawCommands.hpp>
 
 #include <algorithm>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -89,28 +90,62 @@ TEST_CASE("HtmlAdapter resolves assets via callback when provided") {
 
     Html::Adapter adapter;
     Html::EmitOptions options{};
-    bool resolver_called = false;
+    int image_resolves = 0;
+    int font_resolves = 0;
+    options.font_logical_paths.push_back("fonts/custom.woff2");
     options.resolve_asset =
         [&](std::string_view logical_path,
             std::uint64_t fingerprint,
             Html::AssetKind kind) -> SP::Expected<Html::Asset> {
-            resolver_called = true;
-            CHECK(kind == Html::AssetKind::Image);
-            CHECK(fingerprint == 0xABCDEF0102030405ull);
-            CHECK(logical_path == "images/abcdef0102030405.png");
             Html::Asset asset{};
-            asset.logical_path = std::string(logical_path);
-            asset.mime_type = "image/png";
-            asset.bytes = {1u, 2u, 3u, 4u};
+            switch (kind) {
+            case Html::AssetKind::Image:
+                ++image_resolves;
+                CHECK(fingerprint == 0xABCDEF0102030405ull);
+                CHECK(logical_path == "images/abcdef0102030405.png");
+                asset.logical_path = std::string(logical_path);
+                asset.mime_type = "image/png";
+                asset.bytes = {1u, 2u, 3u, 4u};
+                break;
+            case Html::AssetKind::Font:
+                ++font_resolves;
+                CHECK(fingerprint == 0);
+                CHECK(logical_path == "fonts/custom.woff2");
+                asset.logical_path = std::string(logical_path);
+                asset.mime_type = "font/woff2";
+                asset.bytes = {5u, 6u, 7u};
+                break;
+            }
             return asset;
         };
 
     auto emitted = adapter.emit(bucket, options);
     REQUIRE(emitted);
-    CHECK(resolver_called);
-    REQUIRE(emitted->assets.size() == 1);
-    CHECK(emitted->assets.front().mime_type == "image/png");
-    CHECK(emitted->assets.front().bytes == std::vector<std::uint8_t>({1u, 2u, 3u, 4u}));
+    CHECK(image_resolves == 1);
+    CHECK(font_resolves == 1);
+    REQUIRE(emitted->assets.size() == 2);
+
+    auto find_asset = [&](std::string const& logical) -> std::optional<Html::Asset> {
+        for (auto const& asset : emitted->assets) {
+            if (asset.logical_path == logical) {
+                return asset;
+            }
+        }
+        return std::nullopt;
+    };
+
+    auto image_asset = find_asset("images/abcdef0102030405.png");
+    REQUIRE(image_asset);
+    CHECK(image_asset->mime_type == "image/png");
+    CHECK(image_asset->bytes == std::vector<std::uint8_t>({1u, 2u, 3u, 4u}));
+
+    auto font_asset = find_asset("fonts/custom.woff2");
+    REQUIRE(font_asset);
+    CHECK(font_asset->mime_type == "font/woff2");
+    CHECK(font_asset->bytes == std::vector<std::uint8_t>({5u, 6u, 7u}));
+
+    CHECK(emitted->css.find("@font-face") != std::string::npos);
+    CHECK(emitted->css.find("assets/fonts/custom.woff2") != std::string::npos);
 }
 
 TEST_CASE("HtmlAdapter falls back to canvas when DOM budget exceeded") {

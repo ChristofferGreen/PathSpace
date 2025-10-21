@@ -2408,6 +2408,25 @@ auto RenderHtml(PathSpace& space,
             return asset;
         };
 
+    {
+        auto fontManifestPath = revisionBase + "/assets/font-manifest";
+        auto fontsValue = read_optional<std::vector<Html::Asset>>(space, fontManifestPath);
+        if (!fontsValue) {
+            return report_error(fontsValue.error(), "read html font manifest");
+        }
+        if (fontsValue->has_value()) {
+            std::unordered_set<std::string> unique_fonts;
+            for (auto const& font : **fontsValue) {
+                if (font.logical_path.empty()) {
+                    continue;
+                }
+                if (unique_fonts.insert(font.logical_path).second) {
+                    options.font_logical_paths.push_back(font.logical_path);
+                }
+            }
+        }
+    }
+
     Html::Adapter adapter;
     auto emitted = adapter.emit(*bucket, options);
     if (!emitted) {

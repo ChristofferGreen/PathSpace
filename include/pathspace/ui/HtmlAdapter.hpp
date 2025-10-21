@@ -31,6 +31,7 @@ struct EmitOptions {
     std::function<SP::Expected<Asset>(std::string_view logical_path,
                                       std::uint64_t fingerprint,
                                       AssetKind kind)> resolve_asset;
+    std::vector<std::string> font_logical_paths;
 };
 
 enum class CanvasCommandType : std::uint8_t {

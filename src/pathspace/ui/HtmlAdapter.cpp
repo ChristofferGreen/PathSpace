@@ -3,6 +3,7 @@
 #include <pathspace/ui/DrawCommands.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <array>
 #include <cstring>
 #include <iomanip>
@@ -10,6 +11,7 @@
 #include <sstream>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace SP::UI::Html {
 namespace {
@@ -62,6 +64,88 @@ auto resolve_asset(Html::EmitOptions const& options,
         return resolved;
     }
     return make_placeholder_asset(logical_path, kind);
+}
+
+auto css_escape_single_quotes(std::string const& value) -> std::string {
+    std::string escaped;
+    escaped.reserve(value.size());
+    for (char ch : value) {
+        if (ch == '\'') {
+            escaped.push_back('\\');
+        }
+        escaped.push_back(ch);
+    }
+    return escaped;
+}
+
+auto infer_font_family(std::string const& logical_path) -> std::string {
+    auto slash = logical_path.find_last_of('/');
+    std::string name = (slash == std::string::npos) ? logical_path : logical_path.substr(slash + 1);
+    auto dot = name.find_last_of('.');
+    if (dot != std::string::npos) {
+        name = name.substr(0, dot);
+    }
+    if (name.empty()) {
+        return "PathSpaceFont";
+    }
+    std::string family;
+    family.reserve(name.size());
+    for (char ch : name) {
+        switch (ch) {
+        case '_':
+        case '-':
+            family.push_back(' ');
+            break;
+        default:
+            family.push_back(ch);
+            break;
+        }
+    }
+    return family;
+}
+
+auto infer_font_format(std::string const& mime_type, std::string const& logical_path) -> std::string {
+    auto lower = [](std::string const& text) {
+        std::string out;
+        out.reserve(text.size());
+        for (char ch : text) {
+            out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+        }
+        return out;
+    };
+
+    auto mime = lower(mime_type);
+    if (mime == "font/woff2" || mime == "application/font-woff2") {
+        return "woff2";
+    }
+    if (mime == "font/woff" || mime == "application/font-woff") {
+        return "woff";
+    }
+    if (mime == "font/ttf" || mime == "application/x-font-ttf") {
+        return "truetype";
+    }
+    if (mime == "font/otf" || mime == "application/x-font-opentype") {
+        return "opentype";
+    }
+
+    auto slash = logical_path.find_last_of('/');
+    std::string file = (slash == std::string::npos) ? logical_path : logical_path.substr(slash + 1);
+    auto dot = file.find_last_of('.');
+    std::string ext = (dot == std::string::npos) ? std::string{} : file.substr(dot + 1);
+    ext = lower(ext);
+    if (ext == "woff2") {
+        return "woff2";
+    }
+    if (ext == "woff") {
+        return "woff";
+    }
+    if (ext == "ttf") {
+        return "truetype";
+    }
+    if (ext == "otf") {
+        return "opentype";
+    }
+    return "truetype";
 }
 
 auto color_to_css(std::array<float, 4> const& rgba, bool premultiplied = false) -> std::string {
@@ -361,7 +445,9 @@ auto Adapter::emit(Scene::DrawableBucketSnapshot const& snapshot,
 
     std::vector<HtmlNode> nodes;
     nodes.reserve(snapshot.drawable_ids.size());
-    std::unordered_map<std::uint64_t, Asset> assets;
+    std::unordered_map<std::uint64_t, Asset> image_assets;
+    std::unordered_map<std::string, Asset> font_assets;
+    std::unordered_set<std::string> font_paths;
 
     auto ensure_payload = [&](std::size_t command_index,
                               Scene::DrawCommandKind kind) -> SP::Expected<std::size_t> {
@@ -441,7 +527,7 @@ auto Adapter::emit(Scene::DrawableBucketSnapshot const& snapshot,
                 node.tint = image.tint;
                 node.has_fingerprint = true;
                 node.fingerprint = image.image_fingerprint;
-                if (assets.find(image.image_fingerprint) == assets.end()) {
+                if (image_assets.find(image.image_fingerprint) == image_assets.end()) {
                     auto logical_path = std::string("images/")
                                         + fingerprint_to_hex(image.image_fingerprint) + ".png";
                     auto asset = resolve_asset(options,
@@ -451,7 +537,7 @@ auto Adapter::emit(Scene::DrawableBucketSnapshot const& snapshot,
                     if (!asset) {
                         return std::unexpected(asset.error());
                     }
-                    assets.emplace(image.image_fingerprint, std::move(*asset));
+                    image_assets.emplace(image.image_fingerprint, std::move(*asset));
                 }
                 nodes.push_back(node);
                 break;
@@ -495,23 +581,61 @@ auto Adapter::emit(Scene::DrawableBucketSnapshot const& snapshot,
         }
     }
 
+    for (auto const& logical_path : options.font_logical_paths) {
+        if (logical_path.empty()) {
+            continue;
+        }
+        if (!font_paths.insert(logical_path).second) {
+            continue;
+        }
+        auto asset = resolve_asset(options, logical_path, /*fingerprint=*/0, Html::AssetKind::Font);
+        if (!asset) {
+            return std::unexpected(asset.error());
+        }
+        font_assets.emplace(logical_path, std::move(*asset));
+    }
+
     auto dom_node_count = nodes.size();
     bool dom_allowed = options.prefer_dom;
     bool dom_within_budget = options.max_dom_nodes == 0
                              || dom_node_count <= options.max_dom_nodes;
 
     auto replay_commands = nodes_to_canvas_commands(nodes);
+    EmitResult result{};
 
     if (dom_allowed && dom_within_budget) {
-        return build_dom(nodes, assets, replay_commands);
+        result = build_dom(nodes, image_assets, replay_commands);
+    } else {
+        if (!options.allow_canvas_fallback) {
+            return std::unexpected(SP::Error{SP::Error::Code::InvalidType,
+                                             "DOM node budget exceeded and canvas fallback is disabled"});
+        }
+        result = build_canvas(nodes, image_assets, replay_commands);
     }
 
-    if (!options.allow_canvas_fallback) {
-        return std::unexpected(SP::Error{SP::Error::Code::InvalidType,
-                                         "DOM node budget exceeded and canvas fallback is disabled"});
+    for (auto const& entry : font_assets) {
+        result.assets.push_back(entry.second);
     }
 
-    return build_canvas(nodes, assets, replay_commands);
+    if (!font_assets.empty()) {
+        if (!result.css.empty() && result.css.back() != '\n') {
+            result.css.push_back('\n');
+        }
+        for (auto const& entry : font_assets) {
+            auto const& asset = entry.second;
+            auto family = css_escape_single_quotes(infer_font_family(asset.logical_path));
+            auto format = infer_font_format(asset.mime_type, asset.logical_path);
+            result.css += "@font-face{font-family:'";
+            result.css += family;
+            result.css += "';src:url(\"assets/";
+            result.css += asset.logical_path;
+            result.css += "\") format('";
+            result.css += format;
+            result.css += "');font-display:swap;}\n";
+        }
+    }
+
+    return result;
 }
 
 } // namespace SP::UI::Html
