@@ -70,7 +70,8 @@ Each workstream lands independently but respects shared contracts (paths, atomic
   - ✅ (October 18, 2025) `Builders::SubmitDirtyRects` now normalizes and coalesces hints automatically, snapping to the surface tile grid and clamping to bounds so apps can pass raw rectangles without bespoke math.
   - ✅ (October 18, 2025) `paint_example` now forwards raw brush rectangles directly to the helper; manual tile snapping and hint merging were removed.
 - ✅ (October 20, 2025) `paint_example` accepts `--metal` to opt into the Metal2D backend, auto-enables uploads when available, and keeps software as the default for CI/headless runs.
-- For Phase 4 follow-ups, finish the broader end-to-end scene→render→present scenarios, expand presenter wiring through `Window::Present`, surface the remaining progressive-mode diagnostics, and rerun the loop harness once integrations land.
+- ✅ (October 21, 2025) Added the App::Bootstrap end-to-end regression (`tests/ui/test_AppBootstrap.cpp`) that publishes a scene snapshot, renders via `Surface::RenderOnce`, presents with `Window::Present`, and asserts both target and window diagnostics; exercised under the 15× loop (20 s timeout).
+- Remaining Phase 4 follow-ups: extend presenter wiring coverage (multi-window/multi-surface), surface the outstanding progressive-mode diagnostics, and keep rerunning the loop harness after each integration.
 - Begin Phase 5 test authoring for hit ordering, clip-aware picking, focus routing, and event delivery latency; follow with DrawableBucket-backed picking and wait/notify integration for dirty markers and auto-render scheduling.
 - Line up Phase 6 diagnostics/tooling work: extend error/metrics coverage, normalize `PathSpaceError` reporting, expand scripts for UI log capture, and draft the debugging playbook updates before the next hardening pass.
 
