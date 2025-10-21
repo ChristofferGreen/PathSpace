@@ -41,7 +41,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 | --- | --- | --- |
 | Metal renderer | ✅ Completed (October 20, 2025) — material/shader bindings now flow through the shared descriptor cache | `PathRenderer2DMetal` covers rects, rounded rects, text quads, and images (see Phase 7); continue tracking glyph/material parity on the descriptor cache. |
 | Diagnostics | ✅ Completed (October 20, 2025) — dashboards consume `textureGpuBytes`/`resourceGpuBytes` plus residency ratios/status under `diagnostics/metrics/residency` | Coordinate with tooling owners before schema changes. |
-| Input & hit testing | 🚧 In progress (October 21, 2025) — Phase 5 tests now cover z-ordered multi-hit stacks (`HitTestResult::hits` with `HitTestRequest::max_results`), clip-aware picking, focus routing, and auto-render wake latency | Next step: deliver the interaction scheduling + focus navigation helpers called out in `docs/Plan_SceneGraph_Implementation.md`. |
+| Input & hit testing | 🚧 In progress (October 21, 2025) — Phase 5 tests now cover z-ordered multi-hit stacks, clip-aware picking, focus routing, keyboard/gamepad focus helpers, and auto-render wake latency | Next step: finish the interaction scheduling metrics/wait-budget coverage noted in `docs/Plan_SceneGraph_Implementation.md`. |
 | Widgets | Phase 8 follow-up: expand widget UITests & focus navigation helpers | Styling/theme hooks now ship via `Widgets::WidgetTheme`; next up is goldens + interaction UITests and the remaining focus-navigation helpers noted in `docs/Plan_SceneGraph_Implementation.md`. |
 | HTML tooling | Add HSAT inspection CLI/tests and extend coverage when new asset fields appear | Legacy serializer removed; HSAT is mandatory. |
 
@@ -73,6 +73,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Widget builders now publish canonical idle/hover/pressed/disabled scenes under `scenes/widgets/<id>/states/*`; live scenes republish automatically when state changes, and doctests cover the new snapshots (October 21, 2025).
 - Metal renderer is now material-aware: `PathRenderer2DMetal` consumes shared descriptors via `bind_material`, GPU frames stay in lock-step with software telemetry, and a new blending UITest asserts pipeline parity (`PathRenderer2DMetal honors material blending state`).
 - Scene hit testing now returns z-ordered hit stacks (`HitTestResult::hits`) with bounded drill-down via `HitTestRequest::max_results`; doctests cover overlap, clipping, and limit cases (October 21, 2025).
+- Widget focus navigation helpers (`Widgets::Focus`) maintain `widgets/focus/current`, toggle widget highlight states across button/toggle/slider/list types using `meta/kind`, and enqueue auto-render events for keyboard/gamepad traversal (October 21, 2025).
 - Paint demo ships with a `--metal` flag that selects the Metal2D backend and auto-enables uploads for developers; software remains the default for CI.
 - `./scripts/compile.sh` always builds with Metal support enabled and runs the Metal UITests unless `--disable-metal-tests` is passed. This keeps the GPU path green by default on macOS hosts.
 - HTML adapter parity tests landed, so DOM and canvas command streams stay lock-step with the renderer geometry.

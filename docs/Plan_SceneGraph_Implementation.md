@@ -1,6 +1,6 @@
 # Handoff Notice
 
-> **Handoff note (October 21, 2025 @ shutdown):** Hit-test coverage now spans ordering, clip-aware picking, focus routing, the auto-render wait/notify path (`tests/ui/test_SceneHitTest.cpp` asserts ≤200 ms wake latency), and DrawableBucket-backed multi-hit stacks (`HitTestResult::hits` with `HitTestRequest::max_results`). Presenter diagnostics continue to mirror into `windows/<win>/diagnostics/metrics/live/views/<view>/present`, and widgets gallery interactions remain green. Next pass should expand HTML tooling (HSAT inspectors) and carry forward the Phase 5 interaction scheduling/focus navigation milestones.
+> **Handoff note (October 21, 2025 @ shutdown):** Hit-test coverage now spans ordering, clip-aware picking, focus routing, the auto-render wait/notify path (`tests/ui/test_SceneHitTest.cpp` asserts ≤200 ms wake latency), DrawableBucket-backed multi-hit stacks (`HitTestResult::hits` with `HitTestRequest::max_results`), and widget focus-navigation helpers with auto-render scheduling. Presenter diagnostics continue to mirror into `windows/<win>/diagnostics/metrics/live/views/<view>/present`, and widgets gallery interactions remain green. Next pass should expand HTML tooling (HSAT inspectors) and tighten the Phase 5 interaction scheduling metrics.
 
 # Scene Graph Implementation Plan
 
@@ -24,6 +24,7 @@ Success looks like:
 - Widgets reducers drain op queues into `widgets/<id>/ops/actions/inbox/queue`; examples/tests confirm button/list actions round-trip through the helpers.
 - Widget gallery, HTML tooling, and diagnostics backlog items are tracked in `docs/AI_Todo.task`; no open P0 work after the binding milestone.
 - ✅ (October 21, 2025) Scene hit tests now gather z-ordered multi-hit stacks, expose `HitTestResult::hits`, and honour `HitTestRequest::max_results` for drill-down; doctests cover default ordering, clipping, and bounded stacks.
+- ✅ (October 21, 2025) Focus navigation helpers landed (`Widgets::Focus::*`), standardising focus rings across widgets, scheduling auto-render events on navigation, and tagging `widgets/<id>/meta/kind` so downstream tooling can detect widget types.
 - ✅ (October 21, 2025) Widgets gallery now supports keyboard focus cycling, arrow-key slider/list control, and logs reducer-emitted actions each frame for diagnostics.
 - ✅ (October 21, 2025) Window diagnostics sinks mirror presenter metrics under `windows/<win>/diagnostics/metrics/live/views/<view>/present`, keeping central telemetry aligned with per-target `output/v1/common/*` updates.
 - ✅ (October 20, 2025) Residency dashboard wiring publishes CPU/GPU soft & hard budget ratios plus status flags under `diagnostics/metrics/residency`, enabling external alerts without bespoke parsers.
@@ -163,6 +164,10 @@ Completed:
 - ✅ (October 18, 2025) Published `docs/AI_Debugging_Playbook.md` with the end-to-end diagnostics workflow and re-validated the 15× loop harness (`./scripts/compile.sh --test --loop=15 --per-test-timeout=20`).
 - ✅ (October 20, 2025) Added residency dashboard outputs: `cpuSoftBudgetRatio`, `cpuHardBudgetRatio`, `gpuSoftBudgetRatio`, `gpuHardBudgetRatio`, per-budget exceed flags, and `overallStatus` now live under `diagnostics/metrics/residency/` for every target, allowing dashboards/alerts to trigger without bespoke queries.
 - ✅ (October 20, 2025) Widget interaction bindings land: `Widgets::Bindings::Dispatch{Button,Toggle,Slider}` diff widget state, submit targeted dirty rect hints, enqueue ops (`WidgetOp` values) under `widgets/<id>/ops/inbox/queue`, and auto-schedule renders when configured.
+- Audit UI/renderer translation units ≥1 000 lines, inventory candidates with `scripts/lines_of_code.sh`, and refactor toward one-class-per-file modules while preserving test coverage.
+- Enforce include hygiene during the split (IWYU or equivalent pass) so the expanded module graph keeps compile times manageable.
+- Add binary/size guardrails (e.g., `scripts/compile.sh --size-report`) to watch for example/demo growth after the refactor.
+- Refresh `docs/AI_Architecture.md` and renderer diagrams once files move so architecture snapshots continue to match the code layout.
 
 ### Phase 7 — Optional Backends & HTML Adapter Prep (post-MVP)
 - ✅ (October 20, 2025) `PathSpaceUITests` now cover HTML canvas replay parity and the ObjC++ Metal presenter harness, replacing the skipped scaffolding.
@@ -177,9 +182,10 @@ Completed:
     - ✅ (October 19, 2025) `prepare_surface_render_context` resolves renderer kind per target, routing targets through cached software or Metal surfaces while keeping the software fallback as default when uploads stay disabled.
 2. **Surface cache & rendering loop**
     - ✅ (October 19, 2025) Split render helpers so Metal targets reuse the shared cache but funnel through a backend-aware `render_into_target`; contexts fall back to software when uploads are disabled and tests exercise the unified path.
-    - ✅ (October 19, 2025) PathRenderer2D now streams Metal frames directly into the cached CAMetalLayer texture (skipping the software upload hop when Metal uploads are enabled) while keeping residency metrics in sync.
-    - ✅ (October 19, 2025) `Renderer::TriggerRender` now reuses the shared surface caches (software and Metal) so ad-hoc renders avoid reallocating per call.
-    - ✅ (October 20, 2025) `PathRenderer2DMetal` now renders rects, rounded rects, text quads, and textured images directly on the GPU, with shared material/shader keys driving pipeline state so GPU frames mirror software telemetry; glyph/material pipeline parity will continue to build on the descriptor cache.
+- ✅ (October 19, 2025) PathRenderer2D now streams Metal frames directly into the cached CAMetalLayer texture (skipping the software upload hop when Metal uploads are enabled) while keeping residency metrics in sync.
+- ✅ (October 19, 2025) `Renderer::TriggerRender` now reuses the shared surface caches (software and Metal) so ad-hoc renders avoid reallocating per call.
+- ✅ (October 20, 2025) `PathRenderer2DMetal` now renders rects, rounded rects, text quads, and textured images directly on the GPU, with shared material/shader keys driving pipeline state so GPU frames mirror software telemetry; glyph/material pipeline parity will continue to build on the descriptor cache.
+    - 🚧 (Follow-up) Keep the existing glyph-quads text path as a supported fallback/regression harness once the full text-shaping renderer lands; ensure tests cover both paths so fallback builds stay viable.
  3. **Presenter integration**
      - ✅ (October 21, 2025) `PathWindowView::Present` (Apple) now handles both `PathSurfaceSoftware` and `PathSurfaceMetal` stats, acquiring the CAMetalLayer drawable and issuing the Metal blit inside the presenter so builders/tests exercise the shared path instead of relying on the legacy window pump.
      - ✅ (October 19, 2025) Replaced the sample-specific `WindowEventPump.mm` with the shared `LocalWindowBridge` in the UI library; examples now consume the bridge and keep only input wiring.
@@ -201,6 +207,8 @@ Completed:
      - ✅ (October 19, 2025) Resource residency metrics now aggregate texture usage for GPU paths; Metal surfaces track resource fingerprints and publish residency totals.
 - ✅ (October 19, 2025) PATHSPACE_ENABLE_METAL_UPLOADS coverage now exercises the full Metal present path, checks shader/material descriptor parity, and asserts residency/cache metrics (cpu/gpu bytes) are published so dashboards/CI immediately flag resource pressure regressions (`tests/ui/test_PathWindowView_Metal.mm`: "Metal pipeline publishes residency metrics and material descriptors").
 - **HTML follow-ups (October 19, 2025):** remaining work is documenting fidelity troubleshooting (see Phase 7 items 5–6); new CI harness (`HtmlCanvasVerify`) is in place—keep it updated when adapter schemas evolve.
+  - Add themed widget scene replays to the HTML adapter harness (`HtmlCanvasVerify`) and compare against native renders so palette/typography drifts surface when either path changes.
+  - Draft an HSAT/HTML adapter quickstart + troubleshooting note capturing the new harness workflow and common failure signatures.
   - **Oct 21, 2025 update:** PathSpace core now preserves `Html::Asset` vectors across translation units (see commit `fix(ui): ensure html assets survive cross-tu reads`). The new `Html assets round-trip without HtmlSerialization include` UITest guards the regression. Resume the documentation follow-ups under Phase 7 items 5–6.
 - HTML adapter scaffolding (command stream emitter + replay harness) behind experimental flag. **Implementation plan map (Oct 18, 2025):**
   1. **Adapter core API**
@@ -235,7 +243,8 @@ Completed:
   - ✅ (October 21, 2025) Provide styling hooks (colors, corner radius, typography) so demos can skin widgets without forking scenes. `Widgets::WidgetTheme` centralises per-widget styles, builders publish the metadata, and `widgets_example` now loads a theme selectable via `WIDGETS_EXAMPLE_THEME` (default or `sunset`).
 - **Interaction contract**
   - ✅ (October 21, 2025) Hit-test authoring ids now embed canonical `/widgets/<id>/authoring/...` paths and `Widgets::ResolveHitTarget`/`WidgetBindings::PointerFromHit` helpers normalize hover/press routing into the existing bindings + `ops/` queues.
-  - Expose focus navigation helpers (keyboard/gamepad) that reuse the existing `Scene::HitTest` focus metadata and auto-render events to redraw highlight states.
+  - ✅ (October 21, 2025) Focus navigation helpers (`Widgets::Focus`) reuse `Scene::HitTest` metadata, maintain canonical focus state under `widgets/focus/current`, toggle widget scene states, and enqueue auto-render requests so highlight transitions redraw immediately.
+  - Add UITest/loop coverage for keyboard focus navigation (Tab/Shift+Tab) and gamepad focus hops so bindings regressions surface quickly once helpers ship.
   - Document the path schema for widget state (e.g., `/.../widgets/<id>/{state,enabled,label}`) and ensure updates stay atomic.
 - **State binding & data flow**
 - ✅ (October 19, 2025) Introduced initial state update helpers for buttons/toggles that coalesce redundant writes and mark the owning scene `DirtyKind::Visual` only when values change.
@@ -245,6 +254,7 @@ Completed:
 - **Testing**
   - Extend `PathSpaceUITests` with golden snapshots and interaction sequences for each widget (hover, press, disabled) using the 15× loop to guard against race regressions.
   - Add doctest coverage for the binding helpers to confirm dirty-hint emission, focus routing, and auto-render scheduling.
+  - Add adjacent-widget dirty propagation coverage: place widgets with touching/overlapping dirty rectangles, trigger an update on one, and assert the neighbour schedules a repaint and retains its state.
 - **Tooling & docs**
 - ✅ (October 19, 2025) Expanded `examples/widgets_example.cpp` to publish button + toggle widgets and demonstrate state updates; grow into a full gallery as additional widgets land.
 - ✅ (October 20, 2025) widgets_example now instantiates slider and list widgets, exercises the state helpers, and prints the relevant path wiring to guide gallery expansion; continue instrumenting interaction telemetry in follow-up work.
@@ -252,6 +262,8 @@ Completed:
 - ✅ (October 21, 2025) widgets_example adds keyboard focus cycling (Tab/Shift+Tab), arrow-key slider/list control, and reducer action logging so gallery runs surface queue activity without external tooling.
 - ✅ (October 21, 2025) Introduced `Builders::App::Bootstrap` helper so examples/tests can create renderer/surface/window defaults for a scene with one call; docs/onboarding updated alongside the helper.
 - ✅ (October 21, 2025) widgets_example now consumes `Widgets::WidgetTheme` output (and `WIDGETS_EXAMPLE_THEME`) so demos can swap color palettes and typography without rewriting scenes; theme defaults live next to the builders for reuse.
+  - Add a theme hot-swap UITest/doctest that toggles `Widgets::WidgetTheme` variants at runtime and asserts dirty regions, typography, and colors update correctly without stale caches.
+  - Cover `Builders::App::Bootstrap` in doctests/PathSpaceUITests so examples/tests migrating to the helper keep setup/regression coverage as bespoke scaffolding is removed.
 - Update `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage, and troubleshooting steps.
 - Document widget ops schema: queue path (`widgets/<id>/ops/inbox/queue`), `WidgetOp` fields (kind, pointer metadata, value, timestamp) and reducer sample wiring.
 - ✅ (October 20, 2025) Reducer samples now live in `Widgets::Reducers`, publishing actions under `widgets/<id>/ops/actions/inbox/queue`; keep telemetry/docs in sync when new action fields or op kinds land.

@@ -689,6 +689,13 @@ auto UpdateListState(PathSpace& space,
                      ListPaths const& paths,
                      ListState const& new_state) -> SP::Expected<bool>;
 
+enum class WidgetKind {
+    Button,
+    Toggle,
+    Slider,
+    List,
+};
+
 struct HitTarget {
     WidgetPath widget;
     std::string component;
@@ -814,6 +821,46 @@ auto DispatchList(PathSpace& space,
 auto PointerFromHit(Scene::HitTestResult const& hit) -> PointerInfo;
 
 } // namespace Bindings
+
+namespace Focus {
+
+enum class Direction { Forward, Backward };
+
+struct Config {
+    ConcretePath focus_state;
+    std::optional<ConcretePath> auto_render_target;
+};
+
+struct UpdateResult {
+    WidgetPath widget;
+    bool changed = false;
+};
+
+auto FocusStatePath(AppRootPathView appRoot) -> ConcretePath;
+
+auto MakeConfig(AppRootPathView appRoot,
+                std::optional<ConcretePath> auto_render_target = std::nullopt) -> Config;
+
+auto Current(PathSpace const& space,
+             ConcretePathView focus_state) -> SP::Expected<std::optional<std::string>>;
+
+auto Set(PathSpace& space,
+         Config const& config,
+         WidgetPath const& widget) -> SP::Expected<UpdateResult>;
+
+auto Clear(PathSpace& space,
+           Config const& config) -> SP::Expected<bool>;
+
+auto Move(PathSpace& space,
+          Config const& config,
+          std::span<WidgetPath const> order,
+          Direction direction) -> SP::Expected<std::optional<UpdateResult>>;
+
+auto ApplyHit(PathSpace& space,
+              Config const& config,
+              Scene::HitTestResult const& hit) -> SP::Expected<std::optional<UpdateResult>>;
+
+} // namespace Focus
 
 struct WidgetTheme {
     ButtonStyle button{};

@@ -34,6 +34,7 @@ using SP::UI::Builders::Diagnostics::PathSpaceError;
 namespace Widgets = SP::UI::Builders::Widgets;
 namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
 namespace WidgetReducers = SP::UI::Builders::Widgets::Reducers;
+namespace WidgetFocus = SP::UI::Builders::Widgets::Focus;
 namespace Html = SP::UI::Html;
 namespace AppBootstrap = SP::UI::Builders::App;
 
@@ -1841,6 +1842,185 @@ TEST_CASE("Widgets::ResolveHitTarget extracts canonical widget path from hit tes
     CHECK(pointer.scene_y == doctest::Approx(request.y));
     CHECK(pointer.inside);
     CHECK(pointer.primary);
+}
+
+TEST_CASE("Widgets::Focus::Set and Move update widget states") {
+    BuildersFixture fx;
+
+    Widgets::ButtonParams buttonParams{};
+    buttonParams.name = "focus_button";
+    buttonParams.label = "Focus";
+    auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
+    REQUIRE(button);
+
+    Widgets::ToggleParams toggleParams{};
+    toggleParams.name = "focus_toggle";
+    auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), toggleParams);
+    REQUIRE(toggle);
+
+    Widgets::SliderParams sliderParams{};
+    sliderParams.name = "focus_slider";
+    sliderParams.minimum = 0.0f;
+    sliderParams.maximum = 1.0f;
+    sliderParams.value = 0.25f;
+    auto slider = Widgets::CreateSlider(fx.space, fx.root_view(), sliderParams);
+    REQUIRE(slider);
+
+    Widgets::ListParams listParams{};
+    listParams.name = "focus_list";
+    listParams.items = {
+        Widgets::ListItem{.id = "alpha", .label = "Alpha"},
+        Widgets::ListItem{.id = "beta", .label = "Beta"},
+        Widgets::ListItem{.id = "gamma", .label = "Gamma"},
+    };
+    auto list = Widgets::CreateList(fx.space, fx.root_view(), listParams);
+    REQUIRE(list);
+
+    auto config = WidgetFocus::MakeConfig(fx.root_view());
+
+    auto setButton = WidgetFocus::Set(fx.space, config, button->root);
+    REQUIRE(setButton);
+    CHECK(setButton->changed);
+
+    auto buttonState = fx.space.read<Widgets::ButtonState, std::string>(button->state.getPath());
+    REQUIRE(buttonState);
+    CHECK(buttonState->hovered);
+
+    auto toggleState = fx.space.read<Widgets::ToggleState, std::string>(toggle->state.getPath());
+    REQUIRE(toggleState);
+    CHECK_FALSE(toggleState->hovered);
+
+    std::array<WidgetPath, 4> order{
+        button->root,
+        toggle->root,
+        slider->root,
+        list->root,
+    };
+
+    auto moveToggle = WidgetFocus::Move(fx.space,
+                                        config,
+                                        std::span<const WidgetPath>(order.data(), order.size()),
+                                        WidgetFocus::Direction::Forward);
+    REQUIRE(moveToggle);
+    REQUIRE(moveToggle->has_value());
+    CHECK(moveToggle->value().widget.getPath() == toggle->root.getPath());
+
+    toggleState = fx.space.read<Widgets::ToggleState, std::string>(toggle->state.getPath());
+    REQUIRE(toggleState);
+    CHECK(toggleState->hovered);
+
+    buttonState = fx.space.read<Widgets::ButtonState, std::string>(button->state.getPath());
+    REQUIRE(buttonState);
+    CHECK_FALSE(buttonState->hovered);
+
+    // Advance to slider, then list
+    (void)WidgetFocus::Move(fx.space,
+                            config,
+                            std::span<const WidgetPath>(order.data(), order.size()),
+                            WidgetFocus::Direction::Forward);
+    auto moveList = WidgetFocus::Move(fx.space,
+                                      config,
+                                      std::span<const WidgetPath>(order.data(), order.size()),
+                                      WidgetFocus::Direction::Forward);
+    REQUIRE(moveList);
+    REQUIRE(moveList->has_value());
+    CHECK(moveList->value().widget.getPath() == list->root.getPath());
+
+    auto focusPath = fx.space.read<std::string, std::string>(config.focus_state.getPath());
+    REQUIRE(focusPath);
+    CHECK(*focusPath == list->root.getPath());
+
+    auto listState = fx.space.read<Widgets::ListState, std::string>(list->state.getPath());
+    REQUIRE(listState);
+    CHECK(listState->hovered_index >= 0);
+
+    auto cleared = WidgetFocus::Clear(fx.space, config);
+    REQUIRE(cleared);
+    CHECK(*cleared);
+
+    listState = fx.space.read<Widgets::ListState, std::string>(list->state.getPath());
+    REQUIRE(listState);
+    CHECK(listState->hovered_index == -1);
+}
+
+TEST_CASE("Widgets::Focus::ApplyHit focuses widget from hit test") {
+    BuildersFixture fx;
+
+    Widgets::ButtonParams params{};
+    params.name = "focus_hit_button";
+    params.label = "FocusHit";
+    auto button = Widgets::CreateButton(fx.space, fx.root_view(), params);
+    REQUIRE(button);
+
+    auto config = WidgetFocus::MakeConfig(fx.root_view());
+
+    Scene::HitTestRequest request{};
+    request.x = 8.0f;
+    request.y = 8.0f;
+
+    auto hit = Scene::HitTest(fx.space, button->scene, request);
+    REQUIRE(hit);
+    REQUIRE(hit->hit);
+
+    auto result = WidgetFocus::ApplyHit(fx.space, config, *hit);
+    REQUIRE(result);
+    REQUIRE(result->has_value());
+    CHECK(result->value().widget.getPath() == button->root.getPath());
+
+    auto state = fx.space.read<Widgets::ButtonState, std::string>(button->state.getPath());
+    REQUIRE(state);
+    CHECK(state->hovered);
+}
+
+TEST_CASE("Widgets::Focus::Set schedules auto render events") {
+    BuildersFixture fx;
+
+    Widgets::ButtonParams params{};
+    params.name = "focus_auto_button";
+    params.label = "Auto";
+    auto button = Widgets::CreateButton(fx.space, fx.root_view(), params);
+    REQUIRE(button);
+
+    RendererParams rendererParams{ .name = "focus_renderer", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc{};
+    desc.size_px = {256, 192};
+
+    SurfaceParams surfaceParams{ .name = "focus_surface", .desc = desc, .renderer = "renderers/focus_renderer" };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    REQUIRE(Surface::SetScene(fx.space, *surface, button->scene));
+
+    auto targetRel = fx.space.read<std::string, std::string>(std::string(surface->getPath()) + "/target");
+    REQUIRE(targetRel);
+    auto targetAbs = SP::App::resolve_app_relative(fx.root_view(), *targetRel);
+    REQUIRE(targetAbs);
+
+    auto config = WidgetFocus::MakeConfig(fx.root_view(),
+                                          SP::UI::Builders::ConcretePath{targetAbs->getPath()});
+
+    auto setFocus = WidgetFocus::Set(fx.space, config, button->root);
+    REQUIRE(setFocus);
+    CHECK(setFocus->changed);
+
+    auto queuePath = targetAbs->getPath() + "/events/renderRequested/queue";
+    auto event = fx.space.take<AutoRenderRequestEvent, std::string>(queuePath);
+    REQUIRE(event);
+    CHECK(event->reason == "focus-navigation");
+
+    auto noExtra = WidgetFocus::Set(fx.space, config, button->root);
+    REQUIRE(noExtra);
+    CHECK_FALSE(noExtra->changed);
+
+    auto noEvent = fx.space.take<AutoRenderRequestEvent, std::string>(queuePath);
+    CHECK_FALSE(noEvent);
+    if (!noEvent) {
+        CHECK((noEvent.error().code == Error::Code::NoObjectFound
+               || noEvent.error().code == Error::Code::NoSuchPath));
+    }
 }
 
 TEST_CASE("Widgets::Bindings::DispatchList enqueues ops and schedules renders") {
