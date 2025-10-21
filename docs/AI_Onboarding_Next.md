@@ -84,8 +84,8 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Latest commit: `feat(ui): add keyboard focus support to widgets gallery` (local `master`, unpushed). Gallery now supports keyboard focus cycling, arrow-key interactions, and reducer logging.
 - Validation: `./scripts/compile.sh --test --loop --per-test-timeout 20` (15× PathSpaceTests + PathSpaceUITests, Metal presenters enabled) — all passes.
 - Outstanding follow-ups before resuming:
-  1. Add the HSAT inspection CLI/tests for HTML assets once the CLI scaffolding lands (Phase 7 HTML follow-up).
-- HTML adapter follow-up remains open: add HSAT inspection CLI/tests when new asset fields land (tracked in `docs/AI_Todo.task`).
+  - None. HSAT inspection CLI (`pathspace_hsat_inspect`) and the HtmlAssetInspect regression landed on October 21, 2025. Expand the fixture when new asset fields appear.
+- HTML adapter follow-up remains open: extend HSAT inspection coverage when additional asset fields land (tracked in `docs/AI_Todo.task`).
 - Local worktree still holds edits to `docs/Plan_PrimeScript.md` and `src/pathspace/PathSpaceBase.hpp` (pre-existing; confirm intent before next commit).
 - Next session checklist:
   - Push the recorded commit or cherry-pick onto a fresh topic branch if needed.

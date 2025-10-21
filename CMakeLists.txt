@@ -78,6 +78,12 @@ endif()
 
 enable_testing()
 add_subdirectory(src/pathspace)
+
+if(PATHSPACE_ENABLE_UI)
+    add_executable(pathspace_hsat_inspect tools/hsat_inspect.cpp)
+    target_link_libraries(pathspace_hsat_inspect PRIVATE PathSpace)
+endif()
+
 add_subdirectory(tests)
 
 # Platform-specific defines for unified PathIO backends

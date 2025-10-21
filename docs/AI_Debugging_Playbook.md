@@ -85,6 +85,8 @@ Environment knobs (all respected by the wrapper and the logger):
 | Run a single suite via CTest | `ctest --output-on-failure -R PathSpaceUITests` |
 | Re-run failed tests only | `ctest --rerun-failed --output-on-failure` |
 | Verify HTML adapter command stream | `ctest -R HtmlCanvasVerify --output-on-failure` |
+| Verify HSAT asset inspection tooling | `ctest -R HtmlAssetInspect --output-on-failure` |
+| Inspect HSAT payload contents manually | `./build/pathspace_hsat_inspect --input <payload.hsat>` |
 | Tail latest failure log | `ls -t build/test-logs | head -1 | xargs -I{} tail -n 80 build/test-logs/{}` |
 | Inspect renderer metrics path | `build/tests/PathSpaceUITests --test-case Diagnostics::ReadTargetMetrics` |
 | Benchmark damage/fingerprint metrics | `./build/benchmarks/path_renderer2d_benchmark --metrics [--canvas=WIDTHxHEIGHT]` |

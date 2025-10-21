@@ -76,10 +76,17 @@ if(PATHSPACE_ENABLE_UI)
       COMMAND ${PATHSPACE_NODE_EXEC} ${CMAKE_SOURCE_DIR}/scripts/verify_html_canvas.js
               $<TARGET_FILE:html_canvas_dump>)
     set_tests_properties(HtmlCanvasVerify PROPERTIES LABELS html)
+    add_test(NAME HtmlAssetInspect
+      COMMAND ${PATHSPACE_NODE_EXEC} ${CMAKE_SOURCE_DIR}/scripts/verify_hsat_assets.js
+              $<TARGET_FILE:pathspace_hsat_inspect>)
+    set_tests_properties(HtmlAssetInspect PROPERTIES LABELS html)
   else()
     add_test(NAME HtmlCanvasVerify
       COMMAND ${CMAKE_COMMAND} -E echo "Skipping HTML canvas verification (node not found)")
     set_tests_properties(HtmlCanvasVerify PROPERTIES LABELS html)
+    add_test(NAME HtmlAssetInspect
+      COMMAND ${CMAKE_COMMAND} -E echo "Skipping HSAT inspection verification (node not found)")
+    set_tests_properties(HtmlAssetInspect PROPERTIES LABELS html)
   endif()
 endif()
 

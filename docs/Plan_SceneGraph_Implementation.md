@@ -218,7 +218,7 @@ Completed:
 - ✅ (October 20, 2025) Resource loader integration (HTML + renderers) now hydrates image/font assets and persists them under `output/v1/html/assets` using a stable binary `Html::Asset` codec; `Renderer::RenderHtml hydrates image assets into output` and the new `Html::Asset vectors survive PathSpace round-trip` doctest both pass with hydrated bytes.
 - ✅ (October 20, 2025) Documented the HTML asset codec (HSAT framing, legacy migration) in `docs/Plan_SceneGraph_Renderer.md`; update the renderer plan when fields or versions change.
 - ✅ (October 20, 2025) Removed the legacy Alpaca serializer fallback; HSAT payloads are now required for `output/v1/html/assets`.
-- ➡️ Next steps: extend coverage when additional asset fields (e.g., material descriptors) land and add tooling to inspect HSAT payloads from the CLI.
+- ✅ (October 21, 2025) Added the `pathspace_hsat_inspect` CLI plus `HtmlAssetInspect` regression (Node harness) to decode HSAT payloads; extend the fixture when new asset fields (e.g., material descriptors) land.
 
 ### Phase 8 — Widget Toolkit & Interaction Surfaces (post-MVP)
 - **Objective:** ship reusable UI widgets (button, toggle, slider, list) that sit on top of the existing scene/render/present stack while reusing PathSpace paths for state and events.
