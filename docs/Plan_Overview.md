@@ -7,7 +7,7 @@
 ## Purpose
 Provide a single index of active planning documents, ordered by current priority and grouped by theme. Use this as your starting point before diving into any specific plan.
 
-## Priority Ordering (October 20, 2025)
+## Priority Ordering (October 21, 2025)
 
 1. **Plan_SceneGraph_Renderer.md**  
    Core rendering/presenter roadmap, snapshot semantics, target contracts. Aligns all UI work.
@@ -41,10 +41,10 @@ Provide a single index of active planning documents, ordered by current priority
 5. **Plan_Surface_Ray_Cache.md** — revisit once core rendering + web requirements are satisfied (deferred).
 6. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
 
-## Status Snapshot — October 20, 2025
-- HSAT (HTML asset codec) is mandatory and documented; legacy serializer removed.
-- Slider widget builder, state/theme metadata, and tests landed; list widget + interaction bindings remain.
-- Backlog (`docs/AI_Todo.task`) and implementation plan capture the remaining follow-ups so the next session can continue Phase 8 widgets and tooling work immediately.
+## Status Snapshot — October 21, 2025
+- HSAT (HTML asset codec) remains mandatory and documented; `pathspace_hsat_inspect` regression stays green after the latest loop run.
+- Widget state scenes now publish canonical idle/hover/pressed/disabled snapshots under `scenes/widgets/<id>/states/*`; builders/tests/docs are updated and the 15× loop suite passed post-change.
+- Next widget focus: add styling hooks (themes, typography, dirty rect tuning) and align examples/tests before expanding telemetry as captured in `docs/AI_Todo.task`.
 
 ## Supporting Documents
 - `docs/AI_Architecture.md` — Core PathSpace architecture reference.

@@ -35,13 +35,13 @@ Welcome! This repository just transitioned away from a previous assistant. The n
    ```
    The targeted Metal UITest ensures the GPU bridge stays healthy after the latest ObjC++ harness updates.
 
-## 2. Current Priorities (October 20, 2025)
+## 2. Current Priorities (October 21, 2025)
 
 | Area | Action | Notes |
 | --- | --- | --- |
 | Metal renderer | ✅ Completed (October 20, 2025) — material/shader bindings now flow through the shared descriptor cache | `PathRenderer2DMetal` covers rects, rounded rects, text quads, and images (see Phase 7); continue tracking glyph/material parity on the descriptor cache. |
 | Diagnostics | ✅ Completed (October 20, 2025) — dashboards consume `textureGpuBytes`/`resourceGpuBytes` plus residency ratios/status under `diagnostics/metrics/residency` | Coordinate with tooling owners before schema changes. |
-| Widgets | Finish Phase 8: wire gallery + telemetry atop the widget builders | Button/toggle/slider/list builders, bindings, and reducer helpers (`Widgets::Reducers`) are live as of October 20, 2025; next focus is gallery wiring and presenter/telemetry follow-ups (see `docs/Plan_SceneGraph_Implementation.md`). |
+| Widgets | Finish Phase 8: extend styling hooks & telemetry atop the widget builders | Button/toggle/slider/list builders, bindings, reducer helpers, and the new state-scene snapshots (idle/hover/pressed/disabled) are live as of October 21, 2025; next focus is styling hooks (themes/typography), gallery telemetry, and presenter follow-ups (see `docs/Plan_SceneGraph_Implementation.md`). |
 | HTML tooling | Add HSAT inspection CLI/tests and extend coverage when new asset fields appear | Legacy serializer removed; HSAT is mandatory. |
 
 ## 3. Communication & Handoff Hygiene
@@ -69,6 +69,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - When you spot a gap in test coverage, either add the test immediately or log a follow-up in `docs/Plan_SceneGraph_Implementation.md` / `docs/AI_Todo.task` so the need is visible to the next maintainer.
 
 ### Latest Highlights (October 21, 2025)
+- Widget builders now publish canonical idle/hover/pressed/disabled scenes under `scenes/widgets/<id>/states/*`; live scenes republish automatically when state changes, and doctests cover the new snapshots (October 21, 2025).
 - Metal renderer is now material-aware: `PathRenderer2DMetal` consumes shared descriptors via `bind_material`, GPU frames stay in lock-step with software telemetry, and a new blending UITest asserts pipeline parity (`PathRenderer2DMetal honors material blending state`).
 - Paint demo ships with a `--metal` flag that selects the Metal2D backend and auto-enables uploads for developers; software remains the default for CI.
 - `./scripts/compile.sh` always builds with Metal support enabled and runs the Metal UITests unless `--disable-metal-tests` is passed. This keeps the GPU path green by default on macOS hosts.
@@ -82,16 +83,16 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Reducer helpers (`Widgets::Reducers::ReducePending`/`PublishActions`) drain widget ops into `ops/actions/inbox/queue`; widgets_example seeds a sample action and prints the reducer output.
 - Stroke rendering is now a first-class primitive: `DrawCommandKind::Stroke` serializes shared point buffers, `PathRenderer2D` rasterizes polylines, the HTML adapter/replay round-trip stroke data, and `paint_example` emits strokes instead of per-dab rects (October 21, 2025).
 
-## 6. Shutdown Snapshot (October 21, 2025 @ 23:45 UTC)
-- Latest commit: `feat(ui): add stroke primitive to renderer and paint example` (local `fix/metal-present`, unpushed). Stroke commands now back the paint demo and flow through PathRenderer2D, snapshot storage, and the HTML adapter.
-- Validation: `./scripts/compile.sh --test --loop=15 --per-test-timeout 20` (15× PathSpaceTests + PathSpaceUITests, Metal presenters enabled) — all green.
+## 6. Shutdown Snapshot (October 21, 2025 @ 23:55 UTC)
+- Latest commit: `feat(ui): add widget state scenes` (local `fix/metal-present`, unpushed). Builders now author canonical widget state snapshots, live scenes republish when state toggles, and the plan/docs/tests are in sync.
+- Validation: `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20` (15× PathSpaceTests, PathSpaceUITests, HtmlCanvasVerify, HtmlAssetInspect) — all green with Metal presenters enabled.
 - Outstanding follow-ups before resuming:
-  1. Add styling/hooks around the stroke primitive (color themes, joint/cap options) and propagate through paint/HTML tooling.
-  2. Extend HSAT inspection coverage when new asset fields (e.g., material descriptors) land (tracked in `docs/AI_Todo.task`).
+  1. Add styling/typography hooks for widget state scenes and extend gallery telemetry (tracked in `docs/Plan_SceneGraph_Implementation.md` & `docs/AI_Todo.task`).
+  2. Extend HSAT inspection coverage when new asset fields (e.g., material descriptors) land (already captured in the backlog).
 - Local worktree still holds edits to `docs/Plan_PrimeScript.md` and `docs/AI_Prompts.md` from prior sessions—confirm intent before publishing.
 - Next session checklist:
-  1. Push or cherry-pick the stroke primitive commit onto a topic branch (e.g., `feat/stroke-hooks`) before opening a PR.
-  2. Design stroke styling hooks (thickness schedule, cap style) and update paint_example/UI tests accordingly.
-  3. Re-run `./scripts/compile.sh --test --loop=15 --per-test-timeout 20` and `ctest -R HtmlCanvasVerify` after any adapter changes.
+  1. Branch from `origin/master`, cherry-pick or push the widget state scenes commit, and request review.
+  2. Implement widget styling hooks and update examples/tests; rerun the 15× loop and HTML replay harness.
+  3. Keep docs/plan/backlog entries synchronized with any follow-up changes.
 
 Welcome aboard and thank you for keeping the PathSpace docs in sync for the next AI maintainer.

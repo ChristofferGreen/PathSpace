@@ -117,6 +117,25 @@ task {
 }
 
 task {
+  name: "Widget Styling Hooks [FEATURE]"
+  description: "Expose reusable styling/typography hooks for widget state scenes and keep gallery telemetry aligned."
+  status: planned
+  priority: P2
+
+  acceptance_criteria: [
+    "Widget builders accept theme overrides (colors, typography, metrics) that flow into the canonical state scenes under scenes/widgets/<id>/states/*.",
+    "widgets_example demonstrates custom themes and logs updated telemetry (focus/ops) without duplicating scenes.",
+    "Tests cover themed state scenes and ensure dirty rect hints remain minimal when styles change."
+  ]
+
+  steps: [
+    "Design theme structs for button/toggle/slider/list scenes and thread them through snapshot builders.",
+    "Update widgets_example + gallery telemetry to show themed variants and confirm reducer/op logging stays intact.",
+    "Extend doctests to validate themed snapshots and dirty rect emission; update docs/Plan_SceneGraph_Implementation.md highlights."
+  ]
+}
+
+task {
   name: "App Builder Defaults [DX]"
   description: "Provide helper APIs that scaffold a minimal PathSpace application (renderer, surface, window bindings) to reduce boilerplate in examples/tests."
   status: planned
