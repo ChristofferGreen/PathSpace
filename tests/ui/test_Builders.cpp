@@ -10,11 +10,14 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <iomanip>
+#include <filesystem>
+#include <fstream>
 #include <cmath>
 #include <sstream>
 #include <string>
@@ -78,6 +81,326 @@ auto fingerprint_hex(std::uint64_t fingerprint) -> std::string {
     oss << std::hex << std::setw(16) << std::setfill('0') << std::nouppercase << fingerprint;
     return oss.str();
 }
+
+namespace fs = std::filesystem;
+
+struct WidgetGoldenData {
+    int width = 0;
+    int height = 0;
+    std::vector<std::uint8_t> pixels;
+};
+
+auto widget_golden_dir() -> fs::path {
+    return fs::path{PATHSPACE_SOURCE_DIR} / "tests" / "ui" / "golden";
+}
+
+auto widget_golden_path(std::string_view name) -> fs::path {
+    return widget_golden_dir() / fs::path{name};
+}
+
+auto widget_env_update_goldens() -> bool {
+    if (auto* value = std::getenv("PATHSPACE_UPDATE_GOLDENS")) {
+        std::string_view view{value};
+        if (view.empty() || view == "0" || view == "false" || view == "FALSE") {
+            return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+auto strip_non_hex(std::string_view input) -> std::string {
+    std::string output;
+    output.reserve(input.size());
+    for (char ch : input) {
+        if (std::isxdigit(static_cast<unsigned char>(ch))) {
+            output.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+        }
+    }
+    return output;
+}
+
+auto hex_to_bytes(std::string_view hex) -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(hex.size() / 2);
+    for (std::size_t i = 0; i + 1 < hex.size(); i += 2) {
+        auto from_hex = [](unsigned char ch) -> std::uint8_t {
+            if (ch >= '0' && ch <= '9') {
+                return static_cast<std::uint8_t>(ch - '0');
+            }
+            if (ch >= 'a' && ch <= 'f') {
+                return static_cast<std::uint8_t>(10 + (ch - 'a'));
+            }
+            if (ch >= 'A' && ch <= 'F') {
+                return static_cast<std::uint8_t>(10 + (ch - 'A'));
+            }
+            return std::uint8_t{0};
+        };
+        auto high = from_hex(static_cast<unsigned char>(hex[i]));
+        auto low = from_hex(static_cast<unsigned char>(hex[i + 1]));
+        bytes.push_back(static_cast<std::uint8_t>((high << 4) | low));
+    }
+    return bytes;
+}
+
+auto read_widget_golden(std::string_view name) -> std::optional<WidgetGoldenData> {
+    auto path = widget_golden_path(name);
+    std::ifstream file{path};
+    if (!file) {
+        return std::nullopt;
+    }
+
+    WidgetGoldenData data{};
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.empty() || line.front() == '#') {
+            continue;
+        }
+        std::istringstream iss{line};
+        if (iss >> data.width >> data.height) {
+            break;
+        }
+    }
+
+    std::string hex_data;
+    while (std::getline(file, line)) {
+        if (line.empty() || line.front() == '#') {
+            continue;
+        }
+        hex_data.append(strip_non_hex(line));
+    }
+
+    data.pixels = hex_to_bytes(hex_data);
+    return data;
+}
+
+void write_widget_golden(std::string_view name,
+                         int width,
+                         int height,
+                         std::span<std::uint8_t const> pixels) {
+    auto path = widget_golden_path(name);
+    fs::create_directories(path.parent_path());
+    std::ofstream file{path, std::ios::out | std::ios::trunc};
+    REQUIRE(file.good());
+    file << "# Widget golden framebuffer\n";
+    file << width << " " << height << "\n";
+
+    auto row_bytes = static_cast<std::size_t>(width) * 4u;
+    for (int y = 0; y < height; ++y) {
+        auto row_start = static_cast<std::size_t>(y) * row_bytes;
+        std::ostringstream line;
+        line << std::hex << std::setfill('0');
+        for (std::size_t i = 0; i < row_bytes; ++i) {
+            line << std::setw(2) << static_cast<int>(pixels[row_start + i]);
+        }
+        file << line.str() << "\n";
+    }
+}
+
+auto trim_framebuffer(SoftwareFramebuffer const& fb) -> std::vector<std::uint8_t> {
+    auto row_bytes = static_cast<std::size_t>(fb.width) * 4u;
+    std::vector<std::uint8_t> trimmed(static_cast<std::size_t>(fb.height) * row_bytes);
+    for (int y = 0; y < fb.height; ++y) {
+        auto src = fb.pixels.data() + static_cast<std::size_t>(y) * fb.row_stride_bytes;
+        auto dst = trimmed.data() + static_cast<std::size_t>(y) * row_bytes;
+        std::memcpy(dst, src, row_bytes);
+    }
+    return trimmed;
+}
+
+auto format_pixel(std::span<std::uint8_t const> rgba) -> std::string {
+    std::ostringstream oss;
+    oss << std::hex << std::setfill('0');
+    for (std::size_t i = 0; i < rgba.size(); ++i) {
+        oss << std::setw(2) << static_cast<int>(rgba[i]);
+    }
+    return oss.str();
+}
+
+void expect_matches_widget_golden(std::string_view name,
+                                  SoftwareFramebuffer const& fb) {
+    auto row_bytes = static_cast<std::size_t>(fb.width) * 4u;
+    REQUIRE(row_bytes > 0);
+    REQUIRE(fb.row_stride_bytes >= row_bytes);
+    auto trimmed = trim_framebuffer(fb);
+
+    if (widget_env_update_goldens()) {
+        write_widget_golden(name, fb.width, fb.height, trimmed);
+        return;
+    }
+
+    auto golden = read_widget_golden(name);
+    REQUIRE_MESSAGE(golden.has_value(),
+                    "Missing golden '" << widget_golden_path(name).string()
+                    << "'. Set PATHSPACE_UPDATE_GOLDENS=1 to generate.");
+    CHECK(golden->width == fb.width);
+    CHECK(golden->height == fb.height);
+    REQUIRE(golden->pixels.size() == trimmed.size());
+
+    bool mismatch_found = false;
+    std::size_t mismatch_index = 0;
+    for (std::size_t i = 0; i < trimmed.size(); ++i) {
+        if (trimmed[i] != golden->pixels[i]) {
+            mismatch_found = true;
+            mismatch_index = i;
+            break;
+        }
+    }
+
+    if (mismatch_found) {
+        auto pixel_index = mismatch_index / 4;
+        auto x = static_cast<int>(pixel_index % fb.width);
+        auto y = static_cast<int>(pixel_index / fb.width);
+        auto actual = format_pixel(std::span<const std::uint8_t>{trimmed.data() + mismatch_index, 4});
+        auto expected = format_pixel(std::span<const std::uint8_t>{golden->pixels.data() + mismatch_index, 4});
+        FAIL("Golden mismatch in '" << name << "' at (" << x << ", " << y
+             << "): expected " << expected << " got " << actual
+             << ". Set PATHSPACE_UPDATE_GOLDENS=1 to refresh.");
+    }
+}
+
+auto decode_state_bucket(BuildersFixture& fx,
+                         ScenePath const& scene) -> DrawableBucketSnapshot {
+    auto revision = Scene::ReadCurrentRevision(fx.space, scene);
+    REQUIRE(revision);
+    auto base = std::string(scene.getPath()) + "/builds/" + format_revision(revision->revision);
+    auto bucket = SceneSnapshotBuilder::decode_bucket(fx.space, base);
+    REQUIRE(bucket);
+    return *bucket;
+}
+
+struct WidgetDimensions {
+    int width = 0;
+    int height = 0;
+};
+
+auto compute_widget_dimensions(BuildersFixture& fx,
+                               Widgets::WidgetStateScenes const& scenes) -> WidgetDimensions {
+    std::array<ScenePath const*, 4> all{
+        &scenes.idle,
+        &scenes.hover,
+        &scenes.pressed,
+        &scenes.disabled,
+    };
+    float max_width = 0.0f;
+    float max_height = 0.0f;
+    for (auto* scene : all) {
+        auto bucket = decode_state_bucket(fx, *scene);
+        bool any_box = false;
+        for (std::size_t i = 0; i < bucket.bounds_boxes.size(); ++i) {
+            bool valid = bucket.bounds_box_valid.empty()
+                         || i >= bucket.bounds_box_valid.size()
+                         || bucket.bounds_box_valid[i] != 0;
+            if (!valid) {
+                continue;
+            }
+            any_box = true;
+            max_width = std::max(max_width, bucket.bounds_boxes[i].max[0]);
+            max_height = std::max(max_height, bucket.bounds_boxes[i].max[1]);
+        }
+        if (!any_box) {
+            for (auto const& sphere : bucket.bounds_spheres) {
+                max_width = std::max(max_width, sphere.center[0] + sphere.radius);
+                max_height = std::max(max_height, sphere.center[1] + sphere.radius);
+            }
+        }
+    }
+    int width = std::max(1, static_cast<int>(std::ceil(max_width))) + 4;
+    int height = std::max(1, static_cast<int>(std::ceil(max_height))) + 4;
+    return {width, height};
+}
+
+void enable_framebuffer_capture(PathSpace& space,
+                                WindowPath const& windowPath,
+                                std::string_view viewName) {
+    auto viewBase = std::string(windowPath.getPath()) + "/views/" + std::string(viewName);
+    auto result = space.insert(viewBase + "/present/params/capture_framebuffer", true);
+    REQUIRE(result.errors.empty());
+}
+
+struct WidgetGoldenRenderer {
+    BuildersFixture& fx;
+    std::string prefix;
+    std::string view_name{"view"};
+    RendererPath renderer;
+    SurfacePath surface;
+    WindowPath window;
+    SP::ConcretePathString target;
+    SurfaceDesc desc{};
+
+    WidgetGoldenRenderer(BuildersFixture& fx,
+                         std::string prefix,
+                         int width,
+                         int height)
+        : fx(fx),
+          prefix(std::move(prefix)) {
+        RendererParams rendererParams{
+            .name = this->prefix + "_renderer",
+            .kind = RendererKind::Software2D,
+            .description = "widget golden renderer",
+        };
+        auto rendererResult = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+        REQUIRE(rendererResult);
+        renderer = *rendererResult;
+
+        desc.size_px.width = width;
+        desc.size_px.height = height;
+        desc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+        desc.color_space = ColorSpace::sRGB;
+        desc.premultiplied_alpha = true;
+        desc.progressive_tile_size_px = 32;
+
+        SurfaceParams surfaceParams{};
+        surfaceParams.name = this->prefix + "_surface";
+        surfaceParams.desc = desc;
+        surfaceParams.renderer = "renderers/" + rendererParams.name;
+        auto surfaceResult = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+        REQUIRE(surfaceResult);
+        surface = *surfaceResult;
+
+        WindowParams windowParams{
+            .name = this->prefix + "_window",
+            .title = "widget golden",
+            .width = width,
+            .height = height,
+            .scale = 1.0f,
+            .background = "#000000",
+        };
+        auto windowResult = Window::Create(fx.space, fx.root_view(), windowParams);
+        REQUIRE(windowResult);
+        window = *windowResult;
+
+        auto attached = Window::AttachSurface(fx.space, window, view_name, surface);
+        REQUIRE(attached);
+
+        enable_framebuffer_capture(fx.space, window, view_name);
+
+        auto targetRel = "targets/surfaces/" + surfaceParams.name;
+        auto resolved = Renderer::ResolveTargetBase(fx.space,
+                                                    fx.root_view(),
+                                                    renderer,
+                                                    targetRel);
+        REQUIRE(resolved);
+        target = *resolved;
+    }
+
+    void render(ScenePath const& scene, std::string_view golden_name) {
+        auto setScene = Surface::SetScene(fx.space, surface, scene);
+        REQUIRE(setScene);
+
+        auto present = Window::Present(fx.space, window, view_name);
+        if (!present) {
+            INFO("Window::Present error code = " << static_cast<int>(present.error().code));
+            INFO("Window::Present error message = " << present.error().message.value_or("<none>"));
+        }
+        REQUIRE(present);
+
+        auto framebufferPath = std::string(target.getPath()) + "/output/v1/software/framebuffer";
+        auto framebuffer = fx.space.read<SoftwareFramebuffer, std::string>(framebufferPath);
+        REQUIRE(framebuffer);
+        expect_matches_widget_golden(golden_name, *framebuffer);
+    }
+};
 
 auto identity_transform() -> Transform {
     Transform t{};
@@ -1560,6 +1883,29 @@ TEST_CASE("Widgets::Bindings::DispatchButton emits dirty hints and widget ops") 
     pointer.scene_y = 6.0f;
     pointer.inside = true;
 
+    auto renderQueuePath = std::string(target->getPath()) + "/events/renderRequested/queue";
+    auto opQueuePath = binding->options.ops_queue.getPath();
+
+    Widgets::ButtonState hovered{};
+    hovered.hovered = true;
+
+    auto hoverEnter = WidgetBindings::DispatchButton(fx.space,
+                                                     *binding,
+                                                     hovered,
+                                                     WidgetBindings::WidgetOpKind::HoverEnter,
+                                                     pointer);
+    REQUIRE(hoverEnter);
+    CHECK(*hoverEnter);
+
+    auto hoverEnterEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    REQUIRE(hoverEnterEvent);
+    CHECK(hoverEnterEvent->reason == "widget/button");
+
+    auto hoverEnterOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(hoverEnterOp);
+    CHECK(hoverEnterOp->kind == WidgetBindings::WidgetOpKind::HoverEnter);
+    CHECK(hoverEnterOp->value == doctest::Approx(0.0f));
+
     Widgets::ButtonState pressed{};
     pressed.hovered = true;
     pressed.pressed = true;
@@ -1586,12 +1932,10 @@ TEST_CASE("Widgets::Bindings::DispatchButton emits dirty hints and widget ops") 
     CHECK(hint.max_x == doctest::Approx(expected_width));
     CHECK(hint.max_y == doctest::Approx(expected_height));
 
-    auto renderQueuePath = std::string(target->getPath()) + "/events/renderRequested/queue";
     auto renderEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
     REQUIRE(renderEvent);
     CHECK(renderEvent->reason == "widget/button");
 
-    auto opQueuePath = binding->options.ops_queue.getPath();
     auto pressOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
     REQUIRE(pressOp);
     CHECK(pressOp->kind == WidgetBindings::WidgetOpKind::Press);
@@ -1637,8 +1981,156 @@ TEST_CASE("Widgets::Bindings::DispatchButton emits dirty hints and widget ops") 
     if (!noEvent) {
         CHECK((noEvent.error().code == Error::Code::NoObjectFound || noEvent.error().code == Error::Code::NoSuchPath));
     }
+
+    Widgets::ButtonState disabled = released;
+    disabled.enabled = false;
+
+    auto disableResult = Widgets::UpdateButtonState(fx.space, *button, disabled);
+    REQUIRE(disableResult);
+    CHECK(*disableResult);
+
+    auto disableEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    CHECK_FALSE(disableEvent);
+    if (!disableEvent) {
+        CHECK((disableEvent.error().code == Error::Code::NoObjectFound || disableEvent.error().code == Error::Code::NoSuchPath));
+    }
+
+    auto disableOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    CHECK_FALSE(disableOp);
+    if (!disableOp) {
+        CHECK((disableOp.error().code == Error::Code::NoObjectFound || disableOp.error().code == Error::Code::NoSuchPath));
+    }
+
+    auto disabledState = read_value<Widgets::ButtonState>(fx.space, std::string(button->state.getPath()));
+    REQUIRE(disabledState);
+    CHECK_FALSE(disabledState->enabled);
 }
 
+TEST_CASE("Widgets::Bindings::DispatchToggle handles hover/toggle/disable sequence") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{ .name = "bindings_toggle_renderer", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc{};
+    desc.size_px = {196, 96};
+    desc.progressive_tile_size_px = 32;
+
+    SurfaceParams surfaceParams{ .name = "bindings_toggle_surface", .desc = desc, .renderer = "renderers/bindings_toggle_renderer" };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    auto target = Renderer::ResolveTargetBase(fx.space,
+                                              fx.root_view(),
+                                              *renderer,
+                                              "targets/surfaces/bindings_toggle_surface");
+    REQUIRE(target);
+
+    Widgets::ToggleParams toggleParams{};
+    toggleParams.name = "primary_toggle";
+    auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), toggleParams);
+    REQUIRE(toggle);
+
+    auto binding = WidgetBindings::CreateToggleBinding(fx.space,
+                                                       fx.root_view(),
+                                                       *toggle,
+                                                       SP::ConcretePathStringView{target->getPath()});
+    REQUIRE(binding);
+
+    WidgetBindings::PointerInfo pointer{};
+    pointer.scene_x = 18.0f;
+    pointer.scene_y = 12.0f;
+    pointer.inside = true;
+
+    auto renderQueuePath = std::string(target->getPath()) + "/events/renderRequested/queue";
+    auto opQueuePath = binding->options.ops_queue.getPath();
+
+    Widgets::ToggleState hoverState{};
+    hoverState.hovered = true;
+
+    auto hoverEnter = WidgetBindings::DispatchToggle(fx.space,
+                                                     *binding,
+                                                     hoverState,
+                                                     WidgetBindings::WidgetOpKind::HoverEnter,
+                                                     pointer);
+    REQUIRE(hoverEnter);
+    CHECK(*hoverEnter);
+
+    auto hoverEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    REQUIRE(hoverEvent);
+    CHECK(hoverEvent->reason == "widget/toggle");
+
+    auto hoverOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(hoverOp);
+    CHECK(hoverOp->kind == WidgetBindings::WidgetOpKind::HoverEnter);
+    CHECK(hoverOp->value == doctest::Approx(0.0f));
+
+    Widgets::ToggleState toggledState{};
+    toggledState.hovered = true;
+    toggledState.checked = true;
+
+    auto toggleResult = WidgetBindings::DispatchToggle(fx.space,
+                                                       *binding,
+                                                       toggledState,
+                                                       WidgetBindings::WidgetOpKind::Toggle,
+                                                       pointer);
+    REQUIRE(toggleResult);
+    CHECK(*toggleResult);
+
+    auto toggleEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    REQUIRE(toggleEvent);
+    CHECK(toggleEvent->reason == "widget/toggle");
+
+    auto toggleOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(toggleOp);
+    CHECK(toggleOp->kind == WidgetBindings::WidgetOpKind::Toggle);
+    CHECK(toggleOp->value == doctest::Approx(1.0f));
+
+    Widgets::ToggleState hoverExitState = toggledState;
+    hoverExitState.hovered = false;
+
+    auto hoverExit = WidgetBindings::DispatchToggle(fx.space,
+                                                    *binding,
+                                                    hoverExitState,
+                                                    WidgetBindings::WidgetOpKind::HoverExit,
+                                                    pointer);
+    REQUIRE(hoverExit);
+    CHECK(*hoverExit);
+
+    auto hoverExitEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    REQUIRE(hoverExitEvent);
+    CHECK(hoverExitEvent->reason == "widget/toggle");
+
+    auto hoverExitOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(hoverExitOp);
+    CHECK(hoverExitOp->kind == WidgetBindings::WidgetOpKind::HoverExit);
+    CHECK(hoverExitOp->value == doctest::Approx(1.0f));
+
+    Widgets::ToggleState disabledState = hoverExitState;
+    disabledState.enabled = false;
+
+    auto disableResult = Widgets::UpdateToggleState(fx.space, *toggle, disabledState);
+    REQUIRE(disableResult);
+    CHECK(*disableResult);
+
+    auto disableEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    CHECK_FALSE(disableEvent);
+    if (!disableEvent) {
+        CHECK((disableEvent.error().code == Error::Code::NoObjectFound || disableEvent.error().code == Error::Code::NoSuchPath));
+    }
+
+    auto disableOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    CHECK_FALSE(disableOp);
+    if (!disableOp) {
+        CHECK((disableOp.error().code == Error::Code::NoObjectFound || disableOp.error().code == Error::Code::NoSuchPath));
+    }
+
+    auto storedState = fx.space.read<Widgets::ToggleState, std::string>(toggle->state.getPath());
+    REQUIRE(storedState);
+    CHECK_FALSE(storedState->enabled);
+    CHECK(storedState->checked);
+}
 TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
     BuildersFixture fx;
 
@@ -1678,6 +2170,31 @@ TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
     pointer.scene_y = 12.0f;
     pointer.primary = true;
 
+    auto renderQueuePath = std::string(target->getPath()) + "/events/renderRequested/queue";
+    auto opQueuePath = binding->options.ops_queue.getPath();
+
+    Widgets::SliderState beginState{};
+    beginState.enabled = true;
+    beginState.dragging = true;
+    beginState.value = 0.15f;
+
+    auto beginResult = WidgetBindings::DispatchSlider(fx.space,
+                                                      *binding,
+                                                      beginState,
+                                                      WidgetBindings::WidgetOpKind::SliderBegin,
+                                                      pointer);
+    REQUIRE(beginResult);
+    CHECK(*beginResult);
+
+    auto beginEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    REQUIRE(beginEvent);
+    CHECK(beginEvent->reason == "widget/slider");
+
+    auto beginOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(beginOp);
+    CHECK(beginOp->kind == WidgetBindings::WidgetOpKind::SliderBegin);
+    CHECK(beginOp->value == doctest::Approx(0.15f));
+
     Widgets::SliderState dragState{};
     dragState.enabled = true;
     dragState.dragging = true;
@@ -1691,16 +2208,36 @@ TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
     REQUIRE(updateResult);
     CHECK(*updateResult);
 
-    auto renderQueuePath = std::string(target->getPath()) + "/events/renderRequested/queue";
-    auto renderEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
-    REQUIRE(renderEvent);
-    CHECK(renderEvent->reason == "widget/slider");
+    auto updateEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    REQUIRE(updateEvent);
+    CHECK(updateEvent->reason == "widget/slider");
 
-    auto opQueuePath = binding->options.ops_queue.getPath();
-    auto sliderOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
-    REQUIRE(sliderOp);
-    CHECK(sliderOp->kind == WidgetBindings::WidgetOpKind::SliderUpdate);
-    CHECK(sliderOp->value == doctest::Approx(1.0f));
+    auto updateOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(updateOp);
+    CHECK(updateOp->kind == WidgetBindings::WidgetOpKind::SliderUpdate);
+    CHECK(updateOp->value == doctest::Approx(1.0f));
+
+    Widgets::SliderState commitState{};
+    commitState.enabled = true;
+    commitState.dragging = false;
+    commitState.value = 0.6f;
+
+    auto commitResult = WidgetBindings::DispatchSlider(fx.space,
+                                                       *binding,
+                                                       commitState,
+                                                       WidgetBindings::WidgetOpKind::SliderCommit,
+                                                       pointer);
+    REQUIRE(commitResult);
+    CHECK(*commitResult);
+
+    auto commitEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    REQUIRE(commitEvent);
+    CHECK(commitEvent->reason == "widget/slider");
+
+    auto commitOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(commitOp);
+    CHECK(commitOp->kind == WidgetBindings::WidgetOpKind::SliderCommit);
+    CHECK(commitOp->value == doctest::Approx(0.6f));
 
     auto hints = fx.space.read<std::vector<DirtyRectHint>, std::string>(std::string(target->getPath()) + "/hints/dirtyRects");
     REQUIRE(hints);
@@ -1711,6 +2248,30 @@ TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
     if (!noExtraEvent) {
         CHECK((noExtraEvent.error().code == Error::Code::NoObjectFound || noExtraEvent.error().code == Error::Code::NoSuchPath));
     }
+
+    Widgets::SliderState disabled{};
+    disabled.enabled = false;
+    disabled.value = 0.6f;
+
+    auto disableResult = Widgets::UpdateSliderState(fx.space, *slider, disabled);
+    REQUIRE(disableResult);
+    CHECK(*disableResult);
+
+    auto disableEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    CHECK_FALSE(disableEvent);
+    if (!disableEvent) {
+        CHECK((disableEvent.error().code == Error::Code::NoObjectFound || disableEvent.error().code == Error::Code::NoSuchPath));
+    }
+
+    auto disableOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    CHECK_FALSE(disableOp);
+    if (!disableOp) {
+        CHECK((disableOp.error().code == Error::Code::NoObjectFound || disableOp.error().code == Error::Code::NoSuchPath));
+    }
+
+    auto storedState = fx.space.read<Widgets::SliderState, std::string>(slider->state.getPath());
+    REQUIRE(storedState);
+    CHECK_FALSE(storedState->enabled);
 }
 
 TEST_CASE("Widgets::CreateList publishes snapshot and metadata") {
@@ -1843,6 +2404,93 @@ TEST_CASE("Widgets::ResolveHitTarget extracts canonical widget path from hit tes
     CHECK(pointer.scene_y == doctest::Approx(request.y));
     CHECK(pointer.inside);
     CHECK(pointer.primary);
+}
+
+TEST_CASE("Widget button states match golden snapshots") {
+    BuildersFixture fx;
+
+    Widgets::ButtonParams params{};
+    params.name = "golden_button";
+    params.label = "Golden";
+    auto button = Widgets::CreateButton(fx.space, fx.root_view(), params);
+    REQUIRE(button);
+
+    auto dims = compute_widget_dimensions(fx, button->states);
+    CHECK(dims.width > 0);
+    CHECK(dims.height > 0);
+
+    WidgetGoldenRenderer renderer{fx, "widget_button_golden", dims.width, dims.height};
+    renderer.render(button->states.idle, "widget_button_idle.golden");
+    renderer.render(button->states.hover, "widget_button_hover.golden");
+    renderer.render(button->states.pressed, "widget_button_pressed.golden");
+    renderer.render(button->states.disabled, "widget_button_disabled.golden");
+}
+
+TEST_CASE("Widget toggle states match golden snapshots") {
+    BuildersFixture fx;
+
+    Widgets::ToggleParams params{};
+    params.name = "golden_toggle";
+    auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), params);
+    REQUIRE(toggle);
+
+    auto dims = compute_widget_dimensions(fx, toggle->states);
+    CHECK(dims.width > 0);
+    CHECK(dims.height > 0);
+
+    WidgetGoldenRenderer renderer{fx, "widget_toggle_golden", dims.width, dims.height};
+    renderer.render(toggle->states.idle, "widget_toggle_idle.golden");
+    renderer.render(toggle->states.hover, "widget_toggle_hover.golden");
+    renderer.render(toggle->states.pressed, "widget_toggle_pressed.golden");
+    renderer.render(toggle->states.disabled, "widget_toggle_disabled.golden");
+}
+
+TEST_CASE("Widget slider states match golden snapshots") {
+    BuildersFixture fx;
+
+    Widgets::SliderParams params{};
+    params.name = "golden_slider";
+    params.minimum = 0.0f;
+    params.maximum = 1.0f;
+    params.value = 0.35f;
+    auto slider = Widgets::CreateSlider(fx.space, fx.root_view(), params);
+    REQUIRE(slider);
+
+    auto dims = compute_widget_dimensions(fx, slider->states);
+    CHECK(dims.width > 0);
+    CHECK(dims.height > 0);
+
+    WidgetGoldenRenderer renderer{fx, "widget_slider_golden", dims.width, dims.height};
+    renderer.render(slider->states.idle, "widget_slider_idle.golden");
+    renderer.render(slider->states.hover, "widget_slider_hover.golden");
+    renderer.render(slider->states.pressed, "widget_slider_pressed.golden");
+    renderer.render(slider->states.disabled, "widget_slider_disabled.golden");
+}
+
+TEST_CASE("Widget list states match golden snapshots") {
+    BuildersFixture fx;
+
+    Widgets::ListParams params{};
+    params.name = "golden_list";
+    params.items = {
+        Widgets::ListItem{.id = "alpha", .label = "Alpha", .enabled = true},
+        Widgets::ListItem{.id = "beta", .label = "Beta", .enabled = true},
+        Widgets::ListItem{.id = "gamma", .label = "Gamma", .enabled = false},
+    };
+    params.style.width = 260.0f;
+    params.style.item_height = 38.0f;
+    auto list = Widgets::CreateList(fx.space, fx.root_view(), params);
+    REQUIRE(list);
+
+    auto dims = compute_widget_dimensions(fx, list->states);
+    CHECK(dims.width > 0);
+    CHECK(dims.height > 0);
+
+    WidgetGoldenRenderer renderer{fx, "widget_list_golden", dims.width, dims.height};
+    renderer.render(list->states.idle, "widget_list_idle.golden");
+    renderer.render(list->states.hover, "widget_list_hover.golden");
+    renderer.render(list->states.pressed, "widget_list_pressed.golden");
+    renderer.render(list->states.disabled, "widget_list_disabled.golden");
 }
 
 TEST_CASE("Widgets::Focus::Set and Move update widget states") {
@@ -2404,6 +3052,10 @@ TEST_CASE("Widgets::Bindings::DispatchList enqueues ops and schedules renders") 
     REQUIRE(hoverResult);
     CHECK(*hoverResult);
 
+    auto hoverEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    REQUIRE(hoverEvent);
+    CHECK(hoverEvent->reason == "widget/list");
+
     auto hoverOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
     REQUIRE(hoverOp);
     CHECK(hoverOp->kind == WidgetBindings::WidgetOpKind::ListHover);
@@ -2421,10 +3073,38 @@ TEST_CASE("Widgets::Bindings::DispatchList enqueues ops and schedules renders") 
     REQUIRE(scrollResult);
     CHECK(*scrollResult);
 
+    auto scrollEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    REQUIRE(scrollEvent);
+    CHECK(scrollEvent->reason == "widget/list");
+
     auto scrollOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
     REQUIRE(scrollOp);
     CHECK(scrollOp->kind == WidgetBindings::WidgetOpKind::ListScroll);
     CHECK(scrollOp->value >= 0.0f);
+
+    Widgets::ListState disabled{};
+    disabled.enabled = false;
+    disabled.selected_index = 1;
+
+    auto disableResult = Widgets::UpdateListState(fx.space, *listWidget, disabled);
+    REQUIRE(disableResult);
+    CHECK(*disableResult);
+
+    auto disableEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    CHECK_FALSE(disableEvent);
+    if (!disableEvent) {
+        CHECK((disableEvent.error().code == Error::Code::NoObjectFound || disableEvent.error().code == Error::Code::NoSuchPath));
+    }
+
+    auto disableOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    CHECK_FALSE(disableOp);
+    if (!disableOp) {
+        CHECK((disableOp.error().code == Error::Code::NoObjectFound || disableOp.error().code == Error::Code::NoSuchPath));
+    }
+
+    auto storedState = fx.space.read<Widgets::ListState, std::string>(listWidget->state.getPath());
+    REQUIRE(storedState);
+    CHECK_FALSE(storedState->enabled);
 }
 
 TEST_CASE("Widgets::Reducers::ReducePending routes widget ops to action queues") {

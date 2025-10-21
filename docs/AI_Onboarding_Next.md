@@ -42,7 +42,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 | Metal renderer | ✅ Completed (October 20, 2025) — material/shader bindings now flow through the shared descriptor cache | `PathRenderer2DMetal` covers rects, rounded rects, text quads, and images (see Phase 7); continue tracking glyph/material parity on the descriptor cache. |
 | Diagnostics | ✅ Completed (October 20, 2025) — dashboards consume `textureGpuBytes`/`resourceGpuBytes` plus residency ratios/status under `diagnostics/metrics/residency` | Coordinate with tooling owners before schema changes. |
 | Input & hit testing | ✅ Completed (October 21, 2025) — keyboard/gamepad focus navigation now rides the 15× UITest loop (`tests/ui/test_Builders.cpp`) alongside z-ordered hits, focus routing, and auto-render wake latency | Continue monitoring wait/notify latency metrics; extend coverage when new interaction paths land. |
-| Widgets | Phase 8 follow-up: expand widget UITests & focus navigation helpers | Styling/theme hooks now ship via `Widgets::WidgetTheme`; next up is goldens + interaction UITests and the remaining focus-navigation helpers noted in `docs/Plan_SceneGraph_Implementation.md`. |
+| Widgets | Phase 8 follow-up: add dirty-propagation + fuzz coverage | Styling/theme hooks ship via `Widgets::WidgetTheme`; golden snapshots and focus-navigation UITests now live in `tests/ui/test_Builders.cpp`, so concentrate on the remaining dirty-propagation + fuzz bullets in `docs/Plan_SceneGraph_Implementation.md`. |
 | HTML tooling | Add HSAT inspection CLI/tests and extend coverage when new asset fields appear | Legacy serializer removed; HSAT is mandatory. |
 
 ## 3. Communication & Handoff Hygiene
@@ -74,6 +74,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Metal renderer is now material-aware: `PathRenderer2DMetal` consumes shared descriptors via `bind_material`, GPU frames stay in lock-step with software telemetry, and a new blending UITest asserts pipeline parity (`PathRenderer2DMetal honors material blending state`).
 - Scene hit testing now returns z-ordered hit stacks (`HitTestResult::hits`) with bounded drill-down via `HitTestRequest::max_results`; doctests cover overlap, clipping, and limit cases (October 21, 2025).
 - Widget focus navigation helpers (`Widgets::Focus`) maintain `widgets/focus/current`, toggle widget highlight states across button/toggle/slider/list types using `meta/kind`, and enqueue auto-render events for keyboard/gamepad traversal (October 21, 2025).
+- Widget UITests now render button/toggle/slider/list state goldens and replay hover/press/disabled sequences; `PATHSPACE_UPDATE_GOLDENS=1` refreshes the fixtures when intentional changes land (October 21, 2025).
 - UITest coverage exercises Tab/Shift+Tab and gamepad focus hops through the widget order, asserting focus state updates and `focus-navigation` auto-render scheduling in `tests/ui/test_Builders.cpp` (October 21, 2025).
 - Paint demo ships with a `--metal` flag that selects the Metal2D backend and auto-enables uploads for developers; software remains the default for CI.
 - `./scripts/compile.sh` always builds with Metal support enabled and runs the Metal UITests unless `--disable-metal-tests` is passed. This keeps the GPU path green by default on macOS hosts.
@@ -92,8 +93,8 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Latest commit: `feat(ui): add widget state scenes` (local `fix/metal-present`, unpushed). Builders now author canonical widget state snapshots, live scenes republish when state toggles, and the plan/docs/tests are in sync.
 - Validation: `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20` (15× PathSpaceTests, PathSpaceUITests, HtmlCanvasVerify, HtmlAssetInspect) — all green with Metal presenters enabled.
 - Outstanding follow-ups before resuming:
-  1. Add widget UITest goldens + hover/pressed/disabled interaction sequences (keyboard/gamepad focus loops now live in `tests/ui/test_Builders.cpp`; close the remaining Phase 8 testing bullets once goldens land).
-  2. Implement the remaining widget focus-navigation helpers & state schema docs, then sync `docs/Plan_SceneGraph_Implementation.md`.
+  1. Finish the remaining Phase 8 testing items: add adjacent-widget dirty propagation coverage and the widget bindings fuzz harness noted in `docs/Plan_SceneGraph_Implementation.md`.
+  2. Continue the HTML tooling/HSAT documentation pass and keep renderer telemetry docs synchronized with plan updates.
 - Local worktree still holds edits to `docs/Plan_PrimeScript.md` and `docs/AI_Prompts.md` from prior sessions—confirm intent before publishing.
 - Next session checklist:
   1. Branch from `origin/master`, cherry-pick or push the widget state scenes commit, and request review.

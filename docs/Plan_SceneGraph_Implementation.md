@@ -1,6 +1,6 @@
 # Handoff Notice
 
-> **Handoff note (October 21, 2025 @ shutdown):** Hit-test coverage now spans ordering, clip-aware picking, focus routing, the auto-render wait/notify path (`tests/ui/test_SceneHitTest.cpp` asserts ≤200 ms wake latency), DrawableBucket-backed multi-hit stacks (`HitTestResult::hits` with `HitTestRequest::max_results`), and widget focus-navigation helpers with auto-render scheduling. Keyboard/gamepad focus loops now have UITest coverage in `tests/ui/test_Builders.cpp`, and presenter diagnostics continue to mirror into `windows/<win>/diagnostics/metrics/live/views/<view>/present`. Next pass should expand HTML tooling (HSAT inspectors) and document the widget state schema.
+> **Handoff note (October 21, 2025 @ shutdown):** Hit-test coverage now spans ordering, clip-aware picking, focus routing, the auto-render wait/notify path (`tests/ui/test_SceneHitTest.cpp` asserts ≤200 ms wake latency), DrawableBucket-backed multi-hit stacks (`HitTestResult::hits` with `HitTestRequest::max_results`), and widget focus-navigation helpers with auto-render scheduling. Keyboard/gamepad focus loops and widget golden snapshots now live in `tests/ui/test_Builders.cpp`, and presenter diagnostics continue to mirror into `windows/<win>/diagnostics/metrics/live/views/<view>/present`. Next pass should expand HTML tooling (HSAT inspectors) and finish the remaining HTML adapter notes.
 
 # Scene Graph Implementation Plan
 
@@ -249,14 +249,17 @@ Completed:
   - ✅ (October 21, 2025) Hit-test authoring ids now embed canonical `/widgets/<id>/authoring/...` paths and `Widgets::ResolveHitTarget`/`WidgetBindings::PointerFromHit` helpers normalize hover/press routing into the existing bindings + `ops/` queues.
   - ✅ (October 21, 2025) Focus navigation helpers (`Widgets::Focus`) reuse `Scene::HitTest` metadata, maintain canonical focus state under `widgets/focus/current`, toggle widget scene states, and enqueue auto-render requests so highlight transitions redraw immediately.
   - ✅ (October 21, 2025) Added UITest coverage for keyboard (Tab/Shift+Tab) and gamepad focus hops (`tests/ui/test_Builders.cpp`), asserting focus state transitions and `focus-navigation` auto-render scheduling so the 15× loop flags regressions immediately.
-  - Document the path schema for widget state (e.g., `/.../widgets/<id>/{state,enabled,label}`) and ensure updates stay atomic.
+  - ✅ (October 21, 2025) Documented the canonical widget state schema and confirmed updates stay atomic:
+    - `widgets/<id>/state`, `widgets/<id>/enabled`, and `widgets/<id>/label` hold the live state tuple authored by builders.
+    - Interaction queues live under `widgets/<id>/ops/inbox/queue` and reducer outputs land in `widgets/<id>/ops/actions/inbox/queue`.
+    - Canonical state snapshots reside in `scenes/widgets/<id>/states/{idle,hover,pressed,disabled}` and are reused by bindings, reducer tests, and golden renders.
 - **State binding & data flow**
 - ✅ (October 19, 2025) Introduced initial state update helpers for buttons/toggles that coalesce redundant writes and mark the owning scene `DirtyKind::Visual` only when values change.
 - ✅ (October 20, 2025) Binding layer (`Widgets::Bindings::Dispatch{Button,Toggle,Slider}`) watches widget state, emits dirty hints, and writes interaction ops (press/release/hover/toggle/slider events) into `widgets/<id>/ops/inbox/queue`. Reducer samples live in this plan’s appendix; schema covers `WidgetOpKind`, pointer metadata, value payloads, and timestamps for reducers to consume via wait/notify.
 - ✅ (October 20, 2025) Added list state/update helpers (`Widgets::UpdateListState`) plus bindings (`CreateListBinding`/`DispatchList`) that emit `ListHover`, `ListSelect`, `ListActivate`, and `ListScroll` ops with dirty rect + auto-render integration.
 - ✅ (October 20, 2025) Introduced reducer helpers (`Widgets::Reducers::ReducePending` / `PublishActions`) so apps can drain widget op queues into `ops/actions/inbox/queue`; example + doctests cover button activation and list selection flows.
 - **Testing**
-  - Extend `PathSpaceUITests` with golden snapshots and interaction sequences for each widget (hover, press, disabled) using the 15× loop to guard against race regressions.
+  - ✅ (October 21, 2025) `PathSpaceUITests` now render button/toggle/slider/list goldens and replay hover/press/disabled sequences in `tests/ui/test_Builders.cpp`, keeping the 15× loop sensitive to widget regressions.
   - Add doctest coverage for the binding helpers to confirm dirty-hint emission, focus routing, and auto-render scheduling.
   - Add adjacent-widget dirty propagation coverage: place widgets with touching/overlapping dirty rectangles, trigger an update on one, and assert the neighbour schedules a repaint and retains its state.
   - Introduce a fuzz harness for widget reducers/bindings that randomizes pointer/keyboard sequences and asserts dirty hints, ops queues, and state invariants remain stable.
