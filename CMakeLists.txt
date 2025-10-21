@@ -150,6 +150,17 @@ if(BUILD_PATHSPACE_EXAMPLES)
             "-framework IOSurface")
         target_compile_definitions(widgets_example PRIVATE PATHIO_BACKEND_MACOS=1)
     endif()
+
+    add_executable(pixel_noise_example examples/pixel_noise_example.cpp)
+    target_link_libraries(pixel_noise_example PRIVATE PathSpace)
+    if(APPLE)
+        target_link_libraries(pixel_noise_example PRIVATE
+            "-framework Cocoa"
+            "-framework Metal"
+            "-framework QuartzCore"
+            "-framework IOSurface")
+        target_compile_definitions(pixel_noise_example PRIVATE PATHIO_BACKEND_MACOS=1)
+    endif()
 endif()
 
 # Documentation (Doxygen)

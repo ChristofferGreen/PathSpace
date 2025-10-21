@@ -1,0 +1,569 @@
+#include <pathspace/PathSpace.hpp>
+#include <pathspace/app/AppPaths.hpp>
+#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/DrawCommands.hpp>
+
+#include <atomic>
+#include <chrono>
+#include <csignal>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <iomanip>
+#include <iostream>
+#include <optional>
+#include <random>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#if !defined(PATHSPACE_ENABLE_UI)
+int main() {
+    std::cerr << "pixel_noise_example requires PATHSPACE_ENABLE_UI=ON.\n";
+    return 1;
+}
+#elif !defined(__APPLE__)
+int main() {
+    std::cerr << "pixel_noise_example currently supports only macOS builds.\n";
+    return 1;
+}
+#else
+
+#include <CoreFoundation/CoreFoundation.h>
+#include <IOSurface/IOSurface.h>
+#include <pathspace/ui/LocalWindowBridge.hpp>
+
+using namespace SP;
+using namespace SP::UI;
+namespace Builders = SP::UI::Builders;
+namespace UIScene = SP::UI::Scene;
+
+namespace {
+
+struct Options {
+    int width = 1280;
+    int height = 720;
+    bool headless = false;
+    std::size_t max_frames = 0;
+    std::chrono::duration<double> report_interval = std::chrono::seconds{1};
+    std::uint64_t seed = 0;
+    bool prefer_iosurface_present = false;
+};
+
+struct NoiseState {
+    explicit NoiseState(std::uint64_t seed_value)
+        : rng(static_cast<std::mt19937::result_type>(seed_value))
+        , channel_dist(0, 255)
+        , frame_index(0)
+    {}
+
+    std::mt19937 rng;
+    std::uniform_int_distribution<int> channel_dist;
+    std::uint64_t frame_index;
+};
+
+std::atomic<bool> g_running{true};
+
+void handle_signal(int) {
+    g_running.store(false, std::memory_order_release);
+}
+
+template <typename T>
+auto expect_or_exit(SP::Expected<T> value, char const* context) -> T {
+    if (value) {
+        return std::move(*value);
+    }
+    auto const& err = value.error();
+    std::cerr << "pixel_noise_example: " << context << " failed";
+    if (err.message.has_value()) {
+        std::cerr << ": " << *err.message;
+    } else {
+        std::cerr << " (code " << static_cast<int>(err.code) << ')';
+    }
+    std::cerr << '\n';
+    std::exit(1);
+}
+
+inline void expect_or_exit(SP::Expected<void> value, char const* context) {
+    if (value) {
+        return;
+    }
+    auto const& err = value.error();
+    std::cerr << "pixel_noise_example: " << context << " failed";
+    if (err.message.has_value()) {
+        std::cerr << ": " << *err.message;
+    } else {
+        std::cerr << " (code " << static_cast<int>(err.code) << ')';
+    }
+    std::cerr << '\n';
+    std::exit(1);
+}
+
+auto parse_int(std::string_view text, char const* label) -> int {
+    try {
+        size_t consumed = 0;
+        int value = std::stoi(std::string{text}, &consumed);
+        if (consumed != text.size()) {
+            throw std::invalid_argument{"trailing characters"};
+        }
+        return value;
+    } catch (std::exception const& ex) {
+        std::cerr << "pixel_noise_example: invalid " << label << " '" << text << "': " << ex.what() << '\n';
+        std::exit(1);
+    }
+}
+
+auto parse_size(std::string_view text, char const* label) -> std::size_t {
+    try {
+        size_t consumed = 0;
+        unsigned long long value = std::stoull(std::string{text}, &consumed);
+        if (consumed != text.size()) {
+            throw std::invalid_argument{"trailing characters"};
+        }
+        return static_cast<std::size_t>(value);
+    } catch (std::exception const& ex) {
+        std::cerr << "pixel_noise_example: invalid " << label << " '" << text << "': " << ex.what() << '\n';
+        std::exit(1);
+    }
+}
+
+auto parse_seconds(std::string_view text, char const* label) -> std::chrono::duration<double> {
+    try {
+        size_t consumed = 0;
+        double value = std::stod(std::string{text}, &consumed);
+        if (consumed != text.size() || value <= 0.0) {
+            throw std::invalid_argument{"expected positive number"};
+        }
+        return std::chrono::duration<double>(value);
+    } catch (std::exception const& ex) {
+        std::cerr << "pixel_noise_example: invalid " << label << " '" << text << "': " << ex.what() << '\n';
+        std::exit(1);
+    }
+}
+
+auto parse_seed(std::string_view text) -> std::uint64_t {
+    try {
+        size_t consumed = 0;
+        unsigned long long value = std::stoull(std::string{text}, &consumed);
+        if (consumed != text.size()) {
+            throw std::invalid_argument{"trailing characters"};
+        }
+        return static_cast<std::uint64_t>(value);
+    } catch (std::exception const& ex) {
+        std::cerr << "pixel_noise_example: invalid seed '" << text << "': " << ex.what() << '\n';
+        std::exit(1);
+    }
+}
+
+auto parse_options(int argc, char** argv) -> Options {
+    Options opts{};
+    opts.seed = static_cast<std::uint64_t>(std::random_device{}());
+
+    for (int i = 1; i < argc; ++i) {
+        std::string_view arg{argv[i]};
+        if (arg == "--headless") {
+            opts.headless = true;
+        } else if (arg.rfind("--width=", 0) == 0) {
+            opts.width = parse_int(arg.substr(8), "width");
+        } else if (arg.rfind("--height=", 0) == 0) {
+            opts.height = parse_int(arg.substr(9), "height");
+        } else if (arg.rfind("--frames=", 0) == 0) {
+            opts.max_frames = parse_size(arg.substr(9), "frames");
+        } else if (arg.rfind("--report-interval=", 0) == 0) {
+            opts.report_interval = parse_seconds(arg.substr(18), "report interval");
+        } else if (arg.rfind("--seed=", 0) == 0) {
+            opts.seed = parse_seed(arg.substr(7));
+        } else if (arg == "--prefer-iosurface" || arg == "--prefer-iosurface-present") {
+            opts.prefer_iosurface_present = true;
+        } else if (arg == "--help" || arg == "-h") {
+            std::cout << "Usage: pixel_noise_example [options]\n"
+                      << "Options:\n"
+                      << "  --width=<pixels>          Surface width (default 1280)\n"
+                      << "  --height=<pixels>         Surface height (default 720)\n"
+                      << "  --frames=<count>          Stop after N presented frames\n"
+                      << "  --report-interval=<sec>   Stats print interval (default 1.0)\n"
+                      << "  --headless                Skip local window presentation\n"
+                      << "  --seed=<value>            PRNG seed\n"
+                      << "  --prefer-iosurface        Present using IOSurface when available (default: CPU blit)\n";
+            std::exit(0);
+        } else {
+            std::cerr << "pixel_noise_example: unknown option '" << arg << "'\n";
+            std::cerr << "Use --help to see available options.\n";
+            std::exit(1);
+        }
+    }
+
+    if (opts.width <= 0 || opts.height <= 0) {
+        std::cerr << "pixel_noise_example: width and height must be positive.\n";
+        std::exit(1);
+    }
+
+    return opts;
+}
+
+auto make_identity_transform() -> UIScene::Transform {
+    UIScene::Transform transform{};
+    for (std::size_t i = 0; i < transform.elements.size(); ++i) {
+        transform.elements[i] = (i % 5 == 0) ? 1.0f : 0.0f;
+    }
+    return transform;
+}
+
+auto build_background_bucket(int width, int height) -> UIScene::DrawableBucketSnapshot {
+    UIScene::DrawableBucketSnapshot bucket{};
+    constexpr std::uint64_t kDrawableId = 0xC0FFEE01u;
+
+    bucket.drawable_ids = {kDrawableId};
+    bucket.world_transforms = {make_identity_transform()};
+
+    UIScene::BoundingSphere sphere{};
+    sphere.center = {static_cast<float>(width) * 0.5f,
+                     static_cast<float>(height) * 0.5f,
+                     0.0f};
+    sphere.radius = std::sqrt(sphere.center[0] * sphere.center[0]
+                              + sphere.center[1] * sphere.center[1]);
+    bucket.bounds_spheres = {sphere};
+
+    UIScene::BoundingBox box{};
+    box.min = {0.0f, 0.0f, 0.0f};
+    box.max = {static_cast<float>(width),
+               static_cast<float>(height),
+               0.0f};
+    bucket.bounds_boxes = {box};
+    bucket.bounds_box_valid = {1};
+
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {0};
+    bucket.pipeline_flags = {0};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {0};
+    bucket.alpha_indices.clear();
+    bucket.layer_indices.clear();
+    bucket.clip_nodes.clear();
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {
+        UIScene::DrawableAuthoringMapEntry{
+            kDrawableId,
+            "pixel_noise/background",
+            0,
+            0,
+        }
+    };
+    bucket.drawable_fingerprints = {kDrawableId};
+
+    UIScene::RectCommand rect{};
+    rect.min_x = 0.0f;
+    rect.min_y = 0.0f;
+    rect.max_x = static_cast<float>(width);
+    rect.max_y = static_cast<float>(height);
+    rect.color = {0.0f, 0.0f, 0.0f, 1.0f};
+
+    auto offset = bucket.command_payload.size();
+    bucket.command_payload.resize(offset + sizeof(UIScene::RectCommand));
+    std::memcpy(bucket.command_payload.data() + offset,
+                &rect,
+                sizeof(UIScene::RectCommand));
+    bucket.command_kinds = {
+        static_cast<std::uint32_t>(UIScene::DrawCommandKind::Rect),
+    };
+
+    return bucket;
+}
+
+struct SceneSetup {
+    Builders::ScenePath scene;
+    std::uint64_t revision = 0;
+};
+
+auto publish_scene(PathSpace& space,
+                   SP::App::AppRootPathView root,
+                   int width,
+                   int height) -> SceneSetup {
+    Builders::SceneParams scene_params{};
+    scene_params.name = "pixel_noise_scene";
+    scene_params.description = "Pixel noise perf harness scene";
+
+    auto scene_path = expect_or_exit(Builders::Scene::Create(space, root, scene_params),
+                                     "create scene");
+
+    UIScene::SceneSnapshotBuilder builder{space, root, scene_path};
+    auto bucket = build_background_bucket(width, height);
+
+    UIScene::SnapshotPublishOptions publish{};
+    publish.metadata.author = "pixel_noise_example";
+    publish.metadata.tool_version = "pixel_noise_example";
+    publish.metadata.created_at = std::chrono::system_clock::now();
+    publish.metadata.drawable_count = bucket.drawable_ids.size();
+    publish.metadata.command_count = bucket.command_counts.size();
+
+    auto revision = expect_or_exit(builder.publish(publish, bucket),
+                                   "publish scene snapshot");
+
+    return SceneSetup{
+        .scene = scene_path,
+        .revision = revision,
+    };
+}
+
+void present_to_local_window(Builders::Window::WindowPresentResult const& present,
+                             int width,
+                             int height,
+                             bool headless,
+                             bool prefer_iosurface) {
+    if (headless) {
+        return;
+    }
+
+    bool presented = false;
+
+    if (prefer_iosurface
+        && present.stats.iosurface
+        && present.stats.iosurface->valid()) {
+        auto iosurface_ref = present.stats.iosurface->retain_for_external_use();
+        if (iosurface_ref) {
+            SP::UI::PresentLocalWindowIOSurface(static_cast<void*>(iosurface_ref),
+                                                width,
+                                                height,
+                                                static_cast<int>(present.stats.iosurface->row_bytes()));
+            presented = true;
+            CFRelease(iosurface_ref);
+        }
+    }
+
+    if (!presented && !present.framebuffer.empty()) {
+        int stride = 0;
+        if (height > 0) {
+            stride = static_cast<int>(present.framebuffer.size() / static_cast<std::size_t>(height));
+        }
+        if (stride <= 0) {
+            stride = width * 4;
+        }
+        SP::UI::PresentLocalWindowFramebuffer(present.framebuffer.data(),
+                                              width,
+                                              height,
+                                              stride);
+    }
+}
+
+struct HookGuard {
+    HookGuard() = default;
+    HookGuard(HookGuard const&) = delete;
+    HookGuard& operator=(HookGuard const&) = delete;
+    HookGuard(HookGuard&& other) noexcept
+        : active(other.active) {
+        other.active = false;
+    }
+    HookGuard& operator=(HookGuard&& other) noexcept {
+        if (this != &other) {
+            if (active) {
+                Builders::Window::TestHooks::ResetBeforePresentHook();
+            }
+            active = other.active;
+            other.active = false;
+        }
+        return *this;
+    }
+    ~HookGuard() {
+        if (active) {
+            Builders::Window::TestHooks::ResetBeforePresentHook();
+        }
+    }
+
+private:
+    bool active = true;
+};
+
+auto install_noise_hook(std::shared_ptr<NoiseState> state) -> HookGuard {
+    Builders::Window::TestHooks::SetBeforePresentHook(
+        [state = std::move(state)](PathSurfaceSoftware& surface,
+                                   PathWindowView::PresentPolicy& /*policy*/,
+                                   std::vector<std::size_t>& dirty_tiles) mutable {
+            auto desc = surface.desc();
+            auto width = std::max(0, desc.size_px.width);
+            auto height = std::max(0, desc.size_px.height);
+            if (width == 0 || height == 0) {
+                return;
+            }
+
+            auto buffer = surface.staging_span();
+            auto stride = surface.row_stride_bytes();
+            if (buffer.size() < static_cast<std::size_t>(height) * stride
+                || stride == 0) {
+                return;
+            }
+
+            auto const start = std::chrono::steady_clock::now();
+            for (int y = 0; y < height; ++y) {
+                auto* row = buffer.data() + static_cast<std::size_t>(y) * stride;
+                for (int x = 0; x < width; ++x) {
+                    auto noise = static_cast<std::uint32_t>(state->channel_dist(state->rng))
+                                 | (static_cast<std::uint32_t>(state->channel_dist(state->rng)) << 8)
+                                 | (static_cast<std::uint32_t>(state->channel_dist(state->rng)) << 16)
+                                 | 0xFF000000u;
+                    std::memcpy(row + static_cast<std::size_t>(x) * 4u, &noise, sizeof(noise));
+                }
+            }
+            auto const finish = std::chrono::steady_clock::now();
+            auto render_ms = std::chrono::duration<double, std::milli>(finish - start).count();
+
+            ++state->frame_index;
+            PathSurfaceSoftware::FrameInfo info{};
+            info.frame_index = state->frame_index;
+            info.revision = state->frame_index;
+            info.render_ms = render_ms;
+            surface.publish_buffered_frame(info);
+
+            dirty_tiles.clear();
+        });
+
+    return HookGuard{};
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    auto options = parse_options(argc, argv);
+
+    std::signal(SIGINT, handle_signal);
+    std::signal(SIGTERM, handle_signal);
+
+    PathSpace space;
+    SP::App::AppRootPath app_root{"/system/applications/pixel_noise_example"};
+    SP::App::AppRootPathView app_root_view{app_root.getPath()};
+
+    auto scene_setup = publish_scene(space, app_root_view, options.width, options.height);
+
+    Builders::App::BootstrapParams bootstrap_params{};
+    bootstrap_params.renderer.name = "noise_renderer";
+    bootstrap_params.renderer.kind = Builders::RendererKind::Software2D;
+    bootstrap_params.renderer.description = "pixel noise renderer";
+
+    bootstrap_params.surface.name = "noise_surface";
+    bootstrap_params.surface.desc.size_px.width = options.width;
+    bootstrap_params.surface.desc.size_px.height = options.height;
+    bootstrap_params.surface.desc.pixel_format = Builders::PixelFormat::RGBA8Unorm_sRGB;
+    bootstrap_params.surface.desc.color_space = Builders::ColorSpace::sRGB;
+    bootstrap_params.surface.desc.premultiplied_alpha = true;
+
+    bootstrap_params.window.name = "noise_window";
+    bootstrap_params.window.title = "PathSpace Pixel Noise";
+    bootstrap_params.window.width = options.width;
+    bootstrap_params.window.height = options.height;
+    bootstrap_params.window.scale = 1.0f;
+    bootstrap_params.window.background = "#101218";
+
+    bootstrap_params.present_policy.mode = PathWindowView::PresentMode::AlwaysLatestComplete;
+    bootstrap_params.present_policy.capture_framebuffer = true;
+    bootstrap_params.present_policy.auto_render_on_present = true;
+    bootstrap_params.present_policy.vsync_align = false;
+
+    auto bootstrap = expect_or_exit(Builders::App::Bootstrap(space,
+                                                             app_root_view,
+                                                             scene_setup.scene,
+                                                             bootstrap_params),
+                                    "bootstrap application");
+
+    expect_or_exit(Builders::Surface::SetScene(space, bootstrap.surface, scene_setup.scene),
+                   "bind scene to surface");
+
+    auto noise_state = std::make_shared<NoiseState>(options.seed);
+    auto hook_guard = install_noise_hook(noise_state);
+
+    if (!options.headless) {
+        SP::UI::SetLocalWindowCallbacks({});
+        SP::UI::InitLocalWindowWithSize(options.width,
+                                        options.height,
+                                        "PathSpace Pixel Noise");
+    }
+
+    std::cout << "pixel_noise_example: width=" << options.width
+              << " height=" << options.height
+              << " seed=" << options.seed
+              << (options.headless ? " headless" : " windowed")
+              << '\n';
+
+    auto last_report = std::chrono::steady_clock::now();
+    std::size_t frames_since_report = 0;
+    double accumulated_present_ms = 0.0;
+    double accumulated_render_ms = 0.0;
+    std::size_t total_presented = 0;
+
+    while (g_running.load(std::memory_order_acquire)) {
+        if (options.max_frames != 0 && total_presented >= options.max_frames) {
+            break;
+        }
+
+        if (!options.headless) {
+            SP::UI::PollLocalWindow();
+        }
+
+        auto present = Builders::Window::Present(space,
+                                                 bootstrap.window,
+                                                 bootstrap.view_name);
+        if (!present) {
+            auto const& err = present.error();
+            std::cerr << "pixel_noise_example: present failed";
+            if (err.message.has_value()) {
+                std::cerr << ": " << *err.message;
+            } else {
+                std::cerr << " (code " << static_cast<int>(err.code) << ')';
+            }
+            std::cerr << '\n';
+            break;
+        }
+
+        present_to_local_window(*present,
+                                options.width,
+                                options.height,
+                                options.headless,
+                                options.prefer_iosurface_present);
+
+        if (present->stats.presented) {
+            ++frames_since_report;
+            ++total_presented;
+            accumulated_present_ms += present->stats.present_ms;
+            accumulated_render_ms += present->stats.frame.render_ms;
+        }
+
+        auto now = std::chrono::steady_clock::now();
+        if (now - last_report >= options.report_interval) {
+            double seconds = std::chrono::duration<double>(now - last_report).count();
+            double fps = seconds > 0.0 ? static_cast<double>(frames_since_report) / seconds : 0.0;
+            double avg_present = frames_since_report > 0
+                                     ? accumulated_present_ms / static_cast<double>(frames_since_report)
+                                     : 0.0;
+            double avg_render = frames_since_report > 0
+                                    ? accumulated_render_ms / static_cast<double>(frames_since_report)
+                                    : 0.0;
+
+            std::cout << std::fixed << std::setprecision(2)
+                      << "[pixel_noise_example] "
+                      << "frames=" << total_presented
+                      << " fps=" << fps
+                      << " avgPresentMs=" << avg_present
+                      << " avgRenderMs=" << avg_render
+                      << " lastFrameIndex=" << present->stats.frame.frame_index
+                      << " lastPresentMs=" << present->stats.present_ms
+                      << " lastRenderMs=" << present->stats.frame.render_ms
+                      << '\n';
+            std::cout.unsetf(std::ios::floatfield);
+
+            frames_since_report = 0;
+            accumulated_present_ms = 0.0;
+            accumulated_render_ms = 0.0;
+            last_report = now;
+        }
+    }
+
+    std::cout << "pixel_noise_example: presented " << total_presented << " frames.\n";
+    return 0;
+}
+
+#endif // PATHSPACE_ENABLE_UI / __APPLE__

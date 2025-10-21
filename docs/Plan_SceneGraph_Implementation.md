@@ -145,14 +145,15 @@ Completed:
 - ✅ (October 21, 2025) `Window::Present` mirrors presenter stats into `windows/<win>/diagnostics/metrics/live/views/<view>/present` via `Diagnostics::WriteWindowPresentMetrics`, keeping central dashboards aligned with per-target telemetry.
 - ✅ (October 17, 2025) Added a minimal paint-style demo (`examples/paint_example.cpp`) that wires the scene→render→present stack together, supports dynamic canvas resizing, and interpolates mouse strokes so contributors can exercise the full software path end-to-end.
 - ✅ (October 16, 2025) macOS window presentation now uses a CAMetalLayer-backed Metal swapchain (IOSurface copies + present) instead of CoreGraphics blits; fullscreen perf is no longer CPU bound.
+- ✅ (October 21, 2025) Shipped `examples/pixel_noise_example.cpp`, a per-pixel noise perf harness that uses the software renderer plus a before-present hook to generate full-surface churn each frame, streams FPS/render diagnostics to stdout, and supports headless or windowed runs for quick throughput checks.
 
 Completed:
 - ✅ (October 18, 2025) Added fullscreen CAMetalLayer regression coverage in `PathSpaceUITests` and defaulted the presenter to zero-copy unless `capture_framebuffer` is explicitly enabled; perf regressions now fail under the UI harness.
 - (Done) IOSurface-backed software framebuffer landed with PathSurfaceSoftware/PathWindowView zero-copy integration; future work should iterate on diagnostics rather than copy elimination.
 
 Next:
-- 🔜 (Planned) Add an `examples/pixel_noise_example.cpp` perf harness that opens a window and writes random color values to every pixel each frame so we can confirm renderer/presenter throughput hits real-time when repainting the full surface.
-  - Capture render/present timing via existing diagnostics and wire the looped test harness to flag regressions once the full-surface churn path is live.
+- 🔜 (Planned) Pixel noise harness follow-ups: integrate the new example with automated baselines and diagnostics so perf regressions stay guarded.
+  - Wire the looped test harness to run the example, capture render/present timing from diagnostics, and fail when the full-surface churn path drops below the realtime budget.
   - Persist baseline metrics (frame time, residency, tile stats) from the harness under `docs/perf/` so future runs can regress against a known-good profile.
   - Spin a Metal-enabled variant once GPU uploads ship so the same full-surface churn target validates both software and Metal renderer paths.
   - Mirror the harness expectations in `docs/Plan_SceneGraph_Renderer.md` when implemented so renderer + execution plans stay aligned.
@@ -287,6 +288,8 @@ Next:
   - Author a widget-contribution quickstart doc outlining required paths, reducer hooks, theme integration, accessibility metadata, and the new test harnesses so additions land consistently.
   - Ship a capture/replay harness script (`scripts/record_widget_session.sh` + `scripts/replay_widget_session.sh`) so bug reports can include deterministic pointer/keyboard traces for widgets_example and UITests.
   - Add layout/container widgets (horizontal/vertical stacks, grid) that arrange child widgets, emit spacing/alignment metadata, and propagate dirty hints when layout changes; cover the behaviour with UITests and gallery demos.
+  - Build a tree view widget that supports expand/collapse, selection, and async data loading hooks, complete with bindings, reducer support, canonical paths, and gallery/UITest coverage.
+  - Extend `widgets_example` to showcase layout containers and the tree view, wiring state paths, reducers, and telemetry so contributors can exercise them interactively.
 - Update `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage, and troubleshooting steps.
 - Document widget ops schema: queue path (`widgets/<id>/ops/inbox/queue`), `WidgetOp` fields (kind, pointer metadata, value, timestamp) and reducer sample wiring.
 - ✅ (October 20, 2025) Reducer samples now live in `Widgets::Reducers`, publishing actions under `widgets/<id>/ops/actions/inbox/queue`; keep telemetry/docs in sync when new action fields or op kinds land.
