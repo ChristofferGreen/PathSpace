@@ -80,8 +80,9 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - List widget builder (`Builders::Widgets::CreateList`) plus `UpdateListState` and `DispatchList` land with doctest coverage, enabling selection/hover/scroll ops and expanding `widgets_example`.
 - Reducer helpers (`Widgets::Reducers::ReducePending`/`PublishActions`) drain widget ops into `ops/actions/inbox/queue`; widgets_example seeds a sample action and prints the reducer output.
 
-## 6. Shutdown Snapshot (October 20, 2025 @ 18:20 UTC)
-- Latest commit: `feat(widgets): add reducer helpers for widget ops` (local branch `master`, unpushed). Reducers now translate widget ops into actions and have doctest + example coverage.
+## 6. Shutdown Snapshot (October 21, 2025 @ 22:10 UTC)
+- Latest commit: `feat(ui): add keyboard focus support to widgets gallery` (local `master`, unpushed). Gallery now supports keyboard focus cycling, arrow-key interactions, and reducer logging.
+- Validation: `./scripts/compile.sh --test --loop --per-test-timeout 20` (15× PathSpaceTests + PathSpaceUITests, Metal presenters enabled) — all passes.
 - Outstanding follow-ups before resuming:
   1. Add the HSAT inspection CLI/tests for HTML assets once the CLI scaffolding lands (Phase 7 HTML follow-up).
 - HTML adapter follow-up remains open: add HSAT inspection CLI/tests when new asset fields land (tracked in `docs/AI_Todo.task`).
