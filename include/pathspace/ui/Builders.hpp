@@ -798,6 +798,12 @@ auto WritePresentMetrics(PathSpace& space,
                           PathWindowPresentStats const& stats,
                           PathWindowPresentPolicy const& policy) -> SP::Expected<void>;
 
+auto WriteWindowPresentMetrics(PathSpace& space,
+                               ConcretePathView windowPath,
+                               std::string_view viewName,
+                               PathWindowPresentStats const& stats,
+                               PathWindowPresentPolicy const& policy) -> SP::Expected<void>;
+
 auto WriteResidencyMetrics(PathSpace& space,
                            ConcretePathView targetPath,
                            std::uint64_t cpu_bytes,

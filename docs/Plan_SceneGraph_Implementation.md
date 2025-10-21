@@ -1,6 +1,6 @@
 # Handoff Notice
 
-> **Handoff note (October 21, 2025 @ shutdown):** `examples/widgets_example` now opens the gallery window, renders button/toggle/slider/list widgets with software text overlays, streams FPS/present telemetry to stdout, and routes LocalWindow mouse events into widget bindings. Residency dashboards remain current under `diagnostics/metrics/residency`. Next pass should extend presenter telemetry into the central diagnostics sinks (docs/AI_Onboarding_Next.md §6) and broaden gallery input coverage (keyboard/focus, reducer diagnostics).
+> **Handoff note (October 21, 2025 @ shutdown):** `examples/widgets_example` now opens the gallery window, renders button/toggle/slider/list widgets with software text overlays, streams FPS/present telemetry to stdout, and routes LocalWindow mouse events into widget bindings. Residency dashboards remain current under `diagnostics/metrics/residency`. Presenter telemetry now mirrors into the window diagnostics sinks (`windows/<win>/diagnostics/metrics/live/views/<view>/present`). Next pass should broaden gallery input coverage (keyboard/focus, reducer diagnostics).
 
 # Scene Graph Implementation Plan
 
@@ -23,6 +23,7 @@ Success looks like:
 - Widget bindings publish dirty hints and ops inbox events (`widgets/<id>/ops/inbox/queue`) so interaction reducers can react without full-scene republishes.
 - Widgets reducers drain op queues into `widgets/<id>/ops/actions/inbox/queue`; examples/tests confirm button/list actions round-trip through the helpers.
 - Widget gallery, HTML tooling, and diagnostics backlog items are tracked in `docs/AI_Todo.task`; no open P0 work after the binding milestone.
+- ✅ (October 21, 2025) Window diagnostics sinks mirror presenter metrics under `windows/<win>/diagnostics/metrics/live/views/<view>/present`, keeping central telemetry aligned with per-target `output/v1/common/*` updates.
 - ✅ (October 20, 2025) Residency dashboard wiring publishes CPU/GPU soft & hard budget ratios plus status flags under `diagnostics/metrics/residency`, enabling external alerts without bespoke parsers.
 - ✅ (October 21, 2025) `examples/widgets_example.cpp` opens the widgets gallery window, renders button/toggle/slider/list widgets with software text overlays, streams present/FPS telemetry to stdout, and republishes the gallery snapshot when LocalWindow mouse events update widget state.
 
@@ -136,6 +137,7 @@ Completed:
 - ✅ (October 16, 2025) Seqlock and deadline behaviour codified via `PathWindowView` and builder tests, ensuring wait-budget clamps and progressive copy skips are observable.
 - ✅ (October 16, 2025) Compile/test loop harness revalidated after presenter integration (15× repeat, 20 s timeout) confirming stability.
 - ✅ (October 16, 2025) Software presenter now publishes captured framebuffers under `output/v1/software/framebuffer`, enabling downstream inspection of rendered bytes alongside metadata.
+- ✅ (October 21, 2025) `Window::Present` mirrors presenter stats into `windows/<win>/diagnostics/metrics/live/views/<view>/present` via `Diagnostics::WriteWindowPresentMetrics`, keeping central dashboards aligned with per-target telemetry.
 - ✅ (October 17, 2025) Added a minimal paint-style demo (`examples/paint_example.cpp`) that wires the scene→render→present stack together, supports dynamic canvas resizing, and interpolates mouse strokes so contributors can exercise the full software path end-to-end.
 - ✅ (October 16, 2025) macOS window presentation now uses a CAMetalLayer-backed Metal swapchain (IOSurface copies + present) instead of CoreGraphics blits; fullscreen perf is no longer CPU bound.
 

@@ -435,4 +435,92 @@ TEST_CASE("WritePresentMetrics stores presenter results in PathSpace") {
     CHECK(diag->value().code == 3000);
 }
 
+TEST_CASE("WriteWindowPresentMetrics mirrors presenter stats to window diagnostics") {
+    PathSpace space;
+
+    PathWindowView::PresentStats stats{};
+    stats.presented = true;
+    stats.skipped = false;
+    stats.buffered_frame_consumed = true;
+    stats.used_progressive = true;
+    stats.used_metal_texture = false;
+    stats.wait_budget_ms = 4.5;
+    stats.present_ms = 2.75;
+    stats.gpu_encode_ms = 1.25;
+    stats.gpu_present_ms = 1.5;
+    stats.frame_age_ms = 3.0;
+    stats.frame_age_frames = 2;
+    stats.stale = false;
+    stats.mode = PathWindowView::PresentMode::PreferLatestCompleteWithBudget;
+    stats.progressive_tiles_copied = 5;
+    stats.progressive_rects_coalesced = 4;
+    stats.progressive_skip_seq_odd = 1;
+    stats.progressive_recopy_after_seq_change = 0;
+    stats.frame.frame_index = 11;
+    stats.frame.revision = 8;
+    stats.frame.render_ms = 6.0;
+    stats.backend_kind = "Software2D";
+    stats.error = "minor hiccup";
+#if defined(__APPLE__)
+    stats.used_iosurface = true;
+#endif
+
+    PathWindowView::PresentPolicy policy{};
+    policy.mode = PathWindowView::PresentMode::PreferLatestCompleteWithBudget;
+    policy.staleness_budget = std::chrono::milliseconds{6};
+    policy.staleness_budget_ms_value = 6.0;
+    policy.frame_timeout = std::chrono::milliseconds{18};
+    policy.frame_timeout_ms_value = 18.0;
+    policy.max_age_frames = 4;
+    policy.auto_render_on_present = true;
+    policy.vsync_align = true;
+
+    auto windowPath = ConcretePathString{"/windows/main"};
+    auto writeStatus = Builders::Diagnostics::WriteWindowPresentMetrics(space,
+                                                                        ConcretePathStringView{windowPath.getPath()},
+                                                                        "view",
+                                                                        stats,
+                                                                        policy);
+    REQUIRE(writeStatus);
+
+    const std::string base = std::string(windowPath.getPath()) +
+                             "/diagnostics/metrics/live/views/view/present";
+
+    auto frameIndex = space.read<uint64_t>(base + "/frameIndex");
+    REQUIRE(frameIndex);
+    CHECK(*frameIndex == 11);
+    auto revision = space.read<uint64_t>(base + "/revision");
+    REQUIRE(revision);
+    CHECK(*revision == 8);
+    auto renderMs = space.read<double>(base + "/renderMs");
+    REQUIRE(renderMs);
+    CHECK(*renderMs == doctest::Approx(6.0));
+    auto presentMs = space.read<double>(base + "/presentMs");
+    REQUIRE(presentMs);
+    CHECK(*presentMs == doctest::Approx(2.75));
+    auto waitBudget = space.read<double>(base + "/waitBudgetMs");
+    REQUIRE(waitBudget);
+    CHECK(*waitBudget == doctest::Approx(4.5));
+    auto backend = space.read<std::string, std::string>(base + "/backendKind");
+    REQUIRE(backend);
+    CHECK(*backend == "Software2D");
+    auto progressiveTiles = space.read<uint64_t>(base + "/progressiveTilesCopied");
+    REQUIRE(progressiveTiles);
+    CHECK(*progressiveTiles == 5);
+    auto lastError = space.read<std::string, std::string>(base + "/lastError");
+    REQUIRE(lastError);
+    CHECK(*lastError == "minor hiccup");
+    auto viewName = space.read<std::string, std::string>(base + "/viewName");
+    REQUIRE(viewName);
+    CHECK(*viewName == "view");
+    auto timestamp = space.read<std::uint64_t>(base + "/timestampNs");
+    REQUIRE(timestamp);
+    CHECK(*timestamp > 0);
+#if defined(__APPLE__)
+    auto usedIosurface = space.read<bool>(base + "/usedIOSurface");
+    REQUIRE(usedIosurface);
+    CHECK(*usedIosurface);
+#endif
+}
+
 } // TEST_SUITE

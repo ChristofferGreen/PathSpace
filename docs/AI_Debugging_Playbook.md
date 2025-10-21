@@ -1,6 +1,7 @@
 # Handoff Notice
 
 > **Handoff note (October 19, 2025):** These troubleshooting steps remain accurate but assume the prior tooling defaults. Confirm any helper script changes in `docs/AI_Onboarding_Next.md` before relying on this playbook.
+> **Update (October 21, 2025):** Presenter telemetry now mirrors into window diagnostics sinks (`windows/<win>/diagnostics/metrics/live/views/<view>/present/*`); see §3 for usage.
 
 # PathSpace — Debugging Playbook
 
@@ -56,6 +57,7 @@ Environment knobs (all respected by the wrapper and the logger):
 
 - **Structured errors:** Renderer/presenter components publish `PathSpaceError` payloads under `renderers/<rid>/targets/<tid>/diagnostics/errors/live`. In tests, call `Diagnostics::ReadTargetMetrics` to fetch the payload and correlate with frame indices.
 - **Per-target metrics:** `renderers/<rid>/targets/<tid>/output/v1/common/*` stores the latest `frameIndex`, `revision`, `renderMs`, progressive copy counters (including `progressiveTileSize`, `progressiveWorkersUsed`, `progressiveJobs`), encode fan-out stats (`encodeWorkersUsed`, `encodeJobs`), backend telemetry (`backendKind`, `usedMetalTexture`), GPU timings (`gpuEncodeMs`, `gpuPresentMs`), present policy outcomes, and—when `PATHSPACE_UI_DAMAGE_METRICS=1` is set—damage/fingerprint telemetry (`damageRectangles`, `damageCoverageRatio`, `fingerprint*`, `progressiveTiles*`). Use `PathWindowView` doctest helpers or the builders’ diagnostics reader to dump these values.
+- **Window diagnostics sinks:** Presenter metrics mirror into `windows/<win>/diagnostics/metrics/live/views/<view>/present/*`, including frame indices, present/render timings, progressive counters, last error strings, and timestamps, so dashboards can monitor windows without crawling every renderer target.
 - **Scene dirty state:** `scenes/<sid>/diagnostics/dirty/state` and `scenes/<sid>/diagnostics/dirty/queue` expose layout/build notifications. The `Scene::MarkDirty` doctests show how to wait on these paths without polling.
 - **HTML/IO logs:** Application surfaces write to `<app>/io/log/{error,warn,info,debug}`. The global mirrors live at `/system/io/std{out,err}`; see `docs/AI_Paths.md` §2 for the canonical layout.
 

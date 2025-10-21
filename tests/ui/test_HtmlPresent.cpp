@@ -247,4 +247,19 @@ TEST_CASE("Window::Present writes HTML present metrics and residency") {
     auto gpuBytes = fx.space.read<uint64_t>(residencyBase + "/gpuBytes");
     REQUIRE(gpuBytes);
     CHECK(*gpuBytes == 0);
+
+    const std::string windowMetricsBase = std::string(windowPath->getPath()) +
+                                          "/diagnostics/metrics/live/views/view/present";
+    auto centralFrameIndex = fx.space.read<uint64_t>(windowMetricsBase + "/frameIndex");
+    REQUIRE(centralFrameIndex);
+    CHECK(*centralFrameIndex == 1);
+    auto centralBackend = fx.space.read<std::string, std::string>(windowMetricsBase + "/backendKind");
+    REQUIRE(centralBackend);
+    CHECK(*centralBackend == "Html");
+    auto centralTimestamp = fx.space.read<std::uint64_t>(windowMetricsBase + "/timestampNs");
+    REQUIRE(centralTimestamp);
+    CHECK(*centralTimestamp > 0);
+    auto viewName = fx.space.read<std::string, std::string>(windowMetricsBase + "/viewName");
+    REQUIRE(viewName);
+    CHECK(*viewName == "view");
 }

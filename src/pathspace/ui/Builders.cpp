@@ -2949,6 +2949,14 @@ auto Present(PathSpace& space,
             return std::unexpected(status.error());
         }
 
+        if (auto status = Diagnostics::WriteWindowPresentMetrics(space,
+                                                                  ConcretePathView{windowPath.getPath()},
+                                                                  viewName,
+                                                                  presentStats,
+                                                                  htmlPolicy); !status) {
+            return std::unexpected(status.error());
+        }
+
         return result;
     }
 
@@ -3166,6 +3174,14 @@ auto Present(PathSpace& space,
                                                          context->settings.cache.cpu_hard_bytes,
                                                          context->settings.cache.gpu_soft_bytes,
                                                          context->settings.cache.gpu_hard_bytes); !status) {
+        return std::unexpected(status.error());
+    }
+
+    if (auto status = Diagnostics::WriteWindowPresentMetrics(space,
+                                                              ConcretePathView{windowPath.getPath()},
+                                                              viewName,
+                                                              presentStats,
+                                                              presentPolicy); !status) {
         return std::unexpected(status.error());
     }
 
@@ -4515,12 +4531,10 @@ auto ReadSoftwareFramebuffer(PathSpace const& space,
     return read_value<SoftwareFramebuffer>(space, framebufferPath);
 }
 
-auto WritePresentMetrics(PathSpace& space,
-                          ConcretePathView targetPath,
-                          PathWindowPresentStats const& stats,
-                          PathWindowPresentPolicy const& policy) -> SP::Expected<void> {
-    auto base = std::string(targetPath.getPath()) + "/output/v1/common";
-
+auto write_present_metrics_to_base(PathSpace& space,
+                                   std::string const& base,
+                                   PathWindowPresentStats const& stats,
+                                   PathWindowPresentPolicy const& policy) -> SP::Expected<void> {
     if (auto status = replace_single<uint64_t>(space, base + "/frameIndex", stats.frame.frame_index); !status) {
         return status;
     }
@@ -4545,8 +4559,7 @@ auto WritePresentMetrics(PathSpace& space,
     if (auto status = replace_single<bool>(space, base + "/usedMetalTexture", stats.used_metal_texture); !status) {
         return status;
     }
-    if (auto status = replace_single<std::string>(space, base + "/backendKind",
-                                                  stats.backend_kind); !status) {
+    if (auto status = replace_single<std::string>(space, base + "/backendKind", stats.backend_kind); !status) {
         return status;
     }
     if (auto status = replace_single<bool>(space, base + "/presented", stats.presented); !status) {
@@ -4561,8 +4574,7 @@ auto WritePresentMetrics(PathSpace& space,
     if (auto status = replace_single<double>(space, base + "/presentedAgeMs", stats.frame_age_ms); !status) {
         return status;
     }
-    if (auto status = replace_single<uint64_t>(space, base + "/presentedAgeFrames",
-                                               stats.frame_age_frames); !status) {
+    if (auto status = replace_single<uint64_t>(space, base + "/presentedAgeFrames", stats.frame_age_frames); !status) {
         return status;
     }
     if (auto status = replace_single<bool>(space, base + "/stale", stats.stale); !status) {
@@ -4580,19 +4592,23 @@ auto WritePresentMetrics(PathSpace& space,
             progressive_tiles_copied = *existing_tiles;
         }
     }
-    if (auto status = replace_single<uint64_t>(space, base + "/progressiveTilesCopied",
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/progressiveTilesCopied",
                                                progressive_tiles_copied); !status) {
         return status;
     }
-    if (auto status = replace_single<uint64_t>(space, base + "/progressiveRectsCoalesced",
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/progressiveRectsCoalesced",
                                                static_cast<uint64_t>(stats.progressive_rects_coalesced)); !status) {
         return status;
     }
-    if (auto status = replace_single<uint64_t>(space, base + "/progressiveSkipOddSeq",
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/progressiveSkipOddSeq",
                                                static_cast<uint64_t>(stats.progressive_skip_seq_odd)); !status) {
         return status;
     }
-    if (auto status = replace_single<uint64_t>(space, base + "/progressiveRecopyAfterSeqChange",
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/progressiveRecopyAfterSeqChange",
                                                static_cast<uint64_t>(stats.progressive_recopy_after_seq_change)); !status) {
         return status;
     }
@@ -4624,6 +4640,17 @@ auto WritePresentMetrics(PathSpace& space,
                                            policy.vsync_align); !status) {
         return status;
     }
+    return {};
+}
+
+auto WritePresentMetrics(PathSpace& space,
+                          ConcretePathView targetPath,
+                          PathWindowPresentStats const& stats,
+                          PathWindowPresentPolicy const& policy) -> SP::Expected<void> {
+    auto base = std::string(targetPath.getPath()) + "/output/v1/common";
+    if (auto status = write_present_metrics_to_base(space, base, stats, policy); !status) {
+        return status;
+    }
 
     if (!stats.error.empty()) {
         PathSpaceError error{};
@@ -4637,9 +4664,43 @@ auto WritePresentMetrics(PathSpace& space,
         }
     } else {
         if (auto status = ClearTargetError(space, targetPath); !status) {
-           return status;
-       }
+            return status;
+        }
     }
+    return {};
+}
+
+auto WriteWindowPresentMetrics(PathSpace& space,
+                               ConcretePathView windowPath,
+                               std::string_view viewName,
+                               PathWindowPresentStats const& stats,
+                               PathWindowPresentPolicy const& policy) -> SP::Expected<void> {
+    std::string base = std::string(windowPath.getPath()) + "/diagnostics/metrics/live/views/";
+    base.append(viewName);
+    base.append("/present");
+
+    if (auto status = write_present_metrics_to_base(space, base, stats, policy); !status) {
+        return status;
+    }
+
+    auto now = std::chrono::steady_clock::now().time_since_epoch();
+    auto timestamp_ns = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
+
+    if (auto status = replace_single<std::string>(space, base + "/lastError", stats.error); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::string>(space, base + "/viewName", std::string(viewName)); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::uint64_t>(space, base + "/timestampNs", timestamp_ns); !status) {
+        return status;
+    }
+#if defined(__APPLE__)
+    if (auto status = replace_single<bool>(space, base + "/usedIOSurface", stats.used_iosurface); !status) {
+        return status;
+    }
+#endif
     return {};
 }
 
