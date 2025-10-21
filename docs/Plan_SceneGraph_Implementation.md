@@ -197,7 +197,7 @@ Completed:
      - ✅ (October 19, 2025) Resource residency metrics now aggregate texture usage for GPU paths; Metal surfaces track resource fingerprints and publish residency totals.
 - ✅ (October 19, 2025) PATHSPACE_ENABLE_METAL_UPLOADS coverage now exercises the full Metal present path, checks shader/material descriptor parity, and asserts residency/cache metrics (cpu/gpu bytes) are published so dashboards/CI immediately flag resource pressure regressions (`tests/ui/test_PathWindowView_Metal.mm`: "Metal pipeline publishes residency metrics and material descriptors").
 - **HTML follow-ups (October 19, 2025):** remaining work is documenting fidelity troubleshooting (see Phase 7 items 5–6); new CI harness (`HtmlCanvasVerify`) is in place—keep it updated when adapter schemas evolve.
-  - **Oct 20, 2025 update:** Work is paused because PathSpace core drops serialized `Html::Asset` vectors on read. Resume only after the core serialization fix lands; see `docs/AI_Todo.task` (`HTML Asset Hydration Bug [BLOCKER]`) and `docs/AI_Debugging_Playbook.md` §7 for the latest repro details.
+  - **Oct 21, 2025 update:** PathSpace core now preserves `Html::Asset` vectors across translation units (see commit `fix(ui): ensure html assets survive cross-tu reads`). The new `Html assets round-trip without HtmlSerialization include` UITest guards the regression. Resume the documentation follow-ups under Phase 7 items 5–6.
 - HTML adapter scaffolding (command stream emitter + replay harness) behind experimental flag. **Implementation plan map (Oct 18, 2025):**
   1. **Adapter core API**
      - ✅ (October 19, 2025) `Html::Adapter::emit` now produces DOM/CSS/canvas outputs and honours emit options.
