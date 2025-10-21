@@ -3614,7 +3614,7 @@ auto Present(PathSpace& space,
     if (!renderStats) {
         return std::unexpected(renderStats.error());
     }
-    auto stats_value = *renderStats;
+    auto const& stats_value = *renderStats;
 
     PathSurfaceMetal::TextureInfo metal_texture{};
     bool has_metal_texture = false;
@@ -3677,10 +3677,26 @@ auto Present(PathSpace& space,
 #endif
     auto presentStats = presenter.present(surface, presentPolicy, request);
     if (renderStats) {
-        presentStats.frame.frame_index = renderStats->frame_index;
-        presentStats.frame.revision = renderStats->revision;
-        presentStats.frame.render_ms = renderStats->render_ms;
-        presentStats.backend_kind = renderer_kind_to_string(renderStats->backend_kind);
+        presentStats.frame.frame_index = stats_value.frame_index;
+        presentStats.frame.revision = stats_value.revision;
+        presentStats.frame.render_ms = stats_value.render_ms;
+        presentStats.damage_ms = stats_value.damage_ms;
+        presentStats.encode_ms = stats_value.encode_ms;
+        presentStats.progressive_copy_ms = stats_value.progressive_copy_ms;
+        presentStats.publish_ms = stats_value.publish_ms;
+        presentStats.drawable_count = stats_value.drawable_count;
+        presentStats.progressive_tiles_updated = stats_value.progressive_tiles_updated;
+        presentStats.progressive_bytes_copied = stats_value.progressive_bytes_copied;
+        presentStats.progressive_tile_size = stats_value.progressive_tile_size;
+        presentStats.progressive_workers_used = stats_value.progressive_workers_used;
+        presentStats.progressive_jobs = stats_value.progressive_jobs;
+        presentStats.encode_workers_used = stats_value.encode_workers_used;
+        presentStats.encode_jobs = stats_value.encode_jobs;
+        presentStats.progressive_tiles_dirty = stats_value.progressive_tiles_dirty;
+        presentStats.progressive_tiles_total = stats_value.progressive_tiles_total;
+        presentStats.progressive_tiles_skipped = stats_value.progressive_tiles_skipped;
+        presentStats.progressive_tile_diagnostics_enabled = stats_value.progressive_tile_diagnostics_enabled;
+        presentStats.backend_kind = renderer_kind_to_string(stats_value.backend_kind);
     }
 #if defined(__APPLE__)
     auto copy_iosurface_into = [&](PathSurfaceSoftware::SharedIOSurface const& handle,
@@ -5516,6 +5532,18 @@ auto write_present_metrics_to_base(PathSpace& space,
     if (auto status = replace_single<double>(space, base + "/renderMs", stats.frame.render_ms); !status) {
         return status;
     }
+    if (auto status = replace_single<double>(space, base + "/damageMs", stats.damage_ms); !status) {
+        return status;
+    }
+    if (auto status = replace_single<double>(space, base + "/encodeMs", stats.encode_ms); !status) {
+        return status;
+    }
+    if (auto status = replace_single<double>(space, base + "/progressiveCopyMs", stats.progressive_copy_ms); !status) {
+        return status;
+    }
+    if (auto status = replace_single<double>(space, base + "/publishMs", stats.publish_ms); !status) {
+        return status;
+    }
     if (auto status = replace_single<double>(space, base + "/presentMs", stats.present_ms); !status) {
         return status;
     }
@@ -5557,6 +5585,49 @@ auto write_present_metrics_to_base(PathSpace& space,
                                                   present_mode_to_string(stats.mode)); !status) {
         return status;
     }
+    if (auto status = replace_single<uint64_t>(space, base + "/drawableCount", stats.drawable_count); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/progressiveTilesUpdated",
+                                               stats.progressive_tiles_updated); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/progressiveBytesCopied",
+                                               stats.progressive_bytes_copied); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/progressiveTileSize",
+                                               stats.progressive_tile_size); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/progressiveWorkersUsed",
+                                               stats.progressive_workers_used); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/progressiveJobs",
+                                               stats.progressive_jobs); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/encodeWorkersUsed",
+                                               stats.encode_workers_used); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/encodeJobs",
+                                               stats.encode_jobs); !status) {
+        return status;
+    }
+    if (auto status = replace_single<bool>(space,
+                                           base + "/progressiveTileDiagnosticsEnabled",
+                                           stats.progressive_tile_diagnostics_enabled); !status) {
+        return status;
+    }
     auto progressive_tiles_copied = static_cast<uint64_t>(stats.progressive_tiles_copied);
     if (progressive_tiles_copied == 0) {
         auto existing_tiles = space.read<uint64_t>(base + "/progressiveTilesCopied");
@@ -5583,6 +5654,23 @@ auto write_present_metrics_to_base(PathSpace& space,
                                                base + "/progressiveRecopyAfterSeqChange",
                                                static_cast<uint64_t>(stats.progressive_recopy_after_seq_change)); !status) {
         return status;
+    }
+    if (stats.progressive_tile_diagnostics_enabled) {
+        if (auto status = replace_single<uint64_t>(space,
+                                                   base + "/progressiveTilesDirty",
+                                                   stats.progressive_tiles_dirty); !status) {
+            return status;
+        }
+        if (auto status = replace_single<uint64_t>(space,
+                                                   base + "/progressiveTilesTotal",
+                                                   stats.progressive_tiles_total); !status) {
+            return status;
+        }
+        if (auto status = replace_single<uint64_t>(space,
+                                                   base + "/progressiveTilesSkipped",
+                                                   stats.progressive_tiles_skipped); !status) {
+            return status;
+        }
     }
     if (auto status = replace_single<double>(space, base + "/waitBudgetMs", stats.wait_budget_ms); !status) {
         return status;

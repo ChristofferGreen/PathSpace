@@ -2995,9 +2995,22 @@ if (!metal_active && has_damage) {
     stats.damage_ms = damage_ms;
     stats.encode_ms = encode_ms;
     stats.progressive_copy_ms = progressive_copy_ms;
-   stats.publish_ms = publish_ms;
-   stats.backend_kind = params.backend_kind;
-   stats.materials = material_list;
+    stats.publish_ms = publish_ms;
+    stats.progressive_tiles_updated = progressive_tiles_updated;
+    stats.progressive_bytes_copied = progressive_bytes_copied;
+    stats.progressive_tile_size = static_cast<std::uint64_t>(progressive_tile_size_px);
+    stats.progressive_workers_used = static_cast<std::uint64_t>(progressive_workers_used);
+    stats.progressive_jobs = static_cast<std::uint64_t>(progressive_jobs);
+    stats.encode_workers_used = static_cast<std::uint64_t>(encode_workers_used);
+    stats.encode_jobs = static_cast<std::uint64_t>(encode_jobs_used);
+    if (collect_damage_metrics) {
+        stats.progressive_tiles_dirty = progressive_tiles_dirty;
+        stats.progressive_tiles_total = progressive_tiles_total;
+        stats.progressive_tiles_skipped = progressive_tiles_skipped;
+    }
+    stats.progressive_tile_diagnostics_enabled = collect_damage_metrics;
+    stats.backend_kind = params.backend_kind;
+    stats.materials = material_list;
     stats.resource_residency = std::move(resource_list);
     auto const surface_bytes = surface.resident_cpu_bytes();
     auto const cache_bytes = image_cache_.resident_bytes();

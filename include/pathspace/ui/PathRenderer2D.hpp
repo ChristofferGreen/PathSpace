@@ -48,6 +48,17 @@ public:
         double encode_ms = 0.0;
         double progressive_copy_ms = 0.0;
         double publish_ms = 0.0;
+        std::uint64_t progressive_tiles_updated = 0;
+        std::uint64_t progressive_bytes_copied = 0;
+        std::uint64_t progressive_tile_size = 0;
+        std::uint64_t progressive_workers_used = 0;
+        std::uint64_t progressive_jobs = 0;
+        std::uint64_t encode_workers_used = 0;
+        std::uint64_t encode_jobs = 0;
+        std::uint64_t progressive_tiles_dirty = 0;
+        std::uint64_t progressive_tiles_total = 0;
+        std::uint64_t progressive_tiles_skipped = 0;
+        bool progressive_tile_diagnostics_enabled = false;
         Builders::RendererKind backend_kind = Builders::RendererKind::Software2D;
         std::uint64_t resource_cpu_bytes = 0;
         std::uint64_t resource_gpu_bytes = 0;

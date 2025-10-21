@@ -4123,6 +4123,7 @@ TEST_CASE("Window::Present AlwaysFresh skip records deadline metrics") {
 
 TEST_CASE("Window::Present progressive diagnostics reflect dirty hints") {
     RendererFixture fx;
+    ScopedEnv metrics_env{"PATHSPACE_UI_DAMAGE_METRICS", "1"};
 
     RectCommand rect_initial{
         .min_x = 1.0f,
@@ -4167,6 +4168,7 @@ TEST_CASE("Window::Present progressive diagnostics reflect dirty hints") {
 
     auto targetPath = resolve_target(fx, surfacePath);
     auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    auto windowMetricsBase = std::string(windowPath->getPath()) + "/diagnostics/metrics/live/views/main/present";
 
     auto submit_hint = [&](RectCommand const& rect) {
         DirtyRectHint hint{
@@ -4195,6 +4197,13 @@ TEST_CASE("Window::Present progressive diagnostics reflect dirty hints") {
     CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveSkipOddSeq").value() == 0);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveRecopyAfterSeqChange").value() == 0);
     CHECK(fx.space.read<std::string, std::string>(metricsBase + "/lastError").value().empty());
+    CHECK(fx.space.read<uint64_t>(windowMetricsBase + "/progressiveTilesUpdated").value() >= 1);
+    CHECK(fx.space.read<uint64_t>(windowMetricsBase + "/progressiveBytesCopied").value() > 0);
+    CHECK(fx.space.read<uint64_t>(windowMetricsBase + "/progressiveTileSize").value() >= 32);
+    CHECK(fx.space.read<bool>(windowMetricsBase + "/progressiveTileDiagnosticsEnabled").value());
+    CHECK(fx.space.read<uint64_t>(windowMetricsBase + "/progressiveTilesDirty").value() >= 1);
+    CHECK(fx.space.read<uint64_t>(windowMetricsBase + "/progressiveTilesTotal").value() >= 1);
+    CHECK(fx.space.read<uint64_t>(windowMetricsBase + "/progressiveTilesSkipped").value() == 0);
 
     RectCommand rect_update{
         .min_x = 0.0f,
@@ -4225,6 +4234,9 @@ TEST_CASE("Window::Present progressive diagnostics reflect dirty hints") {
     CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveRectsCoalesced").value() >= 1);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveBytesCopied").value() > 0);
     CHECK(fx.space.read<std::string, std::string>(metricsBase + "/lastError").value().empty());
+    CHECK(fx.space.read<uint64_t>(windowMetricsBase + "/progressiveTilesUpdated").value() >= 1);
+    CHECK(fx.space.read<uint64_t>(windowMetricsBase + "/progressiveBytesCopied").value() > 0);
+    CHECK(fx.space.read<uint64_t>(windowMetricsBase + "/progressiveTilesDirty").value() >= 1);
 }
 
 TEST_CASE("rounded rectangles respect per-corner radii") {
