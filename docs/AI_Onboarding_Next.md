@@ -68,7 +68,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Announce the scope in your PR description and keep doc updates synchronized with code changes. Remember to run `ctest -R HtmlCanvasVerify` when touching the adapter or HTML outputs so the headless replay harness stays green.
 - When you spot a gap in test coverage, either add the test immediately or log a follow-up in `docs/Plan_SceneGraph_Implementation.md` / `docs/AI_Todo.task` so the need is visible to the next maintainer.
 
-### Latest Highlights (October 20, 2025)
+### Latest Highlights (October 21, 2025)
 - Metal renderer is now material-aware: `PathRenderer2DMetal` consumes shared descriptors via `bind_material`, GPU frames stay in lock-step with software telemetry, and a new blending UITest asserts pipeline parity (`PathRenderer2DMetal honors material blending state`).
 - Paint demo ships with a `--metal` flag that selects the Metal2D backend and auto-enables uploads for developers; software remains the default for CI.
 - `./scripts/compile.sh` always builds with Metal support enabled and runs the Metal UITests unless `--disable-metal-tests` is passed. This keeps the GPU path green by default on macOS hosts.
@@ -79,17 +79,18 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Widget binding helpers (`Widgets::Bindings::Dispatch{Button,Toggle,Slider,List}`) emit dirty rect hints, auto-schedule renders, and enqueue ops under `widgets/<id>/ops/inbox/queue` so reducers can react without republishing entire scenes.
 - List widget builder (`Builders::Widgets::CreateList`) plus `UpdateListState` and `DispatchList` land with doctest coverage, enabling selection/hover/scroll ops and expanding `widgets_example`.
 - Reducer helpers (`Widgets::Reducers::ReducePending`/`PublishActions`) drain widget ops into `ops/actions/inbox/queue`; widgets_example seeds a sample action and prints the reducer output.
+- Stroke rendering is now a first-class primitive: `DrawCommandKind::Stroke` serializes shared point buffers, `PathRenderer2D` rasterizes polylines, the HTML adapter/replay round-trip stroke data, and `paint_example` emits strokes instead of per-dab rects (October 21, 2025).
 
-## 6. Shutdown Snapshot (October 21, 2025 @ 22:10 UTC)
-- Latest commit: `feat(ui): add keyboard focus support to widgets gallery` (local `master`, unpushed). Gallery now supports keyboard focus cycling, arrow-key interactions, and reducer logging.
-- Validation: `./scripts/compile.sh --test --loop --per-test-timeout 20` (15× PathSpaceTests + PathSpaceUITests, Metal presenters enabled) — all passes.
+## 6. Shutdown Snapshot (October 21, 2025 @ 23:45 UTC)
+- Latest commit: `feat(ui): add stroke primitive to renderer and paint example` (local `fix/metal-present`, unpushed). Stroke commands now back the paint demo and flow through PathRenderer2D, snapshot storage, and the HTML adapter.
+- Validation: `./scripts/compile.sh --test --loop=15 --per-test-timeout 20` (15× PathSpaceTests + PathSpaceUITests, Metal presenters enabled) — all green.
 - Outstanding follow-ups before resuming:
-  - None. HSAT inspection CLI (`pathspace_hsat_inspect`) and the HtmlAssetInspect regression landed on October 21, 2025. Expand the fixture when new asset fields appear.
-- HTML adapter follow-up remains open: extend HSAT inspection coverage when additional asset fields land (tracked in `docs/AI_Todo.task`).
-- Local worktree still holds edits to `docs/Plan_PrimeScript.md` and `src/pathspace/PathSpaceBase.hpp` (pre-existing; confirm intent before next commit).
+  1. Add styling/hooks around the stroke primitive (color themes, joint/cap options) and propagate through paint/HTML tooling.
+  2. Extend HSAT inspection coverage when new asset fields (e.g., material descriptors) land (tracked in `docs/AI_Todo.task`).
+- Local worktree still holds edits to `docs/Plan_PrimeScript.md` and `docs/AI_Prompts.md` from prior sessions—confirm intent before publishing.
 - Next session checklist:
-  - Push the recorded commit or cherry-pick onto a fresh topic branch if needed.
-  - Create/attach reducers that consume `WidgetOp` payloads and verify wait/notify loops.
-  - Continue with Phase 8 list widget + gallery tasks, then tackle HSAT CLI coverage.
+  1. Push or cherry-pick the stroke primitive commit onto a topic branch (e.g., `feat/stroke-hooks`) before opening a PR.
+  2. Design stroke styling hooks (thickness schedule, cap style) and update paint_example/UI tests accordingly.
+  3. Re-run `./scripts/compile.sh --test --loop=15 --per-test-timeout 20` and `ctest -R HtmlCanvasVerify` after any adapter changes.
 
 Welcome aboard and thank you for keeping the PathSpace docs in sync for the next AI maintainer.
