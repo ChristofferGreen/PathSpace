@@ -44,7 +44,7 @@ Provide a single index of active planning documents, ordered by current priority
 ## Status Snapshot — October 21, 2025
 - HSAT (HTML asset codec) remains mandatory and documented; `pathspace_hsat_inspect` regression stays green after the latest loop run.
 - Widget state scenes now publish canonical idle/hover/pressed/disabled snapshots under `scenes/widgets/<id>/states/*`; theme-aware styles (`Widgets::WidgetTheme`) landed and `widgets_example` uses env-selectable palettes without rewriting scenes.
-- Next widget focus: land Phase 8 test/docs follow-ups—golden UITests for hover/pressed/disabled states plus focus-navigation helpers—before expanding telemetry (see `docs/Plan_SceneGraph_Implementation.md`).
+- Next widget focus: finish the Phase 8 widget bindings fuzz harness—adjacent dirty-propagation coverage landed on October 21, 2025; keep `docs/Plan_SceneGraph_Implementation.md` updated as the fuzz work progresses.
 
 ## Supporting Documents
 - `docs/AI_Architecture.md` — Core PathSpace architecture reference.

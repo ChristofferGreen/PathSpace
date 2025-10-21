@@ -2131,6 +2131,126 @@ TEST_CASE("Widgets::Bindings::DispatchToggle handles hover/toggle/disable sequen
     CHECK_FALSE(storedState->enabled);
     CHECK(storedState->checked);
 }
+
+TEST_CASE("Widgets dirty hints cover adjacent widget bindings") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{ .name = "bindings_adjacent_renderer", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc{};
+    desc.size_px = {192, 96};
+    desc.progressive_tile_size_px = 32;
+
+    SurfaceParams surfaceParams{ .name = "bindings_adjacent_surface", .desc = desc, .renderer = "renderers/bindings_adjacent_renderer" };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    auto target = Renderer::ResolveTargetBase(fx.space,
+                                              fx.root_view(),
+                                              *renderer,
+                                              "targets/surfaces/bindings_adjacent_surface");
+    REQUIRE(target);
+
+    Widgets::ButtonParams leftParams{};
+    leftParams.name = "left_button";
+    leftParams.label = "Left";
+    leftParams.style.width = 96.0f;
+    leftParams.style.height = 64.0f;
+    auto left = Widgets::CreateButton(fx.space, fx.root_view(), leftParams);
+    REQUIRE(left);
+
+    Widgets::ButtonParams rightParams{};
+    rightParams.name = "right_button";
+    rightParams.label = "Right";
+    rightParams.style.width = 96.0f;
+    rightParams.style.height = 64.0f;
+    auto right = Widgets::CreateButton(fx.space, fx.root_view(), rightParams);
+    REQUIRE(right);
+
+    DirtyRectHint leftHint{0.0f, 0.0f, 96.0f, 64.0f};
+    DirtyRectHint rightHint{64.0f, 0.0f, 160.0f, 64.0f};
+
+    auto leftBinding = WidgetBindings::CreateButtonBinding(fx.space,
+                                                           fx.root_view(),
+                                                           *left,
+                                                           SP::ConcretePathStringView{target->getPath()},
+                                                           leftHint);
+    REQUIRE(leftBinding);
+
+    auto rightBinding = WidgetBindings::CreateButtonBinding(fx.space,
+                                                            fx.root_view(),
+                                                            *right,
+                                                            SP::ConcretePathStringView{target->getPath()},
+                                                            rightHint);
+    REQUIRE(rightBinding);
+
+    auto renderQueuePath = std::string(target->getPath()) + "/events/renderRequested/queue";
+    auto hintsPath = std::string(target->getPath()) + "/hints/dirtyRects";
+
+    auto preEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    CHECK_FALSE(preEvent);
+    if (!preEvent) {
+        CHECK((preEvent.error().code == Error::Code::NoObjectFound || preEvent.error().code == Error::Code::NoSuchPath));
+    }
+
+    WidgetBindings::PointerInfo pointer{};
+    pointer.scene_x = 12.0f;
+    pointer.scene_y = 8.0f;
+    pointer.inside = true;
+
+    Widgets::ButtonState hover{};
+    hover.hovered = true;
+
+    auto changed = WidgetBindings::DispatchButton(fx.space,
+                                                  *leftBinding,
+                                                  hover,
+                                                  WidgetBindings::WidgetOpKind::HoverEnter,
+                                                  pointer);
+    REQUIRE(changed);
+    CHECK(*changed);
+
+    auto renderEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    REQUIRE(renderEvent);
+    CHECK(renderEvent->reason == "widget/button");
+
+    auto dirtyRects = fx.space.read<std::vector<DirtyRectHint>, std::string>(hintsPath);
+    REQUIRE(dirtyRects);
+    REQUIRE(dirtyRects->size() == 1);
+    auto const& stored = dirtyRects->front();
+    CHECK(stored.min_x == doctest::Approx(leftHint.min_x));
+    CHECK(stored.min_y == doctest::Approx(leftHint.min_y));
+    CHECK(stored.max_x == doctest::Approx(leftHint.max_x));
+    CHECK(stored.max_y == doctest::Approx(leftHint.max_y));
+
+    auto overlaps = [](DirtyRectHint const& a, DirtyRectHint const& b) {
+        auto overlaps_axis = [](float min_a, float max_a, float min_b, float max_b) {
+            return !(max_a <= min_b || min_a >= max_b);
+        };
+        return overlaps_axis(a.min_x, a.max_x, b.min_x, b.max_x)
+            && overlaps_axis(a.min_y, a.max_y, b.min_y, b.max_y);
+    };
+    CHECK(overlaps(stored, rightHint));
+
+    auto rightState = read_value<Widgets::ButtonState>(fx.space, std::string(rightBinding->widget.state.getPath()));
+    REQUIRE(rightState);
+    CHECK(rightState->enabled);
+    CHECK_FALSE(rightState->hovered);
+    CHECK_FALSE(rightState->pressed);
+
+    auto leftState = read_value<Widgets::ButtonState>(fx.space, std::string(leftBinding->widget.state.getPath()));
+    REQUIRE(leftState);
+    CHECK(leftState->hovered);
+    CHECK_FALSE(leftState->pressed);
+
+    auto noExtraEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    CHECK_FALSE(noExtraEvent);
+    if (!noExtraEvent) {
+        CHECK((noExtraEvent.error().code == Error::Code::NoObjectFound || noExtraEvent.error().code == Error::Code::NoSuchPath));
+    }
+}
+
 TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
     BuildersFixture fx;
 

@@ -150,6 +150,18 @@ Completed:
 - ✅ (October 18, 2025) Added fullscreen CAMetalLayer regression coverage in `PathSpaceUITests` and defaulted the presenter to zero-copy unless `capture_framebuffer` is explicitly enabled; perf regressions now fail under the UI harness.
 - (Done) IOSurface-backed software framebuffer landed with PathSurfaceSoftware/PathWindowView zero-copy integration; future work should iterate on diagnostics rather than copy elimination.
 
+Next:
+- 🔜 (Planned) Add an `examples/pixel_noise_example.cpp` perf harness that opens a window and writes random color values to every pixel each frame so we can confirm renderer/presenter throughput hits real-time when repainting the full surface.
+  - Capture render/present timing via existing diagnostics and wire the looped test harness to flag regressions once the full-surface churn path is live.
+  - Persist baseline metrics (frame time, residency, tile stats) from the harness under `docs/perf/` so future runs can regress against a known-good profile.
+  - Spin a Metal-enabled variant once GPU uploads ship so the same full-surface churn target validates both software and Metal renderer paths.
+  - Mirror the harness expectations in `docs/Plan_SceneGraph_Renderer.md` when implemented so renderer + execution plans stay aligned.
+  - Update `docs/AI_Debugging_Playbook.md` with steps for running the harness, reading stored baselines, and interpreting perf telemetry.
+  - Capture a representative frame grab (e.g., `images/perf/pixel_noise.png`) so regressions include a visual reference alongside metrics.
+  - Land a helper (script or build target) that writes the captured metrics into `docs/perf/`, creating the directory if needed so the baselines stay versioned.
+  - Add a comparison script/check that fails when captured frame times exceed the stored baseline budget so the perf harness enforces realtime targets.
+  - Fix window resize behaviour so the renderer repaints in real time during live resize instead of stretching the previous frame; ensure platform pumps deliver resize events quickly enough to drive the render loop.
+
 ### Phase 5 — Input, Hit Testing, and Notifications (1 sprint)
 - ✅ (October 16, 2025) Added doctest scenarios for hit ordering, clip-aware picking, focus routing, and auto-render event scheduling via `Scene::HitTest`; notifications enqueue `AutoRenderRequestEvent` under `events/renderRequested/queue`.
 - ✅ (October 16, 2025) `Scene::HitTest` now emits scene/local coordinates and per-path focus metadata so event routing can derive local offsets without re-reading scene state; doctests cover the new fields.
@@ -261,7 +273,7 @@ Completed:
 - **Testing**
   - ✅ (October 21, 2025) `PathSpaceUITests` now render button/toggle/slider/list goldens and replay hover/press/disabled sequences in `tests/ui/test_Builders.cpp`, keeping the 15× loop sensitive to widget regressions.
   - Add doctest coverage for the binding helpers to confirm dirty-hint emission, focus routing, and auto-render scheduling.
-  - Add adjacent-widget dirty propagation coverage: place widgets with touching/overlapping dirty rectangles, trigger an update on one, and assert the neighbour schedules a repaint and retains its state.
+  - ✅ (October 21, 2025) Added adjacent-widget dirty propagation coverage (`tests/ui/test_Builders.cpp`: "Widgets dirty hints cover adjacent widget bindings"), confirming overlapping dirty hints schedule renders for neighbouring widgets while their state remains unchanged.
   - Introduce a fuzz harness for widget reducers/bindings that randomizes pointer/keyboard sequences and asserts dirty hints, ops queues, and state invariants remain stable.
 - **Tooling & docs**
 - ✅ (October 19, 2025) Expanded `examples/widgets_example.cpp` to publish button + toggle widgets and demonstrate state updates; grow into a full gallery as additional widgets land.
@@ -274,6 +286,7 @@ Completed:
   - Cover `Builders::App::Bootstrap` in doctests/PathSpaceUITests so examples/tests migrating to the helper keep setup/regression coverage as bespoke scaffolding is removed.
   - Author a widget-contribution quickstart doc outlining required paths, reducer hooks, theme integration, accessibility metadata, and the new test harnesses so additions land consistently.
   - Ship a capture/replay harness script (`scripts/record_widget_session.sh` + `scripts/replay_widget_session.sh`) so bug reports can include deterministic pointer/keyboard traces for widgets_example and UITests.
+  - Add layout/container widgets (horizontal/vertical stacks, grid) that arrange child widgets, emit spacing/alignment metadata, and propagate dirty hints when layout changes; cover the behaviour with UITests and gallery demos.
 - Update `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage, and troubleshooting steps.
 - Document widget ops schema: queue path (`widgets/<id>/ops/inbox/queue`), `WidgetOp` fields (kind, pointer metadata, value, timestamp) and reducer sample wiring.
 - ✅ (October 20, 2025) Reducer samples now live in `Widgets::Reducers`, publishing actions under `widgets/<id>/ops/actions/inbox/queue`; keep telemetry/docs in sync when new action fields or op kinds land.
