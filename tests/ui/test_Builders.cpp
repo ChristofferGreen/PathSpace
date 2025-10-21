@@ -41,6 +41,7 @@ using UIScene::DrawableBucketSnapshot;
 using UIScene::SceneSnapshotBuilder;
 using UIScene::SnapshotPublishOptions;
 using UIScene::RectCommand;
+using UIScene::RoundedRectCommand;
 using UIScene::DrawCommandKind;
 using UIScene::ImageCommand;
 using UIScene::Transform;
@@ -1289,6 +1290,9 @@ TEST_CASE("Widgets::CreateButton publishes snapshot and state") {
     REQUIRE(style);
     CHECK(style->width == doctest::Approx(params.style.width));
     CHECK(style->height == doctest::Approx(params.style.height));
+    CHECK(style->corner_radius == doctest::Approx(params.style.corner_radius));
+    CHECK(style->typography.font_size == doctest::Approx(28.0f));
+    CHECK(style->typography.line_height == doctest::Approx(28.0f));
 
     CHECK(created->states.idle.getPath()
           == "/system/applications/test_app/scenes/widgets/primary/states/idle");
@@ -1309,9 +1313,25 @@ TEST_CASE("Widgets::CreateButton publishes snapshot and state") {
         auto base = std::string(scene.getPath()) + "/builds/" + format_revision(stateRevision->revision);
         auto bucket = SceneSnapshotBuilder::decode_bucket(fx.space, base);
         REQUIRE(bucket);
+        REQUIRE_FALSE(bucket->command_kinds.empty());
+        auto kind = static_cast<DrawCommandKind>(bucket->command_kinds.front());
+        if (kind == DrawCommandKind::RoundedRect) {
+            REQUIRE(bucket->command_payload.size() >= sizeof(RoundedRectCommand));
+            RoundedRectCommand rect{};
+            std::memcpy(&rect, bucket->command_payload.data(), sizeof(RoundedRectCommand));
+            return rect;
+        }
+        REQUIRE(kind == DrawCommandKind::Rect);
         REQUIRE(bucket->command_payload.size() >= sizeof(RectCommand));
-        RectCommand rect{};
-        std::memcpy(&rect, bucket->command_payload.data(), sizeof(RectCommand));
+        RoundedRectCommand rect{};
+        RectCommand legacy{};
+        std::memcpy(&legacy, bucket->command_payload.data(), sizeof(RectCommand));
+        rect.min_x = legacy.min_x;
+        rect.min_y = legacy.min_y;
+        rect.max_x = legacy.max_x;
+        rect.max_y = legacy.max_y;
+        rect.radius_top_left = rect.radius_top_right = rect.radius_bottom_left = rect.radius_bottom_right = 0.0f;
+        rect.color = legacy.color;
         return rect;
     };
 
@@ -1445,6 +1465,8 @@ TEST_CASE("Widgets::CreateSlider publishes snapshot and state") {
     CHECK(style->height == doctest::Approx(36.0f));
     CHECK(style->track_height == doctest::Approx(8.0f));
     CHECK(style->thumb_radius == doctest::Approx(14.0f));
+    CHECK(style->label_color[0] == doctest::Approx(params.style.label_color[0]));
+    CHECK(style->label_typography.font_size == doctest::Approx(24.0f));
 
     auto range = read_value<Widgets::SliderRange>(fx.space,
                                                   std::string(created->range.getPath()));
@@ -1721,6 +1743,8 @@ TEST_CASE("Widgets::CreateList publishes snapshot and metadata") {
     REQUIRE(storedStyle);
     CHECK(storedStyle->width == doctest::Approx(220.0f));
     CHECK(storedStyle->item_height == doctest::Approx(40.0f));
+    CHECK(storedStyle->item_text_color[0] == doctest::Approx(listParams.style.item_text_color[0]));
+    CHECK(storedStyle->item_typography.font_size == doctest::Approx(21.0f));
 
     CHECK(created->states.idle.getPath()
           == "/system/applications/test_app/scenes/widgets/inventory/states/idle");

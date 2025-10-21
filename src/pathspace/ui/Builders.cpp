@@ -186,6 +186,7 @@ auto make_widget_authoring_id(std::string_view base_path,
 struct ButtonSnapshotConfig {
     float width = 200.0f;
     float height = 48.0f;
+    float corner_radius = 6.0f;
     std::array<float, 4> color{0.176f, 0.353f, 0.914f, 1.0f};
 };
 
@@ -227,17 +228,40 @@ auto make_button_bucket(ButtonSnapshotConfig const& config,
         0}};
     bucket.drawable_fingerprints = {0xB17B0001ull};
 
-    SceneData::RectCommand rect{};
-    rect.min_x = 0.0f;
-    rect.min_y = 0.0f;
-    rect.max_x = config.width;
-    rect.max_y = config.height;
-    rect.color = config.color;
+    float radius_limit = std::min(config.width, config.height) * 0.5f;
+    float clamped_radius = std::clamp(config.corner_radius, 0.0f, radius_limit);
 
-    auto const payload_size = sizeof(SceneData::RectCommand);
-    bucket.command_payload.resize(payload_size);
-    std::memcpy(bucket.command_payload.data(), &rect, payload_size);
-    bucket.command_kinds = {static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect)};
+    if (clamped_radius > 0.0f) {
+        SceneData::RoundedRectCommand rect{};
+        rect.min_x = 0.0f;
+        rect.min_y = 0.0f;
+        rect.max_x = config.width;
+        rect.max_y = config.height;
+        rect.radius_top_left = clamped_radius;
+        rect.radius_top_right = clamped_radius;
+        rect.radius_bottom_left = clamped_radius;
+        rect.radius_bottom_right = clamped_radius;
+        rect.color = config.color;
+
+        bucket.command_payload.resize(sizeof(SceneData::RoundedRectCommand));
+        std::memcpy(bucket.command_payload.data(), &rect, sizeof(SceneData::RoundedRectCommand));
+        bucket.command_kinds = {
+            static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect),
+        };
+    } else {
+        SceneData::RectCommand rect{};
+        rect.min_x = 0.0f;
+        rect.min_y = 0.0f;
+        rect.max_x = config.width;
+        rect.max_y = config.height;
+        rect.color = config.color;
+
+        bucket.command_payload.resize(sizeof(SceneData::RectCommand));
+        std::memcpy(bucket.command_payload.data(), &rect, sizeof(SceneData::RectCommand));
+        bucket.command_kinds = {
+            static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect),
+        };
+    }
 
     return bucket;
 }
@@ -723,9 +747,14 @@ auto button_background_color(Widgets::ButtonStyle const& style,
 auto build_button_bucket(Widgets::ButtonStyle const& style,
                          Widgets::ButtonState const& state,
                          std::string_view authoring_root) -> SceneData::DrawableBucketSnapshot {
+    float width = std::max(style.width, 1.0f);
+    float height = std::max(style.height, 1.0f);
+    float radius_limit = std::min(width, height) * 0.5f;
+    float corner_radius = std::clamp(style.corner_radius, 0.0f, radius_limit);
     ButtonSnapshotConfig config{
-        .width = std::max(style.width, 1.0f),
-        .height = std::max(style.height, 1.0f),
+        .width = width,
+        .height = height,
+        .corner_radius = corner_radius,
         .color = button_background_color(style, state),
     };
     return make_button_bucket(config, authoring_root);
@@ -850,6 +879,7 @@ auto build_list_bucket(Widgets::ListStyle const& style,
         appliedStyle.item_hover_color = scale_alpha(desaturate_color(appliedStyle.item_hover_color, 0.6f), 0.6f);
         appliedStyle.item_selected_color = scale_alpha(desaturate_color(appliedStyle.item_selected_color, 0.6f), 0.6f);
         appliedStyle.separator_color = scale_alpha(desaturate_color(appliedStyle.separator_color, 0.6f), 0.6f);
+        appliedStyle.item_text_color = scale_alpha(desaturate_color(appliedStyle.item_text_color, 0.6f), 0.6f);
         appliedState.hovered_index = -1;
         appliedState.selected_index = -1;
     }
@@ -4044,12 +4074,21 @@ auto CreateButton(PathSpace& space,
         return std::unexpected(widgetRoot.error());
     }
 
+    Widgets::ButtonStyle style = params.style;
+    style.width = std::max(style.width, 1.0f);
+    style.height = std::max(style.height, 1.0f);
+    float radius_limit = std::min(style.width, style.height) * 0.5f;
+    style.corner_radius = std::clamp(style.corner_radius, 0.0f, radius_limit);
+    style.typography.font_size = std::max(style.typography.font_size, 1.0f);
+    style.typography.line_height = std::max(style.typography.line_height, style.typography.font_size);
+    style.typography.letter_spacing = std::max(style.typography.letter_spacing, 0.0f);
+
     Widgets::ButtonState defaultState{};
     if (auto status = write_button_metadata(space,
                                             widgetRoot->getPath(),
                                             params.label,
                                             defaultState,
-                                            params.style); !status) {
+                                            style); !status) {
         return std::unexpected(status.error());
     }
 
@@ -4061,12 +4100,12 @@ auto CreateButton(PathSpace& space,
         return std::unexpected(scenePath.error());
     }
 
-    auto stateScenes = publish_button_state_scenes(space, appRoot, params.name, params.style);
+    auto stateScenes = publish_button_state_scenes(space, appRoot, params.name, style);
     if (!stateScenes) {
         return std::unexpected(stateScenes.error());
     }
 
-    auto bucket = build_button_bucket(params.style, defaultState, widgetRoot->getPath());
+    auto bucket = build_button_bucket(style, defaultState, widgetRoot->getPath());
     if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
         return std::unexpected(status.error());
     }
@@ -4178,6 +4217,9 @@ auto CreateSlider(PathSpace& space,
     style.height = std::max(style.height, 16.0f);
     style.track_height = std::clamp(style.track_height, 1.0f, style.height);
     style.thumb_radius = std::clamp(style.thumb_radius, style.track_height * 0.5f, style.height * 0.5f);
+    style.label_typography.font_size = std::max(style.label_typography.font_size, 1.0f);
+    style.label_typography.line_height = std::max(style.label_typography.line_height, style.label_typography.font_size);
+    style.label_typography.letter_spacing = std::max(style.label_typography.letter_spacing, 0.0f);
 
     Widgets::SliderState defaultState{};
     defaultState.value = clamp_value(params.value);
@@ -4258,6 +4300,9 @@ auto CreateList(PathSpace& space,
     style.item_height = std::max(style.item_height, 24.0f);
     style.corner_radius = std::clamp(style.corner_radius, 0.0f, std::min(style.width, style.item_height * static_cast<float>(std::max<std::size_t>(items.size(), 1u))) * 0.5f);
     style.border_thickness = std::clamp(style.border_thickness, 0.0f, style.item_height * 0.5f);
+    style.item_typography.font_size = std::max(style.item_typography.font_size, 1.0f);
+    style.item_typography.line_height = std::max(style.item_typography.line_height, style.item_typography.font_size);
+    style.item_typography.letter_spacing = std::max(style.item_typography.letter_spacing, 0.0f);
 
     auto first_enabled = std::find_if(items.begin(), items.end(), [](auto const& entry) {
         return entry.enabled;
@@ -4531,6 +4576,109 @@ auto UpdateListState(PathSpace& space,
         return std::unexpected(mark.error());
     }
     return true;
+}
+
+auto MakeDefaultWidgetTheme() -> WidgetTheme {
+    WidgetTheme theme{};
+    theme.button.width = 200.0f;
+    theme.button.height = 48.0f;
+    theme.button.corner_radius = 8.0f;
+    theme.button.background_color = {0.176f, 0.353f, 0.914f, 1.0f};
+    theme.button.text_color = {1.0f, 1.0f, 1.0f, 1.0f};
+    theme.button.typography.font_size = 28.0f;
+    theme.button.typography.line_height = 28.0f;
+    theme.button.typography.letter_spacing = 1.0f;
+    theme.button.typography.baseline_shift = 0.0f;
+
+    theme.toggle.width = 56.0f;
+    theme.toggle.height = 32.0f;
+    theme.toggle.track_off_color = {0.75f, 0.75f, 0.78f, 1.0f};
+    theme.toggle.track_on_color = {0.176f, 0.353f, 0.914f, 1.0f};
+    theme.toggle.thumb_color = {1.0f, 1.0f, 1.0f, 1.0f};
+
+    theme.slider.width = 240.0f;
+    theme.slider.height = 32.0f;
+    theme.slider.track_height = 6.0f;
+    theme.slider.thumb_radius = 10.0f;
+    theme.slider.track_color = {0.75f, 0.75f, 0.78f, 1.0f};
+    theme.slider.fill_color = {0.176f, 0.353f, 0.914f, 1.0f};
+    theme.slider.thumb_color = {1.0f, 1.0f, 1.0f, 1.0f};
+    theme.slider.label_color = {0.90f, 0.92f, 0.96f, 1.0f};
+    theme.slider.label_typography.font_size = 24.0f;
+    theme.slider.label_typography.line_height = 28.0f;
+    theme.slider.label_typography.letter_spacing = 1.0f;
+    theme.slider.label_typography.baseline_shift = 0.0f;
+
+    theme.list.width = 240.0f;
+    theme.list.item_height = 36.0f;
+    theme.list.corner_radius = 8.0f;
+    theme.list.border_thickness = 1.0f;
+    theme.list.background_color = {0.121f, 0.129f, 0.145f, 1.0f};
+    theme.list.border_color = {0.239f, 0.247f, 0.266f, 1.0f};
+    theme.list.item_color = {0.176f, 0.184f, 0.204f, 1.0f};
+    theme.list.item_hover_color = {0.247f, 0.278f, 0.349f, 1.0f};
+    theme.list.item_selected_color = {0.176f, 0.353f, 0.914f, 1.0f};
+    theme.list.separator_color = {0.224f, 0.231f, 0.247f, 1.0f};
+    theme.list.item_text_color = {0.94f, 0.96f, 0.99f, 1.0f};
+    theme.list.item_typography.font_size = 21.0f;
+    theme.list.item_typography.line_height = 24.0f;
+    theme.list.item_typography.letter_spacing = 1.0f;
+    theme.list.item_typography.baseline_shift = 0.0f;
+
+    theme.heading.font_size = 32.0f;
+    theme.heading.line_height = 36.0f;
+    theme.heading.letter_spacing = 1.0f;
+    theme.heading.baseline_shift = 0.0f;
+    theme.caption.font_size = 24.0f;
+    theme.caption.line_height = 28.0f;
+    theme.caption.letter_spacing = 1.0f;
+    theme.caption.baseline_shift = 0.0f;
+    theme.heading_color = {0.93f, 0.95f, 0.98f, 1.0f};
+    theme.caption_color = {0.90f, 0.92f, 0.96f, 1.0f};
+    theme.accent_text_color = {0.85f, 0.88f, 0.95f, 1.0f};
+    theme.muted_text_color = {0.70f, 0.72f, 0.78f, 1.0f};
+
+    return theme;
+}
+
+auto MakeSunsetWidgetTheme() -> WidgetTheme {
+    WidgetTheme theme = MakeDefaultWidgetTheme();
+    theme.button.background_color = {0.882f, 0.424f, 0.310f, 1.0f};
+    theme.button.text_color = {1.0f, 0.984f, 0.945f, 1.0f};
+    theme.toggle.track_on_color = {0.882f, 0.424f, 0.310f, 1.0f};
+    theme.toggle.track_off_color = {0.60f, 0.44f, 0.38f, 1.0f};
+    theme.toggle.thumb_color = {0.996f, 0.949f, 0.902f, 1.0f};
+    theme.slider.fill_color = {0.882f, 0.424f, 0.310f, 1.0f};
+    theme.slider.thumb_color = {0.996f, 0.949f, 0.902f, 1.0f};
+    theme.slider.label_color = {0.996f, 0.949f, 0.902f, 1.0f};
+    theme.list.background_color = {0.215f, 0.128f, 0.102f, 1.0f};
+    theme.list.border_color = {0.365f, 0.231f, 0.201f, 1.0f};
+    theme.list.item_color = {0.266f, 0.166f, 0.138f, 1.0f};
+    theme.list.item_hover_color = {0.422f, 0.248f, 0.198f, 1.0f};
+    theme.list.item_selected_color = {0.882f, 0.424f, 0.310f, 1.0f};
+    theme.list.separator_color = {0.365f, 0.231f, 0.201f, 1.0f};
+    theme.list.item_text_color = {0.996f, 0.949f, 0.902f, 1.0f};
+    theme.heading_color = {0.996f, 0.949f, 0.902f, 1.0f};
+    theme.caption_color = {0.965f, 0.886f, 0.812f, 1.0f};
+    theme.accent_text_color = {0.996f, 0.949f, 0.902f, 1.0f};
+    theme.muted_text_color = {0.855f, 0.698f, 0.612f, 1.0f};
+    return theme;
+}
+
+auto ApplyTheme(WidgetTheme const& theme, ButtonParams& params) -> void {
+    params.style = theme.button;
+}
+
+auto ApplyTheme(WidgetTheme const& theme, ToggleParams& params) -> void {
+    params.style = theme.toggle;
+}
+
+auto ApplyTheme(WidgetTheme const& theme, SliderParams& params) -> void {
+    params.style = theme.slider;
+}
+
+auto ApplyTheme(WidgetTheme const& theme, ListParams& params) -> void {
+    params.style = theme.list;
 }
 
 } // namespace Widgets

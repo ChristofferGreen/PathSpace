@@ -485,11 +485,20 @@ inline App::BootstrapParams::BootstrapParams() {
 
 namespace Widgets {
 
+struct TypographyStyle {
+    float font_size = 28.0f;
+    float line_height = 28.0f;
+    float letter_spacing = 1.0f;
+    float baseline_shift = 0.0f;
+};
+
 struct ButtonStyle {
     float width = 200.0f;
     float height = 48.0f;
+    float corner_radius = 6.0f;
     std::array<float, 4> background_color{0.176f, 0.353f, 0.914f, 1.0f};
     std::array<float, 4> text_color{1.0f, 1.0f, 1.0f, 1.0f};
+    TypographyStyle typography{};
 };
 
 struct ButtonState {
@@ -569,6 +578,13 @@ struct SliderStyle {
     std::array<float, 4> track_color{0.75f, 0.75f, 0.78f, 1.0f};
     std::array<float, 4> fill_color{0.176f, 0.353f, 0.914f, 1.0f};
     std::array<float, 4> thumb_color{1.0f, 1.0f, 1.0f, 1.0f};
+    std::array<float, 4> label_color{0.90f, 0.92f, 0.96f, 1.0f};
+    TypographyStyle label_typography{
+        .font_size = 24.0f,
+        .line_height = 28.0f,
+        .letter_spacing = 1.0f,
+        .baseline_shift = 0.0f,
+    };
 };
 
 struct SliderState {
@@ -620,6 +636,13 @@ struct ListStyle {
     std::array<float, 4> item_hover_color{0.247f, 0.278f, 0.349f, 1.0f};
     std::array<float, 4> item_selected_color{0.176f, 0.353f, 0.914f, 1.0f};
     std::array<float, 4> separator_color{0.224f, 0.231f, 0.247f, 1.0f};
+    std::array<float, 4> item_text_color{0.94f, 0.96f, 0.99f, 1.0f};
+    TypographyStyle item_typography{
+        .font_size = 21.0f,
+        .line_height = 24.0f,
+        .letter_spacing = 1.0f,
+        .baseline_shift = 0.0f,
+    };
 };
 
 struct ListItem {
@@ -782,6 +805,36 @@ auto DispatchList(PathSpace& space,
 auto PointerFromHit(Scene::HitTestResult const& hit) -> PointerInfo;
 
 } // namespace Bindings
+
+struct WidgetTheme {
+    ButtonStyle button{};
+    ToggleStyle toggle{};
+    SliderStyle slider{};
+    ListStyle list{};
+    TypographyStyle heading{
+        .font_size = 32.0f,
+        .line_height = 36.0f,
+        .letter_spacing = 1.0f,
+        .baseline_shift = 0.0f,
+    };
+    TypographyStyle caption{
+        .font_size = 24.0f,
+        .line_height = 28.0f,
+        .letter_spacing = 1.0f,
+        .baseline_shift = 0.0f,
+    };
+    std::array<float, 4> heading_color{0.93f, 0.95f, 0.98f, 1.0f};
+    std::array<float, 4> caption_color{0.90f, 0.92f, 0.96f, 1.0f};
+    std::array<float, 4> accent_text_color{0.85f, 0.88f, 0.95f, 1.0f};
+    std::array<float, 4> muted_text_color{0.70f, 0.72f, 0.78f, 1.0f};
+};
+
+auto MakeDefaultWidgetTheme() -> WidgetTheme;
+auto MakeSunsetWidgetTheme() -> WidgetTheme;
+auto ApplyTheme(WidgetTheme const& theme, ButtonParams& params) -> void;
+auto ApplyTheme(WidgetTheme const& theme, ToggleParams& params) -> void;
+auto ApplyTheme(WidgetTheme const& theme, SliderParams& params) -> void;
+auto ApplyTheme(WidgetTheme const& theme, ListParams& params) -> void;
 
 namespace Reducers {
 

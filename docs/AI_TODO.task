@@ -119,7 +119,7 @@ task {
 task {
   name: "Widget Styling Hooks [FEATURE]"
   description: "Expose reusable styling/typography hooks for widget state scenes and keep gallery telemetry aligned."
-  status: planned
+  status: completed
   priority: P2
 
   acceptance_criteria: [
@@ -129,9 +129,9 @@ task {
   ]
 
   steps: [
-    "Design theme structs for button/toggle/slider/list scenes and thread them through snapshot builders.",
-    "Update widgets_example + gallery telemetry to show themed variants and confirm reducer/op logging stays intact.",
-    "Extend doctests to validate themed snapshots and dirty rect emission; update docs/Plan_SceneGraph_Implementation.md highlights."
+    "DONE (Oct 21, 2025) Added `Widgets::WidgetTheme` + `ApplyTheme` helpers; builders persist theme-aware style metadata (corner radius, typography, label colors).",
+    "DONE (Oct 21, 2025) Updated widgets_example to load themes via `WIDGETS_EXAMPLE_THEME`, align typography, and render text using stored style metadata while keeping telemetry intact.",
+    "DONE (Oct 21, 2025) Extended tests/doc updates: builder tests decode rounded-rect snapshots, and Plan/Onboarding entries document theme usage and follow-ups."
   ]
 }
 

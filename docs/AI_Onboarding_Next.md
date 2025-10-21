@@ -41,7 +41,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 | --- | --- | --- |
 | Metal renderer | ✅ Completed (October 20, 2025) — material/shader bindings now flow through the shared descriptor cache | `PathRenderer2DMetal` covers rects, rounded rects, text quads, and images (see Phase 7); continue tracking glyph/material parity on the descriptor cache. |
 | Diagnostics | ✅ Completed (October 20, 2025) — dashboards consume `textureGpuBytes`/`resourceGpuBytes` plus residency ratios/status under `diagnostics/metrics/residency` | Coordinate with tooling owners before schema changes. |
-| Widgets | Finish Phase 8: extend styling hooks & telemetry atop the widget builders | Button/toggle/slider/list builders, bindings, reducer helpers, and the new state-scene snapshots (idle/hover/pressed/disabled) are live as of October 21, 2025; next focus is styling hooks (themes/typography), gallery telemetry, and presenter follow-ups (see `docs/Plan_SceneGraph_Implementation.md`). |
+| Widgets | Phase 8 follow-up: expand widget UITests & focus navigation helpers | Styling/theme hooks now ship via `Widgets::WidgetTheme`; next up is goldens + interaction UITests and the remaining focus-navigation helpers noted in `docs/Plan_SceneGraph_Implementation.md`. |
 | HTML tooling | Add HSAT inspection CLI/tests and extend coverage when new asset fields appear | Legacy serializer removed; HSAT is mandatory. |
 
 ## 3. Communication & Handoff Hygiene
@@ -87,8 +87,8 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Latest commit: `feat(ui): add widget state scenes` (local `fix/metal-present`, unpushed). Builders now author canonical widget state snapshots, live scenes republish when state toggles, and the plan/docs/tests are in sync.
 - Validation: `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20` (15× PathSpaceTests, PathSpaceUITests, HtmlCanvasVerify, HtmlAssetInspect) — all green with Metal presenters enabled.
 - Outstanding follow-ups before resuming:
-  1. Add styling/typography hooks for widget state scenes and extend gallery telemetry (tracked in `docs/Plan_SceneGraph_Implementation.md` & `docs/AI_Todo.task`).
-  2. Extend HSAT inspection coverage when new asset fields (e.g., material descriptors) land (already captured in the backlog).
+  1. Add widget UITest goldens + interaction sequences (hover/pressed/disabled) and close the testing bullets in `docs/Plan_SceneGraph_Implementation.md` Phase 8.
+  2. Implement the remaining widget focus-navigation helpers & state schema docs, then sync `docs/Plan_SceneGraph_Implementation.md`.
 - Local worktree still holds edits to `docs/Plan_PrimeScript.md` and `docs/AI_Prompts.md` from prior sessions—confirm intent before publishing.
 - Next session checklist:
   1. Branch from `origin/master`, cherry-pick or push the widget state scenes commit, and request review.

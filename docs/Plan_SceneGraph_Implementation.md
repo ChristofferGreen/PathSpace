@@ -229,7 +229,7 @@ Completed:
 - ✅ (October 20, 2025) Added a slider builder (`Builders::Widgets::CreateSlider`) with theme metadata, range/state storage, and snapshot generation for the minimal 2D theme.
 - ✅ (October 20, 2025) Added a list builder (`Builders::Widgets::CreateList`) that publishes canonical list scenes, metadata (`meta/style`, `meta/items`), and default selection state while validating item identifiers.
 - ✅ (October 21, 2025) Added a reusable stroke primitive (polyline/triangle strip) so paint examples track a point list per stroke instead of emitting per-dab rects; renderer + HTML adapter now consume the command and paint_example switched to the new primitive.
-  - Provide styling hooks (colors, corner radius, typography) so demos can skin widgets without forking scenes.
+  - ✅ (October 21, 2025) Provide styling hooks (colors, corner radius, typography) so demos can skin widgets without forking scenes. `Widgets::WidgetTheme` centralises per-widget styles, builders publish the metadata, and `widgets_example` now loads a theme selectable via `WIDGETS_EXAMPLE_THEME` (default or `sunset`).
 - **Interaction contract**
   - ✅ (October 21, 2025) Hit-test authoring ids now embed canonical `/widgets/<id>/authoring/...` paths and `Widgets::ResolveHitTarget`/`WidgetBindings::PointerFromHit` helpers normalize hover/press routing into the existing bindings + `ops/` queues.
   - Expose focus navigation helpers (keyboard/gamepad) that reuse the existing `Scene::HitTest` focus metadata and auto-render events to redraw highlight states.
@@ -248,6 +248,7 @@ Completed:
 - ✅ (October 21, 2025) widgets_example now drives the gallery window, renders all shipped widgets with inline text labels, logs per-second FPS/present telemetry using the software presenter, and feeds LocalWindow mouse input through widget bindings to republish the gallery snapshot on interaction.
 - ✅ (October 21, 2025) widgets_example adds keyboard focus cycling (Tab/Shift+Tab), arrow-key slider/list control, and reducer action logging so gallery runs surface queue activity without external tooling.
 - ✅ (October 21, 2025) Introduced `Builders::App::Bootstrap` helper so examples/tests can create renderer/surface/window defaults for a scene with one call; docs/onboarding updated alongside the helper.
+- ✅ (October 21, 2025) widgets_example now consumes `Widgets::WidgetTheme` output (and `WIDGETS_EXAMPLE_THEME`) so demos can swap color palettes and typography without rewriting scenes; theme defaults live next to the builders for reuse.
 - Update `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage, and troubleshooting steps.
 - Document widget ops schema: queue path (`widgets/<id>/ops/inbox/queue`), `WidgetOp` fields (kind, pointer metadata, value, timestamp) and reducer sample wiring.
 - ✅ (October 20, 2025) Reducer samples now live in `Widgets::Reducers`, publishing actions under `widgets/<id>/ops/actions/inbox/queue`; keep telemetry/docs in sync when new action fields or op kinds land.

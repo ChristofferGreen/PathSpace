@@ -11,6 +11,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -60,6 +61,21 @@ constexpr unsigned int kKeycodeLeft = 0x7B;
 constexpr unsigned int kKeycodeRight = 0x7C;
 constexpr unsigned int kKeycodeDown = 0x7D;
 constexpr unsigned int kKeycodeUp = 0x7E;
+
+auto select_theme_from_env() -> Widgets::WidgetTheme {
+    const char* env = std::getenv("WIDGETS_EXAMPLE_THEME");
+    if (!env) {
+        return Widgets::MakeDefaultWidgetTheme();
+    }
+    std::string value(env);
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    if (value == "sunset") {
+        return Widgets::MakeSunsetWidgetTheme();
+    }
+    return Widgets::MakeDefaultWidgetTheme();
+}
 
 struct WidgetBounds {
     float min_x = 0.0f;
@@ -217,16 +233,36 @@ auto build_button_preview(Widgets::ButtonStyle const& style,
         color = lighten(color, 0.15f);
     }
 
-    SceneData::RectCommand rect{};
-    rect.min_x = 0.0f;
-    rect.min_y = 0.0f;
-    rect.max_x = width;
-    rect.max_y = height;
-    rect.color = color;
+    float radius_limit = std::min(width, height) * 0.5f;
+    float corner_radius = std::clamp(style.corner_radius, 0.0f, radius_limit);
 
-    bucket.command_payload.resize(sizeof(SceneData::RectCommand));
-    std::memcpy(bucket.command_payload.data(), &rect, sizeof(SceneData::RectCommand));
-    bucket.command_kinds = {static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect)};
+    if (corner_radius > 0.0f) {
+        SceneData::RoundedRectCommand rect{};
+        rect.min_x = 0.0f;
+        rect.min_y = 0.0f;
+        rect.max_x = width;
+        rect.max_y = height;
+        rect.radius_top_left = corner_radius;
+        rect.radius_top_right = corner_radius;
+        rect.radius_bottom_left = corner_radius;
+        rect.radius_bottom_right = corner_radius;
+        rect.color = color;
+
+        bucket.command_payload.resize(sizeof(SceneData::RoundedRectCommand));
+        std::memcpy(bucket.command_payload.data(), &rect, sizeof(SceneData::RoundedRectCommand));
+        bucket.command_kinds = {static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect)};
+    } else {
+        SceneData::RectCommand rect{};
+        rect.min_x = 0.0f;
+        rect.min_y = 0.0f;
+        rect.max_x = width;
+        rect.max_y = height;
+        rect.color = color;
+
+        bucket.command_payload.resize(sizeof(SceneData::RectCommand));
+        std::memcpy(bucket.command_payload.data(), &rect, sizeof(SceneData::RectCommand));
+        bucket.command_kinds = {static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect)};
+    }
     return bucket;
 }
 
@@ -653,24 +689,29 @@ auto find_glyph(char ch) -> GlyphPattern const* {
     return nullptr;
 }
 
-auto measure_text_width(std::string_view text, float scale) -> float {
+auto glyph_scale(Widgets::TypographyStyle const& typography) -> float {
+    return std::max(0.1f, typography.font_size / static_cast<float>(kGlyphRows));
+}
+
+auto measure_text_width(std::string_view text, Widgets::TypographyStyle const& typography) -> float {
     auto upper = uppercase_copy(text);
+    float scale = glyph_scale(typography);
+    float spacing = scale * std::max(0.0f, typography.letter_spacing);
     float width = 0.0f;
     for (char raw : upper) {
         if (raw == ' ') {
-            width += scale * 4.0f;
+            width += scale * 4.0f + spacing;
             continue;
         }
         auto glyph = find_glyph(raw);
         if (!glyph) {
-            width += scale * 4.0f;
+            width += scale * 4.0f + spacing;
             continue;
         }
-        width += static_cast<float>(glyph->width) * scale;
-        width += scale;
+        width += static_cast<float>(glyph->width) * scale + spacing;
     }
     if (width > 0.0f) {
-        width -= scale;
+        width -= spacing;
     }
     return width;
 }
@@ -809,7 +850,7 @@ struct TextBuildResult {
 auto build_text_bucket(std::string_view text,
                        float origin_x,
                        float origin_y,
-                       float scale,
+                       Widgets::TypographyStyle const& typography,
                        std::array<float, 4> color,
                        std::uint64_t drawable_id,
                        std::string authoring_id,
@@ -824,14 +865,18 @@ auto build_text_bucket(std::string_view text,
     float max_y = std::numeric_limits<float>::lowest();
 
     auto uppercase = uppercase_copy(text);
+    float scale = glyph_scale(typography);
+    float spacing = scale * std::max(0.0f, typography.letter_spacing);
+    float space_advance = scale * 4.0f + spacing;
+
     for (char raw : uppercase) {
         if (raw == ' ') {
-            cursor_x += scale * 4.0f;
+            cursor_x += space_advance;
             continue;
         }
         auto glyph = find_glyph(raw);
         if (!glyph) {
-            cursor_x += scale * 4.0f;
+            cursor_x += space_advance;
             continue;
         }
         for (int row = 0; row < kGlyphRows; ++row) {
@@ -866,7 +911,7 @@ auto build_text_bucket(std::string_view text,
                 max_y = std::max(max_y, local_max_y);
             }
         }
-        cursor_x += static_cast<float>(glyph->width) * scale + scale;
+        cursor_x += static_cast<float>(glyph->width) * scale + spacing;
     }
 
     if (commands.empty()) {
@@ -994,7 +1039,8 @@ auto build_gallery_bucket(PathSpace& space,
                           Widgets::ListPaths const& list,
                           Widgets::ListStyle const& list_style,
                           Widgets::ListState const& list_state,
-                          std::vector<Widgets::ListItem> const& list_items) -> GalleryBuildResult {
+                          std::vector<Widgets::ListItem> const& list_items,
+                          Widgets::WidgetTheme const& theme) -> GalleryBuildResult {
     (void)space;
     (void)appRoot;
     (void)button;
@@ -1011,11 +1057,13 @@ auto build_gallery_bucket(PathSpace& space,
     GalleryLayout layout{};
 
     // Title text
+    Widgets::TypographyStyle heading_typography = theme.heading;
+    float heading_line_height = heading_typography.line_height;
     auto title_text = build_text_bucket("PathSpace Widgets",
                                         left,
-                                        kDefaultMargin,
-                                        5.0f,
-                                        {0.93f, 0.95f, 0.98f, 1.0f},
+                                        kDefaultMargin + heading_typography.baseline_shift,
+                                        heading_typography,
+                                        theme.heading_color,
                                         next_drawable_id++,
                                         "widget/gallery/title",
                                         0.4f);
@@ -1023,9 +1071,9 @@ auto build_gallery_bucket(PathSpace& space,
     if (title_text) {
         pending.emplace_back(std::move(title_text->bucket));
         max_width = std::max(max_width, left + title_text->width);
-        max_height = std::max(max_height, cursor_y + title_text->height);
-        cursor_y += title_text->height + 24.0f;
+        max_height = std::max(max_height, cursor_y + heading_line_height);
     }
+    cursor_y += heading_line_height + 24.0f;
 
     // Button widget
     {
@@ -1042,14 +1090,15 @@ auto build_gallery_bucket(PathSpace& space,
             cursor_y + widget_height,
         };
 
-        float label_width = measure_text_width(button_label, 4.0f);
-        float label_height = 4.0f * static_cast<float>(kGlyphRows);
+        float label_width = measure_text_width(button_label, button_style.typography);
+        float label_line_height = button_style.typography.line_height;
         float label_x = left + std::max(0.0f, (button_style.width - label_width) * 0.5f);
-        float label_y = cursor_y + std::max(0.0f, (button_style.height - label_height) * 0.5f);
+        float label_top = cursor_y + std::max(0.0f, (button_style.height - label_line_height) * 0.5f);
+        float label_y = label_top + button_style.typography.baseline_shift;
         auto label = build_text_bucket(button_label,
                                        label_x,
                                        label_y,
-                                       4.0f,
+                                       button_style.typography,
                                        button_style.text_color,
                                        next_drawable_id++,
                                        "widget/gallery/button/label",
@@ -1057,7 +1106,7 @@ auto build_gallery_bucket(PathSpace& space,
         if (label) {
             pending.emplace_back(std::move(label->bucket));
             max_width = std::max(max_width, label_x + label->width);
-            max_height = std::max(max_height, label_y + label->height);
+            max_height = std::max(max_height, label_top + label_line_height);
         }
         cursor_y += widget_height + 48.0f;
     }
@@ -1076,18 +1125,22 @@ auto build_gallery_bucket(PathSpace& space,
             cursor_y + toggle_style.height,
         };
 
+        Widgets::TypographyStyle toggle_label_typography = theme.caption;
+        float toggle_label_line = toggle_label_typography.line_height;
+        float toggle_label_x = left + toggle_style.width + 24.0f;
+        float toggle_label_top = cursor_y + std::max(0.0f, (toggle_style.height - toggle_label_line) * 0.5f);
         auto label = build_text_bucket("Toggle",
-                                       left + toggle_style.width + 24.0f,
-                                       cursor_y + (toggle_style.height - 7.0f * 3.0f) * 0.5f,
-                                       3.0f,
-                                       {0.85f, 0.88f, 0.95f, 1.0f},
+                                       toggle_label_x,
+                                       toggle_label_top + toggle_label_typography.baseline_shift,
+                                       toggle_label_typography,
+                                       theme.accent_text_color,
                                        next_drawable_id++,
                                        "widget/gallery/toggle/label",
                                        0.6f);
         if (label) {
             pending.emplace_back(std::move(label->bucket));
-            max_width = std::max(max_width, left + toggle_style.width + 24.0f + label->width);
-            max_height = std::max(max_height, cursor_y + label->height);
+            max_width = std::max(max_width, toggle_label_x + label->width);
+            max_height = std::max(max_height, toggle_label_top + toggle_label_line);
         }
         cursor_y += toggle_style.height + 40.0f;
     }
@@ -1095,20 +1148,22 @@ auto build_gallery_bucket(PathSpace& space,
     // Slider widget with label
     {
         std::string slider_caption = "Volume " + std::to_string(static_cast<int>(std::round(slider_state.value)));
+        Widgets::TypographyStyle slider_caption_typography = slider_style.label_typography;
+        float slider_caption_line = slider_caption_typography.line_height;
         auto caption = build_text_bucket(slider_caption,
                                          left,
-                                         cursor_y,
-                                         3.5f,
-                                         {0.9f, 0.92f, 0.96f, 1.0f},
+                                         cursor_y + slider_caption_typography.baseline_shift,
+                                         slider_caption_typography,
+                                         slider_style.label_color,
                                          next_drawable_id++,
                                          "widget/gallery/slider/caption",
                                          0.6f);
         if (caption) {
             pending.emplace_back(std::move(caption->bucket));
             max_width = std::max(max_width, left + caption->width);
-            max_height = std::max(max_height, cursor_y + caption->height);
-            cursor_y += caption->height + 12.0f;
+            max_height = std::max(max_height, cursor_y + slider_caption_line);
         }
+        cursor_y += slider_caption_line + 12.0f;
 
         auto bucket = build_slider_preview(slider_style, slider_state, slider_range);
         translate_bucket(bucket, left, cursor_y);
@@ -1134,20 +1189,22 @@ auto build_gallery_bucket(PathSpace& space,
 
     // List widget with per-item labels
     {
+        Widgets::TypographyStyle list_caption_typography = theme.caption;
+        float list_caption_line = list_caption_typography.line_height;
         auto caption = build_text_bucket("Inventory",
                                          left,
-                                         cursor_y,
-                                         3.5f,
-                                         {0.9f, 0.92f, 0.96f, 1.0f},
+                                         cursor_y + list_caption_typography.baseline_shift,
+                                         list_caption_typography,
+                                         theme.caption_color,
                                          next_drawable_id++,
                                          "widget/gallery/list/caption",
                                          0.6f);
         if (caption) {
             pending.emplace_back(std::move(caption->bucket));
             max_width = std::max(max_width, left + caption->width);
-            max_height = std::max(max_height, cursor_y + caption->height);
-            cursor_y += caption->height + 12.0f;
+            max_height = std::max(max_height, cursor_y + list_caption_line);
         }
+        cursor_y += list_caption_line + 12.0f;
 
         auto bucket = build_list_preview(list_style, list_items, list_state);
         translate_bucket(bucket, left, cursor_y);
@@ -1167,27 +1224,27 @@ auto build_gallery_bucket(PathSpace& space,
         layout.list.item_bounds.clear();
         layout.list.item_bounds.reserve(list_items.size());
 
-        float text_scale = 3.0f;
         float content_top = cursor_y + list_style.border_thickness;
         for (std::size_t index = 0; index < list_items.size(); ++index) {
             auto const& item = list_items[index];
             float row_top = content_top + list_style.item_height * static_cast<float>(index);
             float row_height = list_style.item_height;
-            float text_height = text_scale * static_cast<float>(kGlyphRows);
-            float text_y = row_top + std::max(0.0f, (row_height - text_height) * 0.5f);
+            Widgets::TypographyStyle item_typography = list_style.item_typography;
+            float text_height = item_typography.line_height;
             float text_x = left + list_style.border_thickness + 16.0f;
+            float text_top = row_top + std::max(0.0f, (row_height - text_height) * 0.5f);
             auto label = build_text_bucket(item.label,
                                            text_x,
-                                           text_y,
-                                           text_scale,
-                                           {0.94f, 0.96f, 0.99f, 1.0f},
+                                           text_top + item_typography.baseline_shift,
+                                           item_typography,
+                                           list_style.item_text_color,
                                            next_drawable_id++,
                                            "widget/gallery/list/item/" + item.id,
                                            0.65f);
             if (label) {
                 pending.emplace_back(std::move(label->bucket));
                 max_width = std::max(max_width, text_x + label->width);
-                max_height = std::max(max_height, text_y + label->height);
+                max_height = std::max(max_height, text_top + text_height);
             }
 
             float row_bottom = row_top + list_style.item_height;
@@ -1204,20 +1261,22 @@ auto build_gallery_bucket(PathSpace& space,
     }
 
     // Footer hint
+    Widgets::TypographyStyle footer_typography = theme.caption;
+    float footer_line_height = footer_typography.line_height;
     auto footer = build_text_bucket("Close window to exit",
                                     left,
-                                    cursor_y,
-                                    3.0f,
-                                    {0.7f, 0.72f, 0.78f, 1.0f},
+                                    cursor_y + footer_typography.baseline_shift,
+                                    footer_typography,
+                                    theme.muted_text_color,
                                     next_drawable_id++,
                                     "widget/gallery/footer",
                                     0.6f);
     if (footer) {
         pending.emplace_back(std::move(footer->bucket));
         max_width = std::max(max_width, left + footer->width);
-        max_height = std::max(max_height, cursor_y + footer->height);
-        cursor_y += footer->height;
+        max_height = std::max(max_height, cursor_y + footer_line_height);
     }
+    cursor_y += footer_line_height;
 
     float canvas_width = std::max(max_width + kDefaultMargin, 360.0f);
     float canvas_height = std::max(max_height + kDefaultMargin, 360.0f);
@@ -1261,7 +1320,8 @@ auto publish_gallery_scene(PathSpace& space,
                            Widgets::ListPaths const& list,
                            Widgets::ListStyle const& list_style,
                            Widgets::ListState const& list_state,
-                           std::vector<Widgets::ListItem> const& list_items) -> GallerySceneResult {
+                           std::vector<Widgets::ListItem> const& list_items,
+                           Widgets::WidgetTheme const& theme) -> GallerySceneResult {
     SceneParams gallery_params{
         .name = "gallery",
         .description = "widgets gallery composed scene",
@@ -1285,7 +1345,8 @@ auto publish_gallery_scene(PathSpace& space,
                                       list,
                                       list_style,
                                       list_state,
-                                      list_items);
+                                      list_items,
+                                      theme);
 
     SceneData::SceneSnapshotBuilder builder(space, appRoot, gallery_scene);
     SceneData::SnapshotPublishOptions opts{};
@@ -1323,6 +1384,7 @@ struct WidgetsExampleContext {
     Widgets::TogglePaths toggle_paths;
     Widgets::SliderPaths slider_paths;
     Widgets::ListPaths list_paths;
+    Widgets::WidgetTheme theme{};
     Widgets::ButtonStyle button_style{};
     std::string button_label;
     Widgets::ToggleStyle toggle_style{};
@@ -1572,7 +1634,8 @@ static void refresh_gallery(WidgetsExampleContext& ctx) {
                                         ctx.list_paths,
                                         ctx.list_style,
                                         ctx.list_state,
-                                        ctx.list_items);
+                                        ctx.list_items,
+                                        ctx.theme);
 }
 
 static auto dispatch_button(WidgetsExampleContext& ctx,
@@ -2201,9 +2264,12 @@ int main() {
     AppRootPath appRoot{"/system/applications/widgets_example"};
     AppRootPathView appRootView{appRoot.getPath()};
 
+    auto theme = select_theme_from_env();
+
     Widgets::ButtonParams button_params{};
     button_params.name = "primary_button";
     button_params.label = "Primary";
+    Widgets::ApplyTheme(theme, button_params);
     button_params.style.width = 180.0f;
     button_params.style.height = 44.0f;
     auto button = unwrap_or_exit(Widgets::CreateButton(space, appRootView, button_params),
@@ -2219,6 +2285,7 @@ int main() {
 
     Widgets::ToggleParams toggle_params{};
     toggle_params.name = "primary_toggle";
+    Widgets::ApplyTheme(theme, toggle_params);
     toggle_params.style.width = 60.0f;
     toggle_params.style.height = 32.0f;
     auto toggle = unwrap_or_exit(Widgets::CreateToggle(space, appRootView, toggle_params),
@@ -2242,6 +2309,7 @@ int main() {
     slider_params.maximum = 100.0f;
     slider_params.value = 25.0f;
     slider_params.step = 5.0f;
+    Widgets::ApplyTheme(theme, slider_params);
     auto slider = unwrap_or_exit(Widgets::CreateSlider(space, appRootView, slider_params),
                                  "create slider widget");
 
@@ -2265,6 +2333,7 @@ int main() {
         Widgets::ListItem{.id = "ether", .label = "Ether", .enabled = true},
         Widgets::ListItem{.id = "elixir", .label = "Elixir", .enabled = true},
     };
+    Widgets::ApplyTheme(theme, list_params);
     list_params.style.width = 240.0f;
     list_params.style.item_height = 36.0f;
     auto list = unwrap_or_exit(Widgets::CreateList(space, appRootView, list_params),
@@ -2317,7 +2386,8 @@ int main() {
                                          list,
                                          list_params.style,
                                          list_state_live,
-                                         list_params.items);
+                                         list_params.items,
+                                         theme);
 
     std::cout << "widgets_example gallery scene:\n"
               << "  scene: " << gallery.scene.getPath() << "\n"
@@ -2366,6 +2436,7 @@ int main() {
     ctx.toggle_paths = toggle;
     ctx.slider_paths = slider;
     ctx.list_paths = list;
+    ctx.theme = theme;
     ctx.button_style = button_params.style;
     ctx.button_label = button_params.label;
     ctx.toggle_style = toggle_params.style;
