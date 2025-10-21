@@ -1,6 +1,6 @@
 # Handoff Notice
 
-> **Handoff note (October 21, 2025 @ shutdown):** `examples/widgets_example` now opens the gallery window, renders button/toggle/slider/list widgets with software text overlays, streams FPS/present telemetry to stdout, and routes LocalWindow mouse/keyboard events into widget bindings. Residency dashboards remain current under `diagnostics/metrics/residency`. Presenter telemetry now mirrors into the window diagnostics sinks (`windows/<win>/diagnostics/metrics/live/views/<view>/present`). Next pass should add the HSAT inspection CLI and extend HTML asset tooling coverage (see Phase 7 HTML follow-ups).
+> **Handoff note (October 21, 2025 @ shutdown):** Hit-test coverage now spans ordering, clip-aware picking, focus routing, and the auto-render wait/notify path (`tests/ui/test_SceneHitTest.cpp` asserts ≤200 ms wake latency). Presenter diagnostics continue to mirror into `windows/<win>/diagnostics/metrics/live/views/<view>/present`, and widgets gallery interactions remain green. Next pass should tighten DrawableBucket-backed picking (multi-hit collection, z-layer drill-down), expand HTML tooling (HSAT inspectors), and carry forward the Phase 5 interaction scheduling milestones.
 
 # Scene Graph Implementation Plan
 

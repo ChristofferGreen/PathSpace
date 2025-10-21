@@ -41,6 +41,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 | --- | --- | --- |
 | Metal renderer | ✅ Completed (October 20, 2025) — material/shader bindings now flow through the shared descriptor cache | `PathRenderer2DMetal` covers rects, rounded rects, text quads, and images (see Phase 7); continue tracking glyph/material parity on the descriptor cache. |
 | Diagnostics | ✅ Completed (October 20, 2025) — dashboards consume `textureGpuBytes`/`resourceGpuBytes` plus residency ratios/status under `diagnostics/metrics/residency` | Coordinate with tooling owners before schema changes. |
+| Input & hit testing | 🚧 In progress (October 21, 2025) — Phase 5 tests cover hit ordering, clip-aware picking, focus routing, and auto-render wake latency | Next step: add DrawableBucket multi-hit collection + interaction scheduling follow-ups (see plan doc). |
 | Widgets | Phase 8 follow-up: expand widget UITests & focus navigation helpers | Styling/theme hooks now ship via `Widgets::WidgetTheme`; next up is goldens + interaction UITests and the remaining focus-navigation helpers noted in `docs/Plan_SceneGraph_Implementation.md`. |
 | HTML tooling | Add HSAT inspection CLI/tests and extend coverage when new asset fields appear | Legacy serializer removed; HSAT is mandatory. |
 
@@ -77,6 +78,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Residency metrics are live under `diagnostics/metrics/residency/*`; dashboards now read the published ratios/status fields—extend telemetry when new counters appear.
 - Presenter telemetry mirrors into window diagnostics sinks under `windows/<window>/diagnostics/metrics/live/views/<view>/present`, so dashboards can ingest present stats without crawling renderer targets (October 21, 2025).
 - Widgets gallery supports keyboard focus (Tab/Shift+Tab) and logs reducer actions on every frame, making it easier to validate bindings without auxiliary tooling (October 21, 2025).
+- Hit-test auto-render scheduling now has latency coverage (`tests/ui/test_SceneHitTest.cpp`), ensuring the wait/notify path wakes within the 20–200 ms budget (October 21, 2025).
 - Widget binding helpers (`Widgets::Bindings::Dispatch{Button,Toggle,Slider,List}`) emit dirty rect hints, auto-schedule renders, and enqueue ops under `widgets/<id>/ops/inbox/queue` so reducers can react without republishing entire scenes.
 - List widget builder (`Builders::Widgets::CreateList`) plus `UpdateListState` and `DispatchList` land with doctest coverage, enabling selection/hover/scroll ops and expanding `widgets_example`.
 - `Builders::App::Bootstrap` wires a renderer/surface/window + present policy for a scene in one call, trimming boilerplate in examples/tests (October 21, 2025).
