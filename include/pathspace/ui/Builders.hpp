@@ -415,6 +415,74 @@ void ResetBeforePresentHook();
 
 } // namespace Window::TestHooks
 
+namespace App {
+
+struct BootstrapParams {
+    RendererParams renderer{};
+    SurfaceParams surface{};
+    WindowParams window{};
+    std::string view_name;
+    PathWindowView::PresentPolicy present_policy{};
+    bool configure_present_policy = true;
+    bool configure_renderer_settings = true;
+    std::optional<RenderSettings> renderer_settings_override;
+    bool submit_initial_dirty_rect = true;
+    std::optional<DirtyRectHint> initial_dirty_rect_override;
+
+    BootstrapParams();
+};
+
+struct BootstrapResult {
+    RendererPath renderer;
+    SurfacePath surface;
+    ConcretePath target;
+    WindowPath window;
+    std::string view_name;
+    SurfaceDesc surface_desc;
+    RenderSettings applied_settings;
+    PathWindowView::PresentPolicy present_policy;
+};
+
+auto Bootstrap(PathSpace& space,
+               AppRootPathView appRoot,
+               ScenePath const& scene,
+               BootstrapParams const& params) -> SP::Expected<BootstrapResult>;
+
+inline App::BootstrapParams::BootstrapParams() {
+    renderer.name = "main_renderer";
+    renderer.kind = RendererKind::Software2D;
+    renderer.description = "bootstrap renderer";
+
+    surface.name = "main_surface";
+    surface.desc.size_px.width = 1280;
+    surface.desc.size_px.height = 720;
+    surface.desc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surface.desc.color_space = ColorSpace::sRGB;
+    surface.desc.premultiplied_alpha = true;
+    surface.renderer.clear();
+
+    window.name = "main_window";
+    window.title = "PathSpace Window";
+    window.width = 1280;
+    window.height = 720;
+    window.scale = 1.0f;
+    window.background = "#101218";
+
+    view_name = "main";
+
+    present_policy.mode = PathWindowView::PresentMode::AlwaysLatestComplete;
+    present_policy.staleness_budget = std::chrono::milliseconds{0};
+    present_policy.staleness_budget_ms_value = 0.0;
+    present_policy.max_age_frames = 0;
+    present_policy.frame_timeout = std::chrono::milliseconds{0};
+    present_policy.frame_timeout_ms_value = 0.0;
+    present_policy.vsync_align = false;
+    present_policy.auto_render_on_present = true;
+    present_policy.capture_framebuffer = false;
+}
+
+} // namespace App
+
 namespace Widgets {
 
 struct ButtonStyle {

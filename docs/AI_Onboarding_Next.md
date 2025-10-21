@@ -78,6 +78,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Widgets gallery supports keyboard focus (Tab/Shift+Tab) and logs reducer actions on every frame, making it easier to validate bindings without auxiliary tooling (October 21, 2025).
 - Widget binding helpers (`Widgets::Bindings::Dispatch{Button,Toggle,Slider,List}`) emit dirty rect hints, auto-schedule renders, and enqueue ops under `widgets/<id>/ops/inbox/queue` so reducers can react without republishing entire scenes.
 - List widget builder (`Builders::Widgets::CreateList`) plus `UpdateListState` and `DispatchList` land with doctest coverage, enabling selection/hover/scroll ops and expanding `widgets_example`.
+- `Builders::App::Bootstrap` wires a renderer/surface/window + present policy for a scene in one call, trimming boilerplate in examples/tests (October 21, 2025).
 - Reducer helpers (`Widgets::Reducers::ReducePending`/`PublishActions`) drain widget ops into `ops/actions/inbox/queue`; widgets_example seeds a sample action and prints the reducer output.
 - Stroke rendering is now a first-class primitive: `DrawCommandKind::Stroke` serializes shared point buffers, `PathRenderer2D` rasterizes polylines, the HTML adapter/replay round-trip stroke data, and `paint_example` emits strokes instead of per-dab rects (October 21, 2025).
 

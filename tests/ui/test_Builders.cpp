@@ -35,6 +35,7 @@ namespace Widgets = SP::UI::Builders::Widgets;
 namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
 namespace WidgetReducers = SP::UI::Builders::Widgets::Reducers;
 namespace Html = SP::UI::Html;
+namespace AppBootstrap = SP::UI::Builders::App;
 
 using UIScene::DrawableBucketSnapshot;
 using UIScene::SceneSnapshotBuilder;
@@ -2294,6 +2295,121 @@ TEST_CASE("SubmitDirtyRects collapses excessive hints to full surface") {
     CHECK(rect.min_y == doctest::Approx(0.0f));
     CHECK(rect.max_x == doctest::Approx(static_cast<float>(desc.size_px.width)));
     CHECK(rect.max_y == doctest::Approx(static_cast<float>(desc.size_px.height)));
+}
+
+TEST_CASE("App bootstrap helper wires renderer, surface, and window defaults") {
+    BuildersFixture fx;
+
+    SceneParams sceneParams{
+        .name = "gallery",
+        .description = "bootstrap scene",
+    };
+    auto scenePath = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    REQUIRE(scenePath);
+
+    AppBootstrap::BootstrapParams params;
+    params.renderer.name = "bootstrap_renderer";
+    params.renderer.kind = RendererKind::Software2D;
+    params.renderer.description = "bootstrap renderer";
+    params.surface.name = "bootstrap_surface";
+    params.surface.desc.size_px.width = 640;
+    params.surface.desc.size_px.height = 360;
+    params.window.name = "bootstrap_window";
+    params.window.title = "Bootstrap Window";
+    params.window.background = "#151820";
+    params.window.width = 640;
+    params.window.height = 360;
+    params.view_name = "main";
+    params.present_policy.mode = PathWindowView::PresentMode::AlwaysLatestComplete;
+    params.present_policy.vsync_align = false;
+    params.present_policy.auto_render_on_present = true;
+    params.present_policy.capture_framebuffer = false;
+    params.present_policy.staleness_budget = std::chrono::milliseconds{0};
+    params.present_policy.frame_timeout = std::chrono::milliseconds{0};
+    params.configure_present_policy = true;
+    params.configure_renderer_settings = true;
+    params.submit_initial_dirty_rect = true;
+
+    auto bootstrap = AppBootstrap::Bootstrap(fx.space, fx.root_view(), *scenePath, params);
+    REQUIRE(bootstrap);
+    auto const& result = *bootstrap;
+
+    CHECK(result.renderer.getPath()
+          == "/system/applications/test_app/renderers/bootstrap_renderer");
+    CHECK(result.surface.getPath()
+          == "/system/applications/test_app/surfaces/bootstrap_surface");
+    CHECK(result.window.getPath()
+          == "/system/applications/test_app/windows/bootstrap_window");
+    CHECK(result.target.getPath()
+          == "/system/applications/test_app/renderers/bootstrap_renderer/targets/surfaces/bootstrap_surface");
+    CHECK(result.view_name == "main");
+    CHECK(result.surface_desc.size_px.width == 640);
+    CHECK(result.surface_desc.size_px.height == 360);
+    CHECK(result.present_policy.mode == PathWindowView::PresentMode::AlwaysLatestComplete);
+    CHECK(result.applied_settings.surface.size_px.width == 640);
+    CHECK(result.applied_settings.surface.size_px.height == 360);
+    CHECK(result.applied_settings.renderer.backend_kind == RendererKind::Software2D);
+
+    auto surfaceScene = read_value<std::string>(fx.space,
+                                                std::string(result.surface.getPath()) + "/scene");
+    REQUIRE(surfaceScene);
+    CHECK(*surfaceScene == "scenes/gallery");
+
+    auto targetScene = read_value<std::string>(fx.space,
+                                               std::string(result.target.getPath()) + "/scene");
+    REQUIRE(targetScene);
+    CHECK(*targetScene == "scenes/gallery");
+
+    auto windowViewBase = std::string(result.window.getPath()) + "/views/" + result.view_name;
+    auto attachedSurface = read_value<std::string>(fx.space, windowViewBase + "/surface");
+    REQUIRE(attachedSurface);
+    CHECK(*attachedSurface == "surfaces/bootstrap_surface");
+
+    auto policyText = read_value<std::string>(fx.space, windowViewBase + "/present/policy");
+    REQUIRE(policyText);
+    CHECK(*policyText == "AlwaysLatestComplete");
+
+    auto stalenessMs = read_value<double>(fx.space, windowViewBase + "/present/params/staleness_budget_ms");
+    REQUIRE(stalenessMs);
+    CHECK(*stalenessMs == doctest::Approx(0.0));
+
+    auto frameTimeoutMs = read_value<double>(fx.space, windowViewBase + "/present/params/frame_timeout_ms");
+    REQUIRE(frameTimeoutMs);
+    CHECK(*frameTimeoutMs == doctest::Approx(0.0));
+
+    auto maxAgeFrames = read_value<std::uint64_t>(fx.space, windowViewBase + "/present/params/max_age_frames");
+    REQUIRE(maxAgeFrames);
+    CHECK(*maxAgeFrames == 0);
+
+    auto vsyncAlign = read_value<bool>(fx.space, windowViewBase + "/present/params/vsync_align");
+    REQUIRE(vsyncAlign);
+    CHECK_FALSE(*vsyncAlign);
+
+    auto autoRender = read_value<bool>(fx.space, windowViewBase + "/present/params/auto_render_on_present");
+    REQUIRE(autoRender);
+    CHECK(*autoRender);
+
+    auto captureFramebuffer = read_value<bool>(fx.space, windowViewBase + "/present/params/capture_framebuffer");
+    REQUIRE(captureFramebuffer);
+    CHECK_FALSE(*captureFramebuffer);
+
+    auto storedSettings = Renderer::ReadSettings(fx.space,
+                                                 ConcretePathView{result.target.getPath()});
+    REQUIRE(storedSettings);
+    CHECK(storedSettings->surface.size_px.width == 640);
+    CHECK(storedSettings->surface.size_px.height == 360);
+    CHECK(storedSettings->renderer.backend_kind == RendererKind::Software2D);
+
+    auto dirtyRects = read_value<std::vector<DirtyRectHint>>(fx.space,
+                                                             std::string(result.target.getPath())
+                                                             + "/hints/dirtyRects");
+    REQUIRE(dirtyRects);
+    REQUIRE(dirtyRects->size() == 1);
+    auto const& hint = dirtyRects->front();
+    CHECK(hint.min_x == doctest::Approx(0.0f));
+    CHECK(hint.min_y == doctest::Approx(0.0f));
+    CHECK(hint.max_x == doctest::Approx(640.0f));
+    CHECK(hint.max_y == doctest::Approx(360.0f));
 }
 
 } // TEST_SUITE

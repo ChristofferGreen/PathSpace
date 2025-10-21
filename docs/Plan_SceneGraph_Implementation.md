@@ -246,7 +246,7 @@ Completed:
 - ✅ (October 20, 2025) widgets_example now instantiates slider and list widgets, exercises the state helpers, and prints the relevant path wiring to guide gallery expansion; continue instrumenting interaction telemetry in follow-up work.
 - ✅ (October 21, 2025) widgets_example now drives the gallery window, renders all shipped widgets with inline text labels, logs per-second FPS/present telemetry using the software presenter, and feeds LocalWindow mouse input through widget bindings to republish the gallery snapshot on interaction.
 - ✅ (October 21, 2025) widgets_example adds keyboard focus cycling (Tab/Shift+Tab), arrow-key slider/list control, and reducer action logging so gallery runs surface queue activity without external tooling.
-- Introduce an app bootstrap helper that wires renderer/surface/window defaults for a given app root/scene so examples/tests can avoid boilerplate while still exposing escape hatches; update onboarding/docs once available.
+- ✅ (October 21, 2025) Introduced `Builders::App::Bootstrap` helper so examples/tests can create renderer/surface/window defaults for a scene with one call; docs/onboarding updated alongside the helper.
 - Update `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage, and troubleshooting steps.
 - Document widget ops schema: queue path (`widgets/<id>/ops/inbox/queue`), `WidgetOp` fields (kind, pointer metadata, value, timestamp) and reducer sample wiring.
 - ✅ (October 20, 2025) Reducer samples now live in `Widgets::Reducers`, publishing actions under `widgets/<id>/ops/actions/inbox/queue`; keep telemetry/docs in sync when new action fields or op kinds land.
