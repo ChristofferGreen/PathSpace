@@ -1,6 +1,7 @@
 #pragma once
 
 #include <pathspace/PathSpace.hpp>
+#include <pathspace/ui/HtmlAsset.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 
 #include <array>
@@ -12,16 +13,6 @@
 #include <vector>
 
 namespace SP::UI::Html {
-
-inline constexpr std::string_view kImageAssetReferenceMime = "application/vnd.pathspace.image+ref";
-inline constexpr std::string_view kFontAssetReferenceMime  = "application/vnd.pathspace.font+ref";
-
-enum class AssetKind {
-    Image,
-    Font,
-};
-
-struct Asset;
 
 struct EmitOptions {
     bool prefer_dom = true;
@@ -62,12 +53,6 @@ struct CanvasCommand {
     std::uint32_t stroke_point_count = 0;
 };
 
-struct Asset {
-    std::string logical_path;
-    std::string mime_type;
-    std::vector<std::uint8_t> bytes;
-};
-
 struct EmitResult {
     std::string dom;
     std::string css;
@@ -93,3 +78,5 @@ public:
 };
 
 } // namespace SP::UI::Html
+
+#include <pathspace/ui/HtmlSerialization.hpp>

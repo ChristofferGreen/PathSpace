@@ -12,7 +12,7 @@
 #include <pathspace/core/Error.hpp>
 #include <pathspace/type/SlidingBuffer.hpp>
 #include <pathspace/type/serialization.hpp>
-#include <pathspace/ui/HtmlAdapter.hpp>
+#include <pathspace/ui/HtmlAsset.hpp>
 
 namespace SP {
 
