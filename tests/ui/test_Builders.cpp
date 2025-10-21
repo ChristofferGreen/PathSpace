@@ -1290,15 +1290,49 @@ TEST_CASE("Widgets::CreateButton publishes snapshot and state") {
     CHECK(style->width == doctest::Approx(params.style.width));
     CHECK(style->height == doctest::Approx(params.style.height));
 
+    CHECK(created->states.idle.getPath()
+          == "/system/applications/test_app/scenes/widgets/primary/states/idle");
+    CHECK(created->states.hover.getPath()
+          == "/system/applications/test_app/scenes/widgets/primary/states/hover");
+    CHECK(created->states.pressed.getPath()
+          == "/system/applications/test_app/scenes/widgets/primary/states/pressed");
+    CHECK(created->states.disabled.getPath()
+          == "/system/applications/test_app/scenes/widgets/primary/states/disabled");
+
     auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
     REQUIRE(revision);
     CHECK(revision->revision > 0);
+
+    auto read_scene_bucket = [&](SP::UI::Builders::ScenePath const& scene) {
+        auto stateRevision = Scene::ReadCurrentRevision(fx.space, scene);
+        REQUIRE(stateRevision);
+        auto base = std::string(scene.getPath()) + "/builds/" + format_revision(stateRevision->revision);
+        auto bucket = SceneSnapshotBuilder::decode_bucket(fx.space, base);
+        REQUIRE(bucket);
+        REQUIRE(bucket->command_payload.size() >= sizeof(RectCommand));
+        RectCommand rect{};
+        std::memcpy(&rect, bucket->command_payload.data(), sizeof(RectCommand));
+        return rect;
+    };
+
+    auto idleRect = read_scene_bucket(created->states.idle);
+    auto hoverRect = read_scene_bucket(created->states.hover);
+    auto pressedRect = read_scene_bucket(created->states.pressed);
+    auto disabledRect = read_scene_bucket(created->states.disabled);
+
+    CHECK(hoverRect.color[0] > idleRect.color[0]);
+    CHECK(pressedRect.color[0] < idleRect.color[0]);
+    CHECK(disabledRect.color[3] < idleRect.color[3]);
 
     Widgets::ButtonState pressed_state = *state;
     pressed_state.pressed = true;
     auto changed = Widgets::UpdateButtonState(fx.space, *created, pressed_state);
     REQUIRE(changed);
     CHECK(*changed);
+
+    auto updatedRevision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    REQUIRE(updatedRevision);
+    CHECK(updatedRevision->revision > revision->revision);
 
     auto updated = read_value<Widgets::ButtonState>(fx.space,
                                                     std::string(created->state.getPath()));
@@ -1336,6 +1370,25 @@ TEST_CASE("Widgets::CreateToggle publishes snapshot and state") {
     CHECK(style->height == doctest::Approx(params.style.height));
     CHECK(style->track_on_color[0] == doctest::Approx(params.style.track_on_color[0]));
 
+    CHECK(created->states.idle.getPath()
+          == "/system/applications/test_app/scenes/widgets/toggle_primary/states/idle");
+    CHECK(created->states.hover.getPath()
+          == "/system/applications/test_app/scenes/widgets/toggle_primary/states/hover");
+    CHECK(created->states.pressed.getPath()
+          == "/system/applications/test_app/scenes/widgets/toggle_primary/states/pressed");
+    CHECK(created->states.disabled.getPath()
+          == "/system/applications/test_app/scenes/widgets/toggle_primary/states/disabled");
+
+    auto ensure_state_scene = [&](SP::UI::Builders::ScenePath const& scene) {
+        auto rev = Scene::ReadCurrentRevision(fx.space, scene);
+        REQUIRE(rev);
+        CHECK(rev->revision > 0);
+    };
+    ensure_state_scene(created->states.idle);
+    ensure_state_scene(created->states.hover);
+    ensure_state_scene(created->states.pressed);
+    ensure_state_scene(created->states.disabled);
+
     auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
     REQUIRE(revision);
     CHECK(revision->revision > 0);
@@ -1350,6 +1403,10 @@ TEST_CASE("Widgets::CreateToggle publishes snapshot and state") {
                                                          std::string(created->state.getPath()));
     REQUIRE(toggle_state);
     CHECK(toggle_state->checked);
+
+    auto updatedRevision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    REQUIRE(updatedRevision);
+    CHECK(updatedRevision->revision > revision->revision);
 
     auto toggle_unchanged = Widgets::UpdateToggleState(fx.space, *created, toggled);
     REQUIRE(toggle_unchanged);
@@ -1396,6 +1453,25 @@ TEST_CASE("Widgets::CreateSlider publishes snapshot and state") {
     CHECK(range->maximum == doctest::Approx(1.0f));
     CHECK(range->step == doctest::Approx(0.25f));
 
+    CHECK(created->states.idle.getPath()
+          == "/system/applications/test_app/scenes/widgets/slider_primary/states/idle");
+    CHECK(created->states.hover.getPath()
+          == "/system/applications/test_app/scenes/widgets/slider_primary/states/hover");
+    CHECK(created->states.pressed.getPath()
+          == "/system/applications/test_app/scenes/widgets/slider_primary/states/pressed");
+    CHECK(created->states.disabled.getPath()
+          == "/system/applications/test_app/scenes/widgets/slider_primary/states/disabled");
+
+    auto ensure_state_scene = [&](SP::UI::Builders::ScenePath const& scene) {
+        auto rev = Scene::ReadCurrentRevision(fx.space, scene);
+        REQUIRE(rev);
+        CHECK(rev->revision > 0);
+    };
+    ensure_state_scene(created->states.idle);
+    ensure_state_scene(created->states.hover);
+    ensure_state_scene(created->states.pressed);
+    ensure_state_scene(created->states.disabled);
+
     auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
     REQUIRE(revision);
     CHECK(revision->revision > 0);
@@ -1412,6 +1488,10 @@ TEST_CASE("Widgets::CreateSlider publishes snapshot and state") {
     REQUIRE(updated);
     CHECK(updated->value == doctest::Approx(0.75f));
     CHECK(updated->dragging);
+
+    auto updatedRevision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    REQUIRE(updatedRevision);
+    CHECK(updatedRevision->revision > revision->revision);
 
     auto slider_unchanged = Widgets::UpdateSliderState(fx.space, *created, *updated);
     REQUIRE(slider_unchanged);
@@ -1642,6 +1722,25 @@ TEST_CASE("Widgets::CreateList publishes snapshot and metadata") {
     CHECK(storedStyle->width == doctest::Approx(220.0f));
     CHECK(storedStyle->item_height == doctest::Approx(40.0f));
 
+    CHECK(created->states.idle.getPath()
+          == "/system/applications/test_app/scenes/widgets/inventory/states/idle");
+    CHECK(created->states.hover.getPath()
+          == "/system/applications/test_app/scenes/widgets/inventory/states/hover");
+    CHECK(created->states.pressed.getPath()
+          == "/system/applications/test_app/scenes/widgets/inventory/states/pressed");
+    CHECK(created->states.disabled.getPath()
+          == "/system/applications/test_app/scenes/widgets/inventory/states/disabled");
+
+    auto ensure_state_scene = [&](SP::UI::Builders::ScenePath const& scene) {
+        auto rev = Scene::ReadCurrentRevision(fx.space, scene);
+        REQUIRE(rev);
+        CHECK(rev->revision > 0);
+    };
+    ensure_state_scene(created->states.idle);
+    ensure_state_scene(created->states.hover);
+    ensure_state_scene(created->states.pressed);
+    ensure_state_scene(created->states.disabled);
+
     auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
     REQUIRE(revision);
     CHECK(revision->revision != 0);
@@ -1662,6 +1761,9 @@ TEST_CASE("Widgets::UpdateListState clamps indices and marks dirty") {
     auto created = Widgets::CreateList(fx.space, fx.root_view(), listParams);
     REQUIRE(created);
 
+    auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    REQUIRE(revision);
+
     Widgets::ListState desired{};
     desired.enabled = true;
     desired.selected_index = 0;
@@ -1677,6 +1779,10 @@ TEST_CASE("Widgets::UpdateListState clamps indices and marks dirty") {
     CHECK(updated->selected_index == 1);
     CHECK(updated->hovered_index == 2);
     CHECK(updated->scroll_offset == doctest::Approx(64.0f)); // two rows * 32 - 32
+
+    auto updatedRevision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    REQUIRE(updatedRevision);
+    CHECK(updatedRevision->revision > revision->revision);
 
     auto unchanged = Widgets::UpdateListState(fx.space, *created, *updated);
     REQUIRE(unchanged);

@@ -504,8 +504,16 @@ struct ButtonParams {
     ButtonStyle style{};
 };
 
+struct WidgetStateScenes {
+    ScenePath idle;
+    ScenePath hover;
+    ScenePath pressed;
+    ScenePath disabled;
+};
+
 struct ButtonPaths {
     ScenePath scene;
+    WidgetStateScenes states;
     WidgetPath root;
     ConcretePath state;
     ConcretePath label;
@@ -536,6 +544,7 @@ struct ToggleParams {
 
 struct TogglePaths {
     ScenePath scene;
+    WidgetStateScenes states;
     WidgetPath root;
     ConcretePath state;
 };
@@ -586,9 +595,10 @@ struct SliderRange {
 
 struct SliderPaths {
     ScenePath scene;
-   WidgetPath root;
-   ConcretePath state;
-   ConcretePath range;
+    WidgetStateScenes states;
+    WidgetPath root;
+    ConcretePath state;
+    ConcretePath range;
 };
 
 auto CreateSlider(PathSpace& space,
@@ -633,6 +643,7 @@ struct ListParams {
 
 struct ListPaths {
     ScenePath scene;
+    WidgetStateScenes states;
     WidgetPath root;
     ConcretePath state;
     ConcretePath items;

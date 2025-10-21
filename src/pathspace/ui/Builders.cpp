@@ -122,6 +122,40 @@ auto ensure_valid_hint(DirtyRectHint hint) -> DirtyRectHint {
     return hint;
 }
 
+auto clamp_unit(float value) -> float {
+    return std::clamp(value, 0.0f, 1.0f);
+}
+
+auto mix_color(std::array<float, 4> base,
+               std::array<float, 4> target,
+               float amount) -> std::array<float, 4> {
+    amount = clamp_unit(amount);
+    std::array<float, 4> out{};
+    for (int i = 0; i < 3; ++i) {
+        out[i] = clamp_unit(base[i] * (1.0f - amount) + target[i] * amount);
+    }
+    out[3] = clamp_unit(base[3] * (1.0f - amount) + target[3] * amount);
+    return out;
+}
+
+auto lighten_color(std::array<float, 4> color, float amount) -> std::array<float, 4> {
+    return mix_color(color, {1.0f, 1.0f, 1.0f, color[3]}, amount);
+}
+
+auto darken_color(std::array<float, 4> color, float amount) -> std::array<float, 4> {
+    return mix_color(color, {0.0f, 0.0f, 0.0f, color[3]}, amount);
+}
+
+auto desaturate_color(std::array<float, 4> color, float amount) -> std::array<float, 4> {
+    auto gray = std::array<float, 4>{0.5f, 0.5f, 0.5f, color[3]};
+    return mix_color(color, gray, amount);
+}
+
+auto scale_alpha(std::array<float, 4> color, float factor) -> std::array<float, 4> {
+    color[3] = clamp_unit(color[3] * factor);
+    return color;
+}
+
 auto make_identity_transform() -> SceneData::Transform {
     SceneData::Transform transform{};
     for (std::size_t i = 0; i < transform.elements.size(); ++i) {
@@ -561,8 +595,405 @@ auto make_list_bucket(ListSnapshotConfig const& config) -> SceneData::DrawableBu
     }
 
     bucket.alpha_indices.clear();
-    bucket.layer_indices.clear();
+   bucket.layer_indices.clear();
     return bucket;
+}
+
+auto publish_scene_snapshot(PathSpace& space,
+                            AppRootPathView appRoot,
+                            ScenePath const& scenePath,
+                            SceneData::DrawableBucketSnapshot const& bucket,
+                            std::string_view author = "widgets",
+                            std::string_view tool_version = "widgets-toolkit") -> SP::Expected<void> {
+    SceneData::SceneSnapshotBuilder builder{space, appRoot, scenePath};
+    SceneData::SnapshotPublishOptions options{};
+    options.metadata.author = std::string(author);
+    options.metadata.tool_version = std::string(tool_version);
+    options.metadata.created_at = std::chrono::system_clock::now();
+    options.metadata.drawable_count = bucket.drawable_ids.size();
+    options.metadata.command_count = bucket.command_kinds.size();
+
+    auto revision = builder.publish(options, bucket);
+    if (!revision) {
+        return std::unexpected(revision.error());
+    }
+
+    auto ready = Scene::WaitUntilReady(space, scenePath, std::chrono::milliseconds{50});
+    if (!ready) {
+        return std::unexpected(ready.error());
+    }
+    return {};
+}
+
+auto ensure_widget_state_scene(PathSpace& space,
+                               AppRootPathView appRoot,
+                               std::string_view name,
+                               std::string_view state,
+                               std::string_view description_prefix) -> SP::Expected<ScenePath> {
+    auto spec = std::string("scenes/widgets/") + std::string(name) + "/states/" + std::string(state);
+    auto resolved = combine_relative(appRoot, spec);
+    if (!resolved) {
+        return std::unexpected(resolved.error());
+    }
+
+    ScenePath scenePath{resolved->getPath()};
+    auto metaNamePath = make_scene_meta(scenePath, "name");
+    auto existing = read_optional<std::string>(space, metaNamePath);
+    if (!existing) {
+        return std::unexpected(existing.error());
+    }
+    if (!existing->has_value()) {
+        if (auto status = replace_single<std::string>(space, metaNamePath, std::string(state)); !status) {
+            return std::unexpected(status.error());
+        }
+        auto metaDescPath = make_scene_meta(scenePath, "description");
+        auto description = std::string(description_prefix) + " (" + std::string(state) + ")";
+        if (auto status = replace_single<std::string>(space, metaDescPath, description); !status) {
+            return std::unexpected(status.error());
+        }
+    }
+    return scenePath;
+}
+
+auto button_background_color(Widgets::ButtonStyle const& style,
+                             Widgets::ButtonState const& state) -> std::array<float, 4> {
+    auto base = style.background_color;
+    if (!state.enabled) {
+        return scale_alpha(desaturate_color(base, 0.65f), 0.55f);
+    }
+    if (state.pressed) {
+        return darken_color(base, 0.18f);
+    }
+    if (state.hovered) {
+        return lighten_color(base, 0.12f);
+    }
+    return base;
+}
+
+auto build_button_bucket(Widgets::ButtonStyle const& style,
+                         Widgets::ButtonState const& state) -> SceneData::DrawableBucketSnapshot {
+    ButtonSnapshotConfig config{
+        .width = std::max(style.width, 1.0f),
+        .height = std::max(style.height, 1.0f),
+        .color = button_background_color(style, state),
+    };
+    return make_button_bucket(config);
+}
+
+auto build_toggle_bucket(Widgets::ToggleStyle const& style,
+                         Widgets::ToggleState const& state) -> SceneData::DrawableBucketSnapshot {
+    ToggleSnapshotConfig config{
+        .width = std::max(style.width, 1.0f),
+        .height = std::max(style.height, 1.0f),
+        .checked = state.checked,
+        .track_off_color = style.track_off_color,
+        .track_on_color = style.track_on_color,
+        .thumb_color = style.thumb_color,
+    };
+
+    if (!state.enabled) {
+        config.track_off_color = scale_alpha(desaturate_color(config.track_off_color, 0.6f), 0.5f);
+        config.track_on_color = scale_alpha(desaturate_color(config.track_on_color, 0.6f), 0.5f);
+        config.thumb_color = scale_alpha(desaturate_color(config.thumb_color, 0.6f), 0.5f);
+    } else if (state.hovered) {
+        config.track_off_color = lighten_color(config.track_off_color, 0.12f);
+        config.track_on_color = lighten_color(config.track_on_color, 0.10f);
+        config.thumb_color = lighten_color(config.thumb_color, 0.08f);
+    }
+    if (state.checked && state.hovered) {
+        config.track_on_color = lighten_color(config.track_on_color, 0.08f);
+    }
+
+    return make_toggle_bucket(config);
+}
+
+auto clamp_slider_value(Widgets::SliderRange const& range, float value) -> float {
+    float minimum = std::min(range.minimum, range.maximum);
+    float maximum = std::max(range.minimum, range.maximum);
+    if (minimum == maximum) {
+        maximum = minimum + 1.0f;
+    }
+    float clamped = std::clamp(value, minimum, maximum);
+    if (range.step > 0.0f) {
+        float steps = std::round((clamped - minimum) / range.step);
+        clamped = minimum + steps * range.step;
+        clamped = std::clamp(clamped, minimum, maximum);
+    }
+    return clamped;
+}
+
+auto build_slider_bucket(Widgets::SliderStyle const& style,
+                         Widgets::SliderRange const& range,
+                         Widgets::SliderState const& state) -> SceneData::DrawableBucketSnapshot {
+    Widgets::SliderState applied = state;
+    applied.value = clamp_slider_value(range, state.value);
+
+    SliderSnapshotConfig config{
+        .width = std::max(style.width, 1.0f),
+        .height = std::max(style.height, 16.0f),
+        .track_height = std::clamp(style.track_height, 1.0f, style.height),
+        .thumb_radius = std::clamp(style.thumb_radius,
+                                   style.track_height * 0.5f,
+                                   style.height * 0.5f),
+        .min = range.minimum,
+        .max = range.maximum,
+        .value = applied.value,
+        .track_color = style.track_color,
+        .fill_color = style.fill_color,
+        .thumb_color = style.thumb_color,
+    };
+
+    if (!applied.enabled) {
+        config.track_color = scale_alpha(desaturate_color(config.track_color, 0.6f), 0.5f);
+        config.fill_color = scale_alpha(desaturate_color(config.fill_color, 0.6f), 0.5f);
+        config.thumb_color = scale_alpha(desaturate_color(config.thumb_color, 0.6f), 0.5f);
+    } else if (applied.dragging) {
+        config.fill_color = lighten_color(config.fill_color, 0.10f);
+        config.thumb_color = darken_color(config.thumb_color, 0.12f);
+    } else if (applied.hovered) {
+        config.fill_color = lighten_color(config.fill_color, 0.08f);
+        config.thumb_color = lighten_color(config.thumb_color, 0.06f);
+    }
+
+    return make_slider_bucket(config);
+}
+
+auto first_enabled_index(std::vector<Widgets::ListItem> const& items) -> std::int32_t {
+    auto it = std::find_if(items.begin(), items.end(), [](auto const& item) {
+        return item.enabled;
+    });
+    if (it == items.end()) {
+        return -1;
+    }
+    return static_cast<std::int32_t>(std::distance(items.begin(), it));
+}
+
+auto build_list_bucket(Widgets::ListStyle const& style,
+                       std::vector<Widgets::ListItem> const& items,
+                       Widgets::ListState const& state) -> SceneData::DrawableBucketSnapshot {
+    Widgets::ListStyle appliedStyle = style;
+    Widgets::ListState appliedState = state;
+    if (!appliedState.enabled) {
+        appliedStyle.background_color = scale_alpha(desaturate_color(appliedStyle.background_color, 0.6f), 0.6f);
+        appliedStyle.border_color = scale_alpha(desaturate_color(appliedStyle.border_color, 0.6f), 0.6f);
+        appliedStyle.item_color = scale_alpha(desaturate_color(appliedStyle.item_color, 0.6f), 0.6f);
+        appliedStyle.item_hover_color = scale_alpha(desaturate_color(appliedStyle.item_hover_color, 0.6f), 0.6f);
+        appliedStyle.item_selected_color = scale_alpha(desaturate_color(appliedStyle.item_selected_color, 0.6f), 0.6f);
+        appliedStyle.separator_color = scale_alpha(desaturate_color(appliedStyle.separator_color, 0.6f), 0.6f);
+        appliedState.hovered_index = -1;
+        appliedState.selected_index = -1;
+    }
+
+    ListSnapshotConfig config{
+        .width = std::max(appliedStyle.width, 96.0f),
+        .item_height = std::max(appliedStyle.item_height, 24.0f),
+        .corner_radius = std::clamp(appliedStyle.corner_radius,
+                                    0.0f,
+                                    std::min(appliedStyle.width,
+                                             appliedStyle.item_height * static_cast<float>(std::max<std::size_t>(items.size(), 1u))) * 0.5f),
+        .border_thickness = std::clamp(appliedStyle.border_thickness,
+                                       0.0f,
+                                       appliedStyle.item_height * 0.5f),
+        .item_count = items.size(),
+        .selected_index = appliedState.selected_index,
+        .hovered_index = appliedState.hovered_index,
+        .background_color = appliedStyle.background_color,
+        .border_color = appliedStyle.border_color,
+        .item_color = appliedStyle.item_color,
+        .item_hover_color = appliedStyle.item_hover_color,
+        .item_selected_color = appliedStyle.item_selected_color,
+        .separator_color = appliedStyle.separator_color,
+    };
+
+    return make_list_bucket(config);
+}
+
+auto publish_button_state_scenes(PathSpace& space,
+                                 AppRootPathView appRoot,
+                                 std::string_view name,
+                                 Widgets::ButtonStyle const& style) -> SP::Expected<Widgets::WidgetStateScenes> {
+    Widgets::WidgetStateScenes scenes{};
+    struct Variant {
+        std::string_view state;
+        Widgets::ButtonState button_state;
+        ScenePath* target = nullptr;
+    };
+
+    Variant variants[] = {
+        {"idle", Widgets::ButtonState{}, &scenes.idle},
+        {"hover", Widgets::ButtonState{.hovered = true}, &scenes.hover},
+        {"pressed", Widgets::ButtonState{.pressed = true, .hovered = true}, &scenes.pressed},
+        {"disabled", Widgets::ButtonState{.enabled = false}, &scenes.disabled},
+    };
+
+    for (auto& variant : variants) {
+        auto scenePath = ensure_widget_state_scene(space,
+                                                   appRoot,
+                                                   name,
+                                                   variant.state,
+                                                   "Widget button state");
+        if (!scenePath) {
+            return std::unexpected(scenePath.error());
+        }
+        auto bucket = build_button_bucket(style, variant.button_state);
+        if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
+            return std::unexpected(status.error());
+        }
+        *variant.target = *scenePath;
+    }
+    return scenes;
+}
+
+auto publish_toggle_state_scenes(PathSpace& space,
+                                 AppRootPathView appRoot,
+                                 std::string_view name,
+                                 Widgets::ToggleStyle const& style) -> SP::Expected<Widgets::WidgetStateScenes> {
+    Widgets::WidgetStateScenes scenes{};
+    struct Variant {
+        std::string_view state;
+        Widgets::ToggleState toggle_state;
+        ScenePath* target = nullptr;
+    };
+
+    Variant variants[] = {
+        {"idle", Widgets::ToggleState{}, &scenes.idle},
+        {"hover", Widgets::ToggleState{.hovered = true}, &scenes.hover},
+        {"pressed", Widgets::ToggleState{.checked = true, .hovered = true}, &scenes.pressed},
+        {"disabled", Widgets::ToggleState{.enabled = false}, &scenes.disabled},
+    };
+
+    for (auto& variant : variants) {
+        auto scenePath = ensure_widget_state_scene(space,
+                                                   appRoot,
+                                                   name,
+                                                   variant.state,
+                                                   "Widget toggle state");
+        if (!scenePath) {
+            return std::unexpected(scenePath.error());
+        }
+        auto bucket = build_toggle_bucket(style, variant.toggle_state);
+        if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
+            return std::unexpected(status.error());
+        }
+        *variant.target = *scenePath;
+    }
+    return scenes;
+}
+
+auto publish_slider_state_scenes(PathSpace& space,
+                                 AppRootPathView appRoot,
+                                 std::string_view name,
+                                 Widgets::SliderStyle const& style,
+                                 Widgets::SliderRange const& range,
+                                 Widgets::SliderState const& default_state) -> SP::Expected<Widgets::WidgetStateScenes> {
+    Widgets::WidgetStateScenes scenes{};
+    struct Variant {
+        std::string_view state;
+        Widgets::SliderState slider_state;
+        ScenePath* target = nullptr;
+    };
+
+    Widgets::SliderState idle = default_state;
+    Widgets::SliderState hover = idle;
+    hover.hovered = true;
+    Widgets::SliderState pressed = idle;
+    pressed.dragging = true;
+    pressed.hovered = true;
+    Widgets::SliderState disabled = idle;
+    disabled.enabled = false;
+
+    Variant variants[] = {
+        {"idle", idle, &scenes.idle},
+        {"hover", hover, &scenes.hover},
+        {"pressed", pressed, &scenes.pressed},
+        {"disabled", disabled, &scenes.disabled},
+    };
+
+    for (auto& variant : variants) {
+        auto scenePath = ensure_widget_state_scene(space,
+                                                   appRoot,
+                                                   name,
+                                                   variant.state,
+                                                   "Widget slider state");
+        if (!scenePath) {
+            return std::unexpected(scenePath.error());
+        }
+        auto bucket = build_slider_bucket(style, range, variant.slider_state);
+        if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
+            return std::unexpected(status.error());
+        }
+        *variant.target = *scenePath;
+    }
+    return scenes;
+}
+
+auto publish_list_state_scenes(PathSpace& space,
+                               AppRootPathView appRoot,
+                               std::string_view name,
+                               Widgets::ListStyle const& style,
+                               std::vector<Widgets::ListItem> const& items,
+                               Widgets::ListState const& default_state) -> SP::Expected<Widgets::WidgetStateScenes> {
+    Widgets::WidgetStateScenes scenes{};
+
+    auto normalize_index = [&](std::int32_t index) -> std::int32_t {
+        if (index < 0) {
+            return -1;
+        }
+        if (index >= static_cast<std::int32_t>(items.size())) {
+            return items.empty() ? -1 : static_cast<std::int32_t>(items.size()) - 1;
+        }
+        if (!items[static_cast<std::size_t>(index)].enabled) {
+            return first_enabled_index(items);
+        }
+        return index;
+    };
+
+    Widgets::ListState idle = default_state;
+    idle.selected_index = normalize_index(idle.selected_index);
+    Widgets::ListState hover = idle;
+    if (hover.selected_index < 0) {
+        hover.hovered_index = normalize_index(0);
+    } else {
+        hover.hovered_index = hover.selected_index;
+    }
+    Widgets::ListState pressed = idle;
+    if (pressed.selected_index < 0) {
+        pressed.selected_index = normalize_index(0);
+    }
+    Widgets::ListState disabled = idle;
+    disabled.enabled = false;
+    disabled.selected_index = -1;
+    disabled.hovered_index = -1;
+
+    struct Variant {
+        std::string_view state;
+        Widgets::ListState list_state;
+        ScenePath* target = nullptr;
+    };
+
+    Variant variants[] = {
+        {"idle", idle, &scenes.idle},
+        {"hover", hover, &scenes.hover},
+        {"pressed", pressed, &scenes.pressed},
+        {"disabled", disabled, &scenes.disabled},
+    };
+
+    for (auto& variant : variants) {
+        auto scenePath = ensure_widget_state_scene(space,
+                                                   appRoot,
+                                                   name,
+                                                   variant.state,
+                                                   "Widget list state");
+        if (!scenePath) {
+            return std::unexpected(scenePath.error());
+        }
+        auto bucket = build_list_bucket(style, items, variant.list_state);
+        if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
+            return std::unexpected(status.error());
+        }
+        *variant.target = *scenePath;
+    }
+    return scenes;
 }
 
 auto ensure_widget_scene(PathSpace& space,
@@ -3502,38 +3933,24 @@ auto CreateButton(PathSpace& space,
         return std::unexpected(scenePath.error());
     }
 
-    ButtonSnapshotConfig config{
-        .width = std::max(params.style.width, 1.0f),
-        .height = std::max(params.style.height, 1.0f),
-        .color = params.style.background_color,
+    auto stateScenes = publish_button_state_scenes(space, appRoot, params.name, params.style);
+    if (!stateScenes) {
+        return std::unexpected(stateScenes.error());
+    }
+
+    auto bucket = build_button_bucket(params.style, defaultState);
+    if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
+        return std::unexpected(status.error());
+    }
+
+    ButtonPaths paths{
+        .scene = *scenePath,
+        .states = *stateScenes,
+        .root = WidgetPath{widgetRoot->getPath()},
+        .state = ConcretePath{widgetRoot->getPath() + "/state"},
+        .label = ConcretePath{widgetRoot->getPath() + "/meta/label"},
     };
-    auto bucket = make_button_bucket(config);
-
-    SceneData::SnapshotPublishOptions publishOpts{};
-    publishOpts.metadata.author = "widgets";
-    publishOpts.metadata.tool_version = "widgets-toolkit";
-    publishOpts.metadata.created_at = std::chrono::system_clock::now();
-    publishOpts.metadata.drawable_count = bucket.drawable_ids.size();
-    publishOpts.metadata.command_count = bucket.command_kinds.size();
-
-    SceneData::SceneSnapshotBuilder builder{space, appRoot, *scenePath};
-    auto revision = builder.publish(publishOpts, bucket);
-    if (!revision) {
-        return std::unexpected(revision.error());
-    }
-
-    auto ready = Scene::WaitUntilReady(space, *scenePath, std::chrono::milliseconds{50});
-    if (!ready) {
-        return std::unexpected(ready.error());
-    }
-
-ButtonPaths paths{
-    .scene = *scenePath,
-    .root = WidgetPath{widgetRoot->getPath()},
-    .state = ConcretePath{widgetRoot->getPath() + "/state"},
-    .label = ConcretePath{widgetRoot->getPath() + "/meta/label"},
-};
-return paths;
+    return paths;
 }
 
 auto write_toggle_metadata(PathSpace& space,
@@ -3575,40 +3992,23 @@ auto CreateToggle(PathSpace& space,
     }
 
     auto scenePath = ensure_toggle_scene(space, appRoot, params.name);
-    if (!scenePath) {
-        return std::unexpected(scenePath.error());
+   if (!scenePath) {
+       return std::unexpected(scenePath.error());
+   }
+
+    auto stateScenes = publish_toggle_state_scenes(space, appRoot, params.name, params.style);
+    if (!stateScenes) {
+        return std::unexpected(stateScenes.error());
     }
 
-    ToggleSnapshotConfig config{
-        .width = std::max(params.style.width, 16.0f),
-        .height = std::max(params.style.height, 16.0f),
-        .checked = defaultState.checked,
-        .track_off_color = params.style.track_off_color,
-        .track_on_color = params.style.track_on_color,
-        .thumb_color = params.style.thumb_color,
-    };
-    auto bucket = make_toggle_bucket(config);
-
-    SceneData::SnapshotPublishOptions publishOpts{};
-    publishOpts.metadata.author = "widgets";
-    publishOpts.metadata.tool_version = "widgets-toolkit";
-    publishOpts.metadata.created_at = std::chrono::system_clock::now();
-    publishOpts.metadata.drawable_count = bucket.drawable_ids.size();
-    publishOpts.metadata.command_count = bucket.command_kinds.size();
-
-    SceneData::SceneSnapshotBuilder builder{space, appRoot, *scenePath};
-    auto revision = builder.publish(publishOpts, bucket);
-    if (!revision) {
-        return std::unexpected(revision.error());
-    }
-
-    auto ready = Scene::WaitUntilReady(space, *scenePath, std::chrono::milliseconds{50});
-    if (!ready) {
-        return std::unexpected(ready.error());
+    auto bucket = build_toggle_bucket(params.style, defaultState);
+    if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
+        return std::unexpected(status.error());
     }
 
     Widgets::TogglePaths paths{
         .scene = *scenePath,
+        .states = *stateScenes,
         .root = WidgetPath{widgetRoot->getPath()},
         .state = ConcretePath{widgetRoot->getPath() + "/state"},
     };
@@ -3663,40 +4063,24 @@ auto CreateSlider(PathSpace& space,
         return std::unexpected(scenePath.error());
     }
 
-    SliderSnapshotConfig config{
-        .width = style.width,
-        .height = style.height,
-        .track_height = style.track_height,
-        .thumb_radius = style.thumb_radius,
-        .min = range.minimum,
-        .max = range.maximum,
-        .value = defaultState.value,
-        .track_color = style.track_color,
-        .fill_color = style.fill_color,
-        .thumb_color = style.thumb_color,
-    };
-    auto bucket = make_slider_bucket(config);
-
-    SceneData::SnapshotPublishOptions publishOpts{};
-    publishOpts.metadata.author = "widgets";
-    publishOpts.metadata.tool_version = "widgets-toolkit";
-    publishOpts.metadata.created_at = std::chrono::system_clock::now();
-    publishOpts.metadata.drawable_count = bucket.drawable_ids.size();
-    publishOpts.metadata.command_count = bucket.command_kinds.size();
-
-    SceneData::SceneSnapshotBuilder builder{space, appRoot, *scenePath};
-    auto revision = builder.publish(publishOpts, bucket);
-    if (!revision) {
-        return std::unexpected(revision.error());
+    auto stateScenes = publish_slider_state_scenes(space,
+                                                   appRoot,
+                                                   params.name,
+                                                   style,
+                                                   range,
+                                                   defaultState);
+    if (!stateScenes) {
+        return std::unexpected(stateScenes.error());
     }
 
-    auto ready = Scene::WaitUntilReady(space, *scenePath, std::chrono::milliseconds{50});
-    if (!ready) {
-        return std::unexpected(ready.error());
+    auto bucket = build_slider_bucket(style, range, defaultState);
+    if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
+        return std::unexpected(status.error());
     }
 
     Widgets::SliderPaths paths{
         .scene = *scenePath,
+        .states = *stateScenes,
         .root = WidgetPath{widgetRoot->getPath()},
         .state = ConcretePath{widgetRoot->getPath() + "/state"},
         .range = ConcretePath{widgetRoot->getPath() + "/meta/range"},
@@ -3771,44 +4155,24 @@ auto CreateList(PathSpace& space,
         return std::unexpected(scenePath.error());
     }
 
-    ListSnapshotConfig config{
-        .width = style.width,
-        .item_height = style.item_height,
-        .corner_radius = style.corner_radius,
-        .border_thickness = style.border_thickness,
-        .item_count = items.size(),
-        .selected_index = defaultState.selected_index,
-        .hovered_index = defaultState.hovered_index,
-        .background_color = style.background_color,
-        .border_color = style.border_color,
-        .item_color = style.item_color,
-        .item_hover_color = style.item_hover_color,
-        .item_selected_color = style.item_selected_color,
-        .separator_color = style.separator_color,
-    };
-
-    auto bucket = make_list_bucket(config);
-
-    SceneData::SnapshotPublishOptions publishOpts{};
-    publishOpts.metadata.author = "widgets";
-    publishOpts.metadata.tool_version = "widgets-toolkit";
-    publishOpts.metadata.created_at = std::chrono::system_clock::now();
-    publishOpts.metadata.drawable_count = bucket.drawable_ids.size();
-    publishOpts.metadata.command_count = bucket.command_kinds.size();
-
-    SceneData::SceneSnapshotBuilder builder{space, appRoot, *scenePath};
-    auto revision = builder.publish(publishOpts, bucket);
-    if (!revision) {
-        return std::unexpected(revision.error());
+    auto stateScenes = publish_list_state_scenes(space,
+                                                 appRoot,
+                                                 params.name,
+                                                 style,
+                                                 items,
+                                                 defaultState);
+    if (!stateScenes) {
+        return std::unexpected(stateScenes.error());
     }
 
-    auto ready = Scene::WaitUntilReady(space, *scenePath, std::chrono::milliseconds{50});
-    if (!ready) {
-        return std::unexpected(ready.error());
+    auto bucket = build_list_bucket(style, items, defaultState);
+    if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
+        return std::unexpected(status.error());
     }
 
     Widgets::ListPaths paths{
         .scene = *scenePath,
+        .states = *stateScenes,
         .root = WidgetPath{widgetRoot->getPath()},
         .state = ConcretePath{widgetRoot->getPath() + "/state"},
         .items = ConcretePath{widgetRoot->getPath() + "/meta/items"},
@@ -3831,6 +4195,22 @@ auto UpdateButtonState(PathSpace& space,
     if (auto status = replace_single<Widgets::ButtonState>(space, statePath, new_state); !status) {
         return std::unexpected(status.error());
     }
+
+    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto styleValue = space.read<Widgets::ButtonStyle, std::string>(stylePath);
+    if (!styleValue) {
+        return std::unexpected(styleValue.error());
+    }
+    auto appRootPath = derive_app_root_for(ConcretePathView{paths.root.getPath()});
+    if (!appRootPath) {
+        return std::unexpected(appRootPath.error());
+    }
+    auto appRootView = SP::App::AppRootPathView{appRootPath->getPath()};
+    auto bucket = build_button_bucket(*styleValue, new_state);
+    if (auto status = publish_scene_snapshot(space, appRootView, paths.scene, bucket); !status) {
+        return std::unexpected(status.error());
+    }
+
     if (auto mark = Scene::MarkDirty(space, paths.scene, Scene::DirtyKind::Visual); !mark) {
         return std::unexpected(mark.error());
     }
@@ -3852,6 +4232,22 @@ auto UpdateToggleState(PathSpace& space,
     if (auto status = replace_single<Widgets::ToggleState>(space, statePath, new_state); !status) {
         return std::unexpected(status.error());
     }
+
+    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto styleValue = space.read<Widgets::ToggleStyle, std::string>(stylePath);
+    if (!styleValue) {
+        return std::unexpected(styleValue.error());
+    }
+    auto appRootPath = derive_app_root_for(ConcretePathView{paths.root.getPath()});
+    if (!appRootPath) {
+        return std::unexpected(appRootPath.error());
+    }
+    auto appRootView = SP::App::AppRootPathView{appRootPath->getPath()};
+    auto bucket = build_toggle_bucket(*styleValue, new_state);
+    if (auto status = publish_scene_snapshot(space, appRootView, paths.scene, bucket); !status) {
+        return std::unexpected(status.error());
+    }
+
     if (auto mark = Scene::MarkDirty(space, paths.scene, Scene::DirtyKind::Visual); !mark) {
         return std::unexpected(mark.error());
     }
@@ -3899,6 +4295,22 @@ auto UpdateSliderState(PathSpace& space,
     if (auto status = replace_single<Widgets::SliderState>(space, statePath, sanitized); !status) {
         return std::unexpected(status.error());
     }
+
+    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto styleValue = space.read<Widgets::SliderStyle, std::string>(stylePath);
+    if (!styleValue) {
+        return std::unexpected(styleValue.error());
+    }
+    auto appRootPath = derive_app_root_for(ConcretePathView{paths.root.getPath()});
+    if (!appRootPath) {
+        return std::unexpected(appRootPath.error());
+    }
+    auto appRootView = SP::App::AppRootPathView{appRootPath->getPath()};
+    auto bucket = build_slider_bucket(*styleValue, range, sanitized);
+    if (auto status = publish_scene_snapshot(space, appRootView, paths.scene, bucket); !status) {
+        return std::unexpected(status.error());
+    }
+
     if (auto mark = Scene::MarkDirty(space, paths.scene, Scene::DirtyKind::Visual); !mark) {
         return std::unexpected(mark.error());
     }
@@ -3976,6 +4388,17 @@ auto UpdateListState(PathSpace& space,
     if (auto status = replace_single<Widgets::ListState>(space, statePath, sanitized); !status) {
         return std::unexpected(status.error());
     }
+
+    auto appRootPath = derive_app_root_for(ConcretePathView{paths.root.getPath()});
+    if (!appRootPath) {
+        return std::unexpected(appRootPath.error());
+    }
+    auto appRootView = SP::App::AppRootPathView{appRootPath->getPath()};
+    auto bucket = build_list_bucket(*styleValue, items, sanitized);
+    if (auto status = publish_scene_snapshot(space, appRootView, paths.scene, bucket); !status) {
+        return std::unexpected(status.error());
+    }
+
     if (auto mark = Scene::MarkDirty(space, paths.scene, Scene::DirtyKind::Visual); !mark) {
         return std::unexpected(mark.error());
     }
