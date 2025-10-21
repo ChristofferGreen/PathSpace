@@ -6,9 +6,11 @@
 #include <pathspace/ui/PipelineFlags.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace SP;
@@ -267,6 +269,70 @@ TEST_CASE("hit test can schedule auto-render events") {
     CHECK(event->reason == "hit-test");
     CHECK(event->sequence > 0);
     CHECK(event->frame_index == 0);
+}
+
+TEST_CASE("hit test auto-render wait-notify latency stays within budget") {
+    using namespace std::chrono_literals;
+
+    HitTestFixture fx;
+    auto bucket = make_basic_bucket();
+    auto scenePath = create_scene(fx, "hit_schedule_latency", bucket);
+
+    auto rendererPath = create_renderer(fx, "renderer_schedule_latency");
+
+    BuildersNS::SurfaceDesc desc{};
+    desc.size_px.width = 2;
+    desc.size_px.height = 2;
+    desc.pixel_format = BuildersNS::PixelFormat::RGBA8Unorm;
+    desc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_schedule_latency", desc, rendererPath.getPath());
+    REQUIRE(BuildersNS::Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+    auto queuePath = std::string(targetPath.getPath()) + "/events/renderRequested/queue";
+
+    BuildersScene::HitTestRequest request{};
+    request.x = 1.0f;
+    request.y = 1.0f;
+    request.schedule_render = true;
+    request.auto_render_target = SP::ConcretePath{targetPath.getPath()};
+
+    std::atomic<bool> waiterReady{false};
+    BuildersNS::AutoRenderRequestEvent observed{};
+    bool observedSuccess = false;
+    std::chrono::milliseconds observedLatency{0};
+
+    std::thread waiter([&]() {
+        waiterReady.store(true, std::memory_order_release);
+        auto start = std::chrono::steady_clock::now();
+        auto taken = fx.space.take<BuildersNS::AutoRenderRequestEvent>(queuePath,
+                                                                       SP::Out{} & SP::Block{500ms});
+        auto end = std::chrono::steady_clock::now();
+        observedLatency = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        if (taken) {
+            observed = *taken;
+            observedSuccess = true;
+        }
+    });
+
+    while (!waiterReady.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+
+    std::this_thread::sleep_for(20ms);
+
+    auto result = BuildersScene::HitTest(fx.space, scenePath, request);
+    REQUIRE(result);
+    CHECK(result->hit);
+
+    waiter.join();
+
+    REQUIRE(observedSuccess);
+    CHECK(observed.reason == "hit-test");
+    CHECK(observed.frame_index == 0);
+    CHECK(observed.sequence > 0);
+    CHECK(observedLatency >= 20ms);
+    CHECK(observedLatency < 200ms);
 }
 
 } // TEST_SUITE

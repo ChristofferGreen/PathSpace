@@ -73,7 +73,7 @@ Each workstream lands independently but respects shared contracts (paths, atomic
 - ✅ (October 21, 2025) Added the App::Bootstrap end-to-end regression (`tests/ui/test_AppBootstrap.cpp`) that publishes a scene snapshot, renders via `Surface::RenderOnce`, presents with `Window::Present`, and asserts both target and window diagnostics; exercised under the 15× loop (20 s timeout).
 - ✅ (October 21, 2025) Presenter wiring coverage now exercises multi-window/multi-surface scenarios (PathRenderer2D UITest); remaining follow-up: keep rerunning the loop harness after each integration.
 - ✅ (October 21, 2025) Window diagnostics now surface the progressive-mode metrics (tile counters, copy timings, encode fan-out) mirrored from `output/v1/common` when `PATHSPACE_UI_DAMAGE_METRICS=1`; the PathRenderer2D UITest verifies `windows/<win>/diagnostics/metrics/live/views/<view>/present` receives the tile dirty/total/skipped counters alongside progressive copy telemetry.
-- Begin Phase 5 test authoring for hit ordering, clip-aware picking, focus routing, and event delivery latency; follow with DrawableBucket-backed picking and wait/notify integration for dirty markers and auto-render scheduling.
+- ✅ (October 21, 2025) Phase 5 hit-test coverage now exercises hit ordering, clip-aware picking, focus routing, and auto-render wait/notify latency (`test_SceneHitTest.cpp`); continue tightening DrawableBucket-backed picking and related scheduling hooks as new interaction types land.
 - Line up Phase 6 diagnostics/tooling work: extend error/metrics coverage, normalize `PathSpaceError` reporting, expand scripts for UI log capture, and draft the debugging playbook updates before the next hardening pass.
 
 ### Incremental software renderer (new priority, October 17, 2025)
