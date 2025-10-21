@@ -88,6 +88,31 @@ struct GalleryLayout {
     ListLayout list;
 };
 
+static auto mix_color(std::array<float, 4> base,
+                      std::array<float, 4> target,
+                      float amount) -> std::array<float, 4> {
+    amount = std::clamp(amount, 0.0f, 1.0f);
+    std::array<float, 4> out{};
+    for (int i = 0; i < 3; ++i) {
+        out[i] = std::clamp(base[i] * (1.0f - amount) + target[i] * amount, 0.0f, 1.0f);
+    }
+    out[3] = std::clamp(base[3], 0.0f, 1.0f);
+    return out;
+}
+
+static auto lighten(std::array<float, 4> color, float amount) -> std::array<float, 4> {
+    return mix_color(color, {1.0f, 1.0f, 1.0f, color[3]}, amount);
+}
+
+static auto darken(std::array<float, 4> color, float amount) -> std::array<float, 4> {
+    return mix_color(color, {0.0f, 0.0f, 0.0f, color[3]}, amount);
+}
+
+static auto desaturate(std::array<float, 4> color, float amount) -> std::array<float, 4> {
+    auto gray = std::array<float, 4>{0.5f, 0.5f, 0.5f, color[3]};
+    return mix_color(color, gray, amount);
+}
+
 struct GlyphPattern {
     char ch = ' ';
     int width = 5;
@@ -139,6 +164,411 @@ auto identity_transform() -> SceneData::Transform {
         t.elements[i] = (i % 5 == 0) ? 1.0f : 0.0f;
     }
     return t;
+}
+
+auto build_button_preview(Widgets::ButtonStyle const& style,
+                          Widgets::ButtonState const& state) -> SceneData::DrawableBucketSnapshot {
+    SceneData::DrawableBucketSnapshot bucket{};
+    float width = std::max(style.width, 1.0f);
+    float height = std::max(style.height, 1.0f);
+
+    bucket.drawable_ids = {0xB17B0001ull};
+    bucket.world_transforms = {identity_transform()};
+
+    SceneData::BoundingSphere sphere{};
+    sphere.center = {width * 0.5f, height * 0.5f, 0.0f};
+    sphere.radius = std::sqrt(sphere.center[0] * sphere.center[0] + sphere.center[1] * sphere.center[1]);
+    bucket.bounds_spheres = {sphere};
+
+    SceneData::BoundingBox box{};
+    box.min = {0.0f, 0.0f, 0.0f};
+    box.max = {width, height, 0.0f};
+    bucket.bounds_boxes = {box};
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {0};
+    bucket.pipeline_flags = {0};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.opaque_indices = {0};
+    bucket.alpha_indices.clear();
+    bucket.layer_indices.clear();
+    bucket.clip_nodes.clear();
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {SceneData::DrawableAuthoringMapEntry{
+        bucket.drawable_ids.front(), "widget/button/background", 0, 0}};
+    bucket.drawable_fingerprints = {0xB17B0001ull};
+
+    auto color = style.background_color;
+    if (!state.enabled) {
+        color = desaturate(color, 0.6f);
+    } else if (state.pressed) {
+        color = darken(color, 0.25f);
+    } else if (state.hovered) {
+        color = lighten(color, 0.15f);
+    }
+
+    SceneData::RectCommand rect{};
+    rect.min_x = 0.0f;
+    rect.min_y = 0.0f;
+    rect.max_x = width;
+    rect.max_y = height;
+    rect.color = color;
+
+    bucket.command_payload.resize(sizeof(SceneData::RectCommand));
+    std::memcpy(bucket.command_payload.data(), &rect, sizeof(SceneData::RectCommand));
+    bucket.command_kinds = {static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect)};
+    return bucket;
+}
+
+auto build_toggle_preview(Widgets::ToggleStyle const& style,
+                          Widgets::ToggleState const& state) -> SceneData::DrawableBucketSnapshot {
+    SceneData::DrawableBucketSnapshot bucket{};
+    float width = std::max(style.width, 16.0f);
+    float height = std::max(style.height, 16.0f);
+
+    bucket.drawable_ids = {0x701701u, 0x701702u};
+    bucket.world_transforms = {identity_transform(), identity_transform()};
+
+    SceneData::BoundingSphere trackSphere{};
+    trackSphere.center = {width * 0.5f, height * 0.5f, 0.0f};
+    trackSphere.radius = std::sqrt(trackSphere.center[0] * trackSphere.center[0]
+                                   + trackSphere.center[1] * trackSphere.center[1]);
+
+    float thumbRadius = height * 0.5f - 2.0f;
+    float thumbCenterX = state.checked ? (width - thumbRadius - 2.0f) : (thumbRadius + 2.0f);
+
+    SceneData::BoundingSphere thumbSphere{};
+    thumbSphere.center = {thumbCenterX, height * 0.5f, 0.0f};
+    thumbSphere.radius = thumbRadius;
+
+    bucket.bounds_spheres = {trackSphere, thumbSphere};
+
+    SceneData::BoundingBox trackBox{};
+    trackBox.min = {0.0f, 0.0f, 0.0f};
+    trackBox.max = {width, height, 0.0f};
+
+    SceneData::BoundingBox thumbBox{};
+    thumbBox.min = {thumbCenterX - thumbRadius, height * 0.5f - thumbRadius, 0.0f};
+    thumbBox.max = {thumbCenterX + thumbRadius, height * 0.5f + thumbRadius, 0.0f};
+
+    bucket.bounds_boxes = {trackBox, thumbBox};
+    bucket.bounds_box_valid = {1, 1};
+    bucket.layers = {0, 1};
+    bucket.z_values = {0.0f, 0.1f};
+    bucket.material_ids = {0, 0};
+    bucket.pipeline_flags = {0, 0};
+    bucket.visibility = {1, 1};
+    bucket.command_offsets = {0, 1};
+    bucket.command_counts = {1, 1};
+    bucket.opaque_indices = {0, 1};
+    bucket.alpha_indices.clear();
+    bucket.layer_indices.clear();
+    bucket.clip_nodes.clear();
+    bucket.clip_head_indices = {-1, -1};
+    bucket.authoring_map = {
+        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[0], "widget/toggle/track", 0, 0},
+        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[1], "widget/toggle/thumb", 0, 0},
+    };
+    bucket.drawable_fingerprints = {0x701701u, 0x701702u};
+
+    auto track_color = state.checked ? style.track_on_color : style.track_off_color;
+    auto thumb_color = style.thumb_color;
+    if (!state.enabled) {
+        track_color = desaturate(track_color, 0.5f);
+        thumb_color = desaturate(thumb_color, 0.5f);
+    } else if (state.hovered) {
+        track_color = lighten(track_color, 0.1f);
+        thumb_color = lighten(thumb_color, 0.1f);
+    }
+
+    SceneData::RoundedRectCommand trackRect{};
+    trackRect.min_x = 0.0f;
+    trackRect.min_y = 0.0f;
+    trackRect.max_x = width;
+    trackRect.max_y = height;
+    trackRect.radius_top_left = height * 0.5f;
+    trackRect.radius_top_right = height * 0.5f;
+    trackRect.radius_bottom_right = height * 0.5f;
+    trackRect.radius_bottom_left = height * 0.5f;
+    trackRect.color = track_color;
+
+    SceneData::RoundedRectCommand thumbRect{};
+    thumbRect.min_x = thumbBox.min[0];
+    thumbRect.min_y = thumbBox.min[1];
+    thumbRect.max_x = thumbBox.max[0];
+    thumbRect.max_y = thumbBox.max[1];
+    thumbRect.radius_top_left = thumbRadius;
+    thumbRect.radius_top_right = thumbRadius;
+    thumbRect.radius_bottom_right = thumbRadius;
+    thumbRect.radius_bottom_left = thumbRadius;
+    thumbRect.color = thumb_color;
+
+    auto payload_track = sizeof(SceneData::RoundedRectCommand);
+    auto payload_thumb = sizeof(SceneData::RoundedRectCommand);
+    bucket.command_payload.resize(payload_track + payload_thumb);
+    std::memcpy(bucket.command_payload.data(), &trackRect, payload_track);
+    std::memcpy(bucket.command_payload.data() + payload_track, &thumbRect, payload_thumb);
+    bucket.command_kinds = {
+        static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect),
+        static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect),
+    };
+    return bucket;
+}
+
+auto build_slider_preview(Widgets::SliderStyle const& style,
+                          Widgets::SliderState const& state,
+                          Widgets::SliderRange const& range) -> SceneData::DrawableBucketSnapshot {
+    SceneData::DrawableBucketSnapshot bucket{};
+    float width = std::max(style.width, 1.0f);
+    float height = std::max(style.height, 16.0f);
+    float track_height = std::clamp(style.track_height, 1.0f, height);
+    float thumb_radius = std::clamp(style.thumb_radius, track_height * 0.5f, height * 0.5f);
+
+    bucket.drawable_ids = {0x51D301u, 0x51D302u, 0x51D303u};
+    bucket.world_transforms = {identity_transform(), identity_transform(), identity_transform()};
+
+    float clamped_min = std::min(range.minimum, range.maximum);
+    float clamped_max = std::max(range.minimum, range.maximum);
+    float value = std::clamp(state.value, clamped_min, clamped_max);
+    float denom = std::max(clamped_max - clamped_min, 1e-6f);
+    float progress = std::clamp((value - clamped_min) / denom, 0.0f, 1.0f);
+
+    float center_y = height * 0.5f;
+    float track_half = track_height * 0.5f;
+    float track_top = center_y - track_half;
+    float fill_width = std::max(progress * width, 0.0f);
+    float thumb_x = std::clamp(progress * width, thumb_radius, width - thumb_radius);
+
+    SceneData::BoundingBox trackBox{};
+    trackBox.min = {0.0f, track_top, 0.0f};
+    trackBox.max = {width, track_top + track_height, 0.0f};
+
+    SceneData::BoundingSphere trackSphere{};
+    trackSphere.center = {width * 0.5f, center_y, 0.0f};
+    trackSphere.radius = std::sqrt(std::pow(track_half, 2.0f) + std::pow(width * 0.5f, 2.0f));
+
+    SceneData::BoundingBox fillBox{};
+    fillBox.min = {0.0f, track_top, 0.0f};
+    fillBox.max = {fill_width, track_top + track_height, 0.0f};
+
+    SceneData::BoundingSphere fillSphere{};
+    fillSphere.center = {fill_width * 0.5f, center_y, 0.0f};
+    fillSphere.radius = std::sqrt(std::pow(fillSphere.center[0], 2.0f) + track_half * track_half);
+
+    SceneData::BoundingBox thumbBox{};
+    thumbBox.min = {thumb_x - thumb_radius, center_y - thumb_radius, 0.0f};
+    thumbBox.max = {thumb_x + thumb_radius, center_y + thumb_radius, 0.0f};
+
+    SceneData::BoundingSphere thumbSphere{};
+    thumbSphere.center = {thumb_x, center_y, 0.0f};
+    thumbSphere.radius = thumb_radius;
+
+    bucket.bounds_boxes = {trackBox, fillBox, thumbBox};
+    bucket.bounds_box_valid = {1, 1, 1};
+    bucket.bounds_spheres = {trackSphere, fillSphere, thumbSphere};
+    bucket.layers = {0, 1, 2};
+    bucket.z_values = {0.0f, 0.05f, 0.1f};
+    bucket.material_ids = {0, 0, 0};
+    bucket.pipeline_flags = {0, 0, 0};
+    bucket.visibility = {1, 1, 1};
+    bucket.command_offsets = {0, 1, 2};
+    bucket.command_counts = {1, 1, 1};
+    bucket.opaque_indices = {0, 1, 2};
+    bucket.alpha_indices.clear();
+    bucket.layer_indices.clear();
+    bucket.clip_nodes.clear();
+    bucket.clip_head_indices = {-1, -1, -1};
+    bucket.authoring_map = {
+        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[0], "widget/slider/track", 0, 0},
+        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[1], "widget/slider/fill", 0, 0},
+        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[2], "widget/slider/thumb", 0, 0},
+    };
+    bucket.drawable_fingerprints = {0x51D301u, 0x51D302u, 0x51D303u};
+
+    auto track_color = style.track_color;
+    auto fill_color = style.fill_color;
+    auto thumb_color = style.thumb_color;
+    if (!state.enabled) {
+        track_color = desaturate(track_color, 0.5f);
+        fill_color = desaturate(fill_color, 0.5f);
+        thumb_color = desaturate(thumb_color, 0.5f);
+    } else {
+        if (state.hovered) {
+            track_color = lighten(track_color, 0.05f);
+            fill_color = lighten(fill_color, state.dragging ? 0.2f : 0.1f);
+            thumb_color = lighten(thumb_color, state.dragging ? 0.2f : 0.1f);
+        }
+    }
+
+    SceneData::RoundedRectCommand trackRect{};
+    trackRect.min_x = 0.0f;
+    trackRect.min_y = track_top;
+    trackRect.max_x = width;
+    trackRect.max_y = track_top + track_height;
+    trackRect.radius_top_left = track_half;
+    trackRect.radius_top_right = track_half;
+    trackRect.radius_bottom_right = track_half;
+    trackRect.radius_bottom_left = track_half;
+    trackRect.color = track_color;
+
+    SceneData::RectCommand fillRect{};
+    fillRect.min_x = 0.0f;
+    fillRect.min_y = track_top;
+    fillRect.max_x = fill_width;
+    fillRect.max_y = track_top + track_height;
+    fillRect.color = fill_color;
+
+    SceneData::RoundedRectCommand thumbRect{};
+    thumbRect.min_x = thumbBox.min[0];
+    thumbRect.min_y = thumbBox.min[1];
+    thumbRect.max_x = thumbBox.max[0];
+    thumbRect.max_y = thumbBox.max[1];
+    thumbRect.radius_top_left = thumb_radius;
+    thumbRect.radius_top_right = thumb_radius;
+    thumbRect.radius_bottom_right = thumb_radius;
+    thumbRect.radius_bottom_left = thumb_radius;
+    thumbRect.color = thumb_color;
+
+    auto payload_track = sizeof(SceneData::RoundedRectCommand);
+    auto payload_fill = sizeof(SceneData::RectCommand);
+    auto payload_thumb = sizeof(SceneData::RoundedRectCommand);
+    bucket.command_payload.resize(payload_track + payload_fill + payload_thumb);
+    std::uint8_t* payload_ptr = bucket.command_payload.data();
+    std::memcpy(payload_ptr, &trackRect, payload_track);
+    std::memcpy(payload_ptr + payload_track, &fillRect, payload_fill);
+    std::memcpy(payload_ptr + payload_track + payload_fill, &thumbRect, payload_thumb);
+
+    bucket.command_kinds = {
+        static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect),
+        static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect),
+        static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect),
+    };
+    return bucket;
+}
+
+auto build_list_preview(Widgets::ListStyle const& style,
+                        std::vector<Widgets::ListItem> const& items,
+                        Widgets::ListState const& state) -> SceneData::DrawableBucketSnapshot {
+    SceneData::DrawableBucketSnapshot bucket{};
+    std::size_t item_count = std::max<std::size_t>(items.size(), 1u);
+    float width = std::max(style.width, 1.0f);
+    float item_height = std::max(style.item_height, 1.0f);
+    float border = std::max(style.border_thickness, 0.0f);
+    float height = item_height * static_cast<float>(item_count) + border * 2.0f;
+
+    auto push_drawable = [&](std::uint64_t drawable_id,
+                             SceneData::BoundingBox const& box,
+                             SceneData::BoundingSphere const& sphere,
+                             int layer,
+                             float z) {
+        bucket.drawable_ids.push_back(drawable_id);
+        bucket.world_transforms.push_back(identity_transform());
+        bucket.bounds_boxes.push_back(box);
+        bucket.bounds_box_valid.push_back(1);
+        bucket.bounds_spheres.push_back(sphere);
+        bucket.layers.push_back(layer);
+        bucket.z_values.push_back(z);
+        bucket.material_ids.push_back(0);
+        bucket.pipeline_flags.push_back(0);
+        bucket.visibility.push_back(1);
+        bucket.command_counts.push_back(1);
+        bucket.opaque_indices.push_back(static_cast<std::uint32_t>(bucket.opaque_indices.size()));
+        bucket.clip_head_indices.push_back(-1);
+    };
+
+    // Background
+    SceneData::BoundingBox background_box{};
+    background_box.min = {0.0f, 0.0f, 0.0f};
+    background_box.max = {width, height, 0.0f};
+
+    SceneData::BoundingSphere background_sphere{};
+    background_sphere.center = {width * 0.5f, height * 0.5f, 0.0f};
+    background_sphere.radius = std::sqrt(background_sphere.center[0] * background_sphere.center[0]
+                                         + background_sphere.center[1] * background_sphere.center[1]);
+
+    push_drawable(0x11570001ull, background_box, background_sphere, 0, 0.0f);
+    bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
+    bucket.command_kinds.push_back(static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect));
+
+    auto background_color = style.background_color;
+    if (!state.enabled) {
+        background_color = desaturate(background_color, 0.4f);
+    }
+
+    SceneData::RoundedRectCommand background{};
+    background.min_x = 0.0f;
+    background.min_y = 0.0f;
+    background.max_x = width;
+    background.max_y = height;
+    background.radius_top_left = style.corner_radius;
+    background.radius_top_right = style.corner_radius;
+    background.radius_bottom_right = style.corner_radius;
+    background.radius_bottom_left = style.corner_radius;
+    background.color = background_color;
+
+    auto payload_offset = bucket.command_payload.size();
+    bucket.command_payload.resize(payload_offset + sizeof(SceneData::RoundedRectCommand));
+    std::memcpy(bucket.command_payload.data() + payload_offset, &background, sizeof(SceneData::RoundedRectCommand));
+
+    bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
+        bucket.drawable_ids.back(), "widget/list/background", 0, 0});
+    bucket.drawable_fingerprints.push_back(0x11570001ull);
+
+    float content_top = border;
+    for (std::size_t index = 0; index < item_count; ++index) {
+        float top = content_top + item_height * static_cast<float>(index);
+        float bottom = top + item_height;
+
+        SceneData::BoundingBox row_box{};
+        row_box.min = {border, top, 0.0f};
+        row_box.max = {width - border, bottom, 0.0f};
+
+        SceneData::BoundingSphere row_sphere{};
+        row_sphere.center = {(row_box.min[0] + row_box.max[0]) * 0.5f,
+                             (row_box.min[1] + row_box.max[1]) * 0.5f,
+                             0.0f};
+        row_sphere.radius = std::sqrt(std::pow(row_box.max[0] - row_sphere.center[0], 2.0f)
+                                      + std::pow(row_box.max[1] - row_sphere.center[1], 2.0f));
+
+        std::uint64_t drawable_id = 0x11570010ull + static_cast<std::uint64_t>(index);
+        push_drawable(drawable_id, row_box, row_sphere, 1, 0.05f + static_cast<float>(index) * 0.001f);
+        bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
+        bucket.command_kinds.push_back(static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect));
+
+        std::array<float, 4> color = style.item_color;
+        bool item_enabled = items.size() > index ? items[index].enabled : true;
+        if (!state.enabled || !item_enabled) {
+            color = desaturate(color, 0.6f);
+        }
+        if (static_cast<int>(index) == state.selected_index) {
+            color = style.item_selected_color;
+        } else if (static_cast<int>(index) == state.hovered_index) {
+            color = style.item_hover_color;
+        }
+
+        SceneData::RectCommand row_rect{};
+        row_rect.min_x = row_box.min[0];
+        row_rect.min_y = row_box.min[1];
+        row_rect.max_x = row_box.max[0];
+        row_rect.max_y = row_box.max[1];
+        row_rect.color = color;
+
+        auto row_payload = bucket.command_payload.size();
+        bucket.command_payload.resize(row_payload + sizeof(SceneData::RectCommand));
+        std::memcpy(bucket.command_payload.data() + row_payload, &row_rect, sizeof(SceneData::RectCommand));
+
+        auto label = std::string("widget/list/item/") + std::to_string(index);
+        bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
+            drawable_id, label, 0, 0});
+        bucket.drawable_fingerprints.push_back(drawable_id);
+    }
+
+    bucket.alpha_indices.clear();
+    bucket.layer_indices.clear();
+    return bucket;
 }
 
 template <typename T>
@@ -248,24 +678,6 @@ auto read_command(std::vector<std::uint8_t> const& payload, std::size_t offset) 
 template <typename Cmd>
 auto write_command(std::vector<std::uint8_t>& payload, std::size_t offset, Cmd const& cmd) -> void {
     std::memcpy(payload.data() + offset, &cmd, sizeof(Cmd));
-}
-
-auto format_revision(std::uint64_t revision) -> std::string {
-    std::ostringstream oss;
-    oss << std::setw(16) << std::setfill('0') << revision;
-    return oss.str();
-}
-
-auto revision_base(ScenePath const& scene, std::uint64_t revision) -> std::string {
-    return std::string(scene.getPath()) + "/builds/" + format_revision(revision);
-}
-
-auto decode_bucket_for_scene(PathSpace& space, ScenePath const& scene) -> SceneData::DrawableBucketSnapshot {
-    auto revision = unwrap_or_exit(SceneBuilders::ReadCurrentRevision(space, scene),
-                                  "read current revision for " + std::string(scene.getPath()));
-    auto base = revision_base(scene, revision.revision);
-    return unwrap_or_exit(SceneData::SceneSnapshotBuilder::decode_bucket(space, base),
-                          "decode drawable bucket for " + base);
 }
 
 auto translate_bucket(SceneData::DrawableBucketSnapshot& bucket, float dx, float dy) -> void {
@@ -563,15 +975,25 @@ auto build_gallery_bucket(PathSpace& space,
                           AppRootPathView appRoot,
                           Widgets::ButtonPaths const& button,
                           Widgets::ButtonStyle const& button_style,
+                          Widgets::ButtonState const& button_state,
                           std::string const& button_label,
                           Widgets::TogglePaths const& toggle,
                           Widgets::ToggleStyle const& toggle_style,
+                          Widgets::ToggleState const& toggle_state,
                           Widgets::SliderPaths const& slider,
                           Widgets::SliderStyle const& slider_style,
                           Widgets::SliderState const& slider_state,
+                          Widgets::SliderRange const& slider_range,
                           Widgets::ListPaths const& list,
                           Widgets::ListStyle const& list_style,
+                          Widgets::ListState const& list_state,
                           std::vector<Widgets::ListItem> const& list_items) -> GalleryBuildResult {
+    (void)space;
+    (void)appRoot;
+    (void)button;
+    (void)toggle;
+    (void)slider;
+    (void)list;
     std::vector<SceneData::DrawableBucketSnapshot> pending;
     pending.reserve(16);
 
@@ -600,7 +1022,7 @@ auto build_gallery_bucket(PathSpace& space,
 
     // Button widget
     {
-        auto bucket = decode_bucket_for_scene(space, button.scene);
+        auto bucket = build_button_preview(button_style, button_state);
         translate_bucket(bucket, left, cursor_y);
         pending.emplace_back(std::move(bucket));
         float widget_height = button_style.height;
@@ -635,7 +1057,7 @@ auto build_gallery_bucket(PathSpace& space,
 
     // Toggle widget
     {
-        auto bucket = decode_bucket_for_scene(space, toggle.scene);
+        auto bucket = build_toggle_preview(toggle_style, toggle_state);
         translate_bucket(bucket, left, cursor_y);
         pending.emplace_back(std::move(bucket));
         max_width = std::max(max_width, left + toggle_style.width);
@@ -681,7 +1103,7 @@ auto build_gallery_bucket(PathSpace& space,
             cursor_y += caption->height + 12.0f;
         }
 
-        auto bucket = decode_bucket_for_scene(space, slider.scene);
+        auto bucket = build_slider_preview(slider_style, slider_state, slider_range);
         translate_bucket(bucket, left, cursor_y);
         pending.emplace_back(std::move(bucket));
         max_width = std::max(max_width, left + slider_style.width);
@@ -720,7 +1142,7 @@ auto build_gallery_bucket(PathSpace& space,
             cursor_y += caption->height + 12.0f;
         }
 
-        auto bucket = decode_bucket_for_scene(space, list.scene);
+        auto bucket = build_list_preview(list_style, list_items, list_state);
         translate_bucket(bucket, left, cursor_y);
         float list_height = list_style.item_height * static_cast<float>(std::max<std::size_t>(list_items.size(), 1u))
                             + list_style.border_thickness * 2.0f;
@@ -820,14 +1242,18 @@ auto publish_gallery_scene(PathSpace& space,
                            AppRootPathView appRoot,
                            Widgets::ButtonPaths const& button,
                            Widgets::ButtonStyle const& button_style,
+                           Widgets::ButtonState const& button_state,
                            std::string const& button_label,
                            Widgets::TogglePaths const& toggle,
                            Widgets::ToggleStyle const& toggle_style,
+                           Widgets::ToggleState const& toggle_state,
                            Widgets::SliderPaths const& slider,
                            Widgets::SliderStyle const& slider_style,
                            Widgets::SliderState const& slider_state,
+                           Widgets::SliderRange const& slider_range,
                            Widgets::ListPaths const& list,
                            Widgets::ListStyle const& list_style,
+                           Widgets::ListState const& list_state,
                            std::vector<Widgets::ListItem> const& list_items) -> GallerySceneResult {
     SceneParams gallery_params{
         .name = "gallery",
@@ -840,14 +1266,18 @@ auto publish_gallery_scene(PathSpace& space,
                                       appRoot,
                                       button,
                                       button_style,
+                                      button_state,
                                       button_label,
                                       toggle,
                                       toggle_style,
+                                      toggle_state,
                                       slider,
                                       slider_style,
                                       slider_state,
+                                      slider_range,
                                       list,
                                       list_style,
+                                      list_state,
                                       list_items);
 
     SceneData::SceneSnapshotBuilder builder(space, appRoot, gallery_scene);
@@ -944,14 +1374,18 @@ static void refresh_gallery(WidgetsExampleContext& ctx) {
                                         view,
                                         ctx.button_paths,
                                         ctx.button_style,
+                                        ctx.button_state,
                                         ctx.button_label,
                                         ctx.toggle_paths,
                                         ctx.toggle_style,
+                                        ctx.toggle_state,
                                         ctx.slider_paths,
                                         ctx.slider_style,
                                         ctx.slider_state,
+                                        ctx.slider_range,
                                         ctx.list_paths,
                                         ctx.list_style,
+                                        ctx.list_state,
                                         ctx.list_items);
 }
 
@@ -1490,29 +1924,6 @@ int main() {
         }
     }
 
-    auto gallery = publish_gallery_scene(space,
-                                         appRootView,
-                                         button,
-                                         button_params.style,
-                                         button_params.label,
-                                         toggle,
-                                         toggle_params.style,
-                                         slider,
-                                         slider_params.style,
-                                         slider_state,
-                                         list,
-                                         list_params.style,
-                                         list_params.items);
-
-    std::cout << "widgets_example gallery scene:\n"
-              << "  scene: " << gallery.scene.getPath() << "\n"
-              << "  size : " << gallery.width << "x" << gallery.height << " pixels\n";
-
-    if (headless) {
-        std::cout << "widgets_example exiting headless mode (WIDGETS_EXAMPLE_HEADLESS set).\n";
-        return 0;
-    }
-
     auto slider_range_live = unwrap_or_exit(space.read<Widgets::SliderRange, std::string>(std::string(slider.range.getPath())),
                                             "read slider range");
     auto button_state_live = unwrap_or_exit(space.read<Widgets::ButtonState, std::string>(std::string(button.state.getPath())),
@@ -1523,10 +1934,33 @@ int main() {
                                             "read slider state");
     auto list_state_live = unwrap_or_exit(space.read<Widgets::ListState, std::string>(std::string(list.state.getPath())),
                                           "read list state");
-    SP::UI::SetLocalWindowCallbacks({});
-    SP::UI::InitLocalWindowWithSize(gallery.width,
-                                    gallery.height,
-                                    "PathSpace Widgets Gallery");
+
+    auto gallery = publish_gallery_scene(space,
+                                         appRootView,
+                                         button,
+                                         button_params.style,
+                                         button_state_live,
+                                         button_params.label,
+                                         toggle,
+                                         toggle_params.style,
+                                         toggle_state_live,
+                                         slider,
+                                         slider_params.style,
+                                         slider_state_live,
+                                         slider_range_live,
+                                         list,
+                                         list_params.style,
+                                         list_state_live,
+                                         list_params.items);
+
+    std::cout << "widgets_example gallery scene:\n"
+              << "  scene: " << gallery.scene.getPath() << "\n"
+              << "  size : " << gallery.width << "x" << gallery.height << " pixels\n";
+
+    if (headless) {
+        std::cout << "widgets_example exiting headless mode (WIDGETS_EXAMPLE_HEADLESS set).\n";
+        return 0;
+    }
 
     RendererParams renderer_params{
         .name = "gallery_renderer",
@@ -1619,6 +2053,9 @@ int main() {
                                       "create list binding");
 
     SP::UI::SetLocalWindowCallbacks({&handle_local_mouse, &clear_local_mouse, &ctx});
+    SP::UI::InitLocalWindowWithSize(ctx.gallery.width,
+                                    ctx.gallery.height,
+                                    "PathSpace Widgets Gallery");
 
     WindowParams window_params{
         .name = "gallery_window",
