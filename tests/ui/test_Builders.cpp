@@ -37,6 +37,7 @@ namespace WidgetReducers = SP::UI::Builders::Widgets::Reducers;
 namespace WidgetFocus = SP::UI::Builders::Widgets::Focus;
 namespace Html = SP::UI::Html;
 namespace AppBootstrap = SP::UI::Builders::App;
+using SP::UI::Builders::AutoRenderRequestEvent;
 
 using UIScene::DrawableBucketSnapshot;
 using UIScene::SceneSnapshotBuilder;
@@ -2015,6 +2016,312 @@ TEST_CASE("Widgets::Focus::Set schedules auto render events") {
     REQUIRE(noExtra);
     CHECK_FALSE(noExtra->changed);
 
+    auto noEvent = fx.space.take<AutoRenderRequestEvent, std::string>(queuePath);
+    CHECK_FALSE(noEvent);
+    if (!noEvent) {
+        CHECK((noEvent.error().code == Error::Code::NoObjectFound
+               || noEvent.error().code == Error::Code::NoSuchPath));
+    }
+}
+
+TEST_CASE("Widgets::Focus keyboard navigation cycles focus order and schedules renders") {
+    BuildersFixture fx;
+
+    Widgets::ButtonParams buttonParams{};
+    buttonParams.name = "keyboard_focus_button";
+    buttonParams.label = "KeyboardButton";
+    auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
+    REQUIRE(button);
+
+    Widgets::ToggleParams toggleParams{};
+    toggleParams.name = "keyboard_focus_toggle";
+    auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), toggleParams);
+    REQUIRE(toggle);
+
+    Widgets::SliderParams sliderParams{};
+    sliderParams.name = "keyboard_focus_slider";
+    sliderParams.minimum = 0.0f;
+    sliderParams.maximum = 1.0f;
+    sliderParams.value = 0.42f;
+    auto slider = Widgets::CreateSlider(fx.space, fx.root_view(), sliderParams);
+    REQUIRE(slider);
+
+    Widgets::ListParams listParams{};
+    listParams.name = "keyboard_focus_list";
+    listParams.items = {
+        Widgets::ListItem{.id = "one", .label = "One"},
+        Widgets::ListItem{.id = "two", .label = "Two"},
+        Widgets::ListItem{.id = "three", .label = "Three"},
+    };
+    auto list = Widgets::CreateList(fx.space, fx.root_view(), listParams);
+    REQUIRE(list);
+
+    RendererParams rendererParams{ .name = "keyboard_focus_renderer",
+                                   .kind = RendererKind::Software2D,
+                                   .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc{};
+    desc.size_px = {256, 192};
+
+    SurfaceParams surfaceParams{
+        .name = "keyboard_focus_surface",
+        .desc = desc,
+        .renderer = "renderers/keyboard_focus_renderer",
+    };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    REQUIRE(Surface::SetScene(fx.space, *surface, button->scene));
+
+    auto targetRel = fx.space.read<std::string, std::string>(std::string(surface->getPath()) + "/target");
+    REQUIRE(targetRel);
+    auto targetAbs = SP::App::resolve_app_relative(fx.root_view(), *targetRel);
+    REQUIRE(targetAbs);
+
+    auto config = WidgetFocus::MakeConfig(
+        fx.root_view(),
+        SP::UI::Builders::ConcretePath{targetAbs->getPath()});
+
+    std::array<WidgetPath, 4> order{
+        button->root,
+        toggle->root,
+        slider->root,
+        list->root,
+    };
+
+    auto queuePath = targetAbs->getPath() + "/events/renderRequested/queue";
+    auto ensure_event = [&](std::uint64_t last_seq) -> std::uint64_t {
+        auto event = fx.space.take<AutoRenderRequestEvent, std::string>(queuePath);
+        REQUIRE(event);
+        CHECK(event->reason == "focus-navigation");
+        CHECK(event->sequence > last_seq);
+        return event->sequence;
+    };
+
+    std::uint64_t lastSequence = 0;
+
+    // Simulate Tab key: focus advances to the first widget.
+    auto moveButton = WidgetFocus::Move(fx.space,
+                                        config,
+                                        std::span<const WidgetPath>(order.data(), order.size()),
+                                        WidgetFocus::Direction::Forward);
+    REQUIRE(moveButton);
+    REQUIRE(moveButton->has_value());
+    CHECK(moveButton->value().widget.getPath() == button->root.getPath());
+    CHECK(moveButton->value().changed);
+    lastSequence = ensure_event(lastSequence);
+
+    auto focusPath = fx.space.read<std::string, std::string>(config.focus_state.getPath());
+    REQUIRE(focusPath);
+    CHECK(*focusPath == button->root.getPath());
+
+    auto buttonState = fx.space.read<Widgets::ButtonState, std::string>(button->state.getPath());
+    REQUIRE(buttonState);
+    CHECK(buttonState->hovered);
+
+    auto toggleState = fx.space.read<Widgets::ToggleState, std::string>(toggle->state.getPath());
+    REQUIRE(toggleState);
+    CHECK_FALSE(toggleState->hovered);
+
+    // Another Tab: advance focus to the toggle.
+    auto moveToggle = WidgetFocus::Move(fx.space,
+                                        config,
+                                        std::span<const WidgetPath>(order.data(), order.size()),
+                                        WidgetFocus::Direction::Forward);
+    REQUIRE(moveToggle);
+    REQUIRE(moveToggle->has_value());
+    CHECK(moveToggle->value().widget.getPath() == toggle->root.getPath());
+    CHECK(moveToggle->value().changed);
+    lastSequence = ensure_event(lastSequence);
+
+    toggleState = fx.space.read<Widgets::ToggleState, std::string>(toggle->state.getPath());
+    REQUIRE(toggleState);
+    CHECK(toggleState->hovered);
+
+    buttonState = fx.space.read<Widgets::ButtonState, std::string>(button->state.getPath());
+    REQUIRE(buttonState);
+    CHECK_FALSE(buttonState->hovered);
+
+    focusPath = fx.space.read<std::string, std::string>(config.focus_state.getPath());
+    REQUIRE(focusPath);
+    CHECK(*focusPath == toggle->root.getPath());
+
+    // Shift+Tab: move focus back to the button.
+    auto moveBack = WidgetFocus::Move(fx.space,
+                                      config,
+                                      std::span<const WidgetPath>(order.data(), order.size()),
+                                      WidgetFocus::Direction::Backward);
+    REQUIRE(moveBack);
+    REQUIRE(moveBack->has_value());
+    CHECK(moveBack->value().widget.getPath() == button->root.getPath());
+    CHECK(moveBack->value().changed);
+    lastSequence = ensure_event(lastSequence);
+
+    buttonState = fx.space.read<Widgets::ButtonState, std::string>(button->state.getPath());
+    REQUIRE(buttonState);
+    CHECK(buttonState->hovered);
+
+    toggleState = fx.space.read<Widgets::ToggleState, std::string>(toggle->state.getPath());
+    REQUIRE(toggleState);
+    CHECK_FALSE(toggleState->hovered);
+
+    focusPath = fx.space.read<std::string, std::string>(config.focus_state.getPath());
+    REQUIRE(focusPath);
+    CHECK(*focusPath == button->root.getPath());
+
+    auto noEvent = fx.space.take<AutoRenderRequestEvent, std::string>(queuePath);
+    CHECK_FALSE(noEvent);
+    if (!noEvent) {
+        CHECK((noEvent.error().code == Error::Code::NoObjectFound
+               || noEvent.error().code == Error::Code::NoSuchPath));
+    }
+}
+
+TEST_CASE("Widgets::Focus gamepad navigation hops focus order and schedules renders") {
+    BuildersFixture fx;
+
+    Widgets::ButtonParams buttonParams{};
+    buttonParams.name = "gamepad_focus_button";
+    buttonParams.label = "GamepadButton";
+    auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
+    REQUIRE(button);
+
+    Widgets::ToggleParams toggleParams{};
+    toggleParams.name = "gamepad_focus_toggle";
+    auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), toggleParams);
+    REQUIRE(toggle);
+
+    Widgets::SliderParams sliderParams{};
+    sliderParams.name = "gamepad_focus_slider";
+    sliderParams.minimum = 0.0f;
+    sliderParams.maximum = 1.0f;
+    sliderParams.value = 0.7f;
+    auto slider = Widgets::CreateSlider(fx.space, fx.root_view(), sliderParams);
+    REQUIRE(slider);
+
+    Widgets::ListParams listParams{};
+    listParams.name = "gamepad_focus_list";
+    listParams.items = {
+        Widgets::ListItem{.id = "north", .label = "North"},
+        Widgets::ListItem{.id = "south", .label = "South"},
+    };
+    auto list = Widgets::CreateList(fx.space, fx.root_view(), listParams);
+    REQUIRE(list);
+
+    RendererParams rendererParams{ .name = "gamepad_focus_renderer",
+                                   .kind = RendererKind::Software2D,
+                                   .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc{};
+    desc.size_px = {320, 200};
+
+    SurfaceParams surfaceParams{
+        .name = "gamepad_focus_surface",
+        .desc = desc,
+        .renderer = "renderers/gamepad_focus_renderer",
+    };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    REQUIRE(Surface::SetScene(fx.space, *surface, slider->scene));
+
+    auto targetRel = fx.space.read<std::string, std::string>(std::string(surface->getPath()) + "/target");
+    REQUIRE(targetRel);
+    auto targetAbs = SP::App::resolve_app_relative(fx.root_view(), *targetRel);
+    REQUIRE(targetAbs);
+
+    auto config = WidgetFocus::MakeConfig(
+        fx.root_view(),
+        SP::UI::Builders::ConcretePath{targetAbs->getPath()});
+
+    std::array<WidgetPath, 4> order{
+        button->root,
+        slider->root,
+        list->root,
+        toggle->root,
+    };
+
+    auto queuePath = targetAbs->getPath() + "/events/renderRequested/queue";
+    auto take_event = [&]() -> AutoRenderRequestEvent {
+        auto event = fx.space.take<AutoRenderRequestEvent, std::string>(queuePath);
+        REQUIRE(event);
+        CHECK(event->reason == "focus-navigation");
+        return *event;
+    };
+
+    // Simulate selecting the slider via a focused gamepad interaction.
+    auto setSlider = WidgetFocus::Set(fx.space, config, slider->root);
+    REQUIRE(setSlider);
+    CHECK(setSlider->changed);
+    auto sliderEvent = take_event();
+    auto lastSequence = sliderEvent.sequence;
+
+    auto sliderState = fx.space.read<Widgets::SliderState, std::string>(slider->state.getPath());
+    REQUIRE(sliderState);
+    CHECK(sliderState->hovered);
+
+    auto listState = fx.space.read<Widgets::ListState, std::string>(list->state.getPath());
+    REQUIRE(listState);
+    CHECK(listState->hovered_index == -1);
+
+    auto focusPath = fx.space.read<std::string, std::string>(config.focus_state.getPath());
+    REQUIRE(focusPath);
+    CHECK(*focusPath == slider->root.getPath());
+
+    // Hop forward (e.g., D-pad right/down): moves focus to the list.
+    auto moveList = WidgetFocus::Move(fx.space,
+                                      config,
+                                      std::span<const WidgetPath>(order.data(), order.size()),
+                                      WidgetFocus::Direction::Forward);
+    REQUIRE(moveList);
+    REQUIRE(moveList->has_value());
+    CHECK(moveList->value().widget.getPath() == list->root.getPath());
+    CHECK(moveList->value().changed);
+    auto listEvent = take_event();
+    CHECK(listEvent.sequence > lastSequence);
+    lastSequence = listEvent.sequence;
+
+    listState = fx.space.read<Widgets::ListState, std::string>(list->state.getPath());
+    REQUIRE(listState);
+    CHECK(listState->hovered_index >= 0);
+
+    sliderState = fx.space.read<Widgets::SliderState, std::string>(slider->state.getPath());
+    REQUIRE(sliderState);
+    CHECK_FALSE(sliderState->hovered);
+
+    focusPath = fx.space.read<std::string, std::string>(config.focus_state.getPath());
+    REQUIRE(focusPath);
+    CHECK(*focusPath == list->root.getPath());
+
+    // Hop backward (e.g., D-pad left/up): returns focus to the slider.
+    auto moveSlider = WidgetFocus::Move(fx.space,
+                                        config,
+                                        std::span<const WidgetPath>(order.data(), order.size()),
+                                        WidgetFocus::Direction::Backward);
+    REQUIRE(moveSlider);
+    REQUIRE(moveSlider->has_value());
+    CHECK(moveSlider->value().widget.getPath() == slider->root.getPath());
+    CHECK(moveSlider->value().changed);
+    auto backEvent = take_event();
+    CHECK(backEvent.sequence > lastSequence);
+    lastSequence = backEvent.sequence;
+
+    sliderState = fx.space.read<Widgets::SliderState, std::string>(slider->state.getPath());
+    REQUIRE(sliderState);
+    CHECK(sliderState->hovered);
+
+    focusPath = fx.space.read<std::string, std::string>(config.focus_state.getPath());
+    REQUIRE(focusPath);
+    CHECK(*focusPath == slider->root.getPath());
+
+    // Repeat Set on the same widget should not schedule an additional render.
+    auto repeatSet = WidgetFocus::Set(fx.space, config, slider->root);
+    REQUIRE(repeatSet);
+    CHECK_FALSE(repeatSet->changed);
     auto noEvent = fx.space.take<AutoRenderRequestEvent, std::string>(queuePath);
     CHECK_FALSE(noEvent);
     if (!noEvent) {

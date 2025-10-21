@@ -1,6 +1,6 @@
 # Handoff Notice
 
-> **Handoff note (October 21, 2025 @ shutdown):** Hit-test coverage now spans ordering, clip-aware picking, focus routing, the auto-render wait/notify path (`tests/ui/test_SceneHitTest.cpp` asserts ≤200 ms wake latency), DrawableBucket-backed multi-hit stacks (`HitTestResult::hits` with `HitTestRequest::max_results`), and widget focus-navigation helpers with auto-render scheduling. Presenter diagnostics continue to mirror into `windows/<win>/diagnostics/metrics/live/views/<view>/present`, and widgets gallery interactions remain green. Next pass should expand HTML tooling (HSAT inspectors) and tighten the Phase 5 interaction scheduling metrics.
+> **Handoff note (October 21, 2025 @ shutdown):** Hit-test coverage now spans ordering, clip-aware picking, focus routing, the auto-render wait/notify path (`tests/ui/test_SceneHitTest.cpp` asserts ≤200 ms wake latency), DrawableBucket-backed multi-hit stacks (`HitTestResult::hits` with `HitTestRequest::max_results`), and widget focus-navigation helpers with auto-render scheduling. Keyboard/gamepad focus loops now have UITest coverage in `tests/ui/test_Builders.cpp`, and presenter diagnostics continue to mirror into `windows/<win>/diagnostics/metrics/live/views/<view>/present`. Next pass should expand HTML tooling (HSAT inspectors) and document the widget state schema.
 
 # Scene Graph Implementation Plan
 
@@ -168,6 +168,10 @@ Completed:
 - Enforce include hygiene during the split (IWYU or equivalent pass) so the expanded module graph keeps compile times manageable.
 - Add binary/size guardrails (e.g., `scripts/compile.sh --size-report`) to watch for example/demo growth after the refactor.
 - Refresh `docs/AI_Architecture.md` and renderer diagrams once files move so architecture snapshots continue to match the code layout.
+- Add a performance regression flow that records benchmark outputs (renderer, presenter, examples) each run, stores historical snapshots, and fails when deltas exceed thresholds relative to the previous baseline; wire it into the local `pre-push` hook so regressions are caught before pushes.
+- Build a fault-injection harness that flips Metal upload flags, simulates surface resize failures, and drops drawables mid-frame to ensure diagnostics and error paths stay actionable.
+- Add optional ASan/TSan build/test modes via `scripts/compile.sh` (and expose toggles for the pre-push hook) so we can spot memory/race issues on demand without introducing a nightly job.
+- Document how the expanded diagnostics map into dashboards/alerts (metrics → panels/thresholds) so maintainers know where to monitor residency, progressive tiles, and performance regression outputs.
 
 ### Phase 7 — Optional Backends & HTML Adapter Prep (post-MVP)
 - ✅ (October 20, 2025) `PathSpaceUITests` now cover HTML canvas replay parity and the ObjC++ Metal presenter harness, replacing the skipped scaffolding.
@@ -244,7 +248,7 @@ Completed:
 - **Interaction contract**
   - ✅ (October 21, 2025) Hit-test authoring ids now embed canonical `/widgets/<id>/authoring/...` paths and `Widgets::ResolveHitTarget`/`WidgetBindings::PointerFromHit` helpers normalize hover/press routing into the existing bindings + `ops/` queues.
   - ✅ (October 21, 2025) Focus navigation helpers (`Widgets::Focus`) reuse `Scene::HitTest` metadata, maintain canonical focus state under `widgets/focus/current`, toggle widget scene states, and enqueue auto-render requests so highlight transitions redraw immediately.
-  - Add UITest/loop coverage for keyboard focus navigation (Tab/Shift+Tab) and gamepad focus hops so bindings regressions surface quickly once helpers ship.
+  - ✅ (October 21, 2025) Added UITest coverage for keyboard (Tab/Shift+Tab) and gamepad focus hops (`tests/ui/test_Builders.cpp`), asserting focus state transitions and `focus-navigation` auto-render scheduling so the 15× loop flags regressions immediately.
   - Document the path schema for widget state (e.g., `/.../widgets/<id>/{state,enabled,label}`) and ensure updates stay atomic.
 - **State binding & data flow**
 - ✅ (October 19, 2025) Introduced initial state update helpers for buttons/toggles that coalesce redundant writes and mark the owning scene `DirtyKind::Visual` only when values change.
@@ -255,6 +259,7 @@ Completed:
   - Extend `PathSpaceUITests` with golden snapshots and interaction sequences for each widget (hover, press, disabled) using the 15× loop to guard against race regressions.
   - Add doctest coverage for the binding helpers to confirm dirty-hint emission, focus routing, and auto-render scheduling.
   - Add adjacent-widget dirty propagation coverage: place widgets with touching/overlapping dirty rectangles, trigger an update on one, and assert the neighbour schedules a repaint and retains its state.
+  - Introduce a fuzz harness for widget reducers/bindings that randomizes pointer/keyboard sequences and asserts dirty hints, ops queues, and state invariants remain stable.
 - **Tooling & docs**
 - ✅ (October 19, 2025) Expanded `examples/widgets_example.cpp` to publish button + toggle widgets and demonstrate state updates; grow into a full gallery as additional widgets land.
 - ✅ (October 20, 2025) widgets_example now instantiates slider and list widgets, exercises the state helpers, and prints the relevant path wiring to guide gallery expansion; continue instrumenting interaction telemetry in follow-up work.
@@ -264,6 +269,8 @@ Completed:
 - ✅ (October 21, 2025) widgets_example now consumes `Widgets::WidgetTheme` output (and `WIDGETS_EXAMPLE_THEME`) so demos can swap color palettes and typography without rewriting scenes; theme defaults live next to the builders for reuse.
   - Add a theme hot-swap UITest/doctest that toggles `Widgets::WidgetTheme` variants at runtime and asserts dirty regions, typography, and colors update correctly without stale caches.
   - Cover `Builders::App::Bootstrap` in doctests/PathSpaceUITests so examples/tests migrating to the helper keep setup/regression coverage as bespoke scaffolding is removed.
+  - Author a widget-contribution quickstart doc outlining required paths, reducer hooks, theme integration, accessibility metadata, and the new test harnesses so additions land consistently.
+  - Ship a capture/replay harness script (`scripts/record_widget_session.sh` + `scripts/replay_widget_session.sh`) so bug reports can include deterministic pointer/keyboard traces for widgets_example and UITests.
 - Update `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage, and troubleshooting steps.
 - Document widget ops schema: queue path (`widgets/<id>/ops/inbox/queue`), `WidgetOp` fields (kind, pointer metadata, value, timestamp) and reducer sample wiring.
 - ✅ (October 20, 2025) Reducer samples now live in `Widgets::Reducers`, publishing actions under `widgets/<id>/ops/actions/inbox/queue`; keep telemetry/docs in sync when new action fields or op kinds land.
@@ -298,6 +305,7 @@ Completed:
 - `./scripts/compile.sh --enable-metal-tests --test --loop=1 --per-test-timeout 20` exercises the Metal presenter path on macOS hosts; keep it gated behind `PATHSPACE_ENABLE_METAL_UPLOADS` in CI.
 - The local `pre-push` hook (`scripts/git-hooks/pre-push.local.sh`) enables Metal presenter coverage by default; export `DISABLE_METAL_TESTS=1` when GPU access is unavailable.
 - CI currently runs the Linux matrix plus a macOS job invoking `./scripts/compile.sh --enable-metal-tests --test --loop=1` to guard the presenter path.
+- Draft a Linux/Wayland bring-up checklist (toolchain flags, presenter shims, input adapters, CI coverage) so non-macOS contributors know the remaining gaps for the UI stack.
 - Extend `scripts/compile.sh` to cover new targets and maintain the 15× loop with 20 s timeout.
 - Add deterministic golden outputs (framebuffers, DrawableBucket metadata) with tolerance-aware comparisons.
 - Stress tests: concurrent edits vs renders, present policy edge cases, progressive tile churn, input-routing races, error-path validation (missing revisions, bad settings).
