@@ -53,6 +53,13 @@ namespace WidgetReducers = SP::UI::Builders::Widgets::Reducers;
 
 constexpr int kGlyphRows = 7;
 constexpr float kDefaultMargin = 32.0f;
+constexpr unsigned int kKeycodeTab = 0x30;        // macOS virtual key codes
+constexpr unsigned int kKeycodeSpace = 0x31;
+constexpr unsigned int kKeycodeReturn = 0x24;
+constexpr unsigned int kKeycodeLeft = 0x7B;
+constexpr unsigned int kKeycodeRight = 0x7C;
+constexpr unsigned int kKeycodeDown = 0x7D;
+constexpr unsigned int kKeycodeUp = 0x7E;
 
 struct WidgetBounds {
     float min_x = 0.0f;
@@ -1302,6 +1309,13 @@ auto publish_gallery_scene(PathSpace& space,
     };
 }
 
+enum class FocusTarget {
+    Button,
+    Toggle,
+    Slider,
+    List,
+};
+
 struct WidgetsExampleContext {
     PathSpace* space = nullptr;
     SP::App::AppRootPath app_root{std::string{}};
@@ -1330,7 +1344,179 @@ struct WidgetsExampleContext {
     bool slider_dragging = false;
     float pointer_x = 0.0f;
     float pointer_y = 0.0f;
+    FocusTarget focus_target = FocusTarget::Button;
+    int focus_list_index = 0;
 };
+
+static void refresh_gallery(WidgetsExampleContext& ctx);
+
+static auto center_of(WidgetBounds const& bounds) -> std::pair<float, float> {
+    return {bounds.min_x + bounds.width() * 0.5f,
+            bounds.min_y + bounds.height() * 0.5f};
+}
+
+struct PointerOverride {
+    WidgetsExampleContext& ctx;
+    float previous_x;
+    float previous_y;
+
+    PointerOverride(WidgetsExampleContext& context, float x, float y)
+        : ctx(context), previous_x(context.pointer_x), previous_y(context.pointer_y) {
+        ctx.pointer_x = x;
+        ctx.pointer_y = y;
+    }
+
+    ~PointerOverride() {
+        ctx.pointer_x = previous_x;
+        ctx.pointer_y = previous_y;
+    }
+};
+
+static auto slider_thumb_position(WidgetsExampleContext const& ctx, float value) -> std::pair<float, float> {
+    auto const& bounds = ctx.gallery.layout.slider;
+    if (bounds.width() <= 0.0f) {
+        return center_of(bounds);
+    }
+    float clamped = std::clamp(value, ctx.slider_range.minimum, ctx.slider_range.maximum);
+    float range = ctx.slider_range.maximum - ctx.slider_range.minimum;
+    float t = range > 0.0f ? (clamped - ctx.slider_range.minimum) / range : 0.0f;
+    float x = bounds.min_x + bounds.width() * std::clamp(t, 0.0f, 1.0f);
+    float y = bounds.min_y + bounds.height() * 0.5f;
+    return {x, y};
+}
+
+static auto list_item_center(WidgetsExampleContext const& ctx, int index) -> std::pair<float, float> {
+    if (index < 0 || index >= static_cast<int>(ctx.gallery.layout.list.item_bounds.size())) {
+        return center_of(ctx.gallery.layout.list.bounds);
+    }
+    return center_of(ctx.gallery.layout.list.item_bounds[static_cast<std::size_t>(index)]);
+}
+
+static auto slider_keyboard_step(WidgetsExampleContext const& ctx) -> float {
+    float step = ctx.slider_range.step;
+    if (step <= 0.0f) {
+        float range = ctx.slider_range.maximum - ctx.slider_range.minimum;
+        step = std::max(range * 0.05f, 0.01f);
+    }
+    return step;
+}
+
+static bool apply_focus_visuals(WidgetsExampleContext& ctx) {
+    bool changed = false;
+    auto update_button = [&](bool hovered) {
+        if (ctx.button_state.hovered == hovered) {
+            return;
+        }
+        Widgets::ButtonState desired = ctx.button_state;
+        desired.hovered = hovered;
+        auto status = Widgets::UpdateButtonState(*ctx.space, ctx.button_paths, desired);
+        if (!status) {
+            std::cerr << "widgets_example: failed to update button focus state: "
+                      << status.error().message.value_or("unknown error") << "\n";
+            return;
+        }
+        ctx.button_state = desired;
+        changed |= *status;
+    };
+
+    auto update_toggle = [&](bool hovered) {
+        if (ctx.toggle_state.hovered == hovered) {
+            return;
+        }
+        Widgets::ToggleState desired = ctx.toggle_state;
+        desired.hovered = hovered;
+        auto status = Widgets::UpdateToggleState(*ctx.space, ctx.toggle_paths, desired);
+        if (!status) {
+            std::cerr << "widgets_example: failed to update toggle focus state: "
+                      << status.error().message.value_or("unknown error") << "\n";
+            return;
+        }
+        ctx.toggle_state = desired;
+        changed |= *status;
+    };
+
+    auto update_slider = [&](bool hovered) {
+        if (ctx.slider_state.hovered == hovered) {
+            return;
+        }
+        Widgets::SliderState desired = ctx.slider_state;
+        desired.hovered = hovered;
+        auto status = Widgets::UpdateSliderState(*ctx.space, ctx.slider_paths, desired);
+        if (!status) {
+            std::cerr << "widgets_example: failed to update slider focus state: "
+                      << status.error().message.value_or("unknown error") << "\n";
+            return;
+        }
+        ctx.slider_state = desired;
+        changed |= *status;
+    };
+
+    auto update_list = [&](bool focused) {
+        int desired_hover = -1;
+        if (focused && !ctx.gallery.layout.list.item_bounds.empty()) {
+            int max_index = static_cast<int>(ctx.gallery.layout.list.item_bounds.size()) - 1;
+            if (ctx.focus_list_index < 0) {
+                ctx.focus_list_index = std::clamp(ctx.list_state.selected_index, 0, max_index);
+            }
+            ctx.focus_list_index = std::clamp(ctx.focus_list_index, 0, max_index);
+            desired_hover = ctx.focus_list_index;
+        }
+        if (ctx.list_state.hovered_index == desired_hover) {
+            return;
+        }
+        Widgets::ListState desired = ctx.list_state;
+        desired.hovered_index = desired_hover;
+        auto status = Widgets::UpdateListState(*ctx.space, ctx.list_paths, desired);
+        if (!status) {
+            std::cerr << "widgets_example: failed to update list focus state: "
+                      << status.error().message.value_or("unknown error") << "\n";
+            return;
+        }
+        ctx.list_state = desired;
+        changed |= *status;
+    };
+
+    update_button(ctx.focus_target == FocusTarget::Button);
+    update_toggle(ctx.focus_target == FocusTarget::Toggle);
+    update_slider(ctx.focus_target == FocusTarget::Slider);
+    update_list(ctx.focus_target == FocusTarget::List);
+    return changed;
+}
+
+static void set_focus_target(WidgetsExampleContext& ctx, FocusTarget target) {
+    if (ctx.focus_target == target) {
+        if (apply_focus_visuals(ctx)) {
+            refresh_gallery(ctx);
+        }
+        return;
+    }
+    ctx.focus_target = target;
+    if (ctx.focus_target == FocusTarget::List && ctx.list_state.selected_index >= 0) {
+        ctx.focus_list_index = ctx.list_state.selected_index;
+    }
+    if (apply_focus_visuals(ctx)) {
+        refresh_gallery(ctx);
+    }
+}
+
+static void cycle_focus(WidgetsExampleContext& ctx, bool forward) {
+    constexpr FocusTarget order[] = {
+        FocusTarget::Button,
+        FocusTarget::Toggle,
+        FocusTarget::Slider,
+        FocusTarget::List,
+    };
+    int current = 0;
+    for (std::size_t i = 0; i < std::size(order); ++i) {
+        if (order[i] == ctx.focus_target) {
+            current = static_cast<int>(i);
+            break;
+        }
+    }
+    int delta = forward ? 1 : -1;
+    int next = (current + delta + static_cast<int>(std::size(order))) % static_cast<int>(std::size(order));
+    set_focus_target(ctx, order[static_cast<std::size_t>(next)]);
+}
 
 static auto make_pointer_info(WidgetsExampleContext const& ctx, bool inside) -> WidgetBindings::PointerInfo {
     WidgetBindings::PointerInfo info{};
@@ -1528,6 +1714,9 @@ static void handle_pointer_move(WidgetsExampleContext& ctx, float x, float y) {
                                  hover_index,
                                  0.0f);
     }
+    if (hover_index >= 0) {
+        ctx.focus_list_index = hover_index;
+    }
 
     if (ctx.slider_dragging) {
         Widgets::SliderState desired = ctx.slider_state;
@@ -1547,6 +1736,7 @@ static void handle_pointer_down(WidgetsExampleContext& ctx) {
     bool changed = false;
 
     if (ctx.gallery.layout.button.contains(ctx.pointer_x, ctx.pointer_y)) {
+        ctx.focus_target = FocusTarget::Button;
         Widgets::ButtonState desired = ctx.button_state;
         desired.hovered = true;
         desired.pressed = true;
@@ -1554,6 +1744,7 @@ static void handle_pointer_down(WidgetsExampleContext& ctx) {
     }
 
     if (ctx.gallery.layout.toggle.contains(ctx.pointer_x, ctx.pointer_y)) {
+        ctx.focus_target = FocusTarget::Toggle;
         Widgets::ToggleState desired = ctx.toggle_state;
         desired.hovered = true;
         changed |= dispatch_toggle(ctx, desired, WidgetBindings::WidgetOpKind::Press, true);
@@ -1561,6 +1752,7 @@ static void handle_pointer_down(WidgetsExampleContext& ctx) {
 
     if (ctx.gallery.layout.slider.contains(ctx.pointer_x, ctx.pointer_y)) {
         ctx.slider_dragging = true;
+        ctx.focus_target = FocusTarget::Slider;
         Widgets::SliderState desired = ctx.slider_state;
         desired.dragging = true;
         desired.hovered = true;
@@ -1578,6 +1770,8 @@ static void handle_pointer_down(WidgetsExampleContext& ctx) {
                                  true,
                                  index,
                                  0.0f);
+        ctx.focus_target = FocusTarget::List;
+        ctx.focus_list_index = index;
     }
 
     if (changed) {
@@ -1634,6 +1828,8 @@ static void handle_pointer_up(WidgetsExampleContext& ctx) {
                                  true,
                                  index,
                                  0.0f);
+        ctx.focus_target = FocusTarget::List;
+        ctx.focus_list_index = index;
     }
 
     ctx.pointer_down = false;
@@ -1661,6 +1857,46 @@ static void handle_pointer_wheel(WidgetsExampleContext& ctx, int wheel_delta) {
     if (changed) {
         refresh_gallery(ctx);
     }
+}
+
+static void process_widget_actions(WidgetsExampleContext& ctx) {
+    auto process_root = [&](WidgetPath const& root) {
+        auto queue = WidgetReducers::WidgetOpsQueue(root);
+        auto reduced = WidgetReducers::ReducePending(*ctx.space,
+                                                    ConcretePathStringView{queue.getPath()});
+        if (!reduced) {
+            std::cerr << "widgets_example: failed to reduce widget ops for " << root.getPath()
+                      << ": " << reduced.error().message.value_or("unknown error") << "\n";
+            return;
+        }
+        if (reduced->empty()) {
+            return;
+        }
+        auto actions_queue = WidgetReducers::DefaultActionsQueue(root);
+        auto span = std::span<const WidgetReducers::WidgetAction>(reduced->data(), reduced->size());
+        auto publish = WidgetReducers::PublishActions(*ctx.space,
+                                                      ConcretePathStringView{actions_queue.getPath()},
+                                                      span);
+        if (!publish) {
+            std::cerr << "widgets_example: failed to publish widget actions for " << root.getPath()
+                      << ": " << publish.error().message.value_or("unknown error") << "\n";
+            return;
+        }
+        while (true) {
+            auto action = ctx.space->take<WidgetReducers::WidgetAction, std::string>(actions_queue.getPath());
+            if (!action) {
+                break;
+            }
+            std::cout << "[widgets_example] action widget=" << action->widget_path
+                      << " kind=" << static_cast<int>(action->kind)
+                      << " value=" << action->analog_value << std::endl;
+        }
+    };
+
+    process_root(ctx.button_paths.root);
+    process_root(ctx.toggle_paths.root);
+    process_root(ctx.slider_paths.root);
+    process_root(ctx.list_paths.root);
 }
 
 static void handle_local_mouse(SP::UI::LocalMouseEvent const& ev, void* user_data) {
@@ -1708,6 +1944,172 @@ static void clear_local_mouse(void* user_data) {
     }
     ctx->pointer_down = false;
     ctx->slider_dragging = false;
+}
+
+static bool has_modifier(unsigned int modifiers, unsigned int mask) {
+    return (modifiers & mask) != 0U;
+}
+
+static void adjust_slider_value(WidgetsExampleContext& ctx, float delta) {
+    if (delta == 0.0f) {
+        return;
+    }
+    if (ctx.slider_range.maximum <= ctx.slider_range.minimum) {
+        return;
+    }
+    Widgets::SliderState desired = ctx.slider_state;
+    desired.hovered = true;
+    desired.value = std::clamp(ctx.slider_state.value + delta,
+                               ctx.slider_range.minimum,
+                               ctx.slider_range.maximum);
+    if (std::abs(desired.value - ctx.slider_state.value) <= 1e-6f) {
+        return;
+    }
+    auto thumb = slider_thumb_position(ctx, desired.value);
+    PointerOverride pointer_override(ctx, thumb.first, thumb.second);
+    bool changed = false;
+    changed |= dispatch_slider(ctx, desired, WidgetBindings::WidgetOpKind::SliderUpdate, true);
+    changed |= dispatch_slider(ctx, desired, WidgetBindings::WidgetOpKind::SliderCommit, true);
+    if (changed) {
+        refresh_gallery(ctx);
+    } else {
+        ctx.slider_state = desired;
+    }
+}
+
+static void move_list_focus(WidgetsExampleContext& ctx, int direction) {
+    if (ctx.gallery.layout.list.item_bounds.empty()) {
+        return;
+    }
+    int max_index = static_cast<int>(ctx.gallery.layout.list.item_bounds.size()) - 1;
+    if (ctx.focus_list_index < 0) {
+        ctx.focus_list_index = ctx.list_state.selected_index >= 0 ? ctx.list_state.selected_index : 0;
+    }
+    ctx.focus_list_index = std::clamp(ctx.focus_list_index + direction, 0, max_index);
+    Widgets::ListState desired = ctx.list_state;
+    desired.hovered_index = ctx.focus_list_index;
+    desired.selected_index = ctx.focus_list_index;
+    auto center = list_item_center(ctx, ctx.focus_list_index);
+    PointerOverride pointer_override(ctx, center.first, center.second);
+    if (dispatch_list(ctx,
+                      desired,
+                      WidgetBindings::WidgetOpKind::ListSelect,
+                      true,
+                      ctx.focus_list_index,
+                      0.0f)) {
+        refresh_gallery(ctx);
+    } else {
+        ctx.list_state = desired;
+    }
+}
+
+static void activate_focused_widget(WidgetsExampleContext& ctx) {
+    switch (ctx.focus_target) {
+    case FocusTarget::Button: {
+        auto desired = ctx.button_state;
+        auto center = center_of(ctx.gallery.layout.button);
+        PointerOverride pointer_override(ctx, center.first, center.second);
+        if (dispatch_button(ctx, desired, WidgetBindings::WidgetOpKind::Activate, true)) {
+            refresh_gallery(ctx);
+        }
+        break;
+    }
+    case FocusTarget::Toggle: {
+        Widgets::ToggleState desired = ctx.toggle_state;
+        desired.checked = !desired.checked;
+        auto center = center_of(ctx.gallery.layout.toggle);
+        PointerOverride pointer_override(ctx, center.first, center.second);
+        if (dispatch_toggle(ctx, desired, WidgetBindings::WidgetOpKind::Toggle, true)) {
+            refresh_gallery(ctx);
+        }
+        break;
+    }
+    case FocusTarget::Slider: {
+        // Toggle commit to reinforce state; no action when pressing space/enter.
+        break;
+    }
+    case FocusTarget::List: {
+        if (ctx.gallery.layout.list.item_bounds.empty()) {
+            return;
+        }
+        int max_index = static_cast<int>(ctx.gallery.layout.list.item_bounds.size()) - 1;
+        ctx.focus_list_index = std::clamp(ctx.focus_list_index, 0, max_index);
+        Widgets::ListState desired = ctx.list_state;
+        desired.hovered_index = ctx.focus_list_index;
+        desired.selected_index = ctx.focus_list_index;
+        auto center = list_item_center(ctx, ctx.focus_list_index);
+        PointerOverride pointer_override(ctx, center.first, center.second);
+        if (dispatch_list(ctx,
+                          desired,
+                          WidgetBindings::WidgetOpKind::ListActivate,
+                          true,
+                          ctx.focus_list_index,
+                          0.0f)) {
+            refresh_gallery(ctx);
+        } else {
+            ctx.list_state = desired;
+        }
+        break;
+    }
+    }
+}
+
+static void handle_local_keyboard(SP::UI::LocalKeyEvent const& ev, void* user_data) {
+    auto* ctx = static_cast<WidgetsExampleContext*>(user_data);
+    if (!ctx) {
+        return;
+    }
+    if (ev.type != SP::UI::LocalKeyEventType::KeyDown) {
+        return;
+    }
+
+    switch (ev.keycode) {
+    case kKeycodeTab:
+        cycle_focus(*ctx, !has_modifier(ev.modifiers, LocalKeyModifierShift));
+        break;
+    case kKeycodeSpace:
+    case kKeycodeReturn:
+        activate_focused_widget(*ctx);
+        break;
+    case kKeycodeLeft:
+        if (ctx->focus_target == FocusTarget::Slider) {
+            adjust_slider_value(*ctx, -slider_keyboard_step(*ctx));
+        } else if (ctx->focus_target == FocusTarget::List) {
+            move_list_focus(*ctx, -1);
+        } else {
+            cycle_focus(*ctx, false);
+        }
+        break;
+    case kKeycodeUp:
+        if (ctx->focus_target == FocusTarget::Slider) {
+            adjust_slider_value(*ctx, slider_keyboard_step(*ctx));
+        } else if (ctx->focus_target == FocusTarget::List) {
+            move_list_focus(*ctx, -1);
+        } else {
+            cycle_focus(*ctx, false);
+        }
+        break;
+    case kKeycodeRight:
+        if (ctx->focus_target == FocusTarget::Slider) {
+            adjust_slider_value(*ctx, slider_keyboard_step(*ctx));
+        } else if (ctx->focus_target == FocusTarget::List) {
+            move_list_focus(*ctx, 1);
+        } else {
+            cycle_focus(*ctx, true);
+        }
+        break;
+    case kKeycodeDown:
+        if (ctx->focus_target == FocusTarget::Slider) {
+            adjust_slider_value(*ctx, -slider_keyboard_step(*ctx));
+        } else if (ctx->focus_target == FocusTarget::List) {
+            move_list_focus(*ctx, 1);
+        } else {
+            cycle_focus(*ctx, true);
+        }
+        break;
+    default:
+        break;
+    }
 }
 
 struct PresentTelemetry {
@@ -1881,42 +2283,6 @@ int main() {
               << "  state path: " << list.state.getPath() << "\n"
               << "  items path: " << list.items.getPath() << "\n";
 
-    // Reducer demonstration (unchanged behaviour).
-    auto button_queue = WidgetReducers::WidgetOpsQueue(button.root);
-    WidgetBindings::WidgetOp activate{};
-    activate.kind = WidgetBindings::WidgetOpKind::Activate;
-    activate.widget_path = button.root.getPath();
-    activate.value = 1.0f;
-    activate.sequence = 1;
-    activate.timestamp_ns = static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count());
-    auto inserted = space.insert(button_queue.getPath(), activate);
-    if (!inserted.errors.empty()) {
-        std::cerr << "Failed to enqueue sample widget op: "
-                  << inserted.errors.front().message.value_or("unknown error") << "\n";
-        return 12;
-    }
-
-    auto reduced = unwrap_or_exit(WidgetReducers::ReducePending(space,
-                                                                ConcretePathStringView{button_queue.getPath()}),
-                                  "reduce widget ops");
-    if (!reduced.empty()) {
-        auto actions_queue = WidgetReducers::DefaultActionsQueue(button.root);
-        auto span = std::span<const WidgetReducers::WidgetAction>(reduced.data(), reduced.size());
-        unwrap_or_exit(WidgetReducers::PublishActions(space,
-                                                      ConcretePathStringView{actions_queue.getPath()},
-                                                      span),
-                       "publish widget actions");
-        auto action = space.take<WidgetReducers::WidgetAction, std::string>(actions_queue.getPath());
-        if (action) {
-            std::cout << "Reducer emitted action:\n"
-                      << "  widget: " << action->widget_path << "\n"
-                      << "  kind: " << static_cast<int>(action->kind) << "\n"
-                      << "  value: " << action->analog_value << "\n";
-        }
-    }
-
     bool headless = false;
     if (const char* headless_env = std::getenv("WIDGETS_EXAMPLE_HEADLESS")) {
         if (headless_env[0] != '\0' && headless_env[0] != '0') {
@@ -2052,7 +2418,14 @@ int main() {
                                                                         make_dirty_hint(ctx.gallery.layout.list.bounds)),
                                       "create list binding");
 
-    SP::UI::SetLocalWindowCallbacks({&handle_local_mouse, &clear_local_mouse, &ctx});
+    set_focus_target(ctx, FocusTarget::Button);
+
+    std::cout << "widgets_example keyboard controls:\n"
+              << "  Tab / Shift+Tab : cycle widget focus\n"
+              << "  Arrow keys       : adjust focused slider or list selection\n"
+              << "  Space / Return   : activate the focused widget\n";
+
+    SP::UI::SetLocalWindowCallbacks({&handle_local_mouse, &clear_local_mouse, &ctx, &handle_local_keyboard});
     SP::UI::InitLocalWindowWithSize(ctx.gallery.width,
                                     ctx.gallery.height,
                                     "PathSpace Widgets Gallery");
@@ -2148,6 +2521,8 @@ int main() {
             total_render_ms += telemetry->render_ms;
             total_present_ms += telemetry->present_ms;
         }
+
+        process_widget_actions(ctx);
 
         auto now = std::chrono::steady_clock::now();
         if (now - last_report >= std::chrono::seconds(1)) {

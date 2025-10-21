@@ -31,10 +31,33 @@ struct LocalMouseEvent {
     int wheel = 0;
 };
 
+enum class LocalKeyEventType {
+    KeyDown,
+    KeyUp,
+};
+
+enum LocalKeyModifier : unsigned int {
+    LocalKeyModifierShift = 1u << 0,
+    LocalKeyModifierControl = 1u << 1,
+    LocalKeyModifierAlt = 1u << 2,
+    LocalKeyModifierCommand = 1u << 3,
+    LocalKeyModifierFunction = 1u << 4,
+    LocalKeyModifierCapsLock = 1u << 5,
+};
+
+struct LocalKeyEvent {
+    LocalKeyEventType type = LocalKeyEventType::KeyDown;
+    unsigned int keycode = 0;
+    unsigned int modifiers = 0;
+    char32_t character = U'\0';
+    bool repeat = false;
+};
+
 struct LocalWindowCallbacks {
     void (*mouse_event)(LocalMouseEvent const&, void* user_data) = nullptr;
     void (*clear_mouse)(void* user_data) = nullptr;
     void* user_data = nullptr;
+    void (*key_event)(LocalKeyEvent const&, void* user_data) = nullptr;
 };
 
 void SetLocalWindowCallbacks(LocalWindowCallbacks const& callbacks);

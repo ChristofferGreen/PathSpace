@@ -75,14 +75,15 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - HTML adapter parity tests landed, so DOM and canvas command streams stay lock-step with the renderer geometry.
 - Residency metrics are live under `diagnostics/metrics/residency/*`; dashboards now read the published ratios/status fields—extend telemetry when new counters appear.
 - Presenter telemetry mirrors into window diagnostics sinks under `windows/<window>/diagnostics/metrics/live/views/<view>/present`, so dashboards can ingest present stats without crawling renderer targets (October 21, 2025).
+- Widgets gallery supports keyboard focus (Tab/Shift+Tab) and logs reducer actions on every frame, making it easier to validate bindings without auxiliary tooling (October 21, 2025).
 - Widget binding helpers (`Widgets::Bindings::Dispatch{Button,Toggle,Slider,List}`) emit dirty rect hints, auto-schedule renders, and enqueue ops under `widgets/<id>/ops/inbox/queue` so reducers can react without republishing entire scenes.
 - List widget builder (`Builders::Widgets::CreateList`) plus `UpdateListState` and `DispatchList` land with doctest coverage, enabling selection/hover/scroll ops and expanding `widgets_example`.
 - Reducer helpers (`Widgets::Reducers::ReducePending`/`PublishActions`) drain widget ops into `ops/actions/inbox/queue`; widgets_example seeds a sample action and prints the reducer output.
 
 ## 6. Shutdown Snapshot (October 20, 2025 @ 18:20 UTC)
 - Latest commit: `feat(widgets): add reducer helpers for widget ops` (local branch `master`, unpushed). Reducers now translate widget ops into actions and have doctest + example coverage.
-- Outstanding widget work before resuming:
-  1. Broaden `examples/widgets_example.cpp` gallery input coverage (keyboard/focus, reducer diagnostics).
+- Outstanding follow-ups before resuming:
+  1. Add the HSAT inspection CLI/tests for HTML assets once the CLI scaffolding lands (Phase 7 HTML follow-up).
 - HTML adapter follow-up remains open: add HSAT inspection CLI/tests when new asset fields land (tracked in `docs/AI_Todo.task`).
 - Local worktree still holds edits to `docs/Plan_PrimeScript.md` and `src/pathspace/PathSpaceBase.hpp` (pre-existing; confirm intent before next commit).
 - Next session checklist:

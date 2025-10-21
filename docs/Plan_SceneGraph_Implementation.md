@@ -1,6 +1,6 @@
 # Handoff Notice
 
-> **Handoff note (October 21, 2025 @ shutdown):** `examples/widgets_example` now opens the gallery window, renders button/toggle/slider/list widgets with software text overlays, streams FPS/present telemetry to stdout, and routes LocalWindow mouse events into widget bindings. Residency dashboards remain current under `diagnostics/metrics/residency`. Presenter telemetry now mirrors into the window diagnostics sinks (`windows/<win>/diagnostics/metrics/live/views/<view>/present`). Next pass should broaden gallery input coverage (keyboard/focus, reducer diagnostics).
+> **Handoff note (October 21, 2025 @ shutdown):** `examples/widgets_example` now opens the gallery window, renders button/toggle/slider/list widgets with software text overlays, streams FPS/present telemetry to stdout, and routes LocalWindow mouse/keyboard events into widget bindings. Residency dashboards remain current under `diagnostics/metrics/residency`. Presenter telemetry now mirrors into the window diagnostics sinks (`windows/<win>/diagnostics/metrics/live/views/<view>/present`). Next pass should add the HSAT inspection CLI and extend HTML asset tooling coverage (see Phase 7 HTML follow-ups).
 
 # Scene Graph Implementation Plan
 
@@ -23,6 +23,7 @@ Success looks like:
 - Widget bindings publish dirty hints and ops inbox events (`widgets/<id>/ops/inbox/queue`) so interaction reducers can react without full-scene republishes.
 - Widgets reducers drain op queues into `widgets/<id>/ops/actions/inbox/queue`; examples/tests confirm button/list actions round-trip through the helpers.
 - Widget gallery, HTML tooling, and diagnostics backlog items are tracked in `docs/AI_Todo.task`; no open P0 work after the binding milestone.
+- ✅ (October 21, 2025) Widgets gallery now supports keyboard focus cycling, arrow-key slider/list control, and logs reducer-emitted actions each frame for diagnostics.
 - ✅ (October 21, 2025) Window diagnostics sinks mirror presenter metrics under `windows/<win>/diagnostics/metrics/live/views/<view>/present`, keeping central telemetry aligned with per-target `output/v1/common/*` updates.
 - ✅ (October 20, 2025) Residency dashboard wiring publishes CPU/GPU soft & hard budget ratios plus status flags under `diagnostics/metrics/residency`, enabling external alerts without bespoke parsers.
 - ✅ (October 21, 2025) `examples/widgets_example.cpp` opens the widgets gallery window, renders button/toggle/slider/list widgets with software text overlays, streams present/FPS telemetry to stdout, and republishes the gallery snapshot when LocalWindow mouse events update widget state.
@@ -244,6 +245,7 @@ Completed:
 - ✅ (October 19, 2025) Expanded `examples/widgets_example.cpp` to publish button + toggle widgets and demonstrate state updates; grow into a full gallery as additional widgets land.
 - ✅ (October 20, 2025) widgets_example now instantiates slider and list widgets, exercises the state helpers, and prints the relevant path wiring to guide gallery expansion; continue instrumenting interaction telemetry in follow-up work.
 - ✅ (October 21, 2025) widgets_example now drives the gallery window, renders all shipped widgets with inline text labels, logs per-second FPS/present telemetry using the software presenter, and feeds LocalWindow mouse input through widget bindings to republish the gallery snapshot on interaction.
+- ✅ (October 21, 2025) widgets_example adds keyboard focus cycling (Tab/Shift+Tab), arrow-key slider/list control, and reducer action logging so gallery runs surface queue activity without external tooling.
 - Introduce an app bootstrap helper that wires renderer/surface/window defaults for a given app root/scene so examples/tests can avoid boilerplate while still exposing escape hatches; update onboarding/docs once available.
 - Update `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage, and troubleshooting steps.
 - Document widget ops schema: queue path (`widgets/<id>/ops/inbox/queue`), `WidgetOp` fields (kind, pointer metadata, value, timestamp) and reducer sample wiring.

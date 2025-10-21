@@ -27,6 +27,14 @@ using SP::UI::LocalMouseButton;
 using SP::UI::LocalMouseEvent;
 using SP::UI::LocalMouseEventType;
 using SP::UI::LocalWindowCallbacks;
+using SP::UI::LocalKeyEvent;
+using SP::UI::LocalKeyEventType;
+using SP::UI::LocalKeyModifierAlt;
+using SP::UI::LocalKeyModifierCapsLock;
+using SP::UI::LocalKeyModifierCommand;
+using SP::UI::LocalKeyModifierControl;
+using SP::UI::LocalKeyModifierFunction;
+using SP::UI::LocalKeyModifierShift;
 #endif
 
 namespace {
@@ -56,6 +64,51 @@ void clear_mouse_events() {
     std::lock_guard<std::mutex> lock(state.mutex);
     if (state.callbacks.clear_mouse) {
         state.callbacks.clear_mouse(state.callbacks.user_data);
+    }
+}
+
+unsigned int modifier_mask_from_flags(NSEventModifierFlags flags) {
+    unsigned int mask = 0;
+    if (flags & NSEventModifierFlagShift) {
+        mask |= LocalKeyModifierShift;
+    }
+    if (flags & NSEventModifierFlagControl) {
+        mask |= LocalKeyModifierControl;
+    }
+    if (flags & NSEventModifierFlagOption) {
+        mask |= LocalKeyModifierAlt;
+    }
+    if (flags & NSEventModifierFlagCommand) {
+        mask |= LocalKeyModifierCommand;
+    }
+    if (flags & NSEventModifierFlagFunction) {
+        mask |= LocalKeyModifierFunction;
+    }
+    if (flags & NSEventModifierFlagCapsLock) {
+        mask |= LocalKeyModifierCapsLock;
+    }
+    return mask;
+}
+
+auto make_local_key_event(NSEvent* event, LocalKeyEventType type) -> LocalKeyEvent {
+    LocalKeyEvent ev{};
+    ev.type = type;
+    ev.keycode = static_cast<unsigned int>(event.keyCode);
+    ev.modifiers = modifier_mask_from_flags(event.modifierFlags);
+    ev.repeat = event.isARepeat;
+    NSString* chars = event.charactersIgnoringModifiers;
+    if (chars.length > 0) {
+        unichar ch = [chars characterAtIndex:0];
+        ev.character = static_cast<char32_t>(ch);
+    }
+    return ev;
+}
+
+void emit_key_event(LocalKeyEvent const& ev) {
+    auto& state = callback_state();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    if (state.callbacks.key_event) {
+        state.callbacks.key_event(ev, state.callbacks.user_data);
     }
 }
 
@@ -368,6 +421,10 @@ void schedule_metal_present(WindowState& state) {
 
 @implementation PSLocalEventView
 
+- (BOOL)acceptsFirstResponder {
+    return YES;
+}
+
 - (instancetype)initWithFrame:(NSRect)frameRect {
     self = [super initWithFrame:frameRect];
     if (self) {
@@ -514,6 +571,14 @@ void schedule_metal_present(WindowState& state) {
         ev.y = yi;
     }
     emit_mouse_event(ev);
+}
+
+- (void)keyDown:(NSEvent *)event {
+    emit_key_event(make_local_key_event(event, LocalKeyEventType::KeyDown));
+}
+
+- (void)keyUp:(NSEvent *)event {
+    emit_key_event(make_local_key_event(event, LocalKeyEventType::KeyUp));
 }
 
 - (void)drawRect:(NSRect)dirtyRect {
