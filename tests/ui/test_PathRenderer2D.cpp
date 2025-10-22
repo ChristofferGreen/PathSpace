@@ -3023,6 +3023,67 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     CHECK(diagnosticsFramebuffer->pixels == storedFramebuffer->pixels);
 }
 
+TEST_CASE("Window::Present skips framebuffer serialization when capture disabled") {
+    RendererFixture fx;
+
+    RectDrawableDef def{};
+    def.id = 0x10u;
+    def.fingerprint = 0x20u;
+    def.rect = RectCommand{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 2.0f,
+        .max_y = 2.0f,
+        .color = {1.0f, 0.0f, 0.0f, 1.0f},
+    };
+
+    auto bucket = make_rect_bucket({def});
+    auto scenePath = create_scene(fx, "scene_no_capture", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_no_capture");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 4;
+    surfaceDesc.size_px.height = 4;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_no_capture", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+
+    Builders::WindowParams windowParams{};
+    windowParams.name = "window_no_capture";
+    windowParams.title = "NoCapture";
+    windowParams.width = 256;
+    windowParams.height = 256;
+    auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+    REQUIRE(windowPath);
+    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+
+    auto present = Builders::Window::Present(fx.space, *windowPath, "main");
+    if (!present) {
+        INFO("Window::Present error code = " << static_cast<int>(present.error().code));
+        INFO("Window::Present error message = " << present.error().message.value_or("<none>"));
+    }
+    REQUIRE(present);
+    CHECK(present->stats.presented);
+
+    auto targetPath = resolve_target(fx, surfacePath);
+    auto framebufferPath = std::string(targetPath.getPath()) + "/output/v1/software/framebuffer";
+    auto storedFramebuffer = fx.space.read<Builders::SoftwareFramebuffer, std::string>(framebufferPath);
+    REQUIRE_FALSE(storedFramebuffer);
+    auto const code = storedFramebuffer.error().code;
+    bool const absent = code == SP::Error::Code::NoObjectFound
+        || code == SP::Error::Code::NoSuchPath;
+    CHECK(absent);
+
+    if (present->stats.buffered_frame_consumed) {
+        CHECK_FALSE(present->framebuffer.empty());
+    } else {
+        CHECK(present->framebuffer.empty());
+    }
+}
+
 TEST_CASE("Window::Present software path publishes residency watermarks") {
     RendererFixture fx;
 

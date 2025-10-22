@@ -143,6 +143,7 @@ Completed:
 - ✅ (October 16, 2025) Compile/test loop harness revalidated after presenter integration (15× repeat, 20 s timeout) confirming stability.
 - ✅ (October 16, 2025) Software presenter now publishes captured framebuffers under `output/v1/software/framebuffer`, enabling downstream inspection of rendered bytes alongside metadata.
 - ✅ (October 21, 2025) `Window::Present` mirrors presenter stats into `windows/<win>/diagnostics/metrics/live/views/<view>/present` via `Diagnostics::WriteWindowPresentMetrics`, keeping central dashboards aligned with per-target telemetry.
+- ✅ (October 22, 2025) Default software presents now skip serializing `SoftwareFramebuffer`; `Builders::Window::Present` only writes `output/v1/software/framebuffer` when `capture_framebuffer=true` and drains prior captures otherwise, avoiding the extra copy while leaving on-demand captures intact for diagnostics.
 - ✅ (October 17, 2025) Added a minimal paint-style demo (`examples/paint_example.cpp`) that wires the scene→render→present stack together, supports dynamic canvas resizing, and interpolates mouse strokes so contributors can exercise the full software path end-to-end.
 - ✅ (October 16, 2025) macOS window presentation now uses a CAMetalLayer-backed Metal swapchain (IOSurface copies + present) instead of CoreGraphics blits; fullscreen perf is no longer CPU bound.
 - ✅ (October 21, 2025) Shipped `examples/pixel_noise_example.cpp`, a per-pixel noise perf harness that uses the software renderer plus a before-present hook to generate full-surface churn each frame, streams FPS/render diagnostics to stdout, and supports headless or windowed runs for quick throughput checks.
@@ -163,7 +164,6 @@ Next:
   - Add a comparison script/check that fails when captured frame times exceed the stored baseline budget so the perf harness enforces realtime targets.
   - Fix window resize behaviour so the renderer repaints in real time during live resize instead of stretching the previous frame; ensure platform pumps deliver resize events quickly enough to drive the render loop.
   - Parallelize the noise generator: shard the IOSurface write loop across threads (e.g., via `TaskPool`) so per-frame noise drawing scales with CPU cores instead of running single-threaded.
-- 🔴 (High priority) Eliminate default framebuffer copies during present: the CPU path should write directly into the presented surface/IOSurface without serializing a `SoftwareFramebuffer` each frame. Keep the copy/blit path as an opt-in debug capture (e.g., `capture_framebuffer=true`), and audit `Builders::Window::Present`/diagnostics so production runs never pay for the extra buffer.
 
 ### Phase 5 — Input, Hit Testing, and Notifications (1 sprint)
 - ✅ (October 16, 2025) Added doctest scenarios for hit ordering, clip-aware picking, focus routing, and auto-render event scheduling via `Scene::HitTest`; notifications enqueue `AutoRenderRequestEvent` under `events/renderRequested/queue`.

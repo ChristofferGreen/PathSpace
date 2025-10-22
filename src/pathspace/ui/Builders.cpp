@@ -3774,7 +3774,9 @@ auto Present(PathSpace& space,
             framebuffer.clear();
         }
     }
-    if (presentStats.buffered_frame_consumed && framebuffer.empty()) {
+    if (presentPolicy.capture_framebuffer
+        && presentStats.buffered_frame_consumed
+        && framebuffer.empty()) {
         auto required = static_cast<std::size_t>(surface.frame_bytes());
         framebuffer.resize(required);
         auto copy = surface.copy_buffered_frame(framebuffer);
@@ -3851,23 +3853,30 @@ auto Present(PathSpace& space,
         return std::unexpected(status.error());
     }
 
-    SoftwareFramebuffer stored_framebuffer{};
-    stored_framebuffer.width = context->target_desc.size_px.width;
-    stored_framebuffer.height = context->target_desc.size_px.height;
-    stored_framebuffer.row_stride_bytes = static_cast<std::uint32_t>(surface.row_stride_bytes());
-    stored_framebuffer.pixel_format = context->target_desc.pixel_format;
-    stored_framebuffer.color_space = context->target_desc.color_space;
-    stored_framebuffer.premultiplied_alpha = context->target_desc.premultiplied_alpha;
-    stored_framebuffer.pixels = std::move(framebuffer);
-
     auto framebufferPath = std::string(context->target_path.getPath()) + "/output/v1/software/framebuffer";
-    if (auto status = replace_single<SoftwareFramebuffer>(space, framebufferPath, stored_framebuffer); !status) {
-        return std::unexpected(status.error());
-    }
 
     WindowPresentResult result{};
     result.stats = presentStats;
-    result.framebuffer = std::move(stored_framebuffer.pixels);
+    if (presentPolicy.capture_framebuffer) {
+        SoftwareFramebuffer stored_framebuffer{};
+        stored_framebuffer.width = context->target_desc.size_px.width;
+        stored_framebuffer.height = context->target_desc.size_px.height;
+        stored_framebuffer.row_stride_bytes = static_cast<std::uint32_t>(surface.row_stride_bytes());
+        stored_framebuffer.pixel_format = context->target_desc.pixel_format;
+        stored_framebuffer.color_space = context->target_desc.color_space;
+        stored_framebuffer.premultiplied_alpha = context->target_desc.premultiplied_alpha;
+        stored_framebuffer.pixels = std::move(framebuffer);
+
+        if (auto status = replace_single<SoftwareFramebuffer>(space, framebufferPath, stored_framebuffer); !status) {
+            return std::unexpected(status.error());
+        }
+        result.framebuffer = std::move(stored_framebuffer.pixels);
+    } else {
+        if (auto cleared = drain_queue<SoftwareFramebuffer>(space, framebufferPath); !cleared) {
+            return std::unexpected(cleared.error());
+        }
+        result.framebuffer = std::move(framebuffer);
+    }
     return result;
 }
 

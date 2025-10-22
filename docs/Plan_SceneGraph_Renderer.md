@@ -2194,7 +2194,7 @@ C++ types per key:
   - `revision: uint64_t` (monotonically increasing per scene; practically non-wrapping)
   - `renderMs: double`
   - `lastError: std::string` (empty on success)
-- `output/v1/software/framebuffer` — `SoftwareFramebuffer`:
+- `output/v1/software/framebuffer` — `SoftwareFramebuffer` (populated only when `capture_framebuffer=true`; absent otherwise to avoid default copies):
   - `std::vector<uint8_t> pixels`
   - `int width, int height, int stride`
   - `enum pixel_format`, `enum color_space`, `bool premultiplied_alpha`
