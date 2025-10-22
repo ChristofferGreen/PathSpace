@@ -90,6 +90,18 @@ Environment knobs (all respected by the wrapper and the logger):
 | Tail latest failure log | `ls -t build/test-logs | head -1 | xargs -I{} tail -n 80 build/test-logs/{}` |
 | Inspect renderer metrics path | `build/tests/PathSpaceUITests --test-case Diagnostics::ReadTargetMetrics` |
 | Benchmark damage/fingerprint metrics | `./build/benchmarks/path_renderer2d_benchmark --metrics [--canvas=WIDTHxHEIGHT]` |
+| Capture pixel-noise baseline JSON | `./scripts/capture_pixel_noise_baseline.sh` |
+
+### 5.1 Pixel Noise Perf Harness Baselines
+
+- Use `./scripts/capture_pixel_noise_baseline.sh` after rebuilding (`cmake --build build -j`) to refresh `docs/perf/pixel_noise_baseline.json`.
+- The helper launches `pixel_noise_example` headless with the standard perf budgets (≥50 FPS, ≤20 ms render/present) and records the run via `--write-baseline=<path>`.
+- Inspect the resulting JSON for:
+  - `summary.*` — aggregate FPS and timing averages used to confirm budgets.
+  - `tileStats.*` — progressive tiling activity (tiles updated/dirty/skipped/copied, worker/job counts) for spotting regression hot spots.
+  - `residency.*` — mirrored metrics from `diagnostics/metrics/residency/*` so residency budget drifts surface during perf reviews.
+- Pair the JSON with the console summary emitted by the example (`pixel_noise_example: summary …`) when reporting numbers in PRs.
+- Keep older baselines committed when behaviour intentionally shifts; diffing JSON across commits highlights the magnitude of a regression or improvement.
 
 ## 6. Closing the Loop
 

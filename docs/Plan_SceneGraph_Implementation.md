@@ -158,13 +158,13 @@ Completed:
 
 Next:
 - 🔜 (Planned) Pixel noise harness follow-ups: integrate the new example with automated baselines and diagnostics so perf regressions stay guarded.
-  - Persist baseline metrics (frame time, residency, tile stats) from the harness under `docs/perf/` so future runs can regress against a known-good profile.
-  - Spin a Metal-enabled variant once GPU uploads ship so the same full-surface churn target validates both software and Metal renderer paths.
-  - Mirror the harness expectations in `docs/Plan_SceneGraph_Renderer.md` when implemented so renderer + execution plans stay aligned.
-  - Update `docs/AI_Debugging_Playbook.md` with steps for running the harness, reading stored baselines, and interpreting perf telemetry.
-  - Capture a representative frame grab (e.g., `images/perf/pixel_noise.png`) so regressions include a visual reference alongside metrics.
-  - Land a helper (script or build target) that writes the captured metrics into `docs/perf/`, creating the directory if needed so the baselines stay versioned.
-  - Add a comparison script/check that fails when captured frame times exceed the stored baseline budget so the perf harness enforces realtime targets.
+  - ✅ (October 22, 2025) Persist baseline metrics (frame time, residency, tile stats) from the harness under `docs/perf/` via `--write-baseline`; JSON captures live stats for regression comparisons.
+  - ✅ (October 22, 2025) Landed `scripts/capture_pixel_noise_baseline.sh` to produce/update versioned baselines (default output `docs/perf/pixel_noise_baseline.json`).
+  - 🔜 Spin a Metal-enabled variant once GPU uploads ship so the same full-surface churn target validates both software and Metal renderer paths.
+  - 🔜 Mirror the harness expectations in `docs/Plan_SceneGraph_Renderer.md` when implemented so renderer + execution plans stay aligned.
+  - ✅ (October 22, 2025) Documented baseline workflow in `docs/AI_Debugging_Playbook.md` (Tooling §5.1) covering capture script usage and JSON interpretation.
+  - 🔜 Capture a representative frame grab (e.g., `images/perf/pixel_noise.png`) so regressions include a visual reference alongside metrics.
+  - 🔜 Add a comparison script/check that fails when captured frame times exceed the stored baseline budget so the perf harness enforces realtime targets.
 
 ### Phase 5 — Input, Hit Testing, and Notifications (1 sprint)
 - ✅ (October 16, 2025) Added doctest scenarios for hit ordering, clip-aware picking, focus routing, and auto-render event scheduling via `Scene::HitTest`; notifications enqueue `AutoRenderRequestEvent` under `events/renderRequested/queue`.

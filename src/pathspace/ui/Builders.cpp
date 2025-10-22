@@ -5748,8 +5748,43 @@ auto ReadTargetMetrics(PathSpace const& space,
         return std::unexpected(value.error());
     }
 
+    if (auto value = read_value<double>(space, base + "/progressiveCopyMs"); value) {
+        metrics.progressive_copy_ms = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
     if (auto value = read_value<bool>(space, base + "/usedMetalTexture"); value) {
         metrics.used_metal_texture = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<bool>(space, base + "/presented"); value) {
+        metrics.presented = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<bool>(space, base + "/bufferedFrameConsumed"); value) {
+        metrics.buffered_frame_consumed = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<bool>(space, base + "/usedProgressive"); value) {
+        metrics.used_progressive = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<bool>(space, base + "/stale"); value) {
+        metrics.stale = *value;
     } else if (value.error().code != SP::Error::Code::NoObjectFound
                && value.error().code != SP::Error::Code::NoSuchPath) {
         return std::unexpected(value.error());
@@ -5762,12 +5797,187 @@ auto ReadTargetMetrics(PathSpace const& space,
         return std::unexpected(value.error());
     }
 
+    if (auto value = read_value<std::string>(space, base + "/presentMode"); value) {
+        metrics.present_mode = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<double>(space, base + "/waitBudgetMs"); value) {
+        metrics.wait_budget_ms = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<double>(space, base + "/stalenessBudgetMs"); value) {
+        metrics.staleness_budget_ms = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<double>(space, base + "/frameTimeoutMs"); value) {
+        metrics.frame_timeout_ms = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/maxAgeFrames"); value) {
+        metrics.max_age_frames = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<bool>(space, base + "/autoRenderOnPresent"); value) {
+        metrics.auto_render_on_present = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<bool>(space, base + "/vsyncAlign"); value) {
+        metrics.vsync_align = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
     if (auto value = read_value<bool>(space, base + "/lastPresentSkipped"); value) {
-       metrics.last_present_skipped = *value;
-   } else if (value.error().code != SP::Error::Code::NoObjectFound
-              && value.error().code != SP::Error::Code::NoSuchPath) {
-       return std::unexpected(value.error());
-   }
+        metrics.last_present_skipped = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/drawableCount"); value) {
+        metrics.drawable_count = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<double>(space, base + "/presentedAgeMs"); value) {
+        metrics.frame_age_ms = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/presentedAgeFrames"); value) {
+        metrics.frame_age_frames = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/progressiveTilesUpdated"); value) {
+        metrics.progressive_tiles_updated = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/progressiveBytesCopied"); value) {
+        metrics.progressive_bytes_copied = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/progressiveTileSize"); value) {
+        metrics.progressive_tile_size = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/progressiveWorkersUsed"); value) {
+        metrics.progressive_workers_used = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/progressiveJobs"); value) {
+        metrics.progressive_jobs = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/encodeWorkersUsed"); value) {
+        metrics.encode_workers_used = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/encodeJobs"); value) {
+        metrics.encode_jobs = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<bool>(space, base + "/progressiveTileDiagnosticsEnabled"); value) {
+        metrics.progressive_tile_diagnostics_enabled = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/progressiveTilesCopied"); value) {
+        metrics.progressive_tiles_copied = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/progressiveRectsCoalesced"); value) {
+        metrics.progressive_rects_coalesced = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/progressiveSkipOddSeq"); value) {
+        metrics.progressive_skip_seq_odd = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/progressiveRecopyAfterSeqChange"); value) {
+        metrics.progressive_recopy_after_seq_change = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/progressiveTilesDirty"); value) {
+        metrics.progressive_tiles_dirty = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/progressiveTilesTotal"); value) {
+        metrics.progressive_tiles_total = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/progressiveTilesSkipped"); value) {
+        metrics.progressive_tiles_skipped = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
 
     if (auto value = read_value<uint64_t>(space, base + "/materialCount"); value) {
         metrics.material_count = *value;
