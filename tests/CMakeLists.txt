@@ -141,4 +141,31 @@ if(PATHSPACE_ENABLE_UI)
             "$<TARGET_FILE:PathSpaceUITests>"
   )
   set_tests_properties(PathSpaceUITests PROPERTIES LABELS ui)
+
+  if(APPLE)
+    add_test(NAME PixelNoisePerfHarness
+      COMMAND "${PATHSPACE_TEST_RUNNER}"
+              --label PixelNoisePerfHarness
+              --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+              --timeout 90
+              --env PATHSPACE_LOG=1
+              --env PATHSPACE_TEST_TIMEOUT=1
+              --env MallocNanoZone=0
+              --
+              "$<TARGET_FILE:pixel_noise_example>"
+              --headless
+              --width=1280
+              --height=720
+              --frames=120
+              --report-metrics
+              --report-interval=0.5
+              --present-refresh=0
+              --present-call-metric
+              --seed=123456789
+              --budget-present-ms=20.0
+              --budget-render-ms=20.0
+              --min-fps=50.0
+    )
+    set_tests_properties(PixelNoisePerfHarness PROPERTIES LABELS perf)
+  endif()
 endif()

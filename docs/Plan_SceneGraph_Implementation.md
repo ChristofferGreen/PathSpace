@@ -150,6 +150,7 @@ Completed:
 - ✅ (October 22, 2025) Pixel noise harness defaults to the fast path (framebuffer capture off, metrics muted, window present rate 60 Hz) with CLI escapes for diagnostics/capture (`--headless`, `--capture-framebuffer`, `--report-metrics`, `--report-extended`, `--present-call-metric`, `--present-refresh=<hz>`).
 - ✅ (October 22, 2025) Parallelized the pixel noise generator across CPU threads so IOSurface writes scale with hardware concurrency; deterministic seeding keeps runs reproducible while eliminating the prior single-threaded hotspot.
 - ✅ (October 22, 2025) Pixel noise window resizing now reconfigures the surface size live, keeping noise samples at native resolution instead of stretching when the window is maximized.
+- ✅ (October 22, 2025) Pixel noise perf harness now runs in the 15× loop via the new `PixelNoisePerfHarness` CTest, executing `pixel_noise_example` headless with deterministic seeding and enforcing realtime budgets (≥50 FPS, ≤20 ms avg present/render). The example gained `--min-fps`, `--budget-present-ms`, and `--budget-render-ms` options plus a structured summary line so regressions surface immediately when the loop drops below target.
 
 Completed:
 - ✅ (October 18, 2025) Added fullscreen CAMetalLayer regression coverage in `PathSpaceUITests` and defaulted the presenter to zero-copy unless `capture_framebuffer` is explicitly enabled; perf regressions now fail under the UI harness.
@@ -157,7 +158,6 @@ Completed:
 
 Next:
 - 🔜 (Planned) Pixel noise harness follow-ups: integrate the new example with automated baselines and diagnostics so perf regressions stay guarded.
-  - Wire the looped test harness to run the example, capture render/present timing from diagnostics, and fail when the full-surface churn path drops below the realtime budget.
   - Persist baseline metrics (frame time, residency, tile stats) from the harness under `docs/perf/` so future runs can regress against a known-good profile.
   - Spin a Metal-enabled variant once GPU uploads ship so the same full-surface churn target validates both software and Metal renderer paths.
   - Mirror the harness expectations in `docs/Plan_SceneGraph_Renderer.md` when implemented so renderer + execution plans stay aligned.

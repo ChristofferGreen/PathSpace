@@ -57,6 +57,9 @@ struct Options {
     std::chrono::duration<double> report_interval = std::chrono::seconds{1};
     std::uint64_t seed = 0;
     std::optional<std::chrono::duration<double>> runtime_limit{};
+    std::optional<double> budget_present_ms{};
+    std::optional<double> budget_render_ms{};
+    std::optional<double> min_fps{};
 };
 
 struct NoiseState {
@@ -251,6 +254,15 @@ auto parse_options(int argc, char** argv) -> Options {
             opts.report_present_call_time = true;
         } else if (arg.rfind("--runtime-minutes=", 0) == 0) {
             opts.runtime_limit = parse_minutes(arg.substr(18), "runtime minutes");
+        } else if (arg.rfind("--budget-present-ms=", 0) == 0) {
+            constexpr std::string_view prefix = "--budget-present-ms=";
+            opts.budget_present_ms = parse_positive_double(arg.substr(prefix.size()), "budget present ms");
+        } else if (arg.rfind("--budget-render-ms=", 0) == 0) {
+            constexpr std::string_view prefix = "--budget-render-ms=";
+            opts.budget_render_ms = parse_positive_double(arg.substr(prefix.size()), "budget render ms");
+        } else if (arg.rfind("--min-fps=", 0) == 0) {
+            constexpr std::string_view prefix = "--min-fps=";
+            opts.min_fps = parse_positive_double(arg.substr(prefix.size()), "min fps");
         } else if (arg == "--help" || arg == "-h") {
             std::cout << "Usage: pixel_noise_example [options]\n"
                       << "Options:\n"
@@ -263,6 +275,9 @@ auto parse_options(int argc, char** argv) -> Options {
                       << "  --report-extended         Metrics plus Window::Present call timing\n"
                       << "  --present-call-metric     Track Window::Present duration (pairs well with --report-metrics)\n"
                       << "  --runtime-minutes=<min>   Stop after the given number of minutes\n"
+                      << "  --budget-present-ms=<ms>  Fail if avg present time exceeds this budget\n"
+                      << "  --budget-render-ms=<ms>   Fail if avg render time exceeds this budget\n"
+                      << "  --min-fps=<fps>           Fail if average FPS drops below this threshold\n"
                       << "  --headless                Skip local window presentation\n"
                       << "  --windowed                Show the local window while computing frames (default)\n"
                       << "  --capture-framebuffer     Enable framebuffer capture in the present policy\n"
@@ -636,6 +651,8 @@ int main(int argc, char** argv) {
     std::size_t interval_present_call_samples = 0;
     std::size_t total_present_call_samples = 0;
     std::size_t total_presented = 0;
+    double total_present_ms_sum = 0.0;
+    double total_render_ms_sum = 0.0;
 
     while (g_running.load(std::memory_order_acquire)) {
         if (options.max_frames != 0 && total_presented >= options.max_frames) {
@@ -725,6 +742,8 @@ int main(int argc, char** argv) {
 
         if (present->stats.presented) {
             ++total_presented;
+            total_present_ms_sum += present->stats.present_ms;
+            total_render_ms_sum += present->stats.frame.render_ms;
             if (options.report_metrics) {
                 ++frames_since_report;
                 accumulated_present_ms += present->stats.present_ms;
@@ -771,6 +790,31 @@ int main(int argc, char** argv) {
     }
 
     std::cout << "pixel_noise_example: presented " << total_presented << " frames.\n";
+
+    auto end_time = std::chrono::steady_clock::now();
+    double elapsed_seconds = std::chrono::duration<double>(end_time - start_time).count();
+    double avg_present_ms = total_presented > 0
+                                ? total_present_ms_sum / static_cast<double>(total_presented)
+                                : 0.0;
+    double avg_render_ms = total_presented > 0
+                               ? total_render_ms_sum / static_cast<double>(total_presented)
+                               : 0.0;
+    double avg_fps = (elapsed_seconds > 0.0 && total_presented > 0)
+                         ? static_cast<double>(total_presented) / elapsed_seconds
+                         : 0.0;
+
+    std::cout << std::fixed << std::setprecision(3)
+              << "pixel_noise_example: summary frames=" << total_presented
+              << " fps=" << avg_fps
+              << " avgPresentMs=" << avg_present_ms
+              << " avgRenderMs=" << avg_render_ms;
+    if (options.report_present_call_time && total_present_call_samples > 0) {
+        double avg_present_call_ms = total_present_call_ms / static_cast<double>(total_present_call_samples);
+        std::cout << " avgPresentCallMs=" << avg_present_call_ms;
+    }
+    std::cout << '\n';
+    std::cout.unsetf(std::ios::floatfield);
+
     if (options.report_present_call_time && total_present_call_samples > 0) {
         std::cout << std::fixed << std::setprecision(3)
                   << "pixel_noise_example: avgPresentCallMs="
@@ -778,7 +822,33 @@ int main(int argc, char** argv) {
                   << " over " << total_present_call_samples << " samples\n";
         std::cout.unsetf(std::ios::floatfield);
     }
-    return 0;
+
+    bool budget_failed = false;
+    if ((options.min_fps || options.budget_present_ms || options.budget_render_ms) && total_presented == 0) {
+        std::cerr << "pixel_noise_example: no frames presented; unable to evaluate performance budgets.\n";
+        budget_failed = true;
+    }
+    if (total_presented > 0) {
+        if (options.min_fps && (avg_fps + 1e-6) < *options.min_fps) {
+            std::cerr << "pixel_noise_example: average FPS " << avg_fps
+                      << " below min-fps budget " << *options.min_fps << '\n';
+            budget_failed = true;
+        }
+        if (options.budget_present_ms && (avg_present_ms - 1e-6) > *options.budget_present_ms) {
+            std::cerr << "pixel_noise_example: avg present "
+                      << avg_present_ms << "ms exceeds budget "
+                      << *options.budget_present_ms << "ms\n";
+            budget_failed = true;
+        }
+        if (options.budget_render_ms && (avg_render_ms - 1e-6) > *options.budget_render_ms) {
+            std::cerr << "pixel_noise_example: avg render "
+                      << avg_render_ms << "ms exceeds budget "
+                      << *options.budget_render_ms << "ms\n";
+            budget_failed = true;
+        }
+    }
+
+    return budget_failed ? 2 : 0;
 }
 
 #endif // PATHSPACE_ENABLE_UI / __APPLE__
