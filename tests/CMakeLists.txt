@@ -157,5 +157,23 @@ if(PATHSPACE_ENABLE_UI)
               --build-dir "${CMAKE_BINARY_DIR}"
     )
     set_tests_properties(PixelNoisePerfHarness PROPERTIES LABELS perf)
+    if(PATHSPACE_UI_METAL)
+      add_test(NAME PixelNoisePerfHarnessMetal
+        COMMAND "${PATHSPACE_TEST_RUNNER}"
+                --label PixelNoisePerfHarnessMetal
+                --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+                --timeout 90
+                --env PATHSPACE_LOG=1
+                --env PATHSPACE_TEST_TIMEOUT=1
+                --env MallocNanoZone=0
+                --env PATHSPACE_ENABLE_METAL_UPLOADS=1
+                --
+                python3
+                "${CMAKE_SOURCE_DIR}/scripts/check_pixel_noise_baseline.py"
+                --build-dir "${CMAKE_BINARY_DIR}"
+                --baseline "${CMAKE_SOURCE_DIR}/docs/perf/pixel_noise_metal_baseline.json"
+      )
+      set_tests_properties(PixelNoisePerfHarnessMetal PROPERTIES LABELS perf)
+    endif()
   endif()
 endif()

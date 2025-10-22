@@ -160,8 +160,8 @@ Next:
 - 🔜 (Planned) Pixel noise harness follow-ups: integrate the new example with automated baselines and diagnostics so perf regressions stay guarded.
   - ✅ (October 22, 2025) Persist baseline metrics (frame time, residency, tile stats) from the harness under `docs/perf/` via `--write-baseline`; JSON captures live stats for regression comparisons.
   - ✅ (October 22, 2025) Landed `scripts/capture_pixel_noise_baseline.sh` to produce/update versioned baselines (default output `docs/perf/pixel_noise_baseline.json`).
-  - 🔜 Spin a Metal-enabled variant once GPU uploads ship so the same full-surface churn target validates both software and Metal renderer paths.
-  - 🔜 Mirror the harness expectations in `docs/Plan_SceneGraph_Renderer.md` when implemented so renderer + execution plans stay aligned.
+  - ✅ (October 22, 2025) Spun a Metal-enabled variant via `--backend=metal`, captured `docs/perf/pixel_noise_metal_baseline.json`, and added the `PixelNoisePerfHarnessMetal` CTest (PATHSPACE_ENABLE_METAL_UPLOADS-gated) so the loop covers both Software2D and Metal2D backends with the same perf budgets.
+  - ✅ (October 22, 2025) Mirrored the harness expectations in `docs/Plan_SceneGraph_Renderer.md`, covering the new Metal2D backend switch, paired baselines, and the extended CTest coverage.
   - ✅ (October 22, 2025) Documented baseline workflow in `docs/AI_Debugging_Playbook.md` (Tooling §5.1) covering capture script usage and JSON interpretation.
   - 🔜 Capture a representative frame grab (e.g., `images/perf/pixel_noise.png`) so regressions include a visual reference alongside metrics.
   - ✅ (October 22, 2025) Added `scripts/check_pixel_noise_baseline.py` and routed `PixelNoisePerfHarness` through it so looped runs fail whenever runtime averages exceed the baseline budgets.

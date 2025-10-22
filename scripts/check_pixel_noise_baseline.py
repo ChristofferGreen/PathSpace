@@ -115,6 +115,14 @@ def _build_command(binary: pathlib.Path, baseline: Dict[str, Any], output_path: 
     if min_fps and min_fps > 0.0:
         args.append(f"--min-fps={_format_float(min_fps)}")
 
+    backend_kind = command_cfg.get("backendKind")
+    if backend_kind:
+        backend_lower = str(backend_kind).lower()
+        if backend_lower in ("metal", "metal2d"):
+            args.append("--backend=metal")
+        elif backend_lower in ("software", "software2d"):
+            args.append("--backend=software")
+
     args.extend((
         "--report-metrics",
         "--present-call-metric",
@@ -192,6 +200,9 @@ def main() -> int:
     binary = _locate_binary(build_dir, args.binary)
 
     baseline = _load_json(baseline_path)
+    backend_kind = (baseline.get("command") or {}).get("backendKind")
+    if backend_kind and str(backend_kind).lower() in ("metal", "metal2d"):
+        os.environ.setdefault("PATHSPACE_ENABLE_METAL_UPLOADS", "1")
 
     if args.write_temp:
         output_path = args.write_temp

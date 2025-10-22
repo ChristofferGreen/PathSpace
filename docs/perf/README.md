@@ -17,6 +17,10 @@ By default the script saves the output to
 `WIDTH`, `HEIGHT`, or the budget environment variables to capture alternative
 profiles.
 
+For the Metal2D baseline, export `PATHSPACE_ENABLE_METAL_UPLOADS=1`,
+set `OUTPUT_PATH=docs/perf/pixel_noise_metal_baseline.json`, and pass
+`--backend=metal` so the example exercises GPU uploads while recording the run.
+
 The JSON payload includes:
 
 - Command parameters used for the run (surface size, seed, budgets, frame count)

@@ -57,6 +57,7 @@ struct Options {
     bool capture_framebuffer = false;
     bool report_metrics = false;
     bool report_present_call_time = false;
+    bool use_metal_backend = false;
     double present_refresh_hz = 60.0;
     std::size_t max_frames = 0;
     std::chrono::duration<double> report_interval = std::chrono::seconds{1};
@@ -205,7 +206,8 @@ void write_baseline_metrics(Options const& options,
     } else {
         out << "null";
     }
-    out << "\n";
+    out << ",\n";
+    out << "    \"backendKind\": " << std::quoted(backend_kind) << "\n";
     out << "  },\n";
 
     out << "  \"summary\": {\n";
@@ -462,6 +464,10 @@ auto parse_options(int argc, char** argv) -> Options {
             opts.report_present_call_time = true;
         } else if (arg == "--present-call-metric") {
             opts.report_present_call_time = true;
+        } else if (arg == "--metal" || arg == "--backend=metal" || arg == "--backend=Metal2D") {
+            opts.use_metal_backend = true;
+        } else if (arg == "--software" || arg == "--backend=software" || arg == "--backend=Software2D") {
+            opts.use_metal_backend = false;
         } else if (arg.rfind("--runtime-minutes=", 0) == 0) {
             opts.runtime_limit = parse_minutes(arg.substr(18), "runtime minutes");
         } else if (arg.rfind("--budget-present-ms=", 0) == 0) {
@@ -492,6 +498,9 @@ auto parse_options(int argc, char** argv) -> Options {
                       << "  --report-metrics          Print FPS/render metrics every interval\n"
                       << "  --report-extended         Metrics plus Window::Present call timing\n"
                       << "  --present-call-metric     Track Window::Present duration (pairs well with --report-metrics)\n"
+                      << "  --backend=<software|metal> Select renderer backend (default software)\n"
+                      << "  --metal                   Shortcut for --backend=metal\n"
+                      << "  --software                Shortcut for --backend=software\n"
                       << "  --runtime-minutes=<min>   Stop after the given number of minutes\n"
                       << "  --budget-present-ms=<ms>  Fail if avg present time exceeds this budget\n"
                       << "  --budget-render-ms=<ms>   Fail if avg render time exceeds this budget\n"
@@ -779,6 +788,19 @@ auto install_noise_hook(std::shared_ptr<NoiseState> state) -> HookGuard {
 int main(int argc, char** argv) {
     auto options = parse_options(argc, argv);
 
+#if !defined(PATHSPACE_UI_METAL)
+    if (options.use_metal_backend) {
+        std::cerr << "pixel_noise_example: --backend=metal requested, but this build lacks PATHSPACE_UI_METAL support.\n";
+        return 1;
+    }
+#else
+    if (options.use_metal_backend && std::getenv("PATHSPACE_ENABLE_METAL_UPLOADS") == nullptr) {
+        if (::setenv("PATHSPACE_ENABLE_METAL_UPLOADS", "1", 1) != 0) {
+            std::cerr << "pixel_noise_example: warning: failed to set PATHSPACE_ENABLE_METAL_UPLOADS=1; Metal uploads may remain disabled.\n";
+        }
+    }
+#endif
+
     std::signal(SIGINT, handle_signal);
     std::signal(SIGTERM, handle_signal);
 
@@ -789,9 +811,13 @@ int main(int argc, char** argv) {
     auto scene_setup = publish_scene(space, app_root_view, options.width, options.height);
 
     Builders::App::BootstrapParams bootstrap_params{};
-    bootstrap_params.renderer.name = "noise_renderer";
-    bootstrap_params.renderer.kind = Builders::RendererKind::Software2D;
-    bootstrap_params.renderer.description = "pixel noise renderer";
+    bootstrap_params.renderer.name = options.use_metal_backend ? "noise_renderer_metal" : "noise_renderer";
+    bootstrap_params.renderer.kind = options.use_metal_backend
+                                         ? Builders::RendererKind::Metal2D
+                                         : Builders::RendererKind::Software2D;
+    bootstrap_params.renderer.description = options.use_metal_backend
+                                                ? "pixel noise renderer (Metal2D)"
+                                                : "pixel noise renderer";
 
     bootstrap_params.surface.name = "noise_surface";
     bootstrap_params.surface.desc.size_px.width = options.width;
@@ -799,6 +825,14 @@ int main(int argc, char** argv) {
     bootstrap_params.surface.desc.pixel_format = Builders::PixelFormat::RGBA8Unorm_sRGB;
     bootstrap_params.surface.desc.color_space = Builders::ColorSpace::sRGB;
     bootstrap_params.surface.desc.premultiplied_alpha = true;
+#if defined(PATHSPACE_UI_METAL)
+    if (options.use_metal_backend) {
+        bootstrap_params.surface.desc.metal.storage_mode = Builders::MetalStorageMode::Shared;
+        bootstrap_params.surface.desc.metal.texture_usage = static_cast<std::uint8_t>(Builders::MetalTextureUsage::ShaderRead)
+                                                            | static_cast<std::uint8_t>(Builders::MetalTextureUsage::RenderTarget);
+        bootstrap_params.surface.desc.metal.iosurface_backing = true;
+    }
+#endif
 
     bootstrap_params.window.name = "noise_window";
     bootstrap_params.window.title = "PathSpace Pixel Noise";
@@ -848,6 +882,7 @@ int main(int argc, char** argv) {
     std::cout << "pixel_noise_example: width=" << options.width
               << " height=" << options.height
               << " seed=" << options.seed
+              << " backend=" << (options.use_metal_backend ? "Metal2D" : "Software2D")
               << (options.headless ? " headless" : " windowed")
               << (options.capture_framebuffer ? " capture" : "")
               << (options.report_metrics ? " metrics" : "")
@@ -1155,6 +1190,9 @@ int main(int argc, char** argv) {
                                                          SP::ConcretePathStringView{target_absolute.getPath()}),
                 "read target metrics");
             std::string backend = !last_backend_kind.empty() ? last_backend_kind : metrics.backend_kind;
+            if (backend.empty()) {
+                backend = options.use_metal_backend ? "Metal2D" : "Software2D";
+            }
             tile_summary.last_tile_size = last_tile_size != 0 ? last_tile_size : metrics.progressive_tile_size;
             tile_summary.last_tiles_total = last_tiles_total != 0 ? last_tiles_total : metrics.progressive_tiles_total;
             tile_summary.last_drawable_count = last_drawable_count != 0 ? last_drawable_count : metrics.drawable_count;
