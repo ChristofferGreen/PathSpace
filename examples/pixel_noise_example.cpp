@@ -48,6 +48,9 @@ struct Options {
     int width = 1280;
     int height = 720;
     bool headless = false;
+    bool capture_framebuffer = false;
+    bool report_metrics = false;
+    bool report_present_call_time = false;
     std::size_t max_frames = 0;
     std::chrono::duration<double> report_interval = std::chrono::seconds{1};
     std::uint64_t seed = 0;
@@ -182,6 +185,15 @@ auto parse_options(int argc, char** argv) -> Options {
             opts.report_interval = parse_seconds(arg.substr(18), "report interval");
         } else if (arg.rfind("--seed=", 0) == 0) {
             opts.seed = parse_seed(arg.substr(7));
+        } else if (arg == "--capture-framebuffer") {
+            opts.capture_framebuffer = true;
+        } else if (arg == "--report-metrics") {
+            opts.report_metrics = true;
+        } else if (arg == "--report-extended") {
+            opts.report_metrics = true;
+            opts.report_present_call_time = true;
+        } else if (arg == "--present-call-metric") {
+            opts.report_present_call_time = true;
         } else if (arg.rfind("--runtime-minutes=", 0) == 0) {
             opts.runtime_limit = parse_minutes(arg.substr(18), "runtime minutes");
         } else if (arg == "--help" || arg == "-h") {
@@ -191,8 +203,12 @@ auto parse_options(int argc, char** argv) -> Options {
                       << "  --height=<pixels>         Surface height (default 720)\n"
                       << "  --frames=<count>          Stop after N presented frames\n"
                       << "  --report-interval=<sec>   Stats print interval (default 1.0)\n"
+                      << "  --report-metrics          Print FPS/render metrics every interval\n"
+                      << "  --report-extended         Metrics plus Window::Present call timing\n"
+                      << "  --present-call-metric     Track Window::Present duration (pairs well with --report-metrics)\n"
                       << "  --runtime-minutes=<min>   Stop after the given number of minutes\n"
                       << "  --headless                Skip local window presentation\n"
+                      << "  --capture-framebuffer     Enable framebuffer capture in the present policy\n"
                       << "  --seed=<value>            PRNG seed\n";
             std::exit(0);
         } else {
@@ -457,7 +473,7 @@ int main(int argc, char** argv) {
     bootstrap_params.window.background = "#101218";
 
     bootstrap_params.present_policy.mode = PathWindowView::PresentMode::AlwaysLatestComplete;
-    bootstrap_params.present_policy.capture_framebuffer = true;
+    bootstrap_params.present_policy.capture_framebuffer = options.capture_framebuffer;
     bootstrap_params.present_policy.auto_render_on_present = true;
     bootstrap_params.present_policy.vsync_align = false;
 
@@ -484,13 +500,21 @@ int main(int argc, char** argv) {
               << " height=" << options.height
               << " seed=" << options.seed
               << (options.headless ? " headless" : " windowed")
+              << (options.capture_framebuffer ? " capture" : "")
+              << (options.report_metrics ? " metrics" : "")
+              << (options.report_present_call_time ? " present-call" : "")
               << '\n';
 
-    auto last_report = std::chrono::steady_clock::now();
-    auto start_time = last_report;
+    auto now = std::chrono::steady_clock::now();
+    auto last_report = now;
+    auto start_time = now;
     std::size_t frames_since_report = 0;
     double accumulated_present_ms = 0.0;
     double accumulated_render_ms = 0.0;
+    double interval_present_call_ms = 0.0;
+    double total_present_call_ms = 0.0;
+    std::size_t interval_present_call_samples = 0;
+    std::size_t total_present_call_samples = 0;
     std::size_t total_presented = 0;
 
     while (g_running.load(std::memory_order_acquire)) {
@@ -519,9 +543,23 @@ int main(int argc, char** argv) {
             }
         }
 
+        std::chrono::steady_clock::time_point present_call_start{};
+        if (options.report_present_call_time) {
+            present_call_start = std::chrono::steady_clock::now();
+        }
         auto present = Builders::Window::Present(space,
                                                  bootstrap.window,
                                                  bootstrap.view_name);
+        if (options.report_present_call_time) {
+            auto present_call_finish = std::chrono::steady_clock::now();
+            double call_ms = std::chrono::duration<double, std::milli>(present_call_finish - present_call_start).count();
+            total_present_call_ms += call_ms;
+            ++total_present_call_samples;
+            if (options.report_metrics) {
+                interval_present_call_ms += call_ms;
+                ++interval_present_call_samples;
+            }
+        }
         if (!present) {
             auto const& err = present.error();
             std::cerr << "pixel_noise_example: present failed";
@@ -540,43 +578,60 @@ int main(int argc, char** argv) {
                                 options.headless);
 
         if (present->stats.presented) {
-            ++frames_since_report;
             ++total_presented;
-            accumulated_present_ms += present->stats.present_ms;
-            accumulated_render_ms += present->stats.frame.render_ms;
+            if (options.report_metrics) {
+                ++frames_since_report;
+                accumulated_present_ms += present->stats.present_ms;
+                accumulated_render_ms += present->stats.frame.render_ms;
+            }
         }
 
-        auto now = std::chrono::steady_clock::now();
-        if (now - last_report >= options.report_interval) {
-            double seconds = std::chrono::duration<double>(now - last_report).count();
-            double fps = seconds > 0.0 ? static_cast<double>(frames_since_report) / seconds : 0.0;
-            double avg_present = frames_since_report > 0
-                                     ? accumulated_present_ms / static_cast<double>(frames_since_report)
-                                     : 0.0;
-            double avg_render = frames_since_report > 0
-                                    ? accumulated_render_ms / static_cast<double>(frames_since_report)
-                                    : 0.0;
+        if (options.report_metrics) {
+            now = std::chrono::steady_clock::now();
+            if (now - last_report >= options.report_interval) {
+                double seconds = std::chrono::duration<double>(now - last_report).count();
+                double fps = seconds > 0.0 ? static_cast<double>(frames_since_report) / seconds : 0.0;
+                double avg_present = frames_since_report > 0
+                                         ? accumulated_present_ms / static_cast<double>(frames_since_report)
+                                         : 0.0;
+                double avg_render = frames_since_report > 0
+                                        ? accumulated_render_ms / static_cast<double>(frames_since_report)
+                                        : 0.0;
 
-            std::cout << std::fixed << std::setprecision(2)
-                      << "[pixel_noise_example] "
-                      << "frames=" << total_presented
-                      << " fps=" << fps
-                      << " avgPresentMs=" << avg_present
-                      << " avgRenderMs=" << avg_render
-                      << " lastFrameIndex=" << present->stats.frame.frame_index
-                      << " lastPresentMs=" << present->stats.present_ms
-                      << " lastRenderMs=" << present->stats.frame.render_ms
-                      << '\n';
-            std::cout.unsetf(std::ios::floatfield);
+                std::cout << std::fixed << std::setprecision(2)
+                          << "[pixel_noise_example] "
+                          << "frames=" << total_presented
+                          << " fps=" << fps
+                          << " avgPresentMs=" << avg_present
+                          << " avgRenderMs=" << avg_render;
+                if (options.report_present_call_time && interval_present_call_samples > 0) {
+                    double avg_call = interval_present_call_ms / static_cast<double>(interval_present_call_samples);
+                    std::cout << " avgPresentCallMs=" << avg_call;
+                }
+                std::cout << " lastFrameIndex=" << present->stats.frame.frame_index
+                          << " lastPresentMs=" << present->stats.present_ms
+                          << " lastRenderMs=" << present->stats.frame.render_ms
+                          << '\n';
+                std::cout.unsetf(std::ios::floatfield);
 
-            frames_since_report = 0;
-            accumulated_present_ms = 0.0;
-            accumulated_render_ms = 0.0;
-            last_report = now;
+                frames_since_report = 0;
+                accumulated_present_ms = 0.0;
+                accumulated_render_ms = 0.0;
+                interval_present_call_ms = 0.0;
+                interval_present_call_samples = 0;
+                last_report = now;
+            }
         }
     }
 
     std::cout << "pixel_noise_example: presented " << total_presented << " frames.\n";
+    if (options.report_present_call_time && total_present_call_samples > 0) {
+        std::cout << std::fixed << std::setprecision(3)
+                  << "pixel_noise_example: avgPresentCallMs="
+                  << (total_present_call_ms / static_cast<double>(total_present_call_samples))
+                  << " over " << total_present_call_samples << " samples\n";
+        std::cout.unsetf(std::ios::floatfield);
+    }
     return 0;
 }
 
