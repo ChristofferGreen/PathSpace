@@ -162,6 +162,7 @@ Next:
   - Land a helper (script or build target) that writes the captured metrics into `docs/perf/`, creating the directory if needed so the baselines stay versioned.
   - Add a comparison script/check that fails when captured frame times exceed the stored baseline budget so the perf harness enforces realtime targets.
   - Fix window resize behaviour so the renderer repaints in real time during live resize instead of stretching the previous frame; ensure platform pumps deliver resize events quickly enough to drive the render loop.
+- 🔴 (High priority) Eliminate default framebuffer copies during present: the CPU path should write directly into the presented surface/IOSurface without serializing a `SoftwareFramebuffer` each frame. Keep the copy/blit path as an opt-in debug capture (e.g., `capture_framebuffer=true`), and audit `Builders::Window::Present`/diagnostics so production runs never pay for the extra buffer.
 
 ### Phase 5 — Input, Hit Testing, and Notifications (1 sprint)
 - ✅ (October 16, 2025) Added doctest scenarios for hit ordering, clip-aware picking, focus routing, and auto-render event scheduling via `Scene::HitTest`; notifications enqueue `AutoRenderRequestEvent` under `events/renderRequested/queue`.
