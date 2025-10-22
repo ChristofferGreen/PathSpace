@@ -47,7 +47,7 @@ namespace {
 struct Options {
     int width = 1280;
     int height = 720;
-    bool headless = true;
+    bool headless = false;
     bool capture_framebuffer = false;
     bool report_metrics = false;
     bool report_present_call_time = false;
@@ -227,8 +227,8 @@ auto parse_options(int argc, char** argv) -> Options {
                       << "  --report-extended         Metrics plus Window::Present call timing\n"
                       << "  --present-call-metric     Track Window::Present duration (pairs well with --report-metrics)\n"
                       << "  --runtime-minutes=<min>   Stop after the given number of minutes\n"
-                      << "  --headless                Skip local window presentation (default)\n"
-                      << "  --windowed                Show the local window while computing frames\n"
+                      << "  --headless                Skip local window presentation\n"
+                      << "  --windowed                Show the local window while computing frames (default)\n"
                       << "  --capture-framebuffer     Enable framebuffer capture in the present policy\n"
                       << "  --seed=<value>            PRNG seed\n";
             std::exit(0);
