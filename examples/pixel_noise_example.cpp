@@ -19,8 +19,8 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <vector>
 #include <thread>
+#include <vector>
 
 #if !defined(PATHSPACE_ENABLE_UI)
 int main() {
@@ -91,6 +91,41 @@ auto expect_or_exit(SP::Expected<T> value, char const* context) -> T {
     }
     std::cerr << '\n';
     std::exit(1);
+}
+
+template <typename T>
+void replace_value_or_exit(PathSpace& space,
+                           std::string const& path,
+                           T const& value,
+                           char const* context) {
+    while (true) {
+        auto taken = space.take<T>(path);
+        if (taken) {
+            continue;
+        }
+        auto const& error = taken.error();
+        if (error.code == SP::Error::Code::NoObjectFound
+            || error.code == SP::Error::Code::NoSuchPath) {
+            break;
+        }
+        std::cerr << "pixel_noise_example: " << context << " failed to clear old value";
+        if (error.message.has_value()) {
+            std::cerr << ": " << *error.message;
+        }
+        std::cerr << '\n';
+        std::exit(1);
+    }
+
+    auto inserted = space.insert(path, value);
+    if (!inserted.errors.empty()) {
+        auto const& err = inserted.errors.front();
+        std::cerr << "pixel_noise_example: " << context << " insert failed";
+        if (err.message.has_value()) {
+            std::cerr << ": " << *err.message;
+        }
+        std::cerr << '\n';
+        std::exit(1);
+    }
 }
 
 inline void expect_or_exit(SP::Expected<void> value, char const* context) {
@@ -555,6 +590,20 @@ int main(int argc, char** argv) {
     auto noise_state = std::make_shared<NoiseState>(options.seed);
     auto hook_guard = install_noise_hook(noise_state);
 
+    auto target_field = std::string(bootstrap.surface.getPath()) + "/target";
+    auto target_relative = expect_or_exit(space.read<std::string, std::string>(target_field),
+                                          "read surface target");
+    auto target_absolute = expect_or_exit(SP::App::resolve_app_relative(app_root_view, target_relative),
+                                          "resolve surface target");
+
+    std::string surface_desc_path = std::string(bootstrap.surface.getPath()) + "/desc";
+    std::string target_desc_path = std::string(target_absolute.getPath()) + "/desc";
+
+    auto surface_desc = expect_or_exit(space.read<Builders::SurfaceDesc, std::string>(surface_desc_path),
+                                       "read surface desc");
+    int current_surface_width = surface_desc.size_px.width;
+    int current_surface_height = surface_desc.size_px.height;
+
     if (!options.headless) {
         SP::UI::SetLocalWindowCallbacks({});
         SP::UI::InitLocalWindowWithSize(options.width,
@@ -601,6 +650,23 @@ int main(int argc, char** argv) {
             if (window_width <= 0 || window_height <= 0) {
                 std::cout << "pixel_noise_example: window closed, exiting loop.\n";
                 break;
+            }
+
+            if ((window_width != current_surface_width || window_height != current_surface_height)) {
+                surface_desc.size_px.width = window_width;
+                surface_desc.size_px.height = window_height;
+                replace_value_or_exit(space,
+                                      surface_desc_path,
+                                      surface_desc,
+                                      "update surface desc");
+                replace_value_or_exit(space,
+                                      target_desc_path,
+                                      surface_desc,
+                                      "update target desc");
+                current_surface_width = window_width;
+                current_surface_height = window_height;
+                options.width = window_width;
+                options.height = window_height;
             }
         }
 
