@@ -1532,7 +1532,7 @@ Goals
 5. ✅ (October 19, 2025) Integrated with the present pipeline: renderer targets publish HTML outputs plus diagnostics/errors, window views bind to `htmlTarget`, and presenters always consume the latest-complete frame.
 6. ✅ (October 19, 2025) Added headless verification (Node-based canvas replay script) to CI with graceful skips when Node.js is unavailable and documented operator-facing troubleshooting steps.
 
-Headless verification now runs through `scripts/verify_html_canvas.js`, which spawns the `html_canvas_dump` helper to emit the latest Canvas command stream and asserts structural correctness (types, dimensions, radii). The CTest entry `HtmlCanvasVerify` executes the script when Node.js is available and emits a skip message otherwise, keeping CI stable on minimal builders.
+Headless verification now runs through `scripts/verify_html_canvas.js`, which spawns the `html_canvas_dump` helper to emit the latest Canvas command stream and compares widget-themed scenes against a native PathRenderer2D render digest. The harness validates structural fields (types, dimensions, radii), palette CSS, and typography-sensitive colors for both the default and sunset themes, while ensuring the replayed framebuffer hash matches the native baseline. The CTest entry `HtmlCanvasVerify` executes the script when Node.js is available and emits a skip message otherwise, keeping CI stable on minimal builders.
 
 ### HTML adapter configuration & troubleshooting (October 19, 2025)
 
