@@ -148,6 +148,7 @@ Completed:
 - ✅ (October 16, 2025) macOS window presentation now uses a CAMetalLayer-backed Metal swapchain (IOSurface copies + present) instead of CoreGraphics blits; fullscreen perf is no longer CPU bound.
 - ✅ (October 21, 2025) Shipped `examples/pixel_noise_example.cpp`, a per-pixel noise perf harness that uses the software renderer plus a before-present hook to generate full-surface churn each frame; it now runs windowed by default (uncapped compute with presents throttled via `--present-refresh=<hz>`), and `--headless` keeps the UI out of the loop when you want raw throughput only (use `--report-metrics`/`--report-extended` to print diagnostics).
 - ✅ (October 22, 2025) Pixel noise harness defaults to the fast path (framebuffer capture off, metrics muted, window present rate 60 Hz) with CLI escapes for diagnostics/capture (`--headless`, `--capture-framebuffer`, `--report-metrics`, `--report-extended`, `--present-call-metric`, `--present-refresh=<hz>`).
+- ✅ (October 22, 2025) Parallelized the pixel noise generator across CPU threads so IOSurface writes scale with hardware concurrency; deterministic seeding keeps runs reproducible while eliminating the prior single-threaded hotspot.
 
 Completed:
 - ✅ (October 18, 2025) Added fullscreen CAMetalLayer regression coverage in `PathSpaceUITests` and defaulted the presenter to zero-copy unless `capture_framebuffer` is explicitly enabled; perf regressions now fail under the UI harness.
@@ -164,7 +165,6 @@ Next:
   - Land a helper (script or build target) that writes the captured metrics into `docs/perf/`, creating the directory if needed so the baselines stay versioned.
   - Add a comparison script/check that fails when captured frame times exceed the stored baseline budget so the perf harness enforces realtime targets.
   - Fix window resize behaviour so the renderer repaints in real time during live resize instead of stretching the previous frame; ensure platform pumps deliver resize events quickly enough to drive the render loop.
-  - Parallelize the noise generator: shard the IOSurface write loop across threads (e.g., via `TaskPool`) so per-frame noise drawing scales with CPU cores instead of running single-threaded.
 
 ### Phase 5 — Input, Hit Testing, and Notifications (1 sprint)
 - ✅ (October 16, 2025) Added doctest scenarios for hit ordering, clip-aware picking, focus routing, and auto-render event scheduling via `Scene::HitTest`; notifications enqueue `AutoRenderRequestEvent` under `events/renderRequested/queue`.

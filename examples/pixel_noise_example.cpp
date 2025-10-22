@@ -20,6 +20,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <thread>
 
 #if !defined(PATHSPACE_ENABLE_UI)
 int main() {
@@ -434,16 +435,60 @@ auto install_noise_hook(std::shared_ptr<NoiseState> state) -> HookGuard {
             }
 
             auto const start = std::chrono::steady_clock::now();
-            for (int y = 0; y < height; ++y) {
-                auto* row = buffer.data() + static_cast<std::size_t>(y) * stride;
-                for (int x = 0; x < width; ++x) {
-                    auto noise = static_cast<std::uint32_t>(state->channel_dist(state->rng))
-                                 | (static_cast<std::uint32_t>(state->channel_dist(state->rng)) << 8)
-                                 | (static_cast<std::uint32_t>(state->channel_dist(state->rng)) << 16)
-                                 | 0xFF000000u;
-                    std::memcpy(row + static_cast<std::size_t>(x) * 4u, &noise, sizeof(noise));
-                }
+            auto worker_count = std::max<int>(1, static_cast<int>(std::thread::hardware_concurrency()));
+            worker_count = std::min(worker_count, std::max(1, height));
+
+            std::vector<std::uint64_t> seeds(static_cast<std::size_t>(worker_count));
+            for (int i = 0; i < worker_count; ++i) {
+                auto hi = static_cast<std::uint64_t>(state->rng());
+                auto lo = static_cast<std::uint64_t>(state->rng());
+                seeds[static_cast<std::size_t>(i)] = (hi << 32)
+                                                     ^ lo
+                                                     ^ (static_cast<std::uint64_t>(state->frame_index + 1) << 17)
+                                                     ^ static_cast<std::uint64_t>(i);
             }
+
+            auto rows_per_worker = (height + worker_count - 1) / worker_count;
+            std::vector<std::thread> workers;
+            workers.reserve(static_cast<std::size_t>(worker_count));
+
+            for (int worker = 0; worker < worker_count; ++worker) {
+                int row_begin = worker * rows_per_worker;
+                int row_end = std::min(height, row_begin + rows_per_worker);
+                if (row_begin >= row_end) {
+                    break;
+                }
+                workers.emplace_back([row_begin,
+                                      row_end,
+                                      width,
+                                      stride,
+                                      buffer_data = buffer.data(),
+                                      seed = seeds[static_cast<std::size_t>(worker)]]() {
+                    std::uniform_int_distribution<int> dist(0, 255);
+                    std::seed_seq seq{
+                        static_cast<std::uint32_t>(seed & 0xFFFFFFFFu),
+                        static_cast<std::uint32_t>((seed >> 32) & 0xFFFFFFFFu)};
+                    std::mt19937 rng(seq);
+                    for (int y = row_begin; y < row_end; ++y) {
+                        auto* row = buffer_data + static_cast<std::size_t>(y) * stride;
+                        for (int x = 0; x < width; ++x) {
+                            auto channel0 = static_cast<std::uint32_t>(dist(rng));
+                            auto channel1 = static_cast<std::uint32_t>(dist(rng));
+                            auto channel2 = static_cast<std::uint32_t>(dist(rng));
+                            std::uint32_t noise = channel0
+                                                  | (channel1 << 8)
+                                                  | (channel2 << 16)
+                                                  | 0xFF000000u;
+                            std::memcpy(row + static_cast<std::size_t>(x) * 4u, &noise, sizeof(noise));
+                        }
+                    }
+                });
+            }
+
+            for (auto& worker : workers) {
+                worker.join();
+            }
+
             auto const finish = std::chrono::steady_clock::now();
             auto render_ms = std::chrono::duration<double, std::milli>(finish - start).count();
 
