@@ -44,6 +44,7 @@ Provide a single index of active planning documents, ordered by current priority
 ## Status Snapshot — October 21, 2025
 - HSAT (HTML asset codec) remains mandatory and documented; `pathspace_hsat_inspect` regression stays green after the latest loop run.
 - Pixel noise perf harness (`examples/pixel_noise_example.cpp`) now drives per-pixel full-surface churn with the software renderer and prints FPS/render metrics; automation/baseline follow-ups remain tracked in `Plan_SceneGraph_Implementation.md`.
+- High-priority follow-up: drop default framebuffer copies during present—production runs must rely on direct IOSurface writes, keeping the capture path opt-in for debugging (tracked in `Plan_SceneGraph_Implementation.md`).
 - Widget state scenes now publish canonical idle/hover/pressed/disabled snapshots under `scenes/widgets/<id>/states/*`; theme-aware styles (`Widgets::WidgetTheme`) landed and `widgets_example` uses env-selectable palettes without rewriting scenes.
 - Next widget focus: finish the Phase 8 widget bindings fuzz harness—adjacent dirty-propagation coverage landed on October 21, 2025; keep `docs/Plan_SceneGraph_Implementation.md` updated as the fuzz work progresses.
 
