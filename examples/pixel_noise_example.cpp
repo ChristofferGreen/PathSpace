@@ -51,6 +51,7 @@ struct Options {
     std::size_t max_frames = 0;
     std::chrono::duration<double> report_interval = std::chrono::seconds{1};
     std::uint64_t seed = 0;
+    std::optional<std::chrono::duration<double>> runtime_limit{};
 };
 
 struct NoiseState {
@@ -158,6 +159,11 @@ auto parse_seed(std::string_view text) -> std::uint64_t {
     }
 }
 
+auto parse_minutes(std::string_view text, char const* label) -> std::chrono::duration<double> {
+    auto seconds = parse_seconds(text, label);
+    return std::chrono::duration<double>(seconds.count() * 60.0);
+}
+
 auto parse_options(int argc, char** argv) -> Options {
     Options opts{};
     opts.seed = static_cast<std::uint64_t>(std::random_device{}());
@@ -176,6 +182,8 @@ auto parse_options(int argc, char** argv) -> Options {
             opts.report_interval = parse_seconds(arg.substr(18), "report interval");
         } else if (arg.rfind("--seed=", 0) == 0) {
             opts.seed = parse_seed(arg.substr(7));
+        } else if (arg.rfind("--runtime-minutes=", 0) == 0) {
+            opts.runtime_limit = parse_minutes(arg.substr(18), "runtime minutes");
         } else if (arg == "--help" || arg == "-h") {
             std::cout << "Usage: pixel_noise_example [options]\n"
                       << "Options:\n"
@@ -183,6 +191,7 @@ auto parse_options(int argc, char** argv) -> Options {
                       << "  --height=<pixels>         Surface height (default 720)\n"
                       << "  --frames=<count>          Stop after N presented frames\n"
                       << "  --report-interval=<sec>   Stats print interval (default 1.0)\n"
+                      << "  --runtime-minutes=<min>   Stop after the given number of minutes\n"
                       << "  --headless                Skip local window presentation\n"
                       << "  --seed=<value>            PRNG seed\n";
             std::exit(0);
@@ -478,6 +487,7 @@ int main(int argc, char** argv) {
               << '\n';
 
     auto last_report = std::chrono::steady_clock::now();
+    auto start_time = last_report;
     std::size_t frames_since_report = 0;
     double accumulated_present_ms = 0.0;
     double accumulated_render_ms = 0.0;
@@ -495,6 +505,16 @@ int main(int argc, char** argv) {
             SP::UI::GetLocalWindowContentSize(&window_width, &window_height);
             if (window_width <= 0 || window_height <= 0) {
                 std::cout << "pixel_noise_example: window closed, exiting loop.\n";
+                break;
+            }
+        }
+
+        if (options.runtime_limit) {
+            auto elapsed = std::chrono::steady_clock::now() - start_time;
+            if (elapsed >= *options.runtime_limit) {
+                std::cout << "pixel_noise_example: runtime limit reached ("
+                          << std::chrono::duration_cast<std::chrono::seconds>(*options.runtime_limit).count()
+                          << " seconds), exiting loop.\n";
                 break;
             }
         }
