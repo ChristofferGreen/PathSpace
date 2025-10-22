@@ -413,6 +413,11 @@ auto Present(PathSpace& space,
 
 } // namespace Window
 
+auto maybe_schedule_auto_render(PathSpace& space,
+                                std::string const& targetPath,
+                                PathWindowView::PresentStats const& stats,
+                                PathWindowView::PresentPolicy const& policy) -> SP::Expected<bool>;
+
 namespace Window::TestHooks {
 
 using BeforePresentHook = std::function<void(PathSurfaceSoftware&,

@@ -180,7 +180,7 @@ Next:
 - ✅ (October 18, 2025) Published `docs/AI_Debugging_Playbook.md` with the end-to-end diagnostics workflow and re-validated the 15× loop harness (`./scripts/compile.sh --test --loop=15 --per-test-timeout=20`).
 - ✅ (October 20, 2025) Added residency dashboard outputs: `cpuSoftBudgetRatio`, `cpuHardBudgetRatio`, `gpuSoftBudgetRatio`, `gpuHardBudgetRatio`, per-budget exceed flags, and `overallStatus` now live under `diagnostics/metrics/residency/` for every target, allowing dashboards/alerts to trigger without bespoke queries.
 - ✅ (October 20, 2025) Widget interaction bindings land: `Widgets::Bindings::Dispatch{Button,Toggle,Slider}` diff widget state, submit targeted dirty rect hints, enqueue ops (`WidgetOp` values) under `widgets/<id>/ops/inbox/queue`, and auto-schedule renders when configured.
-- Audit UI/renderer translation units ≥1 000 lines, inventory candidates with `scripts/lines_of_code.sh`, and refactor toward one-class-per-file modules while preserving test coverage.
+- ✅ (October 22, 2025) Audited UI/renderer translation units ≥1 000 lines, documented candidates via `scripts/lines_of_code.sh`, and refactored `ui/Builders.cpp` into focused translation units to move toward one-class-per-file modules while keeping the looped test suite green.
 - Enforce include hygiene during the split (IWYU or equivalent pass) so the expanded module graph keeps compile times manageable.
 - Add binary/size guardrails (e.g., `scripts/compile.sh --size-report`) to watch for example/demo growth after the refactor.
 - Refresh `docs/AI_Architecture.md` and renderer diagrams once files move so architecture snapshots continue to match the code layout.

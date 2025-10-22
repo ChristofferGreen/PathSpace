@@ -48,6 +48,7 @@ Provide a single index of active planning documents, ordered by current priority
 - Follow-up: capture a representative frame grab for the pixel noise harness (`images/perf/pixel_noise.png`) so perf regressions can include a visual reference alongside the metrics.
 - Widget state scenes now publish canonical idle/hover/pressed/disabled snapshots under `scenes/widgets/<id>/states/*`; theme-aware styles (`Widgets::WidgetTheme`) landed and `widgets_example` uses env-selectable palettes without rewriting scenes.
 - Next widget focus: finish the Phase 8 widget bindings fuzz harness—adjacent dirty-propagation coverage landed on October 21, 2025; keep `docs/Plan_SceneGraph_Implementation.md` updated as the fuzz work progresses.
+- ✅ (October 22, 2025) Split the monolithic `ui/Builders.cpp` into focused translation units (Scene/Renderer/Surface/Window/App/Widgets/Diagnostics + shared detail helpers), keeping each under 1 000 lines and revalidating the 15× looped CTest run.
 
 ## Supporting Documents
 - `docs/AI_Architecture.md` — Core PathSpace architecture reference.

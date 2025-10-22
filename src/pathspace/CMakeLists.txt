@@ -89,7 +89,14 @@ endif()
 if(PATHSPACE_ENABLE_UI)
     target_sources(PathSpace PRIVATE
         ui/Helpers.cpp
-        ui/Builders.cpp
+        ui/SceneBuilders.cpp
+        ui/BuildersAPI.cpp
+        ui/RendererBuilders.cpp
+        ui/SurfaceBuilders.cpp
+        ui/WindowBuilders.cpp
+        ui/AppBuilders.cpp
+        ui/WidgetBuilders.cpp
+        ui/DiagnosticsBuilders.cpp
         ui/SceneSnapshotBuilder.cpp
         ui/ProgressiveSurfaceBuffer.cpp
         ui/PathSurfaceSoftware.cpp
