@@ -51,7 +51,6 @@ struct Options {
     std::size_t max_frames = 0;
     std::chrono::duration<double> report_interval = std::chrono::seconds{1};
     std::uint64_t seed = 0;
-    bool prefer_iosurface_present = false;
 };
 
 struct NoiseState {
@@ -177,8 +176,6 @@ auto parse_options(int argc, char** argv) -> Options {
             opts.report_interval = parse_seconds(arg.substr(18), "report interval");
         } else if (arg.rfind("--seed=", 0) == 0) {
             opts.seed = parse_seed(arg.substr(7));
-        } else if (arg == "--prefer-iosurface" || arg == "--prefer-iosurface-present") {
-            opts.prefer_iosurface_present = true;
         } else if (arg == "--help" || arg == "-h") {
             std::cout << "Usage: pixel_noise_example [options]\n"
                       << "Options:\n"
@@ -187,8 +184,7 @@ auto parse_options(int argc, char** argv) -> Options {
                       << "  --frames=<count>          Stop after N presented frames\n"
                       << "  --report-interval=<sec>   Stats print interval (default 1.0)\n"
                       << "  --headless                Skip local window presentation\n"
-                      << "  --seed=<value>            PRNG seed\n"
-                      << "  --prefer-iosurface        Present using IOSurface when available (default: CPU blit)\n";
+                      << "  --seed=<value>            PRNG seed\n";
             std::exit(0);
         } else {
             std::cerr << "pixel_noise_example: unknown option '" << arg << "'\n";
@@ -315,17 +311,14 @@ auto publish_scene(PathSpace& space,
 void present_to_local_window(Builders::Window::WindowPresentResult const& present,
                              int width,
                              int height,
-                             bool headless,
-                             bool prefer_iosurface) {
+                             bool headless) {
     if (headless) {
         return;
     }
 
     bool presented = false;
 
-    if (prefer_iosurface
-        && present.stats.iosurface
-        && present.stats.iosurface->valid()) {
+    if (present.stats.iosurface && present.stats.iosurface->valid()) {
         auto iosurface_ref = present.stats.iosurface->retain_for_external_use();
         if (iosurface_ref) {
             SP::UI::PresentLocalWindowIOSurface(static_cast<void*>(iosurface_ref),
@@ -337,18 +330,13 @@ void present_to_local_window(Builders::Window::WindowPresentResult const& presen
         }
     }
 
-    if (!presented && !present.framebuffer.empty()) {
-        int stride = 0;
-        if (height > 0) {
-            stride = static_cast<int>(present.framebuffer.size() / static_cast<std::size_t>(height));
+    if (!presented) {
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            std::cerr << "pixel_noise_example: IOSurface unavailable; "
+                         "skipping presentation to avoid CPU blit.\n";
         }
-        if (stride <= 0) {
-            stride = width * 4;
-        }
-        SP::UI::PresentLocalWindowFramebuffer(present.framebuffer.data(),
-                                              width,
-                                              height,
-                                              stride);
     }
 }
 
@@ -502,6 +490,13 @@ int main(int argc, char** argv) {
 
         if (!options.headless) {
             SP::UI::PollLocalWindow();
+            int window_width = 0;
+            int window_height = 0;
+            SP::UI::GetLocalWindowContentSize(&window_width, &window_height);
+            if (window_width <= 0 || window_height <= 0) {
+                std::cout << "pixel_noise_example: window closed, exiting loop.\n";
+                break;
+            }
         }
 
         auto present = Builders::Window::Present(space,
@@ -522,8 +517,7 @@ int main(int argc, char** argv) {
         present_to_local_window(*present,
                                 options.width,
                                 options.height,
-                                options.headless,
-                                options.prefer_iosurface_present);
+                                options.headless);
 
         if (present->stats.presented) {
             ++frames_since_report;
