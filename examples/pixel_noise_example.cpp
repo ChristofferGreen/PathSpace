@@ -47,10 +47,11 @@ namespace {
 struct Options {
     int width = 1280;
     int height = 720;
-    bool headless = false;
+    bool headless = true;
     bool capture_framebuffer = false;
     bool report_metrics = false;
     bool report_present_call_time = false;
+    double present_refresh_hz = 60.0;
     std::size_t max_frames = 0;
     std::chrono::duration<double> report_interval = std::chrono::seconds{1};
     std::uint64_t seed = 0;
@@ -167,6 +168,20 @@ auto parse_minutes(std::string_view text, char const* label) -> std::chrono::dur
     return std::chrono::duration<double>(seconds.count() * 60.0);
 }
 
+auto parse_positive_double(std::string_view text, char const* label) -> double {
+    try {
+        size_t consumed = 0;
+        double value = std::stod(std::string{text}, &consumed);
+        if (consumed != text.size() || value < 0.0) {
+            throw std::invalid_argument{"expected non-negative number"};
+        }
+        return value;
+    } catch (std::exception const& ex) {
+        std::cerr << "pixel_noise_example: invalid " << label << " '" << text << "': " << ex.what() << '\n';
+        std::exit(1);
+    }
+}
+
 auto parse_options(int argc, char** argv) -> Options {
     Options opts{};
     opts.seed = static_cast<std::uint64_t>(std::random_device{}());
@@ -175,6 +190,8 @@ auto parse_options(int argc, char** argv) -> Options {
         std::string_view arg{argv[i]};
         if (arg == "--headless") {
             opts.headless = true;
+        } else if (arg == "--windowed") {
+            opts.headless = false;
         } else if (arg.rfind("--width=", 0) == 0) {
             opts.width = parse_int(arg.substr(8), "width");
         } else if (arg.rfind("--height=", 0) == 0) {
@@ -185,6 +202,8 @@ auto parse_options(int argc, char** argv) -> Options {
             opts.report_interval = parse_seconds(arg.substr(18), "report interval");
         } else if (arg.rfind("--seed=", 0) == 0) {
             opts.seed = parse_seed(arg.substr(7));
+        } else if (arg.rfind("--present-refresh=", 0) == 0) {
+            opts.present_refresh_hz = parse_positive_double(arg.substr(18), "present refresh");
         } else if (arg == "--capture-framebuffer") {
             opts.capture_framebuffer = true;
         } else if (arg == "--report-metrics") {
@@ -203,11 +222,13 @@ auto parse_options(int argc, char** argv) -> Options {
                       << "  --height=<pixels>         Surface height (default 720)\n"
                       << "  --frames=<count>          Stop after N presented frames\n"
                       << "  --report-interval=<sec>   Stats print interval (default 1.0)\n"
+                      << "  --present-refresh=<hz>    Limit window presents to this rate (default 60, 0=every frame)\n"
                       << "  --report-metrics          Print FPS/render metrics every interval\n"
                       << "  --report-extended         Metrics plus Window::Present call timing\n"
                       << "  --present-call-metric     Track Window::Present duration (pairs well with --report-metrics)\n"
                       << "  --runtime-minutes=<min>   Stop after the given number of minutes\n"
-                      << "  --headless                Skip local window presentation\n"
+                      << "  --headless                Skip local window presentation (default)\n"
+                      << "  --windowed                Show the local window while computing frames\n"
                       << "  --capture-framebuffer     Enable framebuffer capture in the present policy\n"
                       << "  --seed=<value>            PRNG seed\n";
             std::exit(0);
@@ -508,6 +529,11 @@ int main(int argc, char** argv) {
     auto now = std::chrono::steady_clock::now();
     auto last_report = now;
     auto start_time = now;
+    auto present_interval = options.present_refresh_hz > 0.0
+                                ? std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                      std::chrono::duration<double>(1.0 / options.present_refresh_hz))
+                                : std::chrono::steady_clock::duration::zero();
+    auto last_window_present = start_time;
     std::size_t frames_since_report = 0;
     double accumulated_present_ms = 0.0;
     double accumulated_render_ms = 0.0;
@@ -572,10 +598,19 @@ int main(int argc, char** argv) {
             break;
         }
 
-        present_to_local_window(*present,
-                                options.width,
-                                options.height,
-                                options.headless);
+        if (!options.headless) {
+            auto current_time = std::chrono::steady_clock::now();
+            bool should_present_window = options.present_refresh_hz <= 0.0
+                || (present_interval.count() == 0)
+                || ((current_time - last_window_present) >= present_interval);
+            if (should_present_window) {
+                present_to_local_window(*present,
+                                        options.width,
+                                        options.height,
+                                        false);
+                last_window_present = current_time;
+            }
+        }
 
         if (present->stats.presented) {
             ++total_presented;
