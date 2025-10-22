@@ -228,7 +228,7 @@ Next:
 - ✅ (October 19, 2025) PATHSPACE_ENABLE_METAL_UPLOADS coverage now exercises the full Metal present path, checks shader/material descriptor parity, and asserts residency/cache metrics (cpu/gpu bytes) are published so dashboards/CI immediately flag resource pressure regressions (`tests/ui/test_PathWindowView_Metal.mm`: "Metal pipeline publishes residency metrics and material descriptors").
 - **HTML follow-ups (October 19, 2025):** remaining work is documenting fidelity troubleshooting (see Phase 7 items 5–6); new CI harness (`HtmlCanvasVerify`) is in place—keep it updated when adapter schemas evolve.
   - ✅ (October 22, 2025) Added themed widget scene replays to `HtmlCanvasVerify`, hashing native vs HTML replays so palette and typography drifts surface immediately when either pipeline diverges.
-  - Draft an HSAT/HTML adapter quickstart + troubleshooting note capturing the new harness workflow and common failure signatures.
+  - ✅ (October 22, 2025) Published `docs/HTML_Adapter_Quickstart.md` with the harness workflow, HSAT tooling steps, and troubleshooting signatures so future cycles can validate HTML fidelity without rediscovering the flow.
   - **Oct 21, 2025 update:** PathSpace core now preserves `Html::Asset` vectors across translation units (see commit `fix(ui): ensure html assets survive cross-tu reads`). The new `Html assets round-trip without HtmlSerialization include` UITest guards the regression. Resume the documentation follow-ups under Phase 7 items 5–6.
 - HTML adapter scaffolding (command stream emitter + replay harness) behind experimental flag. **Implementation plan map (Oct 18, 2025):**
   1. **Adapter core API**
