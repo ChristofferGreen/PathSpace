@@ -2006,6 +2006,75 @@ TEST_CASE("Widgets::Bindings::DispatchButton emits dirty hints and widget ops") 
     CHECK_FALSE(disabledState->enabled);
 }
 
+TEST_CASE("Widgets::Bindings::DispatchButton honors auto-render flag") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{ .name = "bindings_button_manual_renderer", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc{};
+    desc.size_px = {256, 128};
+    desc.progressive_tile_size_px = 32;
+
+    SurfaceParams surfaceParams{ .name = "bindings_button_manual_surface", .desc = desc, .renderer = "renderers/bindings_button_manual_renderer" };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    auto target = Renderer::ResolveTargetBase(fx.space,
+                                              fx.root_view(),
+                                              *renderer,
+                                              "targets/surfaces/bindings_button_manual_surface");
+    REQUIRE(target);
+
+    Widgets::ButtonParams buttonParams{};
+    buttonParams.name = "manual_button";
+    buttonParams.label = "Manual";
+    auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
+    REQUIRE(button);
+
+    auto binding = WidgetBindings::CreateButtonBinding(fx.space,
+                                                       fx.root_view(),
+                                                       *button,
+                                                       SP::ConcretePathStringView{target->getPath()},
+                                                       std::nullopt,
+                                                       /*auto_render=*/false);
+    REQUIRE(binding);
+
+    WidgetBindings::PointerInfo pointer{};
+    pointer.scene_x = 4.0f;
+    pointer.scene_y = 3.0f;
+    pointer.inside = true;
+
+    auto renderQueuePath = std::string(target->getPath()) + "/events/renderRequested/queue";
+    auto opQueuePath = binding->options.ops_queue.getPath();
+
+    Widgets::ButtonState hover{};
+    hover.hovered = true;
+
+    auto hoverEnter = WidgetBindings::DispatchButton(fx.space,
+                                                     *binding,
+                                                     hover,
+                                                     WidgetBindings::WidgetOpKind::HoverEnter,
+                                                     pointer);
+    REQUIRE(hoverEnter);
+    CHECK(*hoverEnter);
+
+    auto renderEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    CHECK_FALSE(renderEvent);
+    if (!renderEvent) {
+        CHECK((renderEvent.error().code == Error::Code::NoObjectFound || renderEvent.error().code == Error::Code::NoSuchPath));
+    }
+
+    auto hoverOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(hoverOp);
+    CHECK(hoverOp->kind == WidgetBindings::WidgetOpKind::HoverEnter);
+
+    auto hints = fx.space.read<std::vector<DirtyRectHint>, std::string>(std::string(target->getPath()) + "/hints/dirtyRects");
+    REQUIRE(hints);
+    REQUIRE_FALSE(hints->empty());
+}
+
 TEST_CASE("Widgets::Bindings::DispatchToggle handles hover/toggle/disable sequence") {
     BuildersFixture fx;
 

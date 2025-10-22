@@ -276,7 +276,7 @@ Next:
 - ✅ (October 20, 2025) Introduced reducer helpers (`Widgets::Reducers::ReducePending` / `PublishActions`) so apps can drain widget op queues into `ops/actions/inbox/queue`; example + doctests cover button activation and list selection flows.
 - **Testing**
   - ✅ (October 21, 2025) `PathSpaceUITests` now render button/toggle/slider/list goldens and replay hover/press/disabled sequences in `tests/ui/test_Builders.cpp`, keeping the 15× loop sensitive to widget regressions.
-  - Add doctest coverage for the binding helpers to confirm dirty-hint emission, focus routing, and auto-render scheduling.
+  - ✅ (October 22, 2025) Added doctest coverage that exercises binding helpers with auto-render disabled (`Widgets::Bindings::DispatchButton honors auto-render flag`) ensuring dirty hints still emit without queueing `renderRequested` events; existing focus/navigation tests continue to cover focus routing.
   - ✅ (October 21, 2025) Added adjacent-widget dirty propagation coverage (`tests/ui/test_Builders.cpp`: "Widgets dirty hints cover adjacent widget bindings"), confirming overlapping dirty hints schedule renders for neighbouring widgets while their state remains unchanged.
   - Introduce a fuzz harness for widget reducers/bindings that randomizes pointer/keyboard sequences and asserts dirty hints, ops queues, and state invariants remain stable.
 - **Tooling & docs**
