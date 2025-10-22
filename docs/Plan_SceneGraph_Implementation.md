@@ -164,7 +164,7 @@ Next:
   - 🔜 Mirror the harness expectations in `docs/Plan_SceneGraph_Renderer.md` when implemented so renderer + execution plans stay aligned.
   - ✅ (October 22, 2025) Documented baseline workflow in `docs/AI_Debugging_Playbook.md` (Tooling §5.1) covering capture script usage and JSON interpretation.
   - 🔜 Capture a representative frame grab (e.g., `images/perf/pixel_noise.png`) so regressions include a visual reference alongside metrics.
-  - 🔜 Add a comparison script/check that fails when captured frame times exceed the stored baseline budget so the perf harness enforces realtime targets.
+  - ✅ (October 22, 2025) Added `scripts/check_pixel_noise_baseline.py` and routed `PixelNoisePerfHarness` through it so looped runs fail whenever runtime averages exceed the baseline budgets.
 
 ### Phase 5 — Input, Hit Testing, and Notifications (1 sprint)
 - ✅ (October 16, 2025) Added doctest scenarios for hit ordering, clip-aware picking, focus routing, and auto-render event scheduling via `Scene::HitTest`; notifications enqueue `AutoRenderRequestEvent` under `events/renderRequested/queue`.

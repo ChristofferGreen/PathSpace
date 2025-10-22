@@ -91,11 +91,13 @@ Environment knobs (all respected by the wrapper and the logger):
 | Inspect renderer metrics path | `build/tests/PathSpaceUITests --test-case Diagnostics::ReadTargetMetrics` |
 | Benchmark damage/fingerprint metrics | `./build/benchmarks/path_renderer2d_benchmark --metrics [--canvas=WIDTHxHEIGHT]` |
 | Capture pixel-noise baseline JSON | `./scripts/capture_pixel_noise_baseline.sh` |
+| Check pixel-noise run against budgets | `python3 scripts/check_pixel_noise_baseline.py --build-dir build` |
 
 ### 5.1 Pixel Noise Perf Harness Baselines
 
 - Use `./scripts/capture_pixel_noise_baseline.sh` after rebuilding (`cmake --build build -j`) to refresh `docs/perf/pixel_noise_baseline.json`.
 - The helper launches `pixel_noise_example` headless with the standard perf budgets (≥50 FPS, ≤20 ms render/present) and records the run via `--write-baseline=<path>`.
+- `python3 scripts/check_pixel_noise_baseline.py --build-dir build` reruns the harness with the recorded parameters, writes a temporary metrics snapshot, and fails if the averaged frame times exceed the stored budgets or if FPS dips below the baseline threshold. `PixelNoisePerfHarness` in CTest now goes through the same script so regressions surface during the 15× loop.
 - Inspect the resulting JSON for:
   - `summary.*` — aggregate FPS and timing averages used to confirm budgets.
   - `tileStats.*` — progressive tiling activity (tiles updated/dirty/skipped/copied, worker/job counts) for spotting regression hot spots.
