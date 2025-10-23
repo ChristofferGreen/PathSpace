@@ -93,6 +93,7 @@ Environment knobs (all respected by the wrapper and the logger):
 | Capture pixel-noise baseline JSON | `./scripts/capture_pixel_noise_baseline.sh` |
 | Check pixel-noise run against budgets | `python3 scripts/check_pixel_noise_baseline.py --build-dir build` |
 | Capture pixel-noise PNG frame | `./build/pixel_noise_example --headless --frames=1 --write-frame=docs/images/perf/pixel_noise.png` |
+| Guardrail demo binary sizes | `./scripts/compile.sh --size-report` |
 
 ### 5.1 Pixel Noise Perf Harness Baselines
 
@@ -107,6 +108,12 @@ Environment knobs (all respected by the wrapper and the logger):
 - Pair the JSON with the console summary emitted by the example (`pixel_noise_example: summary …`) when reporting numbers in PRs.
 - When updating visuals, run `./build/pixel_noise_example --headless --frames=1 --write-frame=docs/images/perf/pixel_noise.png` to refresh the canonical PNG shown in docs; the flag enables framebuffer capture automatically.
 - Keep older baselines committed when behaviour intentionally shifts; diffing JSON across commits highlights the magnitude of a regression or improvement.
+
+### 5.2 Demo Binary Size Guardrail
+
+- Run `./scripts/compile.sh --size-report` to build the demo executables with `BUILD_PATHSPACE_EXAMPLES=ON` and compare their sizes against `docs/perf/example_size_baseline.json`. The helper fails the build when a binary exceeds the baseline by more than 5 % or 256 KiB (whichever is larger).
+- Record a new baseline with `./scripts/compile.sh --size-write-baseline` after intentional asset or dependency additions. Commit the refreshed JSON alongside the relevant code/doc changes.
+- Baseline entries live under `docs/perf/example_size_baseline.json` and track `devices_example`, `html_replay_example`, `paint_example`, `pixel_noise_example`, and `widgets_example`. Update the doc when new demos are added so the guardrail lists stay in sync.
 
 ## 6. Closing the Loop
 

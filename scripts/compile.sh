@@ -36,6 +36,11 @@ PER_TEST_TIMEOUT=""  # override seconds per test; default 60 (single), 120 (when
 EXTRA_ARGS=""        # extra args passed to test executable (doctest)
 DOCS=0               # generate Doxygen docs if 1
 ENABLE_METAL_TESTS=1 # Metal presenter tests run by default
+SIZE_REPORT=0
+SIZE_BASELINE=""
+SIZE_WRITE_BASELINE=""
+SIZE_BASELINE_DEFAULT="$ROOT_DIR/docs/perf/example_size_baseline.json"
+SIZE_PRINT_DONE=0
 
 # ----------------------------
 # Helpers
@@ -70,6 +75,10 @@ Options:
       --args "..."           Extra arguments passed to the test runner (doctest)
       --enable-metal-tests   (default) Build with PATHSPACE_UI_METAL and run Metal presenter tests.
       --disable-metal-tests  Skip building/running the Metal presenter tests.
+      --size-report[=PATH]    Generate a binary size report for demo binaries and check against the
+                             guardrail baseline (default baseline path: $SIZE_BASELINE_DEFAULT).
+      --size-write-baseline[=PATH]
+                             Record the current binary sizes as the new guardrail baseline.
   -h, --help                 Show this help and exit.
 
 Sanitizers (mutually exclusive, maps to CMake options in this repo):
@@ -98,6 +107,20 @@ cpu_jobs() {
 }
 require_tool() {
   command -v "$1" >/dev/null 2>&1 || die "Required tool not found: $1"
+}
+
+run_size_guardrail() {
+  require_tool python3
+  local args=("--build-dir" "$BUILD_DIR")
+  if [[ "$SIZE_PRINT_DONE" -eq 0 ]]; then
+    args+=("--print")
+    SIZE_PRINT_DONE=1
+  fi
+  while [[ $# -gt 0 ]]; do
+    args+=("$1")
+    shift
+  done
+  python3 "$SCRIPT_DIR/size_guardrail.py" "${args[@]}"
 }
 
 # ----------------------------
@@ -206,6 +229,19 @@ while [[ $# -gt 0 ]]; do
     --disable-metal-tests)
       ENABLE_METAL_TESTS=0
       ;;
+    --size-report)
+      SIZE_REPORT=1
+      ;;
+    --size-report=*)
+      SIZE_REPORT=1
+      SIZE_BASELINE="${1#*=}"
+      ;;
+    --size-write-baseline)
+      SIZE_WRITE_BASELINE="$SIZE_BASELINE_DEFAULT"
+      ;;
+    --size-write-baseline=*)
+      SIZE_WRITE_BASELINE="${1#*=}"
+      ;;
     -h|--help)
       print_help
       exit 0
@@ -216,6 +252,10 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+if [[ "$SIZE_REPORT" -eq 1 && -z "$SIZE_BASELINE" ]]; then
+  SIZE_BASELINE="$SIZE_BASELINE_DEFAULT"
+fi
 
 # ----------------------------
 # Validations and setup
@@ -269,6 +309,9 @@ CMAKE_FLAGS+=("-DCMAKE_EXPORT_COMPILE_COMMANDS=ON")
 CMAKE_FLAGS+=("-DPATHSPACE_ENABLE_UI=ON" "-DPATHSPACE_UI_SOFTWARE=ON")
 if [[ "$ENABLE_METAL_TESTS" -eq 1 ]]; then
   CMAKE_FLAGS+=("-DPATHSPACE_UI_METAL=ON")
+fi
+if [[ "$SIZE_REPORT" -eq 1 || -n "$SIZE_WRITE_BASELINE" ]]; then
+  CMAKE_FLAGS+=("-DBUILD_PATHSPACE_EXAMPLES=ON")
 fi
 
 # ----------------------------
@@ -358,6 +401,13 @@ EOF
   else
     die "Doxygen generation failed (index.html not found)"
   fi
+fi
+
+if [[ -n "$SIZE_WRITE_BASELINE" ]]; then
+  run_size_guardrail "--baseline" "$SIZE_WRITE_BASELINE" "--record-baseline"
+fi
+if [[ "$SIZE_REPORT" -eq 1 ]]; then
+  run_size_guardrail "--baseline" "$SIZE_BASELINE"
 fi
 
 # Determine per-test timeout default (if not provided)
