@@ -741,21 +741,14 @@ void present_to_local_window(Builders::Window::WindowPresentResult const& presen
         return;
     }
 
-    bool presented = false;
-
-    if (present.stats.iosurface && present.stats.iosurface->valid()) {
-        auto iosurface_ref = present.stats.iosurface->retain_for_external_use();
-        if (iosurface_ref) {
-            SP::UI::PresentLocalWindowIOSurface(static_cast<void*>(iosurface_ref),
-                                                width,
-                                                height,
-                                                static_cast<int>(present.stats.iosurface->row_bytes()));
-            presented = true;
-            CFRelease(iosurface_ref);
-        }
-    }
-
-    if (!presented) {
+    Builders::App::PresentToLocalWindowOptions options{};
+    options.allow_framebuffer = false;
+    options.warn_when_metal_texture_unshared = false;
+    auto dispatched = Builders::App::PresentToLocalWindow(present,
+                                                          width,
+                                                          height,
+                                                          options);
+    if (!dispatched.presented && !present.stats.skipped) {
         static bool warned = false;
         if (!warned) {
             warned = true;
@@ -964,13 +957,8 @@ int main(int argc, char** argv) {
     auto target_absolute = expect_or_exit(SP::App::resolve_app_relative(app_root_view, target_relative),
                                           "resolve surface target");
 
-    std::string surface_desc_path = std::string(bootstrap.surface.getPath()) + "/desc";
-    std::string target_desc_path = std::string(target_absolute.getPath()) + "/desc";
-
-    auto surface_desc = expect_or_exit(space.read<Builders::SurfaceDesc, std::string>(surface_desc_path),
-                                       "read surface desc");
-    int current_surface_width = surface_desc.size_px.width;
-    int current_surface_height = surface_desc.size_px.height;
+    int current_surface_width = bootstrap.surface_desc.size_px.width;
+    int current_surface_height = bootstrap.surface_desc.size_px.height;
 
     if (!options.headless) {
         SP::UI::SetLocalWindowCallbacks({});
@@ -1049,16 +1037,14 @@ int main(int argc, char** argv) {
             }
 
             if ((window_width != current_surface_width || window_height != current_surface_height)) {
-                surface_desc.size_px.width = window_width;
-                surface_desc.size_px.height = window_height;
-                replace_value_or_exit(space,
-                                      surface_desc_path,
-                                      surface_desc,
-                                      "update surface desc");
-                replace_value_or_exit(space,
-                                      target_desc_path,
-                                      surface_desc,
-                                      "update target desc");
+                Builders::App::ResizeSurfaceOptions resize_options{};
+                resize_options.submit_dirty_rect = false;
+                expect_or_exit(Builders::App::UpdateSurfaceSize(space,
+                                                                bootstrap,
+                                                                window_width,
+                                                                window_height,
+                                                                resize_options),
+                               "resize surface");
                 current_surface_width = window_width;
                 current_surface_height = window_height;
                 options.width = window_width;

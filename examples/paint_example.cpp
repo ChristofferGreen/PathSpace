@@ -458,13 +458,11 @@ auto present_frame(PathSpace& space,
         std::cerr << std::endl;
         return std::nullopt;
     }
+#if defined(__APPLE__)
     static std::chrono::steady_clock::time_point last_present_time{};
     static bool last_present_time_valid = false;
-#if defined(__APPLE__)
-    bool used_iosurface = false;
     std::size_t computed_stride = 0;
     bool allow_present = true;
-    bool presented = false;
     auto decision_time = std::chrono::steady_clock::time_point{};
     bool decision_time_valid = false;
     if (!presentResult->stats.vsync_aligned && uncapped_present_hz > 0.0) {
@@ -477,61 +475,57 @@ auto present_frame(PathSpace& space,
     } else if (presentResult->stats.vsync_aligned) {
         last_present_time_valid = false;
     }
-    if (allow_present && presentResult->stats.iosurface && presentResult->stats.iosurface->valid()) {
-        auto iosurface_ref = presentResult->stats.iosurface->retain_for_external_use();
-        if (iosurface_ref) {
-            SP::UI::PresentLocalWindowIOSurface(static_cast<void*>(iosurface_ref),
-                                                width,
-                                                height,
-                                                static_cast<int>(presentResult->stats.iosurface->row_bytes()));
-            used_iosurface = true;
-            presented = true;
-            CFRelease(iosurface_ref);
-            computed_stride = presentResult->stats.iosurface->row_bytes();
-        }
-    }
-    if (allow_present && !used_iosurface && !presentResult->framebuffer.empty()) {
-        if (presentResult->stats.used_metal_texture) {
+
+    Builders::App::PresentToLocalWindowResult dispatched{};
+    if (allow_present) {
+        Builders::App::PresentToLocalWindowOptions options{};
+        options.allow_framebuffer = !presentResult->stats.used_metal_texture;
+        dispatched = Builders::App::PresentToLocalWindow(*presentResult,
+                                                         width,
+                                                         height,
+                                                         options);
+        computed_stride = dispatched.row_stride_bytes;
+        if (presentResult->stats.used_metal_texture && !dispatched.presented) {
             presentResult->framebuffer.clear();
-        } else {
-            int row_stride_bytes = 0;
-            if (height > 0) {
-                auto total_bytes = static_cast<int>(presentResult->framebuffer.size());
-                row_stride_bytes = total_bytes / height;
-            }
-            if (row_stride_bytes <= 0) {
-                row_stride_bytes = width * 4;
-            }
-            computed_stride = static_cast<std::size_t>(row_stride_bytes);
-            SP::UI::PresentLocalWindowFramebuffer(presentResult->framebuffer.data(),
-                                                  width,
-                                                  height,
-                                                  row_stride_bytes);
-            presented = true;
         }
+    } else {
+        dispatched.skipped = presentResult->stats.skipped;
     }
-    if (!presentResult->stats.vsync_aligned && presented) {
+
+    if (!presentResult->stats.vsync_aligned && dispatched.presented) {
         if (decision_time_valid) {
             last_present_time = decision_time;
-            last_present_time_valid = true;
         } else {
             last_present_time = std::chrono::steady_clock::now();
-            last_present_time_valid = true;
         }
+        last_present_time_valid = true;
+    } else if (presentResult->stats.vsync_aligned) {
+        last_present_time_valid = false;
     }
-#else
-    (void)width;
-    (void)height;
-    std::size_t computed_stride = static_cast<std::size_t>(width) * 4;
-#endif
+
     PresentOutcome outcome{};
     outcome.skipped = presentResult->stats.skipped;
-    outcome.used_iosurface = presentResult->stats.used_iosurface;
-    outcome.framebuffer_bytes = presentResult->framebuffer.size();
+    outcome.used_iosurface = dispatched.used_iosurface;
+    outcome.framebuffer_bytes = dispatched.framebuffer_bytes;
     if (computed_stride == 0) {
         computed_stride = static_cast<std::size_t>(width) * 4;
     }
     outcome.stride_bytes = computed_stride;
+#else
+    (void)uncapped_present_hz;
+    auto dispatched = Builders::App::PresentToLocalWindow(*presentResult,
+                                                          width,
+                                                          height);
+    PresentOutcome outcome{};
+    outcome.skipped = presentResult->stats.skipped;
+    outcome.used_iosurface = dispatched.used_iosurface;
+    outcome.framebuffer_bytes = dispatched.framebuffer_bytes;
+    if (dispatched.row_stride_bytes == 0) {
+        outcome.stride_bytes = static_cast<std::size_t>(width) * 4;
+    } else {
+        outcome.stride_bytes = dispatched.row_stride_bytes;
+    }
+#endif
 
     if (debug) {
         auto const& stats = presentResult->stats;
@@ -760,88 +754,66 @@ int main(int argc, char** argv) {
     auto scenePath = unwrap_or_exit(Builders::Scene::Create(space, rootView, sceneParams),
                                     "failed to create paint scene");
 
-    Builders::RendererParams rendererParams{
-        .name = options.metal ? "metal2d" : "software2d",
-        .kind = options.metal ? Builders::RendererKind::Metal2D : Builders::RendererKind::Software2D,
-        .description = options.metal ? "paint renderer (Metal2D)" : "paint renderer",
-    };
-    auto rendererPath = unwrap_or_exit(Builders::Renderer::Create(space, rootView, rendererParams),
-                                       "failed to create renderer");
-
-    Builders::SurfaceDesc surfaceDesc{};
-    surfaceDesc.size_px.width = canvasWidth;
-    surfaceDesc.size_px.height = canvasHeight;
-    surfaceDesc.pixel_format = Builders::PixelFormat::RGBA8Unorm_sRGB;
-    surfaceDesc.color_space = Builders::ColorSpace::sRGB;
-    surfaceDesc.premultiplied_alpha = true;
+    Builders::App::BootstrapParams bootstrapParams{};
+    bootstrapParams.renderer.name = options.metal ? "metal2d" : "software2d";
+    bootstrapParams.renderer.kind = options.metal ? Builders::RendererKind::Metal2D : Builders::RendererKind::Software2D;
+    bootstrapParams.renderer.description = options.metal ? "paint renderer (Metal2D)" : "paint renderer";
+    bootstrapParams.surface.name = "canvas_surface";
+    bootstrapParams.surface.desc.size_px.width = canvasWidth;
+    bootstrapParams.surface.desc.size_px.height = canvasHeight;
+    bootstrapParams.surface.desc.pixel_format = Builders::PixelFormat::RGBA8Unorm_sRGB;
+    bootstrapParams.surface.desc.color_space = Builders::ColorSpace::sRGB;
+    bootstrapParams.surface.desc.premultiplied_alpha = true;
 #if defined(PATHSPACE_UI_METAL)
     if (options.metal) {
-        surfaceDesc.metal.storage_mode = Builders::MetalStorageMode::Shared;
-        surfaceDesc.metal.texture_usage = static_cast<std::uint8_t>(Builders::MetalTextureUsage::ShaderRead)
-                                          | static_cast<std::uint8_t>(Builders::MetalTextureUsage::RenderTarget);
-        surfaceDesc.metal.iosurface_backing = true;
+        bootstrapParams.surface.desc.metal.storage_mode = Builders::MetalStorageMode::Shared;
+        bootstrapParams.surface.desc.metal.texture_usage = static_cast<std::uint8_t>(Builders::MetalTextureUsage::ShaderRead)
+                                                           | static_cast<std::uint8_t>(Builders::MetalTextureUsage::RenderTarget);
+        bootstrapParams.surface.desc.metal.iosurface_backing = true;
     }
 #endif
+    bootstrapParams.window.name = "window";
+    bootstrapParams.window.title = "PathSpace Paint";
+    bootstrapParams.window.width = canvasWidth;
+    bootstrapParams.window.height = canvasHeight;
+    bootstrapParams.window.scale = 1.0f;
+    bootstrapParams.present_policy.mode = PathWindowView::PresentMode::AlwaysLatestComplete;
+    bootstrapParams.present_policy.vsync_align = false;
+    bootstrapParams.present_policy.auto_render_on_present = true;
+    bootstrapParams.present_policy.capture_framebuffer = false;
+    bootstrapParams.view_name = "main";
 
-    Builders::SurfaceParams surfaceParams{};
-    surfaceParams.name = "canvas_surface";
-    surfaceParams.desc = surfaceDesc;
-    surfaceParams.renderer = rendererPath.getPath();
+    Builders::RenderSettings bootstrapSettings{};
+    bootstrapSettings.clear_color = {1.0f, 1.0f, 1.0f, 1.0f};
+    bootstrapSettings.surface.size_px.width = canvasWidth;
+    bootstrapSettings.surface.size_px.height = canvasHeight;
+    bootstrapSettings.surface.dpi_scale = 1.0f;
+#if defined(PATHSPACE_UI_METAL)
+    if (options.metal) {
+        bootstrapSettings.renderer.backend_kind = Builders::RendererKind::Metal2D;
+        bootstrapSettings.renderer.metal_uploads_enabled = true;
+    }
+#endif
+    bootstrapParams.renderer_settings_override = bootstrapSettings;
 
-    auto surfacePath = unwrap_or_exit(Builders::Surface::Create(space, rootView, surfaceParams),
-                                      "failed to create surface");
-    unwrap_or_exit(Builders::Surface::SetScene(space, surfacePath, scenePath),
-                   "failed to bind scene to surface");
+    auto bootstrap = unwrap_or_exit(Builders::App::Bootstrap(space,
+                                                             rootView,
+                                                             scenePath,
+                                                             bootstrapParams),
+                                    "failed to bootstrap paint application");
 
-    auto targetRelative = unwrap_or_exit(space.read<std::string, std::string>(std::string(surfacePath.getPath()) + "/target"),
-                                         "failed to read surface target binding");
-    auto targetAbsolute = unwrap_or_exit(SP::App::resolve_app_relative(rootView, targetRelative),
-                                         "failed to resolve surface target path");
-    std::string surfaceDescPath = std::string(surfacePath.getPath()) + "/desc";
-    std::string targetDescPath = targetAbsolute.getPath() + "/desc";
-
-    Builders::WindowParams windowParams{};
-    windowParams.name = "window";
-    windowParams.title = "PathSpace Paint";
-    windowParams.width = canvasWidth;
-    windowParams.height = canvasHeight;
-    auto windowPath = unwrap_or_exit(Builders::Window::Create(space, rootView, windowParams),
-                                     "failed to create window");
-    unwrap_or_exit(Builders::Window::AttachSurface(space, windowPath, "main", surfacePath),
-                   "failed to attach surface to window");
-
-    std::string viewBase = std::string(windowPath.getPath()) + "/views/main";
-    replace_value(space, viewBase + "/present/policy", std::string{"AlwaysLatestComplete"});
-    replace_value(space, viewBase + "/present/params/vsync_align", false);
-    replace_value(space, viewBase + "/present/params/frame_timeout_ms", 0.0);
-    replace_value(space, viewBase + "/present/params/staleness_budget_ms", 0.0);
-    replace_value(space, viewBase + "/present/params/max_age_frames", static_cast<std::uint64_t>(0));
+    auto targetAbsolutePath = bootstrap.target.getPath();
 
     UIScene::SceneSnapshotBuilder builder{space, rootView, scenePath};
 
     std::vector<Stroke> strokes;
     std::uint64_t nextId = 1;
 
-    Builders::RenderSettings rendererSettings{};
-    rendererSettings.clear_color = {1.0f, 1.0f, 1.0f, 1.0f};
-    rendererSettings.surface.size_px.width = canvasWidth;
-    rendererSettings.surface.size_px.height = canvasHeight;
-#if defined(PATHSPACE_UI_METAL)
-    if (options.metal) {
-        rendererSettings.renderer.backend_kind = Builders::RendererKind::Metal2D;
-        rendererSettings.renderer.metal_uploads_enabled = true;
-    }
-#endif
-    unwrap_or_exit(Builders::Renderer::UpdateSettings(space,
-                                                     SP::ConcretePathStringView{targetAbsolute.getPath()},
-                                                     rendererSettings),
-                  "failed to set renderer clear color");
-
     auto bucket = build_bucket(strokes);
     publish_snapshot(space, builder, scenePath, bucket);
     (void)present_frame(space,
-                       windowPath,
-                       "main",
+                       bootstrap.window,
+                       bootstrap.view_name,
                        canvasWidth,
                        canvasHeight,
                        options.debug,
@@ -881,20 +853,15 @@ int main(int argc, char** argv) {
         if (sizeChanged) {
             canvasWidth = requestedWidth;
             canvasHeight = requestedHeight;
-            surfaceDesc.size_px.width = canvasWidth;
-            surfaceDesc.size_px.height = canvasHeight;
-            replace_value(space, surfaceDescPath, surfaceDesc);
-            replace_value(space, targetDescPath, surfaceDesc);
+            unwrap_or_exit(Builders::App::UpdateSurfaceSize(space,
+                                                            bootstrap,
+                                                            canvasWidth,
+                                                            canvasHeight),
+                           "failed to refresh surface after resize");
             replace_value(space, canvasWidthPath, canvasWidth);
             replace_value(space, canvasHeightPath, canvasHeight);
             lastPainted.reset();
             lastAbsolute.reset();
-            rendererSettings.surface.size_px.width = canvasWidth;
-            rendererSettings.surface.size_px.height = canvasHeight;
-            unwrap_or_exit(Builders::Renderer::UpdateSettings(space,
-                                                             SP::ConcretePathStringView{targetAbsolute.getPath()},
-                                                             rendererSettings),
-                          "failed to refresh renderer size on resize");
             dirtyHints.push_back(DirtyRectHint{
                 .min_x = 0.0f,
                 .min_y = 0.0f,
@@ -975,14 +942,14 @@ int main(int argc, char** argv) {
 
         if (!dirtyHints.empty()) {
             unwrap_or_exit(Builders::Renderer::SubmitDirtyRects(space,
-                                                                SP::ConcretePathStringView{targetAbsolute.getPath()},
+                                                                SP::ConcretePathStringView{targetAbsolutePath},
                                                                 std::span<const DirtyRectHint>{dirtyHints}),
                            "failed to submit renderer dirty hints");
         }
 
         if (auto outcome = present_frame(space,
-                                         windowPath,
-                                         "main",
+                                         bootstrap.window,
+                                         bootstrap.view_name,
                                          canvasWidth,
                                          canvasHeight,
                                          options.debug,

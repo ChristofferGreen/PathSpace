@@ -308,6 +308,63 @@ TEST_CASE("App::Bootstrap configures present policy and renderer overrides when 
                       }));
 }
 
+TEST_CASE("App::UpdateSurfaceSize refreshes surface and renderer settings") {
+    BootstrapFixture fx;
+    auto const published = fx.publish_scene(make_scene_bucket());
+
+    Builders::App::BootstrapParams params{};
+    params.renderer.name = "resize_renderer";
+    params.renderer.kind = Builders::RendererKind::Software2D;
+    params.surface.name = "resize_surface";
+    params.surface.desc.size_px.width = 48;
+    params.surface.desc.size_px.height = 36;
+    params.surface.desc.pixel_format = Builders::PixelFormat::RGBA8Unorm_sRGB;
+    params.surface.desc.color_space = Builders::ColorSpace::sRGB;
+    params.surface.desc.premultiplied_alpha = true;
+    params.window.name = "resize_window";
+    params.window.title = "Resize Test";
+    params.window.width = params.surface.desc.size_px.width;
+    params.window.height = params.surface.desc.size_px.height;
+    params.window.scale = 1.0f;
+    params.present_policy.capture_framebuffer = true;
+
+    auto bootstrap = Builders::App::Bootstrap(fx.space,
+                                              fx.root_view(),
+                                              published.path,
+                                              params);
+    REQUIRE(bootstrap);
+
+    constexpr int kNewWidth = 96;
+    constexpr int kNewHeight = 72;
+
+    auto resize_status = Builders::App::UpdateSurfaceSize(fx.space,
+                                                         *bootstrap,
+                                                         kNewWidth,
+                                                         kNewHeight);
+    REQUIRE(resize_status);
+
+    CHECK(bootstrap->surface_desc.size_px.width == kNewWidth);
+    CHECK(bootstrap->surface_desc.size_px.height == kNewHeight);
+
+    auto renderer_settings = Builders::Renderer::ReadSettings(fx.space,
+                                                              SP::ConcretePathStringView{bootstrap->target.getPath()});
+    REQUIRE(renderer_settings);
+    CHECK(renderer_settings->surface.size_px.width == kNewWidth);
+    CHECK(renderer_settings->surface.size_px.height == kNewHeight);
+
+    auto surface_desc = fx.space.read<Builders::SurfaceDesc, std::string>(
+        std::string(bootstrap->surface.getPath()) + "/desc");
+    REQUIRE(surface_desc);
+    CHECK(surface_desc->size_px.width == kNewWidth);
+    CHECK(surface_desc->size_px.height == kNewHeight);
+
+    auto target_desc = fx.space.read<Builders::SurfaceDesc, std::string>(
+        std::string(bootstrap->target.getPath()) + "/desc");
+    REQUIRE(target_desc);
+    CHECK(target_desc->size_px.width == kNewWidth);
+    CHECK(target_desc->size_px.height == kNewHeight);
+}
+
 TEST_CASE("App::Bootstrap rejects invalid view identifiers") {
     BootstrapFixture fx;
     auto const published = fx.publish_scene(make_scene_bucket());

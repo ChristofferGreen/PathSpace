@@ -89,6 +89,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Widget binding helpers (`Widgets::Bindings::Dispatch{Button,Toggle,Slider,List}`) emit dirty rect hints, auto-schedule renders, and enqueue ops under `widgets/<id>/ops/inbox/queue` so reducers can react without republishing entire scenes.
 - List widget builder (`Builders::Widgets::CreateList`) plus `UpdateListState` and `DispatchList` land with doctest coverage, enabling selection/hover/scroll ops and expanding `widgets_example`.
 - `Builders::App::Bootstrap` wires a renderer/surface/window + present policy for a scene in one call, trimming boilerplate in examples/tests (October 21, 2025).
+- `Builders::App::UpdateSurfaceSize` and `Builders::App::PresentToLocalWindow` now own LocalWindow resize/present scaffolding; widgets_example, pixel_noise_example, and paint_example consume the helpers instead of bespoke loops (October 23, 2025).
 - Reducer helpers (`Widgets::Reducers::ReducePending`/`PublishActions`) drain widget ops into `ops/actions/inbox/queue`; widgets_example seeds a sample action and prints the reducer output.
 - Stroke rendering is now a first-class primitive: `DrawCommandKind::Stroke` serializes shared point buffers, `PathRenderer2D` rasterizes polylines, the HTML adapter/replay round-trip stroke data, and `paint_example` emits strokes instead of per-dab rects (October 21, 2025).
 
@@ -100,6 +101,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 
 ## 6. Shutdown Snapshot (October 23, 2025 @ 19:45 UTC)
 - Latest change: landed `test(ui): cover App::Bootstrap overrides` directly on `master`, exercising present policy configuration, renderer setting overrides, and invalid view identifiers; synced `docs/Plan_SceneGraph_Implementation.md` / `docs/AI_Onboarding_Next.md` accordingly.
+- Follow-up (October 23, 2025): shared resize/present helpers (`App::UpdateSurfaceSize`, `App::PresentToLocalWindow`) replaced example-local scaffolding; ensure new samples stick to the helpers.
 - Validation: `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20` (15× PathSpaceTests, PathSpaceUITests, HtmlCanvasVerify, HtmlAssetInspect, PixelNoise harnesses) — green after the coverage additions (October 23, 2025).
 - Outstanding follow-ups before resuming:
   1. Capture the pixel-noise perf harness frame grab (`images/perf/pixel_noise.png`) now that the paired baselines are checked in.

@@ -460,6 +460,40 @@ struct BootstrapResult {
     PathWindowView::PresentPolicy present_policy;
 };
 
+struct ResizeSurfaceOptions {
+    bool update_surface_desc = true;
+    bool update_target_desc = true;
+    bool update_renderer_settings = true;
+    bool submit_dirty_rect = true;
+    std::optional<RenderSettings> renderer_settings_override{};
+};
+
+auto UpdateSurfaceSize(PathSpace& space,
+                       BootstrapResult& bootstrap,
+                       int width,
+                       int height,
+                       ResizeSurfaceOptions const& options = {}) -> SP::Expected<void>;
+
+struct PresentToLocalWindowOptions {
+    bool allow_iosurface = true;
+    bool allow_framebuffer = true;
+    bool warn_when_metal_texture_unshared = true;
+};
+
+struct PresentToLocalWindowResult {
+    bool presented = false;
+    bool skipped = false;
+    bool used_iosurface = false;
+    bool used_framebuffer = false;
+    std::size_t framebuffer_bytes = 0;
+    std::size_t row_stride_bytes = 0;
+};
+
+auto PresentToLocalWindow(Window::WindowPresentResult const& present,
+                          int width,
+                          int height,
+                          PresentToLocalWindowOptions const& options = {}) -> PresentToLocalWindowResult;
+
 auto Bootstrap(PathSpace& space,
                AppRootPathView appRoot,
                ScenePath const& scene,

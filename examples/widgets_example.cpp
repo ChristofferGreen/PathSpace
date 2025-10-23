@@ -2580,51 +2580,13 @@ auto present_frame(PathSpace& space,
     telemetry.render_ms = present_result->stats.frame.render_ms;
     telemetry.present_ms = present_result->stats.present_ms;
     telemetry.frame_index = present_result->stats.frame.frame_index;
-    telemetry.framebuffer_bytes = present_result->framebuffer.size();
-
-#if defined(__APPLE__)
-    if (!telemetry.skipped
-        && present_result->stats.iosurface
-        && present_result->stats.iosurface->valid()) {
-        auto iosurface_ref = present_result->stats.iosurface->retain_for_external_use();
-        if (iosurface_ref) {
-            SP::UI::PresentLocalWindowIOSurface(static_cast<void*>(iosurface_ref),
-                                                width,
-                                                height,
-                                                static_cast<int>(present_result->stats.iosurface->row_bytes()));
-            telemetry.used_iosurface = true;
-            telemetry.presented = true;
-            telemetry.stride_bytes = present_result->stats.iosurface->row_bytes();
-            CFRelease(iosurface_ref);
-        }
-    }
-#endif
-
-    if (!telemetry.skipped && !telemetry.used_iosurface) {
-        if (!present_result->framebuffer.empty()) {
-            int row_stride_bytes = 0;
-            if (height > 0) {
-                auto rows = static_cast<std::size_t>(height);
-                row_stride_bytes = static_cast<int>(present_result->framebuffer.size() / rows);
-            }
-            if (row_stride_bytes <= 0) {
-                row_stride_bytes = width * 4;
-            }
-            telemetry.stride_bytes = static_cast<std::size_t>(row_stride_bytes);
-            SP::UI::PresentLocalWindowFramebuffer(present_result->framebuffer.data(),
-                                                  width,
-                                                  height,
-                                                  row_stride_bytes);
-            telemetry.presented = true;
-        } else if (present_result->stats.used_metal_texture) {
-            static bool warned = false;
-            if (!warned) {
-                std::cerr << "warning: Metal texture presented without IOSurface fallback; "
-                             "widgets_example cannot display the frame buffer.\n";
-                warned = true;
-            }
-        }
-    }
+    auto dispatched = Builders::App::PresentToLocalWindow(*present_result,
+                                                          width,
+                                                          height);
+    telemetry.presented = dispatched.presented;
+    telemetry.used_iosurface = dispatched.used_iosurface;
+    telemetry.framebuffer_bytes = dispatched.framebuffer_bytes;
+    telemetry.stride_bytes = dispatched.row_stride_bytes;
 
     return telemetry;
 }
@@ -2781,36 +2743,39 @@ int main() {
         return 0;
     }
 
-    RendererParams renderer_params{
-        .name = "gallery_renderer",
-        .kind = RendererKind::Software2D,
-        .description = "widgets gallery renderer",
-    };
-    auto renderer = unwrap_or_exit(Renderer::Create(space, appRootView, renderer_params),
-                                   "create gallery renderer");
+    Builders::App::BootstrapParams bootstrap_params{};
+    bootstrap_params.renderer.name = "gallery_renderer";
+    bootstrap_params.renderer.kind = RendererKind::Software2D;
+    bootstrap_params.renderer.description = "widgets gallery renderer";
+    bootstrap_params.surface.name = "gallery_surface";
+    bootstrap_params.surface.desc.size_px.width = gallery.width;
+    bootstrap_params.surface.desc.size_px.height = gallery.height;
+    bootstrap_params.surface.desc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    bootstrap_params.surface.desc.color_space = ColorSpace::sRGB;
+    bootstrap_params.surface.desc.premultiplied_alpha = true;
+    bootstrap_params.window.name = "gallery_window";
+    bootstrap_params.window.title = "PathSpace Widgets Gallery";
+    bootstrap_params.window.width = gallery.width;
+    bootstrap_params.window.height = gallery.height;
+    bootstrap_params.window.scale = 1.0f;
+    bootstrap_params.window.background = "#1f232b";
+    bootstrap_params.present_policy.mode = PathWindowView::PresentMode::AlwaysLatestComplete;
+    bootstrap_params.present_policy.vsync_align = false;
+    bootstrap_params.present_policy.auto_render_on_present = true;
+    bootstrap_params.present_policy.capture_framebuffer = false;
+    bootstrap_params.view_name = "main";
+    RenderSettings bootstrap_settings{};
+    bootstrap_settings.clear_color = {0.11f, 0.12f, 0.15f, 1.0f};
+    bootstrap_settings.surface.size_px.width = gallery.width;
+    bootstrap_settings.surface.size_px.height = gallery.height;
+    bootstrap_settings.surface.dpi_scale = 1.0f;
+    bootstrap_params.renderer_settings_override = bootstrap_settings;
 
-    SurfaceDesc surface_desc{};
-    surface_desc.size_px.width = gallery.width;
-    surface_desc.size_px.height = gallery.height;
-    surface_desc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
-    surface_desc.color_space = ColorSpace::sRGB;
-    surface_desc.premultiplied_alpha = true;
-
-    SurfaceParams surface_params{
-        .name = "gallery_surface",
-        .desc = surface_desc,
-        .renderer = renderer.getPath(),
-    };
-    auto surface = unwrap_or_exit(Surface::Create(space, appRootView, surface_params),
-                                  "create gallery surface");
-    unwrap_or_exit(Surface::SetScene(space, surface, gallery.scene),
-                   "bind gallery scene to surface");
-
-    auto target_relative = unwrap_or_exit(space.read<std::string, std::string>(
-                                              std::string(surface.getPath()) + "/target"),
-                                          "read surface target binding");
-    auto target_absolute = unwrap_or_exit(SP::App::resolve_app_relative(appRootView, target_relative),
-                                          "resolve surface target path");
+    auto bootstrap = unwrap_or_exit(Builders::App::Bootstrap(space,
+                                                             appRootView,
+                                                             gallery.scene,
+                                                             bootstrap_params),
+                                    "bootstrap gallery renderer");
 
     WidgetsExampleContext ctx{};
     ctx.space = &space;
@@ -2830,9 +2795,9 @@ int main() {
     ctx.button_state = button_state_live;
     ctx.toggle_state = toggle_state_live;
     ctx.slider_state = slider_state_live;
-    ctx.list_state = list_state_live;
+   ctx.list_state = list_state_live;
     ctx.gallery = gallery;
-    ctx.target_path = target_absolute.getPath();
+    ctx.target_path = bootstrap.target.getPath();
 
     auto target_view = SP::ConcretePathStringView{ctx.target_path};
     auto make_dirty_hint = [](WidgetBounds const& bounds) {
@@ -2890,55 +2855,12 @@ int main() {
                                     ctx.gallery.height,
                                     "PathSpace Widgets Gallery");
 
-    WindowParams window_params{
-        .name = "gallery_window",
-        .title = "PathSpace Widgets Gallery",
-        .width = ctx.gallery.width,
-        .height = ctx.gallery.height,
-        .scale = 1.0f,
-        .background = "#1f232b",
-    };
-    auto window = unwrap_or_exit(Window::Create(space, appRootView, window_params),
-                                 "create gallery window");
-    unwrap_or_exit(Window::AttachSurface(space, window, "main", surface),
-                   "attach surface to window");
-
-    std::string view_base = std::string(window.getPath()) + "/views/main";
-    replace_value(space, view_base + "/present/policy", std::string{"AlwaysLatestComplete"});
-    replace_value(space, view_base + "/present/params/vsync_align", false);
-    replace_value(space, view_base + "/present/params/frame_timeout_ms", 0.0);
-    replace_value(space, view_base + "/present/params/staleness_budget_ms", 0.0);
-    replace_value(space, view_base + "/present/params/max_age_frames", static_cast<std::uint64_t>(0));
-
-    RenderSettings renderer_settings{};
-    renderer_settings.clear_color = {0.11f, 0.12f, 0.15f, 1.0f};
-    renderer_settings.surface.size_px.width = ctx.gallery.width;
-    renderer_settings.surface.size_px.height = ctx.gallery.height;
-    unwrap_or_exit(Renderer::UpdateSettings(space,
-                                            ConcretePathStringView{target_absolute.getPath()},
-                                            renderer_settings),
-                   "update renderer settings");
-
-    Builders::DirtyRectHint initial_hint{
-        .min_x = 0.0f,
-        .min_y = 0.0f,
-        .max_x = static_cast<float>(ctx.gallery.width),
-        .max_y = static_cast<float>(ctx.gallery.height),
-    };
-    unwrap_or_exit(Renderer::SubmitDirtyRects(space,
-                                              ConcretePathStringView{target_absolute.getPath()},
-                                              std::span<const Builders::DirtyRectHint>{&initial_hint, 1}),
-                   "submit initial dirty rect");
-
-    std::string surface_desc_path = std::string(surface.getPath()) + "/desc";
-    std::string target_desc_path = target_absolute.getPath() + "/desc";
-
     auto last_report = std::chrono::steady_clock::now();
     std::uint64_t frames_presented = 0;
     double total_render_ms = 0.0;
     double total_present_ms = 0.0;
-    int window_width = ctx.gallery.width;
-    int window_height = ctx.gallery.height;
+    int window_width = bootstrap.surface_desc.size_px.width;
+    int window_height = bootstrap.surface_desc.size_px.height;
 
     while (true) {
         SP::UI::PollLocalWindow();
@@ -2956,29 +2878,14 @@ int main() {
         if (requested_width != window_width || requested_height != window_height) {
             window_width = requested_width;
             window_height = requested_height;
-            surface_desc.size_px.width = window_width;
-            surface_desc.size_px.height = window_height;
-            replace_value(space, surface_desc_path, surface_desc);
-            replace_value(space, target_desc_path, surface_desc);
-            renderer_settings.surface.size_px.width = window_width;
-            renderer_settings.surface.size_px.height = window_height;
-            unwrap_or_exit(Renderer::UpdateSettings(space,
-                                                    ConcretePathStringView{target_absolute.getPath()},
-                                                    renderer_settings),
-                           "refresh renderer settings after resize");
-            Builders::DirtyRectHint hint{
-                .min_x = 0.0f,
-                .min_y = 0.0f,
-                .max_x = static_cast<float>(window_width),
-                .max_y = static_cast<float>(window_height),
-            };
-            unwrap_or_exit(Renderer::SubmitDirtyRects(space,
-                                                      ConcretePathStringView{target_absolute.getPath()},
-                                                      std::span<const Builders::DirtyRectHint>{&hint, 1}),
-                           "submit resize dirty rect");
+            unwrap_or_exit(Builders::App::UpdateSurfaceSize(space,
+                                                            bootstrap,
+                                                            window_width,
+                                                            window_height),
+                           "refresh surface after resize");
         }
 
-        auto telemetry = present_frame(space, window, "main", window_width, window_height);
+        auto telemetry = present_frame(space, bootstrap.window, bootstrap.view_name, window_width, window_height);
         if (telemetry && telemetry->presented && !telemetry->skipped) {
             ++frames_presented;
             total_render_ms += telemetry->render_ms;

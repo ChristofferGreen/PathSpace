@@ -1,5 +1,12 @@
 #include "WidgetDetail.hpp"
 
+#include <algorithm>
+#include <array>
+#include <iostream>
+#include <span>
+
+#include <pathspace/ui/LocalWindowBridge.hpp>
+
 namespace SP::UI::Builders::App {
 
 using namespace Detail;
@@ -212,5 +219,139 @@ auto Bootstrap(PathSpace& space,
     return result;
 }
 
-} // namespace SP::UI::Builders::App
+auto UpdateSurfaceSize(PathSpace& space,
+                       BootstrapResult& bootstrap,
+                       int width,
+                       int height,
+                       ResizeSurfaceOptions const& options) -> SP::Expected<void> {
+    if (width <= 0 || height <= 0) {
+        return std::unexpected(make_error("surface dimensions must be positive"));
+    }
 
+    auto const surface_desc_path = std::string(bootstrap.surface.getPath()) + "/desc";
+    auto const target_desc_path = std::string(bootstrap.target.getPath()) + "/desc";
+
+    SurfaceDesc updated_desc = bootstrap.surface_desc;
+    updated_desc.size_px.width = width;
+    updated_desc.size_px.height = height;
+
+    if (options.update_surface_desc) {
+        if (auto status = replace_single(space, surface_desc_path, updated_desc); !status) {
+            return std::unexpected(status.error());
+        }
+    }
+
+    if (options.update_target_desc) {
+        if (auto status = replace_single(space, target_desc_path, updated_desc); !status) {
+            return std::unexpected(status.error());
+        }
+    }
+
+    RenderSettings applied_settings = bootstrap.applied_settings;
+    if (options.renderer_settings_override) {
+        applied_settings = *options.renderer_settings_override;
+    }
+
+    if (options.update_renderer_settings) {
+        applied_settings.surface.size_px.width = width;
+        applied_settings.surface.size_px.height = height;
+        if (applied_settings.surface.dpi_scale <= 0.0f) {
+            applied_settings.surface.dpi_scale = 1.0f;
+        }
+        auto status = Renderer::UpdateSettings(space,
+                                               ConcretePathView{bootstrap.target.getPath()},
+                                               applied_settings);
+        if (!status) {
+            return std::unexpected(status.error());
+        }
+        bootstrap.applied_settings = applied_settings;
+    }
+
+    bootstrap.surface_desc = updated_desc;
+
+    if (options.submit_dirty_rect) {
+        Builders::DirtyRectHint dirty{};
+        dirty.min_x = 0.0f;
+        dirty.min_y = 0.0f;
+        dirty.max_x = static_cast<float>(width);
+        dirty.max_y = static_cast<float>(height);
+        if (dirty.max_x > dirty.min_x && dirty.max_y > dirty.min_y) {
+            std::array<Builders::DirtyRectHint, 1> rects{dirty};
+            auto status = Renderer::SubmitDirtyRects(space,
+                                                     ConcretePathView{bootstrap.target.getPath()},
+                                                     std::span<const Builders::DirtyRectHint>(rects));
+            if (!status) {
+                return std::unexpected(status.error());
+            }
+        }
+    }
+
+    return {};
+}
+
+auto PresentToLocalWindow(Window::WindowPresentResult const& present,
+                          int width,
+                          int height,
+                          PresentToLocalWindowOptions const& options) -> PresentToLocalWindowResult {
+    PresentToLocalWindowResult dispatched{};
+    dispatched.skipped = present.stats.skipped;
+
+#if defined(__APPLE__)
+    if (options.allow_iosurface
+        && !present.stats.skipped
+        && present.stats.iosurface
+        && present.stats.iosurface->valid()) {
+        auto iosurface_ref = present.stats.iosurface->retain_for_external_use();
+        if (iosurface_ref) {
+            SP::UI::PresentLocalWindowIOSurface(static_cast<void*>(iosurface_ref),
+                                                width,
+                                                height,
+                                                static_cast<int>(present.stats.iosurface->row_bytes()));
+            dispatched.presented = true;
+            dispatched.used_iosurface = true;
+            dispatched.row_stride_bytes = present.stats.iosurface->row_bytes();
+            dispatched.framebuffer_bytes = static_cast<std::size_t>(dispatched.row_stride_bytes)
+                                         * static_cast<std::size_t>(std::max(height, 0));
+            CFRelease(iosurface_ref);
+        }
+    }
+#endif
+
+    if (!dispatched.presented
+        && !present.stats.skipped
+        && options.allow_framebuffer
+        && !present.framebuffer.empty()) {
+        int row_stride_bytes = 0;
+        if (height > 0) {
+            auto rows = static_cast<std::size_t>(height);
+            if (rows > 0) {
+                row_stride_bytes = static_cast<int>(present.framebuffer.size() / rows);
+            }
+        }
+        if (row_stride_bytes <= 0) {
+            row_stride_bytes = width * 4;
+        }
+        SP::UI::PresentLocalWindowFramebuffer(present.framebuffer.data(),
+                                              width,
+                                              height,
+                                              row_stride_bytes);
+        dispatched.presented = true;
+        dispatched.used_framebuffer = true;
+        dispatched.row_stride_bytes = static_cast<std::size_t>(row_stride_bytes);
+        dispatched.framebuffer_bytes = present.framebuffer.size();
+    } else if (!dispatched.presented
+               && !present.stats.skipped
+               && present.stats.used_metal_texture
+               && options.warn_when_metal_texture_unshared) {
+        static bool warned = false;
+        if (!warned) {
+            std::cerr << "warning: Metal texture presented without IOSurface fallback; "
+                         "unable to blit to local window.\n";
+            warned = true;
+        }
+    }
+
+    return dispatched;
+}
+
+} // namespace SP::UI::Builders::App
