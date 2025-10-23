@@ -95,9 +95,13 @@ int main() {
         SP::PathIOGamepad::HapticsCommand rumble = SP::PathIOGamepad::HapticsCommand::constant(0.25f, 0.5f, 200);
         space.insert<"/system/devices/in/gamepad/default/rumble">(rumble);
     }
-    while(true) {
+    while (g_running.load(std::memory_order_acquire)) {
 #if defined(__APPLE__)
         SP::UI::PollLocalWindow();
+        if (SP::UI::LocalWindowQuitRequested()) {
+            g_running.store(false, std::memory_order_release);
+            break;
+        }
 #endif
         bool printed = false;
         if (auto pe = space.take<"/system/devices/in/pointer/default/events", PointerDeviceEvent>(); pe.has_value()) {

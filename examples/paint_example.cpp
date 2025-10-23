@@ -861,6 +861,9 @@ int main(int argc, char** argv) {
 
     while (true) {
         SP::UI::PollLocalWindow();
+        if (SP::UI::LocalWindowQuitRequested()) {
+            break;
+        }
 
         int requestedWidth = canvasWidth;
         int requestedHeight = canvasHeight;

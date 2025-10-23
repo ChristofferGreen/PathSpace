@@ -29,7 +29,7 @@ Success looks like:
 - ✅ (October 21, 2025) Window diagnostics sinks mirror presenter metrics under `windows/<win>/diagnostics/metrics/live/views/<view>/present`, keeping central telemetry aligned with per-target `output/v1/common/*` updates.
 - ✅ (October 20, 2025) Residency dashboard wiring publishes CPU/GPU soft & hard budget ratios plus status flags under `diagnostics/metrics/residency`, enabling external alerts without bespoke parsers.
 - ✅ (October 21, 2025) `examples/widgets_example.cpp` opens the widgets gallery window, renders button/toggle/slider/list widgets with software text overlays, streams present/FPS telemetry to stdout, and republishes the gallery snapshot when LocalWindow mouse events update widget state.
-- TODO (October 23, 2025): Track `Example App Quit Shortcuts [BUG]` to wire OS-standard quit accelerators (Command+Q, Ctrl+Q, Alt+F4) through the shared shutdown path and document the manual test expectations alongside the UI loop.
+- ✅ (October 23, 2025): `Example App Quit Shortcuts [BUG]` — LocalWindowBridge now captures Command+Q / Ctrl+Q / Alt+F4, drives `RequestLocalWindowQuit()` to close example windows through the shared shutdown path, and docs/AI_Onboarding_Next.md records the manual quit checklist.
 - TODO (October 23, 2025): Track `Example App UI Extraction [DX]` to catalogue reusable scaffolding across examples, hoist it into UI-layer helpers, and refresh onboarding docs once integrations land.
 
 ## Workstream Overview
@@ -160,7 +160,7 @@ Completed:
 
 Next:
 - ✅ (October 23, 2025) Pixel noise harness follow-ups: the example now ships automated baselines, diagnostics, and matching visuals so perf regressions stay guarded.
-- TODO: `Example App Quit Shortcuts [BUG]` — ensure every example window respects OS-level quit accelerators, collapse the handling into shared UI plumbing, and add a checklist to `docs/AI_Onboarding_Next.md`.
+- ✅ (October 23, 2025): `Example App Quit Shortcuts [BUG]` — LocalWindowBridge emits a shared quit request on Command+Q / Ctrl+Q / Alt+F4, examples break out of their loops via `LocalWindowQuitRequested()`, and `docs/AI_Onboarding_Next.md` now carries the quit shortcut manual test checklist.
 - TODO: `Example App UI Extraction [DX]` — audit example scaffolding for reusable window/renderer/event-loop code, promote the pieces into UI-layer APIs, and migrate examples to the shared helpers without regressing behaviour.
   - ✅ (October 22, 2025) Persist baseline metrics (frame time, residency, tile stats) from the harness under `docs/perf/` via `--write-baseline`; JSON captures live stats for regression comparisons.
   - ✅ (October 22, 2025) Landed `scripts/capture_pixel_noise_baseline.sh` to produce/update versioned baselines (default output `docs/perf/pixel_noise_baseline.json`).

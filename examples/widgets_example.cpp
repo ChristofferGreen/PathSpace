@@ -2942,6 +2942,9 @@ int main() {
 
     while (true) {
         SP::UI::PollLocalWindow();
+        if (SP::UI::LocalWindowQuitRequested()) {
+            break;
+        }
 
         int requested_width = window_width;
         int requested_height = window_height;

@@ -92,6 +92,12 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Reducer helpers (`Widgets::Reducers::ReducePending`/`PublishActions`) drain widget ops into `ops/actions/inbox/queue`; widgets_example seeds a sample action and prints the reducer output.
 - Stroke rendering is now a first-class primitive: `DrawCommandKind::Stroke` serializes shared point buffers, `PathRenderer2D` rasterizes polylines, the HTML adapter/replay round-trip stroke data, and `paint_example` emits strokes instead of per-dab rects (October 21, 2025).
 
+### Quit Shortcut Checklist (October 23, 2025)
+- `LocalWindowBridge` now captures Command+Q (macOS), Ctrl+Q, and Alt+F4 and forwards them through `RequestLocalWindowQuit()`, closing the active window on the main thread and setting `LocalWindowQuitRequested()` for loop coordination.
+- **Manual verification:** run `widgets_example`, `paint_example`, `pixel_noise_example`, and `devices_example`; trigger the shortcut for the host platform and confirm the loop exits cleanly (console should not require force termination). `pixel_noise_example` logs a quit message when the request is observed.
+- **Window close parity:** using the window close affordance should also terminate the loop; `windowWillClose` sets the quit flag so pending cleanup code can poll `LocalWindowQuitRequested()`.
+- **Extending shortcuts:** new UI examples should poll `LocalWindowQuitRequested()` immediately after `PollLocalWindow()`; extend shortcut detection inside `src/pathspace/ui/LocalWindowBridge.mm` whenever additional accelerators are introduced, then mirror the expectations here.
+
 ## 6. Shutdown Snapshot (October 23, 2025 @ 19:45 UTC)
 - Latest change: landed `test(ui): cover App::Bootstrap overrides` directly on `master`, exercising present policy configuration, renderer setting overrides, and invalid view identifiers; synced `docs/Plan_SceneGraph_Implementation.md` / `docs/AI_Onboarding_Next.md` accordingly.
 - Validation: `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20` (15× PathSpaceTests, PathSpaceUITests, HtmlCanvasVerify, HtmlAssetInspect, PixelNoise harnesses) — green after the coverage additions (October 23, 2025).

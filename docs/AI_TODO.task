@@ -155,6 +155,44 @@ task {
 }
 
 task {
+  name: "Example App Quit Shortcuts [BUG]"
+  description: "Ensure example applications respect system-standard quit commands (e.g., Command+Q on macOS) so windows close without forcing process termination."
+  status: completed
+  priority: P1
+
+  acceptance_criteria: [
+    "All example apps that open windows exit when the OS-level quit command/menu (Command+Q on macOS, Ctrl+Q on Linux, Alt+F4 on Windows) is invoked.",
+    "Window close events initiated from the OS (titlebar close, dock menu, task manager) trigger orderly shutdown and cleanup.",
+    "Documentation notes the quit behaviour and how to extend/customize shortcuts in new examples."
+  ]
+
+  steps: [
+    "DONE (Oct 23, 2025) Audited LocalWindowBridge + example loops and added shared quit request wiring for widgets_example, paint_example, pixel_noise_example, and devices_example.",
+    "DONE (Oct 23, 2025) Captured Command+Q / Ctrl+Q / Alt+F4 in LocalWindowBridge::RequestLocalWindowQuit() so OS shortcuts close windows via the shared shutdown path.",
+    "DONE (Oct 23, 2025) Documented the quit shortcut manual test checklist in docs/AI_Onboarding_Next.md and cross-referenced the behaviour in Plan_SceneGraph_Implementation.md."
+  ]
+}
+
+task {
+  name: "Example App UI Extraction [DX]"
+  description: "Evaluate example application code for reusable patterns and lift appropriate pieces into shared UI-layer helpers."
+  status: planned
+  priority: P2
+
+  acceptance_criteria: [
+    "A survey identifies overlapping scaffolding across example apps (window creation, event loops, renderer setup).",
+    "Common functionality moves into PathSpace UI-layer APIs with clear ownership and tests or example usage.",
+    "Existing examples adopt the new helpers without regressing documented behaviour; onboarding docs highlight the reuse points."
+  ]
+
+  steps: [
+    "Catalogue shared code paths in examples (builders, event pumps, telemetry hooks) and note divergence points.",
+    "Design and implement UI-layer helper APIs or modules for the reusable pieces, including validation/tests where feasible.",
+    "Refactor examples to consume the helpers and update docs/AI_Onboarding_Next.md or relevant quickstarts with guidance."
+  ]
+}
+
+task {
   name: "Widgets Demo Gallery [DOCS]"
   description: "Promote examples/widgets_example.cpp into a full widget gallery that opens a PathWindowView, renders all widgets, and documents interaction diagnostics."
   status: completed

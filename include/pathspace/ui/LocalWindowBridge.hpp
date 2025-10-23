@@ -62,6 +62,10 @@ struct LocalWindowCallbacks {
 
 void SetLocalWindowCallbacks(LocalWindowCallbacks const& callbacks);
 
+void RequestLocalWindowQuit();
+auto LocalWindowQuitRequested() -> bool;
+void ClearLocalWindowQuitRequest();
+
 void ConfigureLocalWindow(int width, int height, char const* title);
 void InitLocalWindow();
 void InitLocalWindowWithSize(int width, int height, char const* title);

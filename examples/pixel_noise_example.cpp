@@ -1036,6 +1036,10 @@ int main(int argc, char** argv) {
 
         if (!options.headless) {
             SP::UI::PollLocalWindow();
+            if (SP::UI::LocalWindowQuitRequested()) {
+                std::cout << "pixel_noise_example: quit shortcut requested, exiting loop.\n";
+                break;
+            }
             int window_width = 0;
             int window_height = 0;
             SP::UI::GetLocalWindowContentSize(&window_width, &window_height);

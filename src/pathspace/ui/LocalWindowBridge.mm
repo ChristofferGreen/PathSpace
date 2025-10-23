@@ -39,6 +39,11 @@ using SP::UI::LocalKeyModifierShift;
 
 namespace {
 
+auto quit_flag() -> std::atomic<bool>& {
+    static std::atomic<bool> flag{false};
+    return flag;
+}
+
 #if defined(__APPLE__)
 
 struct CallbackState {
@@ -104,7 +109,30 @@ auto make_local_key_event(NSEvent* event, LocalKeyEventType type) -> LocalKeyEve
     return ev;
 }
 
+auto is_quit_shortcut(LocalKeyEvent const& ev) -> bool {
+    if (ev.type != LocalKeyEventType::KeyDown) {
+        return false;
+    }
+    constexpr unsigned int kKeycodeQ = 0x0C;
+    constexpr unsigned int kKeycodeF4 = 0x76;
+    bool command = (ev.modifiers & LocalKeyModifierCommand) != 0u;
+    bool control = (ev.modifiers & LocalKeyModifierControl) != 0u;
+    bool alt = (ev.modifiers & LocalKeyModifierAlt) != 0u;
+    bool is_q_keycode = ev.keycode == kKeycodeQ;
+    bool is_q_character = ev.character == U'Q' || ev.character == U'q';
+    bool is_q = is_q_keycode || is_q_character;
+    bool command_q = command && is_q;
+    bool control_q = control && is_q;
+    bool alt_f4 = alt && (ev.keycode == kKeycodeF4);
+    return command_q || control_q || alt_f4;
+}
+
 void emit_key_event(LocalKeyEvent const& ev) {
+    if (is_quit_shortcut(ev)) {
+        if (!quit_flag().load(std::memory_order_acquire)) {
+            SP::UI::RequestLocalWindowQuit();
+        }
+    }
     auto& state = callback_state();
     std::lock_guard<std::mutex> lock(state.mutex);
     if (state.callbacks.key_event) {
@@ -672,6 +700,7 @@ void schedule_metal_present(WindowState& state) {
     }
     state.window = nil;
     state.window_delegate = nil;
+    quit_flag().store(true, std::memory_order_release);
 }
 @end
 
@@ -723,6 +752,7 @@ void InitLocalWindow() {
 void InitLocalWindowWithSize(int width, int height, char const* title) {
 #if defined(__APPLE__)
     WindowState& state = window_state();
+    quit_flag().store(false, std::memory_order_release);
     if (width > 0) {
         state.desired_width = width;
     }
@@ -895,6 +925,31 @@ void GetLocalWindowContentSize(int* width, int* height) {
     if (width) *width = 0;
     if (height) *height = 0;
 #endif
+}
+
+void RequestLocalWindowQuit() {
+    quit_flag().store(true, std::memory_order_release);
+#if defined(__APPLE__)
+    @autoreleasepool {
+        WindowState& state = window_state();
+        if (state.window) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                WindowState& st = window_state();
+                if (st.window) {
+                    [st.window performClose:nil];
+                }
+            });
+        }
+    }
+#endif
+}
+
+auto LocalWindowQuitRequested() -> bool {
+    return quit_flag().load(std::memory_order_acquire);
+}
+
+void ClearLocalWindowQuitRequest() {
+    quit_flag().store(false, std::memory_order_release);
 }
 
 } // namespace SP::UI
