@@ -195,7 +195,7 @@ Next:
 - Build a fault-injection harness that flips Metal upload flags, simulates surface resize failures, and drops drawables mid-frame to ensure diagnostics and error paths stay actionable.
 - ✅ (October 23, 2025) Added optional ASan/TSan build/test modes via `scripts/compile.sh` (plus pre-push toggles) so maintainers can trigger sanitized loops on demand without a nightly job.
   - `./scripts/compile.sh --asan-test` / `--tsan-test` auto-select sanitizer build directories, disable Metal by default, and export recommended runtime env vars; pre-push hook honours `RUN_ASAN=1` / `RUN_TSAN=1` with optional `ASAN_LOOP` / `TSAN_LOOP` overrides.
-- Document how the expanded diagnostics map into dashboards/alerts (metrics → panels/thresholds) so maintainers know where to monitor residency, progressive tiles, and performance regression outputs.
+- ✅ (October 23, 2025) Document how the expanded diagnostics map into dashboards/alerts (metrics → panels/thresholds) so maintainers know where to monitor residency, progressive tiles, and performance regression outputs.
 
 ### Phase 7 — Optional Backends & HTML Adapter Prep (post-MVP)
 - ✅ (October 20, 2025) `PathSpaceUITests` now cover HTML canvas replay parity and the ObjC++ Metal presenter harness, replacing the skipped scaffolding.
@@ -299,7 +299,7 @@ Next:
   - ✅ (October 23, 2025) Expanded `tests/ui/test_AppBootstrap.cpp` to cover present policy configuration, renderer setting overrides, initial dirty rect emission, and invalid view identifiers so helper adoption stays guarded under the PathSpaceUITests loop.
   - ✅ (October 23, 2025) Added widget session capture/replay tooling (`scripts/record_widget_session.sh`, `scripts/replay_widget_session.sh`) plus trace env support (`WIDGETS_EXAMPLE_TRACE_RECORD`, `WIDGETS_EXAMPLE_TRACE_REPLAY`) and published `docs/Widget_Contribution_Quickstart.md` so contributors can share deterministic pointer/keyboard traces alongside new widget work.
   - ✅ (October 23, 2025) Landed the initial layout container widgets (vertical/horizontal stacks) with `Widgets::CreateStack`/`UpdateStackLayout`. They measure child widget scenes, compute spacing/alignment metadata, publish aggregated stack snapshots, and surface dirty hints through bindings. UITests cover layout computation and binding dirty propagation; gallery follow-ups remain to showcase the containers in the demo and add grid variants.
-  - Build a tree view widget that supports expand/collapse, selection, and async data loading hooks, complete with bindings, reducer support, canonical paths, and gallery/UITest coverage.
+  - ✅ (October 23, 2025) Built a tree view widget supporting expand/collapse, selection, and async data loading hooks, complete with bindings, reducer support, canonical paths, and UITest coverage (gallery demo follow-up tracked below).
   - Extend `widgets_example` to showcase layout containers and the tree view, wiring state paths, reducers, and telemetry so contributors can exercise them interactively.
 - Update `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage, and troubleshooting steps.
 - Document widget ops schema: queue path (`widgets/<id>/ops/inbox/queue`), `WidgetOp` fields (kind, pointer metadata, value, timestamp) and reducer sample wiring.
