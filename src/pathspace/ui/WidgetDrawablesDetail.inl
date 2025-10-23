@@ -3,3 +3,4 @@
 #include "WidgetDrawablesDetailToggle.inl"
 #include "WidgetDrawablesDetailSlider.inl"
 #include "WidgetDrawablesDetailList.inl"
+#include "WidgetDrawablesDetailStack.inl"

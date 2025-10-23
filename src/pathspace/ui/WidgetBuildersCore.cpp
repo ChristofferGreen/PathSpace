@@ -639,6 +639,279 @@ auto MakeSunsetWidgetTheme() -> WidgetTheme {
     return theme;
 }
 
+namespace {
+
+inline auto sanitize_stack_constraints(Widgets::StackChildConstraints constraints)
+    -> Widgets::StackChildConstraints {
+    constraints.weight = std::max(constraints.weight, 0.0f);
+    constraints.margin_main_start = std::max(constraints.margin_main_start, 0.0f);
+    constraints.margin_main_end = std::max(constraints.margin_main_end, 0.0f);
+    constraints.margin_cross_start = std::max(constraints.margin_cross_start, 0.0f);
+    constraints.margin_cross_end = std::max(constraints.margin_cross_end, 0.0f);
+    if (constraints.has_min_main && constraints.has_max_main && constraints.max_main < constraints.min_main) {
+        std::swap(constraints.min_main, constraints.max_main);
+    }
+    if (constraints.has_min_cross && constraints.has_max_cross && constraints.max_cross < constraints.min_cross) {
+        std::swap(constraints.min_cross, constraints.max_cross);
+    }
+    return constraints;
+}
+
+inline auto resolve_stack_path(AppRootPathView appRoot,
+                               std::string const& input) -> SP::Expected<std::string> {
+    if (input.empty()) {
+        return std::unexpected(make_error("stack child path must not be empty",
+                                          SP::Error::Code::InvalidPath));
+    }
+    if (input.front() == '/') {
+        return input;
+    }
+    auto resolved = combine_relative(appRoot, input);
+    if (!resolved) {
+        return std::unexpected(resolved.error());
+    }
+    return resolved->getPath();
+}
+
+inline auto normalize_stack_children(PathSpace& space,
+                                     AppRootPathView appRoot,
+                                     std::vector<Widgets::StackChildSpec> const& input)
+    -> SP::Expected<std::vector<Widgets::StackChildSpec>> {
+    if (input.empty()) {
+        return std::unexpected(make_error("stack layout requires at least one child",
+                                          SP::Error::Code::InvalidType));
+    }
+
+    std::unordered_set<std::string> ids;
+    ids.reserve(input.size());
+
+    std::vector<Widgets::StackChildSpec> output;
+    output.reserve(input.size());
+
+    for (auto const& spec : input) {
+        if (auto status = ensure_identifier(spec.id, "stack child id"); !status) {
+            return std::unexpected(status.error());
+        }
+        if (!ids.insert(spec.id).second) {
+            return std::unexpected(make_error("duplicate stack child id: " + spec.id,
+                                              SP::Error::Code::InvalidType));
+        }
+
+        auto widget_path = resolve_stack_path(appRoot, spec.widget_path);
+        if (!widget_path) {
+            return std::unexpected(widget_path.error());
+        }
+
+        auto scene_path = resolve_stack_path(appRoot, spec.scene_path);
+        if (!scene_path) {
+            return std::unexpected(scene_path.error());
+        }
+
+        Widgets::StackChildSpec normalized;
+        normalized.id = spec.id;
+        normalized.widget_path = *widget_path;
+        normalized.scene_path = *scene_path;
+        normalized.constraints = sanitize_stack_constraints(spec.constraints);
+
+        output.push_back(std::move(normalized));
+    }
+    (void)space;
+    return output;
+}
+
+inline auto layout_equal(Widgets::StackLayoutState const& lhs,
+                         Widgets::StackLayoutState const& rhs) -> bool {
+    auto equal_float = [](float a, float b) {
+        return std::fabs(a - b) <= 1e-4f;
+    };
+    if (!equal_float(lhs.width, rhs.width) || !equal_float(lhs.height, rhs.height)) {
+        return false;
+    }
+    if (lhs.children.size() != rhs.children.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < lhs.children.size(); ++index) {
+        auto const& a = lhs.children[index];
+        auto const& b = rhs.children[index];
+        if (a.id != b.id) {
+            return false;
+        }
+        if (!equal_float(a.x, b.x) || !equal_float(a.y, b.y)
+            || !equal_float(a.width, b.width) || !equal_float(a.height, b.height)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+inline auto stack_paths_from_root(std::string const& rootPath) -> StackPaths {
+    StackPaths paths{};
+    paths.root = WidgetPath{rootPath};
+    paths.style = ConcretePath{rootPath + "/layout/style"};
+    paths.children = ConcretePath{rootPath + "/layout/children"};
+    paths.computed = ConcretePath{rootPath + "/layout/computed"};
+    return paths;
+}
+
+} // namespace
+
+auto CreateStack(PathSpace& space,
+                 AppRootPathView appRoot,
+                 Widgets::StackLayoutParams const& params) -> SP::Expected<Widgets::StackPaths> {
+    if (auto status = ensure_identifier(params.name, "stack name"); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto widgetRoot = combine_relative(appRoot, std::string("widgets/") + params.name);
+    if (!widgetRoot) {
+        return std::unexpected(widgetRoot.error());
+    }
+
+    auto normalized_children = normalize_stack_children(space, appRoot, params.children);
+    if (!normalized_children) {
+        return std::unexpected(normalized_children.error());
+    }
+
+    Widgets::StackLayoutParams resolved = params;
+    resolved.children = *normalized_children;
+
+    auto layout_pair = compute_stack(space, resolved);
+    if (!layout_pair) {
+        return std::unexpected(layout_pair.error());
+    }
+
+    auto& computation = layout_pair->first;
+    auto& runtime = layout_pair->second;
+
+    auto bucket = build_stack_bucket(space, computation.state, runtime);
+    if (!bucket) {
+        return std::unexpected(bucket.error());
+    }
+
+    auto scenePath = ensure_stack_scene(space, appRoot, params.name);
+    if (!scenePath) {
+        return std::unexpected(scenePath.error());
+    }
+
+    if (auto status = write_stack_metadata(space,
+                                           widgetRoot->getPath(),
+                                           resolved.style,
+                                           resolved.children,
+                                           computation.state); !status) {
+        return std::unexpected(status.error());
+    }
+
+    if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, *bucket); !status) {
+        return std::unexpected(status.error());
+    }
+
+    Widgets::StackPaths paths = stack_paths_from_root(widgetRoot->getPath());
+    paths.scene = *scenePath;
+    return paths;
+}
+
+auto ReadStackLayout(PathSpace const& space,
+                     Widgets::StackPaths const& paths) -> SP::Expected<Widgets::StackLayoutState> {
+    auto state = space.read<Widgets::StackLayoutState, std::string>(paths.computed.getPath());
+    if (!state) {
+        return std::unexpected(state.error());
+    }
+    return *state;
+}
+
+auto DescribeStack(PathSpace const& space,
+                   Widgets::StackPaths const& paths) -> SP::Expected<Widgets::StackLayoutParams> {
+    Widgets::StackLayoutParams params{};
+
+    auto style = space.read<Widgets::StackLayoutStyle, std::string>(paths.style.getPath());
+    if (!style) {
+        return std::unexpected(style.error());
+    }
+    params.style = *style;
+
+    auto children = space.read<std::vector<Widgets::StackChildSpec>, std::string>(paths.children.getPath());
+    if (!children) {
+        return std::unexpected(children.error());
+    }
+    params.children = *children;
+
+    auto root = std::string(paths.root.getPath());
+    auto last_slash = root.find_last_of('/');
+    if (last_slash != std::string::npos && last_slash + 1 < root.size()) {
+        params.name = root.substr(last_slash + 1);
+    } else {
+        params.name = root;
+    }
+    return params;
+}
+
+auto UpdateStackLayout(PathSpace& space,
+                       Widgets::StackPaths const& paths,
+                       Widgets::StackLayoutParams const& params) -> SP::Expected<bool> {
+    auto appRootPath = derive_app_root_for(ConcretePathView{paths.root.getPath()});
+    if (!appRootPath) {
+        return std::unexpected(appRootPath.error());
+    }
+    AppRootPathView appRoot{appRootPath->getPath()};
+
+    std::vector<Widgets::StackChildSpec> effective_children = params.children;
+    if (effective_children.empty()) {
+        auto current_children = space.read<std::vector<Widgets::StackChildSpec>, std::string>(paths.children.getPath());
+        if (!current_children) {
+            return std::unexpected(current_children.error());
+        }
+        effective_children = *current_children;
+    }
+
+    auto normalized_children = normalize_stack_children(space, appRoot, effective_children);
+    if (!normalized_children) {
+        return std::unexpected(normalized_children.error());
+    }
+
+    Widgets::StackLayoutParams resolved = params;
+    resolved.children = *normalized_children;
+
+    auto layout_pair = compute_stack(space, resolved);
+    if (!layout_pair) {
+        return std::unexpected(layout_pair.error());
+    }
+
+    auto& computation = layout_pair->first;
+    auto& runtime = layout_pair->second;
+
+    auto existing = ReadStackLayout(space, paths);
+    if (!existing) {
+        return std::unexpected(existing.error());
+    }
+
+    bool changed = !layout_equal(*existing, computation.state);
+
+    auto bucket = build_stack_bucket(space, computation.state, runtime);
+    if (!bucket) {
+        return std::unexpected(bucket.error());
+    }
+
+    auto rootPath = std::string(paths.root.getPath());
+    if (auto status = write_stack_metadata(space,
+                                           rootPath,
+                                           resolved.style,
+                                           resolved.children,
+                                           computation.state); !status) {
+        return std::unexpected(status.error());
+    }
+
+    if (auto status = publish_scene_snapshot(space, appRoot, paths.scene, *bucket); !status) {
+        return std::unexpected(status.error());
+    }
+
+    if (changed) {
+        if (auto mark = Scene::MarkDirty(space, paths.scene, Scene::DirtyKind::Visual); !mark) {
+            return std::unexpected(mark.error());
+        }
+    }
+    return changed;
+}
+
 auto ApplyTheme(WidgetTheme const& theme, ButtonParams& params) -> void {
     params.style = theme.button;
 }

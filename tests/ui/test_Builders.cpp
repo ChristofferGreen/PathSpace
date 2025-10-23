@@ -2626,6 +2626,83 @@ TEST_CASE("Widgets::CreateList publishes snapshot and metadata") {
     CHECK(revision->revision != 0);
 }
 
+TEST_CASE("Widgets::CreateStack composes vertical layout") {
+    BuildersFixture fx;
+
+    Widgets::ButtonParams buttonParams{};
+    buttonParams.name = "stack_button";
+    buttonParams.label = "Stack Button";
+    auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
+    REQUIRE(button);
+
+    Widgets::ToggleParams toggleParams{};
+    toggleParams.name = "stack_toggle";
+    auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), toggleParams);
+    REQUIRE(toggle);
+
+    Widgets::SliderParams sliderParams{};
+    sliderParams.name = "stack_slider";
+    sliderParams.minimum = 0.0f;
+    sliderParams.maximum = 1.0f;
+    sliderParams.value = 0.5f;
+    auto slider = Widgets::CreateSlider(fx.space, fx.root_view(), sliderParams);
+    REQUIRE(slider);
+
+    Widgets::StackLayoutParams stackParams{};
+    stackParams.name = "column";
+    stackParams.style.axis = Widgets::StackAxis::Vertical;
+    stackParams.style.spacing = 24.0f;
+    stackParams.style.padding_main_start = 16.0f;
+    stackParams.style.padding_cross_start = 20.0f;
+    stackParams.children = {
+        Widgets::StackChildSpec{
+            .id = "button",
+            .widget_path = button->root.getPath(),
+            .scene_path = button->scene.getPath(),
+        },
+        Widgets::StackChildSpec{
+            .id = "toggle",
+            .widget_path = toggle->root.getPath(),
+            .scene_path = toggle->scene.getPath(),
+        },
+        Widgets::StackChildSpec{
+            .id = "slider",
+            .widget_path = slider->root.getPath(),
+            .scene_path = slider->scene.getPath(),
+        },
+    };
+
+    auto stack = Widgets::CreateStack(fx.space, fx.root_view(), stackParams);
+    REQUIRE(stack);
+    CHECK(stack->scene.getPath() == "/system/applications/test_app/scenes/widgets/column");
+
+    auto layout = Widgets::ReadStackLayout(fx.space, *stack);
+    REQUIRE(layout);
+    REQUIRE(layout->children.size() == 3);
+    CHECK(layout->width >= buttonParams.style.width);
+    CHECK(layout->height > 0.0f);
+
+    auto& buttonChild = layout->children[0];
+    auto& toggleChild = layout->children[1];
+    auto& sliderChild = layout->children[2];
+
+    CHECK(buttonChild.id == "button");
+    CHECK(toggleChild.id == "toggle");
+    CHECK(sliderChild.id == "slider");
+
+    CHECK(buttonChild.x == doctest::Approx(stackParams.style.padding_cross_start));
+    CHECK(buttonChild.y == doctest::Approx(stackParams.style.padding_main_start));
+    CHECK(toggleChild.y > buttonChild.y);
+    CHECK(sliderChild.y > toggleChild.y);
+
+    auto revision = Scene::ReadCurrentRevision(fx.space, stack->scene);
+    REQUIRE(revision);
+    auto base = std::string(stack->scene.getPath()) + "/builds/" + format_revision(revision->revision);
+    auto bucket = SceneSnapshotBuilder::decode_bucket(fx.space, base);
+    REQUIRE(bucket);
+    CHECK(bucket->drawable_ids.size() >= 3);
+}
+
 TEST_CASE("Widgets::UpdateListState clamps indices and marks dirty") {
     BuildersFixture fx;
 
@@ -3915,6 +3992,82 @@ TEST_CASE("SubmitDirtyRects collapses excessive hints to full surface") {
     CHECK(rect.min_y == doctest::Approx(0.0f));
     CHECK(rect.max_x == doctest::Approx(static_cast<float>(desc.size_px.width)));
     CHECK(rect.max_y == doctest::Approx(static_cast<float>(desc.size_px.height)));
+}
+
+TEST_CASE("Widgets::Bindings::UpdateStack emits dirty hints and auto render events") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{ .name = "bindings_stack_renderer", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc{};
+    desc.size_px = {512, 512};
+    desc.progressive_tile_size_px = 32;
+
+    SurfaceParams surfaceParams{ .name = "bindings_stack_surface", .desc = desc, .renderer = "renderers/bindings_stack_renderer" };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    auto target = Renderer::ResolveTargetBase(fx.space,
+                                              fx.root_view(),
+                                              *renderer,
+                                              "targets/surfaces/bindings_stack_surface");
+    REQUIRE(target);
+
+    Widgets::ButtonParams buttonParams{};
+    buttonParams.name = "stack_binding_button";
+    buttonParams.label = "Primary";
+    auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
+    REQUIRE(button);
+
+    Widgets::ToggleParams toggleParams{};
+    toggleParams.name = "stack_binding_toggle";
+    auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), toggleParams);
+    REQUIRE(toggle);
+
+    Widgets::StackLayoutParams stackParams{};
+    stackParams.name = "binding_stack";
+    stackParams.style.axis = Widgets::StackAxis::Vertical;
+    stackParams.style.spacing = 12.0f;
+    stackParams.children = {
+        Widgets::StackChildSpec{
+            .id = "button",
+            .widget_path = button->root.getPath(),
+            .scene_path = button->scene.getPath(),
+        },
+        Widgets::StackChildSpec{
+            .id = "toggle",
+            .widget_path = toggle->root.getPath(),
+            .scene_path = toggle->scene.getPath(),
+        },
+    };
+
+    auto stack = Widgets::CreateStack(fx.space, fx.root_view(), stackParams);
+    REQUIRE(stack);
+
+    auto binding = WidgetBindings::CreateStackBinding(fx.space,
+                                                      fx.root_view(),
+                                                      *stack,
+                                                      SP::ConcretePathStringView{target->getPath()});
+    REQUIRE(binding);
+
+    auto describe = Widgets::DescribeStack(fx.space, *stack);
+    REQUIRE(describe);
+    describe->style.spacing = 36.0f;
+
+    auto updated = WidgetBindings::UpdateStack(fx.space, *binding, *describe);
+    REQUIRE(updated);
+    CHECK(*updated);
+
+    auto hints = fx.space.read<std::vector<DirtyRectHint>, std::string>(std::string(target->getPath()) + "/hints/dirtyRects");
+    REQUIRE(hints);
+    REQUIRE_FALSE(hints->empty());
+
+    auto renderQueuePath = std::string(target->getPath()) + "/events/renderRequested/queue";
+    auto renderEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    REQUIRE(renderEvent);
+    CHECK(renderEvent->reason == "widget/stack");
 }
 
 TEST_CASE("App bootstrap helper wires renderer, surface, and window defaults") {

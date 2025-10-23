@@ -203,6 +203,25 @@ auto CreateListBinding(PathSpace& space,
     return binding;
 }
 
+auto CreateStackBinding(PathSpace& space,
+                        AppRootPathView,
+                        StackPaths const& paths,
+                        ConcretePathView targetPath,
+                        std::optional<DirtyRectHint> dirty_override,
+                        bool auto_render) -> SP::Expected<StackBinding> {
+    auto layout = Widgets::ReadStackLayout(space, paths);
+    if (!layout) {
+        return std::unexpected(layout.error());
+    }
+
+    DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(layout->width, layout->height));
+    StackBinding binding{
+        .layout = paths,
+        .options = build_options(paths.root, targetPath, hint, auto_render),
+    };
+    return binding;
+}
+
 auto DispatchButton(PathSpace& space,
                     ButtonBinding const& binding,
                     ButtonState const& new_state,
@@ -421,6 +440,45 @@ auto DispatchList(PathSpace& space,
         return std::unexpected(status.error());
     }
     return *changed;
+}
+
+auto UpdateStack(PathSpace& space,
+                 StackBinding const& binding,
+                 StackLayoutParams const& params) -> SP::Expected<bool> {
+    auto changed = Widgets::UpdateStackLayout(space, binding.layout, params);
+    if (!changed) {
+        return std::unexpected(changed.error());
+    }
+    if (!*changed) {
+        return false;
+    }
+
+    auto layout = Widgets::ReadStackLayout(space, binding.layout);
+    if (!layout) {
+        return std::unexpected(layout.error());
+    }
+
+    DirtyRectHint updated_hint = binding.options.dirty_rect;
+    auto layout_hint = make_default_dirty_rect(layout->width, layout->height);
+    if (updated_hint.max_x <= updated_hint.min_x || updated_hint.max_y <= updated_hint.min_y) {
+        updated_hint = layout_hint;
+    } else {
+        updated_hint.min_x = std::min(updated_hint.min_x, layout_hint.min_x);
+        updated_hint.min_y = std::min(updated_hint.min_y, layout_hint.min_y);
+        updated_hint.max_x = std::max(updated_hint.max_x, layout_hint.max_x);
+        updated_hint.max_y = std::max(updated_hint.max_y, layout_hint.max_y);
+    }
+    updated_hint = ensure_valid_hint(updated_hint);
+
+    BindingOptions refreshed = binding.options;
+    refreshed.dirty_rect = updated_hint;
+    if (auto status = submit_dirty_hint(space, refreshed); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = schedule_auto_render(space, refreshed, "widget/stack"); !status) {
+        return std::unexpected(status.error());
+    }
+    return true;
 }
 
 } // namespace SP::UI::Builders::Widgets::Bindings

@@ -29,6 +29,8 @@ Success looks like:
 - ✅ (October 21, 2025) Window diagnostics sinks mirror presenter metrics under `windows/<win>/diagnostics/metrics/live/views/<view>/present`, keeping central telemetry aligned with per-target `output/v1/common/*` updates.
 - ✅ (October 20, 2025) Residency dashboard wiring publishes CPU/GPU soft & hard budget ratios plus status flags under `diagnostics/metrics/residency`, enabling external alerts without bespoke parsers.
 - ✅ (October 21, 2025) `examples/widgets_example.cpp` opens the widgets gallery window, renders button/toggle/slider/list widgets with software text overlays, streams present/FPS telemetry to stdout, and republishes the gallery snapshot when LocalWindow mouse events update widget state.
+- TODO (October 23, 2025): Track `Example App Quit Shortcuts [BUG]` to wire OS-standard quit accelerators (Command+Q, Ctrl+Q, Alt+F4) through the shared shutdown path and document the manual test expectations alongside the UI loop.
+- TODO (October 23, 2025): Track `Example App UI Extraction [DX]` to catalogue reusable scaffolding across examples, hoist it into UI-layer helpers, and refresh onboarding docs once integrations land.
 
 ## Workstream Overview
 - **Typed wiring helpers** — `Builders.hpp` plus supporting utilities for app-relative path validation, target naming, and atomic parameter writes.
@@ -158,6 +160,8 @@ Completed:
 
 Next:
 - ✅ (October 23, 2025) Pixel noise harness follow-ups: the example now ships automated baselines, diagnostics, and matching visuals so perf regressions stay guarded.
+- TODO: `Example App Quit Shortcuts [BUG]` — ensure every example window respects OS-level quit accelerators, collapse the handling into shared UI plumbing, and add a checklist to `docs/AI_Onboarding_Next.md`.
+- TODO: `Example App UI Extraction [DX]` — audit example scaffolding for reusable window/renderer/event-loop code, promote the pieces into UI-layer APIs, and migrate examples to the shared helpers without regressing behaviour.
   - ✅ (October 22, 2025) Persist baseline metrics (frame time, residency, tile stats) from the harness under `docs/perf/` via `--write-baseline`; JSON captures live stats for regression comparisons.
   - ✅ (October 22, 2025) Landed `scripts/capture_pixel_noise_baseline.sh` to produce/update versioned baselines (default output `docs/perf/pixel_noise_baseline.json`).
   - ✅ (October 22, 2025) Spun a Metal-enabled variant via `--backend=metal`, captured `docs/perf/pixel_noise_metal_baseline.json`, and added the `PixelNoisePerfHarnessMetal` CTest (PATHSPACE_ENABLE_METAL_UPLOADS-gated) so the loop covers both Software2D and Metal2D backends with the same perf budgets.
@@ -293,7 +297,7 @@ Next:
   - ✅ (October 23, 2025) Added a theme hot-swap UITest (`tests/ui/test_Builders.cpp`: "Widgets::WidgetTheme hot swap repaints button scenes and marks dirty") that applies default/sunset themes in-place, asserts scene/state revisions bump, and verifies metadata + drawable colors update without stale cache artifacts.
   - ✅ (October 23, 2025) Expanded `tests/ui/test_AppBootstrap.cpp` to cover present policy configuration, renderer setting overrides, initial dirty rect emission, and invalid view identifiers so helper adoption stays guarded under the PathSpaceUITests loop.
   - ✅ (October 23, 2025) Added widget session capture/replay tooling (`scripts/record_widget_session.sh`, `scripts/replay_widget_session.sh`) plus trace env support (`WIDGETS_EXAMPLE_TRACE_RECORD`, `WIDGETS_EXAMPLE_TRACE_REPLAY`) and published `docs/Widget_Contribution_Quickstart.md` so contributors can share deterministic pointer/keyboard traces alongside new widget work.
-  - Add layout/container widgets (horizontal/vertical stacks, grid) that arrange child widgets, emit spacing/alignment metadata, and propagate dirty hints when layout changes; cover the behaviour with UITests and gallery demos.
+  - ✅ (October 23, 2025) Landed the initial layout container widgets (vertical/horizontal stacks) with `Widgets::CreateStack`/`UpdateStackLayout`. They measure child widget scenes, compute spacing/alignment metadata, publish aggregated stack snapshots, and surface dirty hints through bindings. UITests cover layout computation and binding dirty propagation; gallery follow-ups remain to showcase the containers in the demo and add grid variants.
   - Build a tree view widget that supports expand/collapse, selection, and async data loading hooks, complete with bindings, reducer support, canonical paths, and gallery/UITest coverage.
   - Extend `widgets_example` to showcase layout containers and the tree view, wiring state paths, reducers, and telemetry so contributors can exercise them interactively.
 - Update `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage, and troubleshooting steps.

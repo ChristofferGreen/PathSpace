@@ -37,6 +37,12 @@ inline auto ensure_list_scene(PathSpace& space,
     return ensure_widget_scene(space, appRoot, name, "Widget list");
 }
 
+inline auto ensure_stack_scene(PathSpace& space,
+                        AppRootPathView appRoot,
+                        std::string_view name) -> SP::Expected<ScenePath> {
+    return ensure_widget_scene(space, appRoot, name, "Widget stack");
+}
+
 inline auto write_widget_kind(PathSpace& space,
                        std::string const& rootPath,
                        std::string_view kind) -> SP::Expected<void> {
@@ -120,6 +126,32 @@ inline auto write_list_metadata(PathSpace& space,
     }
 
     if (auto status = write_widget_kind(space, rootPath, "list"); !status) {
+        return status;
+    }
+    return {};
+}
+
+inline auto write_stack_metadata(PathSpace& space,
+                          std::string const& rootPath,
+                          Widgets::StackLayoutStyle const& style,
+                          std::vector<Widgets::StackChildSpec> const& children,
+                          Widgets::StackLayoutState const& layout) -> SP::Expected<void> {
+    auto stylePath = rootPath + "/layout/style";
+    if (auto status = replace_single<Widgets::StackLayoutStyle>(space, stylePath, style); !status) {
+        return status;
+    }
+
+    auto childrenPath = rootPath + "/layout/children";
+    if (auto status = replace_single<std::vector<Widgets::StackChildSpec>>(space, childrenPath, children); !status) {
+        return status;
+    }
+
+    auto computedPath = rootPath + "/layout/computed";
+    if (auto status = replace_single<Widgets::StackLayoutState>(space, computedPath, layout); !status) {
+        return status;
+    }
+
+    if (auto status = write_widget_kind(space, rootPath, "stack"); !status) {
         return status;
     }
     return {};

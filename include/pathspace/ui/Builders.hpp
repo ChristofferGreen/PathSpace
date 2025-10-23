@@ -697,6 +697,103 @@ auto UpdateListState(PathSpace& space,
                      ListPaths const& paths,
                      ListState const& new_state) -> SP::Expected<bool>;
 
+enum class StackAxis : std::uint8_t {
+    Horizontal = 0,
+    Vertical = 1,
+};
+
+enum class StackAlignMain : std::uint8_t {
+    Start = 0,
+    Center = 1,
+    End = 2,
+};
+
+enum class StackAlignCross : std::uint8_t {
+    Start = 0,
+    Center = 1,
+    End = 2,
+    Stretch = 3,
+};
+
+struct StackChildConstraints {
+    float weight = 0.0f;
+    float min_main = 0.0f;
+    float max_main = 0.0f;
+    float min_cross = 0.0f;
+    float max_cross = 0.0f;
+    float margin_main_start = 0.0f;
+    float margin_main_end = 0.0f;
+    float margin_cross_start = 0.0f;
+    float margin_cross_end = 0.0f;
+    bool has_min_main = false;
+    bool has_max_main = false;
+    bool has_min_cross = false;
+    bool has_max_cross = false;
+};
+
+struct StackChildSpec {
+    std::string id;
+    std::string widget_path;
+    std::string scene_path;
+    StackChildConstraints constraints{};
+};
+
+struct StackLayoutStyle {
+    StackAxis axis = StackAxis::Vertical;
+    float spacing = 16.0f;
+    StackAlignMain align_main = StackAlignMain::Start;
+    StackAlignCross align_cross = StackAlignCross::Stretch;
+    float padding_main_start = 0.0f;
+    float padding_main_end = 0.0f;
+    float padding_cross_start = 0.0f;
+    float padding_cross_end = 0.0f;
+    float width = 0.0f;  // 0 => derive from children
+    float height = 0.0f; // 0 => derive from children
+    bool clip_contents = false;
+};
+
+struct StackLayoutComputedChild {
+    std::string id;
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 0.0f;
+    float height = 0.0f;
+};
+
+struct StackLayoutState {
+    float width = 0.0f;
+    float height = 0.0f;
+    std::vector<StackLayoutComputedChild> children;
+};
+
+struct StackLayoutParams {
+    std::string name;
+    StackLayoutStyle style{};
+    std::vector<StackChildSpec> children;
+};
+
+struct StackPaths {
+    ScenePath scene;
+    WidgetPath root;
+    ConcretePath style;
+    ConcretePath children;
+    ConcretePath computed;
+};
+
+auto CreateStack(PathSpace& space,
+                 AppRootPathView appRoot,
+                 StackLayoutParams const& params) -> SP::Expected<StackPaths>;
+
+auto UpdateStackLayout(PathSpace& space,
+                       StackPaths const& paths,
+                       StackLayoutParams const& params) -> SP::Expected<bool>;
+
+auto DescribeStack(PathSpace const& space,
+                   StackPaths const& paths) -> SP::Expected<StackLayoutParams>;
+
+auto ReadStackLayout(PathSpace const& space,
+                     StackPaths const& paths) -> SP::Expected<StackLayoutState>;
+
 enum class WidgetKind {
     Button,
     Toggle,
@@ -772,6 +869,11 @@ struct ListBinding {
     BindingOptions options;
 };
 
+struct StackBinding {
+    StackPaths layout;
+    BindingOptions options;
+};
+
 auto CreateButtonBinding(PathSpace& space,
                          AppRootPathView appRoot,
                          ButtonPaths const& paths,
@@ -818,6 +920,13 @@ auto CreateListBinding(PathSpace& space,
                        std::optional<DirtyRectHint> dirty_override = std::nullopt,
                        bool auto_render = true) -> SP::Expected<ListBinding>;
 
+auto CreateStackBinding(PathSpace& space,
+                        AppRootPathView appRoot,
+                        StackPaths const& paths,
+                        ConcretePathView targetPath,
+                        std::optional<DirtyRectHint> dirty_override = std::nullopt,
+                        bool auto_render = true) -> SP::Expected<StackBinding>;
+
 auto DispatchList(PathSpace& space,
                   ListBinding const& binding,
                   ListState const& new_state,
@@ -825,6 +934,10 @@ auto DispatchList(PathSpace& space,
                   PointerInfo const& pointer = {},
                   std::int32_t item_index = -1,
                   float scroll_delta = 0.0f) -> SP::Expected<bool>;
+
+auto UpdateStack(PathSpace& space,
+                 StackBinding const& binding,
+                 StackLayoutParams const& params) -> SP::Expected<bool>;
 
 auto PointerFromHit(Scene::HitTestResult const& hit) -> PointerInfo;
 
