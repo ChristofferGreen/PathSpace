@@ -95,7 +95,10 @@ if(PATHSPACE_ENABLE_UI)
         ui/SurfaceBuilders.cpp
         ui/WindowBuilders.cpp
         ui/AppBuilders.cpp
-        ui/WidgetBuilders.cpp
+        ui/WidgetBuildersCore.cpp
+        ui/WidgetBindings.cpp
+        ui/WidgetFocus.cpp
+        ui/WidgetReducers.cpp
         ui/DiagnosticsBuilders.cpp
         ui/SceneSnapshotBuilder.cpp
         ui/ProgressiveSurfaceBuffer.cpp
