@@ -1,9 +1,24 @@
 var annotated_dup =
 [
     [ "SP", "namespace_s_p.html", [
+      [ "UI", "namespace_s_p_1_1_u_i.html", [
+        [ "Builders", "namespace_s_p_1_1_u_i_1_1_builders.html", [
+          [ "Detail", "namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html", [
+            [ "ButtonSnapshotConfig", "struct_s_p_1_1_u_i_1_1_builders_1_1_detail_1_1_button_snapshot_config.html", "struct_s_p_1_1_u_i_1_1_builders_1_1_detail_1_1_button_snapshot_config" ],
+            [ "ListSnapshotConfig", "struct_s_p_1_1_u_i_1_1_builders_1_1_detail_1_1_list_snapshot_config.html", "struct_s_p_1_1_u_i_1_1_builders_1_1_detail_1_1_list_snapshot_config" ],
+            [ "SceneRevisionRecord", "struct_s_p_1_1_u_i_1_1_builders_1_1_detail_1_1_scene_revision_record.html", "struct_s_p_1_1_u_i_1_1_builders_1_1_detail_1_1_scene_revision_record" ],
+            [ "SliderSnapshotConfig", "struct_s_p_1_1_u_i_1_1_builders_1_1_detail_1_1_slider_snapshot_config.html", "struct_s_p_1_1_u_i_1_1_builders_1_1_detail_1_1_slider_snapshot_config" ],
+            [ "SurfaceRenderContext", "struct_s_p_1_1_u_i_1_1_builders_1_1_detail_1_1_surface_render_context.html", "struct_s_p_1_1_u_i_1_1_builders_1_1_detail_1_1_surface_render_context" ],
+            [ "ToggleSnapshotConfig", "struct_s_p_1_1_u_i_1_1_builders_1_1_detail_1_1_toggle_snapshot_config.html", "struct_s_p_1_1_u_i_1_1_builders_1_1_detail_1_1_toggle_snapshot_config" ]
+          ] ]
+        ] ]
+      ] ],
       [ "AlpacaSerializationTraits", "struct_s_p_1_1_alpaca_serialization_traits.html", "struct_s_p_1_1_alpaca_serialization_traits" ],
       [ "Block", "struct_s_p_1_1_block.html", "struct_s_p_1_1_block" ],
       [ "CharPointerHash", "struct_s_p_1_1_char_pointer_hash.html", "struct_s_p_1_1_char_pointer_hash" ],
+      [ "ConcreteName", "struct_s_p_1_1_concrete_name.html", "struct_s_p_1_1_concrete_name" ],
+      [ "ConcretePath", "struct_s_p_1_1_concrete_path.html", "struct_s_p_1_1_concrete_path" ],
+      [ "ConcretePathIterator", "struct_s_p_1_1_concrete_path_iterator.html", "struct_s_p_1_1_concrete_path_iterator" ],
       [ "ElementType", "struct_s_p_1_1_element_type.html", "struct_s_p_1_1_element_type" ],
       [ "Error", "struct_s_p_1_1_error.html", "struct_s_p_1_1_error" ],
       [ "Executor", "struct_s_p_1_1_executor.html", "struct_s_p_1_1_executor" ],
@@ -11,6 +26,9 @@ var annotated_dup =
       [ "Future", "class_s_p_1_1_future.html", "class_s_p_1_1_future" ],
       [ "FutureAny", "class_s_p_1_1_future_any.html", "class_s_p_1_1_future_any" ],
       [ "FutureT", "class_s_p_1_1_future_t.html", "class_s_p_1_1_future_t" ],
+      [ "GlobName", "struct_s_p_1_1_glob_name.html", "struct_s_p_1_1_glob_name" ],
+      [ "GlobPath", "struct_s_p_1_1_glob_path.html", "struct_s_p_1_1_glob_path" ],
+      [ "GlobPathIterator", "struct_s_p_1_1_glob_path_iterator.html", "struct_s_p_1_1_glob_path_iterator" ],
       [ "Header", "struct_s_p_1_1_header.html", "struct_s_p_1_1_header" ],
       [ "Immediate", "struct_s_p_1_1_immediate.html", "struct_s_p_1_1_immediate" ],
       [ "In", "struct_s_p_1_1_in.html", "struct_s_p_1_1_in" ],
@@ -36,6 +54,7 @@ var annotated_dup =
       [ "OutFullValidation", "struct_s_p_1_1_out_full_validation.html", "struct_s_p_1_1_out_full_validation" ],
       [ "OutNoValidation", "struct_s_p_1_1_out_no_validation.html", "struct_s_p_1_1_out_no_validation" ],
       [ "Overload", "struct_s_p_1_1_overload.html", "struct_s_p_1_1_overload" ],
+      [ "Path", "struct_s_p_1_1_path.html", "struct_s_p_1_1_path" ],
       [ "PathAlias", "class_s_p_1_1_path_alias.html", "class_s_p_1_1_path_alias" ],
       [ "PathFileSystem", "struct_s_p_1_1_path_file_system.html", "struct_s_p_1_1_path_file_system" ],
       [ "PathIODeviceDiscovery", "class_s_p_1_1_path_i_o_device_discovery.html", "class_s_p_1_1_path_i_o_device_discovery" ],
@@ -58,11 +77,15 @@ var annotated_dup =
       [ "TaskPool", "class_s_p_1_1_task_pool.html", "class_s_p_1_1_task_pool" ],
       [ "TaskStateAtomic", "struct_s_p_1_1_task_state_atomic.html", "struct_s_p_1_1_task_state_atomic" ],
       [ "TaskT", "class_s_p_1_1_task_t.html", "class_s_p_1_1_task_t" ],
+      [ "UnvalidatedPathView", "class_s_p_1_1_unvalidated_path_view.html", "class_s_p_1_1_unvalidated_path_view" ],
       [ "ValidationError", "struct_s_p_1_1_validation_error.html", "struct_s_p_1_1_validation_error" ],
       [ "ValueSerializationHelper", "struct_s_p_1_1_value_serialization_helper.html", null ],
       [ "WaitMap", "struct_s_p_1_1_wait_map.html", "struct_s_p_1_1_wait_map" ],
       [ "WatchRegistry", "class_s_p_1_1_watch_registry.html", "class_s_p_1_1_watch_registry" ],
       [ "Wrapper", "struct_s_p_1_1_wrapper.html", "struct_s_p_1_1_wrapper" ]
+    ] ],
+    [ "std", "namespacestd.html", [
+      [ "hash< SP::ConcreteName >", "structstd_1_1hash_3_01_s_p_1_1_concrete_name_01_4.html", "structstd_1_1hash_3_01_s_p_1_1_concrete_name_01_4" ]
     ] ],
     [ "BlockOptions", "struct_block_options.html", "struct_block_options" ]
 ];

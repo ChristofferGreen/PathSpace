@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.14.0"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>PathSpace: PathSpace — Standard Paths</title>
+<title>PathSpace: Handoff Notice</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -88,18 +88,26 @@ $(function(){initNavTree('md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___
 </div>
 
 <div><div class="header">
-  <div class="headertitle"><div class="title">PathSpace — Standard Paths </div></div>
+  <div class="headertitle"><div class="title">Handoff Notice </div></div>
 </div><!--header-->
 <div class="contents">
-<div class="textblock"><p><a class="anchor" id="autotoc_md53"></a></p>
-<p>This file gathers the canonical path namespaces and layout conventions referenced across the docs. Paths are grouped by domain and use placeholders in angle brackets. Absolute paths begin with “/”. App-internal paths are app-relative (no leading slash) and must resolve within the app root. Sources: see <a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_Architecture.md</a> and <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a>. Keep these in sync when path conventions change.</p>
+<div class="textblock"><p><a class="anchor" id="autotoc_md95"></a></p>
+<blockquote class="doxtable">
+<p><b>Handoff note (October 19, 2025):</b> Namespace conventions remain valid, but this file reflects the prior assistant cycle. Cross-check any edits with <span class="tt"><a class="el" href="_a_i___onboarding___next_8md.html">docs/AI_Onboarding_Next.md</a></span> and record deviations while the new assistant spins up. </p>
+</blockquote>
+<h1 class="doxsection"><a class="anchor" id="autotoc_md96"></a>
+PathSpace — Standard Paths</h1>
+<blockquote class="doxtable">
+<p><b>Context update (October 15, 2025):</b> Path conventions documented here reflect the recently introduced assistant context; translate earlier terminology to the updated vocabulary as needed. </p>
+</blockquote>
+<p>This file gathers the canonical path namespaces and layout conventions referenced across the docs. Paths are grouped by domain and use placeholders in angle brackets. Absolute paths begin with “/”. App-internal paths are app-relative (no leading slash) and must resolve within the app root. Sources: see <a class="el" href="_a_i___a_r_c_h_i_t_e_c_t_u_r_e_8md.html">docs/AI_Architecture.md</a> and <a class="el" href="_plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a>. Keep these in sync when path conventions change.</p>
 <p>Conventions:</p><ul>
 <li>Placeholders: &lt;app&gt;, &lt;user&gt;, &lt;scene-id&gt;, &lt;renderer-id&gt;, &lt;surface-id&gt;, &lt;view-id&gt;, &lt;target-id&gt;, &lt;revision&gt;, &lt;id&gt;, &lt;rendererName&gt;, &lt;kind&gt;, &lt;name&gt;</li>
 <li>App-relative: no leading “/”; resolved against the app root</li>
 <li>Target-id convention: prefer the consumer’s app-local path, e.g. <span class="tt">surfaces/&lt;surface-id&gt;</span> or <span class="tt">textures/&lt;texture-name&gt;</span></li>
 </ul>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md54"></a>
-1) System-wide namespaces (absolute)</h1>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md97"></a>
+1) System-wide namespaces (absolute)</h2>
 <ul>
 <li>Application roots<ul>
 <li><span class="tt">/system/applications/&lt;app&gt;</span></li>
@@ -129,15 +137,27 @@ $(function(){initNavTree('md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___
 </ul>
 </li>
 </ul>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md55"></a>
-2) Application subtree layout (app-relative)</h1>
-<p>The following subtrees are standardized within each application root (one of the absolute roots above). See <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a> for detailed semantics and responsibilities.</p>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md98"></a>
+2) Application subtree layout (app-relative)</h2>
+<p>The following subtrees are standardized within each application root (one of the absolute roots above). See <a class="el" href="_plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a> for detailed semantics and responsibilities.</p>
 <ul>
 <li>Scenes<ul>
 <li><span class="tt">scenes/&lt;scene-id&gt;/</span><ul>
 <li><span class="tt">src/...</span> — authoring tree (mutable)</li>
 <li><span class="tt">builds/&lt;revision&gt;/...</span> — immutable snapshots per revision</li>
 <li><span class="tt">current_revision</span> — single-value pointer to latest published build</li>
+<li><span class="tt">diagnostics/</span><ul>
+<li><span class="tt">errors/live</span> — latest <span class="tt">PathSpaceError</span> for the scene</li>
+<li><span class="tt">errors/history/&lt;id&gt;</span> — optional immutable historical errors</li>
+<li><span class="tt">log/ring/&lt;segment&gt;</span> — structured log segments (JSON/CBOR blobs)</li>
+<li><span class="tt">metrics/live</span> — rolling scene metrics (optional)</li>
+<li><span class="tt">overlays/&lt;kind&gt;</span> — optional debugging overlays (e.g., bounds violations)</li>
+<li><span class="tt">frame_profiler/node/&lt;drawable-id&gt;</span> — drawable-specific annotations</li>
+<li><span class="tt">frame_profiler/summary</span> — scene-level diagnostics counters and timestamps</li>
+<li><span class="tt">dirty/state</span> — latest <span class="tt">Scene::DirtyState</span> (sequence, pending mask, timestamp)</li>
+<li><span class="tt">dirty/queue</span> — <span class="tt">Scene::DirtyEvent</span> items enqueued by <span class="tt">Scene::MarkDirty</span></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -176,6 +196,33 @@ $(function(){initNavTree('md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___
 </li>
 </ul>
 </li>
+<li><span class="tt">diagnostics/</span><ul>
+<li><span class="tt">errors/live</span> — latest <span class="tt">PathSpaceError</span> for the renderer</li>
+<li><span class="tt">errors/history/&lt;id&gt;</span> — optional immutable error records</li>
+<li><span class="tt">log/ring/&lt;segment&gt;</span> — structured log segments</li>
+<li><span class="tt">metrics/live</span> — rolling averages and counters for recent frames</li>
+<li><span class="tt">overlays/&lt;kind&gt;</span> — debug overlay payloads (e.g., errors, overdraw)</li>
+<li><span class="tt">frame_profiler/live</span> — latest frame sample (struct payload)</li>
+<li><span class="tt">frame_profiler/ring</span> — immutable ring buffer chunks for timeline data</li>
+<li><span class="tt">frame_profiler/capture/</span><ul>
+<li><span class="tt">inbox</span> — capture requests inserted by external profilers</li>
+<li><span class="tt">active</span> — renderer acknowledgement + status metadata</li>
+<li><span class="tt">dump/*</span> — optional blobs captured for that request (framebuffers, GPU counters)</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>Widgets<ul>
+<li><span class="tt">widgets/&lt;widget-id&gt;/</span><ul>
+<li><span class="tt">state</span> — current widget state payload (button/toggle/slider/list structs)</li>
+<li><span class="tt">meta/*</span> — style, label, range/list metadata authored by widget builders</li>
+<li><span class="tt">authoring/&lt;component&gt;</span> — canonical authoring nodes written by widget builders and consumed by hit testing (<span class="tt">Widgets::ResolveHitTarget</span>)</li>
+<li><span class="tt">ops/actions/inbox/queue</span> — reduced widget actions emitted by <span class="tt">Widgets::Reducers</span></li>
+<li><span class="tt">ops/inbox/queue</span> — <span class="tt">WidgetOp</span> FIFO written by <span class="tt">Widgets::Bindings</span> helpers (hover/press/toggle/slider events)</li>
 </ul>
 </li>
 </ul>
@@ -185,6 +232,13 @@ $(function(){initNavTree('md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___
 <li><span class="tt">renderer</span> — app-relative, e.g. <span class="tt">renderers/2d</span></li>
 <li><span class="tt">scene</span> — app-relative, e.g. <span class="tt">scenes/main</span></li>
 <li><span class="tt">render</span> — execution that coordinates with the renderer target</li>
+<li><span class="tt">diagnostics/</span><ul>
+<li><span class="tt">errors/live</span></li>
+<li><span class="tt">errors/history/&lt;id&gt;</span></li>
+<li><span class="tt">log/ring/&lt;segment&gt;</span></li>
+<li><span class="tt">metrics/live</span> — optional surface-level counters (e.g., presents, latency)</li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -194,7 +248,24 @@ $(function(){initNavTree('md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___
 <li><span class="tt">window</span> — platform-native window shell</li>
 <li><span class="tt">views/&lt;view-id&gt;/</span><ul>
 <li><span class="tt">surface</span> — app-relative reference to a surface</li>
+<li><span class="tt">htmlTarget</span> — app-relative reference to an HTML renderer target</li>
 <li><span class="tt">present</span> — execution to present the surface to the window</li>
+<li><span class="tt">present/policy</span> — optional string selector (<span class="tt">AlwaysFresh</span>, <span class="tt">PreferLatestCompleteWithBudget</span>, <span class="tt">AlwaysLatestComplete</span>)</li>
+<li><span class="tt">present/params/</span> — optional tuning overrides<ul>
+<li><span class="tt">staleness_budget_ms</span> — float, default 8.0</li>
+<li><span class="tt">frame_timeout_ms</span> — float, default 20.0</li>
+<li><span class="tt">max_age_frames</span> — uint, default 1</li>
+<li><span class="tt">auto_render_on_present</span> — bool, default true</li>
+<li><span class="tt">vsync_align</span> — bool, default true</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><span class="tt">diagnostics/</span><ul>
+<li><span class="tt">errors/live</span></li>
+<li><span class="tt">errors/history/&lt;id&gt;</span></li>
+<li><span class="tt">log/ring/&lt;segment&gt;</span></li>
+<li><span class="tt">metrics/live</span> — optional presentation metrics (latency, dropped frames)</li>
 </ul>
 </li>
 </ul>
@@ -210,9 +281,18 @@ $(function(){initNavTree('md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___
 <li><span class="tt">io/stderr</span> — read-only mirror of warn and error (system tee)</li>
 </ul>
 </li>
+<li>IO logging (app-local)<ul>
+<li><span class="tt">io/log/error</span> — authoritative error log (UTF-8, newline-delimited)</li>
+<li><span class="tt">io/log/warn</span> — authoritative warnings log</li>
+<li><span class="tt">io/log/info</span> — authoritative info log</li>
+<li><span class="tt">io/log/debug</span> — authoritative debug log (may not tee globally)</li>
+<li><span class="tt">io/stdout</span> — read-only mirror of info and debug (system tee)</li>
+<li><span class="tt">io/stderr</span> — read-only mirror of warn and error (system tee)</li>
 </ul>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md56"></a>
-3) Renderer target keys (final)</h1>
+</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md99"></a>
+3) Renderer target keys (final)</h2>
 <p>Target base (app-relative; fully-qualified form prefixes with the app root, e.g. <span class="tt">&lt;app-root&gt;/renderers/...</span> where <span class="tt">&lt;app-root&gt;</span> is <span class="tt">/system/applications/&lt;app&gt;</span> or <span class="tt">/users/&lt;user&gt;/system/applications/&lt;app&gt;</span>):</p><ul>
 <li><span class="tt">renderers/&lt;rendererName&gt;/targets/&lt;kind&gt;/&lt;name&gt;</span></li>
 <li><span class="tt">kind ∈ { surfaces, textures, windows, html }</span></li>
@@ -225,9 +305,11 @@ $(function(){initNavTree('md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___
 <li><span class="tt">settings</span></li>
 <li><span class="tt">render</span></li>
 <li><span class="tt">output/v1/...</span> (see section 2)</li>
+<li><span class="tt">events/renderRequested/queue</span> — <span class="tt">AutoRenderRequestEvent</span> items enqueued by hit tests or dirty-marker scheduling</li>
+<li><span class="tt">hints/dirtyRects</span> — optional array of dirty rectangles (float min/max) that renderers merge into their damage regions</li>
 </ul>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md57"></a>
-4) Scene build and publish protocol</h1>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md100"></a>
+4) Scene build and publish protocol</h2>
 <ul>
 <li>Staging and publish:<ul>
 <li><span class="tt">scenes/&lt;scene-id&gt;/builds/&lt;revision&gt;.staging/...</span> — write here first</li>
@@ -242,8 +324,8 @@ $(function(){initNavTree('md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___
 </ul>
 </li>
 </ul>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md58"></a>
-5) Output versioning</h1>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md101"></a>
+5) Output versioning</h2>
 <ul>
 <li>Target outputs are versioned at the path level:<ul>
 <li><span class="tt">output/v1/...</span> (current)</li>
@@ -251,8 +333,8 @@ $(function(){initNavTree('md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___
 </ul>
 </li>
 </ul>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md59"></a>
-6) Fully-qualified examples</h1>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md102"></a>
+6) Fully-qualified examples</h2>
 <ul>
 <li><span class="tt">/system/applications/notepad/scenes/main/current_revision</span></li>
 <li><span class="tt">/system/applications/notepad/scenes/main/builds/42/...</span></li>
@@ -269,8 +351,8 @@ $(function(){initNavTree('md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___
 <li><span class="tt">/system/devices/in/pointer/default/events</span></li>
 <li><span class="tt">/system/devices/out/gamepad/1/rumble</span></li>
 </ul>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md60"></a>
-7) Glossary</h1>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md103"></a>
+7) Glossary</h2>
 <ul>
 <li>App root: <span class="tt">/system/applications/&lt;app&gt;</span> or <span class="tt">/users/&lt;user&gt;/system/applications/&lt;app&gt;</span></li>
 <li>App-relative path: a path string without leading slash, resolved within the app root</li>

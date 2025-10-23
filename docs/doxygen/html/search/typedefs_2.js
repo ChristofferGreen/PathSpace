@@ -1,5 +1,4 @@
 var searchData=
 [
-  ['event_0',['Event',['../class_s_p_1_1_path_i_o_keyboard.html#ac3900d2803758ffc2d76a74a82af9bc8',1,'SP::PathIOKeyboard::Event'],['../class_s_p_1_1_path_i_o_mouse.html#aa67fd5094d11dd5dbc15e6198019b73e',1,'SP::PathIOMouse::Event']]],
-  ['expected_1',['Expected',['../namespace_s_p.html#a0fcdfa8774c1a104175caaeea2f0b7aa',1,'SP']]]
+  ['difference_5ftype_0',['difference_type',['../struct_s_p_1_1_concrete_path_iterator.html#a2c86f3ee377c003fdd0acb0bba3d3144',1,'SP::ConcretePathIterator::difference_type'],['../struct_s_p_1_1_glob_path_iterator.html#a62af48952ff9e6089fe1c34756df4e5f',1,'SP::GlobPathIterator::difference_type'],['../class_s_p_1_1_iterator.html#aa605c90f1da5bedd150f5809b276d7ea',1,'SP::Iterator::difference_type']]]
 ];

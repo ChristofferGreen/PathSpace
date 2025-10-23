@@ -1,4 +1,28 @@
 var searchData=
 [
-  ['sp_0',['SP',['../namespace_s_p.html',1,'']]]
+  ['sp_0',['SP',['../namespace_s_p.html',1,'']]],
+  ['sp_3a_3aapp_1',['App',['../namespace_s_p_1_1_app.html',1,'SP']]],
+  ['sp_3a_3adetail_2',['detail',['../namespace_s_p_1_1detail.html',1,'SP']]],
+  ['sp_3a_3aui_3',['UI',['../namespace_s_p_1_1_u_i.html',1,'SP']]],
+  ['sp_3a_3aui_3a_3abuilders_4',['Builders',['../namespace_s_p_1_1_u_i_1_1_builders.html',1,'SP::UI']]],
+  ['sp_3a_3aui_3a_3abuilders_3a_3aapp_5',['App',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_app.html',1,'SP::UI::Builders']]],
+  ['sp_3a_3aui_3a_3abuilders_3a_3adetail_6',['Detail',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html',1,'SP::UI::Builders']]],
+  ['sp_3a_3aui_3a_3abuilders_3a_3adiagnostics_7',['Diagnostics',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_diagnostics.html',1,'SP::UI::Builders']]],
+  ['sp_3a_3aui_3a_3abuilders_3a_3arenderer_8',['Renderer',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_renderer.html',1,'SP::UI::Builders']]],
+  ['sp_3a_3aui_3a_3abuilders_3a_3ascene_9',['Scene',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_scene.html',1,'SP::UI::Builders']]],
+  ['sp_3a_3aui_3a_3abuilders_3a_3asurface_10',['Surface',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_surface.html',1,'SP::UI::Builders']]],
+  ['sp_3a_3aui_3a_3abuilders_3a_3awidgets_11',['Widgets',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_widgets.html',1,'SP::UI::Builders']]],
+  ['sp_3a_3aui_3a_3abuilders_3a_3awidgets_3a_3abindings_12',['Bindings',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_widgets_1_1_bindings.html',1,'SP::UI::Builders::Widgets']]],
+  ['sp_3a_3aui_3a_3abuilders_3a_3awidgets_3a_3afocus_13',['Focus',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_widgets_1_1_focus.html',1,'SP::UI::Builders::Widgets']]],
+  ['sp_3a_3aui_3a_3abuilders_3a_3awidgets_3a_3areducers_14',['Reducers',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_widgets_1_1_reducers.html',1,'SP::UI::Builders::Widgets']]],
+  ['sp_3a_3aui_3a_3abuilders_3a_3awindow_15',['Window',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_window.html',1,'SP::UI::Builders']]],
+  ['sp_3a_3aui_3a_3abuilders_3a_3awindow_3a_3atesthooks_16',['TestHooks',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_window_1_1_test_hooks.html',1,'SP::UI::Builders::Window']]],
+  ['sp_3a_3aui_3a_3adetail_17',['detail',['../namespace_s_p_1_1_u_i_1_1detail.html',1,'SP::UI']]],
+  ['sp_3a_3aui_3a_3adiagnostics_18',['Diagnostics',['../namespace_s_p_1_1_u_i_1_1_diagnostics.html',1,'SP::UI']]],
+  ['sp_3a_3aui_3a_3ahtml_19',['Html',['../namespace_s_p_1_1_u_i_1_1_html.html',1,'SP::UI']]],
+  ['sp_3a_3aui_3a_3arenderer_20',['Renderer',['../namespace_s_p_1_1_u_i_1_1_renderer.html',1,'SP::UI']]],
+  ['sp_3a_3aui_3a_3ascene_21',['Scene',['../namespace_s_p_1_1_u_i_1_1_scene.html',1,'SP::UI']]],
+  ['sp_3a_3aui_3a_3asurface_22',['Surface',['../namespace_s_p_1_1_u_i_1_1_surface.html',1,'SP::UI']]],
+  ['sp_3a_3aui_3a_3awindow_23',['Window',['../namespace_s_p_1_1_u_i_1_1_window.html',1,'SP::UI']]],
+  ['std_24',['std',['../namespacestd.html',1,'']]]
 ];

@@ -97,6 +97,8 @@ $(function(){initNavTree('serialization_8hpp.html','',''); });
 <code>#include &lt;cstring&gt;</code><br />
 <code>#include &lt;expected&gt;</code><br />
 <code>#include &lt;string&gt;</code><br />
+<code>#include &lt;system_error&gt;</code><br />
+<code>#include &lt;utility&gt;</code><br />
 <code>#include &lt;vector&gt;</code><br />
 </div>
 <p><a href="serialization_8hpp_source.html">Go to the source code of this file.</a></p>
@@ -109,6 +111,14 @@ Classes</h2></td></tr>
 <tr class="heading"><td colspan="2"><h2 id="header-namespaces" class="groupheader"><a id="namespaces" name="namespaces"></a>
 Namespaces</h2></td></tr>
 <tr class="memitem:SP" id="r_SP"><td class="memItemLeft" align="right" valign="top">namespace &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespace_s_p.html">SP</a></td></tr>
+<tr class="memitem:SP_3A_3Adetail" id="r_SP_3A_3Adetail"><td class="memItemLeft" align="right" valign="top">namespace &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespace_s_p_1_1detail.html">SP::detail</a></td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 id="header-func-members" class="groupheader"><a id="func-members" name="func-members"></a>
+Functions</h2></td></tr>
+<tr class="memitem:a4365894f359fda1fe3414501da31a9f9" id="r_a4365894f359fda1fe3414501da31a9f9"><td class="memTemplParams" colspan="2">template&lt;typename T&gt; </td></tr>
+<tr class="memitem:a4365894f359fda1fe3414501da31a9f9 template"><td class="memItemLeft" align="right" valign="top">auto&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespace_s_p_1_1detail.html#a4365894f359fda1fe3414501da31a9f9">SP::detail::serialize_with_alpaca</a> (T const &amp;obj, <a class="el" href="struct_s_p_1_1_sliding_buffer.html">SlidingBuffer</a> &amp;buffer) -&gt; std::optional&lt; <a class="el" href="struct_s_p_1_1_error.html">Error</a> &gt;</td></tr>
+<tr class="memitem:afc91d1b1371d6d52c2ef2122e94b5f8b" id="r_afc91d1b1371d6d52c2ef2122e94b5f8b"><td class="memTemplParams" colspan="2">template&lt;typename T&gt; </td></tr>
+<tr class="memitem:afc91d1b1371d6d52c2ef2122e94b5f8b template"><td class="memItemLeft" align="right" valign="top">auto&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespace_s_p_1_1detail.html#afc91d1b1371d6d52c2ef2122e94b5f8b">SP::detail::deserialize_with_alpaca</a> (<a class="el" href="struct_s_p_1_1_sliding_buffer.html">SlidingBuffer</a> const &amp;buffer) -&gt; <a class="el" href="namespace_s_p.html#a0fcdfa8774c1a104175caaeea2f0b7aa">Expected</a>&lt; std::pair&lt; T, size_t &gt; &gt;</td></tr>
 </table>
 </div><!-- contents -->
 </div><!-- doc-content -->

@@ -1,8 +1,23 @@
 var searchData=
 [
-  ['data_0',['data',['../struct_s_p_1_1_sliding_buffer.html#a68ce9fe9ffbd90303a58cd5398d646e2',1,'SP::SlidingBuffer']]],
-  ['deserialize_1',['Deserialize',['../struct_s_p_1_1_value_serialization_helper.html#ad6bf077dc0f1aae5ab726535686fc68d',1,'SP::ValueSerializationHelper::Deserialize()'],['../struct_s_p_1_1_string_serialization_helper.html#af57b9f191e0cbbb3c70a1dd847779bf3',1,'SP::StringSerializationHelper::Deserialize()']]],
-  ['deserialize_2',['deserialize',['../struct_s_p_1_1_node_data.html#a6844f939bbbc09222ddfbb3d8871d5f5',1,'SP::NodeData']]],
-  ['deserializepop_3',['DeserializePop',['../struct_s_p_1_1_value_serialization_helper.html#a53af2526d28671ec7c5034a8ee871afb',1,'SP::ValueSerializationHelper::DeserializePop()'],['../struct_s_p_1_1_string_serialization_helper.html#ab692a62d985a69eca70b57bc2ea4248a',1,'SP::StringSerializationHelper::DeserializePop()']]],
-  ['deserializepop_4',['deserializePop',['../struct_s_p_1_1_node_data.html#ac19d37eb017b47eeacd6c7ec6a9cd071',1,'SP::NodeData']]]
+  ['darken_5fcolor_0',['darken_color',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html#afdb67668a73c763357bf2eebb146ffc9',1,'SP::UI::Builders::Detail']]],
+  ['data_1',['data',['../struct_s_p_1_1_sliding_buffer.html#a68ce9fe9ffbd90303a58cd5398d646e2',1,'SP::SlidingBuffer']]],
+  ['defaultactionsqueue_2',['DefaultActionsQueue',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_widgets_1_1_reducers.html#ab31a6470639b0f3ea19cc893d86494c0',1,'SP::UI::Builders::Widgets::Reducers']]],
+  ['derive_5fapp_5froot_3',['derive_app_root',['../namespace_s_p_1_1_app.html#a0f41e542b5f951635d068aa0365aaa34',1,'SP::App']]],
+  ['derive_5fapp_5froot_5ffor_4',['derive_app_root_for',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html#ad6b57b50f9036e664b0f60246a5df700',1,'SP::UI::Builders::Detail']]],
+  ['derive_5ftarget_5fbase_5',['derive_target_base',['../namespace_s_p_1_1_app.html#abee3a27491fa56626d26638278384c67',1,'SP::App::derive_target_base()'],['../namespace_s_p_1_1_u_i_1_1_builders.html#a8c7599916b716562b6417fc4fb8b1308',1,'SP::UI::Builders::derive_target_base()']]],
+  ['desaturate_5fcolor_6',['desaturate_color',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html#a73c46cbc2789088bf36f822562277f17',1,'SP::UI::Builders::Detail']]],
+  ['deserialize_7',['Deserialize',['../struct_s_p_1_1_value_serialization_helper.html#ad6bf077dc0f1aae5ab726535686fc68d',1,'SP::ValueSerializationHelper::Deserialize()'],['../struct_s_p_1_1_string_serialization_helper.html#af57b9f191e0cbbb3c70a1dd847779bf3',1,'SP::StringSerializationHelper::Deserialize()']]],
+  ['deserialize_8',['deserialize',['../struct_s_p_1_1_node_data.html#a6844f939bbbc09222ddfbb3d8871d5f5',1,'SP::NodeData']]],
+  ['deserialize_5fwith_5falpaca_9',['deserialize_with_alpaca',['../namespace_s_p_1_1detail.html#afc91d1b1371d6d52c2ef2122e94b5f8b',1,'SP::detail']]],
+  ['deserializepop_10',['DeserializePop',['../struct_s_p_1_1_value_serialization_helper.html#a53af2526d28671ec7c5034a8ee871afb',1,'SP::ValueSerializationHelper::DeserializePop()'],['../struct_s_p_1_1_string_serialization_helper.html#ab692a62d985a69eca70b57bc2ea4248a',1,'SP::StringSerializationHelper::DeserializePop()']]],
+  ['deserializepop_11',['deserializePop',['../struct_s_p_1_1_node_data.html#ac19d37eb017b47eeacd6c7ec6a9cd071',1,'SP::NodeData']]],
+  ['dirty_5fmask_12',['dirty_mask',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html#a3d6ac8cc91ff010ed56b18b61698333f',1,'SP::UI::Builders::Detail']]],
+  ['dirty_5fqueue_5fpath_13',['dirty_queue_path',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html#ad5e2c680fb307bcb37005fcf8c9838d9',1,'SP::UI::Builders::Detail']]],
+  ['dirty_5fstate_5fpath_14',['dirty_state_path',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html#ace901b94fe5416723cc8ab6dbd6ee827',1,'SP::UI::Builders::Detail']]],
+  ['dispatchbutton_15',['DispatchButton',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_widgets_1_1_bindings.html#ab9ebaccfb7b39c2105bd950d7baa3fad',1,'SP::UI::Builders::Widgets::Bindings']]],
+  ['dispatchlist_16',['DispatchList',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_widgets_1_1_bindings.html#a130420dd6fa48b42b8514bf17f1984b5',1,'SP::UI::Builders::Widgets::Bindings']]],
+  ['dispatchslider_17',['DispatchSlider',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_widgets_1_1_bindings.html#ad6c3649e0742419b459aa8a0bcc8703e',1,'SP::UI::Builders::Widgets::Bindings']]],
+  ['dispatchtoggle_18',['DispatchToggle',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_widgets_1_1_bindings.html#aca5041556958a610c0f0f334500236aa',1,'SP::UI::Builders::Widgets::Bindings']]],
+  ['drain_5fqueue_19',['drain_queue',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html#ae96a2a50a8b8aafe30a1397e74e2b1b4',1,'SP::UI::Builders::Detail']]]
 ];

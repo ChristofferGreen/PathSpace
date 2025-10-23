@@ -120,7 +120,7 @@ $(function(){initNavTree('_future_8hpp_source.html','',''); });
 <div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>    <span class="comment">// Timed waits (generic on Clock)</span></div>
 <div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>    template &lt;typename Clock, typename Duration&gt;</div>
 <div class="foldopen" id="foldopen00039" data-start="{" data-end="}">
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno"><a class="line" href="class_s_p_1_1_future.html#a087a9cb8b79d968e80e337aa814e15c3">   39</a></span>    auto <a class="code hl_function" href="class_s_p_1_1_future.html#a087a9cb8b79d968e80e337aa814e15c3">wait_until</a>(std::chrono::time_point&lt;Clock, Duration&gt; deadline) const -&gt; <span class="keywordtype">bool</span> {</div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno"><a class="line" href="class_s_p_1_1_future.html#a087a9cb8b79d968e80e337aa814e15c3">   39</a></span>    auto <a class="code hl_function" href="class_s_p_1_1_future.html#a087a9cb8b79d968e80e337aa814e15c3">wait_until</a>(<a class="code hl_namespace" href="namespacestd.html">std</a>::chrono::time_point&lt;Clock, Duration&gt; deadline) const -&gt; <span class="keywordtype">bool</span> {</div>
 <div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>        <span class="comment">// Convert to steady_clock to avoid issues with system clock adjustments</span></div>
 <div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>        <span class="keyword">auto</span> now = Clock::now();</div>
 <div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>        <span class="keywordflow">if</span> (deadline &lt;= now)</div>
@@ -155,13 +155,13 @@ $(function(){initNavTree('_future_8hpp_source.html','',''); });
 </div>
 <div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span> </div>
 <div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>    <span class="comment">// Access underlying weak task pointer</span></div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>    [[nodiscard]] <span class="keyword">auto</span> <a class="code hl_function" href="class_s_p_1_1_future.html#a81e137f927bc2de67dd7b475b16ddf5c">weak_task</a>() const -&gt; std::weak_ptr&lt;<a class="code hl_struct" href="struct_s_p_1_1_task.html">Task</a>&gt;;</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>    [[nodiscard]] <span class="keyword">auto</span> <a class="code hl_function" href="class_s_p_1_1_future.html#a81e137f927bc2de67dd7b475b16ddf5c">weak_task</a>() const -&gt; <a class="code hl_namespace" href="namespacestd.html">std</a>::weak_ptr&lt;<a class="code hl_struct" href="struct_s_p_1_1_task.html">Task</a>&gt;;</div>
 <div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span> </div>
 <div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>private:</div>
 <div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>    <span class="comment">// Steady-clock-based timed wait used by templated wait helpers</span></div>
-<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>    auto wait_until_steady(std::chrono::time_point&lt;std::chrono::steady_clock&gt; deadline) const -&gt; <span class="keywordtype">bool</span>;</div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>    auto wait_until_steady(<a class="code hl_namespace" href="namespacestd.html">std</a>::chrono::time_point&lt;<a class="code hl_namespace" href="namespacestd.html">std</a>::chrono::steady_clock&gt; deadline) const -&gt; <span class="keywordtype">bool</span>;</div>
 <div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span> </div>
-<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>    std::weak_ptr&lt;<a class="code hl_struct" href="struct_s_p_1_1_task.html">Task</a>&gt; task_;</div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>    <a class="code hl_namespace" href="namespacestd.html">std</a>::weak_ptr&lt;<a class="code hl_struct" href="struct_s_p_1_1_task.html">Task</a>&gt; task_;</div>
 <div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>};</div>
 </div>
 <div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span> </div>
@@ -177,7 +177,8 @@ $(function(){initNavTree('_future_8hpp_source.html','',''); });
 <div class="ttc" id="aclass_s_p_1_1_future_html_ad739a688a7cf94775c0d34e43f20823d"><div class="ttname"><a href="class_s_p_1_1_future.html#ad739a688a7cf94775c0d34e43f20823d">SP::Future::FromShared</a></div><div class="ttdeci">static auto FromShared(const std::shared_ptr&lt; Task &gt; &amp;task) -&gt; Future</div><div class="ttdef"><b>Definition</b> Future.cpp:14</div></div>
 <div class="ttc" id="aclass_s_p_1_1_future_html_ae7be58f2245e37340828338a2a35b5ed"><div class="ttname"><a href="class_s_p_1_1_future.html#ae7be58f2245e37340828338a2a35b5ed">SP::Future::wait</a></div><div class="ttdeci">auto wait() const -&gt; void</div><div class="ttdef"><b>Definition</b> Future.cpp:29</div></div>
 <div class="ttc" id="aclass_s_p_1_1_future_html_aea102f97fe13aa106887930a3fed00e8"><div class="ttname"><a href="class_s_p_1_1_future.html#aea102f97fe13aa106887930a3fed00e8">SP::Future::wait_for</a></div><div class="ttdeci">auto wait_for(std::chrono::duration&lt; Rep, Period &gt; const &amp;d) const -&gt; bool</div><div class="ttdef"><b>Definition</b> Future.hpp:49</div></div>
-<div class="ttc" id="anamespace_s_p_html"><div class="ttname"><a href="namespace_s_p.html">SP</a></div><div class="ttdef"><b>Definition</b> ElementType.hpp:7</div></div>
+<div class="ttc" id="anamespace_s_p_html"><div class="ttname"><a href="namespace_s_p.html">SP</a></div><div class="ttdef"><b>Definition</b> AppPaths.cpp:40</div></div>
+<div class="ttc" id="anamespacestd_html"><div class="ttname"><a href="namespacestd.html">std</a></div><div class="ttdef"><b>Definition</b> ConcreteName.hpp:33</div></div>
 <div class="ttc" id="astruct_s_p_1_1_task_html"><div class="ttname"><a href="struct_s_p_1_1_task.html">SP::Task</a></div><div class="ttdef"><b>Definition</b> Task.hpp:18</div></div>
 </div><!-- fragment --></div><!-- contents -->
 </div><!-- doc-content -->

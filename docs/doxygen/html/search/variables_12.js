@@ -1,6 +1,6 @@
 var searchData=
 [
-  ['waiters_0',['waiters',['../struct_s_p_1_1_watch_registry_1_1_trie_node.html#aa700d57e65b897e7f119fd78a40f0860',1,'SP::WatchRegistry::TrieNode']]],
-  ['wheel_1',['wheel',['../struct_s_p_1_1_mouse_event.html#a359daf3756c98d5a5ee44d44233e68ff',1,'SP::MouseEvent::wheel'],['../struct_s_p_1_1_path_i_o_pointer_mixer_1_1_event.html#a71c0a6e49c26c195b99d925b4480c296',1,'SP::PathIOPointerMixer::Event::wheel']]],
-  ['write_2',['write',['../struct_s_p_1_1_permission.html#a73043e7f09d09fe2bab94473278066e8',1,'SP::Permission']]]
+  ['validationlevel_0',['validationLevel',['../struct_s_p_1_1_in.html#a4dd01f4d583a998dae05f03c15c29253',1,'SP::In::validationLevel'],['../struct_s_p_1_1_out.html#a112b6d35d3d49c3dc82e9309ec336aa8',1,'SP::Out::validationLevel']]],
+  ['value_1',['value',['../struct_s_p_1_1_path_i_o_gamepad_1_1_event.html#a13182733510ffa2241201b5b949f81bc',1,'SP::PathIOGamepad::Event::value'],['../struct_s_p_1_1_u_i_1_1_builders_1_1_detail_1_1_slider_snapshot_config.html#a1dfc722970e02bc85cca58e554e2d116',1,'SP::UI::Builders::Detail::SliderSnapshotConfig::value']]],
+  ['vendor_2',['vendor',['../struct_s_p_1_1_path_i_o_device_discovery_1_1_sim_device.html#ad439108a4f8becd408813ba29006076e',1,'SP::PathIODeviceDiscovery::SimDevice']]]
 ];

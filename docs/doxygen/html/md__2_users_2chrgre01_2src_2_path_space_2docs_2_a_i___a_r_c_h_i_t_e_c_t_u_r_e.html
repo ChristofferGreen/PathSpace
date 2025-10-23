@@ -91,25 +91,38 @@ $(function(){initNavTree('md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___
   <div class="headertitle"><div class="title">AI_ARCHITECTURE </div></div>
 </div><!--header-->
 <div class="contents">
-<div class="textblock"><p>Renderer snapshot builder details have moved out of this architecture document. See <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a> (“Decision: Snapshot Builder”) for the authoritative policy, rebuild triggers, publish/GC protocol, and performance notes. This file focuses on PathSpace core (paths, trie storage, concurrency/wait/notify, views/alias layers, and OS I/O).</p>
+<div class="textblock"><blockquote class="doxtable">
+<p><b>Handoff note (October 19, 2025):</b> This document reflects the outgoing assistant cycle and is retained for historical reference. New AI maintainers should begin with <span class="tt"><a class="el" href="_a_i___onboarding___next_8md.html">docs/AI_Onboarding_Next.md</a></span> for current workflow expectations and update this file only after aligning with the latest plan. </p>
+</blockquote>
+<p>Renderer snapshot builder details have moved out of this architecture document. See <a class="el" href="_plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a> (“Decision: Snapshot Builder”) for the authoritative policy, rebuild triggers, publish/GC protocol, and performance notes. This file focuses on PathSpace core (paths, trie storage, concurrency/wait/notify, views/alias layers, and OS I/O). New AI assistants should first walk through <a class="el" href="_a_i___onboarding_8md.html">docs/AI_Onboarding.md</a> for the session bootstrap checklist.</p>
+<blockquote class="doxtable">
+<p><b>Context update (October 15, 2025):</b> PathSpace documentation now assumes the assistant context launched for this cycle; earlier references to legacy contexts should be interpreted accordingly. </p>
+</blockquote>
 <h2 class="doxsection"><a class="anchor" id="autotoc_md21"></a>
 UI/Rendering — cross-reference</h2>
-<p>Present policy (backend-aware) and the software progressive present are documented in <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a>. This architecture document focuses on PathSpace core; rendering/presenter details live in the plan. Also see “View keys (final)” and “Target keys (final)” in <a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a> for the authoritative schemas, and note that RenderSettings are a single-path atomic whole-object value; ParamUpdateMode::Queue refers to client-side coalescing before one atomic write (no server-side queue in v1).</p>
+<p>Present policy (backend-aware) and the software progressive present are documented in <a class="el" href="_plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a>. This architecture document focuses on PathSpace core; rendering/presenter details live in the plan. Also see “View keys (final)” and “Target keys (final)” in <a class="el" href="_plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a> for the authoritative schemas, and note that RenderSettings are a single-path atomic whole-object value; ParamUpdateMode::Queue refers to client-side coalescing before one atomic write (no server-side queue in v1).</p>
+<blockquote class="doxtable">
+<p><b>Diagnostics note (October 16, 2025):</b> Presenter runs now persist the resolved present policy and age/staleness data (<span class="tt">presentMode</span>, <span class="tt">stalenessBudgetMs</span>, <span class="tt">frameTimeoutMs</span>, <span class="tt">maxAgeFrames</span>, <span class="tt">presentedAgeMs</span>, <span class="tt">presentedAgeFrames</span>, <span class="tt">stale</span>, <span class="tt">autoRenderOnPresent</span>, <span class="tt">vsyncAlign</span>) under <span class="tt">targets/&lt;tid&gt;/output/v1/common/*</span>. Renderer executions publish matching progressive statistics (<span class="tt">progressiveTilesUpdated</span>, <span class="tt">progressiveBytesCopied</span>) so tooling can correlate policy decisions with render work. <b>Diagnostics update (October 19, 2025):</b> <span class="tt">backendKind</span> and <span class="tt">usedMetalTexture</span> flag the presenter’s backend choice per frame so telemetry can distinguish Metal uploads from software fallbacks while the GPU encoder comes online. <b>Diagnostics update (October 19, 2025):</b> Dirty-rect hints are now coalesced at insert time and the full tile/damage/fingerprint metric set (<span class="tt">damage*</span>, <span class="tt">fingerprint*</span>, <span class="tt">progressiveTiles*</span>) is available when <span class="tt">PATHSPACE_UI_DAMAGE_METRICS=1</span>. Keep the flag unset for perf runs—the encode pass is still single-threaded today, and the next renderer milestone is to shard that work across core-count-sized tile queues. <b>Diagnostics update (2025-10-17):</b> Software renderer incremental perf (64 px hints) holds ~140 FPS even at 4K, but full-surface damage and IOSurface reuse remain bottlenecks; see <a class="el" href="_plan___scene_graph___implementation_8md.html">docs/Plan_SceneGraph_Implementation.md</a> for the profiling/benchmark plan and <a class="el" href="_a_i___onboarding_8md.html">docs/AI_Onboarding.md</a> for the latest hand-off notes. <b>Presenter update (October 18, 2025):</b> CAMetalLayer presents remain zero-copy by default. Builders expose a <span class="tt">capture_framebuffer</span> flag under <span class="tt">windows/&lt;win&gt;/views/&lt;view&gt;/present/params/capture_framebuffer</span>; only when the flag is true do presenters copy the IOSurface back to RAM for diagnostics/tests. <b>Diagnostics update (October 18, 2025):</b> Presenter/renderer errors now populate <span class="tt">diagnostics/errors/live</span> with a structured <span class="tt">PathSpaceError</span> (code, severity, message, revision, timestamp). <span class="tt">output/v1/common/lastError</span> remains as a compatibility mirror, but tooling should consume <span class="tt">diagnostics/errors/live</span> for full context. CAMetalLayer presents rely on a bounded IOSurface reuse pool, eliminating the range-group exhaustion seen in early paint sessions. <b>Telemetry update (October 19, 2025):</b> Targets now publish residency/cache metrics under <span class="tt">diagnostics/metrics/residency/{cpuBytes,cpuSoftBytes,cpuHardBytes,gpuBytes,gpuSoftBytes,gpuHardBytes}</span>. Builders thread the configured cache limits from <span class="tt">RenderSettings.cache</span> so dashboards can compare actual usage against the soft/hard watermarks. <b>Telemetry update (October 20, 2025):</b> Residency metrics now also publish <span class="tt">cpuSoftBudgetRatio</span>, <span class="tt">cpuHardBudgetRatio</span>, <span class="tt">gpuSoftBudgetRatio</span>, <span class="tt">gpuHardBudgetRatio</span>, per-budget exceed flags, and <span class="tt">overallStatus</span> under <span class="tt">diagnostics/metrics/residency/</span> so dashboards and alerts can consume thresholds without bespoke parsing. <b>Renderer staging (October 19, 2025):</b> Builders can now provision Metal targets alongside the software path. The rendering pipeline still populates targets through the software raster; enabling true Metal uploads is gated behind the environment variable <span class="tt">PATHSPACE_ENABLE_METAL_UPLOADS=1</span> while we finish the GPU encoder. When the flag is unset (or PATHSPACE_UI_METAL is disabled at build time) render contexts automatically fall back to <span class="tt">RendererKind::Software2D</span> so the CPU path remains the default in tests and CI. </p>
+</blockquote>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md22"></a>
+UI/Rendering — cross-reference</h2>
+<p>Present policy (backend-aware) and the software progressive present are documented in docs/AI_Plan_SceneGraph_Renderer.md. This architecture document focuses on PathSpace core; rendering/presenter details live in the plan. Also see “View keys (final)” and “Target keys (final)” in docs/AI_Plan_SceneGraph_Renderer.md for the authoritative schemas, and note that RenderSettings are a single-path atomic whole-object value; ParamUpdateMode::Queue refers to client-side coalescing before one atomic write (no server-side queue in v1).</p>
 <p>See also:</p><ul>
-<li><span class="tt"><a class="el" href="_a_i___plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a></span> for the broader rendering plan and target I/O layout. If snapshot semantics change, update both documents in the same PR per <span class="tt">.rules</span>.<ul>
+<li><span class="tt"><a class="el" href="_plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a></span> for the broader rendering plan and target I/O layout. If snapshot semantics change, update both documents in the same PR per <span class="tt">.rules</span>.<ul>
 <li><span class="tt"><a class="el" href="_a_i___p_a_t_h_s_8md.html">docs/AI_Paths.md</a></span> for the canonical path namespaces and layout conventions; update it alongside changes to path usage and target I/O layout.</li>
 </ul>
 </li>
+<li>HTML render targets now persist adapter output under <span class="tt">renderers/&lt;rid&gt;/targets/html/&lt;name&gt;/output/v1/html/{dom,css,commands,assets,mode,usedCanvasFallback}</span>; see <span class="tt">Html::Adapter</span> for the serialization rules and SceneGraph plan Phase 7 for outstanding replay/CI work.</li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md22"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md23"></a>
 Contributing to PathSpace</h2>
 <p>For AI-facing workflows (branching, PR creation, troubleshooting, commit guidelines), see AGENTS.md. This document focuses on code architecture and APIs.</p>
 <p>PathSpace is a coordination language that enables insertion and extractions from paths in a thread safe datastructure. The data structure supports views of the paths similar to Plan 9. The data attached to the paths are more like a JSON datastructure than files though. The data supported is standard C++ data types and data structures from the standard library, user created structs/classes as well as function pointers, std::function or function objects for storing executions that generate values to be inserted at a path.</p>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md23"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md24"></a>
 Path System</h2>
-<h3 class="doxsection"><a class="anchor" id="autotoc_md24"></a>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md25"></a>
 Path Types</h3>
-<h4 class="doxsection"><a class="anchor" id="autotoc_md25"></a>
+<h4 class="doxsection"><a class="anchor" id="autotoc_md26"></a>
 Concrete Paths</h4>
 <p>Concrete paths represent exact locations in the PathSpace hierarchy. They follow these rules:</p><ul>
 <li>Must start with a forward slash (/)</li>
@@ -120,7 +133,7 @@ Concrete Paths</h4>
 </ul>
 <p>Example: </p><div class="fragment"><div class="line"><span class="stringliteral">&quot;/data/sensors/temperature&quot;</span></div>
 <div class="line"><span class="stringliteral">&quot;/system/status/current&quot;</span></div>
-</div><!-- fragment --><h4 class="doxsection"><a class="anchor" id="autotoc_md26"></a>
+</div><!-- fragment --><h4 class="doxsection"><a class="anchor" id="autotoc_md27"></a>
 Glob Paths</h4>
 <p>Glob paths extend concrete paths with pattern matching capabilities. They support:</p><ul>
 <li><span class="tt">*</span> - Matches any sequence of characters within a component</li>
@@ -134,9 +147,9 @@ Glob Paths</h4>
 <div class="line"><span class="stringliteral">&quot;/data/**/status&quot;</span>       <span class="comment">// Matches status at any depth</span></div>
 <div class="line"><span class="stringliteral">&quot;/sensor-[0-9]/*&quot;</span>       <span class="comment">// Matches numbered sensors</span></div>
 <div class="line"><span class="stringliteral">&quot;/data/temp-?&quot;</span>          <span class="comment">// Matches single character variations</span></div>
-</div><!-- fragment --><h3 class="doxsection"><a class="anchor" id="autotoc_md27"></a>
+</div><!-- fragment --><h3 class="doxsection"><a class="anchor" id="autotoc_md28"></a>
 Path Implementation</h3>
-<h4 class="doxsection"><a class="anchor" id="autotoc_md28"></a>
+<h4 class="doxsection"><a class="anchor" id="autotoc_md29"></a>
 Core Classes</h4>
 <div class="fragment"><div class="line"><span class="comment">// Base path template</span></div>
 <div class="line"><span class="keyword">template</span> &lt;<span class="keyword">typename</span> T&gt;</div>
@@ -153,7 +166,7 @@ Core Classes</h4>
 <div class="line"><span class="comment">// Glob path types</span></div>
 <div class="line"><span class="keyword">using </span>GlobPathString = GlobPath&lt;std::string&gt;;</div>
 <div class="line"><span class="keyword">using </span>GlobPathStringView = GlobPath&lt;std::string_view&gt;;</div>
-</div><!-- fragment --><h4 class="doxsection"><a class="anchor" id="autotoc_md29"></a>
+</div><!-- fragment --><h4 class="doxsection"><a class="anchor" id="autotoc_md30"></a>
 Path Component Iteration</h4>
 <p>The system provides iterators to traverse path components: </p><div class="fragment"><div class="line"><span class="keyword">template</span> &lt;<span class="keyword">typename</span> T&gt;</div>
 <div class="line"><span class="keyword">struct </span>ConcreteIterator {</div>
@@ -168,7 +181,7 @@ Path Component Iteration</h4>
 <div class="line">    <span class="keywordtype">bool</span> isAtStart() <span class="keyword">const</span>;      <span class="comment">// Check if at first component</span></div>
 <div class="line">    std::string_view fullPath() <span class="keyword">const</span>;  <span class="comment">// Full path string</span></div>
 <div class="line">};</div>
-</div><!-- fragment --><h4 class="doxsection"><a class="anchor" id="autotoc_md30"></a>
+</div><!-- fragment --><h4 class="doxsection"><a class="anchor" id="autotoc_md31"></a>
 Pattern Matching</h4>
 <p>Pattern matching can handle various glob patterns:</p>
 <div class="fragment"><div class="line"><span class="keyword">struct </span>GlobName {</div>
@@ -185,9 +198,9 @@ Pattern Matching</h4>
 <li>Escaped characters are handled literally</li>
 <li>Empty components are normalized</li>
 </ul>
-<h3 class="doxsection"><a class="anchor" id="autotoc_md31"></a>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md32"></a>
 Path Usage Examples</h3>
-<h4 class="doxsection"><a class="anchor" id="autotoc_md32"></a>
+<h4 class="doxsection"><a class="anchor" id="autotoc_md33"></a>
 Basic Path Operations</h4>
 <div class="fragment"><div class="line">PathSpace space;</div>
 <div class="line"> </div>
@@ -202,7 +215,7 @@ Basic Path Operations</h4>
 <div class="line"> </div>
 <div class="line"><span class="comment">// Read with pattern</span></div>
 <div class="line"><span class="keyword">auto</span> values = space.read&lt;<span class="keywordtype">float</span>&gt;(<span class="stringliteral">&quot;/sensors/*/value&quot;</span>);</div>
-</div><!-- fragment --><h4 class="doxsection"><a class="anchor" id="autotoc_md33"></a>
+</div><!-- fragment --><h4 class="doxsection"><a class="anchor" id="autotoc_md34"></a>
 Pattern Matching Examples</h4>
 <div class="fragment"><div class="line"><span class="comment">// Match any sensor</span></div>
 <div class="line"><span class="stringliteral">&quot;/sensors/*&quot;</span></div>
@@ -218,16 +231,16 @@ Pattern Matching Examples</h4>
 <div class="line"> </div>
 <div class="line"><span class="comment">// Match range of sensors</span></div>
 <div class="line"><span class="stringliteral">&quot;/sensors/[1-5]&quot;</span></div>
-</div><!-- fragment --><h3 class="doxsection"><a class="anchor" id="autotoc_md34"></a>
+</div><!-- fragment --><h3 class="doxsection"><a class="anchor" id="autotoc_md35"></a>
 Path Performance Considerations</h3>
-<h4 class="doxsection"><a class="anchor" id="autotoc_md35"></a>
+<h4 class="doxsection"><a class="anchor" id="autotoc_md36"></a>
 Path Storage</h4>
 <ul>
 <li>Uses <span class="tt">string_view</span> for read-only operations to avoid copies</li>
 <li>Maintains string ownership where needed for modifications</li>
 <li>Caches path components for efficient iteration</li>
 </ul>
-<h4 class="doxsection"><a class="anchor" id="autotoc_md36"></a>
+<h4 class="doxsection"><a class="anchor" id="autotoc_md37"></a>
 Pattern Matching Optimization</h4>
 <ul>
 <li>Early termination for non-matching patterns</li>
@@ -235,14 +248,14 @@ Pattern Matching Optimization</h4>
 <li>Optimized super-matcher (<span class="tt">**</span>) handling</li>
 <li>Component-wise matching to minimize string operations</li>
 </ul>
-<h4 class="doxsection"><a class="anchor" id="autotoc_md37"></a>
+<h4 class="doxsection"><a class="anchor" id="autotoc_md38"></a>
 Memory Efficiency</h4>
 <ul>
 <li>Shared path component storage</li>
 <li>Lazy evaluation of pattern matches</li>
 <li>Efficient string views for immutable paths</li>
 </ul>
-<h3 class="doxsection"><a class="anchor" id="autotoc_md38"></a>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md39"></a>
 Path Thread Safety</h3>
 <p>The path system provides thread-safe operations through:</p><ul>
 <li>Immutable path objects</li>
@@ -262,7 +275,7 @@ Path Thread Safety</h3>
 <p>Additional note:</p><ul>
 <li>Task completion notifications are lifetime-safe via a NotificationSink token. Each <span class="tt">PathSpaceBase</span> owns a <span class="tt">shared_ptr&lt;NotificationSink&gt;</span> that forwards to its <span class="tt">notify(path)</span>; <span class="tt">Task</span> objects capture a <span class="tt">weak_ptr&lt;NotificationSink&gt;</span>. During shutdown, the <span class="tt">PathSpace</span> resets the <span class="tt">shared_ptr</span> so late notifications are dropped cleanly without dereferencing stale pointers.</li>
 </ul>
-<h3 class="doxsection"><a class="anchor" id="autotoc_md39"></a>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md40"></a>
 Path Error Handling</h3>
 <p>Comprehensive error handling for path operations:</p><ul>
 <li>Path validation errors</li>
@@ -271,7 +284,7 @@ Path Error Handling</h3>
 <li>Type mismatches</li>
 <li>Timeout conditions</li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md40"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md41"></a>
 Internal Data</h2>
 <p>PathSpace stores data in a unified Node trie. Each Node contains:</p><ul>
 <li>children: a concurrent hash map keyed by the next path component</li>
@@ -284,7 +297,7 @@ Internal Data</h2>
 <li>payload accesses (data/nested) are guarded by a per-node mutex to ensure safe updates under contention</li>
 </ul>
 <p>Additionally, nodes may hold <span class="tt">Task</span> objects representing deferred computations alongside serialized bytes. <span class="tt">NodeData</span> stores tasks (<span class="tt">std::shared_ptr&lt;Task&gt;</span>) and, when tasks complete, notifications are delivered via a <span class="tt">NotificationSink</span> interface: tasks hold a <span class="tt">std::weak_ptr&lt;NotificationSink&gt;</span> and the owning <span class="tt">PathSpaceBase</span> provides the <span class="tt">shared_ptr</span> token and forwards to <span class="tt">notify(path)</span>. This removes the need for a global registry and prevents use-after-free races during teardown (the space resets its token during shutdown, causing late notifications to be dropped safely).</p>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md41"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md42"></a>
 Syntax Example</h2>
 <div class="fragment"><div class="line">PathSpace space;</div>
 <div class="line">space.insert(<span class="stringliteral">&quot;/collection/numbers&quot;</span>, 5);</div>
@@ -294,10 +307,10 @@ Syntax Example</h2>
 <div class="line"> </div>
 <div class="line">space.insert(<span class="stringliteral">&quot;/collection/executions&quot;</span>, [](){<span class="keywordflow">return</span> 7;});</div>
 <div class="line">assert(space.take&lt;<span class="keywordtype">int</span>&gt;(<span class="stringliteral">&quot;/collection/executions&quot;</span>, Block{}).value() == 7);</div>
-</div><!-- fragment --><h2 class="doxsection"><a class="anchor" id="autotoc_md42"></a>
+</div><!-- fragment --><h2 class="doxsection"><a class="anchor" id="autotoc_md43"></a>
 Polymorphism</h2>
 <p>The internal spaces inside a path are implemented witha Leaf class, it's possible to inherit from that class and insert that child class in order to change the behaviour of parts of the path structure of a PathSpace instance. This can be used to have different behaviour for different sub spaces within a PathSpace. By default PathSpace will create a Leaf of the same type as the parent when creating new ones (which happens during insert of data).</p>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md43"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md44"></a>
 Path Globbing</h2>
 <p>Paths given to insert can be a glob expression, if the expression matches the names of subspaces then the data will be inserted to all the matching subspaces. </p><div class="fragment"><div class="line">PathSpace space;</div>
 <div class="line">space.insert(<span class="stringliteral">&quot;/collection/numbers&quot;</span>, 5);</div>
@@ -313,7 +326,7 @@ Path Globbing</h2>
 <div class="line"><span class="comment">// Affected: matches &quot;numbers*&quot;</span></div>
 <div class="line">assert(space.take&lt;<span class="keywordtype">int</span>&gt;(<span class="stringliteral">&quot;/collection/numbers_more&quot;</span>).value() == 4);</div>
 <div class="line">assert(space.take&lt;<span class="keywordtype">int</span>&gt;(<span class="stringliteral">&quot;/collection/numbers_more&quot;</span>).value() == 2);</div>
-</div><!-- fragment --><h2 class="doxsection"><a class="anchor" id="autotoc_md44"></a>
+</div><!-- fragment --><h2 class="doxsection"><a class="anchor" id="autotoc_md45"></a>
 Blocking</h2>
 <p>Blocking is opt-in and expressed through the helpers in <span class="tt"><a class="el" href="_out_8hpp.html">src/pathspace/core/Out.hpp</a></span>.</p>
 <ul>
@@ -322,7 +335,7 @@ Blocking</h2>
 <li>Successful reads/takes automatically deregister their waiter before returning. If the waiter is cancelled because the path is deleted or the space is shutting down, the operation reports an error so callers can retry or exit.</li>
 <li>Inserts themselves do not block, but they wake both concrete and glob waiters on completion. Custom layers can tap into the same behaviour through <span class="tt"><a class="el" href="struct_block_options.html">BlockOptions</a></span> when forwarding or composing higher-level queues.</li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md45"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md46"></a>
 Operations</h2>
 <p>The operations in the base language are insert/read/extract, they are implemented as member functions of the PathSpace class.</p><ul>
 <li><b>Insert</b>:<ul>
@@ -396,16 +409,16 @@ Operations</h2>
 </ul>
 </li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md46"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md47"></a>
 Data Storage</h2>
 <p>A normal PathSpace will store data by serialising it to a std::vector&lt;std::byte&gt;. That vector can contain data of different types and a separate vector storing std::type_id pointers together with how many objects or that type are in a row will be used to determine what parts of the data vector has what type. std::function objects will be stored in their own vector as well since they can not be serialised. Insert will append serialised data to this vector. Extract will not necessarily erase from the front of the vector since this would be too costly, a pointer to the front element will instead be stored and its position changed forward when a extract is issued. At first the serialisation will be done via the alpaca library but when a compiler supporting the C++26 serialisation functionality it will be rewritten to use that instead.</p>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md47"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md48"></a>
 Unit Testing</h2>
 <p>Unit testing is by using the C++ doctest library.</p>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md48"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md49"></a>
 Exception Handling</h2>
 <p>PathSpaces will not throw exceptions, all errors will be handled via the return type of the operations.</p>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md49"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md50"></a>
 Views</h2>
 <p>PathSpace supports read-only projections and permission gating through <span class="tt"><a class="el" href="_path_view_8hpp.html">src/pathspace/layer/PathView.hpp</a></span> (view with a permission callback) and path aliasing/forwarding via <span class="tt"><a class="el" href="_path_alias_8hpp.html">src/pathspace/layer/PathAlias.hpp</a></span>.</p>
 <ul>
@@ -423,7 +436,7 @@ Views</h2>
 </ul>
 </li>
 </ul>
-<h3 class="doxsection"><a class="anchor" id="autotoc_md50"></a>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md51"></a>
 Shutdown and Test Hooks</h3>
 <ul>
 <li><span class="tt">PathSpace::shutdown()</span> is the public API to cooperatively wake waiters and clear paths during teardown.</li>
@@ -434,7 +447,7 @@ Shutdown and Test Hooks</h3>
 <li><span class="tt">PathSpace::peekFuture(...)</span> and <span class="tt">PathSpace::setOwnedPool(...)</span> are protected implementation details. Prefer the unified <span class="tt">read&lt;FutureAny&gt;(path)</span> and constructor injection of the executor/pool.</li>
 <li>Nested spaces adopt shared context and a mount prefix internally via the protected <span class="tt">adoptContextAndPrefix(...)</span>; external callers should not invoke this directly.</li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md51"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md52"></a>
 Operating System</h2>
 <p>Device IO is provided by path-agnostic layers that can be mounted anywhere in a parent <span class="tt">PathSpace</span>, with platform backends feeding events into them:</p>
 <ul>
@@ -453,7 +466,7 @@ Operating System</h2>
 </li>
 <li>Notifications: providers perform targeted <span class="tt">notify(mountPrefix)</span> and <span class="tt">notify(mountPrefix + "/events")</span> on enqueue; use <span class="tt">notifyAll()</span> only for broad updates (e.g., retargeting or clear).</li>
 </ul>
-<h3 class="doxsection"><a class="anchor" id="autotoc_md52"></a>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md53"></a>
 Backpressure and queue limits</h3>
 <ul>
 <li>Scope: Event providers (mouse/keyboard/pointer mixer/gamepad) maintain per-mount in-memory deques for pending events.</li>
@@ -484,7 +497,147 @@ Backpressure and queue limits</h3>
 <li>On macOS, enable with <span class="tt">-DENABLE_PATHIO_MACOS=ON</span> to define <span class="tt">PATHIO_BACKEND_MACOS</span> (CI uses simulation/no-op by default).</li>
 <li>Deprecated: <span class="tt"><a class="el" href="_path_i_o__macos_8hpp.html">src/pathspace/layer/macos/PathIO_macos.hpp</a></span> is a compatibility shim only and no longer defines <span class="tt">PathIOMouseMacOS</span> or <span class="tt">PathIOKeyboardMacOS</span>. Include the unified headers instead.</li>
 </ul>
-<p>Note: First-class links (symlinks) are planned; in the interim, <span class="tt">PathAlias</span> offers robust forwarding/retargeting semantics without changing core trie invariants. </p>
+<p>Note: First-class links (symlinks) are planned; in the interim, <span class="tt">PathAlias</span> offers robust forwarding/retargeting semantics without changing core trie invariants.</p>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md54"></a>
+Hit testing and auto-render scheduling (October 16, 2025)</h3>
+<ul>
+<li><span class="tt">PathSpace::UI::Builders::Scene::HitTest</span> reads the current snapshot (<span class="tt">DrawableBucketSnapshot</span>) for a scene, walks draw order (opaque + alpha) back-to-front, respects per-drawable clip stacks, and returns the topmost hit along with authoring focus metadata. Results now include scene-space coordinates plus local-space offsets derived from the drawable’s bounds so input handlers can translate pointer positions without re-reading scene state.</li>
+<li><span class="tt">HitTestRequest.schedule_render</span> enqueues <span class="tt">AutoRenderRequestEvent</span> items under <span class="tt">renderers/&lt;rid&gt;/targets/&lt;kind&gt;/&lt;name&gt;/events/renderRequested/queue</span>; the auto-render loop can watch this queue to trigger responsive redraws after pointer interactions.</li>
+<li>Utility helpers in <span class="tt"><a class="el" href="_drawable_utils_8hpp.html">src/pathspace/ui/DrawableUtils.hpp</a></span> centralize drawable bounds tests, focus-chain construction, and coordinate conversions so raster and hit-test paths stay consistent.</li>
+<li><span class="tt">Scene::MarkDirty</span> updates <span class="tt">scenes/&lt;scene-id&gt;/diagnostics/dirty/state</span> with a monotonically increasing sequence, merged dirty mask, and timestamp, and pushes matching <span class="tt">Scene::DirtyEvent</span> entries onto <span class="tt">diagnostics/dirty/queue</span>. <span class="tt">Scene::TakeDirtyEvent</span> (blocking) and <span class="tt">Scene::ReadDirtyState</span> give renderers a wait/notify friendly surface for scheduling layout/rebuild work without polling. Loop-harness coverage (<span class="tt">tests/ui/test_Builders.cpp</span>) waits on <span class="tt">Scene::TakeDirtyEvent</span> before issuing <span class="tt">Scene::MarkDirty</span>, confirming wake latency stays under 200 ms once a dirty event is published and that FIFO ordering is preserved.</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md55"></a>
+UI &amp; Rendering</h2>
+<p>The scene graph and renderer pipeline lives entirely on top of PathSpace paths. Applications mount their rendering tree under a single app root (see <span class="tt"><a class="el" href="_plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a></span> and <span class="tt"><a class="el" href="_a_i___p_a_t_h_s_8md.html">docs/AI_Paths.md</a></span>) so that tearing down the app root atomically releases windows, surfaces, scenes, and renderer targets in one operation. All references between components are app-relative strings validated through the dedicated helpers in <span class="tt"><a class="el" href="namespace_s_p_1_1_app.html">SP::App</a></span> (<span class="tt"><a class="el" href="namespace_s_p_1_1_app.html#afed84872a7219a28548903b381184325">SP::App::is_app_relative</a></span>, <span class="tt"><a class="el" href="namespace_s_p_1_1_app.html#a71d3d8312dd9f38f782baf4bb8d2d7fa">SP::App::resolve_app_relative</a></span>, <span class="tt"><a class="el" href="namespace_s_p_1_1_app.html#a98d25d5cb0b6a5ebc99ec899930dfe94">SP::App::ensure_within_app</a></span>).</p>
+<ul>
+<li>Raw user input that has not yet been validated should flow through <span class="tt"><a class="el" href="class_s_p_1_1_unvalidated_path_view.html">SP::UnvalidatedPathView</a></span>; the helper layer makes the transition to <span class="tt">ConcretePath</span>/<span class="tt">ConcretePathView</span> explicit before touching core storage.</li>
+</ul>
+<p>Build toggles (CMake options, default in parenthesis):</p><ul>
+<li><span class="tt">PATHSPACE_ENABLE_EXTRA</span> (ON) — layer/view/IO providers, platform discovery helpers, and their tests. Set to OFF to consume only the core data-space API.</li>
+<li><span class="tt">PATHSPACE_ENABLE_APP</span> (ON) — app-level helpers in <span class="tt"><a class="el" href="namespace_s_p_1_1_app.html">SP::App</a></span>.</li>
+<li><span class="tt">PATHSPACE_ENABLE_UI</span> (OFF) — UI/scene graph helper stubs; see <span class="tt"><a class="el" href="_plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a></span> for downstream feature guards (<span class="tt">PATHSPACE_UI_SOFTWARE</span>, <span class="tt">PATHSPACE_UI_METAL</span>).</li>
+</ul>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md56"></a>
+Layering and Synchronization</h3>
+<ul>
+<li>PathSpace core retains exclusive ownership of concurrency primitives (per-node mutexes, wait queues). Higher layers—including SceneGraph helpers—coordinate via atomic inserts/takes, revision counters, and notifications; they must not introduce external mutexes.</li>
+<li>Typed helper functions (<span class="tt">Scene::Create</span>, <span class="tt">Renderer::UpdateSettings</span>, etc.) now delegate to the builder layer in <span class="tt">include/pathspace/ui/Builders.hpp</span>, which centralizes app-root containment and path derivation before touching <span class="tt">PathSpace</span> storage. These helpers are restart-friendly: repeated <span class="tt">Create</span> calls simply return the existing concrete path, and diagnostics reads default to zeroed metrics when outputs are absent. The <span class="tt"><a class="el" href="namespace_s_p_1_1_u_i.html">SP::UI</a></span> façade remains thin wrappers over these builders.</li>
+<li>Tests can substitute <span class="tt">PathSpace</span> fixtures or helper fakes to validate SceneGraph behaviour independently from core internals, provided they respect the same atomic contracts.</li>
+</ul>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md57"></a>
+Component landscape</h3>
+<ul>
+<li><span class="tt">scenes/&lt;scene-id&gt;/</span> — authoring source (<span class="tt">src/</span>), immutable builds (<span class="tt">builds/&lt;revision&gt;/</span>), and <span class="tt">current_revision</span> pointing at the latest published snapshot.</li>
+<li><span class="tt">renderers/&lt;renderer-id&gt;/targets/&lt;kind&gt;/&lt;name&gt;/</span> — renderer targets. Each target binds to a scene, drains whole-frame <span class="tt">RenderSettings</span>, executes <span class="tt">render</span>, and publishes the most recent outputs under <span class="tt">output/v1/...</span>.</li>
+<li><span class="tt">surfaces/&lt;surface-id&gt;/</span> — offscreen render entry. Surfaces coordinate with a renderer target, provide per-frame execution (<span class="tt">render</span>), and surface the output handles/buffers the presenters consume.</li>
+<li><span class="tt">windows/&lt;window-id&gt;/views/&lt;view-id&gt;/</span> — presenters that resolve a <span class="tt">surface</span>, <span class="tt">windowTarget</span>, or <span class="tt">htmlTarget</span>; surface/window bindings drive native presents, while HTML bindings expose the most recent DOM/CSS/Canvas payload for web presenters and tooling.</li>
+<li>Upcoming C++ stubs ship under <span class="tt">src/pathspace/ui/</span> (<span class="tt">PathRenderer2D</span>, <span class="tt">PathSurfaceSoftware</span>, <span class="tt">PathWindowView</span>) and will wire directly into these paths. Keep this section updated as the implementations land.</li>
+</ul>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md58"></a>
+Data flow</h3>
+<p>The following Mermaid diagram documents how scene snapshots propagate to render targets, surfaces, and window presenters. The source lives at <span class="tt">docs/images/ui_rendering_flow.mmd</span>.</p>
+<div class="fragment"><div class="line">%% Source: docs/images/ui_rendering_flow.mmd</div>
+<div class="line">flowchart TD</div>
+<div class="line">    subgraph Scenes</div>
+<div class="line">        A[scenes/&lt;scene-id&gt;/src]</div>
+<div class="line">        B[SnapshotBuilder]</div>
+<div class="line">        C[scenes/&lt;scene-id&gt;/current_revision]</div>
+<div class="line">        A --&gt; B</div>
+<div class="line">        B --&gt; C</div>
+<div class="line">    end</div>
+<div class="line"> </div>
+<div class="line">    subgraph Renderer Target</div>
+<div class="line">        D[renderers/&lt;renderer-id&gt;/targets/&lt;kind&gt;/&lt;name&gt;/scene]</div>
+<div class="line">        E[renderers/&lt;renderer-id&gt;/targets/&lt;kind&gt;/&lt;name&gt;/render]</div>
+<div class="line">        F[renderers/&lt;renderer-id&gt;/targets/&lt;kind&gt;/&lt;name&gt;/output/v1/...]</div>
+<div class="line">        C --&gt; D</div>
+<div class="line">        E --&gt; F</div>
+<div class="line">    end</div>
+<div class="line"> </div>
+<div class="line">    subgraph Surface</div>
+<div class="line">        G[surfaces/&lt;surface-id&gt;/render]</div>
+<div class="line">        H[surfaces/&lt;surface-id&gt;/output]</div>
+<div class="line">        D --&gt; G</div>
+<div class="line">        G --&gt; E</div>
+<div class="line">        F --&gt; H</div>
+<div class="line">    end</div>
+<div class="line"> </div>
+<div class="line">    subgraph Window View</div>
+<div class="line">        I[windows/&lt;window-id&gt;/views/&lt;view-id&gt;/present]</div>
+<div class="line">        J[windows/&lt;window-id&gt;/window]</div>
+<div class="line">        H --&gt; I</div>
+<div class="line">        I --&gt; J</div>
+<div class="line">    end</div>
+</div><!-- fragment --><h3 class="doxsection"><a class="anchor" id="autotoc_md59"></a>
+Atomic pipeline</h3>
+<p>Renderer targets adopt settings atomically and publish immutable outputs. The sequence diagram (stored in <span class="tt">docs/images/render_atomic_pipeline.mmd</span>) captures the contract between producers, renderers, surfaces, and presenters.</p>
+<div class="fragment"><div class="line">%% Source: docs/images/render_atomic_pipeline.mmd</div>
+<div class="line">sequenceDiagram</div>
+<div class="line">    autonumber</div>
+<div class="line">    participant Producer as Producer (Surface/Presenter)</div>
+<div class="line">    participant Target as Renderer Target Paths</div>
+<div class="line">    participant Renderer as PathRenderer</div>
+<div class="line">    participant Surface as PathSurface</div>
+<div class="line">    participant Presenter as Window View</div>
+<div class="line"> </div>
+<div class="line">    Producer-&gt;&gt;Target: insert RenderSettings (settings/inbox)</div>
+<div class="line">    Renderer-&gt;&gt;Target: take() latest settings</div>
+<div class="line">    Renderer-&gt;&gt;Target: update settings/active</div>
+<div class="line">    Surface-&gt;&gt;Renderer: invoke render</div>
+<div class="line">    Renderer-&gt;&gt;Target: publish output/v1/common &amp; buffers</div>
+<div class="line">    Presenter-&gt;&gt;Surface: trigger present (optional frame)</div>
+<div class="line">    Presenter-&gt;&gt;Target: read output/v1/*</div>
+</div><!-- fragment --><p>Atomicity rules:</p><ul>
+<li>Writers insert whole <span class="tt">RenderSettingsV1</span> objects into <span class="tt">settings/inbox</span>; partial updates are not supported. The renderer drains the inbox with <span class="tt">take()</span> and only adopts the newest payload.</li>
+<li>Targets may mirror the adopted settings under <span class="tt">settings/active</span> for introspection. Mirrors must be written atomically so consumers never observe a mixed version.</li>
+<li>Frame outputs live under <span class="tt">output/v1/...</span> and are single-value registers (software framebuffers, GPU handles, timing metadata). Replace-in-place updates keep consumers lockstep with renderer commits.</li>
+<li>Surfaces coordinate per-target renders, double-buffer software pixels, and ensure GPU handles remain valid until presenters finish presenting the active frame.</li>
+</ul>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md60"></a>
+Progressive software present</h3>
+<ul>
+<li>The software renderer’s progressive mode shares a single CPU framebuffer (<span class="tt">RGBA8Unorm_sRGB</span>, premultiplied alpha). Rendering occurs in linear light; the renderer encodes to sRGB on store, and presenters copy the resulting bytes without further conversion, preventing double-encode artifacts.</li>
+<li>Framebuffer tiles maintain a small seqlock metadata block: <span class="tt">seq</span> (<span class="tt">std::atomic&lt;uint32_t&gt;</span>, even=stable, odd=writer active), <span class="tt">pass</span> (<span class="tt">std::atomic&lt;uint32_t&gt;</span> with states {None, OpaqueInProgress, OpaqueDone, AlphaInProgress, AlphaDone}), and <span class="tt">epoch</span> (<span class="tt">std::atomic&lt;uint64_t&gt;</span> monotonic per AlphaDone). All stores use release semantics; readers pair them with acquire loads.</li>
+<li>Writers flip <span class="tt">seq</span> to odd (<span class="tt">fetch_add(1, memory_order_acq_rel)</span>), optionally mark the in-progress pass, write pixels, issue a release fence, update <span class="tt">pass</span> (and <span class="tt">epoch</span> when reaching AlphaDone), then flip <span class="tt">seq</span> back to even. Presenters read <span class="tt">seq</span>/<span class="tt">pass</span>/<span class="tt">epoch</span> with acquire semantics; if <span class="tt">seq</span> is odd or differs before/after a copy, they discard the tile to avoid tearing.</li>
+<li>Dirty rectangles stay tile-aligned. The presenter coalesces tile IDs, copies even-seq tiles immediately, and may present opaque-complete tiles before alpha tiles finish. Metrics recorded under <span class="tt">output/v1/common</span> – <span class="tt">progressiveTilesCopied</span>, <span class="tt">progressiveRectsCoalesced</span>, <span class="tt">progressiveSkipOddSeq</span>, <span class="tt">progressiveRecopyAfterSeqChange</span> – capture copy throughput and retry behaviour, enabling performance analysis of progressive mode.</li>
+<li><span class="tt">PathWindowView</span> encapsulates the presenter logic for software surfaces, exposes <span class="tt">PresentStats</span> (frame metadata, render/present durations, skip flags), and Builders persist those stats under <span class="tt">targets/&lt;tid&gt;/output/v1/common/*</span> for diagnostics consumers.</li>
+<li>On macOS the shared UI bridge (<span class="tt">src/pathspace/ui/LocalWindowBridge.mm</span>) now owns a <span class="tt">CAMetalLayer</span>, grabs <span class="tt">CAMetalDrawable</span> instances, copies the most recent software framebuffer directly into the drawable’s <span class="tt">IOSurface</span>, and presents via an empty Metal command buffer. Examples call the bridge so presenter logic lives alongside <span class="tt">PathWindowView</span>, eliminating platform-specific presenter code in sample apps.</li>
+<li>PathSurfaceSoftware now exposes an IOSurface-backed framebuffer, allowing PathWindowView and macOS presenters to bind the same IOSurface without memcpy; the legacy copy path remains only as a diagnostics fallback.</li>
+<li>PathRenderer2D now reuses per-target caches of drawable bounds plus the fingerprints emitted in <span class="tt">fingerprints.bin</span> so unchanged drawables (including id renames) skip damage; only tiles touched by modified geometry or settings are repainted, with full-surface fallbacks reserved for resize/clear color changes (see <a class="el" href="_plan___scene_graph___implementation_8md.html">docs/Plan_SceneGraph_Implementation.md</a> “Incremental software renderer” for remaining diagnostics/hint follow-ups).</li>
+<li>Renderer targets accept optional dirty-rectangle hints under <span class="tt">targets/&lt;tid&gt;/hints/dirtyRects</span>; PathRenderer2D consumes and unions those rectangles with fingerprint-derived damage so producers can force or narrow incremental updates without triggering a full repaint.</li>
+<li>When <span class="tt">capture_framebuffer=true</span> in the present policy, <span class="tt">Builders::Window::Present</span> persists the software framebuffer under <span class="tt">output/v1/software/framebuffer</span>; the helpers (<span class="tt">Builders::Diagnostics::ReadSoftwareFramebuffer</span>) provide typed access (width/height/stride metadata included) so tools and examples (see <span class="tt">examples/paint_example.cpp</span>) can display the rendered bytes without re-rendering. With capture disabled, the path stays empty to avoid per-frame serialization overhead.</li>
+<li><span class="tt">SurfaceDesc</span> now captures Metal-specific options (<span class="tt">metal.storage_mode</span>, <span class="tt">metal.texture_usage</span>, <span class="tt">metal.iosurface_backing</span>) so renderers can configure texture allocation deterministically. <span class="tt">RenderSettings::surface.metal</span> mirrors those options per frame, and <span class="tt">RenderSettings::renderer</span> records the backend actually used plus whether Metal uploads were enabled, giving diagnostics downstream context when targets fall back to software.</li>
+<li>When Metal uploads are enabled, <span class="tt">PathWindowView</span> now presents the steady-state Metal texture via the shared CAMetalLayer, recording <span class="tt">gpuEncodeMs</span> (command encoding time) and <span class="tt">gpuPresentMs</span> (time until the drawable is scheduled) alongside the existing <span class="tt">presentMs</span> entry in <span class="tt">output/v1/common</span>. Software presents keep those fields at <span class="tt">0.0</span> so tooling can tell which path executed.</li>
+</ul>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md61"></a>
+Snapshot integration</h3>
+<ul>
+<li>Snapshot builder publishes immutable scene revisions beneath <span class="tt">scenes/&lt;id&gt;/builds/&lt;revision&gt;/...</span> and atomically updates <span class="tt">current_revision</span> when a revision is ready.</li>
+<li>Renderer targets resolve the scene by reading <span class="tt">targets/&lt;kind&gt;/&lt;name&gt;/scene</span> and load the referenced <span class="tt">current_revision</span>. They bump snapshot reference counts during adoption and release once the frame completes (see <span class="tt"><a class="el" href="_plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a></span>, “Decision: Snapshot retention”).</li>
+<li>The C++ helper (<span class="tt">SceneSnapshotBuilder</span>, added October 14, 2025) clamps drawable SoA integrity and now emits structured binary artifacts (<span class="tt">drawables.bin</span>, <span class="tt">transforms.bin</span>, <span class="tt">bounds.bin</span>, <span class="tt">state.bin</span>, <span class="tt">cmd-buffer.bin</span>, plus optional index files) under <span class="tt">scenes/&lt;id&gt;/builds/&lt;revision&gt;/bucket/</span>. A compact binary manifest stored at <span class="tt">drawable_bucket</span> records counts and layer ids for consumers. After writing the files it atomically publishes via <span class="tt">Builders::Scene::PublishRevision</span>, maintains a rolling index at <span class="tt">meta/snapshots/index</span>, and enforces the default retention policy (≥3 revisions or ≥2 minutes) while preserving <span class="tt">current_revision</span>.</li>
+<li>PathRenderer2D (October 16, 2025) composites Rect, RoundedRect, Image, TextGlyphs, Path, and Mesh commands in linear light, honors opaque/alpha partitioning from <span class="tt">pipelineFlags</span>, and publishes drawable/command/unsupported counts alongside the usual timing metrics.</li>
+<li>Builders’ <span class="tt">Surface::RenderOnce</span> and <span class="tt">Window::Present</span> (October 15, 2025) synchronously invoke <span class="tt">PathRenderer2D</span>, returning a ready <span class="tt">FutureAny</span> handle while the renderer updates <span class="tt">output/v1/common/*</span>; asynchronous scheduling remains TODO.</li>
+<li>Metrics for snapshot GC (<span class="tt">retained</span>, <span class="tt">evicted</span>, <span class="tt">last_revision</span>, <span class="tt">total_fingerprint_count</span>) live under <span class="tt">scenes/&lt;id&gt;/metrics/snapshots</span> so render loops can surface health in UI tooling.</li>
+</ul>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md62"></a>
+HTML adapter modes</h3>
+<ul>
+<li>Renderer targets select an adapter via <span class="tt">renderers/&lt;rid&gt;/targets/html/&lt;name&gt;/adapter_mode</span> (enum: <span class="tt">canvas_replay</span>, <span class="tt">webgl</span>, <span class="tt">dom_bridge</span>). Adapters own capability detection: they probe the runtime, negotiate fallbacks, and surface the final choice under <span class="tt">output/v1/html/metadata/active_mode</span>.</li>
+<li>All modes share the same command stream contract: <span class="tt">output/v1/html/commands</span> stores a compact JSON array mirroring the <span class="tt">DrawableBucket</span> ordering (opaque before alpha) with resource fingerprints for textures, glyph atlases, and shader bundles. The adapter runtime hydrates resources from <span class="tt">output/v1/html/assets/*</span> using those fingerprints.</li>
+<li>Canvas replay ships as the baseline runtime. The manifest (<span class="tt">renderers/&lt;rid&gt;/targets/html/&lt;name&gt;/manifest.json</span>) declares the JS module that replays commands on a <span class="tt">&lt;canvas&gt;</span>, supported features, and the minimum schema version. Presenters load the module referenced by <span class="tt">manifest.runtime.module</span> and stream frames by diffing fingerprints.</li>
+<li>WebGL mode adds optional GPU acceleration. The manifest lists shader binaries or pipelines under <span class="tt">assets/shaders/*</span> and flags optional capabilities (e.g., <span class="tt">EXT_disjoint_timer_query</span>, MSAA sample counts). If the presenter or browser does not meet the requirements, the adapter downgrades to Canvas replay without changing the command stream.</li>
+<li>DOM bridge layers semantic HTML on top of the Canvas runtime for accessibility. The manifest’s <span class="tt">dom_overlays</span> section maps drawable categories (text, rects) to DOM templates and attributes. When enabled, presenters render Canvas first, then materialize DOM overlays based on <span class="tt">output/v1/html/overlays</span> produced by the adapter.</li>
+<li>Versioning: <span class="tt">manifest.json</span> carries <span class="tt">{ "schema_version": 1 }</span>. Breaking changes increment the schema and adapters must retain compatibility with the previous version for at least one release. Resource fingerprints always include the schema version so stale presenters fall back safely.</li>
+</ul>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md63"></a>
+Contributor checklist</h3>
+<ul>
+<li>Mount new UI components under the application root and use the typed path helpers to validate app-relative references before storing them.</li>
+<li>Widget toolkit: prefer the shared builder APIs (<span class="tt">Builders::Widgets::CreateButton</span>, <span class="tt">CreateToggle</span>, etc.) when adding UI primitives. Keep state paths (<span class="tt">/widgets/&lt;id&gt;/state</span>, <span class="tt">/meta/style</span>, etc.), canonical authoring nodes (<span class="tt">/widgets/&lt;id&gt;/authoring/...</span>), and update helpers (<span class="tt">UpdateButtonState</span>, <span class="tt">UpdateToggleState</span>) in sync with any new widgets.</li>
+<li>When adding renderer targets or surfaces, document the path contract in <span class="tt"><a class="el" href="_plan___scene_graph___renderer_8md.html">docs/Plan_SceneGraph_Renderer.md</a></span> and ensure tests cover atomic settings adoption and output publication (loop=15).</li>
+<li>Update the Mermaid sources in <span class="tt">docs/images/</span> if data flow or pipeline steps change; keep the inline diagrams in this section synchronized.</li>
+<li>Cross-link new C++ entry points (<span class="tt">PathRenderer2D</span>, <span class="tt">PathSurface*</span>, <span class="tt">PathWindowView</span>, etc.) from this section so contributors can navigate between docs and code. </li>
+</ul>
 </div></div><!-- contents -->
 </div><!-- PageDoc -->
 </div><!-- doc-content -->

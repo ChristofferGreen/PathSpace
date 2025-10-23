@@ -103,7 +103,12 @@ $(function(){initNavTree('index.html','',''); });
 </ul>
 <p>Links:</p><ul>
 <li>docs/AI_Architecture.md (design and internals)</li>
+<li>docs/AI_Paths.md (canonical namespace/layout conventions)</li>
+<li>docs/Plan_Overview.md (index of active plan documents and priorities)</li>
+<li>docs/Plan_Distributed_PathSpace.md (distributed mounting/network plan)</li>
+<li>docs/Plan_PathSpace_Inspector.md (live PathSpace inspector roadmap)</li>
 <li>examples/devices_example.cpp (experimental device IO example)</li>
+<li>examples/paint_example.cpp (minimal software paint demo; currently macOS-only)</li>
 <li>build/docs/html/index.html (Doxygen API Reference)</li>
 </ul>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md8"></a>
@@ -217,7 +222,7 @@ Simple examples</h1>
 <div class="ttc" id="aclass_s_p_1_1_path_space_base_html_a7f160bb41b90202c97f3581612e22001"><div class="ttname"><a href="class_s_p_1_1_path_space_base.html#a7f160bb41b90202c97f3581612e22001">SP::PathSpaceBase::insert</a></div><div class="ttdeci">auto insert(S const &amp;pathIn, DataType &amp;&amp;data, In const &amp;options={}) -&gt; InsertReturn</div><div class="ttdef"><b>Definition</b> PathSpaceBase.hpp:51</div></div>
 <div class="ttc" id="aclass_s_p_1_1_path_space_base_html_a9d6d6181387a09664b3608813c29f51a"><div class="ttname"><a href="class_s_p_1_1_path_space_base.html#a9d6d6181387a09664b3608813c29f51a">SP::PathSpaceBase::take</a></div><div class="ttdeci">auto take(S const &amp;pathIn, Out const &amp;options={}) -&gt; Expected&lt; DataType &gt;</div><div class="ttdef"><b>Definition</b> PathSpaceBase.hpp:132</div></div>
 <div class="ttc" id="aclass_s_p_1_1_path_space_html"><div class="ttname"><a href="class_s_p_1_1_path_space.html">SP::PathSpace</a></div><div class="ttdef"><b>Definition</b> PathSpace.hpp:23</div></div>
-<div class="ttc" id="anamespace_s_p_html"><div class="ttname"><a href="namespace_s_p.html">SP</a></div><div class="ttdef"><b>Definition</b> ElementType.hpp:7</div></div>
+<div class="ttc" id="anamespace_s_p_html"><div class="ttname"><a href="namespace_s_p.html">SP</a></div><div class="ttdef"><b>Definition</b> AppPaths.cpp:40</div></div>
 </div><!-- fragment --><p>Blocking read with timeout: </p><div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="_path_space_8hpp.html">pathspace/PathSpace.hpp</a>&gt;</span></div>
 <div class="line"><span class="preprocessor">#include &lt;chrono&gt;</span></div>
 <div class="line"><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespace_s_p.html">SP</a>;</div>
@@ -344,7 +349,7 @@ Threading model</h1>
 <p>Tip: For high-throughput patterns, write with Immediate and read&lt;FutureAny&gt; to coordinate downstream consumers.</p>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md16"></a>
 Experimental IO providers (PathIO)</h1>
-<p>The repository includes experimental providers under <span class="tt">src/pathspace/layer/io</span> and an example in <span class="tt">examples/devices_example.cpp</span>. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a <span class="tt">PathSpace</span> tree and serve typed event streams using the canonical <span class="tt">/system/devices/in/*</span> namespace; see <span class="tt">docs/Plan_SceneGraph_Renderer.md</span> for app/device path conventions.</p>
+<p>The repository includes experimental providers under <span class="tt">src/pathspace/layer/io</span> and examples in <span class="tt">examples/devices_example.cpp</span> and <span class="tt">examples/paint_example.cpp</span>. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a <span class="tt">PathSpace</span> tree and serve typed event streams using the canonical <span class="tt">/system/devices/in/*</span> namespace; see <span class="tt">docs/Plan_SceneGraph_Renderer.md</span> for app/device path conventions. The paint example combines those providers with the software renderer to offer a minimal mouse-driven canvas.</p>
 <p>Sketch: </p><div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="_path_space_8hpp.html">pathspace/PathSpace.hpp</a>&gt;</span></div>
 <div class="line"><span class="preprocessor">#include &lt;<a class="code" href="_path_i_o_mouse_8hpp.html">pathspace/layer/io/PathIOMouse.hpp</a>&gt;</span></div>
 <div class="line"><span class="preprocessor">#include &lt;<a class="code" href="_path_i_o_keyboard_8hpp.html">pathspace/layer/io/PathIOKeyboard.hpp</a>&gt;</span></div>

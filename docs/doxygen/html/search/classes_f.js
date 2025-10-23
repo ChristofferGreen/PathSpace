@@ -4,5 +4,6 @@ var searchData=
   ['taskpool_1',['TaskPool',['../class_s_p_1_1_task_pool.html',1,'SP']]],
   ['taskstateatomic_2',['TaskStateAtomic',['../struct_s_p_1_1_task_state_atomic.html',1,'SP']]],
   ['taskt_3',['TaskT',['../class_s_p_1_1_task_t.html',1,'SP']]],
-  ['trienode_4',['TrieNode',['../struct_s_p_1_1_wait_map_1_1_trie_node.html',1,'SP::WaitMap::TrieNode'],['../struct_s_p_1_1_watch_registry_1_1_trie_node.html',1,'SP::WatchRegistry::TrieNode']]]
+  ['togglesnapshotconfig_4',['ToggleSnapshotConfig',['../struct_s_p_1_1_u_i_1_1_builders_1_1_detail_1_1_toggle_snapshot_config.html',1,'SP::UI::Builders::Detail']]],
+  ['trienode_5',['TrieNode',['../struct_s_p_1_1_wait_map_1_1_trie_node.html',1,'SP::WaitMap::TrieNode'],['../struct_s_p_1_1_watch_registry_1_1_trie_node.html',1,'SP::WatchRegistry::TrieNode']]]
 ];

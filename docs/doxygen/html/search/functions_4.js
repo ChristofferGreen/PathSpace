@@ -1,8 +1,22 @@
 var searchData=
 [
-  ['empty_0',['empty',['../struct_s_p_1_1_node_data.html#a553bb1e20c6f693f0a7a34d022d24e30',1,'SP::NodeData::empty()'],['../struct_s_p_1_1_sliding_buffer.html#a5d16dba9c1ef9c0522ed9b85057aa7ac',1,'SP::SlidingBuffer::empty() const noexcept -&gt; bool']]],
-  ['end_1',['end',['../struct_s_p_1_1_sliding_buffer.html#ad18234e97874fa882119333a8fa4718c',1,'SP::SlidingBuffer']]],
-  ['erasechild_2',['eraseChild',['../struct_s_p_1_1_node.html#a7934a75df913c4c4f29549fb6277f212',1,'SP::Node']]],
-  ['error_3',['Error',['../struct_s_p_1_1_error.html#a0c40062b94c8a76b0d9015d92cb1bef0',1,'SP::Error']]],
-  ['executor_4',['executor',['../class_s_p_1_1_path_space_context.html#aa126956203db76f50bfa862b96739197',1,'SP::PathSpaceContext']]]
+  ['empty_0',['empty',['../struct_s_p_1_1_node_data.html#a553bb1e20c6f693f0a7a34d022d24e30',1,'SP::NodeData::empty()'],['../class_s_p_1_1_unvalidated_path_view.html#aad9f33626d9b9f56b59d6766b5919bdc',1,'SP::UnvalidatedPathView::empty()'],['../struct_s_p_1_1_sliding_buffer.html#a5d16dba9c1ef9c0522ed9b85057aa7ac',1,'SP::SlidingBuffer::empty()']]],
+  ['end_1',['end',['../struct_s_p_1_1_concrete_path.html#a5f1f4d3edd4675f143cc127904c89714',1,'SP::ConcretePath::end()'],['../struct_s_p_1_1_glob_path.html#a06ea6f0f3cac464167304ad4963d3a41',1,'SP::GlobPath::end()'],['../struct_s_p_1_1_sliding_buffer.html#ad18234e97874fa882119333a8fa4718c',1,'SP::SlidingBuffer::end()']]],
+  ['enqueue_5fauto_5frender_5fevent_2',['enqueue_auto_render_event',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html#a4f35989ecc4e39bee1000d74210769fd',1,'SP::UI::Builders::Detail']]],
+  ['ensure_5fcontains_5fsegment_3',['ensure_contains_segment',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html#aa5700e02c3d372a36e3b670b622a386a',1,'SP::UI::Builders::Detail']]],
+  ['ensure_5fidentifier_4',['ensure_identifier',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html#a3702f72f158b140ddfcf29c68630e9f9',1,'SP::UI::Builders::Detail']]],
+  ['ensure_5flist_5fscene_5',['ensure_list_scene',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html#afea74c1b367ffd2388b8411d4a920da2',1,'SP::UI::Builders::Detail']]],
+  ['ensure_5fnon_5fempty_6',['ensure_non_empty',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html#aaec64a7fe5b8b335ff2e7a41f4c5b74e',1,'SP::UI::Builders::Detail']]],
+  ['ensure_5fslider_5fscene_7',['ensure_slider_scene',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html#ae01bd1ca61aefed055cc15414a0be1df',1,'SP::UI::Builders::Detail']]],
+  ['ensure_5ftoggle_5fscene_8',['ensure_toggle_scene',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_widgets.html#a102e2d79bac79b1bdc75de8452d32e5e',1,'SP::UI::Builders::Widgets']]],
+  ['ensure_5fvalid_5fhint_9',['ensure_valid_hint',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html#aeddd9ca44830f9c8a03280902297f4e0',1,'SP::UI::Builders::Detail']]],
+  ['ensure_5fwidget_5froot_10',['ensure_widget_root',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html#a2004d4d7185fcab75f29c234fd6f4e46',1,'SP::UI::Builders::Detail']]],
+  ['ensure_5fwidget_5fscene_11',['ensure_widget_scene',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html#aa8cb96cf8adbeaea481d5d08d8c2c97e',1,'SP::UI::Builders::Detail']]],
+  ['ensure_5fwidget_5fstate_5fscene_12',['ensure_widget_state_scene',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html#a78df9c6dfbac744d3d39b7a4b17b2769',1,'SP::UI::Builders::Detail']]],
+  ['ensure_5fwithin_5fapp_13',['ensure_within_app',['../namespace_s_p_1_1_app.html#a98d25d5cb0b6a5ebc99ec899930dfe94',1,'SP::App']]],
+  ['ensure_5fwithin_5froot_14',['ensure_within_root',['../namespace_s_p_1_1_u_i_1_1_builders_1_1_detail.html#a72cf91fb8b59d877206047a15e00c5be',1,'SP::UI::Builders::Detail']]],
+  ['ensureauthoringroot_15',['EnsureAuthoringRoot',['../namespace_s_p_1_1_u_i_1_1_scene.html#af65a7fa6da5441a052bef34a407b7c44',1,'SP::UI::Scene::EnsureAuthoringRoot()'],['../namespace_s_p_1_1_u_i_1_1_builders_1_1_scene.html#a54560fe40f1164c5ac3f534e067d1bed',1,'SP::UI::Builders::Scene::EnsureAuthoringRoot()']]],
+  ['erasechild_16',['eraseChild',['../struct_s_p_1_1_node.html#a7934a75df913c4c4f29549fb6277f212',1,'SP::Node']]],
+  ['error_17',['Error',['../struct_s_p_1_1_error.html#a0c40062b94c8a76b0d9015d92cb1bef0',1,'SP::Error']]],
+  ['executor_18',['executor',['../class_s_p_1_1_path_space_context.html#aa126956203db76f50bfa862b96739197',1,'SP::PathSpaceContext']]]
 ];

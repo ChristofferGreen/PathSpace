@@ -222,7 +222,7 @@ $(function(){initNavTree('_i_future_any_8hpp_source.html','',''); });
 <div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span> </div>
 <div class="foldopen" id="foldopen00134" data-start="{" data-end="}">
 <div class="line"><a id="l00134" name="l00134"></a><span class="lineno"><a class="line" href="class_s_p_1_1_future_any.html#aad00d1610d0886d980eda9cbbd4b772d">  134</a></span>    <span class="keyword">explicit</span> <a class="code hl_function" href="class_s_p_1_1_future_any.html#aad00d1610d0886d980eda9cbbd4b772d">FutureAny</a>(std::shared_ptr&lt;ISharedState&gt; state)</div>
-<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span>        : state_(std::move(state)) {}</div>
+<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span>        : state_(<a class="code hl_namespace" href="namespacestd.html">std</a>::move(state)) {}</div>
 </div>
 <div class="line"><a id="l00136" name="l00136"></a><span class="lineno">  136</span> </div>
 <div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span>    <span class="keyword">template</span> &lt;<span class="keyword">typename</span> T&gt;</div>
@@ -293,7 +293,7 @@ $(function(){initNavTree('_i_future_any_8hpp_source.html','',''); });
 <div class="line"><a id="l00191" name="l00191"></a><span class="lineno"><a class="line" href="class_s_p_1_1_future_t.html#adcd040e2fd7a538da4d9f0d7a849e6e7">  191</a></span>    <a class="code hl_function" href="class_s_p_1_1_future_t.html#adcd040e2fd7a538da4d9f0d7a849e6e7">FutureT</a>() = <span class="keywordflow">default</span>;</div>
 <div class="foldopen" id="foldopen00192" data-start="{" data-end="}">
 <div class="line"><a id="l00192" name="l00192"></a><span class="lineno"><a class="line" href="class_s_p_1_1_future_t.html#ade16f3f2886350b14f1ef5f3964cf3dc">  192</a></span>    <span class="keyword">explicit</span> <a class="code hl_function" href="class_s_p_1_1_future_t.html#ade16f3f2886350b14f1ef5f3964cf3dc">FutureT</a>(std::shared_ptr&lt;<a class="code hl_class" href="class_s_p_1_1_shared_state.html">SharedState&lt;T&gt;</a>&gt; state)</div>
-<div class="line"><a id="l00193" name="l00193"></a><span class="lineno">  193</span>        : state_(std::move(state)) {}</div>
+<div class="line"><a id="l00193" name="l00193"></a><span class="lineno">  193</span>        : state_(<a class="code hl_namespace" href="namespacestd.html">std</a>::move(state)) {}</div>
 </div>
 <div class="line"><a id="l00194" name="l00194"></a><span class="lineno">  194</span> </div>
 <div class="line"><a id="l00195" name="l00195"></a><span class="lineno"><a class="line" href="class_s_p_1_1_future_t.html#a9a9ae5b0ddaf9facd46756417e8d5d69">  195</a></span>    [[nodiscard]] <span class="keywordtype">bool</span> <a class="code hl_function" href="class_s_p_1_1_future_t.html#a9a9ae5b0ddaf9facd46756417e8d5d69">valid</a>()<span class="keyword"> const </span>{ <span class="keywordflow">return</span> <span class="keyword">static_cast&lt;</span><span class="keywordtype">bool</span><span class="keyword">&gt;</span>(state_); }</div>
@@ -358,12 +358,12 @@ $(function(){initNavTree('_i_future_any_8hpp_source.html','',''); });
 <div class="line"><a id="l00243" name="l00243"></a><span class="lineno">  243</span><span class="keyword">public</span>:</div>
 <div class="foldopen" id="foldopen00244" data-start="{" data-end="}">
 <div class="line"><a id="l00244" name="l00244"></a><span class="lineno"><a class="line" href="class_s_p_1_1_promise_t.html#a3f11b6ec5c0ac0ec4b43e92324da6ac0">  244</a></span>    <a class="code hl_function" href="class_s_p_1_1_promise_t.html#a3f11b6ec5c0ac0ec4b43e92324da6ac0">PromiseT</a>()</div>
-<div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span>        : state_(std::make_shared&lt;<a class="code hl_class" href="class_s_p_1_1_shared_state.html">SharedState</a>&lt;T&gt;&gt;()) {}</div>
+<div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span>        : state_(<a class="code hl_namespace" href="namespacestd.html">std</a>::make_shared&lt;<a class="code hl_class" href="class_s_p_1_1_shared_state.html">SharedState</a>&lt;T&gt;&gt;()) {}</div>
 </div>
 <div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span> </div>
 <div class="foldopen" id="foldopen00247" data-start="{" data-end="}">
 <div class="line"><a id="l00247" name="l00247"></a><span class="lineno"><a class="line" href="class_s_p_1_1_promise_t.html#a90af1300b08a0d94bf6dd5e5c43f38d5">  247</a></span>    <span class="keyword">explicit</span> <a class="code hl_function" href="class_s_p_1_1_promise_t.html#a90af1300b08a0d94bf6dd5e5c43f38d5">PromiseT</a>(std::shared_ptr&lt;<a class="code hl_class" href="class_s_p_1_1_shared_state.html">SharedState&lt;T&gt;</a>&gt; state)</div>
-<div class="line"><a id="l00248" name="l00248"></a><span class="lineno">  248</span>        : state_(std::move(state)) {}</div>
+<div class="line"><a id="l00248" name="l00248"></a><span class="lineno">  248</span>        : state_(<a class="code hl_namespace" href="namespacestd.html">std</a>::move(state)) {}</div>
 </div>
 <div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span> </div>
 <div class="line"><a id="l00250" name="l00250"></a><span class="lineno">  250</span>    <span class="comment">// Obtain a typed future associated with this promise.</span></div>
@@ -437,7 +437,8 @@ $(function(){initNavTree('_i_future_any_8hpp_source.html','',''); });
 <div class="ttc" id="aclass_s_p_1_1_shared_state_html_ab8bf9cedf5f9250b38d32c23d883f3f1"><div class="ttname"><a href="class_s_p_1_1_shared_state.html#ab8bf9cedf5f9250b38d32c23d883f3f1">SP::SharedState::get</a></div><div class="ttdeci">bool get(T &amp;out) const</div><div class="ttdef"><b>Definition</b> IFutureAny.hpp:109</div></div>
 <div class="ttc" id="aclass_s_p_1_1_shared_state_html_ad8c14ff57d26d4f18bf990e3b9caa87c"><div class="ttname"><a href="class_s_p_1_1_shared_state.html#ad8c14ff57d26d4f18bf990e3b9caa87c">SP::SharedState::~SharedState</a></div><div class="ttdeci">~SharedState() override=default</div></div>
 <div class="ttc" id="aclass_s_p_1_1_shared_state_html_aff43e274ab4b39b4e44f555be5688212"><div class="ttname"><a href="class_s_p_1_1_shared_state.html#aff43e274ab4b39b4e44f555be5688212">SP::SharedState::wait_until</a></div><div class="ttdeci">bool wait_until(std::chrono::time_point&lt; std::chrono::steady_clock &gt; deadline) const override</div><div class="ttdef"><b>Definition</b> IFutureAny.hpp:78</div></div>
-<div class="ttc" id="anamespace_s_p_html"><div class="ttname"><a href="namespace_s_p.html">SP</a></div><div class="ttdef"><b>Definition</b> ElementType.hpp:7</div></div>
+<div class="ttc" id="anamespace_s_p_html"><div class="ttname"><a href="namespace_s_p.html">SP</a></div><div class="ttdef"><b>Definition</b> AppPaths.cpp:40</div></div>
+<div class="ttc" id="anamespacestd_html"><div class="ttname"><a href="namespacestd.html">std</a></div><div class="ttdef"><b>Definition</b> ConcreteName.hpp:33</div></div>
 </div><!-- fragment --></div><!-- contents -->
 </div><!-- doc-content -->
 </div><!-- container -->

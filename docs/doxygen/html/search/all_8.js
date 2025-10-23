@@ -1,29 +1,4 @@
 var searchData=
 [
-  ['backend_20architecture_20v1_0',['GPU backend architecture (v1)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md102',1,'']]],
-  ['backendmode_1',['BackendMode',['../class_s_p_1_1_path_i_o_gamepad.html#acd070c1bca0cd0f945a5f23dddcf6b68',1,'SP::PathIOGamepad::BackendMode'],['../class_s_p_1_1_path_i_o_keyboard.html#aa4d8386b1b19a9c5db38382e4bed929e',1,'SP::PathIOKeyboard::BackendMode'],['../class_s_p_1_1_path_i_o_mouse.html#abe2878f95ed3de9d9b3aed169d260a62',1,'SP::PathIOMouse::BackendMode']]],
-  ['backpressure_20and_20queue_20limits_2',['Backpressure and queue limits',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md52',1,'']]],
-  ['basic_3',['Basic',['../namespace_s_p.html#ab721aeb6b48c6a4a030fd86655fb8318a972e73b7a882d0802a4e3a16946a2f94',1,'SP']]],
-  ['basic_20path_20operations_4',['Basic Path Operations',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md32',1,'']]],
-  ['batching_5',['Sorting and batching',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md95',1,'']]],
-  ['begin_6',['begin',['../struct_s_p_1_1_sliding_buffer.html#a185468f2060b721d7a8003b765dd7c7e',1,'SP::SlidingBuffer']]],
-  ['behavior_7',['Behavior',['../struct_block_options.html#a9e49ce94c35ecadf4c98fe4ebeed372c',1,'BlockOptions']]],
-  ['behavior_8',['behavior',['../struct_block_options.html#ab2f09e509c50aa199e780b4f032da914',1,'BlockOptions']]],
-  ['bidi_20and_20font_20fallback_20resolved_9',['Decision: Text shaping, bidi, and font fallback (resolved)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md124',1,'']]],
-  ['block_10',['Block',['../struct_s_p_1_1_block.html',1,'SP::Block'],['../struct_s_p_1_1_block.html#a65c66db5e79e864ce0deb3a181ce2833',1,'SP::Block::Block()']]],
-  ['blocking_11',['Blocking',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md44',1,'']]],
-  ['blockoptions_12',['BlockOptions',['../struct_block_options.html',1,'']]],
-  ['blockoptions_2ehpp_13',['BlockOptions.hpp',['../_block_options_8hpp.html',1,'']]],
-  ['bounding_20volumes_20and_20culling_14',['Bounding volumes and culling',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md93',1,'']]],
-  ['buffered_15',['Progressive present (software, non-buffered)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md98',1,'']]],
-  ['build_20and_20publish_20protocol_16',['4) Scene build and publish protocol',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___p_a_t_h_s.html#autotoc_md57',1,'']]],
-  ['builder_20helpers_20typed_20wiring_17',['Builder/helpers (typed wiring)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md112',1,'']]],
-  ['builder_20resolved_18',['Decision: Snapshot Builder (resolved)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md121',1,'']]],
-  ['builder_3a_20waiting_20for_20mount_20or_20revision_19',['Builder: waiting for mount or revision',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md107',1,'']]],
-  ['builds_20',['Snapshot layout (builds/&amp;lt;revision&amp;gt;)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md91',1,'']]],
-  ['button_21',['button',['../struct_s_p_1_1_path_i_o_gamepad_1_1_event.html#a51b140b3b143e0f68171d29d7030a5d5',1,'SP::PathIOGamepad::Event::button'],['../struct_s_p_1_1_mouse_event.html#a45b436d05cfabe7a77ca7da57d1d3626',1,'SP::MouseEvent::button'],['../struct_s_p_1_1_path_i_o_pointer_mixer_1_1_event.html#a220d41916177eeb9b664e2a133ce2f5b',1,'SP::PathIOPointerMixer::Event::button']]],
-  ['button4_22',['Button4',['../class_s_p_1_1_path_i_o_pointer_mixer.html#a2538a036d98704f2335839113769757ca91ff24acfc01cc2c3a4238a272a37d07',1,'SP::PathIOPointerMixer::Button4'],['../namespace_s_p.html#a97b2c045b3a559a00bde9d0a74432844a91ff24acfc01cc2c3a4238a272a37d07',1,'SP::Button4']]],
-  ['button5_23',['Button5',['../class_s_p_1_1_path_i_o_pointer_mixer.html#a2538a036d98704f2335839113769757caf8849babaeaee3344306b87310664d65',1,'SP::PathIOPointerMixer::Button5'],['../namespace_s_p.html#a97b2c045b3a559a00bde9d0a74432844af8849babaeaee3344306b87310664d65',1,'SP::Button5']]],
-  ['buttondown_24',['ButtonDown',['../class_s_p_1_1_path_i_o_gamepad.html#a4ddc8009b20763b1038652819cf90613adbe47f32761ac5389cee901a663e7bc0',1,'SP::PathIOGamepad::ButtonDown'],['../class_s_p_1_1_path_i_o_pointer_mixer.html#a8b80cd34a35547317af8c39af7c2bd63adbe47f32761ac5389cee901a663e7bc0',1,'SP::PathIOPointerMixer::ButtonDown'],['../namespace_s_p.html#a31e29cffd1751f5767af0f8eacd0a58eadbe47f32761ac5389cee901a663e7bc0',1,'SP::ButtonDown']]],
-  ['buttonup_25',['ButtonUp',['../class_s_p_1_1_path_i_o_gamepad.html#a4ddc8009b20763b1038652819cf90613af64c6bd570a1159149526b21a7c41936',1,'SP::PathIOGamepad::ButtonUp'],['../class_s_p_1_1_path_i_o_pointer_mixer.html#a8b80cd34a35547317af8c39af7c2bd63af64c6bd570a1159149526b21a7c41936',1,'SP::PathIOPointerMixer::ButtonUp'],['../namespace_s_p.html#a31e29cffd1751f5767af0f8eacd0a58eaf64c6bd570a1159149526b21a7c41936',1,'SP::ButtonUp']]]
+  ['8_20—_20widget_20toolkit_20interaction_20surfaces_20post_20mvp_0',['Phase 8 — Widget Toolkit &amp;amp; Interaction Surfaces (post-MVP)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___scene_graph___implementation.html#autotoc_md211',1,'']]]
 ];

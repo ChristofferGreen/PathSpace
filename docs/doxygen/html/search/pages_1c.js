@@ -1,13 +1,20 @@
 var searchData=
 [
-  ['waiting_20for_20mount_20or_20revision_0',['Builder: waiting for mount or revision',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md107',1,'']]],
-  ['watermarks_20resolved_1',['Decision: Renderer cache watermarks (resolved)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md129',1,'']]],
-  ['web_20output_20optional_20adapter_2',['HTML/Web output (optional adapter)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md114',1,'']]],
-  ['wide_20namespaces_20absolute_3',['1) System-wide namespaces (absolute)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___p_a_t_h_s.html#autotoc_md54',1,'']]],
-  ['widget_20tree_20traversal_20at_20render_20time_4',['DrawableBucket (no widget-tree traversal at render time)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md89',1,'']]],
-  ['window_20targets_20resolved_5',['Decision: Direct-to-Window targets (resolved)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md122',1,'']]],
-  ['wiring_6',['Builder/helpers (typed wiring)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md112',1,'']]],
-  ['with_20parameter_20structs_7',['Examples (creation with parameter structs)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md113',1,'']]],
-  ['with_20tetrahedral_20acceleration_8',['Software renderer — path tracing with tetrahedral acceleration',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md115',1,'']]],
-  ['without_20per_20frame_20traversal_9',['Transforms without per-frame traversal',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md92',1,'']]]
+  ['ui_0',['Foundations: PathSpace storage and SceneGraph UI',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___carta_linea.html#autotoc_md118',1,'']]],
+  ['ui_20rendering_1',['UI &amp;amp; Rendering',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md55',1,'']]],
+  ['ui_20rendering_20—_20cross_20reference_2',['UI Rendering — cross reference',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md21',1,'UI/Rendering — cross-reference'],['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md22',1,'UI/Rendering — cross-reference']]],
+  ['unit_20testing_3',['Unit Testing',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md48',1,'']]],
+  ['update_20protocol_4',['Live Update Protocol',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___web_server___adapter.html#autotoc_md348',1,'']]],
+  ['update_20strategy_5',['Live Update Strategy',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___web_server___adapter.html#autotoc_md340',1,'']]],
+  ['updates_6',['Required Documentation Updates',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___distributed___path_space.html#autotoc_md144',1,'']]],
+  ['updates_20elsewhere_7',['Required Updates Elsewhere',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___web_server___adapter.html#autotoc_md353',1,'']]],
+  ['updates_20search_8',['Phase 1 — Live Updates &amp;amp; Search',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___path_space___inspector.html#autotoc_md164',1,'']]],
+  ['updating_20this_20index_9',['Updating This Index',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___overview.html#autotoc_md154',1,'']]],
+  ['ups_10',['TODO — Clarifications and Follow-ups',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___scene_graph___renderer.html#autotoc_md297',1,'']]],
+  ['url_20mapping_11',['URL Mapping',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___web_server___adapter.html#autotoc_md337',1,'']]],
+  ['usage_12',['Usage',['..//Users/chrgre01/src/PathSpace/docs/perf/README.md#autotoc_md112',1,'']]],
+  ['usage_13',['Typical usage',['../class_s_p_1_1_task_t.html#autotoc_md6',1,'']]],
+  ['usage_20examples_14',['Path Usage Examples',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md32',1,'']]],
+  ['user_20visible_20semantics_15',['Operations (user-visible semantics)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___carta_linea.html#autotoc_md124',1,'']]],
+  ['utc_16',['6. Shutdown Snapshot (October 23, 2025 @ 16:25 UTC)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___onboarding___next.html#autotoc_md94',1,'']]]
 ];

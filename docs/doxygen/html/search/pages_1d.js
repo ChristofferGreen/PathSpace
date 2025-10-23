@@ -1,10 +1,17 @@
 var searchData=
 [
-  ['—_20carta_20linea_20plan_0',['PathSpace — Carta Linea Plan',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___carta_linea.html',1,'']]],
-  ['—_20clarifications_20and_20follow_20ups_1',['TODO — Clarifications and Follow-ups',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md136',1,'']]],
-  ['—_20cross_20reference_2',['UI/Rendering — cross-reference',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md21',1,'']]],
-  ['—_20path_20tracing_20with_20tetrahedral_20acceleration_3',['Software renderer — path tracing with tetrahedral acceleration',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md115',1,'']]],
-  ['—_20scene_20graph_20and_20renderer_20plan_4',['PathSpace — Scene Graph and Renderer Plan',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html',1,'']]],
-  ['—_20standard_20paths_5',['PathSpace — Standard Paths',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___p_a_t_h_s.html',1,'']]],
-  ['—_20v1_20contract_6',['DrawableBucket — v1 contract',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___plan___scene_graph___renderer.html#autotoc_md90',1,'']]]
+  ['v1_0',['v1',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___scene_graph___renderer.html#autotoc_md240',1,'Color management (v1)'],['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___scene_graph___renderer.html#autotoc_md243',1,'Coordinate systems and cameras (v1)'],['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___scene_graph___renderer.html#autotoc_md242',1,'Culling and spatial acceleration (v1)'],['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___scene_graph___renderer.html#autotoc_md245',1,'GPU backend architecture (v1)'],['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___scene_graph___renderer.html#autotoc_md244',1,'Input, hit testing, and focus (v1)'],['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___distributed___path_space.html#autotoc_md134',1,'Non-Goals (v1)'],['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___web_server___adapter.html#autotoc_md332',1,'Non-Goals (v1)'],['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___scene_graph___renderer.html#autotoc_md239',1,'Rendering pipeline specifics (v1)'],['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___scene_graph___renderer.html#autotoc_md290',1,'Schemas and typing (v1)'],['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___scene_graph___renderer.html#autotoc_md253',1,'Stack layout (v1)']]],
+  ['v1_20contract_1',['DrawableBucket — v1 contract',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___scene_graph___renderer.html#autotoc_md233',1,'']]],
+  ['v1_20final_2',['RenderSettings v1 (final)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___scene_graph___renderer.html#autotoc_md294',1,'']]],
+  ['validation_3',['Validation',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___surface___ray___cache.html#autotoc_md320',1,'']]],
+  ['validation_4',['Safety and validation',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___scene_graph___renderer.html#autotoc_md258',1,'']]],
+  ['validation_20strategy_5',['Validation Strategy',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___prime_script.html#autotoc_md191',1,'']]],
+  ['versioning_6',['5) Output versioning',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___p_a_t_h_s.html#autotoc_md101',1,'']]],
+  ['view_20keys_20final_7',['View keys (final)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___scene_graph___renderer.html#autotoc_md293',1,'']]],
+  ['views_8',['Views',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___a_r_c_h_i_t_e_c_t_u_r_e.html#autotoc_md50',1,'']]],
+  ['visible_20semantics_9',['Operations (user-visible semantics)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___carta_linea.html#autotoc_md124',1,'']]],
+  ['vm_20design_20draft_10',['VM Design (draft)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___prime_script.html#autotoc_md186',1,'']]],
+  ['volumes_20and_20culling_11',['Bounding volumes and culling',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___scene_graph___renderer.html#autotoc_md236',1,'']]],
+  ['vs_20freeform_20scenegraph_20subtrees_12',['Card forms: typed vs freeform (SceneGraph subtrees)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___carta_linea.html#autotoc_md119',1,'']]],
+  ['vs_20rendering_13',['Scene graph concurrency (authoring vs rendering)',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___scene_graph___renderer.html#autotoc_md228',1,'']]]
 ];

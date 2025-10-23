@@ -1,4 +1,6 @@
 var searchData=
 [
-  ['reference_0',['reference',['../class_s_p_1_1_iterator.html#a59a59736f746bf73f69cf035ccff8b5e',1,'SP::Iterator']]]
+  ['is_5ftransparent_0',['is_transparent',['../struct_s_p_1_1_overload.html#a2d67f5537a3580f246ba122c20b3b8e2',1,'SP::Overload']]],
+  ['iterator_5fcategory_1',['iterator_category',['../struct_s_p_1_1_concrete_path_iterator.html#ab9298a336b3db0076730157b04d2cc2c',1,'SP::ConcretePathIterator::iterator_category'],['../struct_s_p_1_1_glob_path_iterator.html#af7300db9a0e6e6f788699a1101edfa7a',1,'SP::GlobPathIterator::iterator_category'],['../class_s_p_1_1_iterator.html#a8890c69f762256387c90f893c1e901f9',1,'SP::Iterator::iterator_category']]],
+  ['iteratortype_2',['IteratorType',['../class_s_p_1_1_iterator.html#a885cf031447ec2c97ad532beea57dfe0',1,'SP::Iterator']]]
 ];

@@ -1,7 +1,7 @@
 var searchData=
 [
-  ['serialize_0',['serialize',['../struct_s_p_1_1_input_metadata.html#abc4bf293e851a797e2716386b5897cab',1,'SP::InputMetadata::serialize'],['../struct_s_p_1_1_alpaca_serialization_traits.html#aae3f5cb679a3ca507cc7c0bf98f6ff65',1,'SP::AlpacaSerializationTraits::serialize'],['../struct_s_p_1_1_input_metadata_t.html#ae83b3a73c22b90fa82b75b43a006cb66',1,'SP::InputMetadataT::serialize']]],
-  ['size_1',['size',['../struct_s_p_1_1_header.html#ab1901963f6302b9143beda0d44d0a328',1,'SP::Header']]],
-  ['sourceid_2',['sourceId',['../struct_s_p_1_1_path_i_o_pointer_mixer_1_1_event.html#a8077e0af522bae0211f30d7e313333bf',1,'SP::PathIOPointerMixer::Event']]],
-  ['str_3',['str',['../struct_s_p_1_1_fixed_string.html#a07f0dfe03cad6ad15b25021b671d05a7',1,'SP::FixedString']]]
+  ['read_0',['read',['../struct_s_p_1_1_permission.html#aa4f1f2f8662f9991b371fad62d234b79',1,'SP::Permission']]],
+  ['renderer_5fkind_1',['renderer_kind',['../struct_s_p_1_1_u_i_1_1_builders_1_1_detail_1_1_surface_render_context.html#a1d54c3186343c534e584641ce612ff71',1,'SP::UI::Builders::Detail::SurfaceRenderContext']]],
+  ['renderer_5fpath_2',['renderer_path',['../struct_s_p_1_1_u_i_1_1_builders_1_1_detail_1_1_surface_render_context.html#a8f864e340fbcb7646fc30163c1b99f1a',1,'SP::UI::Builders::Detail::SurfaceRenderContext']]],
+  ['revision_3',['revision',['../struct_s_p_1_1_u_i_1_1_builders_1_1_detail_1_1_scene_revision_record.html#aaabd14650c4d9727a31bde6b5f0a563a',1,'SP::UI::Builders::Detail::SceneRevisionRecord']]]
 ];
