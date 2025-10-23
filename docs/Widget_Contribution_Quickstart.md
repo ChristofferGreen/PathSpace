@@ -92,6 +92,9 @@ Keep `docs/AI_Paths.md` in sync if you introduce new metadata keys or queues.
   `docs/AI_Onboarding_Next.md` to mention the new widget and any follow-on work.
 - If new queues or metadata land, refresh `docs/AI_Debugging_Playbook.md` with
   inspection tips.
+- When filing interaction regressions, attach traces generated via
+  `scripts/record_widget_session.sh` / `scripts/replay_widget_session.sh` so the
+  next maintainer can replay the flow headlessly.
 
 ## Testing Checklist
 - Rebuild: `cmake --build build -j`.
@@ -101,6 +104,9 @@ Keep `docs/AI_Paths.md` in sync if you introduce new metadata keys or queues.
 - Run the full loop: `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20`.
 - If the widget affects Metal uploads or HTML output, re-run the optional
   presenters: `./scripts/compile.sh --enable-metal-tests --test --loop=1`.
+- Capture a trace with `scripts/record_widget_session.sh` for any noteworthy UI
+  flows and verify it replays cleanly with `scripts/replay_widget_session.sh`
+  before sharing bug reports or repro steps.
 
 ## Diagnostics & Observability
 - Confirm bindings emit dirty rects and auto-render events by inspecting

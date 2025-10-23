@@ -47,6 +47,35 @@ Environment knobs (all respected by the wrapper and the logger):
 | `MallocNanoZone` | Set to `0` to reduce allocation overhead on macOS (default from helper). |
 | `PATHSPACE_ENABLE_METAL_UPLOADS` | Opt-in Metal texture uploads during UI tests; leave unset in CI/headless runs so builders fall back to the software raster. |
 
+### 1.3 Widget session capture and replay
+
+- Record an interactive widgets gallery run (creates a pointer/keyboard trace with per-event metadata):
+
+  ```bash
+  ./scripts/record_widget_session.sh \
+    --output traces/widget-hover-repro.trace
+  ```
+
+  The script builds `widgets_example` (unless `--no-build` is supplied), launches it, and writes the event stream to `WIDGETS_EXAMPLE_TRACE_RECORD`. The C++ helper ensures parent directories are created; traces are newline-delimited and suitable for diffing.
+
+- Replay a trace headlessly (no macOS window is opened) and optionally run the UI suite afterwards:
+
+  ```bash
+  ./scripts/replay_widget_session.sh \
+    --input traces/widget-hover-repro.trace \
+    --run-tests
+  ```
+
+  Under the hood the script exports `WIDGETS_EXAMPLE_HEADLESS=1` and `WIDGETS_EXAMPLE_TRACE_REPLAY=<trace>` so `widgets_example` replays events deterministically. Add extra arguments after `--` to tweak theme or other CLI flags.
+
+- Environment variables:
+
+  | Variable | Purpose |
+  | --- | --- |
+  | `WIDGETS_EXAMPLE_TRACE_RECORD` | Absolute/relative path that receives recorded pointer + keyboard events. Set automatically by the capture script. |
+  | `WIDGETS_EXAMPLE_TRACE_REPLAY` | Path to a trace file to replay. When present, `widgets_example` skips the LocalWindow bridge and replays events headlessly. |
+  | `WIDGETS_EXAMPLE_HEADLESS` | When truthy, suppresses the interactive window. The replay script defaults this to `1` so replays run on CI hosts. |
+
 ## 2. Inspecting Collected Logs
 
 1. Open the saved log file (e.g., `build/test-logs/PathSpaceTests_loop3of15_20251018-161200.log`).

@@ -15,6 +15,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <limits>
 #include <iostream>
@@ -1434,6 +1436,311 @@ struct PointerOverride {
     }
 };
 
+enum class TraceEventKind {
+    MouseAbsolute,
+    MouseRelative,
+    MouseDown,
+    MouseUp,
+    MouseWheel,
+    KeyDown,
+    KeyUp,
+};
+
+struct TraceEvent {
+    TraceEventKind kind = TraceEventKind::MouseAbsolute;
+    double time_ms = 0.0;
+    int x = -1;
+    int y = -1;
+    int dx = 0;
+    int dy = 0;
+    int wheel = 0;
+    int button = 0;
+    unsigned int keycode = 0;
+    unsigned int modifiers = 0;
+    char32_t character = U'\0';
+    bool repeat = false;
+};
+
+class WidgetTrace {
+public:
+    void init_from_env();
+    void record_mouse(SP::UI::LocalMouseEvent const& ev);
+    void record_key(SP::UI::LocalKeyEvent const& ev);
+    void flush();
+
+    [[nodiscard]] auto recording() const -> bool { return record_enabled_; }
+    [[nodiscard]] auto replaying() const -> bool { return replay_enabled_; }
+    [[nodiscard]] auto record_path() const -> std::string const& { return record_path_; }
+    [[nodiscard]] auto replay_path() const -> std::string const& { return replay_path_; }
+    [[nodiscard]] auto events() const -> std::vector<TraceEvent> const& { return replay_events_; }
+
+private:
+    bool record_enabled_ = false;
+    bool replay_enabled_ = false;
+    bool start_time_valid_ = false;
+    std::string record_path_;
+    std::string replay_path_;
+    std::vector<TraceEvent> recorded_events_;
+    std::vector<TraceEvent> replay_events_;
+    std::chrono::steady_clock::time_point start_time_{};
+
+    void ensure_start();
+    void append_record(TraceEvent event);
+    [[nodiscard]] static auto kind_to_string(TraceEventKind kind) -> std::string_view;
+    [[nodiscard]] static auto string_to_kind(std::string_view value) -> std::optional<TraceEventKind>;
+    [[nodiscard]] auto format_event(TraceEvent const& event) const -> std::string;
+    [[nodiscard]] static auto parse_line(std::string const& line) -> std::optional<TraceEvent>;
+};
+
+auto widget_trace() -> WidgetTrace& {
+    static WidgetTrace trace{};
+    return trace;
+}
+
+void WidgetTrace::ensure_start() {
+    if (!start_time_valid_) {
+        start_time_ = std::chrono::steady_clock::now();
+        start_time_valid_ = true;
+    }
+}
+
+void WidgetTrace::append_record(TraceEvent event) {
+    ensure_start();
+    auto now = std::chrono::steady_clock::now();
+    event.time_ms = std::chrono::duration<double, std::milli>(now - start_time_).count();
+    recorded_events_.push_back(event);
+}
+
+auto WidgetTrace::kind_to_string(TraceEventKind kind) -> std::string_view {
+    switch (kind) {
+    case TraceEventKind::MouseAbsolute:
+        return "mouse_absolute";
+    case TraceEventKind::MouseRelative:
+        return "mouse_relative";
+    case TraceEventKind::MouseDown:
+        return "mouse_down";
+    case TraceEventKind::MouseUp:
+        return "mouse_up";
+    case TraceEventKind::MouseWheel:
+        return "mouse_wheel";
+    case TraceEventKind::KeyDown:
+        return "key_down";
+    case TraceEventKind::KeyUp:
+        return "key_up";
+    }
+    return "unknown";
+}
+
+auto WidgetTrace::string_to_kind(std::string_view value) -> std::optional<TraceEventKind> {
+    if (value == "mouse_absolute") {
+        return TraceEventKind::MouseAbsolute;
+    }
+    if (value == "mouse_relative") {
+        return TraceEventKind::MouseRelative;
+    }
+    if (value == "mouse_down") {
+        return TraceEventKind::MouseDown;
+    }
+    if (value == "mouse_up") {
+        return TraceEventKind::MouseUp;
+    }
+    if (value == "mouse_wheel") {
+        return TraceEventKind::MouseWheel;
+    }
+    if (value == "key_down") {
+        return TraceEventKind::KeyDown;
+    }
+    if (value == "key_up") {
+        return TraceEventKind::KeyUp;
+    }
+    return std::nullopt;
+}
+
+auto WidgetTrace::format_event(TraceEvent const& event) const -> std::string {
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(3) << event.time_ms
+        << ' ' << "event=" << kind_to_string(event.kind)
+        << " x=" << event.x
+        << " y=" << event.y
+        << " dx=" << event.dx
+        << " dy=" << event.dy
+        << " wheel=" << event.wheel
+        << " button=" << event.button
+        << " keycode=" << event.keycode
+        << " modifiers=" << event.modifiers
+        << " repeat=" << (event.repeat ? 1 : 0)
+        << " char=" << static_cast<std::uint32_t>(event.character);
+    return oss.str();
+}
+
+auto WidgetTrace::parse_line(std::string const& line) -> std::optional<TraceEvent> {
+    if (line.empty()) {
+        return std::nullopt;
+    }
+    std::istringstream iss(line);
+    TraceEvent event{};
+    if (!(iss >> event.time_ms)) {
+        return std::nullopt;
+    }
+    std::string token;
+    while (iss >> token) {
+        auto pos = token.find('=');
+        if (pos == std::string::npos) {
+            continue;
+        }
+        auto key = token.substr(0, pos);
+        auto value = token.substr(pos + 1);
+        if (key == "event") {
+            auto kind = string_to_kind(value);
+            if (!kind) {
+                return std::nullopt;
+            }
+            event.kind = *kind;
+        } else if (key == "x") {
+            event.x = std::stoi(value);
+        } else if (key == "y") {
+            event.y = std::stoi(value);
+        } else if (key == "dx") {
+            event.dx = std::stoi(value);
+        } else if (key == "dy") {
+            event.dy = std::stoi(value);
+        } else if (key == "wheel") {
+            event.wheel = std::stoi(value);
+        } else if (key == "button") {
+            event.button = std::stoi(value);
+        } else if (key == "keycode") {
+            event.keycode = static_cast<unsigned int>(std::stoul(value));
+        } else if (key == "modifiers") {
+            event.modifiers = static_cast<unsigned int>(std::stoul(value));
+        } else if (key == "repeat") {
+            event.repeat = (value != "0");
+        } else if (key == "char") {
+            event.character = static_cast<char32_t>(std::stoul(value));
+        }
+    }
+    return event;
+}
+
+void WidgetTrace::init_from_env() {
+    if (record_enabled_ || replay_enabled_) {
+        return;
+    }
+
+    if (const char* replay = std::getenv("WIDGETS_EXAMPLE_TRACE_REPLAY")) {
+        if (replay && replay[0] != '\0') {
+            replay_enabled_ = true;
+            replay_path_ = replay;
+            std::ifstream input(replay_path_);
+            if (!input) {
+                std::cerr << "widgets_example: failed to open replay trace '" << replay_path_ << "'\n";
+                std::exit(1);
+            }
+            std::string line;
+            while (std::getline(input, line)) {
+                auto trimmed_begin = line.find_first_not_of(" \t");
+                if (trimmed_begin == std::string::npos) {
+                    continue;
+                }
+                auto trimmed_end = line.find_last_not_of(" \t");
+                auto trimmed = line.substr(trimmed_begin, trimmed_end - trimmed_begin + 1);
+                auto parsed = parse_line(trimmed);
+                if (parsed) {
+                    replay_events_.push_back(*parsed);
+                }
+            }
+            if (replay_events_.empty()) {
+                std::cerr << "widgets_example: replay trace '" << replay_path_ << "' contained no events\n";
+            }
+        }
+    }
+
+    if (replay_enabled_) {
+        return;
+    }
+
+    if (const char* record = std::getenv("WIDGETS_EXAMPLE_TRACE_RECORD")) {
+        if (record && record[0] != '\0') {
+            record_enabled_ = true;
+            record_path_ = record;
+            start_time_valid_ = false;
+            recorded_events_.clear();
+        }
+    }
+}
+
+void WidgetTrace::record_mouse(SP::UI::LocalMouseEvent const& ev) {
+    if (!record_enabled_) {
+        return;
+    }
+    TraceEvent event{};
+    switch (ev.type) {
+    case SP::UI::LocalMouseEventType::AbsoluteMove:
+        event.kind = TraceEventKind::MouseAbsolute;
+        break;
+    case SP::UI::LocalMouseEventType::Move:
+        event.kind = TraceEventKind::MouseRelative;
+        break;
+    case SP::UI::LocalMouseEventType::ButtonDown:
+        event.kind = TraceEventKind::MouseDown;
+        break;
+    case SP::UI::LocalMouseEventType::ButtonUp:
+        event.kind = TraceEventKind::MouseUp;
+        break;
+    case SP::UI::LocalMouseEventType::Wheel:
+        event.kind = TraceEventKind::MouseWheel;
+        break;
+    }
+    event.x = ev.x;
+    event.y = ev.y;
+    event.dx = ev.dx;
+    event.dy = ev.dy;
+    event.wheel = ev.wheel;
+    event.button = static_cast<int>(ev.button);
+    append_record(event);
+}
+
+void WidgetTrace::record_key(SP::UI::LocalKeyEvent const& ev) {
+    if (!record_enabled_) {
+        return;
+    }
+    TraceEvent event{};
+    event.kind = (ev.type == SP::UI::LocalKeyEventType::KeyDown)
+                     ? TraceEventKind::KeyDown
+                     : TraceEventKind::KeyUp;
+    event.keycode = ev.keycode;
+    event.modifiers = ev.modifiers;
+    event.repeat = ev.repeat;
+    event.character = ev.character;
+    append_record(event);
+}
+
+void WidgetTrace::flush() {
+    if (!record_enabled_) {
+        return;
+    }
+    namespace fs = std::filesystem;
+    try {
+        fs::path path(record_path_);
+        if (!path.parent_path().empty()) {
+            fs::create_directories(path.parent_path());
+        }
+        std::ofstream output(record_path_);
+        if (!output) {
+            std::cerr << "widgets_example: failed to open trace output '" << record_path_ << "'\n";
+            return;
+        }
+        for (auto const& event : recorded_events_) {
+            output << format_event(event) << '\n';
+        }
+        output.flush();
+        std::cout << "widgets_example: captured " << recorded_events_.size()
+                  << " events to '" << record_path_ << "'\n";
+    } catch (std::exception const& ex) {
+        std::cerr << "widgets_example: failed writing trace '" << record_path_
+                  << "': " << ex.what() << "\n";
+    }
+}
+
 static auto slider_thumb_position(WidgetsExampleContext const& ctx, float value) -> std::pair<float, float> {
     auto const& bounds = ctx.gallery.layout.slider;
     if (bounds.width() <= 0.0f) {
@@ -1967,6 +2274,7 @@ static void handle_local_mouse(SP::UI::LocalMouseEvent const& ev, void* user_dat
     if (!ctx) {
         return;
     }
+    widget_trace().record_mouse(ev);
     switch (ev.type) {
     case SP::UI::LocalMouseEventType::AbsoluteMove:
         if (ev.x >= 0 && ev.y >= 0) {
@@ -2122,6 +2430,7 @@ static void handle_local_keyboard(SP::UI::LocalKeyEvent const& ev, void* user_da
     if (!ctx) {
         return;
     }
+    widget_trace().record_key(ev);
     if (ev.type != SP::UI::LocalKeyEventType::KeyDown) {
         return;
     }
@@ -2173,6 +2482,71 @@ static void handle_local_keyboard(SP::UI::LocalKeyEvent const& ev, void* user_da
     default:
         break;
     }
+}
+
+static void apply_trace_event(WidgetsExampleContext& ctx, TraceEvent const& event) {
+    switch (event.kind) {
+    case TraceEventKind::MouseAbsolute:
+        handle_pointer_move(ctx,
+                            static_cast<float>(event.x),
+                            static_cast<float>(event.y));
+        break;
+    case TraceEventKind::MouseRelative:
+        handle_pointer_move(ctx,
+                            ctx.pointer_x + static_cast<float>(event.dx),
+                            ctx.pointer_y + static_cast<float>(event.dy));
+        break;
+    case TraceEventKind::MouseDown:
+        if (event.x >= 0 && event.y >= 0) {
+            handle_pointer_move(ctx,
+                                static_cast<float>(event.x),
+                                static_cast<float>(event.y));
+        }
+        handle_pointer_down(ctx);
+        break;
+    case TraceEventKind::MouseUp:
+        if (event.x >= 0 && event.y >= 0) {
+            handle_pointer_move(ctx,
+                                static_cast<float>(event.x),
+                                static_cast<float>(event.y));
+        }
+        handle_pointer_up(ctx);
+        break;
+    case TraceEventKind::MouseWheel:
+        handle_pointer_wheel(ctx, event.wheel);
+        break;
+    case TraceEventKind::KeyDown: {
+        SP::UI::LocalKeyEvent key{};
+        key.type = SP::UI::LocalKeyEventType::KeyDown;
+        key.keycode = event.keycode;
+        key.modifiers = event.modifiers;
+        key.character = event.character;
+        key.repeat = event.repeat;
+        handle_local_keyboard(key, &ctx);
+        break;
+    }
+    case TraceEventKind::KeyUp: {
+        SP::UI::LocalKeyEvent key{};
+        key.type = SP::UI::LocalKeyEventType::KeyUp;
+        key.keycode = event.keycode;
+        key.modifiers = event.modifiers;
+        key.character = event.character;
+        key.repeat = event.repeat;
+        handle_local_keyboard(key, &ctx);
+        break;
+    }
+    }
+}
+
+static void run_replay_session(WidgetsExampleContext& ctx,
+                               std::vector<TraceEvent> const& events) {
+    std::cout << "widgets_example: replaying " << events.size() << " recorded events\n";
+    for (auto const& event : events) {
+        apply_trace_event(ctx, event);
+        process_widget_actions(ctx);
+    }
+    refresh_gallery(ctx);
+    std::cout << "widgets_example: replay complete\n";
 }
 
 struct PresentTelemetry {
@@ -2265,6 +2639,14 @@ int main() {
     AppRootPathView appRootView{appRoot.getPath()};
 
     auto theme = select_theme_from_env();
+
+    auto& trace = widget_trace();
+    trace.init_from_env();
+    if (trace.replaying() && !trace.replay_path().empty()) {
+        std::cout << "widgets_example: replay trace '" << trace.replay_path() << "'\n";
+    } else if (trace.recording() && !trace.record_path().empty()) {
+        std::cout << "widgets_example: tracing pointer/key events to '" << trace.record_path() << "'\n";
+    }
 
     Widgets::ButtonParams button_params{};
     button_params.name = "primary_button";
@@ -2393,8 +2775,9 @@ int main() {
               << "  scene: " << gallery.scene.getPath() << "\n"
               << "  size : " << gallery.width << "x" << gallery.height << " pixels\n";
 
-    if (headless) {
+    if (headless && !trace.replaying()) {
         std::cout << "widgets_example exiting headless mode (WIDGETS_EXAMPLE_HEADLESS set).\n";
+        trace.flush();
         return 0;
     }
 
@@ -2490,6 +2873,12 @@ int main() {
                                       "create list binding");
 
     set_focus_target(ctx, FocusTarget::Button);
+
+    if (trace.replaying()) {
+        run_replay_session(ctx, trace.events());
+        trace.flush();
+        return 0;
+    }
 
     std::cout << "widgets_example keyboard controls:\n"
               << "  Tab / Shift+Tab : cycle widget focus\n"
@@ -2616,7 +3005,8 @@ int main() {
         std::this_thread::sleep_for(std::chrono::milliseconds(4));
     }
 
-return 0;
+    trace.flush();
+    return 0;
 }
 
 #endif // PATHSPACE_ENABLE_UI
