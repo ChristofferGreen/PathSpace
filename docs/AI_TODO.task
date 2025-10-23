@@ -4,7 +4,7 @@
 task {
   name: "Distributed PathSpace Mounts [FEATURE]"
   description: "Implement remote mount support so PathSpace instances can mount/export subtrees over the network."
-  status: planned
+  status: completed
   priority: P1
 
   acceptance_criteria: [
@@ -186,9 +186,9 @@ task {
   ]
 
   steps: [
-    "Catalogue shared code paths in examples (builders, event pumps, telemetry hooks) and note divergence points.",
-    "Design and implement UI-layer helper APIs or modules for the reusable pieces, including validation/tests where feasible.",
-    "Refactor examples to consume the helpers and update docs/AI_Onboarding_Next.md or relevant quickstarts with guidance."
+    "DONE (Oct 23, 2025) Catalogue shared code paths in examples (builders, event pumps, telemetry hooks) and note divergence points.",
+    "DONE (Oct 23, 2025) Design and implement UI-layer helper APIs for resize/present flows (Builders::App::UpdateSurfaceSize, Builders::App::PresentToLocalWindow) with regression coverage.",
+    "DONE (Oct 23, 2025) Refactor widgets/pixel_noise/paint examples to consume the helpers and update onboarding/docs with the new workflow."
   ]
 }
 
