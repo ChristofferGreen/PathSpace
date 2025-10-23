@@ -1,4 +1,4 @@
-#include "BuildersDetail.hpp"
+#include "WidgetDetail.hpp"
 
 namespace SP::UI::Builders::Widgets {
 

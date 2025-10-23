@@ -1,4 +1,4 @@
-#include "BuildersDetail.hpp"
+#include "WidgetDetail.hpp"
 
 namespace SP::UI::Builders::App {
 
@@ -213,5 +213,4 @@ auto Bootstrap(PathSpace& space,
 }
 
 } // namespace SP::UI::Builders::App
-
 
