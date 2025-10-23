@@ -135,6 +135,14 @@ The following subtrees are standardized within each application root (one of the
   - `io/stdout` — read-only mirror of info and debug (system tee)
   - `io/stderr` — read-only mirror of warn and error (system tee)
 
+- IO logging (app-local)
+  - `io/log/error` — authoritative error log (UTF-8, newline-delimited)
+  - `io/log/warn` — authoritative warnings log
+  - `io/log/info` — authoritative info log
+  - `io/log/debug` — authoritative debug log (may not tee globally)
+  - `io/stdout` — read-only mirror of info and debug (system tee)
+  - `io/stderr` — read-only mirror of warn and error (system tee)
+
 ## 3) Renderer target keys (final)
 
 Target base (app-relative; fully-qualified form prefixes with the app root, e.g. `<app-root>/renderers/...` where `<app-root>` is `/system/applications/<app>` or `/users/<user>/system/applications/<app>`):
