@@ -1532,7 +1532,7 @@ Goals
 5. ✅ (October 19, 2025) Integrated with the present pipeline: renderer targets publish HTML outputs plus diagnostics/errors, window views bind to `htmlTarget`, and presenters always consume the latest-complete frame.
 6. ✅ (October 19, 2025) Added headless verification (Node-based canvas replay script) to CI with graceful skips when Node.js is unavailable and documented operator-facing troubleshooting steps.
 
-Headless verification now runs through `scripts/verify_html_canvas.js`, which spawns the `html_canvas_dump` helper to emit the latest Canvas command stream and asserts structural correctness (types, dimensions, radii). The CTest entry `HtmlCanvasVerify` executes the script when Node.js is available and emits a skip message otherwise, keeping CI stable on minimal builders.
+Headless verification now runs through `scripts/verify_html_canvas.js`, which spawns the `html_canvas_dump` helper to emit the latest Canvas command stream and compares widget-themed scenes against a native PathRenderer2D render digest. The harness validates structural fields (types, dimensions, radii), palette CSS, and typography-sensitive colors for both the default and sunset themes, while ensuring the replayed framebuffer hash matches the native baseline. The CTest entry `HtmlCanvasVerify` executes the script when Node.js is available and emits a skip message otherwise, keeping CI stable on minimal builders.
 
 ### HTML adapter configuration & troubleshooting (October 19, 2025)
 
@@ -2204,6 +2204,14 @@ C++ types per key:
   - `uint32_t image_count`
   - `enum present_mode`
   - `bool suboptimal`
+
+### Pixel noise perf harness coverage (October 22, 2025)
+
+- `examples/pixel_noise_example.cpp` now accepts `--backend=<software|metal>` (default Software2D) so perf runs can target either renderer backend without code changes.
+- Baselines live under `docs/perf/`: `pixel_noise_baseline.json` tracks the Software2D path and `pixel_noise_metal_baseline.json` captures the Metal2D run with `PATHSPACE_ENABLE_METAL_UPLOADS=1`.
+- `scripts/check_pixel_noise_baseline.py` reads the baseline’s `backendKind`, forwards the matching `--backend` switch, and automatically enables Metal uploads when the baseline expects Metal2D.
+- CTest registers `PixelNoisePerfHarness` (Software2D) and `PixelNoisePerfHarnessMetal` (Metal2D, gated by `PATHSPACE_UI_METAL`) so the mandated 15× loop covers both backends against the same FPS/latency budgets (≥50 FPS, ≤20 ms average present/render and present-call).
+- Refresh both JSON baselines with `scripts/capture_pixel_noise_baseline.sh` (add `--backend=metal` plus `PATHSPACE_ENABLE_METAL_UPLOADS=1` for the Metal capture) whenever intentional perf shifts occur; commit the pair together so CI expectations stay aligned.
 
 App-relative resolution helpers:
 - `is_app_relative(UnvalidatedPathView)`

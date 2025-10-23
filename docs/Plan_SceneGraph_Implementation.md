@@ -150,6 +150,7 @@ Completed:
 - ✅ (October 22, 2025) Pixel noise harness defaults to the fast path (framebuffer capture off, metrics muted, window present rate 60 Hz) with CLI escapes for diagnostics/capture (`--headless`, `--capture-framebuffer`, `--report-metrics`, `--report-extended`, `--present-call-metric`, `--present-refresh=<hz>`).
 - ✅ (October 22, 2025) Parallelized the pixel noise generator across CPU threads so IOSurface writes scale with hardware concurrency; deterministic seeding keeps runs reproducible while eliminating the prior single-threaded hotspot.
 - ✅ (October 22, 2025) Pixel noise window resizing now reconfigures the surface size live, keeping noise samples at native resolution instead of stretching when the window is maximized.
+- ✅ (October 22, 2025) Pixel noise perf harness now runs in the 15× loop via the new `PixelNoisePerfHarness` CTest, executing `pixel_noise_example` headless with deterministic seeding and enforcing realtime budgets (≥50 FPS, ≤20 ms avg present/render). The example gained `--min-fps`, `--budget-present-ms`, and `--budget-render-ms` options plus a structured summary line so regressions surface immediately when the loop drops below target.
 
 Completed:
 - ✅ (October 18, 2025) Added fullscreen CAMetalLayer regression coverage in `PathSpaceUITests` and defaulted the presenter to zero-copy unless `capture_framebuffer` is explicitly enabled; perf regressions now fail under the UI harness.
@@ -157,14 +158,13 @@ Completed:
 
 Next:
 - 🔜 (Planned) Pixel noise harness follow-ups: integrate the new example with automated baselines and diagnostics so perf regressions stay guarded.
-  - Wire the looped test harness to run the example, capture render/present timing from diagnostics, and fail when the full-surface churn path drops below the realtime budget.
-  - Persist baseline metrics (frame time, residency, tile stats) from the harness under `docs/perf/` so future runs can regress against a known-good profile.
-  - Spin a Metal-enabled variant once GPU uploads ship so the same full-surface churn target validates both software and Metal renderer paths.
-  - Mirror the harness expectations in `docs/Plan_SceneGraph_Renderer.md` when implemented so renderer + execution plans stay aligned.
-  - Update `docs/AI_Debugging_Playbook.md` with steps for running the harness, reading stored baselines, and interpreting perf telemetry.
-  - Capture a representative frame grab (e.g., `images/perf/pixel_noise.png`) so regressions include a visual reference alongside metrics.
-  - Land a helper (script or build target) that writes the captured metrics into `docs/perf/`, creating the directory if needed so the baselines stay versioned.
-  - Add a comparison script/check that fails when captured frame times exceed the stored baseline budget so the perf harness enforces realtime targets.
+  - ✅ (October 22, 2025) Persist baseline metrics (frame time, residency, tile stats) from the harness under `docs/perf/` via `--write-baseline`; JSON captures live stats for regression comparisons.
+  - ✅ (October 22, 2025) Landed `scripts/capture_pixel_noise_baseline.sh` to produce/update versioned baselines (default output `docs/perf/pixel_noise_baseline.json`).
+  - ✅ (October 22, 2025) Spun a Metal-enabled variant via `--backend=metal`, captured `docs/perf/pixel_noise_metal_baseline.json`, and added the `PixelNoisePerfHarnessMetal` CTest (PATHSPACE_ENABLE_METAL_UPLOADS-gated) so the loop covers both Software2D and Metal2D backends with the same perf budgets.
+  - ✅ (October 22, 2025) Mirrored the harness expectations in `docs/Plan_SceneGraph_Renderer.md`, covering the new Metal2D backend switch, paired baselines, and the extended CTest coverage.
+  - ✅ (October 22, 2025) Documented baseline workflow in `docs/AI_Debugging_Playbook.md` (Tooling §5.1) covering capture script usage and JSON interpretation.
+  - 🔜 Capture a representative frame grab (e.g., `images/perf/pixel_noise.png`) so regressions include a visual reference alongside metrics.
+  - ✅ (October 22, 2025) Added `scripts/check_pixel_noise_baseline.py` and routed `PixelNoisePerfHarness` through it so looped runs fail whenever runtime averages exceed the baseline budgets.
 
 ### Phase 5 — Input, Hit Testing, and Notifications (1 sprint)
 - ✅ (October 16, 2025) Added doctest scenarios for hit ordering, clip-aware picking, focus routing, and auto-render event scheduling via `Scene::HitTest`; notifications enqueue `AutoRenderRequestEvent` under `events/renderRequested/queue`.
@@ -180,9 +180,11 @@ Next:
 - ✅ (October 18, 2025) Published `docs/AI_Debugging_Playbook.md` with the end-to-end diagnostics workflow and re-validated the 15× loop harness (`./scripts/compile.sh --test --loop=15 --per-test-timeout=20`).
 - ✅ (October 20, 2025) Added residency dashboard outputs: `cpuSoftBudgetRatio`, `cpuHardBudgetRatio`, `gpuSoftBudgetRatio`, `gpuHardBudgetRatio`, per-budget exceed flags, and `overallStatus` now live under `diagnostics/metrics/residency/` for every target, allowing dashboards/alerts to trigger without bespoke queries.
 - ✅ (October 20, 2025) Widget interaction bindings land: `Widgets::Bindings::Dispatch{Button,Toggle,Slider}` diff widget state, submit targeted dirty rect hints, enqueue ops (`WidgetOp` values) under `widgets/<id>/ops/inbox/queue`, and auto-schedule renders when configured.
-- Audit UI/renderer translation units ≥1 000 lines, inventory candidates with `scripts/lines_of_code.sh`, and refactor toward one-class-per-file modules while preserving test coverage.
+- ✅ (October 22, 2025) Audited UI/renderer translation units ≥1 000 lines, documented candidates via `scripts/lines_of_code.sh`, and refactored `ui/Builders.cpp` into focused translation units to move toward one-class-per-file modules while keeping the looped test suite green.
+- ✅ (October 23, 2025) Extracted widget helper internals into `WidgetDrawablesDetail.inl` / `WidgetMetadataDetail.inl` and split the widget runtime across `WidgetBuildersCore.cpp`, `WidgetBindings.cpp`, `WidgetFocus.cpp`, and `WidgetReducers.cpp`, keeping each unit <1 000 lines while preserving shared helpers via inline includes.
 - Enforce include hygiene during the split (IWYU or equivalent pass) so the expanded module graph keeps compile times manageable.
 - Add binary/size guardrails (e.g., `scripts/compile.sh --size-report`) to watch for example/demo growth after the refactor.
+- Split the remaining >1 000 line units (`PathRenderer2D.cpp`, `SceneSnapshotBuilder.cpp`, and `WidgetDrawablesDetail.inl`) into focused files so every UI TU stays below the target size.
 - Refresh `docs/AI_Architecture.md` and renderer diagrams once files move so architecture snapshots continue to match the code layout.
 - Add a performance regression flow that records benchmark outputs (renderer, presenter, examples) each run, stores historical snapshots, and fails when deltas exceed thresholds relative to the previous baseline; wire it into the local `pre-push` hook so regressions are caught before pushes.
 - Build a fault-injection harness that flips Metal upload flags, simulates surface resize failures, and drops drawables mid-frame to ensure diagnostics and error paths stay actionable.
@@ -227,8 +229,8 @@ Next:
      - ✅ (October 19, 2025) Resource residency metrics now aggregate texture usage for GPU paths; Metal surfaces track resource fingerprints and publish residency totals.
 - ✅ (October 19, 2025) PATHSPACE_ENABLE_METAL_UPLOADS coverage now exercises the full Metal present path, checks shader/material descriptor parity, and asserts residency/cache metrics (cpu/gpu bytes) are published so dashboards/CI immediately flag resource pressure regressions (`tests/ui/test_PathWindowView_Metal.mm`: "Metal pipeline publishes residency metrics and material descriptors").
 - **HTML follow-ups (October 19, 2025):** remaining work is documenting fidelity troubleshooting (see Phase 7 items 5–6); new CI harness (`HtmlCanvasVerify`) is in place—keep it updated when adapter schemas evolve.
-  - Add themed widget scene replays to the HTML adapter harness (`HtmlCanvasVerify`) and compare against native renders so palette/typography drifts surface when either path changes.
-  - Draft an HSAT/HTML adapter quickstart + troubleshooting note capturing the new harness workflow and common failure signatures.
+  - ✅ (October 22, 2025) Added themed widget scene replays to `HtmlCanvasVerify`, hashing native vs HTML replays so palette and typography drifts surface immediately when either pipeline diverges.
+  - ✅ (October 22, 2025) Published `docs/HTML_Adapter_Quickstart.md` with the harness workflow, HSAT tooling steps, and troubleshooting signatures so future cycles can validate HTML fidelity without rediscovering the flow.
   - **Oct 21, 2025 update:** PathSpace core now preserves `Html::Asset` vectors across translation units (see commit `fix(ui): ensure html assets survive cross-tu reads`). The new `Html assets round-trip without HtmlSerialization include` UITest guards the regression. Resume the documentation follow-ups under Phase 7 items 5–6.
 - HTML adapter scaffolding (command stream emitter + replay harness) behind experimental flag. **Implementation plan map (Oct 18, 2025):**
   1. **Adapter core API**

@@ -41,12 +41,15 @@ Provide a single index of active planning documents, ordered by current priority
 5. **Plan_Surface_Ray_Cache.md** — revisit once core rendering + web requirements are satisfied (deferred).
 6. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
 
-## Status Snapshot — October 21, 2025
+## Status Snapshot — October 22, 2025
 - HSAT (HTML asset codec) remains mandatory and documented; `pathspace_hsat_inspect` regression stays green after the latest loop run.
-- Pixel noise perf harness (`examples/pixel_noise_example.cpp`) now drives per-pixel full-surface churn with the software renderer; runs windowed by default (uncapped compute, 60 Hz presents), live-resizes its surface to stay pixel-accurate, and supports `--headless` for pure throughput alongside `--present-refresh=<hz>`/`--report-metrics`/`--report-extended` when you need diagnostics. Automation/baseline follow-ups remain tracked in `Plan_SceneGraph_Implementation.md`.
-- High-priority follow-up: drop default framebuffer copies during present—production runs must rely on direct IOSurface writes, keeping the capture path opt-in for debugging (tracked in `Plan_SceneGraph_Implementation.md`).
+- HTML tooling quickstart/troubleshooting note now lives in `docs/HTML_Adapter_Quickstart.md` (published October 22, 2025) so incoming maintainers can run the HSAT + HTML harness without rediscovering the workflow.
+- Pixel noise perf harness (`examples/pixel_noise_example.cpp`) now drives per-pixel full-surface churn with either backend; `--backend=<software|metal>` selects the renderer, Software2D remains the default, and the helper scripts capture paired baselines under `docs/perf/` (`pixel_noise_baseline.json`, `pixel_noise_metal_baseline.json`). The looped CTests (`PixelNoisePerfHarness`, `PixelNoisePerfHarnessMetal`) invoke `scripts/check_pixel_noise_baseline.py`, which enforces the shared perf budgets (≥50 FPS, ≤20 ms render/present, ≤20 ms present-call) and enables Metal uploads automatically when the baseline calls for it.
+- Follow-up: capture a representative frame grab for the pixel noise harness (`images/perf/pixel_noise.png`) so perf regressions can include a visual reference alongside the metrics.
 - Widget state scenes now publish canonical idle/hover/pressed/disabled snapshots under `scenes/widgets/<id>/states/*`; theme-aware styles (`Widgets::WidgetTheme`) landed and `widgets_example` uses env-selectable palettes without rewriting scenes.
 - Next widget focus: finish the Phase 8 widget bindings fuzz harness—adjacent dirty-propagation coverage landed on October 21, 2025; keep `docs/Plan_SceneGraph_Implementation.md` updated as the fuzz work progresses.
+- ✅ (October 22, 2025) Split the monolithic `ui/Builders.cpp` into focused translation units (Scene/Renderer/Surface/Window/App/Widgets/Diagnostics + shared detail helpers), keeping each under 1 000 lines and revalidating the 15× looped CTest run.
+- ✅ (October 23, 2025) Follow-up split trims widget internals further: widget helpers now live in `WidgetDrawablesDetail.inl` and `WidgetMetadataDetail.inl`, with runtime code in `WidgetBuildersCore.cpp`, `WidgetBindings.cpp`, `WidgetFocus.cpp`, and `WidgetReducers.cpp`, keeping the largest TU under 1 000 lines post-refactor.
 
 ## Supporting Documents
 - `docs/AI_Architecture.md` — Core PathSpace architecture reference.

@@ -43,7 +43,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 | Diagnostics | ✅ Completed (October 20, 2025) — dashboards consume `textureGpuBytes`/`resourceGpuBytes` plus residency ratios/status under `diagnostics/metrics/residency` | Coordinate with tooling owners before schema changes. |
 | Input & hit testing | ✅ Completed (October 21, 2025) — keyboard/gamepad focus navigation now rides the 15× UITest loop (`tests/ui/test_Builders.cpp`) alongside z-ordered hits, focus routing, and auto-render wake latency | Continue monitoring wait/notify latency metrics; extend coverage when new interaction paths land. |
 | Widgets | Phase 8 follow-up: land the remaining binding doctests + widget bindings fuzz harness (dirty-propagation coverage landed October 21, 2025) | Styling/theme hooks ship via `Widgets::WidgetTheme`; golden snapshots and focus-navigation UITests live in `tests/ui/test_Builders.cpp`. Focus on the outstanding doctest coverage and fuzz harness bullets in `docs/Plan_SceneGraph_Implementation.md`. |
-| HTML tooling | Add HSAT inspection CLI/tests and extend coverage when new asset fields appear | Legacy serializer removed; HSAT is mandatory. |
+| HTML tooling | ✅ Completed (October 22, 2025) — quickstart/troubleshooting note in `docs/HTML_Adapter_Quickstart.md`; extend harness coverage when new asset fields appear | Legacy serializer removed; HSAT is mandatory. |
 
 ## 3. Communication & Handoff Hygiene
 

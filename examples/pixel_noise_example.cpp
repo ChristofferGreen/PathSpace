@@ -10,8 +10,11 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <ctime>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <optional>
@@ -19,6 +22,8 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <sstream>
+#include <system_error>
 #include <thread>
 #include <vector>
 
@@ -52,12 +57,222 @@ struct Options {
     bool capture_framebuffer = false;
     bool report_metrics = false;
     bool report_present_call_time = false;
+    bool use_metal_backend = false;
     double present_refresh_hz = 60.0;
     std::size_t max_frames = 0;
     std::chrono::duration<double> report_interval = std::chrono::seconds{1};
     std::uint64_t seed = 0;
     std::optional<std::chrono::duration<double>> runtime_limit{};
+    std::optional<double> budget_present_ms{};
+    std::optional<double> budget_render_ms{};
+    std::optional<double> min_fps{};
+    std::optional<std::string> baseline_path{};
 };
+
+struct BaselineSummary {
+    std::size_t frames = 0;
+    double elapsed_seconds = 0.0;
+    double average_fps = 0.0;
+    double average_present_ms = 0.0;
+    double average_render_ms = 0.0;
+    double average_present_call_ms = 0.0;
+    double total_present_ms = 0.0;
+    double total_render_ms = 0.0;
+};
+
+struct TileSummary {
+    std::size_t frames = 0;
+    std::size_t progressive_frames = 0;
+    double average_tiles_updated = 0.0;
+    double average_tiles_dirty = 0.0;
+    double average_tiles_total = 0.0;
+    double average_tiles_skipped = 0.0;
+    double average_tiles_copied = 0.0;
+    double average_bytes_copied = 0.0;
+    double average_progressive_jobs = 0.0;
+    double average_progressive_workers = 0.0;
+    double average_encode_jobs = 0.0;
+    double average_encode_workers = 0.0;
+    double average_rects_coalesced = 0.0;
+    double average_skip_seq_odd = 0.0;
+    double average_recopy_after_seq_change = 0.0;
+    std::uint64_t last_tile_size = 0;
+    std::uint64_t last_tiles_total = 0;
+    std::uint64_t last_drawable_count = 0;
+    bool last_tile_diagnostics_enabled = false;
+};
+
+auto format_double(double value) -> std::string {
+    std::ostringstream oss;
+    oss.setf(std::ios::fixed, std::ios::floatfield);
+    oss << std::setprecision(6) << value;
+    return oss.str();
+}
+
+auto severity_to_string(Builders::Diagnostics::PathSpaceError::Severity severity) -> std::string {
+    using Severity = Builders::Diagnostics::PathSpaceError::Severity;
+    switch (severity) {
+    case Severity::Info:
+        return "info";
+    case Severity::Warning:
+        return "warning";
+    case Severity::Recoverable:
+        return "recoverable";
+    case Severity::Fatal:
+        return "fatal";
+    }
+    return "unknown";
+}
+
+void write_baseline_metrics(Options const& options,
+                            BaselineSummary const& summary,
+                            TileSummary const& tiles,
+                            Builders::Diagnostics::TargetMetrics const& metrics,
+                            std::string const& backend_kind,
+                            std::filesystem::path const& output_path) {
+    namespace fs = std::filesystem;
+
+    fs::path path = output_path;
+    if (path.empty()) {
+        std::cerr << "pixel_noise_example: --write-baseline path is empty\n";
+        std::exit(1);
+    }
+
+    if (auto parent = path.parent_path(); !parent.empty()) {
+        std::error_code ec;
+        if (!fs::create_directories(parent, ec) && ec) {
+            std::cerr << "pixel_noise_example: failed to create baseline directory '"
+                      << parent.string() << "': " << ec.message() << '\n';
+            std::exit(1);
+        }
+    }
+
+    std::ofstream out(path, std::ios::trunc);
+    if (!out) {
+        std::cerr << "pixel_noise_example: failed to open baseline file '"
+                  << path.string() << "' for writing\n";
+        std::exit(1);
+    }
+
+    auto now = std::chrono::system_clock::now();
+    auto now_time = std::chrono::system_clock::to_time_t(now);
+    std::tm tm{};
+#if defined(_WIN32)
+    gmtime_s(&tm, &now_time);
+#else
+    gmtime_r(&now_time, &tm);
+#endif
+    char timestamp_buffer[32]{};
+    std::string timestamp{"unknown"};
+    if (std::strftime(timestamp_buffer, sizeof(timestamp_buffer), "%Y-%m-%dT%H:%M:%SZ", &tm) != 0) {
+        timestamp.assign(timestamp_buffer);
+    }
+
+    out << std::boolalpha;
+    out << "{\n";
+    out << "  \"generatedAt\": " << std::quoted(timestamp) << ",\n";
+    out << "  \"command\": {\n";
+    out << "    \"width\": " << options.width << ",\n";
+    out << "    \"height\": " << options.height << ",\n";
+    out << "    \"headless\": " << options.headless << ",\n";
+    out << "    \"captureFramebuffer\": " << options.capture_framebuffer << ",\n";
+    out << "    \"presentRefreshHz\": " << format_double(options.present_refresh_hz) << ",\n";
+    out << "    \"maxFrames\": " << options.max_frames << ",\n";
+    out << "    \"seed\": " << options.seed << ",\n";
+    out << "    \"runtimeLimitSeconds\": ";
+    if (options.runtime_limit) {
+        out << format_double(options.runtime_limit->count());
+    } else {
+        out << "null";
+    }
+    out << ",\n";
+    out << "    \"budgetPresentMs\": ";
+    if (options.budget_present_ms) {
+        out << format_double(*options.budget_present_ms);
+    } else {
+        out << "null";
+    }
+    out << ",\n";
+    out << "    \"budgetRenderMs\": ";
+    if (options.budget_render_ms) {
+        out << format_double(*options.budget_render_ms);
+    } else {
+        out << "null";
+    }
+    out << ",\n";
+    out << "    \"minFps\": ";
+    if (options.min_fps) {
+        out << format_double(*options.min_fps);
+    } else {
+        out << "null";
+    }
+    out << ",\n";
+    out << "    \"backendKind\": " << std::quoted(backend_kind) << "\n";
+    out << "  },\n";
+
+    out << "  \"summary\": {\n";
+    out << "    \"frames\": " << summary.frames << ",\n";
+    out << "    \"elapsedSeconds\": " << format_double(summary.elapsed_seconds) << ",\n";
+    out << "    \"averageFps\": " << format_double(summary.average_fps) << ",\n";
+    out << "    \"averagePresentMs\": " << format_double(summary.average_present_ms) << ",\n";
+    out << "    \"averageRenderMs\": " << format_double(summary.average_render_ms) << ",\n";
+    out << "    \"averagePresentCallMs\": " << format_double(summary.average_present_call_ms) << ",\n";
+    out << "    \"totalPresentMs\": " << format_double(summary.total_present_ms) << ",\n";
+    out << "    \"totalRenderMs\": " << format_double(summary.total_render_ms) << "\n";
+    out << "  },\n";
+
+    out << "  \"tileStats\": {\n";
+    out << "    \"frames\": " << tiles.frames << ",\n";
+    out << "    \"progressiveFrames\": " << tiles.progressive_frames << ",\n";
+    out << "    \"tileSize\": " << tiles.last_tile_size << ",\n";
+    out << "    \"tilesTotal\": " << tiles.last_tiles_total << ",\n";
+    out << "    \"drawableCount\": " << tiles.last_drawable_count << ",\n";
+    out << "    \"tileDiagnosticsEnabled\": " << tiles.last_tile_diagnostics_enabled << ",\n";
+    out << "    \"averageTilesUpdated\": " << format_double(tiles.average_tiles_updated) << ",\n";
+    out << "    \"averageTilesDirty\": " << format_double(tiles.average_tiles_dirty) << ",\n";
+    out << "    \"averageTilesTotal\": " << format_double(tiles.average_tiles_total) << ",\n";
+    out << "    \"averageTilesSkipped\": " << format_double(tiles.average_tiles_skipped) << ",\n";
+    out << "    \"averageTilesCopied\": " << format_double(tiles.average_tiles_copied) << ",\n";
+    out << "    \"averageBytesCopied\": " << format_double(tiles.average_bytes_copied) << ",\n";
+    out << "    \"averageProgressiveJobs\": " << format_double(tiles.average_progressive_jobs) << ",\n";
+    out << "    \"averageProgressiveWorkers\": " << format_double(tiles.average_progressive_workers) << ",\n";
+    out << "    \"averageEncodeJobs\": " << format_double(tiles.average_encode_jobs) << ",\n";
+    out << "    \"averageEncodeWorkers\": " << format_double(tiles.average_encode_workers) << ",\n";
+    out << "    \"averageRectsCoalesced\": " << format_double(tiles.average_rects_coalesced) << ",\n";
+    out << "    \"averageSkipSeqOdd\": " << format_double(tiles.average_skip_seq_odd) << ",\n";
+    out << "    \"averageRecopyAfterSeqChange\": " << format_double(tiles.average_recopy_after_seq_change) << ",\n";
+    out << "    \"backendKind\": " << std::quoted(backend_kind) << "\n";
+    out << "  },\n";
+
+    out << "  \"residency\": {\n";
+    out << "    \"cpuBytes\": " << metrics.cpu_bytes << ",\n";
+    out << "    \"cpuSoftBytes\": " << metrics.cpu_soft_bytes << ",\n";
+    out << "    \"cpuHardBytes\": " << metrics.cpu_hard_bytes << ",\n";
+    out << "    \"gpuBytes\": " << metrics.gpu_bytes << ",\n";
+    out << "    \"gpuSoftBytes\": " << metrics.gpu_soft_bytes << ",\n";
+    out << "    \"gpuHardBytes\": " << metrics.gpu_hard_bytes << ",\n";
+    out << "    \"cpuSoftBudgetRatio\": " << format_double(metrics.cpu_soft_budget_ratio) << ",\n";
+    out << "    \"cpuHardBudgetRatio\": " << format_double(metrics.cpu_hard_budget_ratio) << ",\n";
+    out << "    \"gpuSoftBudgetRatio\": " << format_double(metrics.gpu_soft_budget_ratio) << ",\n";
+    out << "    \"gpuHardBudgetRatio\": " << format_double(metrics.gpu_hard_budget_ratio) << ",\n";
+    out << "    \"cpuSoftExceeded\": " << metrics.cpu_soft_exceeded << ",\n";
+    out << "    \"cpuHardExceeded\": " << metrics.cpu_hard_exceeded << ",\n";
+    out << "    \"gpuSoftExceeded\": " << metrics.gpu_soft_exceeded << ",\n";
+    out << "    \"gpuHardExceeded\": " << metrics.gpu_hard_exceeded << ",\n";
+    out << "    \"cpuStatus\": " << std::quoted(metrics.cpu_residency_status) << ",\n";
+    out << "    \"gpuStatus\": " << std::quoted(metrics.gpu_residency_status) << ",\n";
+    out << "    \"overallStatus\": " << std::quoted(metrics.residency_overall_status) << ",\n";
+    out << "    \"backendKind\": " << std::quoted(metrics.backend_kind) << ",\n";
+    out << "    \"usedMetalTexture\": " << metrics.used_metal_texture << ",\n";
+    out << "    \"lastError\": " << std::quoted(metrics.last_error) << ",\n";
+    out << "    \"lastErrorCode\": " << metrics.last_error_code << ",\n";
+    out << "    \"lastErrorRevision\": " << metrics.last_error_revision << ",\n";
+    out << "    \"lastErrorSeverity\": " << std::quoted(severity_to_string(metrics.last_error_severity)) << ",\n";
+    out << "    \"lastErrorTimestampNs\": " << metrics.last_error_timestamp_ns << ",\n";
+    out << "    \"lastErrorDetail\": " << std::quoted(metrics.last_error_detail) << "\n";
+    out << "  }\n";
+    out << "}\n";
+}
 
 struct NoiseState {
     explicit NoiseState(std::uint64_t seed_value)
@@ -249,8 +464,29 @@ auto parse_options(int argc, char** argv) -> Options {
             opts.report_present_call_time = true;
         } else if (arg == "--present-call-metric") {
             opts.report_present_call_time = true;
+        } else if (arg == "--metal" || arg == "--backend=metal" || arg == "--backend=Metal2D") {
+            opts.use_metal_backend = true;
+        } else if (arg == "--software" || arg == "--backend=software" || arg == "--backend=Software2D") {
+            opts.use_metal_backend = false;
         } else if (arg.rfind("--runtime-minutes=", 0) == 0) {
             opts.runtime_limit = parse_minutes(arg.substr(18), "runtime minutes");
+        } else if (arg.rfind("--budget-present-ms=", 0) == 0) {
+            constexpr std::string_view prefix = "--budget-present-ms=";
+            opts.budget_present_ms = parse_positive_double(arg.substr(prefix.size()), "budget present ms");
+        } else if (arg.rfind("--budget-render-ms=", 0) == 0) {
+            constexpr std::string_view prefix = "--budget-render-ms=";
+            opts.budget_render_ms = parse_positive_double(arg.substr(prefix.size()), "budget render ms");
+        } else if (arg.rfind("--min-fps=", 0) == 0) {
+            constexpr std::string_view prefix = "--min-fps=";
+            opts.min_fps = parse_positive_double(arg.substr(prefix.size()), "min fps");
+        } else if (arg.rfind("--write-baseline=", 0) == 0) {
+            constexpr std::string_view prefix = "--write-baseline=";
+            auto path = arg.substr(prefix.size());
+            if (path.empty()) {
+                std::cerr << "pixel_noise_example: --write-baseline requires a non-empty path\n";
+                std::exit(1);
+            }
+            opts.baseline_path = std::string{path};
         } else if (arg == "--help" || arg == "-h") {
             std::cout << "Usage: pixel_noise_example [options]\n"
                       << "Options:\n"
@@ -262,7 +498,14 @@ auto parse_options(int argc, char** argv) -> Options {
                       << "  --report-metrics          Print FPS/render metrics every interval\n"
                       << "  --report-extended         Metrics plus Window::Present call timing\n"
                       << "  --present-call-metric     Track Window::Present duration (pairs well with --report-metrics)\n"
+                      << "  --backend=<software|metal> Select renderer backend (default software)\n"
+                      << "  --metal                   Shortcut for --backend=metal\n"
+                      << "  --software                Shortcut for --backend=software\n"
                       << "  --runtime-minutes=<min>   Stop after the given number of minutes\n"
+                      << "  --budget-present-ms=<ms>  Fail if avg present time exceeds this budget\n"
+                      << "  --budget-render-ms=<ms>   Fail if avg render time exceeds this budget\n"
+                      << "  --min-fps=<fps>           Fail if average FPS drops below this threshold\n"
+                      << "  --write-baseline=<path>   Persist JSON baseline metrics to the given path\n"
                       << "  --headless                Skip local window presentation\n"
                       << "  --windowed                Show the local window while computing frames (default)\n"
                       << "  --capture-framebuffer     Enable framebuffer capture in the present policy\n"
@@ -545,6 +788,19 @@ auto install_noise_hook(std::shared_ptr<NoiseState> state) -> HookGuard {
 int main(int argc, char** argv) {
     auto options = parse_options(argc, argv);
 
+#if !defined(PATHSPACE_UI_METAL)
+    if (options.use_metal_backend) {
+        std::cerr << "pixel_noise_example: --backend=metal requested, but this build lacks PATHSPACE_UI_METAL support.\n";
+        return 1;
+    }
+#else
+    if (options.use_metal_backend && std::getenv("PATHSPACE_ENABLE_METAL_UPLOADS") == nullptr) {
+        if (::setenv("PATHSPACE_ENABLE_METAL_UPLOADS", "1", 1) != 0) {
+            std::cerr << "pixel_noise_example: warning: failed to set PATHSPACE_ENABLE_METAL_UPLOADS=1; Metal uploads may remain disabled.\n";
+        }
+    }
+#endif
+
     std::signal(SIGINT, handle_signal);
     std::signal(SIGTERM, handle_signal);
 
@@ -555,9 +811,13 @@ int main(int argc, char** argv) {
     auto scene_setup = publish_scene(space, app_root_view, options.width, options.height);
 
     Builders::App::BootstrapParams bootstrap_params{};
-    bootstrap_params.renderer.name = "noise_renderer";
-    bootstrap_params.renderer.kind = Builders::RendererKind::Software2D;
-    bootstrap_params.renderer.description = "pixel noise renderer";
+    bootstrap_params.renderer.name = options.use_metal_backend ? "noise_renderer_metal" : "noise_renderer";
+    bootstrap_params.renderer.kind = options.use_metal_backend
+                                         ? Builders::RendererKind::Metal2D
+                                         : Builders::RendererKind::Software2D;
+    bootstrap_params.renderer.description = options.use_metal_backend
+                                                ? "pixel noise renderer (Metal2D)"
+                                                : "pixel noise renderer";
 
     bootstrap_params.surface.name = "noise_surface";
     bootstrap_params.surface.desc.size_px.width = options.width;
@@ -565,6 +825,14 @@ int main(int argc, char** argv) {
     bootstrap_params.surface.desc.pixel_format = Builders::PixelFormat::RGBA8Unorm_sRGB;
     bootstrap_params.surface.desc.color_space = Builders::ColorSpace::sRGB;
     bootstrap_params.surface.desc.premultiplied_alpha = true;
+#if defined(PATHSPACE_UI_METAL)
+    if (options.use_metal_backend) {
+        bootstrap_params.surface.desc.metal.storage_mode = Builders::MetalStorageMode::Shared;
+        bootstrap_params.surface.desc.metal.texture_usage = static_cast<std::uint8_t>(Builders::MetalTextureUsage::ShaderRead)
+                                                            | static_cast<std::uint8_t>(Builders::MetalTextureUsage::RenderTarget);
+        bootstrap_params.surface.desc.metal.iosurface_backing = true;
+    }
+#endif
 
     bootstrap_params.window.name = "noise_window";
     bootstrap_params.window.title = "PathSpace Pixel Noise";
@@ -614,6 +882,7 @@ int main(int argc, char** argv) {
     std::cout << "pixel_noise_example: width=" << options.width
               << " height=" << options.height
               << " seed=" << options.seed
+              << " backend=" << (options.use_metal_backend ? "Metal2D" : "Software2D")
               << (options.headless ? " headless" : " windowed")
               << (options.capture_framebuffer ? " capture" : "")
               << (options.report_metrics ? " metrics" : "")
@@ -636,6 +905,28 @@ int main(int argc, char** argv) {
     std::size_t interval_present_call_samples = 0;
     std::size_t total_present_call_samples = 0;
     std::size_t total_presented = 0;
+    double total_present_ms_sum = 0.0;
+    double total_render_ms_sum = 0.0;
+    long double total_tiles_updated = 0.0L;
+    long double total_tiles_dirty = 0.0L;
+    long double total_tiles_total = 0.0L;
+    long double total_tiles_skipped = 0.0L;
+    long double total_tiles_copied = 0.0L;
+    long double total_bytes_copied = 0.0L;
+    long double total_progressive_jobs = 0.0L;
+    long double total_progressive_workers = 0.0L;
+    long double total_encode_jobs = 0.0L;
+    long double total_encode_workers = 0.0L;
+    long double total_rects_coalesced = 0.0L;
+    long double total_skip_seq_odd = 0.0L;
+    long double total_recopy_after_seq_change = 0.0L;
+    std::size_t progressive_present_frames = 0;
+    std::uint64_t last_tile_size = 0;
+    std::uint64_t last_tiles_total = 0;
+    std::uint64_t last_drawable_count = 0;
+    bool last_tile_diagnostics_enabled = false;
+    std::string last_backend_kind;
+    bool track_present_call_time = options.report_present_call_time || options.baseline_path.has_value();
 
     while (g_running.load(std::memory_order_acquire)) {
         if (options.max_frames != 0 && total_presented >= options.max_frames) {
@@ -681,13 +972,13 @@ int main(int argc, char** argv) {
         }
 
         std::chrono::steady_clock::time_point present_call_start{};
-        if (options.report_present_call_time) {
+        if (track_present_call_time) {
             present_call_start = std::chrono::steady_clock::now();
         }
         auto present = Builders::Window::Present(space,
                                                  bootstrap.window,
                                                  bootstrap.view_name);
-        if (options.report_present_call_time) {
+        if (track_present_call_time) {
             auto present_call_finish = std::chrono::steady_clock::now();
             double call_ms = std::chrono::duration<double, std::milli>(present_call_finish - present_call_start).count();
             total_present_call_ms += call_ms;
@@ -725,6 +1016,31 @@ int main(int argc, char** argv) {
 
         if (present->stats.presented) {
             ++total_presented;
+            total_present_ms_sum += present->stats.present_ms;
+            total_render_ms_sum += present->stats.frame.render_ms;
+            total_tiles_updated += static_cast<long double>(present->stats.progressive_tiles_updated);
+            total_tiles_dirty += static_cast<long double>(present->stats.progressive_tiles_dirty);
+            total_tiles_total += static_cast<long double>(present->stats.progressive_tiles_total);
+            total_tiles_skipped += static_cast<long double>(present->stats.progressive_tiles_skipped);
+            total_tiles_copied += static_cast<long double>(present->stats.progressive_tiles_copied);
+            total_bytes_copied += static_cast<long double>(present->stats.progressive_bytes_copied);
+            total_progressive_jobs += static_cast<long double>(present->stats.progressive_jobs);
+            total_progressive_workers += static_cast<long double>(present->stats.progressive_workers_used);
+            total_encode_jobs += static_cast<long double>(present->stats.encode_jobs);
+            total_encode_workers += static_cast<long double>(present->stats.encode_workers_used);
+            total_rects_coalesced += static_cast<long double>(present->stats.progressive_rects_coalesced);
+            total_skip_seq_odd += static_cast<long double>(present->stats.progressive_skip_seq_odd);
+            total_recopy_after_seq_change += static_cast<long double>(present->stats.progressive_recopy_after_seq_change);
+            if (present->stats.used_progressive) {
+                ++progressive_present_frames;
+            }
+            last_tile_size = present->stats.progressive_tile_size;
+            last_tiles_total = present->stats.progressive_tiles_total;
+            last_drawable_count = present->stats.drawable_count;
+            last_tile_diagnostics_enabled = present->stats.progressive_tile_diagnostics_enabled;
+            if (!present->stats.backend_kind.empty()) {
+                last_backend_kind = present->stats.backend_kind;
+            }
             if (options.report_metrics) {
                 ++frames_since_report;
                 accumulated_present_ms += present->stats.present_ms;
@@ -771,14 +1087,128 @@ int main(int argc, char** argv) {
     }
 
     std::cout << "pixel_noise_example: presented " << total_presented << " frames.\n";
+
+    auto end_time = std::chrono::steady_clock::now();
+    double elapsed_seconds = std::chrono::duration<double>(end_time - start_time).count();
+    double avg_present_ms = total_presented > 0
+                                ? total_present_ms_sum / static_cast<double>(total_presented)
+                                : 0.0;
+    double avg_render_ms = total_presented > 0
+                               ? total_render_ms_sum / static_cast<double>(total_presented)
+                               : 0.0;
+    double avg_fps = (elapsed_seconds > 0.0 && total_presented > 0)
+                         ? static_cast<double>(total_presented) / elapsed_seconds
+                         : 0.0;
+    double avg_present_call_ms = (total_present_call_samples > 0)
+                                     ? total_present_call_ms / static_cast<double>(total_present_call_samples)
+                                     : 0.0;
+
+    BaselineSummary baseline_summary{};
+    baseline_summary.frames = total_presented;
+    baseline_summary.elapsed_seconds = elapsed_seconds;
+    baseline_summary.average_fps = avg_fps;
+    baseline_summary.average_present_ms = avg_present_ms;
+    baseline_summary.average_render_ms = avg_render_ms;
+    baseline_summary.average_present_call_ms = avg_present_call_ms;
+    baseline_summary.total_present_ms = total_present_ms_sum;
+    baseline_summary.total_render_ms = total_render_ms_sum;
+
+    TileSummary tile_summary{};
+    tile_summary.frames = total_presented;
+    tile_summary.progressive_frames = progressive_present_frames;
+    tile_summary.last_tile_size = last_tile_size;
+    tile_summary.last_tiles_total = last_tiles_total;
+    tile_summary.last_drawable_count = last_drawable_count;
+    tile_summary.last_tile_diagnostics_enabled = last_tile_diagnostics_enabled;
+    if (total_presented > 0) {
+        auto frames_ld = static_cast<long double>(total_presented);
+        tile_summary.average_tiles_updated = static_cast<double>(total_tiles_updated / frames_ld);
+        tile_summary.average_tiles_dirty = static_cast<double>(total_tiles_dirty / frames_ld);
+        tile_summary.average_tiles_total = static_cast<double>(total_tiles_total / frames_ld);
+        tile_summary.average_tiles_skipped = static_cast<double>(total_tiles_skipped / frames_ld);
+        tile_summary.average_tiles_copied = static_cast<double>(total_tiles_copied / frames_ld);
+        tile_summary.average_bytes_copied = static_cast<double>(total_bytes_copied / frames_ld);
+        tile_summary.average_progressive_jobs = static_cast<double>(total_progressive_jobs / frames_ld);
+        tile_summary.average_progressive_workers = static_cast<double>(total_progressive_workers / frames_ld);
+        tile_summary.average_encode_jobs = static_cast<double>(total_encode_jobs / frames_ld);
+        tile_summary.average_encode_workers = static_cast<double>(total_encode_workers / frames_ld);
+        tile_summary.average_rects_coalesced = static_cast<double>(total_rects_coalesced / frames_ld);
+        tile_summary.average_skip_seq_odd = static_cast<double>(total_skip_seq_odd / frames_ld);
+        tile_summary.average_recopy_after_seq_change = static_cast<double>(total_recopy_after_seq_change / frames_ld);
+    }
+
+    std::cout << std::fixed << std::setprecision(3)
+              << "pixel_noise_example: summary frames=" << total_presented
+              << " fps=" << avg_fps
+              << " avgPresentMs=" << avg_present_ms
+              << " avgRenderMs=" << avg_render_ms;
+    if (options.report_present_call_time && total_present_call_samples > 0) {
+        std::cout << " avgPresentCallMs=" << avg_present_call_ms;
+    }
+    std::cout << '\n';
+    std::cout.unsetf(std::ios::floatfield);
+
     if (options.report_present_call_time && total_present_call_samples > 0) {
         std::cout << std::fixed << std::setprecision(3)
                   << "pixel_noise_example: avgPresentCallMs="
-                  << (total_present_call_ms / static_cast<double>(total_present_call_samples))
+                  << avg_present_call_ms
                   << " over " << total_present_call_samples << " samples\n";
         std::cout.unsetf(std::ios::floatfield);
     }
-    return 0;
+
+    bool budget_failed = false;
+    if ((options.min_fps || options.budget_present_ms || options.budget_render_ms) && total_presented == 0) {
+        std::cerr << "pixel_noise_example: no frames presented; unable to evaluate performance budgets.\n";
+        budget_failed = true;
+    }
+    if (total_presented > 0) {
+        if (options.min_fps && (avg_fps + 1e-6) < *options.min_fps) {
+            std::cerr << "pixel_noise_example: average FPS " << avg_fps
+                      << " below min-fps budget " << *options.min_fps << '\n';
+            budget_failed = true;
+        }
+        if (options.budget_present_ms && (avg_present_ms - 1e-6) > *options.budget_present_ms) {
+            std::cerr << "pixel_noise_example: avg present "
+                      << avg_present_ms << "ms exceeds budget "
+                      << *options.budget_present_ms << "ms\n";
+            budget_failed = true;
+        }
+        if (options.budget_render_ms && (avg_render_ms - 1e-6) > *options.budget_render_ms) {
+            std::cerr << "pixel_noise_example: avg render "
+                      << avg_render_ms << "ms exceeds budget "
+                      << *options.budget_render_ms << "ms\n";
+            budget_failed = true;
+        }
+    }
+
+    if (options.baseline_path) {
+        if (budget_failed) {
+            std::cerr << "pixel_noise_example: skipping baseline write because budgets failed\n";
+        } else {
+            auto metrics = expect_or_exit(
+                Builders::Diagnostics::ReadTargetMetrics(space,
+                                                         SP::ConcretePathStringView{target_absolute.getPath()}),
+                "read target metrics");
+            std::string backend = !last_backend_kind.empty() ? last_backend_kind : metrics.backend_kind;
+            if (backend.empty()) {
+                backend = options.use_metal_backend ? "Metal2D" : "Software2D";
+            }
+            tile_summary.last_tile_size = last_tile_size != 0 ? last_tile_size : metrics.progressive_tile_size;
+            tile_summary.last_tiles_total = last_tiles_total != 0 ? last_tiles_total : metrics.progressive_tiles_total;
+            tile_summary.last_drawable_count = last_drawable_count != 0 ? last_drawable_count : metrics.drawable_count;
+            tile_summary.last_tile_diagnostics_enabled = last_tile_diagnostics_enabled || metrics.progressive_tile_diagnostics_enabled;
+            write_baseline_metrics(options,
+                                   baseline_summary,
+                                   tile_summary,
+                                   metrics,
+                                   backend,
+                                   std::filesystem::path{*options.baseline_path});
+            std::cout << "pixel_noise_example: baseline metrics written to "
+                      << *options.baseline_path << '\n';
+        }
+    }
+
+    return budget_failed ? 2 : 0;
 }
 
 #endif // PATHSPACE_ENABLE_UI / __APPLE__
