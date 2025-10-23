@@ -61,6 +61,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 | `docs/Plan_SceneGraph_Implementation.md` | Phase tracker with latest renderer/diagnostics updates. |
 | `docs/AI_Debugging_Playbook.md` | Loop test expectations, log locations, and diagnostics tooling. |
 | `docs/AI_Todo.task` | Structured backlog (P1/P2) with acceptance criteria. |
+| `docs/Widget_Contribution_Quickstart.md` | Checklist for authoring new widgets (paths, reducers, themes, tests). |
 
 ## 5. Ready to Work?
 
