@@ -76,6 +76,30 @@ Environment knobs (all respected by the wrapper and the logger):
   | `WIDGETS_EXAMPLE_TRACE_REPLAY` | Path to a trace file to replay. When present, `widgets_example` skips the LocalWindow bridge and replays events headlessly. |
   | `WIDGETS_EXAMPLE_HEADLESS` | When truthy, suppresses the interactive window. The replay script defaults this to `1` so replays run on CI hosts. |
 
+### 1.4 Sanitizer runs on demand
+
+- Run AddressSanitizer or ThreadSanitizer loops without juggling flags manually:
+
+  ```bash
+  ./scripts/compile.sh --asan-test         # builds in ./build-asan, runs tests once
+  ./scripts/compile.sh --tsan-test --loop=5 --per-test-timeout=40
+  ```
+
+  These presets:
+  - point CMake at dedicated build directories (`./build-asan`, `./build-tsan`) unless you override `--build-dir`;
+  - disable Metal presenter coverage by default (sanitizers emit false positives inside the OS frameworks);
+  - export baseline runtime settings (`ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:strict_init_order=1`, `TSAN_OPTIONS=halt_on_error=1:report_thread_leaks=0`) while keeping user-provided values intact.
+  Adjust loop counts with `--loop=<n>` or the usual test arguments (`--args`, `--per-test-timeout`, etc.).
+
+- Pre-push hook toggles mirror the CLI presets so you can opt-in sanitized runs during local pushes:
+
+  ```bash
+  RUN_ASAN=1 SANITIZER_CLEAN=1 ./scripts/git-hooks/pre-push.local.sh
+  RUN_TSAN=1 TSAN_LOOP=3 ./scripts/git-hooks/pre-push.local.sh
+  ```
+
+  Available knobs: `RUN_ASAN=1`, `RUN_TSAN=1`, `ASAN_LOOP=<n>`, `TSAN_LOOP=<n>`, `SANITIZER_CLEAN=1` (forces `--clean`), and `SANITIZER_BUILD_TYPE=<Debug|RelWithDebInfo|...>` to override the default debug build.
+
 ## 2. Inspecting Collected Logs
 
 1. Open the saved log file (e.g., `build/test-logs/PathSpaceTests_loop3of15_20251018-161200.log`).

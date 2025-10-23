@@ -30,6 +30,7 @@ GENERATOR=""
 TARGET=""
 VERBOSE=0
 SANITIZER=""  # "asan" | "tsan" | "usan"
+SANITIZER_TEST_MODE=0
 TEST=0        # run tests after build if 1
 LOOP=0        # run tests in a loop N times (default 15 if provided without value)
 PER_TEST_TIMEOUT=""  # override seconds per test; default 60 (single), 120 (when --loop is used)
@@ -47,6 +48,7 @@ PERF_WRITE_BASELINE=""
 PERF_HISTORY_DIR=""
 PERF_BASELINE_DEFAULT="$ROOT_DIR/docs/perf/performance_baseline.json"
 PERF_PRINT=0
+METAL_FLAG_EXPLICIT=0
 
 # ----------------------------
 # Helpers
@@ -94,7 +96,9 @@ Options:
 
 Sanitizers (mutually exclusive, maps to CMake options in this repo):
       --asan                 Enable AddressSanitizer      (-DENABLE_ADDRESS_SANITIZER=ON)
+      --asan-test            Enable ASan and run the test suite once (defaults to build-dir ./build-asan).
       --tsan                 Enable ThreadSanitizer       (-DENABLE_THREAD_SANITIZER=ON)
+      --tsan-test            Enable TSan and run the test suite once (defaults to build-dir ./build-tsan).
       --usan | --ubsan       Enable UndefinedSanitizer    (-DENABLE_UNDEFINED_SANITIZER=ON)
 
 Examples:
@@ -197,11 +201,33 @@ while [[ $# -gt 0 ]]; do
       fi
       SANITIZER="asan"
       ;;
+    --asan-test)
+      if [[ -n "$SANITIZER" && "$SANITIZER" != "asan" ]]; then
+        die "Only one sanitizer flag may be used at a time."
+      fi
+      SANITIZER="asan"
+      SANITIZER_TEST_MODE=1
+      TEST=1
+      if [[ "$LOOP" -eq 0 ]]; then
+        LOOP=1
+      fi
+      ;;
     --tsan)
       if [[ -n "$SANITIZER" && "$SANITIZER" != "tsan" ]]; then
         die "Only one sanitizer flag may be used at a time."
       fi
       SANITIZER="tsan"
+      ;;
+    --tsan-test)
+      if [[ -n "$SANITIZER" && "$SANITIZER" != "tsan" ]]; then
+        die "Only one sanitizer flag may be used at a time."
+      fi
+      SANITIZER="tsan"
+      SANITIZER_TEST_MODE=1
+      TEST=1
+      if [[ "$LOOP" -eq 0 ]]; then
+        LOOP=1
+      fi
       ;;
     --usan|--ubsan)
       if [[ -n "$SANITIZER" && "$SANITIZER" != "usan" ]]; then
@@ -259,9 +285,11 @@ while [[ $# -gt 0 ]]; do
       ;;
     --enable-metal-tests)
       ENABLE_METAL_TESTS=1
+      METAL_FLAG_EXPLICIT=1
       ;;
     --disable-metal-tests)
       ENABLE_METAL_TESTS=0
+      METAL_FLAG_EXPLICIT=1
       ;;
     --size-report)
       SIZE_REPORT=1
@@ -316,6 +344,14 @@ if [[ "$PERF_REPORT" -eq 1 || "$PERF_WRITE_BASELINE" -eq 1 ]]; then
     PERF_BASELINE="$PERF_BASELINE_DEFAULT"
   fi
   PERF_PRINT=1
+fi
+
+if [[ -n "$SANITIZER" && -z "$BUILD_DIR" ]]; then
+  BUILD_DIR="$ROOT_DIR/build-$SANITIZER"
+fi
+
+if [[ -n "$SANITIZER" && "$METAL_FLAG_EXPLICIT" -eq 0 ]]; then
+  ENABLE_METAL_TESTS=0
 fi
 
 # ----------------------------
@@ -539,6 +575,13 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
     )
     if [[ "$ENABLE_METAL_TESTS" -eq 1 ]]; then
       TEST_ENV_FLAGS+=("--env" "PATHSPACE_ENABLE_METAL_UPLOADS=1")
+    fi
+    if [[ "$SANITIZER" == "asan" ]]; then
+      export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=1:halt_on_error=1:strict_init_order=1:color=always}"
+      # Allow leak sanitizer configuration but avoid overriding explicit env.
+      export LSAN_OPTIONS="${LSAN_OPTIONS:-}"
+    elif [[ "$SANITIZER" == "tsan" ]]; then
+      export TSAN_OPTIONS="${TSAN_OPTIONS:-halt_on_error=1:report_thread_leaks=0}"
     fi
 
     # Optional: enable core dumps/backtraces for debugging crashes
