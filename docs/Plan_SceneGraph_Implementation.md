@@ -286,7 +286,7 @@ Next:
 - ✅ (October 21, 2025) widgets_example adds keyboard focus cycling (Tab/Shift+Tab), arrow-key slider/list control, and reducer action logging so gallery runs surface queue activity without external tooling.
 - ✅ (October 21, 2025) Introduced `Builders::App::Bootstrap` helper so examples/tests can create renderer/surface/window defaults for a scene with one call; docs/onboarding updated alongside the helper.
 - ✅ (October 21, 2025) widgets_example now consumes `Widgets::WidgetTheme` output (and `WIDGETS_EXAMPLE_THEME`) so demos can swap color palettes and typography without rewriting scenes; theme defaults live next to the builders for reuse.
-  - Add a theme hot-swap UITest/doctest that toggles `Widgets::WidgetTheme` variants at runtime and asserts dirty regions, typography, and colors update correctly without stale caches.
+  - ✅ (October 23, 2025) Added a theme hot-swap UITest (`tests/ui/test_Builders.cpp`: "Widgets::WidgetTheme hot swap repaints button scenes and marks dirty") that applies default/sunset themes in-place, asserts scene/state revisions bump, and verifies metadata + drawable colors update without stale cache artifacts.
   - Cover `Builders::App::Bootstrap` in doctests/PathSpaceUITests so examples/tests migrating to the helper keep setup/regression coverage as bespoke scaffolding is removed.
   - Author a widget-contribution quickstart doc outlining required paths, reducer hooks, theme integration, accessibility metadata, and the new test harnesses so additions land consistently.
   - Ship a capture/replay harness script (`scripts/record_widget_session.sh` + `scripts/replay_widget_session.sh`) so bug reports can include deterministic pointer/keyboard traces for widgets_example and UITests.

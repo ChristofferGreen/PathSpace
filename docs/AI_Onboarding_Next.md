@@ -69,7 +69,8 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Announce the scope in your PR description and keep doc updates synchronized with code changes. Remember to run `ctest -R HtmlCanvasVerify` when touching the adapter or HTML outputs so the headless replay harness stays green.
 - When you spot a gap in test coverage, either add the test immediately or log a follow-up in `docs/Plan_SceneGraph_Implementation.md` / `docs/AI_Todo.task` so the need is visible to the next maintainer.
 
-### Latest Highlights (October 21, 2025)
+### Latest Highlights (October 23, 2025)
+- Widget theme hot-swap coverage landed in `tests/ui/test_Builders.cpp` (“Widgets::WidgetTheme hot swap repaints button scenes and marks dirty”), exercising default vs sunset palettes in-place and confirming scene/state revisions update cleanly (15× loop, October 23, 2025).
 - Widget builders now publish canonical idle/hover/pressed/disabled scenes under `scenes/widgets/<id>/states/*`; live scenes republish automatically when state changes, and doctests cover the new snapshots (October 21, 2025).
 - Metal renderer is now material-aware: `PathRenderer2DMetal` consumes shared descriptors via `bind_material`, GPU frames stay in lock-step with software telemetry, and a new blending UITest asserts pipeline parity (`PathRenderer2DMetal honors material blending state`).
 - Scene hit testing now returns z-ordered hit stacks (`HitTestResult::hits`) with bounded drill-down via `HitTestRequest::max_results`; doctests cover overlap, clipping, and limit cases (October 21, 2025).
@@ -89,16 +90,16 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Reducer helpers (`Widgets::Reducers::ReducePending`/`PublishActions`) drain widget ops into `ops/actions/inbox/queue`; widgets_example seeds a sample action and prints the reducer output.
 - Stroke rendering is now a first-class primitive: `DrawCommandKind::Stroke` serializes shared point buffers, `PathRenderer2D` rasterizes polylines, the HTML adapter/replay round-trip stroke data, and `paint_example` emits strokes instead of per-dab rects (October 21, 2025).
 
-## 6. Shutdown Snapshot (October 21, 2025 @ 23:55 UTC)
-- Latest commit: `feat(ui): add widget state scenes` (local `fix/metal-present`, unpushed). Builders now author canonical widget state snapshots, live scenes republish when state toggles, and the plan/docs/tests are in sync.
-- Validation: `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20` (15× PathSpaceTests, PathSpaceUITests, HtmlCanvasVerify, HtmlAssetInspect) — all green with Metal presenters enabled.
+## 6. Shutdown Snapshot (October 23, 2025 @ 16:25 UTC)
+- Latest change: staged `test(widget): add theme hot swap coverage` on local `test/widget-theme-hotswap` (unpushed). New UITest exercises default vs sunset themes, checks metadata updates, and locks in scene/state revision bumps.
+- Validation: `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20` (15× PathSpaceTests, PathSpaceUITests, HtmlCanvasVerify, HtmlAssetInspect) — all green with Metal presenters enabled (October 23, 2025).
 - Outstanding follow-ups before resuming:
-  1. Finish the remaining Phase 8 testing items: add adjacent-widget dirty propagation coverage and the widget bindings fuzz harness noted in `docs/Plan_SceneGraph_Implementation.md`.
-  2. Continue the HTML tooling/HSAT documentation pass and keep renderer telemetry docs synchronized with plan updates.
-- Local worktree still holds edits to `docs/Plan_PrimeScript.md` and `docs/AI_Prompts.md` from prior sessions—confirm intent before publishing.
+  1. Add doctest/UITest coverage for `Builders::App::Bootstrap` so helper adoption stays guarded.
+  2. Ship the widget bindings fuzz harness and contribution quickstart noted in `docs/Plan_SceneGraph_Implementation.md`.
+- Local worktree clean after commit once the new test/doc updates land; no other unpublished edits.
 - Next session checklist:
-  1. Branch from `origin/master`, cherry-pick or push the widget state scenes commit, and request review.
-  2. Implement widget styling hooks and update examples/tests; rerun the 15× loop and HTML replay harness.
-  3. Keep docs/plan/backlog entries synchronized with any follow-up changes.
+  1. Push `test/widget-theme-hotswap` (after review) and open PR targeting `master`.
+  2. Tackle the `Builders::App::Bootstrap` coverage gap, then iterate on the bindings fuzz harness.
+  3. Keep plan/onboarding/docs in sync with any additional widget coverage.
 
 Welcome aboard and thank you for keeping the PathSpace docs in sync for the next AI maintainer.

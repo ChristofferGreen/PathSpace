@@ -1689,6 +1689,110 @@ TEST_CASE("Widgets::CreateButton publishes snapshot and state") {
     CHECK_FALSE(*unchanged);
 }
 
+TEST_CASE("Widgets::WidgetTheme hot swap repaints button scenes and marks dirty") {
+    BuildersFixture fx;
+
+    Widgets::ButtonParams params{};
+    params.name = "button_hot_swap";
+    params.label = "Theme Swap";
+
+    auto defaultTheme = Widgets::MakeDefaultWidgetTheme();
+    Widgets::ApplyTheme(defaultTheme, params);
+
+    auto createdResult = Widgets::CreateButton(fx.space, fx.root_view(), params);
+    REQUIRE(createdResult);
+    auto const created = *createdResult;
+
+    auto read_button_color = [&](ScenePath const& scene) -> std::array<float, 4> {
+        auto bucket = decode_state_bucket(fx, scene);
+        REQUIRE_FALSE(bucket.command_kinds.empty());
+        auto kind = static_cast<DrawCommandKind>(bucket.command_kinds.front());
+        std::array<float, 4> color{};
+        if (kind == DrawCommandKind::RoundedRect) {
+            REQUIRE(bucket.command_payload.size() >= sizeof(RoundedRectCommand));
+            RoundedRectCommand rect{};
+            std::memcpy(&rect, bucket.command_payload.data(), sizeof(RoundedRectCommand));
+            color = rect.color;
+        } else {
+            REQUIRE(kind == DrawCommandKind::Rect);
+            REQUIRE(bucket.command_payload.size() >= sizeof(RectCommand));
+            RectCommand rect{};
+            std::memcpy(&rect, bucket.command_payload.data(), sizeof(RectCommand));
+            color = rect.color;
+        }
+        return color;
+    };
+
+    auto read_revision = [&](ScenePath const& scene) -> std::uint64_t {
+        auto revision = Scene::ReadCurrentRevision(fx.space, scene);
+        REQUIRE(revision);
+        return revision->revision;
+    };
+
+    auto stylePath = std::string(created.root.getPath()) + "/meta/style";
+    auto defaultStyle = read_value<Widgets::ButtonStyle>(fx.space, stylePath);
+    REQUIRE(defaultStyle);
+    CHECK(defaultStyle->background_color[0] == doctest::Approx(defaultTheme.button.background_color[0]));
+    CHECK(defaultStyle->text_color[0] == doctest::Approx(defaultTheme.button.text_color[0]));
+    CHECK(defaultStyle->typography.font_size == doctest::Approx(defaultTheme.button.typography.font_size));
+
+    auto initialSceneRevision = read_revision(created.scene);
+    auto initialIdleRevision = read_revision(created.states.idle);
+    auto initialHoverRevision = read_revision(created.states.hover);
+    auto initialPressedRevision = read_revision(created.states.pressed);
+    auto initialDisabledRevision = read_revision(created.states.disabled);
+
+    auto initialIdleColor = read_button_color(created.states.idle);
+    CHECK(initialIdleColor[0] == doctest::Approx(defaultTheme.button.background_color[0]));
+
+    auto drain_dirty_queue = [&](ScenePath const& scene) {
+        while (true) {
+            auto event = Scene::TakeDirtyEvent(fx.space, scene, std::chrono::milliseconds{1});
+            if (event) {
+                continue;
+            }
+            auto code = event.error().code;
+            bool const expected_empty = code == Error::Code::Timeout
+                                        || code == Error::Code::NoObjectFound
+                                        || code == Error::Code::NoSuchPath;
+            if (!expected_empty) {
+                FAIL("Unexpected dirty queue error: " << static_cast<int>(code));
+            }
+            break;
+        }
+    };
+
+    drain_dirty_queue(created.scene);
+
+    auto sunsetTheme = Widgets::MakeSunsetWidgetTheme();
+    Widgets::ApplyTheme(sunsetTheme, params);
+
+    auto updatedResult = Widgets::CreateButton(fx.space, fx.root_view(), params);
+    REQUIRE(updatedResult);
+    auto const updated = *updatedResult;
+    CHECK(updated.scene.getPath() == created.scene.getPath());
+
+    auto updatedStyle = read_value<Widgets::ButtonStyle>(fx.space, stylePath);
+    REQUIRE(updatedStyle);
+    CHECK(updatedStyle->background_color[0] == doctest::Approx(sunsetTheme.button.background_color[0]));
+    CHECK(updatedStyle->text_color[0] == doctest::Approx(sunsetTheme.button.text_color[0]));
+    CHECK(updatedStyle->typography.font_size == doctest::Approx(sunsetTheme.button.typography.font_size));
+    CHECK(updatedStyle->typography.line_height == doctest::Approx(sunsetTheme.button.typography.line_height));
+
+    auto updatedIdleColor = read_button_color(updated.states.idle);
+    CHECK(updatedIdleColor[0] == doctest::Approx(sunsetTheme.button.background_color[0]));
+    CHECK(updatedIdleColor[0] != doctest::Approx(initialIdleColor[0]));
+
+    auto updatedSceneRevision = read_revision(updated.scene);
+    CHECK(updatedSceneRevision > initialSceneRevision);
+    CHECK(read_revision(updated.states.idle) > initialIdleRevision);
+    CHECK(read_revision(updated.states.hover) > initialHoverRevision);
+    CHECK(read_revision(updated.states.pressed) > initialPressedRevision);
+    CHECK(read_revision(updated.states.disabled) > initialDisabledRevision);
+
+    drain_dirty_queue(updated.scene);
+}
+
 TEST_CASE("Widgets::CreateToggle publishes snapshot and state") {
     BuildersFixture fx;
 
