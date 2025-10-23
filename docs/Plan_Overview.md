@@ -49,7 +49,7 @@ Provide a single index of active planning documents, ordered by current priority
 - Widget state scenes now publish canonical idle/hover/pressed/disabled snapshots under `scenes/widgets/<id>/states/*`; theme-aware styles (`Widgets::WidgetTheme`) landed and `widgets_example` uses env-selectable palettes without rewriting scenes.
 - Next widget focus: finish the Phase 8 widget bindings fuzz harness—adjacent dirty-propagation coverage landed on October 21, 2025; keep `docs/Plan_SceneGraph_Implementation.md` updated as the fuzz work progresses.
 - ✅ (October 22, 2025) Split the monolithic `ui/Builders.cpp` into focused translation units (Scene/Renderer/Surface/Window/App/Widgets/Diagnostics + shared detail helpers), keeping each under 1 000 lines and revalidating the 15× looped CTest run.
-- ✅ (October 23, 2025) Follow-up split trims widget internals further: widget helpers live in `WidgetBuildersDetail.inl` and runtime code is spread across `WidgetBuildersCore.cpp`, `WidgetBindings.cpp`, `WidgetFocus.cpp`, and `WidgetReducers.cpp`, keeping the largest TU under 1 000 lines post-refactor.
+- ✅ (October 23, 2025) Follow-up split trims widget internals further: widget helpers now live in `WidgetDrawablesDetail.inl` and `WidgetMetadataDetail.inl`, with runtime code in `WidgetBuildersCore.cpp`, `WidgetBindings.cpp`, `WidgetFocus.cpp`, and `WidgetReducers.cpp`, keeping the largest TU under 1 000 lines post-refactor.
 
 ## Supporting Documents
 - `docs/AI_Architecture.md` — Core PathSpace architecture reference.

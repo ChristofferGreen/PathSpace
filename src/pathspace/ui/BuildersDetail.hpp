@@ -75,7 +75,8 @@ inline auto make_scene_meta(ScenePath const& scenePath, std::string const& leaf)
 template <typename T>
 inline auto read_optional(PathSpace const& space, std::string const& path) -> SP::Expected<std::optional<T>>;
 
-#include "WidgetBuildersDetail.inl"
+#include "WidgetDrawablesDetail.inl"
+#include "WidgetMetadataDetail.inl"
 
 inline auto surfaces_cache() -> std::unordered_map<std::string, std::unique_ptr<PathSurfaceSoftware>>& {
     static std::unordered_map<std::string, std::unique_ptr<PathSurfaceSoftware>> cache;
