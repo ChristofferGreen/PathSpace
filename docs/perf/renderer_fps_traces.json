@@ -1,0 +1,235 @@
+{
+  "captured_at_utc": "2025-10-23T16:37:24+00:00",
+  "benchmark": "/Users/chrgre01/src/PathSpace/build/benchmarks/path_renderer2d_benchmark",
+  "metrics_enabled": false,
+  "samples": [
+    {
+      "canvas": "1280x720",
+      "canvas_info": {
+        "width_px": 1280,
+        "height_px": 720,
+        "progressive_tiles": 240,
+        "initial_tile_size_px": 64
+      },
+      "full_repaint": {
+        "frames": {
+          "raw": "2",
+          "value": 2.0
+        },
+        "avg_ms": {
+          "raw": "5.39",
+          "value": 5.39
+        },
+        "fps": {
+          "raw": "185.39",
+          "value": 185.39
+        },
+        "worst_ms": {
+          "raw": "5.84",
+          "value": 5.84
+        },
+        "avg_damage_ms": {
+          "raw": "0.00",
+          "value": 0.0
+        },
+        "avg_encode_ms": {
+          "raw": "3.54",
+          "value": 3.54
+        },
+        "avg_copy_ms": {
+          "raw": "0.29",
+          "value": 0.29
+        },
+        "avg_publish_ms": {
+          "raw": "0.00",
+          "value": 0.0
+        },
+        "avg_present_ms": {
+          "raw": "0.48",
+          "value": 0.48
+        },
+        "avg_tiles": {
+          "raw": "240.00",
+          "value": 240.0
+        },
+        "avg_bytes": {
+          "raw": "3.69MB",
+          "value": 3869245.44,
+          "unit": "bytes"
+        }
+      },
+      "incremental_stroke": {
+        "frames": {
+          "raw": "48",
+          "value": 48.0
+        },
+        "avg_ms": {
+          "raw": "1.16",
+          "value": 1.16
+        },
+        "fps": {
+          "raw": "862.99",
+          "value": 862.99
+        },
+        "worst_ms": {
+          "raw": "1.41",
+          "value": 1.41
+        },
+        "avg_damage_ms": {
+          "raw": "0.00",
+          "value": 0.0
+        },
+        "avg_encode_ms": {
+          "raw": "0.34",
+          "value": 0.34
+        },
+        "avg_copy_ms": {
+          "raw": "0.01",
+          "value": 0.01
+        },
+        "avg_publish_ms": {
+          "raw": "0.00",
+          "value": 0.0
+        },
+        "avg_present_ms": {
+          "raw": "0.01",
+          "value": 0.01
+        },
+        "avg_tiles": {
+          "raw": "4.25",
+          "value": 4.25
+        },
+        "avg_bytes": {
+          "raw": "0.07MB",
+          "value": 73400.32,
+          "unit": "bytes"
+        }
+      },
+      "small_surface": {
+        "tiles": 0,
+        "sample_count": 1
+      },
+      "raw_output": [
+        "=== PathRenderer2D Benchmark ===",
+        "Canvas: 1280x720 progressive tiles=240 initial tile size=64px",
+        "Full repaint stats: frames=2 avg_ms=5.39 fps=185.39 worst_ms=5.84 avg_damage_ms=0.00 avg_encode_ms=3.54 avg_copy_ms=0.29 avg_publish_ms=0.00 avg_present_ms=0.48 avg_tiles=240.00 avg_bytes=3.69MB",
+        "Incremental stroke stats: frames=48 avg_ms=1.16 fps=862.99 worst_ms=1.41 avg_damage_ms=0.00 avg_encode_ms=0.34 avg_copy_ms=0.01 avg_publish_ms=0.00 avg_present_ms=0.01 avg_tiles=4.25 avg_bytes=0.07MB",
+        "Small-surface tiles: 0 (count=1)"
+      ]
+    },
+    {
+      "canvas": "3840x2160",
+      "canvas_info": {
+        "width_px": 3840,
+        "height_px": 2160,
+        "progressive_tiles": 2040,
+        "initial_tile_size_px": 64
+      },
+      "full_repaint": {
+        "frames": {
+          "raw": "2",
+          "value": 2.0
+        },
+        "avg_ms": {
+          "raw": "44.30",
+          "value": 44.3
+        },
+        "fps": {
+          "raw": "22.57",
+          "value": 22.57
+        },
+        "worst_ms": {
+          "raw": "47.28",
+          "value": 47.28
+        },
+        "avg_damage_ms": {
+          "raw": "0.00",
+          "value": 0.0
+        },
+        "avg_encode_ms": {
+          "raw": "28.77",
+          "value": 28.77
+        },
+        "avg_copy_ms": {
+          "raw": "1.63",
+          "value": 1.63
+        },
+        "avg_publish_ms": {
+          "raw": "0.00",
+          "value": 0.0
+        },
+        "avg_present_ms": {
+          "raw": "2.31",
+          "value": 2.31
+        },
+        "avg_tiles": {
+          "raw": "2040.00",
+          "value": 2040.0
+        },
+        "avg_bytes": {
+          "raw": "33.18MB",
+          "value": 34791751.68,
+          "unit": "bytes"
+        }
+      },
+      "incremental_stroke": {
+        "frames": {
+          "raw": "48",
+          "value": 48.0
+        },
+        "avg_ms": {
+          "raw": "7.11",
+          "value": 7.11
+        },
+        "fps": {
+          "raw": "140.63",
+          "value": 140.63
+        },
+        "worst_ms": {
+          "raw": "7.80",
+          "value": 7.8
+        },
+        "avg_damage_ms": {
+          "raw": "0.00",
+          "value": 0.0
+        },
+        "avg_encode_ms": {
+          "raw": "0.34",
+          "value": 0.34
+        },
+        "avg_copy_ms": {
+          "raw": "0.01",
+          "value": 0.01
+        },
+        "avg_publish_ms": {
+          "raw": "0.00",
+          "value": 0.0
+        },
+        "avg_present_ms": {
+          "raw": "0.01",
+          "value": 0.01
+        },
+        "avg_tiles": {
+          "raw": "4.12",
+          "value": 4.12
+        },
+        "avg_bytes": {
+          "raw": "0.07MB",
+          "value": 73400.32,
+          "unit": "bytes"
+        }
+      },
+      "small_surface": {
+        "tiles": 0,
+        "sample_count": 1
+      },
+      "raw_output": [
+        "=== PathRenderer2D Benchmark ===",
+        "Canvas: 3840x2160 progressive tiles=2040 initial tile size=64px",
+        "Full repaint stats: frames=2 avg_ms=44.30 fps=22.57 worst_ms=47.28 avg_damage_ms=0.00 avg_encode_ms=28.77 avg_copy_ms=1.63 avg_publish_ms=0.00 avg_present_ms=2.31 avg_tiles=2040.00 avg_bytes=33.18MB",
+        "Incremental stroke stats: frames=48 avg_ms=7.11 fps=140.63 worst_ms=7.80 avg_damage_ms=0.00 avg_encode_ms=0.34 avg_copy_ms=0.01 avg_publish_ms=0.00 avg_present_ms=0.01 avg_tiles=4.12 avg_bytes=0.07MB",
+        "Small-surface tiles: 0 (count=1)"
+      ]
+    }
+  ]
+}

@@ -51,6 +51,7 @@ Provide a single index of active planning documents, ordered by current priority
 - ✅ (October 23, 2025) Phase 8 widget bindings fuzz harness landed (`tests/ui/test_WidgetReducersFuzz.cpp`), covering randomized pointer/keyboard flows, reducer drains, and republished action queues; monitor follow-on coverage in `docs/Plan_SceneGraph_Implementation.md`.
 - ✅ (October 22, 2025) Split the monolithic `ui/Builders.cpp` into focused translation units (Scene/Renderer/Surface/Window/App/Widgets/Diagnostics + shared detail helpers), keeping each under 1 000 lines and revalidating the 15× looped CTest run.
 - ✅ (October 23, 2025) Follow-up split trims widget internals further: widget helpers now live in `WidgetDrawablesDetail.inl` and `WidgetMetadataDetail.inl`, with runtime code in `WidgetBuildersCore.cpp`, `WidgetBindings.cpp`, `WidgetFocus.cpp`, and `WidgetReducers.cpp`, keeping the largest TU under 1 000 lines post-refactor.
+- ✅ (October 23, 2025) Captured fresh PathRenderer2D FPS traces for 1280×720 and 3840×2160 using `scripts/capture_renderer_fps_traces.py`; results live in `docs/perf/renderer_fps_traces.json` so perf reviews can diff incremental vs full-surface behaviour.
 
 ## Supporting Documents
 - `docs/AI_Architecture.md` — Core PathSpace architecture reference.

@@ -98,7 +98,7 @@ Each workstream lands independently but respects shared contracts (paths, atomic
   - The software path owns these full clears; GPU assists stay optional (e.g. secondary effects), not the default “draw everything every frame,” so the hybrid design preserves the progressive/tiled CPU pipeline.
 - Validation:
   - ✅ (October 19, 2025) Added renderer doctest coverage for incremental stroke, erase, clear-color, and dirty rect hint scenarios (see `tests/ui/test_PathRenderer2D.cpp`), with explicit assertions on damage coverage, fingerprint deltas, and progressive tile counts.
-  - Capture comparative FPS traces (small-vs-fullscreen) to confirm the fullscreen slowdown disappears.
+  - ✅ (October 23, 2025) Captured comparative FPS traces for 1280×720 and 3840×2160 via `scripts/capture_renderer_fps_traces.py`, storing the JSON summary in `docs/perf/renderer_fps_traces.json` so we can track incremental vs full-surface performance over time.
 
 ## Phase Plan
 ### Phase 0 — Foundations (1 sprint)

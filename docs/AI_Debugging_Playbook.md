@@ -119,6 +119,7 @@ Environment knobs (all respected by the wrapper and the logger):
 | Tail latest failure log | `ls -t build/test-logs | head -1 | xargs -I{} tail -n 80 build/test-logs/{}` |
 | Inspect renderer metrics path | `build/tests/PathSpaceUITests --test-case Diagnostics::ReadTargetMetrics` |
 | Benchmark damage/fingerprint metrics | `./build/benchmarks/path_renderer2d_benchmark --metrics [--canvas=WIDTHxHEIGHT]` |
+| Capture renderer FPS traces | `./scripts/capture_renderer_fps_traces.py --pretty` |
 | Capture pixel-noise baseline JSON | `./scripts/capture_pixel_noise_baseline.sh` |
 | Check pixel-noise run against budgets | `python3 scripts/check_pixel_noise_baseline.py --build-dir build` |
 | Capture pixel-noise PNG frame | `./build/pixel_noise_example --headless --frames=1 --write-frame=docs/images/perf/pixel_noise.png` |
