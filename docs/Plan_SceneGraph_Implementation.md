@@ -184,6 +184,7 @@ Next:
 - ✅ (October 23, 2025) Extracted widget helper internals into `WidgetDrawablesDetail.inl` / `WidgetMetadataDetail.inl` and split the widget runtime across `WidgetBuildersCore.cpp`, `WidgetBindings.cpp`, `WidgetFocus.cpp`, and `WidgetReducers.cpp`, keeping each unit <1 000 lines while preserving shared helpers via inline includes.
 - Enforce include hygiene during the split (IWYU or equivalent pass) so the expanded module graph keeps compile times manageable.
 - Add binary/size guardrails (e.g., `scripts/compile.sh --size-report`) to watch for example/demo growth after the refactor.
+- Split the remaining >1 000 line units (`PathRenderer2D.cpp`, `SceneSnapshotBuilder.cpp`, and `WidgetDrawablesDetail.inl`) into focused files so every UI TU stays below the target size.
 - Refresh `docs/AI_Architecture.md` and renderer diagrams once files move so architecture snapshots continue to match the code layout.
 - Add a performance regression flow that records benchmark outputs (renderer, presenter, examples) each run, stores historical snapshots, and fails when deltas exceed thresholds relative to the previous baseline; wire it into the local `pre-push` hook so regressions are caught before pushes.
 - Build a fault-injection harness that flips Metal upload flags, simulates surface resize failures, and drops drawables mid-frame to ensure diagnostics and error paths stay actionable.
