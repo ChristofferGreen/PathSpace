@@ -95,6 +95,7 @@ function runInspect(args, inputBuffer) {
 
 function validateSummary(summary) {
   const expectedBytes = assets.reduce((acc, item) => acc + item.bytes.length, 0);
+  const expectedEmpty = assets.filter((item) => item.bytes.length === 0).length;
   if (summary.assetCount !== assets.length) {
     console.error(`Expected assetCount=${assets.length}, got ${summary.assetCount}`);
     process.exit(1);
@@ -115,6 +116,108 @@ function validateSummary(summary) {
     console.error('assets array length mismatch');
     process.exit(1);
   }
+  if (summary.emptyAssetCount !== expectedEmpty) {
+    console.error(`Expected emptyAssetCount=${expectedEmpty}, got ${summary.emptyAssetCount}`);
+    process.exit(1);
+  }
+  if (!Array.isArray(summary.duplicateLogicalPaths)) {
+    console.error('duplicateLogicalPaths missing or not an array');
+    process.exit(1);
+  }
+  if (summary.duplicateLogicalPaths.length !== 0) {
+    console.error(`Expected duplicateLogicalPaths to be empty, got ${summary.duplicateLogicalPaths.length} entries`);
+    process.exit(1);
+  }
+
+  const classifyKind = (mime, logical) => {
+    if (mime === 'application/vnd.pathspace.image+ref') {
+      return 'image-reference';
+    }
+    if (mime === 'application/vnd.pathspace.font+ref') {
+      return 'font-reference';
+    }
+    if (mime.startsWith('image/')) {
+      return 'image';
+    }
+    if (mime.startsWith('font/') || mime.startsWith('application/font')) {
+      return 'font';
+    }
+    if (mime.startsWith('text/')) {
+      return 'text';
+    }
+    if (mime.startsWith('application/json')) {
+      return 'json';
+    }
+    if (logical.startsWith('images/')) {
+      return 'image';
+    }
+    if (logical.startsWith('fonts/')) {
+      return 'font';
+    }
+    return 'binary';
+  };
+
+  const expectSummaryArray = (fieldName, keyField, entries, expectedMap) => {
+    if (!Array.isArray(entries)) {
+      console.error(`${fieldName} missing or not an array`);
+      process.exit(1);
+    }
+    if (entries.length !== Object.keys(expectedMap).length) {
+      console.error(`${fieldName} length mismatch (expected ${Object.keys(expectedMap).length}, got ${entries.length})`);
+      process.exit(1);
+    }
+    const seen = new Set();
+    for (const entry of entries) {
+      if (typeof entry !== 'object' || entry === null) {
+        console.error(`${fieldName} entries must be objects`);
+        process.exit(1);
+      }
+      if (!(keyField in entry)) {
+        console.error(`${fieldName} entry missing ${keyField}`);
+        process.exit(1);
+      }
+      const key = entry[keyField];
+      if (!Object.prototype.hasOwnProperty.call(expectedMap, key)) {
+        console.error(`${fieldName} unexpected key '${key}'`);
+        process.exit(1);
+      }
+      if (seen.has(key)) {
+        console.error(`${fieldName} duplicate key '${key}'`);
+        process.exit(1);
+      }
+      seen.add(key);
+      const expected = expectedMap[key];
+      if (entry.count !== expected.count) {
+        console.error(`${fieldName} count mismatch for '${key}'`);
+        process.exit(1);
+      }
+      if (entry.totalBytes !== expected.totalBytes) {
+        console.error(`${fieldName} totalBytes mismatch for '${key}'`);
+        process.exit(1);
+      }
+    }
+  };
+
+  const expectedKindSummary = {};
+  assets.forEach((asset) => {
+    const kind = classifyKind(asset.mime, asset.logical);
+    if (!expectedKindSummary[kind]) {
+      expectedKindSummary[kind] = { count: 0, totalBytes: 0 };
+    }
+    expectedKindSummary[kind].count += 1;
+    expectedKindSummary[kind].totalBytes += asset.bytes.length;
+  });
+  const expectedMimeSummary = {};
+  assets.forEach((asset) => {
+    if (!expectedMimeSummary[asset.mime]) {
+      expectedMimeSummary[asset.mime] = { count: 0, totalBytes: 0 };
+    }
+    expectedMimeSummary[asset.mime].count += 1;
+    expectedMimeSummary[asset.mime].totalBytes += asset.bytes.length;
+  });
+
+  expectSummaryArray('kindSummary', 'kind', summary.kindSummary, expectedKindSummary);
+  expectSummaryArray('mimeSummary', 'mimeType', summary.mimeSummary, expectedMimeSummary);
 
   summary.assets.forEach((asset, index) => {
     const expected = assets[index];

@@ -1,21 +1,29 @@
 #include <pathspace/ui/HtmlSerialization.hpp>
 #include <pathspace/ui/HtmlAdapter.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <iomanip>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 using namespace SP;
 
 namespace {
+
+struct Summary {
+    std::uint64_t count       = 0;
+    std::uint64_t total_bytes = 0;
+};
 
 struct CommandLineOptions {
     bool        pretty_output = false;
@@ -266,14 +274,44 @@ int main(int argc, char** argv) {
     }
 
     auto const& assets = decoded->assets;
-    std::size_t total_bytes = 0;
-    bool        has_references = false;
+    std::uint64_t total_bytes       = 0;
+    bool          has_references    = false;
+    std::uint64_t empty_asset_count = 0;
+
+    std::unordered_map<std::string, std::uint64_t> logical_occurrences;
+    std::vector<std::string>                       duplicate_paths;
+    std::map<std::string, Summary>                 kind_summaries;
+    std::map<std::string, Summary>                 mime_summaries;
+
     for (auto const& asset : assets) {
-        total_bytes += asset.bytes.size();
+        auto const byte_length = static_cast<std::uint64_t>(asset.bytes.size());
+        total_bytes += byte_length;
         if (is_reference_mime(asset.mime_type)) {
             has_references = true;
         }
+        if (asset.bytes.empty()) {
+            ++empty_asset_count;
+        }
+
+        auto const reference = is_reference_mime(asset.mime_type);
+        auto const kind      = classify_asset(asset.mime_type, asset.logical_path, reference);
+
+        auto& kind_summary = kind_summaries[kind];
+        kind_summary.count += 1;
+        kind_summary.total_bytes += byte_length;
+
+        auto& mime_summary = mime_summaries[asset.mime_type];
+        mime_summary.count += 1;
+        mime_summary.total_bytes += byte_length;
+
+        auto& occurrences = logical_occurrences[asset.logical_path];
+        occurrences += 1;
+        if (occurrences == 2) {
+            duplicate_paths.push_back(asset.logical_path);
+        }
     }
+
+    std::sort(duplicate_paths.begin(), duplicate_paths.end());
     auto const trailing_bytes = payload.size() > decoded->bytes_consumed
                                 ? payload.size() - decoded->bytes_consumed
                                 : 0;
@@ -288,6 +326,84 @@ int main(int argc, char** argv) {
         if (options->pretty_output) {
             std::cout << "\n";
         }
+    };
+
+    auto print_string_array_field = [&](std::string_view name,
+                                        std::vector<std::string> const& values,
+                                        bool trailing_comma) {
+        indent(1);
+        std::cout << "\"" << name << "\":";
+        if (values.empty()) {
+            std::cout << "[]";
+            if (trailing_comma) {
+                std::cout << ",";
+            }
+            newline();
+            return;
+        }
+        std::cout << "[";
+        newline();
+        for (std::size_t index = 0; index < values.size(); ++index) {
+            indent(2);
+            std::cout << "\"" << escape_json(values[index]) << "\"";
+            if (index + 1 < values.size()) {
+                std::cout << ",";
+            }
+            newline();
+        }
+        indent(1);
+        std::cout << "]";
+        if (trailing_comma) {
+            std::cout << ",";
+        }
+        newline();
+    };
+
+    auto print_summary_field = [&](std::string_view field_name,
+                                   std::string_view key_field,
+                                   std::map<std::string, Summary> const& summaries,
+                                   bool trailing_comma) {
+        indent(1);
+        std::cout << "\"" << field_name << "\":";
+        if (summaries.empty()) {
+            std::cout << "[]";
+            if (trailing_comma) {
+                std::cout << ",";
+            }
+            newline();
+            return;
+        }
+        std::cout << "[";
+        newline();
+        std::size_t index = 0;
+        for (auto const& [key, summary] : summaries) {
+            indent(2);
+            std::cout << "{";
+            newline();
+
+            indent(3);
+            std::cout << "\"" << key_field << "\":\"" << escape_json(key) << "\",";
+            newline();
+            indent(3);
+            std::cout << "\"count\":" << summary.count << ",";
+            newline();
+            indent(3);
+            std::cout << "\"totalBytes\":" << summary.total_bytes;
+            newline();
+
+            indent(2);
+            std::cout << "}";
+            if (++index < summaries.size()) {
+                std::cout << ",";
+            }
+            newline();
+        }
+        indent(1);
+        std::cout << "]";
+        if (trailing_comma) {
+            std::cout << ",";
+        }
+        newline();
     };
 
     std::cout << "{";
@@ -306,6 +422,13 @@ int main(int argc, char** argv) {
     newline();
     indent(1);
     std::cout << "\"hasReferences\":" << (has_references ? "true" : "false") << ",";
+    newline();
+    indent(1);
+    std::cout << "\"emptyAssetCount\":" << empty_asset_count << ",";
+    newline();
+    print_string_array_field("duplicateLogicalPaths", duplicate_paths, true);
+    print_summary_field("kindSummary", "kind", kind_summaries, true);
+    print_summary_field("mimeSummary", "mimeType", mime_summaries, true);
     newline();
     indent(1);
     std::cout << "\"assets\":";

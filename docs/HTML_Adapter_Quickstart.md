@@ -27,6 +27,7 @@
    ```
    - Invokes `scripts/verify_hsat_assets.js <build/pathspace_hsat_inspect>`.
    - Generates a synthetic HSAT payload, confirms magic/version (`0x48534154`, `0x0001`), validates MIME-specific kind detection, and checks byte previews/reference flags.
+   - Verifies the inspector’s aggregate output (kind/mime summaries, empty-asset counts, duplicate logical paths) so dataset regressions fail fast.
 
 3. **Manual spot-check:**
    ```bash

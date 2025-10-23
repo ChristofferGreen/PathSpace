@@ -1,6 +1,6 @@
 # Handoff Notice
 
-> **Handoff note (October 21, 2025 @ shutdown):** Hit-test coverage now spans ordering, clip-aware picking, focus routing, the auto-render wait/notify path (`tests/ui/test_SceneHitTest.cpp` asserts ≤200 ms wake latency), DrawableBucket-backed multi-hit stacks (`HitTestResult::hits` with `HitTestRequest::max_results`), and widget focus-navigation helpers with auto-render scheduling. Keyboard/gamepad focus loops and widget golden snapshots now live in `tests/ui/test_Builders.cpp`, and presenter diagnostics continue to mirror into `windows/<win>/diagnostics/metrics/live/views/<view>/present`. Next pass should expand HTML tooling (HSAT inspectors) and finish the remaining HTML adapter notes.
+> **Handoff note (October 23, 2025 @ shutdown):** HSAT inspection now surfaces per-kind and per-mime summaries plus duplicate-path detection (CLI + HtmlAssetInspect cover the new output), so HTML payload regressions flag immediately alongside the canvas parity harness. Hit-test coverage still spans ordering, clip-aware picking, focus routing, the auto-render wait/notify path (`tests/ui/test_SceneHitTest.cpp` asserts ≤200 ms wake latency), DrawableBucket-backed multi-hit stacks (`HitTestResult::hits` with `HitTestRequest::max_results`), and widget focus-navigation helpers with auto-render scheduling. Keyboard/gamepad focus loops and widget golden snapshots live in `tests/ui/test_Builders.cpp`, and presenter diagnostics continue to mirror into `windows/<win>/diagnostics/metrics/live/views/<view>/present`. Next pass should enforce include hygiene for the split UI modules and wire binary/size guardrails before re-entering the Metal backend follow-ups.
 
 # Scene Graph Implementation Plan
 
@@ -231,6 +231,7 @@ Next:
 - **HTML follow-ups (October 19, 2025):** remaining work is documenting fidelity troubleshooting (see Phase 7 items 5–6); new CI harness (`HtmlCanvasVerify`) is in place—keep it updated when adapter schemas evolve.
   - ✅ (October 22, 2025) Added themed widget scene replays to `HtmlCanvasVerify`, hashing native vs HTML replays so palette and typography drifts surface immediately when either pipeline diverges.
   - ✅ (October 22, 2025) Published `docs/HTML_Adapter_Quickstart.md` with the harness workflow, HSAT tooling steps, and troubleshooting signatures so future cycles can validate HTML fidelity without rediscovering the flow.
+  - ✅ (October 23, 2025) `pathspace_hsat_inspect` now reports kind/mime summaries, duplicate logical paths, and empty-asset counts; `HtmlAssetInspect` exercises the new fields so HSAT regressions fail fast.
   - **Oct 21, 2025 update:** PathSpace core now preserves `Html::Asset` vectors across translation units (see commit `fix(ui): ensure html assets survive cross-tu reads`). The new `Html assets round-trip without HtmlSerialization include` UITest guards the regression. Resume the documentation follow-ups under Phase 7 items 5–6.
 - HTML adapter scaffolding (command stream emitter + replay harness) behind experimental flag. **Implementation plan map (Oct 18, 2025):**
   1. **Adapter core API**
