@@ -1,0 +1,118 @@
+{
+  "generatedAt": "2025-10-23T14:34:07.737053+00:00",
+  "scenarios": {
+    "path_renderer2d": {
+      "metadata": {
+        "canvas": {
+          "height": 2160,
+          "width": 3840
+        },
+        "command": {
+          "argv": [
+            "/Users/chrgre01/src/PathSpace/build/benchmarks/path_renderer2d_benchmark",
+            "--canvas=3840x2160",
+            "--metrics",
+            "--write-json=/var/folders/dw/20lzppxd4wb92wccyqh_g6zm0000gn/T/perf_guardrail_zy54zpes/renderer_metrics.json"
+          ],
+          "program": "/Users/chrgre01/src/PathSpace/build/benchmarks/path_renderer2d_benchmark"
+        },
+        "metricsEnabled": true,
+        "progressive": {
+          "tileCount": 2040,
+          "tileSize": 64
+        }
+      },
+      "metrics": {
+        "full.avgMs": 73.617812,
+        "full.fps": 13.583669,
+        "incremental.avgMs": 7.57089,
+        "incremental.damage.averageCoverage": 0.000574,
+        "incremental.damage.averageTilesDirty": 4.125,
+        "incremental.fps": 132.084871
+      },
+      "tolerances": {
+        "full.avgMs": {
+          "absolute": 1.5,
+          "direction": "increase",
+          "percent": 15.0
+        },
+        "full.fps": {
+          "absolute": 20.0,
+          "direction": "decrease",
+          "percent": 15.0
+        },
+        "incremental.avgMs": {
+          "absolute": 0.5,
+          "direction": "increase",
+          "percent": 20.0
+        },
+        "incremental.damage.averageCoverage": {
+          "absolute": 0.05,
+          "direction": "increase",
+          "percent": 25.0
+        },
+        "incremental.damage.averageTilesDirty": {
+          "absolute": 25.0,
+          "direction": "increase",
+          "percent": 35.0
+        },
+        "incremental.fps": {
+          "absolute": 100.0,
+          "direction": "decrease",
+          "percent": 20.0
+        }
+      }
+    },
+    "pixel_noise_software": {
+      "metadata": {
+        "command": {
+          "backendKind": "Software2D",
+          "budgetPresentMs": 20.0,
+          "budgetRenderMs": 20.0,
+          "captureFramebuffer": false,
+          "headless": true,
+          "height": 720,
+          "maxFrames": 120,
+          "minFps": 50.0,
+          "presentRefreshHz": 0.0,
+          "runtimeLimitSeconds": null,
+          "seed": 123456789,
+          "width": 1280
+        },
+        "residency": "ok",
+        "tileStats": {
+          "backendKind": "Software2D",
+          "tileSize": 64
+        }
+      },
+      "metrics": {
+        "summary.averageFps": 148.507898,
+        "summary.averagePresentCallMs": 6.733211,
+        "summary.averageRenderMs": 0.741644,
+        "tileStats.averageBytesCopied": 30720.0
+      },
+      "tolerances": {
+        "summary.averageFps": {
+          "absolute": 15.0,
+          "direction": "decrease",
+          "percent": 12.0
+        },
+        "summary.averagePresentCallMs": {
+          "absolute": 3.0,
+          "direction": "increase",
+          "percent": 25.0
+        },
+        "summary.averageRenderMs": {
+          "absolute": 0.4,
+          "direction": "increase",
+          "percent": 20.0
+        },
+        "tileStats.averageBytesCopied": {
+          "absolute": 200000.0,
+          "direction": "increase",
+          "percent": 25.0
+        }
+      }
+    }
+  }
+}

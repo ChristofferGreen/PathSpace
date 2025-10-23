@@ -144,6 +144,17 @@ Environment knobs (all respected by the wrapper and the logger):
 - Record a new baseline with `./scripts/compile.sh --size-write-baseline` after intentional asset or dependency additions. Commit the refreshed JSON alongside the relevant code/doc changes.
 - Baseline entries live under `docs/perf/example_size_baseline.json` and track `devices_example`, `html_replay_example`, `paint_example`, `pixel_noise_example`, and `widgets_example`. Update the doc when new demos are added so the guardrail lists stay in sync.
 
+### 5.3 Renderer/Presenter Performance Guardrail
+
+- Run `./scripts/perf_guardrail.py --build-dir build --build-type Release --jobs <n>` to execute the PathRenderer2D benchmark and the pixel noise example, compare their metrics against `docs/perf/performance_baseline.json`, and fail if regressions exceed per-metric tolerances.
+- Append `--history-dir build/perf/history --print` when iterating locally; the helper writes a JSONL snapshot per scenario so you can trend metrics after each change.
+- Refresh the baseline only after intentional performance wins: `./scripts/perf_guardrail.py --build-dir build --build-type Release --jobs <n> --write-baseline`. Commit the updated JSON alongside the change and note the justification in the PR description.
+- The guardrail runs automatically from `scripts/compile.sh --perf-report` and the local pre-push hook; export `SKIP_PERF_GUARDRAIL=1` sparingly (e.g., when profiling on unsupported hardware) and document the reason in the PR.
+- Inspect `docs/perf/performance_baseline.json` for the tracked metrics. Key checks today:
+  - `path_renderer2d` scenario covers full-repaint vs incremental workloads (avg ms, FPS, damage ratios, tile counts).
+  - `pixel_noise_software` scenario validates presenter timings (average FPS, render/present/present-call ms, bytes copied per frame).
+- Keep the baseline and tolerances in sync with `docs/perf/README.md` when new scenarios are added.
+
 ## 6. Closing the Loop
 
 Always finish a debugging session by:

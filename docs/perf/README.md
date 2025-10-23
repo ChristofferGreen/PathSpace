@@ -50,3 +50,25 @@ matches the current baselines:
 The `--write-frame` flag enables framebuffer capture automatically and writes
 an RGBA PNG using the current surface size. Commit refreshed images alongside
 baseline JSON updates so perf regressions include both metrics and visuals.
+
+## Performance Guardrail Workflow
+
+Use `scripts/perf_guardrail.py` to run the renderer benchmark
+(`path_renderer2d_benchmark`) and the presenter/example harness
+(`pixel_noise_example`). The helper compares captured metrics to the committed
+baseline at `docs/perf/performance_baseline.json` and fails when regressions
+exceed the configured tolerances.
+
+```bash
+# Check against the baseline, recording history under build/perf/
+./scripts/perf_guardrail.py --build-dir build --build-type Release --jobs 8 \
+  --history-dir build/perf/history --print
+
+# Refresh the baseline after intentional improvements
+./scripts/perf_guardrail.py --build-dir build --build-type Release --jobs 8 \
+  --write-baseline
+```
+
+The guardrail runs automatically from the local pre-push hook and can also be
+invoked via `./scripts/compile.sh --perf-report`. Pass `--scenarios=name` to
+limit execution to a specific scenario (e.g. `--scenarios=path_renderer2d`).

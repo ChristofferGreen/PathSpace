@@ -13,6 +13,7 @@
 #   PATHSPACE_CMAKE_ARGS=.. -> extra CMake args (quoted)
 #   ENABLE_PATHIO_MACOS=ON  -> on macOS, enable PathIO macOS backends in the example build
 #   DISABLE_METAL_TESTS=1   -> skip Metal presenter coverage even on macOS
+#   SKIP_PERF_GUARDRAIL=1   -> skip performance guardrail metrics check
 
 set -euo pipefail
 
@@ -155,6 +156,24 @@ if [[ "${SKIP_EXAMPLE:-0}" != "1" ]]; then
   fi
 else
   warn "Skipping example app smoke test (SKIP_EXAMPLE=1)"
+fi
+
+if [[ "${SKIP_PERF_GUARDRAIL:-0}" != "1" ]]; then
+  say "Running performance guardrail checks"
+  if python3 ./scripts/perf_guardrail.py \
+      --build-dir build \
+      --build-type "$BUILD_TYPE" \
+      --jobs "$JOBS" \
+      --baseline docs/perf/performance_baseline.json \
+      --history-dir build/perf/history \
+      --print; then
+    ok "Performance guardrail checks passed"
+  else
+    err "Performance guardrail failed"
+    exit 1
+  fi
+else
+  warn "Skipping performance guardrail (SKIP_PERF_GUARDRAIL=1)"
 fi
 
 ok "Local pre-push checks passed"

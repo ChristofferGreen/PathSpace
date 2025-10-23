@@ -41,6 +41,12 @@ SIZE_BASELINE=""
 SIZE_WRITE_BASELINE=""
 SIZE_BASELINE_DEFAULT="$ROOT_DIR/docs/perf/example_size_baseline.json"
 SIZE_PRINT_DONE=0
+PERF_REPORT=0
+PERF_BASELINE=""
+PERF_WRITE_BASELINE=""
+PERF_HISTORY_DIR=""
+PERF_BASELINE_DEFAULT="$ROOT_DIR/docs/perf/performance_baseline.json"
+PERF_PRINT=0
 
 # ----------------------------
 # Helpers
@@ -79,6 +85,11 @@ Options:
                              guardrail baseline (default baseline path: $SIZE_BASELINE_DEFAULT).
       --size-write-baseline[=PATH]
                              Record the current binary sizes as the new guardrail baseline.
+      --perf-report[=PATH]     Run the performance guardrail checks (default baseline path:
+                             $PERF_BASELINE_DEFAULT).
+      --perf-write-baseline[=PATH]
+                             Record current renderer/presenter metrics as the new performance baseline.
+      --perf-history-dir PATH  Append performance run outputs to JSONL files under PATH.
   -h, --help                 Show this help and exit.
 
 Sanitizers (mutually exclusive, maps to CMake options in this repo):
@@ -121,6 +132,29 @@ run_size_guardrail() {
     shift
   done
   python3 "$SCRIPT_DIR/size_guardrail.py" "${args[@]}"
+}
+
+run_perf_guardrail() {
+  require_tool python3
+  local args=("--build-dir" "$BUILD_DIR" "--build-type" "$BUILD_TYPE" "--jobs" "$JOBS")
+  if [[ -n "$PERF_BASELINE" ]]; then
+    args+=("--baseline" "$PERF_BASELINE")
+  else
+    args+=("--baseline" "$PERF_BASELINE_DEFAULT")
+  fi
+  if [[ -n "$PERF_HISTORY_DIR" ]]; then
+    args+=("--history-dir" "$PERF_HISTORY_DIR")
+  fi
+  if [[ "$PERF_PRINT" -eq 1 ]]; then
+    args+=("--print")
+  fi
+  if [[ "$VERBOSE" -eq 1 ]]; then
+    args+=("--verbose")
+  fi
+  if [[ "$1" == "write" ]]; then
+    args+=("--write-baseline")
+  fi
+  python3 "$SCRIPT_DIR/perf_guardrail.py" "${args[@]}"
 }
 
 # ----------------------------
@@ -242,6 +276,27 @@ while [[ $# -gt 0 ]]; do
     --size-write-baseline=*)
       SIZE_WRITE_BASELINE="${1#*=}"
       ;;
+    --perf-report)
+      PERF_REPORT=1
+      ;;
+    --perf-report=*)
+      PERF_REPORT=1
+      PERF_BASELINE="${1#*=}"
+      ;;
+    --perf-write-baseline)
+      PERF_WRITE_BASELINE=1
+      ;;
+    --perf-write-baseline=*)
+      PERF_WRITE_BASELINE=1
+      PERF_BASELINE="${1#*=}"
+      ;;
+    --perf-history-dir)
+      shift || die "Missing argument for $1"
+      PERF_HISTORY_DIR="$1"
+      ;;
+    --perf-history-dir=*)
+      PERF_HISTORY_DIR="${1#*=}"
+      ;;
     -h|--help)
       print_help
       exit 0
@@ -255,6 +310,12 @@ done
 
 if [[ "$SIZE_REPORT" -eq 1 && -z "$SIZE_BASELINE" ]]; then
   SIZE_BASELINE="$SIZE_BASELINE_DEFAULT"
+fi
+if [[ "$PERF_REPORT" -eq 1 || "$PERF_WRITE_BASELINE" -eq 1 ]]; then
+  if [[ -z "$PERF_BASELINE" ]]; then
+    PERF_BASELINE="$PERF_BASELINE_DEFAULT"
+  fi
+  PERF_PRINT=1
 fi
 
 # ----------------------------
@@ -310,8 +371,11 @@ CMAKE_FLAGS+=("-DPATHSPACE_ENABLE_UI=ON" "-DPATHSPACE_UI_SOFTWARE=ON")
 if [[ "$ENABLE_METAL_TESTS" -eq 1 ]]; then
   CMAKE_FLAGS+=("-DPATHSPACE_UI_METAL=ON")
 fi
-if [[ "$SIZE_REPORT" -eq 1 || -n "$SIZE_WRITE_BASELINE" ]]; then
+if [[ "$SIZE_REPORT" -eq 1 || -n "$SIZE_WRITE_BASELINE" || "$PERF_REPORT" -eq 1 || "$PERF_WRITE_BASELINE" -eq 1 ]]; then
   CMAKE_FLAGS+=("-DBUILD_PATHSPACE_EXAMPLES=ON")
+fi
+if [[ "$PERF_REPORT" -eq 1 || "$PERF_WRITE_BASELINE" -eq 1 ]]; then
+  CMAKE_FLAGS+=("-DBUILD_PATHSPACE_BENCHMARKS=ON")
 fi
 
 # ----------------------------
@@ -408,6 +472,12 @@ if [[ -n "$SIZE_WRITE_BASELINE" ]]; then
 fi
 if [[ "$SIZE_REPORT" -eq 1 ]]; then
   run_size_guardrail "--baseline" "$SIZE_BASELINE"
+fi
+if [[ "$PERF_WRITE_BASELINE" -eq 1 ]]; then
+  run_perf_guardrail "write"
+fi
+if [[ "$PERF_REPORT" -eq 1 ]]; then
+  run_perf_guardrail "check"
 fi
 
 # Determine per-test timeout default (if not provided)

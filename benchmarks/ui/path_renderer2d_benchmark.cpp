@@ -14,7 +14,9 @@
 #include <cstdint>
 #include <cstring>
 #include <cstdlib>
+#include <cstdio>
 #include <exception>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <numeric>
@@ -23,6 +25,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <ctime>
 #include <span>
 #include <optional>
 #include <vector>
@@ -171,14 +174,44 @@ struct DamageMetrics {
 
 struct FrameMetrics {
     double render_ms = 0.0;
-    double damage_ms = 0.0;
-    double encode_ms = 0.0;
-    double progressive_copy_ms = 0.0;
-    double publish_ms = 0.0;
-    double present_ms = 0.0;
-    std::uint64_t tiles = 0;
-    std::uint64_t bytes = 0;
-    std::optional<DamageMetrics> damage;
+   double damage_ms = 0.0;
+   double encode_ms = 0.0;
+   double progressive_copy_ms = 0.0;
+   double publish_ms = 0.0;
+   double present_ms = 0.0;
+   std::uint64_t tiles = 0;
+   std::uint64_t bytes = 0;
+   std::optional<DamageMetrics> damage;
+};
+
+struct AggregateMetrics {
+    std::size_t frame_count = 0;
+    double avg_ms = 0.0;
+    double fps = 0.0;
+    double worst_ms = 0.0;
+    double avg_damage_ms = 0.0;
+    double avg_encode_ms = 0.0;
+    double avg_copy_ms = 0.0;
+    double avg_publish_ms = 0.0;
+    double avg_present_ms = 0.0;
+    double avg_tiles = 0.0;
+    double avg_bytes = 0.0;
+};
+
+struct DamageSummary {
+    double coverage = 0.0;
+    double dirty_ratio = 0.0;
+    double skipped_ratio = 0.0;
+    double rectangles = 0.0;
+    double fingerprint_exact = 0.0;
+    double fingerprint_remap = 0.0;
+    double fingerprint_changed = 0.0;
+    double fingerprint_new = 0.0;
+    double fingerprint_removed = 0.0;
+    double tiles_dirty = 0.0;
+    double tiles_total = 0.0;
+    double tiles_skipped = 0.0;
+    std::size_t samples = 0;
 };
 
 auto read_metric(PathSpace const& space, std::string const& base, std::string const& leaf) -> std::uint64_t {
@@ -238,60 +271,77 @@ struct DamageAccumulator {
     double coverage_sum = 0.0;
     double dirty_ratio_sum = 0.0;
     double skipped_ratio_sum = 0.0;
-    std::uint64_t rectangles_sum = 0;
-    std::uint64_t fingerprint_exact_sum = 0;
-    std::uint64_t fingerprint_remap_sum = 0;
-    std::uint64_t fingerprint_changed_sum = 0;
-    std::uint64_t fingerprint_new_sum = 0;
-    std::uint64_t fingerprint_removed_sum = 0;
-    std::uint64_t tiles_dirty_sum = 0;
-    std::uint64_t tiles_total_sum = 0;
-    std::uint64_t tiles_skipped_sum = 0;
+    double rectangles_sum = 0.0;
+    double fingerprint_exact_sum = 0.0;
+    double fingerprint_remap_sum = 0.0;
+    double fingerprint_changed_sum = 0.0;
+    double fingerprint_new_sum = 0.0;
+    double fingerprint_removed_sum = 0.0;
+    double tiles_dirty_sum = 0.0;
+    double tiles_total_sum = 0.0;
+    double tiles_skipped_sum = 0.0;
 
     void add(DamageMetrics const& metrics) {
         ++samples;
         coverage_sum += metrics.coverage;
         dirty_ratio_sum += metrics.dirty_ratio();
         skipped_ratio_sum += metrics.skipped_ratio();
-        rectangles_sum += metrics.rectangles;
-        fingerprint_exact_sum += metrics.fingerprint_exact;
-        fingerprint_remap_sum += metrics.fingerprint_remap;
-        fingerprint_changed_sum += metrics.fingerprint_changed;
-        fingerprint_new_sum += metrics.fingerprint_new;
-        fingerprint_removed_sum += metrics.fingerprint_removed;
-        tiles_dirty_sum += metrics.tiles_dirty;
-        tiles_total_sum += metrics.tiles_total;
-        tiles_skipped_sum += metrics.tiles_skipped;
+        rectangles_sum += static_cast<double>(metrics.rectangles);
+        fingerprint_exact_sum += static_cast<double>(metrics.fingerprint_exact);
+        fingerprint_remap_sum += static_cast<double>(metrics.fingerprint_remap);
+        fingerprint_changed_sum += static_cast<double>(metrics.fingerprint_changed);
+        fingerprint_new_sum += static_cast<double>(metrics.fingerprint_new);
+        fingerprint_removed_sum += static_cast<double>(metrics.fingerprint_removed);
+        tiles_dirty_sum += static_cast<double>(metrics.tiles_dirty);
+        tiles_total_sum += static_cast<double>(metrics.tiles_total);
+        tiles_skipped_sum += static_cast<double>(metrics.tiles_skipped);
     }
 
     [[nodiscard]] auto empty() const -> bool {
         return samples == 0;
     }
 
+    [[nodiscard]] auto aggregate() const -> std::optional<DamageSummary> {
+        if (empty()) {
+            return std::nullopt;
+        }
+        auto inv = 1.0 / static_cast<double>(samples);
+        DamageSummary summary{};
+        summary.coverage = coverage_sum * inv;
+        summary.dirty_ratio = dirty_ratio_sum * inv;
+        summary.skipped_ratio = skipped_ratio_sum * inv;
+        summary.rectangles = rectangles_sum * inv;
+        summary.fingerprint_exact = fingerprint_exact_sum * inv;
+        summary.fingerprint_remap = fingerprint_remap_sum * inv;
+        summary.fingerprint_changed = fingerprint_changed_sum * inv;
+        summary.fingerprint_new = fingerprint_new_sum * inv;
+        summary.fingerprint_removed = fingerprint_removed_sum * inv;
+        summary.tiles_dirty = tiles_dirty_sum * inv;
+        summary.tiles_total = tiles_total_sum * inv;
+        summary.tiles_skipped = tiles_skipped_sum * inv;
+        summary.samples = samples;
+        return summary;
+    }
+
     [[nodiscard]] auto summary(std::string_view label) const -> std::string {
         std::ostringstream oss;
-        if (empty()) {
+        auto aggregated = aggregate();
+        if (!aggregated) {
             oss << label << ": metrics unavailable (enable --metrics)";
             return oss.str();
         }
-        auto avg = [&](std::uint64_t value_sum) {
-            return static_cast<double>(value_sum) / static_cast<double>(samples);
-        };
         auto pct = [](double value) {
             return value * 100.0;
         };
-        double avg_coverage = coverage_sum / static_cast<double>(samples);
-        double avg_dirty_ratio = dirty_ratio_sum / static_cast<double>(samples);
-        double avg_skipped_ratio = skipped_ratio_sum / static_cast<double>(samples);
-
-        oss << label << ": coverage " << std::fixed << std::setprecision(2) << pct(avg_coverage) << "% avg, "
-            << "dirty tiles " << std::setprecision(2) << pct(avg_dirty_ratio) << "%, "
-            << "skipped " << std::setprecision(2) << pct(avg_skipped_ratio) << "%; "
-            << "rectangles avg " << std::setprecision(2) << avg(rectangles_sum)
-            << ", fingerprints Δ " << std::setprecision(2) << avg(fingerprint_changed_sum)
-            << " / remap " << std::setprecision(2) << avg(fingerprint_remap_sum)
-            << " / new " << std::setprecision(2) << avg(fingerprint_new_sum)
-            << " / removed " << std::setprecision(2) << avg(fingerprint_removed_sum);
+        auto const& summary = *aggregated;
+        oss << label << ": coverage " << std::fixed << std::setprecision(2) << pct(summary.coverage) << "% avg, "
+            << "dirty tiles " << std::setprecision(2) << pct(summary.dirty_ratio) << "%, "
+            << "skipped " << std::setprecision(2) << pct(summary.skipped_ratio) << "%; "
+            << "rectangles avg " << std::setprecision(2) << summary.rectangles
+            << ", fingerprints Δ " << std::setprecision(2) << summary.fingerprint_changed
+            << " / remap " << std::setprecision(2) << summary.fingerprint_remap
+            << " / new " << std::setprecision(2) << summary.fingerprint_new
+            << " / removed " << std::setprecision(2) << summary.fingerprint_removed;
         return oss.str();
     }
 };
@@ -361,9 +411,11 @@ auto render_frame(PathRenderer2D& renderer,
     return metrics;
 }
 
-auto format_result(std::vector<FrameMetrics> const& frames) -> std::string {
+auto aggregate_frame_metrics(std::vector<FrameMetrics> const& frames) -> AggregateMetrics {
+    AggregateMetrics agg{};
+    agg.frame_count = frames.size();
     if (frames.empty()) {
-        return "no frames recorded";
+        return agg;
     }
     auto count = static_cast<double>(frames.size());
     double sum_ms = 0.0;
@@ -386,29 +438,181 @@ auto format_result(std::vector<FrameMetrics> const& frames) -> std::string {
         sum_bytes += static_cast<double>(frame.bytes);
         worst_ms = std::max(worst_ms, frame.render_ms);
     }
-    double avg_ms = sum_ms / count;
-    double avg_damage = sum_damage / count;
-    double avg_encode = sum_encode / count;
-    double avg_copy = sum_progressive / count;
-    double avg_publish = sum_publish / count;
-    double avg_present = sum_present / count;
-    double avg_tiles = sum_tiles / count;
-    double avg_bytes = sum_bytes / count;
-    double fps = avg_ms > 0.0 ? 1000.0 / avg_ms : 0.0;
+    agg.avg_ms = sum_ms / count;
+    agg.avg_damage_ms = sum_damage / count;
+    agg.avg_encode_ms = sum_encode / count;
+    agg.avg_copy_ms = sum_progressive / count;
+    agg.avg_publish_ms = sum_publish / count;
+    agg.avg_present_ms = sum_present / count;
+    agg.avg_tiles = sum_tiles / count;
+    agg.avg_bytes = sum_bytes / count;
+    agg.worst_ms = worst_ms;
+    agg.fps = agg.avg_ms > 0.0 ? 1000.0 / agg.avg_ms : 0.0;
+    return agg;
+}
+
+auto json_escape(std::string_view value) -> std::string {
+    std::string out;
+    out.reserve(value.size() + 4);
+    for (char ch : value) {
+        switch (ch) {
+        case '\\':
+            out += "\\\\";
+            break;
+        case '"':
+            out += "\\\"";
+            break;
+        case '\n':
+            out += "\\n";
+            break;
+        case '\r':
+            out += "\\r";
+            break;
+        case '\t':
+            out += "\\t";
+            break;
+        default:
+            if (static_cast<unsigned char>(ch) < 0x20) {
+                char buffer[7];
+                std::snprintf(buffer, sizeof(buffer), "\\u%04x", static_cast<unsigned char>(ch));
+                out += buffer;
+            } else {
+                out += ch;
+            }
+            break;
+        }
+    }
+    return out;
+}
+
+void write_json_report(std::string const& path,
+                       int canvas_width,
+                       int canvas_height,
+                       std::uint32_t progressive_tile_count,
+                       std::uint32_t progressive_tile_size,
+                       AggregateMetrics const& full_metrics,
+                       std::optional<DamageSummary> const& full_damage,
+                       AggregateMetrics const& incremental_metrics,
+                       std::optional<DamageSummary> const& incremental_damage,
+                       bool metrics_enabled,
+                       std::vector<std::string> const& argv) {
+    auto indent = [](int level) {
+        return std::string(static_cast<std::size_t>(level) * 2U, ' ');
+    };
+
+    auto write_metrics = [&](std::ostream& os, AggregateMetrics const& metrics, int level) {
+        auto pad = indent(level);
+        os << pad << "\"frameCount\": " << metrics.frame_count << ",\n";
+        os << pad << "\"avgMs\": " << metrics.avg_ms << ",\n";
+        os << pad << "\"fps\": " << metrics.fps << ",\n";
+        os << pad << "\"worstMs\": " << metrics.worst_ms << ",\n";
+        os << pad << "\"avgDamageMs\": " << metrics.avg_damage_ms << ",\n";
+        os << pad << "\"avgEncodeMs\": " << metrics.avg_encode_ms << ",\n";
+        os << pad << "\"avgCopyMs\": " << metrics.avg_copy_ms << ",\n";
+        os << pad << "\"avgPublishMs\": " << metrics.avg_publish_ms << ",\n";
+        os << pad << "\"avgPresentMs\": " << metrics.avg_present_ms << ",\n";
+        os << pad << "\"avgTiles\": " << metrics.avg_tiles << ",\n";
+        os << pad << "\"avgBytes\": " << metrics.avg_bytes << "\n";
+    };
+
+    auto write_damage = [&](std::ostream& os, DamageSummary const& damage, int level) {
+        auto pad = indent(level);
+        os << pad << "\"samples\": " << damage.samples << ",\n";
+        os << pad << "\"averageCoverage\": " << damage.coverage << ",\n";
+        os << pad << "\"averageDirtyRatio\": " << damage.dirty_ratio << ",\n";
+        os << pad << "\"averageSkippedRatio\": " << damage.skipped_ratio << ",\n";
+        os << pad << "\"averageRectangles\": " << damage.rectangles << ",\n";
+        os << pad << "\"averageFingerprintExact\": " << damage.fingerprint_exact << ",\n";
+        os << pad << "\"averageFingerprintRemap\": " << damage.fingerprint_remap << ",\n";
+        os << pad << "\"averageFingerprintChanged\": " << damage.fingerprint_changed << ",\n";
+        os << pad << "\"averageFingerprintNew\": " << damage.fingerprint_new << ",\n";
+        os << pad << "\"averageFingerprintRemoved\": " << damage.fingerprint_removed << ",\n";
+        os << pad << "\"averageTilesDirty\": " << damage.tiles_dirty << ",\n";
+        os << pad << "\"averageTilesTotal\": " << damage.tiles_total << ",\n";
+        os << pad << "\"averageTilesSkipped\": " << damage.tiles_skipped << "\n";
+    };
+
+    auto now = std::chrono::system_clock::now();
+    auto now_time = std::chrono::system_clock::to_time_t(now);
+#if defined(_WIN32)
+    std::tm utc_tm{};
+    gmtime_s(&utc_tm, &now_time);
+#else
+    std::tm utc_tm{};
+    gmtime_r(&now_time, &utc_tm);
+#endif
+    std::ostringstream timestamp;
+    timestamp << std::put_time(&utc_tm, "%FT%TZ");
+
+    std::ofstream out(path, std::ios::trunc);
+    if (!out) {
+        throw std::runtime_error("failed to open JSON report for writing: " + path);
+    }
+    out << std::fixed << std::setprecision(6);
+
+    out << "{\n";
+    out << indent(1) << "\"generatedAt\": \"" << timestamp.str() << "\",\n";
+    out << indent(1) << "\"canvas\": {\"width\": " << canvas_width << ", \"height\": " << canvas_height << "},\n";
+    out << indent(1) << "\"progressive\": {\"tileCount\": " << progressive_tile_count
+        << ", \"tileSize\": " << progressive_tile_size << "},\n";
+    out << indent(1) << "\"metricsEnabled\": " << (metrics_enabled ? "true" : "false") << ",\n";
+    out << indent(1) << "\"command\": {\n";
+    out << indent(2) << "\"argv\": [";
+    for (std::size_t i = 0; i < argv.size(); ++i) {
+        if (i > 0) {
+            out << ", ";
+        }
+        out << "\"" << json_escape(argv[i]) << "\"";
+    }
+    out << "],\n";
+    out << indent(2) << "\"program\": \"" << (argv.empty() ? "" : json_escape(argv.front())) << "\"\n";
+    out << indent(1) << "},\n";
+
+    out << indent(1) << "\"frames\": {\n";
+    out << indent(2) << "\"fullRepaint\": {\n";
+    write_metrics(out, full_metrics, 3);
+    if (full_damage) {
+        out << ",\n" << indent(3) << "\"damage\": {\n";
+        write_damage(out, *full_damage, 4);
+        out << indent(3) << "}\n";
+    } else {
+        out << "\n";
+    }
+    out << indent(2) << "},\n";
+
+    out << indent(2) << "\"incremental\": {\n";
+    write_metrics(out, incremental_metrics, 3);
+    if (incremental_damage) {
+        out << ",\n" << indent(3) << "\"damage\": {\n";
+        write_damage(out, *incremental_damage, 4);
+        out << indent(3) << "}\n";
+    } else {
+        out << "\n";
+    }
+    out << indent(2) << "}\n";
+    out << indent(1) << "}\n";
+    out << "}\n";
+}
+
+auto format_result(std::vector<FrameMetrics> const& frames) -> std::string {
+    if (frames.empty()) {
+        return "no frames recorded";
+    }
+    auto agg = aggregate_frame_metrics(frames);
 
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(2);
-    oss << "frames=" << frames.size()
-        << " avg_ms=" << avg_ms
-        << " fps=" << fps
-        << " worst_ms=" << worst_ms
-        << " avg_damage_ms=" << avg_damage
-        << " avg_encode_ms=" << avg_encode
-        << " avg_copy_ms=" << avg_copy
-        << " avg_publish_ms=" << avg_publish
-        << " avg_present_ms=" << avg_present
-        << " avg_tiles=" << avg_tiles
-        << " avg_bytes=" << avg_bytes / 1'000'000.0 << "MB";
+    oss << "frames=" << agg.frame_count
+        << " avg_ms=" << agg.avg_ms
+        << " fps=" << agg.fps
+        << " worst_ms=" << agg.worst_ms
+        << " avg_damage_ms=" << agg.avg_damage_ms
+        << " avg_encode_ms=" << agg.avg_encode_ms
+        << " avg_copy_ms=" << agg.avg_copy_ms
+        << " avg_publish_ms=" << agg.avg_publish_ms
+        << " avg_present_ms=" << agg.avg_present_ms
+        << " avg_tiles=" << agg.avg_tiles
+        << " avg_bytes=" << agg.avg_bytes / 1'000'000.0 << "MB";
     return oss.str();
 }
 
@@ -445,6 +649,8 @@ int main(int argc, char** argv) try {
     constexpr int brush_size = 64;
     constexpr int incremental_frames = 48;
     bool enable_metrics = false;
+    std::string json_report_path;
+    std::vector<std::string> command_args(argv, argv + argc);
 
     for (int i = 1; i < argc; ++i) {
         std::string_view arg{argv[i]};
@@ -473,6 +679,23 @@ int main(int argc, char** argv) try {
             }
             canvas_width = *width;
             canvas_height = *height;
+            continue;
+        }
+        if (arg == "--write-json") {
+            if (i + 1 >= argc) {
+                std::cerr << "--write-json requires a path argument" << std::endl;
+                return 1;
+            }
+            json_report_path = argv[++i];
+            continue;
+        }
+        if (arg.rfind("--write-json=", 0) == 0) {
+            auto path = arg.substr(std::string_view{"--write-json="}.size());
+            if (path.empty()) {
+                std::cerr << "--write-json requires a non-empty path" << std::endl;
+                return 1;
+            }
+            json_report_path = std::string(path);
             continue;
         }
         std::cerr << "unknown argument: " << arg << std::endl;
@@ -673,6 +896,26 @@ int main(int argc, char** argv) try {
     if (enable_metrics) {
         std::cout << full_damage_acc.summary("Full repaint damage metrics") << std::endl;
         std::cout << incremental_damage_acc.summary("Incremental damage metrics") << std::endl;
+    }
+
+    auto full_summary = aggregate_frame_metrics(full_frames);
+    auto incremental_summary = aggregate_frame_metrics(incremental_frames_metrics);
+    auto full_damage_summary = full_damage_acc.aggregate();
+    auto incremental_damage_summary = incremental_damage_acc.aggregate();
+
+    if (!json_report_path.empty()) {
+        write_json_report(json_report_path,
+                          canvas_width,
+                          canvas_height,
+                          static_cast<std::uint32_t>(surface.progressive_tile_count()),
+                          static_cast<std::uint32_t>(surface.progressive_tile_size()),
+                          full_summary,
+                          full_damage_summary,
+                          incremental_summary,
+                          incremental_damage_summary,
+                          enable_metrics,
+                          command_args);
+        std::cout << "Wrote JSON metrics to " << json_report_path << std::endl;
     }
 
     // Small-surface diagnostic matching regression tests
