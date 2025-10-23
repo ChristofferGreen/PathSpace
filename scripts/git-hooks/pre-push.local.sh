@@ -14,6 +14,12 @@
 #   ENABLE_PATHIO_MACOS=ON  -> on macOS, enable PathIO macOS backends in the example build
 #   DISABLE_METAL_TESTS=1   -> skip Metal presenter coverage even on macOS
 #   SKIP_PERF_GUARDRAIL=1   -> skip performance guardrail metrics check
+#   RUN_ASAN=1              -> run an additional AddressSanitizer build/test pass
+#   RUN_TSAN=1              -> run an additional ThreadSanitizer build/test pass
+#   ASAN_LOOP=N             -> override ASan test loop iterations (default 1)
+#   TSAN_LOOP=N             -> override TSan test loop iterations (default 1)
+#   SANITIZER_CLEAN=1       -> force sanitized passes to clean their build directories before running
+#   SANITIZER_BUILD_TYPE=TYPE -> override sanitized build type (default Debug)
 
 set -euo pipefail
 
@@ -119,6 +125,7 @@ if [[ "$(uname)" == "Darwin" ]] && [[ "${DISABLE_METAL_TESTS:-0}" != "1" ]]; the
   PATHSPACE_CMAKE_ARGS+=" -DPATHSPACE_UI_METAL=ON"
   METAL_TEST_ARGS+=(--enable-metal-tests)
 fi
+BASE_PATHSPACE_CMAKE_ARGS="$PATHSPACE_CMAKE_ARGS"
 
 say "Repository root: $ROOT"
 say "Jobs: $JOBS  Build type: $BUILD_TYPE"
@@ -133,6 +140,44 @@ if [[ "${SKIP_LOOP_TESTS:-0}" != "1" ]]; then
 else
   warn "Skipping test loop (SKIP_LOOP_TESTS=1)"
 fi
+
+# Optional sanitizer passes
+SANITIZER_RUNS=()
+if [[ "${RUN_ASAN:-0}" == "1" ]]; then
+  SANITIZER_RUNS+=("asan")
+fi
+if [[ "${RUN_TSAN:-0}" == "1" ]]; then
+  SANITIZER_RUNS+=("tsan")
+fi
+
+if [[ ${#SANITIZER_RUNS[@]} -gt 0 ]]; then
+  say "Running optional sanitizer passes: ${SANITIZER_RUNS[*]}"
+fi
+
+for sanitizer in "${SANITIZER_RUNS[@]}"; do
+  upper_sanitizer="$(echo "$sanitizer" | tr '[:lower:]' '[:upper:]')"
+  local_loop=""
+  case "$sanitizer" in
+    "asan") local_loop="${ASAN_LOOP:-}";;
+    "tsan") local_loop="${TSAN_LOOP:-}";;
+  esac
+  sanitize_args=()
+  if [[ "${SANITIZER_CLEAN:-0}" == "1" ]]; then
+    sanitize_args+=("--clean")
+  fi
+  sanitize_args+=("--build-dir" "build-${sanitizer}")
+  sanitize_args+=("--build-type" "${SANITIZER_BUILD_TYPE:-Debug}")
+  sanitize_args+=("--jobs" "$JOBS")
+  sanitize_args+=("--disable-metal-tests")
+  sanitize_args+=("--${sanitizer}-test")
+  if [[ -n "$local_loop" ]]; then
+    sanitize_args+=("--loop=$local_loop")
+  fi
+  say "Running ${upper_sanitizer} sanitizer build/test pass"
+  PATHSPACE_CMAKE_ARGS="$BASE_PATHSPACE_CMAKE_ARGS -DPATHSPACE_UI_METAL=OFF" \
+    ./scripts/compile.sh "${sanitize_args[@]}"
+  ok "${upper_sanitizer} sanitizer pass succeeded"
+done
 
 # 2) Build the example app (non-sim) unless skipped
 if [[ "${SKIP_EXAMPLE:-0}" != "1" ]]; then

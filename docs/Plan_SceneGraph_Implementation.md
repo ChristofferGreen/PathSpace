@@ -193,7 +193,8 @@ Next:
 - Refresh `docs/AI_Architecture.md` and renderer diagrams once files move so architecture snapshots continue to match the code layout.
 - ✅ (October 23, 2025) Added a performance regression guardrail (`scripts/perf_guardrail.py`) that runs the PathRenderer2D benchmark plus the pixel noise presenter, compares results against `docs/perf/performance_baseline.json`, records history under `build/perf/`, and integrates with both `scripts/compile.sh --perf-report` and the local `pre-push` hook to block pushes on regressions.
 - Build a fault-injection harness that flips Metal upload flags, simulates surface resize failures, and drops drawables mid-frame to ensure diagnostics and error paths stay actionable.
-- Add optional ASan/TSan build/test modes via `scripts/compile.sh` (and expose toggles for the pre-push hook) so we can spot memory/race issues on demand without introducing a nightly job.
+- ✅ (October 23, 2025) Added optional ASan/TSan build/test modes via `scripts/compile.sh` (plus pre-push toggles) so maintainers can trigger sanitized loops on demand without a nightly job.
+  - `./scripts/compile.sh --asan-test` / `--tsan-test` auto-select sanitizer build directories, disable Metal by default, and export recommended runtime env vars; pre-push hook honours `RUN_ASAN=1` / `RUN_TSAN=1` with optional `ASAN_LOOP` / `TSAN_LOOP` overrides.
 - Document how the expanded diagnostics map into dashboards/alerts (metrics → panels/thresholds) so maintainers know where to monitor residency, progressive tiles, and performance regression outputs.
 
 ### Phase 7 — Optional Backends & HTML Adapter Prep (post-MVP)
