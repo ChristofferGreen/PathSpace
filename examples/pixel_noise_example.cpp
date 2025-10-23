@@ -4,6 +4,10 @@
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <third_party/stb_image_write.h>
+
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -67,6 +71,7 @@ struct Options {
     std::optional<double> budget_render_ms{};
     std::optional<double> min_fps{};
     std::optional<std::string> baseline_path{};
+    std::optional<std::filesystem::path> frame_output_path{};
 };
 
 struct BaselineSummary {
@@ -122,6 +127,91 @@ auto severity_to_string(Builders::Diagnostics::PathSpaceError::Severity severity
         return "fatal";
     }
     return "unknown";
+}
+
+void write_frame_capture_png_or_exit(Builders::SoftwareFramebuffer const& framebuffer,
+                                     std::filesystem::path const& output_path) {
+    if (framebuffer.width <= 0 || framebuffer.height <= 0) {
+        std::cerr << "pixel_noise_example: framebuffer capture has invalid dimensions "
+                  << framebuffer.width << "x" << framebuffer.height << '\n';
+        std::exit(1);
+    }
+
+    auto const format = framebuffer.pixel_format;
+    bool const is_rgba = format == Builders::PixelFormat::RGBA8Unorm
+                      || format == Builders::PixelFormat::RGBA8Unorm_sRGB;
+    bool const is_bgra = format == Builders::PixelFormat::BGRA8Unorm
+                      || format == Builders::PixelFormat::BGRA8Unorm_sRGB;
+    if (!(is_rgba || is_bgra)) {
+        std::cerr << "pixel_noise_example: framebuffer capture pixel format not supported for PNG export ("
+                  << static_cast<int>(format) << ")\n";
+        std::exit(1);
+    }
+
+    auto const parent = output_path.parent_path();
+    if (!parent.empty()) {
+        std::error_code ec{};
+        std::filesystem::create_directories(parent, ec);
+        if (ec) {
+            std::cerr << "pixel_noise_example: failed to create directory '" << parent.string()
+                      << "' for frame capture: " << ec.message() << '\n';
+            std::exit(1);
+        }
+    }
+
+    auto const width = framebuffer.width;
+    auto const height = framebuffer.height;
+    auto const row_stride = framebuffer.row_stride_bytes != 0
+        ? static_cast<std::size_t>(framebuffer.row_stride_bytes)
+        : static_cast<std::size_t>(width) * 4;
+    auto const packed_row_bytes = static_cast<std::size_t>(width) * 4;
+    auto const required_bytes = row_stride * static_cast<std::size_t>(std::max(height, 0));
+    if (framebuffer.pixels.size() < required_bytes) {
+        std::cerr << "pixel_noise_example: framebuffer capture underrun (have "
+                  << framebuffer.pixels.size() << " bytes, expected at least "
+                  << required_bytes << ")\n";
+        std::exit(1);
+    }
+
+    bool const needs_copy = is_bgra || row_stride != packed_row_bytes;
+    std::vector<std::uint8_t> rgba_storage;
+    std::uint8_t const* png_data = nullptr;
+    int png_stride = 0;
+
+    if (needs_copy) {
+        rgba_storage.resize(packed_row_bytes * static_cast<std::size_t>(height));
+        auto* dst = rgba_storage.data();
+        auto const* src = framebuffer.pixels.data();
+        for (int y = 0; y < height; ++y) {
+            auto const* src_row = src + static_cast<std::size_t>(y) * row_stride;
+            auto* dst_row = dst + static_cast<std::size_t>(y) * packed_row_bytes;
+            if (is_bgra) {
+                for (int x = 0; x < width; ++x) {
+                    auto const src_offset = static_cast<std::size_t>(x) * 4;
+                    dst_row[src_offset + 0] = src_row[src_offset + 2];
+                    dst_row[src_offset + 1] = src_row[src_offset + 1];
+                    dst_row[src_offset + 2] = src_row[src_offset + 0];
+                    dst_row[src_offset + 3] = src_row[src_offset + 3];
+                }
+            } else {
+                std::memcpy(dst_row, src_row, packed_row_bytes);
+            }
+        }
+        png_data = rgba_storage.data();
+        png_stride = static_cast<int>(packed_row_bytes);
+    } else {
+        png_data = framebuffer.pixels.data();
+        png_stride = static_cast<int>(row_stride);
+    }
+
+    auto const path_string = output_path.string();
+    if (stbi_write_png(path_string.c_str(), width, height, 4, png_data, png_stride) == 0) {
+        std::cerr << "pixel_noise_example: failed to write PNG frame capture to '"
+                  << path_string << "'\n";
+        std::exit(1);
+    }
+
+    std::cout << "pixel_noise_example: saved frame capture to " << path_string << '\n';
 }
 
 void write_baseline_metrics(Options const& options,
@@ -487,6 +577,15 @@ auto parse_options(int argc, char** argv) -> Options {
                 std::exit(1);
             }
             opts.baseline_path = std::string{path};
+        } else if (arg.rfind("--write-frame=", 0) == 0) {
+            constexpr std::string_view prefix = "--write-frame=";
+            auto path = arg.substr(prefix.size());
+            if (path.empty()) {
+                std::cerr << "pixel_noise_example: --write-frame requires a non-empty path\n";
+                std::exit(1);
+            }
+            opts.frame_output_path = std::filesystem::path{std::string{path}};
+            opts.capture_framebuffer = true;
         } else if (arg == "--help" || arg == "-h") {
             std::cout << "Usage: pixel_noise_example [options]\n"
                       << "Options:\n"
@@ -506,6 +605,7 @@ auto parse_options(int argc, char** argv) -> Options {
                       << "  --budget-render-ms=<ms>   Fail if avg render time exceeds this budget\n"
                       << "  --min-fps=<fps>           Fail if average FPS drops below this threshold\n"
                       << "  --write-baseline=<path>   Persist JSON baseline metrics to the given path\n"
+                      << "  --write-frame=<png>       Capture the first presented frame to the given PNG path\n"
                       << "  --headless                Skip local window presentation\n"
                       << "  --windowed                Show the local window while computing frames (default)\n"
                       << "  --capture-framebuffer     Enable framebuffer capture in the present policy\n"
@@ -927,6 +1027,7 @@ int main(int argc, char** argv) {
     bool last_tile_diagnostics_enabled = false;
     std::string last_backend_kind;
     bool track_present_call_time = options.report_present_call_time || options.baseline_path.has_value();
+    bool frame_written = false;
 
     while (g_running.load(std::memory_order_acquire)) {
         if (options.max_frames != 0 && total_presented >= options.max_frames) {
@@ -1046,6 +1147,16 @@ int main(int argc, char** argv) {
                 accumulated_present_ms += present->stats.present_ms;
                 accumulated_render_ms += present->stats.frame.render_ms;
             }
+        }
+
+        if (options.frame_output_path && !frame_written && present->stats.presented) {
+            auto framebuffer_capture = expect_or_exit(
+                Builders::Diagnostics::ReadSoftwareFramebuffer(
+                    space,
+                    SP::ConcretePathStringView{target_absolute.getPath()}),
+                "read software framebuffer");
+            write_frame_capture_png_or_exit(framebuffer_capture, *options.frame_output_path);
+            frame_written = true;
         }
 
         if (options.report_metrics) {

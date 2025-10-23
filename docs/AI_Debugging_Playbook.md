@@ -92,6 +92,7 @@ Environment knobs (all respected by the wrapper and the logger):
 | Benchmark damage/fingerprint metrics | `./build/benchmarks/path_renderer2d_benchmark --metrics [--canvas=WIDTHxHEIGHT]` |
 | Capture pixel-noise baseline JSON | `./scripts/capture_pixel_noise_baseline.sh` |
 | Check pixel-noise run against budgets | `python3 scripts/check_pixel_noise_baseline.py --build-dir build` |
+| Capture pixel-noise PNG frame | `./build/pixel_noise_example --headless --frames=1 --write-frame=docs/images/perf/pixel_noise.png` |
 
 ### 5.1 Pixel Noise Perf Harness Baselines
 
@@ -104,6 +105,7 @@ Environment knobs (all respected by the wrapper and the logger):
   - `tileStats.*` — progressive tiling activity (tiles updated/dirty/skipped/copied, worker/job counts) for spotting regression hot spots.
   - `residency.*` — mirrored metrics from `diagnostics/metrics/residency/*` so residency budget drifts surface during perf reviews.
 - Pair the JSON with the console summary emitted by the example (`pixel_noise_example: summary …`) when reporting numbers in PRs.
+- When updating visuals, run `./build/pixel_noise_example --headless --frames=1 --write-frame=docs/images/perf/pixel_noise.png` to refresh the canonical PNG shown in docs; the flag enables framebuffer capture automatically.
 - Keep older baselines committed when behaviour intentionally shifts; diffing JSON across commits highlights the magnitude of a regression or improvement.
 
 ## 6. Closing the Loop

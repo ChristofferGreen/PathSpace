@@ -36,3 +36,17 @@ The JSON payload includes:
   the captured command line.
 - When investigating regressions, compare the latest JSON against prior commits
   and re-run the script locally to confirm improvements.
+
+## Capturing a Frame Grab
+
+Use the pixel noise example’s PNG writer to capture a representative frame that
+matches the current baselines:
+
+```bash
+./build/pixel_noise_example --headless --frames=1 \
+  --write-frame=docs/images/perf/pixel_noise.png
+```
+
+The `--write-frame` flag enables framebuffer capture automatically and writes
+an RGBA PNG using the current surface size. Commit refreshed images alongside
+baseline JSON updates so perf regressions include both metrics and visuals.
