@@ -115,6 +115,9 @@ struct RenderSettings {
     struct Debug {
         uint32_t flags   = 0;
         bool     enabled = false;
+
+        static constexpr std::uint32_t kForceShapedText = 1u << 6;
+        static constexpr std::uint32_t kDisableTextFallback = 1u << 7;
     } debug;
 
     struct RendererState {

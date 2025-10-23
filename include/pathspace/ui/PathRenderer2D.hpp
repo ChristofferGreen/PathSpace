@@ -20,6 +20,11 @@ class PathSurfaceMetal;
 
 class PathRenderer2D {
 public:
+    enum class TextPipeline {
+        GlyphQuads,
+        Shaped,
+    };
+
     struct DrawableBounds {
         int min_x = 0;
         int min_y = 0;
@@ -59,6 +64,10 @@ public:
         std::uint64_t progressive_tiles_total = 0;
         std::uint64_t progressive_tiles_skipped = 0;
         bool progressive_tile_diagnostics_enabled = false;
+        std::uint64_t text_command_count = 0;
+        std::uint64_t text_fallback_count = 0;
+        TextPipeline text_pipeline = TextPipeline::GlyphQuads;
+        bool text_fallback_allowed = true;
         Builders::RendererKind backend_kind = Builders::RendererKind::Software2D;
         std::uint64_t resource_cpu_bytes = 0;
         std::uint64_t resource_gpu_bytes = 0;

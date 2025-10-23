@@ -18,6 +18,7 @@
 #include <numeric>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <span>
 #include <vector>
 #include <optional>
@@ -26,6 +27,7 @@
 #include <thread>
 #include <mutex>
 #include <exception>
+#include <cctype>
 
 #if defined(__APPLE__)
 #include <CoreFoundation/CoreFoundation.h>
@@ -51,6 +53,74 @@ auto damage_metrics_enabled() -> bool {
         return true;
     }
     return false;
+}
+
+auto to_lower_ascii(std::string_view value) -> std::string {
+    std::string lowered{value};
+    std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return lowered;
+}
+
+auto parse_bool(std::string_view value) -> std::optional<bool> {
+    auto lowered = to_lower_ascii(value);
+    if (lowered == "1" || lowered == "true" || lowered == "yes" || lowered == "on") {
+        return true;
+    }
+    if (lowered == "0" || lowered == "false" || lowered == "no" || lowered == "off") {
+        return false;
+    }
+    return std::nullopt;
+}
+
+auto parse_text_pipeline(std::string_view value) -> std::optional<PathRenderer2D::TextPipeline> {
+    auto lowered = to_lower_ascii(value);
+    if (lowered == "glyph" || lowered == "glyphs" || lowered == "glyph-quads" || lowered == "glyph_quads") {
+        return PathRenderer2D::TextPipeline::GlyphQuads;
+    }
+    if (lowered == "shaped" || lowered == "shaped-text" || lowered == "shaped_text") {
+        return PathRenderer2D::TextPipeline::Shaped;
+    }
+    return std::nullopt;
+}
+
+auto env_text_pipeline() -> std::optional<PathRenderer2D::TextPipeline> {
+    if (auto* env = std::getenv("PATHSPACE_TEXT_PIPELINE")) {
+        return parse_text_pipeline(env);
+    }
+    return std::nullopt;
+}
+
+auto env_disable_text_fallback() -> std::optional<bool> {
+    if (auto* env = std::getenv("PATHSPACE_DISABLE_TEXT_FALLBACK")) {
+        return parse_bool(env);
+    }
+    return std::nullopt;
+}
+
+auto determine_text_pipeline(Builders::RenderSettings const& settings)
+    -> std::pair<PathRenderer2D::TextPipeline, bool> {
+    auto pipeline = PathRenderer2D::TextPipeline::GlyphQuads;
+    bool allow_fallback = true;
+
+    if (auto env_pipeline = env_text_pipeline()) {
+        pipeline = *env_pipeline;
+    }
+    if (auto env_disable = env_disable_text_fallback()) {
+        allow_fallback = !(*env_disable);
+    }
+
+    if (settings.debug.enabled) {
+        if ((settings.debug.flags & Builders::RenderSettings::Debug::kForceShapedText) != 0) {
+            pipeline = PathRenderer2D::TextPipeline::Shaped;
+        }
+        if ((settings.debug.flags & Builders::RenderSettings::Debug::kDisableTextFallback) != 0) {
+            allow_fallback = false;
+        }
+    }
+
+    return {pipeline, allow_fallback};
 }
 
 template <typename T>
@@ -1316,6 +1386,13 @@ auto draw_image_command(Scene::ImageCommand const& command,
     return drawn;
 }
 
+auto draw_shaped_text_command(Scene::TextGlyphsCommand const& /*command*/,
+                              std::vector<float>& /*buffer*/,
+                              int /*width*/,
+                              int /*height*/) -> bool {
+    return false;
+}
+
 auto draw_text_glyphs_command(Scene::TextGlyphsCommand const& command,
                               std::vector<float>& buffer,
                               int width,
@@ -2138,6 +2215,9 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     std::size_t progressive_jobs = 0;
     std::size_t encode_workers_used = 0;
     std::size_t encode_jobs_used = 0;
+    auto const [text_pipeline_mode, text_fallback_allowed] = determine_text_pipeline(params.settings);
+    std::uint64_t text_command_count = 0;
+    std::uint64_t text_fallback_count = 0;
 
     auto image_asset_prefix = revisionBase + "/assets/images/";
 
@@ -2332,6 +2412,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                     case Scene::DrawCommandKind::TextGlyphs: {
                         auto glyphs = read_struct<Scene::TextGlyphsCommand>(bucket->command_payload,
                                                                             payload_offset);
+                        ++text_command_count;
                         record_material_kind(Scene::DrawCommandKind::TextGlyphs);
                         if (material_desc) {
                             material_desc->color_rgba = glyphs.color;
@@ -2339,27 +2420,49 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                         }
                         auto glyph_linear = make_linear_color(glyphs.color);
                         bool handled = false;
+                        auto draw_glyph_quads = [&](bool count_fallback) -> bool {
+                            bool drawn = false;
 #if defined(__APPLE__) && PATHSPACE_UI_METAL
-                        if (metal_active && metal_backend) {
-                            bool material_bound = true;
-                            if (material_desc) {
-                                material_bound = metal_backend->bind_material(*material_desc);
+                            if (metal_active && metal_backend) {
+                                bool material_bound = true;
+                                if (material_desc) {
+                                    material_bound = metal_backend->bind_material(*material_desc);
+                                }
+                                if (material_bound
+                                    && metal_backend->draw_text_quad(glyphs, to_array(glyph_linear))) {
+                                    drawable_drawn = true;
+                                    drawn = true;
+                                }
                             }
-                            if (material_bound
-                                && metal_backend->draw_text_quad(glyphs, to_array(glyph_linear))) {
-                                drawable_drawn = true;
-                                handled = true;
-                            }
-                        }
 #endif
-                        if (!handled) {
-                            if (draw_text_glyphs_command(glyphs, linear_buffer, width, height)) {
+                            if (!drawn) {
+                                if (draw_text_glyphs_command(glyphs, linear_buffer, width, height)) {
+                                    drawable_drawn = true;
+                                    drawn = true;
+                                }
+                            }
+                            if (drawn && count_fallback) {
+                                ++text_fallback_count;
+                            }
+                            return drawn;
+                        };
+
+                        auto shaped_requested = (text_pipeline_mode == TextPipeline::Shaped);
+                        if (shaped_requested) {
+                            if (draw_shaped_text_command(glyphs, linear_buffer, width, height)) {
                                 drawable_drawn = true;
                                 handled = true;
+                            } else if (text_fallback_allowed) {
+                                handled = draw_glyph_quads(true);
                             }
+                        } else {
+                            handled = draw_glyph_quads(false);
                         }
+
                         if (handled) {
                             ++executed_commands;
+                        } else {
+                            ++unsupported_commands;
                         }
                         break;
                     }
@@ -2969,6 +3072,13 @@ if (!metal_active && has_damage) {
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/materialResourceCount",
                                         static_cast<std::uint64_t>(resource_list.size()));
     (void)replace_single(space_, metricsBase + "/materialResources", resource_list);
+    (void)replace_single<std::uint64_t>(space_, metricsBase + "/textCommandCount", text_command_count);
+    (void)replace_single<std::uint64_t>(space_, metricsBase + "/textFallbackCount", text_fallback_count);
+    (void)replace_single<std::string>(space_,
+                                      metricsBase + "/textPipeline",
+                                      (text_pipeline_mode == TextPipeline::Shaped) ? std::string{"Shaped"}
+                                                                                    : std::string{"GlyphQuads"});
+    (void)replace_single<bool>(space_, metricsBase + "/textFallbackAllowed", text_fallback_allowed);
     if (collect_damage_metrics) {
         (void)replace_single<std::uint64_t>(space_, metricsBase + "/damageRectangles", damage_rect_count);
         (void)replace_single<double>(space_, metricsBase + "/damageCoverageRatio", damage_coverage_ratio);
@@ -3009,6 +3119,10 @@ if (!metal_active && has_damage) {
         stats.progressive_tiles_skipped = progressive_tiles_skipped;
     }
     stats.progressive_tile_diagnostics_enabled = collect_damage_metrics;
+    stats.text_command_count = text_command_count;
+    stats.text_fallback_count = text_fallback_count;
+    stats.text_pipeline = text_pipeline_mode;
+    stats.text_fallback_allowed = text_fallback_allowed;
     stats.backend_kind = params.backend_kind;
     stats.materials = material_list;
     stats.resource_residency = std::move(resource_list);

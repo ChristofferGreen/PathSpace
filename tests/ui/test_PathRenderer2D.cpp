@@ -2310,6 +2310,10 @@ TEST_CASE("render executes text glyphs command") {
     });
     REQUIRE(stats);
     CHECK(stats->drawable_count == 1);
+    CHECK(stats->text_command_count == 1);
+    CHECK(stats->text_fallback_count == 0);
+    CHECK(stats->text_pipeline == PathRenderer2D::TextPipeline::GlyphQuads);
+    CHECK(stats->text_fallback_allowed);
 
     auto buffer = copy_buffer(surface);
     auto stride = surface.row_stride_bytes();
@@ -2318,6 +2322,90 @@ TEST_CASE("render executes text glyphs command") {
     auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
     CHECK(fx.space.read<uint64_t>(metricsBase + "/commandsExecuted").value() == 1);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/unsupportedCommands").value() == 0);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/textCommandCount").value() == 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/textFallbackCount").value() == 0);
+    CHECK(fx.space.read<std::string, std::string>(metricsBase + "/textPipeline").value() == "GlyphQuads");
+    CHECK(fx.space.read<bool>(metricsBase + "/textFallbackAllowed").value());
+}
+
+TEST_CASE("text fallback engages when shaped pipeline requested") {
+    RendererFixture fx;
+
+    DrawableBucketSnapshot bucket{};
+    bucket.drawable_ids = {0x300101u};
+    bucket.world_transforms = {identity_transform()};
+    bucket.bounds_spheres = {BoundingSphere{{1.0f, 1.0f, 0.0f}, 2.0f}};
+    bucket.bounds_boxes = {BoundingBox{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 0.0f}}};
+    bucket.bounds_box_valid = {1};
+    bucket.layers = {0};
+    bucket.z_values = {0.0f};
+    bucket.material_ids = {1};
+    bucket.pipeline_flags = {AlphaBlend};
+    bucket.visibility = {1};
+    bucket.command_offsets = {0};
+    bucket.command_counts = {1};
+    bucket.alpha_indices = {0};
+    bucket.clip_head_indices = {-1};
+    bucket.authoring_map = {
+        DrawableAuthoringMapEntry{bucket.drawable_ids[0], "node/text", 0, 0},
+    };
+
+    UIScene::TextGlyphsCommand glyphs{};
+    glyphs.min_x = 0.0f;
+    glyphs.min_y = 0.0f;
+    glyphs.max_x = 2.0f;
+    glyphs.max_y = 2.0f;
+    glyphs.glyph_count = 6;
+    glyphs.color = {0.5f, 0.3f, 0.9f, 1.0f};
+    encode_text_glyphs_command(glyphs, bucket);
+
+    auto scenePath = create_scene(fx, "scene_text_fallback", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_text_fallback");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 2;
+    surfaceDesc.size_px.height = 2;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_text_fallback", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware surface{surfaceDesc};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.debug.enabled = true;
+    settings.debug.flags |= RenderSettings::Debug::kForceShapedText;
+
+    auto stats = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+    });
+    REQUIRE(stats);
+    CHECK(stats->drawable_count == 1);
+    CHECK(stats->text_command_count == 1);
+    CHECK(stats->text_fallback_count == 1);
+    CHECK(stats->text_pipeline == PathRenderer2D::TextPipeline::Shaped);
+    CHECK(stats->text_fallback_allowed);
+
+    auto buffer = copy_buffer(surface);
+    auto stride = surface.row_stride_bytes();
+    auto center_offset = stride + 4;
+    CHECK(buffer[center_offset + 3] > 0);
+
+    auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/commandsExecuted").value() == 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/unsupportedCommands").value() == 0);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/textCommandCount").value() == 1);
+    CHECK(fx.space.read<uint64_t>(metricsBase + "/textFallbackCount").value() == 1);
+    CHECK(fx.space.read<std::string, std::string>(metricsBase + "/textPipeline").value() == "Shaped");
+    CHECK(fx.space.read<bool>(metricsBase + "/textFallbackAllowed").value());
 }
 
 TEST_CASE("render executes path command using fill color") {

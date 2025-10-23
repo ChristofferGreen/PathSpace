@@ -1663,6 +1663,7 @@ Tests and metrics:
 - Text: Latin kerning/ligatures, Arabic joining+bidi, Devanagari reordering, CJK; verify layout stability for glyph-span mode.
 - Size/perf: DOM node count, total output size, initial render time; validate tier switch thresholds.
 - Path and containment: verify output paths populated and app-relative constraints enforced.
+- Fallback harness (October 23, 2025): renderer metrics now expose `textPipeline`, `textFallbackAllowed`, and `textFallbackCount`; debug flags (`RenderSettings::Debug::kForceShapedText`, `kDisableTextFallback`) and env controls (`PATHSPACE_TEXT_PIPELINE`, `PATHSPACE_DISABLE_TEXT_FALLBACK`) let tests force shaped vs glyph-quad paths so the legacy glyph quads renderer remains a supported regression harness.
 
 Milestones:
 - M1 DOM/CSS MVP: rect/rrect/images/basic Latin text, transforms, z-index, rect clipping, assets/@font-face, goldens on two browsers.
