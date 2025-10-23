@@ -42,7 +42,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 | Metal renderer | ✅ Completed (October 20, 2025) — material/shader bindings now flow through the shared descriptor cache | `PathRenderer2DMetal` covers rects, rounded rects, text quads, and images (see Phase 7); continue tracking glyph/material parity on the descriptor cache. |
 | Diagnostics | ✅ Completed (October 20, 2025) — dashboards consume `textureGpuBytes`/`resourceGpuBytes` plus residency ratios/status under `diagnostics/metrics/residency` | Coordinate with tooling owners before schema changes. |
 | Input & hit testing | ✅ Completed (October 21, 2025) — keyboard/gamepad focus navigation now rides the 15× UITest loop (`tests/ui/test_Builders.cpp`) alongside z-ordered hits, focus routing, and auto-render wake latency | Continue monitoring wait/notify latency metrics; extend coverage when new interaction paths land. |
-| Widgets | Phase 8 follow-up: land the remaining binding doctests + widget bindings fuzz harness (dirty-propagation coverage landed October 21, 2025) | Styling/theme hooks ship via `Widgets::WidgetTheme`; golden snapshots and focus-navigation UITests live in `tests/ui/test_Builders.cpp`. Focus on the outstanding doctest coverage and fuzz harness bullets in `docs/Plan_SceneGraph_Implementation.md`. |
+| Widgets | ✅ Completed (October 23, 2025) — widget bindings fuzz harness now exercises random pointer/keyboard flows, reducer drains, and action queue republish | See `tests/ui/test_WidgetReducersFuzz.cpp` for the harness; keep doctest additions in sync when new widgets or op kinds land. |
 | HTML tooling | ✅ Completed (October 22, 2025) — quickstart/troubleshooting note in `docs/HTML_Adapter_Quickstart.md`; extend harness coverage when new asset fields appear | Legacy serializer removed; HSAT is mandatory. |
 
 ## 3. Communication & Handoff Hygiene
@@ -95,11 +95,11 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Validation: `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20` (15× PathSpaceTests, PathSpaceUITests, HtmlCanvasVerify, HtmlAssetInspect) — all green with Metal presenters enabled (October 23, 2025).
 - Outstanding follow-ups before resuming:
   1. Add doctest/UITest coverage for `Builders::App::Bootstrap` so helper adoption stays guarded.
-  2. Ship the widget bindings fuzz harness and contribution quickstart noted in `docs/Plan_SceneGraph_Implementation.md`.
+  2. Capture the pixel-noise perf harness frame grab (`images/perf/pixel_noise.png`) now that the paired baselines are checked in.
 - Local worktree clean after commit once the new test/doc updates land; no other unpublished edits.
 - Next session checklist:
   1. Push `test/widget-theme-hotswap` (after review) and open PR targeting `master`.
-  2. Tackle the `Builders::App::Bootstrap` coverage gap, then iterate on the bindings fuzz harness.
+  2. Tackle the `Builders::App::Bootstrap` coverage gap, then capture and publish the pixel-noise perf frame grab.
   3. Keep plan/onboarding/docs in sync with any additional widget coverage.
 
 Welcome aboard and thank you for keeping the PathSpace docs in sync for the next AI maintainer.

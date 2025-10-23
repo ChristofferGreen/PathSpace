@@ -280,7 +280,7 @@ Next:
   - ✅ (October 21, 2025) `PathSpaceUITests` now render button/toggle/slider/list goldens and replay hover/press/disabled sequences in `tests/ui/test_Builders.cpp`, keeping the 15× loop sensitive to widget regressions.
   - ✅ (October 22, 2025) Added doctest coverage that exercises binding helpers with auto-render disabled (`Widgets::Bindings::DispatchButton honors auto-render flag`) ensuring dirty hints still emit without queueing `renderRequested` events; existing focus/navigation tests continue to cover focus routing.
   - ✅ (October 21, 2025) Added adjacent-widget dirty propagation coverage (`tests/ui/test_Builders.cpp`: "Widgets dirty hints cover adjacent widget bindings"), confirming overlapping dirty hints schedule renders for neighbouring widgets while their state remains unchanged.
-  - Introduce a fuzz harness for widget reducers/bindings that randomizes pointer/keyboard sequences and asserts dirty hints, ops queues, and state invariants remain stable.
+  - ✅ (October 23, 2025) Introduced a widget reducers/bindings fuzz harness (`tests/ui/test_WidgetReducersFuzz.cpp`) that randomizes pointer and keyboard sequences, validates dirty hints and auto-render events, drains reducers, and republishes actions to assert queue invariants.
 - **Tooling & docs**
 - ✅ (October 19, 2025) Expanded `examples/widgets_example.cpp` to publish button + toggle widgets and demonstrate state updates; grow into a full gallery as additional widgets land.
 - ✅ (October 20, 2025) widgets_example now instantiates slider and list widgets, exercises the state helpers, and prints the relevant path wiring to guide gallery expansion; continue instrumenting interaction telemetry in follow-up work.
