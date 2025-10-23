@@ -90,16 +90,14 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Reducer helpers (`Widgets::Reducers::ReducePending`/`PublishActions`) drain widget ops into `ops/actions/inbox/queue`; widgets_example seeds a sample action and prints the reducer output.
 - Stroke rendering is now a first-class primitive: `DrawCommandKind::Stroke` serializes shared point buffers, `PathRenderer2D` rasterizes polylines, the HTML adapter/replay round-trip stroke data, and `paint_example` emits strokes instead of per-dab rects (October 21, 2025).
 
-## 6. Shutdown Snapshot (October 23, 2025 @ 16:25 UTC)
-- Latest change: staged `test(widget): add theme hot swap coverage` on local `test/widget-theme-hotswap` (unpushed). New UITest exercises default vs sunset themes, checks metadata updates, and locks in scene/state revision bumps.
-- Validation: `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20` (15× PathSpaceTests, PathSpaceUITests, HtmlCanvasVerify, HtmlAssetInspect) — all green with Metal presenters enabled (October 23, 2025).
+## 6. Shutdown Snapshot (October 23, 2025 @ 19:45 UTC)
+- Latest change: landed `test(ui): cover App::Bootstrap overrides` directly on `master`, exercising present policy configuration, renderer setting overrides, and invalid view identifiers; synced `docs/Plan_SceneGraph_Implementation.md` / `docs/AI_Onboarding_Next.md` accordingly.
+- Validation: `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20` (15× PathSpaceTests, PathSpaceUITests, HtmlCanvasVerify, HtmlAssetInspect, PixelNoise harnesses) — green after the coverage additions (October 23, 2025).
 - Outstanding follow-ups before resuming:
-  1. Add doctest/UITest coverage for `Builders::App::Bootstrap` so helper adoption stays guarded.
-  2. Capture the pixel-noise perf harness frame grab (`images/perf/pixel_noise.png`) now that the paired baselines are checked in.
-- Local worktree clean after commit once the new test/doc updates land; no other unpublished edits.
+  1. Capture the pixel-noise perf harness frame grab (`images/perf/pixel_noise.png`) now that the paired baselines are checked in.
+- Local worktree clean after committing the new tests/docs; no other unpublished edits.
 - Next session checklist:
-  1. Push `test/widget-theme-hotswap` (after review) and open PR targeting `master`.
-  2. Tackle the `Builders::App::Bootstrap` coverage gap, then capture and publish the pixel-noise perf frame grab.
-  3. Keep plan/onboarding/docs in sync with any additional widget coverage.
+  1. Capture and publish the pixel-noise perf frame grab, referencing the updated baseline workflow.
+  2. Keep plan/onboarding/docs in sync with any additional widget coverage.
 
 Welcome aboard and thank you for keeping the PathSpace docs in sync for the next AI maintainer.

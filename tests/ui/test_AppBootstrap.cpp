@@ -207,3 +207,118 @@ TEST_CASE("App::Bootstrap renders and presents scene end-to-end") {
     CHECK(stored_settings->surface.size_px.height == bootstrap->surface_desc.size_px.height);
     CHECK(stored_settings->renderer.backend_kind == params.renderer.kind);
 }
+
+TEST_CASE("App::Bootstrap configures present policy and renderer overrides when sizes are omitted") {
+    BootstrapFixture fx;
+    auto const published = fx.publish_scene(make_scene_bucket());
+
+    Builders::App::BootstrapParams params{};
+    params.view_name = "configured";
+    params.renderer.name = "configured_renderer";
+    params.surface.name = "configured_surface";
+    params.surface.desc.size_px.width = 0;
+    params.surface.desc.size_px.height = 0;
+    params.window.name = "configured_window";
+    params.window.title = "Configured Window";
+    params.window.width = 0;
+    params.window.height = 0;
+    params.window.scale = 0.0f;
+    params.present_policy.mode = SP::UI::PathWindowView::PresentMode::AlwaysFresh;
+    params.present_policy.staleness_budget = std::chrono::milliseconds{24};
+    params.present_policy.max_age_frames = 4;
+    params.present_policy.frame_timeout = std::chrono::milliseconds{52};
+    params.present_policy.vsync_align = false;
+    params.present_policy.auto_render_on_present = false;
+    params.present_policy.capture_framebuffer = true;
+
+    Builders::RenderSettings override_settings{};
+    override_settings.surface.size_px.width = 1920;
+    override_settings.surface.size_px.height = 1080;
+    override_settings.surface.dpi_scale = 1.5f;
+    override_settings.renderer.backend_kind = Builders::RendererKind::Software2D;
+    params.renderer_settings_override = override_settings;
+
+    auto bootstrap = Builders::App::Bootstrap(fx.space,
+                                              fx.root_view(),
+                                              published.path,
+                                              params);
+    REQUIRE(bootstrap);
+
+    CHECK(bootstrap->surface_desc.size_px.width == 1920);
+    CHECK(bootstrap->surface_desc.size_px.height == 1080);
+    CHECK(bootstrap->present_policy.mode == params.present_policy.mode);
+    CHECK(bootstrap->present_policy.max_age_frames == params.present_policy.max_age_frames);
+    CHECK(bootstrap->present_policy.auto_render_on_present == params.present_policy.auto_render_on_present);
+    CHECK(bootstrap->present_policy.capture_framebuffer == params.present_policy.capture_framebuffer);
+    CHECK(bootstrap->present_policy.staleness_budget_ms_value == doctest::Approx(24.0));
+    CHECK(bootstrap->present_policy.frame_timeout_ms_value == doctest::Approx(52.0));
+
+    auto const view_base = std::string(bootstrap->window.getPath())
+                           + "/views/" + bootstrap->view_name;
+    auto policy = fx.space.read<std::string, std::string>(view_base + "/present/policy");
+    REQUIRE(policy);
+    CHECK(*policy == "AlwaysFresh");
+    auto staleness_budget = fx.space.read<double>(view_base + "/present/params/staleness_budget_ms");
+    REQUIRE(staleness_budget);
+    CHECK(*staleness_budget == doctest::Approx(24.0));
+    auto frame_timeout = fx.space.read<double>(view_base + "/present/params/frame_timeout_ms");
+    REQUIRE(frame_timeout);
+    CHECK(*frame_timeout == doctest::Approx(52.0));
+    auto max_age_frames = fx.space.read<uint64_t>(view_base + "/present/params/max_age_frames");
+    REQUIRE(max_age_frames);
+    CHECK(*max_age_frames == 4);
+    auto vsync_align = fx.space.read<bool>(view_base + "/present/params/vsync_align");
+    REQUIRE(vsync_align);
+    CHECK_FALSE(*vsync_align);
+    auto auto_render = fx.space.read<bool>(view_base + "/present/params/auto_render_on_present");
+    REQUIRE(auto_render);
+    CHECK_FALSE(*auto_render);
+    auto capture_framebuffer = fx.space.read<bool>(view_base + "/present/params/capture_framebuffer");
+    REQUIRE(capture_framebuffer);
+    CHECK(*capture_framebuffer);
+
+    auto const window_meta = std::string(bootstrap->window.getPath()) + "/meta";
+    auto stored_width = fx.space.read<int>(window_meta + "/width");
+    REQUIRE(stored_width);
+    CHECK(*stored_width == 1920);
+    auto stored_height = fx.space.read<int>(window_meta + "/height");
+    REQUIRE(stored_height);
+    CHECK(*stored_height == 1080);
+    auto stored_scale = fx.space.read<float>(window_meta + "/scale");
+    REQUIRE(stored_scale);
+    CHECK(*stored_scale == doctest::Approx(1.0f));
+
+    auto stored_settings = Builders::Renderer::ReadSettings(fx.space,
+                                                           SP::ConcretePathStringView{bootstrap->target.getPath()});
+    REQUIRE(stored_settings);
+    CHECK(stored_settings->surface.size_px.width == 1920);
+    CHECK(stored_settings->surface.size_px.height == 1080);
+    CHECK(stored_settings->surface.dpi_scale == doctest::Approx(1.5f));
+    CHECK(stored_settings->renderer.backend_kind == Builders::RendererKind::Software2D);
+    CHECK(stored_settings->surface.visibility);
+
+    auto dirty_hints = fx.space.read<std::vector<Builders::DirtyRectHint>>(std::string(bootstrap->target.getPath())
+                                                                           + "/hints/dirtyRects");
+    REQUIRE(dirty_hints);
+    REQUIRE_FALSE(dirty_hints->empty());
+    CHECK(std::all_of(dirty_hints->begin(),
+                      dirty_hints->end(),
+                      [](Builders::DirtyRectHint const& hint) {
+                          return hint.max_x > hint.min_x && hint.max_y > hint.min_y;
+                      }));
+}
+
+TEST_CASE("App::Bootstrap rejects invalid view identifiers") {
+    BootstrapFixture fx;
+    auto const published = fx.publish_scene(make_scene_bucket());
+
+    Builders::App::BootstrapParams params{};
+    params.view_name = "invalid/view";
+
+    auto bootstrap = Builders::App::Bootstrap(fx.space,
+                                              fx.root_view(),
+                                              published.path,
+                                              params);
+    REQUIRE_FALSE(bootstrap);
+    CHECK(bootstrap.error().code == SP::Error::Code::InvalidPathSubcomponent);
+}
