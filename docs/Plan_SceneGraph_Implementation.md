@@ -283,7 +283,7 @@ Next:
     - `widgets/<id>/state`, `widgets/<id>/enabled`, and `widgets/<id>/label` hold the live state tuple authored by builders.
     - Interaction queues live under `widgets/<id>/ops/inbox/queue` and reducer outputs land in `widgets/<id>/ops/actions/inbox/queue`.
     - Canonical state snapshots reside in `scenes/widgets/<id>/states/{idle,hover,pressed,disabled}` and are reused by bindings, reducer tests, and golden renders.
-  - [ ] (October 24, 2025) Surface the currently focused widget in `widgets_example`—add a visual highlight or overlay driven by `widgets/focus/current` so focus navigation is observable during demo runs.
+  - ✅ (October 24, 2025) Surfaced the currently focused widget in `widgets_example` with a PathSpace-tracked overlay tied to `widgets/focus/current`; keyboard and pointer focus now repaint immediately with a visible highlight.
 - **State binding & data flow**
 - ✅ (October 19, 2025) Introduced initial state update helpers for buttons/toggles that coalesce redundant writes and mark the owning scene `DirtyKind::Visual` only when values change.
 - ✅ (October 20, 2025) Binding layer (`Widgets::Bindings::Dispatch{Button,Toggle,Slider}`) watches widget state, emits dirty hints, and writes interaction ops (press/release/hover/toggle/slider events) into `widgets/<id>/ops/inbox/queue`. Reducer samples live in this plan’s appendix; schema covers `WidgetOpKind`, pointer metadata, value payloads, and timestamps for reducers to consume via wait/notify.

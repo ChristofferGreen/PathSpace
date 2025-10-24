@@ -77,6 +77,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Metal renderer is now material-aware: `PathRenderer2DMetal` consumes shared descriptors via `bind_material`, GPU frames stay in lock-step with software telemetry, and a new blending UITest asserts pipeline parity (`PathRenderer2DMetal honors material blending state`).
 - Scene hit testing now returns z-ordered hit stacks (`HitTestResult::hits`) with bounded drill-down via `HitTestRequest::max_results`; doctests cover overlap, clipping, and limit cases (October 21, 2025).
 - Widget focus navigation helpers (`Widgets::Focus`) maintain `widgets/focus/current`, toggle widget highlight states across button/toggle/slider/list types using `meta/kind`, and enqueue auto-render events for keyboard/gamepad traversal (October 21, 2025).
+- `widgets_example` renders a focus outline driven by `widgets/focus/current`, so keyboard/pointer traversal now shows a visible overlay during demo runs (October 24, 2025).
 - Widget UITests now render button/toggle/slider/list state goldens and replay hover/press/disabled sequences; `PATHSPACE_UPDATE_GOLDENS=1` refreshes the fixtures when intentional changes land (October 21, 2025).
 - UITest coverage exercises Tab/Shift+Tab and gamepad focus hops through the widget order, asserting focus state updates and `focus-navigation` auto-render scheduling in `tests/ui/test_Builders.cpp` (October 21, 2025).
 - Paint demo ships with a `--metal` flag that selects the Metal2D backend and auto-enables uploads for developers; software remains the default for CI.

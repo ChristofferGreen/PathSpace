@@ -56,6 +56,7 @@ namespace SceneData = SP::UI::Scene;
 namespace SceneBuilders = SP::UI::Builders::Scene;
 namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
 namespace WidgetReducers = SP::UI::Builders::Widgets::Reducers;
+namespace WidgetFocus = SP::UI::Builders::Widgets::Focus;
 
 constexpr int kGlyphRows = 7;
 constexpr float kDefaultMargin = 32.0f;
@@ -1435,6 +1436,116 @@ auto make_background_bucket(float width, float height) -> SceneData::DrawableBuc
     return bucket;
 }
 
+auto build_focus_overlay(WidgetBounds const& bounds,
+                         std::array<float, 4> accent_color,
+                         float expand = 8.0f,
+                         float border_thickness = 3.0f) -> SceneData::DrawableBucketSnapshot {
+    SceneData::DrawableBucketSnapshot bucket{};
+    if (bounds.width() <= 0.0f || bounds.height() <= 0.0f) {
+        return bucket;
+    }
+
+    float min_x = bounds.min_x - expand;
+    float min_y = bounds.min_y - expand;
+    float max_x = bounds.max_x + expand;
+    float max_y = bounds.max_y + expand;
+    if (max_x <= min_x || max_y <= min_y) {
+        return bucket;
+    }
+
+    auto fill_color = lighten(accent_color, 0.25f);
+    fill_color[3] = 0.18f;
+    auto border_color = accent_color;
+    border_color[3] = 1.0f;
+
+    float clamped_border = std::clamp(border_thickness,
+                                      1.0f,
+                                      std::min(max_x - min_x, max_y - min_y) * 0.5f);
+
+    auto drawable_id = 0xF0C0F001ull;
+    bucket.drawable_ids.push_back(drawable_id);
+    bucket.world_transforms.push_back(identity_transform());
+
+    SceneData::BoundingBox box{};
+    box.min = {min_x, min_y, 0.0f};
+    box.max = {max_x, max_y, 0.0f};
+    bucket.bounds_boxes.push_back(box);
+    bucket.bounds_box_valid.push_back(1);
+
+    SceneData::BoundingSphere sphere{};
+    sphere.center = {(min_x + max_x) * 0.5f, (min_y + max_y) * 0.5f, 0.0f};
+    float dx = max_x - sphere.center[0];
+    float dy = max_y - sphere.center[1];
+    sphere.radius = std::sqrt(dx * dx + dy * dy);
+    bucket.bounds_spheres.push_back(sphere);
+
+    bucket.layers.push_back(8);
+    bucket.z_values.push_back(5.0f);
+    bucket.material_ids.push_back(0);
+    bucket.pipeline_flags.push_back(0);
+    bucket.visibility.push_back(1);
+    bucket.command_offsets.push_back(0);
+    bucket.command_counts.push_back(5);
+    bucket.opaque_indices.push_back(0);
+    bucket.alpha_indices.clear();
+    bucket.layer_indices.clear();
+    bucket.clip_head_indices.push_back(-1);
+
+    bucket.command_kinds.resize(5, static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect));
+    bucket.command_payload.resize(5 * sizeof(SceneData::RectCommand));
+
+    auto write_rect = [&](int index, SceneData::RectCommand const& rect) {
+        std::memcpy(bucket.command_payload.data() + index * sizeof(SceneData::RectCommand),
+                    &rect,
+                    sizeof(SceneData::RectCommand));
+    };
+
+    SceneData::RectCommand fill{};
+    fill.min_x = min_x;
+    fill.min_y = min_y;
+    fill.max_x = max_x;
+    fill.max_y = max_y;
+    fill.color = fill_color;
+    write_rect(0, fill);
+
+    SceneData::RectCommand top{};
+    top.min_x = min_x;
+    top.min_y = min_y;
+    top.max_x = max_x;
+    top.max_y = min_y + clamped_border;
+    top.color = border_color;
+    write_rect(1, top);
+
+    SceneData::RectCommand bottom{};
+    bottom.min_x = min_x;
+    bottom.min_y = max_y - clamped_border;
+    bottom.max_x = max_x;
+    bottom.max_y = max_y;
+    bottom.color = border_color;
+    write_rect(2, bottom);
+
+    SceneData::RectCommand left{};
+    left.min_x = min_x;
+    left.min_y = min_y + clamped_border;
+    left.max_x = min_x + clamped_border;
+    left.max_y = max_y - clamped_border;
+    left.color = border_color;
+    write_rect(3, left);
+
+    SceneData::RectCommand right{};
+    right.min_x = max_x - clamped_border;
+    right.min_y = min_y + clamped_border;
+    right.max_x = max_x;
+    right.max_y = max_y - clamped_border;
+    right.color = border_color;
+    write_rect(4, right);
+
+    bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
+        drawable_id, "widget/gallery/focus/overlay", 0, 0});
+    bucket.drawable_fingerprints.push_back(drawable_id);
+    return bucket;
+}
+
 struct GalleryBuildResult {
     SceneData::DrawableBucketSnapshot bucket;
     int width = 0;
@@ -1461,16 +1572,14 @@ auto build_gallery_bucket(PathSpace& space,
                           std::vector<Widgets::ListItem> const& list_items,
                           Widgets::StackLayoutParams const& stack_params,
                           Widgets::StackLayoutState const& stack_layout,
+                          Widgets::TreePaths const& tree,
                           Widgets::TreeStyle const& tree_style,
                           Widgets::TreeState const& tree_state,
                           std::vector<Widgets::TreeNode> const& tree_nodes,
-                          Widgets::WidgetTheme const& theme) -> GalleryBuildResult {
+                          Widgets::WidgetTheme const& theme,
+                          std::optional<std::string_view> focused_widget) -> GalleryBuildResult {
     (void)space;
     (void)appRoot;
-    (void)button;
-    (void)toggle;
-    (void)slider;
-    (void)list;
     std::vector<SceneData::DrawableBucketSnapshot> pending;
     pending.reserve(16);
 
@@ -1821,12 +1930,35 @@ auto build_gallery_bucket(PathSpace& space,
     float canvas_width = std::max(max_width + kDefaultMargin, 360.0f);
     float canvas_height = std::max(max_height + kDefaultMargin, 360.0f);
 
+    std::optional<WidgetBounds> focus_bounds;
+    if (focused_widget && !focused_widget->empty()) {
+        auto path = *focused_widget;
+        if (path == button.root.getPath()) {
+            focus_bounds = layout.button;
+        } else if (path == toggle.root.getPath()) {
+            focus_bounds = layout.toggle;
+        } else if (path == slider.root.getPath()) {
+            focus_bounds = layout.slider;
+        } else if (path == list.root.getPath()) {
+            focus_bounds = layout.list.bounds;
+        } else if (path == tree.root.getPath()) {
+            focus_bounds = layout.tree.bounds;
+        }
+    }
+
     SceneData::DrawableBucketSnapshot gallery{};
     auto background = make_background_bucket(canvas_width, canvas_height);
     append_bucket(gallery, background);
 
     for (auto const& bucket : pending) {
         append_bucket(gallery, bucket);
+    }
+
+    if (focus_bounds) {
+        auto overlay = build_focus_overlay(*focus_bounds, theme.accent_text_color);
+        if (!overlay.drawable_ids.empty()) {
+            append_bucket(gallery, overlay);
+        }
     }
 
     GalleryBuildResult result{};
@@ -1863,16 +1995,23 @@ auto publish_gallery_scene(PathSpace& space,
                            std::vector<Widgets::ListItem> const& list_items,
                            Widgets::StackLayoutParams const& stack_params,
                            Widgets::StackLayoutState const& stack_layout,
+                           Widgets::TreePaths const& tree,
                            Widgets::TreeStyle const& tree_style,
                            Widgets::TreeState const& tree_state,
                            std::vector<Widgets::TreeNode> const& tree_nodes,
-                           Widgets::WidgetTheme const& theme) -> GallerySceneResult {
+                           Widgets::WidgetTheme const& theme,
+                           std::optional<std::string> focused_widget_path = std::nullopt) -> GallerySceneResult {
     SceneParams gallery_params{
         .name = "gallery",
         .description = "widgets gallery composed scene",
     };
     auto gallery_scene = unwrap_or_exit(SceneBuilders::Create(space, appRoot, gallery_params),
                                         "create gallery scene");
+
+    std::optional<std::string_view> focus_view;
+    if (focused_widget_path && !focused_widget_path->empty()) {
+        focus_view = *focused_widget_path;
+    }
 
     auto build = build_gallery_bucket(space,
                                       appRoot,
@@ -1893,10 +2032,12 @@ auto publish_gallery_scene(PathSpace& space,
                                       list_items,
                                       stack_params,
                                       stack_layout,
+                                      tree,
                                       tree_style,
                                       tree_state,
                                       tree_nodes,
-                                      theme);
+                                      theme,
+                                      focus_view);
 
     SceneData::SceneSnapshotBuilder builder(space, appRoot, gallery_scene);
     SceneData::SnapshotPublishOptions opts{};
@@ -1954,14 +2095,15 @@ struct WidgetsExampleContext {
     WidgetBindings::ToggleBinding toggle_binding{};
     WidgetBindings::SliderBinding slider_binding{};
     WidgetBindings::ListBinding list_binding{};
-    WidgetBindings::StackBinding stack_binding{};
-    WidgetBindings::TreeBinding tree_binding{};
-    Widgets::ButtonState button_state{};
-    Widgets::ToggleState toggle_state{};
+   WidgetBindings::StackBinding stack_binding{};
+   WidgetBindings::TreeBinding tree_binding{};
+   Widgets::ButtonState button_state{};
+   Widgets::ToggleState toggle_state{};
     Widgets::SliderState slider_state{};
     Widgets::ListState list_state{};
     GallerySceneResult gallery{};
     std::string target_path;
+    WidgetFocus::Config focus_config{};
     bool pointer_down = false;
     bool slider_dragging = false;
     float pointer_x = 0.0f;
@@ -2393,6 +2535,43 @@ static auto slider_keyboard_step(WidgetsExampleContext const& ctx) -> float {
     return step;
 }
 
+static auto focus_widget_for_target(WidgetsExampleContext const& ctx,
+                                    FocusTarget target) -> WidgetPath const* {
+    switch (target) {
+    case FocusTarget::Button:
+        return &ctx.button_paths.root;
+    case FocusTarget::Toggle:
+        return &ctx.toggle_paths.root;
+    case FocusTarget::Slider:
+        return &ctx.slider_paths.root;
+    case FocusTarget::List:
+        return &ctx.list_paths.root;
+    case FocusTarget::Tree:
+        return &ctx.tree_paths.root;
+    }
+    return nullptr;
+}
+
+static bool sync_focus_state(WidgetsExampleContext& ctx) {
+    if (!ctx.space) {
+        return false;
+    }
+    if (ctx.focus_config.focus_state.getPath().empty()) {
+        return false;
+    }
+    auto* widget_path = focus_widget_for_target(ctx, ctx.focus_target);
+    if (!widget_path) {
+        return false;
+    }
+    auto set_result = WidgetFocus::Set(*ctx.space, ctx.focus_config, *widget_path);
+    if (!set_result) {
+        std::cerr << "widgets_example: failed to set focus state: "
+                  << set_result.error().message.value_or("unknown error") << "\n";
+        return false;
+    }
+    return set_result->changed;
+}
+
 static bool apply_focus_visuals(WidgetsExampleContext& ctx) {
     bool changed = false;
     auto update_button = [&](bool hovered) {
@@ -2512,39 +2691,18 @@ static bool apply_focus_visuals(WidgetsExampleContext& ctx) {
     return changed;
 }
 
-static void set_focus_target(WidgetsExampleContext& ctx, FocusTarget target) {
-    if (ctx.focus_target == target) {
-        if (apply_focus_visuals(ctx)) {
-            refresh_gallery(ctx);
-        }
-        return;
-    }
+static bool set_focus_target(WidgetsExampleContext& ctx,
+                             FocusTarget target,
+                             bool update_visuals = true) {
+    bool target_changed = (ctx.focus_target != target);
     ctx.focus_target = target;
-    if (ctx.focus_target == FocusTarget::List && ctx.list_state.selected_index >= 0) {
-        ctx.focus_list_index = ctx.list_state.selected_index;
+
+    bool changed = false;
+    if (update_visuals) {
+        changed |= apply_focus_visuals(ctx);
     }
-    if (ctx.focus_target == FocusTarget::Tree) {
-        auto const& rows = ctx.gallery.layout.tree.rows;
-        if (!rows.empty()) {
-            if (!ctx.tree_state.selected_id.empty()) {
-                auto it = std::find_if(rows.begin(), rows.end(), [&](TreeRowLayout const& row) {
-                    return row.node_id == ctx.tree_state.selected_id;
-                });
-                if (it != rows.end()) {
-                    ctx.focus_tree_index = static_cast<int>(std::distance(rows.begin(), it));
-                } else {
-                    ctx.focus_tree_index = std::clamp(ctx.focus_tree_index, 0, static_cast<int>(rows.size()) - 1);
-                }
-            } else {
-                ctx.focus_tree_index = std::clamp(ctx.focus_tree_index, 0, static_cast<int>(rows.size()) - 1);
-            }
-        } else {
-            ctx.focus_tree_index = 0;
-        }
-    }
-    if (apply_focus_visuals(ctx)) {
-        refresh_gallery(ctx);
-    }
+    changed |= sync_focus_state(ctx);
+    return changed || target_changed;
 }
 
 static void cycle_focus(WidgetsExampleContext& ctx, bool forward) {
@@ -2564,7 +2722,9 @@ static void cycle_focus(WidgetsExampleContext& ctx, bool forward) {
     }
     int delta = forward ? 1 : -1;
     int next = (current + delta + static_cast<int>(std::size(order))) % static_cast<int>(std::size(order));
-    set_focus_target(ctx, order[static_cast<std::size_t>(next)]);
+    if (set_focus_target(ctx, order[static_cast<std::size_t>(next)])) {
+        refresh_gallery(ctx);
+    }
 }
 
 static auto make_pointer_info(WidgetsExampleContext const& ctx, bool inside) -> WidgetBindings::PointerInfo {
@@ -2605,6 +2765,18 @@ static auto list_index_from_position(WidgetsExampleContext const& ctx, float y) 
 
 static void refresh_gallery(WidgetsExampleContext& ctx) {
     auto view = SP::App::AppRootPathView{ctx.app_root.getPath()};
+    std::optional<std::string> focused_widget_path;
+    if (ctx.space && !ctx.focus_config.focus_state.getPath().empty()) {
+        auto focus_state_view = SP::ConcretePathStringView{ctx.focus_config.focus_state.getPath()};
+        auto focus_state = WidgetFocus::Current(*ctx.space, focus_state_view);
+        if (!focus_state) {
+            std::cerr << "widgets_example: unable to read focus state: "
+                      << focus_state.error().message.value_or("unknown error") << "\n";
+        } else if (focus_state->has_value()) {
+            focused_widget_path = **focus_state;
+        }
+    }
+
     ctx.gallery = publish_gallery_scene(*ctx.space,
                                         view,
                                         ctx.button_paths,
@@ -2624,10 +2796,12 @@ static void refresh_gallery(WidgetsExampleContext& ctx) {
                                         ctx.list_items,
                                         ctx.stack_params,
                                         ctx.stack_layout,
+                                        ctx.tree_paths,
                                         ctx.tree_style,
                                         ctx.tree_state,
                                         ctx.tree_nodes,
-                                        ctx.theme);
+                                        ctx.theme,
+                                        focused_widget_path);
 }
 
 static auto dispatch_button(WidgetsExampleContext& ctx,
@@ -2839,11 +3013,12 @@ static void handle_pointer_move(WidgetsExampleContext& ctx, float x, float y) {
 static void handle_pointer_down(WidgetsExampleContext& ctx) {
     ctx.pointer_down = true;
     bool changed = false;
+    bool focus_changed = false;
     ctx.tree_pointer_down_id.clear();
     ctx.tree_pointer_toggle = false;
 
     if (ctx.gallery.layout.button.contains(ctx.pointer_x, ctx.pointer_y)) {
-        ctx.focus_target = FocusTarget::Button;
+        focus_changed |= set_focus_target(ctx, FocusTarget::Button, false);
         Widgets::ButtonState desired = ctx.button_state;
         desired.hovered = true;
         desired.pressed = true;
@@ -2851,7 +3026,7 @@ static void handle_pointer_down(WidgetsExampleContext& ctx) {
     }
 
     if (ctx.gallery.layout.toggle.contains(ctx.pointer_x, ctx.pointer_y)) {
-        ctx.focus_target = FocusTarget::Toggle;
+        focus_changed |= set_focus_target(ctx, FocusTarget::Toggle, false);
         Widgets::ToggleState desired = ctx.toggle_state;
         desired.hovered = true;
         changed |= dispatch_toggle(ctx, desired, WidgetBindings::WidgetOpKind::Press, true);
@@ -2859,7 +3034,7 @@ static void handle_pointer_down(WidgetsExampleContext& ctx) {
 
     if (ctx.gallery.layout.slider.contains(ctx.pointer_x, ctx.pointer_y)) {
         ctx.slider_dragging = true;
-        ctx.focus_target = FocusTarget::Slider;
+        focus_changed |= set_focus_target(ctx, FocusTarget::Slider, false);
         Widgets::SliderState desired = ctx.slider_state;
         desired.dragging = true;
         desired.hovered = true;
@@ -2877,14 +3052,13 @@ static void handle_pointer_down(WidgetsExampleContext& ctx) {
                                  true,
                                  index,
                                  0.0f);
-        ctx.focus_target = FocusTarget::List;
         ctx.focus_list_index = index;
+        focus_changed |= set_focus_target(ctx, FocusTarget::List, false);
     }
 
     if (ctx.gallery.layout.tree.bounds.contains(ctx.pointer_x, ctx.pointer_y)) {
         int index = tree_row_index_from_position(ctx, ctx.pointer_y);
         if (index >= 0) {
-            ctx.focus_target = FocusTarget::Tree;
             ctx.focus_tree_index = index;
             auto const& row = ctx.gallery.layout.tree.rows[static_cast<std::size_t>(index)];
             Widgets::TreeState desired = ctx.tree_state;
@@ -2897,7 +3071,12 @@ static void handle_pointer_down(WidgetsExampleContext& ctx) {
                                      true,
                                      row.node_id,
                                      0.0f);
+            focus_changed |= set_focus_target(ctx, FocusTarget::Tree, false);
         }
+    }
+
+    if (focus_changed) {
+        changed = true;
     }
 
     if (changed) {
@@ -2907,6 +3086,7 @@ static void handle_pointer_down(WidgetsExampleContext& ctx) {
 
 static void handle_pointer_up(WidgetsExampleContext& ctx) {
     bool changed = false;
+    bool focus_changed = false;
 
     bool inside_button = ctx.gallery.layout.button.contains(ctx.pointer_x, ctx.pointer_y);
     if (ctx.button_state.pressed) {
@@ -2954,8 +3134,8 @@ static void handle_pointer_up(WidgetsExampleContext& ctx) {
                                  true,
                                  index,
                                  0.0f);
-        ctx.focus_target = FocusTarget::List;
         ctx.focus_list_index = index;
+        focus_changed |= set_focus_target(ctx, FocusTarget::List, false);
     }
 
     bool inside_tree = ctx.gallery.layout.tree.bounds.contains(ctx.pointer_x, ctx.pointer_y);
@@ -2984,14 +3164,18 @@ static void handle_pointer_up(WidgetsExampleContext& ctx) {
                                      inside_tree,
                                      row.node_id,
                                      0.0f);
-            ctx.focus_target = FocusTarget::Tree;
             ctx.focus_tree_index = tree_index;
+            focus_changed |= set_focus_target(ctx, FocusTarget::Tree, false);
         }
     }
     ctx.tree_pointer_down_id.clear();
     ctx.tree_pointer_toggle = false;
 
     ctx.pointer_down = false;
+
+    if (focus_changed) {
+        changed = true;
+    }
 
     if (changed) {
         refresh_gallery(ctx);
@@ -3767,6 +3951,7 @@ int main() {
                                          list_params.items,
                                          stack_desc,
                                          stack_layout_live,
+                                         tree,
                                          tree_style_live,
                                          tree_state_live,
                                          tree_nodes_live,
@@ -3844,6 +4029,7 @@ int main() {
     ctx.list_state = list_state_live;
     ctx.gallery = gallery;
     ctx.target_path = bootstrap.target.getPath();
+    ctx.focus_config = WidgetFocus::MakeConfig(appRootView, bootstrap.target);
 
     auto target_view = SP::ConcretePathStringView{ctx.target_path};
     auto make_dirty_hint = [](WidgetBounds const& bounds) {
@@ -3897,7 +4083,9 @@ int main() {
                                                                         make_dirty_hint(ctx.gallery.layout.tree.bounds)),
                                       "create tree binding");
 
-    set_focus_target(ctx, FocusTarget::Button);
+    if (set_focus_target(ctx, FocusTarget::Button)) {
+        refresh_gallery(ctx);
+    }
 
     if (trace.replaying()) {
         run_replay_session(ctx, trace.events());
