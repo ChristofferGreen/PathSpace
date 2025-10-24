@@ -189,7 +189,8 @@ Next:
 - ✅ (October 23, 2025) Enforced include hygiene for the split UI modules by isolating widget-only inlines behind `WidgetDetail.hpp`, so non-widget translation units avoid the heavy drawable/metadata helpers while keeping shared helpers available.
 - ✅ (October 23, 2025) Added binary/size guardrails via `scripts/compile.sh --size-report`, tracking demo binaries against `docs/perf/example_size_baseline.json` (examples build automatically when the guardrail runs).
 - ✅ (October 23, 2025) `WidgetDrawablesDetail.inl` now delegates to per-widget include files (common/button/toggle/slider/list) so each inline module stays well under 1 000 lines while preserving the shared entry point.
-- Split the remaining >1 000 line units (`PathRenderer2D.cpp` and `SceneSnapshotBuilder.cpp`) into focused files so every UI TU stays below the target size.
+- ✅ (October 24, 2025) Split `SceneSnapshotBuilder.cpp` into `SceneSnapshotBuilder.cpp`, `SceneSnapshotBuilderDecode.cpp`, and `SceneSnapshotBuilderFingerprint.cpp`; each stays below the 1 000 line target and CMake now builds the new units.
+- Split the remaining >1 000 line unit (`PathRenderer2D.cpp`, ~3 100 lines) into focused files so every UI TU stays below the target size.
 - Refresh `docs/AI_Architecture.md` and renderer diagrams once files move so architecture snapshots continue to match the code layout.
 - ✅ (October 23, 2025) Added a performance regression guardrail (`scripts/perf_guardrail.py`) that runs the PathRenderer2D benchmark plus the pixel noise presenter, compares results against `docs/perf/performance_baseline.json`, records history under `build/perf/`, and integrates with both `scripts/compile.sh --perf-report` and the local `pre-push` hook to block pushes on regressions.
 - Build a fault-injection harness that flips Metal upload flags, simulates surface resize failures, and drops drawables mid-frame to ensure diagnostics and error paths stay actionable.
