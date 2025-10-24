@@ -75,6 +75,25 @@ inline auto measure_list(PathSpace& space,
     return StackWidgetSize{std::max(style->width, 0.0f), std::max(height, 0.0f)};
 }
 
+inline auto measure_tree(PathSpace& space,
+                         std::string const& root) -> SP::Expected<StackWidgetSize> {
+    auto stylePath = root + "/meta/style";
+    auto nodesPath = root + "/meta/nodes";
+    auto style = space.read<Widgets::TreeStyle, std::string>(stylePath);
+    if (!style) {
+        return std::unexpected(style.error());
+    }
+    auto nodes = space.read<std::vector<Widgets::TreeNode>, std::string>(nodesPath);
+    if (!nodes) {
+        return std::unexpected(nodes.error());
+    }
+
+    std::size_t node_count = std::max<std::size_t>(nodes->size(), 1u);
+    float row_height = std::max(style->row_height, 20.0f);
+    float height = style->border_thickness * 2.0f + row_height * static_cast<float>(node_count);
+    return StackWidgetSize{std::max(style->width, 0.0f), std::max(height, row_height)};
+}
+
 inline auto measure_widget(PathSpace& space,
                            std::string const& root) -> SP::Expected<StackWidgetSize> {
     auto kindPath = root + "/meta/kind";
@@ -93,6 +112,9 @@ inline auto measure_widget(PathSpace& space,
     }
     if (*kind == "list") {
         return measure_list(space, root);
+    }
+    if (*kind == "tree") {
+        return measure_tree(space, root);
     }
     return std::unexpected(make_error("Unsupported widget kind for stack layout: " + *kind,
                                       SP::Error::Code::InvalidType));

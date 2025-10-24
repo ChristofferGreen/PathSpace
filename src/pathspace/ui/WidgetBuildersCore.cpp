@@ -4,6 +4,155 @@ namespace SP::UI::Builders::Widgets {
 
 using namespace Detail;
 
+namespace {
+
+auto sanitize_tree_style(TreeStyle style) -> TreeStyle {
+    style.width = std::max(style.width, 96.0f);
+    style.row_height = std::max(style.row_height, 24.0f);
+    float radius_limit = std::min(style.width, style.row_height) * 0.5f;
+    style.corner_radius = std::clamp(style.corner_radius, 0.0f, radius_limit);
+    style.border_thickness = std::clamp(style.border_thickness, 0.0f, style.row_height * 0.5f);
+    style.indent_per_level = std::max(style.indent_per_level, 8.0f);
+    style.toggle_icon_size = std::clamp(style.toggle_icon_size, 4.0f, style.row_height - 4.0f);
+    style.label_typography.font_size = std::max(style.label_typography.font_size, 1.0f);
+    style.label_typography.line_height = std::max(style.label_typography.line_height,
+                                                  style.label_typography.font_size);
+    style.label_typography.letter_spacing = std::max(style.label_typography.letter_spacing, 0.0f);
+    return style;
+}
+
+auto validate_tree_nodes(std::vector<TreeNode> const& nodes) -> SP::Expected<void> {
+    std::unordered_set<std::string> ids;
+    ids.reserve(nodes.size());
+
+    for (auto const& node : nodes) {
+        if (auto status = ensure_identifier(node.id, "tree node id"); !status) {
+            return status;
+        }
+        if (!node.parent_id.empty()) {
+            if (auto status = ensure_identifier(node.parent_id, "tree node parent id"); !status) {
+                return status;
+            }
+        }
+        if (!ids.insert(node.id).second) {
+            return std::unexpected(make_error("tree node ids must be unique",
+                                              SP::Error::Code::MalformedInput));
+        }
+        if (!node.parent_id.empty() && node.parent_id == node.id) {
+            return std::unexpected(make_error("tree node cannot parent itself",
+                                              SP::Error::Code::MalformedInput));
+        }
+    }
+
+    std::unordered_map<std::string, std::size_t> index;
+    index.reserve(nodes.size());
+    for (std::size_t i = 0; i < nodes.size(); ++i) {
+        index.emplace(nodes[i].id, i);
+    }
+
+    for (auto const& node : nodes) {
+        std::unordered_set<std::string> seen;
+        std::string current = node.parent_id;
+        while (!current.empty()) {
+            if (!seen.insert(current).second) {
+                return std::unexpected(make_error("cycle detected in tree node parents",
+                                                  SP::Error::Code::MalformedInput));
+            }
+            if (current == node.id) {
+                return std::unexpected(make_error("tree node cannot parent itself",
+                                                  SP::Error::Code::MalformedInput));
+            }
+            auto it = index.find(current);
+            if (it == index.end()) {
+                break;
+            }
+            current = nodes[it->second].parent_id;
+        }
+    }
+
+    return {};
+}
+
+auto finalize_tree_nodes(std::vector<TreeNode> nodes) -> std::vector<TreeNode> {
+    auto [index, children, roots] = build_tree_children(nodes);
+    (void)index;
+    (void)roots;
+    for (std::size_t i = 0; i < nodes.size(); ++i) {
+        if (i < children.size() && !children[i].empty()) {
+            nodes[i].expandable = true;
+            nodes[i].loaded = true;
+        }
+    }
+    return nodes;
+}
+
+auto sanitize_tree_state(TreeState state,
+                         TreeStyle const& style,
+                         std::vector<TreeNode> const& nodes) -> TreeState {
+    auto [index, children, roots] = build_tree_children(nodes);
+    (void)roots;
+
+    auto sanitize_id = [&](std::string_view id,
+                           bool require_enabled) -> std::string {
+        if (id.empty()) {
+            return {};
+        }
+        auto it = index.find(std::string{id});
+        if (it == index.end()) {
+            return {};
+        }
+        auto const& node = nodes[it->second];
+        if (require_enabled && !node.enabled) {
+            return {};
+        }
+        return node.id;
+    };
+
+    state.hovered_id = sanitize_id(state.hovered_id, true);
+    state.selected_id = sanitize_id(state.selected_id, true);
+
+    auto sanitize_collection = [&](std::vector<std::string>& entries) {
+        std::vector<std::string> filtered;
+        filtered.reserve(entries.size());
+        std::unordered_set<std::string> seen;
+        for (auto const& entry : entries) {
+            auto it = index.find(entry);
+            if (it == index.end()) {
+                continue;
+            }
+            auto const& node = nodes[it->second];
+            bool has_children = (it->second < children.size() && !children[it->second].empty())
+                || node.expandable;
+            if (!has_children) {
+                continue;
+            }
+            if (!seen.insert(node.id).second) {
+                continue;
+            }
+            filtered.push_back(node.id);
+        }
+        entries = std::move(filtered);
+    };
+
+    sanitize_collection(state.expanded_ids);
+    sanitize_collection(state.loading_ids);
+
+    if (!state.enabled) {
+        state.hovered_id.clear();
+        state.selected_id.clear();
+    }
+
+    auto rows = flatten_tree_rows(nodes, state);
+    std::size_t visible = rows.empty() ? 1u : rows.size();
+    float row_height = std::max(style.row_height, 1.0f);
+    float content_height = row_height * static_cast<float>(visible);
+    float max_scroll = std::max(0.0f, content_height - row_height);
+    state.scroll_offset = std::clamp(std::max(state.scroll_offset, 0.0f), 0.0f, max_scroll);
+    return state;
+}
+
+} // namespace
+
 auto ResolveHitTarget(Scene::HitTestResult const& hit) -> std::optional<HitTarget> {
     if (!hit.hit) {
         return std::nullopt;
@@ -327,6 +476,73 @@ auto CreateList(PathSpace& space,
     return paths;
 }
 
+auto CreateTree(PathSpace& space,
+                AppRootPathView appRoot,
+                Widgets::TreeParams const& params) -> SP::Expected<Widgets::TreePaths> {
+    if (auto status = ensure_identifier(params.name, "widget name"); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto widgetRoot = combine_relative(appRoot, std::string("widgets/") + params.name);
+    if (!widgetRoot) {
+        return std::unexpected(widgetRoot.error());
+    }
+
+    std::vector<TreeNode> nodes = params.nodes;
+    if (auto status = validate_tree_nodes(nodes); !status) {
+        return std::unexpected(status.error());
+    }
+    nodes = finalize_tree_nodes(std::move(nodes));
+
+    TreeStyle style = sanitize_tree_style(params.style);
+
+    TreeState defaultState{};
+    defaultState.enabled = true;
+    defaultState.hovered_id.clear();
+    defaultState.selected_id.clear();
+    defaultState.expanded_ids.clear();
+    defaultState.loading_ids.clear();
+    defaultState.scroll_offset = 0.0f;
+    defaultState = sanitize_tree_state(defaultState, style, nodes);
+
+    if (auto status = write_tree_metadata(space,
+                                          widgetRoot->getPath(),
+                                          defaultState,
+                                          style,
+                                          nodes); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto scenePath = ensure_tree_scene(space, appRoot, params.name);
+    if (!scenePath) {
+        return std::unexpected(scenePath.error());
+    }
+
+    auto stateScenes = publish_tree_state_scenes(space,
+                                                 appRoot,
+                                                 params.name,
+                                                 style,
+                                                 nodes,
+                                                 defaultState);
+    if (!stateScenes) {
+        return std::unexpected(stateScenes.error());
+    }
+
+    auto bucket = build_tree_bucket(style, nodes, defaultState, widgetRoot->getPath());
+    if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
+        return std::unexpected(status.error());
+    }
+
+    Widgets::TreePaths paths{
+        .scene = *scenePath,
+        .states = *stateScenes,
+        .root = WidgetPath{widgetRoot->getPath()},
+        .state = ConcretePath{widgetRoot->getPath() + "/state"},
+        .nodes = ConcretePath{widgetRoot->getPath() + "/meta/nodes"},
+    };
+    return paths;
+}
+
 auto UpdateButtonState(PathSpace& space,
                        Widgets::ButtonPaths const& paths,
                        Widgets::ButtonState const& new_state) -> SP::Expected<bool> {
@@ -552,6 +768,54 @@ auto UpdateListState(PathSpace& space,
     return true;
 }
 
+auto UpdateTreeState(PathSpace& space,
+                     Widgets::TreePaths const& paths,
+                     Widgets::TreeState const& new_state) -> SP::Expected<bool> {
+    auto nodesValue = space.read<std::vector<TreeNode>, std::string>(paths.nodes.getPath());
+    if (!nodesValue) {
+        return std::unexpected(nodesValue.error());
+    }
+
+    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto styleValue = space.read<TreeStyle, std::string>(stylePath);
+    if (!styleValue) {
+        return std::unexpected(styleValue.error());
+    }
+
+    TreeStyle style = sanitize_tree_style(*styleValue);
+    TreeState sanitized = sanitize_tree_state(new_state, style, *nodesValue);
+
+    auto statePath = std::string(paths.state.getPath());
+    auto current = read_optional<TreeState>(space, statePath);
+    if (!current) {
+        return std::unexpected(current.error());
+    }
+
+    bool changed = !current->has_value() || !tree_states_equal(**current, sanitized);
+    if (!changed) {
+        return false;
+    }
+
+    if (auto status = replace_single<TreeState>(space, statePath, sanitized); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto appRootPath = derive_app_root_for(ConcretePathView{paths.root.getPath()});
+    if (!appRootPath) {
+        return std::unexpected(appRootPath.error());
+    }
+    auto appRootView = SP::App::AppRootPathView{appRootPath->getPath()};
+    auto bucket = build_tree_bucket(style, *nodesValue, sanitized, paths.root.getPath());
+    if (auto status = publish_scene_snapshot(space, appRootView, paths.scene, bucket); !status) {
+        return std::unexpected(status.error());
+    }
+
+    if (auto mark = Scene::MarkDirty(space, paths.scene, Scene::DirtyKind::Visual); !mark) {
+        return std::unexpected(mark.error());
+    }
+    return true;
+}
+
 auto MakeDefaultWidgetTheme() -> WidgetTheme {
     WidgetTheme theme{};
     theme.button.width = 200.0f;
@@ -599,6 +863,26 @@ auto MakeDefaultWidgetTheme() -> WidgetTheme {
     theme.list.item_typography.letter_spacing = 1.0f;
     theme.list.item_typography.baseline_shift = 0.0f;
 
+    theme.tree.width = 280.0f;
+    theme.tree.row_height = 32.0f;
+    theme.tree.corner_radius = 8.0f;
+    theme.tree.border_thickness = 1.0f;
+    theme.tree.indent_per_level = 18.0f;
+    theme.tree.toggle_icon_size = 12.0f;
+    theme.tree.background_color = {0.121f, 0.129f, 0.145f, 1.0f};
+    theme.tree.border_color = {0.239f, 0.247f, 0.266f, 1.0f};
+    theme.tree.row_color = {0.176f, 0.184f, 0.204f, 1.0f};
+    theme.tree.row_hover_color = {0.247f, 0.278f, 0.349f, 1.0f};
+    theme.tree.row_selected_color = {0.176f, 0.353f, 0.914f, 1.0f};
+    theme.tree.row_disabled_color = {0.145f, 0.149f, 0.162f, 1.0f};
+    theme.tree.connector_color = {0.224f, 0.231f, 0.247f, 1.0f};
+    theme.tree.toggle_color = {0.90f, 0.92f, 0.96f, 1.0f};
+    theme.tree.text_color = {0.94f, 0.96f, 0.99f, 1.0f};
+    theme.tree.label_typography.font_size = 20.0f;
+    theme.tree.label_typography.line_height = 24.0f;
+    theme.tree.label_typography.letter_spacing = 0.8f;
+    theme.tree.label_typography.baseline_shift = 0.0f;
+
     theme.heading.font_size = 32.0f;
     theme.heading.line_height = 36.0f;
     theme.heading.letter_spacing = 1.0f;
@@ -632,6 +916,15 @@ auto MakeSunsetWidgetTheme() -> WidgetTheme {
     theme.list.item_selected_color = {0.882f, 0.424f, 0.310f, 1.0f};
     theme.list.separator_color = {0.365f, 0.231f, 0.201f, 1.0f};
     theme.list.item_text_color = {0.996f, 0.949f, 0.902f, 1.0f};
+    theme.tree.background_color = {0.215f, 0.128f, 0.102f, 1.0f};
+    theme.tree.border_color = {0.365f, 0.231f, 0.201f, 1.0f};
+    theme.tree.row_color = {0.266f, 0.166f, 0.138f, 1.0f};
+    theme.tree.row_hover_color = {0.422f, 0.248f, 0.198f, 1.0f};
+    theme.tree.row_selected_color = {0.882f, 0.424f, 0.310f, 1.0f};
+    theme.tree.row_disabled_color = {0.184f, 0.118f, 0.098f, 1.0f};
+    theme.tree.connector_color = {0.365f, 0.231f, 0.201f, 1.0f};
+    theme.tree.toggle_color = {0.996f, 0.949f, 0.902f, 1.0f};
+    theme.tree.text_color = {0.996f, 0.949f, 0.902f, 1.0f};
     theme.heading_color = {0.996f, 0.949f, 0.902f, 1.0f};
     theme.caption_color = {0.965f, 0.886f, 0.812f, 1.0f};
     theme.accent_text_color = {0.996f, 0.949f, 0.902f, 1.0f};
@@ -928,6 +1221,10 @@ auto ApplyTheme(WidgetTheme const& theme, ListParams& params) -> void {
     params.style = theme.list;
 }
 
+auto ApplyTheme(WidgetTheme const& theme, TreeParams& params) -> void {
+    params.style = theme.tree;
+}
+
 namespace {
 
 auto widget_name_from_root(std::string const& app_root,
@@ -970,6 +1267,18 @@ auto determine_widget_kind(PathSpace& space,
         if (kind == "list") {
             return WidgetKind::List;
         }
+        if (kind == "tree") {
+            return WidgetKind::Tree;
+        }
+    }
+
+    auto nodesPath = rootPath + "/meta/nodes";
+    auto nodesValue = read_optional<std::vector<TreeNode>>(space, nodesPath);
+    if (!nodesValue) {
+        return std::unexpected(nodesValue.error());
+    }
+    if (nodesValue->has_value()) {
+        return WidgetKind::Tree;
     }
 
     auto itemsPath = rootPath + "/meta/items";
@@ -1149,6 +1458,68 @@ auto update_list_focus(PathSpace& space,
     return *updated;
 }
 
+auto update_tree_focus(PathSpace& space,
+                       std::string const& widget_root,
+                       std::string const& app_root,
+                       bool focused) -> SP::Expected<bool> {
+    auto statePath = widget_root + "/state";
+    auto stateValue = space.read<TreeState, std::string>(statePath);
+    if (!stateValue) {
+        return std::unexpected(stateValue.error());
+    }
+
+    auto stylePath = widget_root + "/meta/style";
+    auto styleValue = space.read<TreeStyle, std::string>(stylePath);
+    if (!styleValue) {
+        return std::unexpected(styleValue.error());
+    }
+
+    auto nodesPath = widget_root + "/meta/nodes";
+    auto nodesValue = space.read<std::vector<TreeNode>, std::string>(nodesPath);
+    if (!nodesValue) {
+        return std::unexpected(nodesValue.error());
+    }
+
+    TreeState desired = *stateValue;
+    if (focused) {
+        if (desired.hovered_id.empty()) {
+            if (!desired.selected_id.empty()) {
+                desired.hovered_id = desired.selected_id;
+            } else {
+                auto it = std::find_if(nodesValue->begin(), nodesValue->end(), [](TreeNode const& node) {
+                    return node.enabled;
+                });
+                if (it != nodesValue->end()) {
+                    desired.hovered_id = it->id;
+                }
+            }
+        }
+    } else {
+        desired.hovered_id.clear();
+    }
+
+    TreeStyle style = sanitize_tree_style(*styleValue);
+    desired = sanitize_tree_state(desired, style, *nodesValue);
+
+    auto widget_name = widget_name_from_root(app_root, widget_root);
+    if (!widget_name) {
+        return std::unexpected(widget_name.error());
+    }
+    auto scenePath = widget_scene_path(app_root, *widget_name);
+    TreePaths paths{
+        .scene = ScenePath{scenePath},
+        .states = {},
+        .root = WidgetPath{widget_root},
+        .state = ConcretePath{statePath},
+        .nodes = ConcretePath{nodesPath},
+    };
+    auto updated = Widgets::UpdateTreeState(space, paths, desired);
+    if (!updated) {
+        return std::unexpected(updated.error());
+    }
+    return *updated;
+}
+
 auto update_widget_focus(PathSpace& space,
                          std::string const& widget_root,
                          bool focused) -> SP::Expected<bool> {
@@ -1171,6 +1542,8 @@ auto update_widget_focus(PathSpace& space,
             return update_slider_focus(space, widget_root, app_root, focused);
         case WidgetKind::List:
             return update_list_focus(space, widget_root, app_root, focused);
+        case WidgetKind::Tree:
+            return update_tree_focus(space, widget_root, app_root, focused);
     }
     return std::unexpected(make_error("unknown widget kind", SP::Error::Code::InvalidType));
 }

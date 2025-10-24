@@ -47,6 +47,18 @@ auto determine_widget_kind(PathSpace& space,
         if (kind == "list") {
             return WidgetKind::List;
         }
+        if (kind == "tree") {
+            return WidgetKind::Tree;
+        }
+    }
+
+    auto nodesPath = rootPath + "/meta/nodes";
+    auto nodesValue = read_optional<std::vector<Widgets::TreeNode>>(space, nodesPath);
+    if (!nodesValue) {
+        return std::unexpected(nodesValue.error());
+    }
+    if (nodesValue->has_value()) {
+        return WidgetKind::Tree;
     }
 
     auto itemsPath = rootPath + "/meta/items";
@@ -226,6 +238,59 @@ auto update_list_focus(PathSpace& space,
     return *updated;
 }
 
+auto update_tree_focus(PathSpace& space,
+                       std::string const& widget_root,
+                       std::string const& app_root,
+                       bool focused) -> SP::Expected<bool> {
+    auto statePath = widget_root + "/state";
+    auto stateValue = space.read<Widgets::TreeState, std::string>(statePath);
+    if (!stateValue) {
+        return std::unexpected(stateValue.error());
+    }
+
+    auto nodesPath = widget_root + "/meta/nodes";
+    auto nodesValue = space.read<std::vector<Widgets::TreeNode>, std::string>(nodesPath);
+    if (!nodesValue) {
+        return std::unexpected(nodesValue.error());
+    }
+
+    Widgets::TreeState desired = *stateValue;
+    if (focused) {
+        if (desired.hovered_id.empty()) {
+            if (!desired.selected_id.empty()) {
+                desired.hovered_id = desired.selected_id;
+            } else {
+                auto it = std::find_if(nodesValue->begin(), nodesValue->end(), [](Widgets::TreeNode const& node) {
+                    return node.enabled;
+                });
+                if (it != nodesValue->end()) {
+                    desired.hovered_id = it->id;
+                }
+            }
+        }
+    } else {
+        desired.hovered_id.clear();
+    }
+
+    auto widget_name = widget_name_from_root(app_root, widget_root);
+    if (!widget_name) {
+        return std::unexpected(widget_name.error());
+    }
+    auto scenePath = widget_scene_path(app_root, *widget_name);
+    Widgets::TreePaths paths{
+        .scene = ScenePath{scenePath},
+        .states = {},
+        .root = WidgetPath{widget_root},
+        .state = ConcretePath{statePath},
+        .nodes = ConcretePath{nodesPath},
+    };
+    auto updated = Widgets::UpdateTreeState(space, paths, desired);
+    if (!updated) {
+        return std::unexpected(updated.error());
+    }
+    return *updated;
+}
+
 auto update_widget_focus(PathSpace& space,
                          std::string const& widget_root,
                          bool focused) -> SP::Expected<bool> {
@@ -248,6 +313,8 @@ auto update_widget_focus(PathSpace& space,
             return update_slider_focus(space, widget_root, app_root, focused);
         case WidgetKind::List:
             return update_list_focus(space, widget_root, app_root, focused);
+        case WidgetKind::Tree:
+            return update_tree_focus(space, widget_root, app_root, focused);
     }
     return std::unexpected(make_error("unknown widget kind", SP::Error::Code::InvalidType));
 }

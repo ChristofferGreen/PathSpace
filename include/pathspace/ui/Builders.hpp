@@ -731,6 +731,70 @@ auto UpdateListState(PathSpace& space,
                      ListPaths const& paths,
                      ListState const& new_state) -> SP::Expected<bool>;
 
+struct TreeStyle {
+    float width = 280.0f;
+    float row_height = 32.0f;
+    float corner_radius = 8.0f;
+    float border_thickness = 1.0f;
+    float indent_per_level = 18.0f;
+    float toggle_icon_size = 12.0f;
+    std::array<float, 4> background_color{0.121f, 0.129f, 0.145f, 1.0f};
+    std::array<float, 4> border_color{0.239f, 0.247f, 0.266f, 1.0f};
+    std::array<float, 4> row_color{0.176f, 0.184f, 0.204f, 1.0f};
+    std::array<float, 4> row_hover_color{0.247f, 0.278f, 0.349f, 1.0f};
+    std::array<float, 4> row_selected_color{0.176f, 0.353f, 0.914f, 1.0f};
+    std::array<float, 4> row_disabled_color{0.145f, 0.149f, 0.162f, 1.0f};
+    std::array<float, 4> connector_color{0.224f, 0.231f, 0.247f, 1.0f};
+    std::array<float, 4> toggle_color{0.90f, 0.92f, 0.96f, 1.0f};
+    std::array<float, 4> text_color{0.94f, 0.96f, 0.99f, 1.0f};
+    TypographyStyle label_typography{
+        .font_size = 20.0f,
+        .line_height = 24.0f,
+        .letter_spacing = 0.8f,
+        .baseline_shift = 0.0f,
+    };
+};
+
+struct TreeNode {
+    std::string id;
+    std::string parent_id;
+    std::string label;
+    bool enabled = true;
+    bool expandable = false;
+    bool loaded = true;
+};
+
+struct TreeState {
+    bool enabled = true;
+    std::string hovered_id;
+    std::string selected_id;
+    std::vector<std::string> expanded_ids;
+    std::vector<std::string> loading_ids;
+    float scroll_offset = 0.0f;
+};
+
+struct TreeParams {
+    std::string name;
+    std::vector<TreeNode> nodes;
+    TreeStyle style{};
+};
+
+struct TreePaths {
+    ScenePath scene;
+    WidgetStateScenes states;
+    WidgetPath root;
+    ConcretePath state;
+    ConcretePath nodes;
+};
+
+auto CreateTree(PathSpace& space,
+                AppRootPathView appRoot,
+                TreeParams const& params) -> SP::Expected<TreePaths>;
+
+auto UpdateTreeState(PathSpace& space,
+                     TreePaths const& paths,
+                     TreeState const& new_state) -> SP::Expected<bool>;
+
 enum class StackAxis : std::uint8_t {
     Horizontal = 0,
     Vertical = 1,
@@ -833,6 +897,7 @@ enum class WidgetKind {
     Toggle,
     Slider,
     List,
+    Tree,
 };
 
 struct HitTarget {
@@ -846,7 +911,7 @@ namespace Bindings {
 
 enum class WidgetOpKind : std::uint32_t {
     HoverEnter = 0,
-    HoverExit,
+   HoverExit,
     Press,
     Release,
     Activate,
@@ -858,6 +923,13 @@ enum class WidgetOpKind : std::uint32_t {
     ListSelect,
     ListActivate,
     ListScroll,
+    TreeHover,
+    TreeSelect,
+    TreeToggle,
+    TreeExpand,
+    TreeCollapse,
+    TreeRequestLoad,
+    TreeScroll,
 };
 
 struct PointerInfo {
@@ -870,6 +942,7 @@ struct PointerInfo {
 struct WidgetOp {
     WidgetOpKind kind = WidgetOpKind::HoverEnter;
     std::string widget_path;
+    std::string target_id;
     PointerInfo pointer;
     float value = 0.0f;
     std::uint64_t sequence = 0;
@@ -900,6 +973,11 @@ struct SliderBinding {
 
 struct ListBinding {
     ListPaths widget;
+    BindingOptions options;
+};
+
+struct TreeBinding {
+    TreePaths widget;
     BindingOptions options;
 };
 
@@ -954,6 +1032,13 @@ auto CreateListBinding(PathSpace& space,
                        std::optional<DirtyRectHint> dirty_override = std::nullopt,
                        bool auto_render = true) -> SP::Expected<ListBinding>;
 
+auto CreateTreeBinding(PathSpace& space,
+                       AppRootPathView appRoot,
+                       TreePaths const& paths,
+                       ConcretePathView targetPath,
+                       std::optional<DirtyRectHint> dirty_override = std::nullopt,
+                       bool auto_render = true) -> SP::Expected<TreeBinding>;
+
 auto CreateStackBinding(PathSpace& space,
                         AppRootPathView appRoot,
                         StackPaths const& paths,
@@ -967,6 +1052,14 @@ auto DispatchList(PathSpace& space,
                   WidgetOpKind op_kind,
                   PointerInfo const& pointer = {},
                   std::int32_t item_index = -1,
+                  float scroll_delta = 0.0f) -> SP::Expected<bool>;
+
+auto DispatchTree(PathSpace& space,
+                  TreeBinding const& binding,
+                  TreeState const& new_state,
+                  WidgetOpKind op_kind,
+                  std::string_view node_id = {},
+                  PointerInfo const& pointer = {},
                   float scroll_delta = 0.0f) -> SP::Expected<bool>;
 
 auto UpdateStack(PathSpace& space,
@@ -1022,6 +1115,7 @@ struct WidgetTheme {
     ToggleStyle toggle{};
     SliderStyle slider{};
     ListStyle list{};
+    TreeStyle tree{};
     TypographyStyle heading{
         .font_size = 32.0f,
         .line_height = 36.0f,
@@ -1046,12 +1140,14 @@ auto ApplyTheme(WidgetTheme const& theme, ButtonParams& params) -> void;
 auto ApplyTheme(WidgetTheme const& theme, ToggleParams& params) -> void;
 auto ApplyTheme(WidgetTheme const& theme, SliderParams& params) -> void;
 auto ApplyTheme(WidgetTheme const& theme, ListParams& params) -> void;
+auto ApplyTheme(WidgetTheme const& theme, TreeParams& params) -> void;
 
 namespace Reducers {
 
 struct WidgetAction {
     Bindings::WidgetOpKind kind = Bindings::WidgetOpKind::HoverEnter;
     std::string widget_path;
+    std::string target_id;
     Bindings::PointerInfo pointer{};
     float analog_value = 0.0f;
     std::int32_t discrete_index = -1;

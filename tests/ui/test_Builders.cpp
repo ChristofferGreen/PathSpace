@@ -2626,6 +2626,177 @@ TEST_CASE("Widgets::CreateList publishes snapshot and metadata") {
     CHECK(revision->revision != 0);
 }
 
+TEST_CASE("Widgets::CreateTree publishes snapshot and metadata") {
+    BuildersFixture fx;
+
+    Widgets::TreeParams treeParams{};
+    treeParams.name = "filesystem";
+    treeParams.nodes = {
+        Widgets::TreeNode{.id = "root", .parent_id = "", .label = "Root", .enabled = true, .expandable = true, .loaded = true},
+        Widgets::TreeNode{.id = "docs", .parent_id = "root", .label = "Docs", .enabled = true, .expandable = false, .loaded = false},
+        Widgets::TreeNode{.id = "src", .parent_id = "root", .label = "Src", .enabled = true, .expandable = true, .loaded = false},
+        Widgets::TreeNode{.id = "tests", .parent_id = "src", .label = "Tests", .enabled = true, .expandable = false, .loaded = false},
+    };
+
+    auto created = Widgets::CreateTree(fx.space, fx.root_view(), treeParams);
+    REQUIRE(created);
+
+    auto storedNodes = read_value<std::vector<Widgets::TreeNode>>(fx.space, created->nodes.getPath());
+    REQUIRE(storedNodes);
+    CHECK(storedNodes->size() == 4);
+    CHECK((*storedNodes)[0].loaded);
+    CHECK((*storedNodes)[2].expandable);
+
+    auto state = read_value<Widgets::TreeState>(fx.space, created->state.getPath());
+    REQUIRE(state);
+    CHECK(state->expanded_ids.empty());
+    CHECK(state->hovered_id.empty());
+
+    auto kindPath = std::string(created->root.getPath()) + "/meta/kind";
+    auto storedKind = read_value<std::string>(fx.space, kindPath);
+    REQUIRE(storedKind);
+    CHECK(*storedKind == "tree");
+
+    auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    REQUIRE(revision);
+    CHECK(revision->revision != 0);
+}
+
+TEST_CASE("Widgets::UpdateTreeState toggles expansion and clamps state") {
+    BuildersFixture fx;
+
+    Widgets::TreeParams treeParams{};
+    treeParams.name = "project";
+    treeParams.nodes = {
+        Widgets::TreeNode{.id = "root", .parent_id = "", .label = "Root", .enabled = true, .expandable = true, .loaded = true},
+        Widgets::TreeNode{.id = "src", .parent_id = "root", .label = "Src", .enabled = true, .expandable = true, .loaded = false},
+        Widgets::TreeNode{.id = "include", .parent_id = "root", .label = "Include", .enabled = false, .expandable = false, .loaded = false},
+    };
+
+    auto tree = Widgets::CreateTree(fx.space, fx.root_view(), treeParams);
+    REQUIRE(tree);
+
+    Widgets::TreeState desired{};
+    desired.enabled = true;
+    desired.hovered_id = "include"; // disabled, should clear
+    desired.selected_id = "src";
+    desired.expanded_ids = {"root"};
+    desired.loading_ids = {"src"};
+    desired.scroll_offset = 100.0f;
+
+    auto changed = Widgets::UpdateTreeState(fx.space, *tree, desired);
+    REQUIRE(changed);
+    CHECK(*changed);
+
+    auto updated = read_value<Widgets::TreeState>(fx.space, tree->state.getPath());
+    REQUIRE(updated);
+    CHECK(updated->selected_id == "src");
+    CHECK(updated->hovered_id.empty());
+    CHECK(std::find(updated->expanded_ids.begin(), updated->expanded_ids.end(), "root")
+          != updated->expanded_ids.end());
+
+    Widgets::TreeState collapse{};
+    collapse.enabled = true;
+    collapse.selected_id = "src";
+    collapse.expanded_ids = {};
+    auto collapsed = Widgets::UpdateTreeState(fx.space, *tree, collapse);
+    REQUIRE(collapsed);
+    CHECK(*collapsed);
+
+    auto collapsedState = read_value<Widgets::TreeState>(fx.space, tree->state.getPath());
+    REQUIRE(collapsedState);
+    CHECK(collapsedState->expanded_ids.empty());
+}
+
+TEST_CASE("Widgets::Bindings::DispatchTree enqueues ops and schedules renders") {
+    BuildersFixture fx;
+
+    Widgets::TreeParams treeParams{};
+    treeParams.name = "bindings_tree";
+    treeParams.nodes = {
+        Widgets::TreeNode{.id = "root", .parent_id = "", .label = "Root", .enabled = true, .expandable = true, .loaded = true},
+        Widgets::TreeNode{.id = "src", .parent_id = "root", .label = "Src", .enabled = true, .expandable = true, .loaded = false},
+        Widgets::TreeNode{.id = "docs", .parent_id = "root", .label = "Docs", .enabled = true, .expandable = false, .loaded = false},
+    };
+
+    auto tree = Widgets::CreateTree(fx.space, fx.root_view(), treeParams);
+    REQUIRE(tree);
+
+    RendererParams rendererParams{ .name = "bindings_tree_renderer",
+                                   .kind = RendererKind::Software2D,
+                                   .description = "Tree renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px = {320, 240};
+
+    SurfaceParams surfaceParams{ .name = "bindings_tree_surface",
+                                 .desc = surfaceDesc,
+                                 .renderer = "renderers/bindings_tree_renderer" };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    REQUIRE(Surface::SetScene(fx.space, *surface, tree->scene));
+
+    auto target = Renderer::ResolveTargetBase(fx.space,
+                                              fx.root_view(),
+                                              *renderer,
+                                              "targets/surfaces/bindings_tree_surface");
+    REQUIRE(target);
+
+    auto binding = WidgetBindings::CreateTreeBinding(fx.space,
+                                                     fx.root_view(),
+                                                     *tree,
+                                                     SP::ConcretePathStringView{target->getPath()},
+                                                     std::nullopt,
+                                                     true);
+    REQUIRE(binding);
+
+    auto currentState = fx.space.read<Widgets::TreeState, std::string>(tree->state.getPath());
+    REQUIRE(currentState);
+
+    auto toggle = WidgetBindings::DispatchTree(fx.space,
+                                               *binding,
+                                               *currentState,
+                                               WidgetBindings::WidgetOpKind::TreeToggle,
+                                               "src",
+                                               WidgetBindings::PointerInfo{},
+                                               0.0f);
+    if (!toggle) {
+        auto err = toggle.error();
+        CAPTURE(static_cast<int>(err.code));
+        CAPTURE(err.message);
+    }
+    REQUIRE(toggle);
+    CHECK(*toggle);
+
+    auto updatedState = fx.space.read<Widgets::TreeState, std::string>(tree->state.getPath());
+    REQUIRE(updatedState);
+    CHECK(std::find(updatedState->expanded_ids.begin(),
+                    updatedState->expanded_ids.end(),
+                    "src") != updatedState->expanded_ids.end());
+
+    auto opQueuePath = binding->options.ops_queue.getPath();
+    auto toggleOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(toggleOp);
+    CHECK(toggleOp->kind == WidgetBindings::WidgetOpKind::TreeToggle);
+    CHECK(toggleOp->target_id == "src");
+
+    auto renderQueuePath = std::string(target->getPath()) + "/events/renderRequested/queue";
+    auto renderEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+    REQUIRE(renderEvent);
+    CHECK(renderEvent->reason == "widget/tree");
+
+    auto loadOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(loadOp);
+    CHECK(loadOp->kind == WidgetBindings::WidgetOpKind::TreeRequestLoad);
+    CHECK(loadOp->target_id == "src");
+
+    auto scrollOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE_FALSE(scrollOp);
+}
+
 TEST_CASE("Widgets::CreateStack composes vertical layout") {
     BuildersFixture fx;
 

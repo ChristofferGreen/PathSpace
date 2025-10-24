@@ -37,6 +37,12 @@ inline auto ensure_list_scene(PathSpace& space,
     return ensure_widget_scene(space, appRoot, name, "Widget list");
 }
 
+inline auto ensure_tree_scene(PathSpace& space,
+                       AppRootPathView appRoot,
+                       std::string_view name) -> SP::Expected<ScenePath> {
+    return ensure_widget_scene(space, appRoot, name, "Widget tree");
+}
+
 inline auto ensure_stack_scene(PathSpace& space,
                         AppRootPathView appRoot,
                         std::string_view name) -> SP::Expected<ScenePath> {
@@ -126,6 +132,32 @@ inline auto write_list_metadata(PathSpace& space,
     }
 
     if (auto status = write_widget_kind(space, rootPath, "list"); !status) {
+        return status;
+    }
+    return {};
+}
+
+inline auto write_tree_metadata(PathSpace& space,
+                         std::string const& rootPath,
+                         Widgets::TreeState const& state,
+                         Widgets::TreeStyle const& style,
+                         std::vector<Widgets::TreeNode> const& nodes) -> SP::Expected<void> {
+    auto statePath = rootPath + "/state";
+    if (auto status = replace_single<Widgets::TreeState>(space, statePath, state); !status) {
+        return status;
+    }
+
+    auto stylePath = rootPath + "/meta/style";
+    if (auto status = replace_single<Widgets::TreeStyle>(space, stylePath, style); !status) {
+        return status;
+    }
+
+    auto nodesPath = rootPath + "/meta/nodes";
+    if (auto status = replace_single<std::vector<Widgets::TreeNode>>(space, nodesPath, nodes); !status) {
+        return status;
+    }
+
+    if (auto status = write_widget_kind(space, rootPath, "tree"); !status) {
         return status;
     }
     return {};

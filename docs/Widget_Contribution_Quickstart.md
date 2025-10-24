@@ -28,6 +28,7 @@ examples, tests, and tooling.
 | `widgets/<id>/meta/style` | Builder | Theme-derived style blob for the widget. |
 | `widgets/<id>/meta/range` | Builder | Slider-specific range metadata (min/max/step). |
 | `widgets/<id>/meta/items` | Builder | List item vector (id + display text). |
+| `widgets/<id>/meta/nodes` | Builder | Tree view node metadata (id, parent, label, enabled, expandable, loaded). |
 | `widgets/<id>/authoring/<component>` | Builder | Names tagged into authoring ids (`/authoring/…`) so `Widgets::ResolveHitTarget` can map hit-tests back to widget roots. |
 | `widgets/<id>/ops/inbox/queue` | Bindings | FIFO of `WidgetOp` events (hover/press/etc.). |
 | `widgets/<id>/ops/actions/inbox/queue` | Reducers | Reduced `WidgetAction` queue for app consumption. |
@@ -61,6 +62,9 @@ Keep `docs/AI_Paths.md` in sync if you introduce new metadata keys or queues.
   widget needs additional interaction verbs. Update the switch statements and
   random selection logic in `src/pathspace/ui/WidgetBindings.cpp`,
   `tests/ui/test_WidgetReducersFuzz.cpp`, and `examples/widgets_example.cpp`.
+  Current operations cover button/toggle/slider/list/tree widgets; mirror the
+  tree view pattern (`TreeHover`, `TreeSelect`, `TreeToggle`, `TreeExpand`,
+  `TreeCollapse`, `TreeRequestLoad`) when adding new interaction verbs.
 - Implement `Create<Widget>Binding` and `Dispatch<Widget>` in
   `WidgetBindings.cpp`, making sure dirty rect hints and auto-render scheduling
   respect the new widget’s footprint.

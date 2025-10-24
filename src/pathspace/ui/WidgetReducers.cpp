@@ -10,6 +10,7 @@ auto to_widget_action(Bindings::WidgetOp const& op) -> WidgetAction {
     WidgetAction action{};
     action.kind = op.kind;
     action.widget_path = op.widget_path;
+    action.target_id = op.target_id;
     action.pointer = op.pointer;
     action.analog_value = op.value;
     action.sequence = op.sequence;

@@ -67,10 +67,12 @@ auto enqueue_widget_op(PathSpace& space,
                        std::string const& widget_path,
                        WidgetOpKind kind,
                        PointerInfo const& pointer,
-                       float value) -> SP::Expected<void> {
+                       float value,
+                       std::string_view target_id = {}) -> SP::Expected<void> {
     WidgetOp op{};
     op.kind = kind;
     op.widget_path = widget_path;
+    op.target_id = target_id;
     op.pointer = pointer;
     op.value = value;
     op.sequence = g_widget_op_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -111,6 +113,17 @@ auto read_list_items(PathSpace& space,
                      ListPaths const& paths) -> SP::Expected<std::vector<Widgets::ListItem>> {
     auto itemsPath = std::string(paths.root.getPath()) + "/meta/items";
     return space.read<std::vector<Widgets::ListItem>, std::string>(itemsPath);
+}
+
+auto read_tree_style(PathSpace& space,
+                     TreePaths const& paths) -> SP::Expected<Widgets::TreeStyle> {
+    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    return space.read<Widgets::TreeStyle, std::string>(stylePath);
+}
+
+auto read_tree_nodes(PathSpace& space,
+                     TreePaths const& paths) -> SP::Expected<std::vector<Widgets::TreeNode>> {
+    return space.read<std::vector<Widgets::TreeNode>, std::string>(paths.nodes.getPath());
 }
 
 } // namespace
@@ -197,6 +210,34 @@ auto CreateListBinding(PathSpace& space,
     float height = style->item_height * static_cast<float>(item_count) + style->border_thickness * 2.0f;
     DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(style->width, height));
     ListBinding binding{
+        .widget = paths,
+        .options = build_options(paths.root, targetPath, hint, auto_render),
+    };
+    return binding;
+}
+
+auto CreateTreeBinding(PathSpace& space,
+                       AppRootPathView,
+                       TreePaths const& paths,
+                       ConcretePathView targetPath,
+                       std::optional<DirtyRectHint> dirty_override,
+                       bool auto_render) -> SP::Expected<TreeBinding> {
+    auto style = read_tree_style(space, paths);
+    if (!style) {
+        return std::unexpected(style.error());
+    }
+    auto nodes = read_tree_nodes(space, paths);
+    if (!nodes) {
+        return std::unexpected(nodes.error());
+    }
+
+    std::size_t node_count = std::max<std::size_t>(nodes->size(), 1u);
+    float width = std::max(style->width, 64.0f);
+    float row_height = std::max(style->row_height, 20.0f);
+    float height = style->border_thickness * 2.0f + row_height * static_cast<float>(node_count);
+    DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(width, height));
+
+    TreeBinding binding{
         .widget = paths,
         .options = build_options(paths.root, targetPath, hint, auto_render),
     };
@@ -439,6 +480,199 @@ auto DispatchList(PathSpace& space,
                                         op_value); !status) {
         return std::unexpected(status.error());
     }
+    return *changed;
+}
+
+auto DispatchTree(PathSpace& space,
+                  TreeBinding const& binding,
+                  TreeState const& new_state,
+                  WidgetOpKind op_kind,
+                  std::string_view node_id,
+                  PointerInfo const& pointer,
+                  float scroll_delta) -> SP::Expected<bool> {
+    switch (op_kind) {
+    case WidgetOpKind::TreeHover:
+    case WidgetOpKind::TreeSelect:
+    case WidgetOpKind::TreeToggle:
+    case WidgetOpKind::TreeExpand:
+    case WidgetOpKind::TreeCollapse:
+    case WidgetOpKind::TreeRequestLoad:
+    case WidgetOpKind::TreeScroll:
+        break;
+    default:
+        return std::unexpected(make_error("Unsupported widget op kind for tree binding",
+                                          SP::Error::Code::InvalidType));
+    }
+
+    auto current_state = space.read<TreeState, std::string>(binding.widget.state.getPath());
+    if (!current_state) {
+        return std::unexpected(current_state.error());
+    }
+
+    auto nodes = read_tree_nodes(space, binding.widget);
+    if (!nodes) {
+        return std::unexpected(nodes.error());
+    }
+
+    auto [index, children, roots] = build_tree_children(*nodes);
+    (void)roots;
+
+    auto find_node = [&](std::string const& id) -> std::optional<std::size_t> {
+        auto it = index.find(id);
+        if (it == index.end()) {
+            return std::nullopt;
+        }
+        return it->second;
+    };
+
+    TreeState desired = *current_state;
+    std::string node_key = node_id.empty() ? std::string{} : std::string{node_id};
+
+    auto ensure_node = [&]() -> std::optional<std::size_t> {
+        if (node_key.empty()) {
+            return std::nullopt;
+        }
+        return find_node(node_key);
+    };
+
+    bool should_request_load = false;
+
+    switch (op_kind) {
+    case WidgetOpKind::TreeHover: {
+        if (node_key.empty()) {
+            desired.hovered_id.clear();
+        } else if (auto node_index = ensure_node()) {
+            if ((*nodes)[*node_index].enabled) {
+                desired.hovered_id = node_key;
+            }
+        }
+        break;
+    }
+    case WidgetOpKind::TreeSelect: {
+        if (!node_key.empty()) {
+            if (auto node_index = ensure_node()) {
+                if ((*nodes)[*node_index].enabled) {
+                    desired.selected_id = node_key;
+                    desired.hovered_id = node_key;
+                }
+            }
+        }
+        break;
+    }
+    case WidgetOpKind::TreeToggle:
+    case WidgetOpKind::TreeExpand:
+    case WidgetOpKind::TreeCollapse:
+    case WidgetOpKind::TreeRequestLoad: {
+        if (node_key.empty()) {
+            return std::unexpected(make_error("tree operation requires node id",
+                                              SP::Error::Code::InvalidPath));
+        }
+        auto node_index = ensure_node();
+        if (!node_index) {
+            return std::unexpected(make_error("unknown tree node id",
+                                              SP::Error::Code::InvalidPath));
+        }
+        bool has_published_children = (*node_index < children.size()) && !children[*node_index].empty();
+        bool expandable = has_published_children || (*nodes)[*node_index].expandable;
+        if (!expandable) {
+            break;
+        }
+
+        auto toggle_expansion = [&](bool expand) {
+            auto& expanded = desired.expanded_ids;
+            auto it = std::find(expanded.begin(), expanded.end(), node_key);
+            if (expand) {
+                if (it == expanded.end()) {
+                    expanded.push_back(node_key);
+                    if (!has_published_children && (*nodes)[*node_index].expandable) {
+                        should_request_load = true;
+                        if (std::find(desired.loading_ids.begin(), desired.loading_ids.end(), node_key)
+                            == desired.loading_ids.end()) {
+                            desired.loading_ids.push_back(node_key);
+                        }
+                    }
+                }
+            } else {
+                if (it != expanded.end()) {
+                    expanded.erase(it);
+                }
+                desired.loading_ids.erase(std::remove(desired.loading_ids.begin(),
+                                                     desired.loading_ids.end(),
+                                                     node_key),
+                                          desired.loading_ids.end());
+            }
+        };
+
+        if (op_kind == WidgetOpKind::TreeToggle) {
+            bool is_expanded = std::find(desired.expanded_ids.begin(), desired.expanded_ids.end(), node_key)
+                               != desired.expanded_ids.end();
+            toggle_expansion(!is_expanded);
+        } else if (op_kind == WidgetOpKind::TreeExpand) {
+            toggle_expansion(true);
+        } else if (op_kind == WidgetOpKind::TreeCollapse) {
+            toggle_expansion(false);
+        } else if (op_kind == WidgetOpKind::TreeRequestLoad) {
+            if (std::find(desired.loading_ids.begin(), desired.loading_ids.end(), node_key)
+                == desired.loading_ids.end()) {
+                desired.loading_ids.push_back(node_key);
+            }
+        }
+        break;
+    }
+    case WidgetOpKind::TreeScroll: {
+        desired.scroll_offset = current_state->scroll_offset + scroll_delta;
+        break;
+    }
+    default:
+        break;
+    }
+
+    auto changed = Widgets::UpdateTreeState(space, binding.widget, desired);
+    if (!changed) {
+        return std::unexpected(changed.error());
+    }
+
+    auto updated_state = space.read<TreeState, std::string>(binding.widget.state.getPath());
+    if (!updated_state) {
+        return std::unexpected(updated_state.error());
+    }
+
+    if (*changed) {
+        if (auto status = submit_dirty_hint(space, binding.options); !status) {
+            return std::unexpected(status.error());
+        }
+        if (auto status = schedule_auto_render(space, binding.options, "widget/tree"); !status) {
+            return std::unexpected(status.error());
+        }
+    }
+
+    float op_value = 0.0f;
+    if (op_kind == WidgetOpKind::TreeScroll) {
+        op_value = updated_state->scroll_offset;
+    }
+
+    if (auto status = enqueue_widget_op(space,
+                                        binding.options,
+                                        binding.widget.root.getPath(),
+                                        op_kind,
+                                        pointer,
+                                        op_value,
+                                        node_key); !status) {
+        return std::unexpected(status.error());
+    }
+
+    if (should_request_load) {
+        if (auto status = enqueue_widget_op(space,
+                                            binding.options,
+                                            binding.widget.root.getPath(),
+                                            WidgetOpKind::TreeRequestLoad,
+                                            pointer,
+                                            0.0f,
+                                            node_key); !status) {
+            return std::unexpected(status.error());
+        }
+    }
+
     return *changed;
 }
 
