@@ -20,8 +20,11 @@
 #include <iomanip>
 #include <limits>
 #include <iostream>
+#include <functional>
 #include <optional>
 #include <span>
+#include <unordered_map>
+#include <unordered_set>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -105,12 +108,38 @@ struct ListLayout {
     float item_height = 0.0f;
 };
 
+struct StackPreviewLayout {
+    WidgetBounds bounds;
+    std::vector<WidgetBounds> child_bounds;
+};
+
+struct TreeRowLayout {
+    WidgetBounds bounds;
+    std::string node_id;
+    std::string label;
+    WidgetBounds toggle;
+    int depth = 0;
+    bool expandable = false;
+    bool expanded = false;
+    bool loading = false;
+    bool enabled = true;
+};
+
+struct TreeLayout {
+    WidgetBounds bounds;
+    float content_top = 0.0f;
+    float row_height = 0.0f;
+    std::vector<TreeRowLayout> rows;
+};
+
 struct GalleryLayout {
     WidgetBounds button;
     WidgetBounds toggle;
     WidgetBounds slider;
     WidgetBounds slider_track;
     ListLayout list;
+    StackPreviewLayout stack;
+    TreeLayout tree;
 };
 
 static auto mix_color(std::array<float, 4> base,
@@ -616,6 +645,448 @@ auto build_list_preview(Widgets::ListStyle const& style,
     return bucket;
 }
 
+struct TreeRowInfo {
+    std::string id;
+    std::string label;
+    int depth = 0;
+    bool enabled = true;
+    bool expandable = false;
+    bool expanded = false;
+    bool loading = false;
+};
+
+static auto compute_tree_rows(std::vector<Widgets::TreeNode> const& nodes,
+                              Widgets::TreeState const& state) -> std::vector<TreeRowInfo> {
+    std::unordered_map<std::string, std::size_t> index;
+    index.reserve(nodes.size());
+    for (std::size_t i = 0; i < nodes.size(); ++i) {
+        index.emplace(nodes[i].id, i);
+    }
+
+    std::unordered_map<std::string, std::vector<std::size_t>> children;
+    children.reserve(nodes.size());
+    std::vector<std::size_t> roots;
+    roots.reserve(nodes.size());
+    for (std::size_t i = 0; i < nodes.size(); ++i) {
+        auto const& node = nodes[i];
+        auto& bucket = children[node.parent_id];
+        bucket.push_back(i);
+        if (node.parent_id.empty()) {
+            roots.push_back(i);
+        }
+    }
+
+    std::unordered_set<std::string> expanded(state.expanded_ids.begin(), state.expanded_ids.end());
+    std::unordered_set<std::string> loading(state.loading_ids.begin(), state.loading_ids.end());
+
+    std::vector<TreeRowInfo> rows;
+    rows.reserve(nodes.size());
+
+    std::function<void(std::size_t, int)> visit = [&](std::size_t node_index, int depth) {
+        auto const& node = nodes[node_index];
+        auto child_it = children.find(node.id);
+        bool has_children = (child_it != children.end()) && !child_it->second.empty();
+        bool expandable = has_children || node.expandable;
+        bool expanded_flag = expandable && expanded.count(node.id) > 0;
+        bool loading_flag = loading.count(node.id) > 0;
+
+        rows.push_back(TreeRowInfo{
+            .id = node.id,
+            .label = node.label,
+            .depth = depth,
+            .enabled = node.enabled,
+            .expandable = expandable,
+            .expanded = expanded_flag,
+            .loading = loading_flag,
+        });
+
+        if (has_children && expanded_flag) {
+            for (auto child_index : child_it->second) {
+                visit(child_index, depth + 1);
+            }
+        }
+    };
+
+    if (roots.empty() && !nodes.empty()) {
+        roots.push_back(0);
+    }
+    for (auto root_index : roots) {
+        visit(root_index, 0);
+    }
+    return rows;
+}
+
+static auto build_stack_preview(Widgets::StackLayoutStyle const& style,
+                                Widgets::StackLayoutState const& layout,
+                                Widgets::WidgetTheme const& theme,
+                                StackPreviewLayout& preview) -> SceneData::DrawableBucketSnapshot {
+    SceneData::DrawableBucketSnapshot bucket{};
+    preview.child_bounds.clear();
+
+    float width = std::max(layout.width, 1.0f);
+    float height = std::max(layout.height, 1.0f);
+    if (style.width > 0.0f) {
+        width = std::max(width, style.width);
+    }
+    if (style.height > 0.0f) {
+        height = std::max(height, style.height);
+    }
+
+    preview.bounds = WidgetBounds{0.0f, 0.0f, width, height};
+
+    auto push_rect = [&](std::uint64_t drawable_id,
+                         WidgetBounds const& bounds,
+                         std::array<float, 4> const& color,
+                         float z,
+                         std::string const& authoring_id) {
+        SceneData::BoundingBox box{};
+        box.min = {bounds.min_x, bounds.min_y, 0.0f};
+        box.max = {bounds.max_x, bounds.max_y, 0.0f};
+        SceneData::BoundingSphere sphere{};
+        sphere.center = {(bounds.min_x + bounds.max_x) * 0.5f,
+                         (bounds.min_y + bounds.max_y) * 0.5f,
+                         0.0f};
+        float half_w = (bounds.max_x - bounds.min_x) * 0.5f;
+        float half_h = (bounds.max_y - bounds.min_y) * 0.5f;
+        sphere.radius = std::sqrt(half_w * half_w + half_h * half_h);
+
+        bucket.drawable_ids.push_back(drawable_id);
+        bucket.world_transforms.push_back(identity_transform());
+        bucket.bounds_boxes.push_back(box);
+        bucket.bounds_box_valid.push_back(1);
+        bucket.bounds_spheres.push_back(sphere);
+        bucket.layers.push_back(0);
+        bucket.z_values.push_back(z);
+        bucket.material_ids.push_back(0);
+        bucket.pipeline_flags.push_back(0);
+        bucket.visibility.push_back(1);
+        bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
+        bucket.command_counts.push_back(1);
+        bucket.opaque_indices.push_back(static_cast<std::uint32_t>(bucket.opaque_indices.size()));
+        bucket.clip_head_indices.push_back(-1);
+        bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
+            drawable_id,
+            authoring_id,
+            0,
+            0,
+        });
+        bucket.drawable_fingerprints.push_back(drawable_id);
+
+        SceneData::RoundedRectCommand rect{};
+        rect.min_x = bounds.min_x;
+        rect.min_y = bounds.min_y;
+        rect.max_x = bounds.max_x;
+        rect.max_y = bounds.max_y;
+        rect.radius_top_left = 8.0f;
+        rect.radius_top_right = 8.0f;
+        rect.radius_bottom_right = 8.0f;
+        rect.radius_bottom_left = 8.0f;
+        rect.color = color;
+
+        auto payload_offset = bucket.command_payload.size();
+        bucket.command_payload.resize(payload_offset + sizeof(SceneData::RoundedRectCommand));
+        std::memcpy(bucket.command_payload.data() + payload_offset,
+                    &rect,
+                    sizeof(SceneData::RoundedRectCommand));
+        bucket.command_kinds.push_back(static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect));
+    };
+
+    std::array<float, 4> background_color = {0.10f, 0.12f, 0.16f, 1.0f};
+    push_rect(0x31A00001ull,
+              preview.bounds,
+              background_color,
+              0.0f,
+              "widget/gallery/stack/background");
+
+    if (!layout.children.empty()) {
+        for (std::size_t index = 0; index < layout.children.size(); ++index) {
+            auto const& child = layout.children[index];
+            WidgetBounds child_bounds{
+                child.x,
+                child.y,
+                child.x + child.width,
+                child.y + child.height,
+            };
+            preview.child_bounds.push_back(child_bounds);
+            float t = (layout.children.size() == 1)
+                ? 0.5f
+                : static_cast<float>(index) / static_cast<float>(layout.children.size() - 1);
+            auto color = mix_color(theme.accent_text_color,
+                                   theme.caption_color,
+                                   t * 0.6f);
+            color[3] = 0.85f;
+            push_rect(0x31A10000ull + static_cast<std::uint64_t>(index),
+                      child_bounds,
+                      color,
+                      0.05f + 0.01f * static_cast<float>(index),
+                      "widget/gallery/stack/child/" + std::to_string(index));
+        }
+    }
+
+    return bucket;
+}
+
+static auto build_tree_preview(Widgets::TreeStyle const& style,
+                               std::vector<Widgets::TreeNode> const& nodes,
+                               Widgets::TreeState const& state,
+                               Widgets::WidgetTheme const& theme,
+                               TreeLayout& layout_info) -> SceneData::DrawableBucketSnapshot {
+    SceneData::DrawableBucketSnapshot bucket{};
+    auto rows_info = compute_tree_rows(nodes, state);
+
+    float width = std::max(style.width, 96.0f);
+    float row_height = std::max(style.row_height, 16.0f);
+    float border = std::max(style.border_thickness, 0.0f);
+    std::size_t visible_rows = rows_info.empty() ? 1u : rows_info.size();
+    float content_height = row_height * static_cast<float>(visible_rows);
+    float height = content_height + border * 2.0f;
+
+    layout_info.bounds = WidgetBounds{0.0f, 0.0f, width, height};
+    layout_info.row_height = row_height;
+    layout_info.content_top = border;
+    layout_info.rows.clear();
+    layout_info.rows.reserve(visible_rows);
+
+    auto push_rect = [&](std::uint64_t drawable_id,
+                         WidgetBounds const& bounds,
+                         std::array<float, 4> const& color,
+                         float z,
+                         std::string const& authoring_id,
+                         float corner_radius = 4.0f) {
+        SceneData::BoundingBox box{};
+        box.min = {bounds.min_x, bounds.min_y, 0.0f};
+        box.max = {bounds.max_x, bounds.max_y, 0.0f};
+        SceneData::BoundingSphere sphere{};
+        sphere.center = {(bounds.min_x + bounds.max_x) * 0.5f,
+                         (bounds.min_y + bounds.max_y) * 0.5f,
+                         0.0f};
+        float half_w = (bounds.max_x - bounds.min_x) * 0.5f;
+        float half_h = (bounds.max_y - bounds.min_y) * 0.5f;
+        sphere.radius = std::sqrt(half_w * half_w + half_h * half_h);
+
+        bucket.drawable_ids.push_back(drawable_id);
+        bucket.world_transforms.push_back(identity_transform());
+        bucket.bounds_boxes.push_back(box);
+        bucket.bounds_box_valid.push_back(1);
+        bucket.bounds_spheres.push_back(sphere);
+        bucket.layers.push_back(0);
+        bucket.z_values.push_back(z);
+        bucket.material_ids.push_back(0);
+        bucket.pipeline_flags.push_back(0);
+        bucket.visibility.push_back(1);
+        bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
+        bucket.command_counts.push_back(1);
+        bucket.opaque_indices.push_back(static_cast<std::uint32_t>(bucket.opaque_indices.size()));
+        bucket.clip_head_indices.push_back(-1);
+        bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
+            drawable_id,
+            authoring_id,
+            0,
+            0,
+        });
+        bucket.drawable_fingerprints.push_back(drawable_id);
+
+        SceneData::RoundedRectCommand rect{};
+        rect.min_x = bounds.min_x;
+        rect.min_y = bounds.min_y;
+        rect.max_x = bounds.max_x;
+        rect.max_y = bounds.max_y;
+        rect.radius_top_left = corner_radius;
+        rect.radius_top_right = corner_radius;
+        rect.radius_bottom_right = corner_radius;
+        rect.radius_bottom_left = corner_radius;
+        rect.color = color;
+
+        auto payload_offset = bucket.command_payload.size();
+        bucket.command_payload.resize(payload_offset + sizeof(SceneData::RoundedRectCommand));
+        std::memcpy(bucket.command_payload.data() + payload_offset,
+                    &rect,
+                    sizeof(SceneData::RoundedRectCommand));
+        bucket.command_kinds.push_back(static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect));
+    };
+
+    push_rect(0x41A00001ull,
+              layout_info.bounds,
+              style.background_color,
+              0.0f,
+              "widget/gallery/tree/background",
+              style.corner_radius);
+
+    auto make_toggle_triangle = [&](std::uint64_t base_id,
+                                    WidgetBounds const& bounds,
+                                    bool expanded_flag,
+                                    std::array<float, 4> const& color) {
+        SceneData::BoundingBox box{};
+        box.min = {bounds.min_x, bounds.min_y, 0.0f};
+        box.max = {bounds.max_x, bounds.max_y, 0.0f};
+        SceneData::BoundingSphere sphere{};
+        sphere.center = {(bounds.min_x + bounds.max_x) * 0.5f,
+                         (bounds.min_y + bounds.max_y) * 0.5f,
+                         0.0f};
+        float half_w = (bounds.max_x - bounds.min_x) * 0.5f;
+        float half_h = (bounds.max_y - bounds.min_y) * 0.5f;
+        sphere.radius = std::sqrt(half_w * half_w + half_h * half_h);
+
+        bucket.drawable_ids.push_back(base_id);
+        bucket.world_transforms.push_back(identity_transform());
+        bucket.bounds_boxes.push_back(box);
+        bucket.bounds_box_valid.push_back(1);
+        bucket.bounds_spheres.push_back(sphere);
+        bucket.layers.push_back(1);
+        bucket.z_values.push_back(0.15f);
+        bucket.material_ids.push_back(0);
+        bucket.pipeline_flags.push_back(0);
+        bucket.visibility.push_back(1);
+        bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
+        bucket.command_counts.push_back(1);
+        bucket.opaque_indices.push_back(static_cast<std::uint32_t>(bucket.opaque_indices.size()));
+        bucket.clip_head_indices.push_back(-1);
+        bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
+            base_id,
+            "widget/gallery/tree/toggle",
+            0,
+            0,
+        });
+        bucket.drawable_fingerprints.push_back(base_id);
+
+        SceneData::PathCommand path{};
+        path.path_type = SceneData::PathCommand::PathType::Polygon;
+        path.fill_color = color;
+        path.fill_rule = SceneData::PathCommand::FillRule::EvenOdd;
+        path.stroke_width = 0.0f;
+        path.stroke_color = color;
+        path.segment_count = 3;
+        path.points.resize(3);
+
+        if (expanded_flag) {
+            path.points[0] = {bounds.min_x, bounds.max_y - (bounds.max_y - bounds.min_y) * 0.3f, 0.0f};
+            path.points[1] = {bounds.max_x, bounds.max_y - (bounds.max_y - bounds.min_y) * 0.3f, 0.0f};
+            path.points[2] = {(bounds.min_x + bounds.max_x) * 0.5f,
+                               bounds.min_y + (bounds.max_y - bounds.min_y) * 0.3f,
+                               0.0f};
+        } else {
+            path.points[0] = {bounds.min_x + (bounds.max_x - bounds.min_x) * 0.3f, bounds.min_y, 0.0f};
+            path.points[1] = {bounds.max_x - (bounds.max_x - bounds.min_x) * 0.3f,
+                               (bounds.min_y + bounds.max_y) * 0.5f,
+                               0.0f};
+            path.points[2] = {bounds.min_x + (bounds.max_x - bounds.min_x) * 0.3f, bounds.max_y, 0.0f};
+        }
+
+        auto payload_offset = bucket.command_payload.size();
+        bucket.command_payload.resize(payload_offset + sizeof(SceneData::PathCommand));
+        std::memcpy(bucket.command_payload.data() + payload_offset,
+                    &path,
+                    sizeof(SceneData::PathCommand));
+        bucket.command_kinds.push_back(static_cast<std::uint32_t>(SceneData::DrawCommandKind::Path));
+    };
+
+    std::uint64_t base_id = 0x41A10000ull;
+    for (std::size_t i = 0; i < visible_rows; ++i) {
+        TreeRowInfo info;
+        if (!rows_info.empty()) {
+            info = rows_info[i];
+        } else {
+            info = TreeRowInfo{
+                .id = "",
+                .label = "(no nodes)",
+                .depth = 0,
+                .enabled = false,
+                .expandable = false,
+                .expanded = false,
+                .loading = false,
+            };
+        }
+
+        float row_top = border + row_height * static_cast<float>(i) - state.scroll_offset;
+        float row_bottom = row_top + row_height;
+        WidgetBounds row_bounds{
+            border,
+            row_top,
+            width - border,
+            row_bottom,
+        };
+
+        auto row_color = style.row_color;
+        if (!info.enabled || !state.enabled) {
+            row_color = desaturate(style.row_disabled_color, 0.4f);
+        }
+
+        bool is_selected = (!info.id.empty() && info.id == state.selected_id);
+        bool is_hovered = (!info.id.empty() && info.id == state.hovered_id);
+
+        if (is_selected) {
+            row_color = style.row_selected_color;
+        } else if (is_hovered) {
+            row_color = style.row_hover_color;
+        }
+
+        row_color[3] = 0.85f;
+        push_rect(base_id + static_cast<std::uint64_t>(i),
+                  row_bounds,
+                  row_color,
+                  0.05f + 0.005f * static_cast<float>(i),
+                  "widget/gallery/tree/row/" + info.id,
+                  4.0f);
+
+        float indent = border + static_cast<float>(info.depth) * style.indent_per_level;
+        float toggle_size = style.toggle_icon_size;
+        float toggle_min_x = indent;
+        float toggle_max_x = toggle_min_x + toggle_size;
+        float toggle_center_y = (row_top + row_bottom) * 0.5f;
+        WidgetBounds toggle_bounds{
+            toggle_min_x,
+            toggle_center_y - toggle_size * 0.5f,
+            toggle_max_x,
+            toggle_center_y + toggle_size * 0.5f,
+        };
+
+        if (!info.expandable) {
+            toggle_bounds.min_x = toggle_bounds.max_x = toggle_bounds.min_y = toggle_bounds.max_y = toggle_center_y;
+        } else {
+            make_toggle_triangle(0x41A20000ull + static_cast<std::uint64_t>(i),
+                                 toggle_bounds,
+                                 info.expanded,
+                                 style.toggle_color);
+        }
+
+        float label_x = toggle_bounds.max_x + 10.0f;
+        float text_top = row_top + (row_height - style.label_typography.line_height) * 0.5f;
+        auto text_color = style.text_color;
+        if (!info.enabled || !state.enabled) {
+            text_color = desaturate(text_color, 0.5f);
+        }
+        if (info.loading) {
+            text_color = lighten(text_color, 0.2f);
+        }
+
+        auto label = build_text_bucket(info.label.empty() ? "(node)" : info.label,
+                                       label_x,
+                                       text_top + style.label_typography.baseline_shift,
+                                       style.label_typography,
+                                       text_color,
+                                       0x41A30000ull + static_cast<std::uint64_t>(i),
+                                       "widget/gallery/tree/label/" + info.id,
+                                       0.2f);
+        if (label) {
+            append_bucket(bucket, label->bucket);
+        }
+
+        layout_info.rows.push_back(TreeRowLayout{
+            .bounds = row_bounds,
+            .node_id = info.id,
+            .label = info.label,
+            .toggle = toggle_bounds,
+            .depth = info.depth,
+            .expandable = info.expandable,
+            .expanded = info.expanded,
+            .loading = info.loading,
+            .enabled = info.enabled && state.enabled,
+        });
+    }
+
+    return bucket;
+}
+
 template <typename T>
 auto unwrap_or_exit(SP::Expected<T> value, std::string const& context) -> T {
     if (!value) {
@@ -1042,6 +1513,11 @@ auto build_gallery_bucket(PathSpace& space,
                           Widgets::ListStyle const& list_style,
                           Widgets::ListState const& list_state,
                           std::vector<Widgets::ListItem> const& list_items,
+                          Widgets::StackLayoutParams const& stack_params,
+                          Widgets::StackLayoutState const& stack_layout,
+                          Widgets::TreeStyle const& tree_style,
+                          Widgets::TreeState const& tree_state,
+                          std::vector<Widgets::TreeNode> const& tree_nodes,
                           Widgets::WidgetTheme const& theme) -> GalleryBuildResult {
     (void)space;
     (void)appRoot;
@@ -1262,6 +1738,122 @@ auto build_gallery_bucket(PathSpace& space,
         cursor_y += list_height + 48.0f;
     }
 
+    // Stack layout preview
+    {
+        Widgets::TypographyStyle caption_typography = theme.caption;
+        float caption_line = caption_typography.line_height;
+        auto caption = build_text_bucket("Stack layout preview",
+                                         left,
+                                         cursor_y + caption_typography.baseline_shift,
+                                         caption_typography,
+                                         theme.caption_color,
+                                         next_drawable_id++,
+                                         "widget/gallery/stack/caption",
+                                         0.6f);
+        if (caption) {
+            pending.emplace_back(std::move(caption->bucket));
+            max_width = std::max(max_width, left + caption->width);
+            max_height = std::max(max_height, cursor_y + caption_line);
+        }
+        cursor_y += caption_line + 12.0f;
+
+        StackPreviewLayout stack_preview{};
+        auto stack_bucket = build_stack_preview(stack_params.style,
+                                                stack_layout,
+                                                theme,
+                                                stack_preview);
+        translate_bucket(stack_bucket, left, cursor_y);
+        pending.emplace_back(std::move(stack_bucket));
+
+        layout.stack.bounds = WidgetBounds{
+            stack_preview.bounds.min_x + left,
+            stack_preview.bounds.min_y + cursor_y,
+            stack_preview.bounds.max_x + left,
+            stack_preview.bounds.max_y + cursor_y,
+        };
+        layout.stack.child_bounds.clear();
+        layout.stack.child_bounds.reserve(stack_preview.child_bounds.size());
+        for (auto const& child : stack_preview.child_bounds) {
+            layout.stack.child_bounds.push_back(WidgetBounds{
+                child.min_x + left,
+                child.min_y + cursor_y,
+                child.max_x + left,
+                child.max_y + cursor_y,
+            });
+        }
+
+        max_width = std::max(max_width, layout.stack.bounds.max_x);
+        max_height = std::max(max_height, layout.stack.bounds.max_y);
+        cursor_y += stack_preview.bounds.height + 36.0f;
+    }
+
+    // Tree view preview
+    {
+        Widgets::TypographyStyle caption_typography = theme.caption;
+        float caption_line = caption_typography.line_height;
+        auto caption = build_text_bucket("Tree view preview",
+                                         left,
+                                         cursor_y + caption_typography.baseline_shift,
+                                         caption_typography,
+                                         theme.caption_color,
+                                         next_drawable_id++,
+                                         "widget/gallery/tree/caption",
+                                         0.6f);
+        if (caption) {
+            pending.emplace_back(std::move(caption->bucket));
+            max_width = std::max(max_width, left + caption->width);
+            max_height = std::max(max_height, cursor_y + caption_line);
+        }
+        cursor_y += caption_line + 12.0f;
+
+        TreeLayout tree_preview{};
+        auto tree_bucket = build_tree_preview(tree_style,
+                                              tree_nodes,
+                                              tree_state,
+                                              theme,
+                                              tree_preview);
+        translate_bucket(tree_bucket, left, cursor_y);
+        pending.emplace_back(std::move(tree_bucket));
+
+        layout.tree.bounds = WidgetBounds{
+            tree_preview.bounds.min_x + left,
+            tree_preview.bounds.min_y + cursor_y,
+            tree_preview.bounds.max_x + left,
+            tree_preview.bounds.max_y + cursor_y,
+        };
+        layout.tree.content_top = tree_preview.content_top + cursor_y;
+        layout.tree.row_height = tree_preview.row_height;
+        layout.tree.rows.clear();
+        layout.tree.rows.reserve(tree_preview.rows.size());
+        for (auto const& row : tree_preview.rows) {
+            layout.tree.rows.push_back(TreeRowLayout{
+                .bounds = WidgetBounds{
+                    row.bounds.min_x + left,
+                    row.bounds.min_y + cursor_y,
+                    row.bounds.max_x + left,
+                    row.bounds.max_y + cursor_y,
+                },
+                .node_id = row.node_id,
+                .label = row.label,
+                .toggle = WidgetBounds{
+                    row.toggle.min_x + left,
+                    row.toggle.min_y + cursor_y,
+                    row.toggle.max_x + left,
+                    row.toggle.max_y + cursor_y,
+                },
+                .depth = row.depth,
+                .expandable = row.expandable,
+                .expanded = row.expanded,
+                .loading = row.loading,
+                .enabled = row.enabled,
+            });
+        }
+
+        max_width = std::max(max_width, layout.tree.bounds.max_x);
+        max_height = std::max(max_height, layout.tree.bounds.max_y);
+        cursor_y += tree_preview.bounds.height + 48.0f;
+    }
+
     // Footer hint
     Widgets::TypographyStyle footer_typography = theme.caption;
     float footer_line_height = footer_typography.line_height;
@@ -1323,6 +1915,11 @@ auto publish_gallery_scene(PathSpace& space,
                            Widgets::ListStyle const& list_style,
                            Widgets::ListState const& list_state,
                            std::vector<Widgets::ListItem> const& list_items,
+                           Widgets::StackLayoutParams const& stack_params,
+                           Widgets::StackLayoutState const& stack_layout,
+                           Widgets::TreeStyle const& tree_style,
+                           Widgets::TreeState const& tree_state,
+                           std::vector<Widgets::TreeNode> const& tree_nodes,
                            Widgets::WidgetTheme const& theme) -> GallerySceneResult {
     SceneParams gallery_params{
         .name = "gallery",
@@ -1348,6 +1945,11 @@ auto publish_gallery_scene(PathSpace& space,
                                       list_style,
                                       list_state,
                                       list_items,
+                                      stack_params,
+                                      stack_layout,
+                                      tree_style,
+                                      tree_state,
+                                      tree_nodes,
                                       theme);
 
     SceneData::SceneSnapshotBuilder builder(space, appRoot, gallery_scene);
@@ -1377,6 +1979,7 @@ enum class FocusTarget {
     Toggle,
     Slider,
     List,
+    Tree,
 };
 
 struct WidgetsExampleContext {
@@ -1386,6 +1989,8 @@ struct WidgetsExampleContext {
     Widgets::TogglePaths toggle_paths;
     Widgets::SliderPaths slider_paths;
     Widgets::ListPaths list_paths;
+    Widgets::StackPaths stack_paths;
+    Widgets::TreePaths tree_paths;
     Widgets::WidgetTheme theme{};
     Widgets::ButtonStyle button_style{};
     std::string button_label;
@@ -1394,10 +1999,17 @@ struct WidgetsExampleContext {
     Widgets::ListStyle list_style{};
     Widgets::SliderRange slider_range{};
     std::vector<Widgets::ListItem> list_items;
+    Widgets::StackLayoutParams stack_params{};
+    Widgets::StackLayoutState stack_layout{};
+    Widgets::TreeStyle tree_style{};
+    Widgets::TreeState tree_state{};
+    std::vector<Widgets::TreeNode> tree_nodes;
     WidgetBindings::ButtonBinding button_binding{};
     WidgetBindings::ToggleBinding toggle_binding{};
     WidgetBindings::SliderBinding slider_binding{};
     WidgetBindings::ListBinding list_binding{};
+    WidgetBindings::StackBinding stack_binding{};
+    WidgetBindings::TreeBinding tree_binding{};
     Widgets::ButtonState button_state{};
     Widgets::ToggleState toggle_state{};
     Widgets::SliderState slider_state{};
@@ -1410,6 +2022,9 @@ struct WidgetsExampleContext {
     float pointer_y = 0.0f;
     FocusTarget focus_target = FocusTarget::Button;
     int focus_list_index = 0;
+    int focus_tree_index = 0;
+    std::string tree_pointer_down_id;
+    bool tree_pointer_toggle = false;
 };
 
 static void refresh_gallery(WidgetsExampleContext& ctx);
@@ -1761,6 +2376,68 @@ static auto list_item_center(WidgetsExampleContext const& ctx, int index) -> std
     return center_of(ctx.gallery.layout.list.item_bounds[static_cast<std::size_t>(index)]);
 }
 
+static auto tree_row_index_from_position(WidgetsExampleContext const& ctx, float y) -> int {
+    auto const& rows = ctx.gallery.layout.tree.rows;
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        auto const& bounds = rows[i].bounds;
+        if (y >= bounds.min_y && y <= bounds.max_y) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+static auto tree_row_center(WidgetsExampleContext const& ctx, int index) -> std::pair<float, float> {
+    auto const& rows = ctx.gallery.layout.tree.rows;
+    if (index < 0 || index >= static_cast<int>(rows.size())) {
+        return center_of(ctx.gallery.layout.tree.bounds);
+    }
+    return center_of(rows[static_cast<std::size_t>(index)].bounds);
+}
+
+static bool tree_toggle_contains(WidgetsExampleContext const& ctx,
+                                 int index,
+                                 float x,
+                                 float y) {
+    auto const& rows = ctx.gallery.layout.tree.rows;
+    if (index < 0 || index >= static_cast<int>(rows.size())) {
+        return false;
+    }
+    auto const& row = rows[static_cast<std::size_t>(index)];
+    if (!row.expandable) {
+        return false;
+    }
+    auto const& bounds = row.toggle;
+    return x >= bounds.min_x && x <= bounds.max_x && y >= bounds.min_y && y <= bounds.max_y;
+}
+
+static int tree_parent_index(WidgetsExampleContext const& ctx, int index) {
+    auto const& rows = ctx.gallery.layout.tree.rows;
+    if (index <= 0 || index >= static_cast<int>(rows.size())) {
+        return -1;
+    }
+    int depth = rows[static_cast<std::size_t>(index)].depth;
+    for (int i = index - 1; i >= 0; --i) {
+        if (rows[static_cast<std::size_t>(i)].depth < depth) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static int tree_first_child_index(WidgetsExampleContext const& ctx, int index) {
+    auto const& rows = ctx.gallery.layout.tree.rows;
+    if (index < 0 || index >= static_cast<int>(rows.size() - 1)) {
+        return -1;
+    }
+    int depth = rows[static_cast<std::size_t>(index)].depth;
+    auto const& next = rows[static_cast<std::size_t>(index + 1)];
+    if (next.depth > depth) {
+        return index + 1;
+    }
+    return -1;
+}
+
 static auto slider_keyboard_step(WidgetsExampleContext const& ctx) -> float {
     float step = ctx.slider_range.step;
     if (step <= 0.0f) {
@@ -1845,10 +2522,47 @@ static bool apply_focus_visuals(WidgetsExampleContext& ctx) {
         changed |= *status;
     };
 
+    auto update_tree = [&](bool focused) {
+        std::string desired_hover;
+        auto const& rows = ctx.gallery.layout.tree.rows;
+        if (focused && !rows.empty()) {
+            if (ctx.focus_tree_index < 0 || ctx.focus_tree_index >= static_cast<int>(rows.size())) {
+                if (!ctx.tree_state.selected_id.empty()) {
+                    auto it = std::find_if(rows.begin(), rows.end(), [&](TreeRowLayout const& row) {
+                        return row.node_id == ctx.tree_state.selected_id;
+                    });
+                    if (it != rows.end()) {
+                        ctx.focus_tree_index = static_cast<int>(std::distance(rows.begin(), it));
+                    } else {
+                        ctx.focus_tree_index = 0;
+                    }
+                } else {
+                    ctx.focus_tree_index = 0;
+                }
+            }
+            ctx.focus_tree_index = std::clamp(ctx.focus_tree_index, 0, static_cast<int>(rows.size()) - 1);
+            desired_hover = rows[static_cast<std::size_t>(ctx.focus_tree_index)].node_id;
+        }
+        if (ctx.tree_state.hovered_id == desired_hover) {
+            return;
+        }
+        Widgets::TreeState desired = ctx.tree_state;
+        desired.hovered_id = desired_hover;
+        auto status = Widgets::UpdateTreeState(*ctx.space, ctx.tree_paths, desired);
+        if (!status) {
+            std::cerr << "widgets_example: failed to update tree focus state: "
+                      << status.error().message.value_or("unknown error") << "\n";
+            return;
+        }
+        ctx.tree_state = desired;
+        changed |= *status;
+    };
+
     update_button(ctx.focus_target == FocusTarget::Button);
     update_toggle(ctx.focus_target == FocusTarget::Toggle);
     update_slider(ctx.focus_target == FocusTarget::Slider);
     update_list(ctx.focus_target == FocusTarget::List);
+    update_tree(ctx.focus_target == FocusTarget::Tree);
     return changed;
 }
 
@@ -1863,6 +2577,25 @@ static void set_focus_target(WidgetsExampleContext& ctx, FocusTarget target) {
     if (ctx.focus_target == FocusTarget::List && ctx.list_state.selected_index >= 0) {
         ctx.focus_list_index = ctx.list_state.selected_index;
     }
+    if (ctx.focus_target == FocusTarget::Tree) {
+        auto const& rows = ctx.gallery.layout.tree.rows;
+        if (!rows.empty()) {
+            if (!ctx.tree_state.selected_id.empty()) {
+                auto it = std::find_if(rows.begin(), rows.end(), [&](TreeRowLayout const& row) {
+                    return row.node_id == ctx.tree_state.selected_id;
+                });
+                if (it != rows.end()) {
+                    ctx.focus_tree_index = static_cast<int>(std::distance(rows.begin(), it));
+                } else {
+                    ctx.focus_tree_index = std::clamp(ctx.focus_tree_index, 0, static_cast<int>(rows.size()) - 1);
+                }
+            } else {
+                ctx.focus_tree_index = std::clamp(ctx.focus_tree_index, 0, static_cast<int>(rows.size()) - 1);
+            }
+        } else {
+            ctx.focus_tree_index = 0;
+        }
+    }
     if (apply_focus_visuals(ctx)) {
         refresh_gallery(ctx);
     }
@@ -1874,6 +2607,7 @@ static void cycle_focus(WidgetsExampleContext& ctx, bool forward) {
         FocusTarget::Toggle,
         FocusTarget::Slider,
         FocusTarget::List,
+        FocusTarget::Tree,
     };
     int current = 0;
     for (std::size_t i = 0; i < std::size(order); ++i) {
@@ -1942,6 +2676,11 @@ static void refresh_gallery(WidgetsExampleContext& ctx) {
                                         ctx.list_style,
                                         ctx.list_state,
                                         ctx.list_items,
+                                        ctx.stack_params,
+                                        ctx.stack_layout,
+                                        ctx.tree_style,
+                                        ctx.tree_state,
+                                        ctx.tree_nodes,
                                         ctx.theme);
 }
 
@@ -2043,6 +2782,36 @@ static auto dispatch_list(WidgetsExampleContext& ctx,
     return *result;
 }
 
+static auto dispatch_tree(WidgetsExampleContext& ctx,
+                          Widgets::TreeState const& desired,
+                          WidgetBindings::WidgetOpKind kind,
+                          bool inside,
+                          std::string_view node_id,
+                          float scroll_delta) -> bool {
+    auto pointer = make_pointer_info(ctx, inside);
+    auto result = WidgetBindings::DispatchTree(*ctx.space,
+                                               ctx.tree_binding,
+                                               desired,
+                                               kind,
+                                               node_id,
+                                               pointer,
+                                               scroll_delta);
+    if (!result) {
+        std::cerr << "widgets_example: tree dispatch failed: "
+                  << result.error().message.value_or("unknown error") << "\n";
+        return false;
+    }
+    if (*result) {
+        auto updated = ctx.space->read<Widgets::TreeState, std::string>(std::string(ctx.tree_paths.state.getPath()));
+        if (updated) {
+            ctx.tree_state = *updated;
+        } else {
+            ctx.tree_state = desired;
+        }
+    }
+    return *result;
+}
+
 static void handle_pointer_move(WidgetsExampleContext& ctx, float x, float y) {
     ctx.pointer_x = x;
     ctx.pointer_y = y;
@@ -2088,6 +2857,26 @@ static void handle_pointer_move(WidgetsExampleContext& ctx, float x, float y) {
         ctx.focus_list_index = hover_index;
     }
 
+    bool inside_tree = ctx.gallery.layout.tree.bounds.contains(x, y);
+    int tree_index = inside_tree ? tree_row_index_from_position(ctx, y) : -1;
+    std::string hovered_id;
+    if (tree_index >= 0 && static_cast<std::size_t>(tree_index) < ctx.gallery.layout.tree.rows.size()) {
+        hovered_id = ctx.gallery.layout.tree.rows[static_cast<std::size_t>(tree_index)].node_id;
+    }
+    if (hovered_id != ctx.tree_state.hovered_id) {
+        Widgets::TreeState desired = ctx.tree_state;
+        desired.hovered_id = hovered_id;
+        changed |= dispatch_tree(ctx,
+                                 desired,
+                                 WidgetBindings::WidgetOpKind::TreeHover,
+                                 inside_tree,
+                                 hovered_id,
+                                 0.0f);
+    }
+    if (tree_index >= 0) {
+        ctx.focus_tree_index = tree_index;
+    }
+
     if (ctx.slider_dragging) {
         Widgets::SliderState desired = ctx.slider_state;
         desired.dragging = true;
@@ -2104,6 +2893,8 @@ static void handle_pointer_move(WidgetsExampleContext& ctx, float x, float y) {
 static void handle_pointer_down(WidgetsExampleContext& ctx) {
     ctx.pointer_down = true;
     bool changed = false;
+    ctx.tree_pointer_down_id.clear();
+    ctx.tree_pointer_toggle = false;
 
     if (ctx.gallery.layout.button.contains(ctx.pointer_x, ctx.pointer_y)) {
         ctx.focus_target = FocusTarget::Button;
@@ -2142,6 +2933,25 @@ static void handle_pointer_down(WidgetsExampleContext& ctx) {
                                  0.0f);
         ctx.focus_target = FocusTarget::List;
         ctx.focus_list_index = index;
+    }
+
+    if (ctx.gallery.layout.tree.bounds.contains(ctx.pointer_x, ctx.pointer_y)) {
+        int index = tree_row_index_from_position(ctx, ctx.pointer_y);
+        if (index >= 0) {
+            ctx.focus_target = FocusTarget::Tree;
+            ctx.focus_tree_index = index;
+            auto const& row = ctx.gallery.layout.tree.rows[static_cast<std::size_t>(index)];
+            Widgets::TreeState desired = ctx.tree_state;
+            desired.hovered_id = row.node_id;
+            ctx.tree_pointer_down_id = row.node_id;
+            ctx.tree_pointer_toggle = tree_toggle_contains(ctx, index, ctx.pointer_x, ctx.pointer_y);
+            changed |= dispatch_tree(ctx,
+                                     desired,
+                                     WidgetBindings::WidgetOpKind::TreeHover,
+                                     true,
+                                     row.node_id,
+                                     0.0f);
+        }
     }
 
     if (changed) {
@@ -2202,6 +3012,39 @@ static void handle_pointer_up(WidgetsExampleContext& ctx) {
         ctx.focus_list_index = index;
     }
 
+    bool inside_tree = ctx.gallery.layout.tree.bounds.contains(ctx.pointer_x, ctx.pointer_y);
+    int tree_index = inside_tree ? tree_row_index_from_position(ctx, ctx.pointer_y) : -1;
+    if (!ctx.tree_pointer_down_id.empty() && tree_index >= 0
+        && static_cast<std::size_t>(tree_index) < ctx.gallery.layout.tree.rows.size()) {
+        auto const& row = ctx.gallery.layout.tree.rows[static_cast<std::size_t>(tree_index)];
+        if (row.node_id == ctx.tree_pointer_down_id) {
+            Widgets::TreeState desired = ctx.tree_state;
+            desired.hovered_id = row.node_id;
+            desired.selected_id = row.node_id;
+            if (ctx.tree_pointer_toggle) {
+                changed |= dispatch_tree(ctx,
+                                         desired,
+                                         WidgetBindings::WidgetOpKind::TreeToggle,
+                                         inside_tree,
+                                         row.node_id,
+                                         0.0f);
+                desired = ctx.tree_state;
+                desired.hovered_id = row.node_id;
+                desired.selected_id = row.node_id;
+            }
+            changed |= dispatch_tree(ctx,
+                                     desired,
+                                     WidgetBindings::WidgetOpKind::TreeSelect,
+                                     inside_tree,
+                                     row.node_id,
+                                     0.0f);
+            ctx.focus_target = FocusTarget::Tree;
+            ctx.focus_tree_index = tree_index;
+        }
+    }
+    ctx.tree_pointer_down_id.clear();
+    ctx.tree_pointer_toggle = false;
+
     ctx.pointer_down = false;
 
     if (changed) {
@@ -2213,17 +3056,27 @@ static void handle_pointer_wheel(WidgetsExampleContext& ctx, int wheel_delta) {
     if (wheel_delta == 0) {
         return;
     }
-    if (!ctx.gallery.layout.list.bounds.contains(ctx.pointer_x, ctx.pointer_y)) {
-        return;
-    }
-    float scroll_pixels = static_cast<float>(-wheel_delta) * (ctx.gallery.layout.list.item_height * 0.25f);
-    Widgets::ListState desired = ctx.list_state;
-    bool changed = dispatch_list(ctx,
+    bool changed = false;
+    if (ctx.gallery.layout.list.bounds.contains(ctx.pointer_x, ctx.pointer_y)) {
+        float scroll_pixels = static_cast<float>(-wheel_delta) * (ctx.gallery.layout.list.item_height * 0.25f);
+        Widgets::ListState desired = ctx.list_state;
+        changed |= dispatch_list(ctx,
                                  desired,
                                  WidgetBindings::WidgetOpKind::ListScroll,
                                  true,
                                  ctx.list_state.hovered_index,
                                  scroll_pixels);
+    }
+    if (ctx.gallery.layout.tree.bounds.contains(ctx.pointer_x, ctx.pointer_y)) {
+        float scroll_pixels = static_cast<float>(-wheel_delta) * (ctx.gallery.layout.tree.row_height * 0.25f);
+        Widgets::TreeState desired = ctx.tree_state;
+        changed |= dispatch_tree(ctx,
+                                 desired,
+                                 WidgetBindings::WidgetOpKind::TreeScroll,
+                                 true,
+                                 ctx.tree_state.hovered_id,
+                                 scroll_pixels);
+    }
     if (changed) {
         refresh_gallery(ctx);
     }
@@ -2264,9 +3117,11 @@ static void process_widget_actions(WidgetsExampleContext& ctx) {
     };
 
     process_root(ctx.button_paths.root);
-    process_root(ctx.toggle_paths.root);
+   process_root(ctx.toggle_paths.root);
     process_root(ctx.slider_paths.root);
     process_root(ctx.list_paths.root);
+    process_root(ctx.stack_paths.root);
+    process_root(ctx.tree_paths.root);
 }
 
 static void handle_local_mouse(SP::UI::LocalMouseEvent const& ev, void* user_data) {
@@ -2374,6 +3229,132 @@ static void move_list_focus(WidgetsExampleContext& ctx, int direction) {
     }
 }
 
+static bool ensure_tree_focus_index(WidgetsExampleContext& ctx) {
+    auto const& rows = ctx.gallery.layout.tree.rows;
+    if (rows.empty()) {
+        return false;
+    }
+    if (ctx.focus_tree_index < 0 || ctx.focus_tree_index >= static_cast<int>(rows.size())) {
+        if (!ctx.tree_state.selected_id.empty()) {
+            auto it = std::find_if(rows.begin(), rows.end(), [&](TreeRowLayout const& row) {
+                return row.node_id == ctx.tree_state.selected_id;
+            });
+            if (it != rows.end()) {
+                ctx.focus_tree_index = static_cast<int>(std::distance(rows.begin(), it));
+            } else {
+                ctx.focus_tree_index = 0;
+            }
+        } else {
+            ctx.focus_tree_index = 0;
+        }
+    }
+    ctx.focus_tree_index = std::clamp(ctx.focus_tree_index, 0, static_cast<int>(rows.size()) - 1);
+    return true;
+}
+
+static void move_tree_focus(WidgetsExampleContext& ctx, int direction) {
+    if (!ensure_tree_focus_index(ctx)) {
+        return;
+    }
+    auto const& rows = ctx.gallery.layout.tree.rows;
+    ctx.focus_tree_index = std::clamp(ctx.focus_tree_index + direction,
+                                      0,
+                                      static_cast<int>(rows.size()) - 1);
+    auto const& row = rows[static_cast<std::size_t>(ctx.focus_tree_index)];
+    Widgets::TreeState desired = ctx.tree_state;
+    desired.hovered_id = row.node_id;
+    desired.selected_id = row.node_id;
+    auto center = tree_row_center(ctx, ctx.focus_tree_index);
+    PointerOverride pointer_override(ctx, center.first, center.second);
+    if (dispatch_tree(ctx,
+                      desired,
+                      WidgetBindings::WidgetOpKind::TreeSelect,
+                      true,
+                      row.node_id,
+                      0.0f)) {
+        refresh_gallery(ctx);
+    } else {
+        ctx.tree_state = desired;
+    }
+}
+
+static void tree_apply_op(WidgetsExampleContext& ctx, WidgetBindings::WidgetOpKind op) {
+    if (!ensure_tree_focus_index(ctx)) {
+        return;
+    }
+    auto const& rows = ctx.gallery.layout.tree.rows;
+    auto const& row = rows[static_cast<std::size_t>(ctx.focus_tree_index)];
+    if ((op == WidgetBindings::WidgetOpKind::TreeToggle
+         || op == WidgetBindings::WidgetOpKind::TreeExpand
+         || op == WidgetBindings::WidgetOpKind::TreeCollapse)
+        && !row.expandable) {
+        return;
+    }
+    Widgets::TreeState desired = ctx.tree_state;
+    desired.hovered_id = row.node_id;
+    if (op == WidgetBindings::WidgetOpKind::TreeSelect) {
+        desired.selected_id = row.node_id;
+    }
+    auto center = tree_row_center(ctx, ctx.focus_tree_index);
+    PointerOverride pointer_override(ctx, center.first, center.second);
+    if (dispatch_tree(ctx,
+                      desired,
+                      op,
+                      true,
+                      row.node_id,
+                      0.0f)) {
+        refresh_gallery(ctx);
+    } else {
+        ctx.tree_state = desired;
+    }
+}
+
+static void refresh_stack_layout(WidgetsExampleContext& ctx) {
+    ctx.stack_params = unwrap_or_exit(Widgets::DescribeStack(*ctx.space, ctx.stack_paths),
+                                      "describe stack layout");
+    ctx.stack_layout = unwrap_or_exit(Widgets::ReadStackLayout(*ctx.space, ctx.stack_paths),
+                                      "read stack layout");
+}
+
+static void adjust_stack_spacing(WidgetsExampleContext& ctx, float delta) {
+    float previous = ctx.stack_params.style.spacing;
+    float spacing = previous + delta;
+    ctx.stack_params.style.spacing = std::max(spacing, 0.0f);
+    auto updated = WidgetBindings::UpdateStack(*ctx.space, ctx.stack_binding, ctx.stack_params);
+    if (!updated) {
+        ctx.stack_params.style.spacing = previous;
+        std::cerr << "widgets_example: failed to update stack spacing: "
+                  << updated.error().message.value_or("unknown error") << "\n";
+        return;
+    }
+    if (!*updated) {
+        ctx.stack_params.style.spacing = previous;
+        return;
+    }
+    refresh_stack_layout(ctx);
+    refresh_gallery(ctx);
+}
+
+static void toggle_stack_axis(WidgetsExampleContext& ctx) {
+    Widgets::StackAxis previous = ctx.stack_params.style.axis;
+    ctx.stack_params.style.axis = (ctx.stack_params.style.axis == Widgets::StackAxis::Vertical)
+        ? Widgets::StackAxis::Horizontal
+        : Widgets::StackAxis::Vertical;
+    auto updated = WidgetBindings::UpdateStack(*ctx.space, ctx.stack_binding, ctx.stack_params);
+    if (!updated) {
+        ctx.stack_params.style.axis = previous;
+        std::cerr << "widgets_example: failed to toggle stack axis: "
+                  << updated.error().message.value_or("unknown error") << "\n";
+        return;
+    }
+    if (!*updated) {
+        ctx.stack_params.style.axis = previous;
+        return;
+    }
+    refresh_stack_layout(ctx);
+    refresh_gallery(ctx);
+}
+
 static void activate_focused_widget(WidgetsExampleContext& ctx) {
     switch (ctx.focus_target) {
     case FocusTarget::Button: {
@@ -2422,6 +3403,10 @@ static void activate_focused_widget(WidgetsExampleContext& ctx) {
         }
         break;
     }
+    case FocusTarget::Tree: {
+        tree_apply_op(ctx, WidgetBindings::WidgetOpKind::TreeToggle);
+        break;
+    }
     }
 }
 
@@ -2432,6 +3417,19 @@ static void handle_local_keyboard(SP::UI::LocalKeyEvent const& ev, void* user_da
     }
     widget_trace().record_key(ev);
     if (ev.type != SP::UI::LocalKeyEventType::KeyDown) {
+        return;
+    }
+
+    if (ev.character == '[' || ev.character == '{') {
+        adjust_stack_spacing(*ctx, -8.0f);
+        return;
+    }
+    if (ev.character == ']' || ev.character == '}') {
+        adjust_stack_spacing(*ctx, 8.0f);
+        return;
+    }
+    if (ev.character == 'h' || ev.character == 'H') {
+        toggle_stack_axis(*ctx);
         return;
     }
 
@@ -2448,6 +3446,20 @@ static void handle_local_keyboard(SP::UI::LocalKeyEvent const& ev, void* user_da
             adjust_slider_value(*ctx, -slider_keyboard_step(*ctx));
         } else if (ctx->focus_target == FocusTarget::List) {
             move_list_focus(*ctx, -1);
+        } else if (ctx->focus_target == FocusTarget::Tree) {
+            if (ensure_tree_focus_index(*ctx)) {
+                auto const& rows = ctx->gallery.layout.tree.rows;
+                auto const& row = rows[static_cast<std::size_t>(ctx->focus_tree_index)];
+                if (row.expandable && row.expanded) {
+                    tree_apply_op(*ctx, WidgetBindings::WidgetOpKind::TreeCollapse);
+                } else {
+                    int parent = tree_parent_index(*ctx, ctx->focus_tree_index);
+                    if (parent >= 0) {
+                        ctx->focus_tree_index = parent;
+                        move_tree_focus(*ctx, 0);
+                    }
+                }
+            }
         } else {
             cycle_focus(*ctx, false);
         }
@@ -2457,6 +3469,8 @@ static void handle_local_keyboard(SP::UI::LocalKeyEvent const& ev, void* user_da
             adjust_slider_value(*ctx, slider_keyboard_step(*ctx));
         } else if (ctx->focus_target == FocusTarget::List) {
             move_list_focus(*ctx, -1);
+        } else if (ctx->focus_target == FocusTarget::Tree) {
+            move_tree_focus(*ctx, -1);
         } else {
             cycle_focus(*ctx, false);
         }
@@ -2466,6 +3480,20 @@ static void handle_local_keyboard(SP::UI::LocalKeyEvent const& ev, void* user_da
             adjust_slider_value(*ctx, slider_keyboard_step(*ctx));
         } else if (ctx->focus_target == FocusTarget::List) {
             move_list_focus(*ctx, 1);
+        } else if (ctx->focus_target == FocusTarget::Tree) {
+            if (ensure_tree_focus_index(*ctx)) {
+                auto const& rows = ctx->gallery.layout.tree.rows;
+                auto const& row = rows[static_cast<std::size_t>(ctx->focus_tree_index)];
+                if (row.expandable && !row.expanded) {
+                    tree_apply_op(*ctx, WidgetBindings::WidgetOpKind::TreeExpand);
+                } else {
+                    int child = tree_first_child_index(*ctx, ctx->focus_tree_index);
+                    if (child >= 0) {
+                        ctx->focus_tree_index = child;
+                        move_tree_focus(*ctx, 0);
+                    }
+                }
+            }
         } else {
             cycle_focus(*ctx, true);
         }
@@ -2475,6 +3503,8 @@ static void handle_local_keyboard(SP::UI::LocalKeyEvent const& ev, void* user_da
             adjust_slider_value(*ctx, -slider_keyboard_step(*ctx));
         } else if (ctx->focus_target == FocusTarget::List) {
             move_list_focus(*ctx, 1);
+        } else if (ctx->focus_target == FocusTarget::Tree) {
+            move_tree_focus(*ctx, 1);
         } else {
             cycle_focus(*ctx, true);
         }
@@ -2696,6 +3726,64 @@ int main() {
               << "  state path: " << list.state.getPath() << "\n"
               << "  items path: " << list.items.getPath() << "\n";
 
+    Widgets::TreeParams tree_params{};
+    tree_params.name = "workspace_tree";
+    tree_params.nodes = {
+        Widgets::TreeNode{.id = "workspace", .parent_id = "", .label = "workspace/", .enabled = true, .expandable = true, .loaded = true},
+        Widgets::TreeNode{.id = "docs", .parent_id = "workspace", .label = "docs/", .enabled = true, .expandable = false, .loaded = false},
+        Widgets::TreeNode{.id = "src", .parent_id = "workspace", .label = "src/", .enabled = true, .expandable = true, .loaded = true},
+        Widgets::TreeNode{.id = "src_builders", .parent_id = "src", .label = "ui/builders.cpp", .enabled = true, .expandable = false, .loaded = false},
+        Widgets::TreeNode{.id = "src_renderer", .parent_id = "src", .label = "ui/renderer.cpp", .enabled = true, .expandable = false, .loaded = false},
+        Widgets::TreeNode{.id = "tests", .parent_id = "workspace", .label = "tests/", .enabled = true, .expandable = false, .loaded = false},
+    };
+    Widgets::ApplyTheme(theme, tree_params);
+    auto tree = unwrap_or_exit(Widgets::CreateTree(space, appRootView, tree_params),
+                               "create tree widget");
+
+    Widgets::TreeState tree_state{};
+    tree_state.enabled = true;
+    tree_state.selected_id = "workspace";
+    tree_state.expanded_ids = {"workspace", "src"};
+    unwrap_or_exit(Widgets::UpdateTreeState(space, tree, tree_state),
+                   "initialize tree state");
+
+    auto tree_state_live = unwrap_or_exit(space.read<Widgets::TreeState, std::string>(std::string(tree.state.getPath())),
+                                          "read tree state");
+    auto tree_style_live = unwrap_or_exit(space.read<Widgets::TreeStyle, std::string>(std::string(tree.root.getPath()) + "/meta/style"),
+                                          "read tree style");
+    auto tree_nodes_live = unwrap_or_exit(space.read<std::vector<Widgets::TreeNode>, std::string>(std::string(tree.nodes.getPath())),
+                                          "read tree nodes");
+
+    Widgets::StackLayoutParams stack_params{};
+    stack_params.name = "widget_stack";
+    stack_params.style.axis = Widgets::StackAxis::Vertical;
+    stack_params.style.spacing = 24.0f;
+    stack_params.style.padding_main_start = 16.0f;
+    stack_params.style.padding_main_end = 16.0f;
+    stack_params.style.padding_cross_start = 20.0f;
+    stack_params.style.padding_cross_end = 20.0f;
+    stack_params.children = {
+        Widgets::StackChildSpec{.id = "stack_button", .widget_path = button.root.getPath(), .scene_path = button.scene.getPath()},
+        Widgets::StackChildSpec{.id = "stack_toggle", .widget_path = toggle.root.getPath(), .scene_path = toggle.scene.getPath()},
+        Widgets::StackChildSpec{.id = "stack_slider", .widget_path = slider.root.getPath(), .scene_path = slider.scene.getPath()},
+    };
+
+    auto stack = unwrap_or_exit(Widgets::CreateStack(space, appRootView, stack_params),
+                                "create stack layout");
+    auto stack_desc = unwrap_or_exit(Widgets::DescribeStack(space, stack),
+                                     "describe stack layout");
+    auto stack_layout_live = unwrap_or_exit(Widgets::ReadStackLayout(space, stack),
+                                            "read stack layout");
+
+    std::cout << "widgets_example published tree widget:\n"
+              << "  scene: " << tree.scene.getPath() << "\n"
+              << "  state path: " << tree.state.getPath() << "\n"
+              << "  nodes path: " << tree.nodes.getPath() << "\n";
+
+    std::cout << "widgets_example published stack layout:\n"
+              << "  scene: " << stack.scene.getPath() << "\n"
+              << "  style path: " << stack.style.getPath() << "\n";
+
     bool headless = false;
     if (const char* headless_env = std::getenv("WIDGETS_EXAMPLE_HEADLESS")) {
         if (headless_env[0] != '\0' && headless_env[0] != '0') {
@@ -2731,6 +3819,11 @@ int main() {
                                          list_params.style,
                                          list_state_live,
                                          list_params.items,
+                                         stack_desc,
+                                         stack_layout_live,
+                                         tree_style_live,
+                                         tree_state_live,
+                                         tree_nodes_live,
                                          theme);
 
     std::cout << "widgets_example gallery scene:\n"
@@ -2784,6 +3877,8 @@ int main() {
     ctx.toggle_paths = toggle;
     ctx.slider_paths = slider;
     ctx.list_paths = list;
+    ctx.stack_paths = stack;
+    ctx.tree_paths = tree;
     ctx.theme = theme;
     ctx.button_style = button_params.style;
     ctx.button_label = button_params.label;
@@ -2792,10 +3887,15 @@ int main() {
     ctx.list_style = list_params.style;
     ctx.slider_range = slider_range_live;
     ctx.list_items = list_params.items;
+    ctx.stack_params = stack_desc;
+    ctx.stack_layout = stack_layout_live;
+    ctx.tree_style = tree_style_live;
+    ctx.tree_state = tree_state_live;
+    ctx.tree_nodes = tree_nodes_live;
     ctx.button_state = button_state_live;
     ctx.toggle_state = toggle_state_live;
     ctx.slider_state = slider_state_live;
-   ctx.list_state = list_state_live;
+    ctx.list_state = list_state_live;
     ctx.gallery = gallery;
     ctx.target_path = bootstrap.target.getPath();
 
@@ -2837,6 +3937,20 @@ int main() {
                                                                         make_dirty_hint(ctx.gallery.layout.list.bounds)),
                                       "create list binding");
 
+    ctx.stack_binding = unwrap_or_exit(WidgetBindings::CreateStackBinding(space,
+                                                                          appRootView,
+                                                                          ctx.stack_paths,
+                                                                          target_view,
+                                                                          make_dirty_hint(ctx.gallery.layout.stack.bounds)),
+                                       "create stack binding");
+
+    ctx.tree_binding = unwrap_or_exit(WidgetBindings::CreateTreeBinding(space,
+                                                                        appRootView,
+                                                                        ctx.tree_paths,
+                                                                        target_view,
+                                                                        make_dirty_hint(ctx.gallery.layout.tree.bounds)),
+                                      "create tree binding");
+
     set_focus_target(ctx, FocusTarget::Button);
 
     if (trace.replaying()) {
@@ -2847,8 +3961,10 @@ int main() {
 
     std::cout << "widgets_example keyboard controls:\n"
               << "  Tab / Shift+Tab : cycle widget focus\n"
-              << "  Arrow keys       : adjust focused slider or list selection\n"
-              << "  Space / Return   : activate the focused widget\n";
+              << "  Arrow keys       : adjust slider, move list selection, or navigate the tree\n"
+              << "  Space / Return   : activate focused widget (toggle tree expansion)\n"
+              << "  [ / ]            : decrease / increase stack spacing\n"
+              << "  H                : toggle stack axis (vertical / horizontal)\n";
 
     SP::UI::SetLocalWindowCallbacks({&handle_local_mouse, &clear_local_mouse, &ctx, &handle_local_keyboard});
     SP::UI::InitLocalWindowWithSize(ctx.gallery.width,
