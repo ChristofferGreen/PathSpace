@@ -291,6 +291,11 @@ Next:
   - [ ] Centralize tree view geometry (row indentation, toggle bounds, hover regions) inside `Widgets::Tree` builders so examples no longer reconstruct tree layout locally.
   - [ ] Expose stack layout preview metrics via the widgets API, replacing the custom stack spacing/padding math in widgets_example with a reusable helper.
   - [ ] Add an input routing helper that maps window events to widget bindings and focus updates, eliminating the hand-rolled pointer/focus handlers in widgets_example.
+  - [ ] Ship canonical widget preview drawables (button/toggle/slider) from the API so demos don’t recreate bucket geometry (`examples/widgets_example.cpp` `build_*_preview` functions).
+  - [ ] Replace the sample’s `PointerOverride` helper with an API affordance for programmatic widget interactions, avoiding synthetic pointer coordinates when dispatching ops.
+  - [ ] Promote the `WidgetTrace` capture/replay utility into shared tooling so session recording works uniformly across apps instead of living in widgets_example.
+  - [ ] Provide an API surface for draining and publishing widget reducer actions, eliminating the bespoke `process_widget_actions` loop in widgets_example.
+  - [ ] Expose keyboard/analog slider adjustment helpers so apps don’t need to reimplement `adjust_slider_value` and manual pointer overrides for slider commits.
 - **State binding & data flow**
 - ✅ (October 19, 2025) Introduced initial state update helpers for buttons/toggles that coalesce redundant writes and mark the owning scene `DirtyKind::Visual` only when values change.
 - ✅ (October 20, 2025) Binding layer (`Widgets::Bindings::Dispatch{Button,Toggle,Slider}`) watches widget state, emits dirty hints, and writes interaction ops (press/release/hover/toggle/slider events) into `widgets/<id>/ops/inbox/queue`. Reducer samples live in this plan’s appendix; schema covers `WidgetOpKind`, pointer metadata, value payloads, and timestamps for reducers to consume via wait/notify.
