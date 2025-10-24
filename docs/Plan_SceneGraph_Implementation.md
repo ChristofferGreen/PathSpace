@@ -133,7 +133,7 @@ Completed:
 - ✅ (October 16, 2025) Instrumented the renderer to report sort-key violations, approximate overdraw coverage, and progressive-copy counters under `output/v1/common/*` for tooling/CI.
 
 Remaining:
-- Re-run the looped test suite and inspect goldens post implementation.
+- ✅ (October 24, 2025) Re-ran the looped test suite (15× repeat, 20 s timeout) and inspected UI goldens; all baselines unchanged.
 
 ### Phase 4 — Surfaces, Presenters, and Progressive Mode (2 sprints)
 Completed:
