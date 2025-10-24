@@ -1437,7 +1437,6 @@ auto make_background_bucket(float width, float height) -> SceneData::DrawableBuc
 }
 
 auto build_focus_overlay(WidgetBounds const& bounds,
-                         std::array<float, 4> accent_color,
                          float expand = 8.0f,
                          float border_thickness = 3.0f) -> SceneData::DrawableBucketSnapshot {
     SceneData::DrawableBucketSnapshot bucket{};
@@ -1453,14 +1452,11 @@ auto build_focus_overlay(WidgetBounds const& bounds,
         return bucket;
     }
 
-    auto fill_color = lighten(accent_color, 0.25f);
-    fill_color[3] = 0.18f;
-    auto border_color = accent_color;
-    border_color[3] = 1.0f;
-
     float clamped_border = std::clamp(border_thickness,
                                       1.0f,
                                       std::min(max_x - min_x, max_y - min_y) * 0.5f);
+
+    std::array<float, 4> border_color{0.20f, 0.45f, 1.0f, 1.0f};
 
     auto drawable_id = 0xF0C0F001ull;
     bucket.drawable_ids.push_back(drawable_id);
@@ -1485,14 +1481,14 @@ auto build_focus_overlay(WidgetBounds const& bounds,
     bucket.pipeline_flags.push_back(0);
     bucket.visibility.push_back(1);
     bucket.command_offsets.push_back(0);
-    bucket.command_counts.push_back(5);
+    bucket.command_counts.push_back(4);
     bucket.opaque_indices.push_back(0);
     bucket.alpha_indices.clear();
     bucket.layer_indices.clear();
     bucket.clip_head_indices.push_back(-1);
 
-    bucket.command_kinds.resize(5, static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect));
-    bucket.command_payload.resize(5 * sizeof(SceneData::RectCommand));
+    bucket.command_kinds.resize(4, static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect));
+    bucket.command_payload.resize(4 * sizeof(SceneData::RectCommand));
 
     auto write_rect = [&](int index, SceneData::RectCommand const& rect) {
         std::memcpy(bucket.command_payload.data() + index * sizeof(SceneData::RectCommand),
@@ -1500,21 +1496,13 @@ auto build_focus_overlay(WidgetBounds const& bounds,
                     sizeof(SceneData::RectCommand));
     };
 
-    SceneData::RectCommand fill{};
-    fill.min_x = min_x;
-    fill.min_y = min_y;
-    fill.max_x = max_x;
-    fill.max_y = max_y;
-    fill.color = fill_color;
-    write_rect(0, fill);
-
     SceneData::RectCommand top{};
     top.min_x = min_x;
     top.min_y = min_y;
     top.max_x = max_x;
     top.max_y = min_y + clamped_border;
     top.color = border_color;
-    write_rect(1, top);
+    write_rect(0, top);
 
     SceneData::RectCommand bottom{};
     bottom.min_x = min_x;
@@ -1522,7 +1510,7 @@ auto build_focus_overlay(WidgetBounds const& bounds,
     bottom.max_x = max_x;
     bottom.max_y = max_y;
     bottom.color = border_color;
-    write_rect(2, bottom);
+    write_rect(1, bottom);
 
     SceneData::RectCommand left{};
     left.min_x = min_x;
@@ -1530,7 +1518,7 @@ auto build_focus_overlay(WidgetBounds const& bounds,
     left.max_x = min_x + clamped_border;
     left.max_y = max_y - clamped_border;
     left.color = border_color;
-    write_rect(3, left);
+    write_rect(2, left);
 
     SceneData::RectCommand right{};
     right.min_x = max_x - clamped_border;
@@ -1538,7 +1526,7 @@ auto build_focus_overlay(WidgetBounds const& bounds,
     right.max_x = max_x;
     right.max_y = max_y - clamped_border;
     right.color = border_color;
-    write_rect(4, right);
+    write_rect(3, right);
 
     bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
         drawable_id, "widget/gallery/focus/overlay", 0, 0});
@@ -1955,7 +1943,7 @@ auto build_gallery_bucket(PathSpace& space,
     }
 
     if (focus_bounds) {
-        auto overlay = build_focus_overlay(*focus_bounds, theme.accent_text_color);
+        auto overlay = build_focus_overlay(*focus_bounds);
         if (!overlay.drawable_ids.empty()) {
             append_bucket(gallery, overlay);
         }
