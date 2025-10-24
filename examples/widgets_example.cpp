@@ -220,6 +220,24 @@ auto identity_transform() -> SceneData::Transform {
     return t;
 }
 
+struct TextBuildResult {
+    SceneData::DrawableBucketSnapshot bucket;
+    float width = 0.0f;
+    float height = 0.0f;
+};
+
+auto build_text_bucket(std::string_view text,
+                       float origin_x,
+                       float origin_y,
+                       Widgets::TypographyStyle const& typography,
+                       std::array<float, 4> color,
+                       std::uint64_t drawable_id,
+                       std::string authoring_id,
+                       float z_value) -> std::optional<TextBuildResult>;
+
+auto append_bucket(SceneData::DrawableBucketSnapshot& dest,
+                   SceneData::DrawableBucketSnapshot const& src) -> void;
+
 auto build_button_preview(Widgets::ButtonStyle const& style,
                           Widgets::ButtonState const& state) -> SceneData::DrawableBucketSnapshot {
     SceneData::DrawableBucketSnapshot bucket{};
@@ -912,74 +930,6 @@ static auto build_tree_preview(Widgets::TreeStyle const& style,
               "widget/gallery/tree/background",
               style.corner_radius);
 
-    auto make_toggle_triangle = [&](std::uint64_t base_id,
-                                    WidgetBounds const& bounds,
-                                    bool expanded_flag,
-                                    std::array<float, 4> const& color) {
-        SceneData::BoundingBox box{};
-        box.min = {bounds.min_x, bounds.min_y, 0.0f};
-        box.max = {bounds.max_x, bounds.max_y, 0.0f};
-        SceneData::BoundingSphere sphere{};
-        sphere.center = {(bounds.min_x + bounds.max_x) * 0.5f,
-                         (bounds.min_y + bounds.max_y) * 0.5f,
-                         0.0f};
-        float half_w = (bounds.max_x - bounds.min_x) * 0.5f;
-        float half_h = (bounds.max_y - bounds.min_y) * 0.5f;
-        sphere.radius = std::sqrt(half_w * half_w + half_h * half_h);
-
-        bucket.drawable_ids.push_back(base_id);
-        bucket.world_transforms.push_back(identity_transform());
-        bucket.bounds_boxes.push_back(box);
-        bucket.bounds_box_valid.push_back(1);
-        bucket.bounds_spheres.push_back(sphere);
-        bucket.layers.push_back(1);
-        bucket.z_values.push_back(0.15f);
-        bucket.material_ids.push_back(0);
-        bucket.pipeline_flags.push_back(0);
-        bucket.visibility.push_back(1);
-        bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
-        bucket.command_counts.push_back(1);
-        bucket.opaque_indices.push_back(static_cast<std::uint32_t>(bucket.opaque_indices.size()));
-        bucket.clip_head_indices.push_back(-1);
-        bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
-            base_id,
-            "widget/gallery/tree/toggle",
-            0,
-            0,
-        });
-        bucket.drawable_fingerprints.push_back(base_id);
-
-        SceneData::PathCommand path{};
-        path.path_type = SceneData::PathCommand::PathType::Polygon;
-        path.fill_color = color;
-        path.fill_rule = SceneData::PathCommand::FillRule::EvenOdd;
-        path.stroke_width = 0.0f;
-        path.stroke_color = color;
-        path.segment_count = 3;
-        path.points.resize(3);
-
-        if (expanded_flag) {
-            path.points[0] = {bounds.min_x, bounds.max_y - (bounds.max_y - bounds.min_y) * 0.3f, 0.0f};
-            path.points[1] = {bounds.max_x, bounds.max_y - (bounds.max_y - bounds.min_y) * 0.3f, 0.0f};
-            path.points[2] = {(bounds.min_x + bounds.max_x) * 0.5f,
-                               bounds.min_y + (bounds.max_y - bounds.min_y) * 0.3f,
-                               0.0f};
-        } else {
-            path.points[0] = {bounds.min_x + (bounds.max_x - bounds.min_x) * 0.3f, bounds.min_y, 0.0f};
-            path.points[1] = {bounds.max_x - (bounds.max_x - bounds.min_x) * 0.3f,
-                               (bounds.min_y + bounds.max_y) * 0.5f,
-                               0.0f};
-            path.points[2] = {bounds.min_x + (bounds.max_x - bounds.min_x) * 0.3f, bounds.max_y, 0.0f};
-        }
-
-        auto payload_offset = bucket.command_payload.size();
-        bucket.command_payload.resize(payload_offset + sizeof(SceneData::PathCommand));
-        std::memcpy(bucket.command_payload.data() + payload_offset,
-                    &path,
-                    sizeof(SceneData::PathCommand));
-        bucket.command_kinds.push_back(static_cast<std::uint32_t>(SceneData::DrawCommandKind::Path));
-    };
-
     std::uint64_t base_id = 0x41A10000ull;
     for (std::size_t i = 0; i < visible_rows; ++i) {
         TreeRowInfo info;
@@ -1030,23 +980,25 @@ static auto build_tree_preview(Widgets::TreeStyle const& style,
 
         float indent = border + static_cast<float>(info.depth) * style.indent_per_level;
         float toggle_size = style.toggle_icon_size;
-        float toggle_min_x = indent;
-        float toggle_max_x = toggle_min_x + toggle_size;
-        float toggle_center_y = (row_top + row_bottom) * 0.5f;
         WidgetBounds toggle_bounds{
-            toggle_min_x,
-            toggle_center_y - toggle_size * 0.5f,
-            toggle_max_x,
-            toggle_center_y + toggle_size * 0.5f,
+            indent,
+            row_top + (row_height - toggle_size) * 0.5f,
+            indent + toggle_size,
+            row_top + (row_height - toggle_size) * 0.5f + toggle_size,
         };
 
-        if (!info.expandable) {
-            toggle_bounds.min_x = toggle_bounds.max_x = toggle_bounds.min_y = toggle_bounds.max_y = toggle_center_y;
+        if (info.expandable) {
+            auto toggle_color = info.expanded ? style.toggle_color
+                                              : desaturate(style.toggle_color, 0.4f);
+            push_rect(0x41A20000ull + static_cast<std::uint64_t>(i),
+                      toggle_bounds,
+                      toggle_color,
+                      0.10f + 0.005f * static_cast<float>(i),
+                      std::string("widget/gallery/tree/toggle/") + (info.id.empty() ? "placeholder" : info.id),
+                      2.0f);
         } else {
-            make_toggle_triangle(0x41A20000ull + static_cast<std::uint64_t>(i),
-                                 toggle_bounds,
-                                 info.expanded,
-                                 style.toggle_color);
+            toggle_bounds.min_x = toggle_bounds.max_x = indent;
+            toggle_bounds.min_y = toggle_bounds.max_y = row_top + row_height * 0.5f;
         }
 
         float label_x = toggle_bounds.max_x + 10.0f;
@@ -1313,12 +1265,6 @@ auto append_bucket(SceneData::DrawableBucketSnapshot& dest,
                                       src.drawable_fingerprints.begin(),
                                       src.drawable_fingerprints.end());
 }
-
-struct TextBuildResult {
-    SceneData::DrawableBucketSnapshot bucket;
-    float width = 0.0f;
-    float height = 0.0f;
-};
 
 auto build_text_bucket(std::string_view text,
                        float origin_x,
@@ -1784,7 +1730,7 @@ auto build_gallery_bucket(PathSpace& space,
 
         max_width = std::max(max_width, layout.stack.bounds.max_x);
         max_height = std::max(max_height, layout.stack.bounds.max_y);
-        cursor_y += stack_preview.bounds.height + 36.0f;
+        cursor_y += stack_preview.bounds.height() + 36.0f;
     }
 
     // Tree view preview
@@ -1851,7 +1797,7 @@ auto build_gallery_bucket(PathSpace& space,
 
         max_width = std::max(max_width, layout.tree.bounds.max_x);
         max_height = std::max(max_height, layout.tree.bounds.max_y);
-        cursor_y += tree_preview.bounds.height + 48.0f;
+        cursor_y += tree_preview.bounds.height() + 48.0f;
     }
 
     // Footer hint
