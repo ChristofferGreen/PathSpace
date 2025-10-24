@@ -106,6 +106,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/ProgressiveSurfaceBuffer.cpp
         ui/PathSurfaceSoftware.cpp
         ui/MaterialShaderKey.cpp
+        ui/PathRenderer2DDamage.cpp
         ui/PathRenderer2D.cpp
         $<$<BOOL:APPLE>:ui/LocalWindowBridge.mm>
         $<$<BOOL:APPLE>:ui/PathWindowView.mm>
