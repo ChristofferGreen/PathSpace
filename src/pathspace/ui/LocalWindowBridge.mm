@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -19,6 +20,8 @@
 #include <IOSurface/IOSurface.h>
 #include <Metal/Metal.h>
 #include <QuartzCore/CAMetalLayer.h>
+#include <ImageIO/ImageIO.h>
+#include <CoreServices/CoreServices.h>
 #endif
 
 #if defined(__APPLE__)
@@ -950,6 +953,124 @@ auto LocalWindowQuitRequested() -> bool {
 
 void ClearLocalWindowQuitRequest() {
     quit_flag().store(false, std::memory_order_release);
+}
+
+auto SaveLocalWindowScreenshot(char const* path) -> bool {
+#if defined(__APPLE__)
+    if (!path || path[0] == '\0') {
+        return false;
+    }
+    @autoreleasepool {
+        WindowState& state = window_state();
+        std::vector<std::uint8_t> raster;
+        int width = 0;
+        int height = 0;
+        int stride = 0;
+        IOSurfaceRef surface = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(state.framebuffer_mutex);
+            if (state.framebuffer_pixels && !state.framebuffer_pixels->empty()
+                && state.framebuffer_width > 0 && state.framebuffer_height > 0 && state.framebuffer_stride > 0) {
+                stride = state.framebuffer_stride;
+                width = state.framebuffer_width;
+                height = state.framebuffer_height;
+                raster.assign(state.framebuffer_pixels->begin(), state.framebuffer_pixels->end());
+            } else if (state.presented_iosurface && state.iosurface_width > 0 && state.iosurface_height > 0) {
+                surface = state.presented_iosurface;
+                CFRetain(surface);
+            }
+        }
+
+        if (surface) {
+            IOSurfaceLock(surface, kIOSurfaceLockReadOnly, nullptr);
+            auto* base = static_cast<std::uint8_t*>(IOSurfaceGetBaseAddress(surface));
+            size_t row_bytes = IOSurfaceGetBytesPerRow(surface);
+            width = static_cast<int>(IOSurfaceGetWidth(surface));
+            height = static_cast<int>(IOSurfaceGetHeight(surface));
+            stride = static_cast<int>(row_bytes);
+            if (base && width > 0 && height > 0 && row_bytes >= static_cast<size_t>(width) * 4) {
+                raster.resize(row_bytes * static_cast<size_t>(height));
+                std::memcpy(raster.data(), base, raster.size());
+            }
+            IOSurfaceUnlock(surface, kIOSurfaceLockReadOnly, nullptr);
+            CFRelease(surface);
+        }
+
+        if (raster.empty() || width <= 0 || height <= 0 || stride <= 0) {
+            return false;
+        }
+
+        CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+        if (!colorSpace) {
+            return false;
+        }
+
+        CGDataProviderRef provider = CGDataProviderCreateWithData(nullptr,
+                                                                  raster.data(),
+                                                                  raster.size(),
+                                                                  nullptr);
+        if (!provider) {
+            CGColorSpaceRelease(colorSpace);
+            return false;
+        }
+
+        CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedLast | kCGBitmapByteOrderDefault;
+        CGImageRef image = CGImageCreate(width,
+                                         height,
+                                         8,
+                                         32,
+                                         stride,
+                                         colorSpace,
+                                         bitmapInfo,
+                                         provider,
+                                         nullptr,
+                                         false,
+                                         kCGRenderingIntentDefault);
+        if (!image) {
+            CGDataProviderRelease(provider);
+            CGColorSpaceRelease(colorSpace);
+            return false;
+        }
+
+        CFStringRef path_string = CFStringCreateWithCString(nullptr, path, kCFStringEncodingUTF8);
+        if (!path_string) {
+            CGImageRelease(image);
+            CGDataProviderRelease(provider);
+            CGColorSpaceRelease(colorSpace);
+            return false;
+        }
+        CFURLRef url = CFURLCreateWithFileSystemPath(nullptr, path_string, kCFURLPOSIXPathStyle, false);
+        CFRelease(path_string);
+        if (!url) {
+            CGImageRelease(image);
+            CGDataProviderRelease(provider);
+            CGColorSpaceRelease(colorSpace);
+            return false;
+        }
+        CFStringRef uti = kUTTypePNG;
+        CGImageDestinationRef destination = CGImageDestinationCreateWithURL(url, uti, 1, nullptr);
+        if (!destination) {
+            CFRelease(url);
+            CGImageRelease(image);
+            CGDataProviderRelease(provider);
+            CGColorSpaceRelease(colorSpace);
+            return false;
+        }
+
+        CGImageDestinationAddImage(destination, image, nullptr);
+        bool success = CGImageDestinationFinalize(destination);
+
+        CGImageRelease(image);
+        CGDataProviderRelease(provider);
+        CGColorSpaceRelease(colorSpace);
+        CFRelease(destination);
+        CFRelease(url);
+        return success;
+    }
+#else
+    (void)path;
+    return false;
+#endif
 }
 
 } // namespace SP::UI

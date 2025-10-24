@@ -123,7 +123,11 @@ inline auto build_toggle_bucket(Widgets::ToggleStyle const& style,
         config.track_on_color = lighten_color(config.track_on_color, 0.08f);
     }
 
-    return make_toggle_bucket(config, authoring_root);
+    auto bucket = make_toggle_bucket(config, authoring_root);
+    if (state.focused) {
+        append_focus_highlight(bucket, config.width, config.height, authoring_root);
+    }
+    return bucket;
 }
 
 inline auto build_toggle_bucket(Widgets::ToggleStyle const& style,

@@ -109,7 +109,11 @@ inline auto build_button_bucket(Widgets::ButtonStyle const& style,
         .corner_radius = corner_radius,
         .color = button_background_color(style, state),
     };
-    return make_button_bucket(config, authoring_root);
+    auto bucket = make_button_bucket(config, authoring_root);
+    if (state.focused) {
+        append_focus_highlight(bucket, width, height, authoring_root);
+    }
+    return bucket;
 }
 
 inline auto build_button_bucket(Widgets::ButtonStyle const& style,

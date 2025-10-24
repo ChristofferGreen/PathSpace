@@ -113,6 +113,7 @@ inline auto tree_states_equal(Widgets::TreeState const& lhs,
         return std::fabs(a - b) <= 1e-6f;
     };
     return lhs.enabled == rhs.enabled
+        && lhs.focused == rhs.focused
         && lhs.hovered_id == rhs.hovered_id
         && lhs.selected_id == rhs.selected_id
         && lhs.expanded_ids == rhs.expanded_ids
@@ -309,6 +310,10 @@ inline auto build_tree_bucket(Widgets::TreeStyle const& style,
                 0});
             bucket.drawable_fingerprints.push_back(toggle_id);
         }
+    }
+
+    if (state.focused) {
+        append_focus_highlight(bucket, width, height, authoring_root);
     }
 
     bucket.alpha_indices.clear();

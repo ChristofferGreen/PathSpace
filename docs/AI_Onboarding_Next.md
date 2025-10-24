@@ -1,6 +1,6 @@
 # PathSpace — New AI Onboarding
 
-_Last updated: October 21, 2025 (shutdown refresh)_
+_Last updated: October 27, 2025 (shutdown refresh)_
 
 Welcome! This repository just transitioned away from a previous assistant. The notes below get a fresh AI agent productive quickly while we stabilize the hand-off.
 
@@ -34,6 +34,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
    ./build/tests/PathSpaceUITests --test-case "PathSurfaceMetal integrates with ObjC++ presenter harness"
    ```
    The targeted Metal UITest ensures the GPU bridge stays healthy after the latest ObjC++ harness updates.
+   - **Visual sanity check:** `./build/widgets_example --screenshot /tmp/widgets_gallery.png` captures the running gallery window, writes a PNG, then exits. Use this whenever you need a deterministic view of widget focus/highlight state.
 
 ## 2. Current Priorities (October 21, 2025)
 
@@ -70,14 +71,15 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Announce the scope in your PR description and keep doc updates synchronized with code changes. Remember to run `ctest -R HtmlCanvasVerify` when touching the adapter or HTML outputs so the headless replay harness stays green.
 - When you spot a gap in test coverage, either add the test immediately or log a follow-up in `docs/Plan_SceneGraph_Implementation.md` / `docs/AI_Todo.task` so the need is visible to the next maintainer.
 
-### Latest Highlights (October 23, 2025)
+### Latest Highlights (October 27, 2025)
+- `widgets_example` can now capture its own window with `./build/widgets_example --screenshot <path>`, making visual verification reproducible even inside scripted runs (October 27, 2025). The command boots the gallery, saves a PNG, and exits automatically.
 - Widget theme hot-swap coverage landed in `tests/ui/test_Builders.cpp` (“Widgets::WidgetTheme hot swap repaints button scenes and marks dirty”), exercising default vs sunset palettes in-place and confirming scene/state revisions update cleanly (15× loop, October 23, 2025).
 - Widget session capture tooling ships via `scripts/record_widget_session.sh` and `scripts/replay_widget_session.sh`; use `WIDGETS_EXAMPLE_TRACE_RECORD` / `WIDGETS_EXAMPLE_TRACE_REPLAY` to produce deterministic pointer/keyboard traces for widgets_example and re-run them headlessly or inside UITests (October 23, 2025).
 - Widget builders now publish canonical idle/hover/pressed/disabled scenes under `scenes/widgets/<id>/states/*`; live scenes republish automatically when state changes, and doctests cover the new snapshots (October 21, 2025).
 - Metal renderer is now material-aware: `PathRenderer2DMetal` consumes shared descriptors via `bind_material`, GPU frames stay in lock-step with software telemetry, and a new blending UITest asserts pipeline parity (`PathRenderer2DMetal honors material blending state`).
 - Scene hit testing now returns z-ordered hit stacks (`HitTestResult::hits`) with bounded drill-down via `HitTestRequest::max_results`; doctests cover overlap, clipping, and limit cases (October 21, 2025).
 - Widget focus navigation helpers (`Widgets::Focus`) maintain `widgets/focus/current`, toggle widget highlight states across button/toggle/slider/list types using `meta/kind`, and enqueue auto-render events for keyboard/gamepad traversal (October 21, 2025).
-- `widgets_example` renders a focus outline driven by `widgets/focus/current`, so keyboard/pointer traversal now shows a visible overlay during demo runs (October 24, 2025).
+- `widgets_example` now renders the API-provided focus outline (widgets scenes append the highlight when `Widgets::Focus` tags `state.focused`), so keyboard/pointer traversal shows the canonical overlay without bespoke demo code (October 24, 2025).
 - Widget UITests now render button/toggle/slider/list state goldens and replay hover/press/disabled sequences; `PATHSPACE_UPDATE_GOLDENS=1` refreshes the fixtures when intentional changes land (October 21, 2025).
 - UITest coverage exercises Tab/Shift+Tab and gamepad focus hops through the widget order, asserting focus state updates and `focus-navigation` auto-render scheduling in `tests/ui/test_Builders.cpp` (October 21, 2025).
 - Paint demo ships with a `--metal` flag that selects the Metal2D backend and auto-enables uploads for developers; software remains the default for CI.
@@ -100,15 +102,15 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - **Window close parity:** using the window close affordance should also terminate the loop; `windowWillClose` sets the quit flag so pending cleanup code can poll `LocalWindowQuitRequested()`.
 - **Extending shortcuts:** new UI examples should poll `LocalWindowQuitRequested()` immediately after `PollLocalWindow()`; extend shortcut detection inside `src/pathspace/ui/LocalWindowBridge.mm` whenever additional accelerators are introduced, then mirror the expectations here.
 
-## 6. Shutdown Snapshot (October 23, 2025 @ 19:45 UTC)
-- Latest change: landed `test(ui): cover App::Bootstrap overrides` directly on `master`, exercising present policy configuration, renderer setting overrides, and invalid view identifiers; synced `docs/Plan_SceneGraph_Implementation.md` / `docs/AI_Onboarding_Next.md` accordingly.
-- Follow-up (October 23, 2025): shared resize/present helpers (`App::UpdateSurfaceSize`, `App::PresentToLocalWindow`) replaced example-local scaffolding; ensure new samples stick to the helpers.
-- Validation: `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20` (15× PathSpaceTests, PathSpaceUITests, HtmlCanvasVerify, HtmlAssetInspect, PixelNoise harnesses) — green after the coverage additions (October 23, 2025).
+## 6. Shutdown Snapshot (October 27, 2025 @ 08:57 UTC)
+- Latest change: `widgets_example` gained a `--screenshot <path>` mode that boots the gallery, captures the active window as a PNG (using the new `SaveLocalWindowScreenshot` bridge helper), and exits. Docs updated to note the workflow.
+- Follow-up (October 27, 2025): retained resize/present helpers (`App::UpdateSurfaceSize`, `App::PresentToLocalWindow`)—new automated capture flow leans on the same bootstrap plumbing.
+- Validation: `./scripts/compile.sh --release --test --loop=15 --per-test-timeout 20` (15× PathSpaceTests, PathSpaceUITests, HtmlCanvasVerify, HtmlAssetInspect, PixelNoise harnesses) — all green after the screenshot automation landed.
 - Outstanding follow-ups before resuming:
   1. Capture the pixel-noise perf harness frame grab (`images/perf/pixel_noise.png`) now that the paired baselines are checked in.
 - Local worktree clean after committing the new tests/docs; no other unpublished edits.
 - Next session checklist:
   1. Capture and publish the pixel-noise perf frame grab, referencing the updated baseline workflow.
-  2. Keep plan/onboarding/docs in sync with any additional widget coverage.
+  2. Keep plan/onboarding/docs in sync with any additional widget coverage or screenshot-driven diagnostic helpers.
 
 Welcome aboard and thank you for keeping the PathSpace docs in sync for the next AI maintainer.

@@ -37,7 +37,7 @@ int main() {
     return 1;
 }
 #elif !defined(__APPLE__)
-int main() {
+int main(int argc, char** argv) {
     std::cerr << "widgets_example currently supports only macOS builds.\n";
     return 1;
 }
@@ -1436,104 +1436,6 @@ auto make_background_bucket(float width, float height) -> SceneData::DrawableBuc
     return bucket;
 }
 
-auto build_focus_overlay(WidgetBounds const& bounds,
-                         float expand = 8.0f,
-                         float border_thickness = 3.0f) -> SceneData::DrawableBucketSnapshot {
-    SceneData::DrawableBucketSnapshot bucket{};
-    if (bounds.width() <= 0.0f || bounds.height() <= 0.0f) {
-        return bucket;
-    }
-
-    float min_x = bounds.min_x - expand;
-    float min_y = bounds.min_y - expand;
-    float max_x = bounds.max_x + expand;
-    float max_y = bounds.max_y + expand;
-    if (max_x <= min_x || max_y <= min_y) {
-        return bucket;
-    }
-
-    float clamped_border = std::clamp(border_thickness,
-                                      1.0f,
-                                      std::min(max_x - min_x, max_y - min_y) * 0.5f);
-
-    std::array<float, 4> border_color{0.20f, 0.45f, 1.0f, 1.0f};
-
-    auto drawable_id = 0xF0C0F001ull;
-    bucket.drawable_ids.push_back(drawable_id);
-    bucket.world_transforms.push_back(identity_transform());
-
-    SceneData::BoundingBox box{};
-    box.min = {min_x, min_y, 0.0f};
-    box.max = {max_x, max_y, 0.0f};
-    bucket.bounds_boxes.push_back(box);
-    bucket.bounds_box_valid.push_back(1);
-
-    SceneData::BoundingSphere sphere{};
-    sphere.center = {(min_x + max_x) * 0.5f, (min_y + max_y) * 0.5f, 0.0f};
-    float dx = max_x - sphere.center[0];
-    float dy = max_y - sphere.center[1];
-    sphere.radius = std::sqrt(dx * dx + dy * dy);
-    bucket.bounds_spheres.push_back(sphere);
-
-    bucket.layers.push_back(8);
-    bucket.z_values.push_back(5.0f);
-    bucket.material_ids.push_back(0);
-    bucket.pipeline_flags.push_back(0);
-    bucket.visibility.push_back(1);
-    bucket.command_offsets.push_back(0);
-    bucket.command_counts.push_back(4);
-    bucket.opaque_indices.push_back(0);
-    bucket.alpha_indices.clear();
-    bucket.layer_indices.clear();
-    bucket.clip_head_indices.push_back(-1);
-
-    bucket.command_kinds.resize(4, static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect));
-    bucket.command_payload.resize(4 * sizeof(SceneData::RectCommand));
-
-    auto write_rect = [&](int index, SceneData::RectCommand const& rect) {
-        std::memcpy(bucket.command_payload.data() + index * sizeof(SceneData::RectCommand),
-                    &rect,
-                    sizeof(SceneData::RectCommand));
-    };
-
-    SceneData::RectCommand top{};
-    top.min_x = min_x;
-    top.min_y = min_y;
-    top.max_x = max_x;
-    top.max_y = min_y + clamped_border;
-    top.color = border_color;
-    write_rect(0, top);
-
-    SceneData::RectCommand bottom{};
-    bottom.min_x = min_x;
-    bottom.min_y = max_y - clamped_border;
-    bottom.max_x = max_x;
-    bottom.max_y = max_y;
-    bottom.color = border_color;
-    write_rect(1, bottom);
-
-    SceneData::RectCommand left{};
-    left.min_x = min_x;
-    left.min_y = min_y + clamped_border;
-    left.max_x = min_x + clamped_border;
-    left.max_y = max_y - clamped_border;
-    left.color = border_color;
-    write_rect(2, left);
-
-    SceneData::RectCommand right{};
-    right.min_x = max_x - clamped_border;
-    right.min_y = min_y + clamped_border;
-    right.max_x = max_x;
-    right.max_y = max_y - clamped_border;
-    right.color = border_color;
-    write_rect(3, right);
-
-    bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
-        drawable_id, "widget/gallery/focus/overlay", 0, 0});
-    bucket.drawable_fingerprints.push_back(drawable_id);
-    return bucket;
-}
-
 struct GalleryBuildResult {
     SceneData::DrawableBucketSnapshot bucket;
     int width = 0;
@@ -1918,35 +1820,12 @@ auto build_gallery_bucket(PathSpace& space,
     float canvas_width = std::max(max_width + kDefaultMargin, 360.0f);
     float canvas_height = std::max(max_height + kDefaultMargin, 360.0f);
 
-    std::optional<WidgetBounds> focus_bounds;
-    if (focused_widget && !focused_widget->empty()) {
-        auto path = *focused_widget;
-        if (path == button.root.getPath()) {
-            focus_bounds = layout.button;
-        } else if (path == toggle.root.getPath()) {
-            focus_bounds = layout.toggle;
-        } else if (path == slider.root.getPath()) {
-            focus_bounds = layout.slider;
-        } else if (path == list.root.getPath()) {
-            focus_bounds = layout.list.bounds;
-        } else if (path == tree.root.getPath()) {
-            focus_bounds = layout.tree.bounds;
-        }
-    }
-
     SceneData::DrawableBucketSnapshot gallery{};
     auto background = make_background_bucket(canvas_width, canvas_height);
     append_bucket(gallery, background);
 
     for (auto const& bucket : pending) {
         append_bucket(gallery, bucket);
-    }
-
-    if (focus_bounds) {
-        auto overlay = build_focus_overlay(*focus_bounds);
-        if (!overlay.drawable_ids.empty()) {
-            append_bucket(gallery, overlay);
-        }
     }
 
     GalleryBuildResult result{};
@@ -2562,12 +2441,13 @@ static bool sync_focus_state(WidgetsExampleContext& ctx) {
 
 static bool apply_focus_visuals(WidgetsExampleContext& ctx) {
     bool changed = false;
-    auto update_button = [&](bool hovered) {
-        if (ctx.button_state.hovered == hovered) {
+    auto update_button = [&](bool focused) {
+        if (ctx.button_state.hovered == focused && ctx.button_state.focused == focused) {
             return;
         }
         Widgets::ButtonState desired = ctx.button_state;
-        desired.hovered = hovered;
+        desired.hovered = focused;
+        desired.focused = focused;
         auto status = Widgets::UpdateButtonState(*ctx.space, ctx.button_paths, desired);
         if (!status) {
             std::cerr << "widgets_example: failed to update button focus state: "
@@ -2578,12 +2458,13 @@ static bool apply_focus_visuals(WidgetsExampleContext& ctx) {
         changed |= *status;
     };
 
-    auto update_toggle = [&](bool hovered) {
-        if (ctx.toggle_state.hovered == hovered) {
+    auto update_toggle = [&](bool focused) {
+        if (ctx.toggle_state.hovered == focused && ctx.toggle_state.focused == focused) {
             return;
         }
         Widgets::ToggleState desired = ctx.toggle_state;
-        desired.hovered = hovered;
+        desired.hovered = focused;
+        desired.focused = focused;
         auto status = Widgets::UpdateToggleState(*ctx.space, ctx.toggle_paths, desired);
         if (!status) {
             std::cerr << "widgets_example: failed to update toggle focus state: "
@@ -2594,12 +2475,13 @@ static bool apply_focus_visuals(WidgetsExampleContext& ctx) {
         changed |= *status;
     };
 
-    auto update_slider = [&](bool hovered) {
-        if (ctx.slider_state.hovered == hovered) {
+    auto update_slider = [&](bool focused) {
+        if (ctx.slider_state.hovered == focused && ctx.slider_state.focused == focused) {
             return;
         }
         Widgets::SliderState desired = ctx.slider_state;
-        desired.hovered = hovered;
+        desired.hovered = focused;
+        desired.focused = focused;
         auto status = Widgets::UpdateSliderState(*ctx.space, ctx.slider_paths, desired);
         if (!status) {
             std::cerr << "widgets_example: failed to update slider focus state: "
@@ -2620,11 +2502,12 @@ static bool apply_focus_visuals(WidgetsExampleContext& ctx) {
             ctx.focus_list_index = std::clamp(ctx.focus_list_index, 0, max_index);
             desired_hover = ctx.focus_list_index;
         }
-        if (ctx.list_state.hovered_index == desired_hover) {
+        if (ctx.list_state.hovered_index == desired_hover && ctx.list_state.focused == focused) {
             return;
         }
         Widgets::ListState desired = ctx.list_state;
         desired.hovered_index = desired_hover;
+        desired.focused = focused;
         auto status = Widgets::UpdateListState(*ctx.space, ctx.list_paths, desired);
         if (!status) {
             std::cerr << "widgets_example: failed to update list focus state: "
@@ -2656,11 +2539,12 @@ static bool apply_focus_visuals(WidgetsExampleContext& ctx) {
             ctx.focus_tree_index = std::clamp(ctx.focus_tree_index, 0, static_cast<int>(rows.size()) - 1);
             desired_hover = rows[static_cast<std::size_t>(ctx.focus_tree_index)].node_id;
         }
-        if (ctx.tree_state.hovered_id == desired_hover) {
+        if (ctx.tree_state.hovered_id == desired_hover && ctx.tree_state.focused == focused) {
             return;
         }
         Widgets::TreeState desired = ctx.tree_state;
         desired.hovered_id = desired_hover;
+        desired.focused = focused;
         auto status = Widgets::UpdateTreeState(*ctx.space, ctx.tree_paths, desired);
         if (!status) {
             std::cerr << "widgets_example: failed to update tree focus state: "
@@ -3741,12 +3625,36 @@ auto present_frame(PathSpace& space,
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
     using namespace SP;
     using namespace SP::UI::Builders;
     PathSpace space;
     AppRootPath appRoot{"/system/applications/widgets_example"};
     AppRootPathView appRootView{appRoot.getPath()};
+
+    std::optional<std::string> screenshot_path;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg(argv[i]);
+        if (arg == "--screenshot") {
+            if (i + 1 < argc) {
+                screenshot_path = std::string(argv[++i]);
+            } else {
+                std::cerr << "widgets_example: --screenshot requires a file path\n";
+                return 1;
+            }
+        } else if (arg.rfind("--screenshot=", 0) == 0) {
+            screenshot_path = arg.substr(std::string("--screenshot=").size());
+        } else if (arg == "--help") {
+            std::cout << "widgets_example options:\n"
+                      << "  --screenshot <path>   Save a PNG screenshot of the window then exit\n";
+            return 0;
+        }
+    }
+
+    if (screenshot_path && screenshot_path->empty()) {
+        std::cerr << "widgets_example: screenshot path cannot be empty\n";
+        return 1;
+    }
 
     auto theme = select_theme_from_env();
 
@@ -3907,6 +3815,10 @@ int main() {
         if (headless_env[0] != '\0' && headless_env[0] != '0') {
             headless = true;
         }
+    }
+
+    if (screenshot_path) {
+        headless = false;
     }
 
     auto slider_range_live = unwrap_or_exit(space.read<Widgets::SliderRange, std::string>(std::string(slider.range.getPath())),
@@ -4099,6 +4011,8 @@ int main() {
     double total_present_ms = 0.0;
     int window_width = bootstrap.surface_desc.size_px.width;
     int window_height = bootstrap.surface_desc.size_px.height;
+    bool pending_screenshot = screenshot_path.has_value();
+    std::uint64_t screenshot_present_count = 0;
 
     while (true) {
         SP::UI::PollLocalWindow();
@@ -4128,6 +4042,24 @@ int main() {
             ++frames_presented;
             total_render_ms += telemetry->render_ms;
             total_present_ms += telemetry->present_ms;
+            if (pending_screenshot) {
+                ++screenshot_present_count;
+                if (screenshot_present_count >= 3) {
+                    std::filesystem::path path = *screenshot_path;
+                    std::error_code mkdir_ec;
+                    if (path.has_parent_path()) {
+                        std::filesystem::create_directories(path.parent_path(), mkdir_ec);
+                    }
+                    bool saved = SP::UI::SaveLocalWindowScreenshot(path.string().c_str());
+                    if (saved) {
+                        std::cout << "widgets_example saved screenshot to '" << path.string() << "'\n";
+                    } else {
+                        std::cerr << "widgets_example: failed to save screenshot to '" << path.string() << "'\n";
+                    }
+                    pending_screenshot = false;
+                    SP::UI::RequestLocalWindowQuit();
+                }
+            }
         }
 
         process_widget_actions(ctx);

@@ -200,7 +200,15 @@ inline auto build_list_bucket(Widgets::ListStyle const& style,
         .separator_color = appliedStyle.separator_color,
     };
 
-    return make_list_bucket(config, authoring_root);
+    float highlight_width = config.width;
+    float highlight_height = config.border_thickness * 2.0f
+        + config.item_height * static_cast<float>(std::max<std::size_t>(config.item_count, 1u));
+
+    auto bucket = make_list_bucket(config, authoring_root);
+    if (state.focused) {
+        append_focus_highlight(bucket, highlight_width, highlight_height, authoring_root);
+    }
+    return bucket;
 }
 
 inline auto build_list_bucket(Widgets::ListStyle const& style,

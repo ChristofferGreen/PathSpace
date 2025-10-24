@@ -285,7 +285,7 @@ Next:
     - Interaction queues live under `widgets/<id>/ops/inbox/queue` and reducer outputs land in `widgets/<id>/ops/actions/inbox/queue`.
     - Canonical state snapshots reside in `scenes/widgets/<id>/states/{idle,hover,pressed,disabled}` and are reused by bindings, reducer tests, and golden renders.
   - ✅ (October 24, 2025) Surfaced the currently focused widget in `widgets_example` with a PathSpace-tracked overlay tied to `widgets/focus/current`; keyboard and pointer focus now repaint immediately with a visible highlight.
-  - [ ] Promote focus highlight rendering into the API layer (`Widgets::Focus`) so applications receive canonical decorating drawables automatically; remove the widgets_example-specific overlay once the platform path emits the visuals.
+  - ✅ (October 24, 2025) Promoted focus highlight rendering into the widget builders: `Widgets::Focus` now tags `state.focused`, button/toggle/slider/list/tree drawables append the canonical highlight, and `widgets_example` no longer maintains a bespoke overlay.
   - [ ] Implement an optional API-driven pulsing highlight (1 s period, lightening/darkening cycle) that re-tints the canonical focus drawable without requiring app-side timing logic; document opt-in/flags and extend UITests to cover the animated state.
   - [ ] Move glyph rasterization / text bucket assembly into a shared text builder so widgets_example (and other consumers) use canonical typography assets instead of embedding bitmap glyph tables.
   - [ ] Provide an API-level list widget preview/layout helper that owns row bounds, spacing, and label placement; remove the manual list layout code from widgets_example.
@@ -323,6 +323,7 @@ Next:
 - ✅ (October 24, 2025) Updated `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage guidance, and troubleshooting notes.
 - ✅ (October 20, 2025) Documented widget ops schema: queue path (`widgets/<id>/ops/inbox/queue`), `WidgetOp` fields (kind, pointer metadata, value, timestamp) and reducer sample wiring.
 - ✅ (October 20, 2025) Reducer samples now live in `Widgets::Reducers`, publishing actions under `widgets/<id>/ops/actions/inbox/queue`; keep telemetry/docs in sync when new action fields or op kinds land.
+  - ✅ (October 27, 2025) Added automated window capture: `widgets_example --screenshot <path>` boots the gallery, saves a PNG via the new LocalWindowBridge snapshot helper, then exits—useful for visual regression checks and focus/highlight debugging.
 
 **Widget ops schema (October 20, 2025)**
 - Queue path: `widgets/<id>/ops/inbox/queue` (per-widget FIFO consumed via `take<WidgetOp>`).

@@ -83,4 +83,6 @@ void PresentLocalWindowIOSurface(void* surface,
 
 void GetLocalWindowContentSize(int* width, int* height);
 
+auto SaveLocalWindowScreenshot(char const* path) -> bool;
+
 } // namespace SP::UI

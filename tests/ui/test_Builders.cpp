@@ -3075,10 +3075,12 @@ TEST_CASE("Widgets::Focus::Set and Move update widget states") {
     auto buttonState = fx.space.read<Widgets::ButtonState, std::string>(button->state.getPath());
     REQUIRE(buttonState);
     CHECK(buttonState->hovered);
+    CHECK(buttonState->focused);
 
     auto toggleState = fx.space.read<Widgets::ToggleState, std::string>(toggle->state.getPath());
     REQUIRE(toggleState);
     CHECK_FALSE(toggleState->hovered);
+    CHECK_FALSE(toggleState->focused);
 
     std::array<WidgetPath, 4> order{
         button->root,
@@ -3098,10 +3100,12 @@ TEST_CASE("Widgets::Focus::Set and Move update widget states") {
     toggleState = fx.space.read<Widgets::ToggleState, std::string>(toggle->state.getPath());
     REQUIRE(toggleState);
     CHECK(toggleState->hovered);
+    CHECK(toggleState->focused);
 
     buttonState = fx.space.read<Widgets::ButtonState, std::string>(button->state.getPath());
     REQUIRE(buttonState);
     CHECK_FALSE(buttonState->hovered);
+    CHECK_FALSE(buttonState->focused);
 
     // Advance to slider, then list
     (void)WidgetFocus::Move(fx.space,
@@ -3123,6 +3127,7 @@ TEST_CASE("Widgets::Focus::Set and Move update widget states") {
     auto listState = fx.space.read<Widgets::ListState, std::string>(list->state.getPath());
     REQUIRE(listState);
     CHECK(listState->hovered_index >= 0);
+    CHECK(listState->focused);
 
     auto cleared = WidgetFocus::Clear(fx.space, config);
     REQUIRE(cleared);
@@ -3131,6 +3136,7 @@ TEST_CASE("Widgets::Focus::Set and Move update widget states") {
     listState = fx.space.read<Widgets::ListState, std::string>(list->state.getPath());
     REQUIRE(listState);
     CHECK(listState->hovered_index == -1);
+    CHECK_FALSE(listState->focused);
 }
 
 TEST_CASE("Widgets::Focus::ApplyHit focuses widget from hit test") {
@@ -3160,6 +3166,7 @@ TEST_CASE("Widgets::Focus::ApplyHit focuses widget from hit test") {
     auto state = fx.space.read<Widgets::ButtonState, std::string>(button->state.getPath());
     REQUIRE(state);
     CHECK(state->hovered);
+    CHECK(state->focused);
 }
 
 TEST_CASE("Widgets::Focus::Set schedules auto render events") {
@@ -3211,6 +3218,42 @@ TEST_CASE("Widgets::Focus::Set schedules auto render events") {
         CHECK((noEvent.error().code == Error::Code::NoObjectFound
                || noEvent.error().code == Error::Code::NoSuchPath));
     }
+}
+
+TEST_CASE("Widget focus state publishes highlight drawable") {
+    BuildersFixture fx;
+
+    Widgets::ButtonParams buttonParams{};
+    buttonParams.name = "focus_highlight_button";
+    buttonParams.label = "FocusHighlight";
+    auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
+    REQUIRE(button);
+
+    auto config = WidgetFocus::MakeConfig(fx.root_view());
+    auto setFocus = WidgetFocus::Set(fx.space, config, button->root);
+    REQUIRE(setFocus);
+    CHECK(setFocus->changed);
+
+    SceneSnapshotBuilder builder(fx.space, fx.root_view(), button->scene);
+    auto records = builder.snapshot_records();
+    REQUIRE(records);
+    REQUIRE_FALSE(records->empty());
+
+    auto latest = records->back().revision;
+    std::ostringstream revision_base;
+    revision_base << button->scene.getPath() << "/builds/"
+                  << std::setw(16) << std::setfill('0') << latest;
+    auto bucket = SceneSnapshotBuilder::decode_bucket(fx.space, revision_base.str());
+    REQUIRE(bucket);
+
+    bool found_highlight = false;
+    for (auto const& entry : bucket->authoring_map) {
+        if (entry.authoring_node_id.find("/focus/highlight") != std::string::npos) {
+            found_highlight = true;
+            break;
+        }
+    }
+    CHECK(found_highlight);
 }
 
 TEST_CASE("Widgets::Focus keyboard navigation cycles focus order and schedules renders") {

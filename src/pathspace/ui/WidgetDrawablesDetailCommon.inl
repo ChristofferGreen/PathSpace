@@ -1,21 +1,27 @@
+inline constexpr float kFocusHighlightExpand = 6.0f;
+inline constexpr float kFocusHighlightThickness = 4.0f;
+
 inline auto button_states_equal(Widgets::ButtonState const& lhs,
                          Widgets::ButtonState const& rhs) -> bool {
     return lhs.enabled == rhs.enabled
         && lhs.pressed == rhs.pressed
-        && lhs.hovered == rhs.hovered;
+        && lhs.hovered == rhs.hovered
+        && lhs.focused == rhs.focused;
 }
 
 inline auto toggle_states_equal(Widgets::ToggleState const& lhs,
                          Widgets::ToggleState const& rhs) -> bool {
     return lhs.enabled == rhs.enabled
         && lhs.hovered == rhs.hovered
-        && lhs.checked == rhs.checked;
+        && lhs.checked == rhs.checked
+        && lhs.focused == rhs.focused;
 }
 
 inline auto slider_states_equal(Widgets::SliderState const& lhs,
                          Widgets::SliderState const& rhs) -> bool {
     return lhs.enabled == rhs.enabled
         && lhs.hovered == rhs.hovered
+        && lhs.focused == rhs.focused
         && lhs.dragging == rhs.dragging
         && lhs.value == rhs.value;
 }
@@ -26,6 +32,7 @@ inline auto list_states_equal(Widgets::ListState const& lhs,
         return std::fabs(a - b) <= 1e-6f;
     };
     return lhs.enabled == rhs.enabled
+        && lhs.focused == rhs.focused
         && lhs.hovered_index == rhs.hovered_index
         && lhs.selected_index == rhs.selected_index
         && equal_float(lhs.scroll_offset, rhs.scroll_offset);
@@ -110,6 +117,92 @@ inline auto make_widget_authoring_id(std::string_view base_path,
 inline auto ensure_widget_root(PathSpace& /*space*/,
                         AppRootPathView appRoot) -> SP::Expected<ConcretePath> {
     return combine_relative(appRoot, "widgets");
+}
+
+inline auto append_focus_highlight(SceneData::DrawableBucketSnapshot& bucket,
+                                   float width,
+                                   float height,
+                                   std::string_view authoring_root,
+                                   float expand = kFocusHighlightExpand,
+                                   float border_thickness = kFocusHighlightThickness) -> void {
+    if (width <= 0.0f || height <= 0.0f) {
+        return;
+    }
+
+    float min_x = 0.0f;
+    float min_y = 0.0f;
+    float max_x = width;
+    float max_y = height;
+    if (expand > 0.0f) {
+        min_x -= expand;
+        min_y -= expand;
+        max_x += expand;
+        max_y += expand;
+        min_x = std::min(min_x, 0.0f);
+        min_y = std::min(min_y, 0.0f);
+        max_x = std::max(max_x, width);
+        max_y = std::max(max_y, height);
+    }
+
+    float thickness_limit = std::min(width, height) * 0.5f;
+    float clamped_thickness = std::clamp(border_thickness, 1.0f, thickness_limit);
+
+    std::uint64_t drawable_id = 0xF0C0F001ull;
+    bucket.drawable_ids.push_back(drawable_id);
+    bucket.world_transforms.push_back(make_identity_transform());
+
+    SceneData::BoundingBox box{};
+    box.min = {min_x, min_y, 0.0f};
+    box.max = {max_x, max_y, 0.0f};
+    bucket.bounds_boxes.push_back(box);
+    bucket.bounds_box_valid.push_back(1);
+
+    SceneData::BoundingSphere sphere{};
+    sphere.center = {(min_x + max_x) * 0.5f, (min_y + max_y) * 0.5f, 0.0f};
+    float radius_x = max_x - sphere.center[0];
+    float radius_y = max_y - sphere.center[1];
+    sphere.radius = std::sqrt(radius_x * radius_x + radius_y * radius_y);
+    bucket.bounds_spheres.push_back(sphere);
+
+    bucket.layers.push_back(8);
+    bucket.z_values.push_back(5.0f);
+    bucket.material_ids.push_back(0);
+    bucket.pipeline_flags.push_back(0);
+    bucket.visibility.push_back(1);
+    bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
+    bucket.command_counts.push_back(4);
+    bucket.opaque_indices.push_back(static_cast<std::uint32_t>(bucket.opaque_indices.size()));
+    bucket.clip_head_indices.push_back(-1);
+
+    auto push_rect = [&](float r_min_x,
+                         float r_min_y,
+                         float r_max_x,
+                         float r_max_y) {
+        SceneData::RectCommand rect{};
+        rect.min_x = r_min_x;
+        rect.min_y = r_min_y;
+        rect.max_x = r_max_x;
+        rect.max_y = r_max_y;
+        rect.color = {0.05f, 0.80f, 0.95f, 1.0f};
+        auto payload_offset = bucket.command_payload.size();
+        bucket.command_payload.resize(payload_offset + sizeof(SceneData::RectCommand));
+        std::memcpy(bucket.command_payload.data() + payload_offset,
+                    &rect,
+                    sizeof(SceneData::RectCommand));
+        bucket.command_kinds.push_back(static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect));
+    };
+
+    push_rect(min_x, min_y, max_x, min_y + clamped_thickness);
+    push_rect(min_x, max_y - clamped_thickness, max_x, max_y);
+    push_rect(min_x, min_y + clamped_thickness, min_x + clamped_thickness, max_y - clamped_thickness);
+    push_rect(max_x - clamped_thickness, min_y + clamped_thickness, max_x, max_y - clamped_thickness);
+
+    bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
+        drawable_id,
+        make_widget_authoring_id(authoring_root, "focus/highlight"),
+        0,
+        0});
+    bucket.drawable_fingerprints.push_back(drawable_id);
 }
 
 inline auto publish_scene_snapshot(PathSpace& space,

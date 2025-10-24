@@ -556,6 +556,7 @@ struct ButtonState {
     bool enabled = true;
     bool pressed = false;
     bool hovered = false;
+    bool focused = false;
 };
 
 struct ButtonParams {
@@ -595,6 +596,7 @@ struct ToggleState {
     bool enabled = true;
     bool hovered = false;
     bool checked = false;
+    bool focused = false;
 };
 
 struct ToggleParams {
@@ -642,6 +644,7 @@ struct SliderState {
     bool enabled = true;
     bool hovered = false;
     bool dragging = false;
+    bool focused = false;
     float value = 0.0f;
 };
 
@@ -704,6 +707,7 @@ struct ListItem {
 
 struct ListState {
     bool enabled = true;
+    bool focused = false;
     std::int32_t hovered_index = -1;
     std::int32_t selected_index = -1;
     float scroll_offset = 0.0f;
@@ -766,6 +770,7 @@ struct TreeNode {
 
 struct TreeState {
     bool enabled = true;
+    bool focused = false;
     std::string hovered_id;
     std::string selected_id;
     std::vector<std::string> expanded_ids;

@@ -1322,6 +1322,7 @@ auto update_button_focus(PathSpace& space,
     }
     Widgets::ButtonState desired = *stateValue;
     desired.hovered = focused;
+    desired.focused = focused;
 
     auto widget_name = widget_name_from_root(app_root, widget_root);
     if (!widget_name) {
@@ -1353,6 +1354,7 @@ auto update_toggle_focus(PathSpace& space,
     }
     Widgets::ToggleState desired = *stateValue;
     desired.hovered = focused;
+    desired.focused = focused;
 
     auto widget_name = widget_name_from_root(app_root, widget_root);
     if (!widget_name) {
@@ -1383,6 +1385,7 @@ auto update_slider_focus(PathSpace& space,
     }
     Widgets::SliderState desired = *stateValue;
     desired.hovered = focused;
+    desired.focused = focused;
 
     auto widget_name = widget_name_from_root(app_root, widget_root);
     if (!widget_name) {
@@ -1413,6 +1416,7 @@ auto update_list_focus(PathSpace& space,
         return std::unexpected(stateValue.error());
     }
     Widgets::ListState desired = *stateValue;
+    desired.focused = focused;
 
     auto itemsPath = widget_root + "/meta/items";
     auto itemsValue = space.read<std::vector<Widgets::ListItem>, std::string>(itemsPath);
@@ -1481,6 +1485,7 @@ auto update_tree_focus(PathSpace& space,
     }
 
     TreeState desired = *stateValue;
+    desired.focused = focused;
     if (focused) {
         if (desired.hovered_id.empty()) {
             if (!desired.selected_id.empty()) {

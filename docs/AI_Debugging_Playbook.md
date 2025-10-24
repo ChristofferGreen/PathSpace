@@ -76,7 +76,18 @@ Environment knobs (all respected by the wrapper and the logger):
   | `WIDGETS_EXAMPLE_TRACE_REPLAY` | Path to a trace file to replay. When present, `widgets_example` skips the LocalWindow bridge and replays events headlessly. |
   | `WIDGETS_EXAMPLE_HEADLESS` | When truthy, suppresses the interactive window. The replay script defaults this to `1` so replays run on CI hosts. |
 
-### 1.4 Sanitizer runs on demand
+### 1.4 Widget gallery screenshots
+
+- Capture a deterministic PNG of the gallery UI without manual interaction:
+
+  ```bash
+  ./build/widgets_example --screenshot out/widgets_gallery.png
+  ```
+
+  The helper launches the window, renders a few frames, writes the PNG (creating parent directories when needed), prints the path, and exits. Use this to verify focus highlights, themes, or layout regressions when you can’t interact with the GUI directly.
+- Behind the scenes the command invokes `SP::UI::SaveLocalWindowScreenshot`, which mirrors the window’s last framebuffer/IOSurface to ImageIO, so both software and Metal presenters are supported.
+
+### 1.5 Sanitizer runs on demand
 
 - Run AddressSanitizer or ThreadSanitizer loops without juggling flags manually:
 

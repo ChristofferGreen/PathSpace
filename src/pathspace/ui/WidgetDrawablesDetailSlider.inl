@@ -193,7 +193,11 @@ inline auto build_slider_bucket(Widgets::SliderStyle const& style,
         config.thumb_color = lighten_color(config.thumb_color, 0.06f);
     }
 
-    return make_slider_bucket(config, authoring_root);
+    auto bucket = make_slider_bucket(config, authoring_root);
+    if (state.focused) {
+        append_focus_highlight(bucket, config.width, config.height, authoring_root);
+    }
+    return bucket;
 }
 
 inline auto build_slider_bucket(Widgets::SliderStyle const& style,
