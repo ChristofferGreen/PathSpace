@@ -923,7 +923,7 @@ int main(int argc, char** argv) {
         bootstrap_params.surface.desc.metal.storage_mode = Builders::MetalStorageMode::Shared;
         bootstrap_params.surface.desc.metal.texture_usage = static_cast<std::uint8_t>(Builders::MetalTextureUsage::ShaderRead)
                                                             | static_cast<std::uint8_t>(Builders::MetalTextureUsage::RenderTarget);
-        bootstrap_params.surface.desc.metal.iosurface_backing = true;
+        bootstrap_params.surface.desc.metal.iosurface_backing = false;
     }
 #endif
 

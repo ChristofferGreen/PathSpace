@@ -2,8 +2,13 @@
 #include <TargetConditionals.h>
 
 #include <algorithm>
+#include <cstring>
+#include <limits>
+#include <optional>
 #include <string>
 #include <IOSurface/IOSurface.h>
+#include <CoreFoundation/CoreFoundation.h>
+#include <CoreVideo/CoreVideo.h>
 
 #include <pathspace/ui/PathSurfaceMetal.hpp>
 
@@ -82,6 +87,110 @@ auto to_mtl_usage(std::uint8_t usageFlags) -> MTLTextureUsage {
     return usage;
 }
 
+auto align_to(std::size_t value, std::size_t alignment) -> std::size_t {
+    if (alignment == 0) {
+        return value;
+    }
+    auto const remainder = value % alignment;
+    if (remainder == 0) {
+        return value;
+    }
+    return value + (alignment - remainder);
+}
+
+struct IOSurfacePixelFormatInfo {
+    OSType pixel_format = 0;
+    std::size_t bytes_per_element = 0;
+};
+
+auto iosurface_pixel_format(Builders::PixelFormat format)
+    -> std::optional<IOSurfacePixelFormatInfo> {
+    switch (format) {
+    case Builders::PixelFormat::RGBA8Unorm:
+    case Builders::PixelFormat::RGBA8Unorm_sRGB:
+        return IOSurfacePixelFormatInfo{.pixel_format = kCVPixelFormatType_32RGBA,
+                                        .bytes_per_element = 4};
+    case Builders::PixelFormat::BGRA8Unorm:
+    case Builders::PixelFormat::BGRA8Unorm_sRGB:
+        return IOSurfacePixelFormatInfo{.pixel_format = kCVPixelFormatType_32BGRA,
+                                        .bytes_per_element = 4};
+    case Builders::PixelFormat::RGBA16F:
+        return IOSurfacePixelFormatInfo{.pixel_format = kCVPixelFormatType_64RGBAHalf,
+                                        .bytes_per_element = 8};
+    case Builders::PixelFormat::RGBA32F:
+        return IOSurfacePixelFormatInfo{.pixel_format = kCVPixelFormatType_128RGBAFloat,
+                                        .bytes_per_element = 16};
+    }
+    return std::nullopt;
+}
+
+auto make_cf_number(std::int32_t value) -> CFNumberRef {
+    return CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &value);
+}
+
+struct IOSurfaceAllocation {
+    IOSurfaceRef surface = nullptr;
+    std::size_t row_bytes = 0;
+};
+
+auto make_iosurface(NSUInteger width,
+                    NSUInteger height,
+                    IOSurfacePixelFormatInfo const& info) -> IOSurfaceAllocation {
+    if (width == 0 || height == 0 || info.bytes_per_element == 0) {
+        return {};
+    }
+
+    auto const int_width = static_cast<std::int32_t>(width);
+    auto const int_height = static_cast<std::int32_t>(height);
+    auto const row_bytes = align_to(static_cast<std::size_t>(width) * info.bytes_per_element, 64u);
+    if (row_bytes > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())) {
+        return {};
+    }
+
+    CFMutableDictionaryRef dict = CFDictionaryCreateMutable(
+        kCFAllocatorDefault,
+        0,
+        &kCFTypeDictionaryKeyCallBacks,
+        &kCFTypeDictionaryValueCallBacks);
+    if (!dict) {
+        return {};
+    }
+
+    auto set_number = [&](CFStringRef key, std::int32_t numberValue) {
+        CFNumberRef number = make_cf_number(numberValue);
+        if (!number) {
+            return;
+        }
+        CFDictionarySetValue(dict, key, number);
+        CFRelease(number);
+    };
+
+    set_number(kIOSurfaceWidth, int_width);
+    set_number(kIOSurfaceHeight, int_height);
+    set_number(kIOSurfaceBytesPerElement, static_cast<std::int32_t>(info.bytes_per_element));
+    set_number(kIOSurfaceElementWidth, 1);
+    set_number(kIOSurfaceElementHeight, 1);
+    set_number(kIOSurfaceBytesPerRow, static_cast<std::int32_t>(row_bytes));
+    set_number(kIOSurfacePixelFormat, static_cast<std::int32_t>(info.pixel_format));
+
+    IOSurfaceRef surface = IOSurfaceCreate(dict);
+    CFRelease(dict);
+
+    if (!surface) {
+        return {};
+    }
+
+    if (IOSurfaceLock(surface, 0, nullptr) == kIOReturnSuccess) {
+        auto* base = static_cast<std::uint8_t*>(IOSurfaceGetBaseAddress(surface));
+        if (base != nullptr) {
+            std::memset(base, 0, row_bytes * static_cast<std::size_t>(height));
+        }
+        IOSurfaceUnlock(surface, 0, nullptr);
+    }
+
+    return IOSurfaceAllocation{surface, row_bytes};
+}
+
 } // namespace
 
 struct PathSurfaceMetal::Impl {
@@ -89,6 +198,8 @@ struct PathSurfaceMetal::Impl {
     id<MTLDevice> device = nil;
     id<MTLCommandQueue> command_queue = nil;
     id<MTLTexture> texture = nil;
+    IOSurfaceRef iosurface = nullptr;
+    std::size_t iosurface_row_bytes = 0;
     std::uint64_t frame_index = 0;
     std::uint64_t revision = 0;
     std::vector<MaterialDescriptor> materials{};
@@ -103,6 +214,11 @@ struct PathSurfaceMetal::Impl {
     }
 
     ~Impl() {
+        if (iosurface != nullptr) {
+            CFRelease(iosurface);
+            iosurface = nullptr;
+            iosurface_row_bytes = 0;
+        }
         texture = nil;
         command_queue = nil;
         device = nil;
@@ -112,6 +228,12 @@ struct PathSurfaceMetal::Impl {
         if (!device) {
             texture = nil;
             return;
+        }
+
+        if (iosurface != nullptr) {
+            CFRelease(iosurface);
+            iosurface = nullptr;
+            iosurface_row_bytes = 0;
         }
 
         auto mtl_format = to_pixel_format(desc.pixel_format);
@@ -125,7 +247,37 @@ struct PathSurfaceMetal::Impl {
                                                               height:clamp_dimension(desc.size_px.height)
                                                            mipmapped:NO];
         descriptor.usage = to_mtl_usage(desc.metal.texture_usage);
-        descriptor.storageMode = to_mtl_storage_mode(desc.metal.storage_mode);
+        auto storage_mode = to_mtl_storage_mode(desc.metal.storage_mode);
+        descriptor.storageMode = storage_mode;
+
+        bool const wants_iosurface = desc.metal.iosurface_backing
+                                     && storage_mode != MTLStorageModePrivate;
+        if (wants_iosurface) {
+            if (auto format_info = iosurface_pixel_format(desc.pixel_format)) {
+                auto allocation =
+                    make_iosurface(descriptor.width, descriptor.height, *format_info);
+                if (allocation.surface != nullptr) {
+                    descriptor.storageMode =
+#if TARGET_OS_OSX
+                        storage_mode == MTLStorageModeManaged ? MTLStorageModeManaged
+                                                             : MTLStorageModeShared;
+#else
+                        MTLStorageModeShared;
+#endif
+                    id<MTLTexture> iosurface_texture =
+                        [device newTextureWithDescriptor:descriptor
+                                                  iosurface:allocation.surface
+                                                    plane:0];
+                    if (iosurface_texture != nil) {
+                        texture = iosurface_texture;
+                        iosurface = allocation.surface;
+                        iosurface_row_bytes = allocation.row_bytes;
+                        return;
+                    }
+                    CFRelease(allocation.surface);
+                }
+            }
+        }
 
         texture = [device newTextureWithDescriptor:descriptor];
     }

@@ -1575,7 +1575,7 @@ Headless verification now runs through `scripts/verify_html_canvas.js`, which sp
    - Concurrency tests (hammer edits while rendering)
    - Update `docs/AI_ARCHITECTURE.md` if any core semantics change
 6) Metal backend (next)
-   - `PathSurfaceMetal` allocates/owns an offscreen `MTLTexture` and tracks frame/revision indices. Builders can already create Metal targets; by default they replay the software raster output onto the Metal surface, with optional GPU uploads gated on the environment variable `PATHSPACE_ENABLE_METAL_UPLOADS=1`.
+  - `PathSurfaceMetal` allocates/owns an offscreen `MTLTexture` (IOSurface-backed when `iosurface_backing=true`) and tracks frame/revision indices. Builders can already create Metal targets; by default they replay the software raster output onto the Metal surface, with optional GPU uploads gated on the environment variable `PATHSPACE_ENABLE_METAL_UPLOADS=1`.
    - Presenter draws textured quad into `CAMetalLayer` drawable on the UI thread.
    - **Integration roadmap (Oct 18, 2025; updated Oct 19):**
      1. Persist `RendererKind::Metal2D` in renderer metadata; resolve backend in builder context (landed).

@@ -200,7 +200,7 @@ Next:
 
 ### Phase 7 — Optional Backends & HTML Adapter Prep (post-MVP)
 - ✅ (October 20, 2025) `PathSpaceUITests` now cover HTML canvas replay parity and the ObjC++ Metal presenter harness, replacing the skipped scaffolding.
-- 🚧 (October 18, 2025) Introduced `PathSurfaceMetal` stub (texture allocation + resize) gated behind `PATHSPACE_UI_METAL`, linked Metal/QuartzCore, ready for presenter integration.
+- ✅ (October 24, 2025) `PathSurfaceMetal` now allocates IOSurface-backed textures when `iosurface_backing=true`, aligning the Metal cache with CAMetalLayer expectations and clearing the stub status.
 - 🚧 (October 19, 2025) Builders can now provision Metal targets end-to-end; the software renderer still populates Metal surfaces, and optional GPU uploads are gated on `PATHSPACE_ENABLE_METAL_UPLOADS=1` so CI remains headless-safe. Builder/UI tests publish a minimal snapshot before touching Metal paths to guarantee the software renderer has drawables to consume.
 - ✅ (October 19, 2025) PathSurfaceMetal now caches the shared material descriptors emitted by PathRenderer2D so GPU uploads reuse the same shading telemetry when `PATHSPACE_ENABLE_METAL_UPLOADS=1`.
 - ✅ (October 19, 2025) Renderer residency metrics now aggregate software surfaces and cached image payloads, publishing accurate CPU/GPU byte totals for diagnostics before enabling GPU shading.

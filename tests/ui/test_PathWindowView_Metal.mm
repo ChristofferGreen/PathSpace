@@ -2,6 +2,7 @@
 
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
+#import <IOSurface/IOSurface.h>
 
 #include "third_party/doctest.h"
 
@@ -864,6 +865,54 @@ TEST_CASE("Metal pipeline publishes image residency watermarks") {
         CHECK(settings->cache.gpu_hard_bytes == kGpuHardBytes);
 
         PathWindowView::ResetMetalPresenter();
+    }
+}
+
+TEST_CASE("PathSurfaceMetal allocates IOSurface-backed textures when requested") {
+    ScopedEnv enable_uploads{"PATHSPACE_ENABLE_METAL_UPLOADS", "1"};
+    if (std::getenv("PATHSPACE_ENABLE_METAL_UPLOADS") == nullptr) {
+        INFO("Failed to enable PATHSPACE_ENABLE_METAL_UPLOADS; skipping IOSurface verification");
+        return;
+    }
+
+    @autoreleasepool {
+        id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+        if (!device) {
+            INFO("No Metal device available; skipping IOSurface verification");
+            return;
+        }
+
+        Builders::SurfaceDesc desc{};
+        desc.size_px.width = 16;
+        desc.size_px.height = 16;
+        desc.pixel_format = Builders::PixelFormat::BGRA8Unorm;
+        desc.metal.storage_mode = Builders::MetalStorageMode::Shared;
+        desc.metal.iosurface_backing = true;
+
+        PathSurfaceMetal surface{desc};
+        auto texture_info = surface.acquire_texture();
+        REQUIRE(texture_info.texture != nullptr);
+
+        id<MTLTexture> texture = (__bridge id<MTLTexture>)texture_info.texture;
+        REQUIRE(static_cast<bool>(texture));
+
+        if ([texture respondsToSelector:@selector(iosurface)]) {
+            IOSurfaceRef iosurface = texture.iosurface;
+            REQUIRE(iosurface != nullptr);
+            CHECK(static_cast<int>(IOSurfaceGetWidth(iosurface)) == desc.size_px.width);
+            CHECK(static_cast<int>(IOSurfaceGetHeight(iosurface)) == desc.size_px.height);
+        } else {
+            INFO("MTLTexture does not expose iosurface selector on this platform; skipping check");
+        }
+
+        auto const storageMode = texture.storageMode;
+#if TARGET_OS_OSX
+        bool const supportedMode =
+            storageMode == MTLStorageModeShared || storageMode == MTLStorageModeManaged;
+        CHECK(supportedMode);
+#else
+        CHECK(storageMode == MTLStorageModeShared);
+#endif
     }
 }
 

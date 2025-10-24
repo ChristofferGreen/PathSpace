@@ -41,7 +41,8 @@ Provide a single index of active planning documents, ordered by current priority
 5. **Plan_Surface_Ray_Cache.md** — revisit once core rendering + web requirements are satisfied (deferred).
 6. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
 
-## Status Snapshot — October 22, 2025
+## Status Snapshot — October 24, 2025
+- ✅ (October 24, 2025) PathSurfaceMetal now allocates IOSurface-backed textures when `iosurface_backing` is set, keeping Metal surface caching in step with CAMetalLayer presentation and the updated UITest coverage.
 - HSAT (HTML asset codec) remains mandatory and documented; `pathspace_hsat_inspect` regression stays green after the latest loop run.
 - HTML tooling quickstart/troubleshooting note now lives in `docs/HTML_Adapter_Quickstart.md` (published October 22, 2025) so incoming maintainers can run the HSAT + HTML harness without rediscovering the workflow.
 - Pixel noise perf harness (`examples/pixel_noise_example.cpp`) now drives per-pixel full-surface churn with either backend; `--backend=<software|metal>` selects the renderer, Software2D remains the default, and the helper scripts capture paired baselines under `docs/perf/` (`pixel_noise_baseline.json`, `pixel_noise_metal_baseline.json`). The looped CTests (`PixelNoisePerfHarness`, `PixelNoisePerfHarnessMetal`) invoke `scripts/check_pixel_noise_baseline.py`, which enforces the shared perf budgets (≥50 FPS, ≤20 ms render/present, ≤20 ms present-call) and enables Metal uploads automatically when the baseline calls for it. ✅ (October 23, 2025) Captured a representative frame grab for the harness (`docs/images/perf/pixel_noise.png`) using the new `pixel_noise_example --write-frame=<path>` option so perf regressions include a visual alongside the metrics.
