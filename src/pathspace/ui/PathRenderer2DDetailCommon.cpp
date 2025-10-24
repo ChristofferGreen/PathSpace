@@ -1,0 +1,413 @@
+#include "PathRenderer2DDetail.hpp"
+
+#include <pathspace/ui/Builders.hpp>
+
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
+#include <cstring>
+#include <cctype>
+#include <array>
+#include <iomanip>
+#include <limits>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <string_view>
+
+namespace SP::UI::PathRenderer2DDetail {
+namespace {
+
+auto to_lower_ascii(std::string_view value) -> std::string {
+    std::string lowered{value};
+    std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return lowered;
+}
+
+auto parse_bool(std::string_view value) -> std::optional<bool> {
+    auto lowered = to_lower_ascii(value);
+    if (lowered == "1" || lowered == "true" || lowered == "yes" || lowered == "on") {
+        return true;
+    }
+    if (lowered == "0" || lowered == "false" || lowered == "no" || lowered == "off") {
+        return false;
+    }
+    return std::nullopt;
+}
+
+auto parse_text_pipeline(std::string_view value) -> std::optional<PathRenderer2D::TextPipeline> {
+    auto lowered = to_lower_ascii(value);
+    if (lowered == "glyph" || lowered == "glyphs" || lowered == "glyph-quads" || lowered == "glyph_quads") {
+        return PathRenderer2D::TextPipeline::GlyphQuads;
+    }
+    if (lowered == "shaped" || lowered == "shaped-text" || lowered == "shaped_text") {
+        return PathRenderer2D::TextPipeline::Shaped;
+    }
+    return std::nullopt;
+}
+
+auto env_text_pipeline() -> std::optional<PathRenderer2D::TextPipeline> {
+    if (auto* env = std::getenv("PATHSPACE_TEXT_PIPELINE")) {
+        return parse_text_pipeline(env);
+    }
+    return std::nullopt;
+}
+
+auto env_disable_text_fallback() -> std::optional<bool> {
+    if (auto* env = std::getenv("PATHSPACE_DISABLE_TEXT_FALLBACK")) {
+        return parse_bool(env);
+    }
+    return std::nullopt;
+}
+
+constexpr double kPi = 3.14159265358979323846;
+
+auto has_valid_bounds_box(Scene::DrawableBucketSnapshot const& bucket,
+                          std::uint32_t index) -> bool {
+    if (index >= bucket.bounds_boxes.size()) {
+        return false;
+    }
+    if (index < bucket.bounds_box_valid.size()) {
+        return bucket.bounds_box_valid[index] != 0;
+    }
+    return true;
+}
+
+auto srgb_to_linear(float value) -> float {
+    value = clamp_unit(value);
+    if (value <= 0.04045f) {
+        return value / 12.92f;
+    }
+    return std::pow((value + 0.055f) / 1.055f, 2.4f);
+}
+
+auto linear_to_srgb(float value) -> float {
+    value = std::max(0.0f, value);
+    value = std::min(1.0f, value);
+    if (value <= 0.0031308f) {
+        return value * 12.92f;
+    }
+    return 1.055f * std::pow(value, 1.0f / 2.4f) - 0.055f;
+}
+
+} // namespace
+
+auto make_error(std::string message, SP::Error::Code code) -> SP::Error {
+    return SP::Error{code, std::move(message)};
+}
+
+auto damage_metrics_enabled() -> bool {
+    if (auto* env = std::getenv("PATHSPACE_UI_DAMAGE_METRICS")) {
+        if (std::strcmp(env, "0") == 0 || std::strcmp(env, "false") == 0 || std::strcmp(env, "off") == 0) {
+            return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+auto determine_text_pipeline(Builders::RenderSettings const& settings)
+    -> std::pair<PathRenderer2D::TextPipeline, bool> {
+    auto pipeline = PathRenderer2D::TextPipeline::GlyphQuads;
+    bool allow_fallback = true;
+
+    if (auto env_pipeline = env_text_pipeline()) {
+        pipeline = *env_pipeline;
+    }
+    if (auto env_disable = env_disable_text_fallback()) {
+        allow_fallback = !(*env_disable);
+    }
+
+    if (settings.debug.enabled) {
+        if ((settings.debug.flags & Builders::RenderSettings::Debug::kForceShapedText) != 0) {
+            pipeline = PathRenderer2D::TextPipeline::Shaped;
+        }
+        if ((settings.debug.flags & Builders::RenderSettings::Debug::kDisableTextFallback) != 0) {
+            allow_fallback = false;
+        }
+    }
+
+    return {pipeline, allow_fallback};
+}
+
+auto format_revision(std::uint64_t revision) -> std::string {
+    std::ostringstream oss;
+    oss << std::setw(16) << std::setfill('0') << revision;
+    return oss.str();
+}
+
+auto fingerprint_to_hex(std::uint64_t fingerprint) -> std::string {
+    std::ostringstream oss;
+    oss << std::hex << std::setw(16) << std::setfill('0') << std::nouppercase << fingerprint;
+    return oss.str();
+}
+
+auto clamp_unit(float value) -> float {
+    return std::clamp(value, 0.0f, 1.0f);
+}
+
+auto to_byte(float value) -> std::uint8_t {
+    auto clamped = clamp_unit(value);
+    return static_cast<std::uint8_t>(std::lround(clamped * 255.0f));
+}
+
+auto set_last_error(PathSpace& space,
+                    SP::ConcretePathStringView targetPath,
+                    std::string const& message,
+                    std::uint64_t revision,
+                    Builders::Diagnostics::PathSpaceError::Severity severity,
+                    int code) -> SP::Expected<void> {
+    if (message.empty()) {
+        return Builders::Diagnostics::ClearTargetError(space, targetPath);
+    }
+
+    Builders::Diagnostics::PathSpaceError error{};
+    error.code = code;
+    error.severity = severity;
+    error.message = message;
+    error.path = std::string(targetPath.getPath());
+    error.revision = revision;
+    return Builders::Diagnostics::WriteTargetError(space, targetPath, error);
+}
+
+auto pipeline_flags_for(Scene::DrawableBucketSnapshot const& bucket,
+                        std::size_t drawable_index) -> std::uint32_t {
+    if (drawable_index < bucket.pipeline_flags.size()) {
+        return bucket.pipeline_flags[drawable_index];
+    }
+    return 0;
+}
+
+auto approximate_drawable_area(Scene::DrawableBucketSnapshot const& bucket,
+                               std::uint32_t index) -> double {
+    if (has_valid_bounds_box(bucket, index)) {
+        auto const& box = bucket.bounds_boxes[index];
+        auto width = std::max(0.0f, box.max[0] - box.min[0]);
+        auto height = std::max(0.0f, box.max[1] - box.min[1]);
+        return static_cast<double>(width) * static_cast<double>(height);
+    }
+    if (index < bucket.bounds_spheres.size()) {
+        auto radius = bucket.bounds_spheres[index].radius;
+        if (radius > 0.0f) {
+            return static_cast<double>(radius) * static_cast<double>(radius) * kPi;
+        }
+    }
+    return 0.0;
+}
+
+auto compute_drawable_bounds(Scene::DrawableBucketSnapshot const& bucket,
+                             std::uint32_t index,
+                             int width,
+                             int height) -> std::optional<PathRenderer2D::DrawableBounds> {
+    float min_x = 0.0f;
+    float min_y = 0.0f;
+    float max_x = 0.0f;
+    float max_y = 0.0f;
+    bool have_bounds = false;
+
+    if (has_valid_bounds_box(bucket, index)) {
+        auto const& box = bucket.bounds_boxes[index];
+        min_x = box.min[0];
+        min_y = box.min[1];
+        max_x = box.max[0];
+        max_y = box.max[1];
+        have_bounds = true;
+    } else if (index < bucket.bounds_spheres.size()) {
+        auto const& sphere = bucket.bounds_spheres[index];
+        auto radius = sphere.radius;
+        min_x = sphere.center[0] - radius;
+        max_x = sphere.center[0] + radius;
+        min_y = sphere.center[1] - radius;
+        max_y = sphere.center[1] + radius;
+        have_bounds = true;
+    }
+
+    if (!have_bounds) {
+        return std::nullopt;
+    }
+
+    auto to_min_x = std::clamp(static_cast<int>(std::floor(min_x)), 0, width);
+    auto to_max_x = std::clamp(static_cast<int>(std::ceil(max_x)), 0, width);
+    auto to_min_y = std::clamp(static_cast<int>(std::floor(min_y)), 0, height);
+    auto to_max_y = std::clamp(static_cast<int>(std::ceil(max_y)), 0, height);
+
+    PathRenderer2D::DrawableBounds bounds{
+        .min_x = to_min_x,
+        .min_y = to_min_y,
+        .max_x = to_max_x,
+        .max_y = to_max_y,
+    };
+
+    if (bounds.empty()) {
+        return std::nullopt;
+    }
+
+    bounds.min_x = std::max(0, bounds.min_x - 1);
+    bounds.min_y = std::max(0, bounds.min_y - 1);
+    bounds.max_x = std::min(width, bounds.max_x + 1);
+    bounds.max_y = std::min(height, bounds.max_y + 1);
+
+    if (bounds.empty()) {
+        return std::nullopt;
+    }
+
+    return bounds;
+}
+
+auto bounds_equal(PathRenderer2D::DrawableBounds const& lhs,
+                  PathRenderer2D::DrawableBounds const& rhs) -> bool {
+    return lhs.min_x == rhs.min_x
+        && lhs.min_y == rhs.min_y
+        && lhs.max_x == rhs.max_x
+        && lhs.max_y == rhs.max_y;
+}
+
+auto make_linear_straight(std::array<float, 4> const& rgba) -> LinearStraightColor {
+    auto alpha = clamp_unit(rgba[3]);
+    auto r = srgb_to_linear(rgba[0]);
+    auto g = srgb_to_linear(rgba[1]);
+    auto b = srgb_to_linear(rgba[2]);
+    return LinearStraightColor{
+        .r = clamp_unit(r),
+        .g = clamp_unit(g),
+        .b = clamp_unit(b),
+        .a = alpha,
+    };
+}
+
+auto premultiply(LinearStraightColor const& straight) -> LinearPremulColor {
+    auto alpha = clamp_unit(straight.a);
+    return LinearPremulColor{
+        .r = clamp_unit(straight.r) * alpha,
+        .g = clamp_unit(straight.g) * alpha,
+        .b = clamp_unit(straight.b) * alpha,
+        .a = alpha,
+    };
+}
+
+auto make_linear_color(std::array<float, 4> const& rgba) -> LinearPremulColor {
+    return premultiply(make_linear_straight(rgba));
+}
+
+auto to_array(LinearPremulColor const& color) -> std::array<float, 4> {
+    return {color.r, color.g, color.b, color.a};
+}
+
+auto to_array(LinearStraightColor const& color) -> std::array<float, 4> {
+    return {color.r, color.g, color.b, color.a};
+}
+
+auto needs_srgb_encode(Builders::SurfaceDesc const& desc) -> bool {
+    switch (desc.pixel_format) {
+    case Builders::PixelFormat::RGBA8Unorm_sRGB:
+    case Builders::PixelFormat::BGRA8Unorm_sRGB:
+        return true;
+    default:
+        break;
+    }
+    return desc.color_space == Builders::ColorSpace::sRGB;
+}
+
+auto encode_pixel(float const* linear_premul,
+                  Builders::SurfaceDesc const& desc,
+                  bool encode_srgb) -> std::array<std::uint8_t, 4> {
+    auto alpha = clamp_unit(linear_premul[3]);
+
+    std::array<float, 3> premul_linear{
+        clamp_unit(linear_premul[0]),
+        clamp_unit(linear_premul[1]),
+        clamp_unit(linear_premul[2]),
+    };
+
+    std::array<float, 3> straight_linear{0.0f, 0.0f, 0.0f};
+    if (alpha > 0.0f) {
+        for (int i = 0; i < 3; ++i) {
+            straight_linear[i] = std::clamp(premul_linear[i] / alpha, 0.0f, 1.0f);
+        }
+    }
+
+    std::array<float, 3> encoded{};
+    if (encode_srgb) {
+        for (int i = 0; i < 3; ++i) {
+            auto value = linear_to_srgb(straight_linear[i]);
+            if (desc.premultiplied_alpha) {
+                value *= alpha;
+            }
+            encoded[i] = clamp_unit(value);
+        }
+    } else {
+        for (int i = 0; i < 3; ++i) {
+            auto value = desc.premultiplied_alpha ? premul_linear[i] : straight_linear[i];
+            encoded[i] = clamp_unit(value);
+        }
+    }
+
+    return {
+        to_byte(encoded[0]),
+        to_byte(encoded[1]),
+        to_byte(encoded[2]),
+        to_byte(alpha)
+    };
+}
+
+auto encode_linear_color_to_output(LinearPremulColor const& color,
+                                   Builders::SurfaceDesc const& desc) -> std::array<float, 4> {
+    std::array<float, 4> premul{
+        clamp_unit(color.r),
+        clamp_unit(color.g),
+        clamp_unit(color.b),
+        clamp_unit(color.a),
+    };
+    auto encoded = encode_pixel(premul.data(), desc, needs_srgb_encode(desc));
+    return {
+        static_cast<float>(encoded[0]) / 255.0f,
+        static_cast<float>(encoded[1]) / 255.0f,
+        static_cast<float>(encoded[2]) / 255.0f,
+        static_cast<float>(encoded[3]) / 255.0f,
+    };
+}
+
+#if defined(__APPLE__) && PATHSPACE_UI_METAL
+auto metal_supports_command(Scene::DrawCommandKind kind) -> bool {
+    switch (kind) {
+    case Scene::DrawCommandKind::Rect:
+    case Scene::DrawCommandKind::RoundedRect:
+    case Scene::DrawCommandKind::Image:
+    case Scene::DrawCommandKind::TextGlyphs:
+        return true;
+    default:
+        return false;
+    }
+}
+#endif
+
+auto compute_command_payload_offsets(std::vector<std::uint32_t> const& kinds,
+                                     std::vector<std::uint8_t> const& payload)
+    -> SP::Expected<std::vector<std::size_t>> {
+    std::vector<std::size_t> offsets;
+    offsets.reserve(kinds.size());
+    std::size_t cursor = 0;
+    for (auto kind_value : kinds) {
+        auto kind = static_cast<Scene::DrawCommandKind>(kind_value);
+        auto payload_size = Scene::payload_size_bytes(kind);
+        if (payload_size == 0) {
+            offsets.push_back(cursor);
+            continue;
+        }
+        if (cursor + payload_size > payload.size()) {
+            return std::unexpected(make_error("command payload truncated",
+                                              SP::Error::Code::InvalidType));
+        }
+        offsets.push_back(cursor);
+        cursor += payload_size;
+    }
+    if (cursor != payload.size()) {
+        return std::unexpected(make_error("command payload size mismatch",
+                                          SP::Error::Code::InvalidType));
+    }
+    return offsets;
+}
+
+} // namespace SP::UI::PathRenderer2DDetail

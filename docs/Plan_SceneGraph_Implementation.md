@@ -31,6 +31,7 @@ Success looks like:
 - ✅ (October 21, 2025) `examples/widgets_example.cpp` opens the widgets gallery window, renders button/toggle/slider/list widgets with software text overlays, streams present/FPS telemetry to stdout, and republishes the gallery snapshot when LocalWindow mouse events update widget state.
 - ✅ (October 23, 2025): `Example App Quit Shortcuts [BUG]` — LocalWindowBridge now captures Command+Q / Ctrl+Q / Alt+F4, drives `RequestLocalWindowQuit()` to close example windows through the shared shutdown path, and docs/AI_Onboarding_Next.md records the manual quit checklist.
 - ✅ (October 23, 2025): `Example App UI Extraction [DX]` moved LocalWindow setup, resize sync, and present plumbing into shared helpers; widgets_example, pixel_noise_example, and paint_example now reuse the UI-layer APIs.
+- ✅ (October 24, 2025): `PathRenderer2D` helper logic split into `PathRenderer2DDetail*` translation units so rendering orchestration stays isolated from encode/draw utilities; follow-up refactor tasks should target the new detail files rather than the main renderer entrypoint.
 
 ## Workstream Overview
 - **Typed wiring helpers** — `Builders.hpp` plus supporting utilities for app-relative path validation, target naming, and atomic parameter writes.
@@ -282,6 +283,7 @@ Next:
     - `widgets/<id>/state`, `widgets/<id>/enabled`, and `widgets/<id>/label` hold the live state tuple authored by builders.
     - Interaction queues live under `widgets/<id>/ops/inbox/queue` and reducer outputs land in `widgets/<id>/ops/actions/inbox/queue`.
     - Canonical state snapshots reside in `scenes/widgets/<id>/states/{idle,hover,pressed,disabled}` and are reused by bindings, reducer tests, and golden renders.
+  - [ ] (October 24, 2025) Surface the currently focused widget in `widgets_example`—add a visual highlight or overlay driven by `widgets/focus/current` so focus navigation is observable during demo runs.
 - **State binding & data flow**
 - ✅ (October 19, 2025) Introduced initial state update helpers for buttons/toggles that coalesce redundant writes and mark the owning scene `DirtyKind::Visual` only when values change.
 - ✅ (October 20, 2025) Binding layer (`Widgets::Bindings::Dispatch{Button,Toggle,Slider}`) watches widget state, emits dirty hints, and writes interaction ops (press/release/hover/toggle/slider events) into `widgets/<id>/ops/inbox/queue`. Reducer samples live in this plan’s appendix; schema covers `WidgetOpKind`, pointer metadata, value payloads, and timestamps for reducers to consume via wait/notify.
