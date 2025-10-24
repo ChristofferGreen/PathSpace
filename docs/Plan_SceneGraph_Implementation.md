@@ -286,6 +286,11 @@ Next:
   - ✅ (October 24, 2025) Surfaced the currently focused widget in `widgets_example` with a PathSpace-tracked overlay tied to `widgets/focus/current`; keyboard and pointer focus now repaint immediately with a visible highlight.
   - [ ] Promote focus highlight rendering into the API layer (`Widgets::Focus`) so applications receive canonical decorating drawables automatically; remove the widgets_example-specific overlay once the platform path emits the visuals.
   - [ ] Implement an optional API-driven pulsing highlight (1 s period, lightening/darkening cycle) that re-tints the canonical focus drawable without requiring app-side timing logic; document opt-in/flags and extend UITests to cover the animated state.
+  - [ ] Move glyph rasterization / text bucket assembly into a shared text builder so widgets_example (and other consumers) use canonical typography assets instead of embedding bitmap glyph tables.
+  - [ ] Provide an API-level list widget preview/layout helper that owns row bounds, spacing, and label placement; remove the manual list layout code from widgets_example.
+  - [ ] Centralize tree view geometry (row indentation, toggle bounds, hover regions) inside `Widgets::Tree` builders so examples no longer reconstruct tree layout locally.
+  - [ ] Expose stack layout preview metrics via the widgets API, replacing the custom stack spacing/padding math in widgets_example with a reusable helper.
+  - [ ] Add an input routing helper that maps window events to widget bindings and focus updates, eliminating the hand-rolled pointer/focus handlers in widgets_example.
 - **State binding & data flow**
 - ✅ (October 19, 2025) Introduced initial state update helpers for buttons/toggles that coalesce redundant writes and mark the owning scene `DirtyKind::Visual` only when values change.
 - ✅ (October 20, 2025) Binding layer (`Widgets::Bindings::Dispatch{Button,Toggle,Slider}`) watches widget state, emits dirty hints, and writes interaction ops (press/release/hover/toggle/slider events) into `widgets/<id>/ops/inbox/queue`. Reducer samples live in this plan’s appendix; schema covers `WidgetOpKind`, pointer metadata, value payloads, and timestamps for reducers to consume via wait/notify.
