@@ -158,6 +158,8 @@ Environment knobs (all respected by the wrapper and the logger):
 | Capture pixel-noise PNG frame | `./build/pixel_noise_example --headless --frames=1 --write-frame=docs/images/perf/pixel_noise.png` |
 | Guardrail demo binary sizes | `./scripts/compile.sh --size-report` |
 
+- `./scripts/compile.sh --test` now runs the PixelNoise perf harness (software and, when enabled, Metal) alongside the core and UI test executables. The mandated 15× loop therefore enforces the perf budgets without a separate CTest call—refresh `docs/perf/pixel_noise_baseline.json` and `docs/perf/pixel_noise_metal_baseline.json` whenever thresholds legitimately move.
+
 ### 5.1 Pixel Noise Perf Harness Baselines
 
 - Use `./scripts/capture_pixel_noise_baseline.sh` after rebuilding (`cmake --build build -j`) to refresh `docs/perf/pixel_noise_baseline.json`.

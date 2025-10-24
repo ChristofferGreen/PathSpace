@@ -340,7 +340,7 @@ Next:
 - The local `pre-push` hook (`scripts/git-hooks/pre-push.local.sh`) enables Metal presenter coverage by default; export `DISABLE_METAL_TESTS=1` when GPU access is unavailable.
 - CI currently runs the Linux matrix plus a macOS job invoking `./scripts/compile.sh --enable-metal-tests --test --loop=1` to guard the presenter path.
 - Draft a Linux/Wayland bring-up checklist (toolchain flags, presenter shims, input adapters, CI coverage) so non-macOS contributors know the remaining gaps for the UI stack.
-- Extend `scripts/compile.sh` to cover new targets and maintain the 15× loop with 20 s timeout.
+- ✅ (October 24, 2025) Extended `scripts/compile.sh` to auto-run the PixelNoise perf harness (software + Metal) inside the mandated 15× loop, default the per-test timeout to 20 s, and enable `BUILD_PATHSPACE_EXAMPLES=ON` whenever tests run.
 - Add deterministic golden outputs (framebuffers, DrawableBucket metadata) with tolerance-aware comparisons.
 - Stress tests: concurrent edits vs renders, present policy edge cases, progressive tile churn, input-routing races, error-path validation (missing revisions, bad settings).
 - CI gating: require looped CTest run and lint/format checks before merging.

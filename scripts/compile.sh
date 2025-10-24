@@ -407,7 +407,7 @@ CMAKE_FLAGS+=("-DPATHSPACE_ENABLE_UI=ON" "-DPATHSPACE_UI_SOFTWARE=ON")
 if [[ "$ENABLE_METAL_TESTS" -eq 1 ]]; then
   CMAKE_FLAGS+=("-DPATHSPACE_UI_METAL=ON")
 fi
-if [[ "$SIZE_REPORT" -eq 1 || -n "$SIZE_WRITE_BASELINE" || "$PERF_REPORT" -eq 1 || "$PERF_WRITE_BASELINE" -eq 1 ]]; then
+if [[ "$SIZE_REPORT" -eq 1 || -n "$SIZE_WRITE_BASELINE" || "$PERF_REPORT" -eq 1 || "$PERF_WRITE_BASELINE" -eq 1 || "$TEST" -eq 1 ]]; then
   CMAKE_FLAGS+=("-DBUILD_PATHSPACE_EXAMPLES=ON")
 fi
 if [[ "$PERF_REPORT" -eq 1 || "$PERF_WRITE_BASELINE" -eq 1 ]]; then
@@ -519,7 +519,7 @@ fi
 # Determine per-test timeout default (if not provided)
 if [[ -z "${PER_TEST_TIMEOUT}" ]]; then
   if [[ "$LOOP" -gt 0 ]]; then
-    PER_TEST_TIMEOUT=120
+    PER_TEST_TIMEOUT=20
   else
     PER_TEST_TIMEOUT=60
   fi
@@ -548,13 +548,6 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
       die "Test executable not found or not executable: $CORE_TEST_EXE"
     fi
 
-    TEST_PATHS=("$CORE_TEST_EXE")
-    TEST_NAMES=("PathSpaceTests")
-    if [[ -x "$UI_TEST_EXE" ]]; then
-      TEST_PATHS+=("$UI_TEST_EXE")
-      TEST_NAMES+=("PathSpaceUITests")
-    fi
-
     TEST_LOG_DIR="$BUILD_DIR/test-logs"
     mkdir -p "$TEST_LOG_DIR"
 
@@ -578,13 +571,11 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
     fi
     if [[ "$SANITIZER" == "asan" ]]; then
       export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=1:halt_on_error=1:strict_init_order=1:color=always}"
-      # Allow leak sanitizer configuration but avoid overriding explicit env.
       export LSAN_OPTIONS="${LSAN_OPTIONS:-}"
     elif [[ "$SANITIZER" == "tsan" ]]; then
       export TSAN_OPTIONS="${TSAN_OPTIONS:-halt_on_error=1:report_thread_leaks=0}"
     fi
 
-    # Optional: enable core dumps/backtraces for debugging crashes
     if [[ "${PATHSPACE_ENABLE_CORES:-0}" == "1" ]]; then
       (ulimit -c unlimited) 2>/dev/null || true
       export ASAN_OPTIONS="${ASAN_OPTIONS:-} detect_leaks=0 fast_unwind_on_malloc=0 symbolize=1"
@@ -593,11 +584,62 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
 
     export USE_CLI_TIMEOUT="${USE_CLI_TIMEOUT:-0}"
 
-    run_test_binary() {
-      local exe_path="$1"
-      local display_name="$2"
-      local iteration="$3"
-      local total="$4"
+    TEST_LABELS=()
+    TEST_COMMAND_STRINGS=()
+
+    add_test_command() {
+      local label="$1"
+      shift
+      local idx="${#TEST_LABELS[@]}"
+      TEST_LABELS+=("$label")
+      local sep=$'\x1f'
+      local command_str=""
+      while [[ "$#" -gt 0 ]]; do
+        if [[ -n "$command_str" ]]; then
+          command_str+="$sep"
+        fi
+        command_str+="$1"
+        shift
+      done
+      TEST_COMMAND_STRINGS+=("$command_str")
+    }
+
+    add_test_command "PathSpaceTests" "$CORE_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}"
+    if [[ -x "$UI_TEST_EXE" ]]; then
+      add_test_command "PathSpaceUITests" "$UI_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}"
+    fi
+
+    if [[ "$(uname)" == "Darwin" ]]; then
+      pixel_script="$ROOT_DIR/scripts/check_pixel_noise_baseline.py"
+      pixel_baseline="$ROOT_DIR/docs/perf/pixel_noise_baseline.json"
+      if command -v python3 >/dev/null 2>&1 && [[ -f "$pixel_script" ]]; then
+        if [[ -f "$pixel_baseline" ]]; then
+          add_test_command "PixelNoisePerfHarness" python3 "$pixel_script" --build-dir "$BUILD_DIR"
+        else
+          info "PixelNoisePerfHarness baseline missing at $pixel_baseline; skipping."
+        fi
+        if [[ "$ENABLE_METAL_TESTS" -eq 1 ]]; then
+          pixel_metal_baseline="$ROOT_DIR/docs/perf/pixel_noise_metal_baseline.json"
+          if [[ -f "$pixel_metal_baseline" ]]; then
+            add_test_command "PixelNoisePerfHarnessMetal" python3 "$pixel_script" --build-dir "$BUILD_DIR" --baseline "$pixel_metal_baseline"
+          else
+            info "PixelNoisePerfHarnessMetal baseline missing at $pixel_metal_baseline; skipping."
+          fi
+        fi
+      else
+        info "python3 or pixel noise harness script unavailable; skipping PixelNoise perf harness tests."
+      fi
+    fi
+
+    if [[ ${#TEST_LABELS[@]} -eq 0 ]]; then
+      die "No tests configured to run."
+    fi
+
+    run_test_command() {
+      local display_name="$1"
+      local iteration="$2"
+      local total="$3"
+      shift 3
 
       local args=("$TEST_RUNNER" "--label" "$display_name" "--log-dir" "$TEST_LOG_DIR" "--timeout" "$PER_TEST_TIMEOUT")
       if [[ -n "$iteration" && -n "$total" && "$total" -gt 0 ]]; then
@@ -605,10 +647,7 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
       fi
       args+=("${TEST_ENV_FLAGS[@]}")
       args+=("--")
-      args+=("$exe_path")
-      if [[ ${#EXTRA_ARGS_ARRAY[@]} -gt 0 ]]; then
-        args+=("${EXTRA_ARGS_ARRAY[@]}")
-      fi
+      args+=("$@")
 
       "${args[@]}"
       return $?
@@ -619,11 +658,12 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
       info "Running tests in a loop ($COUNT iterations)..."
       for i in $(seq 1 "$COUNT"); do
         info "Loop $i/$COUNT: starting"
-        for idx in "${!TEST_PATHS[@]}"; do
-          name="${TEST_NAMES[$idx]}"
-          path="${TEST_PATHS[$idx]}"
+        for idx in "${!TEST_LABELS[@]}"; do
+          name="${TEST_LABELS[$idx]}"
+          command_str="${TEST_COMMAND_STRINGS[$idx]}"
+          IFS=$'\x1f' read -r -a COMMAND <<< "$command_str"
           info "  Running ${name}..."
-          if ! run_test_binary "$path" "$name" "$i" "$COUNT"; then
+          if ! run_test_command "$name" "$i" "$COUNT" "${COMMAND[@]}"; then
             RC=$?
             if [[ $RC -eq 124 ]]; then
               die "Loop $i failed (${name} timed out after ${PER_TEST_TIMEOUT} seconds)"
@@ -636,11 +676,12 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
       done
       info "All $COUNT iterations passed."
     else
-      for idx in "${!TEST_PATHS[@]}"; do
-        name="${TEST_NAMES[$idx]}"
-        path="${TEST_PATHS[$idx]}"
+      for idx in "${!TEST_LABELS[@]}"; do
+        name="${TEST_LABELS[$idx]}"
+        command_str="${TEST_COMMAND_STRINGS[$idx]}"
+        IFS=$'\x1f' read -r -a COMMAND <<< "$command_str"
         info "Running ${name}..."
-        if ! run_test_binary "$path" "$name" "" ""; then
+        if ! run_test_command "$name" "" "" "${COMMAND[@]}"; then
           RC=$?
           if [[ $RC -eq 124 ]]; then
             die "${name} timed out after ${PER_TEST_TIMEOUT} seconds"
@@ -652,6 +693,8 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
       info "Tests completed successfully."
     fi
   fi
-elif [[ "$TEST" -eq 1 ]]; then
-  die "Tests directory not found: $BUILD_DIR/tests"
+else
+  if [[ "$TEST" -eq 1 ]]; then
+    die "Tests directory not found: $BUILD_DIR/tests"
+  fi
 fi
