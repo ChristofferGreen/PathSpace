@@ -51,6 +51,7 @@ if(PATHSPACE_ENABLE_UI)
     ui/test_HtmlAssetSerialization.cpp
     ui/test_PathSurfaceSoftware.cpp
     ui/test_PathRenderer2D.cpp
+    ui/test_RendererFaultInjection.cpp
     ui/test_HtmlAdapter.cpp
     ui/test_HtmlPresent.cpp
     ui/test_HtmlReplay.cpp
