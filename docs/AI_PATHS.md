@@ -93,9 +93,17 @@ The following subtrees are standardized within each application root (one of the
     - `state` — current widget state payload (button/toggle/slider/list/tree structs)
     - `meta/*` — style, label, range/list/tree metadata authored by widget builders
     - `meta/nodes` — tree view node metadata (`id`, `parent_id`, `label`, `enabled`, `expandable`, `loaded`)
+    - `layout/style` — layout container style (axis, spacing, alignment)
+    - `layout/children` — layout child specs (widget path + weight/constraints)
+    - `layout/computed` — latest measured bounds per child (layout containers)
     - `authoring/<component>` — canonical authoring nodes written by widget builders and consumed by hit testing (`Widgets::ResolveHitTarget`)
     - `ops/actions/inbox/queue` — reduced widget actions emitted by `Widgets::Reducers`
     - `ops/inbox/queue` — `WidgetOp` FIFO written by `Widgets::Bindings` helpers (hover/press/toggle/slider events)
+  - `widgets/focus/current` — current focused widget name written by focus helpers
+  - `scenes/widgets/<widget-id>/`
+    - `states/<state-name>/snapshot` — immutable per-state display list
+    - `current_revision` — revision pointer adopted by renderer targets
+    - `meta/{name,description}` — human-readable labels stamped on first publish
 
 - Surfaces (offscreen targets)
   - `surfaces/<surface-id>/`

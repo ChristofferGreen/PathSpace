@@ -18,6 +18,17 @@ Present policy (backend-aware) and the software progressive present are document
 > **Telemetry update (October 20, 2025):** Residency metrics now also publish `cpuSoftBudgetRatio`, `cpuHardBudgetRatio`, `gpuSoftBudgetRatio`, `gpuHardBudgetRatio`, per-budget exceed flags, and `overallStatus` under `diagnostics/metrics/residency/` so dashboards and alerts can consume thresholds without bespoke parsing.
 > **Renderer staging (October 19, 2025):** Builders can now provision Metal targets alongside the software path. The rendering pipeline still populates targets through the software raster; enabling true Metal uploads is gated behind the environment variable `PATHSPACE_ENABLE_METAL_UPLOADS=1` while we finish the GPU encoder. When the flag is unset (or PATHSPACE_UI_METAL is disabled at build time) render contexts automatically fall back to `RendererKind::Software2D` so the CPU path remains the default in tests and CI.
 
+### Widget Namespace Summary (October 24, 2025)
+
+- Widget roots live at `<app>/widgets/<widget-id>`. Roots encapsulate mutable state (`state`), canonical metadata (`meta/kind`), style/material data (`meta/style`, `meta/label`, `meta/range`, `meta/items`, `meta/nodes`), and interaction queues (`ops/inbox/queue`, `ops/actions/inbox/queue`). Layout containers add `layout/{style,children,computed}` so layout recomputation stays observable.
+- Widget scenes mount under `<app>/scenes/widgets/<widget-id>` with immutable snapshots per state (`states/<state-name>/snapshot`) and `current_revision` pointing at the active revision. Builders stamp `meta/name` and `meta/description` on first publish to keep diagnostics readable.
+- Focus routing keeps the active widget name at `<app>/widgets/focus/current`. Focus helpers update the value atomically and optionally enqueue auto-render events when focus shifts.
+- Interaction bindings enqueue dirty hints via `Renderer::SubmitDirtyRects` and render requests under `renderers/<rid>/targets/<kind>/<name>/events/renderRequested/queue` when `auto_render` is enabled. Both queues rely on standard PathSpace atomic writes and wait/notify semantics.
+- Reducer helpers (`Widgets::Reducers::*`) drain `widgets/<id>/ops/inbox/queue`, mutate widget state (usually by rewriting `state` or metadata), and optionally mirror actions to `ops/actions/inbox/queue` for downstream consumers.
+- Builder workflow: bootstrap renderer/surface/window with `Builders::App::Bootstrap`, create widgets via `Builders::Widgets::Create*`, bind interactions with `Builders::Widgets::Bindings::Create*Binding`, pump reducers (`Widgets::Reducers::ReducePending` and `PublishActions`), and use `Builders::App::UpdateSurfaceSize` / `PresentToLocalWindow` for resize + diagnostics loops. Each helper performs whole-object replaces so readers never see torn state.
+
+Keep `docs/AI_PATHS.md` synchronized with new widget kinds or metadata keys and ensure tests mirror any path additions before merging.
+
 ## UI/Rendering — cross-reference
 
 Present policy (backend-aware) and the software progressive present are documented in docs/AI_Plan_SceneGraph_Renderer.md. This architecture document focuses on PathSpace core; rendering/presenter details live in the plan. Also see “View keys (final)” and “Target keys (final)” in docs/AI_Plan_SceneGraph_Renderer.md for the authoritative schemas, and note that RenderSettings are a single-path atomic whole-object value; ParamUpdateMode::Queue refers to client-side coalescing before one atomic write (no server-side queue in v1).

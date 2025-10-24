@@ -85,6 +85,43 @@ Example (abridged):
           present  # Execution: blit/draw surface into the window
 ```
 
+### Widget Path Conventions (October 24, 2025)
+
+- Widget roots live under `<app>/widgets/<widget-id>`. Each root owns widget-local state plus metadata:
+  - `state` — the live widget state (e.g., toggle on/off, slider position).
+  - `meta/kind` — canonical widget kind (`"button"`, `"toggle"`, `"slider"`, `"list"`, `"tree"`, `"stack"`).
+  - `meta/style` (and friends such as `meta/label`, `meta/range`, `meta/items`, `meta/nodes`) — authoring inputs that builders reuse when redrawing or cloning.
+  - `ops/inbox/queue` — FIFO queue for interaction events (`WidgetOp`) written by bindings.
+  - `ops/actions/inbox/queue` — optional downstream queue populated by reducers so apps can consume high-level actions without polling.
+  - Layout containers (stacks today) extend the namespace with `layout/{style,children,computed}` so layout recomputation stays observable.
+- Widget display lists publish under `<app>/scenes/widgets/<widget-id>`. Builders stamp `meta/name` and `meta/description`, cache per-state drawables in `states/<state-name>/snapshot`, and point `current_revision` at the active state.
+- Focus metadata uses the shared path `<app>/widgets/focus/current` (string name of the focused widget). Helper APIs (`Widgets::Focus::*`) keep focus publishes atomic and optionally queue auto-render events.
+- Bindings enqueue dirty hints and auto-render events against the target they drive:
+  - Dirty hints: `renderers/<rid>/targets/<kind>/<name>/dirty/rects` via `Renderer::SubmitDirtyRects`.
+  - Auto-render: `renderers/<rid>/targets/<kind>/<name>/events/renderRequested/queue` when `auto_render=true`.
+- Examples/tests assume identifiers stay app-relative and never cross app roots; helper APIs return typed `WidgetPath`, `ScenePath`, or `ConcretePath` values so callers do not hand-write strings.
+
+By convention, examples mount widget demos under `apps/widgets_demo/` so snapshots, queues, and diagnostics mirror production layout. When adding new widgets, extend both the `<app>/widgets/<id>/meta/*` schema and the `<app>/scenes/widgets/<id>` tree; update `docs/AI_PATHS.md` if the namespace grows.
+
+### Builder Usage Flow (October 24, 2025)
+
+1. **Bootstrap the app container:** `Builders::App::Bootstrap` provisions renderer, surface, window, and present policy under the chosen app root. It returns typed handles plus the resolved target path, applied render settings, and surface descriptor.
+2. **Author widgets:** `Builders::Widgets::Create{Button,Toggle,Slider,List,Tree,Stack}` create widget roots and publish their scenes. Helpers validate identifiers, clamp style parameters, and stamp `meta/kind` so diagnostics and focus routing work.
+3. **Bind interactions:** `Builders::Widgets::Bindings::Create*Binding` wires a widget to a renderer target, establishing dirty-hint rectangles and the ops queue path. Bindings enqueue `WidgetOp` records (`HoverEnter`, `Press`, `SliderUpdate`, etc.) into `widgets/<id>/ops/inbox/queue`.
+4. **Reducer loop:** `Builders::Widgets::Reducers::ReducePending` drains the ops queue, converts entries to `WidgetAction`, and (optionally) republishes actions to `widgets/<id>/ops/actions/inbox/queue`. Apps that do not need action replay can consume the returned vector directly.
+5. **Focus navigation:** Configure `Widgets::Focus::MakeConfig` with the app root and optional auto-render target; call `Widgets::Focus::ApplyNavigation` to update `/widgets/focus/current` and emit auto-render events when focus changes.
+6. **Window refresh helpers:** `Builders::App::UpdateSurfaceSize` edits surface/target descriptors and renderer settings atomically, while `Builders::App::PresentToLocalWindow` mirrors IOSurface or framebuffer output into the local debug window (falling back gracefully when Metal textures are not shareable).
+
+The widget gallery (`examples/widgets_example.cpp`) exercises this full stack, and corresponding UITests (`tests/ui/test_Builders.cpp`, `tests/ui/test_WidgetReducersFuzz.cpp`) validate the helper API contracts. Use those references when wiring new widgets or app flows.
+
+### Troubleshooting Notes (October 24, 2025)
+
+- **Stale visuals:** Confirm the renderer target is adopting dirty hints and auto-render events. Inspect `renderers/<rid>/targets/<kind>/<name>/events/renderRequested/queue` and `output/v1/common/frameIndex` to verify frames advance; bindings log reasons such as `present-skipped` or `age-ms` in queued events.
+- **Missing widget ops:** Check `widgets/<id>/ops/inbox/queue` for stuck entries. Reducer doctests expect queues to drain; lingering items usually indicate the reducer loop halted. Read `widgets/<id>/state` to ensure reducer mutations are publishing.
+- **Focus not updating:** Inspect `/widgets/focus/current` and confirm the path contains the focused widget name. Focus helpers gate auto-render on successful writes; a missing value usually means the widget `meta/kind` field was left unset.
+- **Snapshot drift:** Widget scenes store per-state snapshots in `scenes/widgets/<id>/states/*`. If renders look stale, ensure builders republished the state scene and bumped `current_revision`. UI doctests cover this path; re-run with `PATHSPACE_UPDATE_GOLDENS=1` to refresh goldens when intentional.
+- **Diagnostics:** `windows/<win>/diagnostics/metrics/live/views/<view>/present` mirrors present stats, while renderer metrics live under `renderers/<rid>/targets/<kind>/<name>/output/v1/common/*`. Errors surface in both `lastError` and `diagnostics/errors/live`; capture logs via `scripts/run-test-with-logs.sh` if the loop harness flakes.
+
 ## Entities and responsibilities
 
 Entity (renderer-facing, renderable-only)

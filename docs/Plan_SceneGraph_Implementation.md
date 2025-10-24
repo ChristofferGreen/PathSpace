@@ -1,6 +1,7 @@
 # Handoff Notice
 
 > **Handoff note (October 23, 2025 @ shutdown):** HSAT inspection now surfaces per-kind and per-mime summaries plus duplicate-path detection (CLI + HtmlAssetInspect cover the new output), so HTML payload regressions flag immediately alongside the canvas parity harness. Hit-test coverage still spans ordering, clip-aware picking, focus routing, the auto-render wait/notify path (`tests/ui/test_SceneHitTest.cpp` asserts ≤200 ms wake latency), DrawableBucket-backed multi-hit stacks (`HitTestResult::hits` with `HitTestRequest::max_results`), and widget focus-navigation helpers with auto-render scheduling. Keyboard/gamepad focus loops and widget golden snapshots live in `tests/ui/test_Builders.cpp`, and presenter diagnostics continue to mirror into `windows/<win>/diagnostics/metrics/live/views/<view>/present`. Include hygiene for the split UI modules now funnels widget-only inlines through `WidgetDetail.hpp`; binary/size guardrails ship via `scripts/compile.sh --size-report`, so we can re-enter the Metal backend follow-ups with size growth tracked automatically.
+> **Handoff note (October 24, 2025 @ shutdown):** Updated renderer/architecture/docs path notes (widgets queue layout + builder flow) and synced `docs/AI_PATHS.md`. Loop tests (`ctest --test-dir build --output-on-failure -j 8 --repeat-until-fail 15 --timeout 20`) are green; no pending regressions observed during the run.
 
 # Scene Graph Implementation Plan
 
@@ -157,7 +158,7 @@ Completed:
 
 Completed:
 - ✅ (October 18, 2025) Added fullscreen CAMetalLayer regression coverage in `PathSpaceUITests` and defaulted the presenter to zero-copy unless `capture_framebuffer` is explicitly enabled; perf regressions now fail under the UI harness.
-- (Done) IOSurface-backed software framebuffer landed with PathSurfaceSoftware/PathWindowView zero-copy integration; future work should iterate on diagnostics rather than copy elimination.
+- ✅ IOSurface-backed software framebuffer landed with PathSurfaceSoftware/PathWindowView zero-copy integration; future work should iterate on diagnostics rather than copy elimination.
 
 Next:
 - ✅ (October 23, 2025) Pixel noise harness follow-ups: the example now ships automated baselines, diagnostics, and matching visuals so perf regressions stay guarded.
@@ -318,9 +319,9 @@ Next:
   - ✅ (October 23, 2025) Added widget session capture/replay tooling (`scripts/record_widget_session.sh`, `scripts/replay_widget_session.sh`) plus trace env support (`WIDGETS_EXAMPLE_TRACE_RECORD`, `WIDGETS_EXAMPLE_TRACE_REPLAY`) and published `docs/Widget_Contribution_Quickstart.md` so contributors can share deterministic pointer/keyboard traces alongside new widget work.
   - ✅ (October 23, 2025) Landed the initial layout container widgets (vertical/horizontal stacks) with `Widgets::CreateStack`/`UpdateStackLayout`. They measure child widget scenes, compute spacing/alignment metadata, publish aggregated stack snapshots, and surface dirty hints through bindings. UITests cover layout computation and binding dirty propagation; gallery follow-ups remain to showcase the containers in the demo and add grid variants.
   - ✅ (October 23, 2025) Built a tree view widget supporting expand/collapse, selection, and async data loading hooks, complete with bindings, reducer support, canonical paths, and UITest coverage (gallery demo follow-up tracked below).
-  - ✅ (October 24, 2025) Extended `widgets_example` to showcase layout containers and the tree view, wiring stack/tree bindings with keyboard controls (`[`/`]` spacing, `H` axis toggle), pointer/keyboard navigation, and reducer telemetry so contributors can exercise them interactively.
-- Update `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage, and troubleshooting steps.
-- Document widget ops schema: queue path (`widgets/<id>/ops/inbox/queue`), `WidgetOp` fields (kind, pointer metadata, value, timestamp) and reducer sample wiring.
+- ✅ (October 24, 2025) Extended `widgets_example` to showcase layout containers and the tree view, wiring stack/tree bindings with keyboard controls (`[`/`]` spacing, `H` axis toggle), pointer/keyboard navigation, and reducer telemetry so contributors can exercise them interactively.
+- ✅ (October 24, 2025) Updated `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage guidance, and troubleshooting notes.
+- ✅ (October 20, 2025) Documented widget ops schema: queue path (`widgets/<id>/ops/inbox/queue`), `WidgetOp` fields (kind, pointer metadata, value, timestamp) and reducer sample wiring.
 - ✅ (October 20, 2025) Reducer samples now live in `Widgets::Reducers`, publishing actions under `widgets/<id>/ops/actions/inbox/queue`; keep telemetry/docs in sync when new action fields or op kinds land.
 
 **Widget ops schema (October 20, 2025)**
