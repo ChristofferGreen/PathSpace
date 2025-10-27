@@ -1095,7 +1095,9 @@ auto UpdateTreeState(PathSpace& space,
     return true;
 }
 
-auto MakeDefaultWidgetTheme() -> WidgetTheme {
+namespace {
+
+auto make_blue_theme() -> WidgetTheme {
     WidgetTheme theme{};
     theme.button.width = 200.0f;
     theme.button.height = 48.0f;
@@ -1178,8 +1180,8 @@ auto MakeDefaultWidgetTheme() -> WidgetTheme {
     return theme;
 }
 
-auto MakeSunsetWidgetTheme() -> WidgetTheme {
-    WidgetTheme theme = MakeDefaultWidgetTheme();
+auto make_orange_theme() -> WidgetTheme {
+    WidgetTheme theme = make_blue_theme();
     theme.button.background_color = {0.882f, 0.424f, 0.310f, 1.0f};
     theme.button.text_color = {1.0f, 0.984f, 0.945f, 1.0f};
     theme.toggle.track_on_color = {0.882f, 0.424f, 0.310f, 1.0f};
@@ -1205,10 +1207,20 @@ auto MakeSunsetWidgetTheme() -> WidgetTheme {
     theme.tree.toggle_color = {0.996f, 0.949f, 0.902f, 1.0f};
     theme.tree.text_color = {0.996f, 0.949f, 0.902f, 1.0f};
     theme.heading_color = {0.996f, 0.949f, 0.902f, 1.0f};
-    theme.caption_color = {0.965f, 0.886f, 0.812f, 1.0f};
-    theme.accent_text_color = {0.996f, 0.949f, 0.902f, 1.0f};
-    theme.muted_text_color = {0.855f, 0.698f, 0.612f, 1.0f};
+   theme.caption_color = {0.965f, 0.886f, 0.812f, 1.0f};
+   theme.accent_text_color = {0.996f, 0.949f, 0.902f, 1.0f};
+   theme.muted_text_color = {0.855f, 0.698f, 0.612f, 1.0f};
     return theme;
+}
+
+} // namespace
+
+auto MakeDefaultWidgetTheme() -> WidgetTheme {
+    return make_orange_theme();
+}
+
+auto MakeSunsetWidgetTheme() -> WidgetTheme {
+    return make_blue_theme();
 }
 
 auto SetTheme(std::optional<std::string> const& requested_name) -> ThemeSelection {

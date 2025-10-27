@@ -112,7 +112,7 @@ static auto parse_debug_value(std::string value) -> std::optional<bool> {
 static void print_usage() {
     std::cout << "widgets_example options:\n"
               << "  --screenshot <path>   Save a PNG screenshot of the window then exit\n"
-              << "  --theme <name>        Apply a named widget theme (sunset [default], skylight)\n"
+              << "  --theme <name>        Apply a named widget theme (sunset [default, blue], skylight [orange])\n"
               << "  --debug[=on|off]      Toggle debug capture logs and dumps (alias: --no-debug)\n";
 }
 
