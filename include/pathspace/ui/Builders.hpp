@@ -975,6 +975,46 @@ struct StackLayoutState {
     std::vector<StackLayoutComputedChild> children;
 };
 
+struct StackPreviewRect {
+    float min_x = 0.0f;
+    float min_y = 0.0f;
+    float max_x = 0.0f;
+    float max_y = 0.0f;
+
+    [[nodiscard]] auto width() const -> float {
+        return std::max(0.0f, max_x - min_x);
+    }
+
+    [[nodiscard]] auto height() const -> float {
+        return std::max(0.0f, max_y - min_y);
+    }
+};
+
+struct StackPreviewLayout {
+    StackPreviewRect bounds{};
+    StackLayoutStyle style{};
+    StackLayoutState state{};
+    std::vector<StackPreviewRect> child_bounds;
+};
+
+struct StackPreviewOptions {
+    std::string authoring_root = "widgets/stack_preview";
+    std::array<float, 4> background_color{0.10f, 0.12f, 0.16f, 1.0f};
+    std::array<float, 4> child_start_color{0.85f, 0.88f, 0.95f, 1.0f};
+    std::array<float, 4> child_end_color{0.93f, 0.95f, 0.98f, 1.0f};
+    float child_opacity = 0.85f;
+    float mix_scale = 1.0f;
+};
+
+struct StackPreviewResult {
+    SP::UI::Scene::DrawableBucketSnapshot bucket;
+    StackPreviewLayout layout;
+};
+
+auto BuildStackPreview(StackLayoutStyle const& style,
+                       StackLayoutState const& state,
+                       StackPreviewOptions const& options = {}) -> StackPreviewResult;
+
 struct StackLayoutParams {
     std::string name;
     StackLayoutStyle style{};

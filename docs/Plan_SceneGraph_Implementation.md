@@ -293,7 +293,7 @@ Next:
   - ✅ (October 27, 2025) Moved glyph rasterization / text bucket assembly into `Builders::Text`, migrated widgets_example and added UITest coverage so demos consume canonical typography assets instead of embedding bitmap glyph tables.
   - ✅ (October 27, 2025) Provided an API-level list widget preview/layout helper (`Widgets::BuildListPreview`) that emits drawable buckets plus row/label geometry; widgets_example now consumes it instead of custom layout math.
   - ✅ (October 27, 2025) Centralized tree view geometry (row indentation, toggle bounds, hover regions) inside `Widgets::Tree` builders via `BuildTreePreview`; widgets_example now consumes the shared layout metadata instead of recomputing bounds.
-  - [ ] Expose stack layout preview metrics via the widgets API, replacing the custom stack spacing/padding math in widgets_example with a reusable helper.
+  - ✅ (October 27, 2025) Expose stack layout preview metrics via the widgets API, replacing the custom stack spacing/padding math in widgets_example with a reusable helper.
   - [ ] Add an input routing helper that maps window events to widget bindings and focus updates, eliminating the hand-rolled pointer/focus handlers in widgets_example.
   - [ ] Ship canonical widget preview drawables (button/toggle/slider) from the API so demos don’t recreate bucket geometry (`examples/widgets_example.cpp` `build_*_preview` functions).
   - [ ] Replace the sample’s `PointerOverride` helper with an API affordance for programmatic widget interactions, avoiding synthetic pointer coordinates when dispatching ops.
@@ -327,7 +327,6 @@ Next:
 - ✅ (October 20, 2025) Documented widget ops schema: queue path (`widgets/<id>/ops/inbox/queue`), `WidgetOp` fields (kind, pointer metadata, value, timestamp) and reducer sample wiring.
 - ✅ (October 20, 2025) Reducer samples now live in `Widgets::Reducers`, publishing actions under `widgets/<id>/ops/actions/inbox/queue`; keep telemetry/docs in sync when new action fields or op kinds land.
   - ✅ (October 27, 2025) Added automated window capture: `widgets_example --screenshot <path>` now runs headless, drives a scripted slider drag, renders once, and writes a PNG via stb_image_write—useful for visual regression checks and focus/highlight debugging even on GUI-less hosts.
-
 **Widget ops schema (October 20, 2025)**
 - Queue path: `widgets/<id>/ops/inbox/queue` (per-widget FIFO consumed via `take<WidgetOp>`).
 - `WidgetOp` payload: `{ kind: WidgetOpKind, widget_path: string, pointer: { scene_x, scene_y, inside, primary }, value: float, sequence: uint64, timestamp_ns: uint64 }`.

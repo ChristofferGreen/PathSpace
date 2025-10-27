@@ -2745,6 +2745,65 @@ TEST_CASE("Widgets::BuildListPreview provides layout geometry") {
     CHECK(preview_no_pulse.bucket.pipeline_flags.back() == 0u);
 }
 
+TEST_CASE("Widgets::BuildStackPreview reports layout metrics and bucket metadata") {
+    Widgets::StackLayoutStyle style{};
+    style.axis = Widgets::StackAxis::Vertical;
+    style.spacing = 12.0f;
+    style.padding_main_start = 8.0f;
+    style.padding_main_end = 10.0f;
+    style.padding_cross_start = 6.0f;
+    style.padding_cross_end = 4.0f;
+    style.width = 200.0f;
+
+    Widgets::StackLayoutState state{};
+    state.width = 180.0f;
+    state.height = 100.0f;
+    state.children = {
+        Widgets::StackLayoutComputedChild{
+            .id = "alpha",
+            .x = 8.0f,
+            .y = 6.0f,
+            .width = 90.0f,
+            .height = 28.0f,
+        },
+        Widgets::StackLayoutComputedChild{
+            .id = "beta",
+            .x = 8.0f,
+            .y = 54.0f,
+            .width = 140.0f,
+            .height = 48.0f,
+        },
+    };
+
+    auto preview = Widgets::BuildStackPreview(
+        style,
+        state,
+        Widgets::StackPreviewOptions{
+            .authoring_root = "widgets/test/stack",
+            .background_color = {0.10f, 0.11f, 0.14f, 1.0f},
+            .child_start_color = {0.70f, 0.72f, 0.98f, 1.0f},
+            .child_end_color = {0.92f, 0.94f, 0.99f, 1.0f},
+            .child_opacity = 0.5f,
+            .mix_scale = 0.5f,
+        });
+
+    CHECK(preview.layout.bounds.max_x == doctest::Approx(200.0f));
+    CHECK(preview.layout.bounds.max_y == doctest::Approx(102.0f));
+    REQUIRE(preview.layout.child_bounds.size() == 2);
+    CHECK(preview.layout.child_bounds[0].min_x == doctest::Approx(8.0f));
+    CHECK(preview.layout.child_bounds[1].max_x == doctest::Approx(148.0f));
+    CHECK(preview.layout.child_bounds[1].max_y == doctest::Approx(102.0f));
+    CHECK(preview.layout.state.width == doctest::Approx(200.0f));
+    CHECK(preview.layout.state.height == doctest::Approx(102.0f));
+
+    REQUIRE(preview.bucket.drawable_ids.size() == 3);
+    REQUIRE_FALSE(preview.bucket.authoring_map.empty());
+    CHECK(preview.bucket.authoring_map.front().authoring_node_id
+          == "widgets/test/stack/authoring/stack/background");
+    CHECK(preview.bucket.authoring_map.back().authoring_node_id
+          == "widgets/test/stack/authoring/stack/child/beta");
+}
+
 TEST_CASE("Widgets::CreateTree publishes snapshot and metadata") {
     BuildersFixture fx;
 

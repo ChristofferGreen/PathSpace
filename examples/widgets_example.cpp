@@ -876,114 +876,35 @@ auto build_slider_preview(Widgets::SliderStyle const& style,
     return bucket;
 }
 
-static auto build_stack_preview(Widgets::StackLayoutStyle const& style,
-                                Widgets::StackLayoutState const& layout,
-                                Widgets::WidgetTheme const& theme,
-                                StackPreviewLayout& preview) -> SceneData::DrawableBucketSnapshot {
-    SceneData::DrawableBucketSnapshot bucket{};
-    preview.child_bounds.clear();
-
-    float width = std::max(layout.width, 1.0f);
-    float height = std::max(layout.height, 1.0f);
-    if (style.width > 0.0f) {
-        width = std::max(width, style.width);
-    }
-    if (style.height > 0.0f) {
-        height = std::max(height, style.height);
-    }
-
-    preview.bounds = WidgetBounds{0.0f, 0.0f, width, height};
-
-    auto push_rect = [&](std::uint64_t drawable_id,
-                         WidgetBounds const& bounds,
-                         std::array<float, 4> const& color,
-                         float z,
-                         std::string const& authoring_id) {
-        SceneData::BoundingBox box{};
-        box.min = {bounds.min_x, bounds.min_y, 0.0f};
-        box.max = {bounds.max_x, bounds.max_y, 0.0f};
-        SceneData::BoundingSphere sphere{};
-        sphere.center = {(bounds.min_x + bounds.max_x) * 0.5f,
-                         (bounds.min_y + bounds.max_y) * 0.5f,
-                         0.0f};
-        float half_w = (bounds.max_x - bounds.min_x) * 0.5f;
-        float half_h = (bounds.max_y - bounds.min_y) * 0.5f;
-        sphere.radius = std::sqrt(half_w * half_w + half_h * half_h);
-
-        bucket.drawable_ids.push_back(drawable_id);
-        bucket.world_transforms.push_back(identity_transform());
-        bucket.bounds_boxes.push_back(box);
-        bucket.bounds_box_valid.push_back(1);
-        bucket.bounds_spheres.push_back(sphere);
-        bucket.layers.push_back(0);
-        bucket.z_values.push_back(z);
-        bucket.material_ids.push_back(0);
-        bucket.pipeline_flags.push_back(0);
-        bucket.visibility.push_back(1);
-        bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
-        bucket.command_counts.push_back(1);
-        bucket.opaque_indices.push_back(static_cast<std::uint32_t>(bucket.opaque_indices.size()));
-        bucket.clip_head_indices.push_back(-1);
-        bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
-            drawable_id,
-            authoring_id,
-            0,
-            0,
+    auto preview_result = Widgets::BuildStackPreview(
+        style,
+        layout,
+        Widgets::StackPreviewOptions{
+            .authoring_root = "widget/gallery/stack",
+            .background_color = {0.10f, 0.12f, 0.16f, 1.0f},
+            .child_start_color = theme.accent_text_color,
+            .child_end_color = theme.caption_color,
+            .child_opacity = 0.85f,
+            .mix_scale = 0.6f,
         });
-        bucket.drawable_fingerprints.push_back(drawable_id);
 
-        SceneData::RoundedRectCommand rect{};
-        rect.min_x = bounds.min_x;
-        rect.min_y = bounds.min_y;
-        rect.max_x = bounds.max_x;
-        rect.max_y = bounds.max_y;
-        rect.radius_top_left = 8.0f;
-        rect.radius_top_right = 8.0f;
-        rect.radius_bottom_right = 8.0f;
-        rect.radius_bottom_left = 8.0f;
-        rect.color = color;
-
-        auto payload_offset = bucket.command_payload.size();
-        bucket.command_payload.resize(payload_offset + sizeof(SceneData::RoundedRectCommand));
-        std::memcpy(bucket.command_payload.data() + payload_offset,
-                    &rect,
-                    sizeof(SceneData::RoundedRectCommand));
-        bucket.command_kinds.push_back(static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect));
+    preview.bounds = WidgetBounds{
+        preview_result.layout.bounds.min_x,
+        preview_result.layout.bounds.min_y,
+        preview_result.layout.bounds.max_x,
+        preview_result.layout.bounds.max_y,
     };
-
-    std::array<float, 4> background_color = {0.10f, 0.12f, 0.16f, 1.0f};
-    push_rect(0x31A00001ull,
-              preview.bounds,
-              background_color,
-              0.0f,
-              "widget/gallery/stack/background");
-
-    if (!layout.children.empty()) {
-        for (std::size_t index = 0; index < layout.children.size(); ++index) {
-            auto const& child = layout.children[index];
-            WidgetBounds child_bounds{
-                child.x,
-                child.y,
-                child.x + child.width,
-                child.y + child.height,
-            };
-            preview.child_bounds.push_back(child_bounds);
-            float t = (layout.children.size() == 1)
-                ? 0.5f
-                : static_cast<float>(index) / static_cast<float>(layout.children.size() - 1);
-            auto color = mix_color(theme.accent_text_color,
-                                   theme.caption_color,
-                                   t * 0.6f);
-            color[3] = 0.85f;
-            push_rect(0x31A10000ull + static_cast<std::uint64_t>(index),
-                      child_bounds,
-                      color,
-                      0.05f + 0.01f * static_cast<float>(index),
-                      "widget/gallery/stack/child/" + std::to_string(index));
-        }
+    preview.child_bounds.clear();
+    preview.child_bounds.reserve(preview_result.layout.child_bounds.size());
+    for (auto const& child : preview_result.layout.child_bounds) {
+        preview.child_bounds.push_back(WidgetBounds{
+            child.min_x,
+            child.min_y,
+            child.max_x,
+            child.max_y,
+        });
     }
-
-    return bucket;
+    return std::move(preview_result.bucket);
 }
 
 static auto build_tree_preview(Widgets::TreeStyle const& style,

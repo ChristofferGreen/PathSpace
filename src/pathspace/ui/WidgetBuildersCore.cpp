@@ -918,6 +918,131 @@ auto BuildTreePreview(Widgets::TreeStyle const& style_input,
     return result;
 }
 
+auto BuildStackPreview(Widgets::StackLayoutStyle const& style_input,
+                       Widgets::StackLayoutState const& state_input,
+                       Widgets::StackPreviewOptions const& options) -> Widgets::StackPreviewResult {
+    Widgets::StackLayoutStyle style = style_input;
+    Widgets::StackLayoutState state = state_input;
+
+    float width = std::max(style.width, state.width);
+    float height = std::max(style.height, state.height);
+    for (auto const& child : state.children) {
+        width = std::max(width, child.x + child.width);
+        height = std::max(height, child.y + child.height);
+    }
+    width = std::max(width, 1.0f);
+    height = std::max(height, 1.0f);
+
+    Widgets::StackPreviewLayout layout{};
+    layout.style = style;
+    layout.state = state;
+    layout.state.width = width;
+    layout.state.height = height;
+    layout.bounds = Widgets::StackPreviewRect{0.0f, 0.0f, width, height};
+    layout.child_bounds.reserve(state.children.size());
+    for (auto const& child : state.children) {
+        layout.child_bounds.push_back(Widgets::StackPreviewRect{
+            child.x,
+            child.y,
+            child.x + child.width,
+            child.y + child.height,
+        });
+    }
+
+    SceneData::DrawableBucketSnapshot bucket{};
+    std::string const authoring_root = options.authoring_root.empty()
+        ? std::string("widgets/stack_preview")
+        : options.authoring_root;
+
+    auto push_rect = [&](std::uint64_t drawable_id,
+                         Widgets::StackPreviewRect const& bounds,
+                         std::array<float, 4> const& color,
+                         float z,
+                         std::string const& suffix) {
+        bucket.drawable_ids.push_back(drawable_id);
+        bucket.world_transforms.push_back(make_identity_transform());
+
+        SceneData::BoundingBox box{};
+        box.min = {bounds.min_x, bounds.min_y, 0.0f};
+        box.max = {bounds.max_x, bounds.max_y, 0.0f};
+        bucket.bounds_boxes.push_back(box);
+        bucket.bounds_box_valid.push_back(1);
+
+        SceneData::BoundingSphere sphere{};
+        sphere.center = {(bounds.min_x + bounds.max_x) * 0.5f,
+                         (bounds.min_y + bounds.max_y) * 0.5f,
+                         0.0f};
+        float half_w = (bounds.max_x - bounds.min_x) * 0.5f;
+        float half_h = (bounds.max_y - bounds.min_y) * 0.5f;
+        sphere.radius = std::sqrt(half_w * half_w + half_h * half_h);
+        bucket.bounds_spheres.push_back(sphere);
+
+        bucket.layers.push_back(0);
+        bucket.z_values.push_back(z);
+        bucket.material_ids.push_back(0);
+        bucket.pipeline_flags.push_back(0);
+        bucket.visibility.push_back(1);
+        bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
+        bucket.command_counts.push_back(1);
+        bucket.opaque_indices.push_back(static_cast<std::uint32_t>(bucket.opaque_indices.size()));
+        bucket.clip_head_indices.push_back(-1);
+
+        SceneData::RoundedRectCommand rect{};
+        rect.min_x = bounds.min_x;
+        rect.min_y = bounds.min_y;
+        rect.max_x = bounds.max_x;
+        rect.max_y = bounds.max_y;
+        rect.radius_top_left = 8.0f;
+        rect.radius_top_right = 8.0f;
+        rect.radius_bottom_right = 8.0f;
+        rect.radius_bottom_left = 8.0f;
+        rect.color = color;
+
+        auto payload_offset = bucket.command_payload.size();
+        bucket.command_payload.resize(payload_offset + sizeof(SceneData::RoundedRectCommand));
+        std::memcpy(bucket.command_payload.data() + payload_offset,
+                    &rect,
+                    sizeof(SceneData::RoundedRectCommand));
+        bucket.command_kinds.push_back(static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect));
+
+        bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
+            drawable_id,
+            make_widget_authoring_id(authoring_root, suffix),
+            0,
+            0,
+        });
+        bucket.drawable_fingerprints.push_back(drawable_id);
+    };
+
+    push_rect(0x31A00001ull,
+              layout.bounds,
+              options.background_color,
+              0.0f,
+              "stack/background");
+
+    auto const child_count = layout.child_bounds.size();
+    for (std::size_t index = 0; index < child_count; ++index) {
+        auto const& rect = layout.child_bounds[index];
+        float t = (child_count <= 1)
+            ? 0.5f
+            : static_cast<float>(index) / static_cast<float>(child_count - 1);
+        float mix_amount = std::clamp(t * options.mix_scale, 0.0f, 1.0f);
+        auto color = mix_color(options.child_start_color, options.child_end_color, mix_amount);
+        color[3] = options.child_opacity;
+        std::string suffix = "stack/child/" + state.children[index].id;
+        push_rect(0x31A10000ull + static_cast<std::uint64_t>(index),
+                  rect,
+                  color,
+                  0.05f + 0.01f * static_cast<float>(index),
+                  suffix);
+    }
+
+    Widgets::StackPreviewResult result{};
+    result.bucket = std::move(bucket);
+    result.layout = std::move(layout);
+    return result;
+}
+
 auto UpdateTreeState(PathSpace& space,
                      Widgets::TreePaths const& paths,
                      Widgets::TreeState const& new_state) -> SP::Expected<bool> {
