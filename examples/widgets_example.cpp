@@ -3514,6 +3514,8 @@ static void simulate_slider_drag_for_screenshot(WidgetsExampleContext& ctx, floa
     }
     process_widget_actions(ctx);
 
+    set_focus_target(ctx, FocusTarget::Slider);
+
     ctx.slider_dragging = true;
 }
 
