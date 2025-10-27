@@ -100,7 +100,8 @@ inline auto make_toggle_bucket(ToggleSnapshotConfig const& config,
 
 inline auto build_toggle_bucket(Widgets::ToggleStyle const& style,
                          Widgets::ToggleState const& state,
-                         std::string_view authoring_root) -> SceneData::DrawableBucketSnapshot {
+                         std::string_view authoring_root,
+                         bool pulsing_highlight = false) -> SceneData::DrawableBucketSnapshot {
     ToggleSnapshotConfig config{
         .width = std::max(style.width, 1.0f),
         .height = std::max(style.height, 1.0f),
@@ -125,14 +126,16 @@ inline auto build_toggle_bucket(Widgets::ToggleStyle const& style,
 
     auto bucket = make_toggle_bucket(config, authoring_root);
     if (state.focused) {
-        append_focus_highlight(bucket, config.width, config.height, authoring_root);
+        auto highlight_color = lighten_color(style.track_on_color, 0.25f);
+        append_focus_highlight(bucket, config.width, config.height, authoring_root, pulsing_highlight, highlight_color);
     }
     return bucket;
 }
 
 inline auto build_toggle_bucket(Widgets::ToggleStyle const& style,
-                         Widgets::ToggleState const& state) -> SceneData::DrawableBucketSnapshot {
-    return build_toggle_bucket(style, state, {});
+                         Widgets::ToggleState const& state,
+                         bool pulsing_highlight = false) -> SceneData::DrawableBucketSnapshot {
+    return build_toggle_bucket(style, state, {}, pulsing_highlight);
 }
 
 inline auto publish_toggle_state_scenes(PathSpace& space,

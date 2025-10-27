@@ -6,6 +6,20 @@ using namespace Detail;
 
 namespace {
 
+auto write_widget_footprint(PathSpace& space,
+                            WidgetPath const& root,
+                            DirtyRectHint footprint) -> SP::Expected<void> {
+    DirtyRectHint normalized = ensure_valid_hint(footprint);
+    if (normalized.max_x <= normalized.min_x || normalized.max_y <= normalized.min_y) {
+        return {};
+    }
+    auto path = std::string(root.getPath()) + "/meta/footprint";
+    if (auto status = replace_single<DirtyRectHint>(space, path, normalized); !status) {
+        return std::unexpected(status.error());
+    }
+    return {};
+}
+
 auto compute_ops_queue(WidgetPath const& root) -> ConcretePath {
     return ConcretePath{std::string(root.getPath()) + "/ops/inbox/queue"};
 }
@@ -171,6 +185,9 @@ auto CreateButtonBinding(PathSpace& space,
         return std::unexpected(style.error());
     }
     DirtyRectHint hint = ensure_valid_hint(dirty_override.value_or(footprint));
+    if (auto status = write_widget_footprint(space, paths.root, hint); !status) {
+        return std::unexpected(status.error());
+    }
     ButtonBinding binding{
         .widget = paths,
         .options = build_options(appRoot,
@@ -193,6 +210,9 @@ auto CreateToggleBinding(PathSpace& space,
         return std::unexpected(style.error());
     }
     DirtyRectHint hint = ensure_valid_hint(dirty_override.value_or(footprint));
+    if (auto status = write_widget_footprint(space, paths.root, hint); !status) {
+        return std::unexpected(status.error());
+    }
     ToggleBinding binding{
         .widget = paths,
         .options = build_options(appRoot, paths.root, targetPath, hint, auto_render),
@@ -211,6 +231,9 @@ auto CreateSliderBinding(PathSpace& space,
         return std::unexpected(style.error());
     }
     DirtyRectHint hint = ensure_valid_hint(dirty_override.value_or(footprint));
+    if (auto status = write_widget_footprint(space, paths.root, hint); !status) {
+        return std::unexpected(status.error());
+    }
     SliderBinding binding{
         .widget = paths,
         .options = build_options(appRoot, paths.root, targetPath, hint, auto_render),
@@ -233,6 +256,9 @@ auto CreateListBinding(PathSpace& space,
     }
 
     DirtyRectHint hint = ensure_valid_hint(dirty_override.value_or(footprint));
+    if (auto status = write_widget_footprint(space, paths.root, hint); !status) {
+        return std::unexpected(status.error());
+    }
     ListBinding binding{
         .widget = paths,
         .options = build_options(appRoot, paths.root, targetPath, hint, auto_render),
@@ -255,6 +281,9 @@ auto CreateTreeBinding(PathSpace& space,
     }
 
     DirtyRectHint hint = ensure_valid_hint(dirty_override.value_or(footprint));
+    if (auto status = write_widget_footprint(space, paths.root, hint); !status) {
+        return std::unexpected(status.error());
+    }
     TreeBinding binding{
         .widget = paths,
         .options = build_options(appRoot, paths.root, targetPath, hint, auto_render),
@@ -275,6 +304,9 @@ auto CreateStackBinding(PathSpace& space,
     }
 
     DirtyRectHint hint = ensure_valid_hint(dirty_override.value_or(footprint));
+    if (auto status = write_widget_footprint(space, paths.root, hint); !status) {
+        return std::unexpected(status.error());
+    }
     StackBinding binding{
         .layout = paths,
         .options = build_options(appRoot, paths.root, targetPath, hint, auto_render),
@@ -762,6 +794,9 @@ auto UpdateStack(PathSpace& space,
         updated_hint.max_y = std::max(updated_hint.max_y, layout_hint.max_y);
     }
     updated_hint = ensure_valid_hint(updated_hint);
+    if (auto status = write_widget_footprint(space, binding.layout.root, updated_hint); !status) {
+        return std::unexpected(status.error());
+    }
 
     BindingOptions refreshed = binding.options;
     refreshed.dirty_rect = updated_hint;

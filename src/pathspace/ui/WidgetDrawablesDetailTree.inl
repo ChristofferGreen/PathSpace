@@ -124,7 +124,8 @@ inline auto tree_states_equal(Widgets::TreeState const& lhs,
 inline auto build_tree_bucket(Widgets::TreeStyle const& style,
                               std::vector<Widgets::TreeNode> const& nodes,
                               Widgets::TreeState const& state,
-                              std::string const& authoring_root = {}) -> SceneData::DrawableBucketSnapshot {
+                              std::string const& authoring_root = {},
+                              bool pulsing_highlight = false) -> SceneData::DrawableBucketSnapshot {
     auto rows = flatten_tree_rows(nodes, state);
 
     float const row_height = std::max(style.row_height, 1.0f);
@@ -313,7 +314,8 @@ inline auto build_tree_bucket(Widgets::TreeStyle const& style,
     }
 
     if (state.focused) {
-        append_focus_highlight(bucket, width, height, authoring_root);
+        auto highlight_color = lighten_color(style.row_selected_color, 0.15f);
+        append_focus_highlight(bucket, width, height, authoring_root, pulsing_highlight, highlight_color);
     }
 
     bucket.alpha_indices.clear();

@@ -20,6 +20,7 @@ inline constexpr std::uint32_t LinearFramebuffer   = 0x0000'2000u;
 
 inline constexpr std::uint32_t DebugOverdraw       = 0x0001'0000u;
 inline constexpr std::uint32_t DebugWireframe      = 0x0002'0000u;
+inline constexpr std::uint32_t HighlightPulse      = 0x0004'0000u;
 
 inline constexpr bool is_alpha_pass(std::uint32_t flags) {
     return (flags & AlphaBlend) != 0u;
@@ -30,4 +31,3 @@ inline constexpr bool requires_unpremultiplied_src(std::uint32_t flags) {
 }
 
 } // namespace SP::UI::PipelineFlags
-

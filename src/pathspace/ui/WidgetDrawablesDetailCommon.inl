@@ -123,6 +123,8 @@ inline auto append_focus_highlight(SceneData::DrawableBucketSnapshot& bucket,
                                    float width,
                                    float height,
                                    std::string_view authoring_root,
+                                   bool pulsing_highlight = false,
+                                   std::array<float, 4> color = {0.15f, 0.42f, 0.95f, 1.0f},
                                    float expand = kFocusHighlightExpand,
                                    float border_thickness = kFocusHighlightThickness) -> void {
     if (width <= 0.0f || height <= 0.0f) {
@@ -167,7 +169,11 @@ inline auto append_focus_highlight(SceneData::DrawableBucketSnapshot& bucket,
     bucket.layers.push_back(8);
     bucket.z_values.push_back(5.0f);
     bucket.material_ids.push_back(0);
-    bucket.pipeline_flags.push_back(0);
+    std::uint32_t pipeline_flags = 0;
+    if (pulsing_highlight) {
+        pipeline_flags |= SP::UI::PipelineFlags::HighlightPulse;
+    }
+    bucket.pipeline_flags.push_back(pipeline_flags);
     bucket.visibility.push_back(1);
     bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
     bucket.command_counts.push_back(4);
@@ -183,7 +189,7 @@ inline auto append_focus_highlight(SceneData::DrawableBucketSnapshot& bucket,
         rect.min_y = r_min_y;
         rect.max_x = r_max_x;
         rect.max_y = r_max_y;
-        rect.color = {0.05f, 0.80f, 0.95f, 1.0f};
+        rect.color = color;
         auto payload_offset = bucket.command_payload.size();
         bucket.command_payload.resize(payload_offset + sizeof(SceneData::RectCommand));
         std::memcpy(bucket.command_payload.data() + payload_offset,

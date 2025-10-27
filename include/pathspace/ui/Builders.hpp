@@ -1090,6 +1090,7 @@ enum class Direction { Forward, Backward };
 struct Config {
     ConcretePath focus_state;
     std::optional<ConcretePath> auto_render_target;
+    std::optional<bool> pulsing_highlight;
 };
 
 struct UpdateResult {
@@ -1100,7 +1101,8 @@ struct UpdateResult {
 auto FocusStatePath(AppRootPathView appRoot) -> ConcretePath;
 
 auto MakeConfig(AppRootPathView appRoot,
-                std::optional<ConcretePath> auto_render_target = std::nullopt) -> Config;
+                std::optional<ConcretePath> auto_render_target = std::nullopt,
+                std::optional<bool> pulsing_highlight = std::nullopt) -> Config;
 
 auto Current(PathSpace const& space,
              ConcretePathView focus_state) -> SP::Expected<std::optional<std::string>>;
@@ -1120,6 +1122,13 @@ auto Move(PathSpace& space,
 auto ApplyHit(PathSpace& space,
               Config const& config,
               Scene::HitTestResult const& hit) -> SP::Expected<std::optional<UpdateResult>>;
+
+auto SetPulsingHighlight(PathSpace& space,
+                         AppRootPathView appRoot,
+                         bool enabled) -> SP::Expected<void>;
+
+auto PulsingHighlightEnabled(PathSpace& space,
+                             AppRootPathView appRoot) -> SP::Expected<bool>;
 
 } // namespace Focus
 

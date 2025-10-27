@@ -2940,6 +2940,86 @@ TEST_CASE("PathRenderer2D records material descriptors metrics") {
     CHECK(descriptor.color_rgba[3] == doctest::Approx(1.0f));
 }
 
+TEST_CASE("PathRenderer2D pulses focus highlight color over time") {
+    RendererFixture fx;
+
+    RectDrawableDef highlight{};
+    highlight.id = 0xF0C0F001u;
+    highlight.fingerprint = 0xAA55AA55u;
+    highlight.rect = RectCommand{
+        .min_x = 8.0f,
+        .min_y = 8.0f,
+        .max_x = 56.0f,
+        .max_y = 12.0f,
+        .color = {0.05f, 0.80f, 0.95f, 1.0f},
+    };
+
+    auto bucket = make_rect_bucket({highlight});
+    REQUIRE(bucket.pipeline_flags.size() == 1);
+    bucket.pipeline_flags[0] |= SP::UI::PipelineFlags::HighlightPulse;
+    REQUIRE(bucket.authoring_map.size() == 1);
+    bucket.authoring_map[0].authoring_node_id = "widget/focus/highlight";
+
+    auto scenePath = create_scene(fx, "scene_focus_pulse", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_focus_pulse");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 64;
+    surfaceDesc.size_px.height = 32;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_focus_pulse", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware surface{surfaceDesc};
+    PathRenderer2D renderer{fx.space};
+
+    auto render_frame = [&](double time_ms, float clear_r, std::uint64_t frame_index) {
+        RenderSettings settings{};
+        settings.surface.size_px.width = surfaceDesc.size_px.width;
+        settings.surface.size_px.height = surfaceDesc.size_px.height;
+        settings.surface.visibility = true;
+        settings.clear_color = {clear_r, 0.0f, 0.0f, 1.0f};
+        settings.time.time_ms = time_ms;
+        settings.time.delta_ms = 16.0;
+        settings.time.frame_index = frame_index;
+        auto stats = renderer.render({
+            .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+            .settings = settings,
+            .surface = surface,
+        });
+        REQUIRE(stats);
+        return copy_buffer(surface);
+    };
+
+    auto base_buffer = render_frame(0.0, 0.0f, 1);
+    auto light_buffer = render_frame(250.0, 0.01f, 2);
+    auto dark_buffer = render_frame(750.0, 0.02f, 3);
+
+    auto sample_pixel = [&](std::vector<std::uint8_t> const& buffer) -> std::array<std::uint8_t, 4> {
+        std::size_t stride = static_cast<std::size_t>(surfaceDesc.size_px.width) * 4u;
+        std::size_t x = 16;
+        std::size_t y = 9;
+        std::size_t offset = y * stride + x * 4u;
+        REQUIRE(offset + 3u < buffer.size());
+        return {buffer[offset + 0], buffer[offset + 1], buffer[offset + 2], buffer[offset + 3]};
+    };
+
+    auto base_pixel = sample_pixel(base_buffer);
+    auto light_pixel = sample_pixel(light_buffer);
+    auto dark_pixel = sample_pixel(dark_buffer);
+
+    CHECK(light_pixel[0] > base_pixel[0]);
+    CHECK(light_pixel[1] > base_pixel[1]);
+    CHECK(dark_pixel[0] < base_pixel[0]);
+    CHECK(dark_pixel[1] < base_pixel[1]);
+    CHECK(base_pixel[3] == light_pixel[3]);
+    CHECK(base_pixel[3] == dark_pixel[3]);
+}
+
 TEST_CASE("Surface::RenderOnce handles repeated loop renders") {
     RendererFixture fx;
 

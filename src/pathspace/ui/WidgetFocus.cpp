@@ -1,10 +1,47 @@
 #include "WidgetDetail.hpp"
 
+#include <algorithm>
+#include <span>
+#include <vector>
+
 namespace SP::UI::Builders::Widgets {
 
 using namespace Detail;
 
 namespace {
+
+auto widget_footprint_path(std::string const& widget_root) -> std::string {
+    return widget_root + "/meta/footprint";
+}
+
+auto read_widget_footprint(PathSpace& space,
+                           std::string const& widget_root) -> SP::Expected<std::optional<DirtyRectHint>> {
+    auto footprint = read_optional<DirtyRectHint>(space, widget_footprint_path(widget_root));
+    if (!footprint) {
+        return std::unexpected(footprint.error());
+    }
+    if (!footprint->has_value()) {
+        return std::optional<DirtyRectHint>{};
+    }
+    DirtyRectHint hint = ensure_valid_hint(**footprint);
+    if (hint.max_x <= hint.min_x || hint.max_y <= hint.min_y) {
+        return std::optional<DirtyRectHint>{};
+    }
+    return std::optional<DirtyRectHint>{hint};
+}
+
+auto append_unique_hint(std::vector<DirtyRectHint>& hints,
+                        DirtyRectHint const& hint) -> void {
+    auto it = std::find_if(hints.begin(), hints.end(), [&](DirtyRectHint const& existing) {
+        return existing.min_x == hint.min_x
+            && existing.min_y == hint.min_y
+            && existing.max_x == hint.max_x
+            && existing.max_y == hint.max_y;
+    });
+    if (it == hints.end()) {
+        hints.push_back(hint);
+    }
+}
 
 
 auto widget_name_from_root(std::string const& app_root,
@@ -24,6 +61,32 @@ auto widget_name_from_root(std::string const& app_root,
 auto widget_scene_path(std::string const& app_root,
                        std::string const& widget_name) -> std::string {
     return app_root + "/scenes/widgets/" + widget_name;
+}
+
+auto focus_config_path(std::string const& app_root) -> std::string {
+    return app_root + "/widgets/focus/config";
+}
+
+auto pulsing_highlight_path(std::string const& app_root) -> std::string {
+    return focus_config_path(app_root) + "/pulsingHighlight";
+}
+
+auto read_pulsing_highlight(PathSpace& space,
+                            std::string const& app_root) -> SP::Expected<bool> {
+    auto existing = read_optional<bool>(space, pulsing_highlight_path(app_root));
+    if (!existing) {
+        return std::unexpected(existing.error());
+    }
+    if (!existing->has_value()) {
+        return false;
+    }
+    return **existing;
+}
+
+auto write_pulsing_highlight(PathSpace& space,
+                             std::string const& app_root,
+                             bool enabled) -> SP::Expected<void> {
+    return replace_single<bool>(space, pulsing_highlight_path(app_root), enabled);
 }
 
 auto determine_widget_kind(PathSpace& space,
@@ -336,10 +399,13 @@ auto FocusStatePath(AppRootPathView appRoot) -> ConcretePath {
 }
 
 auto MakeConfig(AppRootPathView appRoot,
-                std::optional<ConcretePath> auto_render_target) -> Config {
+                std::optional<ConcretePath> auto_render_target,
+                std::optional<bool> pulsing_highlight) -> Config {
+    bool desired_pulsing = pulsing_highlight.value_or(true);
     Config config{
         .focus_state = FocusStatePath(appRoot),
         .auto_render_target = std::move(auto_render_target),
+        .pulsing_highlight = std::optional<bool>{desired_pulsing},
     };
     return config;
 }
@@ -390,17 +456,45 @@ auto Set(PathSpace& space,
          Config const& config,
          WidgetPath const& widget) -> SP::Expected<UpdateResult> {
     std::string target_path{widget.getPath()};
+    auto app_root_path = derive_app_root_for(ConcretePathView{target_path});
+    if (!app_root_path) {
+        return std::unexpected(app_root_path.error());
+    }
+    auto app_root_view = SP::App::AppRootPathView{app_root_path->getPath()};
+    if (config.pulsing_highlight.has_value()) {
+        if (auto status = SetPulsingHighlight(space, app_root_view, *config.pulsing_highlight); !status) {
+            return std::unexpected(status.error());
+        }
+    }
     auto current = Current(space, ConcretePathView{config.focus_state.getPath()});
     if (!current) {
         return std::unexpected(current.error());
     }
     auto previous = *current;
 
+    std::vector<DirtyRectHint> dirty_hints;
+    auto append_dirty_hint = [&](std::string const& widget_root) -> SP::Expected<void> {
+        if (!config.auto_render_target.has_value()) {
+            return {};
+        }
+        auto footprint = read_widget_footprint(space, widget_root);
+        if (!footprint) {
+            return std::unexpected(footprint.error());
+        }
+        if (!footprint->has_value()) {
+            return {};
+        }
+        append_unique_hint(dirty_hints, **footprint);
+        return {};
+    };
+
     auto apply_focus = update_widget_focus(space, target_path, true);
     if (!apply_focus) {
         return std::unexpected(apply_focus.error());
     }
     bool changed = *apply_focus;
+    bool mark_new_dirty = *apply_focus;
+    bool mark_prev_dirty = false;
 
     if (!previous.has_value() || *previous != target_path) {
         if (previous.has_value()) {
@@ -408,11 +502,35 @@ auto Set(PathSpace& space,
             if (!clear_prev) {
                 return std::unexpected(clear_prev.error());
             }
+            changed = changed || *clear_prev;
+            mark_prev_dirty = true;
         }
         if (auto status = set_focus_string(space, ConcretePathView{config.focus_state.getPath()}, target_path); !status) {
             return std::unexpected(status.error());
         }
         changed = true;
+        mark_new_dirty = true;
+    }
+
+    if (mark_new_dirty) {
+        if (auto status = append_dirty_hint(target_path); !status) {
+            return std::unexpected(status.error());
+        }
+    }
+    if (mark_prev_dirty && previous.has_value()) {
+        if (auto status = append_dirty_hint(*previous); !status) {
+            return std::unexpected(status.error());
+        }
+    }
+
+    if (!dirty_hints.empty() && config.auto_render_target.has_value()) {
+        auto submit = Renderer::SubmitDirtyRects(space,
+                                                 SP::ConcretePathStringView{config.auto_render_target->getPath()},
+                                                 std::span<DirtyRectHint const>(dirty_hints.data(),
+                                                                                dirty_hints.size()));
+        if (!submit) {
+            return std::unexpected(submit.error());
+        }
     }
 
     if (auto status = maybe_schedule_focus_render(space, config, changed); !status) {
@@ -435,17 +553,57 @@ auto Clear(PathSpace& space,
         return false;
     }
 
+    auto app_root_path = derive_app_root_for(ConcretePathView{**current});
+    if (!app_root_path) {
+        return std::unexpected(app_root_path.error());
+    }
+    auto app_root_view = SP::App::AppRootPathView{app_root_path->getPath()};
+    if (config.pulsing_highlight.has_value()) {
+        if (auto status = SetPulsingHighlight(space, app_root_view, *config.pulsing_highlight); !status) {
+            return std::unexpected(status.error());
+        }
+    }
+
+    std::vector<DirtyRectHint> dirty_hints;
+    auto append_dirty_hint = [&](std::string const& widget_root) -> SP::Expected<void> {
+        if (!config.auto_render_target.has_value()) {
+            return {};
+        }
+        auto footprint = read_widget_footprint(space, widget_root);
+        if (!footprint) {
+            return std::unexpected(footprint.error());
+        }
+        if (!footprint->has_value()) {
+            return {};
+        }
+        append_unique_hint(dirty_hints, **footprint);
+        return {};
+    };
+
     bool changed = false;
     auto clear_prev = update_widget_focus(space, **current, false);
     if (!clear_prev) {
         return std::unexpected(clear_prev.error());
     }
     changed = *clear_prev;
+    if (auto status = append_dirty_hint(**current); !status) {
+        return std::unexpected(status.error());
+    }
 
     if (auto status = set_focus_string(space, ConcretePathView{config.focus_state.getPath()}, std::string{}); !status) {
         return std::unexpected(status.error());
     }
     changed = true;
+
+    if (!dirty_hints.empty() && config.auto_render_target.has_value()) {
+        auto submit = Renderer::SubmitDirtyRects(space,
+                                                 SP::ConcretePathStringView{config.auto_render_target->getPath()},
+                                                 std::span<DirtyRectHint const>(dirty_hints.data(),
+                                                                                dirty_hints.size()));
+        if (!submit) {
+            return std::unexpected(submit.error());
+        }
+    }
 
     if (auto status = maybe_schedule_focus_render(space, config, true); !status) {
         return std::unexpected(status.error());
@@ -506,6 +664,19 @@ auto ApplyHit(PathSpace& space,
         return std::unexpected(result.error());
     }
     return std::optional<UpdateResult>{*result};
+}
+
+auto SetPulsingHighlight(PathSpace& space,
+                         AppRootPathView appRoot,
+                         bool enabled) -> SP::Expected<void> {
+    std::string root{appRoot.getPath()};
+    return write_pulsing_highlight(space, root, enabled);
+}
+
+auto PulsingHighlightEnabled(PathSpace& space,
+                             AppRootPathView appRoot) -> SP::Expected<bool> {
+    std::string root{appRoot.getPath()};
+    return read_pulsing_highlight(space, root);
 }
 
 } // namespace Focus

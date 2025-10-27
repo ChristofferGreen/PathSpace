@@ -164,7 +164,8 @@ inline auto first_enabled_index(std::vector<Widgets::ListItem> const& items) -> 
 inline auto build_list_bucket(Widgets::ListStyle const& style,
                        std::vector<Widgets::ListItem> const& items,
                        Widgets::ListState const& state,
-                       std::string_view authoring_root) -> SceneData::DrawableBucketSnapshot {
+                       std::string_view authoring_root,
+                       bool pulsing_highlight = false) -> SceneData::DrawableBucketSnapshot {
     Widgets::ListStyle appliedStyle = style;
     Widgets::ListState appliedState = state;
     if (!appliedState.enabled) {
@@ -206,15 +207,17 @@ inline auto build_list_bucket(Widgets::ListStyle const& style,
 
     auto bucket = make_list_bucket(config, authoring_root);
     if (state.focused) {
-        append_focus_highlight(bucket, highlight_width, highlight_height, authoring_root);
+        auto highlight_color = lighten_color(style.item_selected_color, 0.18f);
+        append_focus_highlight(bucket, highlight_width, highlight_height, authoring_root, pulsing_highlight, highlight_color);
     }
     return bucket;
 }
 
 inline auto build_list_bucket(Widgets::ListStyle const& style,
                        std::vector<Widgets::ListItem> const& items,
-                       Widgets::ListState const& state) -> SceneData::DrawableBucketSnapshot {
-    return build_list_bucket(style, items, state, {});
+                       Widgets::ListState const& state,
+                       bool pulsing_highlight = false) -> SceneData::DrawableBucketSnapshot {
+    return build_list_bucket(style, items, state, {}, pulsing_highlight);
 }
 
 inline auto publish_list_state_scenes(PathSpace& space,

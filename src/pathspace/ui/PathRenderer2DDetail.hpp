@@ -166,6 +166,15 @@ auto draw_fallback_bounds_box(Scene::DrawableBucketSnapshot const& bucket,
                               int width,
                               int height) -> bool;
 
+auto pulse_focus_highlight_color(std::array<float, 4> const& srgb,
+                                 double time_ms) -> std::array<float, 4>;
+
+auto schedule_focus_pulse_render(PathSpace& space,
+                                 SP::ConcretePathStringView targetPath,
+                                 Builders::RenderSettings const& settings,
+                                 std::optional<Builders::DirtyRectHint> focus_hint,
+                                 std::uint64_t frame_index) -> void;
+
 #if defined(__APPLE__) && PATHSPACE_UI_METAL
 auto metal_supports_command(Scene::DrawCommandKind kind) -> bool;
 #endif

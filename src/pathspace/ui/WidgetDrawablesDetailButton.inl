@@ -98,7 +98,8 @@ inline auto button_background_color(Widgets::ButtonStyle const& style,
 
 inline auto build_button_bucket(Widgets::ButtonStyle const& style,
                          Widgets::ButtonState const& state,
-                         std::string_view authoring_root) -> SceneData::DrawableBucketSnapshot {
+                         std::string_view authoring_root,
+                         bool pulsing_highlight = false) -> SceneData::DrawableBucketSnapshot {
     float width = std::max(style.width, 1.0f);
     float height = std::max(style.height, 1.0f);
     float radius_limit = std::min(width, height) * 0.5f;
@@ -111,14 +112,16 @@ inline auto build_button_bucket(Widgets::ButtonStyle const& style,
     };
     auto bucket = make_button_bucket(config, authoring_root);
     if (state.focused) {
-        append_focus_highlight(bucket, width, height, authoring_root);
+        auto highlight_color = lighten_color(config.color, 0.35f);
+        append_focus_highlight(bucket, width, height, authoring_root, pulsing_highlight, highlight_color);
     }
     return bucket;
 }
 
 inline auto build_button_bucket(Widgets::ButtonStyle const& style,
-                         Widgets::ButtonState const& state) -> SceneData::DrawableBucketSnapshot {
-    return build_button_bucket(style, state, {});
+                         Widgets::ButtonState const& state,
+                         bool pulsing_highlight = false) -> SceneData::DrawableBucketSnapshot {
+    return build_button_bucket(style, state, {}, pulsing_highlight);
 }
 
 inline auto publish_button_state_scenes(PathSpace& space,

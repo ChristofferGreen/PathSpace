@@ -659,6 +659,8 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     std::uint64_t unsupported_commands = 0;
     std::uint64_t opaque_sort_violations = 0;
     std::uint64_t alpha_sort_violations = 0;
+    bool has_focus_pulse = false;
+    std::optional<Builders::DirtyRectHint> focus_dirty;
     double approx_area_total = 0.0;
     double approx_area_opaque = 0.0;
     double approx_area_alpha = 0.0;
@@ -713,6 +715,28 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
             material_id = bucket->material_ids[drawable_index];
         }
         auto pipeline_flags = pipeline_flags_for(*bucket, drawable_index);
+        bool highlight_pulse = (pipeline_flags & PipelineFlags::HighlightPulse) != 0u;
+        if (highlight_pulse) {
+            has_focus_pulse = true;
+            if (drawable_index < bounds_by_index.size()) {
+                auto const& maybe_bounds = bounds_by_index[drawable_index];
+                if (maybe_bounds && !maybe_bounds->empty()) {
+                    Builders::DirtyRectHint bounds_hint{};
+                    bounds_hint.min_x = static_cast<float>(maybe_bounds->min_x);
+                    bounds_hint.min_y = static_cast<float>(maybe_bounds->min_y);
+                    bounds_hint.max_x = static_cast<float>(maybe_bounds->max_x);
+                    bounds_hint.max_y = static_cast<float>(maybe_bounds->max_y);
+                    if (focus_dirty.has_value()) {
+                        focus_dirty->min_x = std::min(focus_dirty->min_x, bounds_hint.min_x);
+                        focus_dirty->min_y = std::min(focus_dirty->min_y, bounds_hint.min_y);
+                        focus_dirty->max_x = std::max(focus_dirty->max_x, bounds_hint.max_x);
+                        focus_dirty->max_y = std::max(focus_dirty->max_y, bounds_hint.max_y);
+                    } else {
+                        focus_dirty = bounds_hint;
+                    }
+                }
+            }
+        }
         MaterialDescriptor* material_desc = nullptr;
         {
             auto [it, inserted] = material_descriptors.try_emplace(material_id, MaterialDescriptor{});
@@ -791,6 +815,10 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                     case Scene::DrawCommandKind::Rect: {
                         auto rect = read_struct<Scene::RectCommand>(bucket->command_payload,
                                                                     payload_offset);
+                        if (highlight_pulse) {
+                            rect.color = pulse_focus_highlight_color(rect.color,
+                                                                      params.settings.time.time_ms);
+                        }
                         record_material_kind(Scene::DrawCommandKind::Rect);
                         if (material_desc) {
                             material_desc->color_rgba = rect.color;
@@ -1551,6 +1579,14 @@ if (!metal_active && has_damage) {
     state.clear_color = current_clear;
     state.desc = desc;
     state.last_revision = sceneRevision->revision;
+
+    if (has_focus_pulse) {
+        schedule_focus_pulse_render(space_,
+                                    params.target_path,
+                                    params.settings,
+                                    focus_dirty,
+                                    params.settings.time.frame_index);
+    }
 
     RenderStats stats{};
     stats.frame_index = params.settings.time.frame_index;

@@ -3,17 +3,22 @@
 #include <pathspace/ui/Builders.hpp>
 
 #include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
 #include <cmath>
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
-#include <cctype>
-#include <array>
 #include <iomanip>
 #include <limits>
+#include <mutex>
 #include <optional>
+#include <span>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 namespace SP::UI::PathRenderer2DDetail {
 namespace {
@@ -367,6 +372,99 @@ auto encode_linear_color_to_output(LinearPremulColor const& color,
         static_cast<float>(encoded[2]) / 255.0f,
         static_cast<float>(encoded[3]) / 255.0f,
     };
+}
+
+auto pulse_focus_highlight_color(std::array<float, 4> const& srgb,
+                                 double time_ms) -> std::array<float, 4> {
+    constexpr double kPeriodMs = 1000.0;
+    double phase = std::fmod(time_ms, kPeriodMs);
+    if (phase < 0.0) {
+        phase += kPeriodMs;
+    }
+    double normalized = (kPeriodMs == 0.0) ? 0.0 : phase / kPeriodMs;
+    double wave = std::sin(normalized * 2.0 * kPi);
+    float intensity = static_cast<float>(std::abs(wave));
+    float mix = std::min(intensity * 0.18f, 1.0f);
+    std::array<float, 4> result = srgb;
+    std::array<float, 4> target{
+        0.0f,
+        0.0f,
+        0.0f,
+        srgb[3],
+    };
+    if (wave >= 0.0) {
+        target = {1.0f, 1.0f, 1.0f, srgb[3]};
+    }
+    for (int i = 0; i < 3; ++i) {
+        result[i] = clamp_unit(srgb[i] * (1.0f - mix) + target[i] * mix);
+    }
+    result[3] = srgb[3];
+    return result;
+}
+
+auto schedule_focus_pulse_render(PathSpace& space,
+                                 SP::ConcretePathStringView targetPath,
+                                 Builders::RenderSettings const& settings,
+                                 std::optional<Builders::DirtyRectHint> focus_hint,
+                                 std::uint64_t frame_index) -> void {
+    static std::mutex mutex;
+    static std::unordered_map<std::string, std::chrono::steady_clock::time_point> last_schedule;
+    static std::atomic<std::uint64_t> sequence{0};
+    auto now = std::chrono::steady_clock::now();
+    constexpr auto kMinimumInterval = std::chrono::milliseconds{96};
+
+    std::string target{targetPath.getPath()};
+    if (target.empty()) {
+        return;
+    }
+
+    bool should_schedule = false;
+    {
+        std::lock_guard<std::mutex> lock{mutex};
+        auto& previous = last_schedule[target];
+        if (previous.time_since_epoch().count() == 0
+            || now - previous >= kMinimumInterval) {
+            previous = now;
+            should_schedule = true;
+        }
+    }
+    if (!should_schedule) {
+        return;
+    }
+
+    // Enqueue an auto-render request so the pulse keeps animating.
+    Builders::AutoRenderRequestEvent event{
+        .sequence = sequence.fetch_add(1, std::memory_order_relaxed) + 1,
+        .reason = "focus-pulse",
+        .frame_index = frame_index,
+    };
+    auto queuePath = target + "/events/renderRequested/queue";
+    auto inserted = space.insert(queuePath, event);
+    (void)inserted;
+
+    Builders::DirtyRectHint hint{};
+    if (focus_hint.has_value()) {
+        hint = *focus_hint;
+    } else {
+        float width = static_cast<float>(std::max(settings.surface.size_px.width, 0));
+        float height = static_cast<float>(std::max(settings.surface.size_px.height, 0));
+        if (width <= 0.0f || height <= 0.0f) {
+            return;
+        }
+        hint.min_x = 0.0f;
+        hint.min_y = 0.0f;
+        hint.max_x = width;
+        hint.max_y = height;
+    }
+
+    if (hint.max_x <= hint.min_x || hint.max_y <= hint.min_y) {
+        return;
+    }
+
+    std::array<Builders::DirtyRectHint, 1> hints{hint};
+    (void)Builders::Renderer::SubmitDirtyRects(space,
+                                               targetPath,
+                                               std::span<const Builders::DirtyRectHint>(hints.data(), hints.size()));
 }
 
 #if defined(__APPLE__) && PATHSPACE_UI_METAL

@@ -3256,6 +3256,21 @@ TEST_CASE("Widgets::Focus::Set schedules auto render events") {
     auto targetAbs = SP::App::resolve_app_relative(fx.root_view(), *targetRel);
     REQUIRE(targetAbs);
 
+    auto buttonStyle = fx.space.read<Widgets::ButtonStyle, std::string>(std::string(button->root.getPath()) + "/meta/style");
+    REQUIRE(buttonStyle);
+    DirtyRectHint buttonFootprint{};
+    buttonFootprint.min_x = 0.0f;
+    buttonFootprint.min_y = 0.0f;
+    buttonFootprint.max_x = buttonStyle->width;
+    buttonFootprint.max_y = buttonStyle->height;
+
+    auto binding = WidgetBindings::CreateButtonBinding(fx.space,
+                                                       fx.root_view(),
+                                                       *button,
+                                                       SP::ConcretePathStringView{targetAbs->getPath()},
+                                                       buttonFootprint);
+    REQUIRE(binding);
+
     auto config = WidgetFocus::MakeConfig(fx.root_view(),
                                           SP::UI::Builders::ConcretePath{targetAbs->getPath()});
 
@@ -3278,6 +3293,101 @@ TEST_CASE("Widgets::Focus::Set schedules auto render events") {
         CHECK((noEvent.error().code == Error::Code::NoObjectFound
                || noEvent.error().code == Error::Code::NoSuchPath));
     }
+}
+
+TEST_CASE("Widget focus shift marks previous footprint dirty") {
+    BuildersFixture fx;
+
+    Widgets::ButtonParams buttonParams{};
+    buttonParams.name = "focus_dirty_button";
+    buttonParams.label = "DirtyButton";
+    auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
+    REQUIRE(button);
+
+    Widgets::ToggleParams toggleParams{};
+    toggleParams.name = "focus_dirty_toggle";
+    auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), toggleParams);
+    REQUIRE(toggle);
+
+    RendererParams rendererParams{ .name = "focus_dirty_renderer", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc{};
+    desc.size_px = {256, 192};
+
+    SurfaceParams surfaceParams{ .name = "focus_dirty_surface", .desc = desc, .renderer = "renderers/focus_dirty_renderer" };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    REQUIRE(Surface::SetScene(fx.space, *surface, button->scene));
+
+    auto targetRel = fx.space.read<std::string, std::string>(std::string(surface->getPath()) + "/target");
+    REQUIRE(targetRel);
+    auto targetAbs = SP::App::resolve_app_relative(fx.root_view(), *targetRel);
+    REQUIRE(targetAbs);
+
+    auto buttonStyle = fx.space.read<Widgets::ButtonStyle, std::string>(std::string(button->root.getPath()) + "/meta/style");
+    REQUIRE(buttonStyle);
+    DirtyRectHint buttonFootprint{0.0f, 0.0f, buttonStyle->width, buttonStyle->height};
+    auto buttonBinding = WidgetBindings::CreateButtonBinding(fx.space,
+                                                             fx.root_view(),
+                                                             *button,
+                                                             SP::ConcretePathStringView{targetAbs->getPath()},
+                                                             buttonFootprint);
+    REQUIRE(buttonBinding);
+
+    auto toggleStyle = fx.space.read<Widgets::ToggleStyle, std::string>(std::string(toggle->root.getPath()) + "/meta/style");
+    REQUIRE(toggleStyle);
+    DirtyRectHint toggleFootprint{200.0f, 0.0f, 200.0f + toggleStyle->width, toggleStyle->height};
+    auto toggleBinding = WidgetBindings::CreateToggleBinding(fx.space,
+                                                             fx.root_view(),
+                                                             *toggle,
+                                                             SP::ConcretePathStringView{targetAbs->getPath()},
+                                                             toggleFootprint);
+    REQUIRE(toggleBinding);
+
+    auto config = WidgetFocus::MakeConfig(fx.root_view(),
+                                          SP::UI::Builders::ConcretePath{targetAbs->getPath()});
+
+    auto setButton = WidgetFocus::Set(fx.space, config, button->root);
+    REQUIRE(setButton);
+    CHECK(setButton->changed);
+
+    auto hintsPath = targetAbs->getPath() + "/hints/dirtyRects";
+    (void)fx.space.read<std::vector<DirtyRectHint>, std::string>(hintsPath);
+
+    std::array<WidgetPath, 2> order{button->root, toggle->root};
+    auto moveToggle = WidgetFocus::Move(fx.space,
+                                        config,
+                                        std::span<const WidgetPath>(order.data(), order.size()),
+                                        WidgetFocus::Direction::Forward);
+    REQUIRE(moveToggle);
+    REQUIRE(moveToggle->has_value());
+    CHECK(moveToggle->value().widget.getPath() == toggle->root.getPath());
+
+    auto hints = fx.space.read<std::vector<DirtyRectHint>, std::string>(hintsPath);
+    REQUIRE(hints);
+    REQUIRE_FALSE(hints->empty());
+
+    auto button_center_x = (buttonFootprint.min_x + buttonFootprint.max_x) * 0.5f;
+    auto button_center_y = (buttonFootprint.min_y + buttonFootprint.max_y) * 0.5f;
+    auto toggle_center_x = (toggleFootprint.min_x + toggleFootprint.max_x) * 0.5f;
+    auto toggle_center_y = (toggleFootprint.min_y + toggleFootprint.max_y) * 0.5f;
+
+    auto covers_point = [](DirtyRectHint const& hint, float x, float y) {
+        return x >= hint.min_x && x <= hint.max_x && y >= hint.min_y && y <= hint.max_y;
+    };
+
+    bool button_covered = std::any_of(hints->begin(), hints->end(), [&](DirtyRectHint const& hint) {
+        return covers_point(hint, button_center_x, button_center_y);
+    });
+    bool toggle_covered = std::any_of(hints->begin(), hints->end(), [&](DirtyRectHint const& hint) {
+        return covers_point(hint, toggle_center_x, toggle_center_y);
+    });
+
+    CHECK(button_covered);
+    CHECK(toggle_covered);
 }
 
 TEST_CASE("Widget focus state publishes highlight drawable") {
@@ -3314,6 +3424,47 @@ TEST_CASE("Widget focus state publishes highlight drawable") {
         }
     }
     CHECK(found_highlight);
+}
+
+TEST_CASE("Widget focus pulsing highlight sets pipeline flag") {
+    BuildersFixture fx;
+
+    Widgets::ButtonParams buttonParams{};
+    buttonParams.name = "focus_pulse_button";
+    buttonParams.label = "PulseHighlight";
+    auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
+    REQUIRE(button);
+
+    auto config = WidgetFocus::MakeConfig(fx.root_view());
+    auto setFocus = WidgetFocus::Set(fx.space, config, button->root);
+    REQUIRE(setFocus);
+    CHECK(setFocus->changed);
+
+    SceneSnapshotBuilder builder(fx.space, fx.root_view(), button->scene);
+    auto records = builder.snapshot_records();
+    REQUIRE(records);
+    REQUIRE_FALSE(records->empty());
+
+    auto latest = records->back().revision;
+    std::ostringstream revision_base;
+    revision_base << button->scene.getPath() << "/builds/"
+                  << std::setw(16) << std::setfill('0') << latest;
+    auto bucket = SceneSnapshotBuilder::decode_bucket(fx.space, revision_base.str());
+    REQUIRE(bucket);
+
+    bool found_pulsing = false;
+    for (std::size_t index = 0; index < bucket->authoring_map.size(); ++index) {
+        auto const& entry = bucket->authoring_map[index];
+        if (entry.authoring_node_id.find("/focus/highlight") == std::string::npos) {
+            continue;
+        }
+        REQUIRE(index < bucket->pipeline_flags.size());
+        auto flags = bucket->pipeline_flags[index];
+        CHECK((flags & SP::UI::PipelineFlags::HighlightPulse) != 0u);
+        found_pulsing = true;
+        break;
+    }
+    CHECK(found_pulsing);
 }
 
 TEST_CASE("Widgets::Focus keyboard navigation cycles focus order and schedules renders") {

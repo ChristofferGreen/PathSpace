@@ -162,7 +162,8 @@ inline auto clamp_slider_value(Widgets::SliderRange const& range, float value) -
 inline auto build_slider_bucket(Widgets::SliderStyle const& style,
                          Widgets::SliderRange const& range,
                          Widgets::SliderState const& state,
-                         std::string_view authoring_root) -> SceneData::DrawableBucketSnapshot {
+                         std::string_view authoring_root,
+                         bool pulsing_highlight = false) -> SceneData::DrawableBucketSnapshot {
     Widgets::SliderState applied = state;
     applied.value = clamp_slider_value(range, state.value);
 
@@ -195,15 +196,17 @@ inline auto build_slider_bucket(Widgets::SliderStyle const& style,
 
     auto bucket = make_slider_bucket(config, authoring_root);
     if (state.focused) {
-        append_focus_highlight(bucket, config.width, config.height, authoring_root);
+        auto highlight_color = lighten_color(style.fill_color, 0.20f);
+        append_focus_highlight(bucket, config.width, config.height, authoring_root, pulsing_highlight, highlight_color);
     }
     return bucket;
 }
 
 inline auto build_slider_bucket(Widgets::SliderStyle const& style,
                          Widgets::SliderRange const& range,
-                         Widgets::SliderState const& state) -> SceneData::DrawableBucketSnapshot {
-    return build_slider_bucket(style, range, state, {});
+                         Widgets::SliderState const& state,
+                         bool pulsing_highlight = false) -> SceneData::DrawableBucketSnapshot {
+    return build_slider_bucket(style, range, state, {}, pulsing_highlight);
 }
 
 inline auto publish_slider_state_scenes(PathSpace& space,

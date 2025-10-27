@@ -569,7 +569,11 @@ auto UpdateButtonState(PathSpace& space,
         return std::unexpected(appRootPath.error());
     }
     auto appRootView = SP::App::AppRootPathView{appRootPath->getPath()};
-    auto bucket = build_button_bucket(*styleValue, new_state, paths.root.getPath());
+    auto pulsing = Focus::PulsingHighlightEnabled(space, appRootView);
+    if (!pulsing) {
+        return std::unexpected(pulsing.error());
+    }
+    auto bucket = build_button_bucket(*styleValue, new_state, paths.root.getPath(), *pulsing);
     if (auto status = publish_scene_snapshot(space, appRootView, paths.scene, bucket); !status) {
         return std::unexpected(status.error());
     }
@@ -606,7 +610,11 @@ auto UpdateToggleState(PathSpace& space,
         return std::unexpected(appRootPath.error());
     }
     auto appRootView = SP::App::AppRootPathView{appRootPath->getPath()};
-    auto bucket = build_toggle_bucket(*styleValue, new_state, paths.root.getPath());
+    auto pulsing = Focus::PulsingHighlightEnabled(space, appRootView);
+    if (!pulsing) {
+        return std::unexpected(pulsing.error());
+    }
+    auto bucket = build_toggle_bucket(*styleValue, new_state, paths.root.getPath(), *pulsing);
     if (auto status = publish_scene_snapshot(space, appRootView, paths.scene, bucket); !status) {
         return std::unexpected(status.error());
     }
@@ -669,7 +677,11 @@ auto UpdateSliderState(PathSpace& space,
         return std::unexpected(appRootPath.error());
     }
     auto appRootView = SP::App::AppRootPathView{appRootPath->getPath()};
-    auto bucket = build_slider_bucket(*styleValue, range, sanitized, paths.root.getPath());
+    auto pulsing = Focus::PulsingHighlightEnabled(space, appRootView);
+    if (!pulsing) {
+        return std::unexpected(pulsing.error());
+    }
+    auto bucket = build_slider_bucket(*styleValue, range, sanitized, paths.root.getPath(), *pulsing);
     if (auto status = publish_scene_snapshot(space, appRootView, paths.scene, bucket); !status) {
         return std::unexpected(status.error());
     }
@@ -757,7 +769,11 @@ auto UpdateListState(PathSpace& space,
         return std::unexpected(appRootPath.error());
     }
     auto appRootView = SP::App::AppRootPathView{appRootPath->getPath()};
-    auto bucket = build_list_bucket(*styleValue, items, sanitized, paths.root.getPath());
+    auto pulsing = Focus::PulsingHighlightEnabled(space, appRootView);
+    if (!pulsing) {
+        return std::unexpected(pulsing.error());
+    }
+    auto bucket = build_list_bucket(*styleValue, items, sanitized, paths.root.getPath(), *pulsing);
     if (auto status = publish_scene_snapshot(space, appRootView, paths.scene, bucket); !status) {
         return std::unexpected(status.error());
     }
@@ -805,7 +821,11 @@ auto UpdateTreeState(PathSpace& space,
         return std::unexpected(appRootPath.error());
     }
     auto appRootView = SP::App::AppRootPathView{appRootPath->getPath()};
-    auto bucket = build_tree_bucket(style, *nodesValue, sanitized, paths.root.getPath());
+    auto pulsing = Focus::PulsingHighlightEnabled(space, appRootView);
+    if (!pulsing) {
+        return std::unexpected(pulsing.error());
+    }
+    auto bucket = build_tree_bucket(style, *nodesValue, sanitized, paths.root.getPath(), *pulsing);
     if (auto status = publish_scene_snapshot(space, appRootView, paths.scene, bucket); !status) {
         return std::unexpected(status.error());
     }

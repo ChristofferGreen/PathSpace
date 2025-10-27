@@ -6,6 +6,7 @@
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
+#include <pathspace/ui/PipelineFlags.hpp>
 #include <pathspace/layer/io/PathIOMouse.hpp>
 
 #include <algorithm>
@@ -362,11 +363,41 @@ auto append_bucket(SceneData::DrawableBucketSnapshot& dest,
 
 inline constexpr float kGalleryFocusExpand = 6.0f;
 inline constexpr float kGalleryFocusThickness = 4.0f;
+inline constexpr float kGalleryFocusMargin = kGalleryFocusExpand + kGalleryFocusThickness;
+
+static auto clamp_unit(float value) -> float {
+    return std::clamp(value, 0.0f, 1.0f);
+}
+
+static auto lighten_color(std::array<float, 4> color, float amount) -> std::array<float, 4> {
+    amount = clamp_unit(amount);
+    for (int i = 0; i < 3; ++i) {
+        color[i] = clamp_unit(color[i] * (1.0f - amount) + amount);
+    }
+    return color;
+}
+
+static auto expand_for_focus_margin(WidgetBounds& bounds) -> void {
+    bounds.normalize();
+    bounds.min_x -= kGalleryFocusMargin;
+    bounds.min_y -= kGalleryFocusMargin;
+    bounds.max_x += kGalleryFocusMargin;
+    bounds.max_y += kGalleryFocusMargin;
+    bounds.normalize();
+    if (bounds.min_x < 0.0f) {
+        bounds.min_x = 0.0f;
+    }
+    if (bounds.min_y < 0.0f) {
+        bounds.min_y = 0.0f;
+    }
+}
 
 auto append_focus_highlight_preview(SceneData::DrawableBucketSnapshot& bucket,
                                     float width,
                                     float height,
-                                    std::string_view authoring_id) -> void {
+                                    std::string_view authoring_id,
+                                    std::array<float, 4> color,
+                                    bool pulsing = true) -> void {
     if (width <= 0.0f || height <= 0.0f) {
         return;
     }
@@ -405,7 +436,7 @@ auto append_focus_highlight_preview(SceneData::DrawableBucketSnapshot& bucket,
     bucket.layers.push_back(8);
     bucket.z_values.push_back(5.0f);
     bucket.material_ids.push_back(0);
-    bucket.pipeline_flags.push_back(0);
+    bucket.pipeline_flags.push_back(pulsing ? SP::UI::PipelineFlags::HighlightPulse : 0u);
     bucket.visibility.push_back(1);
     bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
     bucket.command_counts.push_back(4);
@@ -421,7 +452,7 @@ auto append_focus_highlight_preview(SceneData::DrawableBucketSnapshot& bucket,
         rect.min_y = r_min_y;
         rect.max_x = r_max_x;
         rect.max_y = r_max_y;
-        rect.color = {0.05f, 0.80f, 0.95f, 1.0f};
+        rect.color = color;
         auto payload_offset = bucket.command_payload.size();
         bucket.command_payload.resize(payload_offset + sizeof(SceneData::RectCommand));
         std::memcpy(bucket.command_payload.data() + payload_offset,
@@ -532,7 +563,8 @@ auto build_button_preview(Widgets::ButtonStyle const& style,
         bucket.command_kinds = {static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect)};
     }
     if (state.focused) {
-        append_focus_highlight_preview(bucket, width, height, "widget/gallery/button");
+        auto highlight = lighten_color(style.background_color, 0.35f);
+        append_focus_highlight_preview(bucket, width, height, "widget/gallery/button", highlight, true);
     }
     return bucket;
 }
@@ -630,7 +662,9 @@ auto build_toggle_preview(Widgets::ToggleStyle const& style,
         static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect),
     };
     if (state.focused) {
-        append_focus_highlight_preview(bucket, width, height, "widget/gallery/toggle");
+        auto base = state.checked ? style.track_on_color : style.track_off_color;
+        auto highlight = lighten_color(base, 0.30f);
+        append_focus_highlight_preview(bucket, width, height, "widget/gallery/toggle", highlight, true);
     }
     return bucket;
 }
@@ -764,7 +798,8 @@ auto build_slider_preview(Widgets::SliderStyle const& style,
         static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect),
     };
     if (state.focused) {
-        append_focus_highlight_preview(bucket, width, height, "widget/gallery/slider");
+        auto highlight = lighten_color(style.fill_color, 0.25f);
+        append_focus_highlight_preview(bucket, width, height, "widget/gallery/slider", highlight, true);
     }
     return bucket;
 }
@@ -889,7 +924,8 @@ auto build_list_preview(Widgets::ListStyle const& style,
     bucket.alpha_indices.clear();
     bucket.layer_indices.clear();
     if (state.focused) {
-        append_focus_highlight_preview(bucket, width, height, "widget/gallery/list");
+        auto highlight = lighten_color(style.item_selected_color, 0.20f);
+        append_focus_highlight_preview(bucket, width, height, "widget/gallery/list", highlight, true);
     }
     return bucket;
 }
@@ -1268,10 +1304,13 @@ static auto build_tree_preview(Widgets::TreeStyle const& style,
     }
 
     if (state.focused) {
+        auto highlight = lighten_color(style.row_selected_color, 0.20f);
         append_focus_highlight_preview(bucket,
                                        layout_info.bounds.width(),
                                        layout_info.bounds.height(),
-                                       "widget/gallery/tree");
+                                       "widget/gallery/tree",
+                                       highlight,
+                                       true);
     }
     return bucket;
 }
@@ -1799,6 +1838,7 @@ auto build_gallery_bucket(PathSpace& space,
             layout.button_footprint.include(*button_label_bounds);
         }
         layout.button_footprint.normalize();
+        expand_for_focus_margin(layout.button_footprint);
         cursor_y += widget_height + 48.0f;
     }
 
@@ -1850,6 +1890,7 @@ auto build_gallery_bucket(PathSpace& space,
             layout.toggle_footprint.include(*toggle_label_bounds);
         }
         layout.toggle_footprint.normalize();
+        expand_for_focus_margin(layout.toggle_footprint);
         cursor_y += toggle_style.height + 40.0f;
     }
 
@@ -1919,6 +1960,7 @@ auto build_gallery_bucket(PathSpace& space,
             layout.slider_footprint.include(*layout.slider_caption);
         }
         layout.slider_footprint.normalize();
+        expand_for_focus_margin(layout.slider_footprint);
 
         if (caption_bucket) {
             pending.emplace_back(std::move(*caption_bucket));
@@ -1981,6 +2023,7 @@ auto build_gallery_bucket(PathSpace& space,
             layout.list_footprint.include(*layout.list_caption);
         }
         layout.list_footprint.normalize();
+        expand_for_focus_margin(layout.list_footprint);
 
         float content_top = cursor_y + list_style.border_thickness;
         for (std::size_t index = 0; index < list_items.size(); ++index) {
@@ -2080,6 +2123,7 @@ auto build_gallery_bucket(PathSpace& space,
             layout.stack_footprint.include(*layout.stack_caption);
         }
         layout.stack_footprint.normalize();
+        expand_for_focus_margin(layout.stack_footprint);
         max_width = std::max(max_width, layout.stack.bounds.max_x);
         max_height = std::max(max_height, layout.stack.bounds.max_y);
         cursor_y += stack_preview.bounds.height() + 36.0f;
@@ -2165,6 +2209,7 @@ auto build_gallery_bucket(PathSpace& space,
             layout.tree_footprint.include(*layout.tree_caption);
         }
         layout.tree_footprint.normalize();
+        expand_for_focus_margin(layout.tree_footprint);
         max_width = std::max(max_width, layout.tree.bounds.max_x);
         max_height = std::max(max_height, layout.tree.bounds.max_y);
         cursor_y += tree_preview.bounds.height() + 48.0f;
@@ -2373,6 +2418,7 @@ struct WidgetsExampleContext {
     bool tree_pointer_toggle = false;
     bool debug_capture_pending = false;
     int debug_capture_index = 0;
+    bool debug_capture_after_refresh = false;
 };
 
 static void write_debug_dump(WidgetsExampleContext const& ctx, std::filesystem::path const& path) {
@@ -2972,7 +3018,17 @@ static bool refresh_focus_target_from_space(WidgetsExampleContext& ctx) {
             ctx.focus_target = *mapped;
         }
     }
-    return ctx.focus_target != previous;
+    bool const changed = (ctx.focus_target != previous);
+
+    if (changed
+        && previous == FocusTarget::Slider
+        && ctx.focus_target != FocusTarget::Slider
+        && debug_capture_enabled()
+        && ctx.debug_capture_index < 32) {
+        ctx.debug_capture_after_refresh = true;
+    }
+
+    return changed;
 }
 
 static bool set_focus_target(WidgetsExampleContext& ctx,
@@ -2994,6 +3050,9 @@ static bool set_focus_target(WidgetsExampleContext& ctx,
         }
         changed |= reload_widget_states(ctx);
         changed |= refresh_focus_target_from_space(ctx);
+        if (debug_capture_enabled() && (changed || target_changed) && ctx.debug_capture_index < 32) {
+            ctx.debug_capture_after_refresh = true;
+        }
     }
     return changed || target_changed;
 }
@@ -3070,31 +3129,87 @@ static void refresh_gallery(WidgetsExampleContext& ctx) {
         }
     }
 
+    std::optional<std::string> resolved_focus_path = focused_widget_path;
+    if (!resolved_focus_path || resolved_focus_path->empty()) {
+        switch (ctx.focus_target) {
+        case FocusTarget::Button:
+            resolved_focus_path = ctx.button_paths.root.getPath();
+            break;
+        case FocusTarget::Toggle:
+            resolved_focus_path = ctx.toggle_paths.root.getPath();
+            break;
+        case FocusTarget::Slider:
+            resolved_focus_path = ctx.slider_paths.root.getPath();
+            break;
+        case FocusTarget::List:
+            resolved_focus_path = ctx.list_paths.root.getPath();
+            break;
+        case FocusTarget::Tree:
+            resolved_focus_path = ctx.tree_paths.root.getPath();
+            break;
+        }
+    }
+
+    auto const focus_matches = [&](WidgetPath const& path) {
+        return resolved_focus_path && *resolved_focus_path == path.getPath();
+    };
+
+    auto copy_with_focus = [&](auto const& state, WidgetPath const& path) {
+        auto copy = state;
+        bool should_focus = focus_matches(path);
+        if (copy.focused != should_focus) {
+            copy.focused = should_focus;
+        }
+        return copy;
+    };
+
+    auto button_preview_state = copy_with_focus(ctx.button_state, ctx.button_paths.root);
+    auto toggle_preview_state = copy_with_focus(ctx.toggle_state, ctx.toggle_paths.root);
+    auto slider_preview_state = copy_with_focus(ctx.slider_state, ctx.slider_paths.root);
+    auto list_preview_state = copy_with_focus(ctx.list_state, ctx.list_paths.root);
+    auto tree_preview_state = copy_with_focus(ctx.tree_state, ctx.tree_paths.root);
+
+    if (debug_capture_enabled()) {
+        auto print_focus = [&](char const* label, bool focused) {
+            std::cout << "[focus] " << label << " preview_focused="
+                      << std::boolalpha << focused << std::noboolalpha << '\n';
+        };
+        std::cout << "[focus] resolved_path="
+                  << (resolved_focus_path ? *resolved_focus_path : std::string{"<none>"})
+                  << " slider_state.focused=" << std::boolalpha << ctx.slider_state.focused
+                  << " preview_slider.focused=" << slider_preview_state.focused
+                  << std::noboolalpha << '\n';
+        print_focus("button", button_preview_state.focused);
+        print_focus("toggle", toggle_preview_state.focused);
+        print_focus("list", list_preview_state.focused);
+        print_focus("tree", tree_preview_state.focused);
+    }
+
     ctx.gallery = publish_gallery_scene(*ctx.space,
                                         view,
                                         ctx.button_paths,
                                         ctx.button_style,
-                                        ctx.button_state,
+                                        button_preview_state,
                                         ctx.button_label,
                                         ctx.toggle_paths,
                                         ctx.toggle_style,
-                                        ctx.toggle_state,
+                                        toggle_preview_state,
                                         ctx.slider_paths,
                                         ctx.slider_style,
-                                        ctx.slider_state,
+                                        slider_preview_state,
                                         ctx.slider_range,
                                         ctx.list_paths,
                                         ctx.list_style,
-                                        ctx.list_state,
+                                        list_preview_state,
                                         ctx.list_items,
                                         ctx.stack_params,
                                         ctx.stack_layout,
                                         ctx.tree_paths,
                                         ctx.tree_style,
-                                        ctx.tree_state,
+                                        tree_preview_state,
                                         ctx.tree_nodes,
                                         ctx.theme,
-                                        focused_widget_path);
+                                        resolved_focus_path);
 
     if (debug_capture_enabled() && ctx.slider_state.dragging) {
         if (ctx.gallery.layout.slider_caption) {
@@ -3112,9 +3227,12 @@ static void refresh_gallery(WidgetsExampleContext& ctx) {
         }
     }
 
-    if (!ctx.slider_binding.widget.root.getPath().empty()) {
-        ctx.slider_binding.options.dirty_rect = make_dirty_hint(ctx.gallery.layout.slider_footprint);
+    if (debug_capture_enabled() && ctx.debug_capture_after_refresh && ctx.debug_capture_index < 32) {
+        ctx.debug_capture_pending = true;
     }
+
+    ctx.debug_capture_after_refresh = false;
+
 }
 
 static auto dispatch_button(WidgetsExampleContext& ctx,
