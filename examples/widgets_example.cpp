@@ -7,6 +7,7 @@
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/PipelineFlags.hpp>
+#include <pathspace/ui/TextBuilder.hpp>
 #include <pathspace/layer/io/PathIOMouse.hpp>
 
 #include <algorithm>
@@ -31,6 +32,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -63,8 +65,9 @@ namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
 namespace WidgetReducers = SP::UI::Builders::Widgets::Reducers;
 namespace WidgetFocus = SP::UI::Builders::Widgets::Focus;
 namespace Diagnostics = SP::UI::Builders::Diagnostics;
+namespace TextBuilder = SP::UI::Builders::Text;
+using TextBuildResult = TextBuilder::BuildResult;
 
-constexpr int kGlyphRows = 7;
 constexpr float kDefaultMargin = 32.0f;
 constexpr unsigned int kKeycodeTab = 0x30;        // macOS virtual key codes
 constexpr unsigned int kKeycodeSpace = 0x31;
@@ -290,51 +293,6 @@ static auto desaturate(std::array<float, 4> color, float amount) -> std::array<f
     return mix_color(color, gray, amount);
 }
 
-struct GlyphPattern {
-    char ch = ' ';
-    int width = 5;
-    std::array<std::uint8_t, kGlyphRows> rows{};
-};
-
-constexpr std::array<GlyphPattern, 36> kGlyphPatterns = {{
-    {'A', 5, {0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001}},
-    {'B', 5, {0b11110, 0b10001, 0b10001, 0b11110, 0b10001, 0b10001, 0b11110}},
-    {'C', 5, {0b01111, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b01111}},
-    {'D', 5, {0b11110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11110}},
-    {'E', 5, {0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111}},
-    {'F', 5, {0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000}},
-    {'G', 5, {0b01111, 0b10000, 0b10000, 0b10011, 0b10001, 0b10001, 0b01111}},
-    {'H', 5, {0b10001, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001}},
-    {'I', 5, {0b01110, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110}},
-    {'J', 5, {0b00111, 0b00010, 0b00010, 0b00010, 0b10010, 0b10010, 0b01100}},
-    {'K', 5, {0b10001, 0b10010, 0b10100, 0b11000, 0b10100, 0b10010, 0b10001}},
-    {'L', 5, {0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11111}},
-    {'M', 5, {0b10001, 0b11011, 0b10101, 0b10101, 0b10001, 0b10001, 0b10001}},
-    {'N', 5, {0b10001, 0b11001, 0b10101, 0b10101, 0b10011, 0b10001, 0b10001}},
-    {'O', 5, {0b01110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110}},
-    {'P', 5, {0b11110, 0b10001, 0b10001, 0b11110, 0b10000, 0b10000, 0b10000}},
-    {'Q', 5, {0b01110, 0b10001, 0b10001, 0b10001, 0b10101, 0b10010, 0b01101}},
-    {'R', 5, {0b11110, 0b10001, 0b10001, 0b11110, 0b10100, 0b10010, 0b10001}},
-    {'S', 5, {0b01111, 0b10000, 0b10000, 0b01110, 0b00001, 0b00001, 0b11110}},
-    {'T', 5, {0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100}},
-    {'U', 5, {0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110}},
-    {'V', 5, {0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01010, 0b00100}},
-    {'W', 5, {0b10001, 0b10001, 0b10001, 0b10101, 0b10101, 0b10101, 0b01010}},
-    {'X', 5, {0b10001, 0b10001, 0b01010, 0b00100, 0b01010, 0b10001, 0b10001}},
-    {'Y', 5, {0b10001, 0b10001, 0b01010, 0b00100, 0b00100, 0b00100, 0b00100}},
-    {'Z', 5, {0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b10000, 0b11111}},
-    {'0', 5, {0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110}},
-    {'1', 5, {0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110}},
-    {'2', 5, {0b01110, 0b10001, 0b00001, 0b00010, 0b00100, 0b01000, 0b11111}},
-    {'3', 5, {0b11110, 0b00001, 0b00001, 0b01110, 0b00001, 0b00001, 0b11110}},
-    {'4', 5, {0b10010, 0b10010, 0b10010, 0b11111, 0b00010, 0b00010, 0b00010}},
-    {'5', 5, {0b11111, 0b10000, 0b10000, 0b11110, 0b00001, 0b00001, 0b11110}},
-    {'6', 5, {0b01110, 0b10000, 0b10000, 0b11110, 0b10001, 0b10001, 0b01110}},
-    {'7', 5, {0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000}},
-    {'8', 5, {0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110}},
-    {'9', 5, {0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b00001, 0b01110}},
-}};
-
 auto identity_transform() -> SceneData::Transform {
     SceneData::Transform t{};
     for (int i = 0; i < 16; ++i) {
@@ -342,12 +300,6 @@ auto identity_transform() -> SceneData::Transform {
     }
     return t;
 }
-
-struct TextBuildResult {
-    SceneData::DrawableBucketSnapshot bucket;
-    float width = 0.0f;
-    float height = 0.0f;
-};
 
 auto build_text_bucket(std::string_view text,
                        float origin_x,
@@ -1369,54 +1321,6 @@ auto replace_value(PathSpace& space, std::string const& path, T const& value) ->
     }
 }
 
-auto to_upper_ascii(char ch) -> char {
-    return static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
-}
-
-auto uppercase_copy(std::string_view value) -> std::string {
-    std::string out(value);
-    std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
-        return static_cast<char>(std::toupper(c));
-    });
-    return out;
-}
-
-auto find_glyph(char ch) -> GlyphPattern const* {
-    for (auto const& glyph : kGlyphPatterns) {
-        if (glyph.ch == ch) {
-            return &glyph;
-        }
-    }
-    return nullptr;
-}
-
-auto glyph_scale(Widgets::TypographyStyle const& typography) -> float {
-    return std::max(0.1f, typography.font_size / static_cast<float>(kGlyphRows));
-}
-
-auto measure_text_width(std::string_view text, Widgets::TypographyStyle const& typography) -> float {
-    auto upper = uppercase_copy(text);
-    float scale = glyph_scale(typography);
-    float spacing = scale * std::max(0.0f, typography.letter_spacing);
-    float width = 0.0f;
-    for (char raw : upper) {
-        if (raw == ' ') {
-            width += scale * 4.0f + spacing;
-            continue;
-        }
-        auto glyph = find_glyph(raw);
-        if (!glyph) {
-            width += scale * 4.0f + spacing;
-            continue;
-        }
-        width += static_cast<float>(glyph->width) * scale + spacing;
-    }
-    if (width > 0.0f) {
-        width -= spacing;
-    }
-    return width;
-}
-
 template <typename Cmd>
 auto read_command(std::vector<std::uint8_t> const& payload, std::size_t offset) -> Cmd {
     Cmd cmd{};
@@ -1550,118 +1454,14 @@ auto build_text_bucket(std::string_view text,
                        std::uint64_t drawable_id,
                        std::string authoring_id,
                        float z_value) -> std::optional<TextBuildResult> {
-    std::vector<SceneData::RectCommand> commands;
-    commands.reserve(text.size() * 8);
-
-    float cursor_x = origin_x;
-    float min_x = std::numeric_limits<float>::max();
-    float min_y = std::numeric_limits<float>::max();
-    float max_x = std::numeric_limits<float>::lowest();
-    float max_y = std::numeric_limits<float>::lowest();
-
-    auto uppercase = uppercase_copy(text);
-    float scale = glyph_scale(typography);
-    float spacing = scale * std::max(0.0f, typography.letter_spacing);
-    float space_advance = scale * 4.0f + spacing;
-
-    for (char raw : uppercase) {
-        if (raw == ' ') {
-            cursor_x += space_advance;
-            continue;
-        }
-        auto glyph = find_glyph(raw);
-        if (!glyph) {
-            cursor_x += space_advance;
-            continue;
-        }
-        for (int row = 0; row < kGlyphRows; ++row) {
-            auto mask = glyph->rows[static_cast<std::size_t>(row)];
-            int col = 0;
-            while (col < glyph->width) {
-                bool filled = (mask & (1u << (glyph->width - 1 - col))) != 0;
-                if (!filled) {
-                    ++col;
-                    continue;
-                }
-                int run_start = col;
-                while (col < glyph->width && (mask & (1u << (glyph->width - 1 - col)))) {
-                    ++col;
-                }
-                float local_min_x = cursor_x + static_cast<float>(run_start) * scale;
-                float local_max_x = cursor_x + static_cast<float>(col) * scale;
-                float local_min_y = origin_y + static_cast<float>(row) * scale;
-                float local_max_y = local_min_y + scale;
-
-                SceneData::RectCommand cmd{};
-                cmd.min_x = local_min_x;
-                cmd.max_x = local_max_x;
-                cmd.min_y = local_min_y;
-                cmd.max_y = local_max_y;
-                cmd.color = color;
-                commands.push_back(cmd);
-
-                min_x = std::min(min_x, local_min_x);
-                min_y = std::min(min_y, local_min_y);
-                max_x = std::max(max_x, local_max_x);
-                max_y = std::max(max_y, local_max_y);
-            }
-        }
-        cursor_x += static_cast<float>(glyph->width) * scale + spacing;
-    }
-
-    if (commands.empty()) {
-        return std::nullopt;
-    }
-
-    SceneData::DrawableBucketSnapshot bucket{};
-    bucket.drawable_ids.push_back(drawable_id);
-    bucket.world_transforms.push_back(identity_transform());
-
-    SceneData::BoundingBox box{};
-    box.min = {min_x, min_y, 0.0f};
-    box.max = {max_x, max_y, 0.0f};
-    bucket.bounds_boxes.push_back(box);
-    bucket.bounds_box_valid.push_back(1);
-
-    SceneData::BoundingSphere sphere{};
-    sphere.center = {(min_x + max_x) * 0.5f, (min_y + max_y) * 0.5f, 0.0f};
-    float dx = max_x - sphere.center[0];
-    float dy = max_y - sphere.center[1];
-    sphere.radius = std::sqrt(dx * dx + dy * dy);
-    bucket.bounds_spheres.push_back(sphere);
-
-    bucket.layers.push_back(5);
-    bucket.z_values.push_back(z_value);
-    bucket.material_ids.push_back(0);
-    bucket.pipeline_flags.push_back(0);
-    bucket.visibility.push_back(1);
-    bucket.command_offsets.push_back(0);
-    bucket.command_counts.push_back(static_cast<std::uint32_t>(commands.size()));
-    bucket.opaque_indices.push_back(0);
-    bucket.alpha_indices.clear();
-    bucket.layer_indices.clear();
-    bucket.clip_head_indices.push_back(-1);
-
-    bucket.command_kinds.resize(commands.size(),
-                                static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect));
-    bucket.command_payload.resize(commands.size() * sizeof(SceneData::RectCommand));
-    std::uint8_t* payload = bucket.command_payload.data();
-    for (std::size_t i = 0; i < commands.size(); ++i) {
-        std::memcpy(payload + i * sizeof(SceneData::RectCommand),
-                    &commands[i],
-                    sizeof(SceneData::RectCommand));
-    }
-
-    bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
-        drawable_id, std::move(authoring_id), 0, 0});
-    bucket.drawable_fingerprints.push_back(drawable_id);
-
-TextBuildResult result{
-        .bucket = std::move(bucket),
-        .width = max_x - min_x,
-        .height = max_y - min_y,
-    };
-    return result;
+    return TextBuilder::BuildTextBucket(text,
+                                        origin_x,
+                                        origin_y,
+                                        typography,
+                                        color,
+                                        drawable_id,
+                                        std::move(authoring_id),
+                                        z_value);
 }
 
 static auto widget_bounds_from_text(TextBuildResult const& text) -> std::optional<WidgetBounds> {
@@ -1803,7 +1603,7 @@ auto build_gallery_bucket(PathSpace& space,
             cursor_y + widget_height,
         };
 
-        float label_width = measure_text_width(button_label, button_style.typography);
+        float label_width = TextBuilder::MeasureTextWidth(button_label, button_style.typography);
         float label_line_height = button_style.typography.line_height;
        float label_x = left + std::max(0.0f, (button_style.width - label_width) * 0.5f);
        float label_top = cursor_y + std::max(0.0f, (button_style.height - label_line_height) * 0.5f);
