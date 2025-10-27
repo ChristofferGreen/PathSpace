@@ -855,6 +855,57 @@ auto UpdateTreeState(PathSpace& space,
                      TreePaths const& paths,
                      TreeState const& new_state) -> SP::Expected<bool>;
 
+struct TreePreviewRect {
+    float min_x = 0.0f;
+    float min_y = 0.0f;
+    float max_x = 0.0f;
+    float max_y = 0.0f;
+
+    [[nodiscard]] auto width() const -> float {
+        return std::max(0.0f, max_x - min_x);
+    }
+
+    [[nodiscard]] auto height() const -> float {
+        return std::max(0.0f, max_y - min_y);
+    }
+};
+
+struct TreePreviewRowLayout {
+    std::string id;
+    std::string label;
+    int depth = 0;
+    bool expandable = false;
+    bool expanded = false;
+    bool loading = false;
+    bool enabled = true;
+    TreePreviewRect row_bounds{};
+    TreePreviewRect toggle_bounds{};
+};
+
+struct TreePreviewLayout {
+    TreePreviewRect bounds{};
+    float content_top = 0.0f;
+    float row_height = 0.0f;
+    TreeStyle style{};
+    TreeState state{};
+    std::vector<TreePreviewRowLayout> rows;
+};
+
+struct TreePreviewOptions {
+    std::string authoring_root;
+    bool pulsing_highlight = true;
+};
+
+struct TreePreviewResult {
+    SP::UI::Scene::DrawableBucketSnapshot bucket;
+    TreePreviewLayout layout;
+};
+
+auto BuildTreePreview(TreeStyle const& style,
+                      std::span<TreeNode const> nodes,
+                      TreeState const& state,
+                      TreePreviewOptions const& options = {}) -> TreePreviewResult;
+
 enum class StackAxis : std::uint8_t {
     Horizontal = 0,
     Vertical = 1,
@@ -1211,8 +1262,15 @@ struct WidgetTheme {
     std::array<float, 4> muted_text_color{0.70f, 0.72f, 0.78f, 1.0f};
 };
 
+struct ThemeSelection {
+    WidgetTheme theme{};
+    std::string canonical_name;
+    bool recognized = true;
+};
+
 auto MakeDefaultWidgetTheme() -> WidgetTheme;
 auto MakeSunsetWidgetTheme() -> WidgetTheme;
+auto SetTheme(std::optional<std::string> const& requested_name) -> ThemeSelection;
 auto ApplyTheme(WidgetTheme const& theme, ButtonParams& params) -> void;
 auto ApplyTheme(WidgetTheme const& theme, ToggleParams& params) -> void;
 auto ApplyTheme(WidgetTheme const& theme, SliderParams& params) -> void;

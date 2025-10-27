@@ -21,7 +21,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
-#include <limits>
 #include <iostream>
 #include <functional>
 #include <optional>
@@ -77,27 +76,126 @@ constexpr unsigned int kKeycodeRight = 0x7C;
 constexpr unsigned int kKeycodeDown = 0x7D;
 constexpr unsigned int kKeycodeUp = 0x7E;
 
-auto select_theme_from_env() -> Widgets::WidgetTheme {
-    const char* env = std::getenv("WIDGETS_EXAMPLE_THEME");
-    if (!env) {
-        return Widgets::MakeDefaultWidgetTheme();
-    }
-    std::string value(env);
+static bool g_debug_capture_enabled = [] {
+    const char* env = std::getenv("WIDGETS_EXAMPLE_DEBUG_CAPTURE");
+    return env && env[0] != '\0' && env[0] != '0';
+}();
+
+static auto debug_capture_enabled() -> bool {
+    return g_debug_capture_enabled;
+}
+
+static void set_debug_capture_enabled(bool enabled) {
+    g_debug_capture_enabled = enabled;
+}
+
+struct CommandLineOptions {
+    std::optional<std::string> screenshot_path;
+    std::optional<std::string> theme_name;
+    bool debug_capture = debug_capture_enabled();
+    bool show_help = false;
+};
+
+static auto parse_debug_value(std::string value) -> std::optional<bool> {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
         return static_cast<char>(std::tolower(ch));
     });
-    if (value == "sunset") {
-        return Widgets::MakeSunsetWidgetTheme();
+    if (value == "1" || value == "true" || value == "on" || value == "yes") {
+        return true;
     }
-    return Widgets::MakeDefaultWidgetTheme();
+    if (value == "0" || value == "false" || value == "off" || value == "no") {
+        return false;
+    }
+    return std::nullopt;
 }
 
-static auto debug_capture_enabled() -> bool {
-    static int cached = [] {
-        const char* env = std::getenv("WIDGETS_EXAMPLE_DEBUG_CAPTURE");
-        return (env && env[0] != '\0' && env[0] != '0') ? 1 : 0;
-    }();
-    return cached != 0;
+static void print_usage() {
+    std::cout << "widgets_example options:\n"
+              << "  --screenshot <path>   Save a PNG screenshot of the window then exit\n"
+              << "  --theme <name>        Apply a named widget theme (sunset [default], skylight)\n"
+              << "  --debug[=on|off]      Toggle debug capture logs and dumps (alias: --no-debug)\n";
+}
+
+static auto parse_command_line(int argc, char** argv) -> std::optional<CommandLineOptions> {
+    CommandLineOptions options{};
+    for (int i = 1; i < argc; ++i) {
+        std::string arg(argv[i]);
+        if (arg == "--screenshot") {
+            if (i + 1 < argc) {
+                std::string value(argv[++i]);
+                if (value.empty()) {
+                    std::cerr << "widgets_example: --screenshot requires a file path\n";
+                    return std::nullopt;
+                }
+                options.screenshot_path = std::move(value);
+            } else {
+                std::cerr << "widgets_example: --screenshot requires a file path\n";
+                return std::nullopt;
+            }
+        } else if (arg.rfind("--screenshot=", 0) == 0) {
+            std::string value = arg.substr(std::string("--screenshot=").size());
+            if (value.empty()) {
+                std::cerr << "widgets_example: --screenshot requires a file path\n";
+                return std::nullopt;
+            }
+            options.screenshot_path = std::move(value);
+        } else if (arg == "--theme") {
+            if (i + 1 < argc) {
+                std::string value(argv[++i]);
+                if (value.empty()) {
+                    std::cerr << "widgets_example: --theme requires a theme name\n";
+                    return std::nullopt;
+                }
+                options.theme_name = std::move(value);
+            } else {
+                std::cerr << "widgets_example: --theme requires a theme name\n";
+                return std::nullopt;
+            }
+        } else if (arg.rfind("--theme=", 0) == 0) {
+            std::string value = arg.substr(std::string("--theme=").size());
+            if (value.empty()) {
+                std::cerr << "widgets_example: --theme requires a theme name\n";
+                return std::nullopt;
+            }
+            options.theme_name = std::move(value);
+        } else if (arg == "--debug") {
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                std::string value(argv[++i]);
+                if (auto parsed = parse_debug_value(std::move(value))) {
+                    options.debug_capture = *parsed;
+                } else {
+                    std::cerr << "widgets_example: invalid --debug value (expected on/off, true/false, or 1/0)\n";
+                    return std::nullopt;
+                }
+            } else {
+                options.debug_capture = true;
+            }
+        } else if (arg == "--no-debug") {
+            options.debug_capture = false;
+        } else if (arg.rfind("--debug=", 0) == 0) {
+            std::string value = arg.substr(std::string("--debug=").size());
+            if (value.empty()) {
+                std::cerr << "widgets_example: --debug requires a value (on/off)\n";
+                return std::nullopt;
+            }
+            if (auto parsed = parse_debug_value(std::move(value))) {
+                options.debug_capture = *parsed;
+            } else {
+                std::cerr << "widgets_example: invalid --debug value (expected on/off, true/false, or 1/0)\n";
+                return std::nullopt;
+            }
+        } else if (arg == "--help") {
+            options.show_help = true;
+            return options;
+        }
+    }
+
+    if (options.screenshot_path && options.screenshot_path->empty()) {
+        std::cerr << "widgets_example: screenshot path cannot be empty\n";
+        return std::nullopt;
+    }
+
+    return options;
 }
 
 struct WidgetBounds {
@@ -143,6 +241,28 @@ struct WidgetBounds {
         return std::max(0.0f, max_y - min_y);
     }
 };
+
+static auto widget_bounds_from_preview_rect(Widgets::TreePreviewRect const& rect) -> WidgetBounds {
+    WidgetBounds bounds{
+        rect.min_x,
+        rect.min_y,
+        rect.max_x,
+        rect.max_y,
+    };
+    bounds.normalize();
+    return bounds;
+}
+
+static auto widget_bounds_from_preview_rect(Widgets::TreePreviewRect const& rect,
+                                            float dx,
+                                            float dy) -> WidgetBounds {
+    WidgetBounds bounds = widget_bounds_from_preview_rect(rect);
+    bounds.min_x += dx;
+    bounds.max_x += dx;
+    bounds.min_y += dy;
+    bounds.max_y += dy;
+    return bounds;
+}
 
 struct ListLayout {
     WidgetBounds bounds;
@@ -754,77 +874,6 @@ auto build_slider_preview(Widgets::SliderStyle const& style,
         append_focus_highlight_preview(bucket, width, height, "widget/gallery/slider", highlight, true);
     }
     return bucket;
-}
-
-struct TreeRowInfo {
-    std::string id;
-    std::string label;
-    int depth = 0;
-    bool enabled = true;
-    bool expandable = false;
-    bool expanded = false;
-    bool loading = false;
-};
-
-static auto compute_tree_rows(std::vector<Widgets::TreeNode> const& nodes,
-                              Widgets::TreeState const& state) -> std::vector<TreeRowInfo> {
-    std::unordered_map<std::string, std::size_t> index;
-    index.reserve(nodes.size());
-    for (std::size_t i = 0; i < nodes.size(); ++i) {
-        index.emplace(nodes[i].id, i);
-    }
-
-    std::unordered_map<std::string, std::vector<std::size_t>> children;
-    children.reserve(nodes.size());
-    std::vector<std::size_t> roots;
-    roots.reserve(nodes.size());
-    for (std::size_t i = 0; i < nodes.size(); ++i) {
-        auto const& node = nodes[i];
-        auto& bucket = children[node.parent_id];
-        bucket.push_back(i);
-        if (node.parent_id.empty()) {
-            roots.push_back(i);
-        }
-    }
-
-    std::unordered_set<std::string> expanded(state.expanded_ids.begin(), state.expanded_ids.end());
-    std::unordered_set<std::string> loading(state.loading_ids.begin(), state.loading_ids.end());
-
-    std::vector<TreeRowInfo> rows;
-    rows.reserve(nodes.size());
-
-    std::function<void(std::size_t, int)> visit = [&](std::size_t node_index, int depth) {
-        auto const& node = nodes[node_index];
-        auto child_it = children.find(node.id);
-        bool has_children = (child_it != children.end()) && !child_it->second.empty();
-        bool expandable = has_children || node.expandable;
-        bool expanded_flag = expandable && expanded.count(node.id) > 0;
-        bool loading_flag = loading.count(node.id) > 0;
-
-        rows.push_back(TreeRowInfo{
-            .id = node.id,
-            .label = node.label,
-            .depth = depth,
-            .enabled = node.enabled,
-            .expandable = expandable,
-            .expanded = expanded_flag,
-            .loading = loading_flag,
-        });
-
-        if (has_children && expanded_flag) {
-            for (auto child_index : child_it->second) {
-                visit(child_index, depth + 1);
-            }
-        }
-    };
-
-    if (roots.empty() && !nodes.empty()) {
-        roots.push_back(0);
-    }
-    for (auto root_index : roots) {
-        visit(root_index, 0);
-    }
-    return rows;
 }
 
 static auto build_stack_preview(Widgets::StackLayoutStyle const& style,
@@ -4146,31 +4195,27 @@ int main(int argc, char** argv) {
     AppRootPath appRoot{"/system/applications/widgets_example"};
     AppRootPathView appRootView{appRoot.getPath()};
 
-    std::optional<std::string> screenshot_path;
-    for (int i = 1; i < argc; ++i) {
-        std::string arg(argv[i]);
-        if (arg == "--screenshot") {
-            if (i + 1 < argc) {
-                screenshot_path = std::string(argv[++i]);
-            } else {
-                std::cerr << "widgets_example: --screenshot requires a file path\n";
-                return 1;
-            }
-        } else if (arg.rfind("--screenshot=", 0) == 0) {
-            screenshot_path = arg.substr(std::string("--screenshot=").size());
-        } else if (arg == "--help") {
-            std::cout << "widgets_example options:\n"
-                      << "  --screenshot <path>   Save a PNG screenshot of the window then exit\n";
-            return 0;
-        }
-    }
-
-    if (screenshot_path && screenshot_path->empty()) {
-        std::cerr << "widgets_example: screenshot path cannot be empty\n";
+    auto options = parse_command_line(argc, argv);
+    if (!options) {
         return 1;
     }
 
-    auto theme = select_theme_from_env();
+    if (options->show_help) {
+        print_usage();
+        return 0;
+    }
+
+    set_debug_capture_enabled(options->debug_capture);
+
+    auto screenshot_path = std::move(options->screenshot_path);
+    auto theme_name = std::move(options->theme_name);
+
+    auto theme_selection = Widgets::SetTheme(theme_name);
+    if (theme_name && !theme_selection.recognized) {
+        std::cerr << "widgets_example: unknown theme '" << *theme_name
+                  << "', falling back to " << theme_selection.canonical_name << "\n";
+    }
+    auto theme = std::move(theme_selection.theme);
 
     auto& trace = widget_trace();
     trace.init_from_env();

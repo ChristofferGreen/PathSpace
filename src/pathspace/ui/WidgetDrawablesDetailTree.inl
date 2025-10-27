@@ -125,7 +125,9 @@ inline auto build_tree_bucket(Widgets::TreeStyle const& style,
                               std::vector<Widgets::TreeNode> const& nodes,
                               Widgets::TreeState const& state,
                               std::string const& authoring_root = {},
-                              bool pulsing_highlight = false) -> SceneData::DrawableBucketSnapshot {
+                              bool pulsing_highlight = false,
+                              Widgets::TreePreviewLayout* preview_layout = nullptr)
+    -> SceneData::DrawableBucketSnapshot {
     auto rows = flatten_tree_rows(nodes, state);
 
     float const row_height = std::max(style.row_height, 1.0f);
@@ -212,6 +214,21 @@ inline auto build_tree_bucket(Widgets::TreeStyle const& style,
         0});
     bucket.drawable_fingerprints.push_back(0x41A00001ull);
 
+    if (preview_layout != nullptr) {
+        preview_layout->bounds = Widgets::TreePreviewRect{
+            background_box.min[0],
+            background_box.min[1],
+            background_box.max[0],
+            background_box.max[1],
+        };
+        preview_layout->content_top = style.border_thickness;
+        preview_layout->row_height = row_height;
+        preview_layout->style = style;
+        preview_layout->state = state;
+        preview_layout->rows.clear();
+        preview_layout->rows.reserve(rows.size());
+    }
+
     auto make_row_color = [&](TreeRowSnapshot const& row) -> std::array<float, 4> {
         if (!row.enabled) {
             return style.row_disabled_color;
@@ -243,6 +260,15 @@ inline auto build_tree_bucket(Widgets::TreeStyle const& style,
         row_box.min = {content_left, row_top, 0.0f};
         row_box.max = {content_right, row_bottom, 0.0f};
 
+        auto make_preview_rect = [](SceneData::BoundingBox const& box) -> Widgets::TreePreviewRect {
+            return Widgets::TreePreviewRect{
+                .min_x = box.min[0],
+                .min_y = box.min[1],
+                .max_x = box.max[0],
+                .max_y = box.max[1],
+            };
+        };
+
         std::uint64_t row_id = 0x41A10000ull + static_cast<std::uint64_t>(i);
         push_drawable(row_id, row_box, 1, 0.05f + static_cast<float>(i) * 0.002f);
         bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
@@ -273,14 +299,14 @@ inline auto build_tree_bucket(Widgets::TreeStyle const& style,
             0});
         bucket.drawable_fingerprints.push_back(row_id);
 
-        if (row.expandable) {
-            float const toggle_origin = content_left + style.indent_per_level * static_cast<float>(row.depth);
-            SceneData::BoundingBox toggle_box{};
-            toggle_box.min = {toggle_origin, row_top + (row_height - toggle_size) * 0.5f, 0.0f};
-            toggle_box.max = {toggle_origin + toggle_size,
-                              toggle_box.min[1] + toggle_size,
-                              0.0f};
+        float const toggle_origin = content_left + style.indent_per_level * static_cast<float>(row.depth);
+        SceneData::BoundingBox toggle_box{};
+        toggle_box.min = {toggle_origin, row_top + (row_height - toggle_size) * 0.5f, 0.0f};
+        toggle_box.max = {toggle_origin + toggle_size,
+                          toggle_box.min[1] + toggle_size,
+                          0.0f};
 
+        if (row.expandable) {
             std::uint64_t toggle_id = 0x41A20000ull + static_cast<std::uint64_t>(i);
             push_drawable(toggle_id, toggle_box, 2, 0.10f + static_cast<float>(i) * 0.002f);
             bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
@@ -310,6 +336,22 @@ inline auto build_tree_bucket(Widgets::TreeStyle const& style,
                 0,
                 0});
             bucket.drawable_fingerprints.push_back(toggle_id);
+        } else {
+            toggle_box.max = toggle_box.min;
+        }
+
+        if (preview_layout != nullptr) {
+            Widgets::TreePreviewRowLayout layout_row{};
+            layout_row.id = row.id;
+            layout_row.label = row.label;
+            layout_row.depth = row.depth;
+            layout_row.expandable = row.expandable;
+            layout_row.expanded = row.expanded;
+            layout_row.loading = row.loading;
+            layout_row.enabled = row.enabled;
+            layout_row.row_bounds = make_preview_rect(row_box);
+            layout_row.toggle_bounds = make_preview_rect(toggle_box);
+            preview_layout->rows.push_back(std::move(layout_row));
         }
     }
 

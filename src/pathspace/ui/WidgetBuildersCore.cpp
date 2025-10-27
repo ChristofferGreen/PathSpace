@@ -890,6 +890,34 @@ auto BuildListPreview(Widgets::ListStyle const& style_input,
     return result;
 }
 
+auto BuildTreePreview(Widgets::TreeStyle const& style_input,
+                      std::span<Widgets::TreeNode const> nodes_input,
+                      Widgets::TreeState const& state_input,
+                      Widgets::TreePreviewOptions const& options) -> Widgets::TreePreviewResult {
+    std::vector<Widgets::TreeNode> nodes(nodes_input.begin(), nodes_input.end());
+    if (auto status = validate_tree_nodes(nodes); status) {
+        nodes = finalize_tree_nodes(std::move(nodes));
+    } else {
+        nodes.clear();
+    }
+
+    Widgets::TreeStyle style = sanitize_tree_style(style_input);
+    Widgets::TreeState state = sanitize_tree_state(state_input, style, nodes);
+
+    Widgets::TreePreviewLayout layout{};
+    auto bucket = build_tree_bucket(style,
+                                    nodes,
+                                    state,
+                                    options.authoring_root,
+                                    options.pulsing_highlight,
+                                    &layout);
+
+    Widgets::TreePreviewResult result{};
+    result.bucket = std::move(bucket);
+    result.layout = std::move(layout);
+    return result;
+}
+
 auto UpdateTreeState(PathSpace& space,
                      Widgets::TreePaths const& paths,
                      Widgets::TreeState const& new_state) -> SP::Expected<bool> {
@@ -1056,6 +1084,37 @@ auto MakeSunsetWidgetTheme() -> WidgetTheme {
     theme.accent_text_color = {0.996f, 0.949f, 0.902f, 1.0f};
     theme.muted_text_color = {0.855f, 0.698f, 0.612f, 1.0f};
     return theme;
+}
+
+auto SetTheme(std::optional<std::string> const& requested_name) -> ThemeSelection {
+    ThemeSelection selection{};
+    selection.theme = MakeSunsetWidgetTheme();
+    selection.canonical_name = "sunset";
+    selection.recognized = true;
+
+    if (!requested_name || requested_name->empty()) {
+        return selection;
+    }
+
+    std::string normalized = *requested_name;
+    std::transform(normalized.begin(),
+                   normalized.end(),
+                   normalized.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+
+    if (normalized == "sunset") {
+        return selection;
+    }
+
+    if (normalized == "skylight" || normalized == "default") {
+        selection.theme = MakeDefaultWidgetTheme();
+        selection.canonical_name = "skylight";
+        selection.recognized = true;
+        return selection;
+    }
+
+    selection.recognized = false;
+    return selection;
 }
 
 namespace {
