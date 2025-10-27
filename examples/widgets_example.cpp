@@ -930,7 +930,11 @@ static auto build_tree_preview(Widgets::TreeStyle const& style,
     layout_info.row_height = preview_result.layout.row_height;
     layout_info.rows.clear();
     layout_info.rows.reserve(preview_result.layout.rows.size());
-    for (auto const& row : preview_result.layout.rows) {
+
+    auto bucket = std::move(preview_result.bucket);
+
+    for (std::size_t index = 0; index < preview_result.layout.rows.size(); ++index) {
+        auto const& row = preview_result.layout.rows[index];
         layout_info.rows.push_back(TreeRowLayout{
             .bounds = widget_bounds_from_preview_rect(row.row_bounds),
             .node_id = row.id,
@@ -942,9 +946,41 @@ static auto build_tree_preview(Widgets::TreeStyle const& style,
             .loading = row.loading,
             .enabled = row.enabled && preview_result.layout.state.enabled,
         });
+
+        auto const& layout_row = layout_info.rows.back();
+        float const row_top = layout_row.bounds.min_y;
+        float const toggle_right = layout_row.toggle.max_x;
+
+        float label_x = toggle_right + 10.0f;
+        float const label_height = style.label_typography.line_height;
+        float text_top = row_top + std::max(0.0f, (layout_info.row_height - label_height) * 0.5f);
+        float baseline = text_top + style.label_typography.baseline_shift;
+
+        auto text_color = style.text_color;
+        if (!layout_row.enabled || !state.enabled) {
+            text_color = desaturate(text_color, 0.4f);
+        }
+        if (layout_row.loading) {
+            text_color = lighten(text_color, 0.15f);
+        }
+
+        auto authoring_id = std::string("widget/gallery/tree/label/")
+            + (layout_row.node_id.empty() ? "placeholder" : layout_row.node_id);
+
+        auto label = build_text_bucket(layout_row.label.empty() ? "(node)" : layout_row.label,
+                                       label_x,
+                                       baseline,
+                                       style.label_typography,
+                                       text_color,
+                                       0x41A30000ull + static_cast<std::uint64_t>(index),
+                                       authoring_id,
+                                       0.2f);
+        if (label) {
+            append_bucket(bucket, label->bucket);
+        }
     }
 
-    return std::move(preview_result.bucket);
+    return bucket;
 }
 
 template <typename T>
