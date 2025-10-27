@@ -86,6 +86,77 @@ auto finalize_tree_nodes(std::vector<TreeNode> nodes) -> std::vector<TreeNode> {
     return nodes;
 }
 
+auto sanitize_list_style(Widgets::ListStyle style,
+                         std::size_t item_count) -> Widgets::ListStyle {
+    style.width = std::max(style.width, 96.0f);
+    style.item_height = std::max(style.item_height, 24.0f);
+    float radius_limit = std::min(style.width,
+                                  style.item_height * static_cast<float>(std::max<std::size_t>(item_count, 1u))) * 0.5f;
+    style.corner_radius = std::clamp(style.corner_radius, 0.0f, radius_limit);
+    style.border_thickness = std::clamp(style.border_thickness,
+                                        0.0f,
+                                        style.item_height * 0.5f);
+    style.item_typography.font_size = std::max(style.item_typography.font_size, 1.0f);
+    style.item_typography.line_height = std::max(style.item_typography.line_height,
+                                                 style.item_typography.font_size);
+    style.item_typography.letter_spacing = std::max(style.item_typography.letter_spacing, 0.0f);
+    return style;
+}
+
+auto sanitize_list_state(Widgets::ListState state,
+                         std::vector<Widgets::ListItem> const& items,
+                         Widgets::ListStyle const& style) -> Widgets::ListState {
+    auto sanitize_index = [&](std::int32_t index) -> std::int32_t {
+        if (items.empty()) {
+            return -1;
+        }
+        if (index < 0) {
+            return -1;
+        }
+        if (index >= static_cast<std::int32_t>(items.size())) {
+            index = static_cast<std::int32_t>(items.size()) - 1;
+        }
+        auto const find_enabled = [&](std::int32_t start, std::int32_t step) -> std::int32_t {
+            for (std::int32_t candidate = start;
+                 candidate >= 0 && candidate < static_cast<std::int32_t>(items.size());
+                 candidate += step) {
+                auto idx = static_cast<std::size_t>(candidate);
+                if (items[idx].enabled) {
+                    return candidate;
+                }
+            }
+            return -1;
+        };
+        auto idx = static_cast<std::size_t>(index);
+        if (items[idx].enabled) {
+            return index;
+        }
+        auto forward = find_enabled(index + 1, 1);
+        if (forward >= 0) {
+            return forward;
+        }
+        auto backward = find_enabled(index - 1, -1);
+        return backward;
+    };
+
+    Widgets::ListState sanitized = state;
+    sanitized.enabled = state.enabled;
+    sanitized.selected_index = sanitize_index(state.selected_index);
+    sanitized.hovered_index = sanitize_index(state.hovered_index);
+    sanitized.scroll_offset = std::max(state.scroll_offset, 0.0f);
+
+    float const content_span = style.item_height * static_cast<float>(std::max<std::size_t>(items.size(), 1u));
+    float const max_scroll = std::max(0.0f, content_span - style.item_height);
+    sanitized.scroll_offset = std::clamp(sanitized.scroll_offset, 0.0f, max_scroll);
+
+    if (!sanitized.enabled) {
+        sanitized.hovered_index = -1;
+        sanitized.selected_index = -1;
+    }
+    sanitized.focused = sanitized.enabled && state.focused;
+    return sanitized;
+}
+
 auto sanitize_tree_state(TreeState state,
                          TreeStyle const& style,
                          std::vector<TreeNode> const& nodes) -> TreeState {
@@ -418,14 +489,7 @@ auto CreateList(PathSpace& space,
         }
     }
 
-    Widgets::ListStyle style = params.style;
-    style.width = std::max(style.width, 96.0f);
-    style.item_height = std::max(style.item_height, 24.0f);
-    style.corner_radius = std::clamp(style.corner_radius, 0.0f, std::min(style.width, style.item_height * static_cast<float>(std::max<std::size_t>(items.size(), 1u))) * 0.5f);
-    style.border_thickness = std::clamp(style.border_thickness, 0.0f, style.item_height * 0.5f);
-    style.item_typography.font_size = std::max(style.item_typography.font_size, 1.0f);
-    style.item_typography.line_height = std::max(style.item_typography.line_height, style.item_typography.font_size);
-    style.item_typography.letter_spacing = std::max(style.item_typography.letter_spacing, 0.0f);
+    Widgets::ListStyle style = sanitize_list_style(params.style, items.size());
 
     auto first_enabled = std::find_if(items.begin(), items.end(), [](auto const& entry) {
         return entry.enabled;
@@ -437,6 +501,7 @@ auto CreateList(PathSpace& space,
         : -1;
     defaultState.hovered_index = -1;
     defaultState.scroll_offset = 0.0f;
+    defaultState = sanitize_list_state(defaultState, items, style);
 
     if (auto status = write_list_metadata(space,
                                           widgetRoot->getPath(),
@@ -711,45 +776,8 @@ auto UpdateListState(PathSpace& space,
         return std::unexpected(styleValue.error());
     }
 
-    auto sanitize_index = [&](std::int32_t index) -> std::int32_t {
-        if (items.empty()) {
-            return -1;
-        }
-        if (index < 0) {
-            return -1;
-        }
-        if (index >= static_cast<std::int32_t>(items.size())) {
-            index = static_cast<std::int32_t>(items.size()) - 1;
-        }
-        auto is_enabled = [&](std::int32_t candidate) -> bool {
-            auto const idx = static_cast<std::size_t>(candidate);
-            return idx < items.size() && items[idx].enabled;
-        };
-        if (is_enabled(index)) {
-            return index;
-        }
-        for (std::int32_t forward = index + 1; forward < static_cast<std::int32_t>(items.size()); ++forward) {
-            if (is_enabled(forward)) {
-                return forward;
-            }
-        }
-        for (std::int32_t backward = index - 1; backward >= 0; --backward) {
-            if (is_enabled(backward)) {
-                return backward;
-            }
-        }
-        return -1;
-    };
-
-    Widgets::ListState sanitized = new_state;
-    sanitized.enabled = new_state.enabled;
-    sanitized.hovered_index = sanitize_index(new_state.hovered_index);
-    sanitized.selected_index = sanitize_index(new_state.selected_index);
-    sanitized.scroll_offset = std::max(new_state.scroll_offset, 0.0f);
-
-    float const content_span = styleValue->item_height * static_cast<float>(std::max<std::size_t>(items.size(), 1u));
-    float const max_scroll = std::max(0.0f, content_span - styleValue->item_height);
-    sanitized.scroll_offset = std::clamp(sanitized.scroll_offset, 0.0f, max_scroll);
+    Widgets::ListStyle style = sanitize_list_style(*styleValue, items.size());
+    Widgets::ListState sanitized = sanitize_list_state(new_state, items, style);
 
     auto statePath = std::string(paths.state.getPath());
     auto current = read_optional<Widgets::ListState>(space, statePath);
@@ -773,7 +801,7 @@ auto UpdateListState(PathSpace& space,
     if (!pulsing) {
         return std::unexpected(pulsing.error());
     }
-    auto bucket = build_list_bucket(*styleValue, items, sanitized, paths.root.getPath(), *pulsing);
+    auto bucket = build_list_bucket(style, items, sanitized, paths.root.getPath(), *pulsing);
     if (auto status = publish_scene_snapshot(space, appRootView, paths.scene, bucket); !status) {
         return std::unexpected(status.error());
     }
@@ -782,6 +810,84 @@ auto UpdateListState(PathSpace& space,
         return std::unexpected(mark.error());
     }
     return true;
+}
+
+auto BuildListPreview(Widgets::ListStyle const& style_input,
+                      std::span<Widgets::ListItem const> items_input,
+                      Widgets::ListState const& state_input,
+                      Widgets::ListPreviewOptions const& options) -> Widgets::ListPreviewResult {
+    std::vector<Widgets::ListItem> items(items_input.begin(), items_input.end());
+    for (std::size_t index = 0; index < items.size(); ++index) {
+        if (items[index].id.empty()) {
+            items[index].id = "item-" + std::to_string(index);
+        }
+    }
+
+    Widgets::ListStyle style = sanitize_list_style(style_input, items.size());
+    Widgets::ListState state = sanitize_list_state(state_input, items, style);
+
+    auto bucket = build_list_bucket(style,
+                                    items,
+                                    state,
+                                    options.authoring_root,
+                                    options.pulsing_highlight);
+
+    Widgets::ListPreviewLayout layout{};
+    float const item_count = static_cast<float>(std::max<std::size_t>(items.size(), 1u));
+    float const height = style.border_thickness * 2.0f + style.item_height * item_count;
+    layout.bounds = Widgets::ListPreviewRect{
+        0.0f,
+        0.0f,
+        style.width,
+        height,
+    };
+    layout.content_top = style.border_thickness;
+    layout.item_height = style.item_height;
+    layout.border_thickness = style.border_thickness;
+    float available_inset = std::max(0.0f, (style.width - style.border_thickness * 2.0f) * 0.5f);
+    float label_inset = std::clamp(options.label_inset, 0.0f, available_inset);
+    layout.label_inset = label_inset;
+    layout.style = style;
+    layout.state = state;
+
+    layout.rows.reserve(items.size());
+    float label_line_height = style.item_typography.line_height;
+    for (std::size_t index = 0; index < items.size(); ++index) {
+        float row_top = layout.content_top + style.item_height * static_cast<float>(index);
+        float row_bottom = row_top + style.item_height;
+        float row_min_x = style.border_thickness;
+        float row_max_x = style.width - style.border_thickness;
+
+        float label_top = row_top + std::max(0.0f, (style.item_height - label_line_height) * 0.5f);
+        float label_baseline = label_top + style.item_typography.baseline_shift;
+        float label_min_x = row_min_x + label_inset;
+        float label_max_x = std::max(label_min_x, row_max_x - label_inset);
+
+        Widgets::ListPreviewRowLayout row{};
+        row.id = items[index].id;
+        row.enabled = items[index].enabled;
+        row.hovered = (state.hovered_index == static_cast<std::int32_t>(index));
+        row.selected = (state.selected_index == static_cast<std::int32_t>(index));
+        row.row_bounds = Widgets::ListPreviewRect{
+            row_min_x,
+            row_top,
+            row_max_x,
+            row_bottom,
+        };
+        row.label_bounds = Widgets::ListPreviewRect{
+            label_min_x,
+            label_top,
+            label_max_x,
+            label_top + label_line_height,
+        };
+        row.label_baseline = label_baseline;
+        layout.rows.push_back(std::move(row));
+    }
+
+    Widgets::ListPreviewResult result{};
+    result.bucket = std::move(bucket);
+    result.layout = std::move(layout);
+    return result;
 }
 
 auto UpdateTreeState(PathSpace& space,

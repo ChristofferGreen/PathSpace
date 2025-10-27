@@ -756,132 +756,6 @@ auto build_slider_preview(Widgets::SliderStyle const& style,
     return bucket;
 }
 
-auto build_list_preview(Widgets::ListStyle const& style,
-                        std::vector<Widgets::ListItem> const& items,
-                        Widgets::ListState const& state) -> SceneData::DrawableBucketSnapshot {
-    SceneData::DrawableBucketSnapshot bucket{};
-    std::size_t item_count = std::max<std::size_t>(items.size(), 1u);
-    float width = std::max(style.width, 1.0f);
-    float item_height = std::max(style.item_height, 1.0f);
-    float border = std::max(style.border_thickness, 0.0f);
-    float height = item_height * static_cast<float>(item_count) + border * 2.0f;
-
-    auto push_drawable = [&](std::uint64_t drawable_id,
-                             SceneData::BoundingBox const& box,
-                             SceneData::BoundingSphere const& sphere,
-                             int layer,
-                             float z) {
-        bucket.drawable_ids.push_back(drawable_id);
-        bucket.world_transforms.push_back(identity_transform());
-        bucket.bounds_boxes.push_back(box);
-        bucket.bounds_box_valid.push_back(1);
-        bucket.bounds_spheres.push_back(sphere);
-        bucket.layers.push_back(layer);
-        bucket.z_values.push_back(z);
-        bucket.material_ids.push_back(0);
-        bucket.pipeline_flags.push_back(0);
-        bucket.visibility.push_back(1);
-        bucket.command_counts.push_back(1);
-        bucket.opaque_indices.push_back(static_cast<std::uint32_t>(bucket.opaque_indices.size()));
-        bucket.clip_head_indices.push_back(-1);
-    };
-
-    // Background
-    SceneData::BoundingBox background_box{};
-    background_box.min = {0.0f, 0.0f, 0.0f};
-    background_box.max = {width, height, 0.0f};
-
-    SceneData::BoundingSphere background_sphere{};
-    background_sphere.center = {width * 0.5f, height * 0.5f, 0.0f};
-    background_sphere.radius = std::sqrt(background_sphere.center[0] * background_sphere.center[0]
-                                         + background_sphere.center[1] * background_sphere.center[1]);
-
-    push_drawable(0x11570001ull, background_box, background_sphere, 0, 0.0f);
-    bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
-    bucket.command_kinds.push_back(static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect));
-
-    auto background_color = style.background_color;
-    if (!state.enabled) {
-        background_color = desaturate(background_color, 0.4f);
-    }
-
-    SceneData::RoundedRectCommand background{};
-    background.min_x = 0.0f;
-    background.min_y = 0.0f;
-    background.max_x = width;
-    background.max_y = height;
-    background.radius_top_left = style.corner_radius;
-    background.radius_top_right = style.corner_radius;
-    background.radius_bottom_right = style.corner_radius;
-    background.radius_bottom_left = style.corner_radius;
-    background.color = background_color;
-
-    auto payload_offset = bucket.command_payload.size();
-    bucket.command_payload.resize(payload_offset + sizeof(SceneData::RoundedRectCommand));
-    std::memcpy(bucket.command_payload.data() + payload_offset, &background, sizeof(SceneData::RoundedRectCommand));
-
-    bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
-        bucket.drawable_ids.back(), "widget/list/background", 0, 0});
-    bucket.drawable_fingerprints.push_back(0x11570001ull);
-
-    float content_top = border;
-    for (std::size_t index = 0; index < item_count; ++index) {
-        float top = content_top + item_height * static_cast<float>(index);
-        float bottom = top + item_height;
-
-        SceneData::BoundingBox row_box{};
-        row_box.min = {border, top, 0.0f};
-        row_box.max = {width - border, bottom, 0.0f};
-
-        SceneData::BoundingSphere row_sphere{};
-        row_sphere.center = {(row_box.min[0] + row_box.max[0]) * 0.5f,
-                             (row_box.min[1] + row_box.max[1]) * 0.5f,
-                             0.0f};
-        row_sphere.radius = std::sqrt(std::pow(row_box.max[0] - row_sphere.center[0], 2.0f)
-                                      + std::pow(row_box.max[1] - row_sphere.center[1], 2.0f));
-
-        std::uint64_t drawable_id = 0x11570010ull + static_cast<std::uint64_t>(index);
-        push_drawable(drawable_id, row_box, row_sphere, 1, 0.05f + static_cast<float>(index) * 0.001f);
-        bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
-        bucket.command_kinds.push_back(static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect));
-
-        std::array<float, 4> color = style.item_color;
-        bool item_enabled = items.size() > index ? items[index].enabled : true;
-        if (!state.enabled || !item_enabled) {
-            color = desaturate(color, 0.6f);
-        }
-        if (static_cast<int>(index) == state.selected_index) {
-            color = style.item_selected_color;
-        } else if (static_cast<int>(index) == state.hovered_index) {
-            color = style.item_hover_color;
-        }
-
-        SceneData::RectCommand row_rect{};
-        row_rect.min_x = row_box.min[0];
-        row_rect.min_y = row_box.min[1];
-        row_rect.max_x = row_box.max[0];
-        row_rect.max_y = row_box.max[1];
-        row_rect.color = color;
-
-        auto row_payload = bucket.command_payload.size();
-        bucket.command_payload.resize(row_payload + sizeof(SceneData::RectCommand));
-        std::memcpy(bucket.command_payload.data() + row_payload, &row_rect, sizeof(SceneData::RectCommand));
-
-        auto label = std::string("widget/list/item/") + std::to_string(index);
-        bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
-            drawable_id, label, 0, 0});
-        bucket.drawable_fingerprints.push_back(drawable_id);
-    }
-
-    bucket.alpha_indices.clear();
-    bucket.layer_indices.clear();
-    if (state.focused) {
-        auto highlight = lighten_color(style.item_selected_color, 0.20f);
-        append_focus_highlight_preview(bucket, width, height, "widget/gallery/list", highlight, true);
-    }
-    return bucket;
-}
-
 struct TreeRowInfo {
     std::string id;
     std::string label;
@@ -1801,23 +1675,37 @@ auto build_gallery_bucket(PathSpace& space,
         layout.list_caption = list_caption_bounds;
         cursor_y += list_caption_line + 12.0f;
 
-        auto bucket = build_list_preview(list_style, list_items, list_state);
-        translate_bucket(bucket, left, cursor_y);
-        float list_height = list_style.item_height * static_cast<float>(std::max<std::size_t>(list_items.size(), 1u))
-                            + list_style.border_thickness * 2.0f;
-        pending.emplace_back(std::move(bucket));
-        max_width = std::max(max_width, left + list_style.width);
-        max_height = std::max(max_height, cursor_y + list_height);
+        auto preview = Widgets::BuildListPreview(list_style,
+                                                 list_items,
+                                                 list_state,
+                                                 Widgets::ListPreviewOptions{
+                                                     .authoring_root = "widget/gallery/list",
+                                                     .label_inset = 16.0f,
+                                                     .pulsing_highlight = true,
+                                                 });
+        translate_bucket(preview.bucket, left, cursor_y);
+        pending.emplace_back(std::move(preview.bucket));
+        max_width = std::max(max_width, left + preview.layout.bounds.max_x);
+        max_height = std::max(max_height, cursor_y + preview.layout.bounds.max_y);
+
         layout.list.bounds = WidgetBounds{
-            left,
-            cursor_y,
-            left + list_style.width,
-            cursor_y + list_height,
+            preview.layout.bounds.min_x + left,
+            preview.layout.bounds.min_y + cursor_y,
+            preview.layout.bounds.max_x + left,
+            preview.layout.bounds.max_y + cursor_y,
         };
-        layout.list.item_height = list_style.item_height;
-        layout.list.content_top = cursor_y + list_style.border_thickness;
+        layout.list.item_height = preview.layout.item_height;
+        layout.list.content_top = cursor_y + preview.layout.content_top;
         layout.list.item_bounds.clear();
-        layout.list.item_bounds.reserve(list_items.size());
+        layout.list.item_bounds.reserve(preview.layout.rows.size());
+        for (auto const& row : preview.layout.rows) {
+            layout.list.item_bounds.push_back(WidgetBounds{
+                row.row_bounds.min_x + left,
+                row.row_bounds.min_y + cursor_y,
+                row.row_bounds.max_x + left,
+                row.row_bounds.max_y + cursor_y,
+            });
+        }
         layout.list_footprint = layout.list.bounds;
         if (layout.list_caption) {
             layout.list_footprint.include(*layout.list_caption);
@@ -1825,38 +1713,29 @@ auto build_gallery_bucket(PathSpace& space,
         layout.list_footprint.normalize();
         expand_for_focus_margin(layout.list_footprint);
 
-        float content_top = cursor_y + list_style.border_thickness;
-        for (std::size_t index = 0; index < list_items.size(); ++index) {
+        auto const& sanitized_style = preview.layout.style;
+        float list_height = preview.layout.bounds.height();
+        std::size_t label_count = std::min(preview.layout.rows.size(), list_items.size());
+        for (std::size_t index = 0; index < label_count; ++index) {
+            auto const& row = preview.layout.rows[index];
             auto const& item = list_items[index];
-            float row_top = content_top + list_style.item_height * static_cast<float>(index);
-            float row_height = list_style.item_height;
-            Widgets::TypographyStyle item_typography = list_style.item_typography;
-            float text_height = item_typography.line_height;
-            float text_x = left + list_style.border_thickness + 16.0f;
-            float text_top = row_top + std::max(0.0f, (row_height - text_height) * 0.5f);
+            float label_x = left + row.label_bounds.min_x;
+            float label_top = cursor_y + row.label_bounds.min_y;
+            float label_baseline = cursor_y + row.label_baseline;
             auto label = build_text_bucket(item.label,
-                                           text_x,
-                                           text_top + item_typography.baseline_shift,
-                                           item_typography,
-                                           list_style.item_text_color,
+                                           label_x,
+                                           label_baseline,
+                                           sanitized_style.item_typography,
+                                           sanitized_style.item_text_color,
                                            next_drawable_id++,
-                                           "widget/gallery/list/item/" + item.id,
+                                           "widget/gallery/list/item/" + row.id,
                                            0.65f);
             if (label) {
                 pending.emplace_back(std::move(label->bucket));
-                max_width = std::max(max_width, text_x + label->width);
-                max_height = std::max(max_height, text_top + text_height);
+                max_width = std::max(max_width, label_x + label->width);
+                max_height = std::max(max_height, label_top + sanitized_style.item_typography.line_height);
             }
 
-            float row_bottom = row_top + list_style.item_height;
-            float row_min_x = left + list_style.border_thickness;
-            float row_max_x = left + list_style.width - list_style.border_thickness;
-            layout.list.item_bounds.push_back(WidgetBounds{
-                row_min_x,
-                row_top,
-                row_max_x,
-                row_bottom,
-            });
         }
         cursor_y += list_height + 48.0f;
     }
@@ -4466,6 +4345,10 @@ int main(int argc, char** argv) {
                                             "read slider state");
     auto list_state_live = unwrap_or_exit(space.read<Widgets::ListState, std::string>(std::string(list.state.getPath())),
                                           "read list state");
+    auto list_style_live = unwrap_or_exit(space.read<Widgets::ListStyle, std::string>(std::string(list.root.getPath()) + "/meta/style"),
+                                          "read list style");
+    auto list_items_live = unwrap_or_exit(space.read<std::vector<Widgets::ListItem>, std::string>(std::string(list.items.getPath())),
+                                          "read list items");
 
     auto gallery = publish_gallery_scene(space,
                                          appRootView,
@@ -4481,9 +4364,9 @@ int main(int argc, char** argv) {
                                          slider_state_live,
                                          slider_range_live,
                                          list,
-                                         list_params.style,
+                                         list_style_live,
                                          list_state_live,
-                                         list_params.items,
+                                         list_items_live,
                                          stack_desc,
                                          stack_layout_live,
                                          tree,
@@ -4550,9 +4433,9 @@ int main(int argc, char** argv) {
     ctx.button_label = button_params.label;
     ctx.toggle_style = toggle_params.style;
     ctx.slider_style = slider_params.style;
-    ctx.list_style = list_params.style;
+    ctx.list_style = list_style_live;
     ctx.slider_range = slider_range_live;
-    ctx.list_items = list_params.items;
+    ctx.list_items = list_items_live;
     ctx.stack_params = stack_desc;
     ctx.stack_layout = stack_layout_live;
     ctx.tree_style = tree_style_live;

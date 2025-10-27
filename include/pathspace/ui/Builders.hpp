@@ -9,6 +9,7 @@
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/SurfaceTypes.hpp>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstddef>
@@ -20,6 +21,8 @@
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include <pathspace/ui/SceneSnapshotBuilder.hpp>
 
 namespace SP::UI::Builders {
 
@@ -734,6 +737,58 @@ auto CreateList(PathSpace& space,
 auto UpdateListState(PathSpace& space,
                      ListPaths const& paths,
                      ListState const& new_state) -> SP::Expected<bool>;
+
+struct ListPreviewRect {
+    float min_x = 0.0f;
+    float min_y = 0.0f;
+    float max_x = 0.0f;
+    float max_y = 0.0f;
+
+    [[nodiscard]] auto width() const -> float {
+        return std::max(0.0f, max_x - min_x);
+    }
+
+    [[nodiscard]] auto height() const -> float {
+        return std::max(0.0f, max_y - min_y);
+    }
+};
+
+struct ListPreviewRowLayout {
+    std::string id;
+    bool enabled = true;
+    bool hovered = false;
+    bool selected = false;
+    ListPreviewRect row_bounds{};
+    ListPreviewRect label_bounds{};
+    float label_baseline = 0.0f;
+};
+
+struct ListPreviewLayout {
+    ListPreviewRect bounds{};
+    float content_top = 0.0f;
+    float item_height = 0.0f;
+    float border_thickness = 0.0f;
+    float label_inset = 0.0f;
+    ListStyle style{};
+    ListState state{};
+    std::vector<ListPreviewRowLayout> rows;
+};
+
+struct ListPreviewOptions {
+    std::string authoring_root;
+    float label_inset = 16.0f;
+    bool pulsing_highlight = true;
+};
+
+struct ListPreviewResult {
+    SP::UI::Scene::DrawableBucketSnapshot bucket;
+    ListPreviewLayout layout;
+};
+
+auto BuildListPreview(ListStyle const& style,
+                      std::span<ListItem const> items,
+                      ListState const& state,
+                      ListPreviewOptions const& options = {}) -> ListPreviewResult;
 
 struct TreeStyle {
     float width = 280.0f;

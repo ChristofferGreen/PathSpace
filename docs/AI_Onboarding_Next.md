@@ -92,6 +92,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Hit-test auto-render scheduling now has latency coverage (`tests/ui/test_SceneHitTest.cpp`), ensuring the wait/notify path wakes within the 20–200 ms budget (October 21, 2025).
 - Widget binding helpers (`Widgets::Bindings::Dispatch{Button,Toggle,Slider,List}`) emit dirty rect hints, auto-schedule renders, and enqueue ops under `widgets/<id>/ops/inbox/queue` so reducers can react without republishing entire scenes.
 - List widget builder (`Builders::Widgets::CreateList`) plus `UpdateListState` and `DispatchList` land with doctest coverage, enabling selection/hover/scroll ops and expanding `widgets_example`.
+- List preview layout + label placement now flow through `Widgets::BuildListPreview`; widgets_example consumes the helper for gallery previews, leaving the API responsible for row bounds and sanitized style/state (October 27, 2025).
 - `Builders::App::Bootstrap` wires a renderer/surface/window + present policy for a scene in one call, trimming boilerplate in examples/tests (October 21, 2025).
 - `Builders::App::UpdateSurfaceSize` and `Builders::App::PresentToLocalWindow` now own LocalWindow resize/present scaffolding; widgets_example, pixel_noise_example, and paint_example consume the helpers instead of bespoke loops (October 23, 2025).
 - Reducer helpers (`Widgets::Reducers::ReducePending`/`PublishActions`) drain widget ops into `ops/actions/inbox/queue`; widgets_example seeds a sample action and prints the reducer output.

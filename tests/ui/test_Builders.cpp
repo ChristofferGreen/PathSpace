@@ -2673,6 +2673,78 @@ TEST_CASE("Widgets::CreateList publishes snapshot and metadata") {
     CHECK(revision->revision != 0);
 }
 
+TEST_CASE("Widgets::BuildListPreview provides layout geometry") {
+    Widgets::ListStyle style{};
+    style.width = 120.0f;
+    style.item_height = 30.0f;
+    style.border_thickness = 4.0f;
+    style.item_typography.font_size = 16.0f;
+    style.item_typography.line_height = 20.0f;
+    style.item_typography.baseline_shift = 3.0f;
+
+    std::vector<Widgets::ListItem> items{
+        Widgets::ListItem{.id = "alpha", .label = "Alpha", .enabled = true},
+        Widgets::ListItem{.id = "beta", .label = "Beta", .enabled = false},
+        Widgets::ListItem{.id = "gamma", .label = "Gamma", .enabled = true},
+    };
+
+    Widgets::ListState state{};
+    state.enabled = true;
+    state.focused = true;
+    state.hovered_index = 2;
+    state.selected_index = 1; // disabled entry should be remapped
+    state.scroll_offset = 12.0f;
+
+    auto preview = Widgets::BuildListPreview(style, items, state);
+    CHECK(preview.layout.bounds.max_x == doctest::Approx(120.0f));
+    CHECK(preview.layout.bounds.height()
+          == doctest::Approx(preview.layout.border_thickness * 2.0f
+                             + preview.layout.item_height * 3.0f));
+    CHECK(preview.layout.label_inset == doctest::Approx(16.0f));
+    CHECK(preview.layout.state.selected_index == 2);
+    CHECK(preview.layout.state.hovered_index == 2);
+
+    REQUIRE(preview.layout.rows.size() == 3);
+    auto const& row0 = preview.layout.rows[0];
+    CHECK(row0.row_bounds.min_x == doctest::Approx(preview.layout.border_thickness));
+    CHECK(row0.row_bounds.max_x == doctest::Approx(120.0f - preview.layout.border_thickness));
+    CHECK(row0.label_bounds.min_x
+          == doctest::Approx(preview.layout.border_thickness + preview.layout.label_inset));
+    CHECK(row0.label_bounds.height()
+          == doctest::Approx(preview.layout.style.item_typography.line_height));
+    CHECK_FALSE(row0.selected);
+    CHECK_FALSE(row0.hovered);
+
+    auto const& row1 = preview.layout.rows[1];
+    CHECK_FALSE(row1.enabled);
+    CHECK_FALSE(row1.selected);
+
+    auto const& row2 = preview.layout.rows[2];
+    CHECK(row2.hovered);
+    CHECK(row2.selected);
+    CHECK(row2.label_baseline
+          == doctest::Approx(row2.label_bounds.min_y + preview.layout.style.item_typography.baseline_shift));
+
+    REQUIRE_FALSE(preview.bucket.pipeline_flags.empty());
+    CHECK(preview.bucket.pipeline_flags.back() == SP::UI::PipelineFlags::HighlightPulse);
+
+    auto preview_no_pulse = Widgets::BuildListPreview(
+        style,
+        items,
+        state,
+        Widgets::ListPreviewOptions{
+            .authoring_root = "widgets/test/list",
+            .label_inset = 8.0f,
+            .pulsing_highlight = false,
+        });
+    CHECK(preview_no_pulse.layout.label_inset == doctest::Approx(8.0f));
+    REQUIRE_FALSE(preview_no_pulse.bucket.authoring_map.empty());
+    CHECK(preview_no_pulse.bucket.authoring_map.front().authoring_node_id
+          == "widgets/test/list/authoring/list/background");
+    REQUIRE_FALSE(preview_no_pulse.bucket.pipeline_flags.empty());
+    CHECK(preview_no_pulse.bucket.pipeline_flags.back() == 0u);
+}
+
 TEST_CASE("Widgets::CreateTree publishes snapshot and metadata") {
     BuildersFixture fx;
 
