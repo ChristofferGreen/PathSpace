@@ -67,7 +67,10 @@ Keep `docs/AI_Paths.md` in sync if you introduce new metadata keys or queues.
   `TreeCollapse`, `TreeRequestLoad`) when adding new interaction verbs.
 - Implement `Create<Widget>Binding` and `Dispatch<Widget>` in
   `WidgetBindings.cpp`, making sure dirty rect hints and auto-render scheduling
-  respect the new widget’s footprint.
+  respect the new widget’s footprint. Bindings must supply the exact footprint
+  rectangle captured during layout (body + captions/chrome) without padding or
+  cross-widget union. The renderer now owns tile selection and neighbouring
+  damage coalescing.
 
 ### 4. Update reducers and actions
 - Translate new ops into reducer actions inside

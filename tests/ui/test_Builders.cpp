@@ -2012,10 +2012,19 @@ TEST_CASE("Widgets::Bindings::DispatchButton emits dirty hints and widget ops") 
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
     REQUIRE(button);
 
+    auto buttonStyle = fx.space.read<Widgets::ButtonStyle, std::string>(std::string(button->root.getPath()) + "/meta/style");
+    REQUIRE(buttonStyle);
+    DirtyRectHint buttonFootprint{};
+    buttonFootprint.min_x = 0.0f;
+    buttonFootprint.min_y = 0.0f;
+    buttonFootprint.max_x = buttonStyle->width;
+    buttonFootprint.max_y = buttonStyle->height;
+
     auto binding = WidgetBindings::CreateButtonBinding(fx.space,
                                                        fx.root_view(),
                                                        *button,
-                                                       SP::ConcretePathStringView{target->getPath()});
+                                                       SP::ConcretePathStringView{target->getPath()},
+                                                       buttonFootprint);
     REQUIRE(binding);
 
     WidgetBindings::PointerInfo pointer{};
@@ -2062,8 +2071,6 @@ TEST_CASE("Widgets::Bindings::DispatchButton emits dirty hints and widget ops") 
     REQUIRE(hints);
     REQUIRE_FALSE(hints->empty());
     auto const& hint = hints->front();
-    auto buttonStyle = fx.space.read<Widgets::ButtonStyle, std::string>(std::string(button->root.getPath()) + "/meta/style");
-    REQUIRE(buttonStyle);
     auto tile = static_cast<float>(desc.progressive_tile_size_px);
     auto expected_width = std::ceil(buttonStyle->width / tile) * tile;
     auto expected_height = std::ceil(buttonStyle->height / tile) * tile;
@@ -2165,10 +2172,19 @@ TEST_CASE("Widgets::Bindings::DispatchButton honors auto-render flag") {
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
     REQUIRE(button);
 
+    auto buttonStyle = fx.space.read<Widgets::ButtonStyle, std::string>(std::string(button->root.getPath()) + "/meta/style");
+    REQUIRE(buttonStyle);
+    DirtyRectHint buttonFootprint{};
+    buttonFootprint.min_x = 0.0f;
+    buttonFootprint.min_y = 0.0f;
+    buttonFootprint.max_x = buttonStyle->width;
+    buttonFootprint.max_y = buttonStyle->height;
+
     auto binding = WidgetBindings::CreateButtonBinding(fx.space,
                                                        fx.root_view(),
                                                        *button,
                                                        SP::ConcretePathStringView{target->getPath()},
+                                                       buttonFootprint,
                                                        std::nullopt,
                                                        /*auto_render=*/false);
     REQUIRE(binding);
@@ -2233,10 +2249,19 @@ TEST_CASE("Widgets::Bindings::DispatchToggle handles hover/toggle/disable sequen
     auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), toggleParams);
     REQUIRE(toggle);
 
+    auto toggleStyle = fx.space.read<Widgets::ToggleStyle, std::string>(std::string(toggle->root.getPath()) + "/meta/style");
+    REQUIRE(toggleStyle);
+    DirtyRectHint toggleFootprint{};
+    toggleFootprint.min_x = 0.0f;
+    toggleFootprint.min_y = 0.0f;
+    toggleFootprint.max_x = toggleStyle->width;
+    toggleFootprint.max_y = toggleStyle->height;
+
     auto binding = WidgetBindings::CreateToggleBinding(fx.space,
                                                        fx.root_view(),
                                                        *toggle,
-                                                       SP::ConcretePathStringView{target->getPath()});
+                                                       SP::ConcretePathStringView{target->getPath()},
+                                                       toggleFootprint);
     REQUIRE(binding);
 
     WidgetBindings::PointerInfo pointer{};
@@ -2474,10 +2499,19 @@ TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
     auto slider = Widgets::CreateSlider(fx.space, fx.root_view(), sliderParams);
     REQUIRE(slider);
 
+    auto sliderStyle = fx.space.read<Widgets::SliderStyle, std::string>(std::string(slider->root.getPath()) + "/meta/style");
+    REQUIRE(sliderStyle);
+    DirtyRectHint sliderFootprint{};
+    sliderFootprint.min_x = 0.0f;
+    sliderFootprint.min_y = 0.0f;
+    sliderFootprint.max_x = sliderStyle->width;
+    sliderFootprint.max_y = sliderStyle->height;
+
     auto binding = WidgetBindings::CreateSliderBinding(fx.space,
                                                        fx.root_view(),
                                                        *slider,
-                                                       SP::ConcretePathStringView{target->getPath()});
+                                                       SP::ConcretePathStringView{target->getPath()},
+                                                       sliderFootprint);
     REQUIRE(binding);
 
     WidgetBindings::PointerInfo pointer{};
@@ -2758,10 +2792,23 @@ TEST_CASE("Widgets::Bindings::DispatchTree enqueues ops and schedules renders") 
                                               "targets/surfaces/bindings_tree_surface");
     REQUIRE(target);
 
+    auto treeStyle = fx.space.read<Widgets::TreeStyle, std::string>(std::string(tree->root.getPath()) + "/meta/style");
+    REQUIRE(treeStyle);
+    auto treeNodes = fx.space.read<std::vector<Widgets::TreeNode>, std::string>(tree->nodes.getPath());
+    REQUIRE(treeNodes);
+    std::size_t nodeCount = std::max<std::size_t>(treeNodes->size(), 1u);
+    DirtyRectHint treeFootprint{};
+    treeFootprint.min_x = 0.0f;
+    treeFootprint.min_y = 0.0f;
+    treeFootprint.max_x = treeStyle->width;
+    treeFootprint.max_y = treeStyle->border_thickness * 2.0f
+                         + treeStyle->row_height * static_cast<float>(nodeCount);
+
     auto binding = WidgetBindings::CreateTreeBinding(fx.space,
                                                      fx.root_view(),
                                                      *tree,
                                                      SP::ConcretePathStringView{target->getPath()},
+                                                     treeFootprint,
                                                      std::nullopt,
                                                      true);
     REQUIRE(binding);
@@ -3605,10 +3652,23 @@ TEST_CASE("Widgets::Bindings::DispatchList enqueues ops and schedules renders") 
     auto listWidget = Widgets::CreateList(fx.space, fx.root_view(), listParams);
     REQUIRE(listWidget);
 
+    auto listStyle = fx.space.read<Widgets::ListStyle, std::string>(std::string(listWidget->root.getPath()) + "/meta/style");
+    REQUIRE(listStyle);
+    auto listItems = fx.space.read<std::vector<Widgets::ListItem>, std::string>(listWidget->items.getPath());
+    REQUIRE(listItems);
+    std::size_t listCount = std::max<std::size_t>(listItems->size(), 1u);
+    DirtyRectHint listFootprint{};
+    listFootprint.min_x = 0.0f;
+    listFootprint.min_y = 0.0f;
+    listFootprint.max_x = listStyle->width;
+    listFootprint.max_y = listStyle->border_thickness * 2.0f
+                         + listStyle->item_height * static_cast<float>(listCount);
+
     auto binding = WidgetBindings::CreateListBinding(fx.space,
                                                      fx.root_view(),
                                                      *listWidget,
-                                                     SP::ConcretePathStringView{target->getPath()});
+                                                     SP::ConcretePathStringView{target->getPath()},
+                                                     listFootprint);
     REQUIRE(binding);
 
     WidgetBindings::PointerInfo pointer{};
@@ -3725,10 +3785,19 @@ TEST_CASE("Widgets::Reducers::ReducePending routes widget ops to action queues")
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
     REQUIRE(button);
 
+    auto reducersButtonStyle = fx.space.read<Widgets::ButtonStyle, std::string>(std::string(button->root.getPath()) + "/meta/style");
+    REQUIRE(reducersButtonStyle);
+    DirtyRectHint reducersButtonFootprint{};
+    reducersButtonFootprint.min_x = 0.0f;
+    reducersButtonFootprint.min_y = 0.0f;
+    reducersButtonFootprint.max_x = reducersButtonStyle->width;
+    reducersButtonFootprint.max_y = reducersButtonStyle->height;
+
     auto buttonBinding = WidgetBindings::CreateButtonBinding(fx.space,
                                                              fx.root_view(),
                                                              *button,
-                                                             SP::ConcretePathStringView{target->getPath()});
+                                                             SP::ConcretePathStringView{target->getPath()},
+                                                             reducersButtonFootprint);
     REQUIRE(buttonBinding);
 
     WidgetBindings::PointerInfo pointer{};
@@ -3782,10 +3851,23 @@ TEST_CASE("Widgets::Reducers::ReducePending routes widget ops to action queues")
     auto list = Widgets::CreateList(fx.space, fx.root_view(), listParams);
     REQUIRE(list);
 
+    auto reducersListStyle = fx.space.read<Widgets::ListStyle, std::string>(std::string(list->root.getPath()) + "/meta/style");
+    REQUIRE(reducersListStyle);
+    auto reducersListItems = fx.space.read<std::vector<Widgets::ListItem>, std::string>(list->items.getPath());
+    REQUIRE(reducersListItems);
+    std::size_t reducersListCount = std::max<std::size_t>(reducersListItems->size(), 1u);
+    DirtyRectHint reducersListFootprint{};
+    reducersListFootprint.min_x = 0.0f;
+    reducersListFootprint.min_y = 0.0f;
+    reducersListFootprint.max_x = reducersListStyle->width;
+    reducersListFootprint.max_y = reducersListStyle->border_thickness * 2.0f
+                                  + reducersListStyle->item_height * static_cast<float>(reducersListCount);
+
     auto listBinding = WidgetBindings::CreateListBinding(fx.space,
                                                          fx.root_view(),
                                                          *list,
-                                                         SP::ConcretePathStringView{target->getPath()});
+                                                         SP::ConcretePathStringView{target->getPath()},
+                                                         reducersListFootprint);
     REQUIRE(listBinding);
 
     Widgets::ListState listState{};
@@ -4267,10 +4349,19 @@ TEST_CASE("Widgets::Bindings::UpdateStack emits dirty hints and auto render even
     auto stack = Widgets::CreateStack(fx.space, fx.root_view(), stackParams);
     REQUIRE(stack);
 
+    auto stackLayout = Widgets::ReadStackLayout(fx.space, *stack);
+    REQUIRE(stackLayout);
+    DirtyRectHint stackFootprint{};
+    stackFootprint.min_x = 0.0f;
+    stackFootprint.min_y = 0.0f;
+    stackFootprint.max_x = stackLayout->width;
+    stackFootprint.max_y = stackLayout->height;
+
     auto binding = WidgetBindings::CreateStackBinding(fx.space,
                                                       fx.root_view(),
                                                       *stack,
-                                                      SP::ConcretePathStringView{target->getPath()});
+                                                      SP::ConcretePathStringView{target->getPath()},
+                                                      stackFootprint);
     REQUIRE(binding);
 
     auto describe = Widgets::DescribeStack(fx.space, *stack);

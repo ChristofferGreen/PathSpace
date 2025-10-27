@@ -154,6 +154,52 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     }
 
     auto const pixel_count = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    int const tile_size_px = std::max(1, desc.progressive_tile_size_px);
+    int const tiles_x = (width + tile_size_px - 1) / tile_size_px;
+    int const tiles_y = (height + tile_size_px - 1) / tile_size_px;
+
+    auto tile_rect_from_index = [&](std::uint32_t index) -> DamageRect {
+        int const ty = static_cast<int>(index / static_cast<std::uint32_t>(tiles_x));
+        int const tx = static_cast<int>(index % static_cast<std::uint32_t>(tiles_x));
+        int const min_x = std::clamp(tx * tile_size_px, 0, width);
+        int const min_y = std::clamp(ty * tile_size_px, 0, height);
+        int const max_x = std::clamp(min_x + tile_size_px, 0, width);
+        int const max_y = std::clamp(min_y + tile_size_px, 0, height);
+        return DamageRect{min_x, min_y, max_x, max_y};
+    };
+
+    auto enumerate_tile_indices = [&](DamageRect const& rect,
+                                      auto&& fn) {
+        if (rect.empty()) {
+            return;
+        }
+        int min_x = std::clamp(rect.min_x, 0, width);
+        int min_y = std::clamp(rect.min_y, 0, height);
+        int max_x = std::clamp(rect.max_x, 0, width);
+        int max_y = std::clamp(rect.max_y, 0, height);
+        if (min_x >= max_x || min_y >= max_y) {
+            return;
+        }
+
+        int start_tx = min_x / tile_size_px;
+        int start_ty = min_y / tile_size_px;
+        int end_tx = (std::max(max_x - 1, min_x) / tile_size_px);
+        int end_ty = (std::max(max_y - 1, min_y) / tile_size_px);
+
+        start_tx = std::clamp(start_tx, 0, tiles_x - 1);
+        start_ty = std::clamp(start_ty, 0, tiles_y - 1);
+        end_tx = std::clamp(end_tx, 0, tiles_x - 1);
+        end_ty = std::clamp(end_ty, 0, tiles_y - 1);
+
+        for (int ty = start_ty; ty <= end_ty; ++ty) {
+            for (int tx = start_tx; tx <= end_tx; ++tx) {
+                auto index = static_cast<std::uint32_t>(ty) * static_cast<std::uint32_t>(tiles_x)
+                              + static_cast<std::uint32_t>(tx);
+                fn(index);
+            }
+        }
+    };
+
     bool metal_active = false;
 #if defined(__APPLE__) && PATHSPACE_UI_METAL
     bool prefer_metal_backend = params.backend_kind == Builders::RendererKind::Metal2D
@@ -175,17 +221,44 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
 
     std::vector<Builders::DirtyRectHint> dirty_rect_hints;
     std::vector<DamageRect> hint_rects;
+    std::vector<std::uint32_t> hint_tile_indices;
+    std::vector<std::uint32_t> damage_tile_indices;
+    std::vector<DamageRect> damage_tile_rects;
+    std::vector<Builders::DirtyRectHint> damage_tile_hints;
     {
         auto hints_path = target_key + "/hints/dirtyRects";
         auto hints = space_.take<std::vector<Builders::DirtyRectHint>>(hints_path);
         if (hints) {
             dirty_rect_hints = std::move(*hints);
-            hint_rects.reserve(dirty_rect_hints.size());
         } else {
             auto const& error = hints.error();
             if (error.code != SP::Error::Code::NoObjectFound
                 && error.code != SP::Error::Code::NoSuchPath) {
                 return std::unexpected(error);
+            }
+        }
+    }
+
+    if (!dirty_rect_hints.empty()) {
+        hint_tile_indices.reserve(dirty_rect_hints.size());
+        for (auto const& hint : dirty_rect_hints) {
+            DamageRect rect{};
+            rect.min_x = static_cast<int>(std::floor(hint.min_x));
+            rect.min_y = static_cast<int>(std::floor(hint.min_y));
+            rect.max_x = static_cast<int>(std::ceil(hint.max_x));
+            rect.max_y = static_cast<int>(std::ceil(hint.max_y));
+            rect.clamp(width, height);
+            enumerate_tile_indices(rect, [&](std::uint32_t index) {
+                hint_tile_indices.push_back(index);
+            });
+        }
+        if (!hint_tile_indices.empty()) {
+            std::sort(hint_tile_indices.begin(), hint_tile_indices.end());
+            hint_tile_indices.erase(std::unique(hint_tile_indices.begin(), hint_tile_indices.end()),
+                                    hint_tile_indices.end());
+            hint_rects.reserve(hint_tile_indices.size());
+            for (auto index : hint_tile_indices) {
+                hint_rects.push_back(tile_rect_from_index(index));
             }
         }
     }
@@ -383,64 +456,6 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
             }
         }
     }
-    auto append_hint_rect = [&](DamageRect const& rect) {
-        if (rect.empty()) {
-            return;
-        }
-        if (!surface.has_progressive()) {
-            hint_rects.push_back(rect);
-            return;
-        }
-
-        auto const tile_size = surface.progressive_buffer().tile_size();
-        if (tile_size <= 1) {
-            hint_rects.push_back(rect);
-            return;
-        }
-
-        auto const clamp_max_x = std::min(rect.max_x, width);
-        auto const clamp_max_y = std::min(rect.max_y, height);
-        auto const min_x = std::max(rect.min_x, 0);
-        auto const min_y = std::max(rect.min_y, 0);
-
-        auto const start_tx = min_x / tile_size;
-        auto const start_ty = min_y / tile_size;
-        auto const end_tx = (std::max(clamp_max_x - 1, min_x) / tile_size);
-        auto const end_ty = (std::max(clamp_max_y - 1, min_y) / tile_size);
-
-        for (int ty = start_ty; ty <= end_ty; ++ty) {
-            auto const tile_min_y = ty * tile_size;
-            auto const tile_max_y = std::min(tile_min_y + tile_size, height);
-            for (int tx = start_tx; tx <= end_tx; ++tx) {
-                auto const tile_min_x = tx * tile_size;
-                auto const tile_max_x = std::min(tile_min_x + tile_size, width);
-
-                DamageRect tile_rect{
-                    .min_x = tile_min_x,
-                    .min_y = tile_min_y,
-                    .max_x = tile_max_x,
-                    .max_y = tile_max_y,
-                };
-
-                tile_rect.clamp(width, height);
-
-                if (!tile_rect.empty()) {
-                    hint_rects.push_back(tile_rect);
-                }
-            }
-        }
-    };
-
-    for (auto const& hint : dirty_rect_hints) {
-        DamageRect rect{};
-        rect.min_x = static_cast<int>(std::floor(hint.min_x));
-        rect.min_y = static_cast<int>(std::floor(hint.min_y));
-        rect.max_x = static_cast<int>(std::ceil(hint.max_x));
-        rect.max_y = static_cast<int>(std::ceil(hint.max_y));
-        rect.clamp(width, height);
-        append_hint_rect(rect);
-    }
-
     if (!hint_rects.empty()) {
         if (auto* trace = std::getenv("PATHSPACE_TRACE_DAMAGE")) {
             (void)trace;
@@ -453,16 +468,72 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     }
 
     damage.finalize(width, height);
-    if (collect_damage_metrics) {
-        damage_rect_count = static_cast<std::uint64_t>(damage.rectangles().size());
-        damage_coverage_ratio = damage.coverage_ratio(width, height);
-    }
     if (!hint_rects.empty()) {
         if (damage.empty()) {
             damage.replace_with_rects(hint_rects, width, height);
         } else {
             damage.restrict_to(hint_rects);
         }
+    }
+    auto update_damage_tiles = [&]() {
+        damage_tile_indices.clear();
+        damage_tile_rects.clear();
+        damage_tile_hints.clear();
+        if (damage.empty()) {
+            return;
+        }
+
+        if (tile_size_px > 1) {
+            for (auto const& rect : damage.rectangles()) {
+                enumerate_tile_indices(rect, [&](std::uint32_t index) {
+                    damage_tile_indices.push_back(index);
+                });
+            }
+        }
+
+        if (!damage_tile_indices.empty()) {
+            std::sort(damage_tile_indices.begin(), damage_tile_indices.end());
+            damage_tile_indices.erase(std::unique(damage_tile_indices.begin(), damage_tile_indices.end()),
+                                      damage_tile_indices.end());
+            damage_tile_rects.reserve(damage_tile_indices.size());
+            damage_tile_hints.reserve(damage_tile_indices.size());
+            for (auto index : damage_tile_indices) {
+                auto rect = tile_rect_from_index(index);
+                if (rect.empty()) {
+                    continue;
+                }
+                damage_tile_rects.push_back(rect);
+                Builders::DirtyRectHint hint{};
+                hint.min_x = static_cast<float>(rect.min_x);
+                hint.min_y = static_cast<float>(rect.min_y);
+                hint.max_x = static_cast<float>(rect.max_x);
+                hint.max_y = static_cast<float>(rect.max_y);
+                damage_tile_hints.push_back(hint);
+            }
+            if (!damage_tile_rects.empty()) {
+                damage.replace_with_rects(damage_tile_rects, width, height);
+                return;
+            }
+            damage_tile_hints.clear();
+        }
+
+        // Fallback for 1px tiles or when no indices were generated.
+        auto rects = damage.rectangles();
+        damage_tile_hints.reserve(rects.size());
+        for (auto const& rect : rects) {
+            Builders::DirtyRectHint hint{};
+            hint.min_x = static_cast<float>(rect.min_x);
+            hint.min_y = static_cast<float>(rect.min_y);
+            hint.max_x = static_cast<float>(rect.max_x);
+            hint.max_y = static_cast<float>(rect.max_y);
+            damage_tile_hints.push_back(hint);
+        }
+    };
+
+    update_damage_tiles();
+    if (collect_damage_metrics) {
+        damage_rect_count = static_cast<std::uint64_t>(damage.rectangles().size());
+        damage_coverage_ratio = damage.coverage_ratio(width, height);
     }
     bool const has_damage = !damage.empty();
     auto const damage_phase_end = std::chrono::steady_clock::now();
@@ -1462,6 +1533,7 @@ if (!metal_active && has_damage) {
                                       (text_pipeline_mode == TextPipeline::Shaped) ? std::string{"Shaped"}
                                                                                     : std::string{"GlyphQuads"});
     (void)replace_single<bool>(space_, metricsBase + "/textFallbackAllowed", text_fallback_allowed);
+    (void)replace_single(space_, metricsBase + "/damageTiles", damage_tile_hints);
     if (collect_damage_metrics) {
         (void)replace_single<std::uint64_t>(space_, metricsBase + "/damageRectangles", damage_rect_count);
         (void)replace_single<double>(space_, metricsBase + "/damageCoverageRatio", damage_coverage_ratio);
@@ -1509,6 +1581,7 @@ if (!metal_active && has_damage) {
     stats.backend_kind = params.backend_kind;
     stats.materials = material_list;
     stats.resource_residency = std::move(resource_list);
+    stats.damage_tiles = std::move(damage_tile_hints);
     auto const surface_bytes = surface.resident_cpu_bytes();
     auto const cache_bytes = image_cache_.resident_bytes();
     auto const reported_texture_bytes = (target_texture_bytes != 0) ? target_texture_bytes : total_texture_gpu_bytes;

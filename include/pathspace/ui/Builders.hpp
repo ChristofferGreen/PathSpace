@@ -997,6 +997,7 @@ auto CreateButtonBinding(PathSpace& space,
                          AppRootPathView appRoot,
                          ButtonPaths const& paths,
                          ConcretePathView targetPath,
+                         DirtyRectHint footprint,
                          std::optional<DirtyRectHint> dirty_override = std::nullopt,
                          bool auto_render = true) -> SP::Expected<ButtonBinding>;
 
@@ -1004,6 +1005,7 @@ auto CreateToggleBinding(PathSpace& space,
                          AppRootPathView appRoot,
                          TogglePaths const& paths,
                          ConcretePathView targetPath,
+                         DirtyRectHint footprint,
                          std::optional<DirtyRectHint> dirty_override = std::nullopt,
                          bool auto_render = true) -> SP::Expected<ToggleBinding>;
 
@@ -1011,6 +1013,7 @@ auto CreateSliderBinding(PathSpace& space,
                          AppRootPathView appRoot,
                          SliderPaths const& paths,
                          ConcretePathView targetPath,
+                         DirtyRectHint footprint,
                          std::optional<DirtyRectHint> dirty_override = std::nullopt,
                          bool auto_render = true) -> SP::Expected<SliderBinding>;
 
@@ -1036,6 +1039,7 @@ auto CreateListBinding(PathSpace& space,
                        AppRootPathView appRoot,
                        ListPaths const& paths,
                        ConcretePathView targetPath,
+                       DirtyRectHint footprint,
                        std::optional<DirtyRectHint> dirty_override = std::nullopt,
                        bool auto_render = true) -> SP::Expected<ListBinding>;
 
@@ -1043,6 +1047,7 @@ auto CreateTreeBinding(PathSpace& space,
                        AppRootPathView appRoot,
                        TreePaths const& paths,
                        ConcretePathView targetPath,
+                       DirtyRectHint footprint,
                        std::optional<DirtyRectHint> dirty_override = std::nullopt,
                        bool auto_render = true) -> SP::Expected<TreeBinding>;
 
@@ -1050,6 +1055,7 @@ auto CreateStackBinding(PathSpace& space,
                         AppRootPathView appRoot,
                         StackPaths const& paths,
                         ConcretePathView targetPath,
+                        DirtyRectHint footprint,
                         std::optional<DirtyRectHint> dirty_override = std::nullopt,
                         bool auto_render = true) -> SP::Expected<StackBinding>;
 

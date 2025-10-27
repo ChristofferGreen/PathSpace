@@ -98,6 +98,7 @@ Example (abridged):
 - Focus metadata uses the shared path `<app>/widgets/focus/current` (string name of the focused widget). Helper APIs (`Widgets::Focus::*`) keep focus publishes atomic and optionally queue auto-render events.
 - Bindings enqueue dirty hints and auto-render events against the target they drive:
   - Dirty hints: `renderers/<rid>/targets/<kind>/<name>/dirty/rects` via `Renderer::SubmitDirtyRects`.
+    - **Update (October 27, 2025):** Bindings must pass the widget’s recorded footprint rectangle verbatim; PathRenderer2D expands that footprint into tile-aligned damage and handles neighbouring redraws.
   - Auto-render: `renderers/<rid>/targets/<kind>/<name>/events/renderRequested/queue` when `auto_render=true`.
 - Examples/tests assume identifiers stay app-relative and never cross app roots; helper APIs return typed `WidgetPath`, `ScenePath`, or `ConcretePath` values so callers do not hand-write strings.
 

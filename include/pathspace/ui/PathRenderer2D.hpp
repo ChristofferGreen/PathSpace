@@ -72,6 +72,7 @@ public:
         std::uint64_t resource_cpu_bytes = 0;
         std::uint64_t resource_gpu_bytes = 0;
         std::uint64_t texture_gpu_bytes = 0;
+        std::vector<Builders::DirtyRectHint> damage_tiles;
         std::vector<MaterialDescriptor> materials;
         std::vector<MaterialResourceResidency> resource_residency;
     };

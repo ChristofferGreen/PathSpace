@@ -6,6 +6,7 @@
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
+#include <pathspace/layer/io/PathIOMouse.hpp>
 
 #include <algorithm>
 #include <array>
@@ -87,6 +88,14 @@ auto select_theme_from_env() -> Widgets::WidgetTheme {
     return Widgets::MakeDefaultWidgetTheme();
 }
 
+static auto debug_capture_enabled() -> bool {
+    static int cached = [] {
+        const char* env = std::getenv("WIDGETS_EXAMPLE_DEBUG_CAPTURE");
+        return (env && env[0] != '\0' && env[0] != '0') ? 1 : 0;
+    }();
+    return cached != 0;
+}
+
 struct WidgetBounds {
     float min_x = 0.0f;
     float min_y = 0.0f;
@@ -164,14 +173,22 @@ struct TreeLayout {
 
 struct GalleryLayout {
     WidgetBounds button;
+    WidgetBounds button_footprint;
     WidgetBounds toggle;
+    WidgetBounds toggle_footprint;
     WidgetBounds slider;
     WidgetBounds slider_track;
     std::optional<WidgetBounds> slider_caption;
-    WidgetBounds slider_dirty;
+    WidgetBounds slider_footprint;
     ListLayout list;
+    std::optional<WidgetBounds> list_caption;
+    WidgetBounds list_footprint;
     StackPreviewLayout stack;
+    std::optional<WidgetBounds> stack_caption;
+    WidgetBounds stack_footprint;
     TreeLayout tree;
+    std::optional<WidgetBounds> tree_caption;
+    WidgetBounds tree_footprint;
 };
 
 static void write_frame_capture_png_or_exit(SP::UI::Builders::SoftwareFramebuffer const& framebuffer,
@@ -429,33 +446,14 @@ auto append_focus_highlight_preview(SceneData::DrawableBucketSnapshot& bucket,
     bucket.drawable_fingerprints.push_back(drawable_id);
 }
 
-static auto make_dirty_hint(WidgetBounds const& bounds,
-                            std::optional<WidgetBounds> extra = std::nullopt) -> Builders::DirtyRectHint {
-    constexpr float kDirtyPadding = kGalleryFocusExpand + kGalleryFocusThickness;
-
-    auto expand_bounds = [&](WidgetBounds const& source) {
-        WidgetBounds normalized = source;
-        normalized.normalize();
-        float min_x = normalized.min_x - kDirtyPadding;
-        float min_y = normalized.min_y - kDirtyPadding;
-        float max_x = normalized.max_x + kDirtyPadding;
-        float max_y = normalized.max_y + kDirtyPadding;
-        WidgetBounds expanded{min_x, min_y, max_x, max_y};
-        expanded.normalize();
-        return expanded;
-    };
-
-    auto combined = expand_bounds(bounds);
-    if (extra && extra->is_valid()) {
-        auto expanded_extra = expand_bounds(*extra);
-        combined.include(expanded_extra);
-    }
-
+static auto make_dirty_hint(WidgetBounds const& bounds) -> Builders::DirtyRectHint {
+    WidgetBounds normalized = bounds;
+    normalized.normalize();
     Builders::DirtyRectHint hint{};
-    hint.min_x = combined.min_x;
-    hint.min_y = combined.min_y;
-    hint.max_x = combined.max_x;
-    hint.max_y = combined.max_y;
+    hint.min_x = normalized.min_x;
+    hint.min_y = normalized.min_y;
+    hint.max_x = normalized.max_x;
+    hint.max_y = normalized.max_y;
     return hint;
 }
 
@@ -1619,12 +1617,27 @@ auto build_text_bucket(std::string_view text,
         drawable_id, std::move(authoring_id), 0, 0});
     bucket.drawable_fingerprints.push_back(drawable_id);
 
-    TextBuildResult result{
+TextBuildResult result{
         .bucket = std::move(bucket),
         .width = max_x - min_x,
         .height = max_y - min_y,
     };
     return result;
+}
+
+static auto widget_bounds_from_text(TextBuildResult const& text) -> std::optional<WidgetBounds> {
+    if (text.bucket.bounds_boxes.empty()) {
+        return std::nullopt;
+    }
+    auto const& box = text.bucket.bounds_boxes.front();
+    WidgetBounds bounds{
+        box.min[0],
+        box.min[1],
+        box.max[0],
+        box.max[1],
+    };
+    bounds.normalize();
+    return bounds;
 }
 
 auto make_background_bucket(float width, float height) -> SceneData::DrawableBucketSnapshot {
@@ -1753,22 +1766,39 @@ auto build_gallery_bucket(PathSpace& space,
 
         float label_width = measure_text_width(button_label, button_style.typography);
         float label_line_height = button_style.typography.line_height;
-        float label_x = left + std::max(0.0f, (button_style.width - label_width) * 0.5f);
-        float label_top = cursor_y + std::max(0.0f, (button_style.height - label_line_height) * 0.5f);
-        float label_y = label_top + button_style.typography.baseline_shift;
-        auto label = build_text_bucket(button_label,
-                                       label_x,
-                                       label_y,
-                                       button_style.typography,
-                                       button_style.text_color,
-                                       next_drawable_id++,
-                                       "widget/gallery/button/label",
-                                       0.6f);
+       float label_x = left + std::max(0.0f, (button_style.width - label_width) * 0.5f);
+       float label_top = cursor_y + std::max(0.0f, (button_style.height - label_line_height) * 0.5f);
+       float label_y = label_top + button_style.typography.baseline_shift;
+       auto label = build_text_bucket(button_label,
+                                      label_x,
+                                      label_y,
+                                      button_style.typography,
+                                      button_style.text_color,
+                                      next_drawable_id++,
+                                      "widget/gallery/button/label",
+                                      0.6f);
+        std::optional<WidgetBounds> button_label_bounds;
         if (label) {
+            button_label_bounds = widget_bounds_from_text(*label);
+            if (!button_label_bounds) {
+                WidgetBounds fallback{
+                    label_x,
+                    label_top,
+                    label_x + label->width,
+                    label_top + label_line_height,
+                };
+                fallback.normalize();
+                button_label_bounds = fallback;
+            }
             pending.emplace_back(std::move(label->bucket));
             max_width = std::max(max_width, label_x + label->width);
             max_height = std::max(max_height, label_top + label_line_height);
         }
+        layout.button_footprint = layout.button;
+        if (button_label_bounds) {
+            layout.button_footprint.include(*button_label_bounds);
+        }
+        layout.button_footprint.normalize();
         cursor_y += widget_height + 48.0f;
     }
 
@@ -1789,25 +1819,43 @@ auto build_gallery_bucket(PathSpace& space,
         Widgets::TypographyStyle toggle_label_typography = theme.caption;
         float toggle_label_line = toggle_label_typography.line_height;
         float toggle_label_x = left + toggle_style.width + 24.0f;
-        float toggle_label_top = cursor_y + std::max(0.0f, (toggle_style.height - toggle_label_line) * 0.5f);
-        auto label = build_text_bucket("Toggle",
-                                       toggle_label_x,
-                                       toggle_label_top + toggle_label_typography.baseline_shift,
-                                       toggle_label_typography,
-                                       theme.accent_text_color,
-                                       next_drawable_id++,
-                                       "widget/gallery/toggle/label",
-                                       0.6f);
+       float toggle_label_top = cursor_y + std::max(0.0f, (toggle_style.height - toggle_label_line) * 0.5f);
+       auto label = build_text_bucket("Toggle",
+                                      toggle_label_x,
+                                      toggle_label_top + toggle_label_typography.baseline_shift,
+                                      toggle_label_typography,
+                                      theme.accent_text_color,
+                                      next_drawable_id++,
+                                      "widget/gallery/toggle/label",
+                                      0.6f);
+        std::optional<WidgetBounds> toggle_label_bounds;
         if (label) {
+            toggle_label_bounds = widget_bounds_from_text(*label);
+            if (!toggle_label_bounds) {
+                WidgetBounds fallback{
+                    toggle_label_x,
+                    toggle_label_top,
+                    toggle_label_x + label->width,
+                    toggle_label_top + toggle_label_line,
+                };
+                fallback.normalize();
+                toggle_label_bounds = fallback;
+            }
             pending.emplace_back(std::move(label->bucket));
             max_width = std::max(max_width, toggle_label_x + label->width);
             max_height = std::max(max_height, toggle_label_top + toggle_label_line);
         }
+        layout.toggle_footprint = layout.toggle;
+        if (toggle_label_bounds) {
+            layout.toggle_footprint.include(*toggle_label_bounds);
+        }
+        layout.toggle_footprint.normalize();
         cursor_y += toggle_style.height + 40.0f;
     }
 
     // Slider widget with label
     {
+        std::optional<SceneData::DrawableBucketSnapshot> caption_bucket;
         std::string slider_caption = "Volume " + std::to_string(static_cast<int>(std::round(slider_state.value)));
         Widgets::TypographyStyle slider_caption_typography = slider_style.label_typography;
         float slider_caption_line = slider_caption_typography.line_height;
@@ -1820,8 +1868,9 @@ auto build_gallery_bucket(PathSpace& space,
                                          "widget/gallery/slider/caption",
                                          0.6f);
         if (caption) {
-            if (!caption->bucket.bounds_boxes.empty()) {
-                auto const& bounds = caption->bucket.bounds_boxes.front();
+            caption_bucket = std::move(caption->bucket);
+            if (!caption_bucket->bounds_boxes.empty()) {
+                auto const& bounds = caption_bucket->bounds_boxes.front();
                 layout.slider_caption = WidgetBounds{
                     bounds.min[0],
                     bounds.min[1],
@@ -1829,8 +1878,8 @@ auto build_gallery_bucket(PathSpace& space,
                     bounds.max[1],
                 };
             } else {
-                float caption_min_y = std::min(cursor_y, cursor_y + slider_caption_line);
-                float caption_max_y = std::max(cursor_y, cursor_y + slider_caption_line);
+                float caption_min_y = cursor_y;
+                float caption_max_y = cursor_y + slider_caption_line;
                 layout.slider_caption = WidgetBounds{
                     left,
                     caption_min_y,
@@ -1838,7 +1887,6 @@ auto build_gallery_bucket(PathSpace& space,
                     caption_max_y,
                 };
             }
-            pending.emplace_back(std::move(caption->bucket));
             max_width = std::max(max_width, left + caption->width);
             max_height = std::max(max_height, cursor_y + slider_caption_line);
         } else {
@@ -1865,14 +1913,17 @@ auto build_gallery_bucket(PathSpace& space,
             left + slider_style.width,
             slider_center_y + slider_half_track,
         };
-        layout.slider_dirty = layout.slider;
-        layout.slider_dirty.include(layout.slider_track);
+        layout.slider_footprint = layout.slider;
+        layout.slider_footprint.include(layout.slider_track);
         if (layout.slider_caption) {
-            layout.slider_dirty.include(*layout.slider_caption);
+            layout.slider_footprint.include(*layout.slider_caption);
         }
-        layout.slider_dirty.include(layout.toggle);
-        layout.slider_dirty.include(layout.button);
-        layout.slider_dirty.normalize();
+        layout.slider_footprint.normalize();
+
+        if (caption_bucket) {
+            pending.emplace_back(std::move(*caption_bucket));
+        }
+
         cursor_y += slider_style.height + 48.0f;
     }
 
@@ -1880,6 +1931,7 @@ auto build_gallery_bucket(PathSpace& space,
     {
         Widgets::TypographyStyle list_caption_typography = theme.caption;
         float list_caption_line = list_caption_typography.line_height;
+        std::optional<WidgetBounds> list_caption_bounds;
         auto caption = build_text_bucket("Inventory",
                                          left,
                                          cursor_y + list_caption_typography.baseline_shift,
@@ -1889,10 +1941,22 @@ auto build_gallery_bucket(PathSpace& space,
                                          "widget/gallery/list/caption",
                                          0.6f);
         if (caption) {
+            list_caption_bounds = widget_bounds_from_text(*caption);
+            if (!list_caption_bounds) {
+                WidgetBounds fallback{
+                    left,
+                    cursor_y,
+                    left + caption->width,
+                    cursor_y + list_caption_line,
+                };
+                fallback.normalize();
+                list_caption_bounds = fallback;
+            }
             pending.emplace_back(std::move(caption->bucket));
             max_width = std::max(max_width, left + caption->width);
             max_height = std::max(max_height, cursor_y + list_caption_line);
         }
+        layout.list_caption = list_caption_bounds;
         cursor_y += list_caption_line + 12.0f;
 
         auto bucket = build_list_preview(list_style, list_items, list_state);
@@ -1912,6 +1976,11 @@ auto build_gallery_bucket(PathSpace& space,
         layout.list.content_top = cursor_y + list_style.border_thickness;
         layout.list.item_bounds.clear();
         layout.list.item_bounds.reserve(list_items.size());
+        layout.list_footprint = layout.list.bounds;
+        if (layout.list_caption) {
+            layout.list_footprint.include(*layout.list_caption);
+        }
+        layout.list_footprint.normalize();
 
         float content_top = cursor_y + list_style.border_thickness;
         for (std::size_t index = 0; index < list_items.size(); ++index) {
@@ -1953,6 +2022,7 @@ auto build_gallery_bucket(PathSpace& space,
     {
         Widgets::TypographyStyle caption_typography = theme.caption;
         float caption_line = caption_typography.line_height;
+        std::optional<WidgetBounds> stack_caption_bounds;
         auto caption = build_text_bucket("Stack layout preview",
                                          left,
                                          cursor_y + caption_typography.baseline_shift,
@@ -1962,10 +2032,22 @@ auto build_gallery_bucket(PathSpace& space,
                                          "widget/gallery/stack/caption",
                                          0.6f);
         if (caption) {
+            stack_caption_bounds = widget_bounds_from_text(*caption);
+            if (!stack_caption_bounds) {
+                WidgetBounds fallback{
+                    left,
+                    cursor_y,
+                    left + caption->width,
+                    cursor_y + caption_line,
+                };
+                fallback.normalize();
+                stack_caption_bounds = fallback;
+            }
             pending.emplace_back(std::move(caption->bucket));
             max_width = std::max(max_width, left + caption->width);
             max_height = std::max(max_height, cursor_y + caption_line);
         }
+        layout.stack_caption = stack_caption_bounds;
         cursor_y += caption_line + 12.0f;
 
         StackPreviewLayout stack_preview{};
@@ -1993,6 +2075,11 @@ auto build_gallery_bucket(PathSpace& space,
             });
         }
 
+        layout.stack_footprint = layout.stack.bounds;
+        if (layout.stack_caption) {
+            layout.stack_footprint.include(*layout.stack_caption);
+        }
+        layout.stack_footprint.normalize();
         max_width = std::max(max_width, layout.stack.bounds.max_x);
         max_height = std::max(max_height, layout.stack.bounds.max_y);
         cursor_y += stack_preview.bounds.height() + 36.0f;
@@ -2002,6 +2089,7 @@ auto build_gallery_bucket(PathSpace& space,
     {
         Widgets::TypographyStyle caption_typography = theme.caption;
         float caption_line = caption_typography.line_height;
+        std::optional<WidgetBounds> tree_caption_bounds;
         auto caption = build_text_bucket("Tree view preview",
                                          left,
                                          cursor_y + caption_typography.baseline_shift,
@@ -2011,10 +2099,22 @@ auto build_gallery_bucket(PathSpace& space,
                                          "widget/gallery/tree/caption",
                                          0.6f);
         if (caption) {
+            tree_caption_bounds = widget_bounds_from_text(*caption);
+            if (!tree_caption_bounds) {
+                WidgetBounds fallback{
+                    left,
+                    cursor_y,
+                    left + caption->width,
+                    cursor_y + caption_line,
+                };
+                fallback.normalize();
+                tree_caption_bounds = fallback;
+            }
             pending.emplace_back(std::move(caption->bucket));
             max_width = std::max(max_width, left + caption->width);
             max_height = std::max(max_height, cursor_y + caption_line);
         }
+        layout.tree_caption = tree_caption_bounds;
         cursor_y += caption_line + 12.0f;
 
         TreeLayout tree_preview{};
@@ -2060,6 +2160,11 @@ auto build_gallery_bucket(PathSpace& space,
             });
         }
 
+        layout.tree_footprint = layout.tree.bounds;
+        if (layout.tree_caption) {
+            layout.tree_footprint.include(*layout.tree_caption);
+        }
+        layout.tree_footprint.normalize();
         max_width = std::max(max_width, layout.tree.bounds.max_x);
         max_height = std::max(max_height, layout.tree.bounds.max_y);
         cursor_y += tree_preview.bounds.height() + 48.0f;
@@ -2202,6 +2307,26 @@ enum class FocusTarget {
     Tree,
 };
 
+static auto focus_target_to_string(FocusTarget target) -> const char* {
+    switch (target) {
+    case FocusTarget::Button:
+        return "Button";
+    case FocusTarget::Toggle:
+        return "Toggle";
+    case FocusTarget::Slider:
+        return "Slider";
+    case FocusTarget::List:
+        return "List";
+    case FocusTarget::Tree:
+        return "Tree";
+    }
+    return "Unknown";
+}
+
+struct WidgetsExampleContext;
+
+static void write_debug_dump(WidgetsExampleContext const& ctx, std::filesystem::path const& path);
+
 struct WidgetsExampleContext {
     PathSpace* space = nullptr;
     SP::App::AppRootPath app_root{std::string{}};
@@ -2246,7 +2371,85 @@ struct WidgetsExampleContext {
     int focus_tree_index = 0;
     std::string tree_pointer_down_id;
     bool tree_pointer_toggle = false;
+    bool debug_capture_pending = false;
+    int debug_capture_index = 0;
 };
+
+static void write_debug_dump(WidgetsExampleContext const& ctx, std::filesystem::path const& path) {
+    std::ofstream out(path);
+    if (!out) {
+        std::cerr << "widgets_example: failed to write debug dump '" << path.string() << "'\n";
+        return;
+    }
+    out << std::fixed << std::setprecision(3);
+    out << "pointer=" << ctx.pointer_x << "," << ctx.pointer_y
+        << " pointer_down=" << std::boolalpha << ctx.pointer_down
+        << " slider_dragging=" << ctx.slider_dragging << '\n';
+    out << "slider_state value=" << ctx.slider_state.value
+        << " hovered=" << ctx.slider_state.hovered
+        << " focused=" << ctx.slider_state.focused
+        << " dragging=" << ctx.slider_state.dragging << '\n';
+    out << "focus_target=" << focus_target_to_string(ctx.focus_target) << '\n';
+
+    auto print_bounds = [&](std::string_view label, WidgetBounds const& bounds) {
+        out << label << " min=(" << bounds.min_x << ',' << bounds.min_y
+            << ") max=(" << bounds.max_x << ',' << bounds.max_y << ")\n";
+    };
+
+    print_bounds("button.footprint", ctx.gallery.layout.button_footprint);
+    print_bounds("toggle.bounds", ctx.gallery.layout.toggle);
+    print_bounds("toggle.footprint", ctx.gallery.layout.toggle_footprint);
+    print_bounds("slider.bounds", ctx.gallery.layout.slider);
+    print_bounds("slider.track", ctx.gallery.layout.slider_track);
+    if (ctx.gallery.layout.slider_caption) {
+        print_bounds("slider.caption", *ctx.gallery.layout.slider_caption);
+    } else {
+        out << "slider.caption=<missing>\n";
+    }
+    print_bounds("slider.footprint", ctx.gallery.layout.slider_footprint);
+    print_bounds("list.bounds", ctx.gallery.layout.list.bounds);
+    if (ctx.gallery.layout.list_caption) {
+        print_bounds("list.caption", *ctx.gallery.layout.list_caption);
+    } else {
+        out << "list.caption=<missing>\n";
+    }
+    print_bounds("list.footprint", ctx.gallery.layout.list_footprint);
+    print_bounds("stack.bounds", ctx.gallery.layout.stack.bounds);
+    if (ctx.gallery.layout.stack_caption) {
+        print_bounds("stack.caption", *ctx.gallery.layout.stack_caption);
+    } else {
+        out << "stack.caption=<missing>\n";
+    }
+    print_bounds("stack.footprint", ctx.gallery.layout.stack_footprint);
+    print_bounds("tree.bounds", ctx.gallery.layout.tree.bounds);
+    if (ctx.gallery.layout.tree_caption) {
+        print_bounds("tree.caption", *ctx.gallery.layout.tree_caption);
+    } else {
+        out << "tree.caption=<missing>\n";
+    }
+    print_bounds("tree.footprint", ctx.gallery.layout.tree_footprint);
+
+    auto const& rect = ctx.slider_binding.options.dirty_rect;
+    out << "binding.dirty_rect min=(" << rect.min_x << ',' << rect.min_y
+        << ") max=(" << rect.max_x << ',' << rect.max_y << ")\n";
+    out << "binding.auto_render=" << ctx.slider_binding.options.auto_render << '\n';
+
+    if (ctx.space) {
+        auto damage_tiles = ctx.space->read<std::vector<Builders::DirtyRectHint>, std::string>(ctx.target_path + "/output/v1/common/damageTiles");
+        if (damage_tiles) {
+            out << "renderer.damage_tiles=" << damage_tiles->size() << '\n';
+            for (std::size_t idx = 0; idx < damage_tiles->size(); ++idx) {
+                auto const& tile = damage_tiles->at(idx);
+                out << "  tile[" << idx << "]=(" << tile.min_x << ',' << tile.min_y
+                    << ") -> (" << tile.max_x << ',' << tile.max_y << ")\n";
+            }
+        } else {
+            out << "renderer.damage_tiles=<error:" << damage_tiles.error().message.value_or("unavailable") << ">\n";
+        }
+    }
+
+    out << "gallery.size=" << ctx.gallery.width << "x" << ctx.gallery.height << '\n';
+}
 
 static void refresh_gallery(WidgetsExampleContext& ctx);
 
@@ -2893,8 +3096,24 @@ static void refresh_gallery(WidgetsExampleContext& ctx) {
                                         ctx.theme,
                                         focused_widget_path);
 
+    if (debug_capture_enabled() && ctx.slider_state.dragging) {
+        if (ctx.gallery.layout.slider_caption) {
+            auto const& cap = *ctx.gallery.layout.slider_caption;
+            std::cout << "[debug] slider caption bounds while dragging value="
+                      << ctx.slider_state.value << " bounds=("
+                      << cap.min_x << "," << cap.min_y << ") -> ("
+                      << cap.max_x << "," << cap.max_y << ")\n";
+        } else {
+            std::cout << "[debug] slider caption missing while dragging value="
+                      << ctx.slider_state.value << std::endl;
+        }
+        if (ctx.debug_capture_index < 32) {
+            ctx.debug_capture_pending = true;
+        }
+    }
+
     if (!ctx.slider_binding.widget.root.getPath().empty()) {
-        ctx.slider_binding.options.dirty_rect = make_dirty_hint(ctx.gallery.layout.slider_dirty);
+        ctx.slider_binding.options.dirty_rect = make_dirty_hint(ctx.gallery.layout.slider_footprint);
     }
 }
 
@@ -3485,40 +3704,6 @@ static auto slider_pointer_for_value(WidgetsExampleContext const& ctx, float val
     return {x, y};
 }
 
-static void simulate_slider_drag_for_screenshot(WidgetsExampleContext& ctx, float target_value) {
-    auto const start_value = ctx.slider_state.value;
-
-    {
-        auto [x, y] = slider_pointer_for_value(ctx, start_value);
-        PointerOverride pointer(ctx, x, y);
-        Widgets::SliderState desired = ctx.slider_state;
-        desired.hovered = true;
-        desired.dragging = true;
-        desired.value = start_value;
-        if (dispatch_slider(ctx, desired, WidgetBindings::WidgetOpKind::SliderBegin, true)) {
-            refresh_gallery(ctx);
-        }
-    }
-    process_widget_actions(ctx);
-
-    {
-        auto [x, y] = slider_pointer_for_value(ctx, target_value);
-        PointerOverride pointer(ctx, x, y);
-        Widgets::SliderState desired = ctx.slider_state;
-        desired.hovered = true;
-        desired.dragging = true;
-        desired.value = target_value;
-        if (dispatch_slider(ctx, desired, WidgetBindings::WidgetOpKind::SliderUpdate, true)) {
-            refresh_gallery(ctx);
-        }
-    }
-    process_widget_actions(ctx);
-
-    set_focus_target(ctx, FocusTarget::Slider);
-
-    ctx.slider_dragging = true;
-}
-
 static void capture_headless_screenshot(PathSpace& space,
                                         WidgetsExampleContext& ctx,
                                         Builders::App::BootstrapResult const& bootstrap,
@@ -3586,6 +3771,124 @@ static void clear_local_mouse(void* user_data) {
     }
     ctx->pointer_down = false;
     ctx->slider_dragging = false;
+}
+
+constexpr char kSimulatedPointerQueue[] = "/system/devices/in/pointer/default/events";
+
+static auto to_local_button(SP::MouseButton button) -> SP::UI::LocalMouseButton {
+    switch (button) {
+    case SP::MouseButton::Left:
+        return SP::UI::LocalMouseButton::Left;
+    case SP::MouseButton::Right:
+        return SP::UI::LocalMouseButton::Right;
+    case SP::MouseButton::Middle:
+        return SP::UI::LocalMouseButton::Middle;
+    case SP::MouseButton::Button4:
+        return SP::UI::LocalMouseButton::Button4;
+    case SP::MouseButton::Button5:
+        return SP::UI::LocalMouseButton::Button5;
+    }
+    return SP::UI::LocalMouseButton::Left;
+}
+
+static auto make_local_mouse_event(SP::PathIOMouse::Event const& event) -> SP::UI::LocalMouseEvent {
+    SP::UI::LocalMouseEvent local{};
+    switch (event.type) {
+    case SP::MouseEventType::Move:
+        local.type = SP::UI::LocalMouseEventType::Move;
+        local.dx = event.dx;
+        local.dy = event.dy;
+        break;
+    case SP::MouseEventType::AbsoluteMove:
+        local.type = SP::UI::LocalMouseEventType::AbsoluteMove;
+        local.x = event.x;
+        local.y = event.y;
+        break;
+    case SP::MouseEventType::ButtonDown:
+        local.type = SP::UI::LocalMouseEventType::ButtonDown;
+        local.button = to_local_button(event.button);
+        local.x = event.x;
+        local.y = event.y;
+        break;
+    case SP::MouseEventType::ButtonUp:
+        local.type = SP::UI::LocalMouseEventType::ButtonUp;
+        local.button = to_local_button(event.button);
+        local.x = event.x;
+        local.y = event.y;
+        break;
+    case SP::MouseEventType::Wheel:
+        local.type = SP::UI::LocalMouseEventType::Wheel;
+        local.wheel = event.wheel;
+        break;
+    }
+    return local;
+}
+
+static void dispatch_simulated_mouse_event(WidgetsExampleContext& ctx,
+                                           SP::PathIOMouse::Event const& event) {
+    if (!ctx.space) {
+        return;
+    }
+
+    auto inserted = ctx.space->insert(kSimulatedPointerQueue, event);
+    if (!inserted.errors.empty()) {
+        auto const& err = inserted.errors.front();
+        std::cerr << "widgets_example: failed to insert simulated mouse event: "
+                  << err.message.value_or("unknown error") << "\n";
+    }
+
+    auto local = make_local_mouse_event(event);
+    handle_local_mouse(local, &ctx);
+
+    auto consumed = ctx.space->take<SP::PathIOMouse::Event, std::string>(kSimulatedPointerQueue);
+    if (!consumed && consumed.error().code != SP::Error::Code::NoObjectFound
+        && consumed.error().code != SP::Error::Code::NoSuchPath) {
+        std::cerr << "widgets_example: failed to consume simulated mouse event: "
+                  << consumed.error().message.value_or("unknown error") << "\n";
+    }
+}
+
+static void simulate_slider_drag_for_screenshot(WidgetsExampleContext& ctx, float target_value) {
+    if (!ctx.space) {
+        return;
+    }
+
+    float min_value = ctx.slider_range.minimum;
+    float max_value = ctx.slider_range.maximum;
+    if (min_value > max_value) {
+        std::swap(min_value, max_value);
+    }
+    float clamped_target = std::clamp(target_value, min_value, max_value);
+
+    auto const start_value = ctx.slider_state.value;
+    auto [start_x, start_y] = slider_pointer_for_value(ctx, start_value);
+    auto [target_x, target_y] = slider_pointer_for_value(ctx, clamped_target);
+
+    auto send_absolute_move = [&](float x, float y) {
+        SP::PathIOMouse::Event ev{};
+        ev.type = SP::MouseEventType::AbsoluteMove;
+        ev.x = static_cast<int>(std::lround(x));
+        ev.y = static_cast<int>(std::lround(y));
+        dispatch_simulated_mouse_event(ctx, ev);
+        process_widget_actions(ctx);
+    };
+
+    auto send_button_down = [&](float x, float y) {
+        SP::PathIOMouse::Event ev{};
+        ev.type = SP::MouseEventType::ButtonDown;
+        ev.button = SP::MouseButton::Left;
+        ev.x = static_cast<int>(std::lround(x));
+        ev.y = static_cast<int>(std::lround(y));
+        dispatch_simulated_mouse_event(ctx, ev);
+        process_widget_actions(ctx);
+    };
+
+    send_absolute_move(start_x, start_y);
+    send_button_down(start_x, start_y);
+    send_absolute_move(target_x, target_y);
+
+    set_focus_target(ctx, FocusTarget::Slider);
+    ctx.slider_dragging = true;
 }
 
 static bool has_modifier(unsigned int modifiers, unsigned int mask) {
@@ -4351,17 +4654,17 @@ int main(int argc, char** argv) {
                                                                             appRootView,
                                                                             ctx.button_paths,
                                                                             target_view,
-                                                                            make_dirty_hint(ctx.gallery.layout.button)),
+                                                                            make_dirty_hint(ctx.gallery.layout.button_footprint)),
                                         "create button binding");
 
     ctx.toggle_binding = unwrap_or_exit(WidgetBindings::CreateToggleBinding(space,
                                                                             appRootView,
                                                                             ctx.toggle_paths,
                                                                             target_view,
-                                                                            make_dirty_hint(ctx.gallery.layout.toggle)),
+                                                                            make_dirty_hint(ctx.gallery.layout.toggle_footprint)),
                                         "create toggle binding");
 
-    auto slider_dirty_hint = make_dirty_hint(ctx.gallery.layout.slider_dirty);
+    auto slider_dirty_hint = make_dirty_hint(ctx.gallery.layout.slider_footprint);
     ctx.slider_binding = unwrap_or_exit(WidgetBindings::CreateSliderBinding(space,
                                                                             appRootView,
                                                                             ctx.slider_paths,
@@ -4373,28 +4676,36 @@ int main(int argc, char** argv) {
                                                                         appRootView,
                                                                         ctx.list_paths,
                                                                         target_view,
-                                                                        make_dirty_hint(ctx.gallery.layout.list.bounds)),
+                                                                        make_dirty_hint(ctx.gallery.layout.list_footprint)),
                                       "create list binding");
 
     ctx.stack_binding = unwrap_or_exit(WidgetBindings::CreateStackBinding(space,
                                                                           appRootView,
                                                                           ctx.stack_paths,
                                                                           target_view,
-                                                                          make_dirty_hint(ctx.gallery.layout.stack.bounds)),
+                                                                          make_dirty_hint(ctx.gallery.layout.stack_footprint)),
                                        "create stack binding");
 
     ctx.tree_binding = unwrap_or_exit(WidgetBindings::CreateTreeBinding(space,
                                                                         appRootView,
                                                                         ctx.tree_paths,
                                                                         target_view,
-                                                                        make_dirty_hint(ctx.gallery.layout.tree.bounds)),
+                                                                        make_dirty_hint(ctx.gallery.layout.tree_footprint)),
                                       "create tree binding");
 
     if (set_focus_target(ctx, FocusTarget::Button)) {
         refresh_gallery(ctx);
     }
 
-    if (screenshot_path && !trace.replaying()) {
+    if (screenshot_path) {
+        if (trace.replaying()) {
+            run_replay_session(ctx, trace.events());
+            auto const output_path = std::filesystem::path{*screenshot_path};
+            capture_headless_screenshot(space, ctx, bootstrap, output_path);
+            trace.flush();
+            return 0;
+        }
+
         auto const range = ctx.slider_range.maximum - ctx.slider_range.minimum;
         float target_value = ctx.slider_state.value + std::max(range * 0.4f, 5.0f);
         target_value = std::min(ctx.slider_range.maximum, target_value);
@@ -4515,6 +4826,28 @@ int main(int argc, char** argv) {
             total_render_ms = 0.0;
             total_present_ms = 0.0;
             last_report = now;
+        }
+
+        if (ctx.debug_capture_pending) {
+            std::ostringstream base_stream;
+            base_stream << "widgets_example_debug_" << std::setw(3) << std::setfill('0')
+                        << ctx.debug_capture_index;
+            auto base_name = base_stream.str();
+
+            std::filesystem::path txt_path = base_name + ".txt";
+            write_debug_dump(ctx, txt_path);
+
+            std::filesystem::path png_path = base_name + ".png";
+            bool saved = SP::UI::SaveLocalWindowScreenshot(png_path.string().c_str());
+            if (saved) {
+                std::cout << "widgets_example saved debug screenshot to '"
+                          << png_path.string() << "'\n";
+            } else {
+                std::cerr << "widgets_example: failed to save debug screenshot to '"
+                          << png_path.string() << "'\n";
+            }
+            ++ctx.debug_capture_index;
+            ctx.debug_capture_pending = false;
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(4));

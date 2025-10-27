@@ -164,13 +164,13 @@ auto CreateButtonBinding(PathSpace& space,
                          AppRootPathView appRoot,
                          ButtonPaths const& paths,
                          ConcretePathView targetPath,
+                         DirtyRectHint footprint,
                          std::optional<DirtyRectHint> dirty_override,
                          bool auto_render) -> SP::Expected<ButtonBinding> {
-    auto style = read_button_style(space, paths);
-    if (!style) {
+    if (auto style = read_button_style(space, paths); !style) {
         return std::unexpected(style.error());
     }
-    DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(style->width, style->height));
+    DirtyRectHint hint = ensure_valid_hint(dirty_override.value_or(footprint));
     ButtonBinding binding{
         .widget = paths,
         .options = build_options(appRoot,
@@ -186,13 +186,13 @@ auto CreateToggleBinding(PathSpace& space,
                          AppRootPathView appRoot,
                          TogglePaths const& paths,
                          ConcretePathView targetPath,
+                         DirtyRectHint footprint,
                          std::optional<DirtyRectHint> dirty_override,
                          bool auto_render) -> SP::Expected<ToggleBinding> {
-    auto style = read_toggle_style(space, paths);
-    if (!style) {
+    if (auto style = read_toggle_style(space, paths); !style) {
         return std::unexpected(style.error());
     }
-    DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(style->width, style->height));
+    DirtyRectHint hint = ensure_valid_hint(dirty_override.value_or(footprint));
     ToggleBinding binding{
         .widget = paths,
         .options = build_options(appRoot, paths.root, targetPath, hint, auto_render),
@@ -204,13 +204,13 @@ auto CreateSliderBinding(PathSpace& space,
                          AppRootPathView appRoot,
                          SliderPaths const& paths,
                          ConcretePathView targetPath,
+                         DirtyRectHint footprint,
                          std::optional<DirtyRectHint> dirty_override,
                          bool auto_render) -> SP::Expected<SliderBinding> {
-    auto style = read_slider_style(space, paths);
-    if (!style) {
+    if (auto style = read_slider_style(space, paths); !style) {
         return std::unexpected(style.error());
     }
-    DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(style->width, style->height));
+    DirtyRectHint hint = ensure_valid_hint(dirty_override.value_or(footprint));
     SliderBinding binding{
         .widget = paths,
         .options = build_options(appRoot, paths.root, targetPath, hint, auto_render),
@@ -222,22 +222,19 @@ auto CreateListBinding(PathSpace& space,
                        AppRootPathView appRoot,
                        ListPaths const& paths,
                        ConcretePathView targetPath,
+                       DirtyRectHint footprint,
                        std::optional<DirtyRectHint> dirty_override,
                        bool auto_render) -> SP::Expected<ListBinding> {
-    auto style = read_list_style(space, paths);
-    if (!style) {
+    if (auto style = read_list_style(space, paths); !style) {
         return std::unexpected(style.error());
     }
-    auto items = read_list_items(space, paths);
-    if (!items) {
+    if (auto items = read_list_items(space, paths); !items) {
         return std::unexpected(items.error());
     }
 
-    auto item_count = std::max<std::size_t>(items->size(), 1u);
-   float height = style->item_height * static_cast<float>(item_count) + style->border_thickness * 2.0f;
-   DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(style->width, height));
-   ListBinding binding{
-       .widget = paths,
+    DirtyRectHint hint = ensure_valid_hint(dirty_override.value_or(footprint));
+    ListBinding binding{
+        .widget = paths,
         .options = build_options(appRoot, paths.root, targetPath, hint, auto_render),
     };
     return binding;
@@ -247,23 +244,17 @@ auto CreateTreeBinding(PathSpace& space,
                        AppRootPathView appRoot,
                        TreePaths const& paths,
                        ConcretePathView targetPath,
+                       DirtyRectHint footprint,
                        std::optional<DirtyRectHint> dirty_override,
                        bool auto_render) -> SP::Expected<TreeBinding> {
-    auto style = read_tree_style(space, paths);
-    if (!style) {
+    if (auto style = read_tree_style(space, paths); !style) {
         return std::unexpected(style.error());
     }
-    auto nodes = read_tree_nodes(space, paths);
-    if (!nodes) {
+    if (auto nodes = read_tree_nodes(space, paths); !nodes) {
         return std::unexpected(nodes.error());
     }
 
-    std::size_t node_count = std::max<std::size_t>(nodes->size(), 1u);
-    float width = std::max(style->width, 64.0f);
-    float row_height = std::max(style->row_height, 20.0f);
-    float height = style->border_thickness * 2.0f + row_height * static_cast<float>(node_count);
-    DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(width, height));
-
+    DirtyRectHint hint = ensure_valid_hint(dirty_override.value_or(footprint));
     TreeBinding binding{
         .widget = paths,
         .options = build_options(appRoot, paths.root, targetPath, hint, auto_render),
@@ -275,6 +266,7 @@ auto CreateStackBinding(PathSpace& space,
                         AppRootPathView appRoot,
                         StackPaths const& paths,
                         ConcretePathView targetPath,
+                        DirtyRectHint footprint,
                         std::optional<DirtyRectHint> dirty_override,
                         bool auto_render) -> SP::Expected<StackBinding> {
     auto layout = Widgets::ReadStackLayout(space, paths);
@@ -282,9 +274,9 @@ auto CreateStackBinding(PathSpace& space,
         return std::unexpected(layout.error());
     }
 
-    DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(layout->width, layout->height));
-   StackBinding binding{
-       .layout = paths,
+    DirtyRectHint hint = ensure_valid_hint(dirty_override.value_or(footprint));
+    StackBinding binding{
+        .layout = paths,
         .options = build_options(appRoot, paths.root, targetPath, hint, auto_render),
     };
     return binding;

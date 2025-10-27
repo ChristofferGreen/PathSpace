@@ -717,7 +717,9 @@ TEST_CASE("render executes rect commands across passes and encodes pixels") {
     CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveBytesCopied").value() > 0);
     auto damageRects = fx.space.read<uint64_t>(metricsBase + "/damageRectangles");
     REQUIRE(damageRects);
-    CHECK(*damageRects == 1);
+    auto damageTiles = fx.space.read<std::vector<Builders::DirtyRectHint>>(metricsBase + "/damageTiles");
+    REQUIRE(damageTiles);
+    CHECK(damageTiles->size() == *damageRects);
     auto damageCoverage = fx.space.read<double>(metricsBase + "/damageCoverageRatio");
     REQUIRE(damageCoverage);
     CHECK(*damageCoverage == doctest::Approx(1.0));
@@ -1092,7 +1094,9 @@ TEST_CASE("damage metrics reflect localized drawable updates") {
     auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
     auto damageRects = fx.space.read<uint64_t>(metricsBase + "/damageRectangles");
     REQUIRE(damageRects);
-    CHECK(*damageRects == 1);
+    auto damageTilesRemoval = fx.space.read<std::vector<Builders::DirtyRectHint>>(metricsBase + "/damageTiles");
+    REQUIRE(damageTilesRemoval);
+    CHECK(damageTilesRemoval->size() == *damageRects);
 
     auto damageCoverage = fx.space.read<double>(metricsBase + "/damageCoverageRatio");
     REQUIRE(damageCoverage);
@@ -1258,7 +1262,9 @@ TEST_CASE("damage metrics capture drawable removal") {
 
     auto damageRects = fx.space.read<uint64_t>(metricsBase + "/damageRectangles");
     REQUIRE(damageRects);
-    CHECK(*damageRects == 1);
+    auto damageTilesFull = fx.space.read<std::vector<Builders::DirtyRectHint>>(metricsBase + "/damageTiles");
+    REQUIRE(damageTilesFull);
+    CHECK(damageTilesFull->size() == *damageRects);
 
     auto damageCoverage = fx.space.read<double>(metricsBase + "/damageCoverageRatio");
     REQUIRE(damageCoverage);
@@ -1359,7 +1365,9 @@ TEST_CASE("damage metrics detect clear color repaint") {
     auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
     auto damageRects = fx.space.read<uint64_t>(metricsBase + "/damageRectangles");
     REQUIRE(damageRects);
-    CHECK(*damageRects == 1);
+    auto repaintTiles = fx.space.read<std::vector<Builders::DirtyRectHint>>(metricsBase + "/damageTiles");
+    REQUIRE(repaintTiles);
+    CHECK(repaintTiles->size() == *damageRects);
 
     auto damageCoverage = fx.space.read<double>(metricsBase + "/damageCoverageRatio");
     REQUIRE(damageCoverage);
@@ -1493,7 +1501,9 @@ TEST_CASE("damage metrics respect dirty rect hints") {
 
     auto rects = fx.space.read<uint64_t>(metricsBase + "/damageRectangles");
     REQUIRE(rects);
-    CHECK(*rects == 0);
+    auto hintTiles = fx.space.read<std::vector<Builders::DirtyRectHint>>(metricsBase + "/damageTiles");
+    REQUIRE(hintTiles);
+    CHECK(hintTiles->size() == *rects);
 
     auto tilesTotal = fx.space.read<uint64_t>(metricsBase + "/progressiveTilesTotal");
     REQUIRE(tilesTotal);

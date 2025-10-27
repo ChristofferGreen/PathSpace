@@ -665,25 +665,65 @@ TEST_CASE("Widget reducers fuzz harness maintains invariants") {
     auto list_paths = Widgets::CreateList(space, root_view, list_params);
     REQUIRE(list_paths);
 
+    auto button_style = space.read<Widgets::ButtonStyle, std::string>(std::string(button_paths->root.getPath()) + "/meta/style");
+    REQUIRE(button_style);
+    DirtyRectHint button_footprint{};
+    button_footprint.min_x = 0.0f;
+    button_footprint.min_y = 0.0f;
+    button_footprint.max_x = button_style->width;
+    button_footprint.max_y = button_style->height;
+
+    auto toggle_style = space.read<Widgets::ToggleStyle, std::string>(std::string(toggle_paths->root.getPath()) + "/meta/style");
+    REQUIRE(toggle_style);
+    DirtyRectHint toggle_footprint{};
+    toggle_footprint.min_x = 0.0f;
+    toggle_footprint.min_y = 0.0f;
+    toggle_footprint.max_x = toggle_style->width;
+    toggle_footprint.max_y = toggle_style->height;
+
+    auto slider_style = space.read<Widgets::SliderStyle, std::string>(std::string(slider_paths->root.getPath()) + "/meta/style");
+    REQUIRE(slider_style);
+    DirtyRectHint slider_footprint{};
+    slider_footprint.min_x = 0.0f;
+    slider_footprint.min_y = 0.0f;
+    slider_footprint.max_x = slider_style->width;
+    slider_footprint.max_y = slider_style->height;
+
+    auto list_style = space.read<Widgets::ListStyle, std::string>(std::string(list_paths->root.getPath()) + "/meta/style");
+    REQUIRE(list_style);
+    auto list_items = space.read<std::vector<Widgets::ListItem>, std::string>(list_paths->items.getPath());
+    REQUIRE(list_items);
+    std::size_t list_count = std::max<std::size_t>(list_items->size(), 1u);
+    DirtyRectHint list_footprint{};
+    list_footprint.min_x = 0.0f;
+    list_footprint.min_y = 0.0f;
+    list_footprint.max_x = list_style->width;
+    list_footprint.max_y = list_style->border_thickness * 2.0f
+                           + list_style->item_height * static_cast<float>(list_count);
+
     auto button_binding = WidgetBindings::CreateButtonBinding(space,
                                                               root_view,
                                                               *button_paths,
-                                                              SP::ConcretePathStringView{button_target.path});
+                                                              SP::ConcretePathStringView{button_target.path},
+                                                              button_footprint);
     REQUIRE(button_binding);
     auto toggle_binding = WidgetBindings::CreateToggleBinding(space,
                                                               root_view,
                                                               *toggle_paths,
-                                                              SP::ConcretePathStringView{toggle_target.path});
+                                                              SP::ConcretePathStringView{toggle_target.path},
+                                                              toggle_footprint);
     REQUIRE(toggle_binding);
     auto slider_binding = WidgetBindings::CreateSliderBinding(space,
                                                               root_view,
                                                               *slider_paths,
-                                                              SP::ConcretePathStringView{slider_target.path});
+                                                              SP::ConcretePathStringView{slider_target.path},
+                                                              slider_footprint);
     REQUIRE(slider_binding);
     auto list_binding = WidgetBindings::CreateListBinding(space,
                                                           root_view,
                                                           *list_paths,
-                                                          SP::ConcretePathStringView{list_target.path});
+                                                          SP::ConcretePathStringView{list_target.path},
+                                                          list_footprint);
     REQUIRE(list_binding);
 
     auto read_button_state = space.read<Widgets::ButtonState, std::string>(button_paths->state.getPath());
