@@ -239,6 +239,92 @@ auto build_text_bucket(std::string_view text,
 auto append_bucket(SceneData::DrawableBucketSnapshot& dest,
                    SceneData::DrawableBucketSnapshot const& src) -> void;
 
+inline constexpr float kGalleryFocusExpand = 6.0f;
+inline constexpr float kGalleryFocusThickness = 4.0f;
+
+auto append_focus_highlight_preview(SceneData::DrawableBucketSnapshot& bucket,
+                                    float width,
+                                    float height,
+                                    std::string_view authoring_id) -> void {
+    if (width <= 0.0f || height <= 0.0f) {
+        return;
+    }
+
+    float min_x = 0.0f;
+    float min_y = 0.0f;
+    float max_x = width;
+    float max_y = height;
+    if (kGalleryFocusExpand > 0.0f) {
+        min_x = std::min(min_x - kGalleryFocusExpand, 0.0f);
+        min_y = std::min(min_y - kGalleryFocusExpand, 0.0f);
+        max_x = std::max(max_x + kGalleryFocusExpand, width);
+        max_y = std::max(max_y + kGalleryFocusExpand, height);
+    }
+
+    float thickness_limit = std::min(width, height) * 0.5f;
+    float clamped_thickness = std::clamp(kGalleryFocusThickness, 1.0f, thickness_limit);
+
+    std::uint64_t drawable_id = 0xF0C0F100ull + static_cast<std::uint64_t>(bucket.drawable_ids.size());
+    bucket.drawable_ids.push_back(drawable_id);
+    bucket.world_transforms.push_back(identity_transform());
+
+    SceneData::BoundingBox box{};
+    box.min = {min_x, min_y, 0.0f};
+    box.max = {max_x, max_y, 0.0f};
+    bucket.bounds_boxes.push_back(box);
+    bucket.bounds_box_valid.push_back(1);
+
+    SceneData::BoundingSphere sphere{};
+    sphere.center = {(min_x + max_x) * 0.5f, (min_y + max_y) * 0.5f, 0.0f};
+    float radius_x = max_x - sphere.center[0];
+    float radius_y = max_y - sphere.center[1];
+    sphere.radius = std::sqrt(radius_x * radius_x + radius_y * radius_y);
+    bucket.bounds_spheres.push_back(sphere);
+
+    bucket.layers.push_back(8);
+    bucket.z_values.push_back(5.0f);
+    bucket.material_ids.push_back(0);
+    bucket.pipeline_flags.push_back(0);
+    bucket.visibility.push_back(1);
+    bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
+    bucket.command_counts.push_back(4);
+    bucket.opaque_indices.push_back(static_cast<std::uint32_t>(bucket.opaque_indices.size()));
+    bucket.clip_head_indices.push_back(-1);
+
+    auto push_rect = [&](float r_min_x,
+                         float r_min_y,
+                         float r_max_x,
+                         float r_max_y) {
+        SceneData::RectCommand rect{};
+        rect.min_x = r_min_x;
+        rect.min_y = r_min_y;
+        rect.max_x = r_max_x;
+        rect.max_y = r_max_y;
+        rect.color = {0.05f, 0.80f, 0.95f, 1.0f};
+        auto payload_offset = bucket.command_payload.size();
+        bucket.command_payload.resize(payload_offset + sizeof(SceneData::RectCommand));
+        std::memcpy(bucket.command_payload.data() + payload_offset,
+                    &rect,
+                    sizeof(SceneData::RectCommand));
+        bucket.command_kinds.push_back(static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect));
+    };
+
+    push_rect(min_x, min_y, max_x, min_y + clamped_thickness);
+    push_rect(min_x, max_y - clamped_thickness, max_x, max_y);
+    push_rect(min_x, min_y + clamped_thickness, min_x + clamped_thickness, max_y - clamped_thickness);
+    push_rect(max_x - clamped_thickness, min_y + clamped_thickness, max_x, max_y - clamped_thickness);
+
+    std::string authoring = authoring_id.empty()
+                                ? std::string("widget/gallery/focus/highlight")
+                                : std::string(authoring_id) + "/focus";
+    bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
+        drawable_id,
+        std::move(authoring),
+        0,
+        0});
+    bucket.drawable_fingerprints.push_back(drawable_id);
+}
+
 auto build_button_preview(Widgets::ButtonStyle const& style,
                           Widgets::ButtonState const& state) -> SceneData::DrawableBucketSnapshot {
     SceneData::DrawableBucketSnapshot bucket{};
@@ -312,6 +398,9 @@ auto build_button_preview(Widgets::ButtonStyle const& style,
         bucket.command_payload.resize(sizeof(SceneData::RectCommand));
         std::memcpy(bucket.command_payload.data(), &rect, sizeof(SceneData::RectCommand));
         bucket.command_kinds = {static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect)};
+    }
+    if (state.focused) {
+        append_focus_highlight_preview(bucket, width, height, "widget/gallery/button");
     }
     return bucket;
 }
@@ -408,6 +497,9 @@ auto build_toggle_preview(Widgets::ToggleStyle const& style,
         static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect),
         static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect),
     };
+    if (state.focused) {
+        append_focus_highlight_preview(bucket, width, height, "widget/gallery/toggle");
+    }
     return bucket;
 }
 
@@ -539,6 +631,9 @@ auto build_slider_preview(Widgets::SliderStyle const& style,
         static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect),
         static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect),
     };
+    if (state.focused) {
+        append_focus_highlight_preview(bucket, width, height, "widget/gallery/slider");
+    }
     return bucket;
 }
 
@@ -661,6 +756,9 @@ auto build_list_preview(Widgets::ListStyle const& style,
 
     bucket.alpha_indices.clear();
     bucket.layer_indices.clear();
+    if (state.focused) {
+        append_focus_highlight_preview(bucket, width, height, "widget/gallery/list");
+    }
     return bucket;
 }
 
@@ -1037,6 +1135,12 @@ static auto build_tree_preview(Widgets::TreeStyle const& style,
         });
     }
 
+    if (state.focused) {
+        append_focus_highlight_preview(bucket,
+                                       layout_info.bounds.width(),
+                                       layout_info.bounds.height(),
+                                       "widget/gallery/tree");
+    }
     return bucket;
 }
 
