@@ -84,8 +84,8 @@ Environment knobs (all respected by the wrapper and the logger):
   ./build/widgets_example --screenshot out/widgets_gallery.png
   ```
 
-  The helper launches the window, renders a few frames, writes the PNG (creating parent directories when needed), prints the path, and exits. Use this to verify focus highlights, themes, or layout regressions when you can’t interact with the GUI directly.
-- Behind the scenes the command invokes `SP::UI::SaveLocalWindowScreenshot`, which mirrors the window’s last framebuffer/IOSurface to ImageIO, so both software and Metal presenters are supported.
+  The binary now runs entirely headless for this mode: it boots the gallery, drives a scripted slider drag to exercise focus/dirty paths, renders a single frame, writes a PNG via `stb_image_write` (creating parent directories when needed), prints the path, and exits. Use this to verify focus highlights, themes, or layout regressions when you can’t interact with the GUI directly.
+- Because the capture is headless, the LocalWindow bridge is skipped—no IOSurface hand-off is required. If you need to reproduce an interactive issue instead, run without `--screenshot` or use the trace replay helpers below.
 
 ### 1.5 Sanitizer runs on demand
 

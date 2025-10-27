@@ -34,7 +34,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
    ./build/tests/PathSpaceUITests --test-case "PathSurfaceMetal integrates with ObjC++ presenter harness"
    ```
    The targeted Metal UITest ensures the GPU bridge stays healthy after the latest ObjC++ harness updates.
-   - **Visual sanity check:** `./build/widgets_example --screenshot /tmp/widgets_gallery.png` captures the running gallery window, writes a PNG, then exits. Use this whenever you need a deterministic view of widget focus/highlight state.
+  - **Visual sanity check:** `./build/widgets_example --screenshot /tmp/widgets_gallery.png` now runs headless, drives a scripted slider drag, renders once, and writes a PNG. Use this for deterministic focus/highlight checks even on hosts without a GUI session.
 
 ## 2. Current Priorities (October 21, 2025)
 
@@ -73,7 +73,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - When you spot a gap in test coverage, either add the test immediately or log a follow-up in `docs/Plan_SceneGraph_Implementation.md` / `docs/AI_Todo.task` so the need is visible to the next maintainer.
 
 ### Latest Highlights (October 27, 2025)
-- `widgets_example` can now capture its own window with `./build/widgets_example --screenshot <path>`, making visual verification reproducible even inside scripted runs (October 27, 2025). The command boots the gallery, saves a PNG, and exits automatically.
+- `widgets_example` can now capture its own gallery with `./build/widgets_example --screenshot <path>`, making visual verification reproducible even inside scripted runs (October 27, 2025). The command runs headless, performs a scripted slider drag, writes a PNG, and exits automatically.
 - Widget theme hot-swap coverage landed in `tests/ui/test_Builders.cpp` (“Widgets::WidgetTheme hot swap repaints button scenes and marks dirty”), exercising default vs sunset palettes in-place and confirming scene/state revisions update cleanly (15× loop, October 23, 2025).
 - Widget session capture tooling ships via `scripts/record_widget_session.sh` and `scripts/replay_widget_session.sh`; use `WIDGETS_EXAMPLE_TRACE_RECORD` / `WIDGETS_EXAMPLE_TRACE_REPLAY` to produce deterministic pointer/keyboard traces for widgets_example and re-run them headlessly or inside UITests (October 23, 2025).
 - Widget builders now publish canonical idle/hover/pressed/disabled scenes under `scenes/widgets/<id>/states/*`; live scenes republish automatically when state changes, and doctests cover the new snapshots (October 21, 2025).
@@ -104,7 +104,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - **Extending shortcuts:** new UI examples should poll `LocalWindowQuitRequested()` immediately after `PollLocalWindow()`; extend shortcut detection inside `src/pathspace/ui/LocalWindowBridge.mm` whenever additional accelerators are introduced, then mirror the expectations here.
 
 ## 6. Shutdown Snapshot (October 27, 2025 @ 08:57 UTC)
-- Latest change: `widgets_example` gained a `--screenshot <path>` mode that boots the gallery, captures the active window as a PNG (using the new `SaveLocalWindowScreenshot` bridge helper), and exits. Docs updated to note the workflow.
+- Latest change: `widgets_example` gained a `--screenshot <path>` mode that runs headless, performs a scripted slider drag, renders once, and writes a PNG via stb_image_write—no LocalWindow bridge required. Docs updated to note the workflow.
 - Follow-up (October 27, 2025): retained resize/present helpers (`App::UpdateSurfaceSize`, `App::PresentToLocalWindow`)—new automated capture flow leans on the same bootstrap plumbing.
 - Validation: `./scripts/compile.sh --release --test --loop=15 --per-test-timeout 20` (15× PathSpaceTests, PathSpaceUITests, HtmlCanvasVerify, HtmlAssetInspect, PixelNoise harnesses) — all green after the screenshot automation landed.
 - Outstanding follow-ups before resuming:

@@ -33,6 +33,7 @@ Success looks like:
 - ✅ (October 23, 2025): `Example App Quit Shortcuts [BUG]` — LocalWindowBridge now captures Command+Q / Ctrl+Q / Alt+F4, drives `RequestLocalWindowQuit()` to close example windows through the shared shutdown path, and docs/AI_Onboarding_Next.md records the manual quit checklist.
 - ✅ (October 23, 2025): `Example App UI Extraction [DX]` moved LocalWindow setup, resize sync, and present plumbing into shared helpers; widgets_example, pixel_noise_example, and paint_example now reuse the UI-layer APIs.
 - ✅ (October 24, 2025): `PathRenderer2D` helper logic split into `PathRenderer2DDetail*` translation units so rendering orchestration stays isolated from encode/draw utilities; follow-up refactor tasks should target the new detail files rather than the main renderer entrypoint.
+- ✅ (October 27, 2025): widgets_example slider drags now repaint neighbouring captions/widgets correctly thanks to widened dirty hints, and the CLI `--screenshot` path drives an automated drag before writing a PNG (via stb_image_write) so regressions reproduce without a live window. Looped UI/renderer suites remain green after the fix.
 
 ## Workstream Overview
 - **Typed wiring helpers** — `Builders.hpp` plus supporting utilities for app-relative path validation, target naming, and atomic parameter writes.
@@ -324,7 +325,7 @@ Next:
 - ✅ (October 24, 2025) Updated `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage guidance, and troubleshooting notes.
 - ✅ (October 20, 2025) Documented widget ops schema: queue path (`widgets/<id>/ops/inbox/queue`), `WidgetOp` fields (kind, pointer metadata, value, timestamp) and reducer sample wiring.
 - ✅ (October 20, 2025) Reducer samples now live in `Widgets::Reducers`, publishing actions under `widgets/<id>/ops/actions/inbox/queue`; keep telemetry/docs in sync when new action fields or op kinds land.
-  - ✅ (October 27, 2025) Added automated window capture: `widgets_example --screenshot <path>` boots the gallery, saves a PNG via the new LocalWindowBridge snapshot helper, then exits—useful for visual regression checks and focus/highlight debugging.
+  - ✅ (October 27, 2025) Added automated window capture: `widgets_example --screenshot <path>` now runs headless, drives a scripted slider drag, renders once, and writes a PNG via stb_image_write—useful for visual regression checks and focus/highlight debugging even on GUI-less hosts.
 
 **Widget ops schema (October 20, 2025)**
 - Queue path: `widgets/<id>/ops/inbox/queue` (per-widget FIFO consumed via `take<WidgetOp>`).

@@ -31,6 +31,9 @@
 #include <thread>
 #include <vector>
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <third_party/stb_image_write.h>
+
 #if !defined(PATHSPACE_ENABLE_UI)
 int main() {
     std::cerr << "widgets_example requires PATHSPACE_ENABLE_UI=ON.\n";
@@ -57,6 +60,7 @@ namespace SceneBuilders = SP::UI::Builders::Scene;
 namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
 namespace WidgetReducers = SP::UI::Builders::Widgets::Reducers;
 namespace WidgetFocus = SP::UI::Builders::Widgets::Focus;
+namespace Diagnostics = SP::UI::Builders::Diagnostics;
 
 constexpr int kGlyphRows = 7;
 constexpr float kDefaultMargin = 32.0f;
@@ -88,6 +92,31 @@ struct WidgetBounds {
     float min_y = 0.0f;
     float max_x = 0.0f;
     float max_y = 0.0f;
+
+    auto normalize() -> void {
+        if (max_x < min_x) {
+            std::swap(max_x, min_x);
+        }
+        if (max_y < min_y) {
+            std::swap(max_y, min_y);
+        }
+    }
+
+    auto include(WidgetBounds const& other) -> void {
+        WidgetBounds normalized_other = other;
+        normalized_other.normalize();
+        normalize();
+        min_x = std::min(min_x, normalized_other.min_x);
+        min_y = std::min(min_y, normalized_other.min_y);
+        max_x = std::max(max_x, normalized_other.max_x);
+        max_y = std::max(max_y, normalized_other.max_y);
+    }
+
+    [[nodiscard]] auto is_valid() const -> bool {
+        return std::isfinite(min_x) && std::isfinite(min_y)
+               && std::isfinite(max_x) && std::isfinite(max_y)
+               && max_x >= min_x && max_y >= min_y;
+    }
 
     auto contains(float x, float y) const -> bool {
         return x >= min_x && x <= max_x && y >= min_y && y <= max_y;
@@ -138,10 +167,85 @@ struct GalleryLayout {
     WidgetBounds toggle;
     WidgetBounds slider;
     WidgetBounds slider_track;
+    std::optional<WidgetBounds> slider_caption;
+    WidgetBounds slider_dirty;
     ListLayout list;
     StackPreviewLayout stack;
     TreeLayout tree;
 };
+
+static void write_frame_capture_png_or_exit(SP::UI::Builders::SoftwareFramebuffer const& framebuffer,
+                                            std::filesystem::path const& output_path) {
+    if (framebuffer.width <= 0 || framebuffer.height <= 0) {
+        std::cerr << "widgets_example: framebuffer capture has invalid dimensions "
+                  << framebuffer.width << "x" << framebuffer.height << '\n';
+        std::exit(1);
+    }
+
+    auto const format = framebuffer.pixel_format;
+    bool const is_rgba = format == SP::UI::Builders::PixelFormat::RGBA8Unorm
+                      || format == SP::UI::Builders::PixelFormat::RGBA8Unorm_sRGB;
+    bool const is_bgra = format == SP::UI::Builders::PixelFormat::BGRA8Unorm
+                      || format == SP::UI::Builders::PixelFormat::BGRA8Unorm_sRGB;
+    if (!(is_rgba || is_bgra)) {
+        std::cerr << "widgets_example: framebuffer capture pixel format not supported for PNG export ("
+                  << static_cast<int>(format) << ")\n";
+        std::exit(1);
+    }
+
+    auto const parent = output_path.parent_path();
+    if (!parent.empty()) {
+        std::error_code ec{};
+        std::filesystem::create_directories(parent, ec);
+        if (ec) {
+            std::cerr << "widgets_example: failed to create directory '" << parent.string()
+                      << "' for screenshot: " << ec.message() << '\n';
+            std::exit(1);
+        }
+    }
+
+    auto const stride = static_cast<int>(framebuffer.row_stride_bytes);
+    if (stride <= 0 || framebuffer.pixels.size() < static_cast<std::size_t>(stride) * framebuffer.height) {
+        std::cerr << "widgets_example: framebuffer capture has invalid stride/data\n";
+        std::exit(1);
+    }
+
+    int write_result = 0;
+    if (is_rgba) {
+        write_result = stbi_write_png(output_path.string().c_str(),
+                                      framebuffer.width,
+                                      framebuffer.height,
+                                      4,
+                                      framebuffer.pixels.data(),
+                                      stride);
+    } else {
+        std::vector<std::uint8_t> converted(
+            static_cast<std::size_t>(framebuffer.width) * static_cast<std::size_t>(framebuffer.height) * 4);
+        for (int y = 0; y < framebuffer.height; ++y) {
+            auto const* src_row = framebuffer.pixels.data() + static_cast<std::size_t>(y) * stride;
+            auto* dst_row = converted.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(framebuffer.width) * 4;
+            for (int x = 0; x < framebuffer.width; ++x) {
+                auto const* src = src_row + static_cast<std::size_t>(x) * 4;
+                auto* dst = dst_row + static_cast<std::size_t>(x) * 4;
+                dst[0] = src[2];
+                dst[1] = src[1];
+                dst[2] = src[0];
+                dst[3] = src[3];
+            }
+        }
+        write_result = stbi_write_png(output_path.string().c_str(),
+                                      framebuffer.width,
+                                      framebuffer.height,
+                                      4,
+                                      converted.data(),
+                                      framebuffer.width * 4);
+    }
+
+    if (write_result == 0) {
+        std::cerr << "widgets_example: failed to write screenshot '" << output_path.string() << "'\n";
+        std::exit(1);
+    }
+}
 
 static auto mix_color(std::array<float, 4> base,
                       std::array<float, 4> target,
@@ -323,6 +427,36 @@ auto append_focus_highlight_preview(SceneData::DrawableBucketSnapshot& bucket,
         0,
         0});
     bucket.drawable_fingerprints.push_back(drawable_id);
+}
+
+static auto make_dirty_hint(WidgetBounds const& bounds,
+                            std::optional<WidgetBounds> extra = std::nullopt) -> Builders::DirtyRectHint {
+    constexpr float kDirtyPadding = kGalleryFocusExpand + kGalleryFocusThickness;
+
+    auto expand_bounds = [&](WidgetBounds const& source) {
+        WidgetBounds normalized = source;
+        normalized.normalize();
+        float min_x = normalized.min_x - kDirtyPadding;
+        float min_y = normalized.min_y - kDirtyPadding;
+        float max_x = normalized.max_x + kDirtyPadding;
+        float max_y = normalized.max_y + kDirtyPadding;
+        WidgetBounds expanded{min_x, min_y, max_x, max_y};
+        expanded.normalize();
+        return expanded;
+    };
+
+    auto combined = expand_bounds(bounds);
+    if (extra && extra->is_valid()) {
+        auto expanded_extra = expand_bounds(*extra);
+        combined.include(expanded_extra);
+    }
+
+    Builders::DirtyRectHint hint{};
+    hint.min_x = combined.min_x;
+    hint.min_y = combined.min_y;
+    hint.max_x = combined.max_x;
+    hint.max_y = combined.max_y;
+    return hint;
 }
 
 auto build_button_preview(Widgets::ButtonStyle const& style,
@@ -1686,9 +1820,29 @@ auto build_gallery_bucket(PathSpace& space,
                                          "widget/gallery/slider/caption",
                                          0.6f);
         if (caption) {
+            if (!caption->bucket.bounds_boxes.empty()) {
+                auto const& bounds = caption->bucket.bounds_boxes.front();
+                layout.slider_caption = WidgetBounds{
+                    bounds.min[0],
+                    bounds.min[1],
+                    bounds.max[0],
+                    bounds.max[1],
+                };
+            } else {
+                float caption_min_y = std::min(cursor_y, cursor_y + slider_caption_line);
+                float caption_max_y = std::max(cursor_y, cursor_y + slider_caption_line);
+                layout.slider_caption = WidgetBounds{
+                    left,
+                    caption_min_y,
+                    left + caption->width,
+                    caption_max_y,
+                };
+            }
             pending.emplace_back(std::move(caption->bucket));
             max_width = std::max(max_width, left + caption->width);
             max_height = std::max(max_height, cursor_y + slider_caption_line);
+        } else {
+            layout.slider_caption.reset();
         }
         cursor_y += slider_caption_line + 12.0f;
 
@@ -1711,6 +1865,14 @@ auto build_gallery_bucket(PathSpace& space,
             left + slider_style.width,
             slider_center_y + slider_half_track,
         };
+        layout.slider_dirty = layout.slider;
+        layout.slider_dirty.include(layout.slider_track);
+        if (layout.slider_caption) {
+            layout.slider_dirty.include(*layout.slider_caption);
+        }
+        layout.slider_dirty.include(layout.toggle);
+        layout.slider_dirty.include(layout.button);
+        layout.slider_dirty.normalize();
         cursor_y += slider_style.height + 48.0f;
     }
 
@@ -2066,10 +2228,10 @@ struct WidgetsExampleContext {
     WidgetBindings::ToggleBinding toggle_binding{};
     WidgetBindings::SliderBinding slider_binding{};
     WidgetBindings::ListBinding list_binding{};
-   WidgetBindings::StackBinding stack_binding{};
-   WidgetBindings::TreeBinding tree_binding{};
-   Widgets::ButtonState button_state{};
-   Widgets::ToggleState toggle_state{};
+    WidgetBindings::StackBinding stack_binding{};
+    WidgetBindings::TreeBinding tree_binding{};
+    Widgets::ButtonState button_state{};
+    Widgets::ToggleState toggle_state{};
     Widgets::SliderState slider_state{};
     Widgets::ListState list_state{};
     GallerySceneResult gallery{};
@@ -2730,6 +2892,10 @@ static void refresh_gallery(WidgetsExampleContext& ctx) {
                                         ctx.tree_nodes,
                                         ctx.theme,
                                         focused_widget_path);
+
+    if (!ctx.slider_binding.widget.root.getPath().empty()) {
+        ctx.slider_binding.options.dirty_rect = make_dirty_hint(ctx.gallery.layout.slider_dirty);
+    }
 }
 
 static auto dispatch_button(WidgetsExampleContext& ctx,
@@ -3154,6 +3320,116 @@ static void handle_pointer_wheel(WidgetsExampleContext& ctx, int wheel_delta) {
     }
 }
 
+struct ScreenshotScriptState {
+    enum class Stage {
+        Inactive,
+        MoveToPress,
+        Press,
+        Drag,
+        Hold,
+        AwaitCapture,
+        Release,
+        Done,
+    };
+
+    Stage stage = Stage::Inactive;
+    int frames_in_stage = 0;
+    float press_x = 0.0f;
+    float press_y = 0.0f;
+    float drag_x = 0.0f;
+    float drag_y = 0.0f;
+    bool capture_ready = false;
+    bool capture_completed = false;
+
+    void initialize(GalleryLayout const& layout) {
+        auto track = layout.slider_track;
+        auto slider = layout.slider;
+        float min_x = track.min_x;
+        float max_x = track.max_x;
+        float min_y = track.min_y;
+        float max_y = track.max_y;
+
+        if (max_x <= min_x) {
+            min_x = slider.min_x;
+            max_x = slider.max_x;
+        }
+        if (max_y <= min_y) {
+            min_y = slider.min_y;
+            max_y = slider.max_y;
+        }
+
+        float width = std::max(max_x - min_x, 1.0f);
+        float height = std::max(max_y - min_y, 1.0f);
+
+        press_x = std::clamp(min_x + width * 0.25f, min_x, max_x);
+        drag_x = std::clamp(min_x + width * 0.75f, min_x, max_x);
+
+        press_y = min_y + height * 0.5f;
+        drag_y = press_y;
+
+        stage = Stage::MoveToPress;
+        frames_in_stage = 0;
+        capture_ready = false;
+        capture_completed = false;
+    }
+
+    void advance(WidgetsExampleContext& ctx) {
+        switch (stage) {
+        case Stage::Inactive:
+        case Stage::Done:
+            return;
+        case Stage::MoveToPress:
+            handle_pointer_move(ctx, press_x, press_y);
+            stage = Stage::Press;
+            frames_in_stage = 0;
+            break;
+        case Stage::Press:
+            handle_pointer_down(ctx);
+            stage = Stage::Drag;
+            frames_in_stage = 0;
+            break;
+        case Stage::Drag:
+            handle_pointer_move(ctx, drag_x, drag_y);
+            stage = Stage::Hold;
+            frames_in_stage = 0;
+            break;
+        case Stage::Hold:
+            if (++frames_in_stage >= 2) {
+                capture_ready = true;
+                stage = Stage::AwaitCapture;
+                frames_in_stage = 0;
+            }
+            break;
+        case Stage::AwaitCapture:
+            if (capture_completed) {
+                stage = Stage::Release;
+            }
+            break;
+        case Stage::Release:
+            handle_pointer_up(ctx);
+            stage = Stage::Done;
+            frames_in_stage = 0;
+            break;
+        }
+    }
+
+    void mark_capture_complete() {
+        capture_completed = true;
+        capture_ready = false;
+        if (stage == Stage::AwaitCapture) {
+            stage = Stage::Release;
+        }
+    }
+
+    [[nodiscard]] auto wants_capture() const -> bool {
+        return capture_ready && !capture_completed;
+    }
+
+    [[nodiscard]] auto active() const -> bool {
+        return stage != Stage::Inactive && stage != Stage::Done;
+    }
+};
+
 static void process_widget_actions(WidgetsExampleContext& ctx) {
     auto process_root = [&](WidgetPath const& root) {
         auto queue = WidgetReducers::WidgetOpsQueue(root);
@@ -3194,6 +3470,72 @@ static void process_widget_actions(WidgetsExampleContext& ctx) {
     process_root(ctx.list_paths.root);
     process_root(ctx.stack_paths.root);
     process_root(ctx.tree_paths.root);
+}
+
+static auto slider_pointer_for_value(WidgetsExampleContext const& ctx, float value) -> std::pair<float, float> {
+    auto const range_min = ctx.slider_range.minimum;
+    auto const range_max = ctx.slider_range.maximum;
+    float clamped = std::clamp(value, range_min, range_max);
+    float denom = std::max(range_max - range_min, 1e-6f);
+    float progress = std::clamp((clamped - range_min) / denom, 0.0f, 1.0f);
+
+    auto const& bounds = ctx.gallery.layout.slider;
+    float x = bounds.min_x + bounds.width() * progress;
+    float y = bounds.min_y + ctx.slider_style.height * 0.5f;
+    return {x, y};
+}
+
+static void simulate_slider_drag_for_screenshot(WidgetsExampleContext& ctx, float target_value) {
+    auto const start_value = ctx.slider_state.value;
+
+    {
+        auto [x, y] = slider_pointer_for_value(ctx, start_value);
+        PointerOverride pointer(ctx, x, y);
+        Widgets::SliderState desired = ctx.slider_state;
+        desired.hovered = true;
+        desired.dragging = true;
+        desired.value = start_value;
+        if (dispatch_slider(ctx, desired, WidgetBindings::WidgetOpKind::SliderBegin, true)) {
+            refresh_gallery(ctx);
+        }
+    }
+    process_widget_actions(ctx);
+
+    {
+        auto [x, y] = slider_pointer_for_value(ctx, target_value);
+        PointerOverride pointer(ctx, x, y);
+        Widgets::SliderState desired = ctx.slider_state;
+        desired.hovered = true;
+        desired.dragging = true;
+        desired.value = target_value;
+        if (dispatch_slider(ctx, desired, WidgetBindings::WidgetOpKind::SliderUpdate, true)) {
+            refresh_gallery(ctx);
+        }
+    }
+    process_widget_actions(ctx);
+
+    ctx.slider_dragging = true;
+}
+
+static void capture_headless_screenshot(PathSpace& space,
+                                        WidgetsExampleContext& ctx,
+                                        Builders::App::BootstrapResult const& bootstrap,
+                                        std::filesystem::path const& output_path) {
+    auto present = unwrap_or_exit(Builders::Window::Present(space,
+                                                            bootstrap.window,
+                                                            bootstrap.view_name),
+                                  "present gallery window");
+    if (!present.stats.presented && present.stats.skipped) {
+        std::cerr << "widgets_example: present skipped while capturing screenshot\n";
+    }
+
+    auto framebuffer = unwrap_or_exit(
+        Diagnostics::ReadSoftwareFramebuffer(space,
+                                             SP::ConcretePathStringView{ctx.target_path}),
+        "read software framebuffer");
+
+    write_frame_capture_png_or_exit(framebuffer, output_path);
+    std::cout << "widgets_example saved screenshot to '" << output_path.string() << "'\n";
 }
 
 static void handle_local_mouse(SP::UI::LocalMouseEvent const& ev, void* user_data) {
@@ -3956,7 +4298,7 @@ int main(int argc, char** argv) {
     bootstrap_params.present_policy.mode = PathWindowView::PresentMode::AlwaysLatestComplete;
     bootstrap_params.present_policy.vsync_align = false;
     bootstrap_params.present_policy.auto_render_on_present = true;
-    bootstrap_params.present_policy.capture_framebuffer = false;
+    bootstrap_params.present_policy.capture_framebuffer = screenshot_path.has_value();
     bootstrap_params.view_name = "main";
     RenderSettings bootstrap_settings{};
     bootstrap_settings.clear_color = {0.11f, 0.12f, 0.15f, 1.0f};
@@ -4002,14 +4344,6 @@ int main(int argc, char** argv) {
     ctx.focus_config = WidgetFocus::MakeConfig(appRootView, bootstrap.target);
 
     auto target_view = SP::ConcretePathStringView{ctx.target_path};
-    auto make_dirty_hint = [](WidgetBounds const& bounds) {
-        Builders::DirtyRectHint hint{};
-        hint.min_x = bounds.min_x;
-        hint.min_y = bounds.min_y;
-        hint.max_x = bounds.max_x;
-        hint.max_y = bounds.max_y;
-        return hint;
-    };
 
     ctx.button_binding = unwrap_or_exit(WidgetBindings::CreateButtonBinding(space,
                                                                             appRootView,
@@ -4025,11 +4359,12 @@ int main(int argc, char** argv) {
                                                                             make_dirty_hint(ctx.gallery.layout.toggle)),
                                         "create toggle binding");
 
+    auto slider_dirty_hint = make_dirty_hint(ctx.gallery.layout.slider_dirty);
     ctx.slider_binding = unwrap_or_exit(WidgetBindings::CreateSliderBinding(space,
                                                                             appRootView,
                                                                             ctx.slider_paths,
                                                                             target_view,
-                                                                            make_dirty_hint(ctx.gallery.layout.slider)),
+                                                                            slider_dirty_hint),
                                         "create slider binding");
 
     ctx.list_binding = unwrap_or_exit(WidgetBindings::CreateListBinding(space,
@@ -4055,6 +4390,23 @@ int main(int argc, char** argv) {
 
     if (set_focus_target(ctx, FocusTarget::Button)) {
         refresh_gallery(ctx);
+    }
+
+    if (screenshot_path && !trace.replaying()) {
+        auto const range = ctx.slider_range.maximum - ctx.slider_range.minimum;
+        float target_value = ctx.slider_state.value + std::max(range * 0.4f, 5.0f);
+        target_value = std::min(ctx.slider_range.maximum, target_value);
+
+        simulate_slider_drag_for_screenshot(ctx, target_value);
+        auto const output_path = std::filesystem::path{*screenshot_path};
+        capture_headless_screenshot(space, ctx, bootstrap, output_path);
+        trace.flush();
+        return 0;
+    }
+
+    ScreenshotScriptState screenshot_script{};
+    if (screenshot_path && !trace.replaying()) {
+        screenshot_script.initialize(ctx.gallery.layout);
     }
 
     if (trace.replaying()) {
@@ -4083,8 +4435,13 @@ int main(int argc, char** argv) {
     int window_height = bootstrap.surface_desc.size_px.height;
     bool pending_screenshot = screenshot_path.has_value();
     std::uint64_t screenshot_present_count = 0;
+    constexpr std::uint64_t kScreenshotWarmupFrames = 2;
 
     while (true) {
+        if (screenshot_script.active()) {
+            screenshot_script.advance(ctx);
+        }
+
         SP::UI::PollLocalWindow();
         if (SP::UI::LocalWindowQuitRequested()) {
             break;
@@ -4113,21 +4470,27 @@ int main(int argc, char** argv) {
             total_render_ms += telemetry->render_ms;
             total_present_ms += telemetry->present_ms;
             if (pending_screenshot) {
-                ++screenshot_present_count;
-                if (screenshot_present_count >= 3) {
-                    std::filesystem::path path = *screenshot_path;
-                    std::error_code mkdir_ec;
-                    if (path.has_parent_path()) {
-                        std::filesystem::create_directories(path.parent_path(), mkdir_ec);
+                if (screenshot_script.wants_capture()) {
+                    ++screenshot_present_count;
+                    if (screenshot_present_count >= kScreenshotWarmupFrames) {
+                        std::filesystem::path path = *screenshot_path;
+                        std::error_code mkdir_ec;
+                        if (path.has_parent_path()) {
+                            std::filesystem::create_directories(path.parent_path(), mkdir_ec);
+                        }
+                        bool saved = SP::UI::SaveLocalWindowScreenshot(path.string().c_str());
+                        if (saved) {
+                            std::cout << "widgets_example saved screenshot to '" << path.string() << "'\n";
+                        } else {
+                            std::cerr << "widgets_example: failed to save screenshot to '" << path.string() << "'\n";
+                        }
+                        pending_screenshot = false;
+                        screenshot_present_count = 0;
+                        screenshot_script.mark_capture_complete();
+                        SP::UI::RequestLocalWindowQuit();
                     }
-                    bool saved = SP::UI::SaveLocalWindowScreenshot(path.string().c_str());
-                    if (saved) {
-                        std::cout << "widgets_example saved screenshot to '" << path.string() << "'\n";
-                    } else {
-                        std::cerr << "widgets_example: failed to save screenshot to '" << path.string() << "'\n";
-                    }
-                    pending_screenshot = false;
-                    SP::UI::RequestLocalWindowQuit();
+                } else {
+                    screenshot_present_count = 0;
                 }
             }
         }
