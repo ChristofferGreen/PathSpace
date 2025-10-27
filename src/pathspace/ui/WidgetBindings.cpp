@@ -10,7 +10,8 @@ auto compute_ops_queue(WidgetPath const& root) -> ConcretePath {
     return ConcretePath{std::string(root.getPath()) + "/ops/inbox/queue"};
 }
 
-auto build_options(WidgetPath const& root,
+auto build_options(AppRootPathView appRoot,
+                   WidgetPath const& root,
                    ConcretePathView targetPath,
                    DirtyRectHint hint,
                    bool auto_render) -> BindingOptions {
@@ -20,6 +21,8 @@ auto build_options(WidgetPath const& root,
         .dirty_rect = ensure_valid_hint(hint),
         .auto_render = auto_render,
     };
+    options.focus_state = Widgets::Focus::FocusStatePath(appRoot);
+    options.focus_enabled = true;
     return options;
 }
 
@@ -44,6 +47,26 @@ auto submit_dirty_hint(PathSpace& space,
     return Renderer::SubmitDirtyRects(space,
                                       SP::ConcretePathStringView{options.target.getPath()},
                                       std::span<const DirtyRectHint>(hints.data(), hints.size()));
+}
+
+auto set_widget_focus(PathSpace& space,
+                      BindingOptions const& options,
+                      WidgetPath const& widget) -> SP::Expected<bool> {
+    if (!options.focus_enabled) {
+        return false;
+    }
+
+    Widgets::Focus::Config config{
+        .focus_state = options.focus_state,
+        .auto_render_target = options.auto_render
+            ? std::optional<ConcretePath>{options.target}
+            : std::optional<ConcretePath>{},
+    };
+    auto result = Widgets::Focus::Set(space, config, widget);
+    if (!result) {
+        return std::unexpected(result.error());
+    }
+    return result->changed;
 }
 
 auto schedule_auto_render(PathSpace& space,
@@ -138,7 +161,7 @@ auto PointerFromHit(Scene::HitTestResult const& hit) -> PointerInfo {
 }
 
 auto CreateButtonBinding(PathSpace& space,
-                         AppRootPathView,
+                         AppRootPathView appRoot,
                          ButtonPaths const& paths,
                          ConcretePathView targetPath,
                          std::optional<DirtyRectHint> dirty_override,
@@ -150,13 +173,17 @@ auto CreateButtonBinding(PathSpace& space,
     DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(style->width, style->height));
     ButtonBinding binding{
         .widget = paths,
-        .options = build_options(paths.root, targetPath, hint, auto_render),
+        .options = build_options(appRoot,
+                                 paths.root,
+                                 targetPath,
+                                 hint,
+                                 auto_render),
     };
     return binding;
 }
 
 auto CreateToggleBinding(PathSpace& space,
-                         AppRootPathView,
+                         AppRootPathView appRoot,
                          TogglePaths const& paths,
                          ConcretePathView targetPath,
                          std::optional<DirtyRectHint> dirty_override,
@@ -168,13 +195,13 @@ auto CreateToggleBinding(PathSpace& space,
     DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(style->width, style->height));
     ToggleBinding binding{
         .widget = paths,
-        .options = build_options(paths.root, targetPath, hint, auto_render),
+        .options = build_options(appRoot, paths.root, targetPath, hint, auto_render),
     };
     return binding;
 }
 
 auto CreateSliderBinding(PathSpace& space,
-                         AppRootPathView,
+                         AppRootPathView appRoot,
                          SliderPaths const& paths,
                          ConcretePathView targetPath,
                          std::optional<DirtyRectHint> dirty_override,
@@ -186,13 +213,13 @@ auto CreateSliderBinding(PathSpace& space,
     DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(style->width, style->height));
     SliderBinding binding{
         .widget = paths,
-        .options = build_options(paths.root, targetPath, hint, auto_render),
+        .options = build_options(appRoot, paths.root, targetPath, hint, auto_render),
     };
     return binding;
 }
 
 auto CreateListBinding(PathSpace& space,
-                       AppRootPathView,
+                       AppRootPathView appRoot,
                        ListPaths const& paths,
                        ConcretePathView targetPath,
                        std::optional<DirtyRectHint> dirty_override,
@@ -207,17 +234,17 @@ auto CreateListBinding(PathSpace& space,
     }
 
     auto item_count = std::max<std::size_t>(items->size(), 1u);
-    float height = style->item_height * static_cast<float>(item_count) + style->border_thickness * 2.0f;
-    DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(style->width, height));
-    ListBinding binding{
-        .widget = paths,
-        .options = build_options(paths.root, targetPath, hint, auto_render),
+   float height = style->item_height * static_cast<float>(item_count) + style->border_thickness * 2.0f;
+   DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(style->width, height));
+   ListBinding binding{
+       .widget = paths,
+        .options = build_options(appRoot, paths.root, targetPath, hint, auto_render),
     };
     return binding;
 }
 
 auto CreateTreeBinding(PathSpace& space,
-                       AppRootPathView,
+                       AppRootPathView appRoot,
                        TreePaths const& paths,
                        ConcretePathView targetPath,
                        std::optional<DirtyRectHint> dirty_override,
@@ -239,13 +266,13 @@ auto CreateTreeBinding(PathSpace& space,
 
     TreeBinding binding{
         .widget = paths,
-        .options = build_options(paths.root, targetPath, hint, auto_render),
+        .options = build_options(appRoot, paths.root, targetPath, hint, auto_render),
     };
     return binding;
 }
 
 auto CreateStackBinding(PathSpace& space,
-                        AppRootPathView,
+                        AppRootPathView appRoot,
                         StackPaths const& paths,
                         ConcretePathView targetPath,
                         std::optional<DirtyRectHint> dirty_override,
@@ -256,9 +283,9 @@ auto CreateStackBinding(PathSpace& space,
     }
 
     DirtyRectHint hint = dirty_override.value_or(make_default_dirty_rect(layout->width, layout->height));
-    StackBinding binding{
-        .layout = paths,
-        .options = build_options(paths.root, targetPath, hint, auto_render),
+   StackBinding binding{
+       .layout = paths,
+        .options = build_options(appRoot, paths.root, targetPath, hint, auto_render),
     };
     return binding;
 }
@@ -303,7 +330,15 @@ auto DispatchButton(PathSpace& space,
                                         value); !status) {
         return std::unexpected(status.error());
     }
-    return *changed;
+    bool focus_changed = false;
+    if (op_kind == WidgetOpKind::Press || op_kind == WidgetOpKind::Activate) {
+        auto focus = set_widget_focus(space, binding.options, binding.widget.root);
+        if (!focus) {
+            return std::unexpected(focus.error());
+        }
+        focus_changed = *focus;
+    }
+    return *changed || focus_changed;
 }
 
 auto DispatchToggle(PathSpace& space,
@@ -346,7 +381,15 @@ auto DispatchToggle(PathSpace& space,
                                         value); !status) {
         return std::unexpected(status.error());
     }
-    return *changed;
+    bool focus_changed = false;
+    if (op_kind == WidgetOpKind::Press || op_kind == WidgetOpKind::Toggle) {
+        auto focus = set_widget_focus(space, binding.options, binding.widget.root);
+        if (!focus) {
+            return std::unexpected(focus.error());
+        }
+        focus_changed = *focus;
+    }
+    return *changed || focus_changed;
 }
 
 auto DispatchSlider(PathSpace& space,
@@ -391,7 +434,15 @@ auto DispatchSlider(PathSpace& space,
                                         current_state->value); !status) {
         return std::unexpected(status.error());
     }
-    return *changed;
+    bool focus_changed = false;
+    if (op_kind == WidgetOpKind::SliderBegin || op_kind == WidgetOpKind::SliderCommit) {
+        auto focus = set_widget_focus(space, binding.options, binding.widget.root);
+        if (!focus) {
+            return std::unexpected(focus.error());
+        }
+        focus_changed = *focus;
+    }
+    return *changed || focus_changed;
 }
 
 auto DispatchList(PathSpace& space,
@@ -480,7 +531,15 @@ auto DispatchList(PathSpace& space,
                                         op_value); !status) {
         return std::unexpected(status.error());
     }
-    return *changed;
+    bool focus_changed = false;
+    if (op_kind == WidgetOpKind::ListSelect || op_kind == WidgetOpKind::ListActivate) {
+        auto focus = set_widget_focus(space, binding.options, binding.widget.root);
+        if (!focus) {
+            return std::unexpected(focus.error());
+        }
+        focus_changed = *focus;
+    }
+    return *changed || focus_changed;
 }
 
 auto DispatchTree(PathSpace& space,
@@ -667,13 +726,21 @@ auto DispatchTree(PathSpace& space,
                                             binding.widget.root.getPath(),
                                             WidgetOpKind::TreeRequestLoad,
                                             pointer,
-                                            0.0f,
-                                            node_key); !status) {
+                                           0.0f,
+                                           node_key); !status) {
             return std::unexpected(status.error());
         }
     }
 
-    return *changed;
+    bool focus_changed = false;
+    if (op_kind == WidgetOpKind::TreeSelect || op_kind == WidgetOpKind::TreeToggle) {
+        auto focus = set_widget_focus(space, binding.options, binding.widget.root);
+        if (!focus) {
+            return std::unexpected(focus.error());
+        }
+        focus_changed = *focus;
+    }
+    return *changed || focus_changed;
 }
 
 auto UpdateStack(PathSpace& space,

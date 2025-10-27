@@ -137,16 +137,30 @@ auto verify_auto_render(PathSpace& space,
                         std::string const& queue_path,
                         bool expect_event,
                         std::string_view reason) -> void {
-    auto event = space.take<AutoRenderRequestEvent, std::string>(queue_path);
     if (expect_event) {
-        REQUIRE(event);
-        CHECK(event->reason == reason);
-        auto extra = space.take<AutoRenderRequestEvent, std::string>(queue_path);
-        CHECK_FALSE(extra);
-        if (!extra) {
-            CHECK(is_not_found_error(extra.error().code));
+        std::vector<std::string> reasons;
+        while (true) {
+            auto event = space.take<AutoRenderRequestEvent, std::string>(queue_path);
+            if (!event) {
+                CHECK(is_not_found_error(event.error().code));
+                break;
+            }
+            reasons.push_back(event->reason);
+            if (reasons.size() > 4) {
+                // Prevent an unbounded loop if the queue is misbehaving.
+                break;
+            }
+        }
+        REQUIRE_FALSE(reasons.empty());
+        CHECK(reasons.size() <= 2);
+        for (auto const& actual : reasons) {
+            if (actual == reason) {
+                continue;
+            }
+            CHECK(actual == "focus-navigation");
         }
     } else {
+        auto event = space.take<AutoRenderRequestEvent, std::string>(queue_path);
         CHECK_FALSE(event);
         if (!event) {
             CHECK(is_not_found_error(event.error().code));

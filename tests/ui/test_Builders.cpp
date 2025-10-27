@@ -38,6 +38,42 @@ namespace Widgets = SP::UI::Builders::Widgets;
 namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
 namespace WidgetReducers = SP::UI::Builders::Widgets::Reducers;
 namespace WidgetFocus = SP::UI::Builders::Widgets::Focus;
+
+auto is_not_found(auto code) -> bool {
+    return code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath;
+}
+
+auto drain_auto_render_queue(PathSpace& space,
+                             std::string const& queue_path) -> std::vector<std::string> {
+    std::vector<std::string> reasons;
+    while (true) {
+        auto event = space.take<AutoRenderRequestEvent, std::string>(queue_path);
+        if (!event) {
+            CHECK(is_not_found(event.error().code));
+            break;
+        }
+        reasons.push_back(event->reason);
+        if (reasons.size() > 4) {
+            break;
+        }
+    }
+    return reasons;
+}
+
+auto expect_auto_render_reason(std::vector<std::string> const& reasons,
+                               std::string_view expected_reason) -> void {
+    REQUIRE_FALSE(reasons.empty());
+    bool seen_expected = false;
+    for (auto const& reason : reasons) {
+        if (reason == expected_reason) {
+            seen_expected = true;
+            continue;
+        }
+        CHECK(reason == "focus-navigation");
+    }
+    CHECK(seen_expected);
+}
+
 namespace Html = SP::UI::Html;
 namespace AppBootstrap = SP::UI::Builders::App;
 using SP::UI::Builders::AutoRenderRequestEvent;
@@ -2036,9 +2072,8 @@ TEST_CASE("Widgets::Bindings::DispatchButton emits dirty hints and widget ops") 
     CHECK(hint.max_x == doctest::Approx(expected_width));
     CHECK(hint.max_y == doctest::Approx(expected_height));
 
-    auto renderEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
-    REQUIRE(renderEvent);
-    CHECK(renderEvent->reason == "widget/button");
+    auto pressReasons = drain_auto_render_queue(fx.space, renderQueuePath);
+    expect_auto_render_reason(pressReasons, "widget/button");
 
     auto pressOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
     REQUIRE(pressOp);
@@ -2058,9 +2093,8 @@ TEST_CASE("Widgets::Bindings::DispatchButton emits dirty hints and widget ops") 
     REQUIRE(releaseResult);
     CHECK(*releaseResult);
 
-    auto releaseEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
-    REQUIRE(releaseEvent);
-    CHECK(releaseEvent->reason == "widget/button");
+    auto releaseReasons = drain_auto_render_queue(fx.space, renderQueuePath);
+    expect_auto_render_reason(releaseReasons, "widget/button");
 
     auto releaseOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
     REQUIRE(releaseOp);
@@ -2080,11 +2114,8 @@ TEST_CASE("Widgets::Bindings::DispatchButton emits dirty hints and widget ops") 
     REQUIRE(hoverOp);
     CHECK(hoverOp->kind == WidgetBindings::WidgetOpKind::HoverExit);
 
-    auto noEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
-    CHECK_FALSE(noEvent);
-    if (!noEvent) {
-        CHECK((noEvent.error().code == Error::Code::NoObjectFound || noEvent.error().code == Error::Code::NoSuchPath));
-    }
+    auto hoverReasons = drain_auto_render_queue(fx.space, renderQueuePath);
+    CHECK(hoverReasons.empty());
 
     Widgets::ButtonState disabled = released;
     disabled.enabled = false;
@@ -2093,11 +2124,8 @@ TEST_CASE("Widgets::Bindings::DispatchButton emits dirty hints and widget ops") 
     REQUIRE(disableResult);
     CHECK(*disableResult);
 
-    auto disableEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
-    CHECK_FALSE(disableEvent);
-    if (!disableEvent) {
-        CHECK((disableEvent.error().code == Error::Code::NoObjectFound || disableEvent.error().code == Error::Code::NoSuchPath));
-    }
+    auto disableReasons = drain_auto_render_queue(fx.space, renderQueuePath);
+    CHECK(disableReasons.empty());
 
     auto disableOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
     CHECK_FALSE(disableOp);
@@ -2230,9 +2258,8 @@ TEST_CASE("Widgets::Bindings::DispatchToggle handles hover/toggle/disable sequen
     REQUIRE(hoverEnter);
     CHECK(*hoverEnter);
 
-    auto hoverEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
-    REQUIRE(hoverEvent);
-    CHECK(hoverEvent->reason == "widget/toggle");
+    auto hoverReasons = drain_auto_render_queue(fx.space, renderQueuePath);
+    expect_auto_render_reason(hoverReasons, "widget/toggle");
 
     auto hoverOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
     REQUIRE(hoverOp);
@@ -2251,9 +2278,8 @@ TEST_CASE("Widgets::Bindings::DispatchToggle handles hover/toggle/disable sequen
     REQUIRE(toggleResult);
     CHECK(*toggleResult);
 
-    auto toggleEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
-    REQUIRE(toggleEvent);
-    CHECK(toggleEvent->reason == "widget/toggle");
+    auto toggleReasons = drain_auto_render_queue(fx.space, renderQueuePath);
+    expect_auto_render_reason(toggleReasons, "widget/toggle");
 
     auto toggleOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
     REQUIRE(toggleOp);
@@ -2271,9 +2297,8 @@ TEST_CASE("Widgets::Bindings::DispatchToggle handles hover/toggle/disable sequen
     REQUIRE(hoverExit);
     CHECK(*hoverExit);
 
-    auto hoverExitEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
-    REQUIRE(hoverExitEvent);
-    CHECK(hoverExitEvent->reason == "widget/toggle");
+    auto hoverExitReasons = drain_auto_render_queue(fx.space, renderQueuePath);
+    expect_auto_render_reason(hoverExitReasons, "widget/toggle");
 
     auto hoverExitOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
     REQUIRE(hoverExitOp);
@@ -2287,11 +2312,8 @@ TEST_CASE("Widgets::Bindings::DispatchToggle handles hover/toggle/disable sequen
     REQUIRE(disableResult);
     CHECK(*disableResult);
 
-    auto disableEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
-    CHECK_FALSE(disableEvent);
-    if (!disableEvent) {
-        CHECK((disableEvent.error().code == Error::Code::NoObjectFound || disableEvent.error().code == Error::Code::NoSuchPath));
-    }
+    auto disableReasons = drain_auto_render_queue(fx.space, renderQueuePath);
+    CHECK(disableReasons.empty());
 
     auto disableOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
     CHECK_FALSE(disableOp);
@@ -2479,9 +2501,8 @@ TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
     REQUIRE(beginResult);
     CHECK(*beginResult);
 
-    auto beginEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
-    REQUIRE(beginEvent);
-    CHECK(beginEvent->reason == "widget/slider");
+    auto beginReasons = drain_auto_render_queue(fx.space, renderQueuePath);
+    expect_auto_render_reason(beginReasons, "widget/slider");
 
     auto beginOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
     REQUIRE(beginOp);
@@ -2501,9 +2522,8 @@ TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
     REQUIRE(updateResult);
     CHECK(*updateResult);
 
-    auto updateEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
-    REQUIRE(updateEvent);
-    CHECK(updateEvent->reason == "widget/slider");
+    auto updateReasons = drain_auto_render_queue(fx.space, renderQueuePath);
+    expect_auto_render_reason(updateReasons, "widget/slider");
 
     auto updateOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
     REQUIRE(updateOp);
@@ -2523,9 +2543,8 @@ TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
     REQUIRE(commitResult);
     CHECK(*commitResult);
 
-    auto commitEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
-    REQUIRE(commitEvent);
-    CHECK(commitEvent->reason == "widget/slider");
+    auto commitReasons = drain_auto_render_queue(fx.space, renderQueuePath);
+    expect_auto_render_reason(commitReasons, "widget/slider");
 
     auto commitOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
     REQUIRE(commitOp);
@@ -2536,11 +2555,8 @@ TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
     REQUIRE(hints);
     REQUIRE_FALSE(hints->empty());
 
-    auto noExtraEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
-    CHECK_FALSE(noExtraEvent);
-    if (!noExtraEvent) {
-        CHECK((noExtraEvent.error().code == Error::Code::NoObjectFound || noExtraEvent.error().code == Error::Code::NoSuchPath));
-    }
+    auto noExtraReasons = drain_auto_render_queue(fx.space, renderQueuePath);
+    CHECK(noExtraReasons.empty());
 
     Widgets::SliderState disabled{};
     disabled.enabled = false;
@@ -2550,11 +2566,8 @@ TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
     REQUIRE(disableResult);
     CHECK(*disableResult);
 
-    auto disableEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
-    CHECK_FALSE(disableEvent);
-    if (!disableEvent) {
-        CHECK((disableEvent.error().code == Error::Code::NoObjectFound || disableEvent.error().code == Error::Code::NoSuchPath));
-    }
+    auto disableReasons = drain_auto_render_queue(fx.space, renderQueuePath);
+    CHECK(disableReasons.empty());
 
     auto disableOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
     CHECK_FALSE(disableOp);
@@ -3616,9 +3629,8 @@ TEST_CASE("Widgets::Bindings::DispatchList enqueues ops and schedules renders") 
     CHECK(*selectResult);
 
     auto renderQueuePath = std::string(target->getPath()) + "/events/renderRequested/queue";
-    auto renderEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
-    REQUIRE(renderEvent);
-    CHECK(renderEvent->reason == "widget/list");
+    auto selectReasons = drain_auto_render_queue(fx.space, renderQueuePath);
+    expect_auto_render_reason(selectReasons, "widget/list");
 
     auto opQueuePath = binding->options.ops_queue.getPath();
     auto selectOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
@@ -3636,9 +3648,8 @@ TEST_CASE("Widgets::Bindings::DispatchList enqueues ops and schedules renders") 
     REQUIRE(hoverResult);
     CHECK(*hoverResult);
 
-    auto hoverEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
-    REQUIRE(hoverEvent);
-    CHECK(hoverEvent->reason == "widget/list");
+    auto hoverReasons = drain_auto_render_queue(fx.space, renderQueuePath);
+    expect_auto_render_reason(hoverReasons, "widget/list");
 
     auto hoverOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
     REQUIRE(hoverOp);
@@ -3657,9 +3668,8 @@ TEST_CASE("Widgets::Bindings::DispatchList enqueues ops and schedules renders") 
     REQUIRE(scrollResult);
     CHECK(*scrollResult);
 
-    auto scrollEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
-    REQUIRE(scrollEvent);
-    CHECK(scrollEvent->reason == "widget/list");
+    auto scrollReasons = drain_auto_render_queue(fx.space, renderQueuePath);
+    expect_auto_render_reason(scrollReasons, "widget/list");
 
     auto scrollOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
     REQUIRE(scrollOp);
@@ -3674,11 +3684,8 @@ TEST_CASE("Widgets::Bindings::DispatchList enqueues ops and schedules renders") 
     REQUIRE(disableResult);
     CHECK(*disableResult);
 
-    auto disableEvent = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
-    CHECK_FALSE(disableEvent);
-    if (!disableEvent) {
-        CHECK((disableEvent.error().code == Error::Code::NoObjectFound || disableEvent.error().code == Error::Code::NoSuchPath));
-    }
+    auto disableReasons = drain_auto_render_queue(fx.space, renderQueuePath);
+    CHECK(disableReasons.empty());
 
     auto disableOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
     CHECK_FALSE(disableOp);

@@ -2523,148 +2523,91 @@ static auto focus_widget_for_target(WidgetsExampleContext const& ctx,
     return nullptr;
 }
 
-static bool sync_focus_state(WidgetsExampleContext& ctx) {
+static std::optional<FocusTarget> focus_target_from_path(WidgetsExampleContext const& ctx,
+                                                         std::string const& widget_path) {
+    if (widget_path == ctx.button_paths.root.getPath()) {
+        return FocusTarget::Button;
+    }
+    if (widget_path == ctx.toggle_paths.root.getPath()) {
+        return FocusTarget::Toggle;
+    }
+    if (widget_path == ctx.slider_paths.root.getPath()) {
+        return FocusTarget::Slider;
+    }
+    if (widget_path == ctx.list_paths.root.getPath()) {
+        return FocusTarget::List;
+    }
+    if (widget_path == ctx.tree_paths.root.getPath()) {
+        return FocusTarget::Tree;
+    }
+    return std::nullopt;
+}
+
+static bool reload_widget_states(WidgetsExampleContext& ctx) {
     if (!ctx.space) {
         return false;
     }
-    if (ctx.focus_config.focus_state.getPath().empty()) {
-        return false;
+
+    bool updated = false;
+
+    if (auto state = ctx.space->read<Widgets::ButtonState, std::string>(std::string(ctx.button_paths.state.getPath()))) {
+        ctx.button_state = *state;
+        updated = true;
     }
-    auto* widget_path = focus_widget_for_target(ctx, ctx.focus_target);
-    if (!widget_path) {
-        return false;
+
+    if (auto state = ctx.space->read<Widgets::ToggleState, std::string>(std::string(ctx.toggle_paths.state.getPath()))) {
+        ctx.toggle_state = *state;
+        updated = true;
     }
-    auto set_result = WidgetFocus::Set(*ctx.space, ctx.focus_config, *widget_path);
-    if (!set_result) {
-        std::cerr << "widgets_example: failed to set focus state: "
-                  << set_result.error().message.value_or("unknown error") << "\n";
-        return false;
+
+    if (auto state = ctx.space->read<Widgets::SliderState, std::string>(std::string(ctx.slider_paths.state.getPath()))) {
+        ctx.slider_state = *state;
+        updated = true;
     }
-    return set_result->changed;
+
+    if (auto state = ctx.space->read<Widgets::ListState, std::string>(std::string(ctx.list_paths.state.getPath()))) {
+        ctx.list_state = *state;
+        ctx.focus_list_index = ctx.list_state.hovered_index >= 0 ? ctx.list_state.hovered_index
+                                                                 : ctx.list_state.selected_index;
+        updated = true;
+    }
+
+    if (auto state = ctx.space->read<Widgets::TreeState, std::string>(std::string(ctx.tree_paths.state.getPath()))) {
+        ctx.tree_state = *state;
+        if (!ctx.tree_state.hovered_id.empty()) {
+            auto const& rows = ctx.gallery.layout.tree.rows;
+            auto it = std::find_if(rows.begin(), rows.end(), [&](TreeRowLayout const& row) {
+                return row.node_id == ctx.tree_state.hovered_id;
+            });
+            if (it != rows.end()) {
+                ctx.focus_tree_index = static_cast<int>(std::distance(rows.begin(), it));
+            }
+        }
+        updated = true;
+    }
+
+    return updated;
 }
 
-static bool apply_focus_visuals(WidgetsExampleContext& ctx) {
-    bool changed = false;
-    auto update_button = [&](bool focused) {
-        if (ctx.button_state.hovered == focused && ctx.button_state.focused == focused) {
-            return;
-        }
-        Widgets::ButtonState desired = ctx.button_state;
-        desired.hovered = focused;
-        desired.focused = focused;
-        auto status = Widgets::UpdateButtonState(*ctx.space, ctx.button_paths, desired);
-        if (!status) {
-            std::cerr << "widgets_example: failed to update button focus state: "
-                      << status.error().message.value_or("unknown error") << "\n";
-            return;
-        }
-        ctx.button_state = desired;
-        changed |= *status;
-    };
+static bool refresh_focus_target_from_space(WidgetsExampleContext& ctx) {
+    if (!ctx.space || ctx.focus_config.focus_state.getPath().empty()) {
+        return false;
+    }
+    auto focus_state = WidgetFocus::Current(*ctx.space,
+                                            SP::ConcretePathStringView{ctx.focus_config.focus_state.getPath()});
+    if (!focus_state) {
+        std::cerr << "widgets_example: unable to read focus state: "
+                  << focus_state.error().message.value_or("unknown error") << "\n";
+        return false;
+    }
 
-    auto update_toggle = [&](bool focused) {
-        if (ctx.toggle_state.hovered == focused && ctx.toggle_state.focused == focused) {
-            return;
+    auto previous = ctx.focus_target;
+    if (focus_state->has_value()) {
+        if (auto mapped = focus_target_from_path(ctx, **focus_state)) {
+            ctx.focus_target = *mapped;
         }
-        Widgets::ToggleState desired = ctx.toggle_state;
-        desired.hovered = focused;
-        desired.focused = focused;
-        auto status = Widgets::UpdateToggleState(*ctx.space, ctx.toggle_paths, desired);
-        if (!status) {
-            std::cerr << "widgets_example: failed to update toggle focus state: "
-                      << status.error().message.value_or("unknown error") << "\n";
-            return;
-        }
-        ctx.toggle_state = desired;
-        changed |= *status;
-    };
-
-    auto update_slider = [&](bool focused) {
-        if (ctx.slider_state.hovered == focused && ctx.slider_state.focused == focused) {
-            return;
-        }
-        Widgets::SliderState desired = ctx.slider_state;
-        desired.hovered = focused;
-        desired.focused = focused;
-        auto status = Widgets::UpdateSliderState(*ctx.space, ctx.slider_paths, desired);
-        if (!status) {
-            std::cerr << "widgets_example: failed to update slider focus state: "
-                      << status.error().message.value_or("unknown error") << "\n";
-            return;
-        }
-        ctx.slider_state = desired;
-        changed |= *status;
-    };
-
-    auto update_list = [&](bool focused) {
-        int desired_hover = -1;
-        if (focused && !ctx.gallery.layout.list.item_bounds.empty()) {
-            int max_index = static_cast<int>(ctx.gallery.layout.list.item_bounds.size()) - 1;
-            if (ctx.focus_list_index < 0) {
-                ctx.focus_list_index = std::clamp(ctx.list_state.selected_index, 0, max_index);
-            }
-            ctx.focus_list_index = std::clamp(ctx.focus_list_index, 0, max_index);
-            desired_hover = ctx.focus_list_index;
-        }
-        if (ctx.list_state.hovered_index == desired_hover && ctx.list_state.focused == focused) {
-            return;
-        }
-        Widgets::ListState desired = ctx.list_state;
-        desired.hovered_index = desired_hover;
-        desired.focused = focused;
-        auto status = Widgets::UpdateListState(*ctx.space, ctx.list_paths, desired);
-        if (!status) {
-            std::cerr << "widgets_example: failed to update list focus state: "
-                      << status.error().message.value_or("unknown error") << "\n";
-            return;
-        }
-        ctx.list_state = desired;
-        changed |= *status;
-    };
-
-    auto update_tree = [&](bool focused) {
-        std::string desired_hover;
-        auto const& rows = ctx.gallery.layout.tree.rows;
-        if (focused && !rows.empty()) {
-            if (ctx.focus_tree_index < 0 || ctx.focus_tree_index >= static_cast<int>(rows.size())) {
-                if (!ctx.tree_state.selected_id.empty()) {
-                    auto it = std::find_if(rows.begin(), rows.end(), [&](TreeRowLayout const& row) {
-                        return row.node_id == ctx.tree_state.selected_id;
-                    });
-                    if (it != rows.end()) {
-                        ctx.focus_tree_index = static_cast<int>(std::distance(rows.begin(), it));
-                    } else {
-                        ctx.focus_tree_index = 0;
-                    }
-                } else {
-                    ctx.focus_tree_index = 0;
-                }
-            }
-            ctx.focus_tree_index = std::clamp(ctx.focus_tree_index, 0, static_cast<int>(rows.size()) - 1);
-            desired_hover = rows[static_cast<std::size_t>(ctx.focus_tree_index)].node_id;
-        }
-        if (ctx.tree_state.hovered_id == desired_hover && ctx.tree_state.focused == focused) {
-            return;
-        }
-        Widgets::TreeState desired = ctx.tree_state;
-        desired.hovered_id = desired_hover;
-        desired.focused = focused;
-        auto status = Widgets::UpdateTreeState(*ctx.space, ctx.tree_paths, desired);
-        if (!status) {
-            std::cerr << "widgets_example: failed to update tree focus state: "
-                      << status.error().message.value_or("unknown error") << "\n";
-            return;
-        }
-        ctx.tree_state = desired;
-        changed |= *status;
-    };
-
-    update_button(ctx.focus_target == FocusTarget::Button);
-    update_toggle(ctx.focus_target == FocusTarget::Toggle);
-    update_slider(ctx.focus_target == FocusTarget::Slider);
-    update_list(ctx.focus_target == FocusTarget::List);
-    update_tree(ctx.focus_target == FocusTarget::Tree);
-    return changed;
+    }
+    return ctx.focus_target != previous;
 }
 
 static bool set_focus_target(WidgetsExampleContext& ctx,
@@ -2674,10 +2617,19 @@ static bool set_focus_target(WidgetsExampleContext& ctx,
     ctx.focus_target = target;
 
     bool changed = false;
-    if (update_visuals) {
-        changed |= apply_focus_visuals(ctx);
+    if (update_visuals && ctx.space) {
+        if (auto* widget_path = focus_widget_for_target(ctx, target)) {
+            auto set_result = WidgetFocus::Set(*ctx.space, ctx.focus_config, *widget_path);
+            if (!set_result) {
+                std::cerr << "widgets_example: failed to set focus state: "
+                          << set_result.error().message.value_or("unknown error") << "\n";
+            } else {
+                changed |= set_result->changed;
+            }
+        }
+        changed |= reload_widget_states(ctx);
+        changed |= refresh_focus_target_from_space(ctx);
     }
-    changed |= sync_focus_state(ctx);
     return changed || target_changed;
 }
 
@@ -2796,7 +2748,12 @@ static auto dispatch_button(WidgetsExampleContext& ctx,
         return false;
     }
     if (*result) {
-        ctx.button_state = desired;
+        auto updated = ctx.space->read<Widgets::ButtonState, std::string>(std::string(ctx.button_paths.state.getPath()));
+        if (updated) {
+            ctx.button_state = *updated;
+        } else {
+            ctx.button_state = desired;
+        }
     }
     return *result;
 }
@@ -2817,7 +2774,12 @@ static auto dispatch_toggle(WidgetsExampleContext& ctx,
         return false;
     }
     if (*result) {
-        ctx.toggle_state = desired;
+        auto updated = ctx.space->read<Widgets::ToggleState, std::string>(std::string(ctx.toggle_paths.state.getPath()));
+        if (updated) {
+            ctx.toggle_state = *updated;
+        } else {
+            ctx.toggle_state = desired;
+        }
     }
     return *result;
 }
@@ -2871,6 +2833,8 @@ static auto dispatch_list(WidgetsExampleContext& ctx,
         auto updated = ctx.space->read<Widgets::ListState, std::string>(std::string(ctx.list_paths.state.getPath()));
         if (updated) {
             ctx.list_state = *updated;
+            ctx.focus_list_index = ctx.list_state.hovered_index >= 0 ? ctx.list_state.hovered_index
+                                                                     : ctx.list_state.selected_index;
         } else {
             ctx.list_state = desired;
         }
@@ -2901,6 +2865,15 @@ static auto dispatch_tree(WidgetsExampleContext& ctx,
         auto updated = ctx.space->read<Widgets::TreeState, std::string>(std::string(ctx.tree_paths.state.getPath()));
         if (updated) {
             ctx.tree_state = *updated;
+            if (!ctx.tree_state.hovered_id.empty()) {
+                auto const& rows = ctx.gallery.layout.tree.rows;
+                auto it = std::find_if(rows.begin(), rows.end(), [&](TreeRowLayout const& row) {
+                    return row.node_id == ctx.tree_state.hovered_id;
+                });
+                if (it != rows.end()) {
+                    ctx.focus_tree_index = static_cast<int>(std::distance(rows.begin(), it));
+                }
+            }
         } else {
             ctx.tree_state = desired;
         }
@@ -2989,12 +2962,10 @@ static void handle_pointer_move(WidgetsExampleContext& ctx, float x, float y) {
 static void handle_pointer_down(WidgetsExampleContext& ctx) {
     ctx.pointer_down = true;
     bool changed = false;
-    bool focus_changed = false;
     ctx.tree_pointer_down_id.clear();
     ctx.tree_pointer_toggle = false;
 
     if (ctx.gallery.layout.button.contains(ctx.pointer_x, ctx.pointer_y)) {
-        focus_changed |= set_focus_target(ctx, FocusTarget::Button, false);
         Widgets::ButtonState desired = ctx.button_state;
         desired.hovered = true;
         desired.pressed = true;
@@ -3002,7 +2973,6 @@ static void handle_pointer_down(WidgetsExampleContext& ctx) {
     }
 
     if (ctx.gallery.layout.toggle.contains(ctx.pointer_x, ctx.pointer_y)) {
-        focus_changed |= set_focus_target(ctx, FocusTarget::Toggle, false);
         Widgets::ToggleState desired = ctx.toggle_state;
         desired.hovered = true;
         changed |= dispatch_toggle(ctx, desired, WidgetBindings::WidgetOpKind::Press, true);
@@ -3010,7 +2980,6 @@ static void handle_pointer_down(WidgetsExampleContext& ctx) {
 
     if (ctx.gallery.layout.slider.contains(ctx.pointer_x, ctx.pointer_y)) {
         ctx.slider_dragging = true;
-        focus_changed |= set_focus_target(ctx, FocusTarget::Slider, false);
         Widgets::SliderState desired = ctx.slider_state;
         desired.dragging = true;
         desired.hovered = true;
@@ -3029,7 +2998,6 @@ static void handle_pointer_down(WidgetsExampleContext& ctx) {
                                  index,
                                  0.0f);
         ctx.focus_list_index = index;
-        focus_changed |= set_focus_target(ctx, FocusTarget::List, false);
     }
 
     if (ctx.gallery.layout.tree.bounds.contains(ctx.pointer_x, ctx.pointer_y)) {
@@ -3047,11 +3015,11 @@ static void handle_pointer_down(WidgetsExampleContext& ctx) {
                                      true,
                                      row.node_id,
                                      0.0f);
-            focus_changed |= set_focus_target(ctx, FocusTarget::Tree, false);
         }
     }
 
-    if (focus_changed) {
+    if (refresh_focus_target_from_space(ctx)) {
+        reload_widget_states(ctx);
         changed = true;
     }
 
@@ -3062,7 +3030,6 @@ static void handle_pointer_down(WidgetsExampleContext& ctx) {
 
 static void handle_pointer_up(WidgetsExampleContext& ctx) {
     bool changed = false;
-    bool focus_changed = false;
 
     bool inside_button = ctx.gallery.layout.button.contains(ctx.pointer_x, ctx.pointer_y);
     if (ctx.button_state.pressed) {
@@ -3111,7 +3078,6 @@ static void handle_pointer_up(WidgetsExampleContext& ctx) {
                                  index,
                                  0.0f);
         ctx.focus_list_index = index;
-        focus_changed |= set_focus_target(ctx, FocusTarget::List, false);
     }
 
     bool inside_tree = ctx.gallery.layout.tree.bounds.contains(ctx.pointer_x, ctx.pointer_y);
@@ -3141,7 +3107,6 @@ static void handle_pointer_up(WidgetsExampleContext& ctx) {
                                      row.node_id,
                                      0.0f);
             ctx.focus_tree_index = tree_index;
-            focus_changed |= set_focus_target(ctx, FocusTarget::Tree, false);
         }
     }
     ctx.tree_pointer_down_id.clear();
@@ -3149,7 +3114,8 @@ static void handle_pointer_up(WidgetsExampleContext& ctx) {
 
     ctx.pointer_down = false;
 
-    if (focus_changed) {
+    if (refresh_focus_target_from_space(ctx)) {
+        reload_widget_states(ctx);
         changed = true;
     }
 

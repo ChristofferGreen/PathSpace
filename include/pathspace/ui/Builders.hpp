@@ -959,6 +959,8 @@ struct BindingOptions {
     ConcretePath ops_queue;
     DirtyRectHint dirty_rect;
     bool auto_render = true;
+    ConcretePath focus_state;
+    bool focus_enabled = false;
 };
 
 struct ButtonBinding {
