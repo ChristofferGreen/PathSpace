@@ -319,10 +319,6 @@ static auto lighten(std::array<float, 4> color, float amount) -> std::array<floa
     return mix_color(color, {1.0f, 1.0f, 1.0f, color[3]}, amount);
 }
 
-static auto darken(std::array<float, 4> color, float amount) -> std::array<float, 4> {
-    return mix_color(color, {0.0f, 0.0f, 0.0f, color[3]}, amount);
-}
-
 static auto desaturate(std::array<float, 4> color, float amount) -> std::array<float, 4> {
     auto gray = std::array<float, 4>{0.5f, 0.5f, 0.5f, color[3]};
     return mix_color(color, gray, amount);
@@ -338,18 +334,6 @@ auto identity_transform() -> SceneData::Transform {
 
 auto append_bucket(SceneData::DrawableBucketSnapshot& dest,
                    SceneData::DrawableBucketSnapshot const& src) -> void;
-
-static auto clamp_unit(float value) -> float {
-    return std::clamp(value, 0.0f, 1.0f);
-}
-
-static auto lighten_color(std::array<float, 4> color, float amount) -> std::array<float, 4> {
-    amount = clamp_unit(amount);
-    for (int i = 0; i < 3; ++i) {
-        color[i] = clamp_unit(color[i] * (1.0f - amount) + amount);
-    }
-    return color;
-}
 
 static auto build_stack_preview(Widgets::StackLayoutStyle const& style,
                                 Widgets::StackLayoutState const& layout,
@@ -476,36 +460,6 @@ auto unwrap_or_exit(SP::Expected<void> value, std::string const& context) -> voi
         std::cerr << context;
         if (value.error().message.has_value()) {
             std::cerr << ": " << *value.error().message;
-        }
-        std::cerr << std::endl;
-        std::exit(1);
-    }
-}
-
-template <typename T>
-auto replace_value(PathSpace& space, std::string const& path, T const& value) -> void {
-    while (true) {
-        auto taken = space.take<T>(path);
-        if (taken) {
-            continue;
-        }
-        auto const& error = taken.error();
-        if (error.code == SP::Error::Code::NoObjectFound
-            || error.code == SP::Error::Code::NoSuchPath) {
-            break;
-        }
-        std::cerr << "failed clearing '" << path << "'";
-        if (error.message) {
-            std::cerr << ": " << *error.message;
-        }
-        std::cerr << std::endl;
-        std::exit(1);
-    }
-    auto inserted = space.insert(path, value);
-    if (!inserted.errors.empty()) {
-        std::cerr << "failed writing '" << path << "'";
-        if (inserted.errors.front().message) {
-            std::cerr << ": " << *inserted.errors.front().message;
         }
         std::cerr << std::endl;
         std::exit(1);
@@ -1588,28 +1542,6 @@ static void write_debug_dump(WidgetsExampleContext const& ctx, std::filesystem::
 
 static void refresh_gallery(WidgetsExampleContext& ctx);
 
-static auto center_of(WidgetBounds const& bounds) -> std::pair<float, float> {
-    return {bounds.min_x + bounds.width() * 0.5f,
-            bounds.min_y + bounds.height() * 0.5f};
-}
-
-struct PointerOverride {
-    WidgetsExampleContext& ctx;
-    float previous_x;
-    float previous_y;
-
-    PointerOverride(WidgetsExampleContext& context, float x, float y)
-        : ctx(context), previous_x(context.pointer_x), previous_y(context.pointer_y) {
-        ctx.pointer_x = x;
-        ctx.pointer_y = y;
-    }
-
-    ~PointerOverride() {
-        ctx.pointer_x = previous_x;
-        ctx.pointer_y = previous_y;
-    }
-};
-
 enum class TraceEventKind {
     MouseAbsolute,
     MouseRelative,
@@ -1915,26 +1847,6 @@ void WidgetTrace::flush() {
     }
 }
 
-static auto slider_thumb_position(WidgetsExampleContext const& ctx, float value) -> std::pair<float, float> {
-    auto const& bounds = ctx.gallery.layout.slider;
-    if (bounds.width() <= 0.0f) {
-        return center_of(bounds);
-    }
-    float clamped = std::clamp(value, ctx.slider_range.minimum, ctx.slider_range.maximum);
-    float range = ctx.slider_range.maximum - ctx.slider_range.minimum;
-    float t = range > 0.0f ? (clamped - ctx.slider_range.minimum) / range : 0.0f;
-    float x = bounds.min_x + bounds.width() * std::clamp(t, 0.0f, 1.0f);
-    float y = bounds.min_y + bounds.height() * 0.5f;
-    return {x, y};
-}
-
-static auto list_item_center(WidgetsExampleContext const& ctx, int index) -> std::pair<float, float> {
-    if (index < 0 || index >= static_cast<int>(ctx.gallery.layout.list.item_bounds.size())) {
-        return center_of(ctx.gallery.layout.list.bounds);
-    }
-    return center_of(ctx.gallery.layout.list.item_bounds[static_cast<std::size_t>(index)]);
-}
-
 static auto tree_row_index_from_position(WidgetsExampleContext const& ctx, float y) -> int {
     auto const& rows = ctx.gallery.layout.tree.rows;
     for (std::size_t i = 0; i < rows.size(); ++i) {
@@ -1944,14 +1856,6 @@ static auto tree_row_index_from_position(WidgetsExampleContext const& ctx, float
         }
     }
     return -1;
-}
-
-static auto tree_row_center(WidgetsExampleContext const& ctx, int index) -> std::pair<float, float> {
-    auto const& rows = ctx.gallery.layout.tree.rows;
-    if (index < 0 || index >= static_cast<int>(rows.size())) {
-        return center_of(ctx.gallery.layout.tree.bounds);
-    }
-    return center_of(rows[static_cast<std::size_t>(index)].bounds);
 }
 
 static bool tree_toggle_contains(WidgetsExampleContext const& ctx,
@@ -1970,20 +1874,6 @@ static bool tree_toggle_contains(WidgetsExampleContext const& ctx,
     return x >= bounds.min_x && x <= bounds.max_x && y >= bounds.min_y && y <= bounds.max_y;
 }
 
-static int tree_parent_index(WidgetsExampleContext const& ctx, int index) {
-    auto const& rows = ctx.gallery.layout.tree.rows;
-    if (index <= 0 || index >= static_cast<int>(rows.size())) {
-        return -1;
-    }
-    int depth = rows[static_cast<std::size_t>(index)].depth;
-    for (int i = index - 1; i >= 0; --i) {
-        if (rows[static_cast<std::size_t>(i)].depth < depth) {
-            return i;
-        }
-    }
-    return -1;
-}
-
 static int tree_first_child_index(WidgetsExampleContext const& ctx, int index) {
     auto const& rows = ctx.gallery.layout.tree.rows;
     if (index < 0 || index >= static_cast<int>(rows.size() - 1)) {
@@ -1995,15 +1885,6 @@ static int tree_first_child_index(WidgetsExampleContext const& ctx, int index) {
         return index + 1;
     }
     return -1;
-}
-
-static auto slider_keyboard_step(WidgetsExampleContext const& ctx) -> float {
-    float step = ctx.slider_range.step;
-    if (step <= 0.0f) {
-        float range = ctx.slider_range.maximum - ctx.slider_range.minimum;
-        step = std::max(range * 0.05f, 0.01f);
-    }
-    return step;
 }
 
 static auto focus_widget_for_target(WidgetsExampleContext const& ctx,
@@ -2144,28 +2025,6 @@ static bool set_focus_target(WidgetsExampleContext& ctx,
         }
     }
     return changed || target_changed;
-}
-
-static void cycle_focus(WidgetsExampleContext& ctx, bool forward) {
-    constexpr FocusTarget order[] = {
-        FocusTarget::Button,
-        FocusTarget::Toggle,
-        FocusTarget::Slider,
-        FocusTarget::List,
-        FocusTarget::Tree,
-    };
-    int current = 0;
-    for (std::size_t i = 0; i < std::size(order); ++i) {
-        if (order[i] == ctx.focus_target) {
-            current = static_cast<int>(i);
-            break;
-        }
-    }
-    int delta = forward ? 1 : -1;
-    int next = (current + delta + static_cast<int>(std::size(order))) % static_cast<int>(std::size(order));
-    if (set_focus_target(ctx, order[static_cast<std::size_t>(next)])) {
-        refresh_gallery(ctx);
-    }
 }
 
 static auto make_pointer_info(WidgetsExampleContext const& ctx, bool inside) -> WidgetBindings::PointerInfo {
@@ -2898,19 +2757,6 @@ static void process_widget_actions(WidgetsExampleContext& ctx) {
     process_root(ctx.tree_paths.root);
 }
 
-static auto slider_pointer_for_value(WidgetsExampleContext const& ctx, float value) -> std::pair<float, float> {
-    auto const range_min = ctx.slider_range.minimum;
-    auto const range_max = ctx.slider_range.maximum;
-    float clamped = std::clamp(value, range_min, range_max);
-    float denom = std::max(range_max - range_min, 1e-6f);
-    float progress = std::clamp((clamped - range_min) / denom, 0.0f, 1.0f);
-
-    auto const& bounds = ctx.gallery.layout.slider;
-    float x = bounds.min_x + bounds.width() * progress;
-    float y = bounds.min_y + ctx.slider_style.height * 0.5f;
-    return {x, y};
-}
-
 static void capture_headless_screenshot(PathSpace& space,
                                         WidgetsExampleContext& ctx,
                                         Builders::App::BootstrapResult const& bootstrap,
@@ -3136,139 +2982,6 @@ static bool has_modifier(unsigned int modifiers, unsigned int mask) {
     return (modifiers & mask) != 0U;
 }
 
-static void adjust_slider_value(WidgetsExampleContext& ctx, float delta) {
-    if (delta == 0.0f) {
-        return;
-    }
-    if (ctx.slider_range.maximum <= ctx.slider_range.minimum) {
-        return;
-    }
-    Widgets::SliderState desired = ctx.slider_state;
-    desired.hovered = true;
-    desired.value = std::clamp(ctx.slider_state.value + delta,
-                               ctx.slider_range.minimum,
-                               ctx.slider_range.maximum);
-    if (std::abs(desired.value - ctx.slider_state.value) <= 1e-6f) {
-        return;
-    }
-    auto thumb = slider_thumb_position(ctx, desired.value);
-    PointerOverride pointer_override(ctx, thumb.first, thumb.second);
-    bool changed = false;
-    changed |= dispatch_slider(ctx, desired, WidgetBindings::WidgetOpKind::SliderUpdate, true);
-    changed |= dispatch_slider(ctx, desired, WidgetBindings::WidgetOpKind::SliderCommit, true);
-    if (changed) {
-        refresh_gallery(ctx);
-    } else {
-        ctx.slider_state = desired;
-    }
-}
-
-static void move_list_focus(WidgetsExampleContext& ctx, int direction) {
-    if (ctx.gallery.layout.list.item_bounds.empty()) {
-        return;
-    }
-    int max_index = static_cast<int>(ctx.gallery.layout.list.item_bounds.size()) - 1;
-    if (ctx.focus_list_index < 0) {
-        ctx.focus_list_index = ctx.list_state.selected_index >= 0 ? ctx.list_state.selected_index : 0;
-    }
-    ctx.focus_list_index = std::clamp(ctx.focus_list_index + direction, 0, max_index);
-    Widgets::ListState desired = ctx.list_state;
-    desired.hovered_index = ctx.focus_list_index;
-    desired.selected_index = ctx.focus_list_index;
-    auto center = list_item_center(ctx, ctx.focus_list_index);
-    PointerOverride pointer_override(ctx, center.first, center.second);
-    if (dispatch_list(ctx,
-                      desired,
-                      WidgetBindings::WidgetOpKind::ListSelect,
-                      true,
-                      ctx.focus_list_index,
-                      0.0f)) {
-        refresh_gallery(ctx);
-    } else {
-        ctx.list_state = desired;
-    }
-}
-
-static bool ensure_tree_focus_index(WidgetsExampleContext& ctx) {
-    auto const& rows = ctx.gallery.layout.tree.rows;
-    if (rows.empty()) {
-        return false;
-    }
-    if (ctx.focus_tree_index < 0 || ctx.focus_tree_index >= static_cast<int>(rows.size())) {
-        if (!ctx.tree_state.selected_id.empty()) {
-            auto it = std::find_if(rows.begin(), rows.end(), [&](TreeRowLayout const& row) {
-                return row.node_id == ctx.tree_state.selected_id;
-            });
-            if (it != rows.end()) {
-                ctx.focus_tree_index = static_cast<int>(std::distance(rows.begin(), it));
-            } else {
-                ctx.focus_tree_index = 0;
-            }
-        } else {
-            ctx.focus_tree_index = 0;
-        }
-    }
-    ctx.focus_tree_index = std::clamp(ctx.focus_tree_index, 0, static_cast<int>(rows.size()) - 1);
-    return true;
-}
-
-static void move_tree_focus(WidgetsExampleContext& ctx, int direction) {
-    if (!ensure_tree_focus_index(ctx)) {
-        return;
-    }
-    auto const& rows = ctx.gallery.layout.tree.rows;
-    ctx.focus_tree_index = std::clamp(ctx.focus_tree_index + direction,
-                                      0,
-                                      static_cast<int>(rows.size()) - 1);
-    auto const& row = rows[static_cast<std::size_t>(ctx.focus_tree_index)];
-    Widgets::TreeState desired = ctx.tree_state;
-    desired.hovered_id = row.node_id;
-    desired.selected_id = row.node_id;
-    auto center = tree_row_center(ctx, ctx.focus_tree_index);
-    PointerOverride pointer_override(ctx, center.first, center.second);
-    if (dispatch_tree(ctx,
-                      desired,
-                      WidgetBindings::WidgetOpKind::TreeSelect,
-                      true,
-                      row.node_id,
-                      0.0f)) {
-        refresh_gallery(ctx);
-    } else {
-        ctx.tree_state = desired;
-    }
-}
-
-static void tree_apply_op(WidgetsExampleContext& ctx, WidgetBindings::WidgetOpKind op) {
-    if (!ensure_tree_focus_index(ctx)) {
-        return;
-    }
-    auto const& rows = ctx.gallery.layout.tree.rows;
-    auto const& row = rows[static_cast<std::size_t>(ctx.focus_tree_index)];
-    if ((op == WidgetBindings::WidgetOpKind::TreeToggle
-         || op == WidgetBindings::WidgetOpKind::TreeExpand
-         || op == WidgetBindings::WidgetOpKind::TreeCollapse)
-        && !row.expandable) {
-        return;
-    }
-    Widgets::TreeState desired = ctx.tree_state;
-    desired.hovered_id = row.node_id;
-    if (op == WidgetBindings::WidgetOpKind::TreeSelect) {
-        desired.selected_id = row.node_id;
-    }
-    auto center = tree_row_center(ctx, ctx.focus_tree_index);
-    PointerOverride pointer_override(ctx, center.first, center.second);
-    if (dispatch_tree(ctx,
-                      desired,
-                      op,
-                      true,
-                      row.node_id,
-                      0.0f)) {
-        refresh_gallery(ctx);
-    } else {
-        ctx.tree_state = desired;
-    }
-}
-
 static void refresh_stack_layout(WidgetsExampleContext& ctx) {
     ctx.stack_params = unwrap_or_exit(Widgets::DescribeStack(*ctx.space, ctx.stack_paths),
                                       "describe stack layout");
@@ -3313,61 +3026,6 @@ static void toggle_stack_axis(WidgetsExampleContext& ctx) {
     }
     refresh_stack_layout(ctx);
     refresh_gallery(ctx);
-}
-
-static void activate_focused_widget(WidgetsExampleContext& ctx) {
-    switch (ctx.focus_target) {
-    case FocusTarget::Button: {
-        auto desired = ctx.button_state;
-        auto center = center_of(ctx.gallery.layout.button);
-        PointerOverride pointer_override(ctx, center.first, center.second);
-        if (dispatch_button(ctx, desired, WidgetBindings::WidgetOpKind::Activate, true)) {
-            refresh_gallery(ctx);
-        }
-        break;
-    }
-    case FocusTarget::Toggle: {
-        Widgets::ToggleState desired = ctx.toggle_state;
-        desired.checked = !desired.checked;
-        auto center = center_of(ctx.gallery.layout.toggle);
-        PointerOverride pointer_override(ctx, center.first, center.second);
-        if (dispatch_toggle(ctx, desired, WidgetBindings::WidgetOpKind::Toggle, true)) {
-            refresh_gallery(ctx);
-        }
-        break;
-    }
-    case FocusTarget::Slider: {
-        // Toggle commit to reinforce state; no action when pressing space/enter.
-        break;
-    }
-    case FocusTarget::List: {
-        if (ctx.gallery.layout.list.item_bounds.empty()) {
-            return;
-        }
-        int max_index = static_cast<int>(ctx.gallery.layout.list.item_bounds.size()) - 1;
-        ctx.focus_list_index = std::clamp(ctx.focus_list_index, 0, max_index);
-        Widgets::ListState desired = ctx.list_state;
-        desired.hovered_index = ctx.focus_list_index;
-        desired.selected_index = ctx.focus_list_index;
-        auto center = list_item_center(ctx, ctx.focus_list_index);
-        PointerOverride pointer_override(ctx, center.first, center.second);
-        if (dispatch_list(ctx,
-                          desired,
-                          WidgetBindings::WidgetOpKind::ListActivate,
-                          true,
-                          ctx.focus_list_index,
-                          0.0f)) {
-            refresh_gallery(ctx);
-        } else {
-            ctx.list_state = desired;
-        }
-        break;
-    }
-    case FocusTarget::Tree: {
-        tree_apply_op(ctx, WidgetBindings::WidgetOpKind::TreeToggle);
-        break;
-    }
-    }
 }
 
 static void handle_local_keyboard(SP::UI::LocalKeyEvent const& ev, void* user_data) {
