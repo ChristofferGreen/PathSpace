@@ -99,6 +99,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/WidgetBuildersCore.cpp
         ui/WidgetBindings.cpp
         ui/WidgetInput.cpp
+        ui/WidgetTrace.cpp
         ui/WidgetFocus.cpp
         ui/WidgetReducers.cpp
         ui/DiagnosticsBuilders.cpp

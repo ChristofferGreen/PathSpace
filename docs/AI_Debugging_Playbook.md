@@ -76,6 +76,8 @@ Environment knobs (all respected by the wrapper and the logger):
   | `WIDGETS_EXAMPLE_TRACE_REPLAY` | Path to a trace file to replay. When present, `widgets_example` skips the LocalWindow bridge and replays events headlessly. |
   | `WIDGETS_EXAMPLE_HEADLESS` | When truthy, suppresses the interactive window. The replay script defaults this to `1` so replays run on CI hosts. |
 
+  The recorder/replayer now lives in shared UI tooling—include `pathspace/ui/WidgetTrace.hpp` and construct `SP::UI::WidgetTraceOptions` with your own env var names when you want the same workflow in other apps or tests.
+
 ### 1.4 Widget gallery screenshots
 
 - Capture a deterministic PNG of the gallery UI without manual interaction:

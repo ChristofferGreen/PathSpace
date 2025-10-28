@@ -101,7 +101,9 @@ Keep `docs/AI_Paths.md` in sync if you introduce new metadata keys or queues.
   inspection tips.
 - When filing interaction regressions, attach traces generated via
   `scripts/record_widget_session.sh` / `scripts/replay_widget_session.sh` so the
-  next maintainer can replay the flow headlessly.
+  next maintainer can replay the flow headlessly. The capture helper is now
+  exposed as `SP::UI::WidgetTrace` (`pathspace/ui/WidgetTrace.hpp`) if you need
+  to integrate tracing into additional demos or UITests with custom env vars.
 
 ## Testing Checklist
 - Rebuild: `cmake --build build -j`.
