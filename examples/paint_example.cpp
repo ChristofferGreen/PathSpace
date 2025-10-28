@@ -13,12 +13,18 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <iomanip>
 #include <mutex>
 #include <numeric>
 #include <optional>
+#include <sstream>
+#include <span>
 #include <string>
 #include <thread>
 #include <vector>
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <third_party/stb_image_write.h>
 
 using namespace SP;
 using namespace SP::UI;
@@ -289,6 +295,158 @@ struct Stroke {
     std::string authoring_id;
 };
 
+struct CanvasState {
+    int width = 0;
+    int height = 0;
+    std::vector<std::uint8_t> pixels;
+    std::uint64_t fingerprint = 0;
+    bool dirty = false;
+};
+
+struct CanvasDrawable {
+    std::uint64_t drawable_id = 0;
+    std::uint64_t fingerprint = 0;
+    int width = 0;
+    int height = 0;
+};
+
+constexpr std::uint64_t kCanvasDrawableId = 1;
+constexpr std::uint64_t kInitialCanvasFingerprint = 0xC001000000000000ULL;
+
+auto clamp_dimension(int value) -> int {
+    return value < 0 ? 0 : value;
+}
+
+auto reset_canvas(CanvasState& canvas, int width, int height) -> void {
+    canvas.width = clamp_dimension(width);
+    canvas.height = clamp_dimension(height);
+    std::size_t pixel_count = static_cast<std::size_t>(canvas.width) * static_cast<std::size_t>(canvas.height);
+    canvas.pixels.resize(pixel_count * 4u);
+    std::fill(canvas.pixels.begin(), canvas.pixels.end(), static_cast<std::uint8_t>(255));
+    canvas.dirty = false;
+    canvas.fingerprint = 0;
+}
+
+auto ensure_canvas(CanvasState& canvas, int width, int height) -> void {
+    if (canvas.width != width || canvas.height != height || canvas.pixels.empty()) {
+        reset_canvas(canvas, width, height);
+    }
+}
+
+auto encode_canvas_png(CanvasState const& canvas) -> std::vector<std::uint8_t> {
+    if (canvas.width <= 0 || canvas.height <= 0 || canvas.pixels.empty()) {
+        return {};
+    }
+    int out_len = 0;
+    unsigned char* encoded = stbi_write_png_to_mem(
+        canvas.pixels.data(),
+        canvas.width * 4,
+        canvas.width,
+        canvas.height,
+        4,
+        &out_len);
+    if (!encoded || out_len <= 0) {
+        if (encoded) {
+            STBIW_FREE(encoded);
+        }
+        return {};
+    }
+    std::vector<std::uint8_t> png_bytes(encoded, encoded + out_len);
+    STBIW_FREE(encoded);
+    return png_bytes;
+}
+
+auto to_uint8(float value) -> std::uint8_t {
+    auto clamped = std::clamp(value, 0.0f, 1.0f);
+    return static_cast<std::uint8_t>(std::round(clamped * 255.0f));
+}
+
+auto composite_stroke(CanvasState& canvas,
+                      Stroke const& stroke) -> void {
+    if (canvas.width <= 0 || canvas.height <= 0 || canvas.pixels.empty() || stroke.points.empty()) {
+        return;
+    }
+
+    auto radius = std::max(1.0f, stroke.thickness * 0.5f);
+    auto radius_sq = radius * radius;
+    auto color_r = to_uint8(stroke.color[0]);
+    auto color_g = to_uint8(stroke.color[1]);
+    auto color_b = to_uint8(stroke.color[2]);
+    auto color_a = to_uint8(stroke.color[3]);
+
+    auto draw_disc = [&](float cx, float cy) {
+        int min_x = std::max(0, static_cast<int>(std::floor(cx - radius)));
+        int max_x = std::min(canvas.width - 1, static_cast<int>(std::ceil(cx + radius)));
+        int min_y = std::max(0, static_cast<int>(std::floor(cy - radius)));
+        int max_y = std::min(canvas.height - 1, static_cast<int>(std::ceil(cy + radius)));
+        for (int y = min_y; y <= max_y; ++y) {
+            float dy = (static_cast<float>(y) + 0.5f) - cy;
+            for (int x = min_x; x <= max_x; ++x) {
+                float dx = (static_cast<float>(x) + 0.5f) - cx;
+                float dist_sq = dx * dx + dy * dy;
+                if (dist_sq > radius_sq) {
+                    continue;
+                }
+                std::size_t index = (static_cast<std::size_t>(y) * static_cast<std::size_t>(canvas.width)
+                                     + static_cast<std::size_t>(x)) * 4u;
+                canvas.pixels[index + 0] = color_r;
+                canvas.pixels[index + 1] = color_g;
+                canvas.pixels[index + 2] = color_b;
+                canvas.pixels[index + 3] = color_a;
+            }
+        }
+    };
+
+    auto draw_segment = [&](UIScene::StrokePoint const& a,
+                            UIScene::StrokePoint const& b) {
+        float dx = b.x - a.x;
+        float dy = b.y - a.y;
+        float dist = std::hypot(dx, dy);
+        int steps = dist > 0.0f ? std::max(1, static_cast<int>(std::ceil(dist / std::max(1.0f, radius * 0.5f)))) : 1;
+        for (int i = 0; i <= steps; ++i) {
+            float t = steps == 0 ? 0.0f : static_cast<float>(i) / static_cast<float>(steps);
+            float px = a.x + dx * t;
+            float py = a.y + dy * t;
+            draw_disc(px, py);
+        }
+    };
+
+    auto prev = stroke.points.front();
+    draw_disc(prev.x, prev.y);
+    for (std::size_t i = 1; i < stroke.points.size(); ++i) {
+        auto const& current = stroke.points[i];
+        draw_segment(prev, current);
+        prev = current;
+    }
+
+    canvas.dirty = true;
+}
+
+auto make_canvas_drawable(CanvasState const& canvas,
+                          std::uint64_t drawable_id) -> std::optional<CanvasDrawable> {
+    if (canvas.width <= 0 || canvas.height <= 0 || canvas.pixels.empty() || canvas.fingerprint == 0) {
+        return std::nullopt;
+    }
+    CanvasDrawable drawable{};
+    drawable.drawable_id = drawable_id;
+    drawable.fingerprint = canvas.fingerprint;
+    drawable.width = canvas.width;
+    drawable.height = canvas.height;
+    return drawable;
+}
+
+auto format_revision(std::uint64_t revision) -> std::string {
+    std::ostringstream oss;
+    oss << std::setw(16) << std::setfill('0') << revision;
+    return oss.str();
+}
+
+auto fingerprint_hex(std::uint64_t fingerprint) -> std::string {
+    std::ostringstream oss;
+    oss << std::hex << std::setw(16) << std::setfill('0') << std::nouppercase << fingerprint;
+    return oss.str();
+}
+
 auto identity_transform() -> UIScene::Transform {
     UIScene::Transform t{};
     for (int i = 0; i < 16; ++i) {
@@ -321,10 +479,19 @@ auto unwrap_or_exit(SP::Expected<void> value, std::string const& context) -> voi
     }
 }
 
-auto build_bucket(std::vector<Stroke> const& strokes) -> UIScene::DrawableBucketSnapshot {
+auto encode_image_command(UIScene::ImageCommand const& image,
+                          UIScene::DrawableBucketSnapshot& bucket) -> void {
+    auto offset = bucket.command_payload.size();
+    bucket.command_payload.resize(offset + sizeof(UIScene::ImageCommand));
+    std::memcpy(bucket.command_payload.data() + offset, &image, sizeof(UIScene::ImageCommand));
+    bucket.command_kinds.push_back(static_cast<std::uint32_t>(UIScene::DrawCommandKind::Image));
+}
+
+auto build_bucket(std::optional<CanvasDrawable> const& canvasDrawable,
+                  std::vector<Stroke> const& strokes) -> UIScene::DrawableBucketSnapshot {
     UIScene::DrawableBucketSnapshot bucket{};
 
-    std::size_t drawable_count = 0;
+    std::size_t drawable_count = canvasDrawable.has_value() ? 1 : 0;
     std::size_t total_points = 0;
     for (auto const& stroke : strokes) {
         if (!stroke.points.empty()) {
@@ -350,6 +517,57 @@ auto build_bucket(std::vector<Stroke> const& strokes) -> UIScene::DrawableBucket
     bucket.authoring_map.reserve(drawable_count);
     bucket.drawable_fingerprints.reserve(drawable_count);
     bucket.stroke_points.reserve(total_points);
+
+    if (canvasDrawable) {
+        auto drawable_index = bucket.drawable_ids.size();
+        bucket.drawable_ids.push_back(canvasDrawable->drawable_id);
+        bucket.world_transforms.push_back(identity_transform());
+
+        UIScene::BoundingBox box{};
+        box.min = {0.0f, 0.0f, 0.0f};
+        box.max = {static_cast<float>(canvasDrawable->width),
+                   static_cast<float>(canvasDrawable->height),
+                   0.0f};
+        bucket.bounds_boxes.push_back(box);
+        bucket.bounds_box_valid.push_back(1);
+
+        auto half_width = static_cast<float>(canvasDrawable->width) * 0.5f;
+        auto half_height = static_cast<float>(canvasDrawable->height) * 0.5f;
+        UIScene::BoundingSphere sphere{};
+        sphere.center = {half_width, half_height, 0.0f};
+        sphere.radius = std::sqrt(half_width * half_width + half_height * half_height);
+        bucket.bounds_spheres.push_back(sphere);
+
+        bucket.layers.push_back(0);
+        bucket.z_values.push_back(static_cast<float>(drawable_index));
+        bucket.material_ids.push_back(0);
+        bucket.pipeline_flags.push_back(0);
+        bucket.visibility.push_back(1);
+
+        bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
+        bucket.command_counts.push_back(1);
+        bucket.clip_head_indices.push_back(-1);
+
+        UIScene::ImageCommand image{};
+        image.min_x = 0.0f;
+        image.min_y = 0.0f;
+        image.max_x = static_cast<float>(canvasDrawable->width);
+        image.max_y = static_cast<float>(canvasDrawable->height);
+        image.uv_min_x = 0.0f;
+        image.uv_min_y = 0.0f;
+        image.uv_max_x = 1.0f;
+        image.uv_max_y = 1.0f;
+        image.image_fingerprint = canvasDrawable->fingerprint;
+        image.tint = {1.0f, 1.0f, 1.0f, 1.0f};
+        encode_image_command(image, bucket);
+
+        bucket.authoring_map.push_back(UIScene::DrawableAuthoringMapEntry{
+            canvasDrawable->drawable_id,
+            "nodes/paint/canvas_image",
+            0,
+            0});
+        bucket.drawable_fingerprints.push_back(canvasDrawable->fingerprint);
+    }
 
     for (auto const& stroke : strokes) {
         if (stroke.points.empty()) {
@@ -425,14 +643,15 @@ auto build_bucket(std::vector<Stroke> const& strokes) -> UIScene::DrawableBucket
 auto publish_snapshot(PathSpace& space,
                       UIScene::SceneSnapshotBuilder& builder,
                       UIScene::ScenePath const& scenePath,
-                      UIScene::DrawableBucketSnapshot const& bucket) -> void {
+                      UIScene::DrawableBucketSnapshot const& bucket) -> std::uint64_t {
     UIScene::SnapshotPublishOptions opts{};
     opts.metadata.author = "paint_example";
     opts.metadata.tool_version = "paint_example";
     opts.metadata.created_at = std::chrono::system_clock::now();
     opts.metadata.drawable_count = bucket.drawable_ids.size();
     opts.metadata.command_count = bucket.command_kinds.size();
-    unwrap_or_exit(builder.publish(opts, bucket), "failed to publish paint scene snapshot");
+    auto revision = unwrap_or_exit(builder.publish(opts, bucket), "failed to publish paint scene snapshot");
+    return revision;
 }
 
 struct PresentOutcome {
@@ -806,11 +1025,17 @@ int main(int argc, char** argv) {
 
     UIScene::SceneSnapshotBuilder builder{space, rootView, scenePath};
 
-    std::vector<Stroke> strokes;
-    std::uint64_t nextId = 1;
+    CanvasState canvas{};
+    ensure_canvas(canvas, canvasWidth, canvasHeight);
+    bool canvas_has_image = false;
+    std::uint64_t next_canvas_fingerprint = kInitialCanvasFingerprint;
 
-    auto bucket = build_bucket(strokes);
-    publish_snapshot(space, builder, scenePath, bucket);
+    std::vector<Stroke> strokes;
+    std::uint64_t nextStrokeId = 2;
+
+    auto bucket = build_bucket(std::nullopt, strokes);
+    auto initial_revision = publish_snapshot(space, builder, scenePath, bucket);
+    (void)initial_revision;
     (void)present_frame(space,
                        bootstrap.window,
                        bootstrap.view_name,
@@ -848,6 +1073,7 @@ int main(int argc, char** argv) {
         dirtyHints.clear();
 
         const int brushSizePx = read_config_value(space, brushSizePath, 8);
+        const int tileSizePx = read_config_value(space, tileSizePath, 64);
 
         bool sizeChanged = (requestedWidth != canvasWidth) || (requestedHeight != canvasHeight);
         if (sizeChanged) {
@@ -860,6 +1086,10 @@ int main(int argc, char** argv) {
                            "failed to refresh surface after resize");
             replace_value(space, canvasWidthPath, canvasWidth);
             replace_value(space, canvasHeightPath, canvasHeight);
+            ensure_canvas(canvas, canvasWidth, canvasHeight);
+            canvas_has_image = false;
+            canvas.fingerprint = 0;
+            canvas.dirty = false;
             lastPainted.reset();
             lastAbsolute.reset();
             dirtyHints.push_back(DirtyRectHint{
@@ -908,7 +1138,7 @@ int main(int argc, char** argv) {
                         lastAbsolute = *point;
                         drawing = true;
                         if (auto hint = start_stroke(strokes,
-                                                     nextId,
+                                                     nextStrokeId,
                                                      canvasWidth,
                                                      canvasHeight,
                                                      point->first,
@@ -925,6 +1155,16 @@ int main(int argc, char** argv) {
             case PaintInput::MouseEventType::ButtonUp:
                 if (e.button == PaintInput::MouseButton::Left) {
                     drawing = false;
+                    if (!strokes.empty()) {
+                        ensure_canvas(canvas, canvasWidth, canvasHeight);
+                        Stroke finished = std::move(strokes.back());
+                        strokes.pop_back();
+                        composite_stroke(canvas, finished);
+                        canvas_has_image = true;
+                        canvas.fingerprint = next_canvas_fingerprint++;
+                        dirtyHints.push_back(finished.bounds);
+                        updated = true;
+                    }
                     lastPainted.reset();
                 }
                 break;
@@ -936,15 +1176,34 @@ int main(int argc, char** argv) {
         }
 
         if (updated) {
-            bucket = build_bucket(strokes);
-            publish_snapshot(space, builder, scenePath, bucket);
+            auto canvasDrawable = canvas_has_image ? make_canvas_drawable(canvas, kCanvasDrawableId) : std::optional<CanvasDrawable>{};
+            bucket = build_bucket(canvasDrawable, strokes);
+            auto revision = publish_snapshot(space, builder, scenePath, bucket);
+            if (canvasDrawable && canvas.dirty) {
+                auto png_bytes = encode_canvas_png(canvas);
+                if (!png_bytes.empty()) {
+                    auto revision_base = std::string(scenePath.getPath()) + "/builds/" + format_revision(revision);
+                    auto image_path = revision_base + "/assets/images/" + fingerprint_hex(canvasDrawable->fingerprint) + ".png";
+                    replace_value(space, image_path, png_bytes);
+                }
+                canvas.dirty = false;
+            }
         }
 
         if (!dirtyHints.empty()) {
-            unwrap_or_exit(Builders::Renderer::SubmitDirtyRects(space,
-                                                                SP::ConcretePathStringView{targetAbsolutePath},
-                                                                std::span<const DirtyRectHint>{dirtyHints}),
-                           "failed to submit renderer dirty hints");
+            std::vector<DirtyRectHint> aligned;
+            aligned.reserve(dirtyHints.size());
+            for (auto const& hint : dirtyHints) {
+                if (auto aligned_hint = clamp_and_align_hint(hint, canvasWidth, canvasHeight, tileSizePx)) {
+                    aligned.push_back(*aligned_hint);
+                }
+            }
+            if (!aligned.empty()) {
+                unwrap_or_exit(Builders::Renderer::SubmitDirtyRects(space,
+                                                                    SP::ConcretePathStringView{targetAbsolutePath},
+                                                                    std::span<const DirtyRectHint>{aligned}),
+                               "failed to submit renderer dirty hints");
+            }
         }
 
         if (auto outcome = present_frame(space,

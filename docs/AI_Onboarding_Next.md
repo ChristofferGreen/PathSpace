@@ -108,6 +108,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 
 ## 6. Shutdown Snapshot (October 27, 2025 @ 08:57 UTC)
 - Latest change: `widgets_example` gained a `--screenshot <path>` mode that runs headless, performs a scripted slider drag, renders once, and writes a PNG via stb_image_write—no LocalWindow bridge required. Docs updated to note the workflow.
+- Latest change: `paint_example` composites completed strokes into a persistent canvas image (PNG asset per revision) while previewing the active stroke live, keeping long painting sessions within the snapshot/renderer budgets.
 - Follow-up (October 27, 2025): retained resize/present helpers (`App::UpdateSurfaceSize`, `App::PresentToLocalWindow`)—new automated capture flow leans on the same bootstrap plumbing.
 - Validation: `./scripts/compile.sh --release --test --loop=15 --per-test-timeout 20` (15× PathSpaceTests, PathSpaceUITests, HtmlCanvasVerify, HtmlAssetInspect, PixelNoise harnesses) — all green after the screenshot automation landed.
 - Outstanding follow-ups before resuming:
