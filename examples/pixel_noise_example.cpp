@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <condition_variable>
 #include <chrono>
 #include <csignal>
 #include <cmath>
@@ -367,13 +368,174 @@ void write_baseline_metrics(Options const& options,
 struct NoiseState {
     explicit NoiseState(std::uint64_t seed_value)
         : rng(static_cast<std::mt19937::result_type>(seed_value))
-        , channel_dist(0, 255)
         , frame_index(0)
     {}
 
     std::mt19937 rng;
-    std::uniform_int_distribution<int> channel_dist;
     std::uint64_t frame_index;
+};
+
+class NoiseWorkerPool {
+public:
+    static auto instance() -> NoiseWorkerPool& {
+        static NoiseWorkerPool pool;
+        return pool;
+    }
+
+    NoiseWorkerPool(NoiseWorkerPool const&) = delete;
+    NoiseWorkerPool& operator=(NoiseWorkerPool const&) = delete;
+
+    void generate(std::uint8_t* buffer,
+                  int width,
+                  int height,
+                  std::size_t stride,
+                  std::uint64_t next_frame_index,
+                  NoiseState& state) {
+        if (buffer == nullptr || width <= 0 || height <= 0 || stride == 0) {
+            return;
+        }
+        std::size_t active = std::min<std::size_t>(threads_.size(), static_cast<std::size_t>(height));
+        if (active == 0) {
+            active = 1;
+        }
+
+        std::vector<std::uint64_t> seeds(active);
+        for (std::size_t i = 0; i < active; ++i) {
+            auto hi = static_cast<std::uint64_t>(state.rng());
+            auto lo = static_cast<std::uint64_t>(state.rng());
+            seeds[i] = (hi << 32)
+                       ^ lo
+                       ^ (next_frame_index << 17)
+                       ^ static_cast<std::uint64_t>(i);
+        }
+
+        std::size_t generation = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            buffer_ = buffer;
+            width_ = width;
+            height_ = height;
+            stride_ = stride;
+            worker_count_ = active;
+            seeds_ = std::move(seeds);
+            pending_workers_ = active;
+            generation_ += 1;
+            generation = generation_;
+        }
+
+        cv_.notify_all();
+
+        std::unique_lock<std::mutex> lock(mutex_);
+        done_cv_.wait(lock, [this, generation] {
+            return completed_generation_ == generation;
+        });
+    }
+
+private:
+    NoiseWorkerPool() {
+        auto concurrency = std::thread::hardware_concurrency();
+        if (concurrency == 0) {
+            concurrency = 1;
+        }
+        threads_.reserve(concurrency);
+        for (std::size_t index = 0; index < concurrency; ++index) {
+            threads_.emplace_back([this, index] { worker_loop(index); });
+        }
+    }
+
+    ~NoiseWorkerPool() {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stop_ = true;
+            generation_ += 1;
+        }
+        cv_.notify_all();
+        for (auto& worker : threads_) {
+            if (worker.joinable()) {
+                worker.join();
+            }
+        }
+    }
+
+    void worker_loop(std::size_t index) {
+        std::uniform_int_distribution<int> dist(0, 255);
+        std::mt19937 rng;
+        std::size_t local_generation = 0;
+
+        while (true) {
+            std::unique_lock<std::mutex> lock(mutex_);
+            cv_.wait(lock, [this, local_generation] {
+                return stop_ || generation_ > local_generation;
+            });
+
+            if (stop_) {
+                break;
+            }
+
+            auto generation = generation_;
+            auto active = worker_count_;
+            if (active == 0 || index >= active) {
+                local_generation = generation;
+                lock.unlock();
+                continue;
+            }
+
+            auto width = width_;
+            auto height = height_;
+            auto stride = stride_;
+            auto* buffer = buffer_;
+            auto seed = seeds_[index];
+            int rows_per_worker = (height + static_cast<int>(active) - 1) / static_cast<int>(active);
+            int row_begin = static_cast<int>(index) * rows_per_worker;
+            int row_end = std::min(height, row_begin + rows_per_worker);
+
+            lock.unlock();
+
+            if (row_begin < row_end) {
+                std::seed_seq seq{
+                    static_cast<std::uint32_t>(seed & 0xFFFFFFFFu),
+                    static_cast<std::uint32_t>((seed >> 32) & 0xFFFFFFFFu)};
+                rng.seed(seq);
+                for (int y = row_begin; y < row_end; ++y) {
+                    auto* row = buffer + static_cast<std::size_t>(y) * stride;
+                    for (int x = 0; x < width; ++x) {
+                        auto channel0 = static_cast<std::uint32_t>(dist(rng));
+                        auto channel1 = static_cast<std::uint32_t>(dist(rng));
+                        auto channel2 = static_cast<std::uint32_t>(dist(rng));
+                        std::uint32_t noise = channel0
+                                              | (channel1 << 8)
+                                              | (channel2 << 16)
+                                              | 0xFF000000u;
+                        std::memcpy(row + static_cast<std::size_t>(x) * 4u, &noise, sizeof(noise));
+                    }
+                }
+            }
+
+            lock.lock();
+            if (pending_workers_ > 0 && --pending_workers_ == 0) {
+                completed_generation_ = generation;
+                done_cv_.notify_all();
+            }
+            local_generation = generation;
+        }
+    }
+
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    std::condition_variable done_cv_;
+    bool stop_ = false;
+    std::size_t generation_ = 0;
+    std::size_t completed_generation_ = 0;
+
+    std::size_t worker_count_ = 0;
+    std::size_t pending_workers_ = 0;
+    int width_ = 0;
+    int height_ = 0;
+    std::size_t stride_ = 0;
+    std::uint8_t* buffer_ = nullptr;
+    std::vector<std::uint64_t> seeds_;
+
+    std::vector<std::thread> threads_;
 };
 
 std::atomic<bool> g_running{true};
@@ -806,64 +968,18 @@ auto install_noise_hook(std::shared_ptr<NoiseState> state) -> HookGuard {
             }
 
             auto const start = std::chrono::steady_clock::now();
-            auto worker_count = std::max<int>(1, static_cast<int>(std::thread::hardware_concurrency()));
-            worker_count = std::min(worker_count, std::max(1, height));
-
-            std::vector<std::uint64_t> seeds(static_cast<std::size_t>(worker_count));
-            for (int i = 0; i < worker_count; ++i) {
-                auto hi = static_cast<std::uint64_t>(state->rng());
-                auto lo = static_cast<std::uint64_t>(state->rng());
-                seeds[static_cast<std::size_t>(i)] = (hi << 32)
-                                                     ^ lo
-                                                     ^ (static_cast<std::uint64_t>(state->frame_index + 1) << 17)
-                                                     ^ static_cast<std::uint64_t>(i);
-            }
-
-            auto rows_per_worker = (height + worker_count - 1) / worker_count;
-            std::vector<std::thread> workers;
-            workers.reserve(static_cast<std::size_t>(worker_count));
-
-            for (int worker = 0; worker < worker_count; ++worker) {
-                int row_begin = worker * rows_per_worker;
-                int row_end = std::min(height, row_begin + rows_per_worker);
-                if (row_begin >= row_end) {
-                    break;
-                }
-                workers.emplace_back([row_begin,
-                                      row_end,
-                                      width,
-                                      stride,
-                                      buffer_data = buffer.data(),
-                                      seed = seeds[static_cast<std::size_t>(worker)]]() {
-                    std::uniform_int_distribution<int> dist(0, 255);
-                    std::seed_seq seq{
-                        static_cast<std::uint32_t>(seed & 0xFFFFFFFFu),
-                        static_cast<std::uint32_t>((seed >> 32) & 0xFFFFFFFFu)};
-                    std::mt19937 rng(seq);
-                    for (int y = row_begin; y < row_end; ++y) {
-                        auto* row = buffer_data + static_cast<std::size_t>(y) * stride;
-                        for (int x = 0; x < width; ++x) {
-                            auto channel0 = static_cast<std::uint32_t>(dist(rng));
-                            auto channel1 = static_cast<std::uint32_t>(dist(rng));
-                            auto channel2 = static_cast<std::uint32_t>(dist(rng));
-                            std::uint32_t noise = channel0
-                                                  | (channel1 << 8)
-                                                  | (channel2 << 16)
-                                                  | 0xFF000000u;
-                            std::memcpy(row + static_cast<std::size_t>(x) * 4u, &noise, sizeof(noise));
-                        }
-                    }
-                });
-            }
-
-            for (auto& worker : workers) {
-                worker.join();
-            }
+            auto next_frame_index = state->frame_index + 1;
+            NoiseWorkerPool::instance().generate(buffer.data(),
+                                                 width,
+                                                 height,
+                                                 stride,
+                                                 next_frame_index,
+                                                 *state);
 
             auto const finish = std::chrono::steady_clock::now();
             auto render_ms = std::chrono::duration<double, std::milli>(finish - start).count();
 
-            ++state->frame_index;
+            state->frame_index = next_frame_index;
             PathSurfaceSoftware::FrameInfo info{};
             info.frame_index = state->frame_index;
             info.revision = state->frame_index;
