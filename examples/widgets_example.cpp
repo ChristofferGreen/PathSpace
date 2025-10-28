@@ -423,17 +423,14 @@ static auto build_tree_preview(Widgets::TreeStyle const& style,
             text_color = lighten(text_color, 0.15f);
         }
 
-        Widgets::LabelBuildParams label_params{};
-        label_params.text = layout_row.label.empty() ? std::string("(node)") : layout_row.label;
-        label_params.origin_x = label_x;
-        label_params.origin_y = baseline;
-        label_params.typography = style.label_typography;
-        label_params.color = text_color;
-        label_params.drawable_id = 0x41A30000ull + static_cast<std::uint64_t>(index);
-        label_params.authoring_id = std::string("widget/gallery/tree/label/")
+        auto authoring_id = std::string("widget/gallery/tree/label/")
             + (layout_row.node_id.empty() ? "placeholder" : layout_row.node_id);
-        label_params.z_value = 0.2f;
-        auto label = Widgets::BuildLabel(label_params);
+        auto label = Widgets::BuildLabel(
+            Widgets::LabelBuildParams::Make(layout_row.label.empty() ? std::string("(node)") : layout_row.label,
+                                             style.label_typography)
+                .WithOrigin(label_x, baseline)
+                .WithColor(text_color)
+                .WithDrawable(0x41A30000ull + static_cast<std::uint64_t>(index), std::move(authoring_id), 0.2f));
         if (label) {
             append_bucket(bucket, label->bucket);
         }
@@ -684,16 +681,11 @@ auto build_gallery_bucket(PathSpace& space,
     // Title text
     Widgets::TypographyStyle heading_typography = theme.heading;
     float heading_line_height = heading_typography.line_height;
-    Widgets::LabelBuildParams title_params{};
-    title_params.text = "PathSpace Widgets";
-    title_params.origin_x = left;
-    title_params.origin_y = kDefaultMargin + heading_typography.baseline_shift;
-    title_params.typography = heading_typography;
-    title_params.color = theme.heading_color;
-    title_params.drawable_id = next_drawable_id++;
-    title_params.authoring_id = "widget/gallery/title";
-    title_params.z_value = 0.4f;
-    auto title_text = Widgets::BuildLabel(title_params);
+    auto title_text = Widgets::BuildLabel(
+        Widgets::LabelBuildParams::Make("PathSpace Widgets", heading_typography)
+            .WithOrigin(left, kDefaultMargin + heading_typography.baseline_shift)
+            .WithColor(theme.heading_color)
+            .WithDrawable(next_drawable_id++, std::string("widget/gallery/title"), 0.4f));
     float cursor_y = kDefaultMargin;
     if (title_text) {
         pending.emplace_back(std::move(title_text->bucket));
@@ -725,31 +717,22 @@ auto build_gallery_bucket(PathSpace& space,
 
         float label_width = TextBuilder::MeasureTextWidth(button_label, button_style.typography);
         float label_line_height = button_style.typography.line_height;
-       float label_x = left + std::max(0.0f, (button_style.width - label_width) * 0.5f);
-       float label_top = cursor_y + std::max(0.0f, (button_style.height - label_line_height) * 0.5f);
-       float label_y = label_top + button_style.typography.baseline_shift;
-       Widgets::LabelBuildParams button_label_params{};
-       button_label_params.text = button_label;
-       button_label_params.origin_x = label_x;
-       button_label_params.origin_y = label_y;
-       button_label_params.typography = button_style.typography;
-       button_label_params.color = button_style.text_color;
-       button_label_params.drawable_id = next_drawable_id++;
-       button_label_params.authoring_id = "widget/gallery/button/label";
-       button_label_params.z_value = 0.6f;
-       auto label = Widgets::BuildLabel(button_label_params);
+        float label_x = left + std::max(0.0f, (button_style.width - label_width) * 0.5f);
+        float label_top = cursor_y + std::max(0.0f, (button_style.height - label_line_height) * 0.5f);
+        float label_y = label_top + button_style.typography.baseline_shift;
+        auto label = Widgets::BuildLabel(
+            Widgets::LabelBuildParams::Make(button_label, button_style.typography)
+                .WithOrigin(label_x, label_y)
+                .WithColor(button_style.text_color)
+                .WithDrawable(next_drawable_id++, std::string("widget/gallery/button/label"), 0.6f));
         std::optional<WidgetBounds> button_label_bounds;
         if (label) {
             button_label_bounds = Widgets::LabelBounds(*label);
             if (!button_label_bounds) {
-                WidgetBounds fallback{
-                    label_x,
-                    label_top,
-                    label_x + label->width,
-                    label_top + label_line_height,
-                };
-                fallback.normalize();
-                button_label_bounds = fallback;
+                button_label_bounds = SP::UI::Builders::MakeWidgetBounds(label_x,
+                                                  label_top,
+                                                  label_x + label->width,
+                                                  label_top + label_line_height);
             }
             pending.emplace_back(std::move(label->bucket));
             max_width = std::max(max_width, label_x + label->width);
@@ -787,29 +770,20 @@ auto build_gallery_bucket(PathSpace& space,
         Widgets::TypographyStyle toggle_label_typography = theme.caption;
         float toggle_label_line = toggle_label_typography.line_height;
         float toggle_label_x = left + toggle_style.width + 24.0f;
-       float toggle_label_top = cursor_y + std::max(0.0f, (toggle_style.height - toggle_label_line) * 0.5f);
-       Widgets::LabelBuildParams toggle_label_params{};
-       toggle_label_params.text = "Toggle";
-       toggle_label_params.origin_x = toggle_label_x;
-       toggle_label_params.origin_y = toggle_label_top + toggle_label_typography.baseline_shift;
-       toggle_label_params.typography = toggle_label_typography;
-       toggle_label_params.color = theme.accent_text_color;
-       toggle_label_params.drawable_id = next_drawable_id++;
-       toggle_label_params.authoring_id = "widget/gallery/toggle/label";
-       toggle_label_params.z_value = 0.6f;
-       auto label = Widgets::BuildLabel(toggle_label_params);
+        float toggle_label_top = cursor_y + std::max(0.0f, (toggle_style.height - toggle_label_line) * 0.5f);
+        auto label = Widgets::BuildLabel(
+            Widgets::LabelBuildParams::Make("Toggle", toggle_label_typography)
+                .WithOrigin(toggle_label_x, toggle_label_top + toggle_label_typography.baseline_shift)
+                .WithColor(theme.accent_text_color)
+                .WithDrawable(next_drawable_id++, std::string("widget/gallery/toggle/label"), 0.6f));
         std::optional<WidgetBounds> toggle_label_bounds;
         if (label) {
             toggle_label_bounds = Widgets::LabelBounds(*label);
             if (!toggle_label_bounds) {
-                WidgetBounds fallback{
-                    toggle_label_x,
-                    toggle_label_top,
-                    toggle_label_x + label->width,
-                    toggle_label_top + toggle_label_line,
-                };
-                fallback.normalize();
-                toggle_label_bounds = fallback;
+                toggle_label_bounds = SP::UI::Builders::MakeWidgetBounds(toggle_label_x,
+                                                  toggle_label_top,
+                                                  toggle_label_x + label->width,
+                                                  toggle_label_top + toggle_label_line);
             }
             pending.emplace_back(std::move(label->bucket));
             max_width = std::max(max_width, toggle_label_x + label->width);
@@ -830,30 +804,21 @@ auto build_gallery_bucket(PathSpace& space,
         std::string slider_caption = "Volume " + std::to_string(static_cast<int>(std::round(slider_state.value)));
         Widgets::TypographyStyle slider_caption_typography = slider_style.label_typography;
         float slider_caption_line = slider_caption_typography.line_height;
-        Widgets::LabelBuildParams slider_caption_params{};
-        slider_caption_params.text = slider_caption;
-        slider_caption_params.origin_x = left;
-        slider_caption_params.origin_y = cursor_y + slider_caption_typography.baseline_shift;
-        slider_caption_params.typography = slider_caption_typography;
-        slider_caption_params.color = slider_style.label_color;
-        slider_caption_params.drawable_id = next_drawable_id++;
-        slider_caption_params.authoring_id = "widget/gallery/slider/caption";
-        slider_caption_params.z_value = 0.6f;
-        auto caption = Widgets::BuildLabel(slider_caption_params);
+        auto caption = Widgets::BuildLabel(
+            Widgets::LabelBuildParams::Make(slider_caption, slider_caption_typography)
+                .WithOrigin(left, cursor_y + slider_caption_typography.baseline_shift)
+                .WithColor(slider_style.label_color)
+                .WithDrawable(next_drawable_id++, std::string("widget/gallery/slider/caption"), 0.6f));
         if (caption) {
             auto caption_bounds = Widgets::LabelBounds(*caption);
             caption_bucket = std::move(caption->bucket);
             if (caption_bounds) {
                 layout.slider_caption = *caption_bounds;
             } else {
-                float caption_min_y = cursor_y;
-                float caption_max_y = cursor_y + slider_caption_line;
-                layout.slider_caption = WidgetBounds{
-                    left,
-                    caption_min_y,
-                    left + caption->width,
-                    caption_max_y,
-                };
+                layout.slider_caption = SP::UI::Builders::MakeWidgetBounds(left,
+                                                    cursor_y,
+                                                    left + caption->width,
+                                                    cursor_y + slider_caption_line);
             }
             max_width = std::max(max_width, left + caption->width);
             max_height = std::max(max_height, cursor_y + slider_caption_line);
@@ -908,27 +873,18 @@ auto build_gallery_bucket(PathSpace& space,
         Widgets::TypographyStyle list_caption_typography = theme.caption;
         float list_caption_line = list_caption_typography.line_height;
         std::optional<WidgetBounds> list_caption_bounds;
-        Widgets::LabelBuildParams list_caption_params{};
-        list_caption_params.text = "Inventory";
-        list_caption_params.origin_x = left;
-        list_caption_params.origin_y = cursor_y + list_caption_typography.baseline_shift;
-        list_caption_params.typography = list_caption_typography;
-        list_caption_params.color = theme.caption_color;
-        list_caption_params.drawable_id = next_drawable_id++;
-        list_caption_params.authoring_id = "widget/gallery/list/caption";
-        list_caption_params.z_value = 0.6f;
-        auto caption = Widgets::BuildLabel(list_caption_params);
+        auto caption = Widgets::BuildLabel(
+            Widgets::LabelBuildParams::Make("Inventory", list_caption_typography)
+                .WithOrigin(left, cursor_y + list_caption_typography.baseline_shift)
+                .WithColor(theme.caption_color)
+                .WithDrawable(next_drawable_id++, std::string("widget/gallery/list/caption"), 0.6f));
         if (caption) {
             list_caption_bounds = Widgets::LabelBounds(*caption);
             if (!list_caption_bounds) {
-                WidgetBounds fallback{
-                    left,
-                    cursor_y,
-                    left + caption->width,
-                    cursor_y + list_caption_line,
-                };
-                fallback.normalize();
-                list_caption_bounds = fallback;
+                list_caption_bounds = SP::UI::Builders::MakeWidgetBounds(left,
+                                                  cursor_y,
+                                                  left + caption->width,
+                                                  cursor_y + list_caption_line);
             }
             pending.emplace_back(std::move(caption->bucket));
             max_width = std::max(max_width, left + caption->width);
@@ -984,16 +940,11 @@ auto build_gallery_bucket(PathSpace& space,
             float label_x = left + row.label_bounds.min_x;
             float label_top = cursor_y + row.label_bounds.min_y;
             float label_baseline = cursor_y + row.label_baseline;
-            Widgets::LabelBuildParams item_label_params{};
-            item_label_params.text = item.label;
-            item_label_params.origin_x = label_x;
-            item_label_params.origin_y = label_baseline;
-            item_label_params.typography = sanitized_style.item_typography;
-            item_label_params.color = sanitized_style.item_text_color;
-            item_label_params.drawable_id = next_drawable_id++;
-            item_label_params.authoring_id = "widget/gallery/list/item/" + row.id;
-            item_label_params.z_value = 0.65f;
-            auto label = Widgets::BuildLabel(item_label_params);
+            auto label = Widgets::BuildLabel(
+                Widgets::LabelBuildParams::Make(item.label, sanitized_style.item_typography)
+                    .WithOrigin(label_x, label_baseline)
+                    .WithColor(sanitized_style.item_text_color)
+                    .WithDrawable(next_drawable_id++, "widget/gallery/list/item/" + row.id, 0.65f));
             if (label) {
                 pending.emplace_back(std::move(label->bucket));
                 max_width = std::max(max_width, label_x + label->width);
@@ -1008,27 +959,18 @@ auto build_gallery_bucket(PathSpace& space,
         Widgets::TypographyStyle caption_typography = theme.caption;
         float caption_line = caption_typography.line_height;
         std::optional<WidgetBounds> stack_caption_bounds;
-        Widgets::LabelBuildParams stack_caption_params{};
-        stack_caption_params.text = "Stack layout preview";
-        stack_caption_params.origin_x = left;
-        stack_caption_params.origin_y = cursor_y + caption_typography.baseline_shift;
-        stack_caption_params.typography = caption_typography;
-        stack_caption_params.color = theme.caption_color;
-        stack_caption_params.drawable_id = next_drawable_id++;
-        stack_caption_params.authoring_id = "widget/gallery/stack/caption";
-        stack_caption_params.z_value = 0.6f;
-        auto caption = Widgets::BuildLabel(stack_caption_params);
+        auto caption = Widgets::BuildLabel(
+            Widgets::LabelBuildParams::Make("Stack layout preview", caption_typography)
+                .WithOrigin(left, cursor_y + caption_typography.baseline_shift)
+                .WithColor(theme.caption_color)
+                .WithDrawable(next_drawable_id++, std::string("widget/gallery/stack/caption"), 0.6f));
         if (caption) {
             stack_caption_bounds = Widgets::LabelBounds(*caption);
             if (!stack_caption_bounds) {
-                WidgetBounds fallback{
-                    left,
-                    cursor_y,
-                    left + caption->width,
-                    cursor_y + caption_line,
-                };
-                fallback.normalize();
-                stack_caption_bounds = fallback;
+                stack_caption_bounds = SP::UI::Builders::MakeWidgetBounds(left,
+                                                   cursor_y,
+                                                   left + caption->width,
+                                                   cursor_y + caption_line);
             }
             pending.emplace_back(std::move(caption->bucket));
             max_width = std::max(max_width, left + caption->width);
@@ -1078,27 +1020,18 @@ auto build_gallery_bucket(PathSpace& space,
         Widgets::TypographyStyle caption_typography = theme.caption;
         float caption_line = caption_typography.line_height;
         std::optional<WidgetBounds> tree_caption_bounds;
-        Widgets::LabelBuildParams tree_caption_params{};
-        tree_caption_params.text = "Tree view preview";
-        tree_caption_params.origin_x = left;
-        tree_caption_params.origin_y = cursor_y + caption_typography.baseline_shift;
-        tree_caption_params.typography = caption_typography;
-        tree_caption_params.color = theme.caption_color;
-        tree_caption_params.drawable_id = next_drawable_id++;
-        tree_caption_params.authoring_id = "widget/gallery/tree/caption";
-        tree_caption_params.z_value = 0.6f;
-        auto caption = Widgets::BuildLabel(tree_caption_params);
+        auto caption = Widgets::BuildLabel(
+            Widgets::LabelBuildParams::Make("Tree view preview", caption_typography)
+                .WithOrigin(left, cursor_y + caption_typography.baseline_shift)
+                .WithColor(theme.caption_color)
+                .WithDrawable(next_drawable_id++, std::string("widget/gallery/tree/caption"), 0.6f));
         if (caption) {
             tree_caption_bounds = Widgets::LabelBounds(*caption);
             if (!tree_caption_bounds) {
-                WidgetBounds fallback{
-                    left,
-                    cursor_y,
-                    left + caption->width,
-                    cursor_y + caption_line,
-                };
-                fallback.normalize();
-                tree_caption_bounds = fallback;
+                tree_caption_bounds = SP::UI::Builders::MakeWidgetBounds(left,
+                                                  cursor_y,
+                                                  left + caption->width,
+                                                  cursor_y + caption_line);
             }
             pending.emplace_back(std::move(caption->bucket));
             max_width = std::max(max_width, left + caption->width);
@@ -1164,16 +1097,11 @@ auto build_gallery_bucket(PathSpace& space,
     // Footer hint
     Widgets::TypographyStyle footer_typography = theme.caption;
     float footer_line_height = footer_typography.line_height;
-    Widgets::LabelBuildParams footer_params{};
-    footer_params.text = "Close window to exit";
-    footer_params.origin_x = left;
-    footer_params.origin_y = cursor_y + footer_typography.baseline_shift;
-    footer_params.typography = footer_typography;
-    footer_params.color = theme.muted_text_color;
-    footer_params.drawable_id = next_drawable_id++;
-    footer_params.authoring_id = "widget/gallery/footer";
-    footer_params.z_value = 0.6f;
-    auto footer = Widgets::BuildLabel(footer_params);
+    auto footer = Widgets::BuildLabel(
+        Widgets::LabelBuildParams::Make("Close window to exit", footer_typography)
+            .WithOrigin(left, cursor_y + footer_typography.baseline_shift)
+            .WithColor(theme.muted_text_color)
+            .WithDrawable(next_drawable_id++, std::string("widget/gallery/footer"), 0.6f));
     if (footer) {
         pending.emplace_back(std::move(footer->bucket));
         max_width = std::max(max_width, left + footer->width);
@@ -2028,12 +1956,8 @@ static bool set_focus_target(WidgetsExampleContext& ctx,
 }
 
 static auto make_pointer_info(WidgetsExampleContext const& ctx, bool inside) -> WidgetBindings::PointerInfo {
-    WidgetBindings::PointerInfo info{};
-    info.scene_x = ctx.pointer_x;
-    info.scene_y = ctx.pointer_y;
-    info.inside = inside;
-    info.primary = true;
-    return info;
+    return WidgetBindings::PointerInfo::Make(ctx.pointer_x, ctx.pointer_y)
+        .WithInside(inside);
 }
 
 static auto slider_value_from_position(WidgetsExampleContext const& ctx, float x) -> float {
@@ -2952,21 +2876,20 @@ static void simulate_slider_drag_for_screenshot(WidgetsExampleContext& ctx, floa
     auto [target_x, target_y] = WidgetInput::SliderPointerForValue(make_input_context(ctx), clamped_target);
 
     auto send_absolute_move = [&](float x, float y) {
-        SP::PathIOMouse::Event ev{};
-        ev.type = SP::MouseEventType::AbsoluteMove;
-        ev.x = static_cast<int>(std::lround(x));
-        ev.y = static_cast<int>(std::lround(y));
-        dispatch_simulated_mouse_event(ctx, ev);
+        dispatch_simulated_mouse_event(
+            ctx,
+            SP::UI::Builders::Widgets::MakeMouseEvent(SP::MouseEventType::AbsoluteMove,
+                                                      static_cast<int>(std::lround(x)),
+                                                      static_cast<int>(std::lround(y))));
         process_widget_actions(ctx);
     };
 
     auto send_button_down = [&](float x, float y) {
-        SP::PathIOMouse::Event ev{};
-        ev.type = SP::MouseEventType::ButtonDown;
-        ev.button = SP::MouseButton::Left;
-        ev.x = static_cast<int>(std::lround(x));
-        ev.y = static_cast<int>(std::lround(y));
-        dispatch_simulated_mouse_event(ctx, ev);
+        dispatch_simulated_mouse_event(
+            ctx,
+            SP::UI::Builders::Widgets::MakeMouseEvent(SP::MouseEventType::ButtonDown,
+                                                      static_cast<int>(std::lround(x)),
+                                                      static_cast<int>(std::lround(y))));
         process_widget_actions(ctx);
     };
 
@@ -3229,22 +3152,20 @@ static void apply_trace_event(WidgetsExampleContext& ctx, TraceEvent const& even
         handle_pointer_wheel(ctx, event.wheel);
         break;
     case TraceEventKind::KeyDown: {
-        SP::UI::LocalKeyEvent key{};
-        key.type = SP::UI::LocalKeyEventType::KeyDown;
-        key.keycode = event.keycode;
-        key.modifiers = event.modifiers;
-        key.character = event.character;
-        key.repeat = event.repeat;
+        auto key = SP::UI::Builders::Widgets::MakeLocalKeyEvent(SP::UI::LocalKeyEventType::KeyDown,
+                                                                event.keycode,
+                                                                event.modifiers,
+                                                                event.character,
+                                                                event.repeat);
         handle_local_keyboard(key, &ctx);
         break;
     }
     case TraceEventKind::KeyUp: {
-        SP::UI::LocalKeyEvent key{};
-        key.type = SP::UI::LocalKeyEventType::KeyUp;
-        key.keycode = event.keycode;
-        key.modifiers = event.modifiers;
-        key.character = event.character;
-        key.repeat = event.repeat;
+        auto key = SP::UI::Builders::Widgets::MakeLocalKeyEvent(SP::UI::LocalKeyEventType::KeyUp,
+                                                                event.keycode,
+                                                                event.modifiers,
+                                                                event.character,
+                                                                event.repeat);
         handle_local_keyboard(key, &ctx);
         break;
     }
@@ -3343,12 +3264,13 @@ int main(int argc, char** argv) {
         std::cout << "widgets_example: tracing pointer/key events to '" << trace.record_path() << "'\n";
     }
 
-    Widgets::ButtonParams button_params{};
-    button_params.name = "primary_button";
-    button_params.label = "Primary";
-    Widgets::ApplyTheme(theme, button_params);
-    button_params.style.width = 180.0f;
-    button_params.style.height = 44.0f;
+    auto button_params = Widgets::MakeButtonParams("primary_button", "Primary")
+                             .WithTheme(theme)
+                             .ModifyStyle([](Widgets::ButtonStyle& style) {
+                                 style.width = 180.0f;
+                                 style.height = 44.0f;
+                             })
+                             .Build();
     auto button = unwrap_or_exit(Widgets::CreateButton(space, appRootView, button_params),
                                  "create button widget");
 
@@ -3360,16 +3282,19 @@ int main(int argc, char** argv) {
               << "  state path: " << button.state.getPath() << "\n"
               << "  label path: " << button.label.getPath() << "\n";
 
-    Widgets::ToggleParams toggle_params{};
-    toggle_params.name = "primary_toggle";
-    Widgets::ApplyTheme(theme, toggle_params);
-    toggle_params.style.width = 60.0f;
-    toggle_params.style.height = 32.0f;
+    auto toggle_params = Widgets::MakeToggleParams("primary_toggle")
+                             .WithTheme(theme)
+                             .ModifyStyle([](Widgets::ToggleStyle& style) {
+                                 style.width = 60.0f;
+                                 style.height = 32.0f;
+                             })
+                             .Build();
     auto toggle = unwrap_or_exit(Widgets::CreateToggle(space, appRootView, toggle_params),
                                  "create toggle widget");
 
-    Widgets::ToggleState toggle_state{};
-    toggle_state.checked = true;
+    auto toggle_state = Widgets::MakeToggleState()
+                            .WithChecked(true)
+                            .Build();
     unwrap_or_exit(Widgets::UpdateToggleState(space, toggle, toggle_state),
                    "update toggle state");
 
@@ -3380,18 +3305,18 @@ int main(int argc, char** argv) {
               << toggle_revision.revision << ")\n"
               << "  state path: " << toggle.state.getPath() << "\n";
 
-    Widgets::SliderParams slider_params{};
-    slider_params.name = "volume_slider";
-    slider_params.minimum = 0.0f;
-    slider_params.maximum = 100.0f;
-    slider_params.value = 25.0f;
-    slider_params.step = 5.0f;
-    Widgets::ApplyTheme(theme, slider_params);
+    auto slider_params = Widgets::MakeSliderParams("volume_slider")
+                             .WithRange(0.0f, 100.0f)
+                             .WithValue(25.0f)
+                             .WithStep(5.0f)
+                             .WithTheme(theme)
+                             .Build();
     auto slider = unwrap_or_exit(Widgets::CreateSlider(space, appRootView, slider_params),
                                  "create slider widget");
 
-    Widgets::SliderState slider_state{};
-    slider_state.value = 45.0f;
+    auto slider_state = Widgets::MakeSliderState()
+                            .WithValue(45.0f)
+                            .Build();
     unwrap_or_exit(Widgets::UpdateSliderState(space, slider, slider_state),
                    "update slider state");
 
@@ -3403,21 +3328,24 @@ int main(int argc, char** argv) {
               << "  state path: " << slider.state.getPath() << "\n"
               << "  range path: " << slider.range.getPath() << "\n";
 
-    Widgets::ListParams list_params{};
-    list_params.name = "inventory_list";
-    list_params.items = {
-        Widgets::ListItem{.id = "potion", .label = "Potion", .enabled = true},
-        Widgets::ListItem{.id = "ether", .label = "Ether", .enabled = true},
-        Widgets::ListItem{.id = "elixir", .label = "Elixir", .enabled = true},
-    };
-    Widgets::ApplyTheme(theme, list_params);
-    list_params.style.width = 240.0f;
-    list_params.style.item_height = 36.0f;
+    auto list_params = Widgets::MakeListParams("inventory_list")
+                           .WithItems({
+                               Widgets::ListItem{.id = "potion", .label = "Potion", .enabled = true},
+                               Widgets::ListItem{.id = "ether", .label = "Ether", .enabled = true},
+                               Widgets::ListItem{.id = "elixir", .label = "Elixir", .enabled = true},
+                           })
+                           .WithTheme(theme)
+                           .ModifyStyle([](Widgets::ListStyle& style) {
+                               style.width = 240.0f;
+                               style.item_height = 36.0f;
+                           })
+                           .Build();
     auto list = unwrap_or_exit(Widgets::CreateList(space, appRootView, list_params),
                                "create list widget");
 
-    Widgets::ListState list_state{};
-    list_state.selected_index = 1;
+    auto list_state = Widgets::MakeListState()
+                          .WithSelectedIndex(1)
+                          .Build();
     unwrap_or_exit(Widgets::UpdateListState(space, list, list_state),
                    "update list state");
 
@@ -3429,24 +3357,25 @@ int main(int argc, char** argv) {
               << "  state path: " << list.state.getPath() << "\n"
               << "  items path: " << list.items.getPath() << "\n";
 
-    Widgets::TreeParams tree_params{};
-    tree_params.name = "workspace_tree";
-    tree_params.nodes = {
-        Widgets::TreeNode{.id = "workspace", .parent_id = "", .label = "workspace/", .enabled = true, .expandable = true, .loaded = true},
-        Widgets::TreeNode{.id = "docs", .parent_id = "workspace", .label = "docs/", .enabled = true, .expandable = false, .loaded = false},
-        Widgets::TreeNode{.id = "src", .parent_id = "workspace", .label = "src/", .enabled = true, .expandable = true, .loaded = true},
-        Widgets::TreeNode{.id = "src_builders", .parent_id = "src", .label = "ui/builders.cpp", .enabled = true, .expandable = false, .loaded = false},
-        Widgets::TreeNode{.id = "src_renderer", .parent_id = "src", .label = "ui/renderer.cpp", .enabled = true, .expandable = false, .loaded = false},
-        Widgets::TreeNode{.id = "tests", .parent_id = "workspace", .label = "tests/", .enabled = true, .expandable = false, .loaded = false},
-    };
-    Widgets::ApplyTheme(theme, tree_params);
+    auto tree_params = Widgets::MakeTreeParams("workspace_tree")
+                           .WithNodes({
+                               Widgets::TreeNode{.id = "workspace", .parent_id = "", .label = "workspace/", .enabled = true, .expandable = true, .loaded = true},
+                               Widgets::TreeNode{.id = "docs", .parent_id = "workspace", .label = "docs/", .enabled = true, .expandable = false, .loaded = false},
+                               Widgets::TreeNode{.id = "src", .parent_id = "workspace", .label = "src/", .enabled = true, .expandable = true, .loaded = true},
+                               Widgets::TreeNode{.id = "src_builders", .parent_id = "src", .label = "ui/builders.cpp", .enabled = true, .expandable = false, .loaded = false},
+                               Widgets::TreeNode{.id = "src_renderer", .parent_id = "src", .label = "ui/renderer.cpp", .enabled = true, .expandable = false, .loaded = false},
+                               Widgets::TreeNode{.id = "tests", .parent_id = "workspace", .label = "tests/", .enabled = true, .expandable = false, .loaded = false},
+                           })
+                           .WithTheme(theme)
+                           .Build();
     auto tree = unwrap_or_exit(Widgets::CreateTree(space, appRootView, tree_params),
                                "create tree widget");
 
-    Widgets::TreeState tree_state{};
-    tree_state.enabled = true;
-    tree_state.selected_id = "workspace";
-    tree_state.expanded_ids = {"workspace", "src"};
+    auto tree_state = Widgets::MakeTreeState()
+                          .WithEnabled(true)
+                          .WithSelectedId("workspace")
+                          .WithExpandedIds({"workspace", "src"})
+                          .Build();
     unwrap_or_exit(Widgets::UpdateTreeState(space, tree, tree_state),
                    "initialize tree state");
 
@@ -3457,19 +3386,21 @@ int main(int argc, char** argv) {
     auto tree_nodes_live = unwrap_or_exit(space.read<std::vector<Widgets::TreeNode>, std::string>(std::string(tree.nodes.getPath())),
                                           "read tree nodes");
 
-    Widgets::StackLayoutParams stack_params{};
-    stack_params.name = "widget_stack";
-    stack_params.style.axis = Widgets::StackAxis::Vertical;
-    stack_params.style.spacing = 24.0f;
-    stack_params.style.padding_main_start = 16.0f;
-    stack_params.style.padding_main_end = 16.0f;
-    stack_params.style.padding_cross_start = 20.0f;
-    stack_params.style.padding_cross_end = 20.0f;
-    stack_params.children = {
-        Widgets::StackChildSpec{.id = "stack_button", .widget_path = button.root.getPath(), .scene_path = button.scene.getPath()},
-        Widgets::StackChildSpec{.id = "stack_toggle", .widget_path = toggle.root.getPath(), .scene_path = toggle.scene.getPath()},
-        Widgets::StackChildSpec{.id = "stack_slider", .widget_path = slider.root.getPath(), .scene_path = slider.scene.getPath()},
-    };
+    auto stack_params = Widgets::MakeStackLayoutParams("widget_stack")
+                            .ModifyStyle([](Widgets::StackLayoutStyle& style) {
+                                style.axis = Widgets::StackAxis::Vertical;
+                                style.spacing = 24.0f;
+                                style.padding_main_start = 16.0f;
+                                style.padding_main_end = 16.0f;
+                                style.padding_cross_start = 20.0f;
+                                style.padding_cross_end = 20.0f;
+                            })
+                            .WithChildren({
+                                Widgets::StackChildSpec{.id = "stack_button", .widget_path = button.root.getPath(), .scene_path = button.scene.getPath()},
+                                Widgets::StackChildSpec{.id = "stack_toggle", .widget_path = toggle.root.getPath(), .scene_path = toggle.scene.getPath()},
+                                Widgets::StackChildSpec{.id = "stack_slider", .widget_path = slider.root.getPath(), .scene_path = slider.scene.getPath()},
+                            })
+                            .Build();
 
     auto stack = unwrap_or_exit(Widgets::CreateStack(space, appRootView, stack_params),
                                 "create stack layout");

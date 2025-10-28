@@ -26,6 +26,9 @@
 
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/TextBuilder.hpp>
+#include <pathspace/ui/LocalWindowBridge.hpp>
+#include <pathspace/layer/io/PathIOMouse.hpp>
+#include <pathspace/layer/io/PathIOMouse.hpp>
 
 namespace SP::UI::Builders {
 
@@ -188,6 +191,13 @@ struct DirtyRectHint {
     float max_x = 0.0f;
     float max_y = 0.0f;
 };
+
+[[nodiscard]] inline auto MakeDirtyRectHint(float min_x,
+                                            float min_y,
+                                            float max_x,
+                                            float max_y) -> DirtyRectHint {
+    return DirtyRectHint{min_x, min_y, max_x, max_y};
+}
 
 enum class ParamUpdateMode {
     Queue,
@@ -655,11 +665,86 @@ struct LabelBuildParams {
     std::uint64_t drawable_id = 0;
     std::string authoring_id;
     float z_value = 0.0f;
+
+    [[nodiscard]] static auto Make(std::string text_value, TypographyStyle typography_value) -> LabelBuildParams {
+        LabelBuildParams params{};
+        params.text = std::move(text_value);
+        params.typography = std::move(typography_value);
+        return params;
+    }
+
+    auto WithOrigin(float x, float y) & -> LabelBuildParams& {
+        origin_x = x;
+        origin_y = y;
+        return *this;
+    }
+
+    auto WithOrigin(float x, float y) && -> LabelBuildParams {
+        origin_x = x;
+        origin_y = y;
+        return std::move(*this);
+    }
+
+    auto WithColor(std::array<float, 4> value) & -> LabelBuildParams& {
+        color = value;
+        return *this;
+    }
+
+    auto WithColor(std::array<float, 4> value) && -> LabelBuildParams {
+        color = value;
+        return std::move(*this);
+    }
+
+    auto WithDrawable(std::uint64_t id, std::string authoring, float z = 0.0f) & -> LabelBuildParams& {
+        drawable_id = id;
+        authoring_id = std::move(authoring);
+        z_value = z;
+        return *this;
+    }
+
+    auto WithDrawable(std::uint64_t id, std::string authoring, float z = 0.0f) && -> LabelBuildParams {
+        drawable_id = id;
+        authoring_id = std::move(authoring);
+        z_value = z;
+        return std::move(*this);
+    }
 };
 
 auto BuildLabel(LabelBuildParams const& params) -> std::optional<Text::BuildResult>;
 
 auto LabelBounds(Text::BuildResult const& result) -> std::optional<Input::WidgetBounds>;
+
+inline auto MakeMouseEvent(SP::MouseEventType type,
+                           int x = 0,
+                           int y = 0,
+                           SP::MouseButton button = SP::MouseButton::Left,
+                           int dx = 0,
+                           int dy = 0,
+                           int wheel = 0) -> SP::PathIOMouse::Event {
+    SP::PathIOMouse::Event event{};
+    event.type = type;
+    event.x = x;
+    event.y = y;
+    event.dx = dx;
+    event.dy = dy;
+    event.button = button;
+    event.wheel = wheel;
+    return event;
+}
+
+inline auto MakeLocalKeyEvent(SP::UI::LocalKeyEventType type,
+                              unsigned int keycode,
+                              unsigned int modifiers,
+                              char32_t character,
+                              bool repeat) -> SP::UI::LocalKeyEvent {
+    SP::UI::LocalKeyEvent event{};
+    event.type = type;
+    event.keycode = keycode;
+    event.modifiers = modifiers;
+    event.character = character;
+    event.repeat = repeat;
+    return event;
+}
 
 struct TogglePreviewOptions {
     std::string authoring_root;
@@ -1142,6 +1227,33 @@ struct PointerInfo {
     float scene_y = 0.0f;
     bool inside = false;
     bool primary = true;
+
+    [[nodiscard]] static auto Make(float x, float y) -> PointerInfo {
+        PointerInfo info{};
+        info.scene_x = x;
+        info.scene_y = y;
+        return info;
+    }
+
+    auto WithInside(bool value) & -> PointerInfo& {
+        inside = value;
+        return *this;
+    }
+
+    auto WithInside(bool value) && -> PointerInfo {
+        inside = value;
+        return std::move(*this);
+    }
+
+    auto WithPrimary(bool value) & -> PointerInfo& {
+        primary = value;
+        return *this;
+    }
+
+    auto WithPrimary(bool value) && -> PointerInfo {
+        primary = value;
+        return std::move(*this);
+    }
 };
 
 struct WidgetOp {
@@ -1560,6 +1672,476 @@ auto ApplyTheme(WidgetTheme const& theme, SliderParams& params) -> void;
 auto ApplyTheme(WidgetTheme const& theme, ListParams& params) -> void;
 auto ApplyTheme(WidgetTheme const& theme, TreeParams& params) -> void;
 
+struct ButtonParamsBuilder {
+    ButtonParams value{};
+
+    static auto Make(std::string name, std::string label = {}) -> ButtonParamsBuilder {
+        ButtonParamsBuilder builder;
+        builder.value.name = std::move(name);
+        builder.value.label = std::move(label);
+        return builder;
+    }
+
+    auto WithName(std::string name) -> ButtonParamsBuilder& {
+        value.name = std::move(name);
+        return *this;
+    }
+
+    auto WithLabel(std::string label) -> ButtonParamsBuilder& {
+        value.label = std::move(label);
+        return *this;
+    }
+
+    auto WithStyle(ButtonStyle style) -> ButtonParamsBuilder& {
+        value.style = std::move(style);
+        return *this;
+    }
+
+    template <typename Fn>
+    auto ModifyStyle(Fn&& fn) -> ButtonParamsBuilder& {
+        std::forward<Fn>(fn)(value.style);
+        return *this;
+    }
+
+    auto WithTheme(WidgetTheme const& theme) -> ButtonParamsBuilder& {
+        ApplyTheme(theme, value);
+        return *this;
+    }
+
+    auto Build() const -> ButtonParams { return value; }
+    auto Build() && -> ButtonParams { return std::move(value); }
+};
+
+struct ToggleParamsBuilder {
+    ToggleParams value{};
+
+    static auto Make(std::string name) -> ToggleParamsBuilder {
+        ToggleParamsBuilder builder;
+        builder.value.name = std::move(name);
+        return builder;
+    }
+
+    auto WithName(std::string name) -> ToggleParamsBuilder& {
+        value.name = std::move(name);
+        return *this;
+    }
+
+    auto WithStyle(ToggleStyle style) -> ToggleParamsBuilder& {
+        value.style = std::move(style);
+        return *this;
+    }
+
+    template <typename Fn>
+    auto ModifyStyle(Fn&& fn) -> ToggleParamsBuilder& {
+        std::forward<Fn>(fn)(value.style);
+        return *this;
+    }
+
+    auto WithTheme(WidgetTheme const& theme) -> ToggleParamsBuilder& {
+        ApplyTheme(theme, value);
+        return *this;
+    }
+
+    auto Build() const -> ToggleParams { return value; }
+    auto Build() && -> ToggleParams { return std::move(value); }
+};
+
+struct SliderParamsBuilder {
+    SliderParams value{};
+
+    static auto Make(std::string name) -> SliderParamsBuilder {
+        SliderParamsBuilder builder;
+        builder.value.name = std::move(name);
+        return builder;
+    }
+
+    auto WithName(std::string name) -> SliderParamsBuilder& {
+        value.name = std::move(name);
+        return *this;
+    }
+
+    auto WithMinimum(float minimum) -> SliderParamsBuilder& {
+        value.minimum = minimum;
+        return *this;
+    }
+
+    auto WithMaximum(float maximum) -> SliderParamsBuilder& {
+        value.maximum = maximum;
+        return *this;
+    }
+
+    auto WithValue(float current) -> SliderParamsBuilder& {
+        value.value = current;
+        return *this;
+    }
+
+    auto WithStep(float step) -> SliderParamsBuilder& {
+        value.step = step;
+        return *this;
+    }
+
+    auto WithRange(float minimum, float maximum) -> SliderParamsBuilder& {
+        value.minimum = minimum;
+        value.maximum = maximum;
+        return *this;
+    }
+
+    auto WithStyle(SliderStyle style) -> SliderParamsBuilder& {
+        value.style = std::move(style);
+        return *this;
+    }
+
+    template <typename Fn>
+    auto ModifyStyle(Fn&& fn) -> SliderParamsBuilder& {
+        std::forward<Fn>(fn)(value.style);
+        return *this;
+    }
+
+    auto WithTheme(WidgetTheme const& theme) -> SliderParamsBuilder& {
+        ApplyTheme(theme, value);
+        return *this;
+    }
+
+    auto Build() const -> SliderParams { return value; }
+    auto Build() && -> SliderParams { return std::move(value); }
+};
+
+struct ListParamsBuilder {
+    ListParams value{};
+
+    static auto Make(std::string name) -> ListParamsBuilder {
+        ListParamsBuilder builder;
+        builder.value.name = std::move(name);
+        return builder;
+    }
+
+    auto WithName(std::string name) -> ListParamsBuilder& {
+        value.name = std::move(name);
+        return *this;
+    }
+
+    auto WithItems(std::vector<ListItem> items) -> ListParamsBuilder& {
+        value.items = std::move(items);
+        return *this;
+    }
+
+    auto AddItem(ListItem item) -> ListParamsBuilder& {
+        value.items.push_back(std::move(item));
+        return *this;
+    }
+
+    auto WithStyle(ListStyle style) -> ListParamsBuilder& {
+        value.style = std::move(style);
+        return *this;
+    }
+
+    template <typename Fn>
+    auto ModifyStyle(Fn&& fn) -> ListParamsBuilder& {
+        std::forward<Fn>(fn)(value.style);
+        return *this;
+    }
+
+    auto WithTheme(WidgetTheme const& theme) -> ListParamsBuilder& {
+        ApplyTheme(theme, value);
+        return *this;
+    }
+
+    auto Build() const -> ListParams { return value; }
+    auto Build() && -> ListParams { return std::move(value); }
+};
+
+struct TreeParamsBuilder {
+    TreeParams value{};
+
+    static auto Make(std::string name) -> TreeParamsBuilder {
+        TreeParamsBuilder builder;
+        builder.value.name = std::move(name);
+        return builder;
+    }
+
+    auto WithName(std::string name) -> TreeParamsBuilder& {
+        value.name = std::move(name);
+        return *this;
+    }
+
+    auto WithNodes(std::vector<TreeNode> nodes) -> TreeParamsBuilder& {
+        value.nodes = std::move(nodes);
+        return *this;
+    }
+
+    auto WithStyle(TreeStyle style) -> TreeParamsBuilder& {
+        value.style = std::move(style);
+        return *this;
+    }
+
+    template <typename Fn>
+    auto ModifyStyle(Fn&& fn) -> TreeParamsBuilder& {
+        std::forward<Fn>(fn)(value.style);
+        return *this;
+    }
+
+    auto WithTheme(WidgetTheme const& theme) -> TreeParamsBuilder& {
+        ApplyTheme(theme, value);
+        return *this;
+    }
+
+    auto Build() const -> TreeParams { return value; }
+    auto Build() && -> TreeParams { return std::move(value); }
+};
+
+struct StackLayoutParamsBuilder {
+    StackLayoutParams value{};
+
+    static auto Make(std::string name) -> StackLayoutParamsBuilder {
+        StackLayoutParamsBuilder builder;
+        builder.value.name = std::move(name);
+        return builder;
+    }
+
+    auto WithName(std::string name) -> StackLayoutParamsBuilder& {
+        value.name = std::move(name);
+        return *this;
+    }
+
+    auto WithStyle(StackLayoutStyle style) -> StackLayoutParamsBuilder& {
+        value.style = std::move(style);
+        return *this;
+    }
+
+    template <typename Fn>
+    auto ModifyStyle(Fn&& fn) -> StackLayoutParamsBuilder& {
+        std::forward<Fn>(fn)(value.style);
+        return *this;
+    }
+
+    auto WithChildren(std::vector<StackChildSpec> children) -> StackLayoutParamsBuilder& {
+        value.children = std::move(children);
+        return *this;
+    }
+
+    auto AddChild(StackChildSpec child) -> StackLayoutParamsBuilder& {
+        value.children.push_back(std::move(child));
+        return *this;
+    }
+
+    auto Build() const -> StackLayoutParams { return value; }
+    auto Build() && -> StackLayoutParams { return std::move(value); }
+};
+
+struct ButtonStateBuilder {
+    ButtonState value{};
+
+    static auto Make() -> ButtonStateBuilder { return ButtonStateBuilder{}; }
+
+    auto WithEnabled(bool enabled = true) -> ButtonStateBuilder& {
+        value.enabled = enabled;
+        return *this;
+    }
+
+    auto WithPressed(bool pressed = true) -> ButtonStateBuilder& {
+        value.pressed = pressed;
+        return *this;
+    }
+
+    auto WithHovered(bool hovered = true) -> ButtonStateBuilder& {
+        value.hovered = hovered;
+        return *this;
+    }
+
+    auto WithFocused(bool focused = true) -> ButtonStateBuilder& {
+        value.focused = focused;
+        return *this;
+    }
+
+    auto Build() const -> ButtonState { return value; }
+    auto Build() && -> ButtonState { return std::move(value); }
+};
+
+struct ToggleStateBuilder {
+    ToggleState value{};
+
+    static auto Make() -> ToggleStateBuilder { return ToggleStateBuilder{}; }
+
+    auto WithEnabled(bool enabled = true) -> ToggleStateBuilder& {
+        value.enabled = enabled;
+        return *this;
+    }
+
+    auto WithHovered(bool hovered = true) -> ToggleStateBuilder& {
+        value.hovered = hovered;
+        return *this;
+    }
+
+    auto WithChecked(bool checked = true) -> ToggleStateBuilder& {
+        value.checked = checked;
+        return *this;
+    }
+
+    auto WithFocused(bool focused = true) -> ToggleStateBuilder& {
+        value.focused = focused;
+        return *this;
+    }
+
+    auto Build() const -> ToggleState { return value; }
+    auto Build() && -> ToggleState { return std::move(value); }
+};
+
+struct SliderStateBuilder {
+    SliderState value{};
+
+    static auto Make() -> SliderStateBuilder { return SliderStateBuilder{}; }
+
+    auto WithEnabled(bool enabled = true) -> SliderStateBuilder& {
+        value.enabled = enabled;
+        return *this;
+    }
+
+    auto WithHovered(bool hovered = true) -> SliderStateBuilder& {
+        value.hovered = hovered;
+        return *this;
+    }
+
+    auto WithDragging(bool dragging = true) -> SliderStateBuilder& {
+        value.dragging = dragging;
+        return *this;
+    }
+
+    auto WithFocused(bool focused = true) -> SliderStateBuilder& {
+        value.focused = focused;
+        return *this;
+    }
+
+    auto WithValue(float current) -> SliderStateBuilder& {
+        value.value = current;
+        return *this;
+    }
+
+    auto Build() const -> SliderState { return value; }
+    auto Build() && -> SliderState { return std::move(value); }
+};
+
+struct ListStateBuilder {
+    ListState value{};
+
+    static auto Make() -> ListStateBuilder { return ListStateBuilder{}; }
+
+    auto WithEnabled(bool enabled = true) -> ListStateBuilder& {
+        value.enabled = enabled;
+        return *this;
+    }
+
+    auto WithFocused(bool focused = true) -> ListStateBuilder& {
+        value.focused = focused;
+        return *this;
+    }
+
+    auto WithHoveredIndex(std::int32_t index) -> ListStateBuilder& {
+        value.hovered_index = index;
+        return *this;
+    }
+
+    auto WithSelectedIndex(std::int32_t index) -> ListStateBuilder& {
+        value.selected_index = index;
+        return *this;
+    }
+
+    auto WithScrollOffset(float offset) -> ListStateBuilder& {
+        value.scroll_offset = offset;
+        return *this;
+    }
+
+    auto Build() const -> ListState { return value; }
+    auto Build() && -> ListState { return std::move(value); }
+};
+
+struct TreeStateBuilder {
+    TreeState value{};
+
+    static auto Make() -> TreeStateBuilder { return TreeStateBuilder{}; }
+
+    auto WithEnabled(bool enabled = true) -> TreeStateBuilder& {
+        value.enabled = enabled;
+        return *this;
+    }
+
+    auto WithFocused(bool focused = true) -> TreeStateBuilder& {
+        value.focused = focused;
+        return *this;
+    }
+
+    auto WithHoveredId(std::string id) -> TreeStateBuilder& {
+        value.hovered_id = std::move(id);
+        return *this;
+    }
+
+    auto WithSelectedId(std::string id) -> TreeStateBuilder& {
+        value.selected_id = std::move(id);
+        return *this;
+    }
+
+    auto WithExpandedIds(std::vector<std::string> ids) -> TreeStateBuilder& {
+        value.expanded_ids = std::move(ids);
+        return *this;
+    }
+
+    auto WithLoadingIds(std::vector<std::string> ids) -> TreeStateBuilder& {
+        value.loading_ids = std::move(ids);
+        return *this;
+    }
+
+    auto WithScrollOffset(float offset) -> TreeStateBuilder& {
+        value.scroll_offset = offset;
+        return *this;
+    }
+
+    auto Build() const -> TreeState { return value; }
+    auto Build() && -> TreeState { return std::move(value); }
+};
+
+[[nodiscard]] inline auto MakeButtonParams(std::string name, std::string label = {}) -> ButtonParamsBuilder {
+    return ButtonParamsBuilder::Make(std::move(name), std::move(label));
+}
+
+[[nodiscard]] inline auto MakeToggleParams(std::string name) -> ToggleParamsBuilder {
+    return ToggleParamsBuilder::Make(std::move(name));
+}
+
+[[nodiscard]] inline auto MakeSliderParams(std::string name) -> SliderParamsBuilder {
+    return SliderParamsBuilder::Make(std::move(name));
+}
+
+[[nodiscard]] inline auto MakeListParams(std::string name) -> ListParamsBuilder {
+    return ListParamsBuilder::Make(std::move(name));
+}
+
+[[nodiscard]] inline auto MakeTreeParams(std::string name) -> TreeParamsBuilder {
+    return TreeParamsBuilder::Make(std::move(name));
+}
+
+[[nodiscard]] inline auto MakeStackLayoutParams(std::string name) -> StackLayoutParamsBuilder {
+    return StackLayoutParamsBuilder::Make(std::move(name));
+}
+
+[[nodiscard]] inline auto MakeButtonState() -> ButtonStateBuilder {
+    return ButtonStateBuilder::Make();
+}
+
+[[nodiscard]] inline auto MakeToggleState() -> ToggleStateBuilder {
+    return ToggleStateBuilder::Make();
+}
+
+[[nodiscard]] inline auto MakeSliderState() -> SliderStateBuilder {
+    return SliderStateBuilder::Make();
+}
+
+[[nodiscard]] inline auto MakeListState() -> ListStateBuilder {
+    return ListStateBuilder::Make();
+}
+
+[[nodiscard]] inline auto MakeTreeState() -> TreeStateBuilder {
+    return TreeStateBuilder::Make();
+}
+
 namespace Reducers {
 
 struct WidgetAction {
@@ -1588,6 +2170,15 @@ auto PublishActions(PathSpace& space,
 } // namespace Reducers
 
 } // namespace Widgets
+
+inline auto MakeWidgetBounds(float min_x,
+                             float min_y,
+                             float max_x,
+                             float max_y) -> Widgets::Input::WidgetBounds {
+    Widgets::Input::WidgetBounds bounds{min_x, min_y, max_x, max_y};
+    bounds.normalize();
+    return bounds;
+}
 
 namespace Diagnostics {
 

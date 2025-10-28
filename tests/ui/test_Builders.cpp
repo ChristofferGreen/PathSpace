@@ -1626,11 +1626,12 @@ TEST_CASE("Renderer::RenderHtml writes DOM outputs for html targets") {
 TEST_CASE("Widgets::CreateButton publishes snapshot and state") {
     BuildersFixture fx;
 
-    Widgets::ButtonParams params{};
-    params.name = "primary";
-    params.label = "Primary";
-    params.style.width = 180.0f;
-    params.style.height = 44.0f;
+    auto params = Widgets::MakeButtonParams("primary", "Primary")
+                      .ModifyStyle([](Widgets::ButtonStyle& style) {
+                          style.width = 180.0f;
+                          style.height = 44.0f;
+                      })
+                      .Build();
 
     auto created = Widgets::CreateButton(fx.space, fx.root_view(), params);
     REQUIRE(created);
@@ -1728,12 +1729,10 @@ TEST_CASE("Widgets::CreateButton publishes snapshot and state") {
 TEST_CASE("Widgets::WidgetTheme hot swap repaints button scenes and marks dirty") {
     BuildersFixture fx;
 
-    Widgets::ButtonParams params{};
-    params.name = "button_hot_swap";
-    params.label = "Theme Swap";
-
     auto defaultTheme = Widgets::MakeDefaultWidgetTheme();
-    Widgets::ApplyTheme(defaultTheme, params);
+    auto params = Widgets::MakeButtonParams("button_hot_swap", "Theme Swap")
+                      .WithTheme(defaultTheme)
+                      .Build();
 
     auto createdResult = Widgets::CreateButton(fx.space, fx.root_view(), params);
     REQUIRE(createdResult);
@@ -1832,11 +1831,13 @@ TEST_CASE("Widgets::WidgetTheme hot swap repaints button scenes and marks dirty"
 TEST_CASE("Widgets::CreateToggle publishes snapshot and state") {
     BuildersFixture fx;
 
-    Widgets::ToggleParams params{};
-    params.name = "toggle_primary";
-    params.style.width = 60.0f;
-    params.style.height = 32.0f;
-    params.style.track_on_color = {0.2f, 0.6f, 0.3f, 1.0f};
+    auto params = Widgets::MakeToggleParams("toggle_primary")
+                      .ModifyStyle([](Widgets::ToggleStyle& style) {
+                          style.width = 60.0f;
+                          style.height = 32.0f;
+                          style.track_on_color = {0.2f, 0.6f, 0.3f, 1.0f};
+                      })
+                      .Build();
 
     auto created = Widgets::CreateToggle(fx.space, fx.root_view(), params);
     REQUIRE(created);
@@ -1901,16 +1902,17 @@ TEST_CASE("Widgets::CreateToggle publishes snapshot and state") {
 TEST_CASE("Widgets::CreateSlider publishes snapshot and state") {
     BuildersFixture fx;
 
-    Widgets::SliderParams params{};
-    params.name = "slider_primary";
-    params.minimum = -1.0f;
-    params.maximum = 1.0f;
-    params.value = 0.25f;
-    params.step = 0.25f;
-    params.style.width = 320.0f;
-    params.style.height = 36.0f;
-    params.style.track_height = 8.0f;
-    params.style.thumb_radius = 14.0f;
+    auto params = Widgets::MakeSliderParams("slider_primary")
+                      .WithRange(-1.0f, 1.0f)
+                      .WithValue(0.25f)
+                      .WithStep(0.25f)
+                      .ModifyStyle([](Widgets::SliderStyle& style) {
+                          style.width = 320.0f;
+                          style.height = 36.0f;
+                          style.track_height = 8.0f;
+                          style.thumb_radius = 14.0f;
+                      })
+                      .Build();
 
     auto created = Widgets::CreateSlider(fx.space, fx.root_view(), params);
     REQUIRE(created);
@@ -2006,19 +2008,16 @@ TEST_CASE("Widgets::Bindings::DispatchButton emits dirty hints and widget ops") 
                                               "targets/surfaces/bindings_button_surface");
     REQUIRE(target);
 
-    Widgets::ButtonParams buttonParams{};
-    buttonParams.name = "primary_button";
-    buttonParams.label = "Primary";
+    auto buttonParams = Widgets::MakeButtonParams("primary_button", "Primary").Build();
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
     REQUIRE(button);
 
     auto buttonStyle = fx.space.read<Widgets::ButtonStyle, std::string>(std::string(button->root.getPath()) + "/meta/style");
     REQUIRE(buttonStyle);
-    DirtyRectHint buttonFootprint{};
-    buttonFootprint.min_x = 0.0f;
-    buttonFootprint.min_y = 0.0f;
-    buttonFootprint.max_x = buttonStyle->width;
-    buttonFootprint.max_y = buttonStyle->height;
+    auto buttonFootprint = SP::UI::Builders::MakeDirtyRectHint(0.0f,
+                                                               0.0f,
+                                                               buttonStyle->width,
+                                                               buttonStyle->height);
 
     auto binding = WidgetBindings::CreateButtonBinding(fx.space,
                                                        fx.root_view(),
@@ -2027,16 +2026,15 @@ TEST_CASE("Widgets::Bindings::DispatchButton emits dirty hints and widget ops") 
                                                        buttonFootprint);
     REQUIRE(binding);
 
-    WidgetBindings::PointerInfo pointer{};
-    pointer.scene_x = 12.0f;
-    pointer.scene_y = 6.0f;
-    pointer.inside = true;
+    auto pointer = WidgetBindings::PointerInfo::Make(12.0f, 6.0f)
+                       .WithInside(true);
 
     auto renderQueuePath = std::string(target->getPath()) + "/events/renderRequested/queue";
     auto opQueuePath = binding->options.ops_queue.getPath();
 
-    Widgets::ButtonState hovered{};
-    hovered.hovered = true;
+    auto hovered = Widgets::MakeButtonState()
+                        .WithHovered(true)
+                        .Build();
 
     auto hoverEnter = WidgetBindings::DispatchButton(fx.space,
                                                      *binding,
@@ -2055,9 +2053,10 @@ TEST_CASE("Widgets::Bindings::DispatchButton emits dirty hints and widget ops") 
     CHECK(hoverEnterOp->kind == WidgetBindings::WidgetOpKind::HoverEnter);
     CHECK(hoverEnterOp->value == doctest::Approx(0.0f));
 
-    Widgets::ButtonState pressed{};
-    pressed.hovered = true;
-    pressed.pressed = true;
+    auto pressed = Widgets::MakeButtonState()
+                        .WithHovered(true)
+                        .WithPressed(true)
+                        .Build();
 
     auto pressResult = WidgetBindings::DispatchButton(fx.space,
                                                       *binding,
@@ -2166,19 +2165,16 @@ TEST_CASE("Widgets::Bindings::DispatchButton honors auto-render flag") {
                                               "targets/surfaces/bindings_button_manual_surface");
     REQUIRE(target);
 
-    Widgets::ButtonParams buttonParams{};
-    buttonParams.name = "manual_button";
-    buttonParams.label = "Manual";
+    auto buttonParams = Widgets::MakeButtonParams("manual_button", "Manual").Build();
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
     REQUIRE(button);
 
     auto buttonStyle = fx.space.read<Widgets::ButtonStyle, std::string>(std::string(button->root.getPath()) + "/meta/style");
     REQUIRE(buttonStyle);
-    DirtyRectHint buttonFootprint{};
-    buttonFootprint.min_x = 0.0f;
-    buttonFootprint.min_y = 0.0f;
-    buttonFootprint.max_x = buttonStyle->width;
-    buttonFootprint.max_y = buttonStyle->height;
+    auto buttonFootprint = SP::UI::Builders::MakeDirtyRectHint(0.0f,
+                                                               0.0f,
+                                                               buttonStyle->width,
+                                                               buttonStyle->height);
 
     auto binding = WidgetBindings::CreateButtonBinding(fx.space,
                                                        fx.root_view(),
@@ -2189,16 +2185,15 @@ TEST_CASE("Widgets::Bindings::DispatchButton honors auto-render flag") {
                                                        /*auto_render=*/false);
     REQUIRE(binding);
 
-    WidgetBindings::PointerInfo pointer{};
-    pointer.scene_x = 4.0f;
-    pointer.scene_y = 3.0f;
-    pointer.inside = true;
+    auto pointer = WidgetBindings::PointerInfo::Make(4.0f, 3.0f)
+                       .WithInside(true);
 
     auto renderQueuePath = std::string(target->getPath()) + "/events/renderRequested/queue";
     auto opQueuePath = binding->options.ops_queue.getPath();
 
-    Widgets::ButtonState hover{};
-    hover.hovered = true;
+    auto hover = Widgets::MakeButtonState()
+                      .WithHovered(true)
+                      .Build();
 
     auto hoverEnter = WidgetBindings::DispatchButton(fx.space,
                                                      *binding,
@@ -2244,18 +2239,16 @@ TEST_CASE("Widgets::Bindings::DispatchToggle handles hover/toggle/disable sequen
                                               "targets/surfaces/bindings_toggle_surface");
     REQUIRE(target);
 
-    Widgets::ToggleParams toggleParams{};
-    toggleParams.name = "primary_toggle";
+    auto toggleParams = Widgets::MakeToggleParams("primary_toggle").Build();
     auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), toggleParams);
     REQUIRE(toggle);
 
     auto toggleStyle = fx.space.read<Widgets::ToggleStyle, std::string>(std::string(toggle->root.getPath()) + "/meta/style");
     REQUIRE(toggleStyle);
-    DirtyRectHint toggleFootprint{};
-    toggleFootprint.min_x = 0.0f;
-    toggleFootprint.min_y = 0.0f;
-    toggleFootprint.max_x = toggleStyle->width;
-    toggleFootprint.max_y = toggleStyle->height;
+    auto toggleFootprint = SP::UI::Builders::MakeDirtyRectHint(0.0f,
+                                                               0.0f,
+                                                               toggleStyle->width,
+                                                               toggleStyle->height);
 
     auto binding = WidgetBindings::CreateToggleBinding(fx.space,
                                                        fx.root_view(),
@@ -2264,16 +2257,15 @@ TEST_CASE("Widgets::Bindings::DispatchToggle handles hover/toggle/disable sequen
                                                        toggleFootprint);
     REQUIRE(binding);
 
-    WidgetBindings::PointerInfo pointer{};
-    pointer.scene_x = 18.0f;
-    pointer.scene_y = 12.0f;
-    pointer.inside = true;
+    auto pointer = WidgetBindings::PointerInfo::Make(18.0f, 12.0f)
+                       .WithInside(true);
 
     auto renderQueuePath = std::string(target->getPath()) + "/events/renderRequested/queue";
     auto opQueuePath = binding->options.ops_queue.getPath();
 
-    Widgets::ToggleState hoverState{};
-    hoverState.hovered = true;
+    auto hoverState = Widgets::MakeToggleState()
+                           .WithHovered(true)
+                           .Build();
 
     auto hoverEnter = WidgetBindings::DispatchToggle(fx.space,
                                                      *binding,
@@ -2291,9 +2283,10 @@ TEST_CASE("Widgets::Bindings::DispatchToggle handles hover/toggle/disable sequen
     CHECK(hoverOp->kind == WidgetBindings::WidgetOpKind::HoverEnter);
     CHECK(hoverOp->value == doctest::Approx(0.0f));
 
-    Widgets::ToggleState toggledState{};
-    toggledState.hovered = true;
-    toggledState.checked = true;
+    auto toggledState = Widgets::MakeToggleState()
+                            .WithHovered(true)
+                            .WithChecked(true)
+                            .Build();
 
     auto toggleResult = WidgetBindings::DispatchToggle(fx.space,
                                                        *binding,
@@ -2373,19 +2366,21 @@ TEST_CASE("Widgets dirty hints cover adjacent widget bindings") {
                                               "targets/surfaces/bindings_adjacent_surface");
     REQUIRE(target);
 
-    Widgets::ButtonParams leftParams{};
-    leftParams.name = "left_button";
-    leftParams.label = "Left";
-    leftParams.style.width = 96.0f;
-    leftParams.style.height = 64.0f;
+    auto leftParams = Widgets::MakeButtonParams("left_button", "Left")
+                          .ModifyStyle([](Widgets::ButtonStyle& style) {
+                              style.width = 96.0f;
+                              style.height = 64.0f;
+                          })
+                          .Build();
     auto left = Widgets::CreateButton(fx.space, fx.root_view(), leftParams);
     REQUIRE(left);
 
-    Widgets::ButtonParams rightParams{};
-    rightParams.name = "right_button";
-    rightParams.label = "Right";
-    rightParams.style.width = 96.0f;
-    rightParams.style.height = 64.0f;
+    auto rightParams = Widgets::MakeButtonParams("right_button", "Right")
+                           .ModifyStyle([](Widgets::ButtonStyle& style) {
+                               style.width = 96.0f;
+                               style.height = 64.0f;
+                           })
+                           .Build();
     auto right = Widgets::CreateButton(fx.space, fx.root_view(), rightParams);
     REQUIRE(right);
 
@@ -2415,13 +2410,12 @@ TEST_CASE("Widgets dirty hints cover adjacent widget bindings") {
         CHECK((preEvent.error().code == Error::Code::NoObjectFound || preEvent.error().code == Error::Code::NoSuchPath));
     }
 
-    WidgetBindings::PointerInfo pointer{};
-    pointer.scene_x = 12.0f;
-    pointer.scene_y = 8.0f;
-    pointer.inside = true;
+    auto pointer = WidgetBindings::PointerInfo::Make(12.0f, 8.0f)
+                       .WithInside(true);
 
-    Widgets::ButtonState hover{};
-    hover.hovered = true;
+    auto hover = Widgets::MakeButtonState()
+                      .WithHovered(true)
+                      .Build();
 
     auto changed = WidgetBindings::DispatchButton(fx.space,
                                                   *leftBinding,
@@ -2492,20 +2486,19 @@ TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
                                               "targets/surfaces/bindings_slider_surface");
     REQUIRE(target);
 
-    Widgets::SliderParams sliderParams{};
-    sliderParams.name = "volume";
-    sliderParams.maximum = 1.0f;
-    sliderParams.value = 0.25f;
+    auto sliderParams = Widgets::MakeSliderParams("volume")
+                             .WithMaximum(1.0f)
+                             .WithValue(0.25f)
+                             .Build();
     auto slider = Widgets::CreateSlider(fx.space, fx.root_view(), sliderParams);
     REQUIRE(slider);
 
     auto sliderStyle = fx.space.read<Widgets::SliderStyle, std::string>(std::string(slider->root.getPath()) + "/meta/style");
     REQUIRE(sliderStyle);
-    DirtyRectHint sliderFootprint{};
-    sliderFootprint.min_x = 0.0f;
-    sliderFootprint.min_y = 0.0f;
-    sliderFootprint.max_x = sliderStyle->width;
-    sliderFootprint.max_y = sliderStyle->height;
+    auto sliderFootprint = SP::UI::Builders::MakeDirtyRectHint(0.0f,
+                                                               0.0f,
+                                                               sliderStyle->width,
+                                                               sliderStyle->height);
 
     auto binding = WidgetBindings::CreateSliderBinding(fx.space,
                                                        fx.root_view(),
@@ -2514,18 +2507,17 @@ TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
                                                        sliderFootprint);
     REQUIRE(binding);
 
-    WidgetBindings::PointerInfo pointer{};
-    pointer.scene_x = 120.0f;
-    pointer.scene_y = 12.0f;
-    pointer.primary = true;
+    auto pointer = WidgetBindings::PointerInfo::Make(120.0f, 12.0f)
+                       .WithPrimary(true);
 
     auto renderQueuePath = std::string(target->getPath()) + "/events/renderRequested/queue";
     auto opQueuePath = binding->options.ops_queue.getPath();
 
-    Widgets::SliderState beginState{};
-    beginState.enabled = true;
-    beginState.dragging = true;
-    beginState.value = 0.15f;
+    auto beginState = Widgets::MakeSliderState()
+                          .WithEnabled(true)
+                          .WithDragging(true)
+                          .WithValue(0.15f)
+                          .Build();
 
     auto beginResult = WidgetBindings::DispatchSlider(fx.space,
                                                       *binding,
@@ -2543,10 +2535,11 @@ TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
     CHECK(beginOp->kind == WidgetBindings::WidgetOpKind::SliderBegin);
     CHECK(beginOp->value == doctest::Approx(0.15f));
 
-    Widgets::SliderState dragState{};
-    dragState.enabled = true;
-    dragState.dragging = true;
-    dragState.value = 2.0f;
+    auto dragState = Widgets::MakeSliderState()
+                         .WithEnabled(true)
+                         .WithDragging(true)
+                         .WithValue(2.0f)
+                         .Build();
 
     auto updateResult = WidgetBindings::DispatchSlider(fx.space,
                                                        *binding,
@@ -2564,10 +2557,11 @@ TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
     CHECK(updateOp->kind == WidgetBindings::WidgetOpKind::SliderUpdate);
     CHECK(updateOp->value == doctest::Approx(1.0f));
 
-    Widgets::SliderState commitState{};
-    commitState.enabled = true;
-    commitState.dragging = false;
-    commitState.value = 0.6f;
+    auto commitState = Widgets::MakeSliderState()
+                           .WithEnabled(true)
+                           .WithDragging(false)
+                           .WithValue(0.6f)
+                           .Build();
 
     auto commitResult = WidgetBindings::DispatchSlider(fx.space,
                                                        *binding,
@@ -2592,9 +2586,10 @@ TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
     auto noExtraReasons = drain_auto_render_queue(fx.space, renderQueuePath);
     CHECK(noExtraReasons.empty());
 
-    Widgets::SliderState disabled{};
-    disabled.enabled = false;
-    disabled.value = 0.6f;
+    auto disabled = Widgets::MakeSliderState()
+                         .WithEnabled(false)
+                         .WithValue(0.6f)
+                         .Build();
 
     auto disableResult = Widgets::UpdateSliderState(fx.space, *slider, disabled);
     REQUIRE(disableResult);
@@ -2617,15 +2612,17 @@ TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
 TEST_CASE("Widgets::CreateList publishes snapshot and metadata") {
     BuildersFixture fx;
 
-    Widgets::ListParams listParams{};
-    listParams.name = "inventory";
-    listParams.items = {
-        Widgets::ListItem{.id = "potion", .label = "Potion", .enabled = true},
-        Widgets::ListItem{.id = "ether", .label = "Ether", .enabled = true},
-        Widgets::ListItem{.id = "elixir", .label = "Elixir", .enabled = false},
-    };
-    listParams.style.width = 220.0f;
-    listParams.style.item_height = 40.0f;
+    auto listParams = Widgets::MakeListParams("inventory")
+                          .WithItems({
+                              Widgets::ListItem{.id = "potion", .label = "Potion", .enabled = true},
+                              Widgets::ListItem{.id = "ether", .label = "Ether", .enabled = true},
+                              Widgets::ListItem{.id = "elixir", .label = "Elixir", .enabled = false},
+                          })
+                          .ModifyStyle([](Widgets::ListStyle& style) {
+                              style.width = 220.0f;
+                              style.item_height = 40.0f;
+                          })
+                          .Build();
 
     auto created = Widgets::CreateList(fx.space, fx.root_view(), listParams);
     REQUIRE(created);
@@ -2679,8 +2676,9 @@ TEST_CASE("Widgets::BuildButtonPreview provides canonical authoring ids and high
     style.height = 48.0f;
     style.corner_radius = 9.0f;
 
-    Widgets::ButtonState focused{};
-    focused.focused = true;
+    auto focused = Widgets::MakeButtonState()
+                        .WithFocused(true)
+                        .Build();
 
     auto preview = Widgets::BuildButtonPreview(
         style,
@@ -2713,16 +2711,13 @@ TEST_CASE("Widgets::BuildButtonPreview provides canonical authoring ids and high
 }
 
 TEST_CASE("Widgets::BuildLabel produces text bucket and bounds") {
-    Widgets::LabelBuildParams params{};
-    params.text = "Label";
-    params.origin_x = 12.0f;
-    params.origin_y = 34.0f;
-    params.typography.font_size = 20.0f;
-    params.typography.line_height = 24.0f;
-    params.color = {0.9f, 0.1f, 0.2f, 1.0f};
-    params.drawable_id = 0xDEADBEEF;
-    params.authoring_id = "widgets/test/label";
-    params.z_value = 0.25f;
+    Widgets::TypographyStyle typography{};
+    typography.font_size = 20.0f;
+    typography.line_height = 24.0f;
+    auto params = Widgets::LabelBuildParams::Make("Label", typography)
+                      .WithOrigin(12.0f, 34.0f)
+                      .WithColor({0.9f, 0.1f, 0.2f, 1.0f})
+                      .WithDrawable(0xDEADBEEF, std::string("widgets/test/label"), 0.25f);
 
     auto label = Widgets::BuildLabel(params);
     REQUIRE(label);
@@ -2744,10 +2739,11 @@ TEST_CASE("Widgets::BuildTogglePreview emits drawable ordering and highlight met
     style.width = 72.0f;
     style.height = 36.0f;
 
-    Widgets::ToggleState state{};
-    state.checked = true;
-    state.focused = true;
-    state.hovered = true;
+    auto state = Widgets::MakeToggleState()
+                     .WithChecked(true)
+                     .WithFocused(true)
+                     .WithHovered(true)
+                     .Build();
 
     auto preview = Widgets::BuildTogglePreview(
         style,
@@ -2783,9 +2779,10 @@ TEST_CASE("Widgets::BuildSliderPreview clamps range and records fill geometry") 
     range.maximum = 50.0f;
     range.step = 5.0f;
 
-    Widgets::SliderState state{};
-    state.value = 17.0f;
-    state.focused = true;
+    auto state = Widgets::MakeSliderState()
+                     .WithValue(17.0f)
+                     .WithFocused(true)
+                     .Build();
 
     auto preview = Widgets::BuildSliderPreview(
         style,
@@ -2830,12 +2827,13 @@ TEST_CASE("Widgets::BuildListPreview provides layout geometry") {
         Widgets::ListItem{.id = "gamma", .label = "Gamma", .enabled = true},
     };
 
-    Widgets::ListState state{};
-    state.enabled = true;
-    state.focused = true;
-    state.hovered_index = 2;
-    state.selected_index = 1; // disabled entry should be remapped
-    state.scroll_offset = 12.0f;
+    auto state = Widgets::MakeListState()
+                     .WithEnabled(true)
+                     .WithFocused(true)
+                     .WithHoveredIndex(2)
+                     .WithSelectedIndex(1)
+                     .WithScrollOffset(12.0f)
+                     .Build();
 
     auto preview = Widgets::BuildListPreview(style, items, state);
     CHECK(preview.layout.bounds.max_x == doctest::Approx(120.0f));
@@ -2949,14 +2947,14 @@ TEST_CASE("Widgets::BuildStackPreview reports layout metrics and bucket metadata
 TEST_CASE("Widgets::CreateTree publishes snapshot and metadata") {
     BuildersFixture fx;
 
-    Widgets::TreeParams treeParams{};
-    treeParams.name = "filesystem";
-    treeParams.nodes = {
-        Widgets::TreeNode{.id = "root", .parent_id = "", .label = "Root", .enabled = true, .expandable = true, .loaded = true},
-        Widgets::TreeNode{.id = "docs", .parent_id = "root", .label = "Docs", .enabled = true, .expandable = false, .loaded = false},
-        Widgets::TreeNode{.id = "src", .parent_id = "root", .label = "Src", .enabled = true, .expandable = true, .loaded = false},
-        Widgets::TreeNode{.id = "tests", .parent_id = "src", .label = "Tests", .enabled = true, .expandable = false, .loaded = false},
-    };
+    auto treeParams = Widgets::MakeTreeParams("filesystem")
+                          .WithNodes({
+                              Widgets::TreeNode{.id = "root", .parent_id = "", .label = "Root", .enabled = true, .expandable = true, .loaded = true},
+                              Widgets::TreeNode{.id = "docs", .parent_id = "root", .label = "Docs", .enabled = true, .expandable = false, .loaded = false},
+                              Widgets::TreeNode{.id = "src", .parent_id = "root", .label = "Src", .enabled = true, .expandable = true, .loaded = false},
+                              Widgets::TreeNode{.id = "tests", .parent_id = "src", .label = "Tests", .enabled = true, .expandable = false, .loaded = false},
+                          })
+                          .Build();
 
     auto created = Widgets::CreateTree(fx.space, fx.root_view(), treeParams);
     REQUIRE(created);
@@ -2985,24 +2983,25 @@ TEST_CASE("Widgets::CreateTree publishes snapshot and metadata") {
 TEST_CASE("Widgets::UpdateTreeState toggles expansion and clamps state") {
     BuildersFixture fx;
 
-    Widgets::TreeParams treeParams{};
-    treeParams.name = "project";
-    treeParams.nodes = {
-        Widgets::TreeNode{.id = "root", .parent_id = "", .label = "Root", .enabled = true, .expandable = true, .loaded = true},
-        Widgets::TreeNode{.id = "src", .parent_id = "root", .label = "Src", .enabled = true, .expandable = true, .loaded = false},
-        Widgets::TreeNode{.id = "include", .parent_id = "root", .label = "Include", .enabled = false, .expandable = false, .loaded = false},
-    };
+    auto treeParams = Widgets::MakeTreeParams("project")
+                          .WithNodes({
+                              Widgets::TreeNode{.id = "root", .parent_id = "", .label = "Root", .enabled = true, .expandable = true, .loaded = true},
+                              Widgets::TreeNode{.id = "src", .parent_id = "root", .label = "Src", .enabled = true, .expandable = true, .loaded = false},
+                              Widgets::TreeNode{.id = "include", .parent_id = "root", .label = "Include", .enabled = false, .expandable = false, .loaded = false},
+                          })
+                          .Build();
 
     auto tree = Widgets::CreateTree(fx.space, fx.root_view(), treeParams);
     REQUIRE(tree);
 
-    Widgets::TreeState desired{};
-    desired.enabled = true;
-    desired.hovered_id = "include"; // disabled, should clear
-    desired.selected_id = "src";
-    desired.expanded_ids = {"root"};
-    desired.loading_ids = {"src"};
-    desired.scroll_offset = 100.0f;
+    auto desired = Widgets::MakeTreeState()
+                        .WithEnabled(true)
+                        .WithHoveredId("include")
+                        .WithSelectedId("src")
+                        .WithExpandedIds({"root"})
+                        .WithLoadingIds({"src"})
+                        .WithScrollOffset(100.0f)
+                        .Build();
 
     auto changed = Widgets::UpdateTreeState(fx.space, *tree, desired);
     REQUIRE(changed);
@@ -3015,10 +3014,11 @@ TEST_CASE("Widgets::UpdateTreeState toggles expansion and clamps state") {
     CHECK(std::find(updated->expanded_ids.begin(), updated->expanded_ids.end(), "root")
           != updated->expanded_ids.end());
 
-    Widgets::TreeState collapse{};
-    collapse.enabled = true;
-    collapse.selected_id = "src";
-    collapse.expanded_ids = {};
+    auto collapse = Widgets::MakeTreeState()
+                        .WithEnabled(true)
+                        .WithSelectedId("src")
+                        .WithExpandedIds({})
+                        .Build();
     auto collapsed = Widgets::UpdateTreeState(fx.space, *tree, collapse);
     REQUIRE(collapsed);
     CHECK(*collapsed);
@@ -3031,13 +3031,13 @@ TEST_CASE("Widgets::UpdateTreeState toggles expansion and clamps state") {
 TEST_CASE("Widgets::Bindings::DispatchTree enqueues ops and schedules renders") {
     BuildersFixture fx;
 
-    Widgets::TreeParams treeParams{};
-    treeParams.name = "bindings_tree";
-    treeParams.nodes = {
-        Widgets::TreeNode{.id = "root", .parent_id = "", .label = "Root", .enabled = true, .expandable = true, .loaded = true},
-        Widgets::TreeNode{.id = "src", .parent_id = "root", .label = "Src", .enabled = true, .expandable = true, .loaded = false},
-        Widgets::TreeNode{.id = "docs", .parent_id = "root", .label = "Docs", .enabled = true, .expandable = false, .loaded = false},
-    };
+    auto treeParams = Widgets::MakeTreeParams("bindings_tree")
+                          .WithNodes({
+                              Widgets::TreeNode{.id = "root", .parent_id = "", .label = "Root", .enabled = true, .expandable = true, .loaded = true},
+                              Widgets::TreeNode{.id = "src", .parent_id = "root", .label = "Src", .enabled = true, .expandable = true, .loaded = false},
+                              Widgets::TreeNode{.id = "docs", .parent_id = "root", .label = "Docs", .enabled = true, .expandable = false, .loaded = false},
+                          })
+                          .Build();
 
     auto tree = Widgets::CreateTree(fx.space, fx.root_view(), treeParams);
     REQUIRE(tree);
@@ -3094,7 +3094,7 @@ TEST_CASE("Widgets::Bindings::DispatchTree enqueues ops and schedules renders") 
                                                *currentState,
                                                WidgetBindings::WidgetOpKind::TreeToggle,
                                                "src",
-                                               WidgetBindings::PointerInfo{},
+                                               WidgetBindings::PointerInfo::Make(0.0f, 0.0f),
                                                0.0f);
     if (!toggle) {
         auto err = toggle.error();
@@ -3133,48 +3133,46 @@ TEST_CASE("Widgets::Bindings::DispatchTree enqueues ops and schedules renders") 
 TEST_CASE("Widgets::CreateStack composes vertical layout") {
     BuildersFixture fx;
 
-    Widgets::ButtonParams buttonParams{};
-    buttonParams.name = "stack_button";
-    buttonParams.label = "Stack Button";
+    auto buttonParams = Widgets::MakeButtonParams("stack_button", "Stack Button").Build();
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
     REQUIRE(button);
 
-    Widgets::ToggleParams toggleParams{};
-    toggleParams.name = "stack_toggle";
+    auto toggleParams = Widgets::MakeToggleParams("stack_toggle").Build();
     auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), toggleParams);
     REQUIRE(toggle);
 
-    Widgets::SliderParams sliderParams{};
-    sliderParams.name = "stack_slider";
-    sliderParams.minimum = 0.0f;
-    sliderParams.maximum = 1.0f;
-    sliderParams.value = 0.5f;
+    auto sliderParams = Widgets::MakeSliderParams("stack_slider")
+                             .WithRange(0.0f, 1.0f)
+                             .WithValue(0.5f)
+                             .Build();
     auto slider = Widgets::CreateSlider(fx.space, fx.root_view(), sliderParams);
     REQUIRE(slider);
 
-    Widgets::StackLayoutParams stackParams{};
-    stackParams.name = "column";
-    stackParams.style.axis = Widgets::StackAxis::Vertical;
-    stackParams.style.spacing = 24.0f;
-    stackParams.style.padding_main_start = 16.0f;
-    stackParams.style.padding_cross_start = 20.0f;
-    stackParams.children = {
-        Widgets::StackChildSpec{
-            .id = "button",
-            .widget_path = button->root.getPath(),
-            .scene_path = button->scene.getPath(),
-        },
-        Widgets::StackChildSpec{
-            .id = "toggle",
-            .widget_path = toggle->root.getPath(),
-            .scene_path = toggle->scene.getPath(),
-        },
-        Widgets::StackChildSpec{
-            .id = "slider",
-            .widget_path = slider->root.getPath(),
-            .scene_path = slider->scene.getPath(),
-        },
-    };
+    auto stackParams = Widgets::MakeStackLayoutParams("column")
+                            .ModifyStyle([](Widgets::StackLayoutStyle& style) {
+                                style.axis = Widgets::StackAxis::Vertical;
+                                style.spacing = 24.0f;
+                                style.padding_main_start = 16.0f;
+                                style.padding_cross_start = 20.0f;
+                            })
+                            .WithChildren({
+                                Widgets::StackChildSpec{
+                                    .id = "button",
+                                    .widget_path = button->root.getPath(),
+                                    .scene_path = button->scene.getPath(),
+                                },
+                                Widgets::StackChildSpec{
+                                    .id = "toggle",
+                                    .widget_path = toggle->root.getPath(),
+                                    .scene_path = toggle->scene.getPath(),
+                                },
+                                Widgets::StackChildSpec{
+                                    .id = "slider",
+                                    .widget_path = slider->root.getPath(),
+                                    .scene_path = slider->scene.getPath(),
+                                },
+                            })
+                            .Build();
 
     auto stack = Widgets::CreateStack(fx.space, fx.root_view(), stackParams);
     REQUIRE(stack);
@@ -3210,14 +3208,16 @@ TEST_CASE("Widgets::CreateStack composes vertical layout") {
 TEST_CASE("Widgets::UpdateListState clamps indices and marks dirty") {
     BuildersFixture fx;
 
-    Widgets::ListParams listParams{};
-    listParams.name = "inventory_updates";
-    listParams.items = {
-        Widgets::ListItem{.id = "sword", .label = "Sword", .enabled = false},
-        Widgets::ListItem{.id = "shield", .label = "Shield", .enabled = true},
-        Widgets::ListItem{.id = "bow", .label = "Bow", .enabled = true},
-    };
-    listParams.style.item_height = 32.0f;
+    auto listParams = Widgets::MakeListParams("inventory_updates")
+                          .WithItems({
+                              Widgets::ListItem{.id = "sword", .label = "Sword", .enabled = false},
+                              Widgets::ListItem{.id = "shield", .label = "Shield", .enabled = true},
+                              Widgets::ListItem{.id = "bow", .label = "Bow", .enabled = true},
+                          })
+                          .ModifyStyle([](Widgets::ListStyle& style) {
+                              style.item_height = 32.0f;
+                          })
+                          .Build();
 
     auto created = Widgets::CreateList(fx.space, fx.root_view(), listParams);
     REQUIRE(created);
@@ -3225,11 +3225,12 @@ TEST_CASE("Widgets::UpdateListState clamps indices and marks dirty") {
     auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
     REQUIRE(revision);
 
-    Widgets::ListState desired{};
-    desired.enabled = true;
-    desired.selected_index = 0;
-    desired.hovered_index = 5;
-    desired.scroll_offset = 120.0f;
+    auto desired = Widgets::MakeListState()
+                        .WithEnabled(true)
+                        .WithSelectedIndex(0)
+                        .WithHoveredIndex(5)
+                        .WithScrollOffset(120.0f)
+                        .Build();
 
     auto changed = Widgets::UpdateListState(fx.space, *created, desired);
     REQUIRE(changed);
@@ -3253,9 +3254,7 @@ TEST_CASE("Widgets::UpdateListState clamps indices and marks dirty") {
 TEST_CASE("Widgets::ResolveHitTarget extracts canonical widget path from hit test") {
     BuildersFixture fx;
 
-    Widgets::ButtonParams params{};
-    params.name = "resolve_hit_button";
-    params.label = "Resolve";
+    auto params = Widgets::MakeButtonParams("resolve_hit_button", "Resolve").Build();
 
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), params);
     REQUIRE(button);
@@ -3283,9 +3282,7 @@ TEST_CASE("Widgets::ResolveHitTarget extracts canonical widget path from hit tes
 TEST_CASE("Widget button states match golden snapshots") {
     BuildersFixture fx;
 
-    Widgets::ButtonParams params{};
-    params.name = "golden_button";
-    params.label = "Golden";
+    auto params = Widgets::MakeButtonParams("golden_button", "Golden").Build();
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), params);
     REQUIRE(button);
 
@@ -3303,8 +3300,7 @@ TEST_CASE("Widget button states match golden snapshots") {
 TEST_CASE("Widget toggle states match golden snapshots") {
     BuildersFixture fx;
 
-    Widgets::ToggleParams params{};
-    params.name = "golden_toggle";
+    auto params = Widgets::MakeToggleParams("golden_toggle").Build();
     auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), params);
     REQUIRE(toggle);
 
@@ -3322,11 +3318,10 @@ TEST_CASE("Widget toggle states match golden snapshots") {
 TEST_CASE("Widget slider states match golden snapshots") {
     BuildersFixture fx;
 
-    Widgets::SliderParams params{};
-    params.name = "golden_slider";
-    params.minimum = 0.0f;
-    params.maximum = 1.0f;
-    params.value = 0.35f;
+    auto params = Widgets::MakeSliderParams("golden_slider")
+                      .WithRange(0.0f, 1.0f)
+                      .WithValue(0.35f)
+                      .Build();
     auto slider = Widgets::CreateSlider(fx.space, fx.root_view(), params);
     REQUIRE(slider);
 
@@ -3344,15 +3339,17 @@ TEST_CASE("Widget slider states match golden snapshots") {
 TEST_CASE("Widget list states match golden snapshots") {
     BuildersFixture fx;
 
-    Widgets::ListParams params{};
-    params.name = "golden_list";
-    params.items = {
-        Widgets::ListItem{.id = "alpha", .label = "Alpha", .enabled = true},
-        Widgets::ListItem{.id = "beta", .label = "Beta", .enabled = true},
-        Widgets::ListItem{.id = "gamma", .label = "Gamma", .enabled = false},
-    };
-    params.style.width = 260.0f;
-    params.style.item_height = 38.0f;
+    auto params = Widgets::MakeListParams("golden_list")
+                      .WithItems({
+                          Widgets::ListItem{.id = "alpha", .label = "Alpha", .enabled = true},
+                          Widgets::ListItem{.id = "beta", .label = "Beta", .enabled = true},
+                          Widgets::ListItem{.id = "gamma", .label = "Gamma", .enabled = false},
+                      })
+                      .ModifyStyle([](Widgets::ListStyle& style) {
+                          style.width = 260.0f;
+                          style.item_height = 38.0f;
+                      })
+                      .Build();
     auto list = Widgets::CreateList(fx.space, fx.root_view(), params);
     REQUIRE(list);
 
@@ -3370,32 +3367,28 @@ TEST_CASE("Widget list states match golden snapshots") {
 TEST_CASE("Widgets::Focus::Set and Move update widget states") {
     BuildersFixture fx;
 
-    Widgets::ButtonParams buttonParams{};
-    buttonParams.name = "focus_button";
-    buttonParams.label = "Focus";
+    auto buttonParams = Widgets::MakeButtonParams("focus_button", "Focus").Build();
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
     REQUIRE(button);
 
-    Widgets::ToggleParams toggleParams{};
-    toggleParams.name = "focus_toggle";
+    auto toggleParams = Widgets::MakeToggleParams("focus_toggle").Build();
     auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), toggleParams);
     REQUIRE(toggle);
 
-    Widgets::SliderParams sliderParams{};
-    sliderParams.name = "focus_slider";
-    sliderParams.minimum = 0.0f;
-    sliderParams.maximum = 1.0f;
-    sliderParams.value = 0.25f;
+    auto sliderParams = Widgets::MakeSliderParams("focus_slider")
+                             .WithRange(0.0f, 1.0f)
+                             .WithValue(0.25f)
+                             .Build();
     auto slider = Widgets::CreateSlider(fx.space, fx.root_view(), sliderParams);
     REQUIRE(slider);
 
-    Widgets::ListParams listParams{};
-    listParams.name = "focus_list";
-    listParams.items = {
-        Widgets::ListItem{.id = "alpha", .label = "Alpha"},
-        Widgets::ListItem{.id = "beta", .label = "Beta"},
-        Widgets::ListItem{.id = "gamma", .label = "Gamma"},
-    };
+    auto listParams = Widgets::MakeListParams("focus_list")
+                          .WithItems({
+                              Widgets::ListItem{.id = "alpha", .label = "Alpha"},
+                              Widgets::ListItem{.id = "beta", .label = "Beta"},
+                              Widgets::ListItem{.id = "gamma", .label = "Gamma"},
+                          })
+                          .Build();
     auto list = Widgets::CreateList(fx.space, fx.root_view(), listParams);
     REQUIRE(list);
 
@@ -3475,9 +3468,7 @@ TEST_CASE("Widgets::Focus::Set and Move update widget states") {
 TEST_CASE("Widgets::Focus::ApplyHit focuses widget from hit test") {
     BuildersFixture fx;
 
-    Widgets::ButtonParams params{};
-    params.name = "focus_hit_button";
-    params.label = "FocusHit";
+    auto params = Widgets::MakeButtonParams("focus_hit_button", "FocusHit").Build();
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), params);
     REQUIRE(button);
 
@@ -3505,9 +3496,7 @@ TEST_CASE("Widgets::Focus::ApplyHit focuses widget from hit test") {
 TEST_CASE("Widgets::Focus::Set schedules auto render events") {
     BuildersFixture fx;
 
-    Widgets::ButtonParams params{};
-    params.name = "focus_auto_button";
-    params.label = "Auto";
+    auto params = Widgets::MakeButtonParams("focus_auto_button", "Auto").Build();
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), params);
     REQUIRE(button);
 
@@ -3571,14 +3560,11 @@ TEST_CASE("Widgets::Focus::Set schedules auto render events") {
 TEST_CASE("Widget focus shift marks previous footprint dirty") {
     BuildersFixture fx;
 
-    Widgets::ButtonParams buttonParams{};
-    buttonParams.name = "focus_dirty_button";
-    buttonParams.label = "DirtyButton";
+    auto buttonParams = Widgets::MakeButtonParams("focus_dirty_button", "DirtyButton").Build();
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
     REQUIRE(button);
 
-    Widgets::ToggleParams toggleParams{};
-    toggleParams.name = "focus_dirty_toggle";
+    auto toggleParams = Widgets::MakeToggleParams("focus_dirty_toggle").Build();
     auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), toggleParams);
     REQUIRE(toggle);
 
@@ -3666,9 +3652,7 @@ TEST_CASE("Widget focus shift marks previous footprint dirty") {
 TEST_CASE("Widget focus state publishes highlight drawable") {
     BuildersFixture fx;
 
-    Widgets::ButtonParams buttonParams{};
-    buttonParams.name = "focus_highlight_button";
-    buttonParams.label = "FocusHighlight";
+    auto buttonParams = Widgets::MakeButtonParams("focus_highlight_button", "FocusHighlight").Build();
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
     REQUIRE(button);
 
@@ -3702,9 +3686,7 @@ TEST_CASE("Widget focus state publishes highlight drawable") {
 TEST_CASE("Widget focus pulsing highlight sets pipeline flag") {
     BuildersFixture fx;
 
-    Widgets::ButtonParams buttonParams{};
-    buttonParams.name = "focus_pulse_button";
-    buttonParams.label = "PulseHighlight";
+    auto buttonParams = Widgets::MakeButtonParams("focus_pulse_button", "PulseHighlight").Build();
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
     REQUIRE(button);
 
@@ -3743,32 +3725,28 @@ TEST_CASE("Widget focus pulsing highlight sets pipeline flag") {
 TEST_CASE("Widgets::Focus keyboard navigation cycles focus order and schedules renders") {
     BuildersFixture fx;
 
-    Widgets::ButtonParams buttonParams{};
-    buttonParams.name = "keyboard_focus_button";
-    buttonParams.label = "KeyboardButton";
+    auto buttonParams = Widgets::MakeButtonParams("keyboard_focus_button", "KeyboardButton").Build();
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
     REQUIRE(button);
 
-    Widgets::ToggleParams toggleParams{};
-    toggleParams.name = "keyboard_focus_toggle";
+    auto toggleParams = Widgets::MakeToggleParams("keyboard_focus_toggle").Build();
     auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), toggleParams);
     REQUIRE(toggle);
 
-    Widgets::SliderParams sliderParams{};
-    sliderParams.name = "keyboard_focus_slider";
-    sliderParams.minimum = 0.0f;
-    sliderParams.maximum = 1.0f;
-    sliderParams.value = 0.42f;
+    auto sliderParams = Widgets::MakeSliderParams("keyboard_focus_slider")
+                             .WithRange(0.0f, 1.0f)
+                             .WithValue(0.42f)
+                             .Build();
     auto slider = Widgets::CreateSlider(fx.space, fx.root_view(), sliderParams);
     REQUIRE(slider);
 
-    Widgets::ListParams listParams{};
-    listParams.name = "keyboard_focus_list";
-    listParams.items = {
-        Widgets::ListItem{.id = "one", .label = "One"},
-        Widgets::ListItem{.id = "two", .label = "Two"},
-        Widgets::ListItem{.id = "three", .label = "Three"},
-    };
+    auto listParams = Widgets::MakeListParams("keyboard_focus_list")
+                          .WithItems({
+                              Widgets::ListItem{.id = "one", .label = "One"},
+                              Widgets::ListItem{.id = "two", .label = "Two"},
+                              Widgets::ListItem{.id = "three", .label = "Three"},
+                          })
+                          .Build();
     auto list = Widgets::CreateList(fx.space, fx.root_view(), listParams);
     REQUIRE(list);
 
@@ -3898,31 +3876,27 @@ TEST_CASE("Widgets::Focus keyboard navigation cycles focus order and schedules r
 TEST_CASE("Widgets::Focus gamepad navigation hops focus order and schedules renders") {
     BuildersFixture fx;
 
-    Widgets::ButtonParams buttonParams{};
-    buttonParams.name = "gamepad_focus_button";
-    buttonParams.label = "GamepadButton";
+    auto buttonParams = Widgets::MakeButtonParams("gamepad_focus_button", "GamepadButton").Build();
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
     REQUIRE(button);
 
-    Widgets::ToggleParams toggleParams{};
-    toggleParams.name = "gamepad_focus_toggle";
+    auto toggleParams = Widgets::MakeToggleParams("gamepad_focus_toggle").Build();
     auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), toggleParams);
     REQUIRE(toggle);
 
-    Widgets::SliderParams sliderParams{};
-    sliderParams.name = "gamepad_focus_slider";
-    sliderParams.minimum = 0.0f;
-    sliderParams.maximum = 1.0f;
-    sliderParams.value = 0.7f;
+    auto sliderParams = Widgets::MakeSliderParams("gamepad_focus_slider")
+                             .WithRange(0.0f, 1.0f)
+                             .WithValue(0.7f)
+                             .Build();
     auto slider = Widgets::CreateSlider(fx.space, fx.root_view(), sliderParams);
     REQUIRE(slider);
 
-    Widgets::ListParams listParams{};
-    listParams.name = "gamepad_focus_list";
-    listParams.items = {
-        Widgets::ListItem{.id = "north", .label = "North"},
-        Widgets::ListItem{.id = "south", .label = "South"},
-    };
+    auto listParams = Widgets::MakeListParams("gamepad_focus_list")
+                          .WithItems({
+                              Widgets::ListItem{.id = "north", .label = "North"},
+                              Widgets::ListItem{.id = "south", .label = "South"},
+                          })
+                          .Build();
     auto list = Widgets::CreateList(fx.space, fx.root_view(), listParams);
     REQUIRE(list);
 
@@ -4067,12 +4041,12 @@ TEST_CASE("Widgets::Bindings::DispatchList enqueues ops and schedules renders") 
                                               "targets/surfaces/bindings_list_surface");
     REQUIRE(target);
 
-    Widgets::ListParams listParams{};
-    listParams.name = "inventory_bindings";
-    listParams.items = {
-        Widgets::ListItem{.id = "potion", .label = "Potion", .enabled = true},
-        Widgets::ListItem{.id = "ether", .label = "Ether", .enabled = true},
-    };
+    auto listParams = Widgets::MakeListParams("inventory_bindings")
+                          .WithItems({
+                              Widgets::ListItem{.id = "potion", .label = "Potion", .enabled = true},
+                              Widgets::ListItem{.id = "ether", .label = "Ether", .enabled = true},
+                          })
+                          .Build();
     auto listWidget = Widgets::CreateList(fx.space, fx.root_view(), listParams);
     REQUIRE(listWidget);
 
@@ -4081,12 +4055,11 @@ TEST_CASE("Widgets::Bindings::DispatchList enqueues ops and schedules renders") 
     auto listItems = fx.space.read<std::vector<Widgets::ListItem>, std::string>(listWidget->items.getPath());
     REQUIRE(listItems);
     std::size_t listCount = std::max<std::size_t>(listItems->size(), 1u);
-    DirtyRectHint listFootprint{};
-    listFootprint.min_x = 0.0f;
-    listFootprint.min_y = 0.0f;
-    listFootprint.max_x = listStyle->width;
-    listFootprint.max_y = listStyle->border_thickness * 2.0f
-                         + listStyle->item_height * static_cast<float>(listCount);
+    auto listFootprint = SP::UI::Builders::MakeDirtyRectHint(
+        0.0f,
+        0.0f,
+        listStyle->width,
+        listStyle->border_thickness * 2.0f + listStyle->item_height * static_cast<float>(listCount));
 
     auto binding = WidgetBindings::CreateListBinding(fx.space,
                                                      fx.root_view(),
@@ -4095,13 +4068,12 @@ TEST_CASE("Widgets::Bindings::DispatchList enqueues ops and schedules renders") 
                                                      listFootprint);
     REQUIRE(binding);
 
-    WidgetBindings::PointerInfo pointer{};
-    pointer.scene_x = 10.0f;
-    pointer.scene_y = 18.0f;
-    pointer.inside = true;
+    auto pointer = WidgetBindings::PointerInfo::Make(10.0f, 18.0f)
+                       .WithInside(true);
 
-    Widgets::ListState selectState{};
-    selectState.selected_index = 1;
+    auto selectState = Widgets::MakeListState()
+                            .WithSelectedIndex(1)
+                            .Build();
 
     auto selectResult = WidgetBindings::DispatchList(fx.space,
                                                      *binding,
@@ -4122,7 +4094,7 @@ TEST_CASE("Widgets::Bindings::DispatchList enqueues ops and schedules renders") 
     CHECK(selectOp->kind == WidgetBindings::WidgetOpKind::ListSelect);
     CHECK(selectOp->value == doctest::Approx(1.0f));
 
-    Widgets::ListState hoverState{};
+    auto hoverState = Widgets::MakeListState().Build();
     auto hoverResult = WidgetBindings::DispatchList(fx.space,
                                                     *binding,
                                                     hoverState,
@@ -4140,8 +4112,9 @@ TEST_CASE("Widgets::Bindings::DispatchList enqueues ops and schedules renders") 
     CHECK(hoverOp->kind == WidgetBindings::WidgetOpKind::ListHover);
     CHECK(hoverOp->value == doctest::Approx(0.0f));
 
-    Widgets::ListState scrollState{};
-    scrollState.scroll_offset = 40.0f;
+    auto scrollState = Widgets::MakeListState()
+                            .WithScrollOffset(40.0f)
+                            .Build();
     auto scrollResult = WidgetBindings::DispatchList(fx.space,
                                                      *binding,
                                                      scrollState,
@@ -4160,9 +4133,10 @@ TEST_CASE("Widgets::Bindings::DispatchList enqueues ops and schedules renders") 
     CHECK(scrollOp->kind == WidgetBindings::WidgetOpKind::ListScroll);
     CHECK(scrollOp->value >= 0.0f);
 
-    Widgets::ListState disabled{};
-    disabled.enabled = false;
-    disabled.selected_index = 1;
+    auto disabled = Widgets::MakeListState()
+                         .WithEnabled(false)
+                         .WithSelectedIndex(1)
+                         .Build();
 
     auto disableResult = Widgets::UpdateListState(fx.space, *listWidget, disabled);
     REQUIRE(disableResult);
@@ -4203,19 +4177,16 @@ TEST_CASE("Widgets::Reducers::ReducePending routes widget ops to action queues")
                                               "targets/surfaces/reducers_surface");
     REQUIRE(target);
 
-    Widgets::ButtonParams buttonParams{};
-    buttonParams.name = "reducers_button";
-    buttonParams.label = "Reducers";
+    auto buttonParams = Widgets::MakeButtonParams("reducers_button", "Reducers").Build();
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
     REQUIRE(button);
 
     auto reducersButtonStyle = fx.space.read<Widgets::ButtonStyle, std::string>(std::string(button->root.getPath()) + "/meta/style");
     REQUIRE(reducersButtonStyle);
-    DirtyRectHint reducersButtonFootprint{};
-    reducersButtonFootprint.min_x = 0.0f;
-    reducersButtonFootprint.min_y = 0.0f;
-    reducersButtonFootprint.max_x = reducersButtonStyle->width;
-    reducersButtonFootprint.max_y = reducersButtonStyle->height;
+    auto reducersButtonFootprint = SP::UI::Builders::MakeDirtyRectHint(0.0f,
+                                                                       0.0f,
+                                                                       reducersButtonStyle->width,
+                                                                       reducersButtonStyle->height);
 
     auto buttonBinding = WidgetBindings::CreateButtonBinding(fx.space,
                                                              fx.root_view(),
@@ -4224,14 +4195,13 @@ TEST_CASE("Widgets::Reducers::ReducePending routes widget ops to action queues")
                                                              reducersButtonFootprint);
     REQUIRE(buttonBinding);
 
-    WidgetBindings::PointerInfo pointer{};
-    pointer.inside = true;
-    pointer.scene_x = 4.0f;
-    pointer.scene_y = 5.0f;
+    auto pointer = WidgetBindings::PointerInfo::Make(4.0f, 5.0f)
+                       .WithInside(true);
 
-    Widgets::ButtonState pressed{};
-    pressed.pressed = true;
-    pressed.hovered = true;
+    auto pressed = Widgets::MakeButtonState()
+                        .WithPressed(true)
+                        .WithHovered(true)
+                        .Build();
 
     auto dispatched = WidgetBindings::DispatchButton(fx.space,
                                                      *buttonBinding,
@@ -4266,12 +4236,12 @@ TEST_CASE("Widgets::Reducers::ReducePending routes widget ops to action queues")
     CHECK(storedAction->widget_path == button->root.getPath());
     CHECK(storedAction->analog_value == doctest::Approx(1.0f));
 
-    Widgets::ListParams listParams{};
-    listParams.name = "reducers_list";
-    listParams.items = {
-        Widgets::ListItem{.id = "alpha", .label = "Alpha", .enabled = true},
-        Widgets::ListItem{.id = "beta", .label = "Beta", .enabled = true},
-    };
+    auto listParams = Widgets::MakeListParams("reducers_list")
+                          .WithItems({
+                              Widgets::ListItem{.id = "alpha", .label = "Alpha", .enabled = true},
+                              Widgets::ListItem{.id = "beta", .label = "Beta", .enabled = true},
+                          })
+                          .Build();
     auto list = Widgets::CreateList(fx.space, fx.root_view(), listParams);
     REQUIRE(list);
 
@@ -4280,12 +4250,12 @@ TEST_CASE("Widgets::Reducers::ReducePending routes widget ops to action queues")
     auto reducersListItems = fx.space.read<std::vector<Widgets::ListItem>, std::string>(list->items.getPath());
     REQUIRE(reducersListItems);
     std::size_t reducersListCount = std::max<std::size_t>(reducersListItems->size(), 1u);
-    DirtyRectHint reducersListFootprint{};
-    reducersListFootprint.min_x = 0.0f;
-    reducersListFootprint.min_y = 0.0f;
-    reducersListFootprint.max_x = reducersListStyle->width;
-    reducersListFootprint.max_y = reducersListStyle->border_thickness * 2.0f
-                                  + reducersListStyle->item_height * static_cast<float>(reducersListCount);
+    auto reducersListFootprint = SP::UI::Builders::MakeDirtyRectHint(
+        0.0f,
+        0.0f,
+        reducersListStyle->width,
+        reducersListStyle->border_thickness * 2.0f
+            + reducersListStyle->item_height * static_cast<float>(reducersListCount));
 
     auto listBinding = WidgetBindings::CreateListBinding(fx.space,
                                                          fx.root_view(),
@@ -4294,8 +4264,9 @@ TEST_CASE("Widgets::Reducers::ReducePending routes widget ops to action queues")
                                                          reducersListFootprint);
     REQUIRE(listBinding);
 
-    Widgets::ListState listState{};
-    listState.selected_index = 1;
+    auto listState = Widgets::MakeListState()
+                          .WithSelectedIndex(1)
+                          .Build();
     auto listDispatch = WidgetBindings::DispatchList(fx.space,
                                                      *listBinding,
                                                      listState,
@@ -4742,22 +4713,20 @@ TEST_CASE("Widgets::Bindings::UpdateStack emits dirty hints and auto render even
                                               "targets/surfaces/bindings_stack_surface");
     REQUIRE(target);
 
-    Widgets::ButtonParams buttonParams{};
-    buttonParams.name = "stack_binding_button";
-    buttonParams.label = "Primary";
+    auto buttonParams = Widgets::MakeButtonParams("stack_binding_button", "Primary").Build();
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
     REQUIRE(button);
 
-    Widgets::ToggleParams toggleParams{};
-    toggleParams.name = "stack_binding_toggle";
+    auto toggleParams = Widgets::MakeToggleParams("stack_binding_toggle").Build();
     auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), toggleParams);
     REQUIRE(toggle);
 
-    Widgets::StackLayoutParams stackParams{};
-    stackParams.name = "binding_stack";
-    stackParams.style.axis = Widgets::StackAxis::Vertical;
-    stackParams.style.spacing = 12.0f;
-    stackParams.children = {
+    auto stackParams = Widgets::MakeStackLayoutParams("binding_stack")
+                            .ModifyStyle([](Widgets::StackLayoutStyle& style) {
+                                style.axis = Widgets::StackAxis::Vertical;
+                                style.spacing = 12.0f;
+                            })
+                            .WithChildren({
         Widgets::StackChildSpec{
             .id = "button",
             .widget_path = button->root.getPath(),
@@ -4768,18 +4737,18 @@ TEST_CASE("Widgets::Bindings::UpdateStack emits dirty hints and auto render even
             .widget_path = toggle->root.getPath(),
             .scene_path = toggle->scene.getPath(),
         },
-    };
+    })
+                            .Build();
 
     auto stack = Widgets::CreateStack(fx.space, fx.root_view(), stackParams);
     REQUIRE(stack);
 
     auto stackLayout = Widgets::ReadStackLayout(fx.space, *stack);
     REQUIRE(stackLayout);
-    DirtyRectHint stackFootprint{};
-    stackFootprint.min_x = 0.0f;
-    stackFootprint.min_y = 0.0f;
-    stackFootprint.max_x = stackLayout->width;
-    stackFootprint.max_y = stackLayout->height;
+    auto stackFootprint = SP::UI::Builders::MakeDirtyRectHint(0.0f,
+                                                              0.0f,
+                                                              stackLayout->width,
+                                                              stackLayout->height);
 
     auto binding = WidgetBindings::CreateStackBinding(fx.space,
                                                       fx.root_view(),

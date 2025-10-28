@@ -93,12 +93,10 @@ auto random_in_range(std::mt19937& rng, float min_value, float max_value) -> flo
 auto random_surface_point(std::mt19937& rng, SurfaceDesc const& desc) -> WidgetBindings::PointerInfo {
     auto width = static_cast<float>(std::max(1, desc.size_px.width));
     auto height = static_cast<float>(std::max(1, desc.size_px.height));
-    WidgetBindings::PointerInfo pointer{};
-    pointer.scene_x = random_in_range(rng, 0.0f, width);
-    pointer.scene_y = random_in_range(rng, 0.0f, height);
-    pointer.inside = true;
-    pointer.primary = true;
-    return pointer;
+    return WidgetBindings::PointerInfo::Make(random_in_range(rng, 0.0f, width),
+                                             random_in_range(rng, 0.0f, height))
+        .WithInside(true)
+        .WithPrimary(true);
 }
 
 auto validate_dirty_rects(PathSpace& space,

@@ -4,10 +4,8 @@ This guide collects the conventions and scripts used when pairing with the PathS
 
 ## Quick Checklist
 - Confirm the assignment scope and skim `docs/AI_Architecture.md`, `docs/Plan_Overview.md`, plus any relevant plan documents under `docs/` (renderer, distributed PathSpace, inspector, web server).
-- Sync locally: `git fetch origin` then branch from `origin/master`.
 - Keep changes ASCII unless the file already uses Unicode.
 - Run the full test suite with the mandated loop/timeout before requesting review.
-- Never push directly to `master`; request confirmation before pushing any branch.
 - Git pushes are gated by the local `pre-push` hook (`scripts/git-hooks/pre-push.local.sh`).
   - By default it runs `./scripts/compile.sh --clean --test --loop=15 --release` (UI enabled) and then builds & smoke-tests `devices_example`.
   - Set `SKIP_LOOP_TESTS=1` or `SKIP_EXAMPLE=1` in the environment if you have explicit maintainer approval to skip those steps.
@@ -37,10 +35,9 @@ This guide collects the conventions and scripts used when pairing with the PathS
 
 ## Day-to-day Flow
 1. **Understand the task** – read the relevant docs and existing code; prefer `rg` for searching.
-2. **Create a topic branch** – follow the rules below for naming and always branch off `origin/master`.
-3. **Develop** – keep diffs focused; add concise comments only when the code is non-obvious.
-4. **Validate** – build and execute tests following the policy in the next section.
-5. **Prepare the PR** – update docs alongside code, collect reproduction steps, and stage changes for review.
+2. **Develop** – keep diffs focused; add concise comments only when the code is non-obvious.
+3. **Validate** – build and execute tests following the policy in the next section.
+4. **Prepare the PR** – update docs alongside code, collect reproduction steps, and stage changes for review.
 
 ## Testing Protocol (must follow)
 - Do not change tests just to silence failures.
@@ -53,41 +50,6 @@ This guide collects the conventions and scripts used when pairing with the PathS
   ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20
   ```
 - If a failure reproduces, capture the failing command and logs for the PR.
-
-## Branching and PR Workflow
-- Default branch is `master` (protected). Never commit directly on it.
-- Branch naming: `feat/<topic>`, `fix/<topic>`, `perf/<topic>`, `refactor/<topic>`, `docs/<topic>`.
-- Standard branch setup:
-  ```bash
-  git fetch origin
-  git checkout -b docs/<topic> origin/master
-  git push -u origin docs/<topic>
-  ```
-- Ask before pushing any branch. Pushing sets up the upstream and avoids PR creation errors.
-
-### PR Quickstart (always target master)
-1. Create and push your topic branch (see snippet above).
-2. Run the helper script:
-   ```bash
-   ./scripts/create_pr.sh -b master -t "docs(<topic>): concise title"
-   ```
-   The script uses `GH_TOKEN`; if unavailable it opens the compare view so you can finish manually.
-
-## Troubleshooting Common Errors
-- **"You are on 'master'. Create a topic branch before creating a PR."**  
-  Check out a topic branch from `origin/master`, push it, then rerun the PR script.
-- **"Head sha can't be blank / Base sha can't be blank / No commits between master and <branch> / Head ref must be a branch"**  
-  Ensure the branch is pushed, the PR base is `master`, and `git log --oneline origin/master..HEAD` shows commits.
-- **"Branch '<branch>' has no upstream and --no-push was set. PR creation may fail."**  
-  Push the branch with `git push -u origin <branch>` or omit `--no-push`.
-- **PR shows unrelated older commits**  
-  Create a clean branch from `origin/master` and cherry-pick the intended commits:
-  ```bash
-  git checkout -b docs/<topic>-clean origin/master
-  git cherry-pick <commit_sha1> [<commit_sha2> ...]
-  git push -u origin docs/<topic>-clean
-  ./scripts/create_pr.sh -b master -t "docs(<topic>): concise title"
-  ```
 
 ## Commit Message Guidelines
 - Use Conventional Commits: `type(scope): imperative subject` (≤ 80 characters).

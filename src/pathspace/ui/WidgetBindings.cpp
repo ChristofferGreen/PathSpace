@@ -166,12 +166,8 @@ auto read_tree_nodes(PathSpace& space,
 } // namespace
 
 auto PointerFromHit(Scene::HitTestResult const& hit) -> PointerInfo {
-    PointerInfo info{};
-    info.scene_x = hit.position.scene_x;
-    info.scene_y = hit.position.scene_y;
-    info.inside = hit.hit;
-    info.primary = true;
-    return info;
+    return PointerInfo::Make(hit.position.scene_x, hit.position.scene_y)
+        .WithInside(hit.hit);
 }
 
 auto CreateButtonBinding(PathSpace& space,
