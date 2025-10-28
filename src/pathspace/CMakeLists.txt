@@ -111,6 +111,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/MaterialShaderKey.cpp
         ui/PathRenderer2DDamage.cpp
         ui/PathRenderer2DEncode.cpp
+        ui/PathRenderer2DColor.cpp
         ui/PathRenderer2DDetailCommon.cpp
         ui/PathRenderer2DDetailDraw.cpp
         ui/PathRenderer2DDetailEncode.cpp
