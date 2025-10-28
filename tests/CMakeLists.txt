@@ -45,6 +45,7 @@ if(PATHSPACE_ENABLE_UI)
     ui/test_AppBootstrap.cpp
     ui/test_SceneHelpers.cpp
     ui/test_Builders.cpp
+    ui/test_WidgetInput.cpp
     ui/test_TextBuilder.cpp
     ui/test_WidgetReducersFuzz.cpp
     ui/test_SceneSnapshotBuilder.cpp

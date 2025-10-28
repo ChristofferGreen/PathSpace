@@ -1,5 +1,6 @@
 #include "third_party/doctest.h"
 
+#include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/TextBuilder.hpp>
 
 #include <array>

@@ -1,4 +1,5 @@
 #include <pathspace/ui/TextBuilder.hpp>
+#include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 
 #include <algorithm>

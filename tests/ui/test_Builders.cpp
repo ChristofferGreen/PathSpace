@@ -2712,6 +2712,33 @@ TEST_CASE("Widgets::BuildButtonPreview provides canonical authoring ids and high
     CHECK(no_pulse.pipeline_flags.back() == 0u);
 }
 
+TEST_CASE("Widgets::BuildLabel produces text bucket and bounds") {
+    Widgets::LabelBuildParams params{};
+    params.text = "Label";
+    params.origin_x = 12.0f;
+    params.origin_y = 34.0f;
+    params.typography.font_size = 20.0f;
+    params.typography.line_height = 24.0f;
+    params.color = {0.9f, 0.1f, 0.2f, 1.0f};
+    params.drawable_id = 0xDEADBEEF;
+    params.authoring_id = "widgets/test/label";
+    params.z_value = 0.25f;
+
+    auto label = Widgets::BuildLabel(params);
+    REQUIRE(label);
+    CHECK_FALSE(label->bucket.drawable_ids.empty());
+    CHECK(label->bucket.drawable_ids.front() == params.drawable_id);
+    CHECK_FALSE(label->bucket.command_kinds.empty());
+
+    auto bounds = Widgets::LabelBounds(*label);
+    REQUIRE(bounds);
+    CHECK(bounds->width() > 0.0f);
+    CHECK(bounds->height() > 0.0f);
+    CHECK(bounds->min_x <= params.origin_x);
+    CHECK(bounds->max_x >= params.origin_x);
+    CHECK(bounds->max_y >= params.origin_y);
+}
+
 TEST_CASE("Widgets::BuildTogglePreview emits drawable ordering and highlight metadata") {
     Widgets::ToggleStyle style{};
     style.width = 72.0f;

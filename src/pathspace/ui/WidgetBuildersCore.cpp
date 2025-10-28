@@ -1,5 +1,7 @@
 #include "WidgetDetail.hpp"
 
+#include <pathspace/ui/TextBuilder.hpp>
+
 namespace SP::UI::Builders::Widgets {
 
 using namespace Detail;
@@ -766,6 +768,27 @@ auto BuildButtonPreview(Widgets::ButtonStyle const& style,
                                options.pulsing_highlight);
 }
 
+auto BuildLabel(LabelBuildParams const& params) -> std::optional<Text::BuildResult> {
+    return Text::BuildTextBucket(params.text,
+                                 params.origin_x,
+                                 params.origin_y,
+                                 params.typography,
+                                 params.color,
+                                 params.drawable_id,
+                                 params.authoring_id,
+                                 params.z_value);
+}
+
+auto LabelBounds(Text::BuildResult const& result) -> std::optional<Input::WidgetBounds> {
+    if (result.bucket.bounds_boxes.empty()) {
+        return std::nullopt;
+    }
+    auto const& box = result.bucket.bounds_boxes.front();
+    Input::WidgetBounds bounds{box.min[0], box.min[1], box.max[0], box.max[1]};
+    bounds.normalize();
+    return bounds;
+}
+
 auto BuildTogglePreview(Widgets::ToggleStyle const& style,
                         Widgets::ToggleState const& state,
                         Widgets::TogglePreviewOptions const& options) -> SceneData::DrawableBucketSnapshot {
@@ -784,6 +807,96 @@ auto BuildSliderPreview(Widgets::SliderStyle const& style,
                                state,
                                std::string_view{options.authoring_root},
                                options.pulsing_highlight);
+}
+
+auto Input::BoundsFromRect(Widgets::ListPreviewRect const& rect) -> Input::WidgetBounds {
+    Input::WidgetBounds bounds{rect.min_x, rect.min_y, rect.max_x, rect.max_y};
+    bounds.normalize();
+    return bounds;
+}
+
+auto Input::BoundsFromRect(Widgets::TreePreviewRect const& rect) -> Input::WidgetBounds {
+    Input::WidgetBounds bounds{rect.min_x, rect.min_y, rect.max_x, rect.max_y};
+    bounds.normalize();
+    return bounds;
+}
+
+auto Input::BoundsFromRect(Widgets::TreePreviewRect const& rect,
+                           float dx,
+                           float dy) -> Input::WidgetBounds {
+    auto bounds = Input::BoundsFromRect(rect);
+    bounds.min_x += dx;
+    bounds.max_x += dx;
+    bounds.min_y += dy;
+    bounds.max_y += dy;
+    return bounds;
+}
+
+auto Input::MakeListLayout(Widgets::ListPreviewLayout const& layout) -> std::optional<Input::ListLayout> {
+    if (layout.rows.empty()) {
+        return std::nullopt;
+    }
+    Input::ListLayout out{};
+    out.bounds = BoundsFromRect(layout.bounds);
+    out.content_top = layout.content_top;
+    out.item_height = layout.item_height;
+    out.item_bounds.reserve(layout.rows.size());
+    for (auto const& row : layout.rows) {
+        out.item_bounds.push_back(Input::BoundsFromRect(row.row_bounds));
+    }
+    return out;
+}
+
+auto Input::MakeTreeLayout(Widgets::TreePreviewLayout const& layout) -> std::optional<Input::TreeLayout> {
+    if (layout.rows.empty()) {
+        return std::nullopt;
+    }
+    Input::TreeLayout out{};
+    out.bounds = Input::BoundsFromRect(layout.bounds);
+    out.content_top = layout.content_top;
+    out.row_height = layout.row_height;
+    out.rows.reserve(layout.rows.size());
+    for (auto const& row : layout.rows) {
+        Input::TreeRowLayout entry{};
+        entry.bounds = Input::BoundsFromRect(row.row_bounds);
+        entry.toggle = Input::BoundsFromRect(row.toggle_bounds);
+        entry.node_id = row.id;
+        entry.label = row.label;
+        entry.depth = row.depth;
+        entry.expandable = row.expandable;
+        entry.expanded = row.expanded;
+        entry.loading = row.loading;
+        entry.enabled = row.enabled;
+        out.rows.push_back(std::move(entry));
+    }
+    return out;
+}
+
+auto Input::ExpandForFocusHighlight(Input::WidgetBounds& bounds) -> void {
+    bounds.normalize();
+    float expand = Detail::kFocusHighlightExpand + Detail::kFocusHighlightThickness;
+    bounds.min_x -= expand;
+    bounds.min_y -= expand;
+    bounds.max_x += expand;
+    bounds.max_y += expand;
+    bounds.normalize();
+    if (bounds.min_x < 0.0f) {
+        bounds.min_x = 0.0f;
+    }
+    if (bounds.min_y < 0.0f) {
+        bounds.min_y = 0.0f;
+    }
+}
+
+auto Input::MakeDirtyHint(Input::WidgetBounds const& bounds) -> Builders::DirtyRectHint {
+    Input::WidgetBounds normalized = bounds;
+    normalized.normalize();
+    Builders::DirtyRectHint hint{};
+    hint.min_x = normalized.min_x;
+    hint.min_y = normalized.min_y;
+    hint.max_x = normalized.max_x;
+    hint.max_y = normalized.max_y;
+    return hint;
 }
 
 auto UpdateListState(PathSpace& space,

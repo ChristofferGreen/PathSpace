@@ -98,6 +98,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/TextBuilder.cpp
         ui/WidgetBuildersCore.cpp
         ui/WidgetBindings.cpp
+        ui/WidgetInput.cpp
         ui/WidgetFocus.cpp
         ui/WidgetReducers.cpp
         ui/DiagnosticsBuilders.cpp

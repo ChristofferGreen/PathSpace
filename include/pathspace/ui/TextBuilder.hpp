@@ -1,6 +1,5 @@
 #pragma once
 
-#include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 
 #include <array>
@@ -9,7 +8,13 @@
 #include <string>
 #include <string_view>
 
-namespace SP::UI::Builders::Text {
+namespace SP::UI::Builders {
+
+namespace Widgets {
+struct TypographyStyle;
+}
+
+namespace Text {
 
 using DrawableBucketSnapshot = SP::UI::Scene::DrawableBucketSnapshot;
 
@@ -31,5 +36,6 @@ auto BuildTextBucket(std::string_view text,
                      std::string authoring_id,
                      float z_value) -> std::optional<BuildResult>;
 
-} // namespace SP::UI::Builders::Text
+} // namespace Text
 
+} // namespace SP::UI::Builders

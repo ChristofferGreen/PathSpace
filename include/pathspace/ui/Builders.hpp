@@ -25,6 +25,7 @@
 #include <vector>
 
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/TextBuilder.hpp>
 
 namespace SP::UI::Builders {
 
@@ -39,6 +40,10 @@ using SurfacePath = ConcretePath;
 using WindowPath = ConcretePath;
 using HtmlTargetPath = ConcretePath;
 using WidgetPath = ConcretePath;
+
+namespace Text {
+struct BuildResult;
+} // namespace Text
 
 struct SceneParams {
     std::string name;
@@ -541,6 +546,10 @@ inline App::BootstrapParams::BootstrapParams() {
 
 namespace Widgets {
 
+namespace Input {
+struct WidgetBounds;
+}
+
 struct TypographyStyle {
     float font_size = 28.0f;
     float line_height = 28.0f;
@@ -636,6 +645,21 @@ struct ButtonPreviewOptions {
 auto BuildButtonPreview(ButtonStyle const& style,
                         ButtonState const& state,
                         ButtonPreviewOptions const& options = {}) -> SP::UI::Scene::DrawableBucketSnapshot;
+
+struct LabelBuildParams {
+    std::string text;
+    float origin_x = 0.0f;
+    float origin_y = 0.0f;
+    TypographyStyle typography{};
+    std::array<float, 4> color{1.0f, 1.0f, 1.0f, 1.0f};
+    std::uint64_t drawable_id = 0;
+    std::string authoring_id;
+    float z_value = 0.0f;
+};
+
+auto BuildLabel(LabelBuildParams const& params) -> std::optional<Text::BuildResult>;
+
+auto LabelBounds(Text::BuildResult const& result) -> std::optional<Input::WidgetBounds>;
 
 struct TogglePreviewOptions {
     std::string authoring_root;
@@ -1482,6 +1506,18 @@ auto SliderThumbPosition(WidgetInputContext const& ctx, float value) -> std::pai
 auto ListItemCenter(WidgetInputContext const& ctx, int index) -> std::pair<float, float>;
 auto TreeRowCenter(WidgetInputContext const& ctx, int index) -> std::pair<float, float>;
 auto TreeParentIndex(WidgetInputContext const& ctx, int index) -> int;
+
+auto BoundsFromRect(Widgets::ListPreviewRect const& rect) -> WidgetBounds;
+auto BoundsFromRect(Widgets::TreePreviewRect const& rect) -> WidgetBounds;
+auto BoundsFromRect(Widgets::TreePreviewRect const& rect,
+                    float dx,
+                    float dy) -> WidgetBounds;
+
+auto MakeListLayout(Widgets::ListPreviewLayout const& layout) -> std::optional<ListLayout>;
+auto MakeTreeLayout(Widgets::TreePreviewLayout const& layout) -> std::optional<TreeLayout>;
+
+auto ExpandForFocusHighlight(WidgetBounds& bounds) -> void;
+auto MakeDirtyHint(WidgetBounds const& bounds) -> Builders::DirtyRectHint;
 
 } // namespace Input
 
