@@ -269,9 +269,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                           || state.desc.color_space != desc.color_space
                           || state.desc.premultiplied_alpha != desc.premultiplied_alpha;
 
-    if (state.linear_buffer.size() != pixel_count * 4u) {
-        state.linear_buffer.clear();
-        state.linear_buffer.resize(pixel_count * 4u);
+    if (ensure_linear_buffer_capacity(state.linear_buffer, pixel_count)) {
         size_changed = true;
     }
     auto& linear_buffer = state.linear_buffer;
@@ -603,19 +601,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         }
 
         if (has_damage) {
-            auto const row_stride = static_cast<std::size_t>(width) * 4u;
-            for (auto const& rect : damage.rectangles()) {
-                for (int y = rect.min_y; y < rect.max_y; ++y) {
-                    auto base = static_cast<std::size_t>(y) * row_stride;
-                    for (int x = rect.min_x; x < rect.max_x; ++x) {
-                        auto* dest = linear_buffer.data() + base + static_cast<std::size_t>(x) * 4u;
-                        dest[0] = clear_linear.r;
-                        dest[1] = clear_linear.g;
-                        dest[2] = clear_linear.b;
-                        dest[3] = clear_linear.a;
-                    }
-                }
-            }
+            clear_linear_buffer_for_damage(linear_buffer, damage, clear_linear, width, height);
         }
 
         if (has_progressive) {
@@ -1225,68 +1211,14 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
 
 auto const encode_srgb = needs_srgb_encode(desc);
 EncodeRunStats encode_stats{};
-if (!metal_active && has_damage) {
-    auto const encode_start = std::chrono::steady_clock::now();
-    std::vector<EncodeJob> encode_jobs;
-    encode_jobs.reserve(std::max<std::size_t>(damage.rectangles().size(),
-                                              progressive_dirty_tiles.size()));
-
-        auto clamp_x = [&](int value) {
-            return std::clamp(value, 0, width);
-        };
-        auto clamp_y = [&](int value) {
-            return std::clamp(value, 0, height);
-        };
-
-        if (progressive_buffer && !progressive_dirty_tiles.empty()) {
-            for (auto tile_index : progressive_dirty_tiles) {
-                auto dims = progressive_buffer->tile_dimensions(tile_index);
-                if (dims.width <= 0 || dims.height <= 0) {
-                    continue;
-                }
-                int min_x = clamp_x(dims.x);
-                int max_x = clamp_x(dims.x + dims.width);
-                int start_y = clamp_y(dims.y);
-                int end_y = clamp_y(dims.y + dims.height);
-                EncodeJob job{
-                    .min_x = min_x,
-                    .max_x = max_x,
-                    .start_y = start_y,
-                    .end_y = end_y,
-                };
-                if (!job.empty()) {
-                    encode_jobs.push_back(job);
-                }
-            }
-        } else {
-            constexpr int kEncodeRowChunk = 64;
-            for (auto const& rect : damage.rectangles()) {
-                int min_x = clamp_x(rect.min_x);
-                int max_x = clamp_x(rect.max_x);
-                if (max_x <= min_x) {
-                    continue;
-                }
-                int start_y = clamp_y(rect.min_y);
-                int end_y = clamp_y(rect.max_y);
-                if (end_y <= start_y) {
-                    continue;
-                }
-                int row = start_y;
-                while (row < end_y) {
-                    int chunk_end = std::min(row + kEncodeRowChunk, end_y);
-                    EncodeJob job{
-                        .min_x = min_x,
-                        .max_x = max_x,
-                        .start_y = row,
-                        .end_y = chunk_end,
-                    };
-                    if (!job.empty()) {
-                        encode_jobs.push_back(job);
-                    }
-                    row = chunk_end;
-                }
-            }
-        }
+    if (!metal_active && has_damage) {
+        auto const encode_start = std::chrono::steady_clock::now();
+        auto encode_jobs = build_encode_jobs(
+            damage,
+            progressive_buffer,
+            std::span<std::size_t const>{progressive_dirty_tiles.data(), progressive_dirty_tiles.size()},
+            width,
+            height);
 
         EncodeContext encode_ctx{
             .staging = staging.data(),

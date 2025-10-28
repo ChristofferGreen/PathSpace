@@ -18,7 +18,15 @@
 #include <utility>
 #include <vector>
 
-namespace SP::UI::PathRenderer2DDetail {
+namespace SP::UI {
+
+class ProgressiveSurfaceBuffer;
+
+namespace PathRenderer2DInternal {
+class DamageRegion;
+}
+
+namespace PathRenderer2DDetail {
 
 auto make_error(std::string message, SP::Error::Code code) -> SP::Error;
 
@@ -108,6 +116,21 @@ struct EncodeRunStats {
     std::size_t workers_used = 0;
     std::size_t jobs = 0;
 };
+
+auto ensure_linear_buffer_capacity(std::vector<float>& buffer,
+                                   std::size_t pixel_count) -> bool;
+
+void clear_linear_buffer_for_damage(std::vector<float>& buffer,
+                                    PathRenderer2DInternal::DamageRegion const& damage,
+                                    LinearPremulColor const& clear_linear,
+                                    int width,
+                                    int height);
+
+auto build_encode_jobs(PathRenderer2DInternal::DamageRegion const& damage,
+                       ProgressiveSurfaceBuffer const* progressive_buffer,
+                       std::span<std::size_t const> progressive_dirty_tiles,
+                       int width,
+                       int height) -> std::vector<EncodeJob>;
 
 auto run_encode_jobs(std::span<EncodeJob const> jobs, EncodeContext const& ctx) -> EncodeRunStats;
 
@@ -222,4 +245,6 @@ auto compute_command_payload_offsets(std::vector<std::uint32_t> const& kinds,
                                      std::vector<std::uint8_t> const& payload)
     -> SP::Expected<std::vector<std::size_t>>;
 
-} // namespace SP::UI::PathRenderer2DDetail
+} // namespace PathRenderer2DDetail
+
+} // namespace SP::UI
