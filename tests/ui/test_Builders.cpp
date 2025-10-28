@@ -38,6 +38,7 @@ namespace Widgets = SP::UI::Builders::Widgets;
 namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
 namespace WidgetReducers = SP::UI::Builders::Widgets::Reducers;
 namespace WidgetFocus = SP::UI::Builders::Widgets::Focus;
+namespace WidgetInput = SP::UI::Builders::Widgets::Input;
 
 auto is_not_found(auto code) -> bool {
     return code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath;
@@ -2607,6 +2608,202 @@ TEST_CASE("Widgets::Bindings::DispatchSlider clamps values and schedules ops") {
     auto storedState = fx.space.read<Widgets::SliderState, std::string>(slider->state.getPath());
     REQUIRE(storedState);
     CHECK_FALSE(storedState->enabled);
+}
+
+TEST_CASE("WidgetInput slider helpers dispatch slider ops and respect deadzone") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{
+        .name = "slider_helper_renderer",
+        .kind = RendererKind::Software2D,
+        .description = "Renderer for slider helpers",
+    };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc{};
+    desc.size_px = {320, 192};
+    desc.progressive_tile_size_px = 32;
+
+    SurfaceParams surfaceParams{
+        .name = "slider_helper_surface",
+        .desc = desc,
+        .renderer = "renderers/slider_helper_renderer",
+    };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    auto target = Renderer::ResolveTargetBase(fx.space,
+                                              fx.root_view(),
+                                              *renderer,
+                                              "targets/surfaces/slider_helper_surface");
+    REQUIRE(target);
+
+    auto sliderParams = Widgets::MakeSliderParams("volume_slider_helper")
+                             .WithMaximum(1.0f)
+                             .WithValue(0.25f)
+                             .Build();
+    auto slider = Widgets::CreateSlider(fx.space, fx.root_view(), sliderParams);
+    REQUIRE(slider);
+
+    auto sliderStyleStored = fx.space.read<Widgets::SliderStyle, std::string>(
+        std::string(slider->root.getPath()) + "/meta/style");
+    REQUIRE(sliderStyleStored);
+    Widgets::SliderStyle slider_style = *sliderStyleStored;
+
+    auto sliderRangeStored = fx.space.read<Widgets::SliderRange, std::string>(
+        std::string(slider->range.getPath()));
+    REQUIRE(sliderRangeStored);
+    Widgets::SliderRange slider_range = *sliderRangeStored;
+
+    auto sliderStateStored = fx.space.read<Widgets::SliderState, std::string>(
+        std::string(slider->state.getPath()));
+    REQUIRE(sliderStateStored);
+    Widgets::SliderState slider_state = *sliderStateStored;
+
+    auto sliderFootprint = SP::UI::Builders::MakeDirtyRectHint(
+        0.0f, 0.0f, slider_style.width, slider_style.height);
+
+    auto bindingExpected = WidgetBindings::CreateSliderBinding(fx.space,
+                                                               fx.root_view(),
+                                                               *slider,
+                                                               SP::ConcretePathStringView{target->getPath()},
+                                                               sliderFootprint);
+    REQUIRE(bindingExpected);
+    auto slider_binding = std::move(*bindingExpected);
+    auto slider_paths = *slider;
+
+    auto opQueuePath = slider_binding.options.ops_queue.getPath();
+
+    WidgetInput::WidgetInputContext input{};
+    input.space = &fx.space;
+
+    WidgetInput::LayoutSnapshot layout{};
+    WidgetInput::SliderLayout slider_layout{};
+    slider_layout.bounds = WidgetInput::WidgetBounds{0.0f, 0.0f, slider_style.width, slider_style.height};
+    float track_min_y = (slider_style.height - slider_style.track_height) * 0.5f;
+    float track_max_y = track_min_y + slider_style.track_height;
+    slider_layout.track = WidgetInput::WidgetBounds{0.0f, track_min_y, slider_style.width, track_max_y};
+    layout.slider = slider_layout;
+    layout.slider_footprint = WidgetInput::WidgetBounds{
+        sliderFootprint.min_x,
+        sliderFootprint.min_y,
+        sliderFootprint.max_x,
+        sliderFootprint.max_y,
+    };
+    input.layout = layout;
+
+    auto focus_config = WidgetFocus::MakeConfig(fx.root_view());
+    WidgetInput::FocusTarget focus_target = WidgetInput::FocusTarget::Slider;
+    std::array<WidgetInput::FocusTarget, 1> focus_order{WidgetInput::FocusTarget::Slider};
+    int focus_list_index = 0;
+    int focus_tree_index = 0;
+
+    input.focus.config = &focus_config;
+    input.focus.current = &focus_target;
+    input.focus.order = std::span<const WidgetInput::FocusTarget>{focus_order.data(), focus_order.size()};
+    input.focus.slider = slider_paths.root;
+    input.focus.focus_list_index = &focus_list_index;
+    input.focus.focus_tree_index = &focus_tree_index;
+
+    input.slider_binding = &slider_binding;
+    input.slider_paths = &slider_paths;
+    input.slider_state = &slider_state;
+    input.slider_style = &slider_style;
+    input.slider_range = &slider_range;
+
+    float pointer_x = 0.0f;
+    float pointer_y = 0.0f;
+    bool pointer_down = false;
+    bool slider_dragging = false;
+    std::string tree_pointer_down_id;
+    bool tree_pointer_toggle = false;
+
+    input.pointer_x = &pointer_x;
+    input.pointer_y = &pointer_y;
+    input.pointer_down = &pointer_down;
+    input.slider_dragging = &slider_dragging;
+    input.tree_pointer_down_id = &tree_pointer_down_id;
+    input.tree_pointer_toggle = &tree_pointer_toggle;
+
+    auto start_pointer = WidgetInput::SliderPointerForValue(input, slider_state.value);
+    pointer_x = start_pointer.first;
+    pointer_y = start_pointer.second;
+
+    auto drain_ops = [&]() {
+        while (true) {
+            auto op = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+            if (!op) {
+                auto code = op.error().code;
+                CHECK((code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath));
+                break;
+            }
+        }
+    };
+
+    drain_ops();
+
+    float base_value = slider_state.value;
+    float step = WidgetInput::SliderStep(input);
+    REQUIRE(step > 0.0f);
+
+    auto keyboard_update = WidgetInput::AdjustSliderByStep(input, 1);
+    CHECK(keyboard_update.state_changed);
+
+    auto update_op = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(update_op);
+    CHECK(update_op->kind == WidgetBindings::WidgetOpKind::SliderUpdate);
+
+    auto commit_op = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(commit_op);
+    CHECK(commit_op->kind == WidgetBindings::WidgetOpKind::SliderCommit);
+    CHECK(commit_op->value == doctest::Approx(base_value + step));
+
+    CHECK(slider_state.value == doctest::Approx(base_value + step));
+
+    drain_ops();
+
+    auto reset_state = Widgets::MakeSliderState()
+                           .WithEnabled(true)
+                           .WithValue(base_value)
+                           .Build();
+    auto reset_result = Widgets::UpdateSliderState(fx.space, slider_paths, reset_state);
+    REQUIRE(reset_result);
+    slider_state = reset_state;
+
+    auto pointer_reset = WidgetInput::SliderPointerForValue(input, slider_state.value);
+    pointer_x = pointer_reset.first;
+    pointer_y = pointer_reset.second;
+
+    drain_ops();
+
+    float axis = 0.5f;
+    auto analog_update = WidgetInput::AdjustSliderAnalog(input, axis);
+    CHECK(analog_update.state_changed);
+
+    auto analog_update_op = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(analog_update_op);
+    CHECK(analog_update_op->kind == WidgetBindings::WidgetOpKind::SliderUpdate);
+
+    auto analog_commit_op = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(analog_commit_op);
+    CHECK(analog_commit_op->kind == WidgetBindings::WidgetOpKind::SliderCommit);
+
+    float normalized = (std::abs(axis) - 0.1f) / (1.0f - 0.1f);
+    float expected_delta = step * normalized;
+    CHECK(analog_commit_op->value == doctest::Approx(base_value + expected_delta));
+    CHECK(slider_state.value == doctest::Approx(base_value + expected_delta));
+
+    drain_ops();
+
+    auto deadzone_update = WidgetInput::AdjustSliderAnalog(input, 0.05f);
+    CHECK_FALSE(deadzone_update.state_changed);
+
+    auto deadzone_op = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    CHECK_FALSE(deadzone_op);
+    if (!deadzone_op) {
+        CHECK((deadzone_op.error().code == Error::Code::NoObjectFound || deadzone_op.error().code == Error::Code::NoSuchPath));
+    }
 }
 
 TEST_CASE("Widgets::CreateList publishes snapshot and metadata") {

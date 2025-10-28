@@ -304,16 +304,37 @@ auto slider_thumb_position(ContextAdapter const& c, float value) -> std::pair<fl
     return {x, center_y};
 }
 
-auto slider_keyboard_step(ContextAdapter const& c) -> float {
+auto slider_step_magnitude(ContextAdapter const& c,
+                           SliderStepOptions const& options) -> float {
     auto const& range = c.slider_range();
-    float delta = (range.maximum - range.minimum) * 0.05f;
-    if (range.step > 0.0f) {
-        delta = std::max(delta, range.step);
+    float span = range.maximum - range.minimum;
+    float span_abs = std::abs(span);
+
+    float percent = std::max(options.percent_of_range, 0.0f);
+    float step = span_abs * percent;
+
+    if (options.respect_range_step && range.step > 0.0f) {
+        step = step > 0.0f ? std::max(step, range.step) : range.step;
     }
-    if (delta <= 0.0f) {
-        delta = 1.0f;
+    if (options.minimum_step > 0.0f) {
+        step = step > 0.0f ? std::max(step, options.minimum_step) : options.minimum_step;
     }
-    return delta;
+
+    if (step <= 0.0f) {
+        if (range.step > 0.0f) {
+            step = range.step;
+        } else if (span_abs > 0.0f) {
+            step = span_abs;
+        } else {
+            step = 1.0f;
+        }
+    }
+
+    return step;
+}
+
+auto slider_keyboard_step(ContextAdapter const& c) -> float {
+    return slider_step_magnitude(c, SliderStepOptions{});
 }
 
 auto list_index_from_position(ContextAdapter const& c, float y) -> int {
@@ -798,6 +819,74 @@ auto AdjustSliderValue(WidgetInputContext& ctx, float delta) -> InputUpdate {
     changed |= dispatch_slider(c, desired, Bindings::WidgetOpKind::SliderCommit, pointer);
     update.state_changed = changed;
     return update;
+}
+
+auto SliderStep(WidgetInputContext const& ctx,
+                SliderStepOptions const& options) -> float {
+    if (!ctx.slider_range) {
+        return 0.0f;
+    }
+    WidgetInputContext copy = ctx;
+    ContextAdapter c{copy};
+    return slider_step_magnitude(c, options);
+}
+
+auto AdjustSliderByStep(WidgetInputContext& ctx,
+                        int steps,
+                        SliderStepOptions const& options) -> InputUpdate {
+    if (steps == 0) {
+        return {};
+    }
+    if (!ctx.slider_range || !ctx.slider_state) {
+        return {};
+    }
+    float step = SliderStep(ctx, options);
+    if (!(step > 0.0f) || !std::isfinite(step)) {
+        return {};
+    }
+    float delta = static_cast<float>(steps) * step;
+    if (delta == 0.0f) {
+        return {};
+    }
+    return AdjustSliderValue(ctx, delta);
+}
+
+auto AdjustSliderAnalog(WidgetInputContext& ctx,
+                        float axis_value,
+                        SliderAnalogOptions const& options) -> InputUpdate {
+    if (!ctx.slider_range || !ctx.slider_state) {
+        return {};
+    }
+    if (!std::isfinite(axis_value)) {
+        return {};
+    }
+
+    float axis = std::clamp(axis_value, -1.0f, 1.0f);
+    float deadzone = std::clamp(options.deadzone, 0.0f, 0.99f);
+    if (std::abs(axis) <= deadzone) {
+        return {};
+    }
+
+    float step = SliderStep(ctx, options.step_options);
+    if (!(step > 0.0f) || !std::isfinite(step)) {
+        return {};
+    }
+
+    float scale = options.scale;
+    if (!std::isfinite(scale) || scale <= 0.0f) {
+        scale = 1.0f;
+    }
+
+    float normalized = (std::abs(axis) - deadzone) / (1.0f - deadzone);
+    float delta = normalized * scale * step;
+    if (axis < 0.0f) {
+        delta = -delta;
+    }
+
+    if (delta == 0.0f) {
+        return {};
+    }
+    return AdjustSliderValue(ctx, delta);
 }
 
 auto HandlePointerMove(WidgetInputContext& ctx, float x, float y) -> InputUpdate {

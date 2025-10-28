@@ -1597,6 +1597,18 @@ struct InputUpdate {
     bool focus_changed = false;
 };
 
+struct SliderStepOptions {
+    float percent_of_range = 0.05f;
+    float minimum_step = 0.0f;
+    bool respect_range_step = true;
+};
+
+struct SliderAnalogOptions {
+    SliderStepOptions step_options{};
+    float deadzone = 0.1f;
+    float scale = 1.0f;
+};
+
 auto HandlePointerMove(WidgetInputContext& ctx, float x, float y) -> InputUpdate;
 auto HandlePointerDown(WidgetInputContext& ctx) -> InputUpdate;
 auto HandlePointerUp(WidgetInputContext& ctx) -> InputUpdate;
@@ -1612,6 +1624,14 @@ auto MoveListFocus(WidgetInputContext& ctx, int direction) -> InputUpdate;
 auto MoveTreeFocus(WidgetInputContext& ctx, int direction) -> InputUpdate;
 auto TreeApplyOp(WidgetInputContext& ctx, Bindings::WidgetOpKind op) -> InputUpdate;
 auto AdjustSliderValue(WidgetInputContext& ctx, float delta) -> InputUpdate;
+auto SliderStep(WidgetInputContext const& ctx,
+                SliderStepOptions const& options = {}) -> float;
+auto AdjustSliderByStep(WidgetInputContext& ctx,
+                        int steps,
+                        SliderStepOptions const& options = {}) -> InputUpdate;
+auto AdjustSliderAnalog(WidgetInputContext& ctx,
+                        float axis_value,
+                        SliderAnalogOptions const& options = {}) -> InputUpdate;
 
 // Build pointer metadata for keyboard/gamepad driven widget interactions.
 auto ProgrammaticPointer(float scene_x, float scene_y, bool inside = true) -> Bindings::PointerInfo;

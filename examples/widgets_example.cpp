@@ -914,7 +914,7 @@ auto build_gallery_bucket(PathSpace& space,
             preview.layout.bounds.max_y + cursor_y,
         };
         layout.list.item_height = preview.layout.item_height;
-        layout.list.content_top = cursor_y + preview.layout.content_top;
+        layout.list.content_top = preview.layout.content_top;
         layout.list.item_bounds.clear();
         layout.list.item_bounds.reserve(preview.layout.rows.size());
         for (auto const& row : preview.layout.rows) {
@@ -1056,7 +1056,7 @@ auto build_gallery_bucket(PathSpace& space,
             tree_preview.bounds.max_x + left,
             tree_preview.bounds.max_y + cursor_y,
         };
-        layout.tree.content_top = tree_preview.content_top + cursor_y;
+        layout.tree.content_top = tree_preview.content_top;
         layout.tree.row_height = tree_preview.row_height;
         layout.tree.rows.clear();
         layout.tree.rows.reserve(tree_preview.rows.size());
@@ -1686,7 +1686,7 @@ static auto list_index_from_position(WidgetsExampleContext const& ctx, float y) 
     if (layout.item_height <= 0.0f || layout.item_bounds.empty()) {
         return -1;
     }
-    float relative = y - layout.content_top;
+    float relative = y - layout.bounds.min_y - layout.content_top + ctx.list_state.scroll_offset;
     if (relative < 0.0f) {
         return -1;
     }
@@ -2676,19 +2676,6 @@ static void handle_local_keyboard(SP::UI::LocalKeyEvent const& ev, void* user_da
         return;
     }
 
-    auto slider_step = [&]() {
-        float minimum = ctx->slider_range.minimum;
-        float maximum = ctx->slider_range.maximum;
-        float delta = (maximum - minimum) * 0.05f;
-        if (ctx->slider_range.step > 0.0f) {
-            delta = std::max(delta, ctx->slider_range.step);
-        }
-        if (delta <= 0.0f) {
-            delta = 1.0f;
-        }
-        return delta;
-    };
-
     auto apply_update = [&](WidgetInput::InputUpdate const& update) {
         if (update.state_changed || update.focus_changed) {
             reload_widget_states(*ctx);
@@ -2716,7 +2703,7 @@ static void handle_local_keyboard(SP::UI::LocalKeyEvent const& ev, void* user_da
     case kKeycodeLeft:
         if (ctx->focus_target == FocusTarget::Slider) {
             with_input([&](WidgetInput::WidgetInputContext& input) {
-                return WidgetInput::AdjustSliderValue(input, -slider_step());
+                return WidgetInput::AdjustSliderByStep(input, -1);
             });
         } else if (ctx->focus_target == FocusTarget::List) {
             with_input([&](WidgetInput::WidgetInputContext& input) {
@@ -2749,7 +2736,7 @@ static void handle_local_keyboard(SP::UI::LocalKeyEvent const& ev, void* user_da
     case kKeycodeUp:
         if (ctx->focus_target == FocusTarget::Slider) {
             with_input([&](WidgetInput::WidgetInputContext& input) {
-                return WidgetInput::AdjustSliderValue(input, slider_step());
+                return WidgetInput::AdjustSliderByStep(input, 1);
             });
         } else if (ctx->focus_target == FocusTarget::List) {
             with_input([&](WidgetInput::WidgetInputContext& input) {
@@ -2768,7 +2755,7 @@ static void handle_local_keyboard(SP::UI::LocalKeyEvent const& ev, void* user_da
     case kKeycodeRight:
         if (ctx->focus_target == FocusTarget::Slider) {
             with_input([&](WidgetInput::WidgetInputContext& input) {
-                return WidgetInput::AdjustSliderValue(input, slider_step());
+                return WidgetInput::AdjustSliderByStep(input, 1);
             });
         } else if (ctx->focus_target == FocusTarget::List) {
             with_input([&](WidgetInput::WidgetInputContext& input) {
@@ -2801,7 +2788,7 @@ static void handle_local_keyboard(SP::UI::LocalKeyEvent const& ev, void* user_da
     case kKeycodeDown:
         if (ctx->focus_target == FocusTarget::Slider) {
             with_input([&](WidgetInput::WidgetInputContext& input) {
-                return WidgetInput::AdjustSliderValue(input, -slider_step());
+                return WidgetInput::AdjustSliderByStep(input, -1);
             });
         } else if (ctx->focus_target == FocusTarget::List) {
             with_input([&](WidgetInput::WidgetInputContext& input) {
