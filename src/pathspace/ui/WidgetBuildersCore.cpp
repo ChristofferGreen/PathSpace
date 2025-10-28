@@ -757,6 +757,35 @@ auto UpdateSliderState(PathSpace& space,
     return true;
 }
 
+auto BuildButtonPreview(Widgets::ButtonStyle const& style,
+                        Widgets::ButtonState const& state,
+                        Widgets::ButtonPreviewOptions const& options) -> SceneData::DrawableBucketSnapshot {
+    return build_button_bucket(style,
+                               state,
+                               std::string_view{options.authoring_root},
+                               options.pulsing_highlight);
+}
+
+auto BuildTogglePreview(Widgets::ToggleStyle const& style,
+                        Widgets::ToggleState const& state,
+                        Widgets::TogglePreviewOptions const& options) -> SceneData::DrawableBucketSnapshot {
+    return build_toggle_bucket(style,
+                               state,
+                               std::string_view{options.authoring_root},
+                               options.pulsing_highlight);
+}
+
+auto BuildSliderPreview(Widgets::SliderStyle const& style,
+                        Widgets::SliderRange const& range,
+                        Widgets::SliderState const& state,
+                        Widgets::SliderPreviewOptions const& options) -> SceneData::DrawableBucketSnapshot {
+    return build_slider_bucket(style,
+                               range,
+                               state,
+                               std::string_view{options.authoring_root},
+                               options.pulsing_highlight);
+}
+
 auto UpdateListState(PathSpace& space,
                      Widgets::ListPaths const& paths,
                      Widgets::ListState const& new_state) -> SP::Expected<bool> {
@@ -1216,11 +1245,11 @@ auto make_orange_theme() -> WidgetTheme {
 } // namespace
 
 auto MakeDefaultWidgetTheme() -> WidgetTheme {
-    return make_orange_theme();
+    return make_blue_theme();
 }
 
 auto MakeSunsetWidgetTheme() -> WidgetTheme {
-    return make_blue_theme();
+    return make_orange_theme();
 }
 
 auto SetTheme(std::optional<std::string> const& requested_name) -> ThemeSelection {

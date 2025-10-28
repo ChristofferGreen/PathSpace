@@ -63,6 +63,7 @@ namespace SceneBuilders = SP::UI::Builders::Scene;
 namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
 namespace WidgetReducers = SP::UI::Builders::Widgets::Reducers;
 namespace WidgetFocus = SP::UI::Builders::Widgets::Focus;
+namespace WidgetInput = SP::UI::Builders::Widgets::Input;
 namespace Diagnostics = SP::UI::Builders::Diagnostics;
 namespace TextBuilder = SP::UI::Builders::Text;
 using TextBuildResult = TextBuilder::BuildResult;
@@ -198,49 +199,7 @@ static auto parse_command_line(int argc, char** argv) -> std::optional<CommandLi
     return options;
 }
 
-struct WidgetBounds {
-    float min_x = 0.0f;
-    float min_y = 0.0f;
-    float max_x = 0.0f;
-    float max_y = 0.0f;
-
-    auto normalize() -> void {
-        if (max_x < min_x) {
-            std::swap(max_x, min_x);
-        }
-        if (max_y < min_y) {
-            std::swap(max_y, min_y);
-        }
-    }
-
-    auto include(WidgetBounds const& other) -> void {
-        WidgetBounds normalized_other = other;
-        normalized_other.normalize();
-        normalize();
-        min_x = std::min(min_x, normalized_other.min_x);
-        min_y = std::min(min_y, normalized_other.min_y);
-        max_x = std::max(max_x, normalized_other.max_x);
-        max_y = std::max(max_y, normalized_other.max_y);
-    }
-
-    [[nodiscard]] auto is_valid() const -> bool {
-        return std::isfinite(min_x) && std::isfinite(min_y)
-               && std::isfinite(max_x) && std::isfinite(max_y)
-               && max_x >= min_x && max_y >= min_y;
-    }
-
-    auto contains(float x, float y) const -> bool {
-        return x >= min_x && x <= max_x && y >= min_y && y <= max_y;
-    }
-
-    auto width() const -> float {
-        return std::max(0.0f, max_x - min_x);
-    }
-
-    auto height() const -> float {
-        return std::max(0.0f, max_y - min_y);
-    }
-};
+using WidgetBounds = Widgets::Input::WidgetBounds;
 
 static auto widget_bounds_from_preview_rect(Widgets::TreePreviewRect const& rect) -> WidgetBounds {
     WidgetBounds bounds{
@@ -264,36 +223,15 @@ static auto widget_bounds_from_preview_rect(Widgets::TreePreviewRect const& rect
     return bounds;
 }
 
-struct ListLayout {
-    WidgetBounds bounds;
-    std::vector<WidgetBounds> item_bounds;
-    float content_top = 0.0f;
-    float item_height = 0.0f;
-};
+using ListLayout = Widgets::Input::ListLayout;
 
 struct StackPreviewLayout {
     WidgetBounds bounds;
     std::vector<WidgetBounds> child_bounds;
 };
 
-struct TreeRowLayout {
-    WidgetBounds bounds;
-    std::string node_id;
-    std::string label;
-    WidgetBounds toggle;
-    int depth = 0;
-    bool expandable = false;
-    bool expanded = false;
-    bool loading = false;
-    bool enabled = true;
-};
-
-struct TreeLayout {
-    WidgetBounds bounds;
-    float content_top = 0.0f;
-    float row_height = 0.0f;
-    std::vector<TreeRowLayout> rows;
-};
+using TreeRowLayout = Widgets::Input::TreeRowLayout;
+using TreeLayout = Widgets::Input::TreeLayout;
 
 struct GalleryLayout {
     WidgetBounds button;
@@ -464,90 +402,6 @@ static auto expand_for_focus_margin(WidgetBounds& bounds) -> void {
     }
 }
 
-auto append_focus_highlight_preview(SceneData::DrawableBucketSnapshot& bucket,
-                                    float width,
-                                    float height,
-                                    std::string_view authoring_id,
-                                    std::array<float, 4> color,
-                                    bool pulsing = true) -> void {
-    if (width <= 0.0f || height <= 0.0f) {
-        return;
-    }
-
-    float min_x = 0.0f;
-    float min_y = 0.0f;
-    float max_x = width;
-    float max_y = height;
-    if (kGalleryFocusExpand > 0.0f) {
-        min_x = std::min(min_x - kGalleryFocusExpand, 0.0f);
-        min_y = std::min(min_y - kGalleryFocusExpand, 0.0f);
-        max_x = std::max(max_x + kGalleryFocusExpand, width);
-        max_y = std::max(max_y + kGalleryFocusExpand, height);
-    }
-
-    float thickness_limit = std::min(width, height) * 0.5f;
-    float clamped_thickness = std::clamp(kGalleryFocusThickness, 1.0f, thickness_limit);
-
-    std::uint64_t drawable_id = 0xF0C0F100ull + static_cast<std::uint64_t>(bucket.drawable_ids.size());
-    bucket.drawable_ids.push_back(drawable_id);
-    bucket.world_transforms.push_back(identity_transform());
-
-    SceneData::BoundingBox box{};
-    box.min = {min_x, min_y, 0.0f};
-    box.max = {max_x, max_y, 0.0f};
-    bucket.bounds_boxes.push_back(box);
-    bucket.bounds_box_valid.push_back(1);
-
-    SceneData::BoundingSphere sphere{};
-    sphere.center = {(min_x + max_x) * 0.5f, (min_y + max_y) * 0.5f, 0.0f};
-    float radius_x = max_x - sphere.center[0];
-    float radius_y = max_y - sphere.center[1];
-    sphere.radius = std::sqrt(radius_x * radius_x + radius_y * radius_y);
-    bucket.bounds_spheres.push_back(sphere);
-
-    bucket.layers.push_back(8);
-    bucket.z_values.push_back(5.0f);
-    bucket.material_ids.push_back(0);
-    bucket.pipeline_flags.push_back(pulsing ? SP::UI::PipelineFlags::HighlightPulse : 0u);
-    bucket.visibility.push_back(1);
-    bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
-    bucket.command_counts.push_back(4);
-    bucket.opaque_indices.push_back(static_cast<std::uint32_t>(bucket.opaque_indices.size()));
-    bucket.clip_head_indices.push_back(-1);
-
-    auto push_rect = [&](float r_min_x,
-                         float r_min_y,
-                         float r_max_x,
-                         float r_max_y) {
-        SceneData::RectCommand rect{};
-        rect.min_x = r_min_x;
-        rect.min_y = r_min_y;
-        rect.max_x = r_max_x;
-        rect.max_y = r_max_y;
-        rect.color = color;
-        auto payload_offset = bucket.command_payload.size();
-        bucket.command_payload.resize(payload_offset + sizeof(SceneData::RectCommand));
-        std::memcpy(bucket.command_payload.data() + payload_offset,
-                    &rect,
-                    sizeof(SceneData::RectCommand));
-        bucket.command_kinds.push_back(static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect));
-    };
-
-    push_rect(min_x, min_y, max_x, min_y + clamped_thickness);
-    push_rect(min_x, max_y - clamped_thickness, max_x, max_y);
-    push_rect(min_x, min_y + clamped_thickness, min_x + clamped_thickness, max_y - clamped_thickness);
-    push_rect(max_x - clamped_thickness, min_y + clamped_thickness, max_x, max_y - clamped_thickness);
-
-    std::string authoring = authoring_id.empty()
-                                ? std::string("widget/gallery/focus/highlight")
-                                : std::string(authoring_id) + "/focus";
-    bucket.authoring_map.push_back(SceneData::DrawableAuthoringMapEntry{
-        drawable_id,
-        std::move(authoring),
-        0,
-        0});
-    bucket.drawable_fingerprints.push_back(drawable_id);
-}
 
 static auto make_dirty_hint(WidgetBounds const& bounds) -> Builders::DirtyRectHint {
     WidgetBounds normalized = bounds;
@@ -560,321 +414,8 @@ static auto make_dirty_hint(WidgetBounds const& bounds) -> Builders::DirtyRectHi
     return hint;
 }
 
-auto build_button_preview(Widgets::ButtonStyle const& style,
-                          Widgets::ButtonState const& state) -> SceneData::DrawableBucketSnapshot {
-    SceneData::DrawableBucketSnapshot bucket{};
-    float width = std::max(style.width, 1.0f);
-    float height = std::max(style.height, 1.0f);
 
-    bucket.drawable_ids = {0xB17B0001ull};
-    bucket.world_transforms = {identity_transform()};
 
-    SceneData::BoundingSphere sphere{};
-    sphere.center = {width * 0.5f, height * 0.5f, 0.0f};
-    sphere.radius = std::sqrt(sphere.center[0] * sphere.center[0] + sphere.center[1] * sphere.center[1]);
-    bucket.bounds_spheres = {sphere};
-
-    SceneData::BoundingBox box{};
-    box.min = {0.0f, 0.0f, 0.0f};
-    box.max = {width, height, 0.0f};
-    bucket.bounds_boxes = {box};
-    bucket.bounds_box_valid = {1};
-    bucket.layers = {0};
-    bucket.z_values = {0.0f};
-    bucket.material_ids = {0};
-    bucket.pipeline_flags = {0};
-    bucket.visibility = {1};
-    bucket.command_offsets = {0};
-    bucket.command_counts = {1};
-    bucket.opaque_indices = {0};
-    bucket.alpha_indices.clear();
-    bucket.layer_indices.clear();
-    bucket.clip_nodes.clear();
-    bucket.clip_head_indices = {-1};
-    bucket.authoring_map = {SceneData::DrawableAuthoringMapEntry{
-        bucket.drawable_ids.front(), "widget/button/background", 0, 0}};
-    bucket.drawable_fingerprints = {0xB17B0001ull};
-
-    auto color = style.background_color;
-    if (!state.enabled) {
-        color = desaturate(color, 0.6f);
-    } else if (state.pressed) {
-        color = darken(color, 0.25f);
-    } else if (state.hovered) {
-        color = lighten(color, 0.15f);
-    }
-
-    float radius_limit = std::min(width, height) * 0.5f;
-    float corner_radius = std::clamp(style.corner_radius, 0.0f, radius_limit);
-
-    if (corner_radius > 0.0f) {
-        SceneData::RoundedRectCommand rect{};
-        rect.min_x = 0.0f;
-        rect.min_y = 0.0f;
-        rect.max_x = width;
-        rect.max_y = height;
-        rect.radius_top_left = corner_radius;
-        rect.radius_top_right = corner_radius;
-        rect.radius_bottom_left = corner_radius;
-        rect.radius_bottom_right = corner_radius;
-        rect.color = color;
-
-        bucket.command_payload.resize(sizeof(SceneData::RoundedRectCommand));
-        std::memcpy(bucket.command_payload.data(), &rect, sizeof(SceneData::RoundedRectCommand));
-        bucket.command_kinds = {static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect)};
-    } else {
-        SceneData::RectCommand rect{};
-        rect.min_x = 0.0f;
-        rect.min_y = 0.0f;
-        rect.max_x = width;
-        rect.max_y = height;
-        rect.color = color;
-
-        bucket.command_payload.resize(sizeof(SceneData::RectCommand));
-        std::memcpy(bucket.command_payload.data(), &rect, sizeof(SceneData::RectCommand));
-        bucket.command_kinds = {static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect)};
-    }
-    if (state.focused) {
-        auto highlight = lighten_color(style.background_color, 0.35f);
-        append_focus_highlight_preview(bucket, width, height, "widget/gallery/button", highlight, true);
-    }
-    return bucket;
-}
-
-auto build_toggle_preview(Widgets::ToggleStyle const& style,
-                          Widgets::ToggleState const& state) -> SceneData::DrawableBucketSnapshot {
-    SceneData::DrawableBucketSnapshot bucket{};
-    float width = std::max(style.width, 16.0f);
-    float height = std::max(style.height, 16.0f);
-
-    bucket.drawable_ids = {0x701701u, 0x701702u};
-    bucket.world_transforms = {identity_transform(), identity_transform()};
-
-    SceneData::BoundingSphere trackSphere{};
-    trackSphere.center = {width * 0.5f, height * 0.5f, 0.0f};
-    trackSphere.radius = std::sqrt(trackSphere.center[0] * trackSphere.center[0]
-                                   + trackSphere.center[1] * trackSphere.center[1]);
-
-    float thumbRadius = height * 0.5f - 2.0f;
-    float thumbCenterX = state.checked ? (width - thumbRadius - 2.0f) : (thumbRadius + 2.0f);
-
-    SceneData::BoundingSphere thumbSphere{};
-    thumbSphere.center = {thumbCenterX, height * 0.5f, 0.0f};
-    thumbSphere.radius = thumbRadius;
-
-    bucket.bounds_spheres = {trackSphere, thumbSphere};
-
-    SceneData::BoundingBox trackBox{};
-    trackBox.min = {0.0f, 0.0f, 0.0f};
-    trackBox.max = {width, height, 0.0f};
-
-    SceneData::BoundingBox thumbBox{};
-    thumbBox.min = {thumbCenterX - thumbRadius, height * 0.5f - thumbRadius, 0.0f};
-    thumbBox.max = {thumbCenterX + thumbRadius, height * 0.5f + thumbRadius, 0.0f};
-
-    bucket.bounds_boxes = {trackBox, thumbBox};
-    bucket.bounds_box_valid = {1, 1};
-    bucket.layers = {0, 1};
-    bucket.z_values = {0.0f, 0.1f};
-    bucket.material_ids = {0, 0};
-    bucket.pipeline_flags = {0, 0};
-    bucket.visibility = {1, 1};
-    bucket.command_offsets = {0, 1};
-    bucket.command_counts = {1, 1};
-    bucket.opaque_indices = {0, 1};
-    bucket.alpha_indices.clear();
-    bucket.layer_indices.clear();
-    bucket.clip_nodes.clear();
-    bucket.clip_head_indices = {-1, -1};
-    bucket.authoring_map = {
-        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[0], "widget/toggle/track", 0, 0},
-        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[1], "widget/toggle/thumb", 0, 0},
-    };
-    bucket.drawable_fingerprints = {0x701701u, 0x701702u};
-
-    auto track_color = state.checked ? style.track_on_color : style.track_off_color;
-    auto thumb_color = style.thumb_color;
-    if (!state.enabled) {
-        track_color = desaturate(track_color, 0.5f);
-        thumb_color = desaturate(thumb_color, 0.5f);
-    } else if (state.hovered) {
-        track_color = lighten(track_color, 0.1f);
-        thumb_color = lighten(thumb_color, 0.1f);
-    }
-
-    SceneData::RoundedRectCommand trackRect{};
-    trackRect.min_x = 0.0f;
-    trackRect.min_y = 0.0f;
-    trackRect.max_x = width;
-    trackRect.max_y = height;
-    trackRect.radius_top_left = height * 0.5f;
-    trackRect.radius_top_right = height * 0.5f;
-    trackRect.radius_bottom_right = height * 0.5f;
-    trackRect.radius_bottom_left = height * 0.5f;
-    trackRect.color = track_color;
-
-    SceneData::RoundedRectCommand thumbRect{};
-    thumbRect.min_x = thumbBox.min[0];
-    thumbRect.min_y = thumbBox.min[1];
-    thumbRect.max_x = thumbBox.max[0];
-    thumbRect.max_y = thumbBox.max[1];
-    thumbRect.radius_top_left = thumbRadius;
-    thumbRect.radius_top_right = thumbRadius;
-    thumbRect.radius_bottom_right = thumbRadius;
-    thumbRect.radius_bottom_left = thumbRadius;
-    thumbRect.color = thumb_color;
-
-    auto payload_track = sizeof(SceneData::RoundedRectCommand);
-    auto payload_thumb = sizeof(SceneData::RoundedRectCommand);
-    bucket.command_payload.resize(payload_track + payload_thumb);
-    std::memcpy(bucket.command_payload.data(), &trackRect, payload_track);
-    std::memcpy(bucket.command_payload.data() + payload_track, &thumbRect, payload_thumb);
-    bucket.command_kinds = {
-        static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect),
-        static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect),
-    };
-    if (state.focused) {
-        auto base = state.checked ? style.track_on_color : style.track_off_color;
-        auto highlight = lighten_color(base, 0.30f);
-        append_focus_highlight_preview(bucket, width, height, "widget/gallery/toggle", highlight, true);
-    }
-    return bucket;
-}
-
-auto build_slider_preview(Widgets::SliderStyle const& style,
-                          Widgets::SliderState const& state,
-                          Widgets::SliderRange const& range) -> SceneData::DrawableBucketSnapshot {
-    SceneData::DrawableBucketSnapshot bucket{};
-    float width = std::max(style.width, 1.0f);
-    float height = std::max(style.height, 16.0f);
-    float track_height = std::clamp(style.track_height, 1.0f, height);
-    float thumb_radius = std::clamp(style.thumb_radius, track_height * 0.5f, height * 0.5f);
-
-    bucket.drawable_ids = {0x51D301u, 0x51D302u, 0x51D303u};
-    bucket.world_transforms = {identity_transform(), identity_transform(), identity_transform()};
-
-    float clamped_min = std::min(range.minimum, range.maximum);
-    float clamped_max = std::max(range.minimum, range.maximum);
-    float value = std::clamp(state.value, clamped_min, clamped_max);
-    float denom = std::max(clamped_max - clamped_min, 1e-6f);
-    float progress = std::clamp((value - clamped_min) / denom, 0.0f, 1.0f);
-
-    float center_y = height * 0.5f;
-    float track_half = track_height * 0.5f;
-    float track_top = center_y - track_half;
-    float fill_width = std::max(progress * width, 0.0f);
-    float thumb_x = std::clamp(progress * width, thumb_radius, width - thumb_radius);
-
-    SceneData::BoundingBox trackBox{};
-    trackBox.min = {0.0f, track_top, 0.0f};
-    trackBox.max = {width, track_top + track_height, 0.0f};
-
-    SceneData::BoundingSphere trackSphere{};
-    trackSphere.center = {width * 0.5f, center_y, 0.0f};
-    trackSphere.radius = std::sqrt(std::pow(track_half, 2.0f) + std::pow(width * 0.5f, 2.0f));
-
-    SceneData::BoundingBox fillBox{};
-    fillBox.min = {0.0f, track_top, 0.0f};
-    fillBox.max = {fill_width, track_top + track_height, 0.0f};
-
-    SceneData::BoundingSphere fillSphere{};
-    fillSphere.center = {fill_width * 0.5f, center_y, 0.0f};
-    fillSphere.radius = std::sqrt(std::pow(fillSphere.center[0], 2.0f) + track_half * track_half);
-
-    SceneData::BoundingBox thumbBox{};
-    thumbBox.min = {thumb_x - thumb_radius, center_y - thumb_radius, 0.0f};
-    thumbBox.max = {thumb_x + thumb_radius, center_y + thumb_radius, 0.0f};
-
-    SceneData::BoundingSphere thumbSphere{};
-    thumbSphere.center = {thumb_x, center_y, 0.0f};
-    thumbSphere.radius = thumb_radius;
-
-    bucket.bounds_boxes = {trackBox, fillBox, thumbBox};
-    bucket.bounds_box_valid = {1, 1, 1};
-    bucket.bounds_spheres = {trackSphere, fillSphere, thumbSphere};
-    bucket.layers = {0, 1, 2};
-    bucket.z_values = {0.0f, 0.05f, 0.1f};
-    bucket.material_ids = {0, 0, 0};
-    bucket.pipeline_flags = {0, 0, 0};
-    bucket.visibility = {1, 1, 1};
-    bucket.command_offsets = {0, 1, 2};
-    bucket.command_counts = {1, 1, 1};
-    bucket.opaque_indices = {0, 1, 2};
-    bucket.alpha_indices.clear();
-    bucket.layer_indices.clear();
-    bucket.clip_nodes.clear();
-    bucket.clip_head_indices = {-1, -1, -1};
-    bucket.authoring_map = {
-        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[0], "widget/slider/track", 0, 0},
-        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[1], "widget/slider/fill", 0, 0},
-        SceneData::DrawableAuthoringMapEntry{bucket.drawable_ids[2], "widget/slider/thumb", 0, 0},
-    };
-    bucket.drawable_fingerprints = {0x51D301u, 0x51D302u, 0x51D303u};
-
-    auto track_color = style.track_color;
-    auto fill_color = style.fill_color;
-    auto thumb_color = style.thumb_color;
-    if (!state.enabled) {
-        track_color = desaturate(track_color, 0.5f);
-        fill_color = desaturate(fill_color, 0.5f);
-        thumb_color = desaturate(thumb_color, 0.5f);
-    } else {
-        if (state.hovered) {
-            track_color = lighten(track_color, 0.05f);
-            fill_color = lighten(fill_color, state.dragging ? 0.2f : 0.1f);
-            thumb_color = lighten(thumb_color, state.dragging ? 0.2f : 0.1f);
-        }
-    }
-
-    SceneData::RoundedRectCommand trackRect{};
-    trackRect.min_x = 0.0f;
-    trackRect.min_y = track_top;
-    trackRect.max_x = width;
-    trackRect.max_y = track_top + track_height;
-    trackRect.radius_top_left = track_half;
-    trackRect.radius_top_right = track_half;
-    trackRect.radius_bottom_right = track_half;
-    trackRect.radius_bottom_left = track_half;
-    trackRect.color = track_color;
-
-    SceneData::RectCommand fillRect{};
-    fillRect.min_x = 0.0f;
-    fillRect.min_y = track_top;
-    fillRect.max_x = fill_width;
-    fillRect.max_y = track_top + track_height;
-    fillRect.color = fill_color;
-
-    SceneData::RoundedRectCommand thumbRect{};
-    thumbRect.min_x = thumbBox.min[0];
-    thumbRect.min_y = thumbBox.min[1];
-    thumbRect.max_x = thumbBox.max[0];
-    thumbRect.max_y = thumbBox.max[1];
-    thumbRect.radius_top_left = thumb_radius;
-    thumbRect.radius_top_right = thumb_radius;
-    thumbRect.radius_bottom_right = thumb_radius;
-    thumbRect.radius_bottom_left = thumb_radius;
-    thumbRect.color = thumb_color;
-
-    auto payload_track = sizeof(SceneData::RoundedRectCommand);
-    auto payload_fill = sizeof(SceneData::RectCommand);
-    auto payload_thumb = sizeof(SceneData::RoundedRectCommand);
-    bucket.command_payload.resize(payload_track + payload_fill + payload_thumb);
-    std::uint8_t* payload_ptr = bucket.command_payload.data();
-    std::memcpy(payload_ptr, &trackRect, payload_track);
-    std::memcpy(payload_ptr + payload_track, &fillRect, payload_fill);
-    std::memcpy(payload_ptr + payload_track + payload_fill, &thumbRect, payload_thumb);
-
-    bucket.command_kinds = {
-        static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect),
-        static_cast<std::uint32_t>(SceneData::DrawCommandKind::Rect),
-        static_cast<std::uint32_t>(SceneData::DrawCommandKind::RoundedRect),
-    };
-    if (state.focused) {
-        auto highlight = lighten_color(style.fill_color, 0.25f);
-        append_focus_highlight_preview(bucket, width, height, "widget/gallery/slider", highlight, true);
-    }
-    return bucket;
-}
 
 static auto build_stack_preview(Widgets::StackLayoutStyle const& style,
                                 Widgets::StackLayoutState const& layout,
@@ -1306,7 +847,13 @@ auto build_gallery_bucket(PathSpace& space,
 
     // Button widget
     {
-        auto bucket = build_button_preview(button_style, button_state);
+        auto bucket = Widgets::BuildButtonPreview(
+            button_style,
+            button_state,
+            Widgets::ButtonPreviewOptions{
+                .authoring_root = "widget/gallery/button",
+                .pulsing_highlight = true,
+            });
         translate_bucket(bucket, left, cursor_y);
         pending.emplace_back(std::move(bucket));
         float widget_height = button_style.height;
@@ -1360,7 +907,13 @@ auto build_gallery_bucket(PathSpace& space,
 
     // Toggle widget
     {
-        auto bucket = build_toggle_preview(toggle_style, toggle_state);
+        auto bucket = Widgets::BuildTogglePreview(
+            toggle_style,
+            toggle_state,
+            Widgets::TogglePreviewOptions{
+                .authoring_root = "widget/gallery/toggle",
+                .pulsing_highlight = true,
+            });
         translate_bucket(bucket, left, cursor_y);
         pending.emplace_back(std::move(bucket));
         max_width = std::max(max_width, left + toggle_style.width);
@@ -1451,7 +1004,14 @@ auto build_gallery_bucket(PathSpace& space,
         }
         cursor_y += slider_caption_line + 12.0f;
 
-        auto bucket = build_slider_preview(slider_style, slider_state, slider_range);
+        auto bucket = Widgets::BuildSliderPreview(
+            slider_style,
+            slider_range,
+            slider_state,
+            Widgets::SliderPreviewOptions{
+                .authoring_root = "widget/gallery/slider",
+                .pulsing_highlight = true,
+            });
         translate_bucket(bucket, left, cursor_y);
         pending.emplace_back(std::move(bucket));
         max_width = std::max(max_width, left + slider_style.width);
@@ -1865,13 +1425,7 @@ auto publish_gallery_scene(PathSpace& space,
     };
 }
 
-enum class FocusTarget {
-    Button,
-    Toggle,
-    Slider,
-    List,
-    Tree,
-};
+using FocusTarget = WidgetInput::FocusTarget;
 
 static auto focus_target_to_string(FocusTarget target) -> const char* {
     switch (target) {
@@ -1941,6 +1495,107 @@ struct WidgetsExampleContext {
     int debug_capture_index = 0;
     bool debug_capture_after_refresh = false;
 };
+
+static auto make_input_context(WidgetsExampleContext& ctx) -> WidgetInput::WidgetInputContext {
+    WidgetInput::WidgetInputContext input{};
+
+    WidgetInput::LayoutSnapshot layout{};
+    layout.button = ctx.gallery.layout.button;
+    layout.button_footprint = ctx.gallery.layout.button_footprint;
+    layout.toggle = ctx.gallery.layout.toggle;
+    layout.toggle_footprint = ctx.gallery.layout.toggle_footprint;
+    layout.slider_footprint = ctx.gallery.layout.slider_footprint;
+
+    if (ctx.gallery.layout.slider.width() > 0.0f || ctx.gallery.layout.slider.height() > 0.0f) {
+        WidgetInput::SliderLayout slider_layout{};
+        slider_layout.bounds = ctx.gallery.layout.slider;
+        slider_layout.track = ctx.gallery.layout.slider_track;
+        layout.slider = slider_layout;
+    } else {
+        layout.slider.reset();
+    }
+
+    layout.list_footprint = ctx.gallery.layout.list_footprint;
+    if (!ctx.gallery.layout.list.item_bounds.empty()) {
+        WidgetInput::ListLayout list_layout{};
+        list_layout.bounds = ctx.gallery.layout.list.bounds;
+        list_layout.item_bounds = ctx.gallery.layout.list.item_bounds;
+        list_layout.content_top = ctx.gallery.layout.list.content_top;
+        list_layout.item_height = ctx.gallery.layout.list.item_height;
+        layout.list = list_layout;
+    } else {
+        layout.list.reset();
+    }
+
+    layout.tree_footprint = ctx.gallery.layout.tree_footprint;
+    if (!ctx.gallery.layout.tree.rows.empty()) {
+        WidgetInput::TreeLayout tree_layout{};
+        tree_layout.bounds = ctx.gallery.layout.tree.bounds;
+        tree_layout.content_top = ctx.gallery.layout.tree.content_top;
+        tree_layout.row_height = ctx.gallery.layout.tree.row_height;
+        tree_layout.rows = ctx.gallery.layout.tree.rows;
+        layout.tree = tree_layout;
+    } else {
+        layout.tree.reset();
+    }
+
+    input.layout = std::move(layout);
+
+    static constexpr std::array<WidgetInput::FocusTarget, 5> kFocusOrder{
+        WidgetInput::FocusTarget::Button,
+        WidgetInput::FocusTarget::Toggle,
+        WidgetInput::FocusTarget::Slider,
+        WidgetInput::FocusTarget::List,
+        WidgetInput::FocusTarget::Tree,
+    };
+
+    input.space = ctx.space;
+    input.focus.config = &ctx.focus_config;
+    input.focus.current = &ctx.focus_target;
+    input.focus.order = std::span<const WidgetInput::FocusTarget>{kFocusOrder};
+    input.focus.button = ctx.button_paths.root;
+    input.focus.toggle = ctx.toggle_paths.root;
+    input.focus.slider = ctx.slider_paths.root;
+    input.focus.list = ctx.list_paths.root;
+    input.focus.tree = ctx.tree_paths.root;
+    input.focus.focus_list_index = &ctx.focus_list_index;
+    input.focus.focus_tree_index = &ctx.focus_tree_index;
+
+    input.button_binding = &ctx.button_binding;
+    input.button_paths = &ctx.button_paths;
+    input.button_state = &ctx.button_state;
+
+    input.toggle_binding = &ctx.toggle_binding;
+    input.toggle_paths = &ctx.toggle_paths;
+    input.toggle_state = &ctx.toggle_state;
+
+    input.slider_binding = &ctx.slider_binding;
+    input.slider_paths = &ctx.slider_paths;
+    input.slider_state = &ctx.slider_state;
+    input.slider_style = &ctx.slider_style;
+    input.slider_range = &ctx.slider_range;
+
+    input.list_binding = &ctx.list_binding;
+    input.list_paths = &ctx.list_paths;
+    input.list_state = &ctx.list_state;
+    input.list_style = &ctx.list_style;
+    input.list_items = &ctx.list_items;
+
+    input.tree_binding = &ctx.tree_binding;
+    input.tree_paths = &ctx.tree_paths;
+    input.tree_state = &ctx.tree_state;
+    input.tree_style = &ctx.tree_style;
+    input.tree_nodes = &ctx.tree_nodes;
+
+    input.pointer_x = &ctx.pointer_x;
+    input.pointer_y = &ctx.pointer_y;
+    input.pointer_down = &ctx.pointer_down;
+    input.slider_dragging = &ctx.slider_dragging;
+    input.tree_pointer_down_id = &ctx.tree_pointer_down_id;
+    input.tree_pointer_toggle = &ctx.tree_pointer_toggle;
+
+    return input;
+}
 
 static void write_debug_dump(WidgetsExampleContext const& ctx, std::filesystem::path const& path) {
     std::ofstream out(path);
@@ -3370,36 +3025,70 @@ static void handle_local_mouse(SP::UI::LocalMouseEvent const& ev, void* user_dat
         return;
     }
     widget_trace().record_mouse(ev);
+    auto apply_update = [&](WidgetInput::InputUpdate const& update) {
+        if (update.state_changed || update.focus_changed) {
+            reload_widget_states(*ctx);
+            refresh_gallery(*ctx);
+        }
+    };
+
+    auto with_input = [&](auto&& callable) {
+        WidgetInput::WidgetInputContext input = make_input_context(*ctx);
+        apply_update(callable(input));
+    };
+
     switch (ev.type) {
     case SP::UI::LocalMouseEventType::AbsoluteMove:
         if (ev.x >= 0 && ev.y >= 0) {
-            handle_pointer_move(*ctx, static_cast<float>(ev.x), static_cast<float>(ev.y));
+            auto input = make_input_context(*ctx);
+            auto result = WidgetInput::HandlePointerMove(input,
+                                                        static_cast<float>(ev.x),
+                                                        static_cast<float>(ev.y));
+            apply_update(result);
         }
         break;
-    case SP::UI::LocalMouseEventType::Move:
-        handle_pointer_move(*ctx,
-                            ctx->pointer_x + static_cast<float>(ev.dx),
-                            ctx->pointer_y + static_cast<float>(ev.dy));
+    case SP::UI::LocalMouseEventType::Move: {
+        float target_x = ctx->pointer_x + static_cast<float>(ev.dx);
+        float target_y = ctx->pointer_y + static_cast<float>(ev.dy);
+        auto input = make_input_context(*ctx);
+        auto result = WidgetInput::HandlePointerMove(input, target_x, target_y);
+        apply_update(result);
         break;
+    }
     case SP::UI::LocalMouseEventType::ButtonDown:
         if (ev.x >= 0 && ev.y >= 0) {
-            handle_pointer_move(*ctx, static_cast<float>(ev.x), static_cast<float>(ev.y));
+            auto input_move = make_input_context(*ctx);
+            auto move_result = WidgetInput::HandlePointerMove(input_move,
+                                                              static_cast<float>(ev.x),
+                                                              static_cast<float>(ev.y));
+            apply_update(move_result);
         }
         if (ev.button == SP::UI::LocalMouseButton::Left) {
-            handle_pointer_down(*ctx);
+            auto input = make_input_context(*ctx);
+            auto result = WidgetInput::HandlePointerDown(input);
+            apply_update(result);
         }
         break;
     case SP::UI::LocalMouseEventType::ButtonUp:
         if (ev.x >= 0 && ev.y >= 0) {
-            handle_pointer_move(*ctx, static_cast<float>(ev.x), static_cast<float>(ev.y));
+            auto input_move = make_input_context(*ctx);
+            auto move_result = WidgetInput::HandlePointerMove(input_move,
+                                                              static_cast<float>(ev.x),
+                                                              static_cast<float>(ev.y));
+            apply_update(move_result);
         }
         if (ev.button == SP::UI::LocalMouseButton::Left) {
-            handle_pointer_up(*ctx);
+            auto input = make_input_context(*ctx);
+            auto result = WidgetInput::HandlePointerUp(input);
+            apply_update(result);
         }
         break;
-    case SP::UI::LocalMouseEventType::Wheel:
-        handle_pointer_wheel(*ctx, ev.wheel);
+    case SP::UI::LocalMouseEventType::Wheel: {
+        auto input = make_input_context(*ctx);
+        auto result = WidgetInput::HandlePointerWheel(input, ev.wheel);
+        apply_update(result);
         break;
+    }
     }
 }
 
@@ -3500,8 +3189,8 @@ static void simulate_slider_drag_for_screenshot(WidgetsExampleContext& ctx, floa
     float clamped_target = std::clamp(target_value, min_value, max_value);
 
     auto const start_value = ctx.slider_state.value;
-    auto [start_x, start_y] = slider_pointer_for_value(ctx, start_value);
-    auto [target_x, target_y] = slider_pointer_for_value(ctx, clamped_target);
+    auto [start_x, start_y] = WidgetInput::SliderPointerForValue(make_input_context(ctx), start_value);
+    auto [target_x, target_y] = WidgetInput::SliderPointerForValue(make_input_context(ctx), clamped_target);
 
     auto send_absolute_move = [&](float x, float y) {
         SP::PathIOMouse::Event ev{};
@@ -3791,80 +3480,145 @@ static void handle_local_keyboard(SP::UI::LocalKeyEvent const& ev, void* user_da
         return;
     }
 
+    auto slider_step = [&]() {
+        float minimum = ctx->slider_range.minimum;
+        float maximum = ctx->slider_range.maximum;
+        float delta = (maximum - minimum) * 0.05f;
+        if (ctx->slider_range.step > 0.0f) {
+            delta = std::max(delta, ctx->slider_range.step);
+        }
+        if (delta <= 0.0f) {
+            delta = 1.0f;
+        }
+        return delta;
+    };
+
+    auto apply_update = [&](WidgetInput::InputUpdate const& update) {
+        if (update.state_changed || update.focus_changed) {
+            reload_widget_states(*ctx);
+            refresh_gallery(*ctx);
+        }
+    };
+
+    auto with_input = [&](auto&& callable) {
+        WidgetInput::WidgetInputContext input = make_input_context(*ctx);
+        apply_update(callable(input));
+    };
+
     switch (ev.keycode) {
     case kKeycodeTab:
-        cycle_focus(*ctx, !has_modifier(ev.modifiers, LocalKeyModifierShift));
+        with_input([&](WidgetInput::WidgetInputContext& input) {
+            return WidgetInput::CycleFocus(input, !has_modifier(ev.modifiers, LocalKeyModifierShift));
+        });
         break;
     case kKeycodeSpace:
     case kKeycodeReturn:
-        activate_focused_widget(*ctx);
+        with_input([&](WidgetInput::WidgetInputContext& input) {
+            return WidgetInput::ActivateFocusedWidget(input);
+        });
         break;
     case kKeycodeLeft:
         if (ctx->focus_target == FocusTarget::Slider) {
-            adjust_slider_value(*ctx, -slider_keyboard_step(*ctx));
+            with_input([&](WidgetInput::WidgetInputContext& input) {
+                return WidgetInput::AdjustSliderValue(input, -slider_step());
+            });
         } else if (ctx->focus_target == FocusTarget::List) {
-            move_list_focus(*ctx, -1);
+            with_input([&](WidgetInput::WidgetInputContext& input) {
+                return WidgetInput::MoveListFocus(input, -1);
+            });
         } else if (ctx->focus_target == FocusTarget::Tree) {
-            if (ensure_tree_focus_index(*ctx)) {
-                auto const& rows = ctx->gallery.layout.tree.rows;
-                auto const& row = rows[static_cast<std::size_t>(ctx->focus_tree_index)];
+            if (ctx->focus_tree_index >= 0
+                && ctx->focus_tree_index < static_cast<int>(ctx->gallery.layout.tree.rows.size())) {
+                auto const& row = ctx->gallery.layout.tree.rows[static_cast<std::size_t>(ctx->focus_tree_index)];
                 if (row.expandable && row.expanded) {
-                    tree_apply_op(*ctx, WidgetBindings::WidgetOpKind::TreeCollapse);
+                    with_input([&](WidgetInput::WidgetInputContext& input) {
+                        return WidgetInput::TreeApplyOp(input, WidgetBindings::WidgetOpKind::TreeCollapse);
+                    });
                 } else {
-                    int parent = tree_parent_index(*ctx, ctx->focus_tree_index);
+                    int parent = WidgetInput::TreeParentIndex(make_input_context(*ctx), ctx->focus_tree_index);
                     if (parent >= 0) {
                         ctx->focus_tree_index = parent;
-                        move_tree_focus(*ctx, 0);
+                        with_input([&](WidgetInput::WidgetInputContext& input) {
+                            return WidgetInput::MoveTreeFocus(input, 0);
+                        });
                     }
                 }
             }
         } else {
-            cycle_focus(*ctx, false);
+            with_input([&](WidgetInput::WidgetInputContext& input) {
+                return WidgetInput::CycleFocus(input, false);
+            });
         }
         break;
     case kKeycodeUp:
         if (ctx->focus_target == FocusTarget::Slider) {
-            adjust_slider_value(*ctx, slider_keyboard_step(*ctx));
+            with_input([&](WidgetInput::WidgetInputContext& input) {
+                return WidgetInput::AdjustSliderValue(input, slider_step());
+            });
         } else if (ctx->focus_target == FocusTarget::List) {
-            move_list_focus(*ctx, -1);
+            with_input([&](WidgetInput::WidgetInputContext& input) {
+                return WidgetInput::MoveListFocus(input, -1);
+            });
         } else if (ctx->focus_target == FocusTarget::Tree) {
-            move_tree_focus(*ctx, -1);
+            with_input([&](WidgetInput::WidgetInputContext& input) {
+                return WidgetInput::MoveTreeFocus(input, -1);
+            });
         } else {
-            cycle_focus(*ctx, false);
+            with_input([&](WidgetInput::WidgetInputContext& input) {
+                return WidgetInput::CycleFocus(input, false);
+            });
         }
         break;
     case kKeycodeRight:
         if (ctx->focus_target == FocusTarget::Slider) {
-            adjust_slider_value(*ctx, slider_keyboard_step(*ctx));
+            with_input([&](WidgetInput::WidgetInputContext& input) {
+                return WidgetInput::AdjustSliderValue(input, slider_step());
+            });
         } else if (ctx->focus_target == FocusTarget::List) {
-            move_list_focus(*ctx, 1);
+            with_input([&](WidgetInput::WidgetInputContext& input) {
+                return WidgetInput::MoveListFocus(input, 1);
+            });
         } else if (ctx->focus_target == FocusTarget::Tree) {
-            if (ensure_tree_focus_index(*ctx)) {
-                auto const& rows = ctx->gallery.layout.tree.rows;
-                auto const& row = rows[static_cast<std::size_t>(ctx->focus_tree_index)];
+            if (ctx->focus_tree_index >= 0
+                && ctx->focus_tree_index < static_cast<int>(ctx->gallery.layout.tree.rows.size())) {
+                auto const& row = ctx->gallery.layout.tree.rows[static_cast<std::size_t>(ctx->focus_tree_index)];
                 if (row.expandable && !row.expanded) {
-                    tree_apply_op(*ctx, WidgetBindings::WidgetOpKind::TreeExpand);
+                    with_input([&](WidgetInput::WidgetInputContext& input) {
+                        return WidgetInput::TreeApplyOp(input, WidgetBindings::WidgetOpKind::TreeExpand);
+                    });
                 } else {
                     int child = tree_first_child_index(*ctx, ctx->focus_tree_index);
                     if (child >= 0) {
                         ctx->focus_tree_index = child;
-                        move_tree_focus(*ctx, 0);
+                        with_input([&](WidgetInput::WidgetInputContext& input) {
+                            return WidgetInput::MoveTreeFocus(input, 0);
+                        });
                     }
                 }
             }
         } else {
-            cycle_focus(*ctx, true);
+            with_input([&](WidgetInput::WidgetInputContext& input) {
+                return WidgetInput::CycleFocus(input, true);
+            });
         }
         break;
     case kKeycodeDown:
         if (ctx->focus_target == FocusTarget::Slider) {
-            adjust_slider_value(*ctx, -slider_keyboard_step(*ctx));
+            with_input([&](WidgetInput::WidgetInputContext& input) {
+                return WidgetInput::AdjustSliderValue(input, -slider_step());
+            });
         } else if (ctx->focus_target == FocusTarget::List) {
-            move_list_focus(*ctx, 1);
+            with_input([&](WidgetInput::WidgetInputContext& input) {
+                return WidgetInput::MoveListFocus(input, 1);
+            });
         } else if (ctx->focus_target == FocusTarget::Tree) {
-            move_tree_focus(*ctx, 1);
+            with_input([&](WidgetInput::WidgetInputContext& input) {
+                return WidgetInput::MoveTreeFocus(input, 1);
+            });
         } else {
-            cycle_focus(*ctx, true);
+            with_input([&](WidgetInput::WidgetInputContext& input) {
+                return WidgetInput::CycleFocus(input, true);
+            });
         }
         break;
     default:

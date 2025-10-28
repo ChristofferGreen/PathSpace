@@ -12,12 +12,14 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
 #include <optional>
 #include <span>
+#include <utility>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -626,6 +628,24 @@ auto UpdateToggleState(PathSpace& space,
                        TogglePaths const& paths,
                        ToggleState const& new_state) -> SP::Expected<bool>;
 
+struct ButtonPreviewOptions {
+    std::string authoring_root;
+    bool pulsing_highlight = true;
+};
+
+auto BuildButtonPreview(ButtonStyle const& style,
+                        ButtonState const& state,
+                        ButtonPreviewOptions const& options = {}) -> SP::UI::Scene::DrawableBucketSnapshot;
+
+struct TogglePreviewOptions {
+    std::string authoring_root;
+    bool pulsing_highlight = true;
+};
+
+auto BuildTogglePreview(ToggleStyle const& style,
+                        ToggleState const& state,
+                        TogglePreviewOptions const& options = {}) -> SP::UI::Scene::DrawableBucketSnapshot;
+
 struct SliderStyle {
     float width = 240.0f;
     float height = 32.0f;
@@ -681,6 +701,16 @@ auto CreateSlider(PathSpace& space,
 auto UpdateSliderState(PathSpace& space,
                        SliderPaths const& paths,
                        SliderState const& new_state) -> SP::Expected<bool>;
+
+struct SliderPreviewOptions {
+    std::string authoring_root;
+    bool pulsing_highlight = true;
+};
+
+auto BuildSliderPreview(SliderStyle const& style,
+                        SliderRange const& range,
+                        SliderState const& state,
+                        SliderPreviewOptions const& options = {}) -> SP::UI::Scene::DrawableBucketSnapshot;
 
 struct ListStyle {
     float width = 240.0f;
@@ -1277,6 +1307,183 @@ auto PulsingHighlightEnabled(PathSpace& space,
                              AppRootPathView appRoot) -> SP::Expected<bool>;
 
 } // namespace Focus
+
+namespace Input {
+
+struct WidgetBounds {
+    float min_x = 0.0f;
+    float min_y = 0.0f;
+    float max_x = 0.0f;
+    float max_y = 0.0f;
+
+    constexpr void normalize() {
+        if (max_x < min_x) {
+            std::swap(max_x, min_x);
+        }
+        if (max_y < min_y) {
+            std::swap(max_y, min_y);
+        }
+    }
+
+    [[nodiscard]] constexpr auto width() const -> float {
+        return std::max(0.0f, max_x - min_x);
+    }
+
+    [[nodiscard]] constexpr auto height() const -> float {
+        return std::max(0.0f, max_y - min_y);
+    }
+
+    [[nodiscard]] constexpr auto contains(float x, float y) const -> bool {
+        return x >= min_x && x <= max_x && y >= min_y && y <= max_y;
+    }
+
+    constexpr auto include(WidgetBounds const& other) -> void {
+        WidgetBounds normalized_other = other;
+        normalized_other.normalize();
+        if (!std::isfinite(min_x) || !std::isfinite(min_y)
+            || !std::isfinite(max_x) || !std::isfinite(max_y)) {
+            *this = normalized_other;
+            return;
+        }
+        min_x = std::min(min_x, normalized_other.min_x);
+        min_y = std::min(min_y, normalized_other.min_y);
+        max_x = std::max(max_x, normalized_other.max_x);
+        max_y = std::max(max_y, normalized_other.max_y);
+    }
+
+    [[nodiscard]] constexpr auto is_valid() const -> bool {
+        return std::isfinite(min_x) && std::isfinite(min_y)
+            && std::isfinite(max_x) && std::isfinite(max_y)
+            && max_x >= min_x && max_y >= min_y;
+    }
+};
+
+struct SliderLayout {
+    WidgetBounds bounds{};
+    WidgetBounds track{};
+};
+
+struct ListLayout {
+    WidgetBounds bounds{};
+    std::vector<WidgetBounds> item_bounds;
+    float content_top = 0.0f;
+    float item_height = 0.0f;
+};
+
+struct TreeRowLayout {
+    WidgetBounds bounds{};
+    WidgetBounds toggle{};
+    std::string node_id;
+    std::string label;
+    int depth = 0;
+    bool expandable = false;
+    bool expanded = false;
+    bool loading = false;
+    bool enabled = true;
+};
+
+struct TreeLayout {
+    WidgetBounds bounds{};
+    float content_top = 0.0f;
+    float row_height = 0.0f;
+    std::vector<TreeRowLayout> rows;
+};
+
+struct LayoutSnapshot {
+    WidgetBounds button{};
+    WidgetBounds button_footprint{};
+    WidgetBounds toggle{};
+    WidgetBounds toggle_footprint{};
+    std::optional<SliderLayout> slider{};
+    WidgetBounds slider_footprint{};
+    std::optional<ListLayout> list{};
+    WidgetBounds list_footprint{};
+    std::optional<TreeLayout> tree{};
+    WidgetBounds tree_footprint{};
+};
+
+enum class FocusTarget {
+    Button,
+    Toggle,
+    Slider,
+    List,
+    Tree,
+};
+
+struct FocusBindings {
+    Focus::Config* config = nullptr;
+    FocusTarget* current = nullptr;
+    std::span<FocusTarget const> order{};
+    std::optional<WidgetPath> button{};
+    std::optional<WidgetPath> toggle{};
+    std::optional<WidgetPath> slider{};
+    std::optional<WidgetPath> list{};
+    std::optional<WidgetPath> tree{};
+    int* focus_list_index = nullptr;
+    int* focus_tree_index = nullptr;
+};
+
+struct WidgetInputContext {
+    PathSpace* space = nullptr;
+    LayoutSnapshot layout{};
+    FocusBindings focus{};
+    Bindings::ButtonBinding* button_binding = nullptr;
+    Widgets::ButtonPaths const* button_paths = nullptr;
+    Widgets::ButtonState* button_state = nullptr;
+    Bindings::ToggleBinding* toggle_binding = nullptr;
+    Widgets::TogglePaths const* toggle_paths = nullptr;
+    Widgets::ToggleState* toggle_state = nullptr;
+    Bindings::SliderBinding* slider_binding = nullptr;
+    Widgets::SliderPaths const* slider_paths = nullptr;
+    Widgets::SliderState* slider_state = nullptr;
+    Widgets::SliderStyle const* slider_style = nullptr;
+    Widgets::SliderRange const* slider_range = nullptr;
+    Bindings::ListBinding* list_binding = nullptr;
+    Widgets::ListPaths const* list_paths = nullptr;
+    Widgets::ListState* list_state = nullptr;
+    Widgets::ListStyle const* list_style = nullptr;
+    std::vector<Widgets::ListItem>* list_items = nullptr;
+    Bindings::TreeBinding* tree_binding = nullptr;
+    Widgets::TreePaths const* tree_paths = nullptr;
+    Widgets::TreeState* tree_state = nullptr;
+    Widgets::TreeStyle const* tree_style = nullptr;
+    std::vector<Widgets::TreeNode>* tree_nodes = nullptr;
+    float* pointer_x = nullptr;
+    float* pointer_y = nullptr;
+    bool* pointer_down = nullptr;
+    bool* slider_dragging = nullptr;
+    std::string* tree_pointer_down_id = nullptr;
+    bool* tree_pointer_toggle = nullptr;
+};
+
+struct InputUpdate {
+    bool state_changed = false;
+    bool focus_changed = false;
+};
+
+auto HandlePointerMove(WidgetInputContext& ctx, float x, float y) -> InputUpdate;
+auto HandlePointerDown(WidgetInputContext& ctx) -> InputUpdate;
+auto HandlePointerUp(WidgetInputContext& ctx) -> InputUpdate;
+auto HandlePointerWheel(WidgetInputContext& ctx, int wheel_delta) -> InputUpdate;
+
+auto RefreshFocusTargetFromSpace(WidgetInputContext& ctx) -> bool;
+auto SetFocusTarget(WidgetInputContext& ctx,
+                    FocusTarget target,
+                    bool update_visuals = true) -> InputUpdate;
+auto CycleFocus(WidgetInputContext& ctx, bool forward) -> InputUpdate;
+auto ActivateFocusedWidget(WidgetInputContext& ctx) -> InputUpdate;
+auto MoveListFocus(WidgetInputContext& ctx, int direction) -> InputUpdate;
+auto MoveTreeFocus(WidgetInputContext& ctx, int direction) -> InputUpdate;
+auto TreeApplyOp(WidgetInputContext& ctx, Bindings::WidgetOpKind op) -> InputUpdate;
+auto AdjustSliderValue(WidgetInputContext& ctx, float delta) -> InputUpdate;
+
+auto SliderPointerForValue(WidgetInputContext const& ctx, float value) -> std::pair<float, float>;
+auto SliderThumbPosition(WidgetInputContext const& ctx, float value) -> std::pair<float, float>;
+auto ListItemCenter(WidgetInputContext const& ctx, int index) -> std::pair<float, float>;
+auto TreeRowCenter(WidgetInputContext const& ctx, int index) -> std::pair<float, float>;
+auto TreeParentIndex(WidgetInputContext const& ctx, int index) -> int;
+
+} // namespace Input
 
 struct WidgetTheme {
     ButtonStyle button{};

@@ -2673,6 +2673,121 @@ TEST_CASE("Widgets::CreateList publishes snapshot and metadata") {
     CHECK(revision->revision != 0);
 }
 
+TEST_CASE("Widgets::BuildButtonPreview provides canonical authoring ids and highlight control") {
+    Widgets::ButtonStyle style{};
+    style.width = 180.0f;
+    style.height = 48.0f;
+    style.corner_radius = 9.0f;
+
+    Widgets::ButtonState focused{};
+    focused.focused = true;
+
+    auto preview = Widgets::BuildButtonPreview(
+        style,
+        focused,
+        Widgets::ButtonPreviewOptions{
+            .authoring_root = "widgets/test/button",
+            .pulsing_highlight = true,
+        });
+
+    REQUIRE(preview.drawable_ids.size() >= 2);
+    REQUIRE(preview.authoring_map.size() >= 2);
+    CHECK(preview.authoring_map.front().authoring_node_id
+          == "widgets/test/button/authoring/button/background");
+    CHECK(preview.authoring_map.back().authoring_node_id
+          == "widgets/test/button/authoring/focus/highlight");
+    REQUIRE_FALSE(preview.pipeline_flags.empty());
+    CHECK(preview.pipeline_flags.back() == SP::UI::PipelineFlags::HighlightPulse);
+    CHECK(preview.bounds_boxes.front().max[0] == doctest::Approx(style.width));
+    CHECK(preview.bounds_boxes.front().max[1] == doctest::Approx(style.height));
+
+    auto no_pulse = Widgets::BuildButtonPreview(
+        style,
+        focused,
+        Widgets::ButtonPreviewOptions{
+            .authoring_root = "widgets/test/button",
+            .pulsing_highlight = false,
+        });
+    REQUIRE_FALSE(no_pulse.pipeline_flags.empty());
+    CHECK(no_pulse.pipeline_flags.back() == 0u);
+}
+
+TEST_CASE("Widgets::BuildTogglePreview emits drawable ordering and highlight metadata") {
+    Widgets::ToggleStyle style{};
+    style.width = 72.0f;
+    style.height = 36.0f;
+
+    Widgets::ToggleState state{};
+    state.checked = true;
+    state.focused = true;
+    state.hovered = true;
+
+    auto preview = Widgets::BuildTogglePreview(
+        style,
+        state,
+        Widgets::TogglePreviewOptions{
+            .authoring_root = "widgets/test/toggle",
+            .pulsing_highlight = false,
+        });
+
+    REQUIRE(preview.drawable_ids.size() == 3);
+    CHECK(preview.bounds_boxes.front().min[0] == doctest::Approx(0.0f));
+    CHECK(preview.bounds_boxes.front().max[0] == doctest::Approx(style.width));
+    REQUIRE(preview.authoring_map.size() == 3);
+    CHECK(preview.authoring_map[0].authoring_node_id
+          == "widgets/test/toggle/authoring/toggle/track");
+    CHECK(preview.authoring_map[1].authoring_node_id
+          == "widgets/test/toggle/authoring/toggle/thumb");
+    CHECK(preview.authoring_map[2].authoring_node_id
+          == "widgets/test/toggle/authoring/focus/highlight");
+    REQUIRE_FALSE(preview.pipeline_flags.empty());
+    CHECK(preview.pipeline_flags.back() == 0u);
+}
+
+TEST_CASE("Widgets::BuildSliderPreview clamps range and records fill geometry") {
+    Widgets::SliderStyle style{};
+    style.width = 200.0f;
+    style.height = 32.0f;
+    style.track_height = 8.0f;
+    style.thumb_radius = 10.0f;
+
+    Widgets::SliderRange range{};
+    range.minimum = -50.0f;
+    range.maximum = 50.0f;
+    range.step = 5.0f;
+
+    Widgets::SliderState state{};
+    state.value = 17.0f;
+    state.focused = true;
+
+    auto preview = Widgets::BuildSliderPreview(
+        style,
+        range,
+        state,
+        Widgets::SliderPreviewOptions{
+            .authoring_root = "widgets/test/slider",
+            .pulsing_highlight = false,
+        });
+
+    REQUIRE(preview.drawable_ids.size() == 4);
+    REQUIRE(preview.bounds_boxes.size() >= 3);
+    float clamped_value = 15.0f; // step should clamp to nearest 5
+    float progress = (clamped_value - range.minimum) / (range.maximum - range.minimum);
+    CHECK(preview.bounds_boxes[1].max[0]
+          == doctest::Approx(progress * style.width).epsilon(1e-3f));
+    REQUIRE(preview.authoring_map.size() == 4);
+    CHECK(preview.authoring_map[0].authoring_node_id
+          == "widgets/test/slider/authoring/slider/track");
+    CHECK(preview.authoring_map[1].authoring_node_id
+          == "widgets/test/slider/authoring/slider/fill");
+    CHECK(preview.authoring_map[2].authoring_node_id
+          == "widgets/test/slider/authoring/slider/thumb");
+    CHECK(preview.authoring_map[3].authoring_node_id
+          == "widgets/test/slider/authoring/focus/highlight");
+    REQUIRE_FALSE(preview.pipeline_flags.empty());
+    CHECK(preview.pipeline_flags.back() == 0u);
+}
+
 TEST_CASE("Widgets::BuildListPreview provides layout geometry") {
     Widgets::ListStyle style{};
     style.width = 120.0f;
