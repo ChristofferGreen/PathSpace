@@ -2351,40 +2351,32 @@ struct ScreenshotScriptState {
 
 static void process_widget_actions(WidgetsExampleContext& ctx) {
     auto process_root = [&](WidgetPath const& root) {
-        auto queue = WidgetReducers::WidgetOpsQueue(root);
-        auto reduced = WidgetReducers::ReducePending(*ctx.space,
-                                                    ConcretePathStringView{queue.getPath()});
-        if (!reduced) {
-            std::cerr << "widgets_example: failed to reduce widget ops for " << root.getPath()
-                      << ": " << reduced.error().message.value_or("unknown error") << "\n";
+        auto processed = WidgetReducers::ProcessPendingActions(*ctx.space, root);
+        if (!processed) {
+            std::cerr << "widgets_example: failed to process widget actions for " << root.getPath()
+                      << ": " << processed.error().message.value_or("unknown error") << "\n";
             return;
         }
-        if (reduced->empty()) {
+        if (processed->actions.empty()) {
             return;
         }
-        auto actions_queue = WidgetReducers::DefaultActionsQueue(root);
-        auto span = std::span<const WidgetReducers::WidgetAction>(reduced->data(), reduced->size());
-        auto publish = WidgetReducers::PublishActions(*ctx.space,
-                                                      ConcretePathStringView{actions_queue.getPath()},
-                                                      span);
-        if (!publish) {
-            std::cerr << "widgets_example: failed to publish widget actions for " << root.getPath()
-                      << ": " << publish.error().message.value_or("unknown error") << "\n";
-            return;
+
+        for (auto const& action : processed->actions) {
+            std::cout << "[widgets_example] action widget=" << action.widget_path
+                      << " kind=" << static_cast<int>(action.kind)
+                      << " value=" << action.analog_value << std::endl;
         }
+
         while (true) {
-            auto action = ctx.space->take<WidgetReducers::WidgetAction, std::string>(actions_queue.getPath());
+            auto action = ctx.space->take<WidgetReducers::WidgetAction, std::string>(processed->actions_queue.getPath());
             if (!action) {
                 break;
             }
-            std::cout << "[widgets_example] action widget=" << action->widget_path
-                      << " kind=" << static_cast<int>(action->kind)
-                      << " value=" << action->analog_value << std::endl;
         }
     };
 
     process_root(ctx.button_paths.root);
-   process_root(ctx.toggle_paths.root);
+    process_root(ctx.toggle_paths.root);
     process_root(ctx.slider_paths.root);
     process_root(ctx.list_paths.root);
     process_root(ctx.stack_paths.root);

@@ -4299,6 +4299,75 @@ TEST_CASE("Widgets::Reducers::ReducePending routes widget ops to action queues")
     CHECK(storedListAction->widget_path == list->root.getPath());
 }
 
+TEST_CASE("Widgets::Reducers::ProcessPendingActions drains ops and publishes actions") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{ .name = "process_renderer", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc{};
+    desc.size_px = {320, 200};
+    desc.progressive_tile_size_px = 32;
+
+    SurfaceParams surfaceParams{ .name = "process_surface", .desc = desc, .renderer = "renderers/process_renderer" };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    auto target = Renderer::ResolveTargetBase(fx.space,
+                                              fx.root_view(),
+                                              *renderer,
+                                              "targets/surfaces/process_surface");
+    REQUIRE(target);
+
+    auto buttonParams = Widgets::MakeButtonParams("process_button", "Process").Build();
+    auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
+    REQUIRE(button);
+
+    auto style = fx.space.read<Widgets::ButtonStyle, std::string>(std::string(button->root.getPath()) + "/meta/style");
+    REQUIRE(style);
+    auto footprint = SP::UI::Builders::MakeDirtyRectHint(0.0f, 0.0f, style->width, style->height);
+
+    auto binding = WidgetBindings::CreateButtonBinding(fx.space,
+                                                       fx.root_view(),
+                                                       *button,
+                                                       SP::ConcretePathStringView{target->getPath()},
+                                                       footprint);
+    REQUIRE(binding);
+
+    auto pointer = WidgetBindings::PointerInfo::Make(12.0f, 24.0f).WithInside(true);
+    auto pressed = Widgets::MakeButtonState()
+                       .WithPressed(true)
+                       .WithHovered(true)
+                       .Build();
+
+    auto dispatched = WidgetBindings::DispatchButton(fx.space,
+                                                     *binding,
+                                                     pressed,
+                                                     WidgetBindings::WidgetOpKind::Press,
+                                                     pointer);
+    REQUIRE(dispatched);
+    CHECK(*dispatched);
+
+    auto processed = WidgetReducers::ProcessPendingActions(fx.space, button->root);
+    REQUIRE(processed);
+    CHECK(processed->ops_queue.getPath() == WidgetReducers::WidgetOpsQueue(button->root).getPath());
+    CHECK(processed->actions_queue.getPath()
+          == WidgetReducers::DefaultActionsQueue(button->root).getPath());
+    REQUIRE(processed->actions.size() == 1);
+
+    auto const& action = processed->actions.front();
+    CHECK(action.kind == WidgetBindings::WidgetOpKind::Press);
+    CHECK(action.widget_path == button->root.getPath());
+    CHECK(action.pointer.inside);
+    CHECK(action.analog_value == doctest::Approx(1.0f));
+
+    auto stored = fx.space.take<WidgetReducers::WidgetAction, std::string>(processed->actions_queue.getPath());
+    REQUIRE(stored);
+    CHECK(stored->widget_path == button->root.getPath());
+    CHECK(stored->analog_value == doctest::Approx(1.0f));
+}
+
 TEST_CASE("Html::Asset vectors survive PathSpace round-trip") {
     BuildersFixture fx;
 

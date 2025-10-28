@@ -97,4 +97,32 @@ auto PublishActions(PathSpace& space,
     return {};
 }
 
+auto ProcessPendingActions(PathSpace& space,
+                           WidgetPath const& widget_root,
+                           std::size_t max_actions) -> SP::Expected<ProcessActionsResult> {
+    ProcessActionsResult result{};
+    result.ops_queue = WidgetOpsQueue(widget_root);
+    result.actions_queue = DefaultActionsQueue(widget_root);
+
+    auto reduced = ReducePending(space,
+                                 ConcretePathView{result.ops_queue.getPath()},
+                                 max_actions);
+    if (!reduced) {
+        return std::unexpected(reduced.error());
+    }
+
+    result.actions = std::move(*reduced);
+
+    if (!result.actions.empty()) {
+        auto publish = PublishActions(space,
+                                      ConcretePathView{result.actions_queue.getPath()},
+                                      std::span<const WidgetAction>{result.actions.data(), result.actions.size()});
+        if (!publish) {
+            return std::unexpected(publish.error());
+        }
+    }
+
+    return result;
+}
+
 } // namespace SP::UI::Builders::Widgets::Reducers

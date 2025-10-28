@@ -2158,6 +2158,12 @@ struct WidgetAction {
     std::uint64_t timestamp_ns = 0;
 };
 
+struct ProcessActionsResult {
+    ConcretePath ops_queue;
+    ConcretePath actions_queue;
+    std::vector<WidgetAction> actions;
+};
+
 auto WidgetOpsQueue(WidgetPath const& widget_root) -> ConcretePath;
 
 auto DefaultActionsQueue(WidgetPath const& widget_root) -> ConcretePath;
@@ -2169,6 +2175,10 @@ auto ReducePending(PathSpace& space,
 auto PublishActions(PathSpace& space,
                     ConcretePathView actions_queue,
                     std::span<WidgetAction const> actions) -> SP::Expected<void>;
+
+auto ProcessPendingActions(PathSpace& space,
+                           WidgetPath const& widget_root,
+                           std::size_t max_actions = std::numeric_limits<std::size_t>::max()) -> SP::Expected<ProcessActionsResult>;
 
 } // namespace Reducers
 
