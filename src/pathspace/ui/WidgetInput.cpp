@@ -105,17 +105,19 @@ struct ContextAdapter {
     WidgetInputContext& ctx;
 };
 
-auto make_pointer_info(WidgetInputContext const& ctx, bool inside) -> Bindings::PointerInfo {
+auto make_pointer_info(float x, float y, bool inside) -> Bindings::PointerInfo {
     Bindings::PointerInfo info{};
-    if (ctx.pointer_x) {
-        info.scene_x = *ctx.pointer_x;
-    }
-    if (ctx.pointer_y) {
-        info.scene_y = *ctx.pointer_y;
-    }
+    info.scene_x = x;
+    info.scene_y = y;
     info.inside = inside;
     info.primary = true;
     return info;
+}
+
+auto make_pointer_info(WidgetInputContext const& ctx, bool inside) -> Bindings::PointerInfo {
+    float x = ctx.pointer_x ? *ctx.pointer_x : 0.0f;
+    float y = ctx.pointer_y ? *ctx.pointer_y : 0.0f;
+    return make_pointer_info(x, y, inside);
 }
 
 auto read_button_state(ContextAdapter& c) -> void {
@@ -161,8 +163,7 @@ auto read_tree_state(ContextAdapter& c) -> void {
 auto dispatch_button(ContextAdapter& c,
                      Widgets::ButtonState const& desired,
                      Bindings::WidgetOpKind kind,
-                     bool inside) -> bool {
-    auto pointer = make_pointer_info(c.ctx, inside);
+                     Bindings::PointerInfo const& pointer) -> bool {
     auto result = Bindings::DispatchButton(c.space(),
                                            c.button_binding(),
                                            desired,
@@ -182,8 +183,7 @@ auto dispatch_button(ContextAdapter& c,
 auto dispatch_toggle(ContextAdapter& c,
                      Widgets::ToggleState const& desired,
                      Bindings::WidgetOpKind kind,
-                     bool inside) -> bool {
-    auto pointer = make_pointer_info(c.ctx, inside);
+                     Bindings::PointerInfo const& pointer) -> bool {
     auto result = Bindings::DispatchToggle(c.space(),
                                            c.toggle_binding(),
                                            desired,
@@ -203,8 +203,7 @@ auto dispatch_toggle(ContextAdapter& c,
 auto dispatch_slider(ContextAdapter& c,
                      Widgets::SliderState const& desired,
                      Bindings::WidgetOpKind kind,
-                     bool inside) -> bool {
-    auto pointer = make_pointer_info(c.ctx, inside);
+                     Bindings::PointerInfo const& pointer) -> bool {
     auto result = Bindings::DispatchSlider(c.space(),
                                            c.slider_binding(),
                                            desired,
@@ -224,10 +223,9 @@ auto dispatch_slider(ContextAdapter& c,
 auto dispatch_list(ContextAdapter& c,
                    Widgets::ListState const& desired,
                    Bindings::WidgetOpKind kind,
-                   bool inside,
+                   Bindings::PointerInfo const& pointer,
                    std::int32_t item_index,
                    float scroll_delta) -> bool {
-    auto pointer = make_pointer_info(c.ctx, inside);
     auto result = Bindings::DispatchList(c.space(),
                                          c.list_binding(),
                                          desired,
@@ -250,9 +248,8 @@ auto dispatch_tree(ContextAdapter& c,
                    Widgets::TreeState const& desired,
                    Bindings::WidgetOpKind kind,
                    std::string_view node_id,
-                   bool inside,
+                   Bindings::PointerInfo const& pointer,
                    float scroll_delta) -> bool {
-    auto pointer = make_pointer_info(c.ctx, inside);
     auto result = Bindings::DispatchTree(c.space(),
                                          c.tree_binding(),
                                          desired,
@@ -497,26 +494,11 @@ auto make_pointer_info(ContextAdapter const& c, bool inside) -> Bindings::Pointe
     return make_pointer_info(c.ctx, inside);
 }
 
-struct PointerOverride {
-    ContextAdapter& adapter;
-    float previous_x;
-    float previous_y;
-
-    PointerOverride(ContextAdapter& c, float x, float y)
-        : adapter(c),
-          previous_x(c.pointer_x()),
-          previous_y(c.pointer_y()) {
-        c.pointer_x() = x;
-        c.pointer_y() = y;
-    }
-
-    ~PointerOverride() {
-        adapter.pointer_x() = previous_x;
-        adapter.pointer_y() = previous_y;
-    }
-};
-
 } // namespace
+
+auto ProgrammaticPointer(float scene_x, float scene_y, bool inside) -> Bindings::PointerInfo {
+    return make_pointer_info(scene_x, scene_y, inside);
+}
 
 auto SliderPointerForValue(WidgetInputContext const& ctx, float value) -> std::pair<float, float> {
     WidgetInputContext copy = ctx;
@@ -619,10 +601,13 @@ auto ActivateFocusedWidget(WidgetInputContext& ctx) -> InputUpdate {
         auto const& bounds = c.layout().button;
         float cx = bounds.min_x + bounds.width() * 0.5f;
         float cy = bounds.min_y + bounds.height() * 0.5f;
-        PointerOverride pointer(c, cx, cy);
+        auto pointer = ProgrammaticPointer(cx, cy, true);
         auto desired = c.button_state();
         desired.hovered = true;
-        if (dispatch_button(c, desired, Bindings::WidgetOpKind::Activate, true)) {
+        if (dispatch_button(c,
+                            desired,
+                            Bindings::WidgetOpKind::Activate,
+                            pointer)) {
             update.state_changed = true;
         }
         break;
@@ -631,11 +616,14 @@ auto ActivateFocusedWidget(WidgetInputContext& ctx) -> InputUpdate {
         auto const& bounds = c.layout().toggle;
         float cx = bounds.min_x + bounds.width() * 0.5f;
         float cy = bounds.min_y + bounds.height() * 0.5f;
-        PointerOverride pointer(c, cx, cy);
+        auto pointer = ProgrammaticPointer(cx, cy, true);
         auto desired = c.toggle_state();
         desired.hovered = true;
         desired.checked = !desired.checked;
-        if (dispatch_toggle(c, desired, Bindings::WidgetOpKind::Toggle, true)) {
+        if (dispatch_toggle(c,
+                            desired,
+                            Bindings::WidgetOpKind::Toggle,
+                            pointer)) {
             update.state_changed = true;
         }
         break;
@@ -653,11 +641,11 @@ auto ActivateFocusedWidget(WidgetInputContext& ctx) -> InputUpdate {
         desired.hovered_index = c.focus_list_index();
         desired.selected_index = c.focus_list_index();
         auto center = list_item_center(c, c.focus_list_index());
-        PointerOverride pointer(c, center.first, center.second);
+        auto pointer = ProgrammaticPointer(center.first, center.second, true);
         if (dispatch_list(c,
                           desired,
                           Bindings::WidgetOpKind::ListActivate,
-                          true,
+                          pointer,
                           c.focus_list_index(),
                           0.0f)) {
             update.state_changed = true;
@@ -691,14 +679,14 @@ auto MoveListFocus(WidgetInputContext& ctx, int direction) -> InputUpdate {
     c.focus_list_index() = std::clamp(c.focus_list_index() + direction, 0, max_index);
 
     auto desired = c.list_state();
-    desired.hovered_index = c.focus_list_index();
-    desired.selected_index = c.focus_list_index();
-    auto center = list_item_center(c, c.focus_list_index());
-    PointerOverride pointer(c, center.first, center.second);
+   desired.hovered_index = c.focus_list_index();
+   desired.selected_index = c.focus_list_index();
+   auto center = list_item_center(c, c.focus_list_index());
+    auto pointer = ProgrammaticPointer(center.first, center.second, true);
     if (dispatch_list(c,
                       desired,
                       Bindings::WidgetOpKind::ListSelect,
-                      true,
+                      pointer,
                       c.focus_list_index(),
                       0.0f)) {
         update.state_changed = true;
@@ -737,8 +725,13 @@ auto TreeApplyOp(WidgetInputContext& ctx, Bindings::WidgetOpKind op) -> InputUpd
     }
 
     auto center = tree_row_center(c, c.focus_tree_index());
-    PointerOverride pointer(c, center.first, center.second);
-    if (dispatch_tree(c, desired, op, row.node_id, true, 0.0f)) {
+    auto pointer = ProgrammaticPointer(center.first, center.second, true);
+    if (dispatch_tree(c,
+                      desired,
+                      op,
+                      row.node_id,
+                      pointer,
+                      0.0f)) {
         update.state_changed = true;
     }
     return update;
@@ -767,12 +760,12 @@ auto MoveTreeFocus(WidgetInputContext& ctx, int direction) -> InputUpdate {
     desired.hovered_id = row.node_id;
     desired.selected_id = row.node_id;
     auto center = tree_row_center(c, c.focus_tree_index());
-    PointerOverride pointer(c, center.first, center.second);
+    auto pointer = ProgrammaticPointer(center.first, center.second, true);
     if (dispatch_tree(c,
                       desired,
                       Bindings::WidgetOpKind::TreeSelect,
                       row.node_id,
-                      true,
+                      pointer,
                       0.0f)) {
         update.state_changed = true;
     }
@@ -799,10 +792,10 @@ auto AdjustSliderValue(WidgetInputContext& ctx, float delta) -> InputUpdate {
     }
 
     auto thumb = slider_thumb_position(c, desired.value);
-    PointerOverride pointer(c, thumb.first, thumb.second);
+    auto pointer = ProgrammaticPointer(thumb.first, thumb.second, true);
     bool changed = false;
-    changed |= dispatch_slider(c, desired, Bindings::WidgetOpKind::SliderUpdate, true);
-    changed |= dispatch_slider(c, desired, Bindings::WidgetOpKind::SliderCommit, true);
+    changed |= dispatch_slider(c, desired, Bindings::WidgetOpKind::SliderUpdate, pointer);
+    changed |= dispatch_slider(c, desired, Bindings::WidgetOpKind::SliderCommit, pointer);
     update.state_changed = changed;
     return update;
 }
@@ -825,14 +818,16 @@ auto HandlePointerMove(WidgetInputContext& ctx, float x, float y) -> InputUpdate
             desired.hovered = inside_button;
             auto op = inside_button ? Bindings::WidgetOpKind::HoverEnter
                                     : Bindings::WidgetOpKind::HoverExit;
-            if (dispatch_button(c, desired, op, inside_button)) {
+            auto pointer = make_pointer_info(c.ctx, inside_button);
+            if (dispatch_button(c, desired, op, pointer)) {
                 changed = true;
             }
         }
     } else if (c.button_state().pressed && !inside_button && c.button_state().hovered) {
         auto desired = c.button_state();
         desired.hovered = false;
-        if (dispatch_button(c, desired, Bindings::WidgetOpKind::HoverExit, false)) {
+        auto pointer = make_pointer_info(c.ctx, false);
+        if (dispatch_button(c, desired, Bindings::WidgetOpKind::HoverExit, pointer)) {
             changed = true;
         }
     }
@@ -844,7 +839,8 @@ auto HandlePointerMove(WidgetInputContext& ctx, float x, float y) -> InputUpdate
         desired.hovered = inside_toggle;
         auto op = inside_toggle ? Bindings::WidgetOpKind::HoverEnter
                                 : Bindings::WidgetOpKind::HoverExit;
-        if (dispatch_toggle(c, desired, op, inside_toggle)) {
+        auto pointer = make_pointer_info(c.ctx, inside_toggle);
+        if (dispatch_toggle(c, desired, op, pointer)) {
             changed = true;
         }
     }
@@ -857,10 +853,11 @@ auto HandlePointerMove(WidgetInputContext& ctx, float x, float y) -> InputUpdate
         if (hover_index != c.list_state().hovered_index) {
             auto desired = c.list_state();
             desired.hovered_index = hover_index;
+            auto pointer = make_pointer_info(c.ctx, inside_list);
             if (dispatch_list(c,
                               desired,
                               Bindings::WidgetOpKind::ListHover,
-                              inside_list,
+                              pointer,
                               hover_index,
                               0.0f)) {
                 changed = true;
@@ -884,11 +881,12 @@ auto HandlePointerMove(WidgetInputContext& ctx, float x, float y) -> InputUpdate
         if (hovered_id != c.tree_state().hovered_id) {
             auto desired = c.tree_state();
             desired.hovered_id = hovered_id;
+            auto pointer = make_pointer_info(c.ctx, inside_tree);
             if (dispatch_tree(c,
                               desired,
                               Bindings::WidgetOpKind::TreeHover,
                               hovered_id,
-                              inside_tree,
+                              pointer,
                               0.0f)) {
                 changed = true;
             }
@@ -907,7 +905,11 @@ auto HandlePointerMove(WidgetInputContext& ctx, float x, float y) -> InputUpdate
             desired.dragging = true;
             desired.hovered = inside_slider;
             desired.value = slider_value_from_position(c, x);
-            if (dispatch_slider(c, desired, Bindings::WidgetOpKind::SliderUpdate, desired.hovered)) {
+            auto pointer = make_pointer_info(c.ctx, desired.hovered);
+            if (dispatch_slider(c,
+                                desired,
+                                Bindings::WidgetOpKind::SliderUpdate,
+                                pointer)) {
                 changed = true;
             }
         } else if (inside_slider != c.slider_state().hovered) {
@@ -915,7 +917,8 @@ auto HandlePointerMove(WidgetInputContext& ctx, float x, float y) -> InputUpdate
             desired.hovered = inside_slider;
             auto op = inside_slider ? Bindings::WidgetOpKind::HoverEnter
                                     : Bindings::WidgetOpKind::HoverExit;
-            if (dispatch_slider(c, desired, op, inside_slider)) {
+            auto pointer = make_pointer_info(c.ctx, inside_slider);
+            if (dispatch_slider(c, desired, op, pointer)) {
                 changed = true;
             }
         }
@@ -940,7 +943,8 @@ auto HandlePointerDown(WidgetInputContext& ctx) -> InputUpdate {
         auto desired = c.button_state();
         desired.hovered = true;
         desired.pressed = true;
-        if (dispatch_button(c, desired, Bindings::WidgetOpKind::Press, true)) {
+        auto pointer = make_pointer_info(c.ctx, true);
+        if (dispatch_button(c, desired, Bindings::WidgetOpKind::Press, pointer)) {
             changed = true;
         }
     }
@@ -948,7 +952,8 @@ auto HandlePointerDown(WidgetInputContext& ctx) -> InputUpdate {
     if (layout.toggle.contains(c.pointer_x(), c.pointer_y())) {
         auto desired = c.toggle_state();
         desired.hovered = true;
-        if (dispatch_toggle(c, desired, Bindings::WidgetOpKind::Press, true)) {
+        auto pointer = make_pointer_info(c.ctx, true);
+        if (dispatch_toggle(c, desired, Bindings::WidgetOpKind::Press, pointer)) {
             changed = true;
         }
     }
@@ -959,7 +964,8 @@ auto HandlePointerDown(WidgetInputContext& ctx) -> InputUpdate {
         desired.dragging = true;
         desired.hovered = true;
         desired.value = slider_value_from_position(c, c.pointer_x());
-        if (dispatch_slider(c, desired, Bindings::WidgetOpKind::SliderBegin, true)) {
+        auto pointer = make_pointer_info(c.ctx, true);
+        if (dispatch_slider(c, desired, Bindings::WidgetOpKind::SliderBegin, pointer)) {
             changed = true;
         }
     }
@@ -968,10 +974,11 @@ auto HandlePointerDown(WidgetInputContext& ctx) -> InputUpdate {
         int index = list_index_from_position(c, c.pointer_y());
         auto desired = c.list_state();
         desired.hovered_index = index;
+        auto pointer = make_pointer_info(c.ctx, true);
         if (dispatch_list(c,
                           desired,
                           Bindings::WidgetOpKind::ListHover,
-                          true,
+                          pointer,
                           index,
                           0.0f)) {
             changed = true;
@@ -992,11 +999,12 @@ auto HandlePointerDown(WidgetInputContext& ctx) -> InputUpdate {
                 desired.hovered_id = row.node_id;
                 c.tree_pointer_down_id() = row.node_id;
                 c.tree_pointer_toggle() = tree_toggle_contains(c, index, c.pointer_x(), c.pointer_y());
+                auto pointer = make_pointer_info(c.ctx, true);
                 if (dispatch_tree(c,
                                   desired,
                                   Bindings::WidgetOpKind::TreeHover,
                                   row.node_id,
-                                  true,
+                                  pointer,
                                   0.0f)) {
                     changed = true;
                 }
@@ -1024,11 +1032,19 @@ auto HandlePointerUp(WidgetInputContext& ctx) -> InputUpdate {
         auto desired = c.button_state();
         desired.pressed = false;
         desired.hovered = inside_button;
-        if (dispatch_button(c, desired, Bindings::WidgetOpKind::Release, inside_button)) {
+        auto release_pointer = make_pointer_info(c.ctx, inside_button);
+        if (dispatch_button(c,
+                            desired,
+                            Bindings::WidgetOpKind::Release,
+                            release_pointer)) {
             changed = true;
         }
         if (inside_button) {
-            if (dispatch_button(c, desired, Bindings::WidgetOpKind::Activate, true)) {
+            auto activate_pointer = make_pointer_info(c.ctx, true);
+            if (dispatch_button(c,
+                                desired,
+                                Bindings::WidgetOpKind::Activate,
+                                activate_pointer)) {
                 changed = true;
             }
         }
@@ -1039,7 +1055,11 @@ auto HandlePointerUp(WidgetInputContext& ctx) -> InputUpdate {
         auto desired = c.toggle_state();
         desired.hovered = true;
         desired.checked = !desired.checked;
-        if (dispatch_toggle(c, desired, Bindings::WidgetOpKind::Toggle, true)) {
+        auto pointer = make_pointer_info(c.ctx, true);
+        if (dispatch_toggle(c,
+                            desired,
+                            Bindings::WidgetOpKind::Toggle,
+                            pointer)) {
             changed = true;
         }
     }
@@ -1052,7 +1072,11 @@ auto HandlePointerUp(WidgetInputContext& ctx) -> InputUpdate {
             desired.dragging = false;
             desired.hovered = inside_slider;
             desired.value = slider_value_from_position(c, c.pointer_x());
-            if (dispatch_slider(c, desired, Bindings::WidgetOpKind::SliderCommit, inside_slider)) {
+            auto pointer = make_pointer_info(c.ctx, inside_slider);
+            if (dispatch_slider(c,
+                                desired,
+                                Bindings::WidgetOpKind::SliderCommit,
+                                pointer)) {
                 changed = true;
             }
         }
@@ -1063,10 +1087,11 @@ auto HandlePointerUp(WidgetInputContext& ctx) -> InputUpdate {
         if (index >= 0) {
             auto desired = c.list_state();
             desired.selected_index = index;
+            auto pointer = make_pointer_info(c.ctx, true);
             if (dispatch_list(c,
                               desired,
                               Bindings::WidgetOpKind::ListSelect,
-                              true,
+                              pointer,
                               index,
                               0.0f)) {
                 changed = true;
@@ -1074,7 +1099,7 @@ auto HandlePointerUp(WidgetInputContext& ctx) -> InputUpdate {
             if (dispatch_list(c,
                               desired,
                               Bindings::WidgetOpKind::ListActivate,
-                              true,
+                              pointer,
                               index,
                               0.0f)) {
                 changed = true;
@@ -1094,20 +1119,22 @@ auto HandlePointerUp(WidgetInputContext& ctx) -> InputUpdate {
                 desired.hovered_id = row.node_id;
                 desired.selected_id = row.node_id;
                 if (c.tree_pointer_toggle()) {
+                    auto pointer = make_pointer_info(c.ctx, true);
                     if (dispatch_tree(c,
                                       desired,
                                       Bindings::WidgetOpKind::TreeToggle,
                                       row.node_id,
-                                      true,
+                                      pointer,
                                       0.0f)) {
                         changed = true;
                     }
                 }
+                auto pointer = make_pointer_info(c.ctx, true);
                 if (dispatch_tree(c,
                                   desired,
                                   Bindings::WidgetOpKind::TreeSelect,
                                   row.node_id,
-                                  true,
+                                  pointer,
                                   0.0f)) {
                     changed = true;
                 }
@@ -1141,10 +1168,11 @@ auto HandlePointerWheel(WidgetInputContext& ctx, int wheel_delta) -> InputUpdate
         auto const& list_layout = *c.ctx.layout.list;
         float scroll_pixels = static_cast<float>(-wheel_delta) * (list_layout.item_height * 0.25f);
         auto desired = c.list_state();
+        auto pointer = make_pointer_info(c.ctx, true);
         if (dispatch_list(c,
                           desired,
                           Bindings::WidgetOpKind::ListScroll,
-                          true,
+                          pointer,
                           c.list_state().hovered_index,
                           scroll_pixels)) {
             changed = true;
@@ -1155,11 +1183,12 @@ auto HandlePointerWheel(WidgetInputContext& ctx, int wheel_delta) -> InputUpdate
         auto const& tree_layout = *c.ctx.layout.tree;
         float scroll_pixels = static_cast<float>(-wheel_delta) * (tree_layout.row_height * 0.25f);
         auto desired = c.tree_state();
+        auto pointer = make_pointer_info(c.ctx, true);
         if (dispatch_tree(c,
                           desired,
                           Bindings::WidgetOpKind::TreeScroll,
                           c.tree_state().hovered_id,
-                          true,
+                          pointer,
                           scroll_pixels)) {
             changed = true;
         }

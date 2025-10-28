@@ -1613,6 +1613,9 @@ auto MoveTreeFocus(WidgetInputContext& ctx, int direction) -> InputUpdate;
 auto TreeApplyOp(WidgetInputContext& ctx, Bindings::WidgetOpKind op) -> InputUpdate;
 auto AdjustSliderValue(WidgetInputContext& ctx, float delta) -> InputUpdate;
 
+// Build pointer metadata for keyboard/gamepad driven widget interactions.
+auto ProgrammaticPointer(float scene_x, float scene_y, bool inside = true) -> Bindings::PointerInfo;
+
 auto SliderPointerForValue(WidgetInputContext const& ctx, float value) -> std::pair<float, float>;
 auto SliderThumbPosition(WidgetInputContext const& ctx, float value) -> std::pair<float, float>;
 auto ListItemCenter(WidgetInputContext const& ctx, int index) -> std::pair<float, float>;
