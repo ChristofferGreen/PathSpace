@@ -3992,6 +3992,73 @@ TEST_CASE("Widget focus shift marks previous footprint dirty") {
 
     CHECK(button_covered);
     CHECK(toggle_covered);
+
+    float focus_padding = WidgetInput::FocusHighlightPadding();
+    float surface_width = static_cast<float>(desc.size_px.width);
+    float surface_height = static_cast<float>(desc.size_px.height);
+    auto expanded_rect = [&](DirtyRectHint const& base) {
+        DirtyRectHint expanded{};
+        expanded.min_x = std::max(0.0f, base.min_x - focus_padding);
+        expanded.min_y = std::max(0.0f, base.min_y - focus_padding);
+        expanded.max_x = std::min(surface_width, base.max_x + focus_padding);
+        expanded.max_y = std::min(surface_height, base.max_y + focus_padding);
+        return expanded;
+    };
+    DirtyRectHint expected_button = expanded_rect(buttonFootprint);
+    DirtyRectHint expected_toggle = expanded_rect(toggleFootprint);
+
+    std::ostringstream hints_stream;
+    hints_stream << "[";
+    for (std::size_t i = 0; i < hints->size(); ++i) {
+        auto const& hint = (*hints)[i];
+        hints_stream << "[" << hint.min_x << ", " << hint.min_y << ", " << hint.max_x << ", " << hint.max_y << "]";
+        if (i + 1 < hints->size()) {
+            hints_stream << ", ";
+        }
+    }
+    hints_stream << "]";
+    auto hints_str = hints_stream.str();
+
+    auto covers_any = [&](float x, float y) {
+        return std::any_of(hints->begin(), hints->end(), [&](DirtyRectHint const& hint) {
+            return covers_point(hint, x, y);
+        });
+    };
+
+    auto highlight_edges_covered = [&](DirtyRectHint const& expected) {
+        constexpr float kEdgeEpsilon = 0.25f;
+        float x_center = (expected.min_x + expected.max_x) * 0.5f;
+        float y_center = (expected.min_y + expected.max_y) * 0.5f;
+        auto sample_x = [&](float edge) {
+            if (expected.max_x - expected.min_x <= 2.0f * kEdgeEpsilon) {
+                return x_center;
+            }
+            return std::clamp(edge, expected.min_x + kEdgeEpsilon, expected.max_x - kEdgeEpsilon);
+        };
+        auto sample_y = [&](float edge) {
+            if (expected.max_y - expected.min_y <= 2.0f * kEdgeEpsilon) {
+                return y_center;
+            }
+            return std::clamp(edge, expected.min_y + kEdgeEpsilon, expected.max_y - kEdgeEpsilon);
+        };
+        float x_left = sample_x(expected.min_x + kEdgeEpsilon);
+        float x_right = sample_x(expected.max_x - kEdgeEpsilon);
+        float y_top = sample_y(expected.min_y + kEdgeEpsilon);
+        float y_bottom = sample_y(expected.max_y - kEdgeEpsilon);
+
+        bool horizontal = covers_any(x_left, y_center) && covers_any(x_right, y_center);
+        bool vertical = covers_any(x_center, y_top) && covers_any(x_center, y_bottom);
+        return horizontal && vertical;
+    };
+
+    CHECK_MESSAGE(highlight_edges_covered(expected_button),
+                  "dirty hints " << hints_str << " expected button highlight coverage ["
+                                  << expected_button.min_x << ", " << expected_button.min_y << ", "
+                                  << expected_button.max_x << ", " << expected_button.max_y << "]");
+    CHECK_MESSAGE(highlight_edges_covered(expected_toggle),
+                  "dirty hints " << hints_str << " expected toggle highlight coverage ["
+                                  << expected_toggle.min_x << ", " << expected_toggle.min_y << ", "
+                                  << expected_toggle.max_x << ", " << expected_toggle.max_y << "]");
 }
 
 TEST_CASE("Widget focus state publishes highlight drawable") {

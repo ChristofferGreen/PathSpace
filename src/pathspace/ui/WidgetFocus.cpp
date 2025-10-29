@@ -30,6 +30,16 @@ auto read_widget_footprint(PathSpace& space,
     return std::optional<DirtyRectHint>{hint};
 }
 
+auto expand_focus_dirty_hint(DirtyRectHint hint) -> DirtyRectHint {
+    float padding = Input::FocusHighlightPadding();
+    DirtyRectHint expanded{};
+    expanded.min_x = std::max(0.0f, hint.min_x - padding);
+    expanded.min_y = std::max(0.0f, hint.min_y - padding);
+    expanded.max_x = hint.max_x + padding;
+    expanded.max_y = hint.max_y + padding;
+    return ensure_valid_hint(expanded);
+}
+
 auto append_unique_hint(std::vector<DirtyRectHint>& hints,
                         DirtyRectHint const& hint) -> void {
     auto it = std::find_if(hints.begin(), hints.end(), [&](DirtyRectHint const& existing) {
@@ -498,7 +508,11 @@ auto Set(PathSpace& space,
         if (!footprint->has_value()) {
             return {};
         }
-        append_unique_hint(dirty_hints, **footprint);
+        DirtyRectHint expanded = expand_focus_dirty_hint(**footprint);
+        if (expanded.max_x <= expanded.min_x || expanded.max_y <= expanded.min_y) {
+            return {};
+        }
+        append_unique_hint(dirty_hints, expanded);
         return {};
     };
 
@@ -580,19 +594,23 @@ auto Clear(PathSpace& space,
 
     std::vector<DirtyRectHint> dirty_hints;
     auto append_dirty_hint = [&](std::string const& widget_root) -> SP::Expected<void> {
-        if (!config.auto_render_target.has_value()) {
-            return {};
-        }
-        auto footprint = read_widget_footprint(space, widget_root);
-        if (!footprint) {
-            return std::unexpected(footprint.error());
-        }
-        if (!footprint->has_value()) {
-            return {};
-        }
-        append_unique_hint(dirty_hints, **footprint);
+    if (!config.auto_render_target.has_value()) {
         return {};
-    };
+    }
+    auto footprint = read_widget_footprint(space, widget_root);
+    if (!footprint) {
+        return std::unexpected(footprint.error());
+    }
+    if (!footprint->has_value()) {
+        return {};
+    }
+    DirtyRectHint expanded = expand_focus_dirty_hint(**footprint);
+    if (expanded.max_x <= expanded.min_x || expanded.max_y <= expanded.min_y) {
+        return {};
+    }
+    append_unique_hint(dirty_hints, expanded);
+    return {};
+};
 
     bool changed = false;
     auto clear_prev = update_widget_focus(space, **current, false);

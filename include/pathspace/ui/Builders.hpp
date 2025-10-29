@@ -1653,6 +1653,7 @@ auto MakeListLayout(Widgets::ListPreviewLayout const& layout) -> std::optional<L
 auto MakeTreeLayout(Widgets::TreePreviewLayout const& layout) -> std::optional<TreeLayout>;
 
 auto ExpandForFocusHighlight(WidgetBounds& bounds) -> void;
+auto FocusHighlightPadding() -> float;
 auto MakeDirtyHint(WidgetBounds const& bounds) -> Builders::DirtyRectHint;
 auto TranslateTreeLayout(TreeLayout& layout, float dx, float dy) -> void;
 

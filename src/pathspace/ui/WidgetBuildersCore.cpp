@@ -888,6 +888,10 @@ auto Input::ExpandForFocusHighlight(Input::WidgetBounds& bounds) -> void {
     }
 }
 
+auto Input::FocusHighlightPadding() -> float {
+    return Detail::kFocusHighlightExpand + Detail::kFocusHighlightThickness;
+}
+
 auto Input::MakeDirtyHint(Input::WidgetBounds const& bounds) -> Builders::DirtyRectHint {
     Input::WidgetBounds normalized = bounds;
     normalized.normalize();

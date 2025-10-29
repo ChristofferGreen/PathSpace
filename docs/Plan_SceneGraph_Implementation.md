@@ -1,6 +1,7 @@
 # Scene Graph Implementation Plan
 
-> Completed milestones are archived in `docs/Plan_SceneGraph_Implementation_Finished.md` (snapshot as of October 28, 2025).
+> Completed milestones are archived in `docs/Plan_SceneGraph_Implementation_Finished.md` (snapshot as of October 29, 2025).
+> Focus update (October 29, 2025): Widget focus dirty hints now inflate via `Widgets::Input::FocusHighlightPadding()`, and UITests assert highlight edge coverage so lingering rings surface immediately. Next priority is the font/resource manager rollout referenced below.
 
 ## Context and Objectives
 - Groundwork for implementing the renderer stack described in `docs/Plan_SceneGraph_Renderer.md` and the broader architecture contract in `docs/AI_Architecture.md`.
@@ -21,7 +22,6 @@
 
 ## Task Backlog
 - ✅ (October 28, 2025) Wrapped every widget preview in `examples/widgets_example.cpp` with horizontal/vertical stack containers so the gallery reflows as the window resizes; reused the layout helpers landed in the stack container milestone (see archive doc for context).
-- Fix widget focus repaint regressions: ensure focus styling clears when focus leaves a widget so the highlight doesn’t linger (reproduce via gallery Tab cycling; current focus ring sticks half-on after blur).
 - Close the font/resource plan from `docs/Plan_SceneGraph_Renderer.md` §"Plan: Resource system (images, fonts, shaders)" and surface the resulting font manager in the widget gallery (theme selection plus label typography should draw from the new resource-backed fonts).
 - Enhance `examples/paint_example.cpp` with palette buttons (red, green, blue, yellow, purple, orange, etc.) and a brush-size slider routed through the widget bindings so live demos can tweak stroke color and width without code changes.
 - Add widget action callbacks: allow attaching callable/lambda payloads to widget paths so pressing a button can immediately invoke application logic (hook into reducers/ops schema without bespoke polling).
