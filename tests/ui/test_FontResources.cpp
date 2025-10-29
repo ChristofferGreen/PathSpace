@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 using namespace SP;
 using namespace SP::UI;
@@ -79,6 +80,58 @@ TEST_CASE("FontManager registers font metadata and manifest") {
     auto registered_count = space.read<std::uint64_t, std::string>(registered_fonts_path);
     REQUIRE(registered_count);
     CHECK(*registered_count >= 1);
+}
+
+TEST_CASE("FontManager resolves manifest fallback chain") {
+    PathSpace space;
+    SP::App::AppRootPath app_root{"/system/applications/demo_app"};
+    SP::App::AppRootPathView app_view{app_root.getPath()};
+
+    FontManager manager(space);
+    Builders::Resources::Fonts::RegisterFontParams params{
+        .family = "PathSpaceSans",
+        .style = "Regular",
+        .manifest_json = std::string{
+            R"({"family":"PathSpaceSans","style":"Regular","weight":"500","fallback":["system-ui","PathSpaceSans","system-ui","monospace"]})"},
+        .manifest_digest = std::string{"sha256:pathspacesans-regular"},
+        .initial_revision = 5ull,
+    };
+
+    auto registered = manager.register_font(app_view, params);
+    REQUIRE(registered);
+
+    auto resolved = manager.resolve_font(app_view, "PathSpaceSans", "Regular");
+    REQUIRE(resolved);
+    CHECK(resolved->family == "PathSpaceSans");
+    CHECK(resolved->style == "Regular");
+    CHECK(resolved->weight == "500");
+    CHECK(resolved->active_revision == params.initial_revision);
+    CHECK(resolved->paths.root.getPath() == registered->root.getPath());
+
+    std::vector<std::string> expected_fallback{"system-ui", "monospace"};
+    CHECK(resolved->fallback_chain == expected_fallback);
+}
+
+TEST_CASE("FontManager resolve errors on malformed fallback entries") {
+    PathSpace space;
+    SP::App::AppRootPath app_root{"/system/applications/demo_app"};
+    SP::App::AppRootPathView app_view{app_root.getPath()};
+
+    FontManager manager(space);
+    Builders::Resources::Fonts::RegisterFontParams params{
+        .family = "BrokenFont",
+        .style = "Regular",
+        .manifest_json = std::string{
+            R"({"family":"BrokenFont","style":"Regular","fallback":"system-ui"})"},
+        .initial_revision = 1ull,
+    };
+
+    auto registered = manager.register_font(app_view, params);
+    REQUIRE(registered);
+
+    auto resolved = manager.resolve_font(app_view, "BrokenFont", "Regular");
+    REQUIRE_FALSE(resolved);
+    CHECK(resolved.error().code == SP::Error::Code::MalformedInput);
 }
 
 TEST_CASE("FontManager caches shaped runs and updates metrics") {

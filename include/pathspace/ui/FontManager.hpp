@@ -20,6 +20,15 @@ class FontManager {
 public:
     using TypographyStyle = Builders::Widgets::TypographyStyle;
 
+    struct ResolvedFont {
+        Builders::Resources::Fonts::FontResourcePaths paths;
+        std::string family;
+        std::string style;
+        std::string weight;
+        std::vector<std::string> fallback_chain;
+        std::uint64_t active_revision = 0;
+    };
+
     struct GlyphPlacement {
         std::uint32_t glyph_id = 0;
         char32_t codepoint = U'\0';
@@ -49,6 +58,10 @@ public:
     auto register_font(App::AppRootPathView appRoot,
                        Builders::Resources::Fonts::RegisterFontParams const& params)
         -> SP::Expected<Builders::Resources::Fonts::FontResourcePaths>;
+
+    auto resolve_font(App::AppRootPathView appRoot,
+                      std::string_view family,
+                      std::string_view style) -> SP::Expected<ResolvedFont>;
 
     auto shape_text(App::AppRootPathView appRoot,
                     std::string_view text,

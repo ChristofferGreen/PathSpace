@@ -114,7 +114,7 @@ auto make_font_manifest(DemoFontConfig const& config) -> std::string {
 auto register_font_or_exit(FontManager& manager,
                             AppRootPathView appRoot,
                             DemoFontConfig const& config)
-    -> Builders::Resources::Fonts::FontResourcePaths {
+    -> FontManager::ResolvedFont {
     Builders::Resources::Fonts::RegisterFontParams params{
         .family = config.family,
         .style = config.style,
@@ -125,18 +125,19 @@ auto register_font_or_exit(FontManager& manager,
     }
     params.initial_revision = config.revision;
     auto context = std::string{"register font "} + config.family + "/" + config.style;
-    return unwrap_or_exit(manager.register_font(appRoot, params), context);
+    (void)unwrap_or_exit(manager.register_font(appRoot, params), context);
+    auto resolved = manager.resolve_font(appRoot, config.family, config.style);
+    return unwrap_or_exit(std::move(resolved), context + " resolve");
 }
 
 void apply_font_to_typography(Widgets::TypographyStyle& typography,
-                              DemoFontConfig const& config,
-                              Builders::Resources::Fonts::FontResourcePaths const& paths) {
-    typography.font_family = config.family;
-    typography.font_style = config.style;
-    typography.font_weight = config.weight;
-    typography.font_resource_root = paths.root.getPath();
-    typography.font_active_revision = config.revision;
-    typography.fallback_families = config.fallback;
+                              FontManager::ResolvedFont const& resolved) {
+    typography.font_family = resolved.family;
+    typography.font_style = resolved.style;
+    typography.font_weight = resolved.weight;
+    typography.font_resource_root = resolved.paths.root.getPath();
+    typography.font_active_revision = resolved.active_revision;
+    typography.fallback_families = resolved.fallback_chain;
     typography.font_features = {"kern", "liga"};
     typography.font_asset_fingerprint = 0;
 }
@@ -164,14 +165,14 @@ void attach_demo_fonts(PathSpace& space,
         .revision = 2ull,
     };
 
-    auto regular_paths = register_font_or_exit(manager, appRoot, regular);
-    auto semibold_paths = register_font_or_exit(manager, appRoot, semibold);
+    auto regular_font = register_font_or_exit(manager, appRoot, regular);
+    auto semibold_font = register_font_or_exit(manager, appRoot, semibold);
 
     auto apply_regular = [&](Widgets::TypographyStyle& typography) {
-        apply_font_to_typography(typography, regular, regular_paths);
+        apply_font_to_typography(typography, regular_font);
     };
     auto apply_semibold = [&](Widgets::TypographyStyle& typography) {
-        apply_font_to_typography(typography, semibold, semibold_paths);
+        apply_font_to_typography(typography, semibold_font);
     };
 
     apply_semibold(theme.heading);

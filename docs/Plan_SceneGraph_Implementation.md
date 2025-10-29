@@ -1,7 +1,7 @@
 # Scene Graph Implementation Plan
 
 > Completed milestones are archived in `docs/Plan_SceneGraph_Implementation_Finished.md` (snapshot as of October 29, 2025).
-> Focus update (October 29, 2025): Widget focus dirty hints now inflate via `Widgets::Input::FocusHighlightPadding()`, and UITests assert highlight edge coverage so lingering rings surface immediately. Before moving to the font/resource manager rollout, add coverage for the slider → listbox focus regression so the bug is reproducible in CI.
+> Focus update (October 29, 2025): Manifest-driven font lookup landed (`FontManager::resolve_font`), widgets/examples consume manifest fallbacks automatically, and new doctests cover the parser. Next priority: wire the HarfBuzz shaping wrapper and connect cache eviction thresholds to atlas residency budgets before proceeding to atlas publication.
 
 ## Context and Objectives
 - Groundwork for implementing the renderer stack described in `docs/Plan_SceneGraph_Renderer.md` and the broader architecture contract in `docs/AI_Architecture.md`.
@@ -55,8 +55,8 @@ Ship the resource-backed font pipeline described in `docs/Plan_SceneGraph_Render
 
 **Phase 1 – Font Manager Foundations (2–3 days)**
 - ✅ (October 29, 2025) Landed the `SP::UI::FontManager` singleton with descriptor fingerprinting, fallback shaping, an LRU shaped-run cache, and diagnostics metrics under `diagnostics/metrics/fonts/*`. Current cache eviction is capacity-based; wire atlas-aware budgets once atlas persistence ships. HarfBuzz/ICU shaping remains stubbed out pending dependency review.
+- ✅ (October 29, 2025) Resource lookup + fallback chain resolution via manifests. `FontManager::resolve_font` now parses `manifest.json`, deduplicates fallback lists, surfaces the active revision, and widgets/examples hydrate typography directly from manifest data with doctest coverage for success and malformed manifests.
 - Remaining:
-  - Resource lookup + fallback chain resolution via manifests.
   - HarfBuzz shaping wrapper producing glyph indices/positions (replace fallback ASCII layout once deps are ready).
   - Tie cache eviction thresholds to atlas residency budgets instead of the temporary fixed-capacity knob.
 
