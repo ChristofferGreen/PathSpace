@@ -87,6 +87,8 @@ Environment knobs (all respected by the wrapper and the logger):
   ```
 
   The binary now runs entirely headless for this mode: it boots the gallery, drives a scripted slider drag to exercise focus/dirty paths, renders a single frame, writes a PNG via `stb_image_write` (creating parent directories when needed), prints the path, and exits. Use this to verify focus highlights, themes, or layout regressions when you can’t interact with the GUI directly. A current sample lives at `docs/images/widgets_gallery_drag.png`.
+
+- `build/tests/PathSpaceUITests --test-case "Widget focus slider-to-list transition covers highlight footprint"` reproduces the historical lingering highlight bug. The case asserts slider/list dirty hints, focus state hand-off, and framebuffer diffs; it is expected to fail today because the slider dirty footprint is not marked when focus moves. Fix the underlying renderer issue before updating the expectation.
 - Because the capture is headless, the LocalWindow bridge is skipped—no IOSurface hand-off is required. If you need to reproduce an interactive issue instead, run without `--screenshot` or use the trace replay helpers below.
 
 ### 1.5 Sanitizer runs on demand
