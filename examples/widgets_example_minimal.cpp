@@ -1298,7 +1298,7 @@ int main(int /*argc*/, char** /*argv*/) {
                                                          list_params),
                                      "create list widget");
     auto list_state = Widgets::MakeListState()
-                          .WithFocused(true)
+                          .WithFocused(false)
                           .WithSelectedIndex(0)
                           .Build();
     unwrap_or_exit(Widgets::UpdateListState(space, list_paths, list_state),
