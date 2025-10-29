@@ -4515,7 +4515,141 @@ TEST_CASE("Widget focus slider-to-list transition covers highlight footprint") {
     CHECK_MESSAGE(slider_ring_diff > 0,
                   "highlight ring diff should be non-zero when focus leaves slider (diff="
                       << slider_ring_diff << ")");
-}TEST_CASE("Widget focus blur clears highlight footprint pixels") {
+}
+
+TEST_CASE("Widget focus slider-to-list transition marks previous footprint without slider binding") {
+    BuildersFixture fx;
+
+    auto sliderParams = Widgets::MakeSliderParams("focus_slider_widget_unbound")
+                            .WithRange(0.0f, 1.0f)
+                            .WithValue(0.35f)
+                            .Build();
+    auto slider = Widgets::CreateSlider(fx.space, fx.root_view(), sliderParams);
+    REQUIRE(slider);
+
+    auto listParams = Widgets::MakeListParams("focus_list_widget_unbound")
+                          .WithItems({
+                              Widgets::ListItem{.id = "alpha", .label = "Alpha", .enabled = true},
+                              Widgets::ListItem{.id = "beta", .label = "Beta", .enabled = true},
+                          })
+                          .Build();
+    auto list = Widgets::CreateList(fx.space, fx.root_view(), listParams);
+    REQUIRE(list);
+
+    RendererParams rendererParams{
+        .name = "focus_slider_list_renderer_unbound",
+        .kind = RendererKind::Software2D,
+        .description = "Renderer"
+    };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc{};
+    desc.size_px = {320, 240};
+    SurfaceParams surfaceParams{
+        .name = "focus_slider_list_surface_unbound",
+        .desc = desc,
+        .renderer = "renderers/focus_slider_list_renderer_unbound"
+    };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+    REQUIRE(Surface::SetScene(fx.space, *surface, slider->scene));
+
+    WindowParams windowParams{
+        .name = "focus_slider_list_window_unbound",
+        .title = "Slider List Focus Window",
+        .width = desc.size_px.width,
+        .height = desc.size_px.height,
+    };
+    auto window = Window::Create(fx.space, fx.root_view(), windowParams);
+    REQUIRE(window);
+    REQUIRE(Window::AttachSurface(fx.space, *window, "main", *surface));
+
+    auto targetRel = fx.space.read<std::string, std::string>(std::string(surface->getPath()) + "/target");
+    REQUIRE(targetRel);
+    auto targetAbs = SP::App::resolve_app_relative(fx.root_view(), *targetRel);
+    REQUIRE(targetAbs);
+    auto targetPath = targetAbs->getPath();
+
+    auto sliderStyle = fx.space.read<Widgets::SliderStyle, std::string>(std::string(slider->root.getPath()) + "/meta/style");
+    REQUIRE(sliderStyle);
+
+    auto listStyle = fx.space.read<Widgets::ListStyle, std::string>(std::string(list->root.getPath()) + "/meta/style");
+    REQUIRE(listStyle);
+    auto listItems = fx.space.read<std::vector<Widgets::ListItem>, std::string>(list->items.getPath());
+    REQUIRE(listItems);
+
+    float listHeight = listStyle->border_thickness * 2.0f
+        + listStyle->item_height * static_cast<float>(std::max<std::size_t>(listItems->size(), 1));
+    float listOffsetY = sliderStyle->height + 48.0f;
+    DirtyRectHint listFootprint{
+        0.0f,
+        listOffsetY,
+        listStyle->width,
+        listOffsetY + listHeight
+    };
+    auto listBinding = WidgetBindings::CreateListBinding(fx.space,
+                                                         fx.root_view(),
+                                                         *list,
+                                                         SP::ConcretePathStringView{targetAbs->getPath()},
+                                                         listFootprint);
+    REQUIRE(listBinding);
+
+    auto hintsPath = targetPath + "/hints/dirtyRects";
+    auto clearHints = fx.space.take<std::vector<DirtyRectHint>>(hintsPath);
+    if (!clearHints) {
+        CHECK((clearHints.error().code == Error::Code::NoObjectFound
+               || clearHints.error().code == Error::Code::NoSuchPath));
+    }
+
+    auto config = Widgets::Focus::MakeConfig(
+        fx.root_view(),
+        std::optional<SP::UI::Builders::ConcretePath>{SP::UI::Builders::ConcretePath{targetPath}});
+
+    auto sliderFocus = Widgets::Focus::Set(fx.space, config, slider->root);
+    REQUIRE(sliderFocus);
+    CHECK(sliderFocus->changed);
+
+    auto listFocus = Widgets::Focus::Set(fx.space, config, list->root);
+    REQUIRE(listFocus);
+    CHECK(listFocus->changed);
+
+    auto hints = fx.space.read<std::vector<DirtyRectHint>, std::string>(hintsPath);
+    REQUIRE_MESSAGE(hints,
+                    "expected dirty hints at "
+                        << hintsPath << " code=" << static_cast<int>(hints.error().code)
+                        << " message=" << hints.error().message.value_or("<none>"));
+    REQUIRE_FALSE(hints->empty());
+
+    float padding = Widgets::Input::FocusHighlightPadding();
+    DirtyRectHint expectedSlider{
+        std::max(0.0f, -padding),
+        std::max(0.0f, -padding),
+        sliderStyle->width + padding,
+        sliderStyle->height + padding
+    };
+    expectedSlider.max_x = std::min(expectedSlider.max_x, static_cast<float>(desc.size_px.width));
+    expectedSlider.max_y = std::min(expectedSlider.max_y, static_cast<float>(desc.size_px.height));
+
+    auto covers_expected = [&](DirtyRectHint const& hint) {
+        constexpr float kEpsilon = 1e-3f;
+        return hint.min_x <= expectedSlider.min_x + kEpsilon
+            && hint.min_y <= expectedSlider.min_y + kEpsilon
+            && hint.max_x + kEpsilon >= expectedSlider.max_x
+            && hint.max_y + kEpsilon >= expectedSlider.max_y;
+    };
+    bool found = std::any_of(hints->begin(), hints->end(), covers_expected);
+    INFO("slider expected dirty hint [" << expectedSlider.min_x << ", " << expectedSlider.min_y << ", "
+         << expectedSlider.max_x << ", " << expectedSlider.max_y << "]");
+    INFO("dirty hints count " << hints->size());
+    for (auto const& hint : *hints) {
+        INFO("dirty hint [" << hint.min_x << ", " << hint.min_y << ", "
+             << hint.max_x << ", " << hint.max_y << "]");
+    }
+    CHECK(found);
+}
+
+TEST_CASE("Widget focus blur clears highlight footprint pixels") {
     BuildersFixture fx;
 
     auto buttonParams = Widgets::MakeButtonParams("focus_blur_button", "FocusBlur").Build();

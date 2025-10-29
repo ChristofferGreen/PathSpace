@@ -22,7 +22,7 @@
 
 ## Task Backlog
 - ✅ (October 28, 2025) Wrapped every widget preview in `examples/widgets_example.cpp` with horizontal/vertical stack containers so the gallery reflows as the window resizes; reused the layout helpers landed in the stack container milestone (see archive doc for context).
-- ✅ (October 29, 2025) Added `Widget focus slider-to-list transition covers highlight footprint` to `PathSpaceUITests`, exercising slider → list focus changes, dirty hint coverage, and framebuffer validation. The case currently fails because the slider dirty footprint is not being marked when focus hops, matching the lingering highlight regression; fix the underlying bug before flipping it green.
+- ✅ (October 29, 2025) Hardened slider focus handoffs by storing default slider footprints at creation time and extending `PathSpaceUITests` with `Widget focus slider-to-list transition marks previous footprint without slider binding`. Slider → list transitions now queue dirty hints for both widgets even before bindings are attached, keeping the newly added highlight coverage test and the existing framebuffer diff case green.
 - Build `examples/widgets_example_minimal.cpp`: a showcase app with slider/list/tree and focus navigation that omits diagnostics, trace capture, and screenshot plumbing, highlighting the ergonomic surface of the GUI API.
 - Long-term follow-up: evaluate API ergonomics and refactor the minimal example toward a ≤400 LOC target once higher-level layout/focus helpers arrive.
 - Close the font/resource plan from `docs/Plan_SceneGraph_Renderer.md` §"Plan: Resource system (images, fonts, shaders)" and surface the resulting font manager in the widget gallery (theme selection plus label typography should draw from the new resource-backed fonts).

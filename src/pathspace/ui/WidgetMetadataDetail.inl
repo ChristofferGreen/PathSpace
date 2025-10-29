@@ -110,6 +110,19 @@ inline auto write_slider_metadata(PathSpace& space,
         return status;
     }
 
+    DirtyRectHint footprint{};
+    footprint.min_x = 0.0f;
+    footprint.min_y = 0.0f;
+    footprint.max_x = std::max(style.width, 0.0f);
+    footprint.max_y = std::max(style.height, 0.0f);
+    footprint = ensure_valid_hint(footprint);
+    if (footprint.max_x > footprint.min_x && footprint.max_y > footprint.min_y) {
+        auto footprintPath = rootPath + "/meta/footprint";
+        if (auto status = replace_single<DirtyRectHint>(space, footprintPath, footprint); !status) {
+            return status;
+        }
+    }
+
     return {};
 }
 
