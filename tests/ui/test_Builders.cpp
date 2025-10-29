@@ -2800,10 +2800,158 @@ TEST_CASE("WidgetInput slider helpers dispatch slider ops and respect deadzone")
     CHECK_FALSE(deadzone_update.state_changed);
 
     auto deadzone_op = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
-    CHECK_FALSE(deadzone_op);
-    if (!deadzone_op) {
-        CHECK((deadzone_op.error().code == Error::Code::NoObjectFound || deadzone_op.error().code == Error::Code::NoSuchPath));
-    }
+   CHECK_FALSE(deadzone_op);
+   if (!deadzone_op) {
+       CHECK((deadzone_op.error().code == Error::Code::NoObjectFound || deadzone_op.error().code == Error::Code::NoSuchPath));
+   }
+}
+
+TEST_CASE("WidgetInput tree pointer events select rows at translated origin") {
+    BuildersFixture fx;
+
+    auto theme = Widgets::MakeDefaultWidgetTheme();
+    std::vector<Widgets::TreeNode> nodes{
+        Widgets::TreeNode{.id = "root", .parent_id = "", .label = "Root", .enabled = true, .expandable = true, .loaded = true},
+        Widgets::TreeNode{.id = "child", .parent_id = "root", .label = "Child", .enabled = true, .expandable = false, .loaded = true},
+    };
+
+    auto treeParams = Widgets::MakeTreeParams("input_tree")
+                          .WithTheme(theme)
+                          .WithNodes(nodes)
+                          .Build();
+    auto treePathsExpected = Widgets::CreateTree(fx.space, fx.root_view(), treeParams);
+    REQUIRE(treePathsExpected);
+    auto treePaths = *treePathsExpected;
+
+    auto expandedState = Widgets::MakeTreeState()
+                             .WithExpandedIds({"root"})
+                             .Build();
+    REQUIRE(Widgets::UpdateTreeState(fx.space, treePaths, expandedState));
+
+    auto treeStyleStored = fx.space.read<Widgets::TreeStyle, std::string>(
+        std::string(treePaths.root.getPath()) + "/meta/style");
+    REQUIRE(treeStyleStored);
+    auto treeStyle = *treeStyleStored;
+
+    auto treeStateStored = fx.space.read<Widgets::TreeState, std::string>(treePaths.state.getPath());
+    REQUIRE(treeStateStored);
+    auto treeState = *treeStateStored;
+
+    auto treeNodesStored = fx.space.read<std::vector<Widgets::TreeNode>, std::string>(treePaths.nodes.getPath());
+    REQUIRE(treeNodesStored);
+    auto treeNodes = *treeNodesStored;
+
+    auto preview = Widgets::BuildTreePreview(treeStyle,
+                                             treeNodes,
+                                             treeState,
+                                             Widgets::TreePreviewOptions{.authoring_root = "test/tree"});
+
+    auto treeLayoutOpt = WidgetInput::MakeTreeLayout(preview.layout);
+    REQUIRE(treeLayoutOpt);
+    auto treeLayout = *treeLayoutOpt;
+
+    float tree_left = 80.0f;
+    float tree_top = 120.0f;
+    WidgetInput::TranslateTreeLayout(treeLayout, tree_left, tree_top);
+
+    WidgetInput::LayoutSnapshot layout{};
+    layout.tree = treeLayout;
+    layout.tree_footprint = treeLayout.bounds;
+
+    WidgetBindings::ButtonBinding dummy_button{};
+    WidgetBindings::ToggleBinding dummy_toggle{};
+    WidgetBindings::SliderBinding dummy_slider{};
+    WidgetBindings::ListBinding dummy_list{};
+
+    Widgets::ButtonPaths button_paths{};
+    Widgets::TogglePaths toggle_paths{};
+    Widgets::SliderPaths slider_paths{};
+    Widgets::ListPaths list_paths{};
+
+    Widgets::ButtonState button_state{};
+    Widgets::ToggleState toggle_state{};
+    Widgets::SliderState slider_state{};
+    Widgets::ListState list_state{};
+
+    WidgetInput::WidgetBounds zero_bounds{0.0f, 0.0f, 0.0f, 0.0f};
+    auto zero_hint = WidgetInput::MakeDirtyHint(zero_bounds);
+    SP::ConcretePathString target_path{std::string(fx.app_root.getPath()) + "/renderers/test_target"};
+    auto treeBindingExpected = WidgetBindings::CreateTreeBinding(fx.space,
+                                                                 fx.root_view(),
+                                                                 treePaths,
+                                                                 SP::ConcretePathStringView{target_path.getPath()},
+                                                                 zero_hint,
+                                                                 zero_hint,
+                                                                 false);
+    REQUIRE(treeBindingExpected);
+    auto treeBinding = *treeBindingExpected;
+
+    auto focus_config = WidgetFocus::MakeConfig(fx.root_view());
+    WidgetInput::FocusTarget focus_target = WidgetInput::FocusTarget::Tree;
+    std::array focus_order{WidgetInput::FocusTarget::Tree};
+    int focus_list_index = 0;
+    int focus_tree_index = 0;
+
+    float pointer_x = 0.0f;
+    float pointer_y = 0.0f;
+    bool pointer_down = false;
+    bool slider_dragging = false;
+    std::string tree_pointer_down_id;
+    bool tree_pointer_toggle = false;
+
+    WidgetInput::WidgetInputContext input{};
+    input.space = &fx.space;
+    input.layout = layout;
+    input.focus.config = &focus_config;
+    input.focus.current = &focus_target;
+    input.focus.order = std::span<const WidgetInput::FocusTarget>(focus_order.data(), focus_order.size());
+    input.focus.button = button_paths.root;
+    input.focus.toggle = toggle_paths.root;
+    input.focus.slider = slider_paths.root;
+    input.focus.list = list_paths.root;
+    input.focus.tree = treePaths.root;
+    input.focus.focus_list_index = &focus_list_index;
+    input.focus.focus_tree_index = &focus_tree_index;
+    input.button_binding = &dummy_button;
+    input.button_paths = &button_paths;
+    input.button_state = &button_state;
+    input.toggle_binding = &dummy_toggle;
+    input.toggle_paths = &toggle_paths;
+    input.toggle_state = &toggle_state;
+    input.slider_binding = &dummy_slider;
+    input.slider_paths = &slider_paths;
+    input.slider_state = &slider_state;
+    input.list_binding = &dummy_list;
+    input.list_paths = &list_paths;
+    input.list_state = &list_state;
+    input.tree_binding = &treeBinding;
+    input.tree_paths = &treePaths;
+    input.tree_state = &treeState;
+    input.tree_style = &treeStyle;
+    input.tree_nodes = &treeNodes;
+    input.pointer_x = &pointer_x;
+    input.pointer_y = &pointer_y;
+    input.pointer_down = &pointer_down;
+    input.slider_dragging = &slider_dragging;
+    input.tree_pointer_down_id = &tree_pointer_down_id;
+    input.tree_pointer_toggle = &tree_pointer_toggle;
+
+    REQUIRE(treeLayout.rows.size() >= 2);
+    auto const& target_row = treeLayout.rows[1];
+    auto const pointer_x_target = target_row.toggle.max_x + 16.0f;
+    auto const pointer_y_target = target_row.bounds.min_y + treeLayout.row_height * 0.5f;
+
+    auto move_update = WidgetInput::HandlePointerMove(input, pointer_x_target, pointer_y_target);
+    (void)move_update;
+    auto down_update = WidgetInput::HandlePointerDown(input);
+    (void)down_update;
+    auto up_update = WidgetInput::HandlePointerUp(input);
+    (void)up_update;
+
+    auto updated_state = fx.space.read<Widgets::TreeState, std::string>(treePaths.state.getPath());
+    REQUIRE(updated_state);
+    CHECK_EQ(updated_state->selected_id, "child");
+    CHECK_EQ(updated_state->hovered_id, "child");
 }
 
 TEST_CASE("Widgets::CreateList publishes snapshot and metadata") {

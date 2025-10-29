@@ -1187,6 +1187,7 @@ enum class WidgetKind {
     Toggle,
     Slider,
     List,
+    Stack,
     Tree,
 };
 
@@ -1653,6 +1654,7 @@ auto MakeTreeLayout(Widgets::TreePreviewLayout const& layout) -> std::optional<T
 
 auto ExpandForFocusHighlight(WidgetBounds& bounds) -> void;
 auto MakeDirtyHint(WidgetBounds const& bounds) -> Builders::DirtyRectHint;
+auto TranslateTreeLayout(TreeLayout& layout, float dx, float dy) -> void;
 
 } // namespace Input
 

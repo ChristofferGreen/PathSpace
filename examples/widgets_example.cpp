@@ -1,6 +1,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersDetail.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
@@ -77,6 +78,14 @@ constexpr unsigned int kKeycodeLeft = 0x7B;
 constexpr unsigned int kKeycodeRight = 0x7C;
 constexpr unsigned int kKeycodeDown = 0x7D;
 constexpr unsigned int kKeycodeUp = 0x7E;
+
+constexpr std::string_view kControlsStackChildButton = "controls_button";
+constexpr std::string_view kControlsStackChildToggle = "controls_toggle";
+constexpr std::string_view kGalleryStackChildControls = "gallery_controls";
+constexpr std::string_view kGalleryStackChildSlider = "gallery_slider";
+constexpr std::string_view kGalleryStackChildList = "gallery_list";
+constexpr std::string_view kGalleryStackChildStack = "gallery_stack_preview";
+constexpr std::string_view kGalleryStackChildTree = "gallery_tree";
 
 static bool g_debug_capture_enabled = [] {
     const char* env = std::getenv("WIDGETS_EXAMPLE_DEBUG_CAPTURE");
@@ -589,6 +598,16 @@ auto append_bucket(SceneData::DrawableBucketSnapshot& dest,
                                       src.drawable_fingerprints.end());
 }
 
+static auto find_stack_child(Widgets::StackLayoutState const& layout,
+                             std::string_view id) -> Widgets::StackLayoutComputedChild const* {
+    for (auto const& child : layout.children) {
+        if (child.id == id) {
+            return &child;
+        }
+    }
+    return nullptr;
+}
+
 auto make_background_bucket(float width, float height) -> SceneData::DrawableBucketSnapshot {
     SceneData::DrawableBucketSnapshot bucket{};
     auto drawable_id = 0x9000FFF0ull;
@@ -662,6 +681,8 @@ auto build_gallery_bucket(PathSpace& space,
                           std::vector<Widgets::ListItem> const& list_items,
                           Widgets::StackLayoutParams const& stack_params,
                           Widgets::StackLayoutState const& stack_layout,
+                          Widgets::StackLayoutState const& controls_stack_layout,
+                          Widgets::StackLayoutState const& gallery_stack_layout,
                           Widgets::TreePaths const& tree,
                           Widgets::TreeStyle const& tree_style,
                           Widgets::TreeState const& tree_state,
@@ -670,144 +691,162 @@ auto build_gallery_bucket(PathSpace& space,
                           std::optional<std::string_view> focused_widget) -> GalleryBuildResult {
     (void)space;
     (void)appRoot;
-    std::vector<SceneData::DrawableBucketSnapshot> pending;
-    pending.reserve(16);
+    (void)focused_widget;
 
-    float left = kDefaultMargin;
+    std::vector<SceneData::DrawableBucketSnapshot> pending;
+    pending.reserve(24);
+
     float max_width = 0.0f;
     float max_height = 0.0f;
     std::uint64_t next_drawable_id = 0xA1000000ull;
     GalleryLayout layout{};
 
-    // Title text
+    float title_left = kDefaultMargin;
+    float cursor_y = kDefaultMargin;
+
     Widgets::TypographyStyle heading_typography = theme.heading;
     float heading_line_height = heading_typography.line_height;
     auto title_text = Widgets::BuildLabel(
         Widgets::LabelBuildParams::Make("PathSpace Widgets", heading_typography)
-            .WithOrigin(left, kDefaultMargin + heading_typography.baseline_shift)
+            .WithOrigin(title_left, cursor_y + heading_typography.baseline_shift)
             .WithColor(theme.heading_color)
             .WithDrawable(next_drawable_id++, std::string("widget/gallery/title"), 0.4f));
-    float cursor_y = kDefaultMargin;
     if (title_text) {
         pending.emplace_back(std::move(title_text->bucket));
-        max_width = std::max(max_width, left + title_text->width);
+        max_width = std::max(max_width, title_left + title_text->width);
         max_height = std::max(max_height, cursor_y + heading_line_height);
     }
     cursor_y += heading_line_height + 24.0f;
 
-    // Button widget
-    {
-        auto bucket = Widgets::BuildButtonPreview(
-            button_style,
-            button_state,
-            Widgets::ButtonPreviewOptions{
-                .authoring_root = "widget/gallery/button",
-                .pulsing_highlight = true,
-            });
-        translate_bucket(bucket, left, cursor_y);
-        pending.emplace_back(std::move(bucket));
-        float widget_height = button_style.height;
-        max_width = std::max(max_width, left + button_style.width);
-        max_height = std::max(max_height, cursor_y + widget_height);
-        layout.button = WidgetBounds{
-            left,
-            cursor_y,
-            left + button_style.width,
-            cursor_y + widget_height,
-        };
+    float content_left = kDefaultMargin;
+    float content_top = cursor_y;
 
-        float label_width = TextBuilder::MeasureTextWidth(button_label, button_style.typography);
-        float label_line_height = button_style.typography.line_height;
-        float label_x = left + std::max(0.0f, (button_style.width - label_width) * 0.5f);
-        float label_top = cursor_y + std::max(0.0f, (button_style.height - label_line_height) * 0.5f);
-        float label_y = label_top + button_style.typography.baseline_shift;
-        auto label = Widgets::BuildLabel(
-            Widgets::LabelBuildParams::Make(button_label, button_style.typography)
-                .WithOrigin(label_x, label_y)
-                .WithColor(button_style.text_color)
-                .WithDrawable(next_drawable_id++, std::string("widget/gallery/button/label"), 0.6f));
-        std::optional<WidgetBounds> button_label_bounds;
-        if (label) {
-            button_label_bounds = Widgets::LabelBounds(*label);
-            if (!button_label_bounds) {
-                button_label_bounds = SP::UI::Builders::MakeWidgetBounds(label_x,
-                                                  label_top,
-                                                  label_x + label->width,
-                                                  label_top + label_line_height);
+    auto update_extents = [&](float x, float y) {
+        max_width = std::max(max_width, x);
+        max_height = std::max(max_height, y);
+    };
+
+    auto make_bounds = [](float left, float top, float width, float height) -> WidgetBounds {
+        return WidgetBounds{left, top, left + width, top + height};
+    };
+
+    if (auto controls_child = find_stack_child(gallery_stack_layout, kGalleryStackChildControls)) {
+        float controls_left = content_left + controls_child->x;
+        float controls_top = content_top + controls_child->y;
+
+        if (auto button_child = find_stack_child(controls_stack_layout, kControlsStackChildButton)) {
+            float button_left = controls_left + button_child->x;
+            float button_top = controls_top + button_child->y;
+
+            auto button_bucket = Widgets::BuildButtonPreview(
+                button_style,
+                button_state,
+                Widgets::ButtonPreviewOptions{
+                    .authoring_root = "widget/gallery/button",
+                    .pulsing_highlight = true,
+                });
+            translate_bucket(button_bucket, button_left, button_top);
+            pending.emplace_back(std::move(button_bucket));
+
+            layout.button = make_bounds(button_left, button_top, button_style.width, button_style.height);
+
+            float label_width = TextBuilder::MeasureTextWidth(button_label, button_style.typography);
+            float label_line_height = button_style.typography.line_height;
+            float label_x = button_left + std::max(0.0f, (button_style.width - label_width) * 0.5f);
+            float label_top = button_top + std::max(0.0f, (button_style.height - label_line_height) * 0.5f);
+            float label_baseline = label_top + button_style.typography.baseline_shift;
+
+            auto label = Widgets::BuildLabel(
+                Widgets::LabelBuildParams::Make(button_label, button_style.typography)
+                    .WithOrigin(label_x, label_baseline)
+                    .WithColor(button_style.text_color)
+                    .WithDrawable(next_drawable_id++, std::string("widget/gallery/button/label"), 0.6f));
+
+            std::optional<WidgetBounds> button_label_bounds;
+            if (label) {
+                button_label_bounds = Widgets::LabelBounds(*label);
+                if (!button_label_bounds) {
+                    button_label_bounds = SP::UI::Builders::MakeWidgetBounds(label_x,
+                                                                             label_top,
+                                                                             label_x + label->width,
+                                                                             label_top + label_line_height);
+                }
+                pending.emplace_back(std::move(label->bucket));
+                update_extents(label_x + label->width, label_top + label_line_height);
             }
-            pending.emplace_back(std::move(label->bucket));
-            max_width = std::max(max_width, label_x + label->width);
-            max_height = std::max(max_height, label_top + label_line_height);
+            layout.button_footprint = layout.button;
+            if (button_label_bounds) {
+                layout.button_footprint.include(*button_label_bounds);
+            }
+            layout.button_footprint.normalize();
+            WidgetInput::ExpandForFocusHighlight(layout.button_footprint);
+            update_extents(layout.button.max_x, layout.button.max_y);
         }
-        layout.button_footprint = layout.button;
-        if (button_label_bounds) {
-            layout.button_footprint.include(*button_label_bounds);
+
+        if (auto toggle_child = find_stack_child(controls_stack_layout, kControlsStackChildToggle)) {
+            float toggle_left = controls_left + toggle_child->x;
+            float toggle_top = controls_top + toggle_child->y;
+
+            auto toggle_bucket = Widgets::BuildTogglePreview(
+                toggle_style,
+                toggle_state,
+                Widgets::TogglePreviewOptions{
+                    .authoring_root = "widget/gallery/toggle",
+                    .pulsing_highlight = true,
+                });
+            translate_bucket(toggle_bucket, toggle_left, toggle_top);
+            pending.emplace_back(std::move(toggle_bucket));
+
+            layout.toggle = make_bounds(toggle_left, toggle_top, toggle_style.width, toggle_style.height);
+
+            Widgets::TypographyStyle toggle_label_typography = theme.caption;
+            float toggle_label_line = toggle_label_typography.line_height;
+            float toggle_label_x = toggle_left + toggle_style.width + 24.0f;
+            float toggle_label_top = toggle_top + std::max(0.0f, (toggle_style.height - toggle_label_line) * 0.5f);
+
+            auto toggle_label = Widgets::BuildLabel(
+                Widgets::LabelBuildParams::Make("Toggle", toggle_label_typography)
+                    .WithOrigin(toggle_label_x, toggle_label_top + toggle_label_typography.baseline_shift)
+                    .WithColor(theme.caption_color)
+                    .WithDrawable(next_drawable_id++, std::string("widget/gallery/toggle/label"), 0.6f));
+            std::optional<WidgetBounds> toggle_label_bounds;
+            if (toggle_label) {
+                toggle_label_bounds = Widgets::LabelBounds(*toggle_label);
+                if (!toggle_label_bounds) {
+                    toggle_label_bounds = SP::UI::Builders::MakeWidgetBounds(toggle_label_x,
+                                                                             toggle_label_top,
+                                                                             toggle_label_x + toggle_label->width,
+                                                                             toggle_label_top + toggle_label_line);
+                }
+                pending.emplace_back(std::move(toggle_label->bucket));
+                update_extents(toggle_label_x + toggle_label->width, toggle_label_top + toggle_label_line);
+            }
+
+            layout.toggle_footprint = layout.toggle;
+            if (toggle_label_bounds) {
+                layout.toggle_footprint.include(*toggle_label_bounds);
+            }
+            layout.toggle_footprint.normalize();
+            WidgetInput::ExpandForFocusHighlight(layout.toggle_footprint);
+            update_extents(layout.toggle.max_x, layout.toggle.max_y);
         }
-        layout.button_footprint.normalize();
-        WidgetInput::ExpandForFocusHighlight(layout.button_footprint);
-        cursor_y += widget_height + 48.0f;
     }
 
-    // Toggle widget
-    {
-        auto bucket = Widgets::BuildTogglePreview(
-            toggle_style,
-            toggle_state,
-            Widgets::TogglePreviewOptions{
-                .authoring_root = "widget/gallery/toggle",
-                .pulsing_highlight = true,
-            });
-        translate_bucket(bucket, left, cursor_y);
-        pending.emplace_back(std::move(bucket));
-        max_width = std::max(max_width, left + toggle_style.width);
-        max_height = std::max(max_height, cursor_y + toggle_style.height);
-        layout.toggle = WidgetBounds{
-            left,
-            cursor_y,
-            left + toggle_style.width,
-            cursor_y + toggle_style.height,
-        };
+    if (auto slider_child = find_stack_child(gallery_stack_layout, kGalleryStackChildSlider)) {
+        float slider_left = content_left + slider_child->x;
+        float slider_top = content_top + slider_child->y;
 
-        Widgets::TypographyStyle toggle_label_typography = theme.caption;
-        float toggle_label_line = toggle_label_typography.line_height;
-        float toggle_label_x = left + toggle_style.width + 24.0f;
-        float toggle_label_top = cursor_y + std::max(0.0f, (toggle_style.height - toggle_label_line) * 0.5f);
-        auto label = Widgets::BuildLabel(
-            Widgets::LabelBuildParams::Make("Toggle", toggle_label_typography)
-                .WithOrigin(toggle_label_x, toggle_label_top + toggle_label_typography.baseline_shift)
-                .WithColor(theme.accent_text_color)
-                .WithDrawable(next_drawable_id++, std::string("widget/gallery/toggle/label"), 0.6f));
-        std::optional<WidgetBounds> toggle_label_bounds;
-        if (label) {
-            toggle_label_bounds = Widgets::LabelBounds(*label);
-            if (!toggle_label_bounds) {
-                toggle_label_bounds = SP::UI::Builders::MakeWidgetBounds(toggle_label_x,
-                                                  toggle_label_top,
-                                                  toggle_label_x + label->width,
-                                                  toggle_label_top + toggle_label_line);
-            }
-            pending.emplace_back(std::move(label->bucket));
-            max_width = std::max(max_width, toggle_label_x + label->width);
-            max_height = std::max(max_height, toggle_label_top + toggle_label_line);
-        }
-        layout.toggle_footprint = layout.toggle;
-        if (toggle_label_bounds) {
-            layout.toggle_footprint.include(*toggle_label_bounds);
-        }
-        layout.toggle_footprint.normalize();
-        WidgetInput::ExpandForFocusHighlight(layout.toggle_footprint);
-        cursor_y += toggle_style.height + 40.0f;
-    }
-
-    // Slider widget with label
-    {
         std::optional<SceneData::DrawableBucketSnapshot> caption_bucket;
         std::string slider_caption = "Volume " + std::to_string(static_cast<int>(std::round(slider_state.value)));
         Widgets::TypographyStyle slider_caption_typography = slider_style.label_typography;
         float slider_caption_line = slider_caption_typography.line_height;
+        float caption_top = slider_top - (slider_caption_line + 12.0f);
+        if (caption_top + slider_caption_line > slider_top) {
+            caption_top = slider_top - slider_caption_line;
+        }
         auto caption = Widgets::BuildLabel(
             Widgets::LabelBuildParams::Make(slider_caption, slider_caption_typography)
-                .WithOrigin(left, cursor_y + slider_caption_typography.baseline_shift)
+                .WithOrigin(slider_left, caption_top + slider_caption_typography.baseline_shift)
                 .WithColor(slider_style.label_color)
                 .WithDrawable(next_drawable_id++, std::string("widget/gallery/slider/caption"), 0.6f));
         if (caption) {
@@ -816,19 +855,17 @@ auto build_gallery_bucket(PathSpace& space,
             if (caption_bounds) {
                 layout.slider_caption = *caption_bounds;
             } else {
-                layout.slider_caption = SP::UI::Builders::MakeWidgetBounds(left,
-                                                    cursor_y,
-                                                    left + caption->width,
-                                                    cursor_y + slider_caption_line);
+                layout.slider_caption = SP::UI::Builders::MakeWidgetBounds(slider_left,
+                                                                           caption_top,
+                                                                           slider_left + caption->width,
+                                                                           caption_top + slider_caption_line);
             }
-            max_width = std::max(max_width, left + caption->width);
-            max_height = std::max(max_height, cursor_y + slider_caption_line);
+            update_extents(slider_left + caption->width, caption_top + slider_caption_line);
         } else {
             layout.slider_caption.reset();
         }
-        cursor_y += slider_caption_line + 12.0f;
 
-        auto bucket = Widgets::BuildSliderPreview(
+        auto slider_bucket = Widgets::BuildSliderPreview(
             slider_style,
             slider_range,
             slider_state,
@@ -836,22 +873,16 @@ auto build_gallery_bucket(PathSpace& space,
                 .authoring_root = "widget/gallery/slider",
                 .pulsing_highlight = true,
             });
-        translate_bucket(bucket, left, cursor_y);
-        pending.emplace_back(std::move(bucket));
-        max_width = std::max(max_width, left + slider_style.width);
-        max_height = std::max(max_height, cursor_y + slider_style.height);
-        layout.slider = WidgetBounds{
-            left,
-            cursor_y,
-            left + slider_style.width,
-            cursor_y + slider_style.height,
-        };
-        float slider_center_y = cursor_y + slider_style.height * 0.5f;
+        translate_bucket(slider_bucket, slider_left, slider_top);
+        pending.emplace_back(std::move(slider_bucket));
+
+        layout.slider = make_bounds(slider_left, slider_top, slider_style.width, slider_style.height);
+        float slider_center_y = slider_top + slider_style.height * 0.5f;
         float slider_half_track = slider_style.track_height * 0.5f;
         layout.slider_track = WidgetBounds{
-            left,
+            slider_left,
             slider_center_y - slider_half_track,
-            left + slider_style.width,
+            slider_left + slider_style.width,
             slider_center_y + slider_half_track,
         };
         layout.slider_footprint = layout.slider;
@@ -866,63 +897,63 @@ auto build_gallery_bucket(PathSpace& space,
             pending.emplace_back(std::move(*caption_bucket));
         }
 
-        cursor_y += slider_style.height + 48.0f;
+        update_extents(layout.slider.max_x, layout.slider.max_y);
     }
 
-    // List widget with per-item labels
-    {
+    if (auto list_child = find_stack_child(gallery_stack_layout, kGalleryStackChildList)) {
+        float list_left = content_left + list_child->x;
+        float list_top = content_top + list_child->y;
+
         Widgets::TypographyStyle list_caption_typography = theme.caption;
         float list_caption_line = list_caption_typography.line_height;
-        std::optional<WidgetBounds> list_caption_bounds;
-        auto caption = Widgets::BuildLabel(
+        float list_caption_top = list_top - (list_caption_line + 12.0f);
+        auto list_caption = Widgets::BuildLabel(
             Widgets::LabelBuildParams::Make("Inventory", list_caption_typography)
-                .WithOrigin(left, cursor_y + list_caption_typography.baseline_shift)
+                .WithOrigin(list_left, list_caption_top + list_caption_typography.baseline_shift)
                 .WithColor(theme.caption_color)
                 .WithDrawable(next_drawable_id++, std::string("widget/gallery/list/caption"), 0.6f));
-        if (caption) {
-            list_caption_bounds = Widgets::LabelBounds(*caption);
-            if (!list_caption_bounds) {
-                list_caption_bounds = SP::UI::Builders::MakeWidgetBounds(left,
-                                                  cursor_y,
-                                                  left + caption->width,
-                                                  cursor_y + list_caption_line);
+        if (list_caption) {
+            layout.list_caption = Widgets::LabelBounds(*list_caption);
+            if (!layout.list_caption) {
+                layout.list_caption = SP::UI::Builders::MakeWidgetBounds(list_left,
+                                                                         list_caption_top,
+                                                                         list_left + list_caption->width,
+                                                                         list_caption_top + list_caption_line);
             }
-            pending.emplace_back(std::move(caption->bucket));
-            max_width = std::max(max_width, left + caption->width);
-            max_height = std::max(max_height, cursor_y + list_caption_line);
+            pending.emplace_back(std::move(list_caption->bucket));
+            update_extents(list_left + list_caption->width, list_caption_top + list_caption_line);
+        } else {
+            layout.list_caption.reset();
         }
-        layout.list_caption = list_caption_bounds;
-        cursor_y += list_caption_line + 12.0f;
 
-        auto preview = Widgets::BuildListPreview(list_style,
-                                                 list_items,
-                                                 list_state,
-                                                 Widgets::ListPreviewOptions{
-                                                     .authoring_root = "widget/gallery/list",
-                                                     .label_inset = 16.0f,
-                                                     .pulsing_highlight = true,
-                                                 });
-        translate_bucket(preview.bucket, left, cursor_y);
-        pending.emplace_back(std::move(preview.bucket));
-        max_width = std::max(max_width, left + preview.layout.bounds.max_x);
-        max_height = std::max(max_height, cursor_y + preview.layout.bounds.max_y);
+        auto list_preview = Widgets::BuildListPreview(
+            list_style,
+            list_items,
+            list_state,
+            Widgets::ListPreviewOptions{
+                .authoring_root = "widget/gallery/list",
+                .label_inset = 16.0f,
+                .pulsing_highlight = true,
+            });
+        translate_bucket(list_preview.bucket, list_left, list_top);
+        pending.emplace_back(std::move(list_preview.bucket));
 
         layout.list.bounds = WidgetBounds{
-            preview.layout.bounds.min_x + left,
-            preview.layout.bounds.min_y + cursor_y,
-            preview.layout.bounds.max_x + left,
-            preview.layout.bounds.max_y + cursor_y,
+            list_preview.layout.bounds.min_x + list_left,
+            list_preview.layout.bounds.min_y + list_top,
+            list_preview.layout.bounds.max_x + list_left,
+            list_preview.layout.bounds.max_y + list_top,
         };
-        layout.list.item_height = preview.layout.item_height;
-        layout.list.content_top = preview.layout.content_top;
+        layout.list.item_height = list_preview.layout.item_height;
+        layout.list.content_top = list_preview.layout.content_top;
         layout.list.item_bounds.clear();
-        layout.list.item_bounds.reserve(preview.layout.rows.size());
-        for (auto const& row : preview.layout.rows) {
+        layout.list.item_bounds.reserve(list_preview.layout.rows.size());
+        for (auto const& row : list_preview.layout.rows) {
             layout.list.item_bounds.push_back(WidgetBounds{
-                row.row_bounds.min_x + left,
-                row.row_bounds.min_y + cursor_y,
-                row.row_bounds.max_x + left,
-                row.row_bounds.max_y + cursor_y,
+                row.row_bounds.min_x + list_left,
+                row.row_bounds.min_y + list_top,
+                row.row_bounds.max_x + list_left,
+                row.row_bounds.max_y + list_top,
             });
         }
         layout.list_footprint = layout.list.bounds;
@@ -932,15 +963,14 @@ auto build_gallery_bucket(PathSpace& space,
         layout.list_footprint.normalize();
         WidgetInput::ExpandForFocusHighlight(layout.list_footprint);
 
-        auto const& sanitized_style = preview.layout.style;
-        float list_height = preview.layout.bounds.height();
-        std::size_t label_count = std::min(preview.layout.rows.size(), list_items.size());
+        auto const& sanitized_style = list_preview.layout.style;
+        std::size_t label_count = std::min(list_preview.layout.rows.size(), list_items.size());
         for (std::size_t index = 0; index < label_count; ++index) {
-            auto const& row = preview.layout.rows[index];
+            auto const& row = list_preview.layout.rows[index];
             auto const& item = list_items[index];
-            float label_x = left + row.label_bounds.min_x;
-            float label_top = cursor_y + row.label_bounds.min_y;
-            float label_baseline = cursor_y + row.label_baseline;
+            float label_x = list_left + row.label_bounds.min_x;
+            float label_top = list_top + row.label_bounds.min_y;
+            float label_baseline = list_top + row.label_baseline;
             auto label = Widgets::BuildLabel(
                 Widgets::LabelBuildParams::Make(item.label, sanitized_style.item_typography)
                     .WithOrigin(label_x, label_baseline)
@@ -948,60 +978,59 @@ auto build_gallery_bucket(PathSpace& space,
                     .WithDrawable(next_drawable_id++, "widget/gallery/list/item/" + row.id, 0.65f));
             if (label) {
                 pending.emplace_back(std::move(label->bucket));
-                max_width = std::max(max_width, label_x + label->width);
-                max_height = std::max(max_height, label_top + sanitized_style.item_typography.line_height);
+                update_extents(label_x + label->width,
+                               label_top + sanitized_style.item_typography.line_height);
             }
         }
-        cursor_y += list_height + 48.0f;
+
+        update_extents(layout.list.bounds.max_x, layout.list.bounds.max_y);
     }
 
-    // Stack layout preview
-    {
+    if (auto stack_child = find_stack_child(gallery_stack_layout, kGalleryStackChildStack)) {
+        float stack_left = content_left + stack_child->x;
+        float stack_top = content_top + stack_child->y;
+
         Widgets::TypographyStyle caption_typography = theme.caption;
         float caption_line = caption_typography.line_height;
-        std::optional<WidgetBounds> stack_caption_bounds;
+        float stack_caption_top = stack_top - (caption_line + 12.0f);
         auto caption = Widgets::BuildLabel(
             Widgets::LabelBuildParams::Make("Stack layout preview", caption_typography)
-                .WithOrigin(left, cursor_y + caption_typography.baseline_shift)
+                .WithOrigin(stack_left, stack_caption_top + caption_typography.baseline_shift)
                 .WithColor(theme.caption_color)
                 .WithDrawable(next_drawable_id++, std::string("widget/gallery/stack/caption"), 0.6f));
         if (caption) {
-            stack_caption_bounds = Widgets::LabelBounds(*caption);
-            if (!stack_caption_bounds) {
-                stack_caption_bounds = SP::UI::Builders::MakeWidgetBounds(left,
-                                                   cursor_y,
-                                                   left + caption->width,
-                                                   cursor_y + caption_line);
+            layout.stack_caption = Widgets::LabelBounds(*caption);
+            if (!layout.stack_caption) {
+                layout.stack_caption = SP::UI::Builders::MakeWidgetBounds(stack_left,
+                                                                          stack_caption_top,
+                                                                          stack_left + caption->width,
+                                                                          stack_caption_top + caption_line);
             }
             pending.emplace_back(std::move(caption->bucket));
-            max_width = std::max(max_width, left + caption->width);
-            max_height = std::max(max_height, cursor_y + caption_line);
+            update_extents(stack_left + caption->width, stack_caption_top + caption_line);
+        } else {
+            layout.stack_caption.reset();
         }
-        layout.stack_caption = stack_caption_bounds;
-        cursor_y += caption_line + 12.0f;
 
         StackPreviewLayout stack_preview{};
-        auto stack_bucket = build_stack_preview(stack_params.style,
-                                                stack_layout,
-                                                theme,
-                                                stack_preview);
-        translate_bucket(stack_bucket, left, cursor_y);
+        auto stack_bucket = build_stack_preview(stack_params.style, stack_layout, theme, stack_preview);
+        translate_bucket(stack_bucket, stack_left, stack_top);
         pending.emplace_back(std::move(stack_bucket));
 
         layout.stack.bounds = WidgetBounds{
-            stack_preview.bounds.min_x + left,
-            stack_preview.bounds.min_y + cursor_y,
-            stack_preview.bounds.max_x + left,
-            stack_preview.bounds.max_y + cursor_y,
+            stack_preview.bounds.min_x + stack_left,
+            stack_preview.bounds.min_y + stack_top,
+            stack_preview.bounds.max_x + stack_left,
+            stack_preview.bounds.max_y + stack_top,
         };
         layout.stack.child_bounds.clear();
         layout.stack.child_bounds.reserve(stack_preview.child_bounds.size());
         for (auto const& child : stack_preview.child_bounds) {
             layout.stack.child_bounds.push_back(WidgetBounds{
-                child.min_x + left,
-                child.min_y + cursor_y,
-                child.max_x + left,
-                child.max_y + cursor_y,
+                child.min_x + stack_left,
+                child.min_y + stack_top,
+                child.max_x + stack_left,
+                child.max_y + stack_top,
             });
         }
 
@@ -1011,78 +1040,42 @@ auto build_gallery_bucket(PathSpace& space,
         }
         layout.stack_footprint.normalize();
         WidgetInput::ExpandForFocusHighlight(layout.stack_footprint);
-        max_width = std::max(max_width, layout.stack.bounds.max_x);
-        max_height = std::max(max_height, layout.stack.bounds.max_y);
-        cursor_y += stack_preview.bounds.height() + 36.0f;
+        update_extents(layout.stack.bounds.max_x, layout.stack.bounds.max_y);
     }
 
-    // Tree view preview
-    {
+    if (auto tree_child = find_stack_child(gallery_stack_layout, kGalleryStackChildTree)) {
+        float tree_left = content_left + tree_child->x;
+        float tree_top = content_top + tree_child->y;
+
         Widgets::TypographyStyle caption_typography = theme.caption;
         float caption_line = caption_typography.line_height;
-        std::optional<WidgetBounds> tree_caption_bounds;
+        float tree_caption_top = tree_top - (caption_line + 12.0f);
         auto caption = Widgets::BuildLabel(
             Widgets::LabelBuildParams::Make("Tree view preview", caption_typography)
-                .WithOrigin(left, cursor_y + caption_typography.baseline_shift)
+                .WithOrigin(tree_left, tree_caption_top + caption_typography.baseline_shift)
                 .WithColor(theme.caption_color)
                 .WithDrawable(next_drawable_id++, std::string("widget/gallery/tree/caption"), 0.6f));
         if (caption) {
-            tree_caption_bounds = Widgets::LabelBounds(*caption);
-            if (!tree_caption_bounds) {
-                tree_caption_bounds = SP::UI::Builders::MakeWidgetBounds(left,
-                                                  cursor_y,
-                                                  left + caption->width,
-                                                  cursor_y + caption_line);
+            layout.tree_caption = Widgets::LabelBounds(*caption);
+            if (!layout.tree_caption) {
+                layout.tree_caption = SP::UI::Builders::MakeWidgetBounds(tree_left,
+                                                                         tree_caption_top,
+                                                                         tree_left + caption->width,
+                                                                         tree_caption_top + caption_line);
             }
             pending.emplace_back(std::move(caption->bucket));
-            max_width = std::max(max_width, left + caption->width);
-            max_height = std::max(max_height, cursor_y + caption_line);
+            update_extents(tree_left + caption->width, tree_caption_top + caption_line);
+        } else {
+            layout.tree_caption.reset();
         }
-        layout.tree_caption = tree_caption_bounds;
-        cursor_y += caption_line + 12.0f;
 
         TreeLayout tree_preview{};
-        auto tree_bucket = build_tree_preview(tree_style,
-                                              tree_nodes,
-                                              tree_state,
-                                              theme,
-                                              tree_preview);
-        translate_bucket(tree_bucket, left, cursor_y);
+        auto tree_bucket = build_tree_preview(tree_style, tree_nodes, tree_state, theme, tree_preview);
+        translate_bucket(tree_bucket, tree_left, tree_top);
         pending.emplace_back(std::move(tree_bucket));
 
-        layout.tree.bounds = WidgetBounds{
-            tree_preview.bounds.min_x + left,
-            tree_preview.bounds.min_y + cursor_y,
-            tree_preview.bounds.max_x + left,
-            tree_preview.bounds.max_y + cursor_y,
-        };
-        layout.tree.content_top = tree_preview.content_top;
-        layout.tree.row_height = tree_preview.row_height;
-        layout.tree.rows.clear();
-        layout.tree.rows.reserve(tree_preview.rows.size());
-        for (auto const& row : tree_preview.rows) {
-            layout.tree.rows.push_back(TreeRowLayout{
-                .bounds = WidgetBounds{
-                    row.bounds.min_x + left,
-                    row.bounds.min_y + cursor_y,
-                    row.bounds.max_x + left,
-                    row.bounds.max_y + cursor_y,
-                },
-                .node_id = row.node_id,
-                .label = row.label,
-                .toggle = WidgetBounds{
-                    row.toggle.min_x + left,
-                    row.toggle.min_y + cursor_y,
-                    row.toggle.max_x + left,
-                    row.toggle.max_y + cursor_y,
-                },
-                .depth = row.depth,
-                .expandable = row.expandable,
-                .expanded = row.expanded,
-                .loading = row.loading,
-                .enabled = row.enabled,
-            });
-        }
+        layout.tree = tree_preview;
+        WidgetInput::TranslateTreeLayout(layout.tree, tree_left, tree_top);
 
         layout.tree_footprint = layout.tree.bounds;
         if (layout.tree_caption) {
@@ -1090,25 +1083,25 @@ auto build_gallery_bucket(PathSpace& space,
         }
         layout.tree_footprint.normalize();
         WidgetInput::ExpandForFocusHighlight(layout.tree_footprint);
-        max_width = std::max(max_width, layout.tree.bounds.max_x);
-        max_height = std::max(max_height, layout.tree.bounds.max_y);
-        cursor_y += tree_preview.bounds.height() + 48.0f;
+        update_extents(layout.tree.bounds.max_x, layout.tree.bounds.max_y);
     }
 
-    // Footer hint
+    float baseline_width = content_left + gallery_stack_layout.width;
+    float baseline_height = content_top + gallery_stack_layout.height;
+    update_extents(baseline_width, baseline_height);
+
     Widgets::TypographyStyle footer_typography = theme.caption;
     float footer_line_height = footer_typography.line_height;
+    float footer_y = baseline_height + 32.0f;
     auto footer = Widgets::BuildLabel(
         Widgets::LabelBuildParams::Make("Close window to exit", footer_typography)
-            .WithOrigin(left, cursor_y + footer_typography.baseline_shift)
+            .WithOrigin(kDefaultMargin, footer_y + footer_typography.baseline_shift)
             .WithColor(theme.muted_text_color)
             .WithDrawable(next_drawable_id++, std::string("widget/gallery/footer"), 0.6f));
     if (footer) {
         pending.emplace_back(std::move(footer->bucket));
-        max_width = std::max(max_width, left + footer->width);
-        max_height = std::max(max_height, cursor_y + footer_line_height);
+        update_extents(kDefaultMargin + footer->width, footer_y + footer_line_height);
     }
-    cursor_y += footer_line_height;
 
     float canvas_width = std::max(max_width + kDefaultMargin, 360.0f);
     float canvas_height = std::max(max_height + kDefaultMargin, 360.0f);
@@ -1128,6 +1121,7 @@ auto build_gallery_bucket(PathSpace& space,
     result.layout = std::move(layout);
     return result;
 }
+
 
 struct GallerySceneResult {
     ScenePath scene;
@@ -1155,6 +1149,8 @@ auto publish_gallery_scene(PathSpace& space,
                            std::vector<Widgets::ListItem> const& list_items,
                            Widgets::StackLayoutParams const& stack_params,
                            Widgets::StackLayoutState const& stack_layout,
+                           Widgets::StackLayoutState const& controls_stack_layout,
+                           Widgets::StackLayoutState const& gallery_stack_layout,
                            Widgets::TreePaths const& tree,
                            Widgets::TreeStyle const& tree_style,
                            Widgets::TreeState const& tree_state,
@@ -1192,6 +1188,8 @@ auto publish_gallery_scene(PathSpace& space,
                                       list_items,
                                       stack_params,
                                       stack_layout,
+                                      controls_stack_layout,
+                                      gallery_stack_layout,
                                       tree,
                                       tree_style,
                                       tree_state,
@@ -1251,6 +1249,8 @@ struct WidgetsExampleContext {
     Widgets::SliderPaths slider_paths;
     Widgets::ListPaths list_paths;
     Widgets::StackPaths stack_paths;
+    Widgets::StackPaths controls_stack_paths;
+    Widgets::StackPaths gallery_stack_paths;
     Widgets::TreePaths tree_paths;
     Widgets::WidgetTheme theme{};
     Widgets::ButtonStyle button_style{};
@@ -1262,6 +1262,10 @@ struct WidgetsExampleContext {
     std::vector<Widgets::ListItem> list_items;
     Widgets::StackLayoutParams stack_params{};
     Widgets::StackLayoutState stack_layout{};
+    Widgets::StackLayoutParams controls_stack_params{};
+    Widgets::StackLayoutState controls_stack_layout{};
+    Widgets::StackLayoutParams gallery_stack_params{};
+    Widgets::StackLayoutState gallery_stack_layout{};
     Widgets::TreeStyle tree_style{};
     Widgets::TreeState tree_state{};
     std::vector<Widgets::TreeNode> tree_nodes;
@@ -1291,6 +1295,74 @@ struct WidgetsExampleContext {
     int debug_capture_index = 0;
     bool debug_capture_after_refresh = false;
 };
+
+static void rebuild_bindings(WidgetsExampleContext& ctx) {
+    auto app_view = SP::App::AppRootPathView{ctx.app_root.getPath()};
+    auto target_view = SP::ConcretePathStringView{ctx.target_path};
+
+    ctx.button_binding = unwrap_or_exit(WidgetBindings::CreateButtonBinding(*ctx.space,
+                                                                            app_view,
+                                                                            ctx.button_paths,
+                                                                            target_view,
+                                                                            WidgetInput::MakeDirtyHint(ctx.gallery.layout.button_footprint)),
+                                        "create button binding");
+
+    ctx.toggle_binding = unwrap_or_exit(WidgetBindings::CreateToggleBinding(*ctx.space,
+                                                                            app_view,
+                                                                            ctx.toggle_paths,
+                                                                            target_view,
+                                                                            WidgetInput::MakeDirtyHint(ctx.gallery.layout.toggle_footprint)),
+                                        "create toggle binding");
+
+    auto slider_dirty_hint = WidgetInput::MakeDirtyHint(ctx.gallery.layout.slider_footprint);
+    ctx.slider_binding = unwrap_or_exit(WidgetBindings::CreateSliderBinding(*ctx.space,
+                                                                            app_view,
+                                                                            ctx.slider_paths,
+                                                                            target_view,
+                                                                            slider_dirty_hint),
+                                        "create slider binding");
+
+    ctx.list_binding = unwrap_or_exit(WidgetBindings::CreateListBinding(*ctx.space,
+                                                                        app_view,
+                                                                        ctx.list_paths,
+                                                                        target_view,
+                                                                        WidgetInput::MakeDirtyHint(ctx.gallery.layout.list_footprint)),
+                                      "create list binding");
+
+    ctx.stack_binding = unwrap_or_exit(WidgetBindings::CreateStackBinding(*ctx.space,
+                                                                          app_view,
+                                                                          ctx.stack_paths,
+                                                                          target_view,
+                                                                          WidgetInput::MakeDirtyHint(ctx.gallery.layout.stack_footprint)),
+                                       "create stack binding");
+
+    ctx.tree_binding = unwrap_or_exit(WidgetBindings::CreateTreeBinding(*ctx.space,
+                                                                        app_view,
+                                                                        ctx.tree_paths,
+                                                                        target_view,
+                                                                        WidgetInput::MakeDirtyHint(ctx.gallery.layout.tree_footprint)),
+                                      "create tree binding");
+}
+
+static void recompute_gallery_layout(WidgetsExampleContext& ctx, int window_width) {
+    if (!ctx.space) {
+        return;
+    }
+
+    float available_width = static_cast<float>(window_width) - 2.0f * kDefaultMargin;
+    if (available_width < 320.0f) {
+        available_width = 320.0f;
+    }
+
+    ctx.gallery_stack_params.style.width = available_width;
+    unwrap_or_exit(Widgets::UpdateStackLayout(*ctx.space, ctx.gallery_stack_paths, ctx.gallery_stack_params),
+                   "update gallery stack layout");
+    ctx.gallery_stack_layout = unwrap_or_exit(Widgets::ReadStackLayout(*ctx.space, ctx.gallery_stack_paths),
+                                              "read gallery stack layout");
+
+    ctx.controls_stack_layout = unwrap_or_exit(Widgets::ReadStackLayout(*ctx.space, ctx.controls_stack_paths),
+                                               "read gallery controls stack layout");
+}
 
 static auto make_input_context(WidgetsExampleContext& ctx) -> WidgetInput::WidgetInputContext {
     WidgetInput::WidgetInputContext input{};
@@ -1786,6 +1858,8 @@ static void refresh_gallery(WidgetsExampleContext& ctx) {
                                         ctx.list_items,
                                         ctx.stack_params,
                                         ctx.stack_layout,
+                                        ctx.controls_stack_layout,
+                                        ctx.gallery_stack_layout,
                                         ctx.tree_paths,
                                         ctx.tree_style,
                                         tree_preview_state,
@@ -3098,6 +3172,71 @@ int main(int argc, char** argv) {
     auto stack_layout_live = unwrap_or_exit(Widgets::ReadStackLayout(space, stack),
                                             "read stack layout");
 
+    auto controls_stack_params = Widgets::MakeStackLayoutParams("gallery_controls")
+                                     .ModifyStyle([](Widgets::StackLayoutStyle& style) {
+                                         style.axis = Widgets::StackAxis::Horizontal;
+                                         style.spacing = 32.0f;
+                                         style.align_cross = Widgets::StackAlignCross::Center;
+                                     })
+                                     .WithChildren({
+                                         Widgets::StackChildSpec{
+                                             .id = std::string{kControlsStackChildButton},
+                                             .widget_path = button.root.getPath(),
+                                             .scene_path = button.scene.getPath(),
+                                         },
+                                         Widgets::StackChildSpec{
+                                             .id = std::string{kControlsStackChildToggle},
+                                             .widget_path = toggle.root.getPath(),
+                                             .scene_path = toggle.scene.getPath(),
+                                         },
+                                     })
+                                     .Build();
+
+    auto controls_stack = unwrap_or_exit(Widgets::CreateStack(space, appRootView, controls_stack_params),
+                                         "create gallery controls stack");
+    auto controls_stack_layout = unwrap_or_exit(Widgets::ReadStackLayout(space, controls_stack),
+                                                "read gallery controls stack layout");
+
+    auto gallery_stack_params = Widgets::MakeStackLayoutParams("gallery_layout")
+                                    .ModifyStyle([](Widgets::StackLayoutStyle& style) {
+                                        style.axis = Widgets::StackAxis::Vertical;
+                                        style.spacing = 48.0f;
+                                        style.align_cross = Widgets::StackAlignCross::Stretch;
+                                    })
+                                    .WithChildren({
+                                        Widgets::StackChildSpec{
+                                            .id = std::string{kGalleryStackChildControls},
+                                            .widget_path = controls_stack.root.getPath(),
+                                            .scene_path = controls_stack.scene.getPath(),
+                                        },
+                                        Widgets::StackChildSpec{
+                                            .id = std::string{kGalleryStackChildSlider},
+                                            .widget_path = slider.root.getPath(),
+                                            .scene_path = slider.scene.getPath(),
+                                        },
+                                        Widgets::StackChildSpec{
+                                            .id = std::string{kGalleryStackChildList},
+                                            .widget_path = list.root.getPath(),
+                                            .scene_path = list.scene.getPath(),
+                                        },
+                                        Widgets::StackChildSpec{
+                                            .id = std::string{kGalleryStackChildStack},
+                                            .widget_path = stack.root.getPath(),
+                                            .scene_path = stack.scene.getPath(),
+                                        },
+                                        Widgets::StackChildSpec{
+                                            .id = std::string{kGalleryStackChildTree},
+                                            .widget_path = tree.root.getPath(),
+                                            .scene_path = tree.scene.getPath(),
+                                        },
+                                    })
+                                    .Build();
+
+    auto gallery_stack = unwrap_or_exit(Widgets::CreateStack(space, appRootView, gallery_stack_params),
+                                        "create gallery layout stack");
+    auto gallery_stack_layout = unwrap_or_exit(Widgets::ReadStackLayout(space, gallery_stack),
+                                               "read gallery layout stack");
+
     std::cout << "widgets_example published tree widget:\n"
               << "  scene: " << tree.scene.getPath() << "\n"
               << "  state path: " << tree.state.getPath() << "\n"
@@ -3152,6 +3291,8 @@ int main(int argc, char** argv) {
                                          list_items_live,
                                          stack_desc,
                                          stack_layout_live,
+                                         controls_stack_layout,
+                                         gallery_stack_layout,
                                          tree,
                                          tree_style_live,
                                          tree_state_live,
@@ -3210,6 +3351,8 @@ int main(int argc, char** argv) {
     ctx.slider_paths = slider;
     ctx.list_paths = list;
     ctx.stack_paths = stack;
+    ctx.controls_stack_paths = controls_stack;
+    ctx.gallery_stack_paths = gallery_stack;
     ctx.tree_paths = tree;
     ctx.theme = theme;
     ctx.button_style = button_params.style;
@@ -3221,6 +3364,10 @@ int main(int argc, char** argv) {
     ctx.list_items = list_items_live;
     ctx.stack_params = stack_desc;
     ctx.stack_layout = stack_layout_live;
+    ctx.controls_stack_params = controls_stack_params;
+    ctx.controls_stack_layout = controls_stack_layout;
+    ctx.gallery_stack_params = gallery_stack_params;
+    ctx.gallery_stack_layout = gallery_stack_layout;
     ctx.tree_style = tree_style_live;
     ctx.tree_state = tree_state_live;
     ctx.tree_nodes = tree_nodes_live;
@@ -3232,50 +3379,7 @@ int main(int argc, char** argv) {
     ctx.target_path = bootstrap.target.getPath();
     ctx.focus_config = WidgetFocus::MakeConfig(appRootView, bootstrap.target);
 
-    auto target_view = SP::ConcretePathStringView{ctx.target_path};
-
-    ctx.button_binding = unwrap_or_exit(WidgetBindings::CreateButtonBinding(space,
-                                                                            appRootView,
-                                                                            ctx.button_paths,
-                                                                            target_view,
-                                                                            WidgetInput::MakeDirtyHint(ctx.gallery.layout.button_footprint)),
-                                        "create button binding");
-
-    ctx.toggle_binding = unwrap_or_exit(WidgetBindings::CreateToggleBinding(space,
-                                                                            appRootView,
-                                                                            ctx.toggle_paths,
-                                                                            target_view,
-                                                                            WidgetInput::MakeDirtyHint(ctx.gallery.layout.toggle_footprint)),
-                                        "create toggle binding");
-
-    auto slider_dirty_hint = WidgetInput::MakeDirtyHint(ctx.gallery.layout.slider_footprint);
-    ctx.slider_binding = unwrap_or_exit(WidgetBindings::CreateSliderBinding(space,
-                                                                            appRootView,
-                                                                            ctx.slider_paths,
-                                                                            target_view,
-                                                                            slider_dirty_hint),
-                                        "create slider binding");
-
-    ctx.list_binding = unwrap_or_exit(WidgetBindings::CreateListBinding(space,
-                                                                        appRootView,
-                                                                        ctx.list_paths,
-                                                                        target_view,
-                                                                        WidgetInput::MakeDirtyHint(ctx.gallery.layout.list_footprint)),
-                                      "create list binding");
-
-    ctx.stack_binding = unwrap_or_exit(WidgetBindings::CreateStackBinding(space,
-                                                                          appRootView,
-                                                                          ctx.stack_paths,
-                                                                          target_view,
-                                                                          WidgetInput::MakeDirtyHint(ctx.gallery.layout.stack_footprint)),
-                                       "create stack binding");
-
-    ctx.tree_binding = unwrap_or_exit(WidgetBindings::CreateTreeBinding(space,
-                                                                        appRootView,
-                                                                        ctx.tree_paths,
-                                                                        target_view,
-                                                                        WidgetInput::MakeDirtyHint(ctx.gallery.layout.tree_footprint)),
-                                      "create tree binding");
+    rebuild_bindings(ctx);
 
     if (set_focus_target(ctx, FocusTarget::Button)) {
         refresh_gallery(ctx);
@@ -3359,6 +3463,9 @@ int main(int argc, char** argv) {
                                                             window_width,
                                                             window_height),
                            "refresh surface after resize");
+            recompute_gallery_layout(ctx, window_width);
+            refresh_gallery(ctx);
+            rebuild_bindings(ctx);
         }
 
         auto telemetry = present_frame(space, bootstrap.window, bootstrap.view_name, window_width, window_height);

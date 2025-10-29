@@ -20,7 +20,7 @@
 - Tighten CI gating to require the looped CTest run and lint/format checks before merges.
 
 ## Task Backlog
-- Wrap every widget preview in `examples/widgets_example.cpp` with horizontal/vertical stack containers so the gallery reflows as the window resizes; reuse the layout helpers landed in the stack container milestone (see archive doc for context).
+- ✅ (October 28, 2025) Wrapped every widget preview in `examples/widgets_example.cpp` with horizontal/vertical stack containers so the gallery reflows as the window resizes; reused the layout helpers landed in the stack container milestone (see archive doc for context).
 - Fix widget focus repaint regressions: ensure focus styling clears when focus leaves a widget so the highlight doesn’t linger (reproduce via gallery Tab cycling; current focus ring sticks half-on after blur).
 - Close the font/resource plan from `docs/Plan_SceneGraph_Renderer.md` §"Plan: Resource system (images, fonts, shaders)" and surface the resulting font manager in the widget gallery (theme selection plus label typography should draw from the new resource-backed fonts).
 - Enhance `examples/paint_example.cpp` with palette buttons (red, green, blue, yellow, purple, orange, etc.) and a brush-size slider routed through the widget bindings so live demos can tweak stroke color and width without code changes.

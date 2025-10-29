@@ -94,6 +94,16 @@ inline auto measure_tree(PathSpace& space,
     return StackWidgetSize{std::max(style->width, 0.0f), std::max(height, row_height)};
 }
 
+inline auto measure_stack(PathSpace& space,
+                          std::string const& root) -> SP::Expected<StackWidgetSize> {
+    auto computedPath = root + "/layout/computed";
+    auto layout = space.read<Widgets::StackLayoutState, std::string>(computedPath);
+    if (!layout) {
+        return std::unexpected(layout.error());
+    }
+    return StackWidgetSize{std::max(layout->width, 0.0f), std::max(layout->height, 0.0f)};
+}
+
 inline auto measure_widget(PathSpace& space,
                            std::string const& root) -> SP::Expected<StackWidgetSize> {
     auto kindPath = root + "/meta/kind";
@@ -115,6 +125,9 @@ inline auto measure_widget(PathSpace& space,
     }
     if (*kind == "tree") {
         return measure_tree(space, root);
+    }
+    if (*kind == "stack") {
+        return measure_stack(space, root);
     }
     return std::unexpected(make_error("Unsupported widget kind for stack layout: " + *kind,
                                       SP::Error::Code::InvalidType));

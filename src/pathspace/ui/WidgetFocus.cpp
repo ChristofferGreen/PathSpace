@@ -113,6 +113,18 @@ auto determine_widget_kind(PathSpace& space,
         if (kind == "tree") {
             return WidgetKind::Tree;
         }
+        if (kind == "stack") {
+            return WidgetKind::Stack;
+        }
+    }
+
+    auto computedPath = rootPath + "/layout/computed";
+    auto computedValue = read_optional<Widgets::StackLayoutState>(space, computedPath);
+    if (!computedValue) {
+        return std::unexpected(computedValue.error());
+    }
+    if (computedValue->has_value()) {
+        return WidgetKind::Stack;
     }
 
     auto nodesPath = rootPath + "/meta/nodes";
@@ -381,6 +393,8 @@ auto update_widget_focus(PathSpace& space,
             return update_slider_focus(space, widget_root, app_root, focused);
         case WidgetKind::List:
             return update_list_focus(space, widget_root, app_root, focused);
+        case WidgetKind::Stack:
+            return false;
         case WidgetKind::Tree:
             return update_tree_focus(space, widget_root, app_root, focused);
     }

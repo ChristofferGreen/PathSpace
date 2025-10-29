@@ -899,6 +899,23 @@ auto Input::MakeDirtyHint(Input::WidgetBounds const& bounds) -> Builders::DirtyR
     return hint;
 }
 
+auto Input::TranslateTreeLayout(TreeLayout& layout, float dx, float dy) -> void {
+    layout.bounds.min_x += dx;
+    layout.bounds.max_x += dx;
+    layout.bounds.min_y += dy;
+    layout.bounds.max_y += dy;
+    for (auto& row : layout.rows) {
+        row.bounds.min_x += dx;
+        row.bounds.max_x += dx;
+        row.bounds.min_y += dy;
+        row.bounds.max_y += dy;
+        row.toggle.min_x += dx;
+        row.toggle.max_x += dx;
+        row.toggle.min_y += dy;
+        row.toggle.max_y += dy;
+    }
+}
+
 auto UpdateListState(PathSpace& space,
                      Widgets::ListPaths const& paths,
                      Widgets::ListState const& new_state) -> SP::Expected<bool> {
@@ -1734,6 +1751,18 @@ auto determine_widget_kind(PathSpace& space,
         if (kind == "tree") {
             return WidgetKind::Tree;
         }
+        if (kind == "stack") {
+            return WidgetKind::Stack;
+        }
+    }
+
+    auto computedPath = rootPath + "/layout/computed";
+    auto computedValue = read_optional<Widgets::StackLayoutState>(space, computedPath);
+    if (!computedValue) {
+        return std::unexpected(computedValue.error());
+    }
+    if (computedValue->has_value()) {
+        return WidgetKind::Stack;
     }
 
     auto nodesPath = rootPath + "/meta/nodes";
@@ -2011,6 +2040,8 @@ auto update_widget_focus(PathSpace& space,
             return update_slider_focus(space, widget_root, app_root, focused);
         case WidgetKind::List:
             return update_list_focus(space, widget_root, app_root, focused);
+        case WidgetKind::Stack:
+            return false;
         case WidgetKind::Tree:
             return update_tree_focus(space, widget_root, app_root, focused);
     }
