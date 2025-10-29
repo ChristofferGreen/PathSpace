@@ -23,6 +23,8 @@
 ## Task Backlog
 - ✅ (October 28, 2025) Wrapped every widget preview in `examples/widgets_example.cpp` with horizontal/vertical stack containers so the gallery reflows as the window resizes; reused the layout helpers landed in the stack container milestone (see archive doc for context).
 - ✅ (October 29, 2025) Added `Widget focus slider-to-list transition covers highlight footprint` to `PathSpaceUITests`, exercising slider → list focus changes, dirty hint coverage, and framebuffer validation. The case currently fails because the slider dirty footprint is not being marked when focus hops, matching the lingering highlight regression; fix the underlying bug before flipping it green.
+- Build `examples/widgets_example_minimal.cpp`: a showcase app with slider/list/tree and focus navigation that omits diagnostics, trace capture, and screenshot plumbing, highlighting the ergonomic surface of the GUI API.
+- Long-term follow-up: evaluate API ergonomics and refactor the minimal example toward a ≤400 LOC target once higher-level layout/focus helpers arrive.
 - Close the font/resource plan from `docs/Plan_SceneGraph_Renderer.md` §"Plan: Resource system (images, fonts, shaders)" and surface the resulting font manager in the widget gallery (theme selection plus label typography should draw from the new resource-backed fonts).
 - Enhance `examples/paint_example.cpp` with palette buttons (red, green, blue, yellow, purple, orange, etc.) and a brush-size slider routed through the widget bindings so live demos can tweak stroke color and width without code changes.
 - Add widget action callbacks: allow attaching callable/lambda payloads to widget paths so pressing a button can immediately invoke application logic (hook into reducers/ops schema without bespoke polling).
