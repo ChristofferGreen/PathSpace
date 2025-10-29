@@ -26,7 +26,8 @@
 - ✅ (October 29, 2025) Built `examples/widgets_example_minimal.cpp`, a pared-down demo with slider/list/tree widgets plus keyboard focus navigation that skips diagnostics, trace capture, and screenshot plumbing to spotlight the ergonomic GUI builder surface.
 - Long-term follow-up: evaluate API ergonomics and refactor the minimal example toward a ≤400 LOC target once higher-level layout/focus helpers arrive.
 - ✅ (October 29, 2025) Font/resource plan: widget demos now register fonts through `FontManager`, typography carries resource roots/revisions, and TextBuilder emits font fingerprints so renderers/presenters can reuse atlases.
-- Enhance `examples/paint_example.cpp` with palette buttons (red, green, blue, yellow, purple, orange, etc.) and a brush-size slider routed through the widget bindings so live demos can tweak stroke color and width without code changes. ← next focus.
+- ✅ (October 29, 2025) Enhanced `examples/paint_example.cpp` with a widget-driven palette (red/green/blue/yellow/purple/orange) plus a brush-size slider so demos can swap colors and brush widths via bindings without editing code; PathSpace emits dirty hints for the control stack and persists the selected color/size under `/config`.
+- Add UITest coverage for the slider → listbox focus regression before rolling into the font/resource manager milestone. ← next focus.
 - ✅ (October 29, 2025) Add widget action callbacks: allow attaching callable/lambda payloads directly to widget bindings so button/toggle/list/tree dispatchers fire immediate callbacks in addition to queuing ops; UITests now cover the callback fan-out and clearing flows.
 - ✅ (October 29, 2025) Extend `examples/widgets_example.cpp` with a demo button wired to the callback plumbing; the sample now logs “Hello from PathSpace!” on press/activate so contributors can see the immediate action flow.
 

@@ -3,6 +3,7 @@
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
+#include <pathspace/ui/TextBuilder.hpp>
 
 #include <algorithm>
 #include <array>
@@ -22,6 +23,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <utility>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <third_party/stb_image_write.h>
@@ -92,6 +94,350 @@ void clear_mouse() {
 namespace {
 
 using DirtyRectHint = Builders::DirtyRectHint;
+namespace Widgets = SP::UI::Builders::Widgets;
+namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
+namespace WidgetReducers = SP::UI::Builders::Widgets::Reducers;
+namespace WidgetInput = SP::UI::Builders::Widgets::Input;
+
+struct PaletteEntry {
+    std::string id;
+    std::string label;
+    std::array<float, 4> color;
+};
+
+struct PaletteButton {
+    PaletteEntry entry{};
+    Widgets::ButtonPaths paths{};
+    WidgetBindings::ButtonBinding binding{};
+    Widgets::ButtonStyle style{};
+    Widgets::ButtonState state{};
+    WidgetInput::WidgetBounds bounds{};
+};
+
+struct SliderControl {
+    Widgets::SliderPaths paths{};
+    WidgetBindings::SliderBinding binding{};
+    Widgets::SliderStyle style{};
+    Widgets::SliderState state{};
+    Widgets::SliderRange range{};
+    WidgetInput::WidgetBounds bounds{};
+    float label_top = 0.0f;
+    float label_baseline = 0.0f;
+};
+
+struct PaintControls {
+    Widgets::WidgetTheme theme{};
+    std::vector<PaletteButton> buttons;
+    SliderControl slider{};
+    WidgetInput::WidgetBounds panel_bounds{};
+    DirtyRectHint dirty_hint{};
+    bool dirty = false;
+    int selected_index = 0;
+    bool slider_dragging = false;
+    int active_button = -1;
+    float pointer_x = 0.0f;
+    float pointer_y = 0.0f;
+    bool pointer_valid = false;
+    int brush_size_value = 8;
+    UIScene::DrawableBucketSnapshot bucket{};
+    float origin_x = 24.0f;
+    float origin_y = 24.0f;
+    float button_width = 68.0f;
+    float button_height = 36.0f;
+    float button_spacing = 8.0f;
+    float row_spacing = 8.0f;
+    float slider_spacing = 20.0f;
+    int buttons_per_row = 3;
+};
+
+auto mix_color(std::array<float, 4> base,
+               std::array<float, 4> target,
+               float amount) -> std::array<float, 4> {
+    amount = std::clamp(amount, 0.0f, 1.0f);
+    std::array<float, 4> out{};
+    for (int i = 0; i < 3; ++i) {
+        out[i] = std::clamp(base[i] * (1.0f - amount) + target[i] * amount, 0.0f, 1.0f);
+    }
+    out[3] = std::clamp(base[3], 0.0f, 1.0f);
+    return out;
+}
+
+auto lighten_color(std::array<float, 4> color, float amount) -> std::array<float, 4> {
+    return mix_color(color, {1.0f, 1.0f, 1.0f, color[3]}, amount);
+}
+
+auto relative_luminance(std::array<float, 4> const& color) -> float {
+    return 0.2126f * color[0] + 0.7152f * color[1] + 0.0722f * color[2];
+}
+
+auto choose_text_color(std::array<float, 4> const& background) -> std::array<float, 4> {
+    float lum = relative_luminance(background);
+    if (lum > 0.65f) {
+        return {0.12f, 0.14f, 0.18f, 1.0f};
+    }
+    return {1.0f, 1.0f, 1.0f, 1.0f};
+}
+
+template <typename Cmd>
+auto read_command(std::vector<std::uint8_t> const& payload, std::size_t offset) -> Cmd {
+    Cmd cmd{};
+    std::memcpy(&cmd, payload.data() + offset, sizeof(Cmd));
+    return cmd;
+}
+
+template <typename Cmd>
+auto write_command(std::vector<std::uint8_t>& payload, std::size_t offset, Cmd const& cmd) -> void {
+    std::memcpy(payload.data() + offset, &cmd, sizeof(Cmd));
+}
+
+auto translate_bucket(UIScene::DrawableBucketSnapshot& bucket, float dx, float dy) -> void {
+    for (auto& sphere : bucket.bounds_spheres) {
+        sphere.center[0] += dx;
+        sphere.center[1] += dy;
+    }
+    for (auto& box : bucket.bounds_boxes) {
+        box.min[0] += dx;
+        box.max[0] += dx;
+        box.min[1] += dy;
+        box.max[1] += dy;
+    }
+
+    std::size_t offset = 0;
+    for (auto kind_value : bucket.command_kinds) {
+        auto kind = static_cast<UIScene::DrawCommandKind>(kind_value);
+        switch (kind) {
+        case UIScene::DrawCommandKind::Rect: {
+            auto cmd = read_command<UIScene::RectCommand>(bucket.command_payload, offset);
+            cmd.min_x += dx;
+            cmd.max_x += dx;
+            cmd.min_y += dy;
+            cmd.max_y += dy;
+            write_command(bucket.command_payload, offset, cmd);
+            break;
+        }
+        case UIScene::DrawCommandKind::RoundedRect: {
+            auto cmd = read_command<UIScene::RoundedRectCommand>(bucket.command_payload, offset);
+            cmd.min_x += dx;
+            cmd.max_x += dx;
+            cmd.min_y += dy;
+            cmd.max_y += dy;
+            write_command(bucket.command_payload, offset, cmd);
+            break;
+        }
+        case UIScene::DrawCommandKind::TextGlyphs: {
+            auto cmd = read_command<UIScene::TextGlyphsCommand>(bucket.command_payload, offset);
+            cmd.min_x += dx;
+            cmd.max_x += dx;
+            cmd.min_y += dy;
+            cmd.max_y += dy;
+            write_command(bucket.command_payload, offset, cmd);
+            break;
+        }
+        default:
+            break;
+        }
+        offset += UIScene::payload_size_bytes(kind);
+    }
+}
+
+auto append_bucket(UIScene::DrawableBucketSnapshot& dest,
+                   UIScene::DrawableBucketSnapshot const& src) -> void {
+    if (src.drawable_ids.empty()) {
+        return;
+    }
+
+    auto drawable_base = static_cast<std::uint32_t>(dest.drawable_ids.size());
+    auto command_base = static_cast<std::uint32_t>(dest.command_kinds.size());
+    auto clip_base = static_cast<std::int32_t>(dest.clip_nodes.size());
+
+    dest.drawable_ids.insert(dest.drawable_ids.end(), src.drawable_ids.begin(), src.drawable_ids.end());
+    dest.world_transforms.insert(dest.world_transforms.end(), src.world_transforms.begin(), src.world_transforms.end());
+    dest.bounds_spheres.insert(dest.bounds_spheres.end(), src.bounds_spheres.begin(), src.bounds_spheres.end());
+    dest.bounds_boxes.insert(dest.bounds_boxes.end(), src.bounds_boxes.begin(), src.bounds_boxes.end());
+    dest.bounds_box_valid.insert(dest.bounds_box_valid.end(), src.bounds_box_valid.begin(), src.bounds_box_valid.end());
+    dest.layers.insert(dest.layers.end(), src.layers.begin(), src.layers.end());
+    dest.z_values.insert(dest.z_values.end(), src.z_values.begin(), src.z_values.end());
+    dest.material_ids.insert(dest.material_ids.end(), src.material_ids.begin(), src.material_ids.end());
+    dest.pipeline_flags.insert(dest.pipeline_flags.end(), src.pipeline_flags.begin(), src.pipeline_flags.end());
+    dest.visibility.insert(dest.visibility.end(), src.visibility.begin(), src.visibility.end());
+
+    for (auto offset : src.command_offsets) {
+        dest.command_offsets.push_back(offset + command_base);
+    }
+    dest.command_counts.insert(dest.command_counts.end(), src.command_counts.begin(), src.command_counts.end());
+
+    dest.command_kinds.insert(dest.command_kinds.end(), src.command_kinds.begin(), src.command_kinds.end());
+    dest.command_payload.insert(dest.command_payload.end(), src.command_payload.begin(), src.command_payload.end());
+
+    for (auto index : src.opaque_indices) {
+        dest.opaque_indices.push_back(index + drawable_base);
+    }
+    for (auto index : src.alpha_indices) {
+        dest.alpha_indices.push_back(index + drawable_base);
+    }
+
+    for (auto const& entry : src.layer_indices) {
+        UIScene::LayerIndices adjusted{entry.layer, {}};
+        adjusted.indices.reserve(entry.indices.size());
+        for (auto idx : entry.indices) {
+            adjusted.indices.push_back(idx + drawable_base);
+        }
+        dest.layer_indices.push_back(std::move(adjusted));
+    }
+
+    for (auto node : src.clip_nodes) {
+        if (node.next >= 0) {
+            node.next += clip_base;
+        }
+        dest.clip_nodes.push_back(node);
+    }
+    for (auto head : src.clip_head_indices) {
+        if (head >= 0) {
+            dest.clip_head_indices.push_back(head + clip_base);
+        } else {
+            dest.clip_head_indices.push_back(-1);
+        }
+    }
+
+    dest.authoring_map.insert(dest.authoring_map.end(), src.authoring_map.begin(), src.authoring_map.end());
+    dest.drawable_fingerprints.insert(dest.drawable_fingerprints.end(),
+                                      src.drawable_fingerprints.begin(),
+                                      src.drawable_fingerprints.end());
+}
+
+auto default_palette_entries() -> std::vector<PaletteEntry>;
+auto find_palette_index(std::vector<PaletteEntry> const& entries,
+                        std::array<float, 4> const& color) -> int;
+auto slider_value_from_position(SliderControl const& slider,
+                                float scene_x) -> float;
+auto refresh_button_state(PathSpace& space, PaletteButton& button) -> void;
+auto refresh_slider_state(PathSpace& space, SliderControl& slider) -> void;
+auto build_controls_bucket(PaintControls const& controls) -> UIScene::DrawableBucketSnapshot;
+auto initialize_controls(PathSpace& space,
+                         SP::App::AppRootPathView app_root,
+                         SP::ConcretePathStringView target_path,
+                         PaintControls& controls,
+                         std::array<float, 4>& brush_color,
+                         int initial_brush_size,
+                         std::string const& brush_color_path,
+                         std::string const& brush_size_path) -> void;
+auto handle_controls_event(PaintControls& controls,
+                           PathSpace& space,
+                           PaintInput::MouseEvent const& event,
+                           std::string const& brush_color_path,
+                           std::string const& brush_size_path,
+                           std::array<float, 4>& brush_color) -> bool;
+
+auto default_palette_entries() -> std::vector<PaletteEntry> {
+    return {
+        {"paint_palette_red", "Red", {0.905f, 0.173f, 0.247f, 1.0f}},
+        {"paint_palette_orange", "Orange", {0.972f, 0.545f, 0.192f, 1.0f}},
+        {"paint_palette_yellow", "Yellow", {0.995f, 0.847f, 0.207f, 1.0f}},
+        {"paint_palette_green", "Green", {0.172f, 0.701f, 0.368f, 1.0f}},
+        {"paint_palette_blue", "Blue", {0.157f, 0.407f, 0.933f, 1.0f}},
+        {"paint_palette_purple", "Purple", {0.560f, 0.247f, 0.835f, 1.0f}},
+    };
+}
+
+auto find_palette_index(std::vector<PaletteEntry> const& entries,
+                        std::array<float, 4> const& color) -> int {
+    auto matches = [&](PaletteEntry const& entry) {
+        for (int i = 0; i < 3; ++i) {
+            if (std::fabs(entry.color[i] - color[i]) > 0.05f) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    for (std::size_t index = 0; index < entries.size(); ++index) {
+        if (matches(entries[index])) {
+            return static_cast<int>(index);
+        }
+    }
+    return 0;
+}
+
+auto slider_value_from_position(SliderControl const& slider,
+                                float scene_x) -> float {
+    if (slider.style.width <= 0.0f) {
+        return slider.range.minimum;
+    }
+    float local_x = std::clamp(scene_x - slider.bounds.min_x, 0.0f, slider.style.width);
+    float t = local_x / slider.style.width;
+    float value = slider.range.minimum + t * (slider.range.maximum - slider.range.minimum);
+    if (slider.range.step > 0.0f) {
+        float steps = std::round((value - slider.range.minimum) / slider.range.step);
+        value = slider.range.minimum + steps * slider.range.step;
+    }
+    return std::clamp(value, slider.range.minimum, slider.range.maximum);
+}
+
+auto refresh_button_state(PathSpace& space, PaletteButton& button) -> void {
+    auto state = space.read<Widgets::ButtonState, std::string>(std::string(button.paths.state.getPath()));
+    if (state) {
+        button.state = *state;
+    }
+}
+
+auto refresh_slider_state(PathSpace& space, SliderControl& slider) -> void {
+    auto state = space.read<Widgets::SliderState, std::string>(std::string(slider.paths.state.getPath()));
+    if (state) {
+        slider.state = *state;
+    }
+}
+
+auto build_controls_bucket(PaintControls const& controls) -> UIScene::DrawableBucketSnapshot {
+    UIScene::DrawableBucketSnapshot bucket{};
+    std::uint64_t next_drawable_id = 1'000'000ull;
+
+    for (std::size_t index = 0; index < controls.buttons.size(); ++index) {
+        auto const& button = controls.buttons[index];
+        Widgets::ButtonStyle style = button.style;
+        if (static_cast<int>(index) == controls.selected_index) {
+            style.background_color = lighten_color(style.background_color, 0.20f);
+            style.text_color = choose_text_color(style.background_color);
+        }
+
+        auto preview = Widgets::BuildButtonPreview(
+            style,
+            button.state,
+            Widgets::ButtonPreviewOptions{
+                .authoring_root = std::string(button.paths.root.getPath()) + "/authoring",
+                .pulsing_highlight = button.state.focused,
+            });
+        translate_bucket(preview,
+                         button.bounds.min_x,
+                         button.bounds.min_y);
+        append_bucket(bucket, preview);
+    }
+
+    std::string slider_caption = "Brush Size: " + std::to_string(controls.brush_size_value) + " px";
+    auto caption = Widgets::BuildLabel(
+        Widgets::LabelBuildParams::Make(slider_caption, controls.theme.caption)
+            .WithOrigin(controls.slider.bounds.min_x,
+                        controls.slider.label_baseline)
+            .WithColor(controls.theme.caption_color)
+            .WithDrawable(next_drawable_id++, std::string("widgets/paint/slider/label"), 0.5f));
+    if (caption) {
+        append_bucket(bucket, caption->bucket);
+    }
+
+    auto slider_preview = Widgets::BuildSliderPreview(
+        controls.slider.style,
+        controls.slider.range,
+        controls.slider.state,
+        Widgets::SliderPreviewOptions{
+            .authoring_root = std::string(controls.slider.paths.root.getPath()) + "/authoring",
+            .pulsing_highlight = controls.slider.state.focused,
+        });
+    translate_bucket(slider_preview,
+                     controls.slider.bounds.min_x,
+                     controls.slider.bounds.min_y);
+    append_bucket(bucket, slider_preview);
+
+    return bucket;
+}
 
 #if defined(__APPLE__)
 void handle_local_mouse(SP::UI::LocalMouseEvent const& ev, void*) {
@@ -479,6 +825,407 @@ auto unwrap_or_exit(SP::Expected<void> value, std::string const& context) -> voi
     }
 }
 
+auto initialize_controls(PathSpace& space,
+                         SP::App::AppRootPathView app_root,
+                         SP::ConcretePathStringView target_path,
+                         PaintControls& controls,
+                         std::array<float, 4>& brush_color,
+                         int initial_brush_size,
+                         std::string const& brush_color_path,
+                         std::string const& brush_size_path) -> void {
+    controls.theme = Widgets::MakeDefaultWidgetTheme();
+    controls.buttons.clear();
+
+    auto palette = default_palette_entries();
+    controls.buttons.reserve(palette.size());
+
+    controls.brush_size_value = std::max(1, initial_brush_size);
+    controls.selected_index = find_palette_index(palette, brush_color);
+    if (controls.selected_index < 0
+        || controls.selected_index >= static_cast<int>(palette.size())) {
+        controls.selected_index = 0;
+        if (!palette.empty()) {
+            brush_color = palette.front().color;
+            replace_value(space, brush_color_path, brush_color);
+        }
+    }
+
+    float max_x = controls.origin_x;
+    float max_y = controls.origin_y;
+
+    auto target_view = target_path;
+
+    for (std::size_t index = 0; index < palette.size(); ++index) {
+        auto const& entry = palette[index];
+
+        Widgets::ButtonParams params{};
+        params.name = entry.id;
+        params.label = entry.label;
+        params.style = controls.theme.button;
+        params.style.width = controls.button_width;
+        params.style.height = controls.button_height;
+        params.style.background_color = entry.color;
+        params.style.text_color = choose_text_color(entry.color);
+
+        auto paths = unwrap_or_exit(Widgets::CreateButton(space, app_root, params),
+                                    "create paint palette button");
+
+        int row = static_cast<int>(index) / std::max(1, controls.buttons_per_row);
+        int col = static_cast<int>(index) % std::max(1, controls.buttons_per_row);
+
+        float x = controls.origin_x + static_cast<float>(col) * (controls.button_width + controls.button_spacing);
+        float y = controls.origin_y + static_cast<float>(row) * (controls.button_height + controls.row_spacing);
+
+        PaletteButton button{};
+        button.entry = entry;
+        button.paths = std::move(paths);
+        button.style = params.style;
+        button.bounds = WidgetInput::WidgetBounds{x, y, x + controls.button_width, y + controls.button_height};
+        WidgetInput::ExpandForFocusHighlight(button.bounds);
+
+        auto hint = WidgetInput::MakeDirtyHint(button.bounds);
+        button.binding = unwrap_or_exit(WidgetBindings::CreateButtonBinding(space,
+                                                                            app_root,
+                                                                            button.paths,
+                                                                            target_view,
+                                                                            hint),
+                                        "create paint palette button binding");
+
+        refresh_button_state(space, button);
+
+        auto controls_ptr = &controls;
+        auto space_ptr = &space;
+        auto brush_color_ptr = &brush_color;
+        auto color_path_copy = brush_color_path;
+        auto index_int = static_cast<int>(index);
+
+        WidgetBindings::AddActionCallback(button.binding,
+            [controls_ptr, space_ptr, brush_color_ptr, color_path_copy, index_int](WidgetReducers::WidgetAction const& action) {
+                if (action.kind != WidgetBindings::WidgetOpKind::Activate) {
+                    return;
+                }
+                if (index_int < 0 || index_int >= static_cast<int>(controls_ptr->buttons.size())) {
+                    return;
+                }
+                controls_ptr->selected_index = index_int;
+                *brush_color_ptr = controls_ptr->buttons[index_int].entry.color;
+                controls_ptr->dirty = true;
+                replace_value(*space_ptr, color_path_copy, *brush_color_ptr);
+            });
+
+        max_x = std::max(max_x, button.bounds.max_x);
+        max_y = std::max(max_y, button.bounds.max_y);
+
+        controls.buttons.push_back(std::move(button));
+    }
+
+    int rows = palette.empty() ? 0 : static_cast<int>((palette.size() + controls.buttons_per_row - 1) / controls.buttons_per_row);
+    float buttons_height = rows > 0
+        ? static_cast<float>(rows) * controls.button_height
+          + static_cast<float>(std::max(0, rows - 1)) * controls.row_spacing
+        : 0.0f;
+
+    controls.slider.style = controls.theme.slider;
+    controls.slider.style.label_color = controls.theme.caption_color;
+    controls.slider.style.label_typography = controls.theme.caption;
+    float buttons_row_width = controls.button_width * std::max(1, controls.buttons_per_row)
+                              + controls.button_spacing * static_cast<float>(std::max(0, controls.buttons_per_row - 1));
+    controls.slider.style.width = std::max(controls.slider.style.width, buttons_row_width);
+    controls.slider.style.height = std::max(controls.slider.style.height, 28.0f);
+
+    controls.slider.range = Widgets::SliderRange{
+        .minimum = 1.0f,
+        .maximum = 64.0f,
+        .step = 1.0f,
+    };
+
+    Widgets::SliderParams slider_params{};
+    slider_params.name = "paint_brush_size";
+    slider_params.minimum = controls.slider.range.minimum;
+    slider_params.maximum = controls.slider.range.maximum;
+    slider_params.value = static_cast<float>(controls.brush_size_value);
+    slider_params.step = controls.slider.range.step;
+    slider_params.style = controls.slider.style;
+
+    controls.slider.paths = unwrap_or_exit(Widgets::CreateSlider(space, app_root, slider_params),
+                                           "create paint brush size slider");
+    controls.slider.style = slider_params.style;
+    controls.slider.range = Widgets::SliderRange{
+        slider_params.minimum,
+        slider_params.maximum,
+        slider_params.step,
+    };
+
+    refresh_slider_state(space, controls.slider);
+    controls.slider.state.value = static_cast<float>(controls.brush_size_value);
+
+    float slider_label_top = controls.origin_y + buttons_height + controls.slider_spacing;
+    controls.slider.label_top = slider_label_top;
+    controls.slider.label_baseline = slider_label_top + controls.theme.caption.baseline_shift;
+    float label_height = controls.theme.caption.line_height;
+    float slider_top = slider_label_top + label_height + 6.0f;
+
+    controls.slider.bounds = WidgetInput::WidgetBounds{
+        controls.origin_x,
+        slider_top,
+        controls.origin_x + controls.slider.style.width,
+        slider_top + controls.slider.style.height,
+    };
+    WidgetInput::ExpandForFocusHighlight(controls.slider.bounds);
+
+    auto slider_hint = WidgetInput::MakeDirtyHint(controls.slider.bounds);
+    controls.slider.binding = unwrap_or_exit(WidgetBindings::CreateSliderBinding(space,
+                                                                                app_root,
+                                                                                controls.slider.paths,
+                                                                                target_view,
+                                                                                slider_hint),
+                                             "create paint brush size slider binding");
+
+    auto controls_ptr = &controls;
+    auto space_ptr = &space;
+    auto brush_size_path_copy = brush_size_path;
+
+    WidgetBindings::AddActionCallback(controls.slider.binding,
+        [controls_ptr, space_ptr, brush_size_path_copy](WidgetReducers::WidgetAction const& action) {
+            switch (action.kind) {
+            case WidgetBindings::WidgetOpKind::SliderBegin:
+            case WidgetBindings::WidgetOpKind::SliderUpdate:
+            case WidgetBindings::WidgetOpKind::SliderCommit: {
+                int value = std::max(1, static_cast<int>(std::round(action.analog_value)));
+                if (controls_ptr->brush_size_value != value) {
+                    controls_ptr->brush_size_value = value;
+                    controls_ptr->dirty = true;
+                    replace_value(*space_ptr, brush_size_path_copy, value);
+                }
+                break;
+            }
+            default:
+                break;
+            }
+        });
+
+    max_x = std::max(max_x, controls.slider.bounds.max_x);
+    max_y = std::max(max_y, controls.slider.bounds.max_y);
+
+    controls.panel_bounds = WidgetInput::WidgetBounds{
+        controls.origin_x - 12.0f,
+        controls.origin_y - 12.0f,
+        max_x + 12.0f,
+        max_y + 12.0f,
+    };
+    controls.panel_bounds.normalize();
+    controls.dirty_hint = WidgetInput::MakeDirtyHint(controls.panel_bounds);
+
+    controls.bucket = build_controls_bucket(controls);
+    controls.dirty = false;
+    controls.slider_dragging = false;
+    controls.active_button = -1;
+    controls.pointer_valid = false;
+
+    replace_value(space, brush_size_path, controls.brush_size_value);
+}
+
+auto handle_controls_event(PaintControls& controls,
+                           PathSpace& space,
+                           PaintInput::MouseEvent const& event,
+                           std::string const& brush_color_path,
+                           std::string const& brush_size_path,
+                           std::array<float, 4>& brush_color) -> bool {
+    auto update_pointer = [&](PaintInput::MouseEvent const& ev) -> std::optional<std::pair<float, float>> {
+        switch (ev.type) {
+        case PaintInput::MouseEventType::AbsoluteMove:
+            if (ev.x >= 0 && ev.y >= 0) {
+                controls.pointer_x = static_cast<float>(ev.x);
+                controls.pointer_y = static_cast<float>(ev.y);
+                controls.pointer_valid = true;
+                return std::pair<float, float>{controls.pointer_x, controls.pointer_y};
+            }
+            break;
+        case PaintInput::MouseEventType::Move:
+            if (controls.pointer_valid) {
+                controls.pointer_x += static_cast<float>(ev.dx);
+                controls.pointer_y += static_cast<float>(ev.dy);
+                return std::pair<float, float>{controls.pointer_x, controls.pointer_y};
+            }
+            break;
+        default:
+            break;
+        }
+
+        if (ev.x >= 0 && ev.y >= 0) {
+            controls.pointer_x = static_cast<float>(ev.x);
+            controls.pointer_y = static_cast<float>(ev.y);
+            controls.pointer_valid = true;
+            return std::pair<float, float>{controls.pointer_x, controls.pointer_y};
+        }
+
+        if (controls.pointer_valid) {
+            return std::pair<float, float>{controls.pointer_x, controls.pointer_y};
+        }
+        return std::nullopt;
+    };
+
+    auto pointer = update_pointer(event);
+
+    auto make_pointer_info = [&](bool inside, bool primary) {
+        return WidgetBindings::PointerInfo::Make(controls.pointer_x, controls.pointer_y)
+            .WithInside(inside)
+            .WithPrimary(primary);
+    };
+
+    auto dispatch_button = [&](int index,
+                               WidgetBindings::WidgetOpKind kind,
+                               Widgets::ButtonState desired,
+                               bool inside) {
+        auto pointer_info = make_pointer_info(inside, true);
+        auto result = WidgetBindings::DispatchButton(space,
+                                                    controls.buttons[index].binding,
+                                                    desired,
+                                                    kind,
+                                                    pointer_info);
+        if (!result) {
+            std::cerr << "paint_example: button dispatch failed: "
+                      << result.error().message.value_or("unknown error") << std::endl;
+            return false;
+        }
+        if (*result) {
+            refresh_button_state(space, controls.buttons[index]);
+            controls.dirty = true;
+        }
+        return true;
+    };
+
+    auto dispatch_slider = [&](WidgetBindings::WidgetOpKind kind,
+                               float value,
+                               bool inside) {
+        Widgets::SliderState desired = controls.slider.state;
+        desired.value = value;
+        desired.dragging = (kind != WidgetBindings::WidgetOpKind::SliderCommit);
+        auto pointer_info = make_pointer_info(inside, true);
+        auto result = WidgetBindings::DispatchSlider(space,
+                                                     controls.slider.binding,
+                                                     desired,
+                                                     kind,
+                                                     pointer_info);
+        if (!result) {
+            std::cerr << "paint_example: slider dispatch failed: "
+                      << result.error().message.value_or("unknown error") << std::endl;
+            return false;
+        }
+        if (*result) {
+            refresh_slider_state(space, controls.slider);
+            controls.brush_size_value = std::max(1, static_cast<int>(std::round(controls.slider.state.value)));
+            controls.dirty = true;
+        }
+        return true;
+    };
+
+    switch (event.type) {
+    case PaintInput::MouseEventType::AbsoluteMove:
+    case PaintInput::MouseEventType::Move: {
+        if (!pointer) {
+            return false;
+        }
+        bool inside_slider = controls.slider.bounds.contains(pointer->first, pointer->second);
+        if (controls.slider_dragging) {
+            float value = slider_value_from_position(controls.slider, pointer->first);
+            dispatch_slider(WidgetBindings::WidgetOpKind::SliderUpdate, value, inside_slider);
+            return true;
+        }
+        return false;
+    }
+    case PaintInput::MouseEventType::ButtonDown: {
+        if (event.button != PaintInput::MouseButton::Left || !pointer) {
+            return false;
+        }
+
+        bool inside_slider = controls.slider.bounds.contains(pointer->first, pointer->second);
+        if (inside_slider) {
+            controls.slider_dragging = true;
+            float value = slider_value_from_position(controls.slider, pointer->first);
+            dispatch_slider(WidgetBindings::WidgetOpKind::SliderBegin, value, true);
+            return true;
+        }
+
+        for (std::size_t index = 0; index < controls.buttons.size(); ++index) {
+            auto const& button = controls.buttons[index];
+            if (!button.bounds.contains(pointer->first, pointer->second)) {
+                continue;
+            }
+            controls.active_button = static_cast<int>(index);
+            Widgets::ButtonState desired = button.state;
+            desired.pressed = true;
+            desired.hovered = true;
+            dispatch_button(controls.active_button,
+                            WidgetBindings::WidgetOpKind::Press,
+                            desired,
+                            true);
+            return true;
+        }
+
+        return controls.panel_bounds.contains(pointer->first, pointer->second);
+    }
+    case PaintInput::MouseEventType::ButtonUp: {
+        if (event.button != PaintInput::MouseButton::Left) {
+            return false;
+        }
+
+        bool consumed = false;
+        bool inside_slider = pointer ? controls.slider.bounds.contains(pointer->first, pointer->second) : false;
+        if (controls.slider_dragging) {
+            controls.slider_dragging = false;
+            if (!pointer) {
+                pointer = std::pair<float, float>{controls.pointer_x, controls.pointer_y};
+                inside_slider = controls.slider.bounds.contains(controls.pointer_x, controls.pointer_y);
+            }
+            float value = slider_value_from_position(controls.slider, pointer ? pointer->first : controls.pointer_x);
+            dispatch_slider(WidgetBindings::WidgetOpKind::SliderCommit, value, inside_slider);
+            consumed = true;
+        }
+
+        if (controls.active_button >= 0 && controls.active_button < static_cast<int>(controls.buttons.size())) {
+            auto& button = controls.buttons[controls.active_button];
+            bool inside = pointer ? button.bounds.contains(pointer->first, pointer->second) : false;
+            Widgets::ButtonState desired = button.state;
+            desired.pressed = false;
+            desired.hovered = inside;
+            dispatch_button(controls.active_button,
+                            WidgetBindings::WidgetOpKind::Release,
+                            desired,
+                            inside);
+            if (inside) {
+                desired = controls.buttons[controls.active_button].state;
+                desired.pressed = false;
+                desired.hovered = true;
+                dispatch_button(controls.active_button,
+                                WidgetBindings::WidgetOpKind::Activate,
+                                desired,
+                                true);
+                brush_color = controls.buttons[controls.active_button].entry.color;
+                replace_value(space, brush_color_path, brush_color);
+            }
+            controls.active_button = -1;
+            consumed = true;
+        }
+
+        if (!consumed && pointer) {
+            consumed = controls.panel_bounds.contains(pointer->first, pointer->second);
+        }
+        return consumed;
+    }
+    case PaintInput::MouseEventType::Wheel: {
+        if (!pointer) {
+            return false;
+        }
+        return controls.panel_bounds.contains(pointer->first, pointer->second);
+    }
+    default:
+        break;
+    }
+
+    return false;
+}
+
 auto encode_image_command(UIScene::ImageCommand const& image,
                           UIScene::DrawableBucketSnapshot& bucket) -> void {
     auto offset = bucket.command_payload.size();
@@ -488,7 +1235,8 @@ auto encode_image_command(UIScene::ImageCommand const& image,
 }
 
 auto build_bucket(std::optional<CanvasDrawable> const& canvasDrawable,
-                  std::vector<Stroke> const& strokes) -> UIScene::DrawableBucketSnapshot {
+                  std::vector<Stroke> const& strokes,
+                  UIScene::DrawableBucketSnapshot const* controls_bucket) -> UIScene::DrawableBucketSnapshot {
     UIScene::DrawableBucketSnapshot bucket{};
 
     std::size_t drawable_count = canvasDrawable.has_value() ? 1 : 0;
@@ -636,6 +1384,10 @@ auto build_bucket(std::optional<CanvasDrawable> const& canvasDrawable,
     bucket.opaque_indices.resize(final_count);
     std::iota(bucket.opaque_indices.begin(), bucket.opaque_indices.end(), 0u);
     bucket.alpha_indices.clear();
+
+    if (controls_bucket) {
+        append_bucket(bucket, *controls_bucket);
+    }
 
     return bucket;
 }
@@ -954,6 +1706,7 @@ int main(int argc, char** argv) {
     const std::string canvasHeightPath = configBasePath + "/canvasHeightPx";
     const std::string brushSizePath = configBasePath + "/brushSizePx";
     const std::string tileSizePath = configBasePath + "/progressiveTileSizePx";
+    const std::string brushColorPath = configBasePath + "/brushColorRgba";
 
     ensure_config_value(space, canvasWidthPath, 320);
     ensure_config_value(space, canvasHeightPath, 240);
@@ -962,6 +1715,13 @@ int main(int argc, char** argv) {
 
     int canvasWidth = read_config_value(space, canvasWidthPath, 320);
     int canvasHeight = read_config_value(space, canvasHeightPath, 240);
+    std::array<float, 4> brushColor{0.9f, 0.1f, 0.3f, 1.0f};
+    auto storedColor = space.read<std::array<float, 4>, std::string>(brushColorPath);
+    if (storedColor) {
+        brushColor = *storedColor;
+    } else {
+        replace_value(space, brushColorPath, brushColor);
+    }
 
     SP::UI::SetLocalWindowCallbacks({&handle_local_mouse, &clear_local_mouse, nullptr});
     SP::UI::InitLocalWindowWithSize(canvasWidth, canvasHeight, "PathSpace Paint");
@@ -1033,7 +1793,19 @@ int main(int argc, char** argv) {
     std::vector<Stroke> strokes;
     std::uint64_t nextStrokeId = 2;
 
-    auto bucket = build_bucket(std::nullopt, strokes);
+    int initial_brush_size = read_config_value(space, brushSizePath, 8);
+    PaintControls controls{};
+    SP::ConcretePathStringView target_view{bootstrap.target.getPath()};
+    initialize_controls(space,
+                        rootView,
+                        target_view,
+                        controls,
+                        brushColor,
+                        initial_brush_size,
+                        brushColorPath,
+                        brushSizePath);
+
+    auto bucket = build_bucket(std::nullopt, strokes, &controls.bucket);
     auto initial_revision = publish_snapshot(space, builder, scenePath, bucket);
     (void)initial_revision;
     (void)present_frame(space,
@@ -1053,7 +1825,6 @@ int main(int argc, char** argv) {
     bool drawing = false;
     std::optional<std::pair<int, int>> lastAbsolute;
     std::optional<std::pair<int, int>> lastPainted;
-    std::array<float, 4> brushColor{0.9f, 0.1f, 0.3f, 1.0f};
     std::vector<DirtyRectHint> dirtyHints;
 
     while (true) {
@@ -1072,7 +1843,25 @@ int main(int argc, char** argv) {
         bool updated = false;
         dirtyHints.clear();
 
-        const int brushSizePx = read_config_value(space, brushSizePath, 8);
+        int brushSizePx = read_config_value(space, brushSizePath, controls.brush_size_value);
+        if (brushSizePx != controls.brush_size_value) {
+            controls.brush_size_value = brushSizePx;
+            controls.slider.state.value = static_cast<float>(brushSizePx);
+            controls.dirty = true;
+        } else {
+            brushSizePx = controls.brush_size_value;
+        }
+
+        auto stored_brush = space.read<std::array<float, 4>, std::string>(brushColorPath);
+        if (stored_brush && *stored_brush != brushColor) {
+            brushColor = *stored_brush;
+            int palette_index = find_palette_index(default_palette_entries(), brushColor);
+            if (palette_index != controls.selected_index) {
+                controls.selected_index = palette_index;
+                controls.dirty = true;
+            }
+        }
+
         const int tileSizePx = read_config_value(space, tileSizePath, 64);
 
         bool sizeChanged = (requestedWidth != canvasWidth) || (requestedHeight != canvasHeight);
@@ -1102,6 +1891,19 @@ int main(int argc, char** argv) {
         }
         while (auto evt = PaintInput::try_pop_mouse()) {
             auto const& e = *evt;
+
+            if (handle_controls_event(controls,
+                                      space,
+                                      e,
+                                      brushColorPath,
+                                      brushSizePath,
+                                      brushColor)) {
+                if (controls.dirty) {
+                    updated = true;
+                }
+                continue;
+            }
+
             switch (e.type) {
             case PaintInput::MouseEventType::AbsoluteMove: {
                 if (e.x < 0 || e.y < 0) {
@@ -1110,6 +1912,10 @@ int main(int argc, char** argv) {
                 std::pair<int, int> current{e.x, e.y};
                 lastAbsolute = current;
                 if (drawing) {
+                    if (controls.panel_bounds.contains(static_cast<float>(current.first),
+                                                        static_cast<float>(current.second))) {
+                        break;
+                    }
                     if (!lastPainted) {
                         lastPainted = current;
                     }
@@ -1135,6 +1941,11 @@ int main(int argc, char** argv) {
                         point = lastAbsolute;
                     }
                     if (point) {
+                        if (controls.panel_bounds.contains(static_cast<float>(point->first),
+                                                            static_cast<float>(point->second))) {
+                            drawing = false;
+                            break;
+                        }
                         lastAbsolute = *point;
                         drawing = true;
                         if (auto hint = start_stroke(strokes,
@@ -1175,9 +1986,16 @@ int main(int argc, char** argv) {
             }
         }
 
+        if (controls.dirty) {
+            controls.bucket = build_controls_bucket(controls);
+            controls.dirty = false;
+            dirtyHints.push_back(controls.dirty_hint);
+            updated = true;
+        }
+
         if (updated) {
             auto canvasDrawable = canvas_has_image ? make_canvas_drawable(canvas, kCanvasDrawableId) : std::optional<CanvasDrawable>{};
-            bucket = build_bucket(canvasDrawable, strokes);
+            bucket = build_bucket(canvasDrawable, strokes, &controls.bucket);
             auto revision = publish_snapshot(space, builder, scenePath, bucket);
             if (canvasDrawable && canvas.dirty) {
                 auto png_bytes = encode_canvas_png(canvas);

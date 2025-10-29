@@ -169,3 +169,22 @@ task {
     "Extended doctests to cover button/toggle/slider interaction flows and verified auto-render queues remain stable in the 15× loop harness."
   ]
 }
+
+task {
+  name: "Paint Example Palette Controls [FEATURE]"
+  description: "Expose live color + brush sizing controls in paint_example via widget bindings so demos no longer require code edits for palette tweaks."
+  status: completed
+  priority: P1
+
+  acceptance_criteria: [
+    "Palette buttons (red/green/blue/yellow/purple/orange) route through Widgets::Bindings so color swaps emit dirty hints instead of full-scene republishes.",
+    "Brush size slider persists to /config/brushSizePx and updates the demo immediately, matching UITest loop expectations.",
+    "paint_example publishes an overlay bucket for the control stack and guards pointer events so painting ignores UI footprint."
+  ]
+
+  steps: [
+    "Added PaintControls helper that creates palette buttons + slider bindings, registers action callbacks, and merges the control bucket into the scene snapshot.",
+    "Persisted brush color/size under /config paths and guarded paint input so UI interactions do not start strokes.",
+    "Documented completion in Plan_SceneGraph_Implementation.md and refreshed backlog focus for upcoming slider → listbox coverage work."
+  ]
+}
