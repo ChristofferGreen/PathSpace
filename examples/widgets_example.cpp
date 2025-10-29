@@ -1408,6 +1408,12 @@ static void rebuild_bindings(WidgetsExampleContext& ctx) {
                                                                             target_view,
                                                                             WidgetInput::MakeDirtyHint(ctx.gallery.layout.button_footprint)),
                                         "create button binding");
+    WidgetBindings::AddActionCallback(ctx.button_binding, [](WidgetReducers::WidgetAction const& action) {
+        if (action.kind == WidgetBindings::WidgetOpKind::Press
+            || action.kind == WidgetBindings::WidgetOpKind::Activate) {
+            std::cout << "widgets_example: Hello from PathSpace!" << std::endl;
+        }
+    });
 
     ctx.toggle_binding = unwrap_or_exit(WidgetBindings::CreateToggleBinding(*ctx.space,
                                                                             app_view,
