@@ -102,6 +102,8 @@ if(PATHSPACE_ENABLE_UI)
         ui/WidgetTrace.cpp
         ui/WidgetFocus.cpp
         ui/WidgetReducers.cpp
+        ui/FontResources.cpp
+        ui/FontManager.cpp
         ui/DiagnosticsBuilders.cpp
         ui/SceneSnapshotBuilder.cpp
         ui/SceneSnapshotBuilderDecode.cpp

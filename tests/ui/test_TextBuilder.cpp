@@ -16,6 +16,11 @@ auto default_typography() -> Widgets::TypographyStyle {
     typography.line_height = 28.0f;
     typography.letter_spacing = 1.0f;
     typography.baseline_shift = 0.0f;
+    typography.font_family = "PathSpaceSans";
+    typography.font_style = "italic";
+    typography.font_weight = "600";
+    typography.language = "fr";
+    typography.direction = "ltr";
     return typography;
 }
 
@@ -44,6 +49,11 @@ TEST_CASE("TextBuilder builds buckets for simple strings") {
     CHECK_EQ(result->bucket.authoring_map.front().authoring_node_id, "widgets/test/label");
     CHECK_EQ(result->bucket.drawable_ids.size(), 1);
     CHECK_EQ(result->bucket.drawable_ids.front(), 0x1234u);
+    CHECK_EQ(result->font_family, typography.font_family);
+    CHECK_EQ(result->font_style, typography.font_style);
+    CHECK_EQ(result->font_weight, typography.font_weight);
+    CHECK_EQ(result->language, typography.language);
+    CHECK_EQ(result->direction, typography.direction);
 }
 
 TEST_CASE("TextBuilder skips whitespace-only input") {

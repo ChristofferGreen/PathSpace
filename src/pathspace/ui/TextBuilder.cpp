@@ -251,6 +251,11 @@ auto BuildTextBucket(std::string_view text,
         .width = max_x - min_x,
         .height = max_y - min_y,
     };
+    result.font_family = typography.font_family;
+    result.font_style = typography.font_style;
+    result.font_weight = typography.font_weight;
+    result.language = typography.language;
+    result.direction = typography.direction;
     return result;
 }
 

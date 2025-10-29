@@ -4,6 +4,7 @@
 #include "path/ConcretePath.hpp"
 #include "path/UnvalidatedPath.hpp"
 
+#include <initializer_list>
 #include <string>
 #include <string_view>
 
@@ -34,6 +35,9 @@ auto resolve_app_relative(AppRootPathView root, SP::UnvalidatedPathView maybeRel
 inline auto resolve_app_relative(AppRootPathView root, std::string_view maybeRelative) -> SP::Expected<ConcretePath> {
     return resolve_app_relative(root, SP::UnvalidatedPathView{maybeRelative});
 }
+
+auto resolve_resource(AppRootPathView root,
+                      std::initializer_list<std::string_view> components) -> SP::Expected<ConcretePath>;
 
 auto ensure_within_app(AppRootPathView root, ConcretePathView absolute) -> SP::Expected<void>;
 

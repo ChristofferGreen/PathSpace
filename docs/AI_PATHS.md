@@ -136,6 +136,15 @@ The following subtrees are standardized within each application root (one of the
       - `log/ring/<segment>`
       - `metrics/live` — optional presentation metrics (latency, dropped frames)
 
+- Resources
+  - `resources/fonts/<family>/<style>/`
+    - `meta/family` — canonical family identifier registered for this font
+    - `meta/style` — style/weight identifier
+    - `manifest.json` — resource manifest describing sources, fallbacks, features
+    - `active` — pointer (`uint64_t`) to the currently adopted atlas revision
+    - `builds/<revision>/atlas.bin` — persisted atlas payload for the revision
+    - `inbox` — staging area for loader jobs and background ingestion
+
 - IO logging (app-local)
   - `io/log/error` — authoritative error log (UTF-8, newline-delimited)
   - `io/log/warn` — authoritative warnings log

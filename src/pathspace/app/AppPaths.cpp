@@ -103,6 +103,32 @@ auto resolve_app_relative(AppRootPathView root, UnvalidatedPathView maybeRelativ
     return ConcretePath{absolute};
 }
 
+auto resolve_resource(AppRootPathView root,
+                      std::initializer_list<std::string_view> components) -> Expected<ConcretePath> {
+    if (components.size() == 0) {
+        return std::unexpected(component_error("resource path requires at least one component"));
+    }
+
+    std::string spec{"resources"};
+    spec.reserve(spec.size() + components.size() * 8);
+
+    for (auto component : components) {
+        if (component.empty()) {
+            return std::unexpected(component_error("resource path components must not be empty"));
+        }
+        if (component == "." || component == "..") {
+            return std::unexpected(component_error("resource path components must not be '.' or '..'"));
+        }
+        if (component.find('/') != std::string_view::npos) {
+            return std::unexpected(component_error("resource path components must not contain '/' characters"));
+        }
+        spec.push_back('/');
+        spec.append(component);
+    }
+
+    return resolve_app_relative(root, UnvalidatedPathView{std::string_view{spec}});
+}
+
 auto ensure_within_app(AppRootPathView root, ConcretePathView absolute) -> Expected<void> {
     auto const& rootStr = root.getPath();
     auto const& absoluteStr = absolute.getPath();

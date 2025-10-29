@@ -452,6 +452,32 @@ void ResetBeforePresentHook();
 
 } // namespace Window::TestHooks
 
+namespace Resources::Fonts {
+
+struct FontResourcePaths {
+    ConcretePath root;
+    ConcretePath manifest;
+    ConcretePath active_revision;
+    ConcretePath builds;
+    ConcretePath inbox;
+};
+
+struct RegisterFontParams {
+    std::string family;
+    std::string style;
+    std::optional<std::string> manifest_json;
+};
+
+auto Resolve(AppRootPathView appRoot,
+             std::string_view family,
+             std::string_view style) -> SP::Expected<FontResourcePaths>;
+
+auto Register(PathSpace& space,
+              AppRootPathView appRoot,
+              RegisterFontParams const& params) -> SP::Expected<FontResourcePaths>;
+
+} // namespace Resources::Fonts
+
 namespace App {
 
 struct BootstrapParams {
@@ -565,6 +591,12 @@ struct TypographyStyle {
     float line_height = 28.0f;
     float letter_spacing = 1.0f;
     float baseline_shift = 0.0f;
+    std::string font_family = "system-ui";
+    std::string font_style = "normal";
+    std::string font_weight = "400";
+    std::string language = "en";
+    std::string direction = "ltr";
+    std::vector<std::string> fallback_families{};
 };
 
 struct ButtonStyle {

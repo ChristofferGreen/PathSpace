@@ -22,6 +22,11 @@ struct BuildResult {
     DrawableBucketSnapshot bucket;
     float width = 0.0f;
     float height = 0.0f;
+    std::string font_family;
+    std::string font_style;
+    std::string font_weight;
+    std::string language;
+    std::string direction;
 };
 
 auto MeasureTextWidth(std::string_view text,

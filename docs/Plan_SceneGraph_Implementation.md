@@ -30,6 +30,70 @@
 - Add widget action callbacks: allow attaching callable/lambda payloads to widget paths so pressing a button can immediately invoke application logic (hook into reducers/ops schema without bespoke polling).
 - Extend `examples/widgets_example.cpp` with a demo button wired to a lambda that prints “Hello from PathSpace!” (or similar) using the new callback plumbing to validate the API.
 
+### Detailed Plan — Font & Resource Manager Integration
+
+**Goal**  
+Ship the resource-backed font pipeline described in `docs/Plan_SceneGraph_Renderer.md` so TypographyStyle consumers (widgets, labels, HTML adapter) resolve fonts through PathSpace resources instead of hard-coded bitmap glyphs. The widget gallery should render with fonts supplied by the new manager, and renderers must receive resource fingerprints for atlas reuse.
+
+**Prerequisites**
+- Confirm HarfBuzz/ICU build availability on macOS CI; add third-party pulls or stubs if licensing review blocks immediate integration.
+- Capture the current ASCII glyph builder footprint (TextBuilder) to preserve fallback behaviour during rollout.
+- Align schema with `Plan_SceneGraph_Renderer.md` §"Plan: Resource system (images, fonts, shaders)" and §"Decision: Text shaping, bidi, and font fallback".
+
+**Status Update (October 29, 2025)**  
+- Landed `App::resolve_resource` and font resource helpers/tests to codify `resources/fonts/<family>/<style>/` layout.  
+- Introduced a scaffolding `FontManager` wrapper that registers fonts and persists metadata (`meta/family`, `meta/style`, `manifest.json`, `active`).  
+- Extended `TypographyStyle` and `TextBuilder::BuildResult` with font descriptors so fallback rendering keeps working while exposing style metadata.
+
+**Phase 0 – Schema & Storage (1–2 days)**
+- Define app-root resource layout under `resources/fonts/<family>/<style>/` with `manifest.json`, `builds/<revision>/atlas.bin`, and `active` pointer.
+- Extend typed helpers: `App::ResolveResourcePath`, `UI::Builders::Fonts::{FontResourcePath, RegisterFont}`.
+- Document schema in `docs/AI_PATHS.md` and update `docs/Plan_SceneGraph_Renderer.md` cross-links.
+
+**Phase 1 – Font Manager Foundations (2–3 days)**
+- Introduce `SP::UI::FontManager` (singleton scoped to PathSpace UI context) handling:
+  - Logical font descriptors (`family`, `weight`, `style`, `features`, `lang`, `direction`).
+  - Resource lookup + fallback chain resolution via manifests.
+  - HarfBuzz shaping wrapper producing glyph indices/positions.
+- Persist shaped run cache keyed by `(text, descriptor digest)` with eviction tied to atlas residency budgets.
+- Emit metrics/diagnostics under `diagnostics/metrics/fonts/*` (cache hit rate, atlas pages, eviction counts).
+
+**Phase 2 – Atlas Generation & Publication (3 days)**
+- Build atlas generator writing RGBA or signed distance fields into `builds/<revision>/atlas.bin` with metadata for glyph UVs.
+- Update snapshot builder to record atlas fingerprints alongside drawables (`DrawableBucket::font_assets`).
+- Extend renderer target wiring to prefetch required atlas revisions; ensure `PathRenderer2D` uploads only when fingerprint changes.
+
+**Phase 3 – Widget/Text Integration (2 days)**
+- Replace `TextBuilder` bitmap glyphs with FontManager-backed shaping; maintain ASCII fallback by seeding a built-in resource pack.
+- Update `Widgets::TypographyStyle` to carry `font_family`, `font_weight`, `font_features`, `language`, `direction`.
+- Teach widget builders/examples to register required fonts on startup (gallery selects between default/sunset theme fonts).
+- Add regression coverage in `tests/ui/test_TextBuilder.cpp` and widget gallery UITest to assert atlas fingerprints populate in scene revisions.
+
+**Phase 4 – HTML Adapter & Diagnostics (1–2 days)**
+- Wire HTML adapter to emit `@font-face` rules referencing `output/v1/html/assets/fonts/<fingerprint>.woff2`.
+- Update diagnostics builders to surface active fonts, atlas residency, and shaping cache stats.
+- Extend logging/test harnesses to capture font diagnostics during the 15× loop.
+
+**Phase 5 – Rollout & Hardening (ongoing)**
+- Run perf guardrail + renderer loop to establish baseline deltas (expect initial regression due to shaping; track metrics).
+- Provide rollback flag (`PATHSPACE_UI_FONT_MANAGER_ENABLED`) allowing fallback to bitmap glyphs until confidence is high.
+- Update docs (`AI_Debugging_Playbook.md`, `Widget_Contribution_Quickstart.md`, `Plan_SceneGraph_Renderer.md`) with new troubleshooting steps.
+
+**Testing & Validation**
+- Augment CTest suite with shaping-specific doctests (Latin kern pairs, Arabic joining, Devanagari reordering).
+- Add golden framebuffer comparisons for widget gallery before/after FontManager swap.
+- Ensure pre-push hook (`scripts/git-hooks/pre-push.local.sh`) exercises new tests and verifies atlas persistence.
+
+**Risks & Mitigations**
+- **Third-party deps**: If HarfBuzz integration blocks, start with FreeType-lite subset and gate advanced scripts behind feature flag.
+- **Atlas size creep**: Implement LRU eviction and compression (PNG or basisu) for persisted atlases; document budget tuning knobs.
+- **HTML/browser parity**: Validate fonts render identically in native and HTML adapters; capture mismatches in regression harness.
+
+**Success Criteria**
+- Widget gallery renders using resource-backed fonts with stable diffs.
+- Renderers and HTML adapter consume atlas fingerprints without redundant uploads.
+- Diagnostics surfaces atlas/cache metrics, and documentation reflects new workflow.
+
 ## Open Questions
 - Finalize the `DrawableBucket` binary schema (padding, endianness, checksum) before snapshot and renderer work diverges further.
 - Decide on the minimum color management scope for the MVP (sRGB8 only versus optional linear FP targets).
