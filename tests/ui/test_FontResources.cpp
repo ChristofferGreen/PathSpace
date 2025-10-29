@@ -5,6 +5,7 @@
 #include <pathspace/ui/FontManager.hpp>
 
 #include <cstdint>
+#include <string>
 
 using namespace SP;
 using namespace SP::UI;
@@ -72,4 +73,77 @@ TEST_CASE("FontManager registers font metadata and manifest") {
         REQUIRE(manifest);
         CHECK(*manifest == *params.manifest_json);
     }
+
+    auto metrics_base = std::string(app_view.getPath()) + "/diagnostics/metrics/fonts";
+    auto registered_fonts_path = metrics_base + "/registeredFonts";
+    auto registered_count = space.read<std::uint64_t, std::string>(registered_fonts_path);
+    REQUIRE(registered_count);
+    CHECK(*registered_count >= 1);
+}
+
+TEST_CASE("FontManager caches shaped runs and updates metrics") {
+    PathSpace space;
+    SP::App::AppRootPath app_root{"/system/applications/demo_app"};
+    SP::App::AppRootPathView app_view{app_root.getPath()};
+
+    FontManager manager(space);
+    manager.set_cache_capacity_for_testing(8);
+
+    Builders::Widgets::TypographyStyle typography{};
+    typography.font_family = "PathSpaceSans";
+    typography.font_style = "Regular";
+    typography.font_weight = "400";
+    typography.font_size = 24.0f;
+    typography.font_resource_root = "/system/applications/demo_app/resources/fonts/PathSpaceSans/Regular";
+    typography.font_active_revision = 1;
+
+    auto run_first = manager.shape_text(app_view, "Hello", typography);
+    CHECK(run_first.glyphs.size() == 5);
+    CHECK(run_first.total_advance > 0.0f);
+
+    auto metrics_after_first = manager.metrics();
+    CHECK(metrics_after_first.cache_misses == 1);
+    CHECK(metrics_after_first.cache_hits == 0);
+    CHECK(metrics_after_first.cache_size == 1);
+
+    auto run_second = manager.shape_text(app_view, "Hello", typography);
+    CHECK(run_second.glyphs.size() == 5);
+    auto metrics_after_second = manager.metrics();
+    CHECK(metrics_after_second.cache_hits == 1);
+    CHECK(metrics_after_second.cache_misses == 1);
+
+    auto metrics_base = std::string(app_view.getPath()) + "/diagnostics/metrics/fonts";
+    auto cache_hits_path = metrics_base + "/cacheHits";
+    auto cache_hits = space.read<std::uint64_t, std::string>(cache_hits_path);
+    REQUIRE(cache_hits);
+    CHECK(*cache_hits >= 1);
+}
+
+TEST_CASE("FontManager evicts least recently used cache entries") {
+    PathSpace space;
+    SP::App::AppRootPath app_root{"/system/applications/demo_app"};
+    SP::App::AppRootPathView app_view{app_root.getPath()};
+
+    FontManager manager(space);
+    manager.set_cache_capacity_for_testing(2);
+
+    Builders::Widgets::TypographyStyle typography{};
+    typography.font_family = "PathSpaceSans";
+    typography.font_style = "Regular";
+    typography.font_weight = "400";
+    typography.font_size = 18.0f;
+    typography.font_resource_root = "/system/applications/demo_app/resources/fonts/PathSpaceSans/Regular";
+    typography.font_active_revision = 3;
+
+    (void)manager.shape_text(app_view, "Alpha", typography);
+    (void)manager.shape_text(app_view, "Beta", typography);
+
+    auto metrics_pre = manager.metrics();
+    CHECK(metrics_pre.cache_size == 2);
+    CHECK(metrics_pre.cache_evictions == 0);
+
+    (void)manager.shape_text(app_view, "Gamma", typography);
+    auto metrics_post = manager.metrics();
+    CHECK(metrics_post.cache_size == 2);
+    CHECK(metrics_post.cache_evictions >= 1);
 }

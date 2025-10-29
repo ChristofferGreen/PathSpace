@@ -46,6 +46,7 @@ Ship the resource-backed font pipeline described in `docs/Plan_SceneGraph_Render
 - Introduced a scaffolding `FontManager` wrapper that registers fonts and persists metadata (`meta/family`, `meta/style`, `manifest.json`, `active`).  
 - Extended `TypographyStyle` and `TextBuilder::BuildResult` with font descriptors so fallback rendering keeps working while exposing style metadata.  
 - Widget gallery demos now register PathSpaceSans regular/semibold fonts via `FontManager`, propagate resource roots/revisions into `TypographyStyle`, and emit font fingerprints from `TextBuilder`; updated doctests cover the new metadata paths and manifest digest handling.
+- FontManager now fingerprints typography descriptors, caches fallback-shaped runs with an LRU policy, and publishes cache/registration metrics under `diagnostics/metrics/fonts/*`; UITests cover registration, caching hits, and eviction behaviour.
 
 **Phase 0 – Schema & Storage (1–2 days)**
 - Define app-root resource layout under `resources/fonts/<family>/<style>/` with `manifest.json`, `builds/<revision>/atlas.bin`, and `active` pointer.
@@ -53,12 +54,11 @@ Ship the resource-backed font pipeline described in `docs/Plan_SceneGraph_Render
 - Document schema in `docs/AI_PATHS.md` and update `docs/Plan_SceneGraph_Renderer.md` cross-links.
 
 **Phase 1 – Font Manager Foundations (2–3 days)**
-- Introduce `SP::UI::FontManager` (singleton scoped to PathSpace UI context) handling:
-  - Logical font descriptors (`family`, `weight`, `style`, `features`, `lang`, `direction`).
+- ✅ (October 29, 2025) Landed the `SP::UI::FontManager` singleton with descriptor fingerprinting, fallback shaping, an LRU shaped-run cache, and diagnostics metrics under `diagnostics/metrics/fonts/*`. Current cache eviction is capacity-based; wire atlas-aware budgets once atlas persistence ships. HarfBuzz/ICU shaping remains stubbed out pending dependency review.
+- Remaining:
   - Resource lookup + fallback chain resolution via manifests.
-  - HarfBuzz shaping wrapper producing glyph indices/positions.
-- Persist shaped run cache keyed by `(text, descriptor digest)` with eviction tied to atlas residency budgets.
-- Emit metrics/diagnostics under `diagnostics/metrics/fonts/*` (cache hit rate, atlas pages, eviction counts).
+  - HarfBuzz shaping wrapper producing glyph indices/positions (replace fallback ASCII layout once deps are ready).
+  - Tie cache eviction thresholds to atlas residency budgets instead of the temporary fixed-capacity knob.
 
 **Phase 2 – Atlas Generation & Publication (3 days)**
 - Build atlas generator writing RGBA or signed distance fields into `builds/<revision>/atlas.bin` with metadata for glyph UVs.
