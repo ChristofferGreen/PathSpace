@@ -811,7 +811,7 @@ struct MinimalContext {
     Widgets::WidgetTheme theme{};
 
     WidgetFocus::Config focus_config{};
-    WidgetInput::FocusTarget focus_target = WidgetInput::FocusTarget::Slider;
+    WidgetInput::FocusTarget focus_target = WidgetInput::FocusTarget::Button;
     int focus_list_index = 0;
     int focus_tree_index = 0;
 
@@ -1067,7 +1067,9 @@ static auto make_input_context(MinimalContext& ctx) -> WidgetInput::WidgetInputC
     input.space = ctx.space;
     input.layout = ctx.layout;
 
-    static constexpr std::array<WidgetInput::FocusTarget, 3> kFocusOrder{
+    static constexpr std::array<WidgetInput::FocusTarget, 5> kFocusOrder{
+        WidgetInput::FocusTarget::Button,
+        WidgetInput::FocusTarget::Toggle,
         WidgetInput::FocusTarget::Slider,
         WidgetInput::FocusTarget::List,
         WidgetInput::FocusTarget::Tree,
@@ -1076,6 +1078,8 @@ static auto make_input_context(MinimalContext& ctx) -> WidgetInput::WidgetInputC
     input.focus.config = &ctx.focus_config;
     input.focus.current = &ctx.focus_target;
     input.focus.order = std::span<const WidgetInput::FocusTarget>{kFocusOrder};
+    input.focus.button = ctx.button_paths.root;
+    input.focus.toggle = ctx.toggle_paths.root;
     input.focus.slider = ctx.slider_paths.root;
     input.focus.list = ctx.list_paths.root;
     input.focus.tree = ctx.tree_paths.root;
@@ -1383,9 +1387,9 @@ int main(int /*argc*/, char** /*argv*/) {
 
     auto focus_update = WidgetFocus::Set(space,
                                          ctx.focus_config,
-                                         ctx.slider_paths.root);
+                                         ctx.button_paths.root);
     if (focus_update && focus_update->changed) {
-        ctx.focus_target = WidgetInput::FocusTarget::Slider;
+        ctx.focus_target = WidgetInput::FocusTarget::Button;
         reload_widget_states(ctx);
         refresh_scene(ctx);
         rebuild_bindings(ctx);
