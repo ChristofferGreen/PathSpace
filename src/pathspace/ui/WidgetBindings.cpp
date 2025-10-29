@@ -417,10 +417,16 @@ auto DispatchSlider(PathSpace& space,
                     SliderState const& new_state,
                     WidgetOpKind op_kind,
                     PointerInfo const& pointer) -> SP::Expected<bool> {
+    bool enqueue_op = false;
     switch (op_kind) {
+    case WidgetOpKind::HoverEnter:
+    case WidgetOpKind::HoverExit:
+        enqueue_op = false;
+        break;
     case WidgetOpKind::SliderBegin:
     case WidgetOpKind::SliderUpdate:
     case WidgetOpKind::SliderCommit:
+        enqueue_op = true;
         break;
     default:
         return std::unexpected(make_error("Unsupported widget op kind for slider binding",
@@ -446,13 +452,15 @@ auto DispatchSlider(PathSpace& space,
         }
     }
 
-    if (auto status = enqueue_widget_op(space,
-                                        binding.options,
-                                        binding.widget.root.getPath(),
-                                        op_kind,
-                                        pointer,
-                                        current_state->value); !status) {
-        return std::unexpected(status.error());
+    if (enqueue_op) {
+        if (auto status = enqueue_widget_op(space,
+                                            binding.options,
+                                            binding.widget.root.getPath(),
+                                            op_kind,
+                                            pointer,
+                                            current_state->value); !status) {
+            return std::unexpected(status.error());
+        }
     }
     bool focus_changed = false;
     if (op_kind == WidgetOpKind::SliderBegin || op_kind == WidgetOpKind::SliderCommit) {

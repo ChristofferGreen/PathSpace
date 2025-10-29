@@ -5,6 +5,7 @@
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/LocalWindowBridge.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
+#include <pathspace/ui/TextBuilder.hpp>
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOSurface/IOSurface.h>
@@ -47,6 +48,7 @@ namespace Widgets = SP::UI::Builders::Widgets;
 namespace WidgetInput = SP::UI::Builders::Widgets::Input;
 namespace WidgetFocus = SP::UI::Builders::Widgets::Focus;
 namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
+namespace TextBuilder = SP::UI::Builders::Text;
 using ScenePath = SP::UI::Builders::ScenePath;
 using SceneParams = SP::UI::Builders::SceneParams;
 using PixelFormat = SP::UI::Builders::PixelFormat;
@@ -87,6 +89,27 @@ auto make_identity_transform() -> SceneData::Transform {
         transform.elements[index] = (index % 5 == 0) ? 1.0f : 0.0f;
     }
     return transform;
+}
+
+auto mix_color(std::array<float, 4> base,
+               std::array<float, 4> target,
+               float amount) -> std::array<float, 4> {
+    amount = std::clamp(amount, 0.0f, 1.0f);
+    std::array<float, 4> out{};
+    for (int i = 0; i < 3; ++i) {
+        out[i] = std::clamp(base[i] * (1.0f - amount) + target[i] * amount, 0.0f, 1.0f);
+    }
+    out[3] = std::clamp(base[3], 0.0f, 1.0f);
+    return out;
+}
+
+auto lighten(std::array<float, 4> color, float amount) -> std::array<float, 4> {
+    return mix_color(color, {1.0f, 1.0f, 1.0f, color[3]}, amount);
+}
+
+auto desaturate(std::array<float, 4> color, float amount) -> std::array<float, 4> {
+    auto gray = std::array<float, 4>{0.5f, 0.5f, 0.5f, color[3]};
+    return mix_color(color, gray, amount);
 }
 
 template <typename Cmd>
@@ -263,7 +286,13 @@ struct MinimalSceneBuild {
     int height = 0;
 };
 
-auto build_minimal_bucket(Widgets::SliderStyle const& slider_style,
+auto build_minimal_bucket(Widgets::WidgetTheme const& theme,
+                          Widgets::ButtonStyle const& button_style,
+                          std::string const& button_label,
+                          Widgets::ButtonState const& button_state,
+                          Widgets::ToggleStyle const& toggle_style,
+                          Widgets::ToggleState const& toggle_state,
+                          Widgets::SliderStyle const& slider_style,
                           Widgets::SliderState const& slider_state,
                           Widgets::SliderRange const& slider_range,
                           Widgets::ListStyle const& list_style,
@@ -281,8 +310,152 @@ auto build_minimal_bucket(Widgets::SliderStyle const& slider_style,
     float cursor_y = kMargin;
     float max_width = 0.0f;
 
+    // Title label
+    {
+        Widgets::TypographyStyle heading = theme.heading;
+        float baseline = cursor_y + heading.baseline_shift;
+        auto label = Widgets::BuildLabel(
+            Widgets::LabelBuildParams::Make("Widgets Minimal", heading)
+                .WithOrigin(kMargin, baseline)
+                .WithColor(theme.heading_color)
+                .WithDrawable(0x10000001ull, "widgets/minimal/title", 0.05f));
+        if (label) {
+            append_bucket(content, label->bucket);
+            max_width = std::max(max_width, kMargin + label->width);
+            cursor_y += heading.line_height + kSpacing * 0.5f;
+        }
+    }
+
+    // Button bucket
+    {
+        auto button_bucket = Widgets::BuildButtonPreview(
+            button_style,
+            button_state,
+            Widgets::ButtonPreviewOptions{
+                .authoring_root = "widgets/minimal/button",
+                .pulsing_highlight = button_state.focused,
+            });
+        float button_width = std::max(button_style.width, 1.0f);
+        float button_height = std::max(button_style.height, 1.0f);
+        float button_x = kMargin;
+        float button_y = cursor_y;
+
+        translate_bucket(button_bucket, button_x, button_y);
+        append_bucket(content, button_bucket);
+
+        layout.button = WidgetInput::WidgetBounds{
+            button_x,
+            button_y,
+            button_x + button_width,
+            button_y + button_height,
+        };
+
+        std::optional<WidgetInput::WidgetBounds> in_button_label_bounds;
+        float interior_label_width = TextBuilder::MeasureTextWidth(button_label, button_style.typography);
+        float interior_label_height = button_style.typography.line_height;
+        float interior_label_x = button_x + std::max(0.0f, (button_width - interior_label_width) * 0.5f);
+        float interior_label_top = button_y + std::max(0.0f, (button_height - interior_label_height) * 0.5f);
+        float interior_label_baseline = interior_label_top + button_style.typography.baseline_shift;
+        if (auto interior_label = Widgets::BuildLabel(
+                Widgets::LabelBuildParams::Make(button_label, button_style.typography)
+                    .WithOrigin(interior_label_x, interior_label_baseline)
+                    .WithColor(button_style.text_color)
+                    .WithDrawable(0x10000010ull, "widgets/minimal/button/label", 0.06f))) {
+            in_button_label_bounds = Widgets::LabelBounds(*interior_label);
+            if (!in_button_label_bounds) {
+                in_button_label_bounds = WidgetInput::WidgetBounds{
+                    interior_label_x,
+                    interior_label_top,
+                    interior_label_x + interior_label->width,
+                    interior_label_top + interior_label_height,
+                };
+            }
+            append_bucket(content, interior_label->bucket);
+            max_width = std::max(max_width, interior_label_x + interior_label->width);
+        }
+
+        layout.button_footprint = layout.button;
+        if (in_button_label_bounds) {
+            layout.button_footprint.include(*in_button_label_bounds);
+        }
+        layout.button_footprint.normalize();
+        WidgetInput::ExpandForFocusHighlight(layout.button_footprint);
+
+        cursor_y = layout.button.max_y + kSpacing * 0.75f;
+        max_width = std::max(max_width, layout.button.max_x);
+
+        // Button caption label
+        Widgets::TypographyStyle caption = theme.caption;
+        float baseline = layout.button.max_y + caption.baseline_shift + 8.0f;
+        auto caption_label = Widgets::BuildLabel(
+            Widgets::LabelBuildParams::Make(button_label, caption)
+                .WithOrigin(button_x, baseline)
+                .WithColor(theme.caption_color)
+                .WithDrawable(0x10000002ull, "widgets/minimal/button_caption", 0.05f));
+        if (caption_label) {
+            append_bucket(content, caption_label->bucket);
+            max_width = std::max(max_width, button_x + caption_label->width);
+            cursor_y = baseline + caption.line_height + kSpacing * 0.5f;
+        }
+    }
+
+    // Toggle bucket
+    {
+        Widgets::TypographyStyle toggle_caption_typography = theme.caption;
+        float toggle_caption_baseline = cursor_y + toggle_caption_typography.baseline_shift;
+        if (auto toggle_label = Widgets::BuildLabel(
+                Widgets::LabelBuildParams::Make("Toggle", toggle_caption_typography)
+                    .WithOrigin(kMargin, toggle_caption_baseline)
+                    .WithColor(theme.caption_color)
+                    .WithDrawable(0x10000003ull, "widgets/minimal/toggle_label", 0.05f))) {
+            append_bucket(content, toggle_label->bucket);
+            max_width = std::max(max_width, kMargin + toggle_label->width);
+            cursor_y = toggle_caption_baseline + toggle_caption_typography.line_height + 8.0f;
+        }
+
+        auto toggle_bucket = Widgets::BuildTogglePreview(
+            toggle_style,
+            toggle_state,
+            Widgets::TogglePreviewOptions{
+                .authoring_root = "widgets/minimal/toggle",
+                .pulsing_highlight = toggle_state.focused,
+            });
+
+        float toggle_width = std::max(toggle_style.width, 1.0f);
+        float toggle_height = std::max(toggle_style.height, 16.0f);
+        float toggle_x = kMargin;
+        float toggle_y = cursor_y;
+
+        translate_bucket(toggle_bucket, toggle_x, toggle_y);
+        append_bucket(content, toggle_bucket);
+
+        layout.toggle = WidgetInput::WidgetBounds{
+            toggle_x,
+            toggle_y,
+            toggle_x + toggle_width,
+            toggle_y + toggle_height,
+        };
+        layout.toggle_footprint = layout.toggle;
+        WidgetInput::ExpandForFocusHighlight(layout.toggle_footprint);
+
+        cursor_y = layout.toggle.max_y + kSpacing;
+        max_width = std::max(max_width, layout.toggle.max_x);
+    }
+
     // Slider bucket
     {
+        Widgets::TypographyStyle slider_caption_typography = theme.caption;
+        float slider_caption_baseline = cursor_y + slider_caption_typography.baseline_shift;
+        if (auto slider_label = Widgets::BuildLabel(
+                Widgets::LabelBuildParams::Make("Slider", slider_caption_typography)
+                    .WithOrigin(kMargin, slider_caption_baseline)
+                    .WithColor(theme.caption_color)
+                    .WithDrawable(0x10000004ull, "widgets/minimal/slider_label", 0.05f))) {
+            append_bucket(content, slider_label->bucket);
+            max_width = std::max(max_width, kMargin + slider_label->width);
+            cursor_y = slider_caption_baseline + slider_caption_typography.line_height + 8.0f;
+        }
+
         auto slider_bucket = Widgets::BuildSliderPreview(slider_style,
                                                          slider_range,
                                                          slider_state,
@@ -326,6 +499,18 @@ auto build_minimal_bucket(Widgets::SliderStyle const& slider_style,
 
     // List bucket
     {
+        Widgets::TypographyStyle list_caption_typography = theme.caption;
+        float list_caption_baseline = cursor_y + list_caption_typography.baseline_shift;
+        if (auto list_caption = Widgets::BuildLabel(
+                Widgets::LabelBuildParams::Make("Inventory", list_caption_typography)
+                    .WithOrigin(kMargin, list_caption_baseline)
+                    .WithColor(theme.caption_color)
+                    .WithDrawable(0x10000005ull, "widgets/minimal/list_label", 0.05f))) {
+            append_bucket(content, list_caption->bucket);
+            max_width = std::max(max_width, kMargin + list_caption->width);
+            cursor_y = list_caption_baseline + list_caption_typography.line_height + 8.0f;
+        }
+
         auto list_preview = Widgets::BuildListPreview(list_style,
                                                       list_items,
                                                       list_state,
@@ -369,10 +554,45 @@ auto build_minimal_bucket(Widgets::SliderStyle const& slider_style,
 
         cursor_y = list_y + list_height + kSpacing;
         max_width = std::max(max_width, list_x + list_width);
+
+        auto const& sanitized_style = list_preview.layout.style;
+        std::size_t label_count = std::min(list_preview.layout.rows.size(), list_items.size());
+        for (std::size_t index = 0; index < label_count; ++index) {
+            auto const& row = list_preview.layout.rows[index];
+            auto const& item = list_items[index];
+            float label_x = list_x + row.label_bounds.min_x;
+            float label_top = list_y + row.label_bounds.min_y;
+            float label_baseline = list_y + row.label_baseline;
+            auto label = Widgets::BuildLabel(
+                Widgets::LabelBuildParams::Make(item.label, sanitized_style.item_typography)
+                    .WithOrigin(label_x, label_baseline)
+                    .WithColor(sanitized_style.item_text_color)
+                    .WithDrawable(0x10010000ull + static_cast<std::uint64_t>(index),
+                                   "widgets/minimal/list/item/" + row.id,
+                                   0.65f));
+            if (label) {
+                append_bucket(content, label->bucket);
+                max_width = std::max(max_width, label_x + label->width);
+                cursor_y = std::max(cursor_y,
+                                     label_top + sanitized_style.item_typography.line_height + kSpacing);
+            }
+        }
     }
 
     // Tree bucket
     {
+        Widgets::TypographyStyle tree_caption_typography = theme.caption;
+        float tree_caption_baseline = cursor_y + tree_caption_typography.baseline_shift;
+        if (auto tree_caption = Widgets::BuildLabel(
+                Widgets::LabelBuildParams::Make("Workspace", tree_caption_typography)
+                    .WithOrigin(kMargin, tree_caption_baseline)
+                    .WithColor(theme.caption_color)
+                    .WithDrawable(0x10000006ull, "widgets/minimal/tree_label", 0.05f))) {
+            append_bucket(content, tree_caption->bucket);
+            max_width = std::max(max_width, kMargin + tree_caption->width);
+            cursor_y = tree_caption_baseline + tree_caption_typography.line_height + 8.0f;
+        }
+
         auto tree_preview = Widgets::BuildTreePreview(tree_style,
                                                       tree_nodes,
                                                       tree_state,
@@ -406,6 +626,39 @@ auto build_minimal_bucket(Widgets::SliderStyle const& slider_style,
 
         cursor_y = tree_y + tree_height + kMargin;
         max_width = std::max(max_width, tree_x + tree_width);
+
+        auto const& rows = tree_preview.layout.rows;
+        auto const& sanitized_style = tree_preview.layout.style;
+        for (std::size_t index = 0; index < rows.size(); ++index) {
+            auto const& row = rows[index];
+            float row_top = tree_y + row.row_bounds.min_y;
+            float row_height_local = row.row_bounds.max_y - row.row_bounds.min_y;
+            float label_height = sanitized_style.label_typography.line_height;
+            float text_top = row_top + std::max(0.0f, (row_height_local - label_height) * 0.5f);
+            float toggle_right = tree_x + row.toggle_bounds.max_x;
+            float label_x = toggle_right + 8.0f;
+            float label_baseline = text_top + sanitized_style.label_typography.baseline_shift;
+            auto text = row.label.empty() ? std::string("(node)") : row.label;
+            auto color = sanitized_style.text_color;
+            if (!row.enabled || !tree_state.enabled) {
+                color = desaturate(color, 0.4f);
+            }
+            if (row.loading) {
+                color = lighten(color, 0.15f);
+            }
+            auto label = Widgets::BuildLabel(
+                Widgets::LabelBuildParams::Make(text, sanitized_style.label_typography)
+                    .WithOrigin(label_x, label_baseline)
+                    .WithColor(color)
+                    .WithDrawable(0x10020000ull + static_cast<std::uint64_t>(index),
+                                   "widgets/minimal/tree/label/" + row.id,
+                                   0.65f));
+            if (label) {
+                append_bucket(content, label->bucket);
+                max_width = std::max(max_width, label_x + label->width);
+                cursor_y = std::max(cursor_y, text_top + label_height + kSpacing);
+            }
+        }
     }
 
     float canvas_width = std::max(max_width + kMargin, 360.0f);
@@ -426,6 +679,17 @@ struct MinimalContext {
     SP::App::AppRootPath app_root{std::string{}};
     ScenePath scene;
 
+    Widgets::ButtonPaths button_paths;
+    Widgets::ButtonState button_state{};
+    Widgets::ButtonStyle button_style{};
+    std::string button_label;
+    WidgetBindings::ButtonBinding button_binding{};
+
+    Widgets::TogglePaths toggle_paths;
+    Widgets::ToggleState toggle_state{};
+    Widgets::ToggleStyle toggle_style{};
+    WidgetBindings::ToggleBinding toggle_binding{};
+
     Widgets::SliderPaths slider_paths;
     Widgets::SliderStyle slider_style{};
     Widgets::SliderState slider_state{};
@@ -445,6 +709,8 @@ struct MinimalContext {
     WidgetBindings::ListBinding list_binding{};
     WidgetBindings::TreeBinding tree_binding{};
 
+    Widgets::WidgetTheme theme{};
+
     WidgetFocus::Config focus_config{};
     WidgetInput::FocusTarget focus_target = WidgetInput::FocusTarget::Slider;
     int focus_list_index = 0;
@@ -454,6 +720,12 @@ struct MinimalContext {
     std::string target_path;
     int scene_width = 0;
     int scene_height = 0;
+    float pointer_x = 0.0f;
+    float pointer_y = 0.0f;
+    bool pointer_down = false;
+    bool slider_dragging = false;
+    std::string tree_pointer_down_id;
+    bool tree_pointer_toggle = false;
 };
 
 static void reload_widget_states(MinimalContext& ctx) {
@@ -461,6 +733,19 @@ static void reload_widget_states(MinimalContext& ctx) {
     if (!space) {
         return;
     }
+
+    ctx.button_state = unwrap_or_exit(space->read<Widgets::ButtonState, std::string>(
+                                          std::string(ctx.button_paths.state.getPath())),
+                                      "read button state");
+    ctx.button_style = unwrap_or_exit(space->read<Widgets::ButtonStyle, std::string>(
+                                           std::string(ctx.button_paths.root.getPath()) + "/meta/style"),
+                                       "read button style");
+    ctx.toggle_state = unwrap_or_exit(space->read<Widgets::ToggleState, std::string>(
+                                          std::string(ctx.toggle_paths.state.getPath())),
+                                      "read toggle state");
+    ctx.toggle_style = unwrap_or_exit(space->read<Widgets::ToggleStyle, std::string>(
+                                           std::string(ctx.toggle_paths.root.getPath()) + "/meta/style"),
+                                       "read toggle style");
 
     ctx.slider_style = unwrap_or_exit(space->read<Widgets::SliderStyle, std::string>(
                                            std::string(ctx.slider_paths.root.getPath()) + "/meta/style"),
@@ -499,7 +784,13 @@ static void refresh_scene(MinimalContext& ctx) {
         return;
     }
 
-    auto build = build_minimal_bucket(ctx.slider_style,
+    auto build = build_minimal_bucket(ctx.theme,
+                                      ctx.button_style,
+                                      ctx.button_label,
+                                      ctx.button_state,
+                                      ctx.toggle_style,
+                                      ctx.toggle_state,
+                                      ctx.slider_style,
                                       ctx.slider_state,
                                       ctx.slider_range,
                                       ctx.list_style,
@@ -542,6 +833,26 @@ static void rebuild_bindings(MinimalContext& ctx) {
     auto app_view = SP::App::AppRootPathView{ctx.app_root.getPath()};
     auto target_view = SP::ConcretePathStringView{ctx.target_path};
 
+    if (ctx.layout.button_footprint.width() > 0.0f || ctx.layout.button_footprint.height() > 0.0f) {
+        auto button_hint = WidgetInput::MakeDirtyHint(ctx.layout.button_footprint);
+        ctx.button_binding = unwrap_or_exit(WidgetBindings::CreateButtonBinding(*space,
+                                                                                app_view,
+                                                                                ctx.button_paths,
+                                                                                target_view,
+                                                                                button_hint),
+                                            "create button binding");
+    }
+
+    if (ctx.layout.toggle_footprint.width() > 0.0f || ctx.layout.toggle_footprint.height() > 0.0f) {
+        auto toggle_hint = WidgetInput::MakeDirtyHint(ctx.layout.toggle_footprint);
+        ctx.toggle_binding = unwrap_or_exit(WidgetBindings::CreateToggleBinding(*space,
+                                                                                app_view,
+                                                                                ctx.toggle_paths,
+                                                                                target_view,
+                                                                                toggle_hint),
+                                            "create toggle binding");
+    }
+
     if (ctx.layout.slider_footprint.width() > 0.0f || ctx.layout.slider_footprint.height() > 0.0f) {
         auto slider_hint = WidgetInput::MakeDirtyHint(ctx.layout.slider_footprint);
         ctx.slider_binding = unwrap_or_exit(WidgetBindings::CreateSliderBinding(*space,
@@ -573,6 +884,85 @@ static void rebuild_bindings(MinimalContext& ctx) {
     }
 }
 
+static auto make_input_context(MinimalContext& ctx) -> WidgetInput::WidgetInputContext;
+
+static void apply_input_update(MinimalContext& ctx, WidgetInput::InputUpdate const& update) {
+    if (!ctx.space) {
+        return;
+    }
+    if (update.focus_changed || update.state_changed) {
+        reload_widget_states(ctx);
+        refresh_scene(ctx);
+        rebuild_bindings(ctx);
+    }
+}
+
+static void handle_local_mouse(SP::UI::LocalMouseEvent const& ev, void* user_data) {
+    auto* ctx = static_cast<MinimalContext*>(user_data);
+    if (!ctx || !ctx->space) {
+        return;
+    }
+
+    auto move_pointer = [&](float x, float y) {
+        ctx->pointer_x = x;
+        ctx->pointer_y = y;
+        auto input = make_input_context(*ctx);
+        auto update = WidgetInput::HandlePointerMove(input, x, y);
+        apply_input_update(*ctx, update);
+    };
+
+    switch (ev.type) {
+    case SP::UI::LocalMouseEventType::AbsoluteMove:
+        if (ev.x >= 0 && ev.y >= 0) {
+            move_pointer(static_cast<float>(ev.x), static_cast<float>(ev.y));
+        }
+        break;
+    case SP::UI::LocalMouseEventType::Move: {
+        float new_x = ctx->pointer_x + static_cast<float>(ev.dx);
+        float new_y = ctx->pointer_y + static_cast<float>(ev.dy);
+        move_pointer(new_x, new_y);
+        break;
+    }
+    case SP::UI::LocalMouseEventType::ButtonDown:
+        if (ev.x >= 0 && ev.y >= 0) {
+            move_pointer(static_cast<float>(ev.x), static_cast<float>(ev.y));
+        }
+        if (ev.button == SP::UI::LocalMouseButton::Left) {
+            auto input = make_input_context(*ctx);
+            auto update = WidgetInput::HandlePointerDown(input);
+            apply_input_update(*ctx, update);
+        }
+        break;
+    case SP::UI::LocalMouseEventType::ButtonUp:
+        if (ev.x >= 0 && ev.y >= 0) {
+            move_pointer(static_cast<float>(ev.x), static_cast<float>(ev.y));
+        }
+        if (ev.button == SP::UI::LocalMouseButton::Left) {
+            auto input = make_input_context(*ctx);
+            auto update = WidgetInput::HandlePointerUp(input);
+            apply_input_update(*ctx, update);
+        }
+        break;
+    case SP::UI::LocalMouseEventType::Wheel: {
+        auto input = make_input_context(*ctx);
+        auto update = WidgetInput::HandlePointerWheel(input, ev.wheel);
+        apply_input_update(*ctx, update);
+        break;
+    }
+    }
+}
+
+static void clear_local_mouse(void* user_data) {
+    auto* ctx = static_cast<MinimalContext*>(user_data);
+    if (!ctx) {
+        return;
+    }
+    ctx->pointer_down = false;
+    ctx->slider_dragging = false;
+    ctx->tree_pointer_down_id.clear();
+    ctx->tree_pointer_toggle = false;
+}
+
 static auto make_input_context(MinimalContext& ctx) -> WidgetInput::WidgetInputContext {
     WidgetInput::WidgetInputContext input{};
     input.space = ctx.space;
@@ -593,6 +983,14 @@ static auto make_input_context(MinimalContext& ctx) -> WidgetInput::WidgetInputC
     input.focus.focus_list_index = &ctx.focus_list_index;
     input.focus.focus_tree_index = &ctx.focus_tree_index;
 
+    input.button_binding = &ctx.button_binding;
+    input.button_paths = &ctx.button_paths;
+    input.button_state = &ctx.button_state;
+
+    input.toggle_binding = &ctx.toggle_binding;
+    input.toggle_paths = &ctx.toggle_paths;
+    input.toggle_state = &ctx.toggle_state;
+
     input.slider_binding = &ctx.slider_binding;
     input.slider_paths = &ctx.slider_paths;
     input.slider_state = &ctx.slider_state;
@@ -610,6 +1008,13 @@ static auto make_input_context(MinimalContext& ctx) -> WidgetInput::WidgetInputC
     input.tree_state = &ctx.tree_state;
     input.tree_style = &ctx.tree_style;
     input.tree_nodes = &ctx.tree_nodes;
+
+    input.pointer_x = &ctx.pointer_x;
+    input.pointer_y = &ctx.pointer_y;
+    input.pointer_down = &ctx.pointer_down;
+    input.slider_dragging = &ctx.slider_dragging;
+    input.tree_pointer_down_id = &ctx.tree_pointer_down_id;
+    input.tree_pointer_toggle = &ctx.tree_pointer_toggle;
 
     return input;
 }
@@ -663,65 +1068,63 @@ static void handle_key_event(SP::UI::LocalKeyEvent const& key, void* user_data) 
         return;
     }
 
-    auto apply_update = [&](WidgetInput::InputUpdate const& update) {
-        if (update.focus_changed || update.state_changed) {
-            reload_widget_states(*ctx);
-            refresh_scene(*ctx);
-            rebuild_bindings(*ctx);
-        }
-    };
-
-    auto input = make_input_context(*ctx);
-
     bool handled = false;
     switch (key.keycode) {
     case kKeycodeTab: {
         bool backward = (key.modifiers & SP::UI::LocalKeyModifierShift) != 0;
+        auto input = make_input_context(*ctx);
         auto update = WidgetInput::CycleFocus(input, !backward);
-        apply_update(update);
+        apply_input_update(*ctx, update);
         handled = true;
         break;
     }
     case kKeycodeLeft:
         if (ctx->focus_target == WidgetInput::FocusTarget::Slider) {
+            auto input = make_input_context(*ctx);
             auto update = WidgetInput::AdjustSliderByStep(input, -1);
-            apply_update(update);
+            apply_input_update(*ctx, update);
             handled = true;
         }
         break;
     case kKeycodeRight:
         if (ctx->focus_target == WidgetInput::FocusTarget::Slider) {
+            auto input = make_input_context(*ctx);
             auto update = WidgetInput::AdjustSliderByStep(input, 1);
-            apply_update(update);
+            apply_input_update(*ctx, update);
             handled = true;
         }
         break;
     case kKeycodeDown:
         if (ctx->focus_target == WidgetInput::FocusTarget::List) {
+            auto input = make_input_context(*ctx);
             auto update = WidgetInput::MoveListFocus(input, +1);
-            apply_update(update);
+            apply_input_update(*ctx, update);
             handled = true;
         } else if (ctx->focus_target == WidgetInput::FocusTarget::Tree) {
+            auto input = make_input_context(*ctx);
             auto update = WidgetInput::MoveTreeFocus(input, +1);
-            apply_update(update);
+            apply_input_update(*ctx, update);
             handled = true;
         }
         break;
     case kKeycodeUp:
         if (ctx->focus_target == WidgetInput::FocusTarget::List) {
+            auto input = make_input_context(*ctx);
             auto update = WidgetInput::MoveListFocus(input, -1);
-            apply_update(update);
+            apply_input_update(*ctx, update);
             handled = true;
         } else if (ctx->focus_target == WidgetInput::FocusTarget::Tree) {
+            auto input = make_input_context(*ctx);
             auto update = WidgetInput::MoveTreeFocus(input, -1);
-            apply_update(update);
+            apply_input_update(*ctx, update);
             handled = true;
         }
         break;
     case kKeycodeSpace:
     case kKeycodeReturn: {
+        auto input = make_input_context(*ctx);
         auto update = WidgetInput::ActivateFocusedWidget(input);
-        apply_update(update);
+        apply_input_update(*ctx, update);
         handled = true;
         break;
     }
@@ -735,9 +1138,10 @@ static void handle_key_event(SP::UI::LocalKeyEvent const& key, void* user_data) 
 
     if (!handled && ctx->focus_target == WidgetInput::FocusTarget::Tree) {
         if (key.character == U' ') {
+            auto input = make_input_context(*ctx);
             auto update = WidgetInput::TreeApplyOp(input,
                                                    WidgetBindings::WidgetOpKind::TreeToggle);
-            apply_update(update);
+            apply_input_update(*ctx, update);
         }
     }
 }
@@ -750,7 +1154,24 @@ int main(int /*argc*/, char** /*argv*/) {
     App::AppRootPath app_root{"/system/applications/widgets_example_minimal"};
     App::AppRootPathView app_root_view{app_root.getPath()};
 
-    auto theme = Widgets::MakeDefaultWidgetTheme();
+    auto theme_selection = Widgets::SetTheme(std::optional<std::string>{"skylight"});
+    auto theme = std::move(theme_selection.theme);
+
+    auto button_params = Widgets::MakeButtonParams("demo_button", "Action")
+                             .WithTheme(theme)
+                             .Build();
+    auto button_paths = unwrap_or_exit(Widgets::CreateButton(space,
+                                                             app_root_view,
+                                                             button_params),
+                                       "create button widget");
+
+    auto toggle_params = Widgets::MakeToggleParams("demo_toggle")
+                             .WithTheme(theme)
+                             .Build();
+    auto toggle_paths = unwrap_or_exit(Widgets::CreateToggle(space,
+                                                             app_root_view,
+                                                             toggle_params),
+                                       "create toggle widget");
 
     auto slider_params = Widgets::MakeSliderParams("demo_slider")
                              .WithRange(0.0f, 100.0f)
@@ -818,9 +1239,13 @@ int main(int /*argc*/, char** /*argv*/) {
                                                      }),
                                "create minimal scene");
 
+    ctx.theme = theme;
+    ctx.button_paths = button_paths;
+    ctx.toggle_paths = toggle_paths;
     ctx.slider_paths = slider_paths;
     ctx.list_paths = list_paths;
     ctx.tree_paths = tree_paths;
+    ctx.button_label = button_params.label;
 
     reload_widget_states(ctx);
     refresh_scene(ctx);
@@ -867,8 +1292,8 @@ int main(int /*argc*/, char** /*argv*/) {
     }
 
     SP::UI::SetLocalWindowCallbacks({
-        nullptr,
-        nullptr,
+        &handle_local_mouse,
+        &clear_local_mouse,
         &ctx,
         &handle_key_event,
     });
@@ -886,6 +1311,9 @@ int main(int /*argc*/, char** /*argv*/) {
         int requested_width = window_width;
         int requested_height = window_height;
         SP::UI::GetLocalWindowContentSize(&requested_width, &requested_height);
+        if (requested_width <= 0 || requested_height <= 0) {
+            continue;
+        }
         if (requested_width != window_width || requested_height != window_height) {
             window_width = requested_width;
             window_height = requested_height;
