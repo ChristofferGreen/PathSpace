@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <span>
 #include <utility>
@@ -583,6 +584,10 @@ inline App::BootstrapParams::BootstrapParams() {
 } // namespace App
 
 namespace Widgets {
+
+namespace Reducers {
+struct WidgetAction;
+} // namespace Reducers
 
 namespace Input {
 struct WidgetBounds;
@@ -1238,6 +1243,8 @@ auto ResolveHitTarget(Scene::HitTestResult const& hit) -> std::optional<HitTarge
 
 namespace Bindings {
 
+using WidgetActionCallback = std::function<void(Reducers::WidgetAction const&)>;
+
 enum class WidgetOpKind : std::uint32_t {
     HoverEnter = 0,
    HoverExit,
@@ -1312,6 +1319,7 @@ struct BindingOptions {
     bool auto_render = true;
     ConcretePath focus_state;
     bool focus_enabled = false;
+    std::vector<std::shared_ptr<WidgetActionCallback>> action_callbacks;
 };
 
 struct ButtonBinding {
@@ -1409,6 +1417,68 @@ auto CreateStackBinding(PathSpace& space,
                         DirtyRectHint footprint,
                         std::optional<DirtyRectHint> dirty_override = std::nullopt,
                         bool auto_render = true) -> SP::Expected<StackBinding>;
+
+namespace ActionCallbacks {
+
+inline auto add_action_callback(BindingOptions& options,
+                                WidgetActionCallback callback) -> void {
+    if (!callback) {
+        return;
+    }
+    options.action_callbacks.emplace_back(
+        std::make_shared<WidgetActionCallback>(std::move(callback)));
+}
+
+inline auto clear_action_callbacks(BindingOptions& options) -> void {
+    options.action_callbacks.clear();
+}
+
+} // namespace ActionCallbacks
+
+inline auto AddActionCallback(ButtonBinding& binding,
+                              WidgetActionCallback callback) -> void {
+    ActionCallbacks::add_action_callback(binding.options, std::move(callback));
+}
+
+inline auto AddActionCallback(ToggleBinding& binding,
+                              WidgetActionCallback callback) -> void {
+    ActionCallbacks::add_action_callback(binding.options, std::move(callback));
+}
+
+inline auto AddActionCallback(SliderBinding& binding,
+                              WidgetActionCallback callback) -> void {
+    ActionCallbacks::add_action_callback(binding.options, std::move(callback));
+}
+
+inline auto AddActionCallback(ListBinding& binding,
+                              WidgetActionCallback callback) -> void {
+    ActionCallbacks::add_action_callback(binding.options, std::move(callback));
+}
+
+inline auto AddActionCallback(TreeBinding& binding,
+                              WidgetActionCallback callback) -> void {
+    ActionCallbacks::add_action_callback(binding.options, std::move(callback));
+}
+
+inline auto ClearActionCallbacks(ButtonBinding& binding) -> void {
+    ActionCallbacks::clear_action_callbacks(binding.options);
+}
+
+inline auto ClearActionCallbacks(ToggleBinding& binding) -> void {
+    ActionCallbacks::clear_action_callbacks(binding.options);
+}
+
+inline auto ClearActionCallbacks(SliderBinding& binding) -> void {
+    ActionCallbacks::clear_action_callbacks(binding.options);
+}
+
+inline auto ClearActionCallbacks(ListBinding& binding) -> void {
+    ActionCallbacks::clear_action_callbacks(binding.options);
+}
+
+inline auto ClearActionCallbacks(TreeBinding& binding) -> void {
+    ActionCallbacks::clear_action_callbacks(binding.options);
+}
 
 auto DispatchList(PathSpace& space,
                   ListBinding const& binding,
@@ -2218,6 +2288,8 @@ struct WidgetAction {
     std::uint64_t sequence = 0;
     std::uint64_t timestamp_ns = 0;
 };
+
+auto MakeWidgetAction(Bindings::WidgetOp const& op) -> WidgetAction;
 
 struct ProcessActionsResult {
     ConcretePath ops_queue;

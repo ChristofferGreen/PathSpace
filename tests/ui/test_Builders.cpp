@@ -2145,6 +2145,104 @@ TEST_CASE("Widgets::Bindings::DispatchButton emits dirty hints and widget ops") 
     CHECK_FALSE(disabledState->enabled);
 }
 
+TEST_CASE("Widgets::Bindings::DispatchButton invokes action callbacks") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{ .name = "bindings_button_callback_renderer", .kind = RendererKind::Software2D, .description = "Renderer" };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SurfaceDesc desc{};
+    desc.size_px = {256, 128};
+    desc.progressive_tile_size_px = 32;
+
+    SurfaceParams surfaceParams{ .name = "bindings_button_callback_surface", .desc = desc, .renderer = "renderers/bindings_button_callback_renderer" };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    auto target = Renderer::ResolveTargetBase(fx.space,
+                                              fx.root_view(),
+                                              *renderer,
+                                              "targets/surfaces/bindings_button_callback_surface");
+    REQUIRE(target);
+
+    auto buttonParams = Widgets::MakeButtonParams("callback_button", "Callback").Build();
+    auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
+    REQUIRE(button);
+
+    auto buttonStyle = fx.space.read<Widgets::ButtonStyle, std::string>(std::string(button->root.getPath()) + "/meta/style");
+    REQUIRE(buttonStyle);
+    auto buttonFootprint = SP::UI::Builders::MakeDirtyRectHint(0.0f,
+                                                               0.0f,
+                                                               buttonStyle->width,
+                                                               buttonStyle->height);
+
+    auto binding = WidgetBindings::CreateButtonBinding(fx.space,
+                                                       fx.root_view(),
+                                                       *button,
+                                                       SP::ConcretePathStringView{target->getPath()},
+                                                       buttonFootprint);
+    REQUIRE(binding);
+
+    std::vector<WidgetReducers::WidgetAction> observed;
+    int secondary_invocations = 0;
+
+    WidgetBindings::AddActionCallback(*binding, [&](WidgetReducers::WidgetAction const& action) {
+        observed.push_back(action);
+    });
+    WidgetBindings::AddActionCallback(*binding, [&](WidgetReducers::WidgetAction const&) {
+        ++secondary_invocations;
+    });
+
+    auto pointer = WidgetBindings::PointerInfo::Make(12.0f, 6.0f)
+                       .WithInside(true);
+
+    auto opQueuePath = binding->options.ops_queue.getPath();
+
+    auto pressed = Widgets::MakeButtonState()
+                        .WithHovered(true)
+                        .WithPressed(true)
+                        .Build();
+
+    auto pressResult = WidgetBindings::DispatchButton(fx.space,
+                                                      *binding,
+                                                      pressed,
+                                                      WidgetBindings::WidgetOpKind::Press,
+                                                      pointer);
+    REQUIRE(pressResult);
+    CHECK(*pressResult);
+
+    CHECK(observed.size() == 1);
+    CHECK(observed.front().kind == WidgetBindings::WidgetOpKind::Press);
+    CHECK(observed.front().analog_value == doctest::Approx(1.0f));
+    CHECK(observed.front().widget_path == binding->widget.root.getPath());
+    CHECK(secondary_invocations == 1);
+
+    auto pressOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(pressOp);
+    CHECK(pressOp->kind == WidgetBindings::WidgetOpKind::Press);
+
+    WidgetBindings::ClearActionCallbacks(*binding);
+
+    auto released = pressed;
+    released.pressed = false;
+
+    auto releaseResult = WidgetBindings::DispatchButton(fx.space,
+                                                        *binding,
+                                                        released,
+                                                        WidgetBindings::WidgetOpKind::Release,
+                                                        pointer);
+    REQUIRE(releaseResult);
+    CHECK(*releaseResult);
+
+    CHECK(observed.size() == 1);
+    CHECK(secondary_invocations == 1);
+
+    auto releaseOp = fx.space.take<WidgetBindings::WidgetOp, std::string>(opQueuePath);
+    REQUIRE(releaseOp);
+    CHECK(releaseOp->kind == WidgetBindings::WidgetOpKind::Release);
+}
+
 TEST_CASE("Widgets::Bindings::DispatchButton honors auto-render flag") {
     BuildersFixture fx;
 

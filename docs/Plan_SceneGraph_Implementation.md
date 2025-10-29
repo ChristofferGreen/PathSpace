@@ -27,8 +27,8 @@
 - Long-term follow-up: evaluate API ergonomics and refactor the minimal example toward a ≤400 LOC target once higher-level layout/focus helpers arrive.
 - ✅ (October 29, 2025) Font/resource plan: widget demos now register fonts through `FontManager`, typography carries resource roots/revisions, and TextBuilder emits font fingerprints so renderers/presenters can reuse atlases.
 - Enhance `examples/paint_example.cpp` with palette buttons (red, green, blue, yellow, purple, orange, etc.) and a brush-size slider routed through the widget bindings so live demos can tweak stroke color and width without code changes.
-- Add widget action callbacks: allow attaching callable/lambda payloads to widget paths so pressing a button can immediately invoke application logic (hook into reducers/ops schema without bespoke polling).
-- Extend `examples/widgets_example.cpp` with a demo button wired to a lambda that prints “Hello from PathSpace!” (or similar) using the new callback plumbing to validate the API.
+- ✅ (October 29, 2025) Add widget action callbacks: allow attaching callable/lambda payloads directly to widget bindings so button/toggle/list/tree dispatchers fire immediate callbacks in addition to queuing ops; UITests now cover the callback fan-out and clearing flows.
+- Extend `examples/widgets_example.cpp` with a demo button wired to a lambda that prints “Hello from PathSpace!” (or similar) using the new callback plumbing to validate the API. ← highest priority follow-up.
 
 ### Detailed Plan — Font & Resource Manager Integration
 

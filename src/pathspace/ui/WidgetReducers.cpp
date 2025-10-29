@@ -4,9 +4,7 @@ namespace SP::UI::Builders::Widgets::Reducers {
 
 using namespace Detail;
 
-namespace {
-
-auto to_widget_action(Bindings::WidgetOp const& op) -> WidgetAction {
+auto MakeWidgetAction(Bindings::WidgetOp const& op) -> WidgetAction {
     WidgetAction action{};
     action.kind = op.kind;
     action.widget_path = op.widget_path;
@@ -29,8 +27,6 @@ auto to_widget_action(Bindings::WidgetOp const& op) -> WidgetAction {
 
     return action;
 }
-
-} // namespace
 
 auto WidgetOpsQueue(WidgetPath const& widget_root) -> ConcretePath {
     std::string queue_path = widget_root.getPath();
@@ -60,7 +56,7 @@ auto ReducePending(PathSpace& space,
     for (std::size_t processed = 0; processed < max_actions; ++processed) {
         auto taken = space.take<Bindings::WidgetOp, std::string>(queue_path);
         if (taken) {
-            actions.push_back(to_widget_action(*taken));
+            actions.push_back(MakeWidgetAction(*taken));
             continue;
         }
 

@@ -63,6 +63,22 @@ auto submit_dirty_hint(PathSpace& space,
                                       std::span<const DirtyRectHint>(hints.data(), hints.size()));
 }
 
+auto emit_action_callbacks(BindingOptions const& options,
+                           WidgetOp const& op) -> void {
+    if (options.action_callbacks.empty()) {
+        return;
+    }
+
+    auto callbacks = options.action_callbacks;
+    auto action = Reducers::MakeWidgetAction(op);
+    for (auto const& callback : callbacks) {
+        if (!callback || !(*callback)) {
+            continue;
+        }
+        (*callback)(action);
+    }
+}
+
 auto set_widget_focus(PathSpace& space,
                       BindingOptions const& options,
                       WidgetPath const& widget) -> SP::Expected<bool> {
@@ -119,6 +135,7 @@ auto enqueue_widget_op(PathSpace& space,
     if (!inserted.errors.empty()) {
         return std::unexpected(inserted.errors.front());
     }
+    emit_action_callbacks(options, op);
     return {};
 }
 
