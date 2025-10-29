@@ -151,6 +151,17 @@ if(BUILD_PATHSPACE_EXAMPLES)
         target_compile_definitions(widgets_example PRIVATE PATHIO_BACKEND_MACOS=1)
     endif()
 
+    add_executable(widgets_example_minimal examples/widgets_example_minimal.cpp)
+    target_link_libraries(widgets_example_minimal PRIVATE PathSpace)
+    if(APPLE)
+        target_link_libraries(widgets_example_minimal PRIVATE
+            "-framework Cocoa"
+            "-framework Metal"
+            "-framework QuartzCore"
+            "-framework IOSurface")
+        target_compile_definitions(widgets_example_minimal PRIVATE PATHIO_BACKEND_MACOS=1)
+    endif()
+
     add_executable(pixel_noise_example examples/pixel_noise_example.cpp)
     target_link_libraries(pixel_noise_example PRIVATE PathSpace)
     if(APPLE)
