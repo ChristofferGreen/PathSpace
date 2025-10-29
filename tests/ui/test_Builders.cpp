@@ -4278,6 +4278,22 @@ TEST_CASE("Widget focus slider-to-list transition covers highlight footprint") {
                                                          listFootprint);
     REQUIRE(listBinding);
 
+    float focus_padding = Widgets::Input::FocusHighlightPadding();
+    auto expand_for_focus = [&](DirtyRectHint const& base) -> DirtyRectHint {
+        DirtyRectHint expanded{
+            std::max(0.0f, base.min_x - focus_padding),
+            std::max(0.0f, base.min_y - focus_padding),
+            base.max_x + focus_padding,
+            base.max_y + focus_padding,
+        };
+        expanded.max_x = std::min(expanded.max_x, static_cast<float>(desc.size_px.width));
+        expanded.max_y = std::min(expanded.max_y, static_cast<float>(desc.size_px.height));
+        return expanded;
+    };
+
+    DirtyRectHint sliderHighlightRegion = expand_for_focus(sliderFootprint);
+    DirtyRectHint listHighlightRegion = expand_for_focus(listFootprint);
+
     RenderSettings base_settings{};
     base_settings.surface.size_px.width = desc.size_px.width;
     base_settings.surface.size_px.height = desc.size_px.height;
@@ -4459,7 +4475,42 @@ TEST_CASE("Widget focus slider-to-list transition covers highlight footprint") {
         }
     }
     hints_summary << "]";
-    INFO("dirty hints summary " << hints_summary.str());
+    auto hints_summary_str = hints_summary.str();
+    INFO("dirty hints summary " << hints_summary_str);
+
+    constexpr float kHintTolerance = 0.75f;
+    auto covers_region = [&](DirtyRectHint const& hint, DirtyRectHint const& expected) -> bool {
+        return hint.min_x <= expected.min_x + kHintTolerance
+            && hint.min_y <= expected.min_y + kHintTolerance
+            && hint.max_x + kHintTolerance >= expected.max_x
+            && hint.max_y + kHintTolerance >= expected.max_y;
+    };
+
+    bool slider_hint_found = std::any_of(hintsBefore->begin(),
+                                         hintsBefore->end(),
+                                         [&](DirtyRectHint const& hint) {
+                                             return covers_region(hint, sliderHighlightRegion);
+                                         });
+    bool list_hint_found = std::any_of(hintsBefore->begin(),
+                                       hintsBefore->end(),
+                                       [&](DirtyRectHint const& hint) {
+                                           return covers_region(hint, listHighlightRegion);
+                                       });
+
+    CHECK_MESSAGE(slider_hint_found,
+                  "dirty hints " << hints_summary_str
+                                 << " missing slider highlight coverage ["
+                                 << sliderHighlightRegion.min_x << ", "
+                                 << sliderHighlightRegion.min_y << ", "
+                                 << sliderHighlightRegion.max_x << ", "
+                                 << sliderHighlightRegion.max_y << "]");
+    CHECK_MESSAGE(list_hint_found,
+                  "dirty hints " << hints_summary_str
+                                 << " missing list highlight coverage ["
+                                 << listHighlightRegion.min_x << ", "
+                                 << listHighlightRegion.min_y << ", "
+                                 << listHighlightRegion.max_x << ", "
+                                 << listHighlightRegion.max_y << "]");
 
     for (auto const& hint : *hintsBefore) {
         INFO("dirty hint [" << hint.min_x << ", " << hint.min_y << ", "
@@ -4530,14 +4581,6 @@ TEST_CASE("Widget focus slider-to-list transition covers highlight footprint") {
         return value;
     };
 
-    float focus_padding = WidgetInput::FocusHighlightPadding();
-    DirtyRectHint expected_slider{
-        std::max(0.0f, sliderFootprint.min_x - focus_padding),
-        std::max(0.0f, sliderFootprint.min_y - focus_padding),
-        std::min(static_cast<float>(desc.size_px.width), sliderFootprint.max_x + focus_padding),
-        std::min(static_cast<float>(desc.size_px.height), sliderFootprint.max_y + focus_padding),
-    };
-
     auto compute_region_diff = [&](SoftwareFramebuffer const& before,
                                    SoftwareFramebuffer const& after,
                                    DirtyRectHint const& region) -> std::uint64_t {
@@ -4591,25 +4634,25 @@ TEST_CASE("Widget focus slider-to-list transition covers highlight footprint") {
         return total;
     };
 
-    auto slider_on_diff = compute_region_diff(baseline_fb, slider_fb, expected_slider);
+    auto slider_on_diff = compute_region_diff(baseline_fb, slider_fb, sliderHighlightRegion);
     CHECK(slider_on_diff > 0);
 
-    auto first_frame_ring_diff = compute_ring_diff(baseline_fb, first_list_frame, expected_slider, sliderFootprint);
+    auto first_frame_ring_diff = compute_ring_diff(baseline_fb, first_list_frame, sliderHighlightRegion, sliderFootprint);
     CHECK_MESSAGE(first_frame_ring_diff == 0,
                   "first focus transition frame should match baseline in highlight ring (diff="
                       << first_frame_ring_diff << ")");
 
-    auto slider_to_first_ring_diff = compute_ring_diff(slider_fb, first_list_frame, expected_slider, sliderFootprint);
+    auto slider_to_first_ring_diff = compute_ring_diff(slider_fb, first_list_frame, sliderHighlightRegion, sliderFootprint);
     CHECK_MESSAGE(slider_to_first_ring_diff > 0,
                   "highlight ring should change between slider-focused and first blur frame (diff="
                       << slider_to_first_ring_diff << ")");
 
-    auto slider_ring_off_diff = compute_ring_diff(baseline_fb, list_fb, expected_slider, sliderFootprint);
+    auto slider_ring_off_diff = compute_ring_diff(baseline_fb, list_fb, sliderHighlightRegion, sliderFootprint);
     CHECK_MESSAGE(slider_ring_off_diff == 0,
                   "slider highlight ring should match baseline after focus move (diff="
                       << slider_ring_off_diff << ")");
 
-    auto slider_ring_diff = compute_ring_diff(slider_fb, list_fb, expected_slider, sliderFootprint);
+    auto slider_ring_diff = compute_ring_diff(slider_fb, list_fb, sliderHighlightRegion, sliderFootprint);
     CHECK_MESSAGE(slider_ring_diff > 0,
                   "highlight ring diff should be non-zero when focus leaves slider (diff="
                       << slider_ring_diff << ")");
