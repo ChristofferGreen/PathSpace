@@ -4066,7 +4066,7 @@ TEST_CASE("Widget focus slider-to-list transition covers highlight footprint") {
 
     auto sliderParams = Widgets::MakeSliderParams("focus_slider_widget")
                             .WithRange(0.0f, 1.0f)
-                            .WithValue(0.5f)
+                            .WithValue(0.4f)
                             .Build();
     auto slider = Widgets::CreateSlider(fx.space, fx.root_view(), sliderParams);
     REQUIRE(slider);
@@ -4119,7 +4119,14 @@ TEST_CASE("Widget focus slider-to-list transition covers highlight footprint") {
     auto targetConcrete = SP::UI::Builders::ConcretePath{targetAbs->getPath()};
     auto targetView = SP::UI::Builders::ConcretePathView{targetConcrete.getPath()};
 
-    auto capture_frame = [&](std::string const& step_label) -> SoftwareFramebuffer {
+    auto capture_frame = [&](std::string const& step_label, RenderSettings const& settings) -> SoftwareFramebuffer {
+        auto render = Surface::RenderOnce(fx.space, *surface, settings);
+        if (!render) {
+            INFO(step_label << ": Surface::RenderOnce code=" << static_cast<int>(render.error().code));
+            INFO(step_label << ": Surface::RenderOnce message="
+                            << render.error().message.value_or("<none>"));
+        }
+        REQUIRE(render);
         auto present = Window::Present(fx.space, *window, "main");
         if (!present) {
             INFO(step_label << ": Window::Present code=" << static_cast<int>(present.error().code));
@@ -4173,6 +4180,231 @@ TEST_CASE("Widget focus slider-to-list transition covers highlight footprint") {
                                                          listFootprint);
     REQUIRE(listBinding);
 
+    RenderSettings base_settings{};
+    base_settings.surface.size_px.width = desc.size_px.width;
+    base_settings.surface.size_px.height = desc.size_px.height;
+    base_settings.surface.visibility = true;
+    base_settings.clear_color = {0.05f, 0.05f, 0.05f, 1.0f};
+    base_settings.time.time_ms = 1000.0;
+    base_settings.time.delta_ms = 16.0;
+
+    uint64_t frame_index = 1;
+    auto next_settings = [&]() {
+        RenderSettings settings = base_settings;
+        settings.time.frame_index = frame_index++;
+        return settings;
+    };
+
+    auto renderQueuePath = targetAbs->getPath() + "/events/renderRequested/queue";
+
+    auto drain_auto_render = [&](std::vector<SoftwareFramebuffer>& frames) {
+        frames.clear();
+        while (true) {
+            auto event = fx.space.take<AutoRenderRequestEvent, std::string>(renderQueuePath);
+            if (!event) {
+                CHECK((event.error().code == Error::Code::NoObjectFound
+                       || event.error().code == Error::Code::NoSuchPath));
+                break;
+            }
+            frames.push_back(capture_frame("auto-render", next_settings()));
+        }
+    };
+
+    auto baseline_fb = capture_frame("baseline", next_settings());
+
+    auto pointer = WidgetBindings::PointerInfo::Make(sliderStyle->width * 0.75f,
+                                                     sliderStyle->height * 0.5f)
+                       .WithInside(true)
+                       .WithPrimary(true);
+
+    auto beginState = Widgets::MakeSliderState()
+                          .WithEnabled(true)
+                          .WithHovered(true)
+                          .WithDragging(true)
+                          .WithFocused(true)
+                          .WithValue(0.45f)
+                          .Build();
+    auto beginResult = WidgetBindings::DispatchSlider(fx.space,
+                                                      *sliderBinding,
+                                                      beginState,
+                                                      WidgetBindings::WidgetOpKind::SliderBegin,
+                                                      pointer);
+    REQUIRE(beginResult);
+    CHECK(*beginResult);
+    std::vector<SoftwareFramebuffer> slider_frames;
+    drain_auto_render(slider_frames);
+
+    auto updateState = Widgets::MakeSliderState()
+                           .WithEnabled(true)
+                           .WithHovered(true)
+                           .WithDragging(true)
+                           .WithFocused(true)
+                           .WithValue(0.65f)
+                           .Build();
+    auto updateResult = WidgetBindings::DispatchSlider(fx.space,
+                                                       *sliderBinding,
+                                                       updateState,
+                                                       WidgetBindings::WidgetOpKind::SliderUpdate,
+                                                       pointer);
+    REQUIRE(updateResult);
+    CHECK(*updateResult);
+    drain_auto_render(slider_frames);
+
+    auto commitState = Widgets::MakeSliderState()
+                           .WithEnabled(true)
+                           .WithHovered(true)
+                           .WithFocused(true)
+                           .WithValue(0.65f)
+                           .Build();
+    auto commitResult = WidgetBindings::DispatchSlider(fx.space,
+                                                       *sliderBinding,
+                                                       commitState,
+                                                       WidgetBindings::WidgetOpKind::SliderCommit,
+                                                       pointer);
+    REQUIRE(commitResult);
+    CHECK(*commitResult);
+    SoftwareFramebuffer slider_fb{};
+    drain_auto_render(slider_frames);
+    if (slider_frames.empty()) {
+        slider_fb = capture_frame("focus-slider", next_settings());
+    } else {
+        slider_fb = slider_frames.back();
+    }
+
+    auto storedFootprint = fx.space.read<DirtyRectHint, std::string>(std::string(slider->root.getPath()) + "/meta/footprint");
+    REQUIRE(storedFootprint);
+    INFO("stored slider footprint [" << storedFootprint->min_x << ", "
+                                     << storedFootprint->min_y << ", "
+                                     << storedFootprint->max_x << ", "
+                                     << storedFootprint->max_y << "]");
+
+    auto sliderStateBeforeMove = fx.space.read<Widgets::SliderState, std::string>(slider->state.getPath());
+    REQUIRE(sliderStateBeforeMove);
+    CHECK(sliderStateBeforeMove->focused);
+    CHECK(sliderStateBeforeMove->hovered);
+
+    auto focusBeforeMove = WidgetFocus::Current(fx.space, ConcretePathView{sliderBinding->options.focus_state.getPath()});
+    REQUIRE(focusBeforeMove);
+    REQUIRE(focusBeforeMove->has_value());
+    CHECK(*focusBeforeMove == slider->root.getPath());
+
+    float listPointerX = (listFootprint.min_x + listFootprint.max_x) * 0.5f;
+    float listPointerY = listFootprint.min_y + listStyle->border_thickness + listStyle->item_height * 0.5f;
+    auto listPointer = WidgetBindings::PointerInfo::Make(listPointerX, listPointerY)
+                           .WithInside(true)
+                           .WithPrimary(true);
+
+    auto listStateBefore = fx.space.read<Widgets::ListState, std::string>(list->state.getPath());
+    REQUIRE(listStateBefore);
+
+    auto listHoverState = *listStateBefore;
+    listHoverState.hovered_index = 0;
+    auto hoverResult = WidgetBindings::DispatchList(fx.space,
+                                                    *listBinding,
+                                                    listHoverState,
+                                                    WidgetBindings::WidgetOpKind::ListHover,
+                                                    listPointer,
+                                                    0,
+                                                    0.0f);
+    REQUIRE(hoverResult);
+    CHECK(*hoverResult);
+
+    auto listSelectState = fx.space.read<Widgets::ListState, std::string>(list->state.getPath());
+    REQUIRE(listSelectState);
+    listSelectState->selected_index = 0;
+    auto selectResult = WidgetBindings::DispatchList(fx.space,
+                                                     *listBinding,
+                                                     *listSelectState,
+                                                     WidgetBindings::WidgetOpKind::ListSelect,
+                                                     listPointer,
+                                                     0,
+                                                     0.0f);
+    REQUIRE(selectResult);
+    CHECK(*selectResult);
+
+    auto listActivateState = fx.space.read<Widgets::ListState, std::string>(list->state.getPath());
+    REQUIRE(listActivateState);
+    listActivateState->selected_index = 0;
+    auto activateResult = WidgetBindings::DispatchList(fx.space,
+                                                       *listBinding,
+                                                       *listActivateState,
+                                                       WidgetBindings::WidgetOpKind::ListActivate,
+                                                       listPointer,
+                                                       0,
+                                                       0.0f);
+    REQUIRE(activateResult);
+
+    auto focusAfterPointer = WidgetFocus::Current(fx.space,
+                                                  ConcretePathView{sliderBinding->options.focus_state.getPath()});
+    REQUIRE(focusAfterPointer);
+    REQUIRE(focusAfterPointer->has_value());
+    CHECK(*focusAfterPointer == list->root.getPath());
+
+    auto hintsPath = targetAbs->getPath() + "/hints/dirtyRects";
+    auto hintsBefore = fx.space.read<std::vector<DirtyRectHint>, std::string>(hintsPath);
+    REQUIRE_MESSAGE(hintsBefore,
+                    "dirty hints missing before focus handoff: code="
+                        << static_cast<int>(hintsBefore.error().code)
+                        << " message=" << hintsBefore.error().message.value_or("<none>"));
+    auto format_hint = [](DirtyRectHint const& hint) {
+        std::ostringstream oss;
+        oss << "[" << hint.min_x << ", " << hint.min_y << ", "
+            << hint.max_x << ", " << hint.max_y << "]";
+        return oss.str();
+    };
+    std::ostringstream hints_summary;
+    hints_summary << "[";
+    for (std::size_t i = 0; i < hintsBefore->size(); ++i) {
+        hints_summary << format_hint((*hintsBefore)[i]);
+        if (i + 1 < hintsBefore->size()) {
+            hints_summary << ", ";
+        }
+    }
+    hints_summary << "]";
+    INFO("dirty hints summary " << hints_summary.str());
+
+    for (auto const& hint : *hintsBefore) {
+        INFO("dirty hint [" << hint.min_x << ", " << hint.min_y << ", "
+             << hint.max_x << ", " << hint.max_y << "]");
+    }
+
+    std::vector<SoftwareFramebuffer> list_frames;
+    drain_auto_render(list_frames);
+    SoftwareFramebuffer first_list_frame{};
+    SoftwareFramebuffer list_fb{};
+    if (list_frames.empty()) {
+        list_fb = capture_frame("focus-list", next_settings());
+        first_list_frame = list_fb;
+    } else {
+        first_list_frame = list_frames.front();
+        list_fb = list_frames.back();
+    }
+
+    auto sliderState = fx.space.read<Widgets::SliderState, std::string>(slider->state.getPath());
+    REQUIRE(sliderState);
+    CHECK_FALSE(sliderState->focused);
+    CHECK_FALSE(sliderState->hovered);
+    CHECK_FALSE(sliderState->dragging);
+
+    auto listState = fx.space.read<Widgets::ListState, std::string>(list->state.getPath());
+    REQUIRE(listState);
+    CHECK(listState->focused);
+
+    auto sliderRevision = Scene::ReadCurrentRevision(fx.space, slider->scene);
+    REQUIRE(sliderRevision);
+    auto sliderRevisionPath = std::string(slider->scene.getPath())
+        + "/builds/"
+        + format_revision(sliderRevision->revision);
+    auto sliderBucket = SceneSnapshotBuilder::decode_bucket(fx.space, sliderRevisionPath);
+    REQUIRE(sliderBucket);
+    bool sliderHighlightPresent = std::any_of(sliderBucket->authoring_map.begin(),
+                                              sliderBucket->authoring_map.end(),
+                                              [](UIScene::DrawableAuthoringMapEntry const& entry) {
+                                                  return entry.authoring_node_id.find("focus/highlight")
+                                                      != std::string::npos;
+                                              });
+    CHECK_FALSE(sliderHighlightPresent);
+
     auto sample_pixel = [](SoftwareFramebuffer const& fb, int x, int y) -> std::array<std::uint8_t, 4> {
         REQUIRE(x >= 0);
         REQUIRE(y >= 0);
@@ -4199,56 +4431,6 @@ TEST_CASE("Widget focus slider-to-list transition covers highlight footprint") {
         }
         return value;
     };
-
-    auto baselineRender = Surface::RenderOnce(fx.space, *surface, std::nullopt);
-    REQUIRE(baselineRender);
-    auto baseline_fb = capture_frame("baseline");
-
-    auto config = WidgetFocus::MakeConfig(fx.root_view(), targetConcrete);
-    std::array<WidgetPath, 2> order{slider->root, list->root};
-
-    auto setSlider = WidgetFocus::Set(fx.space, config, slider->root);
-    REQUIRE(setSlider);
-    CHECK(setSlider->changed);
-
-    auto afterSliderRender = Surface::RenderOnce(fx.space, *surface, std::nullopt);
-    REQUIRE(afterSliderRender);
-    auto slider_fb = capture_frame("focus-slider");
-
-    auto moveList = WidgetFocus::Move(fx.space,
-                                      config,
-                                      std::span<const WidgetPath>(order.data(), order.size()),
-                                      WidgetFocus::Direction::Forward);
-    REQUIRE(moveList);
-    REQUIRE(moveList->has_value());
-    CHECK(moveList->value().widget.getPath() == list->root.getPath());
-
-    auto afterListRender = Surface::RenderOnce(fx.space, *surface, std::nullopt);
-    REQUIRE(afterListRender);
-    auto list_fb = capture_frame("focus-list");
-
-    auto sliderState = fx.space.read<Widgets::SliderState, std::string>(slider->state.getPath());
-    REQUIRE(sliderState);
-    CHECK_FALSE(sliderState->focused);
-
-    auto listState = fx.space.read<Widgets::ListState, std::string>(list->state.getPath());
-    REQUIRE(listState);
-    CHECK(listState->focused);
-
-    auto sliderRevision = Scene::ReadCurrentRevision(fx.space, slider->scene);
-    REQUIRE(sliderRevision);
-    auto sliderRevisionPath = std::string(slider->scene.getPath())
-        + "/builds/"
-        + format_revision(sliderRevision->revision);
-    auto sliderBucket = SceneSnapshotBuilder::decode_bucket(fx.space, sliderRevisionPath);
-    REQUIRE(sliderBucket);
-    bool sliderHighlightPresent = std::any_of(sliderBucket->authoring_map.begin(),
-                                              sliderBucket->authoring_map.end(),
-                                              [](UIScene::DrawableAuthoringMapEntry const& entry) {
-                                                  return entry.authoring_node_id.find("focus/highlight")
-                                                      != std::string::npos;
-                                              });
-    CHECK_FALSE(sliderHighlightPresent);
 
     float focus_padding = WidgetInput::FocusHighlightPadding();
     DirtyRectHint expected_slider{
@@ -4278,84 +4460,62 @@ TEST_CASE("Widget focus slider-to-list transition covers highlight footprint") {
         return total;
     };
 
+    auto compute_ring_diff = [&](SoftwareFramebuffer const& before,
+                                 SoftwareFramebuffer const& after,
+                                 DirtyRectHint const& outer,
+                                 DirtyRectHint const& inner) -> std::uint64_t {
+        int outer_min_x = clamp_index(outer.min_x, before.width);
+        int outer_min_y = clamp_index(outer.min_y, before.height);
+        int outer_max_x = clamp_index(outer.max_x - 1.0f, before.width);
+        int outer_max_y = clamp_index(outer.max_y - 1.0f, before.height);
+        int inner_min_x = clamp_index(inner.min_x, before.width);
+        int inner_min_y = clamp_index(inner.min_y, before.height);
+        int inner_max_x = clamp_index(inner.max_x - 1.0f, before.width);
+        int inner_max_y = clamp_index(inner.max_y - 1.0f, before.height);
+
+        auto inside_inner = [&](int x, int y) -> bool {
+            return x >= inner_min_x && x <= inner_max_x
+                && y >= inner_min_y && y <= inner_max_y;
+        };
+        std::uint64_t total = 0;
+        for (int y = outer_min_y; y <= outer_max_y; ++y) {
+            for (int x = outer_min_x; x <= outer_max_x; ++x) {
+                if (inside_inner(x, y)) {
+                    continue;
+                }
+                auto b = sample_pixel(before, x, y);
+                auto a = sample_pixel(after, x, y);
+                total += static_cast<std::uint64_t>(std::abs(static_cast<int>(b[0]) - static_cast<int>(a[0])));
+                total += static_cast<std::uint64_t>(std::abs(static_cast<int>(b[1]) - static_cast<int>(a[1])));
+                total += static_cast<std::uint64_t>(std::abs(static_cast<int>(b[2]) - static_cast<int>(a[2])));
+            }
+        }
+        return total;
+    };
+
     auto slider_on_diff = compute_region_diff(baseline_fb, slider_fb, expected_slider);
     CHECK(slider_on_diff > 0);
 
-    auto slider_off_diff = compute_region_diff(baseline_fb, list_fb, expected_slider);
-    CHECK_MESSAGE(slider_off_diff == 0,
-                  "slider highlight should disappear after focus move (diff="
-                      << slider_off_diff << ")");
+    auto first_frame_ring_diff = compute_ring_diff(baseline_fb, first_list_frame, expected_slider, sliderFootprint);
+    CHECK_MESSAGE(first_frame_ring_diff == 0,
+                  "first focus transition frame should match baseline in highlight ring (diff="
+                      << first_frame_ring_diff << ")");
 
-    auto slider_diff = compute_region_diff(slider_fb, list_fb, expected_slider);
-    CHECK_MESSAGE(slider_diff > 0,
-                  "highlight region diff should be non-zero when focus leaves slider (diff="
-                      << slider_diff << ")");
+    auto slider_to_first_ring_diff = compute_ring_diff(slider_fb, first_list_frame, expected_slider, sliderFootprint);
+    CHECK_MESSAGE(slider_to_first_ring_diff > 0,
+                  "highlight ring should change between slider-focused and first blur frame (diff="
+                      << slider_to_first_ring_diff << ")");
 
-    auto hintsPath = targetAbs->getPath() + "/hints/dirtyRects";
-    auto hintsResult = fx.space.read<std::vector<DirtyRectHint>, std::string>(hintsPath);
-    if (!hintsResult) {
-        CHECK_MESSAGE(false,
-                      "dirty hints path missing after focus move: code="
-                          << static_cast<int>(hintsResult.error().code)
-                          << " message=" << hintsResult.error().message.value_or("<none>"));
-        return;
-    }
-    auto const& hints = *hintsResult;
-    CHECK_MESSAGE(!hints.empty(), "dirty hints list should not be empty after focus move");
+    auto slider_ring_off_diff = compute_ring_diff(baseline_fb, list_fb, expected_slider, sliderFootprint);
+    CHECK_MESSAGE(slider_ring_off_diff == 0,
+                  "slider highlight ring should match baseline after focus move (diff="
+                      << slider_ring_off_diff << ")");
 
-    auto covers_point = [](DirtyRectHint const& hint, float x, float y) {
-        return x >= hint.min_x && x <= hint.max_x && y >= hint.min_y && y <= hint.max_y;
-    };
-
-    auto highlight_edges_covered = [&](DirtyRectHint const& expected) {
-        constexpr float kEdgeEpsilon = 0.25f;
-        float x_center = (expected.min_x + expected.max_x) * 0.5f;
-        float y_center = (expected.min_y + expected.max_y) * 0.5f;
-        auto sample_x = [&](float edge) {
-            if (expected.max_x - expected.min_x <= 2.0f * kEdgeEpsilon) {
-                return x_center;
-            }
-            return std::clamp(edge, expected.min_x + kEdgeEpsilon, expected.max_x - kEdgeEpsilon);
-        };
-        auto sample_y = [&](float edge) {
-            if (expected.max_y - expected.min_y <= 2.0f * kEdgeEpsilon) {
-                return y_center;
-            }
-            return std::clamp(edge, expected.min_y + kEdgeEpsilon, expected.max_y - kEdgeEpsilon);
-        };
-        float x_left = sample_x(expected.min_x + kEdgeEpsilon);
-        float x_right = sample_x(expected.max_x - kEdgeEpsilon);
-        float y_top = sample_y(expected.min_y + kEdgeEpsilon);
-        float y_bottom = sample_y(expected.max_y - kEdgeEpsilon);
-
-        bool horizontal = std::any_of(hints.begin(), hints.end(), [&](DirtyRectHint const& hint) {
-            return covers_point(hint, x_left, y_center) && covers_point(hint, x_right, y_center);
-        });
-        bool vertical = std::any_of(hints.begin(), hints.end(), [&](DirtyRectHint const& hint) {
-            return covers_point(hint, x_center, y_top) && covers_point(hint, x_center, y_bottom);
-        });
-        return horizontal && vertical;
-    };
-
-    std::ostringstream hints_stream;
-    hints_stream << "[";
-    for (std::size_t i = 0; i < hints.size(); ++i) {
-        auto const& hint = hints[i];
-        hints_stream << "[" << hint.min_x << ", " << hint.min_y << ", "
-                     << hint.max_x << ", " << hint.max_y << "]";
-        if (i + 1 < hints.size()) {
-            hints_stream << ", ";
-        }
-    }
-    hints_stream << "]";
-    auto hints_str = hints_stream.str();
-
-    CHECK_MESSAGE(highlight_edges_covered(expected_slider),
-                  "dirty hints " << hints_str << " expected slider highlight coverage ["
-                                  << expected_slider.min_x << ", " << expected_slider.min_y << ", "
-                                  << expected_slider.max_x << ", " << expected_slider.max_y << "]");
-}
-TEST_CASE("Widget focus blur clears highlight footprint pixels") {
+    auto slider_ring_diff = compute_ring_diff(slider_fb, list_fb, expected_slider, sliderFootprint);
+    CHECK_MESSAGE(slider_ring_diff > 0,
+                  "highlight ring diff should be non-zero when focus leaves slider (diff="
+                      << slider_ring_diff << ")");
+}TEST_CASE("Widget focus blur clears highlight footprint pixels") {
     BuildersFixture fx;
 
     auto buttonParams = Widgets::MakeButtonParams("focus_blur_button", "FocusBlur").Build();

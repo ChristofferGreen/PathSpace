@@ -300,7 +300,14 @@ auto SubmitDirtyRects(PathSpace& space,
     auto const height = static_cast<float>(std::max(0, (*desc).size_px.height));
 
     std::vector<DirtyRectHint> stored;
-    stored.reserve(rects.size());
+    auto existing = read_optional<std::vector<DirtyRectHint>>(space, hintsPath);
+    if (!existing) {
+        return std::unexpected(existing.error());
+    }
+    if (existing->has_value()) {
+        stored = std::move(**existing);
+    }
+    stored.reserve(stored.size() + rects.size());
     for (auto const& hint : rects) {
         auto snapped = snap_hint_to_tiles(hint, tile_size);
         if (snapped.max_x <= snapped.min_x || snapped.max_y <= snapped.min_y) {
@@ -627,5 +634,4 @@ auto RenderHtml(PathSpace& space,
 }
 
 } // namespace SP::UI::Builders::Renderer
-
 
