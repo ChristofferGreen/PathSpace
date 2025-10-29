@@ -58,8 +58,15 @@ auto Register(PathSpace& space,
         return std::unexpected(status.error());
     }
 
+    auto digest_path = meta_base + "/manifest_digest";
+    if (params.manifest_digest) {
+        if (auto status = replace_single<std::string>(space, digest_path, *params.manifest_digest); !status) {
+            return std::unexpected(status.error());
+        }
+    }
+
     auto active_path = std::string(paths->active_revision.getPath());
-    if (auto status = replace_single<std::uint64_t>(space, active_path, 0ull); !status) {
+    if (auto status = replace_single<std::uint64_t>(space, active_path, params.initial_revision); !status) {
         return std::unexpected(status.error());
     }
 
@@ -74,4 +81,3 @@ auto Register(PathSpace& space,
 }
 
 } // namespace SP::UI::Builders::Resources::Fonts
-

@@ -39,6 +39,8 @@ TEST_CASE("FontManager registers font metadata and manifest") {
         .family = "DisplaySans",
         .style = "Regular",
         .manifest_json = std::string{R"({"family":"DisplaySans","style":"Regular"})"},
+        .manifest_digest = std::string{"sha256:demo"},
+        .initial_revision = 4ull,
     };
 
     auto registered = manager.register_font(app_view, params);
@@ -58,7 +60,12 @@ TEST_CASE("FontManager registers font metadata and manifest") {
 
     auto active = space.read<std::uint64_t, std::string>(registered->active_revision.getPath());
     REQUIRE(active);
-    CHECK(*active == 0ull);
+    CHECK(*active == params.initial_revision);
+
+    auto digest_path = base + "/meta/manifest_digest";
+    auto digest = space.read<std::string, std::string>(digest_path);
+    REQUIRE(digest);
+    CHECK(*digest == *params.manifest_digest);
 
     if (params.manifest_json) {
         auto manifest = space.read<std::string, std::string>(registered->manifest.getPath());

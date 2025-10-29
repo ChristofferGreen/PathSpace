@@ -137,9 +137,10 @@ The following subtrees are standardized within each application root (one of the
       - `metrics/live` — optional presentation metrics (latency, dropped frames)
 
 - Resources
-  - `resources/fonts/<family>/<style>/`
+- `resources/fonts/<family>/<style>/`
     - `meta/family` — canonical family identifier registered for this font
     - `meta/style` — style/weight identifier
+    - `meta/manifest_digest` — optional manifest hash for diagnostics/rollbacks
     - `manifest.json` — resource manifest describing sources, fallbacks, features
     - `active` — pointer (`uint64_t`) to the currently adopted atlas revision
     - `builds/<revision>/atlas.bin` — persisted atlas payload for the revision

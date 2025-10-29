@@ -466,6 +466,8 @@ struct RegisterFontParams {
     std::string family;
     std::string style;
     std::optional<std::string> manifest_json;
+    std::optional<std::string> manifest_digest;
+    std::uint64_t initial_revision = 0;
 };
 
 auto Resolve(AppRootPathView appRoot,
@@ -597,6 +599,10 @@ struct TypographyStyle {
     std::string language = "en";
     std::string direction = "ltr";
     std::vector<std::string> fallback_families{};
+    std::vector<std::string> font_features{};
+    std::string font_resource_root;
+    std::uint64_t font_active_revision = 0;
+    std::uint64_t font_asset_fingerprint = 0;
 };
 
 struct ButtonStyle {

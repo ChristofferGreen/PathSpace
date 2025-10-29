@@ -21,6 +21,11 @@ auto default_typography() -> Widgets::TypographyStyle {
     typography.font_weight = "600";
     typography.language = "fr";
     typography.direction = "ltr";
+    typography.font_resource_root = "/system/applications/demo_app/resources/fonts/PathSpaceSans/Italic";
+    typography.font_active_revision = 7ull;
+    typography.font_asset_fingerprint = 0xC001F00DDEADBEEFull;
+    typography.font_features = {"kern", "liga"};
+    typography.fallback_families = {"system-ui", "Helvetica"};
     return typography;
 }
 
@@ -54,6 +59,13 @@ TEST_CASE("TextBuilder builds buckets for simple strings") {
     CHECK_EQ(result->font_weight, typography.font_weight);
     CHECK_EQ(result->language, typography.language);
     CHECK_EQ(result->direction, typography.direction);
+    CHECK_EQ(result->font_resource_root, typography.font_resource_root);
+    CHECK_EQ(result->font_revision, typography.font_active_revision);
+    CHECK_EQ(result->font_asset_fingerprint, typography.font_asset_fingerprint);
+    CHECK_EQ(result->font_features, typography.font_features);
+    CHECK_EQ(result->fallback_families, typography.fallback_families);
+    REQUIRE_EQ(result->bucket.drawable_fingerprints.size(), 1);
+    CHECK_EQ(result->bucket.drawable_fingerprints.front(), typography.font_asset_fingerprint);
 }
 
 TEST_CASE("TextBuilder skips whitespace-only input") {

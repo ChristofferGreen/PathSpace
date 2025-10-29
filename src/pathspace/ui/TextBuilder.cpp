@@ -20,6 +20,8 @@ namespace {
 namespace Scene = SP::UI::Scene;
 
 constexpr int kGlyphRows = 7;
+constexpr std::uint64_t kFNVOffset = 1469598103934665603ull;
+constexpr std::uint64_t kFNVPrime = 1099511628211ull;
 
 struct GlyphPattern {
     char ch = ' ';
@@ -93,6 +95,44 @@ auto find_glyph(char ch) -> GlyphPattern const* {
 
 auto glyph_scale(Widgets::TypographyStyle const& typography) -> float {
     return std::max(0.1f, typography.font_size / static_cast<float>(kGlyphRows));
+}
+
+auto fnv_mix(std::uint64_t hash, std::string_view bytes) -> std::uint64_t {
+    for (unsigned char ch : bytes) {
+        hash ^= static_cast<std::uint64_t>(ch);
+        hash *= kFNVPrime;
+    }
+    return hash;
+}
+
+auto fnv_mix(std::uint64_t hash, std::uint64_t value) -> std::uint64_t {
+    for (int i = 0; i < 8; ++i) {
+        auto byte = static_cast<unsigned char>((value >> (i * 8)) & 0xFFu);
+        hash ^= static_cast<std::uint64_t>(byte);
+        hash *= kFNVPrime;
+    }
+    return hash;
+}
+
+auto compute_font_fingerprint(Widgets::TypographyStyle const& typography) -> std::uint64_t {
+    std::uint64_t hash = kFNVOffset;
+    hash = fnv_mix(hash, typography.font_resource_root);
+    hash = fnv_mix(hash, typography.font_active_revision);
+    hash = fnv_mix(hash, typography.font_family);
+    hash = fnv_mix(hash, typography.font_style);
+    hash = fnv_mix(hash, typography.font_weight);
+    hash = fnv_mix(hash, typography.language);
+    hash = fnv_mix(hash, typography.direction);
+    for (auto const& fallback : typography.fallback_families) {
+        hash = fnv_mix(hash, fallback);
+    }
+    for (auto const& feature : typography.font_features) {
+        hash = fnv_mix(hash, feature);
+    }
+    if (hash == 0) {
+        hash = kFNVPrime;
+    }
+    return hash;
 }
 
 } // namespace
@@ -244,7 +284,13 @@ auto BuildTextBucket(std::string_view text,
         std::move(authoring_id),
         0,
         0});
-    bucket.drawable_fingerprints.push_back(drawable_id);
+    auto fingerprint = typography.font_asset_fingerprint != 0
+                           ? typography.font_asset_fingerprint
+                           : compute_font_fingerprint(typography);
+    if (fingerprint == 0) {
+        fingerprint = drawable_id;
+    }
+    bucket.drawable_fingerprints.push_back(fingerprint);
 
     BuildResult result{
         .bucket = std::move(bucket),
@@ -256,6 +302,11 @@ auto BuildTextBucket(std::string_view text,
     result.font_weight = typography.font_weight;
     result.language = typography.language;
     result.direction = typography.direction;
+    result.font_resource_root = typography.font_resource_root;
+    result.font_revision = typography.font_active_revision;
+    result.font_asset_fingerprint = fingerprint;
+    result.font_features = typography.font_features;
+    result.fallback_families = typography.fallback_families;
     return result;
 }
 

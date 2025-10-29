@@ -6,6 +6,7 @@
 #include <pathspace/ui/LocalWindowBridge.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/TextBuilder.hpp>
+#include <pathspace/ui/FontManager.hpp>
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOSurface/IOSurface.h>
@@ -45,6 +46,8 @@ namespace SceneBuilders = SP::UI::Builders::Scene;
 namespace AppBuilders = SP::UI::Builders::App;
 namespace WindowBuilders = SP::UI::Builders::Window;
 namespace Widgets = SP::UI::Builders::Widgets;
+namespace Builders = SP::UI::Builders;
+using Builders::AppRootPathView;
 namespace WidgetInput = SP::UI::Builders::Widgets::Input;
 namespace WidgetFocus = SP::UI::Builders::Widgets::Focus;
 namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
@@ -81,6 +84,102 @@ inline auto unwrap_or_exit(SP::Expected<void> value, std::string const& context)
         std::cerr << std::endl;
         std::exit(1);
     }
+}
+
+struct DemoFontConfig {
+    std::string family;
+    std::string style;
+    std::string weight;
+    std::vector<std::string> fallback;
+    std::string manifest_digest;
+    std::uint64_t revision = 0;
+};
+
+auto make_font_manifest(DemoFontConfig const& config) -> std::string {
+    std::ostringstream json;
+    json << "{\"family\":\"" << config.family << "\",";
+    json << "\"style\":\"" << config.style << "\",";
+    json << "\"weight\":\"" << config.weight << "\",";
+    json << "\"fallback\":[";
+    for (std::size_t index = 0; index < config.fallback.size(); ++index) {
+        if (index > 0) {
+            json << ',';
+        }
+        json << '\"' << config.fallback[index] << '\"';
+    }
+    json << "]}";
+    return json.str();
+}
+
+auto register_font_or_exit(FontManager& manager,
+                            AppRootPathView appRoot,
+                            DemoFontConfig const& config)
+    -> Builders::Resources::Fonts::FontResourcePaths {
+    Builders::Resources::Fonts::RegisterFontParams params{
+        .family = config.family,
+        .style = config.style,
+    };
+    params.manifest_json = make_font_manifest(config);
+    if (!config.manifest_digest.empty()) {
+        params.manifest_digest = config.manifest_digest;
+    }
+    params.initial_revision = config.revision;
+    auto context = std::string{"register font "} + config.family + "/" + config.style;
+    return unwrap_or_exit(manager.register_font(appRoot, params), context);
+}
+
+void apply_font_to_typography(Widgets::TypographyStyle& typography,
+                              DemoFontConfig const& config,
+                              Builders::Resources::Fonts::FontResourcePaths const& paths) {
+    typography.font_family = config.family;
+    typography.font_style = config.style;
+    typography.font_weight = config.weight;
+    typography.font_resource_root = paths.root.getPath();
+    typography.font_active_revision = config.revision;
+    typography.fallback_families = config.fallback;
+    typography.font_features = {"kern", "liga"};
+    typography.font_asset_fingerprint = 0;
+}
+
+void attach_demo_fonts(PathSpace& space,
+                       AppRootPathView appRoot,
+                       Widgets::WidgetTheme& theme) {
+    FontManager manager(space);
+
+    DemoFontConfig regular{
+        .family = "PathSpaceSans",
+        .style = "Regular",
+        .weight = "400",
+        .fallback = {"system-ui"},
+        .manifest_digest = "sha256:pathspacesans-regular",
+        .revision = 1ull,
+    };
+
+    DemoFontConfig semibold{
+        .family = "PathSpaceSans",
+        .style = "SemiBold",
+        .weight = "600",
+        .fallback = {"PathSpaceSans", "system-ui"},
+        .manifest_digest = "sha256:pathspacesans-semibold",
+        .revision = 2ull,
+    };
+
+    auto regular_paths = register_font_or_exit(manager, appRoot, regular);
+    auto semibold_paths = register_font_or_exit(manager, appRoot, semibold);
+
+    auto apply_regular = [&](Widgets::TypographyStyle& typography) {
+        apply_font_to_typography(typography, regular, regular_paths);
+    };
+    auto apply_semibold = [&](Widgets::TypographyStyle& typography) {
+        apply_font_to_typography(typography, semibold, semibold_paths);
+    };
+
+    apply_semibold(theme.heading);
+    apply_regular(theme.caption);
+    apply_semibold(theme.button.typography);
+    apply_regular(theme.slider.label_typography);
+    apply_regular(theme.list.item_typography);
+    apply_regular(theme.tree.label_typography);
 }
 
 auto make_identity_transform() -> SceneData::Transform {
@@ -1156,6 +1255,7 @@ int main(int /*argc*/, char** /*argv*/) {
 
     auto theme_selection = Widgets::SetTheme(std::optional<std::string>{"skylight"});
     auto theme = std::move(theme_selection.theme);
+    attach_demo_fonts(space, app_root_view, theme);
 
     auto button_params = Widgets::MakeButtonParams("demo_button", "Action")
                              .WithTheme(theme)

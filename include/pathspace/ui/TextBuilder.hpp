@@ -27,6 +27,11 @@ struct BuildResult {
     std::string font_weight;
     std::string language;
     std::string direction;
+    std::string font_resource_root;
+    std::uint64_t font_revision = 0;
+    std::uint64_t font_asset_fingerprint = 0;
+    std::vector<std::string> font_features;
+    std::vector<std::string> fallback_families;
 };
 
 auto MeasureTextWidth(std::string_view text,

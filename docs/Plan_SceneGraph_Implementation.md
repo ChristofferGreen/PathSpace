@@ -25,7 +25,7 @@
 - ✅ (October 29, 2025) Hardened slider focus handoffs by storing default slider footprints at creation time and extending `PathSpaceUITests` with `Widget focus slider-to-list transition marks previous footprint without slider binding`. Slider → list transitions now queue dirty hints for both widgets even before bindings are attached, keeping the newly added highlight coverage test and the existing framebuffer diff case green.
 - ✅ (October 29, 2025) Built `examples/widgets_example_minimal.cpp`, a pared-down demo with slider/list/tree widgets plus keyboard focus navigation that skips diagnostics, trace capture, and screenshot plumbing to spotlight the ergonomic GUI builder surface.
 - Long-term follow-up: evaluate API ergonomics and refactor the minimal example toward a ≤400 LOC target once higher-level layout/focus helpers arrive.
-- Close the font/resource plan from `docs/Plan_SceneGraph_Renderer.md` §"Plan: Resource system (images, fonts, shaders)" and surface the resulting font manager in the widget gallery (theme selection plus label typography should draw from the new resource-backed fonts).
+- ✅ (October 29, 2025) Font/resource plan: widget demos now register fonts through `FontManager`, typography carries resource roots/revisions, and TextBuilder emits font fingerprints so renderers/presenters can reuse atlases.
 - Enhance `examples/paint_example.cpp` with palette buttons (red, green, blue, yellow, purple, orange, etc.) and a brush-size slider routed through the widget bindings so live demos can tweak stroke color and width without code changes.
 - Add widget action callbacks: allow attaching callable/lambda payloads to widget paths so pressing a button can immediately invoke application logic (hook into reducers/ops schema without bespoke polling).
 - Extend `examples/widgets_example.cpp` with a demo button wired to a lambda that prints “Hello from PathSpace!” (or similar) using the new callback plumbing to validate the API.
@@ -43,7 +43,8 @@ Ship the resource-backed font pipeline described in `docs/Plan_SceneGraph_Render
 **Status Update (October 29, 2025)**  
 - Landed `App::resolve_resource` and font resource helpers/tests to codify `resources/fonts/<family>/<style>/` layout.  
 - Introduced a scaffolding `FontManager` wrapper that registers fonts and persists metadata (`meta/family`, `meta/style`, `manifest.json`, `active`).  
-- Extended `TypographyStyle` and `TextBuilder::BuildResult` with font descriptors so fallback rendering keeps working while exposing style metadata.
+- Extended `TypographyStyle` and `TextBuilder::BuildResult` with font descriptors so fallback rendering keeps working while exposing style metadata.  
+- Widget gallery demos now register PathSpaceSans regular/semibold fonts via `FontManager`, propagate resource roots/revisions into `TypographyStyle`, and emit font fingerprints from `TextBuilder`; updated doctests cover the new metadata paths and manifest digest handling.
 
 **Phase 0 – Schema & Storage (1–2 days)**
 - Define app-root resource layout under `resources/fonts/<family>/<style>/` with `manifest.json`, `builds/<revision>/atlas.bin`, and `active` pointer.
