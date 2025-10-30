@@ -51,6 +51,10 @@ public:
         std::uint64_t cache_evictions = 0;
         std::size_t cache_size = 0;
         std::size_t cache_capacity = 0;
+        std::size_t cache_hard_capacity = 0;
+        std::uint64_t atlas_soft_bytes = 0;
+        std::uint64_t atlas_hard_bytes = 0;
+        std::uint64_t shaped_run_approx_bytes = 0;
     };
 
     explicit FontManager(PathSpace& space);
@@ -86,6 +90,10 @@ private:
         std::uint64_t cache_evictions = 0;
         std::size_t cache_size = 0;
         std::size_t cache_capacity = 0;
+        std::size_t cache_hard_capacity = 0;
+        std::uint64_t atlas_soft_bytes = 0;
+        std::uint64_t atlas_hard_bytes = 0;
+        std::uint64_t shaped_run_approx_bytes = 0;
     };
 
     auto compute_descriptor_fingerprint(TypographyStyle const& typography) const -> std::uint64_t;
@@ -95,10 +103,15 @@ private:
                              std::uint64_t descriptor_fingerprint,
                              std::uint64_t cache_key) -> ShapedRun;
     void publish_metrics(App::AppRootPathView appRoot, MetricsSnapshot const& snapshot);
+    void apply_budget_locked(std::uint64_t soft_bytes, std::uint64_t hard_bytes, std::uint64_t approx_bytes);
 
     PathSpace* space_;
     mutable std::mutex mutex_;
     std::size_t cache_capacity_ = 256;
+    std::size_t cache_hard_capacity_ = 512;
+    std::uint64_t atlas_soft_bytes_ = 0;
+    std::uint64_t atlas_hard_bytes_ = 0;
+    std::uint64_t shaped_run_approx_bytes_ = 1;
     using CacheList = std::list<CacheEntry>;
     CacheList lru_list_;
     std::unordered_map<std::uint64_t, CacheList::iterator> cache_;

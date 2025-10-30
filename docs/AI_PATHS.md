@@ -143,6 +143,9 @@ The following subtrees are standardized within each application root (one of the
     - `meta/weight` — CSS-like weight string (e.g., "400", "600")
     - `meta/fallbacks` — string array of fallback families, ordered by preference
     - `meta/active_revision` — `uint64_t` of the adopted atlas revision
+    - `meta/atlas/softBytes` — soft residency budget in bytes for persisted glyph atlases
+    - `meta/atlas/hardBytes` — hard residency budget in bytes for persisted glyph atlases
+    - `meta/atlas/shapedRunApproxBytes` — approx bytes consumed per shaped run to scale cache capacity
     - `builds/<revision>/atlas.bin` — persisted atlas payload for the revision
     - `builds/<revision>/meta/*` — optional per-revision metadata (features, language coverage, etc.)
     - `inbox` — staging area for loader jobs and background ingestion

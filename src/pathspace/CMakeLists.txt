@@ -87,6 +87,15 @@ else()
 endif()
 
 if(PATHSPACE_ENABLE_UI)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(HARFBUZZ QUIET IMPORTED_TARGET harfbuzz)
+        if(HARFBUZZ_FOUND)
+            target_link_libraries(PathSpace PRIVATE PkgConfig::HARFBUZZ)
+            target_compile_definitions(PathSpace PRIVATE PATHSPACE_HAS_HARFBUZZ=1)
+        endif()
+    endif()
+
     target_sources(PathSpace PRIVATE
         ui/Helpers.cpp
         ui/SceneBuilders.cpp
@@ -153,6 +162,7 @@ if(PATHSPACE_ENABLE_UI)
         target_link_libraries(PathSpace PRIVATE "-framework Foundation")
         target_link_libraries(PathSpace PRIVATE "-framework IOSurface")
         target_link_libraries(PathSpace PRIVATE "-framework Cocoa")
+        target_link_libraries(PathSpace PRIVATE "-framework CoreText" "-framework CoreGraphics")
     endif()
 else()
     target_compile_definitions(PathSpace PUBLIC

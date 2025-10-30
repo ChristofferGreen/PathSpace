@@ -90,6 +90,22 @@ auto Register(PathSpace& space,
         return std::unexpected(status.error());
     }
 
+    auto atlas_base = meta_base + "/atlas";
+    auto soft_path = atlas_base + "/softBytes";
+    if (auto status = replace_single<std::uint64_t>(space, soft_path, params.atlas_soft_bytes); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto hard_path = atlas_base + "/hardBytes";
+    if (auto status = replace_single<std::uint64_t>(space, hard_path, params.atlas_hard_bytes); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto run_bytes_path = atlas_base + "/shapedRunApproxBytes";
+    if (auto status = replace_single<std::uint64_t>(space, run_bytes_path, params.shaped_run_approx_bytes); !status) {
+        return std::unexpected(status.error());
+    }
+
     auto active_path = std::string(paths->active_revision.getPath());
     if (auto status = replace_single<std::uint64_t>(space, active_path, params.initial_revision); !status) {
         return std::unexpected(status.error());

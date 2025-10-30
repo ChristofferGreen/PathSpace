@@ -1,7 +1,7 @@
 # Scene Graph Implementation Plan
 
 > Completed milestones are archived in `docs/Plan_SceneGraph_Implementation_Finished.md` (snapshot as of October 29, 2025).
-> Focus update (October 29, 2025): Font metadata now lives entirely inside PathSpace—`FontManager::resolve_font` reads `meta/{family,style,weight,fallbacks,active_revision}`—and widget themes persist under `config/theme/<name>/value` so demos/app code hydrate styles straight from the space. Next priority: wire the HarfBuzz shaping wrapper and connect cache eviction thresholds to atlas residency budgets before proceeding to atlas publication.
+> Focus update (October 30, 2025): HarfBuzz shaping is now live behind `FontManager::shape_text` with CoreText-backed font discovery, and the shaped-run cache capacity honors the atlas residency budgets stored under `meta/atlas/*`. Next priority: progress Phase 2 by standing up atlas generation/persistence and wiring snapshot publication so renderers can adopt persisted glyph pages.
 
 ## Context and Objectives
 - Groundwork for implementing the renderer stack described in `docs/Plan_SceneGraph_Renderer.md` and the broader architecture contract in `docs/AI_Architecture.md`.
@@ -57,9 +57,7 @@ Ship the resource-backed font pipeline described in `docs/Plan_SceneGraph_Render
 **Phase 1 – Font Manager Foundations (2–3 days)**
 - ✅ (October 29, 2025) Landed the `SP::UI::FontManager` singleton with descriptor fingerprinting, fallback shaping, an LRU shaped-run cache, and diagnostics metrics under `diagnostics/metrics/fonts/*`. Current cache eviction is capacity-based; wire atlas-aware budgets once atlas persistence ships. HarfBuzz/ICU shaping remains stubbed out pending dependency review.
 - ✅ (October 29, 2025) Resource lookup + fallback chain resolution via PathSpace metadata. `FontManager::resolve_font` reads `meta/{family,style,weight,fallbacks,active_revision}`, deduplicates fallback lists, surfaces the active atlas revision, and widgets/examples hydrate typography directly from those nodes with doctest coverage for success and defaulted metadata.
-- Remaining:
-  - HarfBuzz shaping wrapper producing glyph indices/positions (replace fallback ASCII layout once deps are ready).
-  - Tie cache eviction thresholds to atlas residency budgets instead of the temporary fixed-capacity knob.
+- ✅ (October 30, 2025) HarfBuzz shaping wrapper ships with CoreText-backed font discovery; shaped-run cache capacity now derives from stored atlas residency budgets (`meta/atlas/{softBytes,hardBytes,shapedRunApproxBytes}`) so eviction pressure tracks the intended atlas residency watermarks.
 
 **Phase 2 – Atlas Generation & Publication (3 days)**
 - Build atlas generator writing RGBA or signed distance fields into `builds/<revision>/atlas.bin` with metadata for glyph UVs.

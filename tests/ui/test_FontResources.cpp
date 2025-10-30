@@ -43,6 +43,9 @@ TEST_CASE("FontManager registers font metadata and manifest") {
         .weight = "450",
         .fallback_families = {"system-ui", "serif"},
         .initial_revision = 4ull,
+        .atlas_soft_bytes = 6ull * 1024ull * 1024ull,
+        .atlas_hard_bytes = 12ull * 1024ull * 1024ull,
+        .shaped_run_approx_bytes = 1024ull,
     };
 
     auto registered = manager.register_font(app_view, params);
@@ -70,6 +73,18 @@ TEST_CASE("FontManager registers font metadata and manifest") {
     REQUIRE(stored_fallbacks);
     std::vector<std::string> expected_fallbacks{"system-ui", "serif"};
     CHECK(*stored_fallbacks == expected_fallbacks);
+
+    auto atlas_soft = space.read<std::uint64_t, std::string>(base + "/meta/atlas/softBytes");
+    REQUIRE(atlas_soft);
+    CHECK(*atlas_soft == params.atlas_soft_bytes);
+
+    auto atlas_hard = space.read<std::uint64_t, std::string>(base + "/meta/atlas/hardBytes");
+    REQUIRE(atlas_hard);
+    CHECK(*atlas_hard == params.atlas_hard_bytes);
+
+    auto approx_bytes = space.read<std::uint64_t, std::string>(base + "/meta/atlas/shapedRunApproxBytes");
+    REQUIRE(approx_bytes);
+    CHECK(*approx_bytes == params.shaped_run_approx_bytes);
 
     auto active = space.read<std::uint64_t, std::string>(registered->active_revision.getPath());
     REQUIRE(active);

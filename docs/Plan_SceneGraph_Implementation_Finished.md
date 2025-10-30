@@ -1,9 +1,10 @@
 # Scene Graph Implementation — Completed Work
 
-> Archived snapshot of completed milestones (updated October 29, 2025). Active items live in `docs/Plan_SceneGraph_Implementation.md`.
+> Archived snapshot of completed milestones (updated October 30, 2025). Active items live in `docs/Plan_SceneGraph_Implementation.md`.
 
 ## Handoff Notice
 
+> **Completion (October 30, 2025):** Integrated HarfBuzz-backed shaping into `FontManager::shape_text`, discovering fonts through CoreText fallbacks and deriving shaped-run cache limits from the stored atlas residency budgets. Updated diagnostics now publish cache hard capacity and atlas budget telemetry, and doctests cover the new metadata paths.
 > **Completion (October 29, 2025):** Added widget action callbacks so bindings can register inline lambdas. Dispatchers reuse reducer conversion to emit `WidgetAction` payloads immediately after queueing ops, multiple callbacks fan out safely, and UITests assert both invocation and `ClearActionCallbacks` behaviour.
 > **Completion (October 29, 2025):** Updated `examples/widgets_example.cpp` to register a callback on the primary button that logs “Hello from PathSpace!” on press/activate, demonstrating the new action plumbing in a live sample.
 > **Handoff note (October 29, 2025 @ shutdown):** Fixed the lingering slider focus dirty-hint regression by persisting slider footprints during widget creation and extending the UITest suite with the unbound focus hand-off case (`Widget focus slider-to-list transition marks previous footprint without slider binding`). Focus hand-offs now queue dirty hints for both the outgoing slider and the newly focused list before bindings exist, and both highlight verification tests pass through the 15× loop harness.

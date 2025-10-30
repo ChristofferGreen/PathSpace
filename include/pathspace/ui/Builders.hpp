@@ -469,6 +469,9 @@ struct RegisterFontParams {
     std::string weight = "400";
     std::vector<std::string> fallback_families{};
     std::uint64_t initial_revision = 0;
+    std::uint64_t atlas_soft_bytes = 4 * 1024 * 1024;
+    std::uint64_t atlas_hard_bytes = 8 * 1024 * 1024;
+    std::uint64_t shaped_run_approx_bytes = 512;
 };
 
 auto Resolve(AppRootPathView appRoot,
