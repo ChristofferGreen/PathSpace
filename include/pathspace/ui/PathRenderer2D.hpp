@@ -15,6 +15,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include <parallel_hashmap/phmap.h>
+
 namespace SP::UI {
 
 class PathSurfaceMetal;
@@ -88,14 +90,20 @@ private:
         std::uint64_t fingerprint = 0;
     };
 
+    using DrawableStateMap = phmap::flat_hash_map<std::uint64_t, DrawableState>;
+    using MaterialDescriptorMap = phmap::flat_hash_map<std::uint32_t, MaterialDescriptor>;
+
     struct TargetState {
         Builders::SurfaceDesc desc{};
         std::array<float, 4> clear_color{0.0f, 0.0f, 0.0f, 0.0f};
-        std::unordered_map<std::uint64_t, DrawableState> drawable_states;
+        DrawableStateMap drawable_states;
         std::vector<float> linear_buffer;
-        std::unordered_map<std::uint32_t, MaterialDescriptor> material_descriptors;
+        MaterialDescriptorMap material_descriptors;
         std::vector<MaterialDescriptor> material_list;
         std::uint64_t last_revision = 0;
+        double last_approx_area_total = 0.0;
+        double last_approx_area_opaque = 0.0;
+        double last_approx_area_alpha = 0.0;
     };
 
     PathSpace& space_;

@@ -1,7 +1,7 @@
 # Scene Graph Implementation Plan
 
 > Completed milestones are archived in `docs/Plan_SceneGraph_Implementation_Finished.md` (snapshot as of October 29, 2025).
-> Focus update (October 30, 2025): HarfBuzz shaping is live behind `FontManager::shape_text` with CoreText-backed font discovery, shaped-run cache capacity honors the atlas residency budgets stored under `meta/atlas/*`, and Phase 2 atlas persistence is online (default atlas writer, snapshot font-asset manifests, renderer prefetch). Next priority: Phase 3 widget/text integration to replace bitmap quads with shaped glyph draws and ensure atlas fingerprints flow end-to-end.
+> Focus update (October 30, 2025): HarfBuzz shaping is live behind `FontManager::shape_text` with CoreText-backed font discovery, shaped-run cache capacity honors the atlas residency budgets stored under `meta/atlas/*`, and Phase 2 atlas persistence is online (default atlas writer, snapshot font-asset manifests, renderer prefetch). Performance guardrail regression resolved (PathRenderer2D incremental ~1.2 ms, `pixel_noise_software` ≈169 FPS) by clipping rect draws to damage regions, skipping no-damage render passes, and caching overdraw metrics so diagnostics stay stable. Next priority: Phase 3 widget/text integration to replace bitmap quads with shaped glyph draws and ensure atlas fingerprints flow end-to-end.
 
 ## Context and Objectives
 - Groundwork for implementing the renderer stack described in `docs/Plan_SceneGraph_Renderer.md` and the broader architecture contract in `docs/AI_Architecture.md`.
@@ -21,7 +21,6 @@
 - Tighten CI gating to require the looped CTest run and lint/format checks before merges.
 
 ## Task Backlog
-- ⚠️ (October 30, 2025) Resolve performance guardrail regression: pre-push run shows `path_renderer2d` incremental pass at 21.32 ms avg (baseline 7.57 ms, −85 FPS) and `pixel_noise_software` down to 123.7 FPS with render time 2.30 ms (baseline 0.74 ms) and present-call 8.09 ms (baseline 6.73 ms). Reproduce on an isolated run, identify renderer/presenter changes causing the slowdown, and restore metrics within tolerances before updating baselines.
 - 📌 (October 30, 2025) Land single-line and multi-line text input widgets with cursor/selection, IME composition, and PathSpace bindings; extend `widgets_example` and `widgets_example_minimal` demos to showcase both controls with live editing and state persistence.
 - ✅ (October 28, 2025) Wrapped every widget preview in `examples/widgets_example.cpp` with horizontal/vertical stack containers so the gallery reflows as the window resizes; reused the layout helpers landed in the stack container milestone (see archive doc for context).
 - ✅ (October 29, 2025) Hardened slider focus handoffs by storing default slider footprints at creation time and extending `PathSpaceUITests` with `Widget focus slider-to-list transition marks previous footprint without slider binding`. Slider → list transitions now queue dirty hints for both widgets even before bindings are attached, keeping the newly added highlight coverage test and the existing framebuffer diff case green.

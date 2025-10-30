@@ -1,4 +1,5 @@
 #include "PathRenderer2DDetail.hpp"
+#include "PathRenderer2DInternal.hpp"
 
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/ImageCache.hpp>
@@ -235,16 +236,38 @@ auto color_from_drawable(std::uint64_t drawableId) -> std::array<float, 4> {
 auto draw_rect_command(Scene::RectCommand const& command,
                        std::vector<float>& buffer,
                        int width,
-                       int height) -> bool {
+                       int height,
+                       std::span<PathRenderer2DInternal::DamageRect const> clip_rects) -> bool {
     auto color = make_linear_color(command.color);
-    return draw_rect_area(command.min_x,
-                          command.min_y,
-                          command.max_x,
-                          command.max_y,
-                          color,
-                          buffer,
-                          width,
-                          height);
+    if (clip_rects.empty()) {
+        return draw_rect_area(command.min_x,
+                              command.min_y,
+                              command.max_x,
+                              command.max_y,
+                              color,
+                              buffer,
+                              width,
+                              height);
+    }
+    bool drawn = false;
+    for (auto const& clip : clip_rects) {
+        auto min_x = std::max(command.min_x, static_cast<float>(clip.min_x));
+        auto min_y = std::max(command.min_y, static_cast<float>(clip.min_y));
+        auto max_x = std::min(command.max_x, static_cast<float>(clip.max_x));
+        auto max_y = std::min(command.max_y, static_cast<float>(clip.max_y));
+        if (min_x >= max_x || min_y >= max_y) {
+            continue;
+        }
+        drawn |= draw_rect_area(min_x,
+                                min_y,
+                                max_x,
+                                max_y,
+                                color,
+                                buffer,
+                                width,
+                                height);
+    }
+    return drawn;
 }
 
 auto draw_rounded_rect_command(Scene::RoundedRectCommand const& command,
@@ -530,4 +553,3 @@ auto draw_fallback_bounds_box(Scene::DrawableBucketSnapshot const& bucket,
 }
 
 } // namespace SP::UI::PathRenderer2DDetail
-

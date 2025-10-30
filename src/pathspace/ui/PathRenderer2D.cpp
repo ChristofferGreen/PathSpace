@@ -59,7 +59,7 @@ auto PathRenderer2D::target_cache() -> std::unordered_map<std::string, TargetSta
 }
 
 auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
-    auto const start = std::chrono::steady_clock::now();
+auto const start = std::chrono::steady_clock::now();
     double damage_ms = 0.0;
     double encode_ms = 0.0;
     double progressive_copy_ms = 0.0;
@@ -217,8 +217,8 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     if (!bucket->material_ids.empty()) {
         material_descriptors.reserve(bucket->material_ids.size());
     }
-    std::unordered_map<std::uint64_t, MaterialResourceResidency> resource_residency;
-    std::unordered_set<std::uint64_t> processed_font_assets;
+    phmap::flat_hash_map<std::uint64_t, MaterialResourceResidency> resource_residency;
+    phmap::flat_hash_set<std::uint64_t> processed_font_assets;
     if (!bucket->font_assets.empty()) {
         for (auto const& asset : bucket->font_assets) {
             if (asset.resource_root.empty()) {
@@ -328,7 +328,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     auto const damage_phase_start = std::chrono::steady_clock::now();
     auto const drawable_count = bucket->drawable_ids.size();
     std::vector<std::optional<PathRenderer2D::DrawableBounds>> bounds_by_index(drawable_count);
-    std::unordered_map<std::uint64_t, PathRenderer2D::DrawableState> current_states;
+    PathRenderer2D::DrawableStateMap current_states;
     current_states.reserve(drawable_count);
 
     auto const& drawable_fingerprints = bucket->drawable_fingerprints;
@@ -380,13 +380,13 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
             }
         }
     } else {
-        std::unordered_map<std::uint64_t, std::vector<std::uint64_t>> previous_by_fingerprint;
+        phmap::flat_hash_map<std::uint64_t, std::vector<std::uint64_t>> previous_by_fingerprint;
         previous_by_fingerprint.reserve(state.drawable_states.size());
         for (auto const& [prev_id, prev_state] : state.drawable_states) {
             previous_by_fingerprint[prev_state.fingerprint].push_back(prev_id);
         }
 
-        std::unordered_set<std::uint64_t> consumed_previous_ids;
+        phmap::flat_hash_set<std::uint64_t> consumed_previous_ids;
         consumed_previous_ids.reserve(state.drawable_states.size());
 
         auto add_bounds = [&](PathRenderer2D::DrawableBounds const& bounds) {
@@ -864,7 +864,10 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
                         }
 #endif
                         if (!handled) {
-                            if (draw_rect_command(rect, linear_buffer, width, height)) {
+                            auto clip_rects = (full_repaint || !has_damage)
+                                                  ? std::span<PathRenderer2DInternal::DamageRect const>{}
+                                                  : damage.rectangles();
+                            if (draw_rect_command(rect, linear_buffer, width, height, clip_rects)) {
                                 drawable_drawn = true;
                                 handled = true;
                             }
@@ -1212,31 +1215,33 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         return {};
     };
 
-    if (!bucket->opaque_indices.empty()) {
-        if (auto status = process_pass(bucket->opaque_indices, false, true); !status) {
-            (void)set_last_error(space_, params.target_path,
-                                 status.error().message.value_or("failed to store present metrics"));
-            return std::unexpected(status.error());
+    if (has_damage) {
+        if (!bucket->opaque_indices.empty()) {
+            if (auto status = process_pass(bucket->opaque_indices, false, true); !status) {
+                (void)set_last_error(space_, params.target_path,
+                                     status.error().message.value_or("failed to store present metrics"));
+                return std::unexpected(status.error());
+            }
+        } else if (!fallback_opaque.empty()) {
+            if (auto status = process_pass(fallback_opaque, false, false); !status) {
+                (void)set_last_error(space_, params.target_path,
+                                     status.error().message.value_or("failed to store present metrics"));
+                return std::unexpected(status.error());
+            }
         }
-    } else if (!fallback_opaque.empty()) {
-        if (auto status = process_pass(fallback_opaque, false, false); !status) {
-            (void)set_last_error(space_, params.target_path,
-                                 status.error().message.value_or("failed to store present metrics"));
-            return std::unexpected(status.error());
-        }
-    }
 
-    if (!bucket->alpha_indices.empty()) {
-        if (auto status = process_pass(bucket->alpha_indices, true, true); !status) {
-            (void)set_last_error(space_, params.target_path,
-                                 status.error().message.value_or("failed to store present metrics"));
-            return std::unexpected(status.error());
-        }
-    } else if (!fallback_alpha.empty()) {
-        if (auto status = process_pass(fallback_alpha, true, false); !status) {
-            (void)set_last_error(space_, params.target_path,
-                                 status.error().message.value_or("failed to store present metrics"));
-            return std::unexpected(status.error());
+        if (!bucket->alpha_indices.empty()) {
+            if (auto status = process_pass(bucket->alpha_indices, true, true); !status) {
+                (void)set_last_error(space_, params.target_path,
+                                     status.error().message.value_or("failed to store present metrics"));
+                return std::unexpected(status.error());
+            }
+        } else if (!fallback_alpha.empty()) {
+            if (auto status = process_pass(fallback_alpha, true, false); !status) {
+                (void)set_last_error(space_, params.target_path,
+                                     status.error().message.value_or("failed to store present metrics"));
+                return std::unexpected(status.error());
+            }
         }
     }
 
@@ -1374,6 +1379,11 @@ EncodeRunStats encode_stats{};
     publish_ms = std::chrono::duration<double, std::milli>(publish_end - publish_start).count();
 
     double approx_surface_pixels = static_cast<double>(pixel_count);
+    if (!has_damage && approx_area_total <= 0.0 && state.last_approx_area_total > 0.0) {
+        approx_area_total = state.last_approx_area_total;
+        approx_area_opaque = state.last_approx_area_opaque;
+        approx_area_alpha = state.last_approx_area_alpha;
+    }
     double approx_overdraw_factor = 0.0;
     if (approx_surface_pixels > 0.0) {
         approx_overdraw_factor = approx_area_total / approx_surface_pixels;
@@ -1587,6 +1597,10 @@ EncodeRunStats encode_stats{};
     stats.texture_gpu_bytes = reported_texture_bytes;
     stats.resource_cpu_bytes = static_cast<std::uint64_t>(surface_bytes + cache_bytes);
     stats.resource_gpu_bytes = total_gpu_bytes;
+
+    state.last_approx_area_total = approx_area_total;
+    state.last_approx_area_opaque = approx_area_opaque;
+    state.last_approx_area_alpha = approx_area_alpha;
 
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/resourceCpuBytes", stats.resource_cpu_bytes);
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/resourceGpuBytes", stats.resource_gpu_bytes);

@@ -24,6 +24,7 @@ class ProgressiveSurfaceBuffer;
 
 namespace PathRenderer2DInternal {
 class DamageRegion;
+struct DamageRect;
 }
 
 namespace PathRenderer2DDetail {
@@ -141,7 +142,8 @@ auto encode_pixel(float const* linear_premul,
 auto draw_rect_command(Scene::RectCommand const& command,
                        std::vector<float>& buffer,
                        int width,
-                       int height) -> bool;
+                       int height,
+                       std::span<PathRenderer2DInternal::DamageRect const> clip_rects = {}) -> bool;
 
 auto draw_rounded_rect_command(Scene::RoundedRectCommand const& command,
                                std::vector<float>& buffer,
