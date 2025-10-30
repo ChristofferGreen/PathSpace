@@ -91,25 +91,8 @@ struct DemoFontConfig {
     std::string style;
     std::string weight;
     std::vector<std::string> fallback;
-    std::string manifest_digest;
     std::uint64_t revision = 0;
 };
-
-auto make_font_manifest(DemoFontConfig const& config) -> std::string {
-    std::ostringstream json;
-    json << "{\"family\":\"" << config.family << "\",";
-    json << "\"style\":\"" << config.style << "\",";
-    json << "\"weight\":\"" << config.weight << "\",";
-    json << "\"fallback\":[";
-    for (std::size_t index = 0; index < config.fallback.size(); ++index) {
-        if (index > 0) {
-            json << ',';
-        }
-        json << '\"' << config.fallback[index] << '\"';
-    }
-    json << "]}";
-    return json.str();
-}
 
 auto register_font_or_exit(FontManager& manager,
                             AppRootPathView appRoot,
@@ -118,12 +101,10 @@ auto register_font_or_exit(FontManager& manager,
     Builders::Resources::Fonts::RegisterFontParams params{
         .family = config.family,
         .style = config.style,
+        .weight = config.weight,
+        .fallback_families = config.fallback,
+        .initial_revision = config.revision,
     };
-    params.manifest_json = make_font_manifest(config);
-    if (!config.manifest_digest.empty()) {
-        params.manifest_digest = config.manifest_digest;
-    }
-    params.initial_revision = config.revision;
     auto context = std::string{"register font "} + config.family + "/" + config.style;
     (void)unwrap_or_exit(manager.register_font(appRoot, params), context);
     auto resolved = manager.resolve_font(appRoot, config.family, config.style);
@@ -152,7 +133,6 @@ void attach_demo_fonts(PathSpace& space,
         .style = "Regular",
         .weight = "400",
         .fallback = {"system-ui"},
-        .manifest_digest = "sha256:pathspacesans-regular",
         .revision = 1ull,
     };
 
@@ -161,7 +141,6 @@ void attach_demo_fonts(PathSpace& space,
         .style = "SemiBold",
         .weight = "600",
         .fallback = {"PathSpaceSans", "system-ui"},
-        .manifest_digest = "sha256:pathspacesans-semibold",
         .revision = 2ull,
     };
 

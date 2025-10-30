@@ -21,10 +21,10 @@ TEST_CASE("Font resources resolve canonical paths") {
 
     CHECK(paths->root.getPath()
           == "/system/applications/demo_app/resources/fonts/DisplaySans/Regular");
-    CHECK(paths->manifest.getPath()
-          == "/system/applications/demo_app/resources/fonts/DisplaySans/Regular/manifest.json");
+    CHECK(paths->meta.getPath()
+          == "/system/applications/demo_app/resources/fonts/DisplaySans/Regular/meta");
     CHECK(paths->active_revision.getPath()
-          == "/system/applications/demo_app/resources/fonts/DisplaySans/Regular/active");
+          == "/system/applications/demo_app/resources/fonts/DisplaySans/Regular/meta/active_revision");
     CHECK(paths->builds.getPath()
           == "/system/applications/demo_app/resources/fonts/DisplaySans/Regular/builds");
     CHECK(paths->inbox.getPath()
@@ -40,8 +40,8 @@ TEST_CASE("FontManager registers font metadata and manifest") {
     SP::UI::Builders::Resources::Fonts::RegisterFontParams params{
         .family = "DisplaySans",
         .style = "Regular",
-        .manifest_json = std::string{R"({"family":"DisplaySans","style":"Regular"})"},
-        .manifest_digest = std::string{"sha256:demo"},
+        .weight = "450",
+        .fallback_families = {"system-ui", "serif"},
         .initial_revision = 4ull,
     };
 
@@ -60,20 +60,20 @@ TEST_CASE("FontManager registers font metadata and manifest") {
     REQUIRE(style);
     CHECK(*style == "Regular");
 
+    auto weight_path = base + "/meta/weight";
+    auto stored_weight = space.read<std::string, std::string>(weight_path);
+    REQUIRE(stored_weight);
+    CHECK(*stored_weight == "450");
+
+    auto fallback_path = base + "/meta/fallbacks";
+    auto stored_fallbacks = space.read<std::vector<std::string>, std::string>(fallback_path);
+    REQUIRE(stored_fallbacks);
+    std::vector<std::string> expected_fallbacks{"system-ui", "serif"};
+    CHECK(*stored_fallbacks == expected_fallbacks);
+
     auto active = space.read<std::uint64_t, std::string>(registered->active_revision.getPath());
     REQUIRE(active);
     CHECK(*active == params.initial_revision);
-
-    auto digest_path = base + "/meta/manifest_digest";
-    auto digest = space.read<std::string, std::string>(digest_path);
-    REQUIRE(digest);
-    CHECK(*digest == *params.manifest_digest);
-
-    if (params.manifest_json) {
-        auto manifest = space.read<std::string, std::string>(registered->manifest.getPath());
-        REQUIRE(manifest);
-        CHECK(*manifest == *params.manifest_json);
-    }
 
     auto metrics_base = std::string(app_view.getPath()) + "/diagnostics/metrics/fonts";
     auto registered_fonts_path = metrics_base + "/registeredFonts";
@@ -91,9 +91,8 @@ TEST_CASE("FontManager resolves manifest fallback chain") {
     Builders::Resources::Fonts::RegisterFontParams params{
         .family = "PathSpaceSans",
         .style = "Regular",
-        .manifest_json = std::string{
-            R"({"family":"PathSpaceSans","style":"Regular","weight":"500","fallback":["system-ui","PathSpaceSans","system-ui","monospace"]})"},
-        .manifest_digest = std::string{"sha256:pathspacesans-regular"},
+        .weight = "500",
+        .fallback_families = {"system-ui", "PathSpaceSans", "system-ui", "monospace"},
         .initial_revision = 5ull,
     };
 
@@ -112,26 +111,28 @@ TEST_CASE("FontManager resolves manifest fallback chain") {
     CHECK(resolved->fallback_chain == expected_fallback);
 }
 
-TEST_CASE("FontManager resolve errors on malformed fallback entries") {
+TEST_CASE("FontManager supplies default fallback when metadata omitted") {
     PathSpace space;
     SP::App::AppRootPath app_root{"/system/applications/demo_app"};
     SP::App::AppRootPathView app_view{app_root.getPath()};
 
     FontManager manager(space);
     Builders::Resources::Fonts::RegisterFontParams params{
-        .family = "BrokenFont",
+        .family = "DefaultedFont",
         .style = "Regular",
-        .manifest_json = std::string{
-            R"({"family":"BrokenFont","style":"Regular","fallback":"system-ui"})"},
+        .weight = "400",
+        .fallback_families = {},
         .initial_revision = 1ull,
     };
 
     auto registered = manager.register_font(app_view, params);
     REQUIRE(registered);
 
-    auto resolved = manager.resolve_font(app_view, "BrokenFont", "Regular");
-    REQUIRE_FALSE(resolved);
-    CHECK(resolved.error().code == SP::Error::Code::MalformedInput);
+    auto resolved = manager.resolve_font(app_view, "DefaultedFont", "Regular");
+    REQUIRE(resolved);
+    CHECK(resolved->fallback_chain.size() == 1);
+    CHECK(resolved->fallback_chain.front() == "system-ui");
+    CHECK(resolved->weight == "400");
 }
 
 TEST_CASE("FontManager caches shaped runs and updates metrics") {

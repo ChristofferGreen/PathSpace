@@ -1544,7 +1544,7 @@ Goals
 - Persist blob fingerprints in snapshot metadata so renderer targets can skip redundant uploads when a revision reuses the same asset payload
 
 ### Font stack and shaping
-- Wrap HarfBuzz + ICU (or equivalent) in a `FontManager` that maps logical font requests to fallback chains recorded in `resources/fonts/<name>/manifest`
+- Wrap HarfBuzz + ICU (or equivalent) in a `FontManager` that maps logical font requests to fallback chains recorded under `resources/fonts/<name>/<style>/meta/{family,style,weight,fallbacks}`
 - Cache shaped glyph runs keyed by `(text, script, direction, font-set, features)` and publish glyph atlas textures under the font resource subtree
 - Snapshot publishes the atlas fingerprint per drawable so renderers can pin the correct atlas revision without reshaping
 

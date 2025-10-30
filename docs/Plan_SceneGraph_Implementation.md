@@ -1,7 +1,7 @@
 # Scene Graph Implementation Plan
 
 > Completed milestones are archived in `docs/Plan_SceneGraph_Implementation_Finished.md` (snapshot as of October 29, 2025).
-> Focus update (October 29, 2025): Manifest-driven font lookup landed (`FontManager::resolve_font`), widgets/examples consume manifest fallbacks automatically, and new doctests cover the parser. Next priority: wire the HarfBuzz shaping wrapper and connect cache eviction thresholds to atlas residency budgets before proceeding to atlas publication.
+> Focus update (October 29, 2025): Font metadata now lives entirely inside PathSpace—`FontManager::resolve_font` reads `meta/{family,style,weight,fallbacks,active_revision}`—and widgets/examples hydrate typography straight from those nodes. Next priority: wire the HarfBuzz shaping wrapper and connect cache eviction thresholds to atlas residency budgets before proceeding to atlas publication.
 
 ## Context and Objectives
 - Groundwork for implementing the renderer stack described in `docs/Plan_SceneGraph_Renderer.md` and the broader architecture contract in `docs/AI_Architecture.md`.
@@ -43,19 +43,19 @@ Ship the resource-backed font pipeline described in `docs/Plan_SceneGraph_Render
 
 **Status Update (October 29, 2025)**  
 - Landed `App::resolve_resource` and font resource helpers/tests to codify `resources/fonts/<family>/<style>/` layout.  
-- Introduced a scaffolding `FontManager` wrapper that registers fonts and persists metadata (`meta/family`, `meta/style`, `manifest.json`, `active`).  
+- Introduced a scaffolding `FontManager` wrapper that registers fonts and persists metadata (`meta/family`, `meta/style`, `meta/weight`, `meta/fallbacks`, `meta/active_revision`).  
 - Extended `TypographyStyle` and `TextBuilder::BuildResult` with font descriptors so fallback rendering keeps working while exposing style metadata.  
-- Widget gallery demos now register PathSpaceSans regular/semibold fonts via `FontManager`, propagate resource roots/revisions into `TypographyStyle`, and emit font fingerprints from `TextBuilder`; updated doctests cover the new metadata paths and manifest digest handling.
+- Widget gallery demos now register PathSpaceSans regular/semibold fonts via `FontManager`, propagate resource roots/revisions into `TypographyStyle`, and emit font fingerprints from `TextBuilder`; updated doctests cover the new metadata paths and active revision handling.
 - FontManager now fingerprints typography descriptors, caches fallback-shaped runs with an LRU policy, and publishes cache/registration metrics under `diagnostics/metrics/fonts/*`; UITests cover registration, caching hits, and eviction behaviour.
 
 **Phase 0 – Schema & Storage (1–2 days)**
-- Define app-root resource layout under `resources/fonts/<family>/<style>/` with `manifest.json`, `builds/<revision>/atlas.bin`, and `active` pointer.
+- Define app-root resource layout under `resources/fonts/<family>/<style>/` with `meta/{family,style,weight,fallbacks,active_revision}`, `builds/<revision>/atlas.bin`, and optional per-revision metadata.
 - Extend typed helpers: `App::ResolveResourcePath`, `UI::Builders::Fonts::{FontResourcePath, RegisterFont}`.
 - Document schema in `docs/AI_PATHS.md` and update `docs/Plan_SceneGraph_Renderer.md` cross-links.
 
 **Phase 1 – Font Manager Foundations (2–3 days)**
 - ✅ (October 29, 2025) Landed the `SP::UI::FontManager` singleton with descriptor fingerprinting, fallback shaping, an LRU shaped-run cache, and diagnostics metrics under `diagnostics/metrics/fonts/*`. Current cache eviction is capacity-based; wire atlas-aware budgets once atlas persistence ships. HarfBuzz/ICU shaping remains stubbed out pending dependency review.
-- ✅ (October 29, 2025) Resource lookup + fallback chain resolution via manifests. `FontManager::resolve_font` now parses `manifest.json`, deduplicates fallback lists, surfaces the active revision, and widgets/examples hydrate typography directly from manifest data with doctest coverage for success and malformed manifests.
+- ✅ (October 29, 2025) Resource lookup + fallback chain resolution via PathSpace metadata. `FontManager::resolve_font` reads `meta/{family,style,weight,fallbacks,active_revision}`, deduplicates fallback lists, surfaces the active atlas revision, and widgets/examples hydrate typography directly from those nodes with doctest coverage for success and defaulted metadata.
 - Remaining:
   - HarfBuzz shaping wrapper producing glyph indices/positions (replace fallback ASCII layout once deps are ready).
   - Tie cache eviction thresholds to atlas residency budgets instead of the temporary fixed-capacity knob.

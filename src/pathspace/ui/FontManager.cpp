@@ -6,9 +6,7 @@
 #include <cmath>
 #include <limits>
 #include <utility>
-#include <optional>
 #include <unordered_set>
-#include <cctype>
 
 namespace {
 
@@ -16,6 +14,8 @@ constexpr std::uint64_t kFNVOffset = 1469598103934665603ull;
 constexpr std::uint64_t kFNVPrime = 1099511628211ull;
 constexpr float kFallbackAdvanceUnits = 8.0f;
 constexpr float kFallbackMinScale = 0.1f;
+
+using SP::PathSpace;
 
 auto fnv_mix(std::uint64_t hash, std::string_view bytes) -> std::uint64_t {
     for (unsigned char ch : bytes) {
@@ -51,141 +51,59 @@ auto make_font_registry_key(std::string_view app_root,
     return key;
 }
 
-auto make_manifest_error(std::string message) -> SP::Error {
-    return SP::Error{SP::Error::Code::MalformedInput, std::move(message)};
-}
+auto sanitize_fallbacks(std::vector<std::string> fallbacks,
+                        std::string_view primary_family) -> std::vector<std::string> {
+    std::vector<std::string> sanitized;
+    sanitized.reserve(fallbacks.size());
+    std::unordered_set<std::string> seen{};
 
-auto skip_whitespace(std::string_view text, std::size_t pos) -> std::size_t {
-    while (pos < text.size() && std::isspace(static_cast<unsigned char>(text[pos])) != 0) {
-        ++pos;
-    }
-    return pos;
-}
-
-auto parse_json_string(std::string_view text,
-                       std::size_t pos) -> SP::Expected<std::pair<std::string, std::size_t>> {
-    if (pos >= text.size() || text[pos] != '"') {
-        return std::unexpected(make_manifest_error("expected string value"));
-    }
-
-    std::string value;
-    ++pos;
-    while (pos < text.size()) {
-        char ch = text[pos];
-        if (ch == '\\') {
-            ++pos;
-            if (pos >= text.size()) {
-                return std::unexpected(make_manifest_error("unterminated escape sequence"));
-            }
-            char escaped = text[pos];
-            switch (escaped) {
-                case '"':
-                case '\\':
-                case '/':
-                    value.push_back(escaped);
-                    break;
-                case 'b':
-                    value.push_back('\b');
-                    break;
-                case 'f':
-                    value.push_back('\f');
-                    break;
-                case 'n':
-                    value.push_back('\n');
-                    break;
-                case 'r':
-                    value.push_back('\r');
-                    break;
-                case 't':
-                    value.push_back('\t');
-                    break;
-                default:
-                    return std::unexpected(make_manifest_error("unsupported escape sequence in string"));
-            }
-            ++pos;
+    for (auto& entry : fallbacks) {
+        if (entry.empty()) {
             continue;
         }
-        if (ch == '"') {
-            ++pos;
-            return std::pair<std::string, std::size_t>{std::move(value), pos};
-        }
-        value.push_back(ch);
-        ++pos;
-    }
-    return std::unexpected(make_manifest_error("unterminated string literal"));
-}
-
-auto find_key(std::string_view text, std::string_view key) -> std::size_t {
-    auto needle = std::string{"\""};
-    needle.append(key);
-    needle.push_back('"');
-    return text.find(needle);
-}
-
-auto parse_string_field(std::string_view text,
-                        std::string_view key) -> SP::Expected<std::optional<std::string>> {
-    auto pos = find_key(text, key);
-    if (pos == std::string_view::npos) {
-        return std::optional<std::string>{};
-    }
-    pos = text.find(':', pos + key.size() + 2);
-    if (pos == std::string_view::npos) {
-        return std::unexpected(make_manifest_error("missing ':' after key"));
-    }
-    pos = skip_whitespace(text, pos + 1);
-    auto parsed = parse_json_string(text, pos);
-    if (!parsed) {
-        return std::unexpected(parsed.error());
-    }
-    return std::optional<std::string>{std::move(parsed->first)};
-}
-
-auto parse_string_array_field(std::string_view text,
-                              std::string_view key)
-    -> SP::Expected<std::optional<std::vector<std::string>>> {
-    auto pos = find_key(text, key);
-    if (pos == std::string_view::npos) {
-        return std::optional<std::vector<std::string>>{};
-    }
-    pos = text.find(':', pos + key.size() + 2);
-    if (pos == std::string_view::npos) {
-        return std::unexpected(make_manifest_error("missing ':' after key"));
-    }
-    pos = skip_whitespace(text, pos + 1);
-    if (pos >= text.size() || text[pos] != '[') {
-        return std::unexpected(make_manifest_error("expected '[' for array value"));
-    }
-    ++pos;
-    std::vector<std::string> values;
-    while (true) {
-        pos = skip_whitespace(text, pos);
-        if (pos >= text.size()) {
-            return std::unexpected(make_manifest_error("unterminated array"));
-        }
-        if (text[pos] == ']') {
-            ++pos;
-            break;
-        }
-        auto parsed = parse_json_string(text, pos);
-        if (!parsed) {
-            return std::unexpected(parsed.error());
-        }
-        values.emplace_back(std::move(parsed->first));
-        pos = skip_whitespace(text, parsed->second);
-        if (pos >= text.size()) {
-            return std::unexpected(make_manifest_error("unterminated array"));
-        }
-        if (text[pos] == ',') {
-            ++pos;
+        if (entry == primary_family) {
             continue;
         }
-        if (text[pos] == ']') {
-            ++pos;
-            break;
+        if (seen.insert(entry).second) {
+            sanitized.emplace_back(entry);
         }
-        return std::unexpected(make_manifest_error("expected ',' or ']' in array"));
     }
-    return std::optional<std::vector<std::string>>{std::move(values)};
+
+    if (sanitized.empty()) {
+        sanitized.emplace_back("system-ui");
+    }
+
+    return sanitized;
+}
+
+auto load_string_with_default(PathSpace& space,
+                              std::string const& path,
+                              std::string_view fallback) -> SP::Expected<std::string> {
+    auto value = space.read<std::string, std::string>(path);
+    if (value) {
+        if (value->empty()) {
+            return std::string{fallback};
+        }
+        return *value;
+    }
+    auto const code = value.error().code;
+    if (code == SP::Error::Code::NoSuchPath || code == SP::Error::Code::NoObjectFound) {
+        return std::string{fallback};
+    }
+    return std::unexpected(value.error());
+}
+
+auto load_string_vector(PathSpace& space,
+                        std::string const& path) -> SP::Expected<std::vector<std::string>> {
+    auto value = space.read<std::vector<std::string>, std::string>(path);
+    if (value) {
+        return *value;
+    }
+    auto const code = value.error().code;
+    if (code == SP::Error::Code::NoSuchPath || code == SP::Error::Code::NoObjectFound) {
+        return std::vector<std::string>{};
+    }
+    return std::unexpected(value.error());
 }
 
 } // namespace
@@ -234,64 +152,31 @@ auto FontManager::resolve_font(App::AppRootPathView appRoot,
         return std::unexpected(paths.error());
     }
 
-    auto manifest_text = space_->read<std::string, std::string>(paths->manifest.getPath());
-    if (!manifest_text) {
-        return std::unexpected(manifest_text.error());
+    auto const meta_base = std::string(paths->meta.getPath());
+    auto family_result = load_string_with_default(*space_, meta_base + "/family", family);
+    if (!family_result) {
+        return std::unexpected(family_result.error());
     }
-
-    std::string_view manifest_view{*manifest_text};
-    auto trimmed = skip_whitespace(manifest_view, 0);
-    if (trimmed >= manifest_view.size() || manifest_view[trimmed] != '{') {
-        return std::unexpected(make_manifest_error("font manifest must begin with '{'"));
+    auto style_result = load_string_with_default(*space_, meta_base + "/style", style);
+    if (!style_result) {
+        return std::unexpected(style_result.error());
     }
-
-    auto family_field = parse_string_field(manifest_view, "family");
-    if (!family_field) {
-        return std::unexpected(family_field.error());
+    auto weight_result = load_string_with_default(*space_, meta_base + "/weight", "400");
+    if (!weight_result) {
+        return std::unexpected(weight_result.error());
     }
-    auto style_field = parse_string_field(manifest_view, "style");
-    if (!style_field) {
-        return std::unexpected(style_field.error());
-    }
-    auto weight_field = parse_string_field(manifest_view, "weight");
-    if (!weight_field) {
-        return std::unexpected(weight_field.error());
-    }
-    auto fallback_field = parse_string_array_field(manifest_view, "fallback");
-    if (!fallback_field) {
-        return std::unexpected(fallback_field.error());
+    auto fallback_values = load_string_vector(*space_, meta_base + "/fallbacks");
+    if (!fallback_values) {
+        return std::unexpected(fallback_values.error());
     }
 
     ResolvedFont resolved{};
     resolved.paths = *paths;
-    resolved.family = family_field->value_or(std::string{family});
-    resolved.style = style_field->value_or(std::string{style});
-    resolved.weight = weight_field->value_or(std::string{"400"});
-    if (resolved.family.empty()) {
-        resolved.family = std::string{family};
-    }
-    if (resolved.style.empty()) {
-        resolved.style = std::string{style};
-    }
-    if (resolved.weight.empty()) {
-        resolved.weight = "400";
-    }
-
-    if (fallback_field->has_value()) {
-        auto const& entries = fallback_field->value();
-        std::unordered_set<std::string> seen{};
-        for (auto const& candidate : entries) {
-            if (candidate.empty()) {
-                continue;
-            }
-            if (candidate == resolved.family) {
-                continue;
-            }
-            if (seen.insert(candidate).second) {
-                resolved.fallback_chain.emplace_back(candidate);
-            }
-        }
-    }
+    resolved.family = std::move(*family_result);
+    resolved.style = std::move(*style_result);
+    resolved.weight = std::move(*weight_result);
+    auto fallbacks = std::move(*fallback_values);
+    resolved.fallback_chain = sanitize_fallbacks(std::move(fallbacks), resolved.family);
 
     auto active_revision = space_->read<std::uint64_t, std::string>(paths->active_revision.getPath());
     if (active_revision) {

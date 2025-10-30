@@ -1,5 +1,8 @@
 #include "BuildersDetail.hpp"
 
+#include <unordered_set>
+#include <vector>
+
 namespace SP::UI::Builders::Resources::Fonts {
 
 using namespace Detail;
@@ -24,8 +27,8 @@ auto make_paths(AppRootPathView appRoot,
     FontResourcePaths paths{};
     paths.root = *root;
     auto const& base = root->getPath();
-    paths.manifest = ConcretePath{base + "/manifest.json"};
-    paths.active_revision = ConcretePath{base + "/active"};
+    paths.meta = ConcretePath{base + "/meta"};
+    paths.active_revision = ConcretePath{base + "/meta/active_revision"};
     paths.builds = ConcretePath{base + "/builds"};
     paths.inbox = ConcretePath{base + "/inbox"};
     return paths;
@@ -47,7 +50,7 @@ auto Register(PathSpace& space,
         return std::unexpected(paths.error());
     }
 
-    auto const meta_base = std::string(paths->root.getPath()) + "/meta";
+    auto const meta_base = std::string(paths->meta.getPath());
     auto family_path = meta_base + "/family";
     if (auto status = replace_single<std::string>(space, family_path, params.family); !status) {
         return std::unexpected(status.error());
@@ -58,23 +61,38 @@ auto Register(PathSpace& space,
         return std::unexpected(status.error());
     }
 
-    auto digest_path = meta_base + "/manifest_digest";
-    if (params.manifest_digest) {
-        if (auto status = replace_single<std::string>(space, digest_path, *params.manifest_digest); !status) {
-            return std::unexpected(status.error());
+    auto weight = params.weight.empty() ? std::string{"400"} : params.weight;
+    auto weight_path = meta_base + "/weight";
+    if (auto status = replace_single<std::string>(space, weight_path, weight); !status) {
+        return std::unexpected(status.error());
+    }
+
+    std::vector<std::string> sanitized_fallbacks;
+    sanitized_fallbacks.reserve(params.fallback_families.size());
+    std::unordered_set<std::string> seen{};
+    for (auto const& entry : params.fallback_families) {
+        if (entry.empty()) {
+            continue;
         }
+        if (entry == params.family) {
+            continue;
+        }
+        if (seen.insert(entry).second) {
+            sanitized_fallbacks.emplace_back(entry);
+        }
+    }
+    if (sanitized_fallbacks.empty()) {
+        sanitized_fallbacks.emplace_back("system-ui");
+    }
+
+    auto fallbacks_path = meta_base + "/fallbacks";
+    if (auto status = replace_single<std::vector<std::string>>(space, fallbacks_path, sanitized_fallbacks); !status) {
+        return std::unexpected(status.error());
     }
 
     auto active_path = std::string(paths->active_revision.getPath());
     if (auto status = replace_single<std::uint64_t>(space, active_path, params.initial_revision); !status) {
         return std::unexpected(status.error());
-    }
-
-    if (params.manifest_json) {
-        auto manifest_path = std::string(paths->manifest.getPath());
-        if (auto status = replace_single<std::string>(space, manifest_path, *params.manifest_json); !status) {
-            return std::unexpected(status.error());
-        }
     }
 
     return *paths;

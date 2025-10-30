@@ -457,7 +457,7 @@ namespace Resources::Fonts {
 
 struct FontResourcePaths {
     ConcretePath root;
-    ConcretePath manifest;
+    ConcretePath meta;
     ConcretePath active_revision;
     ConcretePath builds;
     ConcretePath inbox;
@@ -466,8 +466,8 @@ struct FontResourcePaths {
 struct RegisterFontParams {
     std::string family;
     std::string style;
-    std::optional<std::string> manifest_json;
-    std::optional<std::string> manifest_digest;
+    std::string weight = "400";
+    std::vector<std::string> fallback_families{};
     std::uint64_t initial_revision = 0;
 };
 

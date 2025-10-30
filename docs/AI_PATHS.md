@@ -139,11 +139,12 @@ The following subtrees are standardized within each application root (one of the
 - Resources
 - `resources/fonts/<family>/<style>/`
     - `meta/family` — canonical family identifier registered for this font
-    - `meta/style` — style/weight identifier
-    - `meta/manifest_digest` — optional manifest hash for diagnostics/rollbacks
-    - `manifest.json` — resource manifest describing sources, fallbacks, features
-    - `active` — pointer (`uint64_t`) to the currently adopted atlas revision
+    - `meta/style` — style identifier (e.g., Regular, SemiBold)
+    - `meta/weight` — CSS-like weight string (e.g., "400", "600")
+    - `meta/fallbacks` — string array of fallback families, ordered by preference
+    - `meta/active_revision` — `uint64_t` of the adopted atlas revision
     - `builds/<revision>/atlas.bin` — persisted atlas payload for the revision
+    - `builds/<revision>/meta/*` — optional per-revision metadata (features, language coverage, etc.)
     - `inbox` — staging area for loader jobs and background ingestion
 
 - IO logging (app-local)
