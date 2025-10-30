@@ -1,7 +1,7 @@
 # Scene Graph Implementation Plan
 
 > Completed milestones are archived in `docs/Plan_SceneGraph_Implementation_Finished.md` (snapshot as of October 29, 2025).
-> Focus update (October 29, 2025): Font metadata now lives entirely inside PathSpace—`FontManager::resolve_font` reads `meta/{family,style,weight,fallbacks,active_revision}`—and widgets/examples hydrate typography straight from those nodes. Next priority: wire the HarfBuzz shaping wrapper and connect cache eviction thresholds to atlas residency budgets before proceeding to atlas publication.
+> Focus update (October 29, 2025): Font metadata now lives entirely inside PathSpace—`FontManager::resolve_font` reads `meta/{family,style,weight,fallbacks,active_revision}`—and widget themes persist under `config/theme/<name>/value` so demos/app code hydrate styles straight from the space. Next priority: wire the HarfBuzz shaping wrapper and connect cache eviction thresholds to atlas residency budgets before proceeding to atlas publication.
 
 ## Context and Objectives
 - Groundwork for implementing the renderer stack described in `docs/Plan_SceneGraph_Renderer.md` and the broader architecture contract in `docs/AI_Architecture.md`.
@@ -46,6 +46,7 @@ Ship the resource-backed font pipeline described in `docs/Plan_SceneGraph_Render
 - Introduced a scaffolding `FontManager` wrapper that registers fonts and persists metadata (`meta/family`, `meta/style`, `meta/weight`, `meta/fallbacks`, `meta/active_revision`).  
 - Extended `TypographyStyle` and `TextBuilder::BuildResult` with font descriptors so fallback rendering keeps working while exposing style metadata.  
 - Widget gallery demos now register PathSpaceSans regular/semibold fonts via `FontManager`, propagate resource roots/revisions into `TypographyStyle`, and emit font fingerprints from `TextBuilder`; updated doctests cover the new metadata paths and active revision handling.
+- Widget themes persist under `config/theme/<name>/value`; examples default to storing skylight/sunset palettes and `Widgets::SetTheme` loads the active theme from PathSpace before applying defaults.
 - FontManager now fingerprints typography descriptors, caches fallback-shaped runs with an LRU policy, and publishes cache/registration metrics under `diagnostics/metrics/fonts/*`; UITests cover registration, caching hits, and eviction behaviour.
 
 **Phase 0 – Schema & Storage (1–2 days)**

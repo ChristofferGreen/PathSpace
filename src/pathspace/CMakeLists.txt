@@ -103,6 +103,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/WidgetFocus.cpp
         ui/WidgetReducers.cpp
         ui/FontResources.cpp
+        ui/ThemeResources.cpp
         ui/FontManager.cpp
         ui/DiagnosticsBuilders.cpp
         ui/SceneSnapshotBuilder.cpp

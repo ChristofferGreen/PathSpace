@@ -1386,34 +1386,58 @@ auto MakeSunsetWidgetTheme() -> WidgetTheme {
     return make_orange_theme();
 }
 
-auto SetTheme(std::optional<std::string> const& requested_name) -> ThemeSelection {
+auto SetTheme(PathSpace& space,
+              AppRootPathView appRoot,
+              std::optional<std::string> const& requested_name) -> ThemeSelection {
     ThemeSelection selection{};
-    selection.theme = MakeSunsetWidgetTheme();
-    selection.canonical_name = "sunset";
-    selection.recognized = true;
 
-    if (!requested_name || requested_name->empty()) {
-        return selection;
+    std::string requested;
+    if (requested_name && !requested_name->empty()) {
+        requested = *requested_name;
+    } else {
+        if (auto active = Config::Theme::LoadActive(space, appRoot)) {
+            requested = *active;
+        }
     }
 
-    std::string normalized = *requested_name;
+    if (requested.empty()) {
+        requested = "sunset";
+    }
+
+    std::string normalized = requested;
     std::transform(normalized.begin(),
                    normalized.end(),
                    normalized.begin(),
                    [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
 
+    bool recognized = true;
+    std::string canonical = normalized;
+    WidgetTheme defaults = MakeSunsetWidgetTheme();
+
     if (normalized == "sunset") {
-        return selection;
+        canonical = "sunset";
+        defaults = MakeSunsetWidgetTheme();
+    } else if (normalized == "skylight" || normalized == "default") {
+        canonical = "skylight";
+        defaults = MakeDefaultWidgetTheme();
+    } else {
+        recognized = false;
+        canonical = Config::Theme::SanitizeName(normalized);
+        defaults = MakeDefaultWidgetTheme();
     }
 
-    if (normalized == "skylight" || normalized == "default") {
-        selection.theme = MakeDefaultWidgetTheme();
-        selection.canonical_name = "skylight";
-        selection.recognized = true;
-        return selection;
+    auto ensured = Config::Theme::Ensure(space, appRoot, canonical, defaults);
+    WidgetTheme theme = defaults;
+    if (ensured) {
+        if (auto loaded = Config::Theme::Load(space, *ensured)) {
+            theme = *loaded;
+        }
+        (void)Config::Theme::SetActive(space, appRoot, canonical);
     }
 
-    selection.recognized = false;
+    selection.theme = std::move(theme);
+    selection.canonical_name = canonical;
+    selection.recognized = recognized;
     return selection;
 }
 

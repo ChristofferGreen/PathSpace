@@ -1799,7 +1799,9 @@ struct ThemeSelection {
 
 auto MakeDefaultWidgetTheme() -> WidgetTheme;
 auto MakeSunsetWidgetTheme() -> WidgetTheme;
-auto SetTheme(std::optional<std::string> const& requested_name) -> ThemeSelection;
+auto SetTheme(PathSpace& space,
+              AppRootPathView appRoot,
+              std::optional<std::string> const& requested_name) -> ThemeSelection;
 auto ApplyTheme(WidgetTheme const& theme, ButtonParams& params) -> void;
 auto ApplyTheme(WidgetTheme const& theme, ToggleParams& params) -> void;
 auto ApplyTheme(WidgetTheme const& theme, SliderParams& params) -> void;
@@ -2316,6 +2318,35 @@ auto ProcessPendingActions(PathSpace& space,
 } // namespace Reducers
 
 } // namespace Widgets
+
+namespace Config::Theme {
+
+struct ThemePaths {
+    ConcretePath root;
+    ConcretePath value;
+};
+
+auto SanitizeName(std::string_view theme_name) -> std::string;
+
+auto Resolve(AppRootPathView appRoot,
+             std::string_view theme_name) -> SP::Expected<ThemePaths>;
+
+auto Ensure(PathSpace& space,
+            AppRootPathView appRoot,
+            std::string_view theme_name,
+            Widgets::WidgetTheme const& defaults) -> SP::Expected<ThemePaths>;
+
+auto Load(PathSpace& space,
+          ThemePaths const& paths) -> SP::Expected<Widgets::WidgetTheme>;
+
+auto SetActive(PathSpace& space,
+               AppRootPathView appRoot,
+               std::string_view theme_name) -> SP::Expected<void>;
+
+auto LoadActive(PathSpace& space,
+                AppRootPathView appRoot) -> SP::Expected<std::string>;
+
+} // namespace Config::Theme
 
 inline auto MakeWidgetBounds(float min_x,
                              float min_y,

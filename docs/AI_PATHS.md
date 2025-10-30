@@ -146,6 +146,9 @@ The following subtrees are standardized within each application root (one of the
     - `builds/<revision>/atlas.bin` — persisted atlas payload for the revision
     - `builds/<revision>/meta/*` — optional per-revision metadata (features, language coverage, etc.)
     - `inbox` — staging area for loader jobs and background ingestion
+- `config/theme/`
+    - `active` — string canonical name of the active widget theme
+    - `theme/<name>/value` — stored `WidgetTheme` struct describing colors, typography, and widget styles
 
 - IO logging (app-local)
   - `io/log/error` — authoritative error log (UTF-8, newline-delimited)

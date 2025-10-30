@@ -1237,7 +1237,7 @@ int main(int /*argc*/, char** /*argv*/) {
     App::AppRootPath app_root{"/system/applications/widgets_example_minimal"};
     App::AppRootPathView app_root_view{app_root.getPath()};
 
-    auto theme_selection = Widgets::SetTheme(std::optional<std::string>{"skylight"});
+    auto theme_selection = Widgets::SetTheme(space, app_root_view, std::optional<std::string>{"skylight"});
     auto theme = std::move(theme_selection.theme);
     attach_demo_fonts(space, app_root_view, theme);
 
