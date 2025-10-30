@@ -2,14 +2,26 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/FontAtlasCache.hpp>
 #include <pathspace/ui/FontManager.hpp>
 
 #include <cstdint>
+#include <cstdio>
 #include <string>
 #include <vector>
 
 using namespace SP;
 using namespace SP::UI;
+
+namespace {
+
+auto format_revision(std::uint64_t revision) -> std::string {
+    char buffer[17];
+    std::snprintf(buffer, sizeof(buffer), "%016llu", static_cast<unsigned long long>(revision));
+    return std::string(buffer);
+}
+
+}
 
 TEST_CASE("Font resources resolve canonical paths") {
     using namespace SP::UI::Builders::Resources::Fonts;
@@ -92,9 +104,25 @@ TEST_CASE("FontManager registers font metadata and manifest") {
 
     auto metrics_base = std::string(app_view.getPath()) + "/diagnostics/metrics/fonts";
     auto registered_fonts_path = metrics_base + "/registeredFonts";
-    auto registered_count = space.read<std::uint64_t, std::string>(registered_fonts_path);
-    REQUIRE(registered_count);
-    CHECK(*registered_count >= 1);
+   auto registered_count = space.read<std::uint64_t, std::string>(registered_fonts_path);
+   REQUIRE(registered_count);
+   CHECK(*registered_count >= 1);
+
+    auto revision_base = base + "/builds/" + format_revision(params.initial_revision);
+    auto atlas_path = revision_base + "/atlas.bin";
+    auto atlas_bytes = space.read<std::vector<std::uint8_t>>(atlas_path);
+    REQUIRE(atlas_bytes);
+
+    FontAtlasCache cache;
+    auto atlas_data = cache.load(space, atlas_path, params.initial_revision);
+    REQUIRE(atlas_data);
+    CHECK(!(*atlas_data)->glyphs.empty());
+    CHECK((*atlas_data)->width > 0);
+    CHECK((*atlas_data)->height > 0);
+
+    auto atlas_meta = space.read<std::string, std::string>(revision_base + "/meta/atlas.json");
+    REQUIRE(atlas_meta);
+    CHECK_FALSE(atlas_meta->empty());
 }
 
 TEST_CASE("FontManager resolves manifest fallback chain") {

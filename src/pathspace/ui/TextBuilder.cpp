@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cctype>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -13,60 +12,16 @@
 #include <string_view>
 #include <vector>
 
+#include "TextGlyphFallback.hpp"
+
 namespace SP::UI::Builders::Text {
 
 namespace {
 
 namespace Scene = SP::UI::Scene;
 
-constexpr int kGlyphRows = 7;
 constexpr std::uint64_t kFNVOffset = 1469598103934665603ull;
 constexpr std::uint64_t kFNVPrime = 1099511628211ull;
-
-struct GlyphPattern {
-    char ch = ' ';
-    int width = 0;
-    std::array<std::uint8_t, kGlyphRows> rows{};
-};
-
-constexpr std::array<GlyphPattern, 36> kGlyphPatterns = {{
-    {'A', 5, {0b00100, 0b01010, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001}},
-    {'B', 5, {0b11110, 0b10001, 0b10001, 0b11110, 0b10001, 0b10001, 0b11110}},
-    {'C', 5, {0b01110, 0b10001, 0b10000, 0b10000, 0b10000, 0b10001, 0b01110}},
-    {'D', 5, {0b11110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11110}},
-    {'E', 5, {0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111}},
-    {'F', 5, {0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000}},
-    {'G', 5, {0b01110, 0b10001, 0b10000, 0b10111, 0b10001, 0b10001, 0b01110}},
-    {'H', 5, {0b10001, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001}},
-    {'I', 3, {0b111, 0b010, 0b010, 0b010, 0b010, 0b010, 0b111}},
-    {'J', 5, {0b00111, 0b00010, 0b00010, 0b00010, 0b10010, 0b10010, 0b01100}},
-    {'K', 5, {0b10001, 0b10010, 0b10100, 0b11000, 0b10100, 0b10010, 0b10001}},
-    {'L', 5, {0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11111}},
-    {'M', 5, {0b10001, 0b11011, 0b10101, 0b10101, 0b10001, 0b10001, 0b10001}},
-    {'N', 5, {0b10001, 0b10001, 0b11001, 0b10101, 0b10011, 0b10001, 0b10001}},
-    {'O', 5, {0b01110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110}},
-    {'P', 5, {0b11110, 0b10001, 0b10001, 0b11110, 0b10000, 0b10000, 0b10000}},
-    {'Q', 5, {0b01110, 0b10001, 0b10001, 0b10001, 0b10101, 0b10010, 0b01101}},
-    {'R', 5, {0b11110, 0b10001, 0b10001, 0b11110, 0b10100, 0b10010, 0b10001}},
-    {'S', 5, {0b01111, 0b10000, 0b10000, 0b01110, 0b00001, 0b00001, 0b11110}},
-    {'T', 5, {0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100}},
-    {'U', 5, {0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110}},
-    {'V', 5, {0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01010, 0b00100}},
-    {'W', 5, {0b10001, 0b10001, 0b10001, 0b10101, 0b10101, 0b10101, 0b01010}},
-    {'X', 5, {0b10001, 0b10001, 0b01010, 0b00100, 0b01010, 0b10001, 0b10001}},
-    {'Y', 5, {0b10001, 0b10001, 0b01010, 0b00100, 0b00100, 0b00100, 0b00100}},
-    {'Z', 5, {0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b10000, 0b11111}},
-    {'0', 5, {0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110}},
-    {'1', 5, {0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110}},
-    {'2', 5, {0b01110, 0b10001, 0b00001, 0b00010, 0b00100, 0b01000, 0b11111}},
-    {'3', 5, {0b11110, 0b00001, 0b00001, 0b01110, 0b00001, 0b00001, 0b11110}},
-    {'4', 5, {0b10010, 0b10010, 0b10010, 0b11111, 0b00010, 0b00010, 0b00010}},
-    {'5', 5, {0b11111, 0b10000, 0b10000, 0b11110, 0b00001, 0b00001, 0b11110}},
-    {'6', 5, {0b01110, 0b10000, 0b10000, 0b11110, 0b10001, 0b10001, 0b01110}},
-    {'7', 5, {0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000}},
-    {'8', 5, {0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110}},
-    {'9', 5, {0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b00001, 0b01110}},
-}};
 
 auto identity_transform() -> Scene::Transform {
     Scene::Transform transform{};
@@ -76,25 +31,8 @@ auto identity_transform() -> Scene::Transform {
     return transform;
 }
 
-auto uppercase_copy(std::string_view value) -> std::string {
-    std::string out(value);
-    std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
-        return static_cast<char>(std::toupper(c));
-    });
-    return out;
-}
-
-auto find_glyph(char ch) -> GlyphPattern const* {
-    for (auto const& glyph : kGlyphPatterns) {
-        if (glyph.ch == ch) {
-            return &glyph;
-        }
-    }
-    return nullptr;
-}
-
 auto glyph_scale(Widgets::TypographyStyle const& typography) -> float {
-    return std::max(0.1f, typography.font_size / static_cast<float>(kGlyphRows));
+    return std::max(0.1f, typography.font_size / static_cast<float>(TextFallback::kGlyphRows));
 }
 
 auto fnv_mix(std::uint64_t hash, std::string_view bytes) -> std::uint64_t {
@@ -139,7 +77,7 @@ auto compute_font_fingerprint(Widgets::TypographyStyle const& typography) -> std
 
 auto MeasureTextWidth(std::string_view text,
                       Widgets::TypographyStyle const& typography) -> float {
-    auto upper = uppercase_copy(text);
+    auto upper = TextFallback::uppercase_copy(text);
     float scale = glyph_scale(typography);
     float spacing = scale * std::max(0.0f, typography.letter_spacing);
     float space_advance = scale * 4.0f + spacing;
@@ -150,7 +88,7 @@ auto MeasureTextWidth(std::string_view text,
             width += space_advance;
             continue;
         }
-        auto glyph = find_glyph(raw);
+        auto glyph = TextFallback::find_glyph(raw);
         if (!glyph) {
             width += space_advance;
             continue;
@@ -181,7 +119,7 @@ auto BuildTextBucket(std::string_view text,
     float max_x = std::numeric_limits<float>::lowest();
     float max_y = std::numeric_limits<float>::lowest();
 
-    auto upper = uppercase_copy(text);
+    auto upper = TextFallback::uppercase_copy(text);
     float scale = glyph_scale(typography);
     float spacing = scale * std::max(0.0f, typography.letter_spacing);
     float space_advance = scale * 4.0f + spacing;
@@ -191,13 +129,13 @@ auto BuildTextBucket(std::string_view text,
             cursor_x += space_advance;
             continue;
         }
-        auto glyph = find_glyph(raw);
+        auto glyph = TextFallback::find_glyph(raw);
         if (!glyph) {
             cursor_x += space_advance;
             continue;
         }
 
-        for (int row = 0; row < kGlyphRows; ++row) {
+        for (int row = 0; row < TextFallback::kGlyphRows; ++row) {
             auto mask = glyph->rows[static_cast<std::size_t>(row)];
             int col = 0;
             while (col < glyph->width) {
@@ -291,6 +229,14 @@ auto BuildTextBucket(std::string_view text,
         fingerprint = drawable_id;
     }
     bucket.drawable_fingerprints.push_back(fingerprint);
+    if (!typography.font_resource_root.empty()) {
+        Scene::FontAssetReference asset{};
+        asset.drawable_id = drawable_id;
+        asset.resource_root = typography.font_resource_root;
+        asset.revision = typography.font_active_revision;
+        asset.fingerprint = fingerprint;
+        bucket.font_assets.push_back(std::move(asset));
+    }
 
     BuildResult result{
         .bucket = std::move(bucket),

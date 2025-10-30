@@ -446,6 +446,14 @@ auto SceneSnapshotBuilder::store_bucket(std::uint64_t revision,
         return status;
     }
 
+    auto fontAssetsBytes = to_bytes(BucketFontAssetsBinary{ .font_assets = bucket.font_assets });
+    if (!fontAssetsBytes) {
+        return std::unexpected(fontAssetsBytes.error());
+    }
+    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/font-assets.bin", *fontAssetsBytes); !status) {
+        return status;
+    }
+
     std::unordered_set<std::string> unique_authoring_nodes;
     unique_authoring_nodes.reserve(authoringMap.size());
     for (auto const& entry : authoringMap) {
@@ -463,6 +471,7 @@ auto SceneSnapshotBuilder::store_bucket(std::uint64_t revision,
     meta_json += "\"drawable_count\":" + std::to_string(metadata.drawable_count) + ",";
     meta_json += "\"command_count\":" + std::to_string(metadata.command_count) + ",";
     meta_json += "\"fingerprint_count\":" + std::to_string(metadata.fingerprint_digests.size()) + ",";
+    meta_json += "\"font_asset_count\":" + std::to_string(bucket.font_assets.size()) + ",";
     meta_json += "\"authoring_map_entries\":" + std::to_string(authoringMap.size()) + ",";
     meta_json += "\"unique_authoring_nodes\":" + std::to_string(unique_authoring_nodes.size());
     meta_json += "}";

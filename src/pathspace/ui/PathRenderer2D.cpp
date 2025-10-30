@@ -218,6 +218,37 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         material_descriptors.reserve(bucket->material_ids.size());
     }
     std::unordered_map<std::uint64_t, MaterialResourceResidency> resource_residency;
+    std::unordered_set<std::uint64_t> processed_font_assets;
+    if (!bucket->font_assets.empty()) {
+        for (auto const& asset : bucket->font_assets) {
+            if (asset.resource_root.empty()) {
+                continue;
+            }
+            if (!processed_font_assets.insert(asset.fingerprint).second) {
+                continue;
+            }
+            auto atlas_path = asset.resource_root + "/builds/" + format_revision(asset.revision) + "/atlas.bin";
+            auto atlas = font_atlas_cache_.load(space_, atlas_path, asset.fingerprint);
+            if (!atlas) {
+                auto const& error = atlas.error();
+                if (error.code != SP::Error::Code::NoObjectFound
+                    && error.code != SP::Error::Code::NoSuchPath) {
+                    auto message = error.message.value_or("failed to load font atlas");
+                    (void)set_last_error(space_, params.target_path, message);
+                }
+                continue;
+            }
+            auto const& data = **atlas;
+            auto& residency = resource_residency[asset.fingerprint];
+            residency.fingerprint = asset.fingerprint;
+            residency.cpu_bytes = static_cast<std::uint64_t>(data.pixels.size());
+            residency.gpu_bytes = static_cast<std::uint64_t>(data.width)
+                                  * static_cast<std::uint64_t>(data.height);
+            residency.width = data.width;
+            residency.height = data.height;
+            residency.uses_font_atlas = true;
+        }
+    }
 
     std::vector<Builders::DirtyRectHint> dirty_rect_hints;
     std::vector<DamageRect> hint_rects;
@@ -1551,7 +1582,7 @@ EncodeRunStats encode_stats{};
     stats.resource_residency = std::move(resource_list);
     stats.damage_tiles = std::move(damage_tile_hints);
     auto const surface_bytes = surface.resident_cpu_bytes();
-    auto const cache_bytes = image_cache_.resident_bytes();
+    auto const cache_bytes = image_cache_.resident_bytes() + font_atlas_cache_.resident_bytes();
     auto const reported_texture_bytes = (target_texture_bytes != 0) ? target_texture_bytes : total_texture_gpu_bytes;
     stats.texture_gpu_bytes = reported_texture_bytes;
     stats.resource_cpu_bytes = static_cast<std::uint64_t>(surface_bytes + cache_bytes);

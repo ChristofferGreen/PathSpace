@@ -347,6 +347,7 @@ Handles and IDs
 - Free-list and tombstones: removals push ids into a free-list with tombstone count; reuse occurs only when generation++ and all references to the old revision are gone
 - Stability: within minor edits (no removal), drawables keep the same (id, generation); indices into SoA arrays may change between revisions, but ids do not
 - Authoring map: a per-drawable record of `{DrawableId, authoringNodeId, drawableIndexWithinNode, generation}` stored in `bucket/authoring-map.bin` allows hit testing, tooling, and diagnostics to trace a runtime drawable back to its authored source without replaying commands.
+- Font atlas manifest: `bucket/font-assets.bin` stores `{DrawableId, fontResourceRoot, atlasRevision, atlasFingerprint}` so renderers can prefetch the correct atlas revision without inspecting draw commands.
 
 SoA layout (per snapshot revision)
 - Arrays sized N drawables unless stated otherwise, tightly packed, immutable per revision:
@@ -416,10 +417,11 @@ On-disk schema (per scene, per revision)
   - clip-heads.bin        — per-drawable singly linked-list heads into clip_nodes
   - clip-nodes.bin        — clip stack nodes (rect/path references) for hit testing without replaying commands
   - authoring-map.bin     — ordered authoring provenance (`DrawableId` ↔ authoring node id / drawable index / generation)
+  - font-assets.bin       — per-drawable font atlas references (resource root, atlas revision, fingerprint)
   - indices/opaque.bin    — optional opaqueIndices[]
   - indices/alpha.bin     — optional alphaIndices[]
   - indices/layer/*.bin   — optional per-layer indices (see naming/format below)
-  - meta.json             — small JSON with revision metadata and aggregate authoring-map statistics
+  - meta.json             — small JSON with revision metadata, font-asset counts, and aggregate authoring-map statistics
   - trace/tlas.bin        — optional (software path tracer; instances carry AABBs)
   - trace/blas.bin        — optional (software path tracer; geometry bounds/AABBs per BLAS)
 - Manifest: `scenes/<sid>/builds/<rev>/drawable_bucket` stores a compact binary manifest (version, drawable/command counts, layer ids) that loader helpers read before mapping the individual `*.bin` files. This manifest replaces the earlier Alpaca blob fallback; all consumers must migrate to the split-file schema.

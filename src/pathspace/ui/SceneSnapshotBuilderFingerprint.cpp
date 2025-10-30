@@ -207,6 +207,19 @@ auto compute_drawable_fingerprints(DrawableBucketSnapshot const& bucket)
             mix_authoring_entry(hash, bucket.authoring_map[i]);
         }
 
+        if (!bucket.font_assets.empty() && i < bucket.drawable_ids.size()) {
+            auto drawable_id = bucket.drawable_ids[i];
+            for (auto const& asset : bucket.font_assets) {
+                if (asset.drawable_id == drawable_id) {
+                    if (!asset.resource_root.empty()) {
+                        hash.mix_string(asset.resource_root);
+                    }
+                    hash.mix_value(asset.revision);
+                    hash.mix_value(asset.fingerprint);
+                }
+            }
+        }
+
         if (layout.truncated) {
             hash.mix_value(static_cast<std::uint32_t>(0xAAAA5555));
         }
@@ -218,4 +231,3 @@ auto compute_drawable_fingerprints(DrawableBucketSnapshot const& bucket)
 }
 
 } // namespace SP::UI::Scene
-

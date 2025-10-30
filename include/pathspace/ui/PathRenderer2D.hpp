@@ -2,6 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
+#include <pathspace/ui/FontAtlasCache.hpp>
 #include <pathspace/ui/ImageCache.hpp>
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/MaterialDescriptor.hpp>
@@ -99,6 +100,7 @@ private:
 
     PathSpace& space_;
     ImageCache image_cache_;
+    FontAtlasCache font_atlas_cache_;
 
     static auto target_cache() -> std::unordered_map<std::string, TargetState>&;
 };

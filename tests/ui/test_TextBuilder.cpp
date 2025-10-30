@@ -66,6 +66,11 @@ TEST_CASE("TextBuilder builds buckets for simple strings") {
     CHECK_EQ(result->fallback_families, typography.fallback_families);
     REQUIRE_EQ(result->bucket.drawable_fingerprints.size(), 1);
     CHECK_EQ(result->bucket.drawable_fingerprints.front(), typography.font_asset_fingerprint);
+    REQUIRE_EQ(result->bucket.font_assets.size(), 1);
+    CHECK_EQ(result->bucket.font_assets.front().drawable_id, result->bucket.drawable_ids.front());
+    CHECK_EQ(result->bucket.font_assets.front().resource_root, typography.font_resource_root);
+    CHECK_EQ(result->bucket.font_assets.front().revision, typography.font_active_revision);
+    CHECK_EQ(result->bucket.font_assets.front().fingerprint, typography.font_asset_fingerprint);
 }
 
 TEST_CASE("TextBuilder skips whitespace-only input") {

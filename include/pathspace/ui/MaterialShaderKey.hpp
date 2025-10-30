@@ -25,6 +25,7 @@ struct MaterialResourceResidency {
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     bool uses_image = false;
+    bool uses_font_atlas = false;
 };
 
 [[nodiscard]] auto make_shader_key(MaterialDescriptor const& material,

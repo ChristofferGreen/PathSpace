@@ -149,6 +149,24 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
         }
     }
 
+    std::vector<FontAssetReference> font_assets;
+    {
+        auto fontBytes = space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/font-assets.bin");
+        if (fontBytes) {
+            auto decoded = from_bytes<BucketFontAssetsBinary>(*fontBytes);
+            if (!decoded) {
+                return std::unexpected(decoded.error());
+            }
+            font_assets = std::move(decoded->font_assets);
+        } else {
+            auto const& error = fontBytes.error();
+            if (error.code != Error::Code::NoObjectFound
+                && error.code != Error::Code::NoSuchPath) {
+                return std::unexpected(error);
+            }
+        }
+    }
+
     DrawableBucketSnapshot bucket{};
     bucket.drawable_ids     = std::move(drawablesDecoded->drawable_ids);
     bucket.world_transforms = std::move(transformsDecoded->world_transforms);
@@ -171,6 +189,7 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
     bucket.clip_nodes        = std::move(clip_nodes);
     bucket.authoring_map     = std::move(authoring_map);
     bucket.drawable_fingerprints = std::move(drawable_fingerprints);
+    bucket.font_assets       = std::move(font_assets);
 
     bucket.layer_indices.reserve(summary->layer_ids.size());
     for (auto layerId : summary->layer_ids) {
@@ -217,4 +236,3 @@ auto SceneSnapshotBuilder::decode_metadata(std::span<std::byte const> bytes)
 }
 
 } // namespace SP::UI::Scene
-

@@ -1,7 +1,7 @@
 # Scene Graph Implementation Plan
 
 > Completed milestones are archived in `docs/Plan_SceneGraph_Implementation_Finished.md` (snapshot as of October 29, 2025).
-> Focus update (October 30, 2025): HarfBuzz shaping is now live behind `FontManager::shape_text` with CoreText-backed font discovery, and the shaped-run cache capacity honors the atlas residency budgets stored under `meta/atlas/*`. Next priority: progress Phase 2 by standing up atlas generation/persistence and wiring snapshot publication so renderers can adopt persisted glyph pages.
+> Focus update (October 30, 2025): HarfBuzz shaping is live behind `FontManager::shape_text` with CoreText-backed font discovery, shaped-run cache capacity honors the atlas residency budgets stored under `meta/atlas/*`, and Phase 2 atlas persistence is online (default atlas writer, snapshot font-asset manifests, renderer prefetch). Next priority: Phase 3 widget/text integration to replace bitmap quads with shaped glyph draws and ensure atlas fingerprints flow end-to-end.
 
 ## Context and Objectives
 - Groundwork for implementing the renderer stack described in `docs/Plan_SceneGraph_Renderer.md` and the broader architecture contract in `docs/AI_Architecture.md`.
@@ -21,6 +21,7 @@
 - Tighten CI gating to require the looped CTest run and lint/format checks before merges.
 
 ## Task Backlog
+- ⚠️ (October 30, 2025) Resolve performance guardrail regression: pre-push run shows `path_renderer2d` incremental pass at 21.32 ms avg (baseline 7.57 ms, −85 FPS) and `pixel_noise_software` down to 123.7 FPS with render time 2.30 ms (baseline 0.74 ms) and present-call 8.09 ms (baseline 6.73 ms). Reproduce on an isolated run, identify renderer/presenter changes causing the slowdown, and restore metrics within tolerances before updating baselines.
 - ✅ (October 28, 2025) Wrapped every widget preview in `examples/widgets_example.cpp` with horizontal/vertical stack containers so the gallery reflows as the window resizes; reused the layout helpers landed in the stack container milestone (see archive doc for context).
 - ✅ (October 29, 2025) Hardened slider focus handoffs by storing default slider footprints at creation time and extending `PathSpaceUITests` with `Widget focus slider-to-list transition marks previous footprint without slider binding`. Slider → list transitions now queue dirty hints for both widgets even before bindings are attached, keeping the newly added highlight coverage test and the existing framebuffer diff case green.
 - ✅ (October 29, 2025) Built `examples/widgets_example_minimal.cpp`, a pared-down demo with slider/list/tree widgets plus keyboard focus navigation that skips diagnostics, trace capture, and screenshot plumbing to spotlight the ergonomic GUI builder surface.
@@ -60,9 +61,9 @@ Ship the resource-backed font pipeline described in `docs/Plan_SceneGraph_Render
 - ✅ (October 30, 2025) HarfBuzz shaping wrapper ships with CoreText-backed font discovery; shaped-run cache capacity now derives from stored atlas residency budgets (`meta/atlas/{softBytes,hardBytes,shapedRunApproxBytes}`) so eviction pressure tracks the intended atlas residency watermarks.
 
 **Phase 2 – Atlas Generation & Publication (3 days)**
-- Build atlas generator writing RGBA or signed distance fields into `builds/<revision>/atlas.bin` with metadata for glyph UVs.
-- Update snapshot builder to record atlas fingerprints alongside drawables (`DrawableBucket::font_assets`).
-- Extend renderer target wiring to prefetch required atlas revisions; ensure `PathRenderer2D` uploads only when fingerprint changes.
+- ✅ (October 30, 2025) Build atlas generator writing Alpha8 atlas payloads into `builds/<revision>/atlas.bin` with glyph UV metadata plus per-revision `meta/atlas.json`; seeded default ASCII atlas so registered fonts persist usable glyph pages immediately.
+- ✅ (October 30, 2025) Update snapshot builder to emit `DrawableBucket::font_assets` alongside drawables and persist them under `bucket/font-assets.bin`, keeping fingerprints, resource roots, and revisions latched per drawable.
+- ✅ (October 30, 2025) Extend renderer target wiring to prefetch persisted atlases: `PathRenderer2D` now loads `atlas.bin` revisions via `FontAtlasCache`, publishes residency stats, and tracks font atlas fingerprints to avoid redundant uploads.
 
 **Phase 3 – Widget/Text Integration (2 days)**
 - Replace `TextBuilder` bitmap glyphs with FontManager-backed shaping; maintain ASCII fallback by seeding a built-in resource pack.

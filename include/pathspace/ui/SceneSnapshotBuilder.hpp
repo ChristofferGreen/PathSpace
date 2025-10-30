@@ -73,6 +73,13 @@ struct LayerIndices {
     std::vector<std::uint32_t> indices;
 };
 
+struct FontAssetReference {
+    std::uint64_t drawable_id = 0;
+    std::string   resource_root;
+    std::uint64_t revision = 0;
+    std::uint64_t fingerprint = 0;
+};
+
 struct DrawableBucketSnapshot {
     std::vector<std::uint64_t> drawable_ids;
     std::vector<Transform>     world_transforms;
@@ -96,6 +103,7 @@ struct DrawableBucketSnapshot {
     std::vector<std::int32_t>  clip_head_indices;
     std::vector<DrawableAuthoringMapEntry> authoring_map;
     std::vector<std::uint64_t> drawable_fingerprints;
+    std::vector<FontAssetReference> font_assets;
 };
 
 struct SnapshotMetadata {
