@@ -1386,15 +1386,13 @@ auto MakeSunsetWidgetTheme() -> WidgetTheme {
     return make_orange_theme();
 }
 
-auto SetTheme(PathSpace& space,
+auto LoadTheme(PathSpace& space,
               AppRootPathView appRoot,
-              std::optional<std::string> const& requested_name) -> ThemeSelection {
+              std::string_view requested_name) -> ThemeSelection {
     ThemeSelection selection{};
 
-    std::string requested;
-    if (requested_name && !requested_name->empty()) {
-        requested = *requested_name;
-    } else {
+    std::string requested{requested_name};
+    if (requested.empty()) {
         if (auto active = Config::Theme::LoadActive(space, appRoot)) {
             requested = *active;
         }

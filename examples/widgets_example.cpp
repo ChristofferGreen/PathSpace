@@ -3101,7 +3101,7 @@ int main(int argc, char** argv) {
     auto screenshot_path = std::move(options->screenshot_path);
     auto theme_name = std::move(options->theme_name);
 
-    auto theme_selection = Widgets::SetTheme(space, appRootView, theme_name);
+    auto theme_selection = Widgets::LoadTheme(space, appRootView, theme_name.value_or(""));
     if (theme_name && !theme_selection.recognized) {
         std::cerr << "widgets_example: unknown theme '" << *theme_name
                   << "', falling back to " << theme_selection.canonical_name << "\n";
