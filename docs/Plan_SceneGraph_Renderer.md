@@ -1549,6 +1549,7 @@ Goals
 - Wrap HarfBuzz + ICU (or equivalent) in a `FontManager` that maps logical font requests to fallback chains recorded under `resources/fonts/<name>/<style>/meta/{family,style,weight,fallbacks}`
 - Cache shaped glyph runs keyed by `(text, script, direction, font-set, features)` and publish glyph atlas textures under the font resource subtree
 - Snapshot publishes the atlas fingerprint per drawable so renderers can pin the correct atlas revision without reshaping
+- Support multi-format glyph assets: persist Alpha8 distance-field atlases for standard text and RGBA atlas pages for color glyphs (emoji, COLR/CPAL, SBIX), tagging each `font_assets` entry so renderers bind the correct shader/material path without losing chroma.
 
 ### Shader compilation and persistent cache
 - Describe shaders via `resources/shaders/<name>/src` (source, macros, entry points) and compile through backend adapters (Metal library, SPIR-V, etc.)

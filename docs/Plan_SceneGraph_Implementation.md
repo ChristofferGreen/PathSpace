@@ -70,6 +70,7 @@ Ship the resource-backed font pipeline described in `docs/Plan_SceneGraph_Render
 - Update `Widgets::TypographyStyle` to carry `font_family`, `font_weight`, `font_features`, `language`, `direction`.
 - Teach widget builders/examples to register required fonts on startup (gallery selects between default/sunset theme fonts).
 - Add regression coverage in `tests/ui/test_TextBuilder.cpp` and widget gallery UITest to assert atlas fingerprints populate in scene revisions.
+- Introduce a dual-path atlas strategy for multi-color glyphs (emoji, COLR/CPAL fonts): persist RGBA atlas pages alongside the existing Alpha8 SDF lane, flag color glyphs in `font_assets`, and teach the renderer/text pipeline to bind them via the image/material path so emoji retain native chroma.
 
 **Phase 4 – HTML Adapter & Diagnostics (1–2 days)**
 - Wire HTML adapter to emit `@font-face` rules referencing `output/v1/html/assets/fonts/<fingerprint>.woff2`.
