@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <iomanip>
+#include <optional>
 #include <sstream>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -28,6 +30,26 @@ auto make_decode_error(std::string message) -> SP::Error {
     return SP::Error{SP::Error::Code::InvalidType, std::move(message)};
 }
 
+auto fingerprint_hex(std::uint64_t fingerprint) -> std::string {
+    std::ostringstream oss;
+    oss << std::hex << std::setw(16) << std::setfill('0') << std::nouppercase << fingerprint;
+    return oss.str();
+}
+
+auto canonical_image_path(std::string const& primary_path,
+                          std::uint64_t fingerprint) -> std::optional<std::string> {
+    constexpr std::string_view kBuilds{"/builds/"};
+    auto pos = primary_path.find(kBuilds);
+    if (pos == std::string::npos) {
+        return std::nullopt;
+    }
+    std::string base = primary_path.substr(0, pos);
+    base += "/assets/images/";
+    base += fingerprint_hex(fingerprint);
+    base += ".png";
+    return base;
+}
+
 } // namespace
 
 auto ImageCache::load(PathSpace& space,
@@ -43,7 +65,21 @@ auto ImageCache::load(PathSpace& space,
 
     auto bytes = space.read<std::vector<std::uint8_t>>(image_path);
     if (!bytes) {
-        return std::unexpected(bytes.error());
+        auto const& error = bytes.error();
+        if (error.code == SP::Error::Code::NoObjectFound
+            || error.code == SP::Error::Code::NoSuchPath) {
+            if (auto fallback = canonical_image_path(image_path, fingerprint)) {
+                auto fallback_bytes = space.read<std::vector<std::uint8_t>>(*fallback);
+                if (fallback_bytes) {
+                    bytes = std::move(fallback_bytes);
+                } else {
+                    bytes = std::unexpected(fallback_bytes.error());
+                }
+            }
+        }
+        if (!bytes) {
+            return std::unexpected(bytes.error());
+        }
     }
 
     auto decoded = decode_png(*bytes);

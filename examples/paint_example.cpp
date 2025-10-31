@@ -647,6 +647,8 @@ struct CanvasState {
     std::vector<std::uint8_t> pixels;
     std::uint64_t fingerprint = 0;
     bool dirty = false;
+    std::vector<std::uint8_t> last_png_bytes;
+    bool png_valid = false;
 };
 
 struct CanvasDrawable {
@@ -671,6 +673,8 @@ auto reset_canvas(CanvasState& canvas, int width, int height) -> void {
     std::fill(canvas.pixels.begin(), canvas.pixels.end(), static_cast<std::uint8_t>(255));
     canvas.dirty = false;
     canvas.fingerprint = 0;
+    canvas.last_png_bytes.clear();
+    canvas.png_valid = false;
 }
 
 auto ensure_canvas(CanvasState& canvas, int width, int height) -> void {
@@ -1975,14 +1979,26 @@ int main(int argc, char** argv) {
             auto canvasDrawable = canvas_has_image ? make_canvas_drawable(canvas, kCanvasDrawableId) : std::optional<CanvasDrawable>{};
             bucket = build_bucket(canvasDrawable, strokes, &controls.bucket);
             auto revision = publish_snapshot(space, builder, scenePath, bucket);
-            if (canvasDrawable && canvas.dirty) {
-                auto png_bytes = encode_canvas_png(canvas);
-                if (!png_bytes.empty()) {
+            if (canvasDrawable) {
+                if (canvas.dirty) {
+                    auto png_bytes = encode_canvas_png(canvas);
+                    if (!png_bytes.empty()) {
+                        canvas.last_png_bytes = std::move(png_bytes);
+                        canvas.png_valid = true;
+                    } else {
+                        canvas.last_png_bytes.clear();
+                        canvas.png_valid = false;
+                    }
+                    canvas.dirty = false;
+                }
+                if (canvas.png_valid) {
                     auto revision_base = std::string(scenePath.getPath()) + "/builds/" + format_revision(revision);
                     auto image_path = revision_base + "/assets/images/" + fingerprint_hex(canvasDrawable->fingerprint) + ".png";
-                    replace_value(space, image_path, png_bytes);
+                    auto canonical_path = std::string(scenePath.getPath()) + "/assets/images/" + fingerprint_hex(canvasDrawable->fingerprint) + ".png";
+                    replace_value(space, image_path, canvas.last_png_bytes);
+                    replace_value(space, canonical_path, canvas.last_png_bytes);
                 }
-                canvas.dirty = false;
+                canvas_has_image = canvas.png_valid;
             }
         }
 

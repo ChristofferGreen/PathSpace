@@ -1665,6 +1665,9 @@ TEST_CASE("progressive repaint keeps backdrop when dirty hints cover a tile") {
         auto image_path = revision_base + "/assets/images/" + fingerprint_hex(kBackgroundFingerprint) + ".png";
         auto write = fx.space.insert(image_path, png_bytes);
         REQUIRE(write.errors.empty());
+        auto canonical_path = std::string(scene->getPath()) + "/assets/images/" + fingerprint_hex(kBackgroundFingerprint) + ".png";
+        auto canonical_write = fx.space.insert(canonical_path, png_bytes);
+        REQUIRE(canonical_write.errors.empty());
     };
     store_png_for_revision(revision1);
 
