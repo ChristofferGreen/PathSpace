@@ -315,6 +315,9 @@ auto slider_value_from_position(SliderControl const& slider,
 auto refresh_button_state(PathSpace& space, PaletteButton& button) -> void;
 auto refresh_slider_state(PathSpace& space, SliderControl& slider) -> void;
 auto build_controls_bucket(PaintControls const& controls) -> UIScene::DrawableBucketSnapshot;
+auto set_palette_button_focus(PathSpace& space,
+                              PaintControls& controls,
+                              int focused_index) -> void;
 auto initialize_controls(PathSpace& space,
                          SP::App::AppRootPathView app_root,
                          SP::ConcretePathStringView target_path,
@@ -386,6 +389,36 @@ auto refresh_slider_state(PathSpace& space, SliderControl& slider) -> void {
     auto state = space.read<Widgets::SliderState, std::string>(std::string(slider.paths.state.getPath()));
     if (state) {
         slider.state = *state;
+    }
+}
+
+auto set_palette_button_focus(PathSpace& space,
+                              PaintControls& controls,
+                              int focused_index) -> void {
+    for (std::size_t i = 0; i < controls.buttons.size(); ++i) {
+        auto& button = controls.buttons[i];
+        bool should_focus = (static_cast<int>(i) == focused_index);
+        if (button.state.focused == should_focus) {
+            continue;
+        }
+        Widgets::ButtonState desired = button.state;
+        desired.focused = should_focus;
+        if (!should_focus && desired.hovered) {
+            desired.hovered = false;
+        }
+        auto updated = Widgets::UpdateButtonState(space, button.paths, desired);
+        if (!updated) {
+            std::cerr << "paint_example: update button focus failed for '"
+                      << button.entry.id
+                      << "': "
+                      << updated.error().message.value_or("unknown error")
+                      << std::endl;
+            continue;
+        }
+        if (*updated) {
+            button.state = desired;
+            controls.dirty = true;
+        }
     }
 }
 
@@ -926,6 +959,7 @@ auto initialize_controls(PathSpace& space,
                     std::cerr << "paint_example: focus update failed: "
                               << focus_result.error().message.value_or("unknown error")
                               << std::endl;
+                    set_palette_button_focus(*space_ptr, *controls_ptr, index_int);
                     return;
                 }
                 if (focus_result->changed) {
@@ -934,6 +968,7 @@ auto initialize_controls(PathSpace& space,
                     }
                     controls_ptr->dirty = true;
                 }
+                set_palette_button_focus(*space_ptr, *controls_ptr, index_int);
             });
 
         max_x = std::max(max_x, button.bounds.max_x);
@@ -1153,6 +1188,7 @@ auto handle_controls_event(PaintControls& controls,
                     }
                     controls.dirty = true;
                 }
+                set_palette_button_focus(space, controls, -1);
             }
         }
         return true;
