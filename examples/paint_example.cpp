@@ -98,6 +98,7 @@ namespace Widgets = SP::UI::Builders::Widgets;
 namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
 namespace WidgetReducers = SP::UI::Builders::Widgets::Reducers;
 namespace WidgetInput = SP::UI::Builders::Widgets::Input;
+namespace WidgetFocus = SP::UI::Builders::Widgets::Focus;
 
 struct PaletteEntry {
     std::string id;
@@ -140,6 +141,7 @@ struct PaintControls {
     bool pointer_valid = false;
     int brush_size_value = 8;
     UIScene::DrawableBucketSnapshot bucket{};
+    WidgetFocus::Config focus_config{};
     float origin_x = 24.0f;
     float origin_y = 24.0f;
     float button_width = 68.0f;
@@ -858,6 +860,8 @@ auto initialize_controls(PathSpace& space,
     float max_y = controls.origin_y;
 
     auto target_view = target_path;
+    auto focus_target = SP::UI::Builders::ConcretePath{std::string(target_view.getPath())};
+    controls.focus_config = WidgetFocus::MakeConfig(app_root, focus_target);
 
     for (std::size_t index = 0; index < palette.size(); ++index) {
         auto const& entry = palette[index];
@@ -915,6 +919,21 @@ auto initialize_controls(PathSpace& space,
                 *brush_color_ptr = controls_ptr->buttons[index_int].entry.color;
                 controls_ptr->dirty = true;
                 replace_value(*space_ptr, color_path_copy, *brush_color_ptr);
+                auto focus_result = WidgetFocus::Set(*space_ptr,
+                                                     controls_ptr->focus_config,
+                                                     controls_ptr->buttons[index_int].paths.root);
+                if (!focus_result) {
+                    std::cerr << "paint_example: focus update failed: "
+                              << focus_result.error().message.value_or("unknown error")
+                              << std::endl;
+                    return;
+                }
+                if (focus_result->changed) {
+                    for (auto& palette_button : controls_ptr->buttons) {
+                        refresh_button_state(*space_ptr, palette_button);
+                    }
+                    controls_ptr->dirty = true;
+                }
             });
 
         max_x = std::max(max_x, button.bounds.max_x);
@@ -1120,6 +1139,21 @@ auto handle_controls_event(PaintControls& controls,
             refresh_slider_state(space, controls.slider);
             controls.brush_size_value = std::max(1, static_cast<int>(std::round(controls.slider.state.value)));
             controls.dirty = true;
+            if (kind == WidgetBindings::WidgetOpKind::SliderBegin) {
+                auto focus_result = WidgetFocus::Set(space,
+                                                     controls.focus_config,
+                                                     controls.slider.paths.root);
+                if (!focus_result) {
+                    std::cerr << "paint_example: slider focus update failed: "
+                              << focus_result.error().message.value_or("unknown error")
+                              << std::endl;
+                } else if (focus_result->changed) {
+                    for (auto& palette_button : controls.buttons) {
+                        refresh_button_state(space, palette_button);
+                    }
+                    controls.dirty = true;
+                }
+            }
         }
         return true;
     };
