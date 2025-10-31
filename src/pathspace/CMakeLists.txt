@@ -119,6 +119,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/SceneSnapshotBuilder.cpp
         ui/SceneSnapshotBuilderDecode.cpp
         ui/SceneSnapshotBuilderFingerprint.cpp
+        ui/SceneUtilities.cpp
         ui/ProgressiveSurfaceBuffer.cpp
         ui/PathSurfaceSoftware.cpp
         ui/MaterialShaderKey.cpp

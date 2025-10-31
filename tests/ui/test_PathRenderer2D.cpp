@@ -30,6 +30,12 @@
 #include <string_view>
 #include <vector>
 
+#define STB_IMAGE_WRITE_STATIC
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <third_party/stb_image_write.h>
+#undef STB_IMAGE_WRITE_IMPLEMENTATION
+#undef STB_IMAGE_WRITE_STATIC
+
 using namespace SP;
 using namespace SP::UI;
 using namespace SP::UI::Builders;
@@ -1524,6 +1530,226 @@ TEST_CASE("damage metrics respect dirty rect hints") {
     auto fingerprintChanged = fx.space.read<uint64_t>(metricsBase + "/fingerprintChanges");
     REQUIRE(fingerprintChanged);
     CHECK(*fingerprintChanged == 0);
+}
+
+TEST_CASE("progressive repaint keeps backdrop when dirty hints cover a tile") {
+    RendererFixture fx;
+
+    constexpr int kWidth = 128;
+    constexpr int kHeight = 128;
+    constexpr int kTile = 64;
+    constexpr std::uint64_t kBackgroundFingerprint = 0x20000011ull;
+    constexpr std::uint64_t kStrokeFingerprint = 0x20000022ull;
+
+    auto make_png_rgba = [](int width, int height, std::array<std::uint8_t, 4> rgba) {
+        std::vector<unsigned char> pixels(static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4u);
+        for (std::size_t i = 0; i < pixels.size(); i += 4) {
+            pixels[i + 0] = rgba[0];
+            pixels[i + 1] = rgba[1];
+            pixels[i + 2] = rgba[2];
+            pixels[i + 3] = rgba[3];
+        }
+        int out_len = 0;
+        unsigned char* encoded = stbi_write_png_to_mem(pixels.data(), width * 4, width, height, 4, &out_len);
+        REQUIRE(encoded != nullptr);
+        std::vector<std::uint8_t> png(encoded, encoded + out_len);
+        STBIW_FREE(encoded);
+        return png;
+    };
+
+    auto make_background_bucket = [&]() {
+        DrawableBucketSnapshot bucket{};
+        bucket.drawable_ids = {0x20000001ull};
+        bucket.drawable_fingerprints = {kBackgroundFingerprint};
+        bucket.world_transforms = {identity_transform()};
+
+        BoundingBox canvas_box{{0.0f, 0.0f, 0.0f},
+                               {static_cast<float>(kWidth), static_cast<float>(kHeight), 0.0f}};
+        bucket.bounds_boxes = {canvas_box};
+        bucket.bounds_box_valid = {1};
+
+        auto half_width = static_cast<float>(kWidth) * 0.5f;
+        auto half_height = static_cast<float>(kHeight) * 0.5f;
+        BoundingSphere canvas_sphere{{half_width, half_height, 0.0f},
+                                     std::hypot(half_width, half_height)};
+        bucket.bounds_spheres = {canvas_sphere};
+
+        bucket.layers = {0};
+        bucket.z_values = {0.0f};
+        bucket.material_ids = {0x01};
+        bucket.pipeline_flags = {0};
+        bucket.visibility = {1};
+        bucket.command_offsets = {0};
+        bucket.command_counts = {1};
+        bucket.opaque_indices = {0};
+        bucket.alpha_indices = {};
+        bucket.clip_head_indices = {-1};
+        bucket.authoring_map = {
+            DrawableAuthoringMapEntry{bucket.drawable_ids[0], "background", 0, 0},
+        };
+
+        ImageCommand image{};
+        image.min_x = 0.0f;
+        image.min_y = 0.0f;
+        image.max_x = static_cast<float>(kWidth);
+        image.max_y = static_cast<float>(kHeight);
+        image.uv_min_x = 0.0f;
+        image.uv_min_y = 0.0f;
+        image.uv_max_x = 1.0f;
+        image.uv_max_y = 1.0f;
+        image.image_fingerprint = kBackgroundFingerprint;
+        image.tint = {1.0f, 1.0f, 1.0f, 1.0f};
+        encode_image_command(image, bucket);
+
+        return bucket;
+    };
+
+    auto make_overlay_bucket = [&]() {
+        auto bucket = make_background_bucket();
+
+        bucket.drawable_ids.push_back(0x20000002ull);
+        bucket.drawable_fingerprints.push_back(kStrokeFingerprint);
+        bucket.world_transforms.push_back(identity_transform());
+
+        BoundingBox stroke_box{{16.0f, 16.0f, 0.0f}, {32.0f, 32.0f, 0.0f}};
+        bucket.bounds_boxes.push_back(stroke_box);
+        bucket.bounds_box_valid.push_back(1);
+
+        auto stroke_half_width = (stroke_box.max[0] - stroke_box.min[0]) * 0.5f;
+        auto stroke_half_height = (stroke_box.max[1] - stroke_box.min[1]) * 0.5f;
+        BoundingSphere stroke_sphere{{stroke_box.min[0] + stroke_half_width,
+                                      stroke_box.min[1] + stroke_half_height,
+                                      0.0f},
+                                     std::hypot(stroke_half_width, stroke_half_height)};
+        bucket.bounds_spheres.push_back(stroke_sphere);
+
+        bucket.layers.push_back(0);
+        bucket.z_values.push_back(1.0f);
+        bucket.material_ids.push_back(0x02);
+        bucket.pipeline_flags.push_back(0);
+        bucket.visibility.push_back(1);
+        bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
+
+        RectCommand stroke{
+            .min_x = stroke_box.min[0],
+            .min_y = stroke_box.min[1],
+            .max_x = stroke_box.max[0],
+            .max_y = stroke_box.max[1],
+            .color = {1.0f, 0.0f, 0.0f, 1.0f},
+        };
+        encode_rect_command(stroke, bucket);
+
+        bucket.command_counts.push_back(1);
+        bucket.opaque_indices.push_back(1);
+        bucket.clip_head_indices.push_back(-1);
+        bucket.authoring_map.push_back(
+            DrawableAuthoringMapEntry{bucket.drawable_ids.back(), "stroke", 0, 0});
+
+        return bucket;
+    };
+
+    SceneParams sceneParams{
+        .name = "scene_progressive_dirty_tile",
+        .description = "Progressive hint repro",
+    };
+    auto scene = Builders::Scene::Create(fx.space, fx.root_view(), sceneParams);
+    REQUIRE(scene);
+
+    auto base_bucket = make_background_bucket();
+    auto revision1 = fx.publish_snapshot(*scene, base_bucket);
+    REQUIRE(revision1 >= 1);
+
+    auto png_bytes = make_png_rgba(1, 1, {255, 255, 255, 255});
+    auto store_png_for_revision = [&](std::uint64_t revision) {
+        auto revision_base = std::string(scene->getPath()) + "/builds/" + format_revision(revision);
+        auto image_path = revision_base + "/assets/images/" + fingerprint_hex(kBackgroundFingerprint) + ".png";
+        auto write = fx.space.insert(image_path, png_bytes);
+        REQUIRE(write.errors.empty());
+    };
+    store_png_for_revision(revision1);
+
+    auto rendererPath = create_renderer(fx, "renderer_progressive_dirty_tile");
+
+    Builders::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = kWidth;
+    surfaceDesc.size_px.height = kHeight;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+    surfaceDesc.progressive_tile_size_px = kTile;
+
+    auto surfacePath = create_surface(fx, "surface_progressive_dirty_tile", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, *scene));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware::Options opts{};
+    opts.enable_progressive = true;
+    opts.enable_buffered = false;
+    opts.progressive_tile_size_px = kTile;
+    PathSurfaceSoftware surface{surfaceDesc, opts};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+
+    {
+        PathRenderer2D renderer_first{fx.space};
+        settings.time.frame_index = 1;
+        auto first = renderer_first.render({
+            .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+            .settings = settings,
+            .surface = surface,
+            .backend_kind = RendererKind::Software2D,
+        });
+        REQUIRE(first);
+    }
+
+    auto revision2 = fx.publish_snapshot(*scene, make_overlay_bucket());
+    REQUIRE(revision2 > revision1);
+
+    Builders::DirtyRectHint hint{};
+    hint.min_x = 0.0f;
+    hint.min_y = 0.0f;
+    hint.max_x = static_cast<float>(kTile);
+    hint.max_y = static_cast<float>(kTile);
+    std::array hints{hint};
+    auto submitted = Renderer::SubmitDirtyRects(fx.space,
+                                                SP::ConcretePathStringView{targetPath.getPath()},
+                                                std::span<const Builders::DirtyRectHint>{hints});
+    REQUIRE(submitted);
+
+    PathRenderer2D renderer_second{fx.space};
+    settings.time.frame_index = 2;
+    auto second = renderer_second.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+        .backend_kind = RendererKind::Software2D,
+    });
+    REQUIRE(second);
+
+    auto& progressive = surface.progressive_buffer();
+    std::vector<std::uint8_t> tile_bytes(static_cast<std::size_t>(kTile) * static_cast<std::size_t>(kTile) * 4u);
+    auto tile = progressive.copy_tile(0, tile_bytes);
+    REQUIRE(tile.has_value());
+
+    auto pixel_at = [&](int x, int y) -> std::array<std::uint8_t, 4> {
+        auto index = (static_cast<std::size_t>(y) * static_cast<std::size_t>(kTile)
+                      + static_cast<std::size_t>(x))
+                     * 4u;
+        return {tile_bytes[index + 0], tile_bytes[index + 1], tile_bytes[index + 2], tile_bytes[index + 3]};
+    };
+
+    auto outside = pixel_at(0, 0);
+    CHECK(outside[0] == 255);
+    CHECK(outside[1] == 255);
+    CHECK(outside[2] == 255);
+
+    auto inside = pixel_at(24, 24);
+    CHECK(inside[0] == 255);
+    CHECK(inside[1] == 0);
+    CHECK(inside[2] == 0);
 }
 
 TEST_CASE("pipeline flags partition passes when snapshot lacks explicit indices") {

@@ -1573,7 +1573,6 @@ auto extend_stroke(Stroke& stroke,
                    int canvasHeight,
                    std::pair<int, int> const& from,
                    std::pair<int, int> const& to,
-                   std::vector<DirtyRectHint>& dirtyHints,
                    int brushSizePx) -> bool {
     if (canvasWidth <= 0 || canvasHeight <= 0) {
         return false;
@@ -1585,21 +1584,6 @@ auto extend_stroke(Stroke& stroke,
     if (brushSizePx <= 0) {
         brushSizePx = 1;
     }
-
-    DirtyRectHint segmentBounds{};
-    bool haveBounds = false;
-
-    auto expand_hint = [&](DirtyRectHint& target, DirtyRectHint const& hint) {
-        if (!haveBounds) {
-            target = hint;
-            haveBounds = true;
-        } else {
-            target.min_x = std::min(target.min_x, hint.min_x);
-            target.min_y = std::min(target.min_y, hint.min_y);
-            target.max_x = std::max(target.max_x, hint.max_x);
-            target.max_y = std::max(target.max_y, hint.max_y);
-        }
-    };
 
     auto apply_bounds_growth = [&](float new_thickness) {
         if (new_thickness <= stroke.thickness) {
@@ -1643,7 +1627,6 @@ auto extend_stroke(Stroke& stroke,
         stroke.bounds.min_y = std::min(stroke.bounds.min_y, hint.min_y);
         stroke.bounds.max_x = std::max(stroke.bounds.max_x, hint.max_x);
         stroke.bounds.max_y = std::max(stroke.bounds.max_y, hint.max_y);
-        expand_hint(segmentBounds, hint);
         return true;
     };
 
@@ -1669,9 +1652,6 @@ auto extend_stroke(Stroke& stroke,
     }
     wrote |= append_point(to.first, to.second);
 
-    if (wrote && haveBounds) {
-        dirtyHints.push_back(segmentBounds);
-    }
     return wrote;
 }
 
@@ -1925,7 +1905,6 @@ int main(int argc, char** argv) {
                                                  canvasHeight,
                                                  *lastPainted,
                                                  current,
-                                                 dirtyHints,
                                                  brushSizePx);
                     }
                     lastPainted = current;
@@ -1956,7 +1935,6 @@ int main(int argc, char** argv) {
                                                      point->second,
                                                      brushColor,
                                                      brushSizePx)) {
-                            dirtyHints.push_back(*hint);
                             updated = true;
                         }
                         lastPainted = *point;
