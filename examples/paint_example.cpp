@@ -315,10 +315,11 @@ auto slider_value_from_position(SliderControl const& slider,
 auto refresh_button_state(PathSpace& space, PaletteButton& button) -> void;
 auto refresh_slider_state(PathSpace& space, SliderControl& slider) -> void;
 auto build_controls_bucket(PaintControls const& controls) -> UIScene::DrawableBucketSnapshot;
-auto set_palette_button_focus(PathSpace& space,
-                              PaintControls& controls,
-                              int focused_index) -> void;
 auto identity_transform() -> UIScene::Transform;
+auto apply_palette_focus(PathSpace& space,
+                         PaintControls& controls,
+                         std::optional<std::size_t> focused_index) -> void;
+auto sync_slider_state(PathSpace& space, PaintControls& controls) -> void;
 auto initialize_controls(PathSpace& space,
                          SP::App::AppRootPathView app_root,
                          SP::ConcretePathStringView target_path,
@@ -393,33 +394,36 @@ auto refresh_slider_state(PathSpace& space, SliderControl& slider) -> void {
     }
 }
 
-auto set_palette_button_focus(PathSpace& space,
-                              PaintControls& controls,
-                              int focused_index) -> void {
-    for (std::size_t i = 0; i < controls.buttons.size(); ++i) {
-        auto& button = controls.buttons[i];
-        bool should_focus = (static_cast<int>(i) == focused_index);
-        if (button.state.focused == should_focus) {
-            continue;
-        }
-        Widgets::ButtonState desired = button.state;
-        desired.focused = should_focus;
-        if (!should_focus && desired.hovered) {
-            desired.hovered = false;
-        }
-        auto updated = Widgets::UpdateButtonState(space, button.paths, desired);
-        if (!updated) {
-            std::cerr << "paint_example: update button focus failed for '"
-                      << button.entry.id
-                      << "': "
-                      << updated.error().message.value_or("unknown error")
-                      << std::endl;
-            continue;
-        }
-        if (*updated) {
-            button.state = desired;
-            controls.dirty = true;
-        }
+auto apply_palette_focus(PathSpace& space,
+                         PaintControls& controls,
+                         std::optional<std::size_t> focused_index) -> void {
+    if (controls.buttons.empty()) {
+        return;
+    }
+    std::vector<Widgets::ButtonPaths> button_paths;
+    button_paths.reserve(controls.buttons.size());
+    for (auto const& button : controls.buttons) {
+        button_paths.push_back(button.paths);
+    }
+    auto status = Widgets::SetExclusiveButtonFocus(space,
+                                                   std::span<const Widgets::ButtonPaths>{button_paths.data(), button_paths.size()},
+                                                   focused_index);
+    if (!status) {
+        std::cerr << "paint_example: failed to apply palette focus: "
+                  << status.error().message.value_or("unknown error")
+                  << std::endl;
+    }
+    for (auto& button : controls.buttons) {
+        refresh_button_state(space, button);
+    }
+    controls.dirty = true;
+}
+
+auto sync_slider_state(PathSpace& space, PaintControls& controls) -> void {
+    auto slider_state = space.read<Widgets::SliderState, std::string>(std::string(controls.slider.paths.state.getPath()));
+    if (slider_state) {
+        controls.slider.state = *slider_state;
+        controls.dirty = true;
     }
 }
 
@@ -946,6 +950,9 @@ auto initialize_controls(PathSpace& space,
                          std::string const& brush_color_path,
                          std::string const& brush_size_path) -> void {
     controls.theme = Widgets::MakeDefaultWidgetTheme();
+    controls.theme.caption.font_size = 14.0f;
+    controls.theme.caption.line_height = 18.0f;
+    controls.theme.caption.baseline_shift = 16.0f;
     controls.buttons.clear();
 
     auto palette = default_palette_entries();
@@ -1032,7 +1039,6 @@ auto initialize_controls(PathSpace& space,
                     std::cerr << "paint_example: focus update failed: "
                               << focus_result.error().message.value_or("unknown error")
                               << std::endl;
-                    set_palette_button_focus(*space_ptr, *controls_ptr, index_int);
                     return;
                 }
                 if (focus_result->changed) {
@@ -1041,7 +1047,11 @@ auto initialize_controls(PathSpace& space,
                     }
                     controls_ptr->dirty = true;
                 }
-                set_palette_button_focus(*space_ptr, *controls_ptr, index_int);
+                std::optional<std::size_t> focus_index = index_int >= 0
+                    ? std::optional<std::size_t>{static_cast<std::size_t>(index_int)}
+                    : std::nullopt;
+                apply_palette_focus(*space_ptr, *controls_ptr, focus_index);
+                sync_slider_state(*space_ptr, *controls_ptr);
             });
 
         max_x = std::max(max_x, button.bounds.max_x);
@@ -1050,7 +1060,11 @@ auto initialize_controls(PathSpace& space,
         controls.buttons.push_back(std::move(button));
     }
 
-    set_palette_button_focus(space, controls, controls.selected_index);
+    std::optional<std::size_t> initial_focus = controls.selected_index >= 0
+        ? std::optional<std::size_t>{static_cast<std::size_t>(controls.selected_index)}
+        : std::nullopt;
+    apply_palette_focus(space, controls, initial_focus);
+    sync_slider_state(space, controls);
 
     int rows = palette.empty() ? 0 : static_cast<int>((palette.size() + controls.buttons_per_row - 1) / controls.buttons_per_row);
     float buttons_height = rows > 0
@@ -1096,7 +1110,7 @@ auto initialize_controls(PathSpace& space,
     controls.slider.label_top = slider_label_top;
     controls.slider.label_baseline = slider_label_top + controls.theme.caption.baseline_shift;
     float label_height = controls.theme.caption.line_height;
-    float slider_top = slider_label_top + label_height + 6.0f;
+    float slider_top = slider_label_top + label_height + 32.0f;
 
     controls.slider.bounds = WidgetInput::WidgetBounds{
         controls.origin_x,
@@ -1263,7 +1277,7 @@ auto handle_controls_event(PaintControls& controls,
                     }
                     controls.dirty = true;
                 }
-                set_palette_button_focus(space, controls, -1);
+                apply_palette_focus(space, controls, std::nullopt);
             }
         }
         return true;
@@ -1323,7 +1337,10 @@ auto handle_controls_event(PaintControls& controls,
                     }
                     controls.dirty = true;
                 }
-                set_palette_button_focus(space, controls, controls.active_button);
+                apply_palette_focus(space,
+                                     controls,
+                                     std::optional<std::size_t>{static_cast<std::size_t>(controls.active_button)});
+                sync_slider_state(space, controls);
             }
             return handled;
         }
@@ -1368,7 +1385,10 @@ auto handle_controls_event(PaintControls& controls,
                                 true);
                 brush_color = controls.buttons[controls.active_button].entry.color;
                 replace_value(space, brush_color_path, brush_color);
-                set_palette_button_focus(space, controls, controls.active_button);
+                apply_palette_focus(space,
+                                     controls,
+                                     std::optional<std::size_t>{static_cast<std::size_t>(controls.active_button)});
+                sync_slider_state(space, controls);
             }
             controls.active_button = -1;
             consumed = true;

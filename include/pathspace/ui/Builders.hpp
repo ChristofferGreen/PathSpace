@@ -689,6 +689,10 @@ auto UpdateButtonState(PathSpace& space,
                        ButtonPaths const& paths,
                        ButtonState const& new_state) -> SP::Expected<bool>;
 
+auto SetExclusiveButtonFocus(PathSpace& space,
+                             std::span<ButtonPaths const> buttons,
+                             std::optional<std::size_t> focused_index) -> SP::Expected<void>;
+
 auto UpdateToggleState(PathSpace& space,
                        TogglePaths const& paths,
                        ToggleState const& new_state) -> SP::Expected<bool>;

@@ -651,6 +651,33 @@ auto UpdateButtonState(PathSpace& space,
     return true;
 }
 
+auto SetExclusiveButtonFocus(PathSpace& space,
+                             std::span<Widgets::ButtonPaths const> buttons,
+                             std::optional<std::size_t> focused_index) -> SP::Expected<void> {
+    for (std::size_t i = 0; i < buttons.size(); ++i) {
+        auto const& paths = buttons[i];
+        auto statePath = std::string(paths.state.getPath());
+        auto state = read_optional<Widgets::ButtonState>(space, statePath);
+        if (!state) {
+            return std::unexpected(state.error());
+        }
+        Widgets::ButtonState desired = state->value_or(Widgets::MakeButtonState().Build());
+        bool should_focus = focused_index.has_value() && *focused_index == i;
+        if (!should_focus && desired.hovered) {
+            desired.hovered = false;
+        }
+        if (desired.focused == should_focus) {
+            continue;
+        }
+        desired.focused = should_focus;
+        auto updated = UpdateButtonState(space, paths, desired);
+        if (!updated) {
+            return std::unexpected(updated.error());
+        }
+    }
+    return {};
+}
+
 auto UpdateToggleState(PathSpace& space,
                        Widgets::TogglePaths const& paths,
                        Widgets::ToggleState const& new_state) -> SP::Expected<bool> {

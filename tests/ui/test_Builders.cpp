@@ -4956,6 +4956,187 @@ TEST_CASE("Widget focus blur clears highlight footprint pixels") {
     }
 }
 
+TEST_CASE("Widget focus set clears previous button focus state") {
+    BuildersFixture fx;
+
+    auto buttonAParams = Widgets::MakeButtonParams("focus_button_a", "ButtonA").Build();
+    auto buttonBParams = Widgets::MakeButtonParams("focus_button_b", "ButtonB").Build();
+
+    auto buttonA = Widgets::CreateButton(fx.space, fx.root_view(), buttonAParams);
+    REQUIRE(buttonA);
+    auto buttonB = Widgets::CreateButton(fx.space, fx.root_view(), buttonBParams);
+    REQUIRE(buttonB);
+
+    auto config = WidgetFocus::MakeConfig(fx.root_view());
+
+    auto setA = WidgetFocus::Set(fx.space, config, buttonA->root);
+    REQUIRE(setA);
+    CHECK(setA->changed);
+
+    auto stateA = fx.space.read<Widgets::ButtonState, std::string>(buttonA->state.getPath());
+    REQUIRE(stateA);
+    auto stateB = fx.space.read<Widgets::ButtonState, std::string>(buttonB->state.getPath());
+    REQUIRE(stateB);
+
+    CHECK(stateA->focused);
+    CHECK_FALSE(stateB->focused);
+
+    auto setB = WidgetFocus::Set(fx.space, config, buttonB->root);
+    REQUIRE(setB);
+    CHECK(setB->changed);
+
+    stateA = fx.space.read<Widgets::ButtonState, std::string>(buttonA->state.getPath());
+    REQUIRE(stateA);
+    stateB = fx.space.read<Widgets::ButtonState, std::string>(buttonB->state.getPath());
+    REQUIRE(stateB);
+
+    CHECK_FALSE(stateA->focused);
+    CHECK(stateB->focused);
+}
+
+TEST_CASE("Paint palette updates clear previous button focus") {
+    BuildersFixture fx;
+
+    RendererParams rendererParams{
+        .name = "paint_focus_renderer",
+        .kind = RendererKind::Software2D,
+        .description = "Renderer"
+    };
+    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    REQUIRE(renderer);
+
+    SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px = {320, 200};
+    SurfaceParams surfaceParams{
+        .name = "paint_focus_surface",
+        .desc = surfaceDesc,
+        .renderer = "renderers/paint_focus_renderer"
+    };
+    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
+    REQUIRE(surface);
+
+    auto target = Renderer::ResolveTargetBase(fx.space,
+                                              fx.root_view(),
+                                              *renderer,
+                                              "targets/surfaces/paint_focus_surface");
+    REQUIRE(target);
+
+    auto make_button = [&](std::string const& name, std::string const& label) {
+        auto params = Widgets::MakeButtonParams(name, label)
+                           .WithTheme(Widgets::MakeDefaultWidgetTheme())
+                           .Build();
+        auto buttons = Widgets::CreateButton(fx.space, fx.root_view(), params);
+        REQUIRE(buttons);
+        return *buttons;
+    };
+
+    std::vector<Widgets::ButtonPaths> buttonPaths;
+    buttonPaths.push_back(make_button("palette_button_red", "Red"));
+    buttonPaths.push_back(make_button("palette_button_blue", "Blue"));
+
+    std::vector<WidgetBindings::ButtonBinding> bindings;
+    for (auto const& paths : buttonPaths) {
+        auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+        auto style = fx.space.read<Widgets::ButtonStyle, std::string>(stylePath);
+        REQUIRE(style);
+        WidgetInput::WidgetBounds bounds{0.0f, 0.0f, style->width, style->height};
+        auto hint = WidgetInput::MakeDirtyHint(bounds);
+        auto binding = WidgetBindings::CreateButtonBinding(fx.space,
+                                                           fx.root_view(),
+                                                           paths,
+                                                           SP::ConcretePathStringView{target->getPath()},
+                                                           hint);
+        REQUIRE(binding);
+        bindings.push_back(std::move(*binding));
+    }
+
+    // Simulate the paint palette updating the focused button entry without clearing the previous one.
+    auto ensure_focus = Widgets::SetExclusiveButtonFocus(
+        fx.space,
+        std::span<const Widgets::ButtonPaths>{buttonPaths.data(), buttonPaths.size()},
+        std::optional<std::size_t>{0});
+    REQUIRE(ensure_focus);
+
+    auto stateFirstAfterFirst = fx.space.read<Widgets::ButtonState, std::string>(buttonPaths[0].state.getPath());
+    REQUIRE(stateFirstAfterFirst);
+    auto stateSecondAfterFirst = fx.space.read<Widgets::ButtonState, std::string>(buttonPaths[1].state.getPath());
+    REQUIRE(stateSecondAfterFirst);
+    CHECK(stateFirstAfterFirst->focused);
+    CHECK_FALSE(stateSecondAfterFirst->focused);
+
+    ensure_focus = Widgets::SetExclusiveButtonFocus(
+        fx.space,
+        std::span<const Widgets::ButtonPaths>{buttonPaths.data(), buttonPaths.size()},
+        std::optional<std::size_t>{1});
+    REQUIRE(ensure_focus);
+
+    auto stateFirst = fx.space.read<Widgets::ButtonState, std::string>(buttonPaths[0].state.getPath());
+    REQUIRE(stateFirst);
+    auto stateSecond = fx.space.read<Widgets::ButtonState, std::string>(buttonPaths[1].state.getPath());
+    REQUIRE(stateSecond);
+
+    CHECK_FALSE(stateFirst->focused);
+    CHECK(stateSecond->focused);
+}
+
+TEST_CASE("SetExclusiveButtonFocus clears button focus when no selection") {
+    BuildersFixture fx;
+
+    auto buttonParams = Widgets::MakeButtonParams("palette_button_focus", "ColorButton")
+                           .WithTheme(Widgets::MakeDefaultWidgetTheme())
+                           .Build();
+    auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
+    REQUIRE(button);
+
+    std::array<Widgets::ButtonPaths const, 1> palette_buttons{*button};
+    REQUIRE(Widgets::SetExclusiveButtonFocus(fx.space,
+                                             palette_buttons,
+                                             std::optional<std::size_t>{0}));
+
+    auto focused_state = fx.space.read<Widgets::ButtonState, std::string>(button->state.getPath());
+    REQUIRE(focused_state);
+    CHECK(focused_state->focused);
+
+    REQUIRE(Widgets::SetExclusiveButtonFocus(fx.space,
+                                             palette_buttons,
+                                             std::nullopt));
+
+    auto cleared_state = fx.space.read<Widgets::ButtonState, std::string>(button->state.getPath());
+    REQUIRE(cleared_state);
+    CHECK_FALSE(cleared_state->focused);
+}
+
+TEST_CASE("Widget focus slider to button clears slider focus state") {
+    BuildersFixture fx;
+
+    auto buttonParams = Widgets::MakeButtonParams("focus_toggle_button", "Button").Build();
+    auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
+    REQUIRE(button);
+
+    auto sliderParams = Widgets::MakeSliderParams("focus_toggle_slider")
+                           .WithTheme(Widgets::MakeDefaultWidgetTheme())
+                           .Build();
+    auto slider = Widgets::CreateSlider(fx.space, fx.root_view(), sliderParams);
+    REQUIRE(slider);
+
+    auto config = WidgetFocus::MakeConfig(fx.root_view());
+
+    auto setSlider = WidgetFocus::Set(fx.space, config, slider->root);
+    REQUIRE(setSlider);
+
+    auto sliderState = fx.space.read<Widgets::SliderState, std::string>(slider->state.getPath());
+    REQUIRE(sliderState);
+    CHECK(sliderState->focused);
+
+    auto setButton = WidgetFocus::Set(fx.space, config, button->root);
+    REQUIRE(setButton);
+
+    sliderState = fx.space.read<Widgets::SliderState, std::string>(slider->state.getPath());
+    REQUIRE(sliderState);
+    CHECK_FALSE(sliderState->focused);
+}
+
+
 TEST_CASE("Widget focus state publishes highlight drawable") {
     BuildersFixture fx;
 
