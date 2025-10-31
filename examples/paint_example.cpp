@@ -318,6 +318,7 @@ auto build_controls_bucket(PaintControls const& controls) -> UIScene::DrawableBu
 auto set_palette_button_focus(PathSpace& space,
                               PaintControls& controls,
                               int focused_index) -> void;
+auto identity_transform() -> UIScene::Transform;
 auto initialize_controls(PathSpace& space,
                          SP::App::AppRootPathView app_root,
                          SP::ConcretePathStringView target_path,
@@ -425,6 +426,10 @@ auto set_palette_button_focus(PathSpace& space,
 auto build_controls_bucket(PaintControls const& controls) -> UIScene::DrawableBucketSnapshot {
     UIScene::DrawableBucketSnapshot bucket{};
     std::uint64_t next_drawable_id = 1'000'000ull;
+    float content_min_x = controls.origin_x;
+    float content_min_y = controls.origin_y;
+    float content_max_x = controls.origin_x;
+    float content_max_y = controls.origin_y;
 
     for (std::size_t index = 0; index < controls.buttons.size(); ++index) {
         auto const& button = controls.buttons[index];
@@ -445,6 +450,11 @@ auto build_controls_bucket(PaintControls const& controls) -> UIScene::DrawableBu
                          button.bounds.min_x,
                          button.bounds.min_y);
         append_bucket(bucket, preview);
+
+        content_min_x = std::min(content_min_x, button.bounds.min_x);
+        content_min_y = std::min(content_min_y, button.bounds.min_y);
+        content_max_x = std::max(content_max_x, button.bounds.max_x);
+        content_max_y = std::max(content_max_y, button.bounds.max_y);
     }
 
     std::string slider_caption = "Brush Size: " + std::to_string(controls.brush_size_value) + " px";
@@ -471,7 +481,70 @@ auto build_controls_bucket(PaintControls const& controls) -> UIScene::DrawableBu
                      controls.slider.bounds.min_y);
     append_bucket(bucket, slider_preview);
 
-    return bucket;
+    content_min_x = std::min(content_min_x, controls.slider.bounds.min_x);
+    content_min_y = std::min(content_min_y, controls.slider.bounds.min_y);
+    content_max_x = std::max(content_max_x, controls.slider.bounds.max_x);
+    content_max_y = std::max(content_max_y, controls.slider.bounds.max_y);
+
+    float padding = 16.0f;
+    float panel_min_x = content_min_x - padding;
+    float panel_min_y = content_min_y - padding;
+    float panel_max_x = content_max_x + padding;
+    float panel_max_y = content_max_y + padding;
+
+    UIScene::DrawableBucketSnapshot panel{};
+    auto panel_id = next_drawable_id++;
+    panel.drawable_ids.push_back(panel_id);
+    panel.world_transforms.push_back(identity_transform());
+
+    UIScene::BoundingBox panel_box{};
+    panel_box.min = {panel_min_x, panel_min_y, 0.0f};
+    panel_box.max = {panel_max_x, panel_max_y, 0.0f};
+    panel.bounds_boxes.push_back(panel_box);
+    panel.bounds_box_valid.push_back(1);
+
+    float panel_center_x = (panel_min_x + panel_max_x) * 0.5f;
+    float panel_center_y = (panel_min_y + panel_max_y) * 0.5f;
+    float panel_half_width = (panel_max_x - panel_min_x) * 0.5f;
+    float panel_half_height = (panel_max_y - panel_min_y) * 0.5f;
+    UIScene::BoundingSphere panel_sphere{};
+    panel_sphere.center = {panel_center_x, panel_center_y, 0.0f};
+    panel_sphere.radius = std::sqrt(panel_half_width * panel_half_width + panel_half_height * panel_half_height);
+    panel.bounds_spheres.push_back(panel_sphere);
+
+    panel.layers.push_back(0);
+    panel.z_values.push_back(-1.0f);
+    panel.material_ids.push_back(0);
+    panel.pipeline_flags.push_back(0);
+    panel.visibility.push_back(1);
+
+    panel.command_offsets.push_back(0);
+    panel.command_counts.push_back(1);
+    panel.opaque_indices.push_back(0);
+    panel.clip_head_indices.push_back(-1);
+
+    UIScene::RectCommand panel_rect{};
+    panel_rect.min_x = panel_min_x;
+    panel_rect.min_y = panel_min_y;
+    panel_rect.max_x = panel_max_x;
+    panel_rect.max_y = panel_max_y;
+    panel_rect.color = {0.12f, 0.13f, 0.18f, 0.92f};
+
+    panel.command_kinds.push_back(static_cast<std::uint32_t>(UIScene::DrawCommandKind::Rect));
+    panel.command_payload.resize(sizeof(UIScene::RectCommand));
+    std::memcpy(panel.command_payload.data(), &panel_rect, sizeof(UIScene::RectCommand));
+    panel.drawable_fingerprints.push_back(panel_id);
+    panel.authoring_map.push_back(UIScene::DrawableAuthoringMapEntry{
+        panel_id,
+        "widgets/paint/background_panel",
+        0,
+        0});
+
+    UIScene::DrawableBucketSnapshot composed{};
+    append_bucket(composed, panel);
+    append_bucket(composed, bucket);
+
+    return composed;
 }
 
 #if defined(__APPLE__)
@@ -977,6 +1050,8 @@ auto initialize_controls(PathSpace& space,
         controls.buttons.push_back(std::move(button));
     }
 
+    set_palette_button_focus(space, controls, controls.selected_index);
+
     int rows = palette.empty() ? 0 : static_cast<int>((palette.size() + controls.buttons_per_row - 1) / controls.buttons_per_row);
     float buttons_height = rows > 0
         ? static_cast<float>(rows) * controls.button_height
@@ -1230,11 +1305,27 @@ auto handle_controls_event(PaintControls& controls,
             Widgets::ButtonState desired = button.state;
             desired.pressed = true;
             desired.hovered = true;
-            dispatch_button(controls.active_button,
-                            WidgetBindings::WidgetOpKind::Press,
-                            desired,
-                            true);
-            return true;
+            bool handled = dispatch_button(controls.active_button,
+                                           WidgetBindings::WidgetOpKind::Press,
+                                           desired,
+                                           true);
+            if (handled) {
+                auto focus_result = WidgetFocus::Set(space,
+                                                     controls.focus_config,
+                                                     controls.buttons[controls.active_button].paths.root);
+                if (!focus_result) {
+                    std::cerr << "paint_example: focus update failed: "
+                              << focus_result.error().message.value_or("unknown error")
+                              << std::endl;
+                } else if (focus_result->changed) {
+                    for (auto& palette_button : controls.buttons) {
+                        refresh_button_state(space, palette_button);
+                    }
+                    controls.dirty = true;
+                }
+                set_palette_button_focus(space, controls, controls.active_button);
+            }
+            return handled;
         }
 
         return controls.panel_bounds.contains(pointer->first, pointer->second);
@@ -1277,6 +1368,7 @@ auto handle_controls_event(PaintControls& controls,
                                 true);
                 brush_color = controls.buttons[controls.active_button].entry.color;
                 replace_value(space, brush_color_path, brush_color);
+                set_palette_button_focus(space, controls, controls.active_button);
             }
             controls.active_button = -1;
             consumed = true;
@@ -1762,13 +1854,13 @@ int main(int argc, char** argv) {
     const std::string tileSizePath = configBasePath + "/progressiveTileSizePx";
     const std::string brushColorPath = configBasePath + "/brushColorRgba";
 
-    ensure_config_value(space, canvasWidthPath, 320);
-    ensure_config_value(space, canvasHeightPath, 240);
+    ensure_config_value(space, canvasWidthPath, 960);
+    ensure_config_value(space, canvasHeightPath, 720);
     ensure_config_value(space, brushSizePath, 8);
     ensure_config_value(space, tileSizePath, 64);
 
-    int canvasWidth = read_config_value(space, canvasWidthPath, 320);
-    int canvasHeight = read_config_value(space, canvasHeightPath, 240);
+    int canvasWidth = read_config_value(space, canvasWidthPath, 960);
+    int canvasHeight = read_config_value(space, canvasHeightPath, 720);
     std::array<float, 4> brushColor{0.9f, 0.1f, 0.3f, 1.0f};
     auto storedColor = space.read<std::array<float, 4>, std::string>(brushColorPath);
     if (storedColor) {
