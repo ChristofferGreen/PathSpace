@@ -58,8 +58,12 @@
 - Should history metadata store arbitrary user tags (e.g., command names) for better UX?
 - How do we expose transaction boundaries so multiple PathSpace edits collapse into a single undo entry?
 
+## Status — November 1, 2025
+- ✅ `history::CowSubtreePrototype` models copy-on-write subtrees with node/payload sharing, provides memory + delta instrumentation, and is validated by unit tests (`apply clones modified branch only`) exercising node reuse and stack accounting.
+- ✅ Updated `scripts/run-test-with-logs.sh` temporary file allocation so the test loop tolerates mktemp collisions during 15× runs.
+
 ## Next Steps
-1. Prototype copy-on-write storage for a simple subtree, measuring memory impact.
+1. ✅ Prototype copy-on-write storage for a simple subtree, measuring memory impact. (Captured by `history::CowSubtreePrototype` and associated tests.)
 2. Implement child enumeration and the route merger, then update widget/runtime plans to consume them.
 3. Design `HistoryOptions` struct and telemetry schema.
 4. Update paint widget plan to call the new APIs (already referenced in `docs/Plan_WidgetDeclarativeAPI.md`).

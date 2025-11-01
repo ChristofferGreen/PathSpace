@@ -54,6 +54,7 @@ add_library(PathSpace
     core/WaitMap.cpp
     core/WatchRegistry.hpp
     core/Leaf.cpp
+    history/CowSubtreePrototype.cpp
     task/Task.cpp
     task/TaskPool.cpp
     task/TaskStateAtomic.cpp

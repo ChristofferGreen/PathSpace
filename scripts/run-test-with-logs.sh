@@ -126,7 +126,51 @@ elif [[ -n "$ITERATION" ]]; then
   SAFE_LABEL="${SAFE_LABEL}_loop${ITERATION}"
 fi
 
-TMP_LOG="$(mktemp "${LOG_DIR}/${SAFE_LABEL}.XXXX.log")"
+TMP_TEMPLATE="${LOG_DIR}/${SAFE_LABEL}.XXXXXX.log"
+if TMP_LOG="$(mktemp "${TMP_TEMPLATE}" 2>/dev/null)"; then
+  :
+else
+  if command -v python3 >/dev/null 2>&1; then
+    TMP_LOG="$(python3 - "$LOG_DIR" "$SAFE_LABEL" <<'PY'
+import os
+import random
+import string
+import sys
+
+log_dir = sys.argv[1]
+label = sys.argv[2]
+alphabet = string.ascii_lowercase + string.ascii_uppercase + string.digits
+
+for _ in range(1024):
+    suffix = ''.join(random.choice(alphabet) for _ in range(8))
+    candidate = os.path.join(log_dir, f"{label}.{suffix}.log")
+    try:
+        fd = os.open(candidate, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError:
+        continue
+    else:
+        os.close(fd)
+        print(candidate)
+        sys.exit(0)
+
+print("ERROR: could not allocate temp log file", file=sys.stderr)
+sys.exit(1)
+PY
+)"
+    if [[ -z "${TMP_LOG}" || "${TMP_LOG}" == ERROR:* ]]; then
+      echo "Failed to allocate temporary log file in ${LOG_DIR}" >&2
+      exit 1
+    fi
+  else
+    suffix="$(date +"%s")_${RANDOM}_${RANDOM}"
+    TMP_LOG="${LOG_DIR}/${SAFE_LABEL}.${suffix}.log"
+    if ! (set -o noclobber; : >"${TMP_LOG}") 2>/dev/null; then
+      echo "Failed to allocate temporary log file in ${LOG_DIR}" >&2
+      exit 1
+    fi
+  fi
+fi
+
 FINAL_LOG="${LOG_DIR}/${SAFE_LABEL}_${timestamp}.log"
 
 # Build command array with optional env.

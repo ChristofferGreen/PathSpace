@@ -16,6 +16,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/test_PathSpace_multithreading.cpp
   unit/test_PathSpace_execution.cpp
   unit/path/test_UnvalidatedPath.cpp
+  unit/core/test_CowSubtreePrototype.cpp
   test_main.cpp
 )
 
