@@ -31,6 +31,7 @@
 - Maintain per-root stacks:
   - `undo_stack`: snapshots representing prior states.
   - `redo_stack`: cleared on new edits, repopulated when undo is invoked.
+ - Nested plain PathSpaces mounted under a history-enabled node remain opaque unless they are explicitly wrapped by another undo layer.
 
 ### Snapshot Storage
 - Each snapshot stores:
@@ -39,13 +40,14 @@
 - Use weak/shared ownership so unreferenced snapshots free automatically after compaction.
 
 ### Operations
-- `PathSpace::undo(root, steps = 1)` pops snapshots from `undo_stack`, reapplies them to the live tree, and pushes the current state onto `redo_stack`.
-- `PathSpace::redo(root, steps = 1)` pulls from `redo_stack` and pushes the current state onto `undo_stack`.
+- `PathSpace::undo(root, steps = 1)` pops snapshots from `undo_stack`, reapplies them to the live tree, and pushes the current state onto `redo_stack`. Exposed to callers via inserts to `/<root>/_history/undo`.
+- `PathSpace::redo(root, steps = 1)` pulls from `redo_stack` and pushes the current state onto `undo_stack`. Exposed via `/<root>/_history/redo`.
 - `PathSpace::clearHistory(root)` drops both stacks to reclaim memory.
-- Provide high-level convenience functions (`PaintSurface::Undo`, etc.) that call these APIs and mark affected widgets dirty.
+- Provide high-level convenience functions (`PaintSurface::Undo`, etc.) that call these APIs and mark affected widgets dirty, while tooling can also interact with history through the `_history/*` control namespace (e.g., `_history/garbage_collect`, `_history/set_manual_garbage_collect`).
+- **Single-root requirement:** We will not coordinate undo across multiple roots. Commands that touch several logical areas must structure their data so the full mutation resides under one history-enabled root (e.g., by routing through a command-log subtree or embedding related metadata alongside the primary payload). `enableHistory` will reject configurations that span multiple roots for a single logical command.
 
 ### Retention & Compaction
-- History options include `max_entries`, `max_bytes`, and `compaction_interval`.
+- History options include `max_entries`, `max_bytes`, `compaction_interval`, and `manual_garbage_collect` (default off; forces callers to trigger durability/retention via control paths or API).
 - When limits are exceeded, collapse oldest entries into keyframes (e.g., merge many incremental brush strokes into a single snapshot).
 - Emit telemetry at `root/history/stats` (entry count, bytes retained, last trim timestamp) and log compaction events.
 
@@ -56,14 +58,17 @@
 
 ## Open Questions
 - Should history metadata store arbitrary user tags (e.g., command names) for better UX?
-- How do we expose transaction boundaries so multiple PathSpace edits collapse into a single undo entry?
+- How do we surface history stats and per-entry metadata to tooling without colliding with existing user paths (control namespace customization, documentation)?
 
 ## Status — November 1, 2025
 - ✅ `history::CowSubtreePrototype` models copy-on-write subtrees with node/payload sharing, provides memory + delta instrumentation, and is validated by unit tests (`apply clones modified branch only`) exercising node reuse and stack accounting.
 - ✅ Updated `scripts/run-test-with-logs.sh` temporary file allocation so the test loop tolerates mktemp collisions during 15× runs.
+- ✅ Authored `docs/Plan_PathSpace_UndoHistory.md` outlining the undo wrapper, `_history/*` control paths, retention, and persistence strategy for design review.
 
 ## Next Steps
 1. ✅ Prototype copy-on-write storage for a simple subtree, measuring memory impact. (Captured by `history::CowSubtreePrototype` and associated tests.)
-2. Implement child enumeration and the route merger, then update widget/runtime plans to consume them.
-3. Design `HistoryOptions` struct and telemetry schema.
-4. Update paint widget plan to call the new APIs (already referenced in `docs/Plan_WidgetDeclarativeAPI.md`).
+2. **Required design review:** walk the prototype with PathSpace maintainers to finalize the undo/redo stack API surface, retention policy knobs, and integration boundaries (see `docs/Plan_PathSpace_UndoHistory.md`). Capture decisions in `docs/AI_Architecture.md` and any affected plan docs.
+3. Document how the copy-on-write layer plugs into `PathSpace` proper (stack wiring, notification hooks, multi-root behaviour) and outline migration steps for existing widget callers.
+4. Implement child enumeration and the route merger, then update widget/runtime plans to consume them.
+5. Design `HistoryOptions` struct and telemetry schema.
+6. Update the paint widget plan to call the new APIs (already referenced in `docs/Plan_WidgetDeclarativeAPI.md`).
