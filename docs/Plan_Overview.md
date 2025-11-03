@@ -42,7 +42,7 @@ Provide a single index of active planning documents, ordered by current priority
 6. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
 
 ## Status Snapshot — November 1, 2025
-- ✅ (November 1, 2025) `history::CowSubtreePrototype` landed as the copy-on-write prototype for undo history, with instrumentation/tests in place and `docs/Plan_PathSpace.md` updated; `scripts/run-test-with-logs.sh` now hardens mktemp handling so the 15× loop stays stable.
+- ✅ (November 1, 2025) `history::CowSubtreePrototype` landed as the copy-on-write prototype for undo history, with instrumentation/tests in place and `docs/Plan_PathSpace.md` updated; `scripts/run-test-with-logs.sh` now hardens mktemp handling so the 15× loop stays stable; `docs/Plan_PathSpace_UndoHistory.md` captures the layered design, transactions, retention, and persistence roadmap.
 - ✅ (October 24, 2025) PathSurfaceMetal now allocates IOSurface-backed textures when `iosurface_backing` is set, keeping Metal surface caching in step with CAMetalLayer presentation and the updated UITest coverage.
 - ✅ (October 24, 2025) `./scripts/compile.sh --test` now auto-enables example builds, runs the PixelNoise perf harness (software + Metal) inside the mandated 15× loop, and sets the looped per-test timeout baseline to 20 s so regressions surface without bespoke CTest invocations.
 - HSAT (HTML asset codec) remains mandatory and documented; `pathspace_hsat_inspect` regression stays green after the latest loop run.
@@ -62,6 +62,7 @@ Provide a single index of active planning documents, ordered by current priority
 - `docs/AI_Paths.md` — Canonical path namespaces and layout conventions.
 - `docs/AI_Todo.task` — Backlog items; keep plans and backlog consistent.
 - `docs/AI_Debugging_Playbook.md` — Diagnostics workflow and troubleshooting commands.
+- `docs/Plan_PathSpace_UndoHistory.md` — Detailed undo/redo layer design (wrapper, control paths, retention, persistence).
 
 ## Updating This Index
 - When a plan is added/retired or priority shifts, update the list and note the date.
