@@ -47,4 +47,10 @@ auto PathView::notify(std::string const& notificationPath) -> void {
     this->space->notify(notificationPath);
 }
 
+auto PathView::getRootNode() -> Node* {
+    if (!this->space)
+        return nullptr;
+    return this->space->getRootNode();
+}
+
 } // namespace SP

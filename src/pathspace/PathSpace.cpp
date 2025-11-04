@@ -294,4 +294,8 @@ auto PathSpace::notify(std::string const& notificationPath) -> void {
     }
 }
 
+auto PathSpace::getRootNode() -> Node* {
+    return &this->leaf.rootNode();
+}
+
 } // namespace SP

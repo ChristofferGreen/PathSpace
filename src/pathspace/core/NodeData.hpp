@@ -6,9 +6,12 @@
 #include "task/Future.hpp"
 #include "task/IFutureAny.hpp"
 
+#include <cstddef>
 #include <deque>
 #include <memory>
 #include <optional>
+#include <span>
+#include <vector>
 
 namespace SP {
 class InsertReturn;
@@ -28,6 +31,8 @@ struct NodeData {
     auto peekFuture() const -> std::optional<Future>;
     // Return a type-erased future aligned with the front typed task (if present)
     auto peekAnyFuture() const -> std::optional<FutureAny>;
+    [[nodiscard]] auto serializeSnapshot() const -> std::optional<std::vector<std::byte>>;
+    static auto        deserializeSnapshot(std::span<const std::byte> bytes) -> std::optional<NodeData>;
 
 private:
     auto popType() -> void;
@@ -42,6 +47,7 @@ private:
     std::deque<std::shared_ptr<Task>>  tasks;   // NodeData is the primary owner of tasks
     std::deque<Future>                 futures; // Aligned with tasks; lightweight handles for result readiness
     std::deque<FutureAny>              anyFutures; // Aligned with typed tasks; type-erased future handles
+
 };
 
 } // namespace SP

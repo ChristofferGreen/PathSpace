@@ -27,6 +27,8 @@ struct SlidingBuffer {
     [[nodiscard]] auto empty() const noexcept -> bool;
     [[nodiscard]] auto virtualFront() const noexcept -> size_t;
     [[nodiscard]] auto capacity() const noexcept -> size_t;
+    [[nodiscard]] auto rawData() const noexcept -> std::span<uint8_t const>;
+    [[nodiscard]] auto rawDataMutable() noexcept -> std::span<uint8_t>;
 
     [[nodiscard]] auto operator[](size_t index) & -> uint8_t&;
     [[nodiscard]] auto operator[](size_t index) const& -> uint8_t const&;
@@ -56,6 +58,7 @@ struct SlidingBuffer {
     auto append(std::span<uint8_t const> bytes) -> void;
     auto append(uint8_t const* bytes, size_t count) -> void;
     auto advance(size_t bytes) -> void;
+    auto assignRaw(std::vector<uint8_t> data, size_t virtualFront) -> void;
 
 private:
     std::vector<uint8_t> data_;

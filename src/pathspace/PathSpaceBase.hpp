@@ -23,6 +23,10 @@
 namespace SP {
 struct InputMetadata;
 struct Out;
+struct Node;
+namespace History {
+class UndoableSpace;
+}
 
 /**
  * PathSpaceBase — core path-addressable data space interface
@@ -214,6 +218,9 @@ protected:
     // Default implementation returns no future; PathSpace overrides to provide a real handle.
     virtual std::optional<FutureAny> typedPeekFuture(std::string_view) const { return std::nullopt; }
 
+    // Internal helper for layers that need raw trie access; spaces that cannot expose their root should return nullptr.
+    virtual auto getRootNode() -> Node* { return nullptr; }
+
 private:
     // ---------- Private state and virtual hooks ----------
     mutable std::shared_ptr<NotificationSink> notificationSink_;
@@ -226,6 +233,7 @@ private:
     friend class PathSpace;
     friend class Leaf;
     friend class PathAlias;
+    friend class History::UndoableSpace;
 
     // Core virtual hooks implemented by concrete spaces.
     virtual auto in(Iterator const& path, InputData const& data) -> InsertReturn                                                      = 0;

@@ -67,6 +67,7 @@ protected:
     virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> override;
     virtual auto shutdown() -> void override;
     virtual auto notify(std::string const& notificationPath) -> void override;
+    auto getRootNode() -> Node* override;
     // Expose typed future peek to PathSpaceBase::readFuture
     std::optional<FutureAny> typedPeekFuture(std::string_view pathIn) const override {
         Iterator const it{pathIn};

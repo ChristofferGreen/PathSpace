@@ -29,6 +29,14 @@ auto SlidingBuffer::virtualFront() const noexcept -> size_t {
     return this->virtualFront_;
 }
 
+auto SlidingBuffer::rawData() const noexcept -> std::span<uint8_t const> {
+    return std::span<uint8_t const>{this->data_.data(), this->data_.size()};
+}
+
+auto SlidingBuffer::rawDataMutable() noexcept -> std::span<uint8_t> {
+    return std::span<uint8_t>{this->data_.data(), this->data_.size()};
+}
+
 auto SlidingBuffer::capacity() const noexcept -> size_t {
     return this->data_.capacity();
 }
@@ -123,6 +131,11 @@ auto SlidingBuffer::compact() -> void {
     }
     this->virtualFront_ = 0uz;
     sp_log("After compact - size: " + std::to_string(data_.size()) + ", front: " + std::to_string(virtualFront_), "SlidingBuffer");
+}
+
+auto SlidingBuffer::assignRaw(std::vector<uint8_t> data, size_t virtualFront) -> void {
+    this->data_         = std::move(data);
+    this->virtualFront_ = std::min(virtualFront, this->data_.size());
 }
 
 } // namespace SP

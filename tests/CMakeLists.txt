@@ -7,6 +7,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/core/test_WaitMap.cpp
   unit/type/test_InputMetadata.cpp
   unit/type/test_SlidingBuffer.cpp
+  unit/core/test_NodeDataSnapshot.cpp
   unit/ext/test_alpaca.cpp
   unit/task/test_TaskPool.cpp
   unit/test_PathSpace_read.cpp
@@ -17,6 +18,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/test_PathSpace_execution.cpp
   unit/path/test_UnvalidatedPath.cpp
   unit/core/test_CowSubtreePrototype.cpp
+  unit/history/test_UndoableSpace.cpp
   test_main.cpp
 )
 

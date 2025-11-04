@@ -4,7 +4,29 @@
 #include "core/ExecutionCategory.hpp"
 #include "task/Task.hpp"
 
+#include <cstring>
 
+namespace {
+constexpr std::uint32_t HISTORY_PAYLOAD_VERSION = 1;
+
+template <typename T>
+void appendScalar(std::vector<std::byte>& bytes, T value) {
+    std::uint8_t buffer[sizeof(T)];
+    std::memcpy(buffer, &value, sizeof(T));
+    auto const base = reinterpret_cast<std::byte const*>(buffer);
+    bytes.insert(bytes.end(), base, base + sizeof(T));
+}
+
+template <typename T>
+auto readScalar(std::span<const std::byte>& span) -> std::optional<T> {
+    if (span.size() < sizeof(T))
+        return std::nullopt;
+    T value{};
+    std::memcpy(&value, span.data(), sizeof(T));
+    span = span.subspan(sizeof(T));
+    return value;
+}
+} // namespace
 
 namespace SP {
 
@@ -242,9 +264,92 @@ auto NodeData::peekAnyFuture() const -> std::optional<FutureAny> {
 auto NodeData::peekFuture() const -> std::optional<Future> {
     if (this->types.empty() || this->types.front().category != DataCategory::Execution)
         return std::nullopt;
-    if (this->futures.empty())
+   if (this->futures.empty())
+       return std::nullopt;
+   return this->futures.front();
+}
+
+std::optional<std::vector<std::byte>> NodeData::serializeSnapshot() const {
+    sp_log("NodeData::serializeSnapshot", "Function Called");
+    if (!this->tasks.empty() || !this->futures.empty() || !this->anyFutures.empty()) {
+        sp_log("History payload unsupported for nodes containing tasks/futures", "NodeData");
         return std::nullopt;
-    return this->futures.front();
+    }
+
+    std::vector<std::byte> bytes;
+    bytes.reserve(32 + this->data.rawSize());
+
+    appendScalar<std::uint32_t>(bytes, HISTORY_PAYLOAD_VERSION);
+    appendScalar<std::uint32_t>(bytes, static_cast<std::uint32_t>(this->types.size()));
+
+    for (auto const& type : this->types) {
+        auto ptrValue = reinterpret_cast<std::uintptr_t>(type.typeInfo);
+        appendScalar<std::uintptr_t>(bytes, ptrValue);
+        appendScalar<std::uint32_t>(bytes, type.elements);
+        bytes.push_back(static_cast<std::byte>(type.category));
+        bytes.push_back(std::byte{0});
+        bytes.push_back(std::byte{0});
+        bytes.push_back(std::byte{0});
+    }
+
+    appendScalar<std::uint32_t>(bytes, static_cast<std::uint32_t>(this->data.rawSize()));
+    appendScalar<std::uint32_t>(bytes, static_cast<std::uint32_t>(this->data.virtualFront()));
+
+    auto rawSpan = this->data.rawData();
+    auto rawSize = rawSpan.size();
+    auto oldSize = bytes.size();
+    bytes.resize(oldSize + rawSize);
+    std::memcpy(bytes.data() + oldSize, rawSpan.data(), rawSize);
+    return bytes;
+}
+
+std::optional<NodeData> NodeData::deserializeSnapshot(std::span<const std::byte> bytes) {
+    sp_log("NodeData::deserializeSnapshot", "Function Called");
+    auto version = readScalar<std::uint32_t>(bytes);
+    if (!version.has_value() || *version != HISTORY_PAYLOAD_VERSION) {
+        sp_log("Unsupported history payload version", "NodeData");
+        return std::nullopt;
+    }
+
+    auto countOpt = readScalar<std::uint32_t>(bytes);
+    if (!countOpt.has_value())
+        return std::nullopt;
+    std::uint32_t count = *countOpt;
+
+    std::deque<ElementType> restoredTypes;
+    restoredTypes.resize(count);
+    for (std::uint32_t i = 0; i < count; ++i) {
+        auto typePtrOpt   = readScalar<std::uintptr_t>(bytes);
+        auto elementsOpt  = readScalar<std::uint32_t>(bytes);
+        if (!typePtrOpt.has_value() || !elementsOpt.has_value() || bytes.size() < 4)
+            return std::nullopt;
+        auto categoryByte = static_cast<std::uint8_t>(bytes[0]);
+        bytes = bytes.subspan(4);
+
+        ElementType element{};
+        element.typeInfo = reinterpret_cast<std::type_info const*>(*typePtrOpt);
+        element.elements = *elementsOpt;
+        element.category = static_cast<DataCategory>(categoryByte);
+        restoredTypes[i] = element;
+    }
+
+    auto rawSizeOpt = readScalar<std::uint32_t>(bytes);
+    auto frontOpt   = readScalar<std::uint32_t>(bytes);
+    if (!rawSizeOpt.has_value() || !frontOpt.has_value())
+        return std::nullopt;
+    std::uint32_t rawSize = *rawSizeOpt;
+    std::uint32_t front   = *frontOpt;
+    if (bytes.size() < rawSize || front > rawSize)
+        return std::nullopt;
+
+    std::vector<std::uint8_t> raw(rawSize);
+    std::memcpy(raw.data(), bytes.data(), rawSize);
+    bytes = bytes.subspan(rawSize);
+
+    NodeData node;
+    node.data.assignRaw(std::move(raw), front);
+    node.types = std::move(restoredTypes);
+    return node;
 }
 
 } // namespace SP

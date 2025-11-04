@@ -110,6 +110,13 @@ public:
         mountPrefix_ = std::move(prefix);
     }
 
+protected:
+    auto getRootNode() -> Node* override {
+        if (!upstream_)
+            return nullptr;
+        return upstream_->getRootNode();
+    }
+
 private:
     // Join targetPrefix_ and a tail path, ensuring exactly one slash at the boundary.
     static std::string joinPaths_(std::string const& prefix, std::string const& tail) {

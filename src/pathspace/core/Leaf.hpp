@@ -9,12 +9,18 @@ struct Iterator;
 struct InsertReturn;
 struct InputMetadata;
 struct InputData;
+namespace History {
+class UndoableSpace;
+}
 
 class Leaf {
 public:
     auto in(Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void;
     auto out(Iterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;
     auto clear() -> void;
+
+    auto rootNode() -> Node& { return root; }
+    auto rootNode() const -> Node const& { return root; }
 
 
 
@@ -39,6 +45,7 @@ private:
     static void mergeInsertReturn(InsertReturn& into, InsertReturn const& from);
 
     Node root;
+    friend class History::UndoableSpace;
 };
 
 } // namespace SP

@@ -17,6 +17,9 @@ struct PathView : public PathSpaceBase {
     virtual auto shutdown() -> void override;
     virtual auto notify(std::string const& notificationPath) -> void override;
 
+protected:
+    auto getRootNode() -> Node* override;
+
 private:
     std::string                                root;
     std::function<Permission(Iterator const&)> permission;

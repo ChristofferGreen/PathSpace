@@ -20,6 +20,25 @@ task {
 }
 
 task {
+  name: "UndoableSpace Wrapper Skeleton [CORE]"
+  description: "Land the in-memory undo/redo wrapper (`history::UndoableSpace`) with copy-on-write snapshots, history controls, and RAII batching so plan phase 2 is unblocked."
+  status: completed
+  priority: P0
+
+  acceptance_criteria: [
+    "`history::UndoableSpace` decorates a backing PathSpace and exposes `enableHistory`, `undo`, `redo`, and `_history/*` control paths.",
+    "Undo/redo replay copy-on-write snapshots for value nodes; nested transactions coalesce into a single history entry.",
+    "PathSpaceTests cover undo/redo flows and transaction batching in the mandated 15× loop; docs capture current limitations (no tasks/nested spaces yet)."
+  ]
+
+  steps: [
+    "Implemented SlidingBuffer/NodeData history serialization helpers and the UndoableSpace wrapper with per-root stacks and RAII transactions.",
+    "Added history tests (tests/unit/history/test_UndoableSpace.cpp) plus plan/doc updates outlining remaining persistence/telemetry work.",
+    "Executed the release build + 15× ctest loop via `ctest --test-dir build --output-on-failure -j 8 --repeat-until-fail 15 --timeout 20`."
+  ]
+}
+
+task {
   name: "HTML Asset Hydration Bug [BLOCKER]"
   description: "Resolved October 20, 2025 by introducing a dedicated Html::Asset codec (include/pathspace/ui/HtmlSerialization.hpp) so PathSpace round-trips asset vectors without loss."
   status: completed
