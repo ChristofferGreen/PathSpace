@@ -51,7 +51,7 @@ PathSpace is a coordination language that enables insertion and extractions from
 - Each history-enabled subtree owns exactly one undo/redo stack. We do not coordinate history across multiple roots; a logical command must mutate a single root so one stack captures the full change.
 - If a feature naturally spans several areas, route it through a command-log subtree or reorganize the data so related metadata lives alongside the primary payload before enabling history. `enableHistory` should refuse configurations that expect shared stacks.
 - Undo entries flush to disk by default for crash safety. Advanced callers can set `HistoryOptions::manual_garbage_collect` or insert `_history/set_manual_garbage_collect = true` when they want to defer durability and retention to explicit checkpoints.
-- November 4, 2025: `history::UndoableSpace` now wraps a backing `PathSpace`, captures copy-on-write snapshots for undo/redo, and honors RAII batching. Current skeleton omits persistence, diagnostics, and support for nodes hosting executions or nested spaces; callers must handle those cases with higher-level guards.
+- November 5, 2025: `history::UndoableSpace` wraps a backing `PathSpace`, captures copy-on-write snapshots for undo/redo, enforces retention budgets (auto-trim plus manual garbage collect), and publishes `_history/stats/*` / `_history/lastOperation/*` telemetry. Persistence and support for nodes hosting executions or nested spaces remain open; callers must still guard those cases at a higher layer.
 
 ## Path System
 

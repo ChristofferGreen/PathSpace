@@ -9,8 +9,11 @@
 #include "path/ConcretePath.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdint>
 #include <unordered_map>
 #include <thread>
+#include <utility>
 
 namespace {
 
@@ -44,6 +47,11 @@ auto pathIsPrefix(std::string const& prefix, std::string const& path) -> bool {
     return path[prefix.size()] == '/';
 }
 
+auto toMillis(std::chrono::system_clock::time_point tp) -> std::uint64_t {
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch());
+    return static_cast<std::uint64_t>(duration.count());
+}
+
 } // namespace
 
 namespace SP::History {
@@ -51,24 +59,87 @@ namespace SP::History {
 using SP::ConcretePathStringView;
 
 struct UndoableSpace::RootState {
+    struct Entry {
+        CowSubtreePrototype::Snapshot             snapshot;
+        std::size_t                               bytes     = 0;
+        std::chrono::system_clock::time_point     timestamp = std::chrono::system_clock::now();
+    };
+
+    struct OperationRecord {
+        std::string                               type;
+        std::chrono::system_clock::time_point     timestamp;
+        std::chrono::milliseconds                 duration{0};
+        bool                                      success          = true;
+        std::size_t                               undoCountBefore  = 0;
+        std::size_t                               undoCountAfter   = 0;
+        std::size_t                               redoCountBefore  = 0;
+        std::size_t                               redoCountAfter   = 0;
+        std::size_t                               bytesBefore      = 0;
+        std::size_t                               bytesAfter       = 0;
+        std::string                               message;
+    };
+
+    struct Telemetry {
+        std::size_t                                               undoBytes        = 0;
+        std::size_t                                               redoBytes        = 0;
+        std::size_t                                               trimOperations   = 0;
+        std::size_t                                               trimmedEntries   = 0;
+        std::size_t                                               trimmedBytes     = 0;
+        std::optional<std::chrono::system_clock::time_point>      lastTrimTimestamp;
+        std::optional<OperationRecord>                            lastOperation;
+    };
+
+    struct TransactionState {
+        std::thread::id                    owner;
+        std::size_t                        depth          = 0;
+        bool                               dirty          = false;
+        CowSubtreePrototype::Snapshot      snapshotBefore;
+    };
+
     std::string                               rootPath;
     std::vector<std::string>                  components;
     HistoryOptions                            options;
     CowSubtreePrototype                       prototype;
     CowSubtreePrototype::Snapshot             liveSnapshot;
-    std::vector<CowSubtreePrototype::Snapshot> undoStack;
-    std::vector<CowSubtreePrototype::Snapshot> redoStack;
-    std::size_t                               bytesRetained = 0;
+    std::vector<Entry>                        undoStack;
+    std::vector<Entry>                        redoStack;
+    std::size_t                               liveBytes = 0;
+    Telemetry                                 telemetry;
+    std::optional<TransactionState>           activeTransaction;
+    mutable std::mutex                        mutex;
+};
 
-    struct TransactionState {
-        std::thread::id            owner;
-        std::size_t                depth          = 0;
-        bool                       dirty          = false;
-        CowSubtreePrototype::Snapshot snapshotBefore;
-    };
+class UndoableSpace::OperationScope {
+public:
+    OperationScope(UndoableSpace& owner, RootState& state, std::string_view type)
+        : owner_(owner)
+        , state_(state)
+        , type_(type)
+        , startSteady_(std::chrono::steady_clock::now())
+        , undoBefore_(state.undoStack.size())
+        , redoBefore_(state.redoStack.size())
+        , bytesBefore_(UndoableSpace::computeTotalBytesLocked(state)) {}
 
-    std::optional<TransactionState> activeTransaction;
-    mutable std::mutex              mutex;
+    void setResult(bool success, std::string message = {}) {
+        success_ = success;
+        message_ = std::move(message);
+    }
+
+    ~OperationScope() {
+        owner_.recordOperation(state_, type_, std::chrono::steady_clock::now() - startSteady_,
+                               success_, undoBefore_, redoBefore_, bytesBefore_, message_);
+    }
+
+private:
+    UndoableSpace&                         owner_;
+    RootState&                             state_;
+    std::string                            type_;
+    std::chrono::steady_clock::time_point  startSteady_;
+    std::size_t                            undoBefore_;
+    std::size_t                            redoBefore_;
+    std::size_t                            bytesBefore_;
+    bool                                   success_ = true;
+    std::string                            message_;
 };
 
 UndoableSpace::TransactionGuard::TransactionGuard(UndoableSpace& owner,
@@ -226,6 +297,9 @@ auto UndoableSpace::enableHistory(ConcretePathStringView root, HistoryOptions op
         opts.maxBytesRetained ? opts.maxBytesRetained : state->options.maxBytesRetained;
     state->options.manualGarbageCollect = opts.manualGarbageCollect;
     state->options.allowNestedUndo      = opts.allowNestedUndo;
+    state->undoStack.clear();
+    state->redoStack.clear();
+    state->telemetry = {};
 
     {
         std::scoped_lock rootLock(state->mutex);
@@ -234,8 +308,8 @@ auto UndoableSpace::enableHistory(ConcretePathStringView root, HistoryOptions op
             return std::unexpected(snapshot.error());
         }
         state->liveSnapshot = snapshot.value();
-        state->bytesRetained =
-            state->prototype.analyze(state->liveSnapshot).payloadBytes;
+        auto metrics        = state->prototype.analyze(state->liveSnapshot);
+        state->liveBytes    = metrics.payloadBytes;
     }
 
     {
@@ -347,7 +421,10 @@ auto UndoableSpace::commitTransaction(RootState& state) -> Expected<void> {
 
     state.activeTransaction.reset();
 
+    OperationScope scope(*this, state, "commit");
+
     if (!dirty) {
+        scope.setResult(true, "no_changes");
         return {};
     }
 
@@ -360,22 +437,36 @@ auto UndoableSpace::commitTransaction(RootState& state) -> Expected<void> {
                    "UndoableSpace");
         }
         state.liveSnapshot = before;
-        state.bytesRetained =
-            state.prototype.analyze(state.liveSnapshot).payloadBytes;
+        auto beforeMetrics  = state.prototype.analyze(state.liveSnapshot);
+        state.liveBytes     = beforeMetrics.payloadBytes;
+        scope.setResult(false, snapshotExpected.error().message.value_or("capture_failed"));
         return std::unexpected(snapshotExpected.error());
     }
 
-    auto latest = snapshotExpected.value();
-    state.undoStack.push_back(before);
-    if (state.options.maxEntries > 0 && state.undoStack.size() > state.options.maxEntries) {
-        auto eraseCount =
-            state.undoStack.size() - static_cast<std::size_t>(state.options.maxEntries);
-        state.undoStack.erase(state.undoStack.begin(),
-                              state.undoStack.begin() + static_cast<std::ptrdiff_t>(eraseCount));
-    }
-    state.liveSnapshot  = latest;
-    state.bytesRetained = state.prototype.analyze(latest).payloadBytes;
+    auto latest     = snapshotExpected.value();
+    auto now        = std::chrono::system_clock::now();
+    auto undoBytes  = state.liveBytes;
+    RootState::Entry undoEntry;
+    undoEntry.snapshot  = before;
+    undoEntry.bytes     = undoBytes;
+    undoEntry.timestamp = now;
+    state.undoStack.push_back(std::move(undoEntry));
+    state.telemetry.undoBytes += undoBytes;
+
+    state.liveSnapshot = latest;
+    auto latestMetrics = state.prototype.analyze(latest);
+    state.liveBytes    = latestMetrics.payloadBytes;
     state.redoStack.clear();
+    state.telemetry.redoBytes = 0;
+
+    TrimStats trimStats{};
+    if (!state.options.manualGarbageCollect) {
+        trimStats = applyRetentionLocked(state, "commit");
+        if (trimStats.entriesRemoved > 0) {
+            scope.setResult(true, "trimmed=" + std::to_string(trimStats.entriesRemoved));
+        }
+    }
+
     return {};
 }
 
@@ -460,6 +551,250 @@ auto UndoableSpace::clearSubtree(Node& node) -> void {
         }
         node.eraseChild(key);
     }
+}
+
+auto UndoableSpace::computeTotalBytesLocked(RootState const& state) -> std::size_t {
+    return state.liveBytes + state.telemetry.undoBytes + state.telemetry.redoBytes;
+}
+
+void UndoableSpace::recordOperation(RootState& state,
+                                    std::string_view type,
+                                    std::chrono::steady_clock::duration duration,
+                                    bool success,
+                                    std::size_t undoBefore,
+                                    std::size_t redoBefore,
+                                    std::size_t bytesBefore,
+                                    std::string const& message) {
+    RootState::OperationRecord record;
+    record.type            = std::string(type);
+    record.timestamp       = std::chrono::system_clock::now();
+    record.duration        = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+    record.success         = success;
+    record.undoCountBefore = undoBefore;
+    record.undoCountAfter  = state.undoStack.size();
+    record.redoCountBefore = redoBefore;
+    record.redoCountAfter  = state.redoStack.size();
+    record.bytesBefore     = bytesBefore;
+    record.bytesAfter      = computeTotalBytesLocked(state);
+    record.message         = message;
+    state.telemetry.lastOperation = std::move(record);
+}
+
+auto UndoableSpace::applyRetentionLocked(RootState& state, std::string_view origin) -> TrimStats {
+    (void)origin;
+    TrimStats stats{};
+    bool      trimmed    = false;
+    std::size_t totalBytes = computeTotalBytesLocked(state);
+
+    auto removeOldestUndo = [&]() -> bool {
+        if (state.undoStack.empty())
+            return false;
+        auto entry = state.undoStack.front();
+        state.undoStack.erase(state.undoStack.begin());
+        if (state.telemetry.undoBytes >= entry.bytes)
+            state.telemetry.undoBytes -= entry.bytes;
+        else
+            state.telemetry.undoBytes = 0;
+        totalBytes = totalBytes >= entry.bytes ? totalBytes - entry.bytes : 0;
+        stats.entriesRemoved += 1;
+        stats.bytesRemoved += entry.bytes;
+        trimmed = true;
+        return true;
+    };
+
+    auto removeOldestRedo = [&]() -> bool {
+        if (state.redoStack.empty())
+            return false;
+        auto entry = state.redoStack.front();
+        state.redoStack.erase(state.redoStack.begin());
+        if (state.telemetry.redoBytes >= entry.bytes)
+            state.telemetry.redoBytes -= entry.bytes;
+        else
+            state.telemetry.redoBytes = 0;
+        totalBytes = totalBytes >= entry.bytes ? totalBytes - entry.bytes : 0;
+        stats.entriesRemoved += 1;
+        stats.bytesRemoved += entry.bytes;
+        trimmed = true;
+        return true;
+    };
+
+    if (state.options.maxEntries > 0) {
+        while (state.undoStack.size() > state.options.maxEntries) {
+            if (!removeOldestUndo())
+                break;
+        }
+        while (state.redoStack.size() > state.options.maxEntries) {
+            if (!removeOldestRedo())
+                break;
+        }
+    }
+
+    if (state.options.maxBytesRetained > 0) {
+        while (totalBytes > state.options.maxBytesRetained) {
+            if (!state.undoStack.empty()) {
+                if (!removeOldestUndo())
+                    break;
+                continue;
+            }
+            if (!state.redoStack.empty()) {
+                if (!removeOldestRedo())
+                    break;
+                continue;
+            }
+            break;
+        }
+    }
+
+    if (trimmed) {
+        state.telemetry.trimOperations += 1;
+        state.telemetry.trimmedEntries += stats.entriesRemoved;
+        state.telemetry.trimmedBytes   += stats.bytesRemoved;
+        state.telemetry.lastTrimTimestamp = std::chrono::system_clock::now();
+    }
+
+    return stats;
+}
+
+auto UndoableSpace::gatherStatsLocked(RootState const& state) const -> HistoryStats {
+    HistoryStats stats;
+    stats.counts.undo          = state.undoStack.size();
+    stats.counts.redo          = state.redoStack.size();
+    stats.bytes.total                 = computeTotalBytesLocked(state);
+    stats.bytes.undo                  = state.telemetry.undoBytes;
+    stats.bytes.redo                  = state.telemetry.redoBytes;
+    stats.bytes.live                  = state.liveBytes;
+    stats.counts.manualGarbageCollect = state.options.manualGarbageCollect;
+    stats.trim.operationCount = state.telemetry.trimOperations;
+    stats.trim.entries        = state.telemetry.trimmedEntries;
+    stats.trim.bytes          = state.telemetry.trimmedBytes;
+    if (state.telemetry.lastTrimTimestamp) {
+        stats.trim.lastTimestampMs = toMillis(*state.telemetry.lastTrimTimestamp);
+    }
+    if (state.telemetry.lastOperation) {
+        HistoryLastOperation op;
+        op.type            = state.telemetry.lastOperation->type;
+        op.timestampMs     = toMillis(state.telemetry.lastOperation->timestamp);
+        op.durationMs      = static_cast<std::uint64_t>(state.telemetry.lastOperation->duration.count());
+        op.success         = state.telemetry.lastOperation->success;
+        op.undoCountBefore = state.telemetry.lastOperation->undoCountBefore;
+        op.undoCountAfter  = state.telemetry.lastOperation->undoCountAfter;
+        op.redoCountBefore = state.telemetry.lastOperation->redoCountBefore;
+        op.redoCountAfter  = state.telemetry.lastOperation->redoCountAfter;
+        op.bytesBefore     = state.telemetry.lastOperation->bytesBefore;
+        op.bytesAfter      = state.telemetry.lastOperation->bytesAfter;
+        op.message         = state.telemetry.lastOperation->message;
+        stats.lastOperation = std::move(op);
+    }
+    return stats;
+}
+
+auto UndoableSpace::readHistoryValue(MatchedRoot const& matchedRoot,
+                                     std::string const& relativePath,
+                                     InputMetadata const& metadata,
+                                     void* obj) -> std::optional<Error> {
+    auto state = matchedRoot.state;
+    if (!state) {
+        return Error{Error::Code::UnknownError, "History root missing"};
+    }
+
+    std::unique_lock lock(state->mutex);
+    auto stats = gatherStatsLocked(*state);
+
+    auto assign = [&](auto value, std::string_view descriptor) -> std::optional<Error> {
+        using ValueT = std::decay_t<decltype(value)>;
+        if (!metadata.typeInfo || *metadata.typeInfo != typeid(ValueT)) {
+            return Error{Error::Code::InvalidType,
+                         std::string("History telemetry path ") + std::string(descriptor)
+                             + " expects type " + typeid(ValueT).name()};
+        }
+        if (obj == nullptr) {
+            return Error{Error::Code::MalformedInput, "Output pointer is null"};
+        }
+        *static_cast<ValueT*>(obj) = value;
+        return std::nullopt;
+    };
+
+    if (relativePath == "_history/stats") {
+        return assign(stats, relativePath);
+    }
+    if (relativePath == "_history/stats/undoCount") {
+        return assign(stats.counts.undo, relativePath);
+    }
+    if (relativePath == "_history/stats/redoCount") {
+        return assign(stats.counts.redo, relativePath);
+    }
+    if (relativePath == "_history/stats/undoBytes") {
+        return assign(stats.bytes.undo, relativePath);
+    }
+    if (relativePath == "_history/stats/redoBytes") {
+        return assign(stats.bytes.redo, relativePath);
+    }
+    if (relativePath == "_history/stats/liveBytes") {
+        return assign(stats.bytes.live, relativePath);
+    }
+    if (relativePath == "_history/stats/bytesRetained") {
+        return assign(stats.bytes.total, relativePath);
+    }
+    if (relativePath == "_history/stats/manualGcEnabled") {
+        return assign(stats.counts.manualGarbageCollect, relativePath);
+    }
+    if (relativePath == "_history/stats/trimOperationCount") {
+        return assign(stats.trim.operationCount, relativePath);
+    }
+    if (relativePath == "_history/stats/trimmedEntries") {
+        return assign(stats.trim.entries, relativePath);
+    }
+    if (relativePath == "_history/stats/trimmedBytes") {
+        return assign(stats.trim.bytes, relativePath);
+    }
+    if (relativePath == "_history/stats/lastTrimTimestampMs") {
+        return assign(stats.trim.lastTimestampMs, relativePath);
+    }
+    if (relativePath == "_history/head/generation") {
+        return assign(state->liveSnapshot.generation, relativePath);
+    }
+
+    if (relativePath.starts_with("_history/lastOperation")) {
+        if (!stats.lastOperation) {
+            return Error{Error::Code::NoObjectFound, "No history operation recorded"};
+        }
+        auto const& op = *stats.lastOperation;
+        if (relativePath == "_history/lastOperation/type") {
+            return assign(op.type, relativePath);
+        }
+        if (relativePath == "_history/lastOperation/timestampMs") {
+            return assign(op.timestampMs, relativePath);
+        }
+        if (relativePath == "_history/lastOperation/durationMs") {
+            return assign(op.durationMs, relativePath);
+        }
+        if (relativePath == "_history/lastOperation/success") {
+            return assign(op.success, relativePath);
+        }
+        if (relativePath == "_history/lastOperation/undoCountBefore") {
+            return assign(op.undoCountBefore, relativePath);
+        }
+        if (relativePath == "_history/lastOperation/undoCountAfter") {
+            return assign(op.undoCountAfter, relativePath);
+        }
+        if (relativePath == "_history/lastOperation/redoCountBefore") {
+            return assign(op.redoCountBefore, relativePath);
+        }
+        if (relativePath == "_history/lastOperation/redoCountAfter") {
+            return assign(op.redoCountAfter, relativePath);
+        }
+        if (relativePath == "_history/lastOperation/bytesBefore") {
+            return assign(op.bytesBefore, relativePath);
+        }
+        if (relativePath == "_history/lastOperation/bytesAfter") {
+            return assign(op.bytesAfter, relativePath);
+        }
+        if (relativePath == "_history/lastOperation/message") {
+            return assign(op.message, relativePath);
+        }
+    }
+
+    return Error{Error::Code::NotFound, std::string("Unsupported history telemetry path: ") + relativePath};
 }
 
 auto UndoableSpace::applySnapshotLocked(RootState& state,
@@ -559,7 +894,7 @@ auto UndoableSpace::interpretSteps(InputData const& data) const -> std::size_t {
 
 auto UndoableSpace::handleControlInsert(MatchedRoot const& matchedRoot,
                                         std::string const& command,
-                                        InputData const& data) -> InsertReturn {
+                                         InputData const& data) -> InsertReturn {
     InsertReturn ret;
     if (command == "_history/undo") {
         auto steps = interpretSteps(data);
@@ -578,7 +913,15 @@ auto UndoableSpace::handleControlInsert(MatchedRoot const& matchedRoot,
         return ret;
     }
     if (command == "_history/garbage_collect") {
-        // No-op for in-memory skeleton; return success.
+        auto state = matchedRoot.state;
+        std::unique_lock lock(state->mutex);
+        OperationScope scope(*this, *state, "garbage_collect");
+        auto stats = applyRetentionLocked(*state, "manual");
+        if (stats.entriesRemoved == 0) {
+            scope.setResult(true, "no_trim");
+        } else {
+            scope.setResult(true, "trimmed=" + std::to_string(stats.entriesRemoved));
+        }
         return ret;
     }
     if (command == "_history/set_manual_garbage_collect") {
@@ -631,12 +974,17 @@ auto UndoableSpace::out(Iterator const& path,
                         InputMetadata const& inputMetadata,
                         Out const& options,
                         void* obj) -> std::optional<Error> {
+    auto fullPath = path.toString();
+    auto matched  = findRootByPath(fullPath);
+
     if (!options.doPop) {
+        if (matched.has_value() && !matched->relativePath.empty()
+            && matched->relativePath.starts_with("_history")) {
+            return readHistoryValue(*matched, matched->relativePath, inputMetadata, obj);
+        }
         return inner_->out(path, inputMetadata, options, obj);
     }
 
-    auto fullPath = path.toString();
-    auto matched  = findRootByPath(fullPath);
     if (!matched.has_value()) {
         return inner_->out(path, inputMetadata, options, obj);
     }
@@ -671,23 +1019,48 @@ auto UndoableSpace::undo(ConcretePathStringView root, std::size_t steps) -> Expe
         steps = 1;
 
     while (steps-- > 0) {
+        OperationScope scope(*this, *state, "undo");
         if (state->undoStack.empty()) {
+            scope.setResult(false, "empty");
             return std::unexpected(Error{Error::Code::NoObjectFound, "Nothing to undo"});
         }
-        auto target  = state->undoStack.back();
-        auto current = state->liveSnapshot;
+
+        auto entry = state->undoStack.back();
         state->undoStack.pop_back();
-        auto applyResult = applySnapshotLocked(*state, target);
+        if (state->telemetry.undoBytes >= entry.bytes) {
+            state->telemetry.undoBytes -= entry.bytes;
+        } else {
+            state->telemetry.undoBytes = 0;
+        }
+
+        auto currentSnapshot = state->liveSnapshot;
+        auto currentBytes    = state->liveBytes;
+
+        auto applyResult = applySnapshotLocked(*state, entry.snapshot);
         if (!applyResult) {
-            // Re-apply current snapshot to maintain state.
-            auto revert = applySnapshotLocked(*state, current);
+            auto revert = applySnapshotLocked(*state, currentSnapshot);
             (void)revert;
-            state->liveSnapshot = current;
+            state->liveSnapshot = currentSnapshot;
+            state->liveBytes    = currentBytes;
+            state->undoStack.push_back(std::move(entry));
+            state->telemetry.undoBytes += entry.bytes;
+            scope.setResult(false, applyResult.error().message.value_or("apply_failed"));
             return std::unexpected(applyResult.error());
         }
-        state->redoStack.push_back(current);
-        state->liveSnapshot  = target;
-        state->bytesRetained = state->prototype.analyze(target).payloadBytes;
+
+        RootState::Entry redoEntry;
+        redoEntry.snapshot  = currentSnapshot;
+        redoEntry.bytes     = currentBytes;
+        redoEntry.timestamp = std::chrono::system_clock::now();
+        state->redoStack.push_back(std::move(redoEntry));
+        state->telemetry.redoBytes += currentBytes;
+
+        state->liveSnapshot = entry.snapshot;
+        state->liveBytes    = entry.bytes;
+
+        if (!state->options.manualGarbageCollect) {
+            applyRetentionLocked(*state, "undo");
+        }
     }
 
     return {};
@@ -707,22 +1080,48 @@ auto UndoableSpace::redo(ConcretePathStringView root, std::size_t steps) -> Expe
         steps = 1;
 
     while (steps-- > 0) {
+        OperationScope scope(*this, *state, "redo");
         if (state->redoStack.empty()) {
+            scope.setResult(false, "empty");
             return std::unexpected(Error{Error::Code::NoObjectFound, "Nothing to redo"});
         }
-        auto target  = state->redoStack.back();
-        auto current = state->liveSnapshot;
+
+        auto entry = state->redoStack.back();
         state->redoStack.pop_back();
-        auto applyResult = applySnapshotLocked(*state, target);
+        if (state->telemetry.redoBytes >= entry.bytes) {
+            state->telemetry.redoBytes -= entry.bytes;
+        } else {
+            state->telemetry.redoBytes = 0;
+        }
+
+        auto currentSnapshot = state->liveSnapshot;
+        auto currentBytes    = state->liveBytes;
+
+        auto applyResult = applySnapshotLocked(*state, entry.snapshot);
         if (!applyResult) {
-            auto revert = applySnapshotLocked(*state, current);
+            auto revert = applySnapshotLocked(*state, currentSnapshot);
             (void)revert;
-            state->liveSnapshot = current;
+            state->liveSnapshot = currentSnapshot;
+            state->liveBytes    = currentBytes;
+            state->redoStack.push_back(std::move(entry));
+            state->telemetry.redoBytes += entry.bytes;
+            scope.setResult(false, applyResult.error().message.value_or("apply_failed"));
             return std::unexpected(applyResult.error());
         }
-        state->undoStack.push_back(current);
-        state->liveSnapshot  = target;
-        state->bytesRetained = state->prototype.analyze(target).payloadBytes;
+
+        RootState::Entry undoEntry;
+        undoEntry.snapshot  = currentSnapshot;
+        undoEntry.bytes     = currentBytes;
+        undoEntry.timestamp = std::chrono::system_clock::now();
+        state->undoStack.push_back(std::move(undoEntry));
+        state->telemetry.undoBytes += currentBytes;
+
+        state->liveSnapshot = entry.snapshot;
+        state->liveBytes    = entry.bytes;
+
+        if (!state->options.manualGarbageCollect) {
+            applyRetentionLocked(*state, "redo");
+        }
     }
 
     return {};
@@ -734,21 +1133,47 @@ auto UndoableSpace::trimHistory(ConcretePathStringView root, TrimPredicate predi
     if (!state)
         return std::unexpected(Error{Error::Code::NotFound, "History root not enabled"});
 
-    std::scoped_lock lock(state->mutex);
-    TrimStats stats{};
-    if (!predicate)
-        return stats;
+    std::unique_lock lock(state->mutex);
+    OperationScope scope(*this, *state, "trim");
 
-    auto originalSize = state->undoStack.size();
-    std::vector<CowSubtreePrototype::Snapshot> filtered;
-    filtered.reserve(state->undoStack.size());
+    TrimStats stats{};
+    if (!predicate) {
+        scope.setResult(true, "no_predicate");
+        return stats;
+    }
+
+    std::vector<RootState::Entry> kept;
+    kept.reserve(state->undoStack.size());
+    std::size_t bytesRemoved = 0;
     for (std::size_t i = 0; i < state->undoStack.size(); ++i) {
-        if (!predicate(i)) {
-            filtered.push_back(state->undoStack[i]);
+        auto& entry = state->undoStack[i];
+        if (predicate(i)) {
+            stats.entriesRemoved += 1;
+            bytesRemoved += entry.bytes;
+        } else {
+            kept.push_back(entry);
         }
     }
-    stats.entriesRemoved = originalSize - filtered.size();
-    state->undoStack     = std::move(filtered);
+
+    if (stats.entriesRemoved == 0) {
+        scope.setResult(true, "no_trim");
+        return stats;
+    }
+
+    stats.bytesRemoved = bytesRemoved;
+    state->undoStack    = std::move(kept);
+    if (state->telemetry.undoBytes >= bytesRemoved) {
+        state->telemetry.undoBytes -= bytesRemoved;
+    } else {
+        state->telemetry.undoBytes = 0;
+    }
+
+    state->telemetry.trimOperations += 1;
+    state->telemetry.trimmedEntries += stats.entriesRemoved;
+    state->telemetry.trimmedBytes   += stats.bytesRemoved;
+    state->telemetry.lastTrimTimestamp = std::chrono::system_clock::now();
+
+    scope.setResult(true, "trimmed=" + std::to_string(stats.entriesRemoved));
     return stats;
 }
 
@@ -758,12 +1183,7 @@ auto UndoableSpace::getHistoryStats(ConcretePathStringView root) const -> Expect
         return std::unexpected(Error{Error::Code::NotFound, "History root not enabled"});
 
     std::scoped_lock lock(state->mutex);
-    HistoryStats stats;
-    stats.undoCount            = state->undoStack.size();
-    stats.redoCount            = state->redoStack.size();
-    stats.bytesRetained        = state->bytesRetained;
-    stats.manualGarbageCollect = state->options.manualGarbageCollect;
-    return stats;
+    return gatherStatsLocked(*state);
 }
 
 auto UndoableSpace::beginTransaction(ConcretePathStringView root) -> Expected<HistoryTransaction> {

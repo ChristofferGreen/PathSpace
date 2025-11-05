@@ -10,9 +10,9 @@ using SP::ConcretePathStringView;
 
 namespace {
 
-auto makeUndoableSpace() -> std::unique_ptr<UndoableSpace> {
+auto makeUndoableSpace(HistoryOptions defaults = {}) -> std::unique_ptr<UndoableSpace> {
     auto inner = std::make_unique<PathSpace>();
-    return std::make_unique<UndoableSpace>(std::move(inner));
+    return std::make_unique<UndoableSpace>(std::move(inner), defaults);
 }
 
 } // namespace
@@ -29,6 +29,17 @@ TEST_CASE("undo/redo round trip") {
     auto insertResult = space->insert("/doc/title", std::string{"alpha"});
     REQUIRE(insertResult.errors.empty());
 
+    auto statsAfterInsert = space->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(statsAfterInsert.has_value());
+    CHECK(statsAfterInsert->counts.undo == 1);
+    CHECK(statsAfterInsert->counts.redo == 0);
+    CHECK(statsAfterInsert->bytes.total > 0);
+    CHECK_FALSE(statsAfterInsert->counts.manualGarbageCollect);
+
+    auto undoCountPath = space->read<std::size_t>("/doc/_history/stats/undoCount");
+    REQUIRE(undoCountPath.has_value());
+    CHECK(*undoCountPath == 1);
+
     auto value = space->read<std::string>("/doc/title");
     REQUIRE(value.has_value());
     CHECK(value->c_str() == std::string{"alpha"});
@@ -41,6 +52,10 @@ TEST_CASE("undo/redo round trip") {
     auto restored = space->read<std::string>("/doc/title");
     REQUIRE(restored.has_value());
     CHECK(restored->c_str() == std::string{"alpha"});
+
+    auto lastOpType = space->read<std::string>("/doc/_history/lastOperation/type");
+    REQUIRE(lastOpType.has_value());
+    CHECK(*lastOpType == std::string{"redo"});
 }
 
 TEST_CASE("transaction batching produces single history entry") {
@@ -64,11 +79,112 @@ TEST_CASE("transaction batching produces single history entry") {
 
     auto stats = space->getHistoryStats(ConcretePathStringView{"/items"});
     REQUIRE(stats.has_value());
-    CHECK(stats->undoCount == 1);
+    CHECK(stats->counts.undo == 1);
+    CHECK(stats->counts.redo == 0);
+    CHECK(stats->trim.operationCount == 0);
 
     REQUIRE(space->undo(ConcretePathStringView{"/items"}).has_value());
     CHECK_FALSE(space->read<int>("/items/a").has_value());
     CHECK_FALSE(space->read<int>("/items/b").has_value());
+}
+
+TEST_CASE("retention trims oldest entries when exceeding maxEntries") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.maxEntries = 2;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    REQUIRE(space->insert("/doc/value", std::string{"one"}).errors.empty());
+    REQUIRE(space->insert("/doc/value", std::string{"two"}).errors.empty());
+    REQUIRE(space->insert("/doc/value", std::string{"three"}).errors.empty());
+
+    auto stats = space->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(stats.has_value());
+    CAPTURE(stats->counts.undo);
+    CAPTURE(stats->counts.manualGarbageCollect);
+    CHECK(stats->counts.undo == 2);
+    CHECK(stats->trim.operationCount >= 1);
+
+    REQUIRE(space->undo(ConcretePathStringView{"/doc"}).has_value());
+    REQUIRE(space->undo(ConcretePathStringView{"/doc"}).has_value());
+    auto thirdUndo = space->undo(ConcretePathStringView{"/doc"});
+    CHECK_FALSE(thirdUndo.has_value());
+    CHECK(thirdUndo.error().code == Error::Code::NoObjectFound);
+}
+
+TEST_CASE("retention honors maxBytesRetained budget") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.maxEntries        = 8;
+    opts.maxBytesRetained  = 1500;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    std::string blobA(1024, 'a');
+    std::string blobB(1024, 'b');
+
+    REQUIRE(space->insert("/doc/value", blobA).errors.empty());
+    auto statsAfterFirst = space->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(statsAfterFirst.has_value());
+    CHECK(statsAfterFirst->counts.undo == 1);
+    auto trimsBefore = statsAfterFirst->trim.operationCount;
+
+    REQUIRE(space->insert("/doc/value", blobB).errors.empty());
+    auto statsAfterSecond = space->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(statsAfterSecond.has_value());
+    CHECK(statsAfterSecond->counts.undo <= 1);
+    CHECK(statsAfterSecond->trim.operationCount >= trimsBefore + 1);
+}
+
+TEST_CASE("manual garbage collect defers retention until invoked") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.maxEntries           = 1;
+    opts.manualGarbageCollect = true;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    REQUIRE(space->insert("/doc/value", 1).errors.empty());
+    REQUIRE(space->insert("/doc/value", 2).errors.empty());
+
+    auto statsBefore = space->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(statsBefore.has_value());
+    CHECK(statsBefore->counts.undo == 2);
+
+    auto gc = space->insert("/doc/_history/garbage_collect", true);
+    CHECK(gc.errors.empty());
+
+    auto statsAfter = space->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(statsAfter.has_value());
+    CAPTURE(statsAfter->counts.undo);
+    CAPTURE(statsAfter->counts.manualGarbageCollect);
+    CHECK(statsAfter->counts.undo == 1);
+    CHECK(statsAfter->trim.operationCount >= statsBefore->trim.operationCount + 1);
+    CHECK(statsAfter->trim.entries >= statsBefore->trim.entries + 1);
+}
+
+TEST_CASE("history telemetry paths expose stats") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+    REQUIRE(space->insert("/doc/value", 42).errors.empty());
+
+    auto manualGc = space->read<bool>("/doc/_history/stats/manualGcEnabled");
+    REQUIRE(manualGc.has_value());
+    CHECK_FALSE(*manualGc);
+
+    auto statsUndoCount = space->read<std::size_t>("/doc/_history/stats/undoCount");
+    REQUIRE(statsUndoCount.has_value());
+    CHECK(*statsUndoCount == 1);
+
+    auto lastOpType = space->read<std::string>("/doc/_history/lastOperation/type");
+    REQUIRE(lastOpType.has_value());
+    CHECK(*lastOpType == std::string{"commit"});
 }
 
 }

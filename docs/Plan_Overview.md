@@ -41,7 +41,8 @@ Provide a single index of active planning documents, ordered by current priority
 5. **Plan_Surface_Ray_Cache.md** — revisit once core rendering + web requirements are satisfied (deferred).
 6. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
 
-## Status Snapshot — November 1, 2025
+## Status Snapshot — November 5, 2025
+- ✅ (November 5, 2025) UndoableSpace retention budgets and telemetry shipped; `_history/stats/*` surfaces live metrics and `_history/lastOperation/*` captures commit/undo/redo details. Manual garbage collection is respected, and new doctests/looped unit coverage landed alongside `docs/Plan_PathSpace_UndoHistory.md` updates. Next focus: persistence layer wiring per Step 4.
 - ✅ (November 1, 2025) `history::CowSubtreePrototype` landed as the copy-on-write prototype for undo history, with instrumentation/tests in place and `docs/Plan_PathSpace.md` updated; `scripts/run-test-with-logs.sh` now hardens mktemp handling so the 15× loop stays stable; `docs/Plan_PathSpace_UndoHistory.md` captures the layered design, transactions, retention, and persistence roadmap.
 - ✅ (October 24, 2025) PathSurfaceMetal now allocates IOSurface-backed textures when `iosurface_backing` is set, keeping Metal surface caching in step with CAMetalLayer presentation and the updated UITest coverage.
 - ✅ (October 24, 2025) `./scripts/compile.sh --test` now auto-enables example builds, runs the PixelNoise perf harness (software + Metal) inside the mandated 15× loop, and sets the looped per-test timeout baseline to 20 s so regressions surface without bespoke CTest invocations.

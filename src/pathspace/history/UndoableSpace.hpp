@@ -5,11 +5,14 @@
 #include "history/CowSubtreePrototype.hpp"
 #include "path/ConcretePath.hpp"
 
+#include <chrono>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -21,17 +24,51 @@ struct Node;
 namespace SP::History {
 
 struct HistoryOptions {
-    std::size_t maxEntries          = 128;
-    std::size_t maxBytesRetained    = 0;
+    std::size_t maxEntries           = 128;
+    std::size_t maxBytesRetained     = 0;
     bool        manualGarbageCollect = false;
     bool        allowNestedUndo      = false;
 };
 
-struct HistoryStats {
-    std::size_t undoCount            = 0;
-    std::size_t redoCount            = 0;
-    std::size_t bytesRetained        = 0;
+struct HistoryLastOperation {
+    std::string type;
+    std::uint64_t timestampMs      = 0;
+    std::uint64_t durationMs       = 0;
+    bool         success           = true;
+    std::size_t  undoCountBefore   = 0;
+    std::size_t  undoCountAfter    = 0;
+    std::size_t  redoCountBefore   = 0;
+    std::size_t  redoCountAfter    = 0;
+    std::size_t  bytesBefore       = 0;
+    std::size_t  bytesAfter        = 0;
+    std::string  message;
+};
+
+struct HistoryTrimMetrics {
+    std::size_t operationCount   = 0;
+    std::size_t entries          = 0;
+    std::size_t bytes            = 0;
+    std::uint64_t lastTimestampMs = 0;
+};
+
+struct HistoryBytes {
+    std::size_t total = 0;
+    std::size_t undo  = 0;
+    std::size_t redo  = 0;
+    std::size_t live  = 0;
+};
+
+struct HistoryCounts {
+    std::size_t undo                 = 0;
+    std::size_t redo                 = 0;
     bool        manualGarbageCollect = false;
+};
+
+struct HistoryStats {
+    HistoryCounts                      counts;
+    HistoryBytes                       bytes;
+    HistoryTrimMetrics                 trim;
+    std::optional<HistoryLastOperation> lastOperation;
 };
 
 struct TrimStats {
@@ -91,6 +128,7 @@ private:
         std::string                relativePath;
     };
 
+    class OperationScope;
     class TransactionGuard {
     public:
         TransactionGuard() = default;
@@ -129,6 +167,21 @@ private:
     auto interpretSteps(InputData const& data) const -> std::size_t;
 
     auto resolveRootNode() -> Node*;
+    static auto computeTotalBytesLocked(RootState const& state) -> std::size_t;
+    auto gatherStatsLocked(RootState const& state) const -> HistoryStats;
+    void recordOperation(RootState& state,
+                         std::string_view type,
+                         std::chrono::steady_clock::duration duration,
+                         bool success,
+                         std::size_t undoBefore,
+                         std::size_t redoBefore,
+                         std::size_t bytesBefore,
+                         std::string const& message);
+    auto applyRetentionLocked(RootState& state, std::string_view origin) -> TrimStats;
+    auto readHistoryValue(MatchedRoot const& matchedRoot,
+                          std::string const& relativePath,
+                          InputMetadata const& metadata,
+                          void* obj) -> std::optional<Error>;
 
     std::unique_ptr<PathSpaceBase>                     inner_;
     HistoryOptions                                     defaultOptions_;

@@ -21,10 +21,9 @@
 5. Surface a public API (`enableHistory`, `disableHistory`, `undo`, `redo`, `trimHistory`, `HistoryTransaction`) with clear concurrency guarantees.
 6. Publish diagnostics (`/root/history/stats`, `/root/history/lastOperation`) to feed inspector tooling.
 
-## Status — November 4, 2025
-- ✅ `UndoableSpace` wrapper skeleton landed with in-memory undo/redo stacks, path-based control surface, and RAII transactions. Core undo/redo flows and transaction batching now run through the 15× loop.
-- ⚠️ History snapshots skip nodes that hold executable tasks or nested spaces; attempting to snapshot those paths returns an error. Retention budgets, persistence, and telemetry outputs remain open.
- - ⚠️ History snapshots skip nodes that hold executable tasks or nested spaces; attempting to snapshot those paths returns an error. Retention budgets, persistence, and telemetry outputs remain open. Add a regression test once we expose a unit-friendly way to stage execution tasks inside `NodeData` so the snapshot helpers reject them.
+## Status — November 5, 2025
+- ✅ (November 5, 2025) Retention budgets now auto-trim undo/redo stacks, manual garbage collect defers trimming when requested, and telemetry exposes live stats plus last-operation metadata via `_history/stats/*` and `_history/lastOperation/*`. Unit coverage exercises retention, manual GC, and telemetry path reads through the 15× loop.
+- ⚠️ History snapshots still skip nodes that hold executable tasks or nested spaces; attempting to snapshot those paths returns an error. Persistence, on-disk recovery, and execution-task coverage remain open items. Add a regression test once we expose a unit-friendly way to stage execution tasks inside `NodeData` so the snapshot helpers reject them.
 
 ## Architecture Overview
 - **Wrapper layer:** `UndoableSpace` stores a pointer to the inner `PathSpaceBase` and overrides mutating methods to run inside `HistoryTransaction` scopes.
@@ -100,7 +99,7 @@ public:
 ## Execution Plan
 1. **Design Review (Required)** — walk this document with maintainers; ratify API, persistence defaults, and telemetry. Update docs/AI_Architecture.md accordingly.
 2. **Implement Wrapper Skeleton** — add `UndoableSpace`, transactions, in-memory stacks, COW integration (no persistence yet). Extend tests to cover insert/take/undo/redo flows and transaction batching. ✅ (November 4, 2025) implemented in-tree; persistence/telemetry still pending.
-3. **Retention & Telemetry** — wire budgets, keyframe compaction, `/history/stats` outputs, and doctest coverage.
+3. ✅ (November 5, 2025) **Retention & Telemetry** — auto-trim budgets, surface `_history/stats/*` and `_history/lastOperation/*`, add manual GC controls, and extend doctest coverage.
 4. **Persistence Layer** — add on-disk storage, recovery tests, and failure-path logging. Benchmark performance and tune defaults.
 5. **Integration Tasks** — update `Plan_PathSpace.md` next steps, ensure paint widget plan references new APIs, revisit inspector tooling notes.
 
