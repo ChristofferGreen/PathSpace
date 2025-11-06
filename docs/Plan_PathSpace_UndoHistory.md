@@ -23,8 +23,8 @@
 
 ## Status — November 6, 2025
 - ✅ (November 5, 2025) Persistence layer landed: undo/redo stacks flush snapshots + metadata atomically to disk, state metadata survives restarts, and recovery replays into the backing PathSpace before enabling history. Manual GC now flushes pending writes and trims files; telemetry tracks disk bytes/entries alongside cache residency.
-- ✅ (November 6, 2025) Regression coverage now verifies that nodes containing tasks/futures or nested PathSpaces are rejected with descriptive errors, keeping undo stacks untouched when snapshots would be unsafe. Inspector integration to surface the failure context, plus future support for executable payloads, remain open items.
-- ➡️ Next focus: surface these unsupported-payload failures through the PathSpace inspector UX and decide whether we want snapshot support (or explicit opt-outs) for executable nodes vs. leaving them permanently excluded.
+- ✅ (November 6, 2025) Regression coverage now verifies that nodes containing tasks/futures or nested PathSpaces are rejected with descriptive errors, keeping undo stacks untouched when snapshots would be unsafe. Inspector-facing telemetry (`<root>/_history/unsupported/*`) now captures the offending path, reason, timestamp, and occurrence count so failures surface directly in the PathSpace inspector.
+- ➡️ Next focus: decide whether to support snapshotting executable payloads (tasks/futures) or formalize a permanent opt-out with documented guardrails for integrators.
 
 ## Architecture Overview
 - **Wrapper layer:** `UndoableSpace` stores a pointer to the inner `PathSpaceBase` and overrides mutating methods to run inside `HistoryTransaction` scopes.
@@ -53,6 +53,7 @@
 - Read-only nodes provide state for tooling:
   - `<root>/_history/stats/{undoCount,redoCount,bytesRetained,diskBytes,lastOperation}`
   - `<root>/_history/head/generation` (current snapshot id) and optional per-entry metadata under `<root>/_history/entries/<generation>/…`.
+  - `<root>/_history/unsupported/{totalCount,recentCount,recent/<index>/{path,reason,occurrences,timestampMs}}` — inspector-facing log of unsupported payload captures (nested PathSpaces, executable nodes, serialization failures).
 - All interactions use standard PathSpace operations (`insert`, `read`, `listChildren`); no new public API surface is required.
 
 ## Retention & Compaction
@@ -91,6 +92,7 @@ public:
 ## Telemetry
 - Publish real-time stats under `<root>/history/stats`.
 - Record last operation metadata (`type`, `duration_ms`, `entries_before`, `entries_after`) under `<root>/history/lastOperation`.
+- Log unsupported snapshot attempts under `<root>/_history/unsupported/*`, including offending path, reason, timestamp (ms since epoch), and rolling occurrence counts so the inspector can highlight misconfigured subtrees.
 - Emit structured logs for persistence failures and evictions (guards future inspector integration).
 
 ## Open Questions

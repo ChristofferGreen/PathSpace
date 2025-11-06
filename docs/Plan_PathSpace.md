@@ -54,16 +54,18 @@
 ### Diagnostics & Testing
 - Surface metrics for QA: average snapshot size, undo/redo latency, failed operations.
 - Add regression tests: rapid stroke insertions, alternating undo/redo cycles, concurrent writers, and nested undoable subtrees.
+- Log unsupported snapshot attempts (nested PathSpaces, tasks/futures, serialization failures) under `<root>/_history/unsupported/*` so the inspector can flag misconfigured nodes; add regression coverage that asserts the path/reason telemetry.
 - Verify integration with `PaintSurface`: stroke history stored under `widgets/<id>/state/history` benefits from automatic snapshots; undo/redo updates `WidgetOp` streams and marks `render/dirty`.
 
 ## Open Questions
 - Should history metadata store arbitrary user tags (e.g., command names) for better UX?
 - How do we surface history stats and per-entry metadata to tooling without colliding with existing user paths (control namespace customization, documentation)?
 
-## Status — November 1, 2025
+## Status — November 6, 2025
 - ✅ `history::CowSubtreePrototype` models copy-on-write subtrees with node/payload sharing, provides memory + delta instrumentation, and is validated by unit tests (`apply clones modified branch only`) exercising node reuse and stack accounting.
 - ✅ Updated `scripts/run-test-with-logs.sh` temporary file allocation so the test loop tolerates mktemp collisions during 15× runs.
 - ✅ Authored `docs/Plan_PathSpace_UndoHistory.md` outlining the undo wrapper, `_history/*` control paths, retention, and persistence strategy for design review.
+- ✅ (November 6, 2025) `_history/unsupported/*` telemetry now exposes the offending path, reason, timestamp, and occurrence counts for unsupported payload snapshots so the inspector surfaces failures without digging through logs; regression coverage updated to check the new nodes.
 
 ## Next Steps
 1. ✅ Prototype copy-on-write storage for a simple subtree, measuring memory impact. (Captured by `history::CowSubtreePrototype` and associated tests.)
@@ -72,3 +74,4 @@
 4. Implement child enumeration and the route merger, then update widget/runtime plans to consume them.
 5. Design `HistoryOptions` struct and telemetry schema.
 6. Update the paint widget plan to call the new APIs (already referenced in `docs/Plan_WidgetDeclarativeAPI.md`).
+7. Evaluate executable payload snapshot support vs. explicit opt-out guidance once inspector consumers have exercised the `_history/unsupported/*` stream.

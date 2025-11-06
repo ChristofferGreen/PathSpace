@@ -4,6 +4,8 @@
 #include "path/ConcretePath.hpp"
 #include "third_party/doctest.h"
 
+#include <filesystem>
+
 using namespace SP;
 using namespace SP::History;
 using SP::ConcretePathStringView;
@@ -187,7 +189,6 @@ TEST_CASE("history telemetry paths expose stats") {
     CHECK(*lastOpType == std::string{"commit"});
 }
 
-
 TEST_CASE("history rejects unsupported payloads") {
     SUBCASE("task payloads surface descriptive errors and skip history entries") {
         auto space = makeUndoableSpace();
@@ -210,6 +211,23 @@ TEST_CASE("history rejects unsupported payloads") {
         REQUIRE(stats.has_value());
         CHECK(stats->counts.undo == 0);
         CHECK(stats->counts.redo == 0);
+        CHECK(stats->unsupported.total == 1);
+        REQUIRE(stats->unsupported.recent.size() == 1);
+        CHECK(stats->unsupported.recent.front().path == "/doc/task");
+        CHECK(stats->unsupported.recent.front().reason.find("tasks or futures") != std::string::npos);
+
+        auto totalCount = space->read<std::size_t>("/doc/_history/unsupported/totalCount");
+        REQUIRE(totalCount.has_value());
+        CHECK(*totalCount == 1);
+        auto recentCount = space->read<std::size_t>("/doc/_history/unsupported/recentCount");
+        REQUIRE(recentCount.has_value());
+        CHECK(*recentCount == 1);
+        auto recentReason = space->read<std::string>("/doc/_history/unsupported/recent/0/reason");
+        REQUIRE(recentReason.has_value());
+        CHECK(recentReason->find("tasks or futures") != std::string::npos);
+        auto recentPath = space->read<std::string>("/doc/_history/unsupported/recent/0/path");
+        REQUIRE(recentPath.has_value());
+        CHECK(*recentPath == std::string{"/doc/task"});
     }
 
     SUBCASE("nested PathSpaces are rejected with clear messaging") {
@@ -234,7 +252,54 @@ TEST_CASE("history rejects unsupported payloads") {
         REQUIRE(stats.has_value());
         CHECK(stats->counts.undo == 0);
         CHECK(stats->counts.redo == 0);
+        CHECK(stats->unsupported.total == 1);
+        REQUIRE(stats->unsupported.recent.size() == 1);
+        CHECK(stats->unsupported.recent.front().path == "/doc/nested");
+        CHECK(stats->unsupported.recent.front().reason.find("nested PathSpaces") != std::string::npos);
     }
+}
+
+TEST_CASE("persistence restores state and undo history") {
+    auto tempRoot = std::filesystem::temp_directory_path() / "undoable_space_persist_test";
+    std::error_code ec;
+    std::filesystem::remove_all(tempRoot, ec);
+
+    HistoryOptions defaults;
+    defaults.persistHistory      = true;
+    defaults.persistenceRoot     = tempRoot.string();
+    defaults.persistenceNamespace = "suite";
+    defaults.ramCacheEntries     = 2;
+
+    auto space = makeUndoableSpace(defaults);
+    REQUIRE(space);
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+
+    REQUIRE(space->insert("/doc/title", std::string{"alpha"}).errors.empty());
+
+    auto stats = space->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(stats.has_value());
+    CHECK(stats->counts.undo == 1);
+
+    space.reset();
+
+    auto reloaded = makeUndoableSpace(defaults);
+    REQUIRE(reloaded);
+    REQUIRE(reloaded->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+
+    auto value = reloaded->read<std::string>("/doc/title");
+    REQUIRE(value.has_value());
+    CHECK(*value == std::string{"alpha"});
+
+    REQUIRE(reloaded->undo(ConcretePathStringView{"/doc"}).has_value());
+    auto missing = reloaded->read<std::string>("/doc/title");
+    CHECK_FALSE(missing.has_value());
+
+    REQUIRE(reloaded->redo(ConcretePathStringView{"/doc"}).has_value());
+    auto restored = reloaded->read<std::string>("/doc/title");
+    REQUIRE(restored.has_value());
+    CHECK(*restored == std::string{"alpha"});
+
+    std::filesystem::remove_all(tempRoot, ec);
 }
 
 }

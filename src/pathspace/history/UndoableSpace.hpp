@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -28,6 +29,13 @@ struct HistoryOptions {
     std::size_t maxBytesRetained     = 0;
     bool        manualGarbageCollect = false;
     bool        allowNestedUndo      = false;
+    bool        persistHistory       = false;
+    std::string persistenceRoot;
+    std::string persistenceNamespace;
+    std::size_t ramCacheEntries      = 8;
+    std::size_t maxDiskBytes         = 0;
+    std::chrono::milliseconds keepLatestFor{0};
+    bool        restoreFromPersistence = true;
 };
 
 struct HistoryLastOperation {
@@ -56,12 +64,28 @@ struct HistoryBytes {
     std::size_t undo  = 0;
     std::size_t redo  = 0;
     std::size_t live  = 0;
+    std::size_t disk  = 0;
 };
 
 struct HistoryCounts {
     std::size_t undo                 = 0;
     std::size_t redo                 = 0;
     bool        manualGarbageCollect = false;
+    std::size_t diskEntries          = 0;
+    std::size_t cachedUndo           = 0;
+    std::size_t cachedRedo           = 0;
+};
+
+struct HistoryUnsupportedRecord {
+    std::string path;
+    std::string reason;
+    std::size_t occurrences      = 0;
+    std::uint64_t lastTimestampMs = 0;
+};
+
+struct HistoryUnsupportedStats {
+    std::size_t                           total    = 0;
+    std::vector<HistoryUnsupportedRecord> recent;
 };
 
 struct HistoryStats {
@@ -69,6 +93,7 @@ struct HistoryStats {
     HistoryBytes                       bytes;
     HistoryTrimMetrics                 trim;
     std::optional<HistoryLastOperation> lastOperation;
+    HistoryUnsupportedStats             unsupported;
 };
 
 struct TrimStats {
@@ -108,9 +133,9 @@ public:
         HistoryTransaction(UndoableSpace& owner,
                            std::shared_ptr<RootState> rootState);
 
-        UndoableSpace*                    owner_;
-        std::shared_ptr<RootState>        rootState_;
-        bool                              active_ = true;
+        UndoableSpace*                    owner;
+        std::shared_ptr<RootState>        rootState;
+        bool                              active = true;
     };
 
     auto beginTransaction(SP::ConcretePathStringView root) -> Expected<HistoryTransaction>;
@@ -143,14 +168,14 @@ private:
         void markDirty();
         auto commit() -> Expected<void>;
         void deactivate();
-        explicit operator bool() const { return active_; }
+        explicit operator bool() const { return active; }
 
     private:
         void release();
 
-        UndoableSpace*              owner_  = nullptr;
-        std::shared_ptr<RootState>  state_;
-        bool                        active_ = false;
+        UndoableSpace*              owner  = nullptr;
+        std::shared_ptr<RootState>  state;
+        bool                        active = false;
     };
 
     auto findRoot(SP::ConcretePathStringView root) const -> std::shared_ptr<RootState>;
@@ -182,11 +207,30 @@ private:
                           std::string const& relativePath,
                           InputMetadata const& metadata,
                           void* obj) -> std::optional<Error>;
+    void recordUnsupportedPayloadLocked(RootState& state,
+                                        std::string const& path,
+                                        std::string const& reason);
+    auto ensurePersistenceSetup(RootState& state) -> Expected<void>;
+    auto loadPersistentState(RootState& state) -> Expected<void>;
+    auto restoreRootFromPersistence(RootState& state) -> Expected<void>;
+    auto persistStacksLocked(RootState& state, bool forceFsync) -> Expected<void>;
+    auto loadEntrySnapshotLocked(RootState& state, std::size_t stackIndex, bool undoStack) -> Expected<void>;
+    auto applyRamCachePolicyLocked(RootState& state) -> void;
+    auto updateCacheTelemetryLocked(RootState& state) -> void;
+    auto updateDiskTelemetryLocked(RootState& state) -> void;
+    auto encodeRootForPersistence(std::string const& rootPath) const -> std::string;
+    auto persistenceRootPath(HistoryOptions const& opts) const -> std::filesystem::path;
+    auto defaultPersistenceRoot() const -> std::filesystem::path;
+    auto entrySnapshotPath(RootState const& state, std::size_t generation) const -> std::filesystem::path;
+    auto entryMetaPath(RootState const& state, std::size_t generation) const -> std::filesystem::path;
+    auto stateMetaPath(RootState const& state) const -> std::filesystem::path;
+    auto removeEntryFiles(RootState& state, std::size_t generation) -> void;
 
-    std::unique_ptr<PathSpaceBase>                     inner_;
-    HistoryOptions                                     defaultOptions_;
-    mutable std::mutex                                 rootsMutex_;
-    std::unordered_map<std::string, std::shared_ptr<RootState>> roots_;
+    std::unique_ptr<PathSpaceBase>                     inner;
+    HistoryOptions                                     defaultOptions;
+    mutable std::mutex                                 rootsMutex;
+    std::string                                        spaceUuid;
+    std::unordered_map<std::string, std::shared_ptr<RootState>> roots;
 };
 
 } // namespace SP::History
