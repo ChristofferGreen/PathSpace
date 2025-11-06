@@ -352,4 +352,8 @@ std::optional<NodeData> NodeData::deserializeSnapshot(std::span<const std::byte>
     return node;
 }
 
+auto NodeData::hasExecutionPayload() const noexcept -> bool {
+    return !tasks.empty() || !futures.empty() || !anyFutures.empty();
+}
+
 } // namespace SP

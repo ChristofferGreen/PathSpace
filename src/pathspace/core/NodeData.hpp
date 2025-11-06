@@ -33,6 +33,7 @@ struct NodeData {
     auto peekAnyFuture() const -> std::optional<FutureAny>;
     [[nodiscard]] auto serializeSnapshot() const -> std::optional<std::vector<std::byte>>;
     static auto        deserializeSnapshot(std::span<const std::byte> bytes) -> std::optional<NodeData>;
+    [[nodiscard]] auto hasExecutionPayload() const noexcept -> bool;
 
 private:
     auto popType() -> void;

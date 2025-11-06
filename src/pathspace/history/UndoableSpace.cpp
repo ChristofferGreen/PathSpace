@@ -500,6 +500,11 @@ auto UndoableSpace::captureSnapshotLocked(RootState& state)
                 return;
             }
             if (current.data) {
+                if (current.data->hasExecutionPayload()) {
+                    failure = Error{Error::Code::UnknownError,
+                                    "History does not yet support nodes containing tasks or futures"};
+                    return;
+                }
                 auto bytesOpt = current.data->serializeSnapshot();
                 if (!bytesOpt.has_value()) {
                     failure = Error{Error::Code::UnknownError,

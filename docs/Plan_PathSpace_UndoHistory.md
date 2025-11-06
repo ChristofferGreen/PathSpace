@@ -21,9 +21,10 @@
 5. Surface a public API (`enableHistory`, `disableHistory`, `undo`, `redo`, `trimHistory`, `HistoryTransaction`) with clear concurrency guarantees.
 6. Publish diagnostics (`/root/history/stats`, `/root/history/lastOperation`) to feed inspector tooling.
 
-## Status — November 5, 2025
-- ✅ (November 5, 2025) Retention budgets now auto-trim undo/redo stacks, manual garbage collect defers trimming when requested, and telemetry exposes live stats plus last-operation metadata via `_history/stats/*` and `_history/lastOperation/*`. Unit coverage exercises retention, manual GC, and telemetry path reads through the 15× loop.
-- ⚠️ History snapshots still skip nodes that hold executable tasks or nested spaces; attempting to snapshot those paths returns an error. Persistence, on-disk recovery, and execution-task coverage remain open items. Add a regression test once we expose a unit-friendly way to stage execution tasks inside `NodeData` so the snapshot helpers reject them.
+## Status — November 6, 2025
+- ✅ (November 5, 2025) Persistence layer landed: undo/redo stacks flush snapshots + metadata atomically to disk, state metadata survives restarts, and recovery replays into the backing PathSpace before enabling history. Manual GC now flushes pending writes and trims files; telemetry tracks disk bytes/entries alongside cache residency.
+- ✅ (November 6, 2025) Regression coverage now verifies that nodes containing tasks/futures or nested PathSpaces are rejected with descriptive errors, keeping undo stacks untouched when snapshots would be unsafe. Inspector integration to surface the failure context, plus future support for executable payloads, remain open items.
+- ➡️ Next focus: surface these unsupported-payload failures through the PathSpace inspector UX and decide whether we want snapshot support (or explicit opt-outs) for executable nodes vs. leaving them permanently excluded.
 
 ## Architecture Overview
 - **Wrapper layer:** `UndoableSpace` stores a pointer to the inner `PathSpaceBase` and overrides mutating methods to run inside `HistoryTransaction` scopes.
@@ -40,6 +41,7 @@
 - Keep the newest `ram_cache_entries` in memory; older entries load on demand.
 - On startup, rebuild stacks from disk if `persist_history=true`, skipping incomplete files.
 - `disableHistory` removes on-disk data; periodic sweeper cleans abandoned directories.
+- Disk telemetry (`diskBytes`, `diskEntries`) mirrors persisted snapshots/meta and updates after retention or manual GC sweeps.
 
 ## Control Surface (Path-based API)
 - The undo layer exposes its controls via reserved paths under each history-enabled root.
@@ -100,7 +102,7 @@ public:
 1. **Design Review (Required)** — walk this document with maintainers; ratify API, persistence defaults, and telemetry. Update docs/AI_Architecture.md accordingly.
 2. **Implement Wrapper Skeleton** — add `UndoableSpace`, transactions, in-memory stacks, COW integration (no persistence yet). Extend tests to cover insert/take/undo/redo flows and transaction batching. ✅ (November 4, 2025) implemented in-tree; persistence/telemetry still pending.
 3. ✅ (November 5, 2025) **Retention & Telemetry** — auto-trim budgets, surface `_history/stats/*` and `_history/lastOperation/*`, add manual GC controls, and extend doctest coverage.
-4. **Persistence Layer** — add on-disk storage, recovery tests, and failure-path logging. Benchmark performance and tune defaults.
+4. ✅ (November 5, 2025) **Persistence Layer** — on-disk storage, recovery tests, failure-path logging, and cache policies landed. Benchmarks run inside the 15× loop.
 5. **Integration Tasks** — update `Plan_PathSpace.md` next steps, ensure paint widget plan references new APIs, revisit inspector tooling notes.
 
 ## Dependencies

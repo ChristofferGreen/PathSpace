@@ -187,4 +187,54 @@ TEST_CASE("history telemetry paths expose stats") {
     CHECK(*lastOpType == std::string{"commit"});
 }
 
+
+TEST_CASE("history rejects unsupported payloads") {
+    SUBCASE("task payloads surface descriptive errors and skip history entries") {
+        auto space = makeUndoableSpace();
+        REQUIRE(space);
+
+        REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+
+        auto task = []() -> int { return 7; };
+        auto result = space->insert("/doc/task", task,
+                                    In{.executionCategory = ExecutionCategory::Lazy});
+        CHECK(result.nbrTasksInserted == 1);
+        REQUIRE_FALSE(result.errors.empty());
+
+        auto const& err = result.errors.front();
+        CHECK(err.code == Error::Code::UnknownError);
+        REQUIRE(err.message.has_value());
+        CHECK(err.message->find("tasks or futures") != std::string::npos);
+
+        auto stats = space->getHistoryStats(ConcretePathStringView{"/doc"});
+        REQUIRE(stats.has_value());
+        CHECK(stats->counts.undo == 0);
+        CHECK(stats->counts.redo == 0);
+    }
+
+    SUBCASE("nested PathSpaces are rejected with clear messaging") {
+        auto space = makeUndoableSpace();
+        REQUIRE(space);
+
+        REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+
+        auto nested = std::make_unique<PathSpace>();
+        REQUIRE(nested->insert("/value", 1).nbrValuesInserted == 1);
+
+        auto result = space->insert("/doc/nested", std::move(nested));
+        CHECK(result.nbrSpacesInserted == 1);
+        REQUIRE_FALSE(result.errors.empty());
+
+        auto const& err = result.errors.front();
+        CHECK(err.code == Error::Code::UnknownError);
+        REQUIRE(err.message.has_value());
+        CHECK(err.message->find("nested PathSpaces") != std::string::npos);
+
+        auto stats = space->getHistoryStats(ConcretePathStringView{"/doc"});
+        REQUIRE(stats.has_value());
+        CHECK(stats->counts.undo == 0);
+        CHECK(stats->counts.redo == 0);
+    }
+}
+
 }
