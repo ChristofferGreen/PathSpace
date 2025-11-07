@@ -194,6 +194,7 @@ if [[ "${SKIP_HISTORY_CLI:-0}" != "1" ]]; then
       --artifacts-root "build/test-logs" \
       --output "build/test-logs/history_cli_roundtrip/index.json" \
       --relative-base "${PWD}/build" \
+      --html-output "build/test-logs/history_cli_roundtrip/dashboard.html" \
       --quiet || warn "history telemetry aggregation failed"
   else
     err "History savefile CLI roundtrip failed"

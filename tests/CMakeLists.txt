@@ -151,6 +151,13 @@ add_test(NAME HistorySavefileCLIRoundTrip
 )
 set_tests_properties(HistorySavefileCLIRoundTrip PROPERTIES LABELS history)
 
+add_test(NAME HistoryTelemetryDashboard
+  COMMAND python3
+          "${CMAKE_SOURCE_DIR}/tests/tools/test_history_cli_roundtrip_dashboard.py"
+          --repo-root "${CMAKE_SOURCE_DIR}"
+)
+set_tests_properties(HistoryTelemetryDashboard PROPERTIES LABELS history)
+
 if(PATHSPACE_ENABLE_UI)
   add_test(NAME PathSpaceUITests
     COMMAND "${PATHSPACE_TEST_RUNNER}"
