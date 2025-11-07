@@ -44,7 +44,7 @@
 - `PathSpace::redo(root, steps = 1)` pulls from `redo_stack` and pushes the current state onto `undo_stack`. Exposed via `/<root>/_history/redo`.
 - `PathSpace::clearHistory(root)` drops both stacks to reclaim memory.
 - Provide high-level convenience functions (`PaintSurface::Undo`, etc.) that call these APIs and mark affected widgets dirty, while tooling can also interact with history through the `_history/*` control namespace (e.g., `_history/garbage_collect`, `_history/set_manual_garbage_collect`).
-- **Single-root requirement:** We will not coordinate undo across multiple roots. Commands that touch several logical areas must structure their data so the full mutation resides under one history-enabled root (e.g., by routing through a command-log subtree or embedding related metadata alongside the primary payload). `enableHistory` will reject configurations that span multiple roots for a single logical command.
+- **Single-root requirement:** We will not coordinate undo across multiple roots. Commands that touch several logical areas must structure their data so the full mutation resides under one history-enabled root (e.g., by routing through a command-log subtree or embedding related metadata alongside the primary payload). `enableHistory` will reject configurations that span multiple roots for a single logical command (duplicate `HistoryOptions::sharedStackKey` values raise an error).
 
 ### Retention & Compaction
 - History options include `max_entries`, `max_bytes`, `compaction_interval`, and `manual_garbage_collect` (default off; forces callers to trigger durability/retention via control paths or API).
@@ -68,6 +68,7 @@
 - ✅ (November 6, 2025) `_history/unsupported/*` telemetry now exposes the offending path, reason, timestamp, and occurrence counts for unsupported payload snapshots so the inspector surfaces failures without digging through logs; regression coverage updated to check the new nodes.
 - ✅ (November 7, 2025) Reaffirmed that undo-enabled roots must contain only serializable payloads; executions and nested PathSpaces stay outside the history subtree and are reported via `_history/unsupported/*`.
 - ✅ (November 7, 2025) Downstream plans (UndoHistory, inspector, paint widget) now reference the binary metadata codec, `_history/stats/*` telemetry, and integration checkpoints so consumers adopt the new persistence format consistently.
+- ✅ (November 7, 2025) Shared-stack guard rails live: `HistoryOptions::sharedStackKey` declares an intended shared undo stack, and `enableHistory` rejects duplicate keys so cross-root commands regroup under a single history root or a command-log shim instead of relying on unsupported stack sharing.
 
 ## Next Steps
 1. ✅ Prototype copy-on-write storage for a simple subtree, measuring memory impact. (Captured by `history::CowSubtreePrototype` and associated tests.)

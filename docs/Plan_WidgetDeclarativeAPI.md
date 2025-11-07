@@ -100,7 +100,7 @@ auto main(int /*argc*/, char** /*argv*/) -> int {
 
 Within each widget subtree we store focus metadata (`focus/order`), layout hints (`layout/<prop>`), event metadata (`events/<event>/route`) and handlers (`events/<event>/handler`), cached bucket metadata (`render/bucket`, `render/dirty`), and composition (`children/<childName>` subtrees). Event handlers live under `events/.../handler` as callable entries executed by the input task. Each widget exposes a render synthesis callable (`render/synthesize`). When widget state changes, the runtime invokes the callable, caches the resulting bucket, propagates `render/dirty` to children if needed, and the renderer consumes cached buckets—avoiding per-frame scenegraph traversal.
 
-Undo/redo integrations must keep all data for a logical command inside a single widget root. For paint surfaces that means colocating stroke history, layout/index metadata, and any ancillary bookkeeping under `widgets/<id>/state/...`. Editors that need to update shared indexes should funnel those writes through a command-log subtree owned by the same root before enabling history.
+Undo/redo integrations must keep all data for a logical command inside a single widget root. For paint surfaces that means colocating stroke history, layout/index metadata, and any ancillary bookkeeping under `widgets/<id>/state/...`. Editors that need to update shared indexes should funnel those writes through a command-log subtree owned by the same root before enabling history; duplicate `HistoryOptions::sharedStackKey` values across siblings are now rejected by `enableHistory`, so regrouping is required before opting-in.
 
 `events/<event>/route` holds routing metadata the runtime uses to bind raw input (pointer hits, keyboard focus changes) to a widget event. Simple widgets rely on defaults derived from the widget path, while advanced widgets can point routes at shared processors. `events/<event>/handler` stores the user-provided callable to execute when the event fires. Separating route metadata from handlers keeps declarative wiring data-driven while still letting applications supply logic.
 
@@ -237,7 +237,7 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
 5. **Input processing node**
    - Implement PathSpace task (e/g., `/widgets/runtime/input`) that reads event queues, consults routing metadata, invokes widget handlers, and writes resultant state updates.
    - Ensure the task runs safely on existing task pool, honors `exclusive` vs. `shared` handler modes, records failures to `<widget>/log/events`, and exposes logging hooks.
-   - For paint surfaces, translate pointer/touch input into stroke primitives (lines, circles, pixel edits) and append them to `state/history/<id>` while triggering buffer updates.
+   - For paint surfaces, translate pointer/touch input into stroke primitives (lines, circles, pixel edits) and append them to `state/history/<id>` while triggering buffer updates. Mount the paint buffer beneath an `UndoableSpace` wrapper so stroke edits participate in undo history automatically.
    - Consume device events from existing PathIO providers (`/system/devices/in/pointer/<id>/events`, `/system/devices/in/text/<id>/events`, `/system/devices/in/gamepad/<id>/events`) using `PathIOPointerMixer` for pointer aggregation. No new IO queues are introduced; the task transforms device events into `WidgetOp` records and handles backpressure using the mixers' built-in depth/timeout policies.
 6. **Rendering pipeline**
    - Renderer consumes cached widget buckets without traversing widget trees each frame.
@@ -262,6 +262,7 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - Port minimal and advanced widget examples to the declarative API.
    - Provide the simple “hello button/list” example.
    - Replace the legacy paint example with a declarative version showcasing `PaintSurface` drawing circles/lines/pixels.
+   - Add undo/redo affordances (buttons + keyboard shortcuts) backed by the `UndoableSpace` history so the paint demo highlights history integration end-to-end.
 2. **Tests**
    - Add parity tests comparing declarative buckets vs. legacy.
    - Cover focus navigation (including list/tree selections).

@@ -33,6 +33,7 @@
 - ✅ (November 7, 2025) Savefile export/import helpers landed: `UndoableSpace::exportHistorySavefile` / `importHistorySavefile` author PSHD (`history.binary.v1`) bundles that preserve undo/redo stacks, retention budgets, and persistence settings; regression coverage exercises round-trip restore flows.
 - ✅ (November 7, 2025) `pathspace_history_savefile` CLI wraps export/import flows, derives persistence locations automatically, and the debugging playbook now documents recovery/import steps so editors can script PSHD round-trips without bespoke harnesses.
 - ✅ (November 7, 2025) CLI automation landed: `tests/HistorySavefileCLIRoundTrip` guards the export/import binaries, the local pre-push hook runs `pathspace_history_cli_roundtrip`, and `UndoableSpace::importHistorySavefile` now persists decoded snapshots so round-tripped PSHD bundles retain every generation.
+- ✅ (November 7, 2025) Shared-stack guard rails solidified: `HistoryOptions::sharedStackKey` advertises an intended cross-root stack, and `enableHistory` now rejects duplicate keys so callers reorganize under a single undo root or route through a command-log shim before enabling history.
 - ✅ (November 7, 2025) CLI roundtrip harness now emits `telemetry.json` (bundle hashes, entry/byte counts) and archives `original.pshd`/`roundtrip.pshd` under each test run’s artifact directory (`history_cli_roundtrip/`). Pre-push + CTest automation surface the telemetry for dashboards/inspector ingestion without manual copying.
 - ✅ (November 7, 2025) Inspector/CI ingestion landed: `scripts/history_cli_roundtrip_ingest.py` scans test artifacts, rolls up `history_cli_roundtrip/telemetry.json` entries (plus PSHD bundle paths), and writes `build/test-logs/history_cli_roundtrip/index.json`. The pre-push hook invokes the helper so dashboards and the inspector backend have a stable feed of bundle hashes, entry/byte counts, and direct download links for every run.
 - ✅ (November 7, 2025) Inspector UI + CI dashboards now consume `history_cli_roundtrip/index.json`: `scripts/history_cli_roundtrip_ingest.py` gained an `--html-output` mode that writes `build/test-logs/history_cli_roundtrip/dashboard.html` (inline charts + deep links to PSHD/telemetry artifacts), and the pre-push hook publishes the dashboard alongside `index.json` so Grafana panels and the upcoming inspector view render undo history trends out of the box.
@@ -94,6 +95,7 @@ public:
 };
 ```
 - Options control persistence, budgets, nested-space policy, and whether nested undo layers are allowed. Default behaviour disallows enabling history on a descendant of an undo-enabled subtree; nested plain PathSpaces are treated as opaque payloads (no automatic undo). `HistoryOptions::manual_garbage_collect` mirrors the `_history/set_manual_garbage_collect` control toggle so native callers can opt into deferred durability without sending path commands.
+- `HistoryOptions::sharedStackKey` (optional) advertises the caller’s intent to reuse a single undo stack across multiple roots. The guard now rejects duplicate keys so callers either regroup their data beneath a single root or introduce a command-log shim instead of relying on unsupported cross-root stacks.
 
 ## Concurrency & Threading
 - Per-root mutex protects stacks and persistence writes.
@@ -192,7 +194,6 @@ The inspector backend should surface undo telemetry as JSON nodes so the browser
 Use the sample when wiring the inspector API and UI so `_history/stats/*` values display with the correct types and timestamps; treat the versioned binary codec (`history.binary.v1`) as the authoritative source for on-disk snapshots and metadata.
 
 ## Open Questions
-- Cross-root undo is intentionally out of scope. Commands that span multiple logical areas must organize their data beneath a single history-enabled root (or route through a command-log wrapper) so one stack captures the full mutation. Document this constraint in integration guides and enforce it with guardrails in `enableHistory`.
 - **Future migration:** Track the C++26 reflection-based serializer rollout; once compilers ship it, plan to replace Alpaca with standard reflection serialization for both in-memory snapshots and on-disk metadata. Capture prerequisites (toolchain support, compatibility shims) before scheduling the migration.
 
 ## Execution Plan

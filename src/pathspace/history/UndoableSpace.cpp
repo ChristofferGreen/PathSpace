@@ -67,12 +67,50 @@ auto UndoableSpace::enableHistory(ConcretePathStringView root, HistoryOptions op
     auto normalized = std::string{canonical->getPath()};
     auto components = std::move(componentsExpected.value());
 
+    HistoryOptions resolvedOptions = defaultOptions;
+    if (opts.maxEntries != 0) {
+        resolvedOptions.maxEntries = opts.maxEntries;
+    }
+    if (opts.maxBytesRetained != 0) {
+        resolvedOptions.maxBytesRetained = opts.maxBytesRetained;
+    }
+    resolvedOptions.manualGarbageCollect = opts.manualGarbageCollect;
+    resolvedOptions.allowNestedUndo      = opts.allowNestedUndo;
+    resolvedOptions.persistHistory       = resolvedOptions.persistHistory || opts.persistHistory;
+    if (!opts.persistenceRoot.empty()) {
+        resolvedOptions.persistenceRoot = opts.persistenceRoot;
+    }
+    if (!opts.persistenceNamespace.empty()) {
+        resolvedOptions.persistenceNamespace = opts.persistenceNamespace;
+    }
+    if (opts.ramCacheEntries > 0) {
+        resolvedOptions.ramCacheEntries = opts.ramCacheEntries;
+    }
+    if (resolvedOptions.ramCacheEntries == 0) {
+        resolvedOptions.ramCacheEntries = 8;
+    }
+    if (opts.maxDiskBytes != 0) {
+        resolvedOptions.maxDiskBytes = opts.maxDiskBytes;
+    }
+    if (opts.keepLatestFor.count() > 0) {
+        resolvedOptions.keepLatestFor = opts.keepLatestFor;
+    }
+    resolvedOptions.restoreFromPersistence =
+        resolvedOptions.restoreFromPersistence && opts.restoreFromPersistence;
+    if (opts.sharedStackKey.has_value()) {
+        if (opts.sharedStackKey->empty()) {
+            resolvedOptions.sharedStackKey.reset();
+        } else {
+            resolvedOptions.sharedStackKey = opts.sharedStackKey;
+        }
+    }
+
     {
         std::scoped_lock lock(rootsMutex);
         if (roots.find(normalized) != roots.end()) {
             return std::unexpected(Error{Error::Code::UnknownError, "History already enabled for path"});
         }
-        if (!defaultOptions.allowNestedUndo || !opts.allowNestedUndo) {
+        if (!(defaultOptions.allowNestedUndo && resolvedOptions.allowNestedUndo)) {
             ConcretePathStringView normalizedView{canonical->getPath()};
             for (auto const& [existing, _] : roots) {
                 ConcretePathStringView existingView{existing};
@@ -87,7 +125,20 @@ auto UndoableSpace::enableHistory(ConcretePathStringView root, HistoryOptions op
                 if (existingIsPrefix.value() || normalizedIsPrefix.value()) {
                     return std::unexpected(Error{
                         Error::Code::InvalidPermissions,
-                        "History roots may not be nested without allowNestedUndo"});
+                            "History roots may not be nested without allowNestedUndo"});
+                }
+            }
+        }
+        if (resolvedOptions.sharedStackKey && !resolvedOptions.sharedStackKey->empty()) {
+            for (auto const& [existingPath, existingState] : roots) {
+                if (!existingState || !existingState->options.sharedStackKey
+                    || existingState->options.sharedStackKey->empty()) {
+                    continue;
+                }
+                if (*existingState->options.sharedStackKey == *resolvedOptions.sharedStackKey) {
+                    std::string message = "UndoableSpace does not support shared undo stacks across multiple roots "
+                                          "(key '" + *resolvedOptions.sharedStackKey + "' already bound to '" + existingPath + "')";
+                    return std::unexpected(Error{Error::Code::InvalidPermissions, std::move(message)});
                 }
             }
         }
@@ -100,32 +151,7 @@ auto UndoableSpace::enableHistory(ConcretePathStringView root, HistoryOptions op
     auto state                = std::make_shared<RootState>();
     state->rootPath           = normalized;
     state->components         = std::move(components);
-    state->options            = defaultOptions;
-    state->options.maxEntries = opts.maxEntries ? opts.maxEntries : state->options.maxEntries;
-    state->options.maxBytesRetained =
-        opts.maxBytesRetained ? opts.maxBytesRetained : state->options.maxBytesRetained;
-    state->options.manualGarbageCollect = opts.manualGarbageCollect;
-    state->options.allowNestedUndo      = opts.allowNestedUndo;
-    state->options.persistHistory       = state->options.persistHistory || opts.persistHistory;
-    if (!opts.persistenceRoot.empty()) {
-        state->options.persistenceRoot = opts.persistenceRoot;
-    }
-    if (!opts.persistenceNamespace.empty()) {
-        state->options.persistenceNamespace = opts.persistenceNamespace;
-    }
-    if (opts.ramCacheEntries > 0) {
-        state->options.ramCacheEntries = opts.ramCacheEntries;
-    }
-    if (state->options.ramCacheEntries == 0) {
-        state->options.ramCacheEntries = 8;
-    }
-    state->options.maxDiskBytes =
-        opts.maxDiskBytes ? opts.maxDiskBytes : state->options.maxDiskBytes;
-    if (opts.keepLatestFor.count() > 0) {
-        state->options.keepLatestFor = opts.keepLatestFor;
-    }
-    state->options.restoreFromPersistence =
-        state->options.restoreFromPersistence && opts.restoreFromPersistence;
+    state->options            = std::move(resolvedOptions);
     state->encodedRoot       = encodeRootForPersistence(state->rootPath);
     state->persistenceEnabled = state->options.persistHistory;
     state->undoStack.clear();

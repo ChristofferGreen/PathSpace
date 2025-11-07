@@ -36,6 +36,7 @@ struct HistoryOptions {
     std::size_t maxDiskBytes         = 0;
     std::chrono::milliseconds keepLatestFor{0};
     bool        restoreFromPersistence = true;
+    std::optional<std::string> sharedStackKey;
 };
 
 struct HistoryLastOperation {

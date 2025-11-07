@@ -295,6 +295,22 @@ TEST_CASE("history rejects unsupported payloads") {
     }
 }
 
+TEST_CASE("shared undo stack keys are rejected across roots") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.sharedStackKey = std::string{"docShared"};
+
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto second = space->enableHistory(ConcretePathStringView{"/notes"}, opts);
+    REQUIRE_FALSE(second.has_value());
+    CHECK(second.error().code == Error::Code::InvalidPermissions);
+    REQUIRE(second.error().message.has_value());
+    CHECK(second.error().message->find("shared undo stacks") != std::string::npos);
+}
+
 TEST_CASE("persistence restores state and undo history") {
     auto tempRoot = std::filesystem::temp_directory_path() / "undoable_space_persist_test";
     std::error_code ec;
