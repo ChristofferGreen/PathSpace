@@ -27,7 +27,8 @@
 - ✅ (November 7, 2025) Guardrail reaffirmed: history-enabled subtrees must contain only serializable payloads. Executions (lambdas, futures, nested PathSpaces) stay outside the undo root; `_history/unsupported/*` remains the enforcement/telemetry mechanism.
 - ✅ (November 7, 2025) Persistence metadata now writes a compact binary format (little-endian, versioned) for both state and entry descriptors; recovery/telemetry paths use the shared codec and tests cover encode/decode round-trips. Alpaca JSON is no longer emitted for history metadata.
 - ✅ (November 7, 2025) Downstream plans now reflect the binary metadata decision (Plan_PathSpace.md, Plan_PathSpace_Inspector.md, Plan_WidgetDeclarativeAPI.md, Plan_Overview.md); integration callouts point to the versioned codec and shared telemetry surface.
-- ➡️ Next focus: add tooling notes for on-disk history inspection (CLI/script) and capture inspector JSON samples that reference `_history/stats/*` so web tooling aligns with the codec.
+- ✅ (November 7, 2025) Added the `pathspace_history_inspect` CLI for on-disk history inspection, documented its workflow in `docs/AI_Debugging_Playbook.md`, and captured `_history/stats/*` inspector samples below so downstream tooling stays aligned with the binary codec.
+- ➡️ Next focus: extend the inspection tooling with typed payload decoding/diff helpers and wire the inspector backend to stream `_history/stats/*` + `_history/lastOperation/*` through its JSON API.
 
 ## Architecture Overview
 - **Wrapper layer:** `UndoableSpace` stores a pointer to the inner `PathSpaceBase` and overrides mutating methods to run inside `HistoryTransaction` scopes.
@@ -97,6 +98,73 @@ public:
 - Record last operation metadata (`type`, `duration_ms`, `entries_before`, `entries_after`) under `<root>/history/lastOperation`.
 - Log unsupported snapshot attempts under `<root>/_history/unsupported/*`, including offending path, reason, timestamp (ms since epoch), and rolling occurrence counts so the inspector can highlight misconfigured subtrees.
 - Emit structured logs for persistence failures and evictions (guards future inspector integration).
+
+## Tooling & Debugging
+
+### On-disk history inspection CLI
+- `pathspace_history_inspect` ships with the core build (`cmake --build build -j`) and inspects persisted history directories (`${PATHSPACE_HISTORY_ROOT:-$TMPDIR/pathspace_history}/<space_uuid>/<encoded_root>`).
+- The default output is a human-readable summary (counts, bytes, file coverage); `--json` emits a machine representation with per-generation metadata, disk sizes, and any warnings detected on disk. Use `--no-analyze` to skip loading snapshots when you only need file presence checks.
+- `--dump <generation>` walks the snapshot tree for a specific generation and prints each payload with an optional hex preview (`--preview-bytes N`, default 16). Pair this with `PATHSPACE_HISTORY_ROOT=<tmp>` when reproducing issues locally so the tool points at the exact scratch directory a failing run produced.
+
+Example usage:
+
+```bash
+cmake --build build -j
+./build/pathspace_history_inspect "$PATHSPACE_HISTORY_ROOT/12c0e8d41fb84233/2f252f7061696e74" --json
+./build/pathspace_history_inspect "$PATHSPACE_HISTORY_ROOT/12c0e8d41fb84233/2f252f7061696e74" --dump 42 --preview-bytes 32
+```
+
+Excerpt of the JSON summary (fields omitted for brevity):
+
+```json
+{
+  "root": "/tmp/pathspace_history/12c0e8d41fb84233/2f252f7061696e74",
+  "totals": {
+    "entryCount": 5,
+    "metaFileBytes": 960,
+    "snapshotFileBytes": 32768,
+    "recordedPayloadBytes": 24576
+  },
+  "entries": [
+    {
+      "kind": "live",
+      "generation": 42,
+      "metadataBytes": 8192,
+      "timestampIso": "2025-11-07T18:42:15.317Z",
+      "stats": {
+        "uniqueNodes": 213,
+        "payloadBytes": 8192
+      }
+    }
+  ],
+  "warnings": []
+}
+```
+
+### Inspector `_history/stats/*` sample
+The inspector backend should surface undo telemetry as JSON nodes so the browser UI can display history state alongside live PathSpace data. The sample below reflects a healthy root after several edits; values come directly from the `_history/stats/*` and `_history/lastOperation/*` paths that `UndoableSpace` publishes.
+
+```json
+[
+  { "path": "/doc/_history/stats/undoCount",          "type": "uint64", "value": 4,  "timestampMs": 1730985602123 },
+  { "path": "/doc/_history/stats/redoCount",          "type": "uint64", "value": 0,  "timestampMs": 1730985602123 },
+  { "path": "/doc/_history/stats/undoBytes",          "type": "uint64", "value": 16384, "timestampMs": 1730985602123 },
+  { "path": "/doc/_history/stats/redoBytes",          "type": "uint64", "value": 0,  "timestampMs": 1730985602123 },
+  { "path": "/doc/_history/stats/liveBytes",          "type": "uint64", "value": 4096,  "timestampMs": 1730985602123 },
+  { "path": "/doc/_history/stats/bytesRetained",      "type": "uint64", "value": 20480, "timestampMs": 1730985602123 },
+  { "path": "/doc/_history/stats/manualGcEnabled",    "type": "bool",   "value": false, "timestampMs": 1730985602123 },
+  { "path": "/doc/_history/stats/trimOperationCount", "type": "uint64", "value": 1,  "timestampMs": 1730985602123 },
+  { "path": "/doc/_history/stats/trimmedEntries",     "type": "uint64", "value": 2,  "timestampMs": 1730985602123 },
+  { "path": "/doc/_history/stats/trimmedBytes",       "type": "uint64", "value": 6144, "timestampMs": 1730985602123 },
+  { "path": "/doc/_history/stats/lastTrimTimestampMs","type": "uint64", "value": 1730985599000, "timestampMs": 1730985602123 },
+  { "path": "/doc/_history/lastOperation/type",       "type": "string", "value": "insert", "timestampMs": 1730985602123 },
+  { "path": "/doc/_history/lastOperation/success",    "type": "bool",   "value": true,   "timestampMs": 1730985602123 },
+  { "path": "/doc/_history/lastOperation/durationMs", "type": "uint64", "value": 12,     "timestampMs": 1730985602123 },
+  { "path": "/doc/_history/lastOperation/undoCountAfter", "type": "uint64", "value": 4, "timestampMs": 1730985602123 }
+]
+```
+
+Use the sample when wiring the inspector API and UI so `_history/stats/*` values display with the correct types and timestamps; treat the versioned binary codec (`history.binary.v1`) as the authoritative source for on-disk snapshots and metadata.
 
 ## Open Questions
 - Cross-root undo is intentionally out of scope. Commands that span multiple logical areas must organize their data beneath a single history-enabled root (or route through a command-log wrapper) so one stack captures the full mutation. Document this constraint in integration guides and enforce it with guardrails in `enableHistory`.

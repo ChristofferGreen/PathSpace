@@ -166,6 +166,7 @@ Environment knobs (all respected by the wrapper and the logger):
 | Verify HTML adapter command stream | `ctest -R HtmlCanvasVerify --output-on-failure` |
 | Verify HSAT asset inspection tooling | `ctest -R HtmlAssetInspect --output-on-failure` |
 | Inspect HSAT payload contents manually | `./build/pathspace_hsat_inspect --input <payload.hsat>` |
+| Inspect Undo history on disk | `./build/pathspace_history_inspect <history_dir> [--json]` |
 | Tail latest failure log | `ls -t build/test-logs | head -1 | xargs -I{} tail -n 80 build/test-logs/{}` |
 | Inspect renderer metrics path | `build/tests/PathSpaceUITests --test-case Diagnostics::ReadTargetMetrics` |
 | Benchmark damage/fingerprint metrics | `./build/benchmarks/path_renderer2d_benchmark --metrics [--canvas=WIDTHxHEIGHT]` |
@@ -207,6 +208,12 @@ Environment knobs (all respected by the wrapper and the logger):
   - `path_renderer2d` scenario covers full-repaint vs incremental workloads (avg ms, FPS, damage ratios, tile counts).
   - `pixel_noise_software` scenario validates presenter timings (average FPS, render/present/present-call ms, bytes copied per frame).
 - Keep the baseline and tolerances in sync with `docs/perf/README.md` when new scenarios are added.
+
+### 5.4 Undo history inspection
+
+- Build the CLI with `cmake --build build -j` and run `./build/pathspace_history_inspect <history_dir> [--json]` to audit persisted undo stacks. The tool reports expected generations, disk usage, and any missing metadata/snapshot files.
+- Add `--dump <generation>` to traverse a snapshot and preview payload bytes; `--preview-bytes` tunes the hex sampler and `--no-analyze` skips snapshot decoding when only file coverage matters.
+- Point the CLI at `${PATHSPACE_HISTORY_ROOT:-$TMPDIR/pathspace_history}/<space_uuid>/<encoded_root>` when reproducing bugs; pair the findings with the `_history/stats/*` inspector nodes referenced in `docs/Plan_PathSpace_UndoHistory.md`.
 
 ## 6. Closing the Loop
 

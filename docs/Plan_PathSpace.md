@@ -77,4 +77,4 @@
 5. Design `HistoryOptions` struct and telemetry schema.
 6. Update the paint widget plan to call the new APIs (already referenced in `docs/Plan_WidgetDeclarativeAPI.md`).
 7. ✅ (November 7, 2025) Run the Alpaca vs. binary metadata bake-off for persistence, adopt the versioned binary codec, and update `docs/AI_Architecture.md`, `docs/Plan_PathSpace_UndoHistory.md`, and paint/inspector plans to reference the shared format.
-8. Publish debugging guidance: document CLI/script support for inspecting persisted history directories and capture sample inspector payloads (JSON + path layout) that read `_history/stats/*`.
+8. ✅ (November 7, 2025) Published debugging guidance: `pathspace_history_inspect` now documents on-disk inspection (see `docs/AI_Debugging_Playbook.md`) and this plan includes sample inspector payloads for `_history/stats/*` and `_history/lastOperation/*`.

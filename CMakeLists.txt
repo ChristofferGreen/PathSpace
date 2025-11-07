@@ -79,6 +79,9 @@ endif()
 enable_testing()
 add_subdirectory(src/pathspace)
 
+add_executable(pathspace_history_inspect tools/history_inspect.cpp)
+target_link_libraries(pathspace_history_inspect PRIVATE PathSpace)
+
 if(PATHSPACE_ENABLE_UI)
     add_executable(pathspace_hsat_inspect tools/hsat_inspect.cpp)
     target_link_libraries(pathspace_hsat_inspect PRIVATE PathSpace)
