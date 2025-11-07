@@ -61,11 +61,12 @@
 - Should history metadata store arbitrary user tags (e.g., command names) for better UX?
 - How do we surface history stats and per-entry metadata to tooling without colliding with existing user paths (control namespace customization, documentation)?
 
-## Status — November 6, 2025
+## Status — November 7, 2025
 - ✅ `history::CowSubtreePrototype` models copy-on-write subtrees with node/payload sharing, provides memory + delta instrumentation, and is validated by unit tests (`apply clones modified branch only`) exercising node reuse and stack accounting.
 - ✅ Updated `scripts/run-test-with-logs.sh` temporary file allocation so the test loop tolerates mktemp collisions during 15× runs.
 - ✅ Authored `docs/Plan_PathSpace_UndoHistory.md` outlining the undo wrapper, `_history/*` control paths, retention, and persistence strategy for design review.
 - ✅ (November 6, 2025) `_history/unsupported/*` telemetry now exposes the offending path, reason, timestamp, and occurrence counts for unsupported payload snapshots so the inspector surfaces failures without digging through logs; regression coverage updated to check the new nodes.
+- ✅ (November 7, 2025) Reaffirmed that undo-enabled roots must contain only serializable payloads; executions and nested PathSpaces stay outside the history subtree and are reported via `_history/unsupported/*`.
 
 ## Next Steps
 1. ✅ Prototype copy-on-write storage for a simple subtree, measuring memory impact. (Captured by `history::CowSubtreePrototype` and associated tests.)
@@ -74,4 +75,4 @@
 4. Implement child enumeration and the route merger, then update widget/runtime plans to consume them.
 5. Design `HistoryOptions` struct and telemetry schema.
 6. Update the paint widget plan to call the new APIs (already referenced in `docs/Plan_WidgetDeclarativeAPI.md`).
-7. Evaluate executable payload snapshot support vs. explicit opt-out guidance once inspector consumers have exercised the `_history/unsupported/*` stream.
+7. Run the Alpaca vs. binary metadata bake-off for persistence, record the findings in `docs/AI_Architecture.md`, and wire the winning format into stack metadata.

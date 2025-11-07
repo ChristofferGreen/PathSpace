@@ -21,10 +21,11 @@
 5. Surface a public API (`enableHistory`, `disableHistory`, `undo`, `redo`, `trimHistory`, `HistoryTransaction`) with clear concurrency guarantees.
 6. Publish diagnostics (`/root/history/stats`, `/root/history/lastOperation`) to feed inspector tooling.
 
-## Status — November 6, 2025
+## Status — November 7, 2025
 - ✅ (November 5, 2025) Persistence layer landed: undo/redo stacks flush snapshots + metadata atomically to disk, state metadata survives restarts, and recovery replays into the backing PathSpace before enabling history. Manual GC now flushes pending writes and trims files; telemetry tracks disk bytes/entries alongside cache residency.
 - ✅ (November 6, 2025) Regression coverage now verifies that nodes containing tasks/futures or nested PathSpaces are rejected with descriptive errors, keeping undo stacks untouched when snapshots would be unsafe. Inspector-facing telemetry (`<root>/_history/unsupported/*`) now captures the offending path, reason, timestamp, and occurrence count so failures surface directly in the PathSpace inspector.
-- ➡️ Next focus: decide whether to support snapshotting executable payloads (tasks/futures) or formalize a permanent opt-out with documented guardrails for integrators.
+- ✅ (November 7, 2025) Guardrail reaffirmed: history-enabled subtrees must contain only serializable payloads. Executions (lambdas, futures, nested PathSpaces) stay outside the undo root; `_history/unsupported/*` remains the enforcement/telemetry mechanism.
+- ➡️ Next focus: finish the persistence format bake-off (Alpaca vs. binary metadata) and document the decision plus migration steps.
 
 ## Architecture Overview
 - **Wrapper layer:** `UndoableSpace` stores a pointer to the inner `PathSpaceBase` and overrides mutating methods to run inside `HistoryTransaction` scopes.
