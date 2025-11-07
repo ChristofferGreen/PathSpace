@@ -143,6 +143,12 @@ public:
     auto redo(SP::ConcretePathStringView root, std::size_t steps = 1) -> Expected<void>;
     auto trimHistory(SP::ConcretePathStringView root, TrimPredicate predicate) -> Expected<TrimStats>;
     auto getHistoryStats(SP::ConcretePathStringView root) const -> Expected<HistoryStats>;
+    auto exportHistorySavefile(SP::ConcretePathStringView root,
+                               std::filesystem::path const& file,
+                               bool fsyncData = true) -> Expected<void>;
+    auto importHistorySavefile(SP::ConcretePathStringView root,
+                               std::filesystem::path const& file,
+                               bool applyOptions = true) -> Expected<void>;
 
     class HistoryTransaction {
     public:

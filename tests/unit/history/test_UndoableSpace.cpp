@@ -338,4 +338,58 @@ TEST_CASE("persistence restores state and undo history") {
     std::filesystem::remove_all(tempRoot, ec);
 }
 
+TEST_CASE("savefile export import roundtrip retains history") {
+    auto savePath = std::filesystem::temp_directory_path() / "undoable_space_savefile.bin";
+    std::error_code removeEc;
+    std::filesystem::remove(savePath, removeEc);
+
+    auto source = makeUndoableSpace();
+    REQUIRE(source);
+    REQUIRE(source->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+
+    REQUIRE(source->insert("/doc/value", std::string{"alpha"}).errors.empty());
+    REQUIRE(source->insert("/doc/value", std::string{"beta"}).errors.empty());
+
+    auto exportResult =
+        source->exportHistorySavefile(ConcretePathStringView{"/doc"}, savePath, true);
+    REQUIRE(exportResult.has_value());
+
+    auto destination = makeUndoableSpace();
+    REQUIRE(destination);
+    REQUIRE(destination->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+
+    auto importResult =
+        destination->importHistorySavefile(ConcretePathStringView{"/doc"}, savePath);
+    REQUIRE(importResult.has_value());
+
+    auto statsBefore = destination->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(statsBefore.has_value());
+    CHECK(statsBefore->counts.undo >= 1);
+
+    REQUIRE(destination->undo(ConcretePathStringView{"/doc"}).has_value());
+    auto statsAfterUndo = destination->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(statsAfterUndo.has_value());
+    CHECK(statsAfterUndo->counts.undo + 1 == statsBefore->counts.undo);
+    CHECK(statsAfterUndo->counts.redo >= 1);
+
+    REQUIRE(destination->redo(ConcretePathStringView{"/doc"}).has_value());
+    auto statsAfterRedo = destination->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(statsAfterRedo.has_value());
+    CHECK(statsAfterRedo->counts.undo == statsBefore->counts.undo);
+    CHECK(statsAfterRedo->counts.redo == 0);
+
+    auto first = destination->take<std::string>("/doc/value");
+    REQUIRE(first.has_value());
+    CHECK(*first == std::string{"alpha"});
+    auto second = destination->take<std::string>("/doc/value");
+    REQUIRE(second.has_value());
+    CHECK(*second == std::string{"beta"});
+
+    auto stats = destination->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(stats.has_value());
+    CHECK(stats->counts.undo >= 1);
+
+    std::filesystem::remove(savePath, removeEc);
+}
+
 }

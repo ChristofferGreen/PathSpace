@@ -24,6 +24,10 @@ auto toMillis(std::chrono::system_clock::time_point tp) -> std::uint64_t {
     return static_cast<std::uint64_t>(duration.count());
 }
 
+auto fromMillis(std::uint64_t millis) -> std::chrono::system_clock::time_point {
+    return std::chrono::system_clock::time_point{std::chrono::milliseconds{millis}};
+}
+
 auto generateSpaceUuid() -> std::string {
     std::random_device                           rd;
     std::uniform_int_distribution<std::uint64_t> dist;

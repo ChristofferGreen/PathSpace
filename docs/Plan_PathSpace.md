@@ -78,4 +78,5 @@
 6. Update the paint widget plan to call the new APIs (already referenced in `docs/Plan_WidgetDeclarativeAPI.md`).
 7. ✅ (November 7, 2025) Run the Alpaca vs. binary metadata bake-off for persistence, adopt the versioned binary codec, and update `docs/AI_Architecture.md`, `docs/Plan_PathSpace_UndoHistory.md`, and paint/inspector plans to reference the shared format.
 8. ✅ (November 7, 2025) Published debugging guidance: `pathspace_history_inspect` now documents on-disk inspection (see `docs/AI_Debugging_Playbook.md`) and this plan includes sample inspector payloads for `_history/stats/*` and `_history/lastOperation/*`.
-9. Plan document save/load support: define a versioned savefile format layered on top of undo persistence, expose export/import helpers on `UndoableSpace`, and document the workflow so applications can serialize an entire history-enabled subtree without manual scripting.
+9. ✅ (November 7, 2025) Document save/load support: landed the PSHD (`history.binary.v1`) savefile codec plus `UndoableSpace::exportHistorySavefile` / `importHistorySavefile` helpers, preserving undo/redo stacks and retention budgets with regression coverage.
+10. Publish CLI + doc workflows for the savefile helpers (`pathspace_history_*` wrapping export/import) so editors and recovery guides can automate round-trips without bespoke scripting.

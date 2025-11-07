@@ -30,7 +30,8 @@
 - ✅ (November 7, 2025) Downstream plans now reflect the binary metadata decision (Plan_PathSpace.md, Plan_PathSpace_Inspector.md, Plan_WidgetDeclarativeAPI.md, Plan_Overview.md); integration callouts point to the versioned codec and shared telemetry surface.
 - ✅ (November 7, 2025) Added the `pathspace_history_inspect` CLI for on-disk history inspection, documented its workflow in `docs/AI_Debugging_Playbook.md`, and captured `_history/stats/*` inspector samples below so downstream tooling stays aligned with the binary codec.
 - ✅ (November 7, 2025) `pathspace_history_inspect` now decodes serialized payloads (strings, numerics, booleans) with human-readable summaries, provides generation-to-generation diff output, and ships JSON helpers for `_history/stats/*` + `_history/lastOperation/*` so the inspector backend can stream telemetry directly.
-- ➡️ Next focus: design the savefile export/import helpers for undo-enabled subtrees (Execution Plan step 6), including CLI wiring and documentation for recovery workflows.
+- ✅ (November 7, 2025) Savefile export/import helpers landed: `UndoableSpace::exportHistorySavefile` / `importHistorySavefile` author PSHD (`history.binary.v1`) bundles that preserve undo/redo stacks, retention budgets, and persistence settings; regression coverage exercises round-trip restore flows.
+- ➡️ Next focus: surface the savefile workflow via CLI tooling and update editor/docs pipelines with recovery/import playbooks now that the codec is finalized.
 
 ## Architecture Overview
 - **Wrapper layer:** `UndoableSpace` stores a pointer to the inner `PathSpaceBase` and overrides mutating methods to run inside `HistoryTransaction` scopes.
@@ -178,7 +179,7 @@ Use the sample when wiring the inspector API and UI so `_history/stats/*` values
 3. ✅ (November 5, 2025) **Retention & Telemetry** — auto-trim budgets, surface `_history/stats/*` and `_history/lastOperation/*`, add manual GC controls, and extend doctest coverage.
 4. ✅ (November 5, 2025) **Persistence Layer** — on-disk storage, recovery tests, failure-path logging, and cache policies landed. Benchmarks run inside the 15× loop.
 5. ✅ (November 7, 2025) **Integration Tasks** — updated `Plan_PathSpace.md`, paint widget plan, and inspector documentation to reference the binary metadata codec, `_history/stats/*` telemetry, and downstream integration checkpoints.
-6. **Savefile Export/Import** — design the versioned document save format, wire `UndoableSpace` helpers to export the current snapshot plus retained history, and add a load path that restores state while honoring retention/persistence options. Capture CLI/script integration and update docs/tooling once the codec is finalized.
+6. ✅ (November 7, 2025) **Savefile Export/Import** — designed the PSHD (`history.binary.v1`) save format, added `UndoableSpace::exportHistorySavefile` / `importHistorySavefile` helpers that preserve undo/redo stacks while honoring retention + persistence, and backed the flow with regression tests. CLI integration + workflow docs are the next incremental follow-up.
 
 ## Dependencies
 - `history::CowSubtreePrototype` (landed).

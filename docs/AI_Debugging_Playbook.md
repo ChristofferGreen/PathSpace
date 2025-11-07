@@ -214,6 +214,7 @@ Environment knobs (all respected by the wrapper and the logger):
 - Build the CLI with `cmake --build build -j` and run `./build/pathspace_history_inspect <history_dir> [--json]` to audit persisted undo stacks. The tool reports expected generations, disk usage, and any missing metadata/snapshot files. Add `--decode [generation]` (defaults to the live generation) to see typed payload summaries, and `--diff <from:to>` to compare two snapshots—both outputs surface strings/numerics directly and emit inspector-ready JSON for `_history/stats/*` and `_history/lastOperation/*`.
 - Add `--dump <generation>` to traverse a snapshot and preview payload bytes; `--preview-bytes` tunes the hex sampler and `--no-analyze` skips snapshot decoding when only file coverage matters.
 - Point the CLI at `${PATHSPACE_HISTORY_ROOT:-$TMPDIR/pathspace_history}/<space_uuid>/<encoded_root>` when reproducing bugs; pair the findings with the `_history/stats/*` inspector nodes referenced in `docs/Plan_PathSpace_UndoHistory.md`.
+- Native callers can now serialize undo-enabled subtrees via `UndoableSpace::exportHistorySavefile` / `importHistorySavefile`, which write/read PSHD (`history.binary.v1`) bundles containing the live snapshot and undo/redo stacks. Until the CLI wrapper lands, invoke the helpers from scratch harnesses or integration tests when capturing pre/post failure state.
 
 ## 6. Closing the Loop
 

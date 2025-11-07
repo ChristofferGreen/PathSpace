@@ -58,10 +58,12 @@ add_library(PathSpace
     history/UndoHistoryUtils.cpp
     history/UndoHistoryMetadata.cpp
     history/UndoSnapshotCodec.cpp
+    history/UndoSavefileCodec.cpp
     history/UndoableSpace.cpp
     history/UndoableSpaceHistory.cpp
     history/UndoHistoryInspection.cpp
     history/UndoableSpacePersistence.cpp
+    history/UndoableSpaceSavefile.cpp
     history/UndoableSpaceTransactions.cpp
     task/Task.cpp
     task/TaskPool.cpp

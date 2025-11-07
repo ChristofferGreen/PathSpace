@@ -14,6 +14,8 @@
 namespace SP::History::UndoUtils {
 
 [[nodiscard]] auto toMillis(std::chrono::system_clock::time_point tp) -> std::uint64_t;
+[[nodiscard]] auto fromMillis(std::uint64_t millis)
+    -> std::chrono::system_clock::time_point;
 [[nodiscard]] auto generateSpaceUuid() -> std::string;
 
 [[nodiscard]] auto fsyncFileDescriptor(int fd) -> Expected<void>;
