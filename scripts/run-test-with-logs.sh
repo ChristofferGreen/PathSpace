@@ -126,6 +126,10 @@ elif [[ -n "$ITERATION" ]]; then
   SAFE_LABEL="${SAFE_LABEL}_loop${ITERATION}"
 fi
 
+ARTIFACT_DIR="${LOG_DIR}/${SAFE_LABEL}_${timestamp}.artifacts"
+mkdir -p "$ARTIFACT_DIR"
+ENV_VARS+=("PATHSPACE_TEST_ARTIFACT_DIR=${ARTIFACT_DIR}")
+
 TMP_TEMPLATE="${LOG_DIR}/${SAFE_LABEL}.XXXXXX.log"
 if TMP_LOG="$(mktemp "${TMP_TEMPLATE}" 2>/dev/null)"; then
   :

@@ -2,8 +2,13 @@
 #include <pathspace/history/UndoableSpace.hpp>
 #include <pathspace/path/ConcretePath.hpp>
 
+#include <array>
+#include <chrono>
+#include <cstdint>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -14,6 +19,7 @@
 #include <string_view>
 #include <stdexcept>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 using namespace SP;
@@ -34,6 +40,76 @@ struct ScopedDirectory {
     void dismiss() {
         keep = true;
     }
+};
+
+struct ArtifactArchiver {
+    explicit ArtifactArchiver(std::optional<fs::path> destination)
+        : destination_(std::move(destination)) {}
+
+    void addFile(fs::path source, std::string name) {
+        if (!destination_)
+            return;
+        files_.emplace_back(std::move(source), std::move(name));
+    }
+
+    void addText(std::string name, std::string content) {
+        if (!destination_)
+            return;
+        texts_.emplace_back(std::move(name), std::move(content));
+    }
+
+    ~ArtifactArchiver() {
+        if (!destination_)
+            return;
+
+        std::error_code ec;
+        fs::create_directories(*destination_, ec);
+        if (ec) {
+            std::cerr << "Failed to create archive directory " << destination_->string()
+                      << ": " << ec.message() << "\n";
+            return;
+        }
+
+        for (auto& file : files_) {
+            auto const& source = file.first;
+            auto const& name   = file.second;
+            if (!fs::exists(source))
+                continue;
+            auto target = *destination_ / name;
+            fs::create_directories(target.parent_path(), ec);
+            if (ec) {
+                std::cerr << "Failed to create directory for " << target
+                          << ": " << ec.message() << "\n";
+                ec.clear();
+            }
+            fs::copy_file(source, target, fs::copy_options::overwrite_existing, ec);
+            if (ec) {
+                std::cerr << "Failed to archive " << source << " to " << target
+                          << ": " << ec.message() << "\n";
+                ec.clear();
+            }
+        }
+
+        for (auto& text : texts_) {
+            auto const& name    = text.first;
+            auto const& content = text.second;
+            auto        target  = *destination_ / name;
+            std::ofstream out(target, std::ios::binary | std::ios::trunc);
+            if (!out) {
+                std::cerr << "Failed to write telemetry file " << target << "\n";
+                continue;
+            }
+            out << content;
+        }
+
+        std::cerr << "Archived PathSpace CLI artifacts under " << destination_->string()
+                  << "\n";
+    }
+
+private:
+    std::optional<fs::path> destination_;
+    std::vector<std::pair<fs::path, std::string>> files_;
+    std::vector<std::pair<std::string, std::string>> texts_;
 };
 
 auto encodeRoot(std::string_view root) -> std::string {
@@ -100,8 +176,13 @@ auto makeUndoableSpace(HistoryOptions defaults) -> std::unique_ptr<UndoableSpace
 
 struct HistorySummary {
     std::vector<std::string> values;
-    std::size_t              undoCount = 0;
-    std::size_t              redoCount = 0;
+    std::size_t              undoCount            = 0;
+    std::size_t              redoCount            = 0;
+    std::size_t              diskEntries          = 0;
+    std::size_t              undoBytes            = 0;
+    std::size_t              redoBytes            = 0;
+    std::size_t              liveBytes            = 0;
+    bool                     manualGarbageCollect = false;
 };
 
 auto collectHistorySummary(std::filesystem::path const& savefile,
@@ -132,8 +213,13 @@ auto collectHistorySummary(std::filesystem::path const& savefile,
     }
 
     HistorySummary summary;
-    summary.undoCount = stats->counts.undo;
-    summary.redoCount = stats->counts.redo;
+    summary.undoCount            = stats->counts.undo;
+    summary.redoCount            = stats->counts.redo;
+    summary.diskEntries          = stats->counts.diskEntries;
+    summary.undoBytes            = stats->bytes.undo;
+    summary.redoBytes            = stats->bytes.redo;
+    summary.liveBytes            = stats->bytes.live;
+    summary.manualGarbageCollect = stats->counts.manualGarbageCollect;
 
     for (int i = 0; i < 16; ++i) {
         auto value = space->take<std::string>("/doc/title");
@@ -151,6 +237,107 @@ auto collectHistorySummary(std::filesystem::path const& savefile,
     }
 
     return summary;
+}
+
+auto formatTimestampIso() -> std::string {
+    auto now      = std::chrono::system_clock::now();
+    auto millis   = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch());
+    auto seconds  = std::chrono::duration_cast<std::chrono::seconds>(millis);
+    auto fraction = millis - seconds;
+
+    std::time_t t = seconds.count();
+    std::tm     tm{};
+#if defined(_WIN32)
+    gmtime_s(&tm, &t);
+#else
+    gmtime_r(&t, &tm);
+#endif
+
+    std::ostringstream oss;
+    oss << std::put_time(&tm, "%FT%T")
+        << '.' << std::setw(3) << std::setfill('0') << fraction.count() << 'Z';
+    return oss.str();
+}
+
+auto computeFileHash(fs::path const& file) -> std::optional<std::string> {
+    std::ifstream stream(file, std::ios::binary);
+    if (!stream)
+        return std::nullopt;
+
+    constexpr std::uint64_t kOffset = 14695981039346656037ull;
+    constexpr std::uint64_t kPrime  = 1099511628211ull;
+
+    std::uint64_t hash = kOffset;
+    std::array<char, 4096> buffer{};
+    while (stream) {
+        stream.read(buffer.data(), buffer.size());
+        auto read = stream.gcount();
+        if (read <= 0)
+            break;
+        for (std::streamsize i = 0; i < read; ++i) {
+            hash ^= static_cast<unsigned char>(buffer[static_cast<std::size_t>(i)]);
+            hash *= kPrime;
+        }
+    }
+
+    std::ostringstream oss;
+    oss << std::hex << std::nouppercase << std::setfill('0') << std::setw(16) << hash;
+    return oss.str();
+}
+
+auto makeTelemetryJson(std::string const& timestamp,
+                       fs::path const&      originalSavefile,
+                       HistorySummary const& original,
+                       fs::path const&      roundtripSavefile,
+                       HistorySummary const& roundtrip,
+                       HistoryStats const&   importStats) -> std::string {
+    auto originalSize  = fs::exists(originalSavefile) ? fs::file_size(originalSavefile) : 0u;
+    auto roundtripSize = fs::exists(roundtripSavefile) ? fs::file_size(roundtripSavefile) : 0u;
+
+    auto originalHash  = computeFileHash(originalSavefile).value_or("");
+    auto roundtripHash = computeFileHash(roundtripSavefile).value_or("");
+
+    std::ostringstream json;
+    json << std::boolalpha;
+    json << "{\n";
+    json << "  \"timestampIso\": \"" << timestamp << "\",\n";
+    json << "  \"original\": {\n";
+    json << "    \"hashFnv1a64\": \"" << originalHash << "\",\n";
+    json << "    \"sizeBytes\": " << originalSize << ",\n";
+    json << "    \"undoCount\": " << original.undoCount << ",\n";
+    json << "    \"redoCount\": " << original.redoCount << ",\n";
+    json << "    \"diskEntries\": " << original.diskEntries << ",\n";
+    json << "    \"undoBytes\": " << original.undoBytes << ",\n";
+    json << "    \"redoBytes\": " << original.redoBytes << ",\n";
+    json << "    \"liveBytes\": " << original.liveBytes << ",\n";
+    json << "    \"manualGarbageCollect\": " << original.manualGarbageCollect << "\n";
+    json << "  },\n";
+    json << "  \"roundtrip\": {\n";
+    json << "    \"hashFnv1a64\": \"" << roundtripHash << "\",\n";
+    json << "    \"sizeBytes\": " << roundtripSize << ",\n";
+    json << "    \"undoCount\": " << roundtrip.undoCount << ",\n";
+    json << "    \"redoCount\": " << roundtrip.redoCount << ",\n";
+    json << "    \"diskEntries\": " << roundtrip.diskEntries << ",\n";
+    json << "    \"undoBytes\": " << roundtrip.undoBytes << ",\n";
+    json << "    \"redoBytes\": " << roundtrip.redoBytes << ",\n";
+    json << "    \"liveBytes\": " << roundtrip.liveBytes << ",\n";
+    json << "    \"manualGarbageCollect\": " << roundtrip.manualGarbageCollect << "\n";
+    json << "  },\n";
+    json << "  \"import\": {\n";
+    json << "    \"undoCount\": " << importStats.counts.undo << ",\n";
+    json << "    \"redoCount\": " << importStats.counts.redo << ",\n";
+    json << "    \"diskEntries\": " << importStats.counts.diskEntries << ",\n";
+    json << "    \"cachedUndo\": " << importStats.counts.cachedUndo << ",\n";
+    json << "    \"cachedRedo\": " << importStats.counts.cachedRedo << ",\n";
+    json << "    \"manualGarbageCollect\": " << importStats.counts.manualGarbageCollect << ",\n";
+    json << "    \"undoBytes\": " << importStats.bytes.undo << ",\n";
+    json << "    \"redoBytes\": " << importStats.bytes.redo << ",\n";
+    json << "    \"liveBytes\": " << importStats.bytes.live << ",\n";
+    json << "    \"diskBytes\": " << importStats.bytes.disk << ",\n";
+    json << "    \"totalBytes\": " << importStats.bytes.total << "\n";
+    json << "  }\n";
+    json << "}\n";
+    return json.str();
 }
 
 } // namespace
@@ -171,6 +358,20 @@ int main(int argc, char** argv) {
         ScopedDirectory cleanup{scratchRoot};
         if (std::getenv("PATHSPACE_CLI_ROUNDTRIP_KEEP"))
             cleanup.dismiss();
+
+        std::optional<fs::path> archiveDir;
+        if (auto* env = std::getenv("PATHSPACE_CLI_ROUNDTRIP_ARCHIVE_DIR")) {
+            if (*env != '\0')
+                archiveDir = fs::path{env};
+        }
+        if (!archiveDir) {
+            if (auto* env = std::getenv("PATHSPACE_TEST_ARTIFACT_DIR")) {
+                if (*env != '\0')
+                    archiveDir = fs::path{env} / "history_cli_roundtrip";
+            }
+        }
+        ArtifactArchiver archiver{archiveDir};
+
         bool debugLogging = std::getenv("PATHSPACE_CLI_ROUNDTRIP_DEBUG") != nullptr;
 
         auto exportBase = scratchRoot / "export_root";
@@ -256,6 +457,7 @@ int main(int argc, char** argv) {
             std::cerr << "Export did not produce savefile: " << originalSavefile << "\n";
             return EXIT_FAILURE;
         }
+        archiver.addFile(originalSavefile, "original.pshd");
 
         auto importNamespace = std::string{"cli_roundtrip_import"};
         auto importHistoryDir = importBase / importNamespace / encodedRoot;
@@ -344,6 +546,7 @@ int main(int argc, char** argv) {
             std::cerr << "Roundtrip export did not produce savefile\n";
             return EXIT_FAILURE;
         }
+        archiver.addFile(roundtripSavefile, "roundtrip.pshd");
 
         auto originalSummary = collectHistorySummary(originalSavefile, rootView, debugLogging);
         auto roundtripSummary = collectHistorySummary(roundtripSavefile, rootView, debugLogging);
@@ -369,7 +572,19 @@ int main(int argc, char** argv) {
             return EXIT_FAILURE;
         }
 
+        HistoryStats importStatsCopy = *statsAfterImport;
+        auto         timestamp       = formatTimestampIso();
+        auto         telemetryJson   = makeTelemetryJson(timestamp,
+                                            originalSavefile,
+                                            *originalSummary,
+                                            roundtripSavefile,
+                                            *roundtripSummary,
+                                            importStatsCopy);
+
+        archiver.addText("telemetry.json", telemetryJson);
+
         std::cout << "History savefile CLI roundtrip verified successfully\n";
+        std::cout << "Telemetry: " << telemetryJson;
         return EXIT_SUCCESS;
     } catch (std::exception const& ex) {
         std::cerr << "Unhandled exception: " << ex.what() << "\n";

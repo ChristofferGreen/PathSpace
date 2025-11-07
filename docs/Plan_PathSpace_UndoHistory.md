@@ -33,7 +33,8 @@
 - ✅ (November 7, 2025) Savefile export/import helpers landed: `UndoableSpace::exportHistorySavefile` / `importHistorySavefile` author PSHD (`history.binary.v1`) bundles that preserve undo/redo stacks, retention budgets, and persistence settings; regression coverage exercises round-trip restore flows.
 - ✅ (November 7, 2025) `pathspace_history_savefile` CLI wraps export/import flows, derives persistence locations automatically, and the debugging playbook now documents recovery/import steps so editors can script PSHD round-trips without bespoke harnesses.
 - ✅ (November 7, 2025) CLI automation landed: `tests/HistorySavefileCLIRoundTrip` guards the export/import binaries, the local pre-push hook runs `pathspace_history_cli_roundtrip`, and `UndoableSpace::importHistorySavefile` now persists decoded snapshots so round-tripped PSHD bundles retain every generation.
-- ➡️ Next focus: surface CLI roundtrip telemetry to the inspector/CI dashboards (bundle hashes, entry counts) and stage scripted capture hooks so editor workflows record PSHD artifacts alongside failure logs by default.
+- ✅ (November 7, 2025) CLI roundtrip harness now emits `telemetry.json` (bundle hashes, entry/byte counts) and archives `original.pshd`/`roundtrip.pshd` under each test run’s artifact directory (`history_cli_roundtrip/`). Pre-push + CTest automation surface the telemetry for dashboards/inspector ingestion without manual copying.
+- ➡️ Next focus: teach the inspector backend/CI dashboards to ingest `history_cli_roundtrip/telemetry.json`, trend bundle hashes + entry counts, and expose quick links to the archived PSHD pairs for postmortems.
 
 ## Architecture Overview
 - **Wrapper layer:** `UndoableSpace` stores a pointer to the inner `PathSpaceBase` and overrides mutating methods to run inside `HistoryTransaction` scopes.

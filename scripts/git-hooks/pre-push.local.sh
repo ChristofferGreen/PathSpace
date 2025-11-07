@@ -185,7 +185,10 @@ if [[ "${SKIP_HISTORY_CLI:-0}" != "1" ]]; then
     err "Missing ./build/pathspace_history_cli_roundtrip (build step did not produce harness)"
     exit 1
   fi
-  if ./build/pathspace_history_cli_roundtrip; then
+  archive_stamp="$(date +"%Y%m%d-%H%M%S")"
+  archive_dir="./build/test-logs/history_cli_roundtrip/pre-push_${archive_stamp}"
+  mkdir -p "$archive_dir"
+  if PATHSPACE_CLI_ROUNDTRIP_ARCHIVE_DIR="$archive_dir" ./build/pathspace_history_cli_roundtrip; then
     ok "History savefile CLI roundtrip succeeded"
   else
     err "History savefile CLI roundtrip failed"
