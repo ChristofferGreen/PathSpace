@@ -31,7 +31,8 @@
 - ✅ (November 7, 2025) Added the `pathspace_history_inspect` CLI for on-disk history inspection, documented its workflow in `docs/AI_Debugging_Playbook.md`, and captured `_history/stats/*` inspector samples below so downstream tooling stays aligned with the binary codec.
 - ✅ (November 7, 2025) `pathspace_history_inspect` now decodes serialized payloads (strings, numerics, booleans) with human-readable summaries, provides generation-to-generation diff output, and ships JSON helpers for `_history/stats/*` + `_history/lastOperation/*` so the inspector backend can stream telemetry directly.
 - ✅ (November 7, 2025) Savefile export/import helpers landed: `UndoableSpace::exportHistorySavefile` / `importHistorySavefile` author PSHD (`history.binary.v1`) bundles that preserve undo/redo stacks, retention budgets, and persistence settings; regression coverage exercises round-trip restore flows.
-- ➡️ Next focus: surface the savefile workflow via CLI tooling and update editor/docs pipelines with recovery/import playbooks now that the codec is finalized.
+- ✅ (November 7, 2025) `pathspace_history_savefile` CLI wraps export/import flows, derives persistence locations automatically, and the debugging playbook now documents recovery/import steps so editors can script PSHD round-trips without bespoke harnesses.
+- ➡️ Next focus: add automation that exercises the CLI in CI/editor workflows (pre-push harness + inspector pipelines) and land regression coverage that round-trips PSHD bundles through the CLI binaries.
 
 ## Architecture Overview
 - **Wrapper layer:** `UndoableSpace` stores a pointer to the inner `PathSpaceBase` and overrides mutating methods to run inside `HistoryTransaction` scopes.
@@ -144,6 +145,23 @@ Excerpt of the JSON summary (fields omitted for brevity):
 }
 ```
 
+### Savefile CLI (`pathspace_history_savefile`)
+- Build alongside the inspector tool: `cmake --build build -j` produces both executables.
+- Run `./build/pathspace_history_savefile export --root <path> --history-dir <dir> --out <file.pshd>` to capture an undo-enabled subtree into a PSHD (`history.binary.v1`) bundle. The CLI derives the persistence namespace from `<dir>` by default; override with `--namespace` / `--persistence-root` when staging migrations. `--no-fsync` skips durability flushes for faster local experimentation.
+- Run `./build/pathspace_history_savefile import --root <path> --history-dir <dir> --in <file.pshd>` to seed a new history directory (created on demand) before reproducing a bug or sharing state with collaborators. Append `--no-apply-options` when you need to preserve local retention budgets instead of the savefile’s stored values.
+- Typical round-trip:
+
+```bash
+PATHSPACE_HISTORY_ROOT=${PATHSPACE_HISTORY_ROOT:-$TMPDIR/pathspace_history}
+ROOT=/doc
+UUID=12c0e8d41fb84233
+ENCODED=$(printf '%s' "$ROOT" | xxd -p -c256)
+DIR="$PATHSPACE_HISTORY_ROOT/$UUID/$ENCODED"
+
+./build/pathspace_history_savefile export --root "$ROOT" --history-dir "$DIR" --out doc.pshd
+./build/pathspace_history_savefile import --root "$ROOT" --history-dir "$DIR" --in doc.pshd
+```
+
 ### Inspector `_history/stats/*` sample
 The inspector backend should surface undo telemetry as JSON nodes so the browser UI can display history state alongside live PathSpace data. The sample below reflects a healthy root after several edits; values come directly from the `_history/stats/*` and `_history/lastOperation/*` paths that `UndoableSpace` publishes.
 
@@ -179,7 +197,8 @@ Use the sample when wiring the inspector API and UI so `_history/stats/*` values
 3. ✅ (November 5, 2025) **Retention & Telemetry** — auto-trim budgets, surface `_history/stats/*` and `_history/lastOperation/*`, add manual GC controls, and extend doctest coverage.
 4. ✅ (November 5, 2025) **Persistence Layer** — on-disk storage, recovery tests, failure-path logging, and cache policies landed. Benchmarks run inside the 15× loop.
 5. ✅ (November 7, 2025) **Integration Tasks** — updated `Plan_PathSpace.md`, paint widget plan, and inspector documentation to reference the binary metadata codec, `_history/stats/*` telemetry, and downstream integration checkpoints.
-6. ✅ (November 7, 2025) **Savefile Export/Import** — designed the PSHD (`history.binary.v1`) save format, added `UndoableSpace::exportHistorySavefile` / `importHistorySavefile` helpers that preserve undo/redo stacks while honoring retention + persistence, and backed the flow with regression tests. CLI integration + workflow docs are the next incremental follow-up.
+6. ✅ (November 7, 2025) **Savefile Export/Import** — designed the PSHD (`history.binary.v1`) save format, added `UndoableSpace::exportHistorySavefile` / `importHistorySavefile` helpers that preserve undo/redo stacks while honoring retention + persistence, backed the flow with regression tests, and surfaced the CLI (`pathspace_history_savefile`) + recovery playbooks so editors can automate captures.
+7. **CLI Automation (Planned)** — add regression coverage that round-trips PSHD bundles via the CLI binaries and hook the commands into editor/pre-push workflows so savefile captures become part of the default toolkit.
 
 ## Dependencies
 - `history::CowSubtreePrototype` (landed).
