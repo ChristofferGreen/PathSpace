@@ -222,6 +222,7 @@ Environment knobs (all respected by the wrapper and the logger):
 - `./build/pathspace_history_cli_roundtrip` exercises both CLI commands against a temporary persistence tree, re-exports the result, and diffs the summaries (values, undo/redo counts). The harness now also writes `history_cli_roundtrip/telemetry.json` (bundle hashes, entry/byte counts) plus `original.pshd`/`roundtrip.pshd` into the active test artifact directory, so dashboards/inspector tooling can scrape the data automatically. Pre-push runs pick up the same artifacts under `build/test-logs/history_cli_roundtrip/` with a timestamped subdirectory.
 - The dedicated regression lives in CTest as `HistorySavefileCLIRoundTrip`; run it (or the pre-push hook) whenever the savefile codec or CLI surface changes to ensure PSHD bundles continue to round-trip end-to-end.
 - Override the artifact destination with `PATHSPACE_CLI_ROUNDTRIP_ARCHIVE_DIR=/path/to/dir ./build/pathspace_history_cli_roundtrip` when scripting ad-hoc captures. Test loops default to `PATHSPACE_TEST_ARTIFACT_DIR` (exported by `scripts/run-test-with-logs.sh`), so every failure leaves behind telemetry + PSHD pairs alongside other logs.
+- Aggregate the telemetry for dashboards/inspector runs with `scripts/history_cli_roundtrip_ingest.py --artifacts-root build/test-logs --relative-base build --output build/test-logs/history_cli_roundtrip/index.json`. The pre-push hook already invokes this helper, yielding a rolling history of bundle hashes, undo/redo counts, and direct download links for each PSHD pair.
 
 ## 6. Closing the Loop
 

@@ -190,6 +190,11 @@ if [[ "${SKIP_HISTORY_CLI:-0}" != "1" ]]; then
   mkdir -p "$archive_dir"
   if PATHSPACE_CLI_ROUNDTRIP_ARCHIVE_DIR="$archive_dir" ./build/pathspace_history_cli_roundtrip; then
     ok "History savefile CLI roundtrip succeeded"
+    scripts/history_cli_roundtrip_ingest.py \
+      --artifacts-root "build/test-logs" \
+      --output "build/test-logs/history_cli_roundtrip/index.json" \
+      --relative-base "${PWD}/build" \
+      --quiet || warn "history telemetry aggregation failed"
   else
     err "History savefile CLI roundtrip failed"
     exit 1
