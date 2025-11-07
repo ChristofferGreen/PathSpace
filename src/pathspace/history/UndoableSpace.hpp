@@ -104,6 +104,35 @@ struct TrimStats {
 using TrimPredicate = std::function<bool(std::size_t generationIndex)>;
 
 class UndoableSpace : public PathSpaceBase {
+private:
+    struct RootState;
+    class TransactionHandleBase {
+    public:
+        TransactionHandleBase() = default;
+        TransactionHandleBase(UndoableSpace& owner,
+                              std::shared_ptr<RootState> state,
+                              bool active,
+                              std::string_view context);
+        TransactionHandleBase(TransactionHandleBase&& other) noexcept;
+        TransactionHandleBase& operator=(TransactionHandleBase&& other) noexcept;
+        ~TransactionHandleBase();
+
+        auto commitHandle() -> Expected<void>;
+        void deactivateHandle();
+        [[nodiscard]] auto ownerHandle() const noexcept -> UndoableSpace* { return owner_; }
+        [[nodiscard]] auto stateHandle() const noexcept -> std::shared_ptr<RootState> const& { return state_; }
+        auto stateHandle() noexcept -> std::shared_ptr<RootState>& { return state_; }
+        [[nodiscard]] bool isHandleActive() const noexcept { return active_; }
+
+    private:
+        void finalizeHandle();
+
+        UndoableSpace*             owner_  = nullptr;
+        std::shared_ptr<RootState> state_;
+        bool                       active_ = false;
+        std::string                context_;
+    };
+
 public:
     explicit UndoableSpace(std::unique_ptr<PathSpaceBase> inner, HistoryOptions defaults = {});
     ~UndoableSpace() override = default;
@@ -115,13 +144,11 @@ public:
     auto trimHistory(SP::ConcretePathStringView root, TrimPredicate predicate) -> Expected<TrimStats>;
     auto getHistoryStats(SP::ConcretePathStringView root) const -> Expected<HistoryStats>;
 
-    struct RootState;
-
     class HistoryTransaction {
     public:
         HistoryTransaction(HistoryTransaction&&) noexcept;
         HistoryTransaction& operator=(HistoryTransaction&&) noexcept;
-        ~HistoryTransaction();
+        ~HistoryTransaction() = default;
 
         HistoryTransaction(HistoryTransaction const&)            = delete;
         HistoryTransaction& operator=(HistoryTransaction const&) = delete;
@@ -133,9 +160,7 @@ public:
         HistoryTransaction(UndoableSpace& owner,
                            std::shared_ptr<RootState> rootState);
 
-        UndoableSpace*                    owner;
-        std::shared_ptr<RootState>        rootState;
-        bool                              active = true;
+        TransactionHandleBase handle_;
     };
 
     auto beginTransaction(SP::ConcretePathStringView root) -> Expected<HistoryTransaction>;
@@ -158,9 +183,9 @@ private:
     public:
         TransactionGuard() = default;
         TransactionGuard(UndoableSpace& owner, std::shared_ptr<RootState> state, bool active);
-        TransactionGuard(TransactionGuard&& other) noexcept;
-        TransactionGuard& operator=(TransactionGuard&& other) noexcept;
-        ~TransactionGuard();
+        TransactionGuard(TransactionGuard&& other) noexcept = default;
+        TransactionGuard& operator=(TransactionGuard&& other) noexcept = default;
+        ~TransactionGuard() = default;
 
         TransactionGuard(TransactionGuard const&)            = delete;
         TransactionGuard& operator=(TransactionGuard const&) = delete;
@@ -168,14 +193,10 @@ private:
         void markDirty();
         auto commit() -> Expected<void>;
         void deactivate();
-        explicit operator bool() const { return active; }
+        explicit operator bool() const { return handle_.isHandleActive(); }
 
     private:
-        void release();
-
-        UndoableSpace*              owner  = nullptr;
-        std::shared_ptr<RootState>  state;
-        bool                        active = false;
+        TransactionHandleBase handle_;
     };
 
     auto findRoot(SP::ConcretePathStringView root) const -> std::shared_ptr<RootState>;
@@ -203,6 +224,7 @@ private:
                          std::size_t bytesBefore,
                          std::string const& message);
     auto applyRetentionLocked(RootState& state, std::string_view origin) -> TrimStats;
+    void updateTrimTelemetryLocked(RootState& state, TrimStats const& stats);
     auto readHistoryValue(MatchedRoot const& matchedRoot,
                           std::string const& relativePath,
                           InputMetadata const& metadata,
@@ -210,6 +232,14 @@ private:
     void recordUnsupportedPayloadLocked(RootState& state,
                                         std::string const& path,
                                         std::string const& reason);
+    auto ensureEntriesDirectory(RootState& state) -> Expected<void>;
+    static auto commitAndDeactivate(UndoableSpace* owner,
+                                    std::shared_ptr<RootState>& state,
+                                    bool& active) -> Expected<void>;
+    static void commitOnScopeExit(UndoableSpace* owner,
+                                  std::shared_ptr<RootState>& state,
+                                  bool& active,
+                                  std::string_view context);
     auto ensurePersistenceSetup(RootState& state) -> Expected<void>;
     auto loadPersistentState(RootState& state) -> Expected<void>;
     auto restoreRootFromPersistence(RootState& state) -> Expected<void>;
@@ -218,6 +248,15 @@ private:
     auto applyRamCachePolicyLocked(RootState& state) -> void;
     auto updateCacheTelemetryLocked(RootState& state) -> void;
     auto updateDiskTelemetryLocked(RootState& state) -> void;
+    auto performHistoryStep(RootState& state,
+                            bool        sourceIsUndo,
+                            std::string_view operationName,
+                            std::string_view emptyMessage,
+                            std::string_view retentionOrigin) -> Expected<void>;
+    auto applyHistorySteps(SP::ConcretePathStringView root,
+                           std::size_t                steps,
+                           bool                      isUndo) -> Expected<void>;
+    auto finalizeHistoryMutation(RootState& state, bool forceFsync = false) -> Expected<void>;
     auto encodeRootForPersistence(std::string const& rootPath) const -> std::string;
     auto persistenceRootPath(HistoryOptions const& opts) const -> std::filesystem::path;
     auto defaultPersistenceRoot() const -> std::filesystem::path;

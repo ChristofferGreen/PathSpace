@@ -4,8 +4,8 @@
 
 namespace SP::History {
 
-CowSubtreePrototype::Payload::Payload(std::vector<std::uint8_t> bytesIn)
-    : bytes(std::make_shared<const std::vector<std::uint8_t>>(std::move(bytesIn))) {}
+CowSubtreePrototype::Payload::Payload(std::vector<std::byte> bytesIn)
+    : bytes(std::make_shared<const std::vector<std::byte>>(std::move(bytesIn))) {}
 
 CowSubtreePrototype::CowSubtreePrototype() : nextGeneration_(1) {}
 
@@ -179,6 +179,14 @@ auto CowSubtreePrototype::collect(NodePtr const& root) -> std::vector<NodePtr> {
         }
     }
     return nodes;
+}
+
+void CowSubtreePrototype::setNextGeneration(std::size_t next) {
+    nextGeneration_ = next;
+}
+
+auto CowSubtreePrototype::nextGeneration() const noexcept -> std::size_t {
+    return nextGeneration_;
 }
 
 } // namespace SP::History

@@ -4,6 +4,7 @@ project(PathSpaceTests VERSION 1.0)
 
 set(PATHSPACE_CORE_TEST_SOURCES
   unit/path/test_Iterator.cpp
+  unit/path/test_ConcretePath.cpp
   unit/core/test_WaitMap.cpp
   unit/type/test_InputMetadata.cpp
   unit/type/test_SlidingBuffer.cpp

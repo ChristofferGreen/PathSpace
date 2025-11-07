@@ -9,7 +9,11 @@ using namespace SP::History;
 
 namespace {
 auto makePayload(std::initializer_list<std::uint8_t> init) -> CowSubtreePrototype::Payload {
-    std::vector<std::uint8_t> bytes(init);
+    std::vector<std::byte> bytes;
+    bytes.reserve(init.size());
+    for (auto value : init) {
+        bytes.push_back(static_cast<std::byte>(value));
+    }
     return CowSubtreePrototype::Payload(std::move(bytes));
 }
 

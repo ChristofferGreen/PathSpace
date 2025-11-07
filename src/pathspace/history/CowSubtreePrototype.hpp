@@ -32,13 +32,13 @@ class CowSubtreePrototype {
 public:
     struct Payload {
         Payload() = default;
-        explicit Payload(std::vector<std::uint8_t> bytesIn);
+        explicit Payload(std::vector<std::byte> bytesIn);
 
         [[nodiscard]] auto size() const noexcept -> std::size_t {
             return bytes ? bytes->size() : 0;
         }
 
-        std::shared_ptr<const std::vector<std::uint8_t>> bytes;
+        std::shared_ptr<const std::vector<std::byte>> bytes;
     };
 
     struct Node;
@@ -85,6 +85,9 @@ public:
     [[nodiscard]] auto analyzeDelta(Snapshot const& baseline, Snapshot const& updated) const -> DeltaStats;
 
     [[nodiscard]] static auto parsePath(std::string_view concretePath) -> std::optional<std::vector<std::string>>;
+
+    void setNextGeneration(std::size_t next);
+    [[nodiscard]] auto nextGeneration() const noexcept -> std::size_t;
 
 private:
     static auto applyAt(NodePtr const& node, Mutation const& mutation, std::size_t depth) -> NodePtr;

@@ -1,0 +1,89 @@
+#pragma once
+
+#include "core/Error.hpp"
+
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace SP::History::UndoUtils {
+
+[[nodiscard]] auto toMillis(std::chrono::system_clock::time_point tp) -> std::uint64_t;
+[[nodiscard]] auto generateSpaceUuid() -> std::string;
+
+[[nodiscard]] auto fsyncFileDescriptor(int fd) -> Expected<void>;
+[[nodiscard]] auto fsyncDirectory(std::filesystem::path const& dir) -> Expected<void>;
+
+[[nodiscard]] auto writeFileAtomic(std::filesystem::path const& path,
+                                   std::span<const std::byte> data,
+                                   bool fsyncData,
+                                   bool binary) -> Expected<void>;
+[[nodiscard]] auto writeTextFileAtomic(std::filesystem::path const& path,
+                                       std::string const& text,
+                                       bool fsyncData) -> Expected<void>;
+
+[[nodiscard]] auto readBinaryFile(std::filesystem::path const& path) -> Expected<std::vector<std::byte>>;
+[[nodiscard]] auto readTextFile(std::filesystem::path const& path) -> Expected<std::string>;
+
+void removePathIfExists(std::filesystem::path const& path);
+[[nodiscard]] auto fileSizeOrZero(std::filesystem::path const& path) -> std::uintmax_t;
+
+inline constexpr std::uint32_t SnapshotMagic       = 0x50534853; // 'PSHS'
+inline constexpr std::uint32_t SnapshotVersion     = 1;
+inline constexpr std::uint32_t EntryMetaVersion    = 1;
+inline constexpr std::uint32_t StateMetaVersion    = 1;
+inline constexpr std::size_t  MaxUnsupportedLogEntries = 16;
+
+inline constexpr std::string_view UnsupportedNestedMessage =
+    "History does not yet support nested PathSpaces";
+inline constexpr std::string_view UnsupportedExecutionMessage =
+    "History does not yet support nodes containing tasks or futures";
+inline constexpr std::string_view UnsupportedSerializationMessage =
+    "Unable to serialize node payload for history";
+
+namespace Paths {
+inline constexpr std::string_view HistoryRoot                     = "_history";
+inline constexpr std::string_view HistoryStats                    = "_history/stats";
+inline constexpr std::string_view HistoryStatsUndoCount           = "_history/stats/undoCount";
+inline constexpr std::string_view HistoryStatsRedoCount           = "_history/stats/redoCount";
+inline constexpr std::string_view HistoryStatsUndoBytes           = "_history/stats/undoBytes";
+inline constexpr std::string_view HistoryStatsRedoBytes           = "_history/stats/redoBytes";
+inline constexpr std::string_view HistoryStatsLiveBytes           = "_history/stats/liveBytes";
+inline constexpr std::string_view HistoryStatsBytesRetained       = "_history/stats/bytesRetained";
+inline constexpr std::string_view HistoryStatsManualGcEnabled     = "_history/stats/manualGcEnabled";
+inline constexpr std::string_view HistoryStatsTrimOperationCount  = "_history/stats/trimOperationCount";
+inline constexpr std::string_view HistoryStatsTrimmedEntries      = "_history/stats/trimmedEntries";
+inline constexpr std::string_view HistoryStatsTrimmedBytes        = "_history/stats/trimmedBytes";
+inline constexpr std::string_view HistoryStatsLastTrimTimestamp   = "_history/stats/lastTrimTimestampMs";
+inline constexpr std::string_view HistoryHeadGeneration           = "_history/head/generation";
+
+inline constexpr std::string_view HistoryLastOperationPrefix      = "_history/lastOperation";
+inline constexpr std::string_view HistoryLastOperationType        = "_history/lastOperation/type";
+inline constexpr std::string_view HistoryLastOperationTimestamp   = "_history/lastOperation/timestampMs";
+inline constexpr std::string_view HistoryLastOperationDuration    = "_history/lastOperation/durationMs";
+inline constexpr std::string_view HistoryLastOperationSuccess     = "_history/lastOperation/success";
+inline constexpr std::string_view HistoryLastOperationUndoBefore  = "_history/lastOperation/undoCountBefore";
+inline constexpr std::string_view HistoryLastOperationUndoAfter   = "_history/lastOperation/undoCountAfter";
+inline constexpr std::string_view HistoryLastOperationRedoBefore  = "_history/lastOperation/redoCountBefore";
+inline constexpr std::string_view HistoryLastOperationRedoAfter   = "_history/lastOperation/redoCountAfter";
+inline constexpr std::string_view HistoryLastOperationBytesBefore = "_history/lastOperation/bytesBefore";
+inline constexpr std::string_view HistoryLastOperationBytesAfter  = "_history/lastOperation/bytesAfter";
+inline constexpr std::string_view HistoryLastOperationMessage     = "_history/lastOperation/message";
+
+inline constexpr std::string_view HistoryUnsupported              = "_history/unsupported";
+inline constexpr std::string_view HistoryUnsupportedTotalCount    = "_history/unsupported/totalCount";
+inline constexpr std::string_view HistoryUnsupportedRecentCount   = "_history/unsupported/recentCount";
+inline constexpr std::string_view HistoryUnsupportedRecentPrefix  = "_history/unsupported/recent/";
+
+inline constexpr std::string_view CommandUndo              = "_history/undo";
+inline constexpr std::string_view CommandRedo              = "_history/redo";
+inline constexpr std::string_view CommandGarbageCollect    = "_history/garbage_collect";
+inline constexpr std::string_view CommandSetManualGc       = "_history/set_manual_garbage_collect";
+} // namespace Paths
+
+} // namespace SP::History::UndoUtils
