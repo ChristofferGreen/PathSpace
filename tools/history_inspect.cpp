@@ -1,9 +1,11 @@
 #include <pathspace/history/CowSubtreePrototype.hpp>
 #include <pathspace/history/UndoHistoryMetadata.hpp>
+#include <pathspace/history/UndoHistoryInspection.hpp>
 #include <pathspace/history/UndoHistoryUtils.hpp>
 #include <pathspace/history/UndoSnapshotCodec.hpp>
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -37,6 +39,10 @@ struct CommandLineOptions {
     bool                  analyzeSnapshots  = true;
     std::optional<std::size_t> dumpGeneration;
     std::size_t           previewBytes      = 16;
+    bool                  decodeSnapshot    = false;
+    std::optional<std::size_t> decodeGeneration;
+    bool                  diffRequested     = false;
+    std::optional<std::pair<std::size_t, std::size_t>> diffGenerations;
 };
 
 enum class EntryKind {
@@ -130,6 +136,45 @@ auto parse_arguments(int argc, char** argv) -> std::optional<CommandLineOptions>
                 std::cerr << "Invalid value for --preview-bytes: " << argv[i] << "\n";
                 return std::nullopt;
             }
+        } else if (arg == "--decode") {
+            options.decodeSnapshot = true;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                ++i;
+                try {
+                    options.decodeGeneration =
+                        static_cast<std::size_t>(std::stoull(argv[i], nullptr, 10));
+                } catch (...) {
+                    std::cerr << "Invalid generation for --decode: " << argv[i] << "\n";
+                    return std::nullopt;
+                }
+            }
+        } else if (arg == "--diff") {
+            if (i + 1 >= argc) {
+                std::cerr << "--diff requires a <a>:<b> generation pair\n";
+                return std::nullopt;
+            }
+            ++i;
+            std::string_view spec{argv[i]};
+            auto             colon = spec.find(':');
+            if (colon == std::string_view::npos || colon == 0 || colon == spec.size() - 1) {
+                std::cerr << "Invalid diff specification: " << spec << "\n";
+                return std::nullopt;
+            }
+            std::size_t before = 0;
+            std::size_t after  = 0;
+            auto beforeView    = spec.substr(0, colon);
+            auto afterView     = spec.substr(colon + 1);
+            try {
+                before = static_cast<std::size_t>(
+                    std::stoull(std::string(beforeView), nullptr, 10));
+                after = static_cast<std::size_t>(
+                    std::stoull(std::string(afterView), nullptr, 10));
+            } catch (...) {
+                std::cerr << "Invalid diff specification: " << spec << "\n";
+                return std::nullopt;
+            }
+            options.diffRequested    = true;
+            options.diffGenerations  = std::make_pair(before, after);
         } else if (!arg.empty() && arg.front() == '-') {
             std::cerr << "Unknown option: " << arg << "\n";
             return std::nullopt;
@@ -697,6 +742,172 @@ std::string hex_preview(std::vector<std::byte> const& bytes, std::size_t limit) 
     return oss.str();
 }
 
+std::optional<std::string> decode_root_path(HistorySummary const& summary) {
+    auto encoded = summary.rootPath.filename().generic_string();
+    if (encoded.empty())
+        return std::nullopt;
+    if (encoded.size() % 2 != 0)
+        return std::nullopt;
+    std::string decoded;
+    decoded.reserve(encoded.size() / 2);
+    for (std::size_t i = 0; i < encoded.size(); i += 2) {
+        auto const* begin = encoded.data() + static_cast<std::ptrdiff_t>(i);
+        auto const* end   = begin + 2;
+        unsigned int value = 0;
+        auto result = std::from_chars(begin, end, value, 16);
+        if (result.ec != std::errc{} || result.ptr != end) {
+            return std::nullopt;
+        }
+        decoded.push_back(static_cast<char>(value));
+    }
+    return decoded;
+}
+
+EntryInfo const* find_entry(HistorySummary const& summary, std::size_t generation) {
+    auto it = std::find_if(summary.entries.begin(),
+                           summary.entries.end(),
+                           [&](EntryInfo const& info) { return info.generation == generation; });
+    if (it == summary.entries.end())
+        return nullptr;
+    return &*it;
+}
+
+bool decode_snapshot_payloads(CommandLineOptions const& options,
+                              HistorySummary const& summary) {
+    if (!options.decodeSnapshot)
+        return true;
+
+    std::size_t generation = 0;
+    if (options.decodeGeneration) {
+        generation = *options.decodeGeneration;
+    } else if (summary.hasStateMeta) {
+        generation = summary.stateMeta.liveGeneration;
+    } else {
+        std::cerr << "Unable to determine generation for --decode; state metadata missing\n";
+        return false;
+    }
+
+    auto* entry = find_entry(summary, generation);
+    if (!entry) {
+        std::cerr << "No snapshot found for generation " << generation << "\n";
+        return false;
+    }
+    if (!entry->hasSnapshot) {
+        std::cerr << "Generation " << generation << " has no snapshot file\n";
+        return false;
+    }
+
+    CowSubtreePrototype prototype;
+    auto snapshotExpected = UndoSnapshotCodec::loadSnapshotFromFile(prototype, entry->snapshotPath);
+    if (!snapshotExpected) {
+        std::cerr << "Failed to load snapshot: "
+                  << error_to_string(snapshotExpected.error()) << "\n";
+        return false;
+    }
+
+    auto rootPath = decode_root_path(summary).value_or("/");
+    auto decoded  = Inspection::decodeSnapshot(*snapshotExpected, rootPath);
+
+    std::cout << "\nDecoded payloads for generation " << generation << " ("
+              << kind_to_label(entry->kind) << ")\n";
+    if (decoded.values.empty()) {
+        std::cout << "  (no payloads)\n";
+        return true;
+    }
+
+    for (auto const& value : decoded.values) {
+        std::cout << "- " << value.path << "\n";
+        std::cout << "    type:   " << value.typeName << " [" << value.category << "]\n";
+        std::cout << "    value:  " << value.summary << "\n";
+        std::cout << "    size:   " << format_bytes(value.bytes) << "\n";
+        std::cout << "    digest: 0x" << std::hex << std::setw(16) << std::setfill('0')
+                  << value.digest << std::dec << "\n";
+    }
+    return true;
+}
+
+bool diff_snapshots(CommandLineOptions const& options,
+                    HistorySummary const& summary) {
+    if (!options.diffRequested)
+        return true;
+    if (!options.diffGenerations) {
+        std::cerr << "--diff requires a generation pair\n";
+        return false;
+    }
+    auto [beforeGen, afterGen] = *options.diffGenerations;
+
+    auto* beforeEntry = find_entry(summary, beforeGen);
+    auto* afterEntry  = find_entry(summary, afterGen);
+    if (!beforeEntry) {
+        std::cerr << "No snapshot found for generation " << beforeGen << "\n";
+        return false;
+    }
+    if (!afterEntry) {
+        std::cerr << "No snapshot found for generation " << afterGen << "\n";
+        return false;
+    }
+    if (!beforeEntry->hasSnapshot || !afterEntry->hasSnapshot) {
+        std::cerr << "Both generations must have on-disk snapshots\n";
+        return false;
+    }
+
+    CowSubtreePrototype prototype;
+    auto beforeSnapshot = UndoSnapshotCodec::loadSnapshotFromFile(prototype, beforeEntry->snapshotPath);
+    if (!beforeSnapshot) {
+        std::cerr << "Failed to load baseline snapshot: "
+                  << error_to_string(beforeSnapshot.error()) << "\n";
+        return false;
+    }
+    auto afterSnapshot = UndoSnapshotCodec::loadSnapshotFromFile(prototype, afterEntry->snapshotPath);
+    if (!afterSnapshot) {
+        std::cerr << "Failed to load updated snapshot: "
+                  << error_to_string(afterSnapshot.error()) << "\n";
+        return false;
+    }
+
+    auto rootPath = decode_root_path(summary).value_or("/");
+    auto diff = Inspection::diffSnapshots(*beforeSnapshot, *afterSnapshot, rootPath);
+
+    std::cout << "\nDiff between generation " << beforeGen << " (" << kind_to_label(beforeEntry->kind)
+              << ") and " << afterGen << " (" << kind_to_label(afterEntry->kind) << ")\n";
+
+    auto printValue = [](std::string const& label,
+                         Inspection::DecodedValue const& value,
+                         std::string const& prefix) {
+        std::cout << prefix << label << ": " << value.path << "\n";
+        std::cout << prefix << "  type:   " << value.typeName << " [" << value.category << "]\n";
+        std::cout << prefix << "  value:  " << value.summary << "\n";
+        std::cout << prefix << "  size:   " << format_bytes(value.bytes) << "\n";
+        std::cout << prefix << "  digest: 0x" << std::hex << std::setw(16) << std::setfill('0')
+                  << value.digest << std::dec << "\n";
+    };
+
+    if (!diff.added.empty()) {
+        std::cout << "  Added:\n";
+        for (auto const& value : diff.added) {
+            printValue("", value, "    ");
+        }
+    }
+    if (!diff.removed.empty()) {
+        std::cout << "  Removed:\n";
+        for (auto const& value : diff.removed) {
+            printValue("", value, "    ");
+        }
+    }
+    if (!diff.modified.empty()) {
+        std::cout << "  Modified:\n";
+        for (auto const& change : diff.modified) {
+            printValue("before", change.before, "    ");
+            printValue("after", change.after, "    ");
+        }
+    }
+    if (diff.added.empty() && diff.removed.empty() && diff.modified.empty()) {
+        std::cout << "  (no differences)\n";
+    }
+
+    return true;
+}
+
 void dump_snapshot_node(std::vector<std::string>& path,
                         std::shared_ptr<const CowSubtreePrototype::Node> const& node,
                         std::size_t previewBytes,
@@ -799,6 +1010,12 @@ int main(int argc, char** argv) {
     } else {
         print_summary_text(summary);
     }
+
+    if (!decode_snapshot_payloads(options, summary))
+        return EXIT_FAILURE;
+
+    if (!diff_snapshots(options, summary))
+        return EXIT_FAILURE;
 
     if (!dump_snapshot(options, summary))
         return EXIT_FAILURE;

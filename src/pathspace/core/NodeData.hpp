@@ -7,6 +7,7 @@
 #include "task/IFutureAny.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <optional>
@@ -34,6 +35,9 @@ struct NodeData {
     [[nodiscard]] auto serializeSnapshot() const -> std::optional<std::vector<std::byte>>;
     static auto        deserializeSnapshot(std::span<const std::byte> bytes) -> std::optional<NodeData>;
     [[nodiscard]] auto hasExecutionPayload() const noexcept -> bool;
+    [[nodiscard]] auto typeSummary() const -> std::deque<ElementType> const& { return types; }
+    [[nodiscard]] auto rawBuffer() const -> std::span<std::uint8_t const> { return data.rawData(); }
+    [[nodiscard]] auto rawBufferFrontOffset() const -> std::size_t { return data.virtualFront(); }
 
 private:
     auto popType() -> void;

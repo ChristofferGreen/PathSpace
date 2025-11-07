@@ -14,7 +14,7 @@
 - **Distributed PathSpace Mounts:** Web server should access remote application roots securely (Plan_Distributed_PathSpace.md).
 - **Web Server Infrastructure:** Inspector API rides on the web server adapter; implementation begins after baseline web endpoints (auth, SSE, `/api/path`) are in place.
 - **Auth/ACLs:** Reuse web server sessions; ensure inspector respects app-root boundaries. Allow an explicit “root” role for trusted users to view the entire `/` tree.
-- **Undo History Telemetry:** `_history/stats/*` nodes expose versioned binary-backed metrics; the inspector should surface these values and document the codec linkage so on-disk history aligns with UI diagnostics. See `docs/Plan_PathSpace_UndoHistory.md` (“Tooling & Debugging”) for sample payloads and CLI references.
+- **Undo History Telemetry:** `_history/stats/*` nodes expose versioned binary-backed metrics; the inspector should surface these values and document the codec linkage so on-disk history aligns with UI diagnostics. See `docs/Plan_PathSpace_UndoHistory.md` (“Tooling & Debugging”) for sample payloads and CLI references. `pathspace_history_inspect` now exports JSON helpers (`historyStatsToJson`, `lastOperationToJson`) so the backend can stream telemetry without re-implementing the codec.
 
 ## Architecture Overview
 

@@ -29,7 +29,8 @@
 - ✅ (November 7, 2025) Persistence metadata now writes a compact binary format (little-endian, versioned) for both state and entry descriptors; recovery/telemetry paths use the shared codec and tests cover encode/decode round-trips. Alpaca JSON is no longer emitted for history metadata.
 - ✅ (November 7, 2025) Downstream plans now reflect the binary metadata decision (Plan_PathSpace.md, Plan_PathSpace_Inspector.md, Plan_WidgetDeclarativeAPI.md, Plan_Overview.md); integration callouts point to the versioned codec and shared telemetry surface.
 - ✅ (November 7, 2025) Added the `pathspace_history_inspect` CLI for on-disk history inspection, documented its workflow in `docs/AI_Debugging_Playbook.md`, and captured `_history/stats/*` inspector samples below so downstream tooling stays aligned with the binary codec.
-- ➡️ Next focus: extend the inspection tooling with typed payload decoding/diff helpers and wire the inspector backend to stream `_history/stats/*` + `_history/lastOperation/*` through its JSON API.
+- ✅ (November 7, 2025) `pathspace_history_inspect` now decodes serialized payloads (strings, numerics, booleans) with human-readable summaries, provides generation-to-generation diff output, and ships JSON helpers for `_history/stats/*` + `_history/lastOperation/*` so the inspector backend can stream telemetry directly.
+- ➡️ Next focus: design the savefile export/import helpers for undo-enabled subtrees (Execution Plan step 6), including CLI wiring and documentation for recovery workflows.
 
 ## Architecture Overview
 - **Wrapper layer:** `UndoableSpace` stores a pointer to the inner `PathSpaceBase` and overrides mutating methods to run inside `HistoryTransaction` scopes.
