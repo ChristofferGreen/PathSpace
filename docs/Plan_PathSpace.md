@@ -36,7 +36,7 @@
 ### Snapshot Storage
 - Each snapshot stores:
   - Changed node payloads (shared_ptr to immutable blobs).
-  - Metadata (timestamp, author, optional description).
+  - Metadata (timestamp, author, optional description) serializes through the shared versioned binary codec; the Alpaca JSON fallback was removed on November 7, 2025.
 - Use weak/shared ownership so unreferenced snapshots free automatically after compaction.
 
 ### Operations
@@ -67,6 +67,7 @@
 - ✅ Authored `docs/Plan_PathSpace_UndoHistory.md` outlining the undo wrapper, `_history/*` control paths, retention, and persistence strategy for design review.
 - ✅ (November 6, 2025) `_history/unsupported/*` telemetry now exposes the offending path, reason, timestamp, and occurrence counts for unsupported payload snapshots so the inspector surfaces failures without digging through logs; regression coverage updated to check the new nodes.
 - ✅ (November 7, 2025) Reaffirmed that undo-enabled roots must contain only serializable payloads; executions and nested PathSpaces stay outside the history subtree and are reported via `_history/unsupported/*`.
+- ✅ (November 7, 2025) Downstream plans (UndoHistory, inspector, paint widget) now reference the binary metadata codec, `_history/stats/*` telemetry, and integration checkpoints so consumers adopt the new persistence format consistently.
 
 ## Next Steps
 1. ✅ Prototype copy-on-write storage for a simple subtree, measuring memory impact. (Captured by `history::CowSubtreePrototype` and associated tests.)
@@ -75,4 +76,5 @@
 4. Implement child enumeration and the route merger, then update widget/runtime plans to consume them.
 5. Design `HistoryOptions` struct and telemetry schema.
 6. Update the paint widget plan to call the new APIs (already referenced in `docs/Plan_WidgetDeclarativeAPI.md`).
-7. Run the Alpaca vs. binary metadata bake-off for persistence, record the findings in `docs/AI_Architecture.md`, and wire the winning format into stack metadata.
+7. ✅ (November 7, 2025) Run the Alpaca vs. binary metadata bake-off for persistence, adopt the versioned binary codec, and update `docs/AI_Architecture.md`, `docs/Plan_PathSpace_UndoHistory.md`, and paint/inspector plans to reference the shared format.
+8. Publish debugging guidance: document CLI/script support for inspecting persisted history directories and capture sample inspector payloads (JSON + path layout) that read `_history/stats/*`.

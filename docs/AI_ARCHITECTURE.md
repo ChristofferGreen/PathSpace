@@ -53,6 +53,7 @@ PathSpace is a coordination language that enables insertion and extractions from
 - Undo entries flush to disk by default for crash safety. Advanced callers can set `HistoryOptions::manual_garbage_collect` or insert `_history/set_manual_garbage_collect = true` when they want to defer durability and retention to explicit checkpoints.
 - November 5, 2025: `history::UndoableSpace` wraps a backing `PathSpace`, captures copy-on-write snapshots for undo/redo, enforces retention budgets (auto-trim plus manual garbage collect), publishes `_history/stats/*`, `_history/lastOperation/*`, and `_history/unsupported/*` telemetry, and now persists undo/redo stacks with on-disk recovery. Nodes that hold executions or nested spaces remain unsupported for snapshotting; the new `_history/unsupported/recent/*` log records the offending path, reason, and first-seen timestamp so inspector tooling can flag them inline.
 - November 7, 2025: Reaffirmed that undo-enabled roots only store plain serializable payloads. Executions (lambdas, futures) and nested PathSpaces must live outside the undo subtree; attempts to snapshot them surface under `_history/unsupported/*` and do not enter the history stacks.
+- November 7, 2025: Persistence metadata now serializes through a versioned little-endian binary header shared across recovery, telemetry, and tooling. Alpaca JSON output was retired; `_history/stats/*` remains the authoritative introspection surface for inspectors/CLIs.
 
 ## Path System
 

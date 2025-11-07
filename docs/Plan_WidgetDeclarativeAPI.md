@@ -163,6 +163,7 @@ Canonical namespaces stay consistent across widgets: `state/` for mutable widget
 The paintable surface widget reuses the same namespaces but adds `render/buffer` to store the current picture (CPU-readable texture) and an optional `assets/texture` node for GPU residency. Draw events append stroke metadata under `state/history/<id>` so undo/redo tasks can rebuild the buffer on demand.
 
 Undo/redo mechanics for stroke history, route merging, and child enumeration are defined in `docs/Plan_PathSpace.md`; paint widgets consume those PathSpace features rather than implementing custom versions.
+History diagnostics rely on `_history/stats/*` telemetry published by the undo layer; downstream tooling should read those counters (versioned binary persistence) when presenting paint history/retention state.
 
 #### GPU Staging
 

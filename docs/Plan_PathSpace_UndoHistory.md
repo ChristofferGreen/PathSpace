@@ -26,7 +26,8 @@
 - ✅ (November 6, 2025) Regression coverage now verifies that nodes containing tasks/futures or nested PathSpaces are rejected with descriptive errors, keeping undo stacks untouched when snapshots would be unsafe. Inspector-facing telemetry (`<root>/_history/unsupported/*`) now captures the offending path, reason, timestamp, and occurrence count so failures surface directly in the PathSpace inspector.
 - ✅ (November 7, 2025) Guardrail reaffirmed: history-enabled subtrees must contain only serializable payloads. Executions (lambdas, futures, nested PathSpaces) stay outside the undo root; `_history/unsupported/*` remains the enforcement/telemetry mechanism.
 - ✅ (November 7, 2025) Persistence metadata now writes a compact binary format (little-endian, versioned) for both state and entry descriptors; recovery/telemetry paths use the shared codec and tests cover encode/decode round-trips. Alpaca JSON is no longer emitted for history metadata.
-- ➡️ Next focus: propagate the binary-format decision through downstream plans (PathSpace inspector, integration guides) and finish the remaining integration tasks (Plan_PathSpace.md, renderer/paint docs).
+- ✅ (November 7, 2025) Downstream plans now reflect the binary metadata decision (Plan_PathSpace.md, Plan_PathSpace_Inspector.md, Plan_WidgetDeclarativeAPI.md, Plan_Overview.md); integration callouts point to the versioned codec and shared telemetry surface.
+- ➡️ Next focus: add tooling notes for on-disk history inspection (CLI/script) and capture inspector JSON samples that reference `_history/stats/*` so web tooling aligns with the codec.
 
 ## Architecture Overview
 - **Wrapper layer:** `UndoableSpace` stores a pointer to the inner `PathSpaceBase` and overrides mutating methods to run inside `HistoryTransaction` scopes.
@@ -106,7 +107,7 @@ public:
 2. **Implement Wrapper Skeleton** — add `UndoableSpace`, transactions, in-memory stacks, COW integration (no persistence yet). Extend tests to cover insert/take/undo/redo flows and transaction batching. ✅ (November 4, 2025) implemented in-tree; persistence/telemetry still pending.
 3. ✅ (November 5, 2025) **Retention & Telemetry** — auto-trim budgets, surface `_history/stats/*` and `_history/lastOperation/*`, add manual GC controls, and extend doctest coverage.
 4. ✅ (November 5, 2025) **Persistence Layer** — on-disk storage, recovery tests, failure-path logging, and cache policies landed. Benchmarks run inside the 15× loop.
-5. **Integration Tasks** — update `Plan_PathSpace.md` next steps, ensure paint widget plan references new APIs, revisit inspector tooling notes.
+5. ✅ (November 7, 2025) **Integration Tasks** — updated `Plan_PathSpace.md`, paint widget plan, and inspector documentation to reference the binary metadata codec, `_history/stats/*` telemetry, and downstream integration checkpoints.
 
 ## Dependencies
 - `history::CowSubtreePrototype` (landed).
