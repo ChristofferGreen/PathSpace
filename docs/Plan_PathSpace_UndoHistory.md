@@ -20,6 +20,7 @@
 4. Persist undo stacks to a configurable temp directory so sessions can recover after a restart.
 5. Surface a public API (`enableHistory`, `disableHistory`, `undo`, `redo`, `trimHistory`, `HistoryTransaction`) with clear concurrency guarantees.
 6. Publish diagnostics (`/root/history/stats`, `/root/history/lastOperation`) to feed inspector tooling.
+7. Provide save/load helpers so an undo-enabled subtree can be exported as a versioned document savefile and restored later without manual path scripting.
 
 ## Status — November 7, 2025
 - ✅ (November 5, 2025) Persistence layer landed: undo/redo stacks flush snapshots + metadata atomically to disk, state metadata survives restarts, and recovery replays into the backing PathSpace before enabling history. Manual GC now flushes pending writes and trims files; telemetry tracks disk bytes/entries alongside cache residency.
@@ -176,6 +177,7 @@ Use the sample when wiring the inspector API and UI so `_history/stats/*` values
 3. ✅ (November 5, 2025) **Retention & Telemetry** — auto-trim budgets, surface `_history/stats/*` and `_history/lastOperation/*`, add manual GC controls, and extend doctest coverage.
 4. ✅ (November 5, 2025) **Persistence Layer** — on-disk storage, recovery tests, failure-path logging, and cache policies landed. Benchmarks run inside the 15× loop.
 5. ✅ (November 7, 2025) **Integration Tasks** — updated `Plan_PathSpace.md`, paint widget plan, and inspector documentation to reference the binary metadata codec, `_history/stats/*` telemetry, and downstream integration checkpoints.
+6. **Savefile Export/Import** — design the versioned document save format, wire `UndoableSpace` helpers to export the current snapshot plus retained history, and add a load path that restores state while honoring retention/persistence options. Capture CLI/script integration and update docs/tooling once the codec is finalized.
 
 ## Dependencies
 - `history::CowSubtreePrototype` (landed).
@@ -183,6 +185,6 @@ Use the sample when wiring the inspector API and UI so `_history/stats/*` values
 - Telemetry/logging infrastructure (`TaggedLogger`, metrics conventions).
 
 ## Deliverables
-- Code: `UndoableSpace`, transaction helpers, unit/integration tests, persistence module.
-- Docs: updates to `docs/AI_Architecture.md`, `docs/Plan_PathSpace.md`, telemetry schemas, operator quickstart for enabling history.
-- Tooling: optional CLI or script to inspect on-disk history directories for debugging.
+- Code: `UndoableSpace`, transaction helpers, unit/integration tests, persistence module, and savefile export/import helpers.
+- Docs: updates to `docs/AI_Architecture.md`, `docs/Plan_PathSpace.md`, telemetry schemas, operator quickstart for enabling history, and save/load workflow notes.
+- Tooling: optional CLI or script to inspect on-disk history directories for debugging plus savefile authoring/loading commands.
