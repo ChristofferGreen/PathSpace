@@ -257,44 +257,6 @@ TEST_CASE("history rejects unsupported payloads") {
         CHECK(stats->unsupported.recent.front().path == "/doc/nested");
         CHECK(stats->unsupported.recent.front().reason.find("nested PathSpaces") != std::string::npos);
     }
-
-    SUBCASE("execution opt-out prefixes allow task payloads without recording snapshots") {
-        auto space = makeUndoableSpace();
-        REQUIRE(space);
-
-        HistoryOptions opts;
-        opts.executionOptOutPrefixes = {"tasks"};
-        REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
-
-        auto task = []() -> int { return 42; };
-        auto result = space->insert("/doc/tasks/job", task,
-                                    In{.executionCategory = ExecutionCategory::Lazy});
-        CHECK(result.nbrTasksInserted == 1);
-        CHECK(result.errors.empty());
-
-        auto stats = space->getHistoryStats(ConcretePathStringView{"/doc"});
-        REQUIRE(stats.has_value());
-        CHECK(stats->counts.undo == 0);
-        CHECK(stats->counts.redo == 0);
-        CHECK(stats->unsupported.total == 0);
-        CHECK(stats->executionOptOut.total == 1);
-        REQUIRE(stats->executionOptOut.recent.size() == 1);
-        CHECK(stats->executionOptOut.recent.front().path == "/doc/tasks/job");
-        CHECK(stats->executionOptOut.recent.front().occurrences == 1);
-
-        auto totalCount =
-            space->read<std::size_t>("/doc/_history/executionOptOut/totalCount");
-        REQUIRE(totalCount.has_value());
-        CHECK(*totalCount == 1);
-        auto recentCount =
-            space->read<std::size_t>("/doc/_history/executionOptOut/recentCount");
-        REQUIRE(recentCount.has_value());
-        CHECK(*recentCount == 1);
-        auto recentPath =
-            space->read<std::string>("/doc/_history/executionOptOut/recent/0/path");
-        REQUIRE(recentPath.has_value());
-        CHECK(*recentPath == std::string{"/doc/tasks/job"});
-    }
 }
 
 TEST_CASE("persistence restores state and undo history") {

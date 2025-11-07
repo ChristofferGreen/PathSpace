@@ -252,10 +252,6 @@ auto UndoableSpace::commitTransaction(RootState& state) -> Expected<void> {
     }
 
     auto latest     = snapshotExpected.value();
-    if (latest.root == before.root) {
-        scope.setResult(true, "no_snapshot");
-        return {};
-    }
     auto now        = std::chrono::system_clock::now();
     auto undoBytes  = state.liveBytes;
     RootState::Entry undoEntry;

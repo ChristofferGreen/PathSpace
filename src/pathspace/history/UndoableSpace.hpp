@@ -24,8 +24,6 @@ struct Node;
 
 namespace SP::History {
 
-using SP::Expected;
-
 struct HistoryOptions {
     std::size_t maxEntries           = 128;
     std::size_t maxBytesRetained     = 0;
@@ -38,7 +36,6 @@ struct HistoryOptions {
     std::size_t maxDiskBytes         = 0;
     std::chrono::milliseconds keepLatestFor{0};
     bool        restoreFromPersistence = true;
-    std::vector<std::string> executionOptOutPrefixes;
 };
 
 struct HistoryLastOperation {
@@ -91,24 +88,12 @@ struct HistoryUnsupportedStats {
     std::vector<HistoryUnsupportedRecord> recent;
 };
 
-struct HistoryExecutionOptOutRecord {
-    std::string  path;
-    std::size_t  occurrences      = 0;
-    std::uint64_t lastTimestampMs = 0;
-};
-
-struct HistoryExecutionOptOutStats {
-    std::size_t                                 total = 0;
-    std::vector<HistoryExecutionOptOutRecord>   recent;
-};
-
 struct HistoryStats {
     HistoryCounts                      counts;
     HistoryBytes                       bytes;
     HistoryTrimMetrics                 trim;
     std::optional<HistoryLastOperation> lastOperation;
     HistoryUnsupportedStats             unsupported;
-    HistoryExecutionOptOutStats         executionOptOut;
 };
 
 struct TrimStats {
@@ -247,8 +232,6 @@ private:
     void recordUnsupportedPayloadLocked(RootState& state,
                                         std::string const& path,
                                         std::string const& reason);
-    auto isExecutionOptOutPath(RootState const& state, std::string const& path) const -> bool;
-    void recordExecutionOptOutLocked(RootState& state, std::string const& path);
     auto ensureEntriesDirectory(RootState& state) -> Expected<void>;
     static auto commitAndDeactivate(UndoableSpace* owner,
                                     std::shared_ptr<RootState>& state,

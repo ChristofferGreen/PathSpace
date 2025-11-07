@@ -78,7 +78,6 @@ auto UndoableSpace::captureSnapshotLocked(RootState& state)
     auto gather = [&](auto&& self, Node const& current, std::vector<std::string>& components)
                     -> void {
         std::shared_ptr<const std::vector<std::byte>> payloadBytes;
-        bool                                           skipPayload = false;
         {
             std::scoped_lock payloadLock(current.payloadMutex);
             if (current.nested) {
@@ -90,34 +89,26 @@ auto UndoableSpace::captureSnapshotLocked(RootState& state)
             }
             if (current.data) {
                 if (current.data->hasExecutionPayload()) {
-                    auto executionPath = makeFailurePath(components);
-                    if (isExecutionOptOutPath(state, executionPath)) {
-                        skipPayload = true;
-                        recordExecutionOptOutLocked(state, executionPath);
-                    } else {
-                        failure       = Error{Error::Code::UnknownError,
-                                              std::string(UndoUtilsAlias::UnsupportedExecutionMessage)};
-                        failurePath   = executionPath;
-                        failureReason = failure->message;
-                        return;
-                    }
+                    failure       = Error{Error::Code::UnknownError,
+                                          std::string(UndoUtilsAlias::UnsupportedExecutionMessage)};
+                    failurePath   = makeFailurePath(components);
+                    failureReason = failure->message;
+                    return;
                 }
-                if (!skipPayload) {
-                    auto bytesOpt = current.data->serializeSnapshot();
-                    if (!bytesOpt.has_value()) {
-                        failure       = Error{Error::Code::UnknownError,
-                                              std::string(UndoUtilsAlias::UnsupportedSerializationMessage)};
-                        failurePath   = makeFailurePath(components);
-                        failureReason = failure->message;
-                        return;
-                    }
-                    auto rawBytes = std::make_shared<std::vector<std::byte>>(std::move(*bytesOpt));
-                    payloadBytes  = std::move(rawBytes);
+                auto bytesOpt = current.data->serializeSnapshot();
+                if (!bytesOpt.has_value()) {
+                    failure       = Error{Error::Code::UnknownError,
+                                          std::string(UndoUtilsAlias::UnsupportedSerializationMessage)};
+                    failurePath   = makeFailurePath(components);
+                    failureReason = failure->message;
+                    return;
                 }
+                auto rawBytes = std::make_shared<std::vector<std::byte>>(std::move(*bytesOpt));
+                payloadBytes  = std::move(rawBytes);
             }
         }
 
-        if (!skipPayload && payloadBytes) {
+        if (payloadBytes) {
             CowSubtreePrototype::Mutation mutation;
             mutation.components = components;
             mutation.payload    = CowSubtreePrototype::Payload(std::move(*payloadBytes));
@@ -313,15 +304,6 @@ auto UndoableSpace::gatherStatsLocked(RootState const& state) const -> HistorySt
         record.lastTimestampMs = UndoUtilsAlias::toMillis(entry.timestamp);
         stats.unsupported.recent.push_back(std::move(record));
     }
-    stats.executionOptOut.total = state.telemetry.executionOptOutTotal;
-    stats.executionOptOut.recent.reserve(state.telemetry.executionOptOutLog.size());
-    for (auto const& entry : state.telemetry.executionOptOutLog) {
-        HistoryExecutionOptOutRecord record;
-        record.path            = entry.path;
-        record.occurrences     = entry.occurrences;
-        record.lastTimestampMs = UndoUtilsAlias::toMillis(entry.timestamp);
-        stats.executionOptOut.recent.push_back(std::move(record));
-    }
     return stats;
 }
 
@@ -415,27 +397,6 @@ auto UndoableSpace::readHistoryValue(MatchedRoot const& matchedRoot,
         }
     }
 
-    const std::array<FieldHandler, 3> executionOptOutHandlers{{
-        {UndoPaths::HistoryExecutionOptOut,
-         [&] { return assign(stats.executionOptOut, UndoPaths::HistoryExecutionOptOut); }},
-        {UndoPaths::HistoryExecutionOptOutTotalCount,
-         [&] {
-             return assign(stats.executionOptOut.total,
-                           UndoPaths::HistoryExecutionOptOutTotalCount);
-         }},
-        {UndoPaths::HistoryExecutionOptOutRecentCount,
-         [&] {
-             return assign(stats.executionOptOut.recent.size(),
-                           UndoPaths::HistoryExecutionOptOutRecentCount);
-         }},
-    }};
-
-    for (auto const& handler : executionOptOutHandlers) {
-        if (relativePath == handler.path) {
-            return handler.apply();
-        }
-    }
-
     if (relativePath.starts_with(UndoPaths::HistoryUnsupportedRecentPrefix)) {
         auto parseIndex = [](std::string_view value) -> std::optional<std::size_t> {
             std::size_t index = 0;
@@ -479,49 +440,6 @@ auto UndoableSpace::readHistoryValue(MatchedRoot const& matchedRoot,
         }
     }
 
-    if (relativePath.starts_with(UndoPaths::HistoryExecutionOptOutRecentPrefix)) {
-        auto parseIndex = [](std::string_view value) -> std::optional<std::size_t> {
-            std::size_t index = 0;
-            auto        begin = value.data();
-            auto        end   = value.data() + value.size();
-            auto        res   = std::from_chars(begin, end, index);
-            if (res.ec != std::errc{} || res.ptr != end) {
-                return std::nullopt;
-            }
-            return index;
-        };
-
-        std::string_view suffix =
-            std::string_view(relativePath).substr(UndoPaths::HistoryExecutionOptOutRecentPrefix.size());
-        auto slash = suffix.find('/');
-        auto indexView = suffix.substr(0, slash);
-        auto indexOpt  = parseIndex(indexView);
-        if (!indexOpt) {
-            return Error{Error::Code::InvalidPath, "Execution opt-out record index invalid"};
-        }
-        auto index = *indexOpt;
-        if (index >= stats.executionOptOut.recent.size()) {
-            return Error{Error::Code::NoObjectFound, "Execution opt-out record not found"};
-        }
-        auto const& record = stats.executionOptOut.recent[index];
-        if (slash == std::string_view::npos) {
-            return assign(record, relativePath);
-        }
-        auto field = suffix.substr(slash + 1);
-        if (field == "path") {
-            return assign(record.path, relativePath);
-        }
-        if (field == "occurrences") {
-            return assign(record.occurrences, relativePath);
-        }
-        if (field == "timestampMs") {
-            return assign(record.lastTimestampMs, relativePath);
-        }
-        return Error{Error::Code::NotFound,
-                     std::string("Unsupported execution opt-out telemetry field: ")
-                         + std::string(field)};
-    }
-
     return Error{Error::Code::NotFound, std::string("Unsupported history telemetry path: ") + relativePath};
 }
 
@@ -555,56 +473,6 @@ void UndoableSpace::recordUnsupportedPayloadLocked(RootState& state,
     state.telemetry.unsupportedLog.push_back(std::move(record));
     if (state.telemetry.unsupportedLog.size() > UndoUtilsAlias::MaxUnsupportedLogEntries) {
         state.telemetry.unsupportedLog.erase(state.telemetry.unsupportedLog.begin());
-    }
-}
-
-auto UndoableSpace::isExecutionOptOutPath(RootState const& state,
-                                          std::string const& path) const -> bool {
-    if (state.executionOptOutPrefixes.empty()) {
-        return false;
-    }
-    for (auto const& prefix : state.executionOptOutPrefixes) {
-        if (prefix == path) {
-            return true;
-        }
-        if (prefix == "/") {
-            return true;
-        }
-        if (prefix.size() < path.size() && path.starts_with(prefix)) {
-            auto const next = path[prefix.size()];
-            if (next == '/') {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-void UndoableSpace::recordExecutionOptOutLocked(RootState& state, std::string const& path) {
-    auto now = std::chrono::system_clock::now();
-    state.telemetry.executionOptOutTotal++;
-
-    auto it = std::find_if(state.telemetry.executionOptOutLog.begin(),
-                           state.telemetry.executionOptOutLog.end(),
-                           [&](auto const& entry) { return entry.path == path; });
-    if (it != state.telemetry.executionOptOutLog.end()) {
-        it->occurrences += 1;
-        it->timestamp = now;
-        if (std::next(it) != state.telemetry.executionOptOutLog.end()) {
-            auto updated = std::move(*it);
-            state.telemetry.executionOptOutLog.erase(it);
-            state.telemetry.executionOptOutLog.push_back(std::move(updated));
-        }
-        return;
-    }
-
-    RootState::Telemetry::ExecutionOptOutRecord record;
-    record.path        = path;
-    record.timestamp   = now;
-    record.occurrences = 1;
-    state.telemetry.executionOptOutLog.push_back(std::move(record));
-    if (state.telemetry.executionOptOutLog.size() > UndoUtilsAlias::MaxExecutionOptOutLogEntries) {
-        state.telemetry.executionOptOutLog.erase(state.telemetry.executionOptOutLog.begin());
     }
 }
 

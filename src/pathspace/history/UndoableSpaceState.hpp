@@ -52,11 +52,6 @@ struct UndoableSpace::RootState {
             std::chrono::system_clock::time_point     timestamp;
             std::size_t                               occurrences = 0;
         };
-        struct ExecutionOptOutRecord {
-            std::string                               path;
-            std::chrono::system_clock::time_point     timestamp;
-            std::size_t                               occurrences = 0;
-        };
 
         std::size_t                                               undoBytes        = 0;
         std::size_t                                               redoBytes        = 0;
@@ -72,8 +67,6 @@ struct UndoableSpace::RootState {
         bool                                                      persistenceDirty = false;
         std::size_t                                               unsupportedTotal = 0;
         std::vector<UnsupportedRecord>                            unsupportedLog;
-        std::size_t                                               executionOptOutTotal = 0;
-        std::vector<ExecutionOptOutRecord>                        executionOptOutLog;
     };
 
     struct TransactionState {
@@ -91,7 +84,6 @@ struct UndoableSpace::RootState {
     std::vector<Entry>                        undoStack;
     std::vector<Entry>                        redoStack;
     std::size_t                               liveBytes = 0;
-    std::vector<std::string>                  executionOptOutPrefixes;
     Telemetry                                 telemetry;
     std::optional<TransactionState>           activeTransaction;
     mutable std::mutex                        mutex;
