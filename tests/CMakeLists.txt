@@ -138,6 +138,19 @@ add_test(NAME PathSpaceTests
 
 set_tests_properties(PathSpaceTests PROPERTIES LABELS core)
 
+add_test(NAME HistorySavefileCLIRoundTrip
+  COMMAND "${PATHSPACE_TEST_RUNNER}"
+          --label HistorySavefileCLI
+          --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+          --timeout 60
+          --env PATHSPACE_LOG=1
+          --env PATHSPACE_TEST_TIMEOUT=1
+          --env MallocNanoZone=0
+          --
+          "$<TARGET_FILE:pathspace_history_cli_roundtrip>"
+)
+set_tests_properties(HistorySavefileCLIRoundTrip PROPERTIES LABELS history)
+
 if(PATHSPACE_ENABLE_UI)
   add_test(NAME PathSpaceUITests
     COMMAND "${PATHSPACE_TEST_RUNNER}"

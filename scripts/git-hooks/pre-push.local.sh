@@ -179,6 +179,22 @@ for sanitizer in "${SANITIZER_RUNS[@]}"; do
   ok "${upper_sanitizer} sanitizer pass succeeded"
 done
 
+if [[ "${SKIP_HISTORY_CLI:-0}" != "1" ]]; then
+  say "Running history savefile CLI roundtrip harness"
+  if [[ ! -x ./build/pathspace_history_cli_roundtrip ]]; then
+    err "Missing ./build/pathspace_history_cli_roundtrip (build step did not produce harness)"
+    exit 1
+  fi
+  if ./build/pathspace_history_cli_roundtrip; then
+    ok "History savefile CLI roundtrip succeeded"
+  else
+    err "History savefile CLI roundtrip failed"
+    exit 1
+  fi
+else
+  warn "Skipping history savefile CLI roundtrip (SKIP_HISTORY_CLI=1)"
+fi
+
 # 2) Build the example app (non-sim) unless skipped
 if [[ "${SKIP_EXAMPLE:-0}" != "1" ]]; then
   say "Configuring example app (devices_example)"

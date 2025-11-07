@@ -197,7 +197,7 @@ auto UndoableSpace::importHistorySavefile(ConcretePathStringView root,
         entry.snapshot  = std::move(snapshotExpected.value());
         entry.bytes     = block.metadata.bytes;
         entry.timestamp = UndoUtilsAlias::fromMillis(block.timestampMs);
-        entry.persisted = state->persistenceEnabled;
+        entry.persisted = false;
         entry.cached    = true;
         return entry;
     };

@@ -85,6 +85,9 @@ target_link_libraries(pathspace_history_inspect PRIVATE PathSpace)
 add_executable(pathspace_history_savefile tools/history_savefile.cpp)
 target_link_libraries(pathspace_history_savefile PRIVATE PathSpace)
 
+add_executable(pathspace_history_cli_roundtrip tools/history_cli_roundtrip.cpp)
+target_link_libraries(pathspace_history_cli_roundtrip PRIVATE PathSpace)
+
 if(PATHSPACE_ENABLE_UI)
     add_executable(pathspace_hsat_inspect tools/hsat_inspect.cpp)
     target_link_libraries(pathspace_hsat_inspect PRIVATE PathSpace)

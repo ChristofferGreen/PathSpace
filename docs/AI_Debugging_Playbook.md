@@ -168,6 +168,8 @@ Environment knobs (all respected by the wrapper and the logger):
 | Inspect HSAT payload contents manually | `./build/pathspace_hsat_inspect --input <payload.hsat>` |
 | Inspect Undo history on disk | `./build/pathspace_history_inspect <history_dir> [--json] [--decode [gen]] [--diff <genA:genB>]` |
 | Export/import undo savefiles | `./build/pathspace_history_savefile <export|import> --root <path> --history-dir <dir> --out/--in <pshd>` |
+| Smoke-test savefile CLI roundtrip | `./build/pathspace_history_cli_roundtrip` |
+| Run CLI roundtrip regression | `ctest -R HistorySavefileCLIRoundTrip --output-on-failure` |
 | Tail latest failure log | `ls -t build/test-logs | head -1 | xargs -I{} tail -n 80 build/test-logs/{}` |
 | Inspect renderer metrics path | `build/tests/PathSpaceUITests --test-case Diagnostics::ReadTargetMetrics` |
 | Benchmark damage/fingerprint metrics | `./build/benchmarks/path_renderer2d_benchmark --metrics [--canvas=WIDTHxHEIGHT]` |
@@ -217,6 +219,8 @@ Environment knobs (all respected by the wrapper and the logger):
 - Point the CLI at `${PATHSPACE_HISTORY_ROOT:-$TMPDIR/pathspace_history}/<space_uuid>/<encoded_root>` when reproducing bugs; pair the findings with the `_history/stats/*` inspector nodes referenced in `docs/Plan_PathSpace_UndoHistory.md`.
 - Use `./build/pathspace_history_savefile export --root /doc --history-dir $PATHSPACE_HISTORY_ROOT/<space_uuid>/<encoded_root> --out doc.pshd` to author PSHD (`history.binary.v1`) bundles directly from persisted history directories; the CLI derives the persistence namespace automatically and fsyncs by default. Pair with `import --root /doc --history-dir … --in doc.pshd` when seeding a fresh subtree before reproducing a bug—append `--no-apply-options` if you need to preserve local retention knobs.
 - The CLI works alongside the programmatic helpers (`UndoableSpace::exportHistorySavefile` / `importHistorySavefile`) so integration tests can still call straight into C++, but editor/recovery scripts should prefer the CLI to avoid bespoke harnesses. Update postmortem docs with the exact command + PSHD bundle whenever you capture undo history for analysis.
+- `./build/pathspace_history_cli_roundtrip` exercises both CLI commands against a temporary persistence tree, re-exports the result, and diffs the summaries (values, undo/redo counts); the check runs from the local pre-push hook and catches persistence regressions in `UndoableSpace::importHistorySavefile`.
+- The dedicated regression lives in CTest as `HistorySavefileCLIRoundTrip`; run it (or the pre-push hook) whenever the savefile codec or CLI surface changes to ensure PSHD bundles continue to round-trip end-to-end.
 
 ## 6. Closing the Loop
 
