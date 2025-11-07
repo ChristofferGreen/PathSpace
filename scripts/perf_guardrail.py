@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import pathlib
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -145,19 +146,72 @@ class PerfContext:
         return process
 
     def ensure_configured(self) -> None:
+        required_options = {
+            "BUILD_PATHSPACE_BENCHMARKS": "ON",
+            "BUILD_PATHSPACE_EXAMPLES": "ON",
+            "PATHSPACE_ENABLE_UI": "ON",
+            "PATHSPACE_UI_SOFTWARE": "ON",
+        }
         cache_path = self.build_dir / "CMakeCache.txt"
+        needs_configure = True
+        missing: List[str] = []
+        existing_values: Dict[str, str] = {}
+
         if cache_path.exists():
+            with cache_path.open("r", encoding="utf-8") as cache_file:
+                for line in cache_file:
+                    line = line.strip()
+                    if not line or line.startswith(("#", "//")) or "=" not in line:
+                        continue
+                    key_type, value = line.split("=", 1)
+                    if ":" not in key_type:
+                        continue
+                    key, _type = key_type.split(":", 1)
+                    existing_values[key] = value
+
+            missing = [
+                name for name, expected in required_options.items()
+                if existing_values.get(name, "").upper() != expected
+            ]
+            current_build_type = existing_values.get("CMAKE_BUILD_TYPE", "")
+            if current_build_type.upper() != self.build_type.upper():
+                missing.append("CMAKE_BUILD_TYPE")
+
+            if not missing:
+                needs_configure = False
+
+        if not needs_configure:
             return
-        self.log(f"Configuring build directory at {self.build_dir}")
+
+        if missing:
+            self.log(
+                "Reconfiguring build to enable required options: "
+                + ", ".join(sorted(missing))
+            )
+        else:
+            self.log(f"Configuring build directory at {self.build_dir}")
+
         _ensure_directory(self.build_dir)
-        self.run([
+        configure_cmd = [
             "cmake",
             "-S",
             str(self.repo_root),
             "-B",
             str(self.build_dir),
             f"-DCMAKE_BUILD_TYPE={self.build_type}",
-        ])
+        ]
+
+        for option, expected in required_options.items():
+            configure_cmd.append(f"-D{option}={expected}")
+
+        env_args: List[str] = []
+        for env_var in ("PATHSPACE_PERF_CMAKE_ARGS", "PATHSPACE_CMAKE_ARGS"):
+            value = os.environ.get(env_var, "")
+            if value:
+                env_args.extend(shlex.split(value))
+        configure_cmd.extend(env_args)
+
+        self.run(configure_cmd)
 
     def build_targets(self, targets: Iterable[str]) -> None:
         effective_targets = list(dict.fromkeys(targets))
