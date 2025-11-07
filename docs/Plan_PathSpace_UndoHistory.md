@@ -21,10 +21,11 @@
 5. Surface a public API (`enableHistory`, `disableHistory`, `undo`, `redo`, `trimHistory`, `HistoryTransaction`) with clear concurrency guarantees.
 6. Publish diagnostics (`/root/history/stats`, `/root/history/lastOperation`) to feed inspector tooling.
 
-## Status — November 6, 2025
+## Status — November 7, 2025
 - ✅ (November 5, 2025) Persistence layer landed: undo/redo stacks flush snapshots + metadata atomically to disk, state metadata survives restarts, and recovery replays into the backing PathSpace before enabling history. Manual GC now flushes pending writes and trims files; telemetry tracks disk bytes/entries alongside cache residency.
 - ✅ (November 6, 2025) Regression coverage now verifies that nodes containing tasks/futures or nested PathSpaces are rejected with descriptive errors, keeping undo stacks untouched when snapshots would be unsafe. Inspector-facing telemetry (`<root>/_history/unsupported/*`) now captures the offending path, reason, timestamp, and occurrence count so failures surface directly in the PathSpace inspector.
-- ➡️ Next focus: decide whether to support snapshotting executable payloads (tasks/futures) or formalize a permanent opt-out with documented guardrails for integrators.
+- ✅ (November 7, 2025) Execution payload policy locked: tasks/futures remain non-snapshottable, and callers mark undo-exempt subtrees with `HistoryOptions::executionOptOutPrefixes` (also writable via plan docs). Opt-out branches skip snapshot generation, log under `<root>/_history/executionOptOut/*`, and no longer poison undo commits.
+- ➡️ Next focus: finalize the persistence format bake-off (Alpaca vs. binary metadata) and document the chosen encoding in `docs/AI_Architecture.md` plus integration guides.
 
 ## Architecture Overview
 - **Wrapper layer:** `UndoableSpace` stores a pointer to the inner `PathSpaceBase` and overrides mutating methods to run inside `HistoryTransaction` scopes.
@@ -54,6 +55,7 @@
   - `<root>/_history/stats/{undoCount,redoCount,bytesRetained,diskBytes,lastOperation}`
   - `<root>/_history/head/generation` (current snapshot id) and optional per-entry metadata under `<root>/_history/entries/<generation>/…`.
   - `<root>/_history/unsupported/{totalCount,recentCount,recent/<index>/{path,reason,occurrences,timestampMs}}` — inspector-facing log of unsupported payload captures (nested PathSpaces, executable nodes, serialization failures).
+  - `<root>/_history/executionOptOut/{totalCount,recentCount,recent/<index>/{path,occurrences,timestampMs}}` — confirms execution payload guardrails are routing tasks/futures out of undo snapshots.
 - All interactions use standard PathSpace operations (`insert`, `read`, `listChildren`); no new public API surface is required.
 
 ## Retention & Compaction
@@ -81,7 +83,7 @@ public:
     };
 };
 ```
-- Options control persistence, budgets, nested-space policy, and whether nested undo layers are allowed. Default behaviour disallows enabling history on a descendant of an undo-enabled subtree; nested plain PathSpaces are treated as opaque payloads (no automatic undo). `HistoryOptions::manual_garbage_collect` mirrors the `_history/set_manual_garbage_collect` control toggle so native callers can opt into deferred durability without sending path commands.
+- Options control persistence, budgets, nested-space policy, and whether nested undo layers are allowed. Default behaviour disallows enabling history on a descendant of an undo-enabled subtree; nested plain PathSpaces are treated as opaque payloads (no automatic undo). `HistoryOptions::manual_garbage_collect` mirrors the `_history/set_manual_garbage_collect` control toggle so native callers can opt into deferred durability without sending path commands. `HistoryOptions::executionOptOutPrefixes` lets integrators declare subtrees that hold tasks/futures; those branches are skipped during snapshot capture, recorded under `_history/executionOptOut/*`, and never populate undo stacks.
 
 ## Concurrency & Threading
 - Per-root mutex protects stacks and persistence writes.
@@ -93,6 +95,7 @@ public:
 - Publish real-time stats under `<root>/history/stats`.
 - Record last operation metadata (`type`, `duration_ms`, `entries_before`, `entries_after`) under `<root>/history/lastOperation`.
 - Log unsupported snapshot attempts under `<root>/_history/unsupported/*`, including offending path, reason, timestamp (ms since epoch), and rolling occurrence counts so the inspector can highlight misconfigured subtrees.
+- Track opt-out hits under `<root>/_history/executionOptOut/*` so tooling can confirm undo-exempt subtrees are working as intended (`totalCount`, `recentCount`, per-entry `{path,occurrences,timestampMs}`).
 - Emit structured logs for persistence failures and evictions (guards future inspector integration).
 
 ## Open Questions

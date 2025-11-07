@@ -37,12 +37,13 @@ inline constexpr std::uint32_t SnapshotMagic       = 0x50534853; // 'PSHS'
 inline constexpr std::uint32_t SnapshotVersion     = 1;
 inline constexpr std::uint32_t EntryMetaVersion    = 1;
 inline constexpr std::uint32_t StateMetaVersion    = 1;
-inline constexpr std::size_t  MaxUnsupportedLogEntries = 16;
+inline constexpr std::size_t  MaxUnsupportedLogEntries      = 16;
+inline constexpr std::size_t  MaxExecutionOptOutLogEntries  = 16;
 
 inline constexpr std::string_view UnsupportedNestedMessage =
     "History does not yet support nested PathSpaces";
 inline constexpr std::string_view UnsupportedExecutionMessage =
-    "History does not yet support nodes containing tasks or futures";
+    "History cannot snapshot tasks or futures; move them outside the undo root or mark an executionOptOut prefix";
 inline constexpr std::string_view UnsupportedSerializationMessage =
     "Unable to serialize node payload for history";
 
@@ -79,6 +80,14 @@ inline constexpr std::string_view HistoryUnsupported              = "_history/un
 inline constexpr std::string_view HistoryUnsupportedTotalCount    = "_history/unsupported/totalCount";
 inline constexpr std::string_view HistoryUnsupportedRecentCount   = "_history/unsupported/recentCount";
 inline constexpr std::string_view HistoryUnsupportedRecentPrefix  = "_history/unsupported/recent/";
+
+inline constexpr std::string_view HistoryExecutionOptOut              = "_history/executionOptOut";
+inline constexpr std::string_view HistoryExecutionOptOutTotalCount    =
+    "_history/executionOptOut/totalCount";
+inline constexpr std::string_view HistoryExecutionOptOutRecentCount   =
+    "_history/executionOptOut/recentCount";
+inline constexpr std::string_view HistoryExecutionOptOutRecentPrefix  =
+    "_history/executionOptOut/recent/";
 
 inline constexpr std::string_view CommandUndo              = "_history/undo";
 inline constexpr std::string_view CommandRedo              = "_history/redo";

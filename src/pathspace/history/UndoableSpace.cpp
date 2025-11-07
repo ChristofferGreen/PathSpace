@@ -33,9 +33,52 @@ namespace {
 using SP::History::CowSubtreePrototype;
 using SP::Error;
 using SP::Expected;
+using SP::ConcretePathStringView;
 namespace UndoUtilsAlias = SP::History::UndoUtils;
 namespace UndoPaths = SP::History::UndoUtils::Paths;
 namespace UndoMetadata = SP::History::UndoMetadata;
+
+auto canonicalizeOptOutPrefix(std::string const& rootPath, std::string const& prefix)
+    -> Expected<std::string> {
+    if (prefix.empty()) {
+        return std::unexpected(
+            Error{Error::Code::InvalidPath, "Execution opt-out prefix may not be empty"});
+    }
+
+    std::string candidate;
+    if (!prefix.empty() && prefix.front() == '/') {
+        candidate = prefix;
+    } else if (rootPath == "/") {
+        candidate.reserve(prefix.size() + 1);
+        candidate.push_back('/');
+        candidate.append(prefix);
+    } else {
+        candidate.reserve(rootPath.size() + 1 + prefix.size());
+        candidate.append(rootPath);
+        candidate.push_back('/');
+        candidate.append(prefix);
+    }
+
+    ConcretePathStringView candidateView{std::string_view{candidate}};
+    auto canonical = candidateView.canonicalized();
+    if (!canonical) {
+        return std::unexpected(canonical.error());
+    }
+    auto canonicalStr = std::string{canonical->getPath()};
+
+    ConcretePathStringView rootView{std::string_view{rootPath}};
+    ConcretePathStringView canonicalView{std::string_view{canonicalStr}};
+    auto isPrefix = rootView.isPrefixOf(canonicalView);
+    if (!isPrefix) {
+        return std::unexpected(isPrefix.error());
+    }
+    if (!isPrefix.value()) {
+        return std::unexpected(Error{
+            Error::Code::InvalidPermissions,
+            "Execution opt-out prefix must be within the history root"});
+    }
+    return canonicalStr;
+}
 
 } // namespace
 
@@ -101,6 +144,7 @@ auto UndoableSpace::enableHistory(ConcretePathStringView root, HistoryOptions op
     state->rootPath           = normalized;
     state->components         = std::move(components);
     state->options            = defaultOptions;
+    state->options.executionOptOutPrefixes = defaultOptions.executionOptOutPrefixes;
     state->options.maxEntries = opts.maxEntries ? opts.maxEntries : state->options.maxEntries;
     state->options.maxBytesRetained =
         opts.maxBytesRetained ? opts.maxBytesRetained : state->options.maxBytesRetained;
@@ -126,6 +170,27 @@ auto UndoableSpace::enableHistory(ConcretePathStringView root, HistoryOptions op
     }
     state->options.restoreFromPersistence =
         state->options.restoreFromPersistence && opts.restoreFromPersistence;
+    if (!opts.executionOptOutPrefixes.empty()) {
+        state->options.executionOptOutPrefixes.insert(state->options.executionOptOutPrefixes.end(),
+                                                      opts.executionOptOutPrefixes.begin(),
+                                                      opts.executionOptOutPrefixes.end());
+    }
+    {
+        std::vector<std::string> canonicalOptOut;
+        canonicalOptOut.reserve(state->options.executionOptOutPrefixes.size());
+        for (auto const& prefix : state->options.executionOptOutPrefixes) {
+            auto canonical = canonicalizeOptOutPrefix(state->rootPath, prefix);
+            if (!canonical) {
+                return std::unexpected(canonical.error());
+            }
+            canonicalOptOut.push_back(std::move(canonical.value()));
+        }
+        std::sort(canonicalOptOut.begin(), canonicalOptOut.end());
+        canonicalOptOut.erase(std::unique(canonicalOptOut.begin(), canonicalOptOut.end()),
+                              canonicalOptOut.end());
+        state->options.executionOptOutPrefixes = canonicalOptOut;
+        state->executionOptOutPrefixes         = std::move(canonicalOptOut);
+    }
     state->encodedRoot       = encodeRootForPersistence(state->rootPath);
     state->persistenceEnabled = state->options.persistHistory;
     state->undoStack.clear();
