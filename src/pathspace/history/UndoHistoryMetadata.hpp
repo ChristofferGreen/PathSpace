@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -24,11 +25,10 @@ struct StateMetadata {
     std::size_t              ramCacheEntries = 0;
 };
 
-[[nodiscard]] auto encodeEntryMeta(EntryMetadata const& meta) -> std::string;
-[[nodiscard]] auto parseEntryMeta(std::string const& text) -> Expected<EntryMetadata>;
+[[nodiscard]] auto encodeEntryMeta(EntryMetadata const& meta) -> std::vector<std::byte>;
+[[nodiscard]] auto parseEntryMeta(std::span<const std::byte> data) -> Expected<EntryMetadata>;
 
-[[nodiscard]] auto encodeStateMeta(StateMetadata const& meta) -> std::string;
-[[nodiscard]] auto parseStateMeta(std::string const& text) -> Expected<StateMetadata>;
+[[nodiscard]] auto encodeStateMeta(StateMetadata const& meta) -> std::vector<std::byte>;
+[[nodiscard]] auto parseStateMeta(std::span<const std::byte> data) -> Expected<StateMetadata>;
 
 } // namespace SP::History::UndoMetadata
-

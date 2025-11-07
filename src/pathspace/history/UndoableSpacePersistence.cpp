@@ -65,16 +65,17 @@ auto UndoableSpace::loadPersistentState(RootState& state) -> Expected<void> {
         return {};
 
     auto statePath = stateMetaPath(state);
-    auto metaText  = UndoUtilsAlias::readTextFile(statePath);
-    if (!metaText) {
-        if (metaText.error().code == Error::Code::NotFound) {
+    auto metaData  = UndoUtilsAlias::readBinaryFile(statePath);
+    if (!metaData) {
+        if (metaData.error().code == Error::Code::NotFound) {
             state.hasPersistentState = false;
             return {};
         }
-        return std::unexpected(metaText.error());
+        return std::unexpected(metaData.error());
     }
 
-    auto stateMetaExpected = UndoMetadata::parseStateMeta(*metaText);
+    auto stateMetaExpected = UndoMetadata::parseStateMeta(
+        std::span<const std::byte>(metaData->data(), metaData->size()));
     if (!stateMetaExpected)
         return std::unexpected(stateMetaExpected.error());
     auto stateMeta = std::move(stateMetaExpected.value());
@@ -103,9 +104,10 @@ auto UndoableSpace::loadPersistentState(RootState& state) -> Expected<void> {
     state.liveSnapshot = std::move(liveSnapshotExpected.value());
     state.liveBytes    = state.prototype.analyze(state.liveSnapshot).payloadBytes;
 
-    auto liveMeta = UndoUtilsAlias::readTextFile(entryMetaPath(state, stateMeta.liveGeneration));
+    auto liveMeta = UndoUtilsAlias::readBinaryFile(entryMetaPath(state, stateMeta.liveGeneration));
     if (liveMeta) {
-        auto entryMetaParsed = UndoMetadata::parseEntryMeta(*liveMeta);
+        auto entryMetaParsed = UndoMetadata::parseEntryMeta(
+            std::span<const std::byte>(liveMeta->data(), liveMeta->size()));
         if (entryMetaParsed) {
             RootState::OperationRecord record;
             record.type            = "restore";
@@ -133,10 +135,11 @@ auto UndoableSpace::loadPersistentState(RootState& state) -> Expected<void> {
                              std::size_t&                   byteCounter) -> Expected<void> {
         for (auto generation : generations) {
             auto metaPath = entryMetaPath(state, generation);
-            auto metaText = UndoUtilsAlias::readTextFile(metaPath);
-            if (!metaText)
-                return std::unexpected(metaText.error());
-            auto metaParsed = UndoMetadata::parseEntryMeta(*metaText);
+            auto metaBytes = UndoUtilsAlias::readBinaryFile(metaPath);
+            if (!metaBytes)
+                return std::unexpected(metaBytes.error());
+            auto metaParsed = UndoMetadata::parseEntryMeta(
+                std::span<const std::byte>(metaBytes->data(), metaBytes->size()));
             if (!metaParsed)
                 return std::unexpected(metaParsed.error());
 
@@ -216,8 +219,9 @@ auto UndoableSpace::persistStacksLocked(RootState& state, bool forceFsync) -> Ex
         meta.bytes       = bytesEstimate;
         meta.timestampMs = UndoUtilsAlias::toMillis(timestamp);
 
-        auto metaText = UndoMetadata::encodeEntryMeta(meta);
-        if (auto writeMeta = UndoUtilsAlias::writeTextFileAtomic(metaPath, metaText, flushNow);
+        auto metaBytes = UndoMetadata::encodeEntryMeta(meta);
+        auto metaSpan  = std::span<const std::byte>(metaBytes.data(), metaBytes.size());
+        if (auto writeMeta = UndoUtilsAlias::writeFileAtomic(metaPath, metaSpan, flushNow, true);
             !writeMeta)
             return writeMeta;
         return Expected<void>{};
@@ -271,8 +275,9 @@ auto UndoableSpace::persistStacksLocked(RootState& state, bool forceFsync) -> Ex
             }
         });
 
-        auto stateText = UndoMetadata::encodeStateMeta(stateMeta);
-        if (auto writeState = UndoUtilsAlias::writeTextFileAtomic(stateMetaPath(state), stateText, flushNow);
+        auto stateBytes = UndoMetadata::encodeStateMeta(stateMeta);
+        auto stateSpan  = std::span<const std::byte>(stateBytes.data(), stateBytes.size());
+        if (auto writeState = UndoUtilsAlias::writeFileAtomic(stateMetaPath(state), stateSpan, flushNow, true);
             !writeState)
             return writeState;
 

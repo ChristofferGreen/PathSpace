@@ -1,10 +1,12 @@
 #include "history/UndoableSpace.hpp"
+#include "history/UndoHistoryMetadata.hpp"
 
 #include "PathSpace.hpp"
 #include "path/ConcretePath.hpp"
 #include "third_party/doctest.h"
 
 #include <filesystem>
+#include <span>
 
 using namespace SP;
 using namespace SP::History;
@@ -20,6 +22,40 @@ auto makeUndoableSpace(HistoryOptions defaults = {}) -> std::unique_ptr<Undoable
 } // namespace
 
 TEST_SUITE("UndoableSpace") {
+
+TEST_CASE("undo metadata encode decode roundtrip") {
+    using namespace SP::History;
+
+    UndoMetadata::EntryMetadata entry;
+    entry.generation  = 123;
+    entry.bytes       = 456;
+    entry.timestampMs = 789;
+
+    auto encodedEntry = UndoMetadata::encodeEntryMeta(entry);
+    auto parsedEntry =
+        UndoMetadata::parseEntryMeta(std::span<const std::byte>(encodedEntry.data(), encodedEntry.size()));
+    REQUIRE(parsedEntry.has_value());
+    CHECK(parsedEntry->generation == entry.generation);
+    CHECK(parsedEntry->bytes == entry.bytes);
+    CHECK(parsedEntry->timestampMs == entry.timestampMs);
+
+    UndoMetadata::StateMetadata state;
+    state.liveGeneration = 42;
+    state.undoGenerations = {1, 2, 3};
+    state.redoGenerations = {4, 5};
+    state.manualGc        = true;
+    state.ramCacheEntries = 8;
+
+    auto encodedState = UndoMetadata::encodeStateMeta(state);
+    auto parsedState =
+        UndoMetadata::parseStateMeta(std::span<const std::byte>(encodedState.data(), encodedState.size()));
+    REQUIRE(parsedState.has_value());
+    CHECK(parsedState->liveGeneration == state.liveGeneration);
+    CHECK(parsedState->undoGenerations == state.undoGenerations);
+    CHECK(parsedState->redoGenerations == state.redoGenerations);
+    CHECK(parsedState->manualGc == state.manualGc);
+    CHECK(parsedState->ramCacheEntries == state.ramCacheEntries);
+}
 
 TEST_CASE("undo/redo round trip") {
     auto space = makeUndoableSpace();

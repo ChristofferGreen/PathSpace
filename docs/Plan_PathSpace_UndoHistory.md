@@ -25,7 +25,8 @@
 - ✅ (November 5, 2025) Persistence layer landed: undo/redo stacks flush snapshots + metadata atomically to disk, state metadata survives restarts, and recovery replays into the backing PathSpace before enabling history. Manual GC now flushes pending writes and trims files; telemetry tracks disk bytes/entries alongside cache residency.
 - ✅ (November 6, 2025) Regression coverage now verifies that nodes containing tasks/futures or nested PathSpaces are rejected with descriptive errors, keeping undo stacks untouched when snapshots would be unsafe. Inspector-facing telemetry (`<root>/_history/unsupported/*`) now captures the offending path, reason, timestamp, and occurrence count so failures surface directly in the PathSpace inspector.
 - ✅ (November 7, 2025) Guardrail reaffirmed: history-enabled subtrees must contain only serializable payloads. Executions (lambdas, futures, nested PathSpaces) stay outside the undo root; `_history/unsupported/*` remains the enforcement/telemetry mechanism.
-- ➡️ Next focus: finish the persistence format bake-off (Alpaca vs. binary metadata) and document the decision plus migration steps.
+- ✅ (November 7, 2025) Persistence metadata now writes a compact binary format (little-endian, versioned) for both state and entry descriptors; recovery/telemetry paths use the shared codec and tests cover encode/decode round-trips. Alpaca JSON is no longer emitted for history metadata.
+- ➡️ Next focus: propagate the binary-format decision through downstream plans (PathSpace inspector, integration guides) and finish the remaining integration tasks (Plan_PathSpace.md, renderer/paint docs).
 
 ## Architecture Overview
 - **Wrapper layer:** `UndoableSpace` stores a pointer to the inner `PathSpaceBase` and overrides mutating methods to run inside `HistoryTransaction` scopes.
@@ -38,7 +39,7 @@
 ## Persistence Strategy
 - Default temp location: `${PATHSPACE_HISTORY_ROOT:-$TMPDIR/pathspace_history}/<space_uuid>/<encoded_root>/`.
 - By default every committed history entry flushes to disk before the API returns (`fsync` metadata and snapshot, then `rename` atomically). Library users can opt into buffered persistence by inserting `_history/set_manual_garbage_collect = true`, which defers durable writes until they explicitly call `_history/garbage_collect` or `trimHistory`.
-- Each entry generates `<generation>.meta` (JSON or Alpaca) and `<generation>.snapshot` (binary COW data); writes are atomic (`rename` after `fsync`).
+- Each entry generates `<generation>.meta` (binary little-endian header) and `<generation>.snapshot` (binary COW data); writes are atomic (`rename` after `fsync`).
 - Keep the newest `ram_cache_entries` in memory; older entries load on demand.
 - On startup, rebuild stacks from disk if `persist_history=true`, skipping incomplete files.
 - `disableHistory` removes on-disk data; periodic sweeper cleans abandoned directories.
@@ -97,7 +98,6 @@ public:
 - Emit structured logs for persistence failures and evictions (guards future inspector integration).
 
 ## Open Questions
-- **Persistence format bake-off (near term):** Evaluate Alpaca vs. the existing binary metadata for history entries—measure file size, write amplification, and recovery tooling complexity—then lock one format for GA. Document the decision in `docs/AI_Architecture.md` once the comparison lands.
 - Cross-root undo is intentionally out of scope. Commands that span multiple logical areas must organize their data beneath a single history-enabled root (or route through a command-log wrapper) so one stack captures the full mutation. Document this constraint in integration guides and enforce it with guardrails in `enableHistory`.
 - **Future migration:** Track the C++26 reflection-based serializer rollout; once compilers ship it, plan to replace Alpaca with standard reflection serialization for both in-memory snapshots and on-disk metadata. Capture prerequisites (toolchain support, compatibility shims) before scheduling the migration.
 
