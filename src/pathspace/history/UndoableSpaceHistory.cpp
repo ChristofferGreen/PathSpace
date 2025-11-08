@@ -742,6 +742,11 @@ auto UndoableSpace::in(Iterator const& path, InputData const& data) -> InsertRet
     auto fullPath = path.toString();
     auto matched  = findRootByPath(fullPath);
     if (!matched.has_value()) {
+        if (auto journalMatched = findJournalRootByPath(fullPath); journalMatched.has_value()) {
+            InsertReturn ret;
+            ret.errors.push_back(journalNotReadyError(journalMatched->key));
+            return ret;
+        }
         return inner->in(path, data);
     }
 
@@ -773,16 +778,23 @@ auto UndoableSpace::out(Iterator const& path,
                         void* obj) -> std::optional<Error> {
     auto fullPath = path.toString();
     auto matched  = findRootByPath(fullPath);
+    auto journalMatched = findJournalRootByPath(fullPath);
 
     if (!options.doPop) {
         if (matched.has_value() && !matched->relativePath.empty()
             && matched->relativePath.starts_with(UndoPaths::HistoryRoot)) {
             return readHistoryValue(*matched, matched->relativePath, inputMetadata, obj);
         }
+        if (journalMatched.has_value()) {
+            return journalNotReadyError(journalMatched->key);
+        }
         return inner->out(path, inputMetadata, options, obj);
     }
 
     if (!matched.has_value()) {
+        if (journalMatched.has_value()) {
+            return journalNotReadyError(journalMatched->key);
+        }
         return inner->out(path, inputMetadata, options, obj);
     }
 
@@ -803,15 +815,24 @@ auto UndoableSpace::out(Iterator const& path,
 }
 
 auto UndoableSpace::undo(ConcretePathStringView root, std::size_t steps) -> Expected<void> {
+    if (auto journal = findJournalRoot(root); journal) {
+        return std::unexpected(journalNotReadyError(journal->rootPath));
+    }
     return applyHistorySteps(root, steps, true);
 }
 
 auto UndoableSpace::redo(ConcretePathStringView root, std::size_t steps) -> Expected<void> {
+    if (auto journal = findJournalRoot(root); journal) {
+        return std::unexpected(journalNotReadyError(journal->rootPath));
+    }
     return applyHistorySteps(root, steps, false);
 }
 
 auto UndoableSpace::trimHistory(ConcretePathStringView root, TrimPredicate predicate)
     -> Expected<TrimStats> {
+    if (auto journal = findJournalRoot(root); journal) {
+        return std::unexpected(journalNotReadyError(journal->rootPath));
+    }
     auto state = findRoot(root);
     if (!state)
         return std::unexpected(Error{Error::Code::NotFound, "History root not enabled"});
@@ -864,6 +885,9 @@ auto UndoableSpace::trimHistory(ConcretePathStringView root, TrimPredicate predi
 }
 
 auto UndoableSpace::getHistoryStats(ConcretePathStringView root) const -> Expected<HistoryStats> {
+    if (auto journal = findJournalRoot(root); journal) {
+        return std::unexpected(journalNotReadyError(journal->rootPath));
+    }
     auto state = findRoot(root);
     if (!state)
         return std::unexpected(Error{Error::Code::NotFound, "History root not enabled"});

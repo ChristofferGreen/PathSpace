@@ -2,6 +2,8 @@
 
 #include "core/Error.hpp"
 #include "history/CowSubtreePrototype.hpp"
+#include "history/UndoJournalState.hpp"
+#include "history/UndoJournalPersistence.hpp"
 
 #include <chrono>
 #include <filesystem>
@@ -93,6 +95,22 @@ struct UndoableSpace::RootState {
     std::string                               encodedRoot;
     bool                                      stateDirty        = false;
     bool                                      hasPersistentState = false;
+};
+
+struct UndoableSpace::UndoJournalRootState {
+    std::string                               rootPath;
+    std::vector<std::string>                  components;
+    HistoryOptions                            options;
+    UndoJournal::JournalState                 journal;
+    std::uint64_t                             nextSequence = 0;
+    bool                                      persistenceEnabled = false;
+    std::filesystem::path                     persistencePath;
+    std::filesystem::path                     journalPath;
+    std::string                               encodedRoot;
+    bool                                      persistenceDirty = false;
+    bool                                      stateDirty       = false;
+    std::unique_ptr<UndoJournal::JournalFileWriter> persistenceWriter;
+    mutable std::mutex                        mutex;
 };
 
 class UndoableSpace::OperationScope {

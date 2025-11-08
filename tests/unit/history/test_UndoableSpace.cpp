@@ -408,4 +408,31 @@ TEST_CASE("savefile export import roundtrip retains history") {
     std::filesystem::remove(savePath, removeEc);
 }
 
+TEST_CASE("mutation journal roots are gated behind feature flag") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/journal"}, opts).has_value());
+
+    auto stats = space->getHistoryStats(ConcretePathStringView{"/journal"});
+    REQUIRE_FALSE(stats.has_value());
+    REQUIRE(stats.error().message.has_value());
+    CHECK(stats.error().message->find("Mutation journal") != std::string::npos);
+
+    auto undoResult = space->undo(ConcretePathStringView{"/journal"});
+    REQUIRE_FALSE(undoResult.has_value());
+    REQUIRE(undoResult.error().message.has_value());
+    CHECK(undoResult.error().message->find("Mutation journal") != std::string::npos);
+
+    auto insertResult = space->insert("/journal/value", std::string{"alpha"});
+    REQUIRE_FALSE(insertResult.errors.empty());
+    CHECK(insertResult.errors.front().message.has_value());
+    CHECK(insertResult.errors.front().message->find("Mutation journal") != std::string::npos);
+
+    REQUIRE(space->disableHistory(ConcretePathStringView{"/journal"}).has_value());
+}
+
 }

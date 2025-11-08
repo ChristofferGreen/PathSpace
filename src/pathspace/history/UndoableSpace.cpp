@@ -97,6 +97,8 @@ auto UndoableSpace::enableHistory(ConcretePathStringView root, HistoryOptions op
     }
     resolvedOptions.restoreFromPersistence =
         resolvedOptions.restoreFromPersistence && opts.restoreFromPersistence;
+    resolvedOptions.useMutationJournal =
+        resolvedOptions.useMutationJournal || opts.useMutationJournal;
     if (opts.sharedStackKey.has_value()) {
         if (opts.sharedStackKey->empty()) {
             resolvedOptions.sharedStackKey.reset();
@@ -107,25 +109,39 @@ auto UndoableSpace::enableHistory(ConcretePathStringView root, HistoryOptions op
 
     {
         std::scoped_lock lock(rootsMutex);
-        if (roots.find(normalized) != roots.end()) {
+        if (roots.find(normalized) != roots.end()
+            || journalRoots.find(normalized) != journalRoots.end()) {
             return std::unexpected(Error{Error::Code::UnknownError, "History already enabled for path"});
         }
+        auto checkNestedConflict = [&](std::string const& existingPath) -> Expected<void> {
+            ConcretePathStringView existingView{existingPath};
+            ConcretePathStringView normalizedView{canonical->getPath()};
+            auto existingIsPrefix = existingView.isPrefixOf(normalizedView);
+            if (!existingIsPrefix) {
+                return std::unexpected(existingIsPrefix.error());
+            }
+            auto normalizedIsPrefix = normalizedView.isPrefixOf(existingView);
+            if (!normalizedIsPrefix) {
+                return std::unexpected(normalizedIsPrefix.error());
+            }
+            if (existingIsPrefix.value() || normalizedIsPrefix.value()) {
+                return std::unexpected(Error{
+                    Error::Code::InvalidPermissions,
+                    "History roots may not be nested without allowNestedUndo"});
+            }
+            return {};
+        };
+
         if (!(defaultOptions.allowNestedUndo && resolvedOptions.allowNestedUndo)) {
             ConcretePathStringView normalizedView{canonical->getPath()};
             for (auto const& [existing, _] : roots) {
-                ConcretePathStringView existingView{existing};
-                auto existingIsPrefix = existingView.isPrefixOf(normalizedView);
-                if (!existingIsPrefix) {
-                    return std::unexpected(existingIsPrefix.error());
+                if (auto check = checkNestedConflict(existing); !check) {
+                    return check;
                 }
-                auto normalizedIsPrefix = normalizedView.isPrefixOf(existingView);
-                if (!normalizedIsPrefix) {
-                    return std::unexpected(normalizedIsPrefix.error());
-                }
-                if (existingIsPrefix.value() || normalizedIsPrefix.value()) {
-                    return std::unexpected(Error{
-                        Error::Code::InvalidPermissions,
-                            "History roots may not be nested without allowNestedUndo"});
+            }
+            for (auto const& [existing, _] : journalRoots) {
+                if (auto check = checkNestedConflict(existing); !check) {
+                    return check;
                 }
             }
         }
@@ -141,11 +157,61 @@ auto UndoableSpace::enableHistory(ConcretePathStringView root, HistoryOptions op
                     return std::unexpected(Error{Error::Code::InvalidPermissions, std::move(message)});
                 }
             }
+            for (auto const& [existingPath, existingState] : journalRoots) {
+                if (!existingState || !existingState->options.sharedStackKey
+                    || existingState->options.sharedStackKey->empty()) {
+                    continue;
+                }
+                if (*existingState->options.sharedStackKey == *resolvedOptions.sharedStackKey) {
+                    std::string message = "UndoableSpace does not support shared undo stacks across multiple roots "
+                                          "(key '" + *resolvedOptions.sharedStackKey + "' already bound to '" + existingPath + "')";
+                    return std::unexpected(Error{Error::Code::InvalidPermissions, std::move(message)});
+                }
+            }
         }
     }
 
     if (auto* rootNode = resolveRootNode(); !rootNode) {
         return std::unexpected(Error{Error::Code::UnknownError, "UndoableSpace requires PathSpace backend"});
+    }
+
+    auto useJournal = resolvedOptions.useMutationJournal;
+
+    if (useJournal) {
+        auto state = std::make_shared<UndoJournalRootState>();
+        state->rootPath   = normalized;
+        state->components = components;
+        state->options    = std::move(resolvedOptions);
+
+        UndoJournal::JournalState::RetentionPolicy retention{};
+        retention.maxEntries = state->options.maxEntries;
+        retention.maxBytes   = state->options.maxBytesRetained;
+        state->journal.setRetentionPolicy(retention);
+
+        state->persistenceEnabled = state->options.persistHistory;
+        if (state->persistenceEnabled) {
+            state->encodedRoot  = encodeRootForPersistence(state->rootPath);
+            auto baseRoot       = persistenceRootPath(state->options);
+            auto nsDir          = state->options.persistenceNamespace.empty()
+                                      ? std::filesystem::path(spaceUuid)
+                                      : std::filesystem::path(state->options.persistenceNamespace);
+            state->persistencePath = baseRoot / nsDir / state->encodedRoot;
+            state->journalPath     = state->persistencePath / "journal.log";
+
+            std::error_code ec;
+            std::filesystem::create_directories(state->persistencePath, ec);
+            if (ec) {
+                return std::unexpected(
+                    Error{Error::Code::UnknownError,
+                          "Failed to create journal persistence directories"});
+            }
+        }
+
+        {
+            std::scoped_lock lock(rootsMutex);
+            journalRoots.emplace(state->rootPath, std::move(state));
+        }
+        return {};
     }
 
     auto state                = std::make_shared<RootState>();
@@ -214,18 +280,29 @@ auto UndoableSpace::disableHistory(ConcretePathStringView root) -> Expected<void
     }
     auto normalized = std::string{canonical->getPath()};
     std::unique_lock lock(rootsMutex);
-    auto it = roots.find(normalized);
-    if (it == roots.end()) {
-        return std::unexpected(Error{Error::Code::NotFound, "History root not enabled"});
+    if (auto it = roots.find(normalized); it != roots.end()) {
+        auto state = it->second;
+        roots.erase(it);
+        lock.unlock();
+        if (state && state->persistenceEnabled) {
+            std::error_code ec;
+            std::filesystem::remove_all(state->persistencePath, ec);
+        }
+        return {};
     }
-    auto state = it->second;
-    roots.erase(it);
-    lock.unlock();
-    if (state && state->persistenceEnabled) {
-        std::error_code ec;
-        std::filesystem::remove_all(state->persistencePath, ec);
+
+    if (auto it = journalRoots.find(normalized); it != journalRoots.end()) {
+        auto state = it->second;
+        journalRoots.erase(it);
+        lock.unlock();
+        if (state && state->persistenceEnabled) {
+            std::error_code ec;
+            std::filesystem::remove_all(state->persistencePath, ec);
+        }
+        return {};
     }
-    return {};
+
+    return std::unexpected(Error{Error::Code::NotFound, "History root not enabled"});
 }
 
 auto UndoableSpace::findRoot(ConcretePathStringView root) const -> std::shared_ptr<RootState> {
@@ -237,6 +314,20 @@ auto UndoableSpace::findRoot(ConcretePathStringView root) const -> std::shared_p
     std::scoped_lock lock(rootsMutex);
     auto it = roots.find(normalized);
     if (it == roots.end())
+        return {};
+    return it->second;
+}
+
+auto UndoableSpace::findJournalRoot(ConcretePathStringView root) const
+    -> std::shared_ptr<UndoJournalRootState> {
+    auto canonical = root.canonicalized();
+    if (!canonical) {
+        return {};
+    }
+    auto normalized = std::string{canonical->getPath()};
+    std::scoped_lock lock(rootsMutex);
+    auto it = journalRoots.find(normalized);
+    if (it == journalRoots.end())
         return {};
     return it->second;
 }
@@ -279,7 +370,57 @@ auto UndoableSpace::findRootByPath(std::string const& path) const -> std::option
     return MatchedRoot{std::move(bestState), std::move(bestKey), std::move(relative)};
 }
 
+auto UndoableSpace::findJournalRootByPath(std::string const& path) const
+    -> std::optional<MatchedJournalRoot> {
+    ConcretePathStringView pathView{std::string_view{path}};
+    auto canonical = pathView.canonicalized();
+    if (!canonical) {
+        return std::nullopt;
+    }
+
+    auto canonicalStr = std::string{canonical->getPath()};
+    ConcretePathStringView canonicalView{canonical->getPath()};
+
+    std::string                              bestKey;
+    std::shared_ptr<UndoJournalRootState>    bestState;
+
+    {
+        std::scoped_lock lock(rootsMutex);
+        for (auto const& [rootPath, state] : journalRoots) {
+            ConcretePathStringView rootView{rootPath};
+            auto                  isPrefix = rootView.isPrefixOf(canonicalView);
+            if (!isPrefix || !isPrefix.value()) {
+                continue;
+            }
+            if (rootPath.size() > bestKey.size()) {
+                bestKey   = rootPath;
+                bestState = state;
+            }
+        }
+    }
+
+    if (!bestState)
+        return std::nullopt;
+
+    std::string relative;
+    if (canonicalStr.size() > bestKey.size()) {
+        relative = canonicalStr.substr(bestKey.size() + (bestKey == "/" ? 0 : 1));
+    }
+    return MatchedJournalRoot{std::move(bestState), std::move(bestKey), std::move(relative)};
+}
+
+auto UndoableSpace::journalNotReadyError(std::string_view rootPath) const -> Error {
+    std::string message = "Mutation journal history not yet supported for root '";
+    message.append(rootPath);
+    message.append("'; migration in progress");
+    return Error{Error::Code::UnknownError, std::move(message)};
+}
+
 auto UndoableSpace::beginTransaction(ConcretePathStringView root) -> Expected<HistoryTransaction> {
+    if (auto journal = findJournalRoot(root); journal) {
+        return std::unexpected(journalNotReadyError(journal->rootPath));
+    }
+
     auto state = findRoot(root);
     if (!state)
         return std::unexpected(Error{Error::Code::NotFound, "History root not enabled"});

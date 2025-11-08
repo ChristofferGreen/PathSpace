@@ -29,6 +29,7 @@ struct HistoryOptions {
     std::size_t maxBytesRetained     = 0;
     bool        manualGarbageCollect = false;
     bool        allowNestedUndo      = false;
+    bool        useMutationJournal   = false;
     bool        persistHistory       = false;
     std::string persistenceRoot;
     std::string persistenceNamespace;
@@ -107,6 +108,7 @@ using TrimPredicate = std::function<bool(std::size_t generationIndex)>;
 class UndoableSpace : public PathSpaceBase {
 private:
     struct RootState;
+    struct UndoJournalRootState;
     class TransactionHandleBase {
     public:
         TransactionHandleBase() = default;
@@ -184,6 +186,11 @@ private:
         std::shared_ptr<RootState> state;
         std::string                key;
         std::string                relativePath;
+    };
+    struct MatchedJournalRoot {
+        std::shared_ptr<UndoJournalRootState> state;
+        std::string                           key;
+        std::string                           relativePath;
     };
 
     class OperationScope;
@@ -278,6 +285,13 @@ private:
     mutable std::mutex                                 rootsMutex;
     std::string                                        spaceUuid;
     std::unordered_map<std::string, std::shared_ptr<RootState>> roots;
+    std::unordered_map<std::string, std::shared_ptr<UndoJournalRootState>> journalRoots;
+
+    auto findJournalRoot(SP::ConcretePathStringView root) const
+        -> std::shared_ptr<UndoJournalRootState>;
+    auto findJournalRootByPath(std::string const& path) const
+        -> std::optional<MatchedJournalRoot>;
+    auto journalNotReadyError(std::string_view rootPath) const -> Error;
 };
 
 } // namespace SP::History

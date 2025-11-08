@@ -27,6 +27,9 @@ namespace SP::History {
 auto UndoableSpace::exportHistorySavefile(ConcretePathStringView root,
                                           std::filesystem::path const& file,
                                           bool fsyncData) -> Expected<void> {
+    if (auto journal = findJournalRoot(root); journal) {
+        return std::unexpected(journalNotReadyError(journal->rootPath));
+    }
     auto state = findRoot(root);
     if (!state) {
         return std::unexpected(Error{Error::Code::NotFound, "History root not enabled"});
@@ -129,6 +132,9 @@ auto UndoableSpace::exportHistorySavefile(ConcretePathStringView root,
 auto UndoableSpace::importHistorySavefile(ConcretePathStringView root,
                                           std::filesystem::path const& file,
                                           bool applyOptions) -> Expected<void> {
+    if (auto journal = findJournalRoot(root); journal) {
+        return std::unexpected(journalNotReadyError(journal->rootPath));
+    }
     auto state = findRoot(root);
     if (!state) {
         return std::unexpected(Error{Error::Code::NotFound, "History root not enabled"});

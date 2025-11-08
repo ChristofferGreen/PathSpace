@@ -44,7 +44,9 @@
   - `tests/unit/history/test_UndoJournalState.cpp` now validates serialization/deserialize round-trips alongside undo/redo coverage, ensuring in-memory state can be reconstructed from encoded journal entries.
 
 ### Phase 2 — Integrate with UndoableSpace
-- [ ] Introduce a transitional `UndoJournalRootState` alongside existing `RootState`; wire feature flags to opt into the journal while keeping snapshot paths alive.
+- [x] Introduce a transitional `UndoJournalRootState` alongside existing `RootState`; wire feature flags to opt into the journal while keeping snapshot paths alive.
+  - `HistoryOptions` now exposes `useMutationJournal`, and `UndoableSpace` tracks journal-enabled roots via `UndoJournalRootState`, preserving persistence metadata and retention policy scaffolding while snapshot paths remain the default.
+  - Snapshot operations detect journal-enabled roots and return a clear "mutation journal not yet supported" error so follow-up phases can safely wire transactional handlers without breaking existing behaviour.
 - [ ] Update transaction guards to collect mutation batches and flush them into the journal on commit; ensure nested transactions coalesce correctly.
 - [ ] Swap `undo`/`redo` handlers to call journal replay APIs while still reporting telemetry via existing structures.
 - [ ] Re-implement `_history/command` handlers (undo/redo/GC/toggle) against the journal.
