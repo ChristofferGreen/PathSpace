@@ -54,7 +54,8 @@
   - Journal-enabled roots now record per-mutation payloads and replay them through `UndoableSpace::undo`/`redo`; the tests `journal undo/redo round trip` and `journal take undo restores value` cover regression cases via the core `UndoJournalState` APIs.
 - [x] Re-implement `_history/command` handlers (undo/redo/GC/toggle) against the journal.
   - `_history/undo|redo|garbage_collect|set_manual_garbage_collect` now route through the journal code paths; manual retention skips automatic trimming and the command path trims on demand. Added regression coverage in `tests/unit/history/test_UndoableSpace.cpp` and `tests/unit/history/test_UndoJournalState.cpp` to lock the behaviour down.
-- [ ] Adapt telemetry aggregation to pull from journal stats instead of snapshot metrics.
+- [x] Adapt telemetry aggregation to pull from journal stats instead of snapshot metrics.
+  - Journal roots now expose `_history/stats/*`, `_history/lastOperation/*`, and `_history/unsupported/*` via `UndoableSpace::getHistoryStats` and the PathSpace read APIs. Aggregation uses `UndoJournalState::Stats` (with undo/redo byte splits) and synchronises telemetry counters after commits and retention. Coverage added in `tests/unit/history/test_UndoableSpace.cpp` and `tests/unit/history/test_UndoJournalState.cpp`.
 - [ ] Extend persistence path to load/save journals; keep old snapshot persistence reachable until Phase 4.
 - [ ] Compile-time guards ensure persistence directories and options map cleanly to the new storage format.
 

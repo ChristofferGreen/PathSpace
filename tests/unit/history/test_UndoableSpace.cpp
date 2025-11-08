@@ -163,6 +163,41 @@ TEST_CASE("journal history control commands perform undo and redo") {
     CHECK(*restored == std::string{"alpha"});
 }
 
+TEST_CASE("journal telemetry paths expose stats") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    REQUIRE(space->insert("/doc/value", 42).errors.empty());
+    REQUIRE(space->insert("/doc/value", 43).errors.empty());
+
+    auto statsExpected = space->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(statsExpected.has_value());
+    auto const& stats = *statsExpected;
+    CHECK(stats.counts.undo >= 2);
+    CHECK(stats.counts.redo == 0);
+    CHECK_FALSE(stats.counts.manualGarbageCollect);
+
+    auto manualGc = space->read<bool>("/doc/_history/stats/manualGcEnabled");
+    REQUIRE(manualGc.has_value());
+    CHECK_FALSE(*manualGc);
+
+    auto undoCount = space->read<std::size_t>("/doc/_history/stats/undoCount");
+    REQUIRE(undoCount.has_value());
+    CHECK(*undoCount >= 2);
+
+    auto redoCount = space->read<std::size_t>("/doc/_history/stats/redoCount");
+    REQUIRE(redoCount.has_value());
+    CHECK(*redoCount == 0);
+
+    auto headGeneration = space->read<std::size_t>("/doc/_history/head/generation");
+    REQUIRE(headGeneration.has_value());
+    CHECK(*headGeneration >= 2);
+}
+
 TEST_CASE("journal manual garbage collect trims entries when invoked") {
     auto space = makeUndoableSpace();
     REQUIRE(space);
@@ -178,6 +213,10 @@ TEST_CASE("journal manual garbage collect trims entries when invoked") {
 
     auto gc = space->insert("/doc/_history/garbage_collect", true);
     CHECK(gc.errors.empty());
+
+    auto statsAfterGc = space->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(statsAfterGc.has_value());
+    CHECK(statsAfterGc->counts.undo == 1);
 
     REQUIRE(space->undo(ConcretePathStringView{"/doc"}).has_value());
     auto secondUndo = space->undo(ConcretePathStringView{"/doc"});

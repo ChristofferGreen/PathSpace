@@ -476,16 +476,16 @@ void UndoableSpace::recordJournalOperation(UndoJournalRootState& state,
     record.duration        = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
     record.success         = success;
     record.undoCountBefore = beforeStats.undoCount;
-    record.undoCountAfter  = afterStats.undoCount;
-    record.redoCountBefore = beforeStats.redoCount;
-    record.redoCountAfter  = afterStats.redoCount;
-    record.bytesBefore     = beforeStats.totalBytes;
-    record.bytesAfter      = afterStats.totalBytes;
+   record.undoCountAfter  = afterStats.undoCount;
+   record.redoCountBefore = beforeStats.redoCount;
+   record.redoCountAfter  = afterStats.redoCount;
+    record.bytesBefore     = beforeStats.undoBytes + beforeStats.redoBytes;
+    record.bytesAfter      = afterStats.undoBytes + afterStats.redoBytes;
     record.message         = message;
     state.telemetry.lastOperation = std::move(record);
 
-    state.telemetry.undoBytes        = afterStats.totalBytes;
-    state.telemetry.redoBytes        = 0;
+    state.telemetry.undoBytes        = afterStats.undoBytes;
+    state.telemetry.redoBytes        = afterStats.redoBytes;
     state.telemetry.trimmedEntries   = afterStats.trimmedEntries;
     state.telemetry.trimmedBytes     = afterStats.trimmedBytes;
     state.telemetry.cachedUndo       = afterStats.undoCount;
@@ -527,11 +527,16 @@ auto UndoableSpace::commitJournalTransaction(UndoJournalRootState& state) -> Exp
     if (!dirty || pendingEntries.empty())
         return {};
 
+    JournalOperationScope scope(*this, state, "commit");
+    auto beforeStats = state.journal.stats();
+
     if (state.persistenceEnabled && !state.persistenceWriter) {
         state.persistenceWriter =
             std::make_unique<UndoJournal::JournalFileWriter>(state.journalPath);
-        if (auto open = state.persistenceWriter->open(true); !open)
+        if (auto open = state.persistenceWriter->open(true); !open) {
+            scope.setResult(false, open.error().message.value_or("open_failed"));
             return open;
+        }
     }
 
     auto const monotonicBase =
@@ -551,13 +556,39 @@ auto UndoableSpace::commitJournalTransaction(UndoJournalRootState& state) -> Exp
         auto enforceRetention = !state.options.manualGarbageCollect;
         state.journal.append(entry, enforceRetention);
         if (state.persistenceEnabled) {
-            if (auto append = state.persistenceWriter->append(entry, false); !append)
+            if (auto append = state.persistenceWriter->append(entry, false); !append) {
+                scope.setResult(false, append.error().message.value_or("append_failed"));
                 return append;
+            }
         }
+    }
+
+    auto afterStats = state.journal.stats();
+    state.telemetry.cachedUndo = afterStats.undoCount;
+    state.telemetry.cachedRedo = afterStats.redoCount;
+    state.telemetry.undoBytes  = afterStats.undoBytes;
+    state.telemetry.redoBytes  = afterStats.redoBytes;
+
+    auto trimmedEntriesDelta =
+        afterStats.trimmedEntries >= beforeStats.trimmedEntries
+            ? afterStats.trimmedEntries - beforeStats.trimmedEntries
+            : std::size_t{0};
+    auto trimmedBytesDelta =
+        afterStats.trimmedBytes >= beforeStats.trimmedBytes
+            ? afterStats.trimmedBytes - beforeStats.trimmedBytes
+            : std::size_t{0};
+    std::string resultMessage;
+    if (trimmedEntriesDelta > 0) {
+        state.telemetry.trimOperations += 1;
+        state.telemetry.trimmedEntries += trimmedEntriesDelta;
+        state.telemetry.trimmedBytes += trimmedBytesDelta;
+        state.telemetry.lastTrimTimestamp = std::chrono::system_clock::now();
+        resultMessage = "trimmed=" + std::to_string(trimmedEntriesDelta);
     }
 
     state.stateDirty       = true;
     state.persistenceDirty = state.persistenceDirty || state.persistenceEnabled;
+    scope.setResult(true, resultMessage);
     return {};
 }
 

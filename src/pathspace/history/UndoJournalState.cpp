@@ -82,6 +82,12 @@ auto JournalState::stats() const -> Stats {
     s.undoCount      = cursorIndex;
     s.redoCount      = entries.size() - cursorIndex;
     s.totalBytes     = totalBytes;
+    std::size_t undoBytes = 0;
+    for (std::size_t i = 0; i < cursorIndex; ++i) {
+        undoBytes += entryBytes(entries[i]);
+    }
+    s.undoBytes = undoBytes;
+    s.redoBytes = totalBytes >= undoBytes ? totalBytes - undoBytes : 0;
     s.trimmedEntries = trimmedEntries;
     s.trimmedBytes   = trimmedBytes;
     return s;

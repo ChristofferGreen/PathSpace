@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <iterator>
 #include <optional>
 #include <span>
@@ -309,6 +310,62 @@ auto UndoableSpace::gatherStatsLocked(RootState const& state) const -> HistorySt
     return stats;
 }
 
+auto UndoableSpace::gatherJournalStatsLocked(UndoJournalRootState const& state) const -> HistoryStats {
+    HistoryStats stats;
+    auto         journalStats = state.journal.stats();
+
+    stats.counts.undo = journalStats.undoCount;
+    stats.counts.redo = journalStats.redoCount;
+
+    stats.bytes.undo  = journalStats.undoBytes;
+    stats.bytes.redo  = journalStats.redoBytes;
+    stats.bytes.live  = 0;
+    stats.bytes.total = stats.bytes.undo + stats.bytes.redo;
+    stats.bytes.disk  = state.telemetry.diskBytes;
+
+    stats.counts.manualGarbageCollect = state.options.manualGarbageCollect;
+    stats.counts.diskEntries          = state.telemetry.diskEntries;
+    stats.counts.cachedUndo           = state.telemetry.cachedUndo;
+    stats.counts.cachedRedo           = state.telemetry.cachedRedo;
+
+    stats.trim.operationCount = state.telemetry.trimOperations;
+    stats.trim.entries        = state.telemetry.trimmedEntries;
+    stats.trim.bytes          = state.telemetry.trimmedBytes;
+    if (state.telemetry.lastTrimTimestamp) {
+        stats.trim.lastTimestampMs = UndoUtilsAlias::toMillis(*state.telemetry.lastTrimTimestamp);
+    }
+
+    if (state.telemetry.lastOperation) {
+        HistoryLastOperation op;
+        op.type            = state.telemetry.lastOperation->type;
+        op.timestampMs     = UndoUtilsAlias::toMillis(state.telemetry.lastOperation->timestamp);
+        op.durationMs      =
+            static_cast<std::uint64_t>(state.telemetry.lastOperation->duration.count());
+        op.success         = state.telemetry.lastOperation->success;
+        op.undoCountBefore = state.telemetry.lastOperation->undoCountBefore;
+        op.undoCountAfter  = state.telemetry.lastOperation->undoCountAfter;
+        op.redoCountBefore = state.telemetry.lastOperation->redoCountBefore;
+        op.redoCountAfter  = state.telemetry.lastOperation->redoCountAfter;
+        op.bytesBefore     = state.telemetry.lastOperation->bytesBefore;
+        op.bytesAfter      = state.telemetry.lastOperation->bytesAfter;
+        op.message         = state.telemetry.lastOperation->message;
+        stats.lastOperation = std::move(op);
+    }
+
+    stats.unsupported.total = state.telemetry.unsupportedTotal;
+    stats.unsupported.recent.reserve(state.telemetry.unsupportedLog.size());
+    for (auto const& entry : state.telemetry.unsupportedLog) {
+        HistoryUnsupportedRecord record;
+        record.path            = entry.path;
+        record.reason          = entry.reason;
+        record.occurrences     = entry.occurrences;
+        record.lastTimestampMs = UndoUtilsAlias::toMillis(entry.timestamp);
+        stats.unsupported.recent.push_back(std::move(record));
+    }
+
+    return stats;
+}
+
 auto UndoableSpace::readHistoryValue(MatchedRoot const& matchedRoot,
                                      std::string const& relativePath,
                                      InputMetadata const& metadata,
@@ -320,129 +377,29 @@ auto UndoableSpace::readHistoryValue(MatchedRoot const& matchedRoot,
 
     std::unique_lock lock(state->mutex);
     auto stats = gatherStatsLocked(*state);
+    return readHistoryStatsValue(
+        stats,
+        std::optional<std::size_t>{static_cast<std::size_t>(state->liveSnapshot.generation)},
+        relativePath,
+        metadata,
+        obj);
+}
 
-    auto assign = [&](auto const& value, std::string_view descriptor) -> std::optional<Error> {
-        using ValueT = std::decay_t<decltype(value)>;
-        if (!metadata.typeInfo || *metadata.typeInfo != typeid(ValueT)) {
-            return Error{Error::Code::InvalidType,
-                         std::string("History telemetry path ") + std::string(descriptor)
-                             + " expects type " + typeid(ValueT).name()};
-        }
-        if (obj == nullptr) {
-            return Error{Error::Code::MalformedInput, "Output pointer is null"};
-        }
-        *static_cast<ValueT*>(obj) = value;
-        return std::nullopt;
-    };
-
-    struct FieldHandler {
-        std::string_view                                  path;
-        std::function<std::optional<Error>()>             apply;
-    };
-
-    const std::array<FieldHandler, 13> simpleHandlers{{
-        {UndoPaths::HistoryStats, [&] { return assign(stats, UndoPaths::HistoryStats); }},
-        {UndoPaths::HistoryStatsUndoCount, [&] { return assign(stats.counts.undo, UndoPaths::HistoryStatsUndoCount); }},
-        {UndoPaths::HistoryStatsRedoCount, [&] { return assign(stats.counts.redo, UndoPaths::HistoryStatsRedoCount); }},
-        {UndoPaths::HistoryStatsUndoBytes, [&] { return assign(stats.bytes.undo, UndoPaths::HistoryStatsUndoBytes); }},
-        {UndoPaths::HistoryStatsRedoBytes, [&] { return assign(stats.bytes.redo, UndoPaths::HistoryStatsRedoBytes); }},
-        {UndoPaths::HistoryStatsLiveBytes, [&] { return assign(stats.bytes.live, UndoPaths::HistoryStatsLiveBytes); }},
-        {UndoPaths::HistoryStatsBytesRetained, [&] { return assign(stats.bytes.total, UndoPaths::HistoryStatsBytesRetained); }},
-        {UndoPaths::HistoryStatsManualGcEnabled, [&] { return assign(stats.counts.manualGarbageCollect, UndoPaths::HistoryStatsManualGcEnabled); }},
-        {UndoPaths::HistoryStatsTrimOperationCount, [&] { return assign(stats.trim.operationCount, UndoPaths::HistoryStatsTrimOperationCount); }},
-        {UndoPaths::HistoryStatsTrimmedEntries, [&] { return assign(stats.trim.entries, UndoPaths::HistoryStatsTrimmedEntries); }},
-        {UndoPaths::HistoryStatsTrimmedBytes, [&] { return assign(stats.trim.bytes, UndoPaths::HistoryStatsTrimmedBytes); }},
-        {UndoPaths::HistoryStatsLastTrimTimestamp, [&] { return assign(stats.trim.lastTimestampMs, UndoPaths::HistoryStatsLastTrimTimestamp); }},
-        {UndoPaths::HistoryHeadGeneration, [&] { return assign(state->liveSnapshot.generation, UndoPaths::HistoryHeadGeneration); }},
-    }};
-
-    for (auto const& handler : simpleHandlers) {
-        if (relativePath == handler.path) {
-            return handler.apply();
-        }
+auto UndoableSpace::readJournalHistoryValue(MatchedJournalRoot const& matchedRoot,
+                                            std::string const& relativePath,
+                                            InputMetadata const& metadata,
+                                            void* obj) -> std::optional<Error> {
+    auto state = matchedRoot.state;
+    if (!state) {
+        return Error{Error::Code::UnknownError, "History root missing"};
     }
 
-    if (relativePath.starts_with(UndoPaths::HistoryLastOperationPrefix)) {
-        if (!stats.lastOperation) {
-            return Error{Error::Code::NoObjectFound, "No history operation recorded"};
-        }
-        auto const& op = *stats.lastOperation;
-        const std::array<FieldHandler, 11> operationHandlers{{
-            {UndoPaths::HistoryLastOperationType, [&] { return assign(op.type, UndoPaths::HistoryLastOperationType); }},
-            {UndoPaths::HistoryLastOperationTimestamp, [&] { return assign(op.timestampMs, UndoPaths::HistoryLastOperationTimestamp); }},
-            {UndoPaths::HistoryLastOperationDuration, [&] { return assign(op.durationMs, UndoPaths::HistoryLastOperationDuration); }},
-            {UndoPaths::HistoryLastOperationSuccess, [&] { return assign(op.success, UndoPaths::HistoryLastOperationSuccess); }},
-            {UndoPaths::HistoryLastOperationUndoBefore, [&] { return assign(op.undoCountBefore, UndoPaths::HistoryLastOperationUndoBefore); }},
-            {UndoPaths::HistoryLastOperationUndoAfter, [&] { return assign(op.undoCountAfter, UndoPaths::HistoryLastOperationUndoAfter); }},
-            {UndoPaths::HistoryLastOperationRedoBefore, [&] { return assign(op.redoCountBefore, UndoPaths::HistoryLastOperationRedoBefore); }},
-            {UndoPaths::HistoryLastOperationRedoAfter, [&] { return assign(op.redoCountAfter, UndoPaths::HistoryLastOperationRedoAfter); }},
-            {UndoPaths::HistoryLastOperationBytesBefore, [&] { return assign(op.bytesBefore, UndoPaths::HistoryLastOperationBytesBefore); }},
-            {UndoPaths::HistoryLastOperationBytesAfter, [&] { return assign(op.bytesAfter, UndoPaths::HistoryLastOperationBytesAfter); }},
-            {UndoPaths::HistoryLastOperationMessage, [&] { return assign(op.message, UndoPaths::HistoryLastOperationMessage); }},
-        }};
-        for (auto const& handler : operationHandlers) {
-            if (relativePath == handler.path) {
-                return handler.apply();
-            }
-        }
-    }
-
-    const std::array<FieldHandler, 3> unsupportedHandlers{{
-        {UndoPaths::HistoryUnsupported, [&] { return assign(stats.unsupported, UndoPaths::HistoryUnsupported); }},
-        {UndoPaths::HistoryUnsupportedTotalCount, [&] { return assign(stats.unsupported.total, UndoPaths::HistoryUnsupportedTotalCount); }},
-        {UndoPaths::HistoryUnsupportedRecentCount, [&] { return assign(stats.unsupported.recent.size(), UndoPaths::HistoryUnsupportedRecentCount); }},
-    }};
-
-    for (auto const& handler : unsupportedHandlers) {
-        if (relativePath == handler.path) {
-            return handler.apply();
-        }
-    }
-
-    if (relativePath.starts_with(UndoPaths::HistoryUnsupportedRecentPrefix)) {
-        auto parseIndex = [](std::string_view value) -> std::optional<std::size_t> {
-            std::size_t index = 0;
-            auto        begin = value.data();
-            auto        end   = value.data() + value.size();
-            auto        res   = std::from_chars(begin, end, index);
-            if (res.ec != std::errc{} || res.ptr != end) {
-                return std::nullopt;
-            }
-            return index;
-        };
-
-        std::string_view suffix =
-            std::string_view(relativePath).substr(UndoPaths::HistoryUnsupportedRecentPrefix.size());
-        auto             slash  = suffix.find('/');
-        auto             indexView = suffix.substr(0, slash);
-        auto             indexOpt  = parseIndex(indexView);
-        if (!indexOpt) {
-            return Error{Error::Code::InvalidPath, "Unsupported history record index"};
-        }
-        auto index = *indexOpt;
-        if (index >= stats.unsupported.recent.size()) {
-            return Error{Error::Code::NoObjectFound, "Unsupported history record not found"};
-        }
-        auto const& record = stats.unsupported.recent[index];
-        if (slash == std::string_view::npos) {
-            return assign(record, relativePath);
-        }
-        auto field = suffix.substr(slash + 1);
-        if (field == "path") {
-            return assign(record.path, relativePath);
-        }
-        if (field == "reason") {
-            return assign(record.reason, relativePath);
-        }
-        if (field == "occurrences") {
-            return assign(record.occurrences, relativePath);
-        }
-        if (field == "timestampMs") {
-            return assign(record.lastTimestampMs, relativePath);
-        }
-    }
-
-    return Error{Error::Code::NotFound, std::string("Unsupported history telemetry path: ") + relativePath};
+    std::unique_lock lock(state->mutex);
+    auto stats = gatherJournalStatsLocked(*state);
+    auto head  = std::optional<std::size_t>{
+        static_cast<std::size_t>(std::min<std::uint64_t>(
+            state->nextSequence, static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())))};
+    return readHistoryStatsValue(stats, head, relativePath, metadata, obj);
 }
 
 void UndoableSpace::recordUnsupportedPayloadLocked(RootState& state,
@@ -1021,6 +978,11 @@ auto UndoableSpace::handleJournalControlInsert(MatchedJournalRoot const& matched
                 ? afterStats.trimmedBytes - beforeStats.trimmedBytes
                 : std::size_t{0};
 
+        state->telemetry.cachedUndo = afterStats.undoCount;
+        state->telemetry.cachedRedo = afterStats.redoCount;
+        state->telemetry.undoBytes  = afterStats.undoBytes;
+        state->telemetry.redoBytes  = afterStats.redoBytes;
+
         if (trimmedEntries == 0) {
             scope.setResult(true, "no_trim");
         } else {
@@ -1160,7 +1122,8 @@ auto UndoableSpace::out(Iterator const& path,
         if (journalMatched.has_value()) {
             if (!journalMatched->relativePath.empty()
                 && journalMatched->relativePath.starts_with(UndoPaths::HistoryRoot)) {
-                return journalNotReadyError(journalMatched->key);
+                return readJournalHistoryValue(
+                    *journalMatched, journalMatched->relativePath, inputMetadata, obj);
             }
             return inner->out(path, inputMetadata, options, obj);
         }
@@ -1306,7 +1269,8 @@ auto UndoableSpace::trimHistory(ConcretePathStringView root, TrimPredicate predi
 
 auto UndoableSpace::getHistoryStats(ConcretePathStringView root) const -> Expected<HistoryStats> {
     if (auto journal = findJournalRoot(root); journal) {
-        return std::unexpected(journalNotReadyError(journal->rootPath));
+        std::unique_lock lock(journal->mutex);
+        return gatherJournalStatsLocked(*journal);
     }
     auto state = findRoot(root);
     if (!state)
@@ -1314,6 +1278,135 @@ auto UndoableSpace::getHistoryStats(ConcretePathStringView root) const -> Expect
 
     std::scoped_lock lock(state->mutex);
     return gatherStatsLocked(*state);
+}
+auto UndoableSpace::readHistoryStatsValue(HistoryStats const& stats,
+                                          std::optional<std::size_t> headGeneration,
+                                          std::string const& relativePath,
+                                          InputMetadata const& metadata,
+                                          void* obj) const -> std::optional<Error> {
+    auto assign = [&](auto const& value, std::string_view descriptor) -> std::optional<Error> {
+        using ValueT = std::decay_t<decltype(value)>;
+        if (!metadata.typeInfo || *metadata.typeInfo != typeid(ValueT)) {
+            return Error{Error::Code::InvalidType,
+                         std::string("History telemetry path ") + std::string(descriptor)
+                             + " expects type " + typeid(ValueT).name()};
+        }
+        if (obj == nullptr) {
+            return Error{Error::Code::MalformedInput, "Output pointer is null"};
+        }
+        *static_cast<ValueT*>(obj) = value;
+        return std::nullopt;
+    };
+
+    struct FieldHandler {
+        std::string_view                      path;
+        std::function<std::optional<Error>()> apply;
+    };
+
+    const std::array<FieldHandler, 16> simpleHandlers{{
+        {UndoPaths::HistoryStats, [&] { return assign(stats, UndoPaths::HistoryStats); }},
+        {UndoPaths::HistoryStatsUndoCount, [&] { return assign(stats.counts.undo, UndoPaths::HistoryStatsUndoCount); }},
+        {UndoPaths::HistoryStatsRedoCount, [&] { return assign(stats.counts.redo, UndoPaths::HistoryStatsRedoCount); }},
+        {UndoPaths::HistoryStatsUndoBytes, [&] { return assign(stats.bytes.undo, UndoPaths::HistoryStatsUndoBytes); }},
+        {UndoPaths::HistoryStatsRedoBytes, [&] { return assign(stats.bytes.redo, UndoPaths::HistoryStatsRedoBytes); }},
+        {UndoPaths::HistoryStatsLiveBytes, [&] { return assign(stats.bytes.live, UndoPaths::HistoryStatsLiveBytes); }},
+        {UndoPaths::HistoryStatsBytesRetained, [&] { return assign(stats.bytes.total, UndoPaths::HistoryStatsBytesRetained); }},
+        {UndoPaths::HistoryStatsManualGcEnabled, [&] { return assign(stats.counts.manualGarbageCollect, UndoPaths::HistoryStatsManualGcEnabled); }},
+        {UndoPaths::HistoryStatsTrimOperationCount, [&] { return assign(stats.trim.operationCount, UndoPaths::HistoryStatsTrimOperationCount); }},
+        {UndoPaths::HistoryStatsTrimmedEntries, [&] { return assign(stats.trim.entries, UndoPaths::HistoryStatsTrimmedEntries); }},
+        {UndoPaths::HistoryStatsTrimmedBytes, [&] { return assign(stats.trim.bytes, UndoPaths::HistoryStatsTrimmedBytes); }},
+        {UndoPaths::HistoryStatsLastTrimTimestamp, [&] { return assign(stats.trim.lastTimestampMs, UndoPaths::HistoryStatsLastTrimTimestamp); }},
+        {UndoPaths::HistoryUnsupported, [&] { return assign(stats.unsupported, UndoPaths::HistoryUnsupported); }},
+        {UndoPaths::HistoryUnsupportedTotalCount, [&] { return assign(stats.unsupported.total, UndoPaths::HistoryUnsupportedTotalCount); }},
+        {UndoPaths::HistoryUnsupportedRecentCount, [&] {
+             return assign(stats.unsupported.recent.size(), UndoPaths::HistoryUnsupportedRecentCount);
+         }},
+        {UndoPaths::HistoryHeadGeneration,
+         [&] {
+             if (!headGeneration) {
+                 return std::optional<Error>{
+                     Error{Error::Code::NoObjectFound, "History head generation unavailable"}};
+             }
+             return assign(*headGeneration, UndoPaths::HistoryHeadGeneration);
+         }},
+    }};
+
+    for (auto const& handler : simpleHandlers) {
+        if (relativePath == handler.path) {
+            return handler.apply();
+        }
+    }
+
+    if (relativePath.starts_with(UndoPaths::HistoryLastOperationPrefix)) {
+        if (!stats.lastOperation) {
+            return Error{Error::Code::NoObjectFound, "No history operation recorded"};
+        }
+        auto const& op = *stats.lastOperation;
+        const std::array<FieldHandler, 11> operationHandlers{{
+            {UndoPaths::HistoryLastOperationType, [&] { return assign(op.type, UndoPaths::HistoryLastOperationType); }},
+            {UndoPaths::HistoryLastOperationTimestamp, [&] { return assign(op.timestampMs, UndoPaths::HistoryLastOperationTimestamp); }},
+            {UndoPaths::HistoryLastOperationDuration, [&] { return assign(op.durationMs, UndoPaths::HistoryLastOperationDuration); }},
+            {UndoPaths::HistoryLastOperationSuccess, [&] { return assign(op.success, UndoPaths::HistoryLastOperationSuccess); }},
+            {UndoPaths::HistoryLastOperationUndoBefore, [&] { return assign(op.undoCountBefore, UndoPaths::HistoryLastOperationUndoBefore); }},
+            {UndoPaths::HistoryLastOperationUndoAfter, [&] { return assign(op.undoCountAfter, UndoPaths::HistoryLastOperationUndoAfter); }},
+            {UndoPaths::HistoryLastOperationRedoBefore, [&] { return assign(op.redoCountBefore, UndoPaths::HistoryLastOperationRedoBefore); }},
+            {UndoPaths::HistoryLastOperationRedoAfter, [&] { return assign(op.redoCountAfter, UndoPaths::HistoryLastOperationRedoAfter); }},
+            {UndoPaths::HistoryLastOperationBytesBefore, [&] { return assign(op.bytesBefore, UndoPaths::HistoryLastOperationBytesBefore); }},
+            {UndoPaths::HistoryLastOperationBytesAfter, [&] { return assign(op.bytesAfter, UndoPaths::HistoryLastOperationBytesAfter); }},
+            {UndoPaths::HistoryLastOperationMessage, [&] { return assign(op.message, UndoPaths::HistoryLastOperationMessage); }},
+        }};
+        for (auto const& handler : operationHandlers) {
+            if (relativePath == handler.path) {
+                return handler.apply();
+            }
+        }
+    }
+
+    if (relativePath.starts_with(UndoPaths::HistoryUnsupportedRecentPrefix)) {
+        auto parseIndex = [](std::string_view value) -> std::optional<std::size_t> {
+            std::size_t index = 0;
+            auto        begin = value.data();
+            auto        end   = value.data() + value.size();
+            auto        res   = std::from_chars(begin, end, index);
+            if (res.ec != std::errc{} || res.ptr != end) {
+                return std::nullopt;
+            }
+            return index;
+        };
+
+        std::string_view suffix =
+            std::string_view(relativePath).substr(UndoPaths::HistoryUnsupportedRecentPrefix.size());
+        auto slash = suffix.find('/');
+        auto indexView = suffix.substr(0, slash);
+        auto indexOpt  = parseIndex(indexView);
+        if (!indexOpt) {
+            return Error{Error::Code::InvalidPath, "Unsupported history record index"};
+        }
+        auto index = *indexOpt;
+        if (index >= stats.unsupported.recent.size()) {
+            return Error{Error::Code::NoObjectFound, "Unsupported history record not found"};
+        }
+        auto const& record = stats.unsupported.recent[index];
+        if (slash == std::string_view::npos) {
+            return assign(record, relativePath);
+        }
+        auto field = suffix.substr(slash + 1);
+        if (field == "path") {
+            return assign(record.path, relativePath);
+        }
+        if (field == "reason") {
+            return assign(record.reason, relativePath);
+        }
+        if (field == "occurrences") {
+            return assign(record.occurrences, relativePath);
+        }
+        if (field == "timestampMs") {
+            return assign(record.lastTimestampMs, relativePath);
+        }
+    }
+
+    return Error{Error::Code::NotFound,
+                 std::string("Unsupported history telemetry path: ") + relativePath};
 }
 
 } // namespace SP::History

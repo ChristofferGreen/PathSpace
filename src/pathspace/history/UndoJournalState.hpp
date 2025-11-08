@@ -21,6 +21,8 @@ public:
         std::size_t undoCount       = 0;
         std::size_t redoCount       = 0;
         std::size_t totalBytes      = 0;
+        std::size_t undoBytes       = 0;
+        std::size_t redoBytes       = 0;
         std::size_t trimmedEntries  = 0;
         std::size_t trimmedBytes    = 0;
     };

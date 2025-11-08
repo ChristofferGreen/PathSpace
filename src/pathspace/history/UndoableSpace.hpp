@@ -281,11 +281,17 @@ private:
     auto handleJournalControlInsert(MatchedJournalRoot const& matchedRoot,
                                     std::string const& command,
                                     InputData const& data) -> InsertReturn;
+    auto readHistoryStatsValue(HistoryStats const& stats,
+                               std::optional<std::size_t> headGeneration,
+                               std::string const& relativePath,
+                               InputMetadata const& metadata,
+                               void* obj) const -> std::optional<Error>;
     auto interpretSteps(InputData const& data) const -> std::size_t;
 
     auto resolveRootNode() -> Node*;
     static auto computeTotalBytesLocked(RootState const& state) -> std::size_t;
     auto gatherStatsLocked(RootState const& state) const -> HistoryStats;
+    auto gatherJournalStatsLocked(UndoJournalRootState const& state) const -> HistoryStats;
     void recordOperation(RootState& state,
                          std::string_view type,
                          std::chrono::steady_clock::duration duration,
@@ -300,6 +306,10 @@ private:
                           std::string const& relativePath,
                           InputMetadata const& metadata,
                           void* obj) -> std::optional<Error>;
+    auto readJournalHistoryValue(MatchedJournalRoot const& matchedRoot,
+                                 std::string const& relativePath,
+                                 InputMetadata const& metadata,
+                                 void* obj) -> std::optional<Error>;
     void recordUnsupportedPayloadLocked(RootState& state,
                                         std::string const& path,
                                         std::string const& reason);

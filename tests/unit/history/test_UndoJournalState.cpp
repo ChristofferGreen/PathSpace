@@ -56,6 +56,9 @@ TEST_SUITE("UndoJournalState") {
         REQUIRE(redone.has_value());
         CHECK(redone->get().sequence == 2);
         CHECK_FALSE(state.canRedo());
+
+        auto stats = state.stats();
+        CHECK(stats.undoBytes + stats.redoBytes == stats.totalBytes);
     }
 
     TEST_CASE("append clears redo tail") {
@@ -111,6 +114,7 @@ TEST_SUITE("UndoJournalState") {
         auto stats = state.stats();
         CHECK(stats.totalEntries == state.size());
         CHECK(stats.trimmedEntries >= 1);
+        CHECK(stats.undoBytes + stats.redoBytes == stats.totalBytes);
     }
 
     TEST_CASE("append can defer retention when requested") {
@@ -130,6 +134,7 @@ TEST_SUITE("UndoJournalState") {
         CHECK(statsAfter.trimmedEntries >= 1);
         CHECK(state.size() == 1);
         CHECK(state.entryAt(0).sequence == 2);
+        CHECK(statsAfter.undoBytes + statsAfter.redoBytes == statsAfter.totalBytes);
     }
 
     TEST_CASE("cursor stays aligned after retention") {
