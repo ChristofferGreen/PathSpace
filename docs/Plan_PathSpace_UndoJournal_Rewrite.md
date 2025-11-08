@@ -37,7 +37,9 @@
 - [x] Implement in-memory `JournalState` with append, undo, redo, retention, and cursor management APIs.
   - `src/pathspace/history/UndoJournalState.hpp`/`.cpp` track applied vs. redo cursors, expose peek/undo/redo helpers, and enforce configurable retention limits by entry count and estimated byte usage while accumulating trim metrics.
   - `tests/unit/history/test_UndoJournalState.cpp` exercises append/undo/redo flows, redo truncation on new writes, entry- and byte-based retention, and cursor stability after trims to guard core invariants.
-- [ ] Add lightweight persistence helpers: append-only writer, compaction routine, and recovery replay into a provided functor (no `UndoableSpace` wiring yet).
+- [x] Add lightweight persistence helpers: append-only writer, compaction routine, and recovery replay into a provided functor (no `UndoableSpace` wiring yet).
+  - `src/pathspace/history/UndoJournalPersistence.hpp`/`.cpp` expose `JournalFileWriter`, `replayJournal`, and `compactJournal`, backing storage with a length-prefixed append-only format and optional fsync hooks.
+  - `tests/unit/history/test_UndoJournalPersistence.cpp` covers append/reopen flows, compaction against selected entries, and truncated log detection to ensure recovery surfaces file corruption.
 - [ ] Unit-test `JournalState` in isolation (append/undo/redo/retention, round-trip serialization).
 
 ### Phase 2 — Integrate with UndoableSpace

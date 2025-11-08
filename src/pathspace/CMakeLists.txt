@@ -59,6 +59,7 @@ add_library(PathSpace
     history/UndoHistoryMetadata.cpp
     history/UndoJournalEntry.cpp
     history/UndoJournalState.cpp
+    history/UndoJournalPersistence.cpp
     history/UndoSnapshotCodec.cpp
     history/UndoSavefileCodec.cpp
     history/UndoableSpace.cpp
