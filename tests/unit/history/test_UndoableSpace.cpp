@@ -502,6 +502,51 @@ TEST_CASE("persistence restores state and undo history") {
     std::filesystem::remove_all(tempRoot, ec);
 }
 
+TEST_CASE("journal persistence replays entries on enable") {
+    auto tempRoot = std::filesystem::temp_directory_path() / "undoable_space_journal_persist_test";
+    std::error_code ec;
+    std::filesystem::remove_all(tempRoot, ec);
+
+    HistoryOptions defaults;
+    defaults.persistHistory       = true;
+    defaults.persistenceRoot      = tempRoot.string();
+    defaults.persistenceNamespace = "journal_suite";
+    defaults.useMutationJournal   = true;
+
+    {
+        auto space = makeUndoableSpace(defaults);
+        REQUIRE(space);
+        REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+
+        REQUIRE(space->insert("/doc/value", std::string{"alpha"}).errors.empty());
+        REQUIRE(space->insert("/doc/value", std::string{"beta"}).errors.empty());
+
+        auto current = space->read<std::string>("/doc/value");
+        REQUIRE(current.has_value());
+        CHECK(*current == std::string{"beta"});
+    }
+
+    auto reloaded = makeUndoableSpace(defaults);
+    REQUIRE(reloaded);
+    REQUIRE(reloaded->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+
+    auto reloadedValue = reloaded->read<std::string>("/doc/value");
+    REQUIRE(reloadedValue.has_value());
+    CHECK(*reloadedValue == std::string{"beta"});
+
+    REQUIRE(reloaded->undo(ConcretePathStringView{"/doc"}).has_value());
+    auto afterUndo = reloaded->read<std::string>("/doc/value");
+    REQUIRE(afterUndo.has_value());
+    CHECK(*afterUndo == std::string{"alpha"});
+
+    REQUIRE(reloaded->redo(ConcretePathStringView{"/doc"}).has_value());
+    auto afterRedo = reloaded->read<std::string>("/doc/value");
+    REQUIRE(afterRedo.has_value());
+    CHECK(*afterRedo == std::string{"beta"});
+
+    std::filesystem::remove_all(tempRoot, ec);
+}
+
 TEST_CASE("savefile export import roundtrip retains history") {
     auto savePath = std::filesystem::temp_directory_path() / "undoable_space_savefile.bin";
     std::error_code removeEc;

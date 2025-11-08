@@ -191,20 +191,12 @@ auto UndoableSpace::enableHistory(ConcretePathStringView root, HistoryOptions op
         state->persistenceEnabled = state->options.persistHistory;
         if (state->persistenceEnabled) {
             state->encodedRoot  = encodeRootForPersistence(state->rootPath);
-            auto baseRoot       = persistenceRootPath(state->options);
-            auto nsDir          = state->options.persistenceNamespace.empty()
-                                      ? std::filesystem::path(spaceUuid)
-                                      : std::filesystem::path(state->options.persistenceNamespace);
-            state->persistencePath = baseRoot / nsDir / state->encodedRoot;
-            state->journalPath     = state->persistencePath / "journal.log";
-
-            std::error_code ec;
-            std::filesystem::create_directories(state->persistencePath, ec);
-            if (ec) {
-                return std::unexpected(
-                    Error{Error::Code::UnknownError,
-                          "Failed to create journal persistence directories"});
-            }
+            auto setup = ensureJournalPersistenceSetup(*state);
+            if (!setup)
+                return std::unexpected(setup.error());
+            auto load = loadJournalPersistence(*state);
+            if (!load)
+                return std::unexpected(load.error());
         }
 
         {

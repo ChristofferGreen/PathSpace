@@ -544,6 +544,7 @@ auto UndoableSpace::commitJournalTransaction(UndoJournalRootState& state) -> Exp
                                        std::chrono::steady_clock::now().time_since_epoch())
                                        .count());
 
+    bool flushOnCommit = !state.options.manualGarbageCollect;
     for (std::size_t i = 0; i < pendingEntries.size(); ++i) {
         auto& entry = pendingEntries[i];
         if (entry.timestampMs == 0) {
@@ -556,7 +557,8 @@ auto UndoableSpace::commitJournalTransaction(UndoJournalRootState& state) -> Exp
         auto enforceRetention = !state.options.manualGarbageCollect;
         state.journal.append(entry, enforceRetention);
         if (state.persistenceEnabled) {
-            if (auto append = state.persistenceWriter->append(entry, false); !append) {
+            bool fsyncThisEntry = flushOnCommit && (i + 1 == pendingEntries.size());
+            if (auto append = state.persistenceWriter->append(entry, fsyncThisEntry); !append) {
                 scope.setResult(false, append.error().message.value_or("append_failed"));
                 return append;
             }
@@ -586,8 +588,21 @@ auto UndoableSpace::commitJournalTransaction(UndoJournalRootState& state) -> Exp
         resultMessage = "trimmed=" + std::to_string(trimmedEntriesDelta);
     }
 
+    if (state.persistenceEnabled) {
+        if (trimmedEntriesDelta > 0) {
+            auto compact = compactJournalPersistence(
+                state, !state.options.manualGarbageCollect);
+            if (!compact)
+                return compact;
+        }
+        updateJournalDiskTelemetry(state);
+    }
+
     state.stateDirty       = true;
-    state.persistenceDirty = state.persistenceDirty || state.persistenceEnabled;
+    if (state.persistenceEnabled) {
+        state.persistenceDirty           = state.options.manualGarbageCollect;
+        state.telemetry.persistenceDirty = state.persistenceDirty;
+    }
     scope.setResult(true, resultMessage);
     return {};
 }

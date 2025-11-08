@@ -317,6 +317,10 @@ private:
                                          std::string const& path,
                                          std::string const& reason);
     auto ensureEntriesDirectory(RootState& state) -> Expected<void>;
+    auto ensureJournalPersistenceSetup(UndoJournalRootState& state) -> Expected<void>;
+    auto loadJournalPersistence(UndoJournalRootState& state) -> Expected<void>;
+    auto compactJournalPersistence(UndoJournalRootState& state, bool fsync) -> Expected<void>;
+    void updateJournalDiskTelemetry(UndoJournalRootState& state);
     static auto commitAndDeactivate(UndoableSpace* owner,
                                     std::shared_ptr<RootState>& state,
                                     bool& active) -> Expected<void>;

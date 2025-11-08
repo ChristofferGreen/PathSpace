@@ -1,6 +1,7 @@
 #include "history/UndoableSpace.hpp"
 
 #include "history/UndoSnapshotCodec.hpp"
+#include "history/UndoJournalPersistence.hpp"
 #include "history/UndoHistoryMetadata.hpp"
 #include "history/UndoHistoryUtils.hpp"
 #include "history/UndoableSpaceState.hpp"
@@ -26,6 +27,7 @@ using SP::History::Detail::forEachHistoryStack;
 namespace UndoUtilsAlias    = SP::History::UndoUtils;
 namespace UndoMetadata      = SP::History::UndoMetadata;
 namespace UndoSnapshotCodec = SP::History::UndoSnapshotCodec;
+namespace UndoJournal       = SP::History::UndoJournal;
 
 } // namespace
 
@@ -39,6 +41,159 @@ auto UndoableSpace::ensureEntriesDirectory(RootState& state) -> Expected<void> {
             Error{Error::Code::UnknownError, "Failed to create persistence directories"});
     }
     return {};
+}
+
+auto UndoableSpace::ensureJournalPersistenceSetup(UndoJournalRootState& state) -> Expected<void> {
+    if (!state.persistenceEnabled)
+        return {};
+
+    if (state.encodedRoot.empty()) {
+        state.encodedRoot = encodeRootForPersistence(state.rootPath);
+    }
+
+    auto baseRoot = persistenceRootPath(state.options);
+    auto nsDir    = state.options.persistenceNamespace.empty() ? std::filesystem::path(spaceUuid)
+                                                               : std::filesystem::path(state.options.persistenceNamespace);
+
+    state.persistencePath = baseRoot / nsDir / state.encodedRoot;
+    state.journalPath     = state.persistencePath / "journal.log";
+
+    std::error_code ec;
+    std::filesystem::create_directories(state.persistencePath, ec);
+    if (ec) {
+        return std::unexpected(
+            Error{Error::Code::UnknownError,
+                  "Failed to create journal persistence directories"});
+    }
+
+    state.persistenceDirty             = false;
+    state.telemetry.persistenceDirty   = false;
+
+    return {};
+}
+
+auto UndoableSpace::loadJournalPersistence(UndoJournalRootState& state) -> Expected<void> {
+    if (!state.persistenceEnabled)
+        return {};
+
+    std::vector<UndoJournal::JournalEntry> entries;
+    auto replay = UndoJournal::replayJournal(
+        state.journalPath,
+        [&](UndoJournal::JournalEntry&& entry) -> Expected<void> {
+            entries.push_back(std::move(entry));
+            return Expected<void>{};
+        });
+
+    if (!replay) {
+        if (replay.error().code == Error::Code::NotFound) {
+            std::scoped_lock lock(state.mutex);
+            state.journal.clear();
+            state.nextSequence                 = 0;
+            state.telemetry.cachedUndo         = 0;
+            state.telemetry.cachedRedo         = 0;
+            state.telemetry.undoBytes          = 0;
+            state.telemetry.redoBytes          = 0;
+            state.telemetry.trimmedEntries     = 0;
+            state.telemetry.trimmedBytes       = 0;
+            state.telemetry.trimOperations     = 0;
+            state.persistenceDirty             = false;
+            state.telemetry.persistenceDirty   = false;
+            updateJournalDiskTelemetry(state);
+            return {};
+        }
+        return std::unexpected(replay.error());
+    }
+
+    std::unique_lock lock(state.mutex);
+    state.journal.clear();
+
+    std::uint64_t maxSequence  = 0;
+    bool          sequenceSeen = false;
+
+    for (auto& entry : entries) {
+        maxSequence = std::max(maxSequence, entry.sequence);
+        sequenceSeen = sequenceSeen || (entry.sequence != 0);
+
+        std::optional<NodeData> payload;
+        if (entry.value.present) {
+            auto decoded = UndoJournal::decodeNodeDataPayload(entry.value);
+            if (!decoded)
+                return std::unexpected(decoded.error());
+            payload = std::move(decoded.value());
+        }
+
+        auto relativeExpected = parseJournalRelativeComponents(state, entry.path);
+        if (!relativeExpected)
+            return std::unexpected(relativeExpected.error());
+        auto relativeComponents = std::move(relativeExpected.value());
+
+        auto applyResult = applyJournalNodeData(state, relativeComponents, payload);
+        if (!applyResult)
+            return applyResult;
+
+        state.journal.append(entry, false);
+    }
+
+    state.journal.setRetentionPolicy(state.journal.policy());
+
+    auto stats = state.journal.stats();
+    state.telemetry.cachedUndo     = stats.undoCount;
+    state.telemetry.cachedRedo     = stats.redoCount;
+    state.telemetry.undoBytes      = stats.undoBytes;
+    state.telemetry.redoBytes      = stats.redoBytes;
+    state.telemetry.trimmedEntries = stats.trimmedEntries;
+    state.telemetry.trimmedBytes   = stats.trimmedBytes;
+    if (stats.trimmedEntries == 0) {
+        state.telemetry.trimOperations = 0;
+    }
+
+    state.nextSequence = sequenceSeen ? maxSequence + 1
+                                      : static_cast<std::uint64_t>(entries.size());
+
+    state.persistenceDirty             = false;
+    state.telemetry.persistenceDirty   = false;
+    lock.unlock();
+
+    updateJournalDiskTelemetry(state);
+    return {};
+}
+
+auto UndoableSpace::compactJournalPersistence(UndoJournalRootState& state, bool fsync) -> Expected<void> {
+    if (!state.persistenceEnabled)
+        return {};
+
+    if (state.persistenceWriter) {
+        if (auto flush = state.persistenceWriter->flush(); !flush)
+            return flush;
+        state.persistenceWriter.reset();
+    }
+
+    std::vector<UndoJournal::JournalEntry> entries;
+    entries.reserve(state.journal.size());
+    for (std::size_t i = 0; i < state.journal.size(); ++i) {
+        entries.push_back(state.journal.entryAt(i));
+    }
+
+    std::span<UndoJournal::JournalEntry const> span(entries.data(), entries.size());
+    auto compact = UndoJournal::compactJournal(state.journalPath, span, fsync);
+    if (!compact)
+        return compact;
+
+    state.persistenceDirty             = false;
+    state.telemetry.persistenceDirty   = false;
+    updateJournalDiskTelemetry(state);
+    return {};
+}
+
+void UndoableSpace::updateJournalDiskTelemetry(UndoJournalRootState& state) {
+    if (!state.persistenceEnabled) {
+        state.telemetry.diskBytes   = 0;
+        state.telemetry.diskEntries = state.journal.size();
+        return;
+    }
+    state.telemetry.diskBytes   =
+        static_cast<std::size_t>(UndoUtilsAlias::fileSizeOrZero(state.journalPath));
+    state.telemetry.diskEntries = state.journal.size();
 }
 
 auto UndoableSpace::ensurePersistenceSetup(RootState& state) -> Expected<void> {

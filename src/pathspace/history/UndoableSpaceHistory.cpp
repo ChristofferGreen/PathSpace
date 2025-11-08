@@ -994,8 +994,33 @@ auto UndoableSpace::handleJournalControlInsert(MatchedJournalRoot const& matched
             state->telemetry.lastTrimTimestamp = now;
         }
 
+        bool compactFailed = false;
+        if (state->persistenceEnabled) {
+            if (trimmedEntries > 0) {
+                auto compact = compactJournalPersistence(
+                    *state, true);
+                if (!compact) {
+                    ret.errors.push_back(compact.error());
+                    compactFailed = true;
+                } else {
+                    state->persistenceDirty           = false;
+                    state->telemetry.persistenceDirty = false;
+                }
+            } else {
+                updateJournalDiskTelemetry(*state);
+                state->persistenceDirty           = false;
+                state->telemetry.persistenceDirty = false;
+            }
+        }
+        if (state->persistenceEnabled) {
+            updateJournalDiskTelemetry(*state);
+        }
+
         state->stateDirty       = true;
-        state->persistenceDirty = state->persistenceDirty || state->persistenceEnabled;
+        if (state->persistenceEnabled && compactFailed) {
+            state->persistenceDirty           = true;
+            state->telemetry.persistenceDirty = true;
+        }
         return ret;
     }
     if (command == UndoPaths::CommandSetManualGc) {
