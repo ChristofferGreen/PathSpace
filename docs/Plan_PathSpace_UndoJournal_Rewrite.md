@@ -40,7 +40,8 @@
 - [x] Add lightweight persistence helpers: append-only writer, compaction routine, and recovery replay into a provided functor (no `UndoableSpace` wiring yet).
   - `src/pathspace/history/UndoJournalPersistence.hpp`/`.cpp` expose `JournalFileWriter`, `replayJournal`, and `compactJournal`, backing storage with a length-prefixed append-only format and optional fsync hooks.
   - `tests/unit/history/test_UndoJournalPersistence.cpp` covers append/reopen flows, compaction against selected entries, and truncated log detection to ensure recovery surfaces file corruption.
-- [ ] Unit-test `JournalState` in isolation (append/undo/redo/retention, round-trip serialization).
+- [x] Unit-test `JournalState` in isolation (append/undo/redo/retention, round-trip serialization).
+  - `tests/unit/history/test_UndoJournalState.cpp` now validates serialization/deserialize round-trips alongside undo/redo coverage, ensuring in-memory state can be reconstructed from encoded journal entries.
 
 ### Phase 2 — Integrate with UndoableSpace
 - [ ] Introduce a transitional `UndoJournalRootState` alongside existing `RootState`; wire feature flags to opt into the journal while keeping snapshot paths alive.

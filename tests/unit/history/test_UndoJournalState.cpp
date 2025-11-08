@@ -1,8 +1,10 @@
+#include "history/UndoJournalEntry.hpp"
 #include "history/UndoJournalState.hpp"
 
 #include "third_party/doctest.h"
 
 #include <cstdint>
+#include <span>
 #include <string>
 
 using namespace SP::History::UndoJournal;
@@ -131,5 +133,42 @@ TEST_SUITE("UndoJournalState") {
         auto undoAfterTrim = state.undo();
         REQUIRE(undoAfterTrim.has_value());
         CHECK(undoAfterTrim->get().sequence == 5);
+    }
+
+    TEST_CASE("serialization round-trips journal entries") {
+        JournalState state;
+        state.append(makeEntry(1, "a"));
+        state.append(makeEntry(2, "b"));
+        state.append(makeEntry(3, "c"));
+
+        std::vector<std::vector<std::byte>> serialized;
+        serialized.reserve(state.size());
+
+        for (std::size_t i = 0; i < state.size(); ++i) {
+            auto encoded = serializeEntry(state.entryAt(i));
+            REQUIRE(encoded.has_value());
+            serialized.push_back(std::move(encoded.value()));
+        }
+
+        JournalState restored;
+        for (auto const& buffer : serialized) {
+            auto decoded = deserializeEntry(std::span<const std::byte>{buffer.data(), buffer.size()});
+            REQUIRE(decoded.has_value());
+            restored.append(std::move(decoded.value()));
+        }
+
+        CHECK(restored.size() == state.size());
+        CHECK(restored.stats().undoCount == restored.size());
+        for (std::size_t i = 0; i < restored.size(); ++i) {
+            CHECK(restored.entryAt(i).sequence == state.entryAt(i).sequence);
+            CHECK(restored.entryAt(i).path == state.entryAt(i).path);
+        }
+
+        auto undo = restored.undo();
+        REQUIRE(undo.has_value());
+        CHECK(undo->get().sequence == 3);
+        auto redo = restored.redo();
+        REQUIRE(redo.has_value());
+        CHECK(redo->get().sequence == 3);
     }
 }
