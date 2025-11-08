@@ -405,3 +405,4 @@ Next:
 - Plan for future GPU backend work without blocking MVP—keep interfaces abstract and avoid hard-coding software assumptions.
 - Establish guardrails for progressive mode defaults to avoid regressing latency-sensitive apps.
 - Respect residency policies and track resource lifecycle metrics so caches stay healthy.
+- ✅ (November 8, 2025) Introduced text input widgets: `Widgets::CreateTextField` and `CreateTextArea` now publish sanitized metadata (style, state, footprint) plus focus-aware state scenes, and the renderer bucket helpers draw background/border, selection spans, composition overlays, and caret pulses. Widget bindings enqueue `Text*` ops with payload/cursor metadata, schedule auto-render, and integrate with focus/dirty tracking. Tests cover creation snapshots and metadata persistence; follow-on work tracks full input plumbing and demo wiring.

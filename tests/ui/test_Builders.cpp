@@ -3113,6 +3113,111 @@ TEST_CASE("Widgets::CreateList publishes snapshot and metadata") {
     CHECK(revision->revision != 0);
 }
 
+TEST_CASE("Widgets::CreateTextField publishes snapshot and metadata") {
+    BuildersFixture fx;
+
+    Widgets::TextFieldParams params{};
+    params.name = "username";
+    params.style.width = 280.0f;
+    params.style.height = 52.0f;
+    params.style.padding_x = 16.0f;
+    params.style.padding_y = 14.0f;
+    params.state.text = "guest";
+    params.state.cursor = 5;
+    params.state.selection_start = 1;
+    params.state.selection_end = 3;
+
+    auto created = Widgets::CreateTextField(fx.space, fx.root_view(), params);
+    REQUIRE(created);
+
+    auto state = read_value<Widgets::TextFieldState>(fx.space, created->state.getPath());
+    REQUIRE(state);
+    CHECK(state->text == "guest");
+    CHECK(state->cursor == 5);
+    CHECK(state->selection_start == 1);
+    CHECK(state->selection_end == 3);
+    CHECK(state->focused == params.state.focused);
+
+    auto stylePath = std::string(created->root.getPath()) + "/meta/style";
+    auto storedStyle = read_value<Widgets::TextFieldStyle>(fx.space, stylePath);
+    REQUIRE(storedStyle);
+    CHECK(storedStyle->width >= 280.0f);
+    CHECK(storedStyle->height >= params.style.height);
+    CHECK(storedStyle->padding_x == doctest::Approx(16.0f));
+
+    auto footprint = read_value<DirtyRectHint>(fx.space,
+                                               std::string(created->root.getPath()) + "/meta/footprint");
+    REQUIRE(footprint);
+    CHECK(footprint->max_x > footprint->min_x);
+    CHECK(footprint->max_y > footprint->min_y);
+
+    auto ensure_state_scene = [&](SP::UI::Builders::ScenePath const& scene) {
+        auto rev = Scene::ReadCurrentRevision(fx.space, scene);
+        REQUIRE(rev);
+        CHECK(rev->revision > 0);
+    };
+    ensure_state_scene(created->states.idle);
+    ensure_state_scene(created->states.hover);
+    ensure_state_scene(created->states.pressed);
+    ensure_state_scene(created->states.disabled);
+
+    auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    REQUIRE(revision);
+    CHECK(revision->revision != 0);
+}
+
+TEST_CASE("Widgets::CreateTextArea publishes snapshot and metadata") {
+    BuildersFixture fx;
+
+    Widgets::TextAreaParams params{};
+    params.name = "notes";
+    params.style.width = 360.0f;
+    params.style.height = 240.0f;
+    params.style.line_spacing = 4.0f;
+    params.state.text = "Line 1\nLine 2";
+    params.state.cursor = 7;
+    params.state.selection_start = 0;
+    params.state.selection_end = 5;
+    params.state.scroll_y = 12.0f;
+
+    auto created = Widgets::CreateTextArea(fx.space, fx.root_view(), params);
+    REQUIRE(created);
+
+    auto state = read_value<Widgets::TextAreaState>(fx.space, created->state.getPath());
+    REQUIRE(state);
+    CHECK(state->text == "Line 1\nLine 2");
+    CHECK(state->cursor == 7);
+    CHECK(state->selection_end == 5);
+    CHECK(state->scroll_y == doctest::Approx(12.0f));
+
+    auto stylePath = std::string(created->root.getPath()) + "/meta/style";
+    auto storedStyle = read_value<Widgets::TextAreaStyle>(fx.space, stylePath);
+    REQUIRE(storedStyle);
+    CHECK(storedStyle->width >= 360.0f);
+    CHECK(storedStyle->height >= 240.0f);
+    CHECK(storedStyle->line_spacing == doctest::Approx(4.0f));
+
+    auto footprint = read_value<DirtyRectHint>(fx.space,
+                                               std::string(created->root.getPath()) + "/meta/footprint");
+    REQUIRE(footprint);
+    CHECK(footprint->max_x > footprint->min_x);
+    CHECK(footprint->max_y > footprint->min_y);
+
+    auto ensure_state_scene = [&](SP::UI::Builders::ScenePath const& scene) {
+        auto rev = Scene::ReadCurrentRevision(fx.space, scene);
+        REQUIRE(rev);
+        CHECK(rev->revision > 0);
+    };
+    ensure_state_scene(created->states.idle);
+    ensure_state_scene(created->states.hover);
+    ensure_state_scene(created->states.pressed);
+    ensure_state_scene(created->states.disabled);
+
+    auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    REQUIRE(revision);
+    CHECK(revision->revision != 0);
+}
+
 TEST_CASE("Widgets::BuildButtonPreview provides canonical authoring ids and highlight control") {
     Widgets::ButtonStyle style{};
     style.width = 180.0f;

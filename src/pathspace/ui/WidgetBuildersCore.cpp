@@ -610,6 +610,105 @@ auto CreateTree(PathSpace& space,
     return paths;
 }
 
+auto CreateTextField(PathSpace& space,
+                     AppRootPathView appRoot,
+                     Widgets::TextFieldParams const& params) -> SP::Expected<Widgets::TextFieldPaths> {
+    if (auto status = ensure_identifier(params.name, "widget name"); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto widgetRoot = combine_relative(appRoot, std::string("widgets/") + params.name);
+    if (!widgetRoot) {
+        return std::unexpected(widgetRoot.error());
+    }
+
+    auto style = sanitize_text_field_style(params.style);
+    auto state = sanitize_text_field_state(params.state, style);
+    if (auto status = write_text_field_metadata(space,
+                                                widgetRoot->getPath(),
+                                                state,
+                                                style); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto scenePath = ensure_text_field_scene(space, appRoot, params.name);
+    if (!scenePath) {
+        return std::unexpected(scenePath.error());
+    }
+
+    auto stateScenes = publish_text_field_state_scenes(space,
+                                                       appRoot,
+                                                       params.name,
+                                                       style,
+                                                       state);
+    if (!stateScenes) {
+        return std::unexpected(stateScenes.error());
+    }
+
+    auto bucket = build_text_field_bucket(style, state, widgetRoot->getPath());
+    if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
+        return std::unexpected(status.error());
+    }
+
+    Widgets::TextFieldPaths paths{
+        .scene = *scenePath,
+        .states = *stateScenes,
+        .root = WidgetPath{widgetRoot->getPath()},
+        .state = ConcretePath{widgetRoot->getPath() + "/state"},
+    };
+    return paths;
+}
+
+auto CreateTextArea(PathSpace& space,
+                    AppRootPathView appRoot,
+                    Widgets::TextAreaParams const& params) -> SP::Expected<Widgets::TextAreaPaths> {
+    if (auto status = ensure_identifier(params.name, "widget name"); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto widgetRoot = combine_relative(appRoot, std::string("widgets/") + params.name);
+    if (!widgetRoot) {
+        return std::unexpected(widgetRoot.error());
+    }
+
+    auto style = sanitize_text_area_style(params.style);
+    auto state = sanitize_text_area_state(params.state, style);
+
+    if (auto status = write_text_area_metadata(space,
+                                               widgetRoot->getPath(),
+                                               state,
+                                               style); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto scenePath = ensure_text_area_scene(space, appRoot, params.name);
+    if (!scenePath) {
+        return std::unexpected(scenePath.error());
+    }
+
+    auto stateScenes = publish_text_area_state_scenes(space,
+                                                      appRoot,
+                                                      params.name,
+                                                      style,
+                                                      state);
+    if (!stateScenes) {
+        return std::unexpected(stateScenes.error());
+    }
+
+    auto bucket = build_text_area_bucket(style, state, widgetRoot->getPath());
+    if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
+        return std::unexpected(status.error());
+    }
+
+    Widgets::TextAreaPaths paths{
+        .scene = *scenePath,
+        .states = *stateScenes,
+        .root = WidgetPath{widgetRoot->getPath()},
+        .state = ConcretePath{widgetRoot->getPath() + "/state"},
+    };
+    return paths;
+}
+
 auto UpdateButtonState(PathSpace& space,
                        Widgets::ButtonPaths const& paths,
                        Widgets::ButtonState const& new_state) -> SP::Expected<bool> {
@@ -1285,6 +1384,106 @@ auto UpdateTreeState(PathSpace& space,
     return true;
 }
 
+auto UpdateTextFieldState(PathSpace& space,
+                          Widgets::TextFieldPaths const& paths,
+                          Widgets::TextFieldState const& new_state) -> SP::Expected<bool> {
+    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto styleValue = space.read<Widgets::TextFieldStyle, std::string>(stylePath);
+    if (!styleValue) {
+        return std::unexpected(styleValue.error());
+    }
+
+    auto style = sanitize_text_field_style(*styleValue);
+    auto sanitized = sanitize_text_field_state(new_state, style);
+
+    auto statePath = std::string(paths.state.getPath());
+    auto current = read_optional<Widgets::TextFieldState>(space, statePath);
+    if (!current) {
+        return std::unexpected(current.error());
+    }
+
+    bool changed = !current->has_value() || !text_field_states_equal(**current, sanitized);
+    if (!changed) {
+        return false;
+    }
+
+    if (auto status = replace_single<Widgets::TextFieldState>(space, statePath, sanitized); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto appRootPath = derive_app_root_for(ConcretePathView{paths.root.getPath()});
+    if (!appRootPath) {
+        return std::unexpected(appRootPath.error());
+    }
+    auto appRootView = SP::App::AppRootPathView{appRootPath->getPath()};
+    auto pulsing = Focus::PulsingHighlightEnabled(space, appRootView);
+    if (!pulsing) {
+        return std::unexpected(pulsing.error());
+    }
+    auto bucket = build_text_field_bucket(style,
+                                          sanitized,
+                                          paths.root.getPath(),
+                                          *pulsing && sanitized.focused);
+    if (auto status = publish_scene_snapshot(space, appRootView, paths.scene, bucket); !status) {
+        return std::unexpected(status.error());
+    }
+
+    if (auto mark = Scene::MarkDirty(space, paths.scene, Scene::DirtyKind::Visual); !mark) {
+        return std::unexpected(mark.error());
+    }
+    return true;
+}
+
+auto UpdateTextAreaState(PathSpace& space,
+                         Widgets::TextAreaPaths const& paths,
+                         Widgets::TextAreaState const& new_state) -> SP::Expected<bool> {
+    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto styleValue = space.read<Widgets::TextAreaStyle, std::string>(stylePath);
+    if (!styleValue) {
+        return std::unexpected(styleValue.error());
+    }
+
+    auto style = sanitize_text_area_style(*styleValue);
+    auto sanitized = sanitize_text_area_state(new_state, style);
+
+    auto statePath = std::string(paths.state.getPath());
+    auto current = read_optional<Widgets::TextAreaState>(space, statePath);
+    if (!current) {
+        return std::unexpected(current.error());
+    }
+
+    bool changed = !current->has_value() || !text_area_states_equal(**current, sanitized);
+    if (!changed) {
+        return false;
+    }
+
+    if (auto status = replace_single<Widgets::TextAreaState>(space, statePath, sanitized); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto appRootPath = derive_app_root_for(ConcretePathView{paths.root.getPath()});
+    if (!appRootPath) {
+        return std::unexpected(appRootPath.error());
+    }
+    auto appRootView = SP::App::AppRootPathView{appRootPath->getPath()};
+    auto pulsing = Focus::PulsingHighlightEnabled(space, appRootView);
+    if (!pulsing) {
+        return std::unexpected(pulsing.error());
+    }
+    auto bucket = build_text_area_bucket(style,
+                                         sanitized,
+                                         paths.root.getPath(),
+                                         *pulsing && sanitized.focused);
+    if (auto status = publish_scene_snapshot(space, appRootView, paths.scene, bucket); !status) {
+        return std::unexpected(status.error());
+    }
+
+    if (auto mark = Scene::MarkDirty(space, paths.scene, Scene::DirtyKind::Visual); !mark) {
+        return std::unexpected(mark.error());
+    }
+    return true;
+}
+
 namespace {
 
 auto make_blue_theme() -> WidgetTheme {
@@ -1354,6 +1553,44 @@ auto make_blue_theme() -> WidgetTheme {
     theme.tree.label_typography.letter_spacing = 0.8f;
     theme.tree.label_typography.baseline_shift = 0.0f;
 
+    theme.text_field.width = 320.0f;
+    theme.text_field.height = 48.0f;
+    theme.text_field.corner_radius = 6.0f;
+    theme.text_field.border_thickness = 1.5f;
+    theme.text_field.background_color = {0.121f, 0.129f, 0.145f, 1.0f};
+    theme.text_field.border_color = {0.239f, 0.247f, 0.266f, 1.0f};
+    theme.text_field.text_color = {0.94f, 0.96f, 0.99f, 1.0f};
+    theme.text_field.placeholder_color = {0.58f, 0.60f, 0.66f, 1.0f};
+    theme.text_field.selection_color = {0.247f, 0.278f, 0.349f, 0.65f};
+    theme.text_field.composition_color = {0.353f, 0.388f, 0.458f, 0.55f};
+    theme.text_field.caret_color = {0.94f, 0.96f, 0.99f, 1.0f};
+    theme.text_field.padding_x = 14.0f;
+    theme.text_field.padding_y = 12.0f;
+    theme.text_field.typography.font_size = 24.0f;
+    theme.text_field.typography.line_height = 28.0f;
+    theme.text_field.typography.letter_spacing = 0.6f;
+    theme.text_field.typography.baseline_shift = 0.0f;
+
+    theme.text_area.width = 420.0f;
+    theme.text_area.height = 220.0f;
+    theme.text_area.corner_radius = 6.0f;
+    theme.text_area.border_thickness = 1.5f;
+    theme.text_area.background_color = {0.102f, 0.112f, 0.128f, 1.0f};
+    theme.text_area.border_color = {0.224f, 0.231f, 0.247f, 1.0f};
+    theme.text_area.text_color = {0.94f, 0.96f, 0.99f, 1.0f};
+    theme.text_area.placeholder_color = {0.58f, 0.60f, 0.66f, 1.0f};
+    theme.text_area.selection_color = {0.247f, 0.278f, 0.349f, 0.65f};
+    theme.text_area.composition_color = {0.353f, 0.388f, 0.458f, 0.55f};
+    theme.text_area.caret_color = {0.94f, 0.96f, 0.99f, 1.0f};
+    theme.text_area.padding_x = 14.0f;
+    theme.text_area.padding_y = 12.0f;
+    theme.text_area.min_height = 180.0f;
+    theme.text_area.line_spacing = 6.0f;
+    theme.text_area.typography.font_size = 22.0f;
+    theme.text_area.typography.line_height = 28.0f;
+    theme.text_area.typography.letter_spacing = 0.4f;
+    theme.text_area.typography.baseline_shift = 0.0f;
+
     theme.heading.font_size = 32.0f;
     theme.heading.line_height = 36.0f;
     theme.heading.letter_spacing = 1.0f;
@@ -1379,6 +1616,16 @@ auto make_orange_theme() -> WidgetTheme {
     theme.toggle.thumb_color = {0.996f, 0.949f, 0.902f, 1.0f};
     theme.slider.fill_color = {0.882f, 0.424f, 0.310f, 1.0f};
     theme.slider.thumb_color = {0.996f, 0.949f, 0.902f, 1.0f};
+    theme.text_field.background_color = {0.145f, 0.102f, 0.086f, 1.0f};
+    theme.text_field.border_color = {0.322f, 0.231f, 0.196f, 1.0f};
+    theme.text_field.selection_color = {0.690f, 0.361f, 0.259f, 0.65f};
+    theme.text_field.composition_color = {0.784f, 0.427f, 0.302f, 0.55f};
+    theme.text_field.caret_color = {0.996f, 0.949f, 0.902f, 1.0f};
+    theme.text_area.background_color = {0.132f, 0.090f, 0.075f, 1.0f};
+    theme.text_area.border_color = {0.302f, 0.212f, 0.184f, 1.0f};
+    theme.text_area.selection_color = {0.690f, 0.361f, 0.259f, 0.65f};
+    theme.text_area.composition_color = {0.784f, 0.427f, 0.302f, 0.55f};
+    theme.text_area.caret_color = {0.996f, 0.949f, 0.902f, 1.0f};
     theme.slider.label_color = {0.996f, 0.949f, 0.902f, 1.0f};
     theme.list.background_color = {0.215f, 0.128f, 0.102f, 1.0f};
     theme.list.border_color = {0.365f, 0.231f, 0.201f, 1.0f};
@@ -1759,6 +2006,14 @@ auto ApplyTheme(WidgetTheme const& theme, TreeParams& params) -> void {
     params.style = theme.tree;
 }
 
+auto ApplyTheme(WidgetTheme const& theme, TextFieldParams& params) -> void {
+    params.style = theme.text_field;
+}
+
+auto ApplyTheme(WidgetTheme const& theme, TextAreaParams& params) -> void {
+    params.style = theme.text_area;
+}
+
 namespace {
 
 auto widget_name_from_root(std::string const& app_root,
@@ -1806,6 +2061,12 @@ auto determine_widget_kind(PathSpace& space,
         }
         if (kind == "stack") {
             return WidgetKind::Stack;
+        }
+        if (kind == "text_field") {
+            return WidgetKind::TextField;
+        }
+        if (kind == "text_area") {
+            return WidgetKind::TextArea;
         }
     }
 
@@ -2009,9 +2270,9 @@ auto update_list_focus(PathSpace& space,
 }
 
 auto update_tree_focus(PathSpace& space,
-                       std::string const& widget_root,
-                       std::string const& app_root,
-                       bool focused) -> SP::Expected<bool> {
+                      std::string const& widget_root,
+                      std::string const& app_root,
+                      bool focused) -> SP::Expected<bool> {
     auto statePath = widget_root + "/state";
     auto stateValue = space.read<TreeState, std::string>(statePath);
     if (!stateValue) {
@@ -2071,6 +2332,72 @@ auto update_tree_focus(PathSpace& space,
     return *updated;
 }
 
+auto update_text_field_focus(PathSpace& space,
+                             std::string const& widget_root,
+                             std::string const& app_root,
+                             bool focused) -> SP::Expected<bool> {
+    auto statePath = widget_root + "/state";
+    auto stateValue = space.read<Widgets::TextFieldState, std::string>(statePath);
+    if (!stateValue) {
+        return std::unexpected(stateValue.error());
+    }
+
+    Widgets::TextFieldState desired = *stateValue;
+    desired.hovered = focused;
+    desired.focused = focused;
+
+    auto widget_name = widget_name_from_root(app_root, widget_root);
+    if (!widget_name) {
+        return std::unexpected(widget_name.error());
+    }
+    auto scenePath = widget_scene_path(app_root, *widget_name);
+    Widgets::TextFieldPaths paths{
+        .scene = ScenePath{scenePath},
+        .states = {},
+        .root = WidgetPath{widget_root},
+        .state = ConcretePath{statePath},
+    };
+
+    auto updated = Widgets::UpdateTextFieldState(space, paths, desired);
+    if (!updated) {
+        return std::unexpected(updated.error());
+    }
+    return *updated;
+}
+
+auto update_text_area_focus(PathSpace& space,
+                            std::string const& widget_root,
+                            std::string const& app_root,
+                            bool focused) -> SP::Expected<bool> {
+    auto statePath = widget_root + "/state";
+    auto stateValue = space.read<Widgets::TextAreaState, std::string>(statePath);
+    if (!stateValue) {
+        return std::unexpected(stateValue.error());
+    }
+
+    Widgets::TextAreaState desired = *stateValue;
+    desired.hovered = focused;
+    desired.focused = focused;
+
+    auto widget_name = widget_name_from_root(app_root, widget_root);
+    if (!widget_name) {
+        return std::unexpected(widget_name.error());
+    }
+    auto scenePath = widget_scene_path(app_root, *widget_name);
+    Widgets::TextAreaPaths paths{
+        .scene = ScenePath{scenePath},
+        .states = {},
+        .root = WidgetPath{widget_root},
+        .state = ConcretePath{statePath},
+    };
+
+    auto updated = Widgets::UpdateTextAreaState(space, paths, desired);
+    if (!updated) {
+        return std::unexpected(updated.error());
+    }
+    return *updated;
+}
+
 auto update_widget_focus(PathSpace& space,
                          std::string const& widget_root,
                          bool focused) -> SP::Expected<bool> {
@@ -2097,6 +2424,10 @@ auto update_widget_focus(PathSpace& space,
             return false;
         case WidgetKind::Tree:
             return update_tree_focus(space, widget_root, app_root, focused);
+        case WidgetKind::TextField:
+            return update_text_field_focus(space, widget_root, app_root, focused);
+        case WidgetKind::TextArea:
+            return update_text_area_focus(space, widget_root, app_root, focused);
     }
     return std::unexpected(make_error("unknown widget kind", SP::Error::Code::InvalidType));
 }

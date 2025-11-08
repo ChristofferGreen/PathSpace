@@ -5,3 +5,4 @@
 #include "WidgetDrawablesDetailList.inl"
 #include "WidgetDrawablesDetailStack.inl"
 #include "WidgetDrawablesDetailTree.inl"
+#include "WidgetDrawablesDetailText.inl"

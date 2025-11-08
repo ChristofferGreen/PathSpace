@@ -126,6 +126,12 @@ auto determine_widget_kind(PathSpace& space,
         if (kind == "stack") {
             return WidgetKind::Stack;
         }
+        if (kind == "text_field") {
+            return WidgetKind::TextField;
+        }
+        if (kind == "text_area") {
+            return WidgetKind::TextArea;
+        }
     }
 
     auto computedPath = rootPath + "/layout/computed";
@@ -174,6 +180,72 @@ auto determine_widget_kind(PathSpace& space,
     }
 
     return WidgetKind::Toggle;
+}
+
+auto update_text_field_focus(PathSpace& space,
+                             std::string const& widget_root,
+                             std::string const& app_root,
+                             bool focused) -> SP::Expected<bool> {
+    auto statePath = widget_root + "/state";
+    auto stateValue = space.read<Widgets::TextFieldState, std::string>(statePath);
+    if (!stateValue) {
+        return std::unexpected(stateValue.error());
+    }
+
+    Widgets::TextFieldState desired = *stateValue;
+    desired.hovered = focused;
+    desired.focused = focused;
+
+    auto widget_name = widget_name_from_root(app_root, widget_root);
+    if (!widget_name) {
+        return std::unexpected(widget_name.error());
+    }
+    auto scenePath = widget_scene_path(app_root, *widget_name);
+    Widgets::TextFieldPaths paths{
+        .scene = ScenePath{scenePath},
+        .states = {},
+        .root = WidgetPath{widget_root},
+        .state = ConcretePath{statePath},
+    };
+
+    auto updated = Widgets::UpdateTextFieldState(space, paths, desired);
+    if (!updated) {
+        return std::unexpected(updated.error());
+    }
+    return *updated;
+}
+
+auto update_text_area_focus(PathSpace& space,
+                            std::string const& widget_root,
+                            std::string const& app_root,
+                            bool focused) -> SP::Expected<bool> {
+    auto statePath = widget_root + "/state";
+    auto stateValue = space.read<Widgets::TextAreaState, std::string>(statePath);
+    if (!stateValue) {
+        return std::unexpected(stateValue.error());
+    }
+
+    Widgets::TextAreaState desired = *stateValue;
+    desired.hovered = focused;
+    desired.focused = focused;
+
+    auto widget_name = widget_name_from_root(app_root, widget_root);
+    if (!widget_name) {
+        return std::unexpected(widget_name.error());
+    }
+    auto scenePath = widget_scene_path(app_root, *widget_name);
+    Widgets::TextAreaPaths paths{
+        .scene = ScenePath{scenePath},
+        .states = {},
+        .root = WidgetPath{widget_root},
+        .state = ConcretePath{statePath},
+    };
+
+    auto updated = Widgets::UpdateTextAreaState(space, paths, desired);
+    if (!updated) {
+        return std::unexpected(updated.error());
+    }
+    return *updated;
 }
 
 auto update_button_focus(PathSpace& space,
@@ -407,6 +479,10 @@ auto update_widget_focus(PathSpace& space,
             return false;
         case WidgetKind::Tree:
             return update_tree_focus(space, widget_root, app_root, focused);
+        case WidgetKind::TextField:
+            return update_text_field_focus(space, widget_root, app_root, focused);
+        case WidgetKind::TextArea:
+            return update_text_area_focus(space, widget_root, app_root, focused);
     }
     return std::unexpected(make_error("unknown widget kind", SP::Error::Code::InvalidType));
 }

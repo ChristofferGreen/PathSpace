@@ -49,6 +49,18 @@ inline auto ensure_stack_scene(PathSpace& space,
     return ensure_widget_scene(space, appRoot, name, "Widget stack");
 }
 
+inline auto ensure_text_field_scene(PathSpace& space,
+                             AppRootPathView appRoot,
+                             std::string_view name) -> SP::Expected<ScenePath> {
+    return ensure_widget_scene(space, appRoot, name, "Widget text field");
+}
+
+inline auto ensure_text_area_scene(PathSpace& space,
+                            AppRootPathView appRoot,
+                            std::string_view name) -> SP::Expected<ScenePath> {
+    return ensure_widget_scene(space, appRoot, name, "Widget text area");
+}
+
 inline auto write_widget_kind(PathSpace& space,
                        std::string const& rootPath,
                        std::string_view kind) -> SP::Expected<void> {
@@ -198,6 +210,68 @@ inline auto write_stack_metadata(PathSpace& space,
 
     if (auto status = write_widget_kind(space, rootPath, "stack"); !status) {
         return status;
+    }
+    return {};
+}
+
+inline auto write_text_field_metadata(PathSpace& space,
+                               std::string const& rootPath,
+                               Widgets::TextFieldState const& state,
+                               Widgets::TextFieldStyle const& style) -> SP::Expected<void> {
+    auto sanitized_style = sanitize_text_field_style(style);
+    auto sanitized_state = sanitize_text_field_state(state, sanitized_style);
+
+    auto statePath = rootPath + "/state";
+    if (auto status = replace_single<Widgets::TextFieldState>(space, statePath, sanitized_state); !status) {
+        return status;
+    }
+
+    auto stylePath = rootPath + "/meta/style";
+    if (auto status = replace_single<Widgets::TextFieldStyle>(space, stylePath, sanitized_style); !status) {
+        return status;
+    }
+
+    if (auto status = write_widget_kind(space, rootPath, "text_field"); !status) {
+        return status;
+    }
+
+    auto footprintPath = rootPath + "/meta/footprint";
+    auto hint = text_input_dirty_hint(sanitized_style);
+    if (hint.max_x > hint.min_x && hint.max_y > hint.min_y) {
+        if (auto status = replace_single<DirtyRectHint>(space, footprintPath, hint); !status) {
+            return status;
+        }
+    }
+    return {};
+}
+
+inline auto write_text_area_metadata(PathSpace& space,
+                              std::string const& rootPath,
+                              Widgets::TextAreaState const& state,
+                              Widgets::TextAreaStyle const& style) -> SP::Expected<void> {
+    auto sanitized_style = sanitize_text_area_style(style);
+    auto sanitized_state = sanitize_text_area_state(state, sanitized_style);
+
+    auto statePath = rootPath + "/state";
+    if (auto status = replace_single<Widgets::TextAreaState>(space, statePath, sanitized_state); !status) {
+        return status;
+    }
+
+    auto stylePath = rootPath + "/meta/style";
+    if (auto status = replace_single<Widgets::TextAreaStyle>(space, stylePath, sanitized_style); !status) {
+        return status;
+    }
+
+    if (auto status = write_widget_kind(space, rootPath, "text_area"); !status) {
+        return status;
+    }
+
+    auto footprintPath = rootPath + "/meta/footprint";
+    auto hint = text_input_dirty_hint(sanitized_style);
+    if (hint.max_x > hint.min_x && hint.max_y > hint.min_y) {
+        if (auto status = replace_single<DirtyRectHint>(space, footprintPath, hint); !status) {
+            return status;
+        }
     }
     return {};
 }

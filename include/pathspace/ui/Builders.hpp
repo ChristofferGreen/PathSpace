@@ -1232,6 +1232,131 @@ auto DescribeStack(PathSpace const& space,
 auto ReadStackLayout(PathSpace const& space,
                      StackPaths const& paths) -> SP::Expected<StackLayoutState>;
 
+struct TextFieldStyle {
+    float width = 320.0f;
+    float height = 48.0f;
+    float corner_radius = 6.0f;
+    float border_thickness = 1.5f;
+    std::array<float, 4> background_color{0.121f, 0.129f, 0.145f, 1.0f};
+    std::array<float, 4> border_color{0.239f, 0.247f, 0.266f, 1.0f};
+    std::array<float, 4> text_color{0.94f, 0.96f, 0.99f, 1.0f};
+    std::array<float, 4> placeholder_color{0.58f, 0.60f, 0.66f, 1.0f};
+    std::array<float, 4> selection_color{0.247f, 0.278f, 0.349f, 0.65f};
+    std::array<float, 4> composition_color{0.353f, 0.388f, 0.458f, 0.55f};
+    std::array<float, 4> caret_color{0.94f, 0.96f, 0.99f, 1.0f};
+    float padding_x = 12.0f;
+    float padding_y = 10.0f;
+    TypographyStyle typography{
+        .font_size = 24.0f,
+        .line_height = 28.0f,
+        .letter_spacing = 0.5f,
+        .baseline_shift = 0.0f,
+    };
+    bool submit_on_enter = true;
+};
+
+struct TextAreaStyle {
+    float width = 320.0f;
+    float height = 180.0f;
+    float corner_radius = 6.0f;
+    float border_thickness = 1.5f;
+    std::array<float, 4> background_color{0.121f, 0.129f, 0.145f, 1.0f};
+    std::array<float, 4> border_color{0.239f, 0.247f, 0.266f, 1.0f};
+    std::array<float, 4> text_color{0.94f, 0.96f, 0.99f, 1.0f};
+    std::array<float, 4> placeholder_color{0.58f, 0.60f, 0.66f, 1.0f};
+    std::array<float, 4> selection_color{0.247f, 0.278f, 0.349f, 0.65f};
+    std::array<float, 4> composition_color{0.353f, 0.388f, 0.458f, 0.55f};
+    std::array<float, 4> caret_color{0.94f, 0.96f, 0.99f, 1.0f};
+    float padding_x = 12.0f;
+    float padding_y = 10.0f;
+    TypographyStyle typography{
+        .font_size = 24.0f,
+        .line_height = 28.0f,
+        .letter_spacing = 0.5f,
+        .baseline_shift = 0.0f,
+    };
+    float min_height = 160.0f;
+    float line_spacing = 6.0f;
+    bool wrap_lines = true;
+};
+
+struct TextFieldState {
+    bool enabled = true;
+    bool read_only = false;
+    bool hovered = false;
+    bool focused = false;
+    std::string text;
+    std::string placeholder;
+    std::uint32_t cursor = 0;
+    std::uint32_t selection_start = 0;
+    std::uint32_t selection_end = 0;
+    bool composition_active = false;
+    std::string composition_text;
+    std::uint32_t composition_start = 0;
+    std::uint32_t composition_end = 0;
+    bool submit_pending = false;
+};
+
+struct TextAreaState {
+    bool enabled = true;
+    bool read_only = false;
+    bool hovered = false;
+    bool focused = false;
+    std::string text;
+    std::string placeholder;
+    std::uint32_t cursor = 0;
+    std::uint32_t selection_start = 0;
+    std::uint32_t selection_end = 0;
+    bool composition_active = false;
+    std::string composition_text;
+    std::uint32_t composition_start = 0;
+    std::uint32_t composition_end = 0;
+    float scroll_x = 0.0f;
+    float scroll_y = 0.0f;
+};
+
+struct TextFieldParams {
+    std::string name;
+    TextFieldStyle style{};
+    TextFieldState state{};
+};
+
+struct TextAreaParams {
+    std::string name;
+    TextAreaStyle style{};
+    TextAreaState state{};
+};
+
+struct TextFieldPaths {
+    ScenePath scene;
+    WidgetStateScenes states;
+    WidgetPath root;
+    ConcretePath state;
+};
+
+struct TextAreaPaths {
+    ScenePath scene;
+    WidgetStateScenes states;
+    WidgetPath root;
+    ConcretePath state;
+};
+
+auto CreateTextField(PathSpace& space,
+                     AppRootPathView appRoot,
+                     TextFieldParams const& params) -> SP::Expected<TextFieldPaths>;
+
+auto CreateTextArea(PathSpace& space,
+                    AppRootPathView appRoot,
+                    TextAreaParams const& params) -> SP::Expected<TextAreaPaths>;
+
+auto UpdateTextFieldState(PathSpace& space,
+                          TextFieldPaths const& paths,
+                          TextFieldState const& new_state) -> SP::Expected<bool>;
+
+auto UpdateTextAreaState(PathSpace& space,
+                         TextAreaPaths const& paths,
+                         TextAreaState const& new_state) -> SP::Expected<bool>;
+
 enum class WidgetKind {
     Button,
     Toggle,
@@ -1239,6 +1364,8 @@ enum class WidgetKind {
     List,
     Stack,
     Tree,
+    TextField,
+    TextArea,
 };
 
 struct HitTarget {
@@ -1273,6 +1400,21 @@ enum class WidgetOpKind : std::uint32_t {
     TreeCollapse,
     TreeRequestLoad,
     TreeScroll,
+    TextHover,
+    TextFocus,
+    TextInput,
+    TextDelete,
+    TextMoveCursor,
+    TextSetSelection,
+    TextCompositionStart,
+    TextCompositionUpdate,
+    TextCompositionCommit,
+    TextCompositionCancel,
+    TextClipboardCopy,
+    TextClipboardCut,
+    TextClipboardPaste,
+    TextScroll,
+    TextSubmit,
 };
 
 struct PointerInfo {
@@ -1359,6 +1501,16 @@ struct StackBinding {
     BindingOptions options;
 };
 
+struct TextFieldBinding {
+    TextFieldPaths widget;
+    BindingOptions options;
+};
+
+struct TextAreaBinding {
+    TextAreaPaths widget;
+    BindingOptions options;
+};
+
 auto CreateButtonBinding(PathSpace& space,
                          AppRootPathView appRoot,
                          ButtonPaths const& paths,
@@ -1422,8 +1574,24 @@ auto CreateStackBinding(PathSpace& space,
                         StackPaths const& paths,
                         ConcretePathView targetPath,
                         DirtyRectHint footprint,
-                        std::optional<DirtyRectHint> dirty_override = std::nullopt,
-                        bool auto_render = true) -> SP::Expected<StackBinding>;
+                         std::optional<DirtyRectHint> dirty_override = std::nullopt,
+                         bool auto_render = true) -> SP::Expected<StackBinding>;
+
+auto CreateTextFieldBinding(PathSpace& space,
+                            AppRootPathView appRoot,
+                            TextFieldPaths const& paths,
+                            ConcretePathView targetPath,
+                            DirtyRectHint footprint,
+                            std::optional<DirtyRectHint> dirty_override = std::nullopt,
+                            bool auto_render = true) -> SP::Expected<TextFieldBinding>;
+
+auto CreateTextAreaBinding(PathSpace& space,
+                           AppRootPathView appRoot,
+                           TextAreaPaths const& paths,
+                           ConcretePathView targetPath,
+                           DirtyRectHint footprint,
+                           std::optional<DirtyRectHint> dirty_override = std::nullopt,
+                           bool auto_render = true) -> SP::Expected<TextAreaBinding>;
 
 namespace ActionCallbacks {
 
@@ -1467,6 +1635,16 @@ inline auto AddActionCallback(TreeBinding& binding,
     ActionCallbacks::add_action_callback(binding.options, std::move(callback));
 }
 
+inline auto AddActionCallback(TextFieldBinding& binding,
+                              WidgetActionCallback callback) -> void {
+    ActionCallbacks::add_action_callback(binding.options, std::move(callback));
+}
+
+inline auto AddActionCallback(TextAreaBinding& binding,
+                              WidgetActionCallback callback) -> void {
+    ActionCallbacks::add_action_callback(binding.options, std::move(callback));
+}
+
 inline auto ClearActionCallbacks(ButtonBinding& binding) -> void {
     ActionCallbacks::clear_action_callbacks(binding.options);
 }
@@ -1487,6 +1665,14 @@ inline auto ClearActionCallbacks(TreeBinding& binding) -> void {
     ActionCallbacks::clear_action_callbacks(binding.options);
 }
 
+inline auto ClearActionCallbacks(TextFieldBinding& binding) -> void {
+    ActionCallbacks::clear_action_callbacks(binding.options);
+}
+
+inline auto ClearActionCallbacks(TextAreaBinding& binding) -> void {
+    ActionCallbacks::clear_action_callbacks(binding.options);
+}
+
 auto DispatchList(PathSpace& space,
                   ListBinding const& binding,
                   ListState const& new_state,
@@ -1502,6 +1688,19 @@ auto DispatchTree(PathSpace& space,
                   std::string_view node_id = {},
                   PointerInfo const& pointer = {},
                   float scroll_delta = 0.0f) -> SP::Expected<bool>;
+
+auto DispatchTextField(PathSpace& space,
+                       TextFieldBinding const& binding,
+                       TextFieldState const& new_state,
+                       WidgetOpKind op_kind,
+                       PointerInfo const& pointer = {}) -> SP::Expected<bool>;
+
+auto DispatchTextArea(PathSpace& space,
+                      TextAreaBinding const& binding,
+                      TextAreaState const& new_state,
+                      WidgetOpKind op_kind,
+                      PointerInfo const& pointer = {},
+                      float scroll_delta_y = 0.0f) -> SP::Expected<bool>;
 
 auto UpdateStack(PathSpace& space,
                  StackBinding const& binding,
@@ -1780,6 +1979,8 @@ struct WidgetTheme {
     SliderStyle slider{};
     ListStyle list{};
     TreeStyle tree{};
+    TextFieldStyle text_field{};
+    TextAreaStyle text_area{};
     TypographyStyle heading{
         .font_size = 32.0f,
         .line_height = 36.0f,
@@ -1814,6 +2015,8 @@ auto ApplyTheme(WidgetTheme const& theme, ToggleParams& params) -> void;
 auto ApplyTheme(WidgetTheme const& theme, SliderParams& params) -> void;
 auto ApplyTheme(WidgetTheme const& theme, ListParams& params) -> void;
 auto ApplyTheme(WidgetTheme const& theme, TreeParams& params) -> void;
+auto ApplyTheme(WidgetTheme const& theme, TextFieldParams& params) -> void;
+auto ApplyTheme(WidgetTheme const& theme, TextAreaParams& params) -> void;
 
 struct ButtonParamsBuilder {
     ButtonParams value{};

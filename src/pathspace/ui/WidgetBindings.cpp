@@ -180,6 +180,18 @@ auto read_tree_nodes(PathSpace& space,
     return space.read<std::vector<Widgets::TreeNode>, std::string>(paths.nodes.getPath());
 }
 
+auto read_text_field_style(PathSpace& space,
+                           TextFieldPaths const& paths) -> SP::Expected<Widgets::TextFieldStyle> {
+    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    return space.read<Widgets::TextFieldStyle, std::string>(stylePath);
+}
+
+auto read_text_area_style(PathSpace& space,
+                          TextAreaPaths const& paths) -> SP::Expected<Widgets::TextAreaStyle> {
+    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    return space.read<Widgets::TextAreaStyle, std::string>(stylePath);
+}
+
 } // namespace
 
 auto PointerFromHit(Scene::HitTestResult const& hit) -> PointerInfo {
@@ -309,8 +321,8 @@ auto CreateStackBinding(PathSpace& space,
                         StackPaths const& paths,
                         ConcretePathView targetPath,
                         DirtyRectHint footprint,
-                        std::optional<DirtyRectHint> dirty_override,
-                        bool auto_render) -> SP::Expected<StackBinding> {
+                         std::optional<DirtyRectHint> dirty_override,
+                         bool auto_render) -> SP::Expected<StackBinding> {
     auto layout = Widgets::ReadStackLayout(space, paths);
     if (!layout) {
         return std::unexpected(layout.error());
@@ -322,6 +334,54 @@ auto CreateStackBinding(PathSpace& space,
     }
     StackBinding binding{
         .layout = paths,
+        .options = build_options(appRoot, paths.root, targetPath, hint, auto_render),
+    };
+    return binding;
+}
+
+auto CreateTextFieldBinding(PathSpace& space,
+                            AppRootPathView appRoot,
+                            TextFieldPaths const& paths,
+                            ConcretePathView targetPath,
+                            DirtyRectHint footprint,
+                            std::optional<DirtyRectHint> dirty_override,
+                            bool auto_render) -> SP::Expected<TextFieldBinding> {
+    auto style = read_text_field_style(space, paths);
+    if (!style) {
+        return std::unexpected(style.error());
+    }
+
+    DirtyRectHint hint = ensure_valid_hint(dirty_override.value_or(text_input_dirty_hint(*style)));
+    if (auto status = write_widget_footprint(space, paths.root, hint); !status) {
+        return std::unexpected(status.error());
+    }
+
+    TextFieldBinding binding{
+        .widget = paths,
+        .options = build_options(appRoot, paths.root, targetPath, hint, auto_render),
+    };
+    return binding;
+}
+
+auto CreateTextAreaBinding(PathSpace& space,
+                           AppRootPathView appRoot,
+                           TextAreaPaths const& paths,
+                           ConcretePathView targetPath,
+                           DirtyRectHint footprint,
+                           std::optional<DirtyRectHint> dirty_override,
+                           bool auto_render) -> SP::Expected<TextAreaBinding> {
+    auto style = read_text_area_style(space, paths);
+    if (!style) {
+        return std::unexpected(style.error());
+    }
+
+    DirtyRectHint hint = ensure_valid_hint(dirty_override.value_or(text_input_dirty_hint(*style)));
+    if (auto status = write_widget_footprint(space, paths.root, hint); !status) {
+        return std::unexpected(status.error());
+    }
+
+    TextAreaBinding binding{
+        .widget = paths,
         .options = build_options(appRoot, paths.root, targetPath, hint, auto_render),
     };
     return binding;
@@ -785,6 +845,134 @@ auto DispatchTree(PathSpace& space,
         }
         focus_changed = *focus;
     }
+    return *changed || focus_changed;
+}
+
+auto DispatchTextField(PathSpace& space,
+                       TextFieldBinding const& binding,
+                       TextFieldState const& new_state,
+                       WidgetOpKind op_kind,
+                       PointerInfo const& pointer) -> SP::Expected<bool> {
+    switch (op_kind) {
+    case WidgetOpKind::HoverEnter:
+    case WidgetOpKind::HoverExit:
+    case WidgetOpKind::TextInput:
+    case WidgetOpKind::TextDelete:
+    case WidgetOpKind::TextMoveCursor:
+    case WidgetOpKind::TextSetSelection:
+    case WidgetOpKind::TextCompositionStart:
+    case WidgetOpKind::TextCompositionUpdate:
+    case WidgetOpKind::TextCompositionCommit:
+    case WidgetOpKind::TextCompositionCancel:
+    case WidgetOpKind::TextSubmit:
+        break;
+    default:
+        return std::unexpected(make_error("Unsupported widget op kind for text field binding",
+                                          SP::Error::Code::InvalidType));
+    }
+
+    auto changed = Widgets::UpdateTextFieldState(space, binding.widget, new_state);
+    if (!changed) {
+        return std::unexpected(changed.error());
+    }
+
+    if (*changed) {
+        if (auto status = submit_dirty_hint(space, binding.options); !status) {
+            return std::unexpected(status.error());
+        }
+        if (auto status = schedule_auto_render(space, binding.options, "widget/text_field"); !status) {
+            return std::unexpected(status.error());
+        }
+    }
+
+    bool focus_changed = false;
+    if (op_kind != WidgetOpKind::HoverEnter && op_kind != WidgetOpKind::HoverExit) {
+        auto focus = set_widget_focus(space, binding.options, binding.widget.root);
+        if (!focus) {
+            return std::unexpected(focus.error());
+        }
+        focus_changed = *focus;
+    }
+
+    bool enqueue = (op_kind != WidgetOpKind::HoverEnter && op_kind != WidgetOpKind::HoverExit);
+    float value = (op_kind == WidgetOpKind::TextSubmit) ? 1.0f : 0.0f;
+    if (enqueue) {
+        if (auto status = enqueue_widget_op(space,
+                                            binding.options,
+                                            binding.widget.root.getPath(),
+                                            op_kind,
+                                            pointer,
+                                            value);
+            !status) {
+            return std::unexpected(status.error());
+        }
+    }
+
+    return *changed || focus_changed;
+}
+
+auto DispatchTextArea(PathSpace& space,
+                      TextAreaBinding const& binding,
+                      TextAreaState const& new_state,
+                      WidgetOpKind op_kind,
+                      PointerInfo const& pointer,
+                      float scroll_delta_y) -> SP::Expected<bool> {
+    switch (op_kind) {
+    case WidgetOpKind::HoverEnter:
+    case WidgetOpKind::HoverExit:
+    case WidgetOpKind::TextInput:
+    case WidgetOpKind::TextDelete:
+    case WidgetOpKind::TextMoveCursor:
+    case WidgetOpKind::TextSetSelection:
+    case WidgetOpKind::TextCompositionStart:
+    case WidgetOpKind::TextCompositionUpdate:
+    case WidgetOpKind::TextCompositionCommit:
+    case WidgetOpKind::TextCompositionCancel:
+    case WidgetOpKind::TextSubmit:
+    case WidgetOpKind::TextScroll:
+        break;
+    default:
+        return std::unexpected(make_error("Unsupported widget op kind for text area binding",
+                                          SP::Error::Code::InvalidType));
+    }
+
+    auto changed = Widgets::UpdateTextAreaState(space, binding.widget, new_state);
+    if (!changed) {
+        return std::unexpected(changed.error());
+    }
+
+    if (*changed) {
+        if (auto status = submit_dirty_hint(space, binding.options); !status) {
+            return std::unexpected(status.error());
+        }
+        if (auto status = schedule_auto_render(space, binding.options, "widget/text_area"); !status) {
+            return std::unexpected(status.error());
+        }
+    }
+
+    bool focus_changed = false;
+    if (op_kind != WidgetOpKind::HoverEnter && op_kind != WidgetOpKind::HoverExit) {
+        auto focus = set_widget_focus(space, binding.options, binding.widget.root);
+        if (!focus) {
+            return std::unexpected(focus.error());
+        }
+        focus_changed = *focus;
+    }
+
+    bool enqueue = (op_kind != WidgetOpKind::HoverEnter && op_kind != WidgetOpKind::HoverExit);
+    float value = (op_kind == WidgetOpKind::TextScroll) ? scroll_delta_y : 0.0f;
+    if (enqueue) {
+        if (auto status = enqueue_widget_op(space,
+                                            binding.options,
+                                            binding.widget.root.getPath(),
+                                            op_kind,
+                                            pointer,
+                                            value);
+            !status) {
+            return std::unexpected(status.error());
+        }
+    }
+
     return *changed || focus_changed;
 }
 
