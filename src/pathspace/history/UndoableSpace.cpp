@@ -303,4 +303,12 @@ auto UndoableSpace::notify(std::string const& notificationPath) -> void {
         inner->notify(notificationPath);
 }
 
+auto UndoableSpace::listChildrenCanonical(std::string_view canonicalPath) const -> std::vector<std::string> {
+    if (!inner) {
+        return {};
+    }
+    ConcretePathStringView view{canonicalPath};
+    return inner->listChildren(view);
+}
+
 } // namespace SP::History

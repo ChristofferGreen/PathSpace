@@ -4,6 +4,7 @@
 #include "core/InsertReturn.hpp"
 #include "core/Out.hpp"
 #include "log/TaggedLogger.hpp"
+#include "path/ConcretePath.hpp"
 #include "path/Iterator.hpp"
 #include "path/utils.hpp"
 #include "path/validation.hpp"
@@ -19,6 +20,8 @@
 #include <optional>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace SP {
 struct InputMetadata;
@@ -154,7 +157,23 @@ public:
         return this->take<DataType>(pathIn, options & Pop{} & OutNoValidation{});
     }
 
+    auto listChildren() const -> std::vector<std::string> {
+        return this->listChildrenCanonical("/");
+    }
+
+    auto listChildren(ConcretePathStringView subpath) const -> std::vector<std::string> {
+        auto canonical = subpath.canonicalized();
+        if (!canonical) {
+            return {};
+        }
+        return this->listChildrenCanonical(canonical->getPath());
+    }
+
 protected:
+    virtual auto listChildrenCanonical(std::string_view canonicalPath) const -> std::vector<std::string> {
+        (void)canonicalPath;
+        return {};
+    }
     // ---------- Protected API ----------
     // Provide a weak NotificationSink; downstream users should use notify(notificationPath) instead.
     std::weak_ptr<NotificationSink> getNotificationSink() const {

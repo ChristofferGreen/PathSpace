@@ -14,6 +14,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/test_PathSpace_read.cpp
   unit/test_PathSpace_nesting.cpp
   unit/test_PathSpace_extract.cpp
+  unit/test_PathSpace_listChildren.cpp
   unit/test_PathSpace_insert.cpp
   unit/test_PathSpace_multithreading.cpp
   unit/test_PathSpace_execution.cpp

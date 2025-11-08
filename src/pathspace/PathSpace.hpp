@@ -14,6 +14,8 @@
 #include "type/InputData.hpp"
 #include "type/InputMetadata.hpp"
 #include <memory>
+#include <string_view>
+#include <vector>
 #include "task/IFutureAny.hpp"
 
 namespace SP {
@@ -68,6 +70,7 @@ protected:
     virtual auto shutdown() -> void override;
     virtual auto notify(std::string const& notificationPath) -> void override;
     auto getRootNode() -> Node* override;
+    auto listChildrenCanonical(std::string_view canonicalPath) const -> std::vector<std::string> override;
     // Expose typed future peek to PathSpaceBase::readFuture
     std::optional<FutureAny> typedPeekFuture(std::string_view pathIn) const override {
         Iterator const it{pathIn};

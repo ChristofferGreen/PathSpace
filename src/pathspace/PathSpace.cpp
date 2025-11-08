@@ -2,10 +2,57 @@
 #include "task/TaskPool.hpp"
 #include "core/PathSpaceContext.hpp"
 #include "log/TaggedLogger.hpp"
+#include <algorithm>
 #include <cstdlib>
+#include <mutex>
+#include <string>
+#include <string_view>
 #include <thread>
+#include <vector>
 
 namespace SP {
+
+namespace {
+
+auto gatherOrderedChildren(Node const& node) -> std::vector<std::string> {
+    std::vector<std::string> names;
+    node.children.for_each([&](auto const& kv) { names.emplace_back(kv.first); });
+    std::sort(names.begin(), names.end());
+    names.erase(std::unique(names.begin(), names.end()), names.end());
+    return names;
+}
+
+auto mergeWithNested(Node const& node, std::vector<std::string> names) -> std::vector<std::string> {
+    PathSpaceBase const* nestedSpace = nullptr;
+    {
+        std::lock_guard<std::mutex> guard(node.payloadMutex);
+        if (node.nested) {
+            nestedSpace = node.nested.get();
+        }
+    }
+    if (nestedSpace) {
+        auto nestedNames = nestedSpace->listChildren();
+        names.insert(names.end(), nestedNames.begin(), nestedNames.end());
+        std::sort(names.begin(), names.end());
+        names.erase(std::unique(names.begin(), names.end()), names.end());
+    }
+    return names;
+}
+
+auto buildRemainingPath(std::vector<std::string> const& components, std::size_t startIndex) -> std::string {
+    if (startIndex >= components.size()) {
+        return "/";
+    }
+    std::string result{"/"};
+    result.append(components[startIndex]);
+    for (std::size_t idx = startIndex + 1; idx < components.size(); ++idx) {
+        result.push_back('/');
+        result.append(components[idx]);
+    }
+    return result;
+}
+
+} // namespace
 
 PathSpace::PathSpace(TaskPool* pool) {
     sp_log("PathSpace::PathSpace", "Function Called");
@@ -296,6 +343,53 @@ auto PathSpace::notify(std::string const& notificationPath) -> void {
 
 auto PathSpace::getRootNode() -> Node* {
     return &this->leaf.rootNode();
+}
+
+auto PathSpace::listChildrenCanonical(std::string_view canonicalPath) const -> std::vector<std::string> {
+    ConcretePathStringView pathView{canonicalPath};
+    auto componentsExpected = pathView.components();
+    if (!componentsExpected) {
+        return {};
+    }
+
+    auto const& components = componentsExpected.value();
+    Node const* current    = &this->leaf.rootNode();
+
+    if (components.empty()) {
+        return mergeWithNested(*current, gatherOrderedChildren(*current));
+    }
+
+    for (std::size_t idx = 0; idx < components.size(); ++idx) {
+        auto const& component = components[idx];
+        Node const* child     = current->getChild(component);
+        if (!child) {
+            return {};
+        }
+
+        bool const isFinal = (idx + 1 == components.size());
+        if (isFinal) {
+            return mergeWithNested(*child, gatherOrderedChildren(*child));
+        }
+
+        PathSpaceBase const* nestedSpace = nullptr;
+        {
+            std::lock_guard<std::mutex> guard(child->payloadMutex);
+            if (child->nested) {
+                nestedSpace = child->nested.get();
+            }
+        }
+
+        if (nestedSpace) {
+            auto remaining = buildRemainingPath(components, idx + 1);
+            ConcretePathString remainingPath{remaining};
+            ConcretePathStringView remainingView{remainingPath.getPath()};
+            return nestedSpace->listChildren(remainingView);
+        }
+
+        current = child;
+    }
+
+    return {};
 }
 
 } // namespace SP

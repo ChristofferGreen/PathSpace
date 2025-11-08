@@ -69,12 +69,13 @@
 - ✅ (November 7, 2025) Reaffirmed that undo-enabled roots must contain only serializable payloads; executions and nested PathSpaces stay outside the history subtree and are reported via `_history/unsupported/*`.
 - ✅ (November 7, 2025) Downstream plans (UndoHistory, inspector, paint widget) now reference the binary metadata codec, `_history/stats/*` telemetry, and integration checkpoints so consumers adopt the new persistence format consistently.
 - ✅ (November 7, 2025) Shared-stack guard rails live: `HistoryOptions::sharedStackKey` declares an intended shared undo stack, and `enableHistory` rejects duplicate keys so cross-root commands regroup under a single history root or a command-log shim instead of relying on unsupported stack sharing.
+- ✅ (November 8, 2025) Added `PathSpace::listChildren()` / `PathSpace::listChildren(ConcretePathView)` to enumerate child component names (including nested `PathSpace` mounts) without decoding payloads; coverage lives in `tests/unit/test_PathSpace_listChildren.cpp`.
 
 ## Next Steps
 1. ✅ Prototype copy-on-write storage for a simple subtree, measuring memory impact. (Captured by `history::CowSubtreePrototype` and associated tests.)
 2. **Required design review:** walk the prototype with PathSpace maintainers to finalize the undo/redo stack API surface, retention policy knobs, and integration boundaries (see `docs/Plan_PathSpace_UndoHistory.md`). Capture decisions in `docs/AI_Architecture.md` and any affected plan docs.
 3. Document how the copy-on-write layer plugs into `PathSpace` proper (stack wiring, notification hooks, multi-root behaviour) and outline migration steps for existing widget callers.
-4. Implement child enumeration and the route merger, then update widget/runtime plans to consume them.
+4. Implement the route merger, then update widget/runtime plans to consume it. (Child enumeration landed on November 8, 2025 via the new `PathSpace::listChildren()` APIs.)
 5. Design `HistoryOptions` struct and telemetry schema.
 6. Update the paint widget plan to call the new APIs (already referenced in `docs/Plan_WidgetDeclarativeAPI.md`).
 7. ✅ (November 7, 2025) Run the Alpaca vs. binary metadata bake-off for persistence, adopt the versioned binary codec, and update `docs/AI_Architecture.md`, `docs/Plan_PathSpace_UndoHistory.md`, and paint/inspector plans to reference the shared format.

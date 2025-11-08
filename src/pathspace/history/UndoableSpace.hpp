@@ -177,6 +177,7 @@ protected:
     auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> override;
     auto shutdown() -> void override;
     auto notify(std::string const& notificationPath) -> void override;
+    auto listChildrenCanonical(std::string_view canonicalPath) const -> std::vector<std::string> override;
 
 private:
     struct MatchedRoot {
