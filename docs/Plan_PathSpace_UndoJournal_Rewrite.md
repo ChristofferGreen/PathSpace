@@ -52,7 +52,8 @@
   - Inserts and takes on journal roots proceed through the existing `PathSpace` backend while recording placeholder mutation entries; undo/redo APIs still gate with the “mutation journal not yet supported” error until replay wiring lands.
 - [x] Swap `undo`/`redo` handlers to call journal replay APIs while still reporting telemetry via existing structures.
   - Journal-enabled roots now record per-mutation payloads and replay them through `UndoableSpace::undo`/`redo`; the tests `journal undo/redo round trip` and `journal take undo restores value` cover regression cases via the core `UndoJournalState` APIs.
-- [ ] Re-implement `_history/command` handlers (undo/redo/GC/toggle) against the journal.
+- [x] Re-implement `_history/command` handlers (undo/redo/GC/toggle) against the journal.
+  - `_history/undo|redo|garbage_collect|set_manual_garbage_collect` now route through the journal code paths; manual retention skips automatic trimming and the command path trims on demand. Added regression coverage in `tests/unit/history/test_UndoableSpace.cpp` and `tests/unit/history/test_UndoJournalState.cpp` to lock the behaviour down.
 - [ ] Adapt telemetry aggregation to pull from journal stats instead of snapshot metrics.
 - [ ] Extend persistence path to load/save journals; keep old snapshot persistence reachable until Phase 4.
 - [ ] Compile-time guards ensure persistence directories and options map cleanly to the new storage format.

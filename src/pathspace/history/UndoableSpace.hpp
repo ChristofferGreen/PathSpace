@@ -278,6 +278,9 @@ private:
     class JournalOperationScope;
 
     auto handleControlInsert(MatchedRoot const& matchedRoot, std::string const& command, InputData const& data) -> InsertReturn;
+    auto handleJournalControlInsert(MatchedJournalRoot const& matchedRoot,
+                                    std::string const& command,
+                                    InputData const& data) -> InsertReturn;
     auto interpretSteps(InputData const& data) const -> std::size_t;
 
     auto resolveRootNode() -> Node*;

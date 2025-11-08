@@ -23,12 +23,14 @@ void JournalState::setRetentionPolicy(RetentionPolicy policy) {
     enforceRetention();
 }
 
-void JournalState::append(JournalEntry entry) {
+void JournalState::append(JournalEntry entry, bool enforceRetentionNow) {
     dropRedoTail();
     totalBytes += entryBytes(entry);
     entries.push_back(std::move(entry));
     cursorIndex = entries.size();
-    enforceRetention();
+    if (enforceRetentionNow) {
+        enforceRetention();
+    }
 }
 
 auto JournalState::canUndo() const -> bool {

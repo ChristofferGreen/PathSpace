@@ -32,7 +32,7 @@ public:
     void setRetentionPolicy(RetentionPolicy policy);
     [[nodiscard]] auto policy() const -> RetentionPolicy const& { return retention; }
 
-    void append(JournalEntry entry);
+    void append(JournalEntry entry, bool enforceRetention = true);
 
     [[nodiscard]] auto size() const -> std::size_t { return entries.size(); }
     [[nodiscard]] auto cursor() const -> std::size_t { return cursorIndex; }

@@ -142,6 +142,69 @@ TEST_CASE("journal take undo restores value") {
     CHECK_FALSE(space->read<int>("/queue/item").has_value());
 }
 
+TEST_CASE("journal history control commands perform undo and redo") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    REQUIRE(space->insert("/doc/title", std::string{"alpha"}).errors.empty());
+
+    auto undoCmd = space->insert("/doc/_history/undo", std::size_t{1});
+    CHECK(undoCmd.errors.empty());
+    CHECK_FALSE(space->read<std::string>("/doc/title").has_value());
+
+    auto redoCmd = space->insert("/doc/_history/redo", std::size_t{1});
+    CHECK(redoCmd.errors.empty());
+    auto restored = space->read<std::string>("/doc/title");
+    REQUIRE(restored.has_value());
+    CHECK(*restored == std::string{"alpha"});
+}
+
+TEST_CASE("journal manual garbage collect trims entries when invoked") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.useMutationJournal   = true;
+    opts.maxEntries           = 1;
+    opts.manualGarbageCollect = true;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    REQUIRE(space->insert("/doc/value", 1).errors.empty());
+    REQUIRE(space->insert("/doc/value", 2).errors.empty());
+
+    auto gc = space->insert("/doc/_history/garbage_collect", true);
+    CHECK(gc.errors.empty());
+
+    REQUIRE(space->undo(ConcretePathStringView{"/doc"}).has_value());
+    auto secondUndo = space->undo(ConcretePathStringView{"/doc"});
+    CHECK_FALSE(secondUndo.has_value());
+    CHECK(secondUndo.error().code == Error::Code::NoObjectFound);
+}
+
+TEST_CASE("journal manual garbage collect defers retention until triggered") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.useMutationJournal   = true;
+    opts.maxEntries           = 1;
+    opts.manualGarbageCollect = true;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    REQUIRE(space->insert("/doc/value", 1).errors.empty());
+    REQUIRE(space->insert("/doc/value", 2).errors.empty());
+
+    REQUIRE(space->undo(ConcretePathStringView{"/doc"}).has_value());
+    REQUIRE(space->undo(ConcretePathStringView{"/doc"}).has_value());
+    auto thirdUndo = space->undo(ConcretePathStringView{"/doc"});
+    CHECK_FALSE(thirdUndo.has_value());
+    CHECK(thirdUndo.error().code == Error::Code::NoObjectFound);
+}
+
 TEST_CASE("transaction batching produces single history entry") {
     auto space = makeUndoableSpace();
     REQUIRE(space);

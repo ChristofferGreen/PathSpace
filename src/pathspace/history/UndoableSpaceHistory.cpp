@@ -974,6 +974,89 @@ auto UndoableSpace::handleControlInsert(MatchedRoot const& matchedRoot,
     return ret;
 }
 
+auto UndoableSpace::handleJournalControlInsert(MatchedJournalRoot const& matchedRoot,
+                                               std::string const& command,
+                                               InputData const& data) -> InsertReturn {
+    InsertReturn ret;
+    auto         state = matchedRoot.state;
+    if (!state) {
+        ret.errors.push_back(Error{Error::Code::UnknownError, "History root missing"});
+        return ret;
+    }
+
+    if (command == UndoPaths::CommandUndo) {
+        auto steps = interpretSteps(data);
+        if (auto result = applyJournalSteps(state, steps, true); !result) {
+            ret.errors.push_back(result.error());
+        }
+        return ret;
+    }
+    if (command == UndoPaths::CommandRedo) {
+        auto steps = interpretSteps(data);
+        if (auto result = applyJournalSteps(state, steps, false); !result) {
+            ret.errors.push_back(result.error());
+        }
+        return ret;
+    }
+    if (command == UndoPaths::CommandGarbageCollect) {
+        std::unique_lock lock(state->mutex);
+        JournalOperationScope scope(*this, *state, "garbage_collect");
+        if (state->activeTransaction) {
+            scope.setResult(false, "transaction_active");
+            ret.errors.push_back(Error{Error::Code::InvalidPermissions,
+                                       "Cannot garbage collect while transaction open"});
+            return ret;
+        }
+
+        auto beforeStats = state->journal.stats();
+        auto policy      = state->journal.policy();
+        state->journal.setRetentionPolicy(policy);
+        auto afterStats   = state->journal.stats();
+        auto trimmedEntries =
+            afterStats.trimmedEntries >= beforeStats.trimmedEntries
+                ? afterStats.trimmedEntries - beforeStats.trimmedEntries
+                : std::size_t{0};
+        auto trimmedBytes =
+            afterStats.trimmedBytes >= beforeStats.trimmedBytes
+                ? afterStats.trimmedBytes - beforeStats.trimmedBytes
+                : std::size_t{0};
+
+        if (trimmedEntries == 0) {
+            scope.setResult(true, "no_trim");
+        } else {
+            scope.setResult(true, "trimmed=" + std::to_string(trimmedEntries));
+            auto now = std::chrono::system_clock::now();
+            state->telemetry.trimOperations += 1;
+            state->telemetry.trimmedEntries += trimmedEntries;
+            state->telemetry.trimmedBytes += trimmedBytes;
+            state->telemetry.lastTrimTimestamp = now;
+        }
+
+        state->stateDirty       = true;
+        state->persistenceDirty = state->persistenceDirty || state->persistenceEnabled;
+        return ret;
+    }
+    if (command == UndoPaths::CommandSetManualGc) {
+        bool manual = false;
+        if (data.obj && data.metadata.typeInfo) {
+            if (*data.metadata.typeInfo == typeid(bool)) {
+                manual = *static_cast<bool const*>(data.obj);
+            }
+        }
+        std::scoped_lock lock(state->mutex);
+        JournalOperationScope scope(*this, *state, "set_manual_gc");
+        state->options.manualGarbageCollect = manual;
+        state->stateDirty                   = true;
+        state->persistenceDirty             = state->persistenceDirty || state->persistenceEnabled;
+        scope.setResult(true, manual ? "enabled" : "disabled");
+        return ret;
+    }
+
+    ret.errors.push_back(
+        Error{Error::Code::UnknownError, "Unsupported history control command"});
+    return ret;
+}
+
 auto UndoableSpace::in(Iterator const& path, InputData const& data) -> InsertReturn {
     auto fullPath       = path.toString();
     auto matched        = findRootByPath(fullPath);
@@ -982,9 +1065,9 @@ auto UndoableSpace::in(Iterator const& path, InputData const& data) -> InsertRet
         if (journalMatched.has_value()) {
             if (!journalMatched->relativePath.empty()
                 && journalMatched->relativePath.starts_with(UndoPaths::HistoryRoot)) {
-                InsertReturn ret;
-                ret.errors.push_back(journalNotReadyError(journalMatched->key));
-                return ret;
+                return handleJournalControlInsert(*journalMatched,
+                                                  journalMatched->relativePath,
+                                                  data);
             }
 
             auto componentsExpected =

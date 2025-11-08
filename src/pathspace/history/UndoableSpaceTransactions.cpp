@@ -548,7 +548,8 @@ auto UndoableSpace::commitJournalTransaction(UndoJournalRootState& state) -> Exp
             entry.monotonicNs = monotonicBase + static_cast<std::uint64_t>(i);
         }
         entry.sequence = state.nextSequence++;
-        state.journal.append(entry);
+        auto enforceRetention = !state.options.manualGarbageCollect;
+        state.journal.append(entry, enforceRetention);
         if (state.persistenceEnabled) {
             if (auto append = state.persistenceWriter->append(entry, false); !append)
                 return append;

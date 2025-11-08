@@ -113,6 +113,25 @@ TEST_SUITE("UndoJournalState") {
         CHECK(stats.trimmedEntries >= 1);
     }
 
+    TEST_CASE("append can defer retention when requested") {
+        JournalState::RetentionPolicy policy;
+        policy.maxEntries = 1;
+        JournalState state(policy);
+
+        state.append(makeEntry(1, "a"), false);
+        state.append(makeEntry(2, "b"), false);
+
+        CHECK(state.size() == 2);
+        auto statsBefore = state.stats();
+        CHECK(statsBefore.trimmedEntries == 0);
+
+        state.setRetentionPolicy(policy);
+        auto statsAfter = state.stats();
+        CHECK(statsAfter.trimmedEntries >= 1);
+        CHECK(state.size() == 1);
+        CHECK(state.entryAt(0).sequence == 2);
+    }
+
     TEST_CASE("cursor stays aligned after retention") {
         JournalState::RetentionPolicy policy;
         policy.maxEntries = 3;
