@@ -111,6 +111,13 @@ struct UndoableSpace::UndoJournalRootState {
     bool                                      stateDirty       = false;
     std::unique_ptr<UndoJournal::JournalFileWriter> persistenceWriter;
     mutable std::mutex                        mutex;
+    struct TransactionState {
+        std::thread::id                       owner;
+        std::size_t                           depth          = 0;
+        bool                                  dirty          = false;
+        std::vector<UndoJournal::JournalEntry> pendingEntries;
+    };
+    std::optional<TransactionState>           activeTransaction;
 };
 
 class UndoableSpace::OperationScope {

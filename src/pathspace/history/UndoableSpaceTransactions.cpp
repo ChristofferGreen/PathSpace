@@ -1,5 +1,7 @@
 #include "history/UndoableSpace.hpp"
 
+#include "history/UndoHistoryUtils.hpp"
+#include "history/UndoJournalPersistence.hpp"
 #include "history/UndoableSpaceState.hpp"
 #include "log/TaggedLogger.hpp"
 
@@ -8,11 +10,13 @@
 #include <string_view>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace SP::History {
 
 using SP::Error;
 using SP::Expected;
+namespace UndoUtilsAlias = SP::History::UndoUtils;
 
 auto UndoableSpace::commitAndDeactivate(UndoableSpace* owner,
                                         std::shared_ptr<RootState>& state,
@@ -34,6 +38,34 @@ void UndoableSpace::commitOnScopeExit(UndoableSpace* owner,
         return;
     }
     auto const result = owner->commitTransaction(*state);
+    if (!result) {
+        std::string message(context);
+        message.append(result.error().message.value_or("unknown"));
+        sp_log(message, "UndoableSpace");
+    }
+    active = false;
+}
+
+auto UndoableSpace::commitJournalAndDeactivate(UndoableSpace* owner,
+                                               std::shared_ptr<UndoJournalRootState>& state,
+                                               bool& active) -> Expected<void> {
+    if (!active || !owner || !state) {
+        active = false;
+        return {};
+    }
+    active = false;
+    return owner->commitJournalTransaction(*state);
+}
+
+void UndoableSpace::commitJournalOnScopeExit(UndoableSpace* owner,
+                                             std::shared_ptr<UndoJournalRootState>& state,
+                                             bool& active,
+                                             std::string_view context) {
+    if (!active || !owner || !state) {
+        active = false;
+        return;
+    }
+    auto const result = owner->commitJournalTransaction(*state);
     if (!result) {
         std::string message(context);
         message.append(result.error().message.value_or("unknown"));
@@ -131,6 +163,70 @@ void UndoableSpace::TransactionHandleBase::finalizeHandle() {
     active_ = false;
 }
 
+UndoableSpace::JournalTransactionGuard::JournalTransactionHandleBase::JournalTransactionHandleBase(
+    UndoableSpace& owner,
+    std::shared_ptr<UndoJournalRootState> state,
+    bool active,
+    std::string_view context)
+    : owner_(&owner)
+    , state_(std::move(state))
+    , active_(active)
+    , context_(context) {}
+
+UndoableSpace::JournalTransactionGuard::JournalTransactionHandleBase::JournalTransactionHandleBase(
+    JournalTransactionHandleBase&& other) noexcept
+    : owner_(other.owner_)
+    , state_(std::move(other.state_))
+    , active_(other.active_)
+    , context_(std::move(other.context_)) {
+    other.owner_  = nullptr;
+    other.active_ = false;
+    other.context_.clear();
+}
+
+auto UndoableSpace::JournalTransactionGuard::JournalTransactionHandleBase::operator=(
+    JournalTransactionHandleBase&& other) noexcept -> JournalTransactionHandleBase& {
+    if (this == &other)
+        return *this;
+    finalizeHandle();
+    owner_   = other.owner_;
+    state_   = std::move(other.state_);
+    active_  = other.active_;
+    context_ = std::move(other.context_);
+    other.owner_  = nullptr;
+    other.active_ = false;
+    other.context_.clear();
+    return *this;
+}
+
+UndoableSpace::JournalTransactionGuard::JournalTransactionHandleBase::~JournalTransactionHandleBase() {
+    finalizeHandle();
+}
+
+auto UndoableSpace::JournalTransactionGuard::JournalTransactionHandleBase::commitHandle()
+    -> Expected<void> {
+    if (!owner_ || !state_) {
+        active_ = false;
+        return {};
+    }
+    return commitJournalAndDeactivate(owner_, state_, active_);
+}
+
+void UndoableSpace::JournalTransactionGuard::JournalTransactionHandleBase::deactivateHandle() {
+    active_ = false;
+}
+
+void UndoableSpace::JournalTransactionGuard::JournalTransactionHandleBase::finalizeHandle() {
+    if (!owner_ || !state_) {
+        active_ = false;
+        return;
+    }
+    commitJournalOnScopeExit(owner_, state_, active_, context_);
+    owner_  = nullptr;
+    state_.reset();
+    active_ = false;
+}
+
 UndoableSpace::TransactionGuard::TransactionGuard(UndoableSpace& owner,
                                                   std::shared_ptr<RootState> state,
                                                   bool active)
@@ -154,6 +250,33 @@ auto UndoableSpace::TransactionGuard::commit() -> Expected<void> {
 }
 
 void UndoableSpace::TransactionGuard::deactivate() {
+    handle_.deactivateHandle();
+}
+
+UndoableSpace::JournalTransactionGuard::JournalTransactionGuard(
+    UndoableSpace& owner,
+    std::shared_ptr<UndoJournalRootState> state,
+    bool active)
+    : handle_(owner,
+              std::move(state),
+              active,
+              "UndoableSpace::JournalTransactionGuard commit failed during destruction: ") {}
+
+void UndoableSpace::JournalTransactionGuard::markDirty() {
+    if (!handle_.isHandleActive())
+        return;
+    auto* ownerPtr = handle_.ownerHandle();
+    auto& statePtr = handle_.stateHandle();
+    if (!ownerPtr || !statePtr)
+        return;
+    ownerPtr->markJournalTransactionDirty(*statePtr);
+}
+
+auto UndoableSpace::JournalTransactionGuard::commit() -> Expected<void> {
+    return handle_.commitHandle();
+}
+
+void UndoableSpace::JournalTransactionGuard::deactivate() {
     handle_.deactivateHandle();
 }
 
@@ -289,6 +412,118 @@ auto UndoableSpace::commitTransaction(RootState& state) -> Expected<void> {
         return persistResult;
 
     return {};
+}
+
+auto UndoableSpace::beginJournalTransactionInternal(
+    std::shared_ptr<UndoJournalRootState> const& state)
+    -> Expected<JournalTransactionGuard> {
+    if (!state)
+        return std::unexpected(Error{Error::Code::UnknownError, "History root missing"});
+
+    std::unique_lock lock(state->mutex);
+    auto const currentThread = std::this_thread::get_id();
+    if (state->activeTransaction.has_value()) {
+        auto& tx = *state->activeTransaction;
+        if (tx.owner != currentThread) {
+            return std::unexpected(Error{Error::Code::InvalidPermissions,
+                                         "History transaction already active on another thread"});
+        }
+        tx.depth += 1;
+    } else {
+        state->activeTransaction = UndoJournalRootState::TransactionState{
+            .owner          = currentThread,
+            .depth          = 1,
+            .dirty          = false,
+            .pendingEntries = {}};
+    }
+    return JournalTransactionGuard(*this, state, true);
+}
+
+void UndoableSpace::markJournalTransactionDirty(UndoJournalRootState& state) {
+    std::scoped_lock lock(state.mutex);
+    if (state.activeTransaction)
+        state.activeTransaction->dirty = true;
+}
+
+auto UndoableSpace::commitJournalTransaction(UndoJournalRootState& state) -> Expected<void> {
+    std::unique_lock lock(state.mutex);
+    if (!state.activeTransaction)
+        return {};
+    auto const currentThread = std::this_thread::get_id();
+    auto& tx = *state.activeTransaction;
+    if (tx.owner != currentThread) {
+        return std::unexpected(Error{Error::Code::InvalidPermissions,
+                                     "History transaction owned by another thread"});
+    }
+
+    if (tx.depth == 0) {
+        state.activeTransaction.reset();
+        return {};
+    }
+
+    tx.depth -= 1;
+    if (tx.depth > 0) {
+        return {};
+    }
+
+    bool dirty = tx.dirty;
+    auto pendingEntries = std::move(tx.pendingEntries);
+    state.activeTransaction.reset();
+
+    if (!dirty || pendingEntries.empty())
+        return {};
+
+    if (state.persistenceEnabled && !state.persistenceWriter) {
+        state.persistenceWriter =
+            std::make_unique<UndoJournal::JournalFileWriter>(state.journalPath);
+        if (auto open = state.persistenceWriter->open(true); !open)
+            return open;
+    }
+
+    auto const monotonicBase =
+        static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                       std::chrono::steady_clock::now().time_since_epoch())
+                                       .count());
+
+    for (std::size_t i = 0; i < pendingEntries.size(); ++i) {
+        auto& entry = pendingEntries[i];
+        if (entry.timestampMs == 0) {
+            entry.timestampMs = UndoUtilsAlias::toMillis(std::chrono::system_clock::now());
+        }
+        if (entry.monotonicNs == 0) {
+            entry.monotonicNs = monotonicBase + static_cast<std::uint64_t>(i);
+        }
+        entry.sequence = state.nextSequence++;
+        state.journal.append(entry);
+        if (state.persistenceEnabled) {
+            if (auto append = state.persistenceWriter->append(entry, false); !append)
+                return append;
+        }
+    }
+
+    state.stateDirty       = true;
+    state.persistenceDirty = state.persistenceDirty || state.persistenceEnabled;
+    return {};
+}
+
+void UndoableSpace::recordJournalMutation(UndoJournalRootState& state,
+                                          UndoJournal::OperationKind operation,
+                                          std::string_view fullPath,
+                                          bool barrier) {
+    UndoJournal::JournalEntry entry;
+    entry.operation = operation;
+    entry.path      = std::string(fullPath);
+    entry.timestampMs = UndoUtilsAlias::toMillis(std::chrono::system_clock::now());
+    entry.monotonicNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch())
+                            .count());
+    entry.barrier = barrier;
+
+    std::scoped_lock lock(state.mutex);
+    if (!state.activeTransaction)
+        return;
+    state.activeTransaction->pendingEntries.push_back(std::move(entry));
+    state.activeTransaction->dirty = true;
 }
 
 } // namespace SP::History

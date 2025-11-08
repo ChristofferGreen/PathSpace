@@ -3,6 +3,7 @@
 #include "PathSpaceBase.hpp"
 #include "core/Error.hpp"
 #include "history/CowSubtreePrototype.hpp"
+#include "history/UndoJournalEntry.hpp"
 #include "path/ConcretePath.hpp"
 
 #include <chrono>
@@ -214,6 +215,55 @@ private:
         TransactionHandleBase handle_;
     };
 
+    class JournalTransactionGuard {
+    public:
+        JournalTransactionGuard() = default;
+        JournalTransactionGuard(UndoableSpace& owner,
+                                std::shared_ptr<UndoJournalRootState> state,
+                                bool active);
+        JournalTransactionGuard(JournalTransactionGuard&& other) noexcept = default;
+        JournalTransactionGuard& operator=(JournalTransactionGuard&& other) noexcept = default;
+        ~JournalTransactionGuard() = default;
+
+        JournalTransactionGuard(JournalTransactionGuard const&)            = delete;
+        JournalTransactionGuard& operator=(JournalTransactionGuard const&) = delete;
+
+        void markDirty();
+        auto commit() -> Expected<void>;
+        void deactivate();
+        explicit operator bool() const { return handle_.isHandleActive(); }
+
+    private:
+        class JournalTransactionHandleBase {
+        public:
+            JournalTransactionHandleBase() = default;
+            JournalTransactionHandleBase(UndoableSpace& owner,
+                                         std::shared_ptr<UndoJournalRootState> state,
+                                         bool active,
+                                         std::string_view context);
+            JournalTransactionHandleBase(JournalTransactionHandleBase&& other) noexcept;
+            JournalTransactionHandleBase& operator=(JournalTransactionHandleBase&& other) noexcept;
+            ~JournalTransactionHandleBase();
+
+            auto commitHandle() -> Expected<void>;
+            void deactivateHandle();
+            [[nodiscard]] auto ownerHandle() const noexcept -> UndoableSpace* { return owner_; }
+            auto stateHandle() noexcept -> std::shared_ptr<UndoJournalRootState>& { return state_; }
+            [[nodiscard]] auto stateHandle() const noexcept -> std::shared_ptr<UndoJournalRootState> const& { return state_; }
+            [[nodiscard]] bool isHandleActive() const noexcept { return active_; }
+
+        private:
+            void finalizeHandle();
+
+            UndoableSpace*                        owner_  = nullptr;
+            std::shared_ptr<UndoJournalRootState> state_;
+            bool                                  active_ = false;
+            std::string                           context_;
+        };
+
+        JournalTransactionHandleBase handle_;
+    };
+
     auto findRoot(SP::ConcretePathStringView root) const -> std::shared_ptr<RootState>;
     auto findRootByPath(std::string const& path) const -> std::optional<MatchedRoot>;
     auto beginTransactionInternal(std::shared_ptr<RootState> const& state) -> Expected<TransactionGuard>;
@@ -255,6 +305,13 @@ private:
                                   std::shared_ptr<RootState>& state,
                                   bool& active,
                                   std::string_view context);
+    static auto commitJournalAndDeactivate(UndoableSpace* owner,
+                                           std::shared_ptr<UndoJournalRootState>& state,
+                                           bool& active) -> Expected<void>;
+    static void commitJournalOnScopeExit(UndoableSpace* owner,
+                                         std::shared_ptr<UndoJournalRootState>& state,
+                                         bool& active,
+                                         std::string_view context);
     auto ensurePersistenceSetup(RootState& state) -> Expected<void>;
     auto loadPersistentState(RootState& state) -> Expected<void>;
     auto restoreRootFromPersistence(RootState& state) -> Expected<void>;
@@ -292,6 +349,14 @@ private:
     auto findJournalRootByPath(std::string const& path) const
         -> std::optional<MatchedJournalRoot>;
     auto journalNotReadyError(std::string_view rootPath) const -> Error;
+    auto beginJournalTransactionInternal(std::shared_ptr<UndoJournalRootState> const& state)
+        -> Expected<JournalTransactionGuard>;
+    auto commitJournalTransaction(UndoJournalRootState& state) -> Expected<void>;
+    auto markJournalTransactionDirty(UndoJournalRootState& state) -> void;
+    void recordJournalMutation(UndoJournalRootState& state,
+                               UndoJournal::OperationKind operation,
+                               std::string_view fullPath,
+                               bool barrier = false);
 };
 
 } // namespace SP::History

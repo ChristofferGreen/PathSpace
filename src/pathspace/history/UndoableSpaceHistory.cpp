@@ -34,6 +34,7 @@ namespace UndoUtilsAlias    = SP::History::UndoUtils;
 namespace UndoPaths         = SP::History::UndoUtils::Paths;
 namespace UndoMetadata      = SP::History::UndoMetadata;
 namespace UndoSnapshotCodec = SP::History::UndoSnapshotCodec;
+namespace UndoJournal       = SP::History::UndoJournal;
 
 } // namespace
 
@@ -739,13 +740,34 @@ auto UndoableSpace::handleControlInsert(MatchedRoot const& matchedRoot,
 }
 
 auto UndoableSpace::in(Iterator const& path, InputData const& data) -> InsertReturn {
-    auto fullPath = path.toString();
-    auto matched  = findRootByPath(fullPath);
+    auto fullPath       = path.toString();
+    auto matched        = findRootByPath(fullPath);
+    auto journalMatched = findJournalRootByPath(fullPath);
     if (!matched.has_value()) {
-        if (auto journalMatched = findJournalRootByPath(fullPath); journalMatched.has_value()) {
-            InsertReturn ret;
-            ret.errors.push_back(journalNotReadyError(journalMatched->key));
-            return ret;
+        if (journalMatched.has_value()) {
+            if (!journalMatched->relativePath.empty()
+                && journalMatched->relativePath.starts_with(UndoPaths::HistoryRoot)) {
+                InsertReturn ret;
+                ret.errors.push_back(journalNotReadyError(journalMatched->key));
+                return ret;
+            }
+            auto guardExpected = beginJournalTransactionInternal(journalMatched->state);
+            if (!guardExpected) {
+                InsertReturn ret;
+                ret.errors.push_back(guardExpected.error());
+                return ret;
+            }
+            auto guard  = std::move(guardExpected.value());
+            auto result = inner->in(path, data);
+            if (result.errors.empty()) {
+                recordJournalMutation(*journalMatched->state,
+                                      UndoJournal::OperationKind::Insert,
+                                      fullPath);
+            }
+            if (auto commit = guard.commit(); !commit) {
+                result.errors.push_back(commit.error());
+            }
+            return result;
         }
         return inner->in(path, data);
     }
@@ -776,8 +798,8 @@ auto UndoableSpace::out(Iterator const& path,
                         InputMetadata const& inputMetadata,
                         Out const& options,
                         void* obj) -> std::optional<Error> {
-    auto fullPath = path.toString();
-    auto matched  = findRootByPath(fullPath);
+    auto fullPath       = path.toString();
+    auto matched        = findRootByPath(fullPath);
     auto journalMatched = findJournalRootByPath(fullPath);
 
     if (!options.doPop) {
@@ -786,14 +808,31 @@ auto UndoableSpace::out(Iterator const& path,
             return readHistoryValue(*matched, matched->relativePath, inputMetadata, obj);
         }
         if (journalMatched.has_value()) {
-            return journalNotReadyError(journalMatched->key);
+            if (!journalMatched->relativePath.empty()
+                && journalMatched->relativePath.starts_with(UndoPaths::HistoryRoot)) {
+                return journalNotReadyError(journalMatched->key);
+            }
+            return inner->out(path, inputMetadata, options, obj);
         }
         return inner->out(path, inputMetadata, options, obj);
     }
 
     if (!matched.has_value()) {
         if (journalMatched.has_value()) {
-            return journalNotReadyError(journalMatched->key);
+            auto guardExpected = beginJournalTransactionInternal(journalMatched->state);
+            if (!guardExpected)
+                return guardExpected.error();
+            auto guard = std::move(guardExpected.value());
+            auto error = inner->out(path, inputMetadata, options, obj);
+            if (!error.has_value()) {
+                recordJournalMutation(*journalMatched->state,
+                                      UndoJournal::OperationKind::Take,
+                                      fullPath);
+            }
+            if (auto commit = guard.commit(); !commit) {
+                return commit.error();
+            }
+            return error;
         }
         return inner->out(path, inputMetadata, options, obj);
     }

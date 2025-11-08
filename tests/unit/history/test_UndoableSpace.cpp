@@ -428,9 +428,11 @@ TEST_CASE("mutation journal roots are gated behind feature flag") {
     CHECK(undoResult.error().message->find("Mutation journal") != std::string::npos);
 
     auto insertResult = space->insert("/journal/value", std::string{"alpha"});
-    REQUIRE_FALSE(insertResult.errors.empty());
-    CHECK(insertResult.errors.front().message.has_value());
-    CHECK(insertResult.errors.front().message->find("Mutation journal") != std::string::npos);
+    CHECK(insertResult.errors.empty());
+
+    auto value = space->read<std::string>("/journal/value");
+    REQUIRE(value.has_value());
+    CHECK(*value == "alpha");
 
     REQUIRE(space->disableHistory(ConcretePathStringView{"/journal"}).has_value());
 }

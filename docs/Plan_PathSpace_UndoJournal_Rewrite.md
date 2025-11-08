@@ -47,7 +47,9 @@
 - [x] Introduce a transitional `UndoJournalRootState` alongside existing `RootState`; wire feature flags to opt into the journal while keeping snapshot paths alive.
   - `HistoryOptions` now exposes `useMutationJournal`, and `UndoableSpace` tracks journal-enabled roots via `UndoJournalRootState`, preserving persistence metadata and retention policy scaffolding while snapshot paths remain the default.
   - Snapshot operations detect journal-enabled roots and return a clear "mutation journal not yet supported" error so follow-up phases can safely wire transactional handlers without breaking existing behaviour.
-- [ ] Update transaction guards to collect mutation batches and flush them into the journal on commit; ensure nested transactions coalesce correctly.
+- [x] Update transaction guards to collect mutation batches and flush them into the journal on commit; ensure nested transactions coalesce correctly.
+  - Journal-enabled roots now acquire `JournalTransactionGuard`s that batch per-transaction mutations and append them to `UndoJournalState` on commit, sharing the same nesting semantics as snapshot transactions.
+  - Inserts and takes on journal roots proceed through the existing `PathSpace` backend while recording placeholder mutation entries; undo/redo APIs still gate with the “mutation journal not yet supported” error until replay wiring lands.
 - [ ] Swap `undo`/`redo` handlers to call journal replay APIs while still reporting telemetry via existing structures.
 - [ ] Re-implement `_history/command` handlers (undo/redo/GC/toggle) against the journal.
 - [ ] Adapt telemetry aggregation to pull from journal stats instead of snapshot metrics.
