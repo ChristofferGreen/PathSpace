@@ -57,6 +57,7 @@ add_library(PathSpace
     history/CowSubtreePrototype.cpp
     history/UndoHistoryUtils.cpp
     history/UndoHistoryMetadata.cpp
+    history/UndoJournalEntry.cpp
     history/UndoSnapshotCodec.cpp
     history/UndoSavefileCodec.cpp
     history/UndoableSpace.cpp
