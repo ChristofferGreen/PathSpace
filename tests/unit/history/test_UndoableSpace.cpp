@@ -547,6 +547,52 @@ TEST_CASE("journal persistence replays entries on enable") {
     std::filesystem::remove_all(tempRoot, ec);
 }
 
+TEST_CASE("persistence namespace validation rejects path traversal tokens") {
+    auto tempRoot = std::filesystem::temp_directory_path() / "undoable_space_namespace_validation";
+    std::error_code ec;
+    std::filesystem::remove_all(tempRoot, ec);
+
+    HistoryOptions snapshotDefaults;
+    snapshotDefaults.persistHistory       = true;
+    snapshotDefaults.persistenceRoot      = tempRoot.string();
+    snapshotDefaults.persistenceNamespace = "invalid/namespace";
+
+    {
+        auto space = makeUndoableSpace(snapshotDefaults);
+        REQUIRE(space);
+        auto enable = space->enableHistory(ConcretePathStringView{"/doc"});
+        REQUIRE_FALSE(enable.has_value());
+        CHECK(enable.error().code == Error::Code::InvalidPermissions);
+    }
+
+    snapshotDefaults.persistenceNamespace = "snapshot_ns";
+    {
+        auto space = makeUndoableSpace(snapshotDefaults);
+        REQUIRE(space);
+        REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+    }
+
+    HistoryOptions journalDefaults = snapshotDefaults;
+    journalDefaults.useMutationJournal   = true;
+    journalDefaults.persistenceNamespace = "bad namespace";
+    {
+        auto space = makeUndoableSpace(journalDefaults);
+        REQUIRE(space);
+        auto enable = space->enableHistory(ConcretePathStringView{"/doc"});
+        REQUIRE_FALSE(enable.has_value());
+        CHECK(enable.error().code == Error::Code::InvalidPermissions);
+    }
+
+    journalDefaults.persistenceNamespace = "journal_ns";
+    {
+        auto space = makeUndoableSpace(journalDefaults);
+        REQUIRE(space);
+        REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+    }
+
+    std::filesystem::remove_all(tempRoot, ec);
+}
+
 TEST_CASE("savefile export import roundtrip retains history") {
     auto savePath = std::filesystem::temp_directory_path() / "undoable_space_savefile.bin";
     std::error_code removeEc;

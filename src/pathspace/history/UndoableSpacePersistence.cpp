@@ -14,6 +14,8 @@
 #include <iomanip>
 #include <optional>
 #include <span>
+#include <string>
+#include <string_view>
 #include <sstream>
 #include <system_error>
 #include <utility>
@@ -28,6 +30,51 @@ namespace UndoUtilsAlias    = SP::History::UndoUtils;
 namespace UndoMetadata      = SP::History::UndoMetadata;
 namespace UndoSnapshotCodec = SP::History::UndoSnapshotCodec;
 namespace UndoJournal       = SP::History::UndoJournal;
+
+constexpr bool isValidPersistenceTokenChar(char c) noexcept {
+    return (c >= 'a' && c <= 'z')
+           || (c >= 'A' && c <= 'Z')
+           || (c >= '0' && c <= '9')
+           || c == '_' || c == '-';
+}
+
+constexpr bool isValidPersistenceToken(std::string_view token, bool allowEmpty) noexcept {
+    if (token.empty())
+        return allowEmpty;
+    if (token == "." || token == "..")
+        return false;
+    for (char c : token) {
+        if (!isValidPersistenceTokenChar(c))
+            return false;
+    }
+    return true;
+}
+
+inline auto validatePersistenceToken(std::string_view token,
+                                     std::string_view label,
+                                     bool allowEmpty) -> Expected<void> {
+    if (!isValidPersistenceToken(token, allowEmpty)) {
+        std::string message = "Invalid history persistence ";
+        message.append(label);
+        message.append(" '");
+        message.append(token);
+        message.append("'; allowed characters are [A-Za-z0-9_-] and tokens may not be '.' or '..'");
+        return std::unexpected(Error{Error::Code::InvalidPermissions, std::move(message)});
+    }
+    return {};
+}
+
+static_assert(isValidPersistenceToken("namespace", false));
+static_assert(isValidPersistenceToken("valid_namespace-1", false));
+static_assert(isValidPersistenceToken("", true));
+static_assert(!isValidPersistenceToken(".", false));
+static_assert(!isValidPersistenceToken("..", false));
+static_assert(!isValidPersistenceToken("invalid/namespace", false));
+static_assert(!isValidPersistenceToken("invalid namespace", false));
+static_assert(!isValidPersistenceToken("\\", false));
+constexpr char kPreferredSeparatorLiteral[] = {std::filesystem::path::preferred_separator, '\0'};
+static_assert(!isValidPersistenceToken(std::string_view{kPreferredSeparatorLiteral, 1}, false),
+              "Directory separators must not be permitted in persistence namespaces");
 
 } // namespace
 
@@ -50,10 +97,16 @@ auto UndoableSpace::ensureJournalPersistenceSetup(UndoJournalRootState& state) -
     if (state.encodedRoot.empty()) {
         state.encodedRoot = encodeRootForPersistence(state.rootPath);
     }
+    if (auto checkEncoded = validatePersistenceToken(state.encodedRoot, "encoded_root", false); !checkEncoded)
+        return checkEncoded;
+
+    auto const& namespaceToken =
+        state.options.persistenceNamespace.empty() ? spaceUuid : state.options.persistenceNamespace;
+    if (auto checkNamespace = validatePersistenceToken(namespaceToken, "namespace", false); !checkNamespace)
+        return checkNamespace;
 
     auto baseRoot = persistenceRootPath(state.options);
-    auto nsDir    = state.options.persistenceNamespace.empty() ? std::filesystem::path(spaceUuid)
-                                                               : std::filesystem::path(state.options.persistenceNamespace);
+    auto nsDir    = std::filesystem::path(namespaceToken);
 
     state.persistencePath = baseRoot / nsDir / state.encodedRoot;
     state.journalPath     = state.persistencePath / "journal.log";
@@ -200,9 +253,19 @@ auto UndoableSpace::ensurePersistenceSetup(RootState& state) -> Expected<void> {
     if (!state.persistenceEnabled)
         return {};
 
+    if (state.encodedRoot.empty()) {
+        state.encodedRoot = encodeRootForPersistence(state.rootPath);
+    }
+    if (auto checkEncoded = validatePersistenceToken(state.encodedRoot, "encoded_root", false); !checkEncoded)
+        return checkEncoded;
+
+    auto const& namespaceToken =
+        state.options.persistenceNamespace.empty() ? spaceUuid : state.options.persistenceNamespace;
+    if (auto checkNamespace = validatePersistenceToken(namespaceToken, "namespace", false); !checkNamespace)
+        return checkNamespace;
+
     auto baseRoot = persistenceRootPath(state.options);
-    auto nsDir    = state.options.persistenceNamespace.empty() ? std::filesystem::path(spaceUuid)
-                                                               : std::filesystem::path(state.options.persistenceNamespace);
+    auto nsDir    = std::filesystem::path(namespaceToken);
 
     state.persistencePath = baseRoot / nsDir / state.encodedRoot;
     state.entriesPath     = state.persistencePath / "entries";

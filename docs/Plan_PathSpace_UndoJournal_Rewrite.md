@@ -58,7 +58,8 @@
   - Journal roots now expose `_history/stats/*`, `_history/lastOperation/*`, and `_history/unsupported/*` via `UndoableSpace::getHistoryStats` and the PathSpace read APIs. Aggregation uses `UndoJournalState::Stats` (with undo/redo byte splits) and synchronises telemetry counters after commits and retention. Coverage added in `tests/unit/history/test_UndoableSpace.cpp` and `tests/unit/history/test_UndoJournalState.cpp`.
 - [x] Extend persistence path to load/save journals; keep old snapshot persistence reachable until Phase 4.
   - Journal roots replay `journal.log` on enable, restoring applied NodeData into the backing `PathSpace` while reconstructing `UndoJournalState`. Persistence setup compacts logs on retention/GC, updates disk telemetry, and regression coverage lives in `tests/unit/history/test_UndoableSpace.cpp` (“journal persistence replays entries on enable”).
-- [ ] Compile-time guards ensure persistence directories and options map cleanly to the new storage format.
+- [x] Compile-time guards ensure persistence directories and options map cleanly to the new storage format.
+  - Added compile-time validation helpers for persistence token characters and wired runtime checks so journal/snapshot namespaces and encoded roots reject path separators and traversal tokens. `tests/unit/history/test_UndoableSpace.cpp` now covers invalid namespace scenarios to keep regressions visible.
 
 ### Phase 3 — End-to-End Validation
 - [ ] Expand regression coverage: transaction batching, multi-step undo/redo, retention trimming, persistence recovery, command inserts (`_history/*`).
