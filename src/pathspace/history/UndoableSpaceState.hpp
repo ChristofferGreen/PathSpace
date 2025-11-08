@@ -102,6 +102,7 @@ struct UndoableSpace::UndoJournalRootState {
     std::vector<std::string>                  components;
     HistoryOptions                            options;
     UndoJournal::JournalState                 journal;
+    RootState::Telemetry                      telemetry;
     std::uint64_t                             nextSequence = 0;
     bool                                      persistenceEnabled = false;
     std::filesystem::path                     persistencePath;
@@ -134,6 +135,24 @@ private:
     std::size_t                            undoBefore;
     std::size_t                            redoBefore;
     std::size_t                            bytesBefore;
+    bool                                   succeeded = true;
+    std::string                            messageText;
+};
+
+class UndoableSpace::JournalOperationScope {
+public:
+    JournalOperationScope(UndoableSpace& owner,
+                          UndoJournalRootState& state,
+                          std::string_view type);
+    void setResult(bool success, std::string message = {});
+    ~JournalOperationScope();
+
+private:
+    UndoableSpace&                         owner;
+    UndoJournalRootState&                  state;
+    std::string                            type;
+    std::chrono::steady_clock::time_point  startSteady;
+    UndoJournal::JournalState::Stats       beforeStats;
     bool                                   succeeded = true;
     std::string                            messageText;
 };

@@ -4,6 +4,7 @@
 #include "core/Error.hpp"
 #include "history/CowSubtreePrototype.hpp"
 #include "history/UndoJournalEntry.hpp"
+#include "history/UndoJournalState.hpp"
 #include "path/ConcretePath.hpp"
 
 #include <chrono>
@@ -274,6 +275,8 @@ private:
     auto applySnapshotLocked(RootState& state, CowSubtreePrototype::Snapshot const& snapshot) -> Expected<void>;
     auto clearSubtree(Node& node) -> void;
 
+    class JournalOperationScope;
+
     auto handleControlInsert(MatchedRoot const& matchedRoot, std::string const& command, InputData const& data) -> InsertReturn;
     auto interpretSteps(InputData const& data) const -> std::size_t;
 
@@ -297,6 +300,9 @@ private:
     void recordUnsupportedPayloadLocked(RootState& state,
                                         std::string const& path,
                                         std::string const& reason);
+    void recordJournalUnsupportedPayload(UndoJournalRootState& state,
+                                         std::string const& path,
+                                         std::string const& reason);
     auto ensureEntriesDirectory(RootState& state) -> Expected<void>;
     static auto commitAndDeactivate(UndoableSpace* owner,
                                     std::shared_ptr<RootState>& state,
@@ -336,6 +342,27 @@ private:
     auto entryMetaPath(RootState const& state, std::size_t generation) const -> std::filesystem::path;
     auto stateMetaPath(RootState const& state) const -> std::filesystem::path;
     auto removeEntryFiles(RootState& state, std::size_t generation) -> void;
+    auto parseJournalRelativeComponents(UndoJournalRootState const& state,
+                                        std::string const& path) const -> Expected<std::vector<std::string>>;
+    auto captureJournalNodeData(UndoJournalRootState const& state,
+                                std::vector<std::string> const& relativeComponents) const
+        -> Expected<std::optional<NodeData>>;
+    auto applyJournalNodeData(UndoJournalRootState& state,
+                              std::vector<std::string> const& relativeComponents,
+                              std::optional<NodeData> const& data) -> Expected<void>;
+    auto applyJournalSteps(std::shared_ptr<UndoJournalRootState> const& state,
+                           std::size_t steps,
+                           bool isUndo) -> Expected<void>;
+    auto performJournalStep(UndoJournalRootState& state,
+                            bool        sourceIsUndo,
+                            std::string_view operationName,
+                            std::string_view emptyMessage) -> Expected<void>;
+    void recordJournalOperation(UndoJournalRootState& state,
+                                std::string_view type,
+                                std::chrono::steady_clock::duration duration,
+                                bool success,
+                                UndoJournal::JournalState::Stats const& beforeStats,
+                                std::string const& message);
 
     std::unique_ptr<PathSpaceBase>                     inner;
     HistoryOptions                                     defaultOptions;
@@ -353,10 +380,12 @@ private:
         -> Expected<JournalTransactionGuard>;
     auto commitJournalTransaction(UndoJournalRootState& state) -> Expected<void>;
     auto markJournalTransactionDirty(UndoJournalRootState& state) -> void;
-    void recordJournalMutation(UndoJournalRootState& state,
+    auto recordJournalMutation(UndoJournalRootState& state,
                                UndoJournal::OperationKind operation,
                                std::string_view fullPath,
-                               bool barrier = false);
+                               std::optional<NodeData> const& valueAfter,
+                               std::optional<NodeData> const& inverseValue,
+                               bool barrier = false) -> Expected<void>;
 };
 
 } // namespace SP::History

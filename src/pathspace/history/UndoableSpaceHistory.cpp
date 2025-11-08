@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <span>
 #include <string>
@@ -477,6 +478,153 @@ void UndoableSpace::recordUnsupportedPayloadLocked(RootState& state,
     }
 }
 
+void UndoableSpace::recordJournalUnsupportedPayload(UndoJournalRootState& state,
+                                                    std::string const& path,
+                                                    std::string const& reason) {
+    auto now = std::chrono::system_clock::now();
+    state.telemetry.unsupportedTotal++;
+
+    auto it = std::find_if(state.telemetry.unsupportedLog.begin(),
+                           state.telemetry.unsupportedLog.end(),
+                           [&](auto const& entry) {
+                               return entry.path == path && entry.reason == reason;
+                           });
+    if (it != state.telemetry.unsupportedLog.end()) {
+        it->occurrences += 1;
+        it->timestamp = now;
+        if (std::next(it) != state.telemetry.unsupportedLog.end()) {
+            auto updated = std::move(*it);
+            state.telemetry.unsupportedLog.erase(it);
+            state.telemetry.unsupportedLog.push_back(std::move(updated));
+        }
+        return;
+    }
+
+    RootState::Telemetry::UnsupportedRecord record;
+    record.path        = path;
+    record.reason      = reason;
+    record.timestamp   = now;
+    record.occurrences = 1;
+    state.telemetry.unsupportedLog.push_back(std::move(record));
+    if (state.telemetry.unsupportedLog.size() > UndoUtilsAlias::MaxUnsupportedLogEntries) {
+        state.telemetry.unsupportedLog.erase(state.telemetry.unsupportedLog.begin());
+    }
+}
+
+auto UndoableSpace::parseJournalRelativeComponents(UndoJournalRootState const& state,
+                                                   std::string const& path) const
+    -> Expected<std::vector<std::string>> {
+    ConcretePathStringView pathView{path};
+    auto canonical = pathView.canonicalized();
+    if (!canonical) {
+        return std::unexpected(canonical.error());
+    }
+    auto componentsExpected = canonical->components();
+    if (!componentsExpected) {
+        return std::unexpected(componentsExpected.error());
+    }
+    auto components = std::move(componentsExpected.value());
+    if (components.size() < state.components.size()) {
+        return std::unexpected(
+            Error{Error::Code::InvalidPermissions, "Journal entry path outside history root"});
+    }
+    for (std::size_t i = 0; i < state.components.size(); ++i) {
+        if (components[i] != state.components[i]) {
+            return std::unexpected(
+                Error{Error::Code::InvalidPermissions, "Journal entry path outside history root"});
+        }
+    }
+    std::vector<std::string> relative;
+    relative.reserve(components.size() - state.components.size());
+    std::copy(std::next(components.begin(), static_cast<std::ptrdiff_t>(state.components.size())),
+              components.end(),
+              std::back_inserter(relative));
+    return relative;
+}
+
+auto UndoableSpace::captureJournalNodeData(UndoJournalRootState const& state,
+                                           std::vector<std::string> const& relativeComponents) const
+    -> Expected<std::optional<NodeData>> {
+    auto* rootNode = const_cast<UndoableSpace*>(this)->resolveRootNode();
+    if (!rootNode) {
+        return std::unexpected(Error{Error::Code::UnknownError, "PathSpace backend unavailable"});
+    }
+
+    Node const* node = rootNode;
+    for (auto const& component : state.components) {
+        node = node->getChild(component);
+        if (!node) {
+            return std::optional<NodeData>{};
+        }
+    }
+
+    for (auto const& component : relativeComponents) {
+        if (!node) {
+            return std::optional<NodeData>{};
+        }
+        node = node->getChild(component);
+        if (!node) {
+            return std::optional<NodeData>{};
+        }
+    }
+
+    if (!node) {
+        return std::optional<NodeData>{};
+    }
+
+    std::scoped_lock payloadLock(node->payloadMutex);
+    if (node->nested) {
+        return std::unexpected(Error{Error::Code::UnknownError,
+                                     std::string(UndoUtilsAlias::UnsupportedNestedMessage)});
+    }
+    if (!node->data) {
+        return std::optional<NodeData>{};
+    }
+    if (node->data->hasExecutionPayload()) {
+        return std::unexpected(Error{Error::Code::UnknownError,
+                                     std::string(UndoUtilsAlias::UnsupportedExecutionMessage)});
+    }
+    return std::optional<NodeData>{*node->data};
+}
+
+auto UndoableSpace::applyJournalNodeData(UndoJournalRootState& state,
+                                         std::vector<std::string> const& relativeComponents,
+                                         std::optional<NodeData> const& data) -> Expected<void> {
+    auto* rootNode = resolveRootNode();
+    if (!rootNode) {
+        return std::unexpected(Error{Error::Code::UnknownError, "PathSpace backend unavailable"});
+    }
+
+    Node* node = rootNode;
+    for (auto const& component : state.components) {
+        node = &node->getOrCreateChild(component);
+    }
+
+    for (auto const& component : relativeComponents) {
+        if (data.has_value()) {
+            node = &node->getOrCreateChild(component);
+        } else {
+            auto* existing = node->getChild(component);
+            if (!existing) {
+                return {};
+            }
+            node = existing;
+        }
+    }
+
+    if (!node) {
+        return {};
+    }
+
+    std::scoped_lock payloadLock(node->payloadMutex);
+    if (data.has_value()) {
+        node->data = std::make_unique<NodeData>(data.value());
+    } else {
+        node->data.reset();
+    }
+    return {};
+}
+
 auto UndoableSpace::applyHistorySteps(ConcretePathStringView root,
                                       std::size_t            steps,
                                       bool                   isUndo) -> Expected<void> {
@@ -504,6 +652,38 @@ auto UndoableSpace::applyHistorySteps(ConcretePathStringView root,
     }
 
     return finalizeHistoryMutation(*state);
+}
+
+auto UndoableSpace::applyJournalSteps(std::shared_ptr<UndoJournalRootState> const& statePtr,
+                                      std::size_t steps,
+                                      bool        isUndo) -> Expected<void> {
+    if (!statePtr)
+        return std::unexpected(Error{Error::Code::NotFound, "History root not enabled"});
+
+    auto state = statePtr;
+    std::unique_lock lock(state->mutex);
+    auto const busyMessage = isUndo ? "Cannot undo while transaction open"
+                                    : "Cannot redo while transaction open";
+    if (state->activeTransaction) {
+        return std::unexpected(Error{Error::Code::InvalidPermissions, busyMessage});
+    }
+
+    if (steps == 0)
+        steps = 1;
+
+    auto const operationName = isUndo ? std::string_view{"undo"} : std::string_view{"redo"};
+    auto const emptyMessage  = isUndo ? std::string_view{"Nothing to undo"}
+                                      : std::string_view{"Nothing to redo"};
+
+    while (steps-- > 0) {
+        auto step = performJournalStep(*state, isUndo, operationName, emptyMessage);
+        if (!step)
+            return step;
+    }
+
+    state->stateDirty       = true;
+    state->persistenceDirty = state->persistenceDirty || state->persistenceEnabled;
+    return {};
 }
 
 auto UndoableSpace::performHistoryStep(RootState& state,
@@ -570,6 +750,61 @@ auto UndoableSpace::performHistoryStep(RootState& state,
 
     if (!state.options.manualGarbageCollect) {
         applyRetentionLocked(state, retentionOrigin);
+    }
+
+    scope.setResult(true);
+    return {};
+}
+
+auto UndoableSpace::performJournalStep(UndoJournalRootState& state,
+                                       bool                  sourceIsUndo,
+                                       std::string_view      operationName,
+                                       std::string_view      emptyMessage) -> Expected<void> {
+    JournalOperationScope scope(*this, state, operationName);
+
+    auto entryOpt =
+        sourceIsUndo ? state.journal.undo() : state.journal.redo();
+    if (!entryOpt.has_value()) {
+        scope.setResult(false, "empty");
+        return std::unexpected(
+            Error{Error::Code::NoObjectFound, std::string(emptyMessage)});
+    }
+    auto const& entry = entryOpt->get();
+
+    auto componentsExpected = parseJournalRelativeComponents(state, entry.path);
+    if (!componentsExpected) {
+        scope.setResult(false, "path_invalid");
+        return std::unexpected(componentsExpected.error());
+    }
+    auto relativeComponents = std::move(componentsExpected.value());
+
+    std::optional<NodeData> payload;
+
+    auto decodePayload = [&](UndoJournal::SerializedPayload const& serialized,
+                             std::string_view context) -> Expected<std::optional<NodeData>> {
+        if (!serialized.present)
+            return std::optional<NodeData>{};
+        auto decoded = UndoJournal::decodeNodeDataPayload(serialized);
+        if (!decoded) {
+            auto error = decoded.error();
+            auto message = error.message.value_or(std::string(context));
+            scope.setResult(false, std::string(context));
+            return std::unexpected(Error{error.code, std::move(message)});
+        }
+        return std::optional<NodeData>{decoded.value()};
+    };
+
+    auto payloadExpected = sourceIsUndo ? decodePayload(entry.inverseValue, "decode_inverse_failed")
+                                        : decodePayload(entry.value, "decode_value_failed");
+    if (!payloadExpected) {
+        return std::unexpected(payloadExpected.error());
+    }
+    payload = std::move(payloadExpected.value());
+
+    auto applyResult = applyJournalNodeData(state, relativeComponents, payload);
+    if (!applyResult) {
+        scope.setResult(false, applyResult.error().message.value_or("apply_failed"));
+        return applyResult;
     }
 
     scope.setResult(true);
@@ -751,18 +986,50 @@ auto UndoableSpace::in(Iterator const& path, InputData const& data) -> InsertRet
                 ret.errors.push_back(journalNotReadyError(journalMatched->key));
                 return ret;
             }
+
+            auto componentsExpected =
+                parseJournalRelativeComponents(*journalMatched->state, fullPath);
+            if (!componentsExpected) {
+                InsertReturn ret;
+                ret.errors.push_back(componentsExpected.error());
+                return ret;
+            }
+            auto relativeComponents = std::move(componentsExpected.value());
+
+            auto beforeExpected =
+                captureJournalNodeData(*journalMatched->state, relativeComponents);
+            if (!beforeExpected) {
+                InsertReturn ret;
+                ret.errors.push_back(beforeExpected.error());
+                return ret;
+            }
+            auto beforeNode = beforeExpected.value();
+
             auto guardExpected = beginJournalTransactionInternal(journalMatched->state);
             if (!guardExpected) {
                 InsertReturn ret;
                 ret.errors.push_back(guardExpected.error());
                 return ret;
             }
+
             auto guard  = std::move(guardExpected.value());
             auto result = inner->in(path, data);
             if (result.errors.empty()) {
-                recordJournalMutation(*journalMatched->state,
-                                      UndoJournal::OperationKind::Insert,
-                                      fullPath);
+                auto afterExpected =
+                    captureJournalNodeData(*journalMatched->state, relativeComponents);
+                if (!afterExpected) {
+                    result.errors.push_back(afterExpected.error());
+                } else {
+                    auto afterNode = afterExpected.value();
+                    auto record    = recordJournalMutation(*journalMatched->state,
+                                                        UndoJournal::OperationKind::Insert,
+                                                        fullPath,
+                                                        afterNode,
+                                                        beforeNode);
+                    if (!record) {
+                        result.errors.push_back(record.error());
+                    }
+                }
             }
             if (auto commit = guard.commit(); !commit) {
                 result.errors.push_back(commit.error());
@@ -819,15 +1086,46 @@ auto UndoableSpace::out(Iterator const& path,
 
     if (!matched.has_value()) {
         if (journalMatched.has_value()) {
+            if (!journalMatched->relativePath.empty()
+                && journalMatched->relativePath.starts_with(UndoPaths::HistoryRoot)) {
+                return journalNotReadyError(journalMatched->key);
+            }
+
+            auto componentsExpected =
+                parseJournalRelativeComponents(*journalMatched->state, fullPath);
+            if (!componentsExpected) {
+                return componentsExpected.error();
+            }
+            auto relativeComponents = std::move(componentsExpected.value());
+
+            auto beforeExpected =
+                captureJournalNodeData(*journalMatched->state, relativeComponents);
+            if (!beforeExpected) {
+                return beforeExpected.error();
+            }
+            auto beforeNode = beforeExpected.value();
+
             auto guardExpected = beginJournalTransactionInternal(journalMatched->state);
             if (!guardExpected)
                 return guardExpected.error();
+
             auto guard = std::move(guardExpected.value());
             auto error = inner->out(path, inputMetadata, options, obj);
             if (!error.has_value()) {
-                recordJournalMutation(*journalMatched->state,
-                                      UndoJournal::OperationKind::Take,
-                                      fullPath);
+                auto afterExpected =
+                    captureJournalNodeData(*journalMatched->state, relativeComponents);
+                if (!afterExpected) {
+                    return afterExpected.error();
+                }
+                auto afterNode = afterExpected.value();
+                auto record    = recordJournalMutation(*journalMatched->state,
+                                                    UndoJournal::OperationKind::Take,
+                                                    fullPath,
+                                                    afterNode,
+                                                    beforeNode);
+                if (!record) {
+                    return record.error();
+                }
             }
             if (auto commit = guard.commit(); !commit) {
                 return commit.error();
@@ -855,14 +1153,14 @@ auto UndoableSpace::out(Iterator const& path,
 
 auto UndoableSpace::undo(ConcretePathStringView root, std::size_t steps) -> Expected<void> {
     if (auto journal = findJournalRoot(root); journal) {
-        return std::unexpected(journalNotReadyError(journal->rootPath));
+        return applyJournalSteps(journal, steps, true);
     }
     return applyHistorySteps(root, steps, true);
 }
 
 auto UndoableSpace::redo(ConcretePathStringView root, std::size_t steps) -> Expected<void> {
     if (auto journal = findJournalRoot(root); journal) {
-        return std::unexpected(journalNotReadyError(journal->rootPath));
+        return applyJournalSteps(journal, steps, false);
     }
     return applyHistorySteps(root, steps, false);
 }

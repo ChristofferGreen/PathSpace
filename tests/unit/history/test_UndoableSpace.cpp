@@ -96,6 +96,52 @@ TEST_CASE("undo/redo round trip") {
     CHECK(*lastOpType == std::string{"redo"});
 }
 
+TEST_CASE("journal undo/redo round trip") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    REQUIRE(space->insert("/doc/title", std::string{"alpha"}).errors.empty());
+    auto value = space->read<std::string>("/doc/title");
+    REQUIRE(value.has_value());
+    CHECK(*value == std::string{"alpha"});
+
+    REQUIRE(space->undo(ConcretePathStringView{"/doc"}).has_value());
+    CHECK_FALSE(space->read<std::string>("/doc/title").has_value());
+
+    REQUIRE(space->redo(ConcretePathStringView{"/doc"}).has_value());
+    auto restored = space->read<std::string>("/doc/title");
+    REQUIRE(restored.has_value());
+    CHECK(*restored == std::string{"alpha"});
+}
+
+TEST_CASE("journal take undo restores value") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/queue"}, opts).has_value());
+
+    REQUIRE(space->insert("/queue/item", 42).errors.empty());
+
+    auto taken = space->take<int>("/queue/item");
+    REQUIRE(taken.has_value());
+    CHECK(*taken == 42);
+    CHECK_FALSE(space->read<int>("/queue/item").has_value());
+
+    REQUIRE(space->undo(ConcretePathStringView{"/queue"}).has_value());
+    auto restored = space->read<int>("/queue/item");
+    REQUIRE(restored.has_value());
+    CHECK(*restored == 42);
+
+    REQUIRE(space->redo(ConcretePathStringView{"/queue"}).has_value());
+    CHECK_FALSE(space->read<int>("/queue/item").has_value());
+}
+
 TEST_CASE("transaction batching produces single history entry") {
     auto space = makeUndoableSpace();
     REQUIRE(space);

@@ -101,6 +101,29 @@ UndoableSpace::OperationScope::~OperationScope() {
                           messageText);
 }
 
+UndoableSpace::JournalOperationScope::JournalOperationScope(UndoableSpace& owner,
+                                                            UndoJournalRootState& state,
+                                                            std::string_view type)
+    : owner(owner)
+    , state(state)
+    , type(type)
+    , startSteady(std::chrono::steady_clock::now())
+    , beforeStats(state.journal.stats()) {}
+
+void UndoableSpace::JournalOperationScope::setResult(bool success, std::string message) {
+    succeeded   = success;
+    messageText = std::move(message);
+}
+
+UndoableSpace::JournalOperationScope::~JournalOperationScope() {
+    owner.recordJournalOperation(state,
+                                 type,
+                                 std::chrono::steady_clock::now() - startSteady,
+                                 succeeded,
+                                 beforeStats,
+                                 messageText);
+}
+
 UndoableSpace::TransactionHandleBase::TransactionHandleBase(
     UndoableSpace& owner,
     std::shared_ptr<RootState> state,
@@ -439,6 +462,37 @@ auto UndoableSpace::beginJournalTransactionInternal(
     return JournalTransactionGuard(*this, state, true);
 }
 
+void UndoableSpace::recordJournalOperation(UndoJournalRootState& state,
+                                           std::string_view type,
+                                           std::chrono::steady_clock::duration duration,
+                                           bool success,
+                                           UndoJournal::JournalState::Stats const& beforeStats,
+                                           std::string const& message) {
+    auto afterStats = state.journal.stats();
+
+    RootState::OperationRecord record;
+    record.type            = std::string(type);
+    record.timestamp       = std::chrono::system_clock::now();
+    record.duration        = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+    record.success         = success;
+    record.undoCountBefore = beforeStats.undoCount;
+    record.undoCountAfter  = afterStats.undoCount;
+    record.redoCountBefore = beforeStats.redoCount;
+    record.redoCountAfter  = afterStats.redoCount;
+    record.bytesBefore     = beforeStats.totalBytes;
+    record.bytesAfter      = afterStats.totalBytes;
+    record.message         = message;
+    state.telemetry.lastOperation = std::move(record);
+
+    state.telemetry.undoBytes        = afterStats.totalBytes;
+    state.telemetry.redoBytes        = 0;
+    state.telemetry.trimmedEntries   = afterStats.trimmedEntries;
+    state.telemetry.trimmedBytes     = afterStats.trimmedBytes;
+    state.telemetry.cachedUndo       = afterStats.undoCount;
+    state.telemetry.cachedRedo       = afterStats.redoCount;
+    state.telemetry.persistenceDirty = state.persistenceDirty;
+}
+
 void UndoableSpace::markJournalTransactionDirty(UndoJournalRootState& state) {
     std::scoped_lock lock(state.mutex);
     if (state.activeTransaction)
@@ -506,10 +560,36 @@ auto UndoableSpace::commitJournalTransaction(UndoJournalRootState& state) -> Exp
     return {};
 }
 
-void UndoableSpace::recordJournalMutation(UndoJournalRootState& state,
+auto UndoableSpace::recordJournalMutation(UndoJournalRootState& state,
                                           UndoJournal::OperationKind operation,
                                           std::string_view fullPath,
-                                          bool barrier) {
+                                          std::optional<NodeData> const& valueAfter,
+                                          std::optional<NodeData> const& inverseValue,
+                                          bool barrier) -> Expected<void> {
+    auto encodePayload = [&](std::optional<NodeData> const& node) -> Expected<UndoJournal::SerializedPayload> {
+        if (!node.has_value()) {
+            UndoJournal::SerializedPayload payload;
+            payload.present = false;
+            return payload;
+        }
+        return UndoJournal::encodeNodeDataPayload(node.value());
+    };
+
+    auto valuePayloadExpected = encodePayload(valueAfter);
+    if (!valuePayloadExpected) {
+        auto reason = valuePayloadExpected.error().message.value_or("Unable to encode journal value payload");
+        recordJournalUnsupportedPayload(state, std::string(fullPath), reason);
+        return std::unexpected(valuePayloadExpected.error());
+    }
+
+    auto inversePayloadExpected = encodePayload(inverseValue);
+    if (!inversePayloadExpected) {
+        auto reason =
+            inversePayloadExpected.error().message.value_or("Unable to encode journal inverse payload");
+        recordJournalUnsupportedPayload(state, std::string(fullPath), reason);
+        return std::unexpected(inversePayloadExpected.error());
+    }
+
     UndoJournal::JournalEntry entry;
     entry.operation = operation;
     entry.path      = std::string(fullPath);
@@ -518,12 +598,15 @@ void UndoableSpace::recordJournalMutation(UndoJournalRootState& state,
                             std::chrono::steady_clock::now().time_since_epoch())
                             .count());
     entry.barrier = barrier;
+    entry.value        = std::move(valuePayloadExpected.value());
+    entry.inverseValue = std::move(inversePayloadExpected.value());
 
     std::scoped_lock lock(state.mutex);
     if (!state.activeTransaction)
-        return;
+        return {};
     state.activeTransaction->pendingEntries.push_back(std::move(entry));
     state.activeTransaction->dirty = true;
+    return {};
 }
 
 } // namespace SP::History

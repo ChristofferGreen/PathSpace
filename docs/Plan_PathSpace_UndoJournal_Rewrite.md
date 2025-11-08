@@ -50,7 +50,8 @@
 - [x] Update transaction guards to collect mutation batches and flush them into the journal on commit; ensure nested transactions coalesce correctly.
   - Journal-enabled roots now acquire `JournalTransactionGuard`s that batch per-transaction mutations and append them to `UndoJournalState` on commit, sharing the same nesting semantics as snapshot transactions.
   - Inserts and takes on journal roots proceed through the existing `PathSpace` backend while recording placeholder mutation entries; undo/redo APIs still gate with the “mutation journal not yet supported” error until replay wiring lands.
-- [ ] Swap `undo`/`redo` handlers to call journal replay APIs while still reporting telemetry via existing structures.
+- [x] Swap `undo`/`redo` handlers to call journal replay APIs while still reporting telemetry via existing structures.
+  - Journal-enabled roots now record per-mutation payloads and replay them through `UndoableSpace::undo`/`redo`; the tests `journal undo/redo round trip` and `journal take undo restores value` cover regression cases via the core `UndoJournalState` APIs.
 - [ ] Re-implement `_history/command` handlers (undo/redo/GC/toggle) against the journal.
 - [ ] Adapt telemetry aggregation to pull from journal stats instead of snapshot metrics.
 - [ ] Extend persistence path to load/save journals; keep old snapshot persistence reachable until Phase 4.
