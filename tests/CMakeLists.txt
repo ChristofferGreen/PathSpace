@@ -21,6 +21,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/path/test_UnvalidatedPath.cpp
   unit/core/test_CowSubtreePrototype.cpp
   unit/history/test_UndoJournal.cpp
+  unit/history/test_UndoJournalState.cpp
   unit/history/test_UndoableSpace.cpp
   unit/history/test_HistoryInspection.cpp
   test_main.cpp

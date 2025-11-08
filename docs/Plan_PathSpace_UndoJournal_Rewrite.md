@@ -34,7 +34,9 @@
   - `src/pathspace/history/UndoJournalEntry.hpp` defines `OperationKind`, `SerializedPayload`, and `JournalEntry` with timestamp/sequence/barrier metadata plus helpers for NodeData payload capture.
   - `src/pathspace/history/UndoJournalEntry.cpp` implements binary encode/decode (`serializeEntry`/`deserializeEntry`) using the `'PSJL'` header, along with payload guards for unsupported NodeData (tasks/futures) and strict length checks.
   - `tests/unit/history/test_UndoJournal.cpp` exercises NodeData payload round-trips and verifies encode/decode parity for all entry fields, establishing the baseline regression suite for future journal work.
-- [ ] Implement in-memory `JournalState` with append, undo, redo, retention, and cursor management APIs.
+- [x] Implement in-memory `JournalState` with append, undo, redo, retention, and cursor management APIs.
+  - `src/pathspace/history/UndoJournalState.hpp`/`.cpp` track applied vs. redo cursors, expose peek/undo/redo helpers, and enforce configurable retention limits by entry count and estimated byte usage while accumulating trim metrics.
+  - `tests/unit/history/test_UndoJournalState.cpp` exercises append/undo/redo flows, redo truncation on new writes, entry- and byte-based retention, and cursor stability after trims to guard core invariants.
 - [ ] Add lightweight persistence helpers: append-only writer, compaction routine, and recovery replay into a provided functor (no `UndoableSpace` wiring yet).
 - [ ] Unit-test `JournalState` in isolation (append/undo/redo/retention, round-trip serialization).
 
