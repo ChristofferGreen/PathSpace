@@ -103,6 +103,7 @@ struct UndoableSpace::UndoJournalRootState {
     HistoryOptions                            options;
     UndoJournal::JournalState                 journal;
     RootState::Telemetry                      telemetry;
+    std::size_t                               liveBytes = 0;
     std::uint64_t                             nextSequence = 0;
     bool                                      persistenceEnabled = false;
     std::filesystem::path                     persistencePath;
@@ -153,6 +154,7 @@ private:
     std::string                            type;
     std::chrono::steady_clock::time_point  startSteady;
     UndoJournal::JournalState::Stats       beforeStats;
+    std::size_t                            beforeLiveBytes = 0;
     bool                                   succeeded = true;
     std::string                            messageText;
 };

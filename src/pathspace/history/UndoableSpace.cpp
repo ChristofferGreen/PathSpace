@@ -200,6 +200,11 @@ auto UndoableSpace::enableHistory(ConcretePathStringView root, HistoryOptions op
         }
 
         {
+            std::scoped_lock stateLock(state->mutex);
+            state->liveBytes = computeJournalLiveBytes(*state);
+        }
+
+        {
             std::scoped_lock lock(rootsMutex);
             journalRoots.emplace(state->rootPath, std::move(state));
         }

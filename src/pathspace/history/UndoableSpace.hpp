@@ -292,6 +292,12 @@ private:
     static auto computeTotalBytesLocked(RootState const& state) -> std::size_t;
     auto gatherStatsLocked(RootState const& state) const -> HistoryStats;
     auto gatherJournalStatsLocked(UndoJournalRootState const& state) const -> HistoryStats;
+    static auto payloadBytes(NodeData const& data) -> std::size_t;
+    static auto payloadBytes(std::optional<NodeData> const& data) -> std::size_t;
+    static void adjustLiveBytes(std::size_t& liveBytes,
+                                std::size_t beforeBytes,
+                                std::size_t afterBytes);
+    auto computeJournalLiveBytes(UndoJournalRootState const& state) const -> std::size_t;
     void recordOperation(RootState& state,
                          std::string_view type,
                          std::chrono::steady_clock::duration duration,
@@ -379,6 +385,7 @@ private:
                                 std::chrono::steady_clock::duration duration,
                                 bool success,
                                 UndoJournal::JournalState::Stats const& beforeStats,
+                                std::size_t beforeLiveBytes,
                                 std::string const& message);
 
     std::unique_ptr<PathSpaceBase>                     inner;

@@ -38,11 +38,80 @@ namespace UndoMetadata      = SP::History::UndoMetadata;
 namespace UndoSnapshotCodec = SP::History::UndoSnapshotCodec;
 namespace UndoJournal       = SP::History::UndoJournal;
 
+inline auto nodeDataBytes(SP::NodeData const& data) -> std::size_t {
+    auto raw   = data.rawBuffer();
+    auto front = data.rawBufferFrontOffset();
+    if (front >= raw.size()) {
+        return 0;
+    }
+    return raw.size() - front;
+}
+
+inline auto nodeDataBytes(std::optional<SP::NodeData> const& data) -> std::size_t {
+    if (!data.has_value()) {
+        return 0;
+    }
+    return nodeDataBytes(data.value());
+}
+
+auto subtreePayloadBytes(SP::Node const& node) -> std::size_t {
+    std::size_t total = 0;
+    {
+        std::scoped_lock lock(node.payloadMutex);
+        if (node.data) {
+            total += nodeDataBytes(*node.data);
+        }
+    }
+    node.forEachChild([&](std::string_view, SP::Node const& child) {
+        total += subtreePayloadBytes(child);
+    });
+    return total;
+}
+
 } // namespace
 
 namespace SP::History {
 
 using SP::ConcretePathStringView;
+
+auto UndoableSpace::payloadBytes(NodeData const& data) -> std::size_t {
+    return nodeDataBytes(data);
+}
+
+auto UndoableSpace::payloadBytes(std::optional<NodeData> const& data) -> std::size_t {
+    return nodeDataBytes(data);
+}
+
+void UndoableSpace::adjustLiveBytes(std::size_t& liveBytes,
+                                    std::size_t beforeBytes,
+                                    std::size_t afterBytes) {
+    if (afterBytes >= beforeBytes) {
+        liveBytes += afterBytes - beforeBytes;
+        return;
+    }
+    auto const delta = beforeBytes - afterBytes;
+    liveBytes        = delta > liveBytes ? 0 : liveBytes - delta;
+}
+
+auto UndoableSpace::computeJournalLiveBytes(UndoJournalRootState const& state) const -> std::size_t {
+    auto* rootNode = const_cast<UndoableSpace*>(this)->resolveRootNode();
+    if (!rootNode) {
+        return 0;
+    }
+
+    Node const* node = rootNode;
+    for (auto const& component : state.components) {
+        node = node->getChild(component);
+        if (!node) {
+            return 0;
+        }
+    }
+
+    if (!node) {
+        return 0;
+    }
+    return subtreePayloadBytes(*node);
+}
 
 auto UndoableSpace::captureSnapshotLocked(RootState& state)
     -> Expected<CowSubtreePrototype::Snapshot> {
@@ -319,8 +388,8 @@ auto UndoableSpace::gatherJournalStatsLocked(UndoJournalRootState const& state) 
 
     stats.bytes.undo  = journalStats.undoBytes;
     stats.bytes.redo  = journalStats.redoBytes;
-    stats.bytes.live  = 0;
-    stats.bytes.total = stats.bytes.undo + stats.bytes.redo;
+    stats.bytes.live  = state.liveBytes;
+    stats.bytes.total = stats.bytes.undo + stats.bytes.redo + stats.bytes.live;
     stats.bytes.disk  = state.telemetry.diskBytes;
 
     stats.counts.manualGarbageCollect = state.options.manualGarbageCollect;
@@ -573,12 +642,22 @@ auto UndoableSpace::applyJournalNodeData(UndoJournalRootState& state,
         return {};
     }
 
-    std::scoped_lock payloadLock(node->payloadMutex);
-    if (data.has_value()) {
-        node->data = std::make_unique<NodeData>(data.value());
-    } else {
-        node->data.reset();
+    auto beforeBytes = std::size_t{0};
+    auto afterBytes  = payloadBytes(data);
+
+    {
+        std::scoped_lock payloadLock(node->payloadMutex);
+        if (node->data) {
+            beforeBytes = payloadBytes(*node->data);
+        }
+        if (data.has_value()) {
+            node->data = std::make_unique<NodeData>(data.value());
+        } else {
+            node->data.reset();
+        }
     }
+
+    adjustLiveBytes(state.liveBytes, beforeBytes, afterBytes);
     return {};
 }
 

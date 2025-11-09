@@ -159,6 +159,7 @@ auto UndoableSpace::loadJournalPersistence(UndoJournalRootState& state) -> Expec
 
     std::unique_lock lock(state.mutex);
     state.journal.clear();
+    state.liveBytes = 0;
 
     std::uint64_t maxSequence  = 0;
     bool          sequenceSeen = false;

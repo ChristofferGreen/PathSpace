@@ -547,6 +547,107 @@ TEST_CASE("history telemetry paths expose stats") {
     CHECK(*lastOpType == std::string{"commit"});
 }
 
+TEST_CASE("journal telemetry matches snapshot telemetry outputs") {
+    struct TelemetryCapture {
+        HistoryStats stats;
+        std::size_t undoCountPath      = 0;
+        std::size_t redoCountPath      = 0;
+        std::size_t liveBytesPath      = 0;
+        std::size_t bytesRetainedPath  = 0;
+        bool        manualGcEnabled    = false;
+        std::size_t lastBytesAfterPath = 0;
+    };
+
+    auto captureTelemetry = [](bool useJournal) {
+        TelemetryCapture capture;
+        auto             space = makeUndoableSpace();
+        REQUIRE(space);
+
+        HistoryOptions opts;
+        opts.useMutationJournal = useJournal;
+        REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+        REQUIRE(space->insert("/doc/value", std::string{"alpha"}).errors.empty());
+        REQUIRE(space->insert("/doc/value", std::string{"bravo"}).errors.empty());
+        auto taken = space->take<std::string>("/doc/value");
+        REQUIRE(taken.has_value());
+        CHECK(*taken == std::string{"bravo"});
+        REQUIRE(space->insert("/doc/value", std::string{"charlie"}).errors.empty());
+
+        auto stats = space->getHistoryStats(ConcretePathStringView{"/doc"});
+        REQUIRE(stats.has_value());
+        capture.stats = stats.value();
+
+        auto undoCount = space->read<std::size_t>("/doc/_history/stats/undoCount");
+        REQUIRE(undoCount.has_value());
+        capture.undoCountPath = *undoCount;
+
+        auto redoCount = space->read<std::size_t>("/doc/_history/stats/redoCount");
+        REQUIRE(redoCount.has_value());
+        capture.redoCountPath = *redoCount;
+
+        auto liveBytes = space->read<std::size_t>("/doc/_history/stats/liveBytes");
+        REQUIRE(liveBytes.has_value());
+        capture.liveBytesPath = *liveBytes;
+
+        auto bytesRetained = space->read<std::size_t>("/doc/_history/stats/bytesRetained");
+        REQUIRE(bytesRetained.has_value());
+        capture.bytesRetainedPath = *bytesRetained;
+
+        auto manualGc = space->read<bool>("/doc/_history/stats/manualGcEnabled");
+        REQUIRE(manualGc.has_value());
+        capture.manualGcEnabled = *manualGc;
+
+        auto lastBytesAfter = space->read<std::size_t>("/doc/_history/lastOperation/bytesAfter");
+        REQUIRE(lastBytesAfter.has_value());
+        capture.lastBytesAfterPath = *lastBytesAfter;
+
+        return capture;
+    };
+
+    auto snapshotTelemetry = captureTelemetry(false);
+    auto journalTelemetry  = captureTelemetry(true);
+
+    CHECK(snapshotTelemetry.stats.counts.undo == journalTelemetry.stats.counts.undo);
+    CHECK(snapshotTelemetry.stats.counts.redo == journalTelemetry.stats.counts.redo);
+    CHECK(snapshotTelemetry.stats.counts.manualGarbageCollect
+          == journalTelemetry.stats.counts.manualGarbageCollect);
+    CHECK(snapshotTelemetry.stats.counts.diskEntries == journalTelemetry.stats.counts.diskEntries);
+    CHECK(snapshotTelemetry.stats.counts.cachedUndo == journalTelemetry.stats.counts.cachedUndo);
+    CHECK(snapshotTelemetry.stats.counts.cachedRedo == journalTelemetry.stats.counts.cachedRedo);
+
+    CHECK(snapshotTelemetry.stats.bytes.undo == journalTelemetry.stats.bytes.undo);
+    CHECK(snapshotTelemetry.stats.bytes.redo == journalTelemetry.stats.bytes.redo);
+    CHECK(snapshotTelemetry.stats.bytes.live == journalTelemetry.stats.bytes.live);
+    CHECK(snapshotTelemetry.stats.bytes.total == journalTelemetry.stats.bytes.total);
+
+    CHECK(snapshotTelemetry.stats.trim.operationCount
+          == journalTelemetry.stats.trim.operationCount);
+    CHECK(snapshotTelemetry.stats.trim.entries == journalTelemetry.stats.trim.entries);
+    CHECK(snapshotTelemetry.stats.trim.bytes == journalTelemetry.stats.trim.bytes);
+
+    CHECK(snapshotTelemetry.stats.unsupported.total == journalTelemetry.stats.unsupported.total);
+    CHECK(snapshotTelemetry.stats.unsupported.recent.size()
+          == journalTelemetry.stats.unsupported.recent.size());
+
+    REQUIRE(snapshotTelemetry.stats.lastOperation.has_value());
+    REQUIRE(journalTelemetry.stats.lastOperation.has_value());
+    auto const& snapshotLast = *snapshotTelemetry.stats.lastOperation;
+    auto const& journalLast  = *journalTelemetry.stats.lastOperation;
+    CHECK(snapshotLast.type == journalLast.type);
+    CHECK(snapshotLast.success == journalLast.success);
+    CHECK(snapshotLast.undoCountAfter == journalLast.undoCountAfter);
+    CHECK(snapshotLast.redoCountAfter == journalLast.redoCountAfter);
+    CHECK(snapshotLast.bytesAfter == journalLast.bytesAfter);
+
+    CHECK(snapshotTelemetry.undoCountPath == journalTelemetry.undoCountPath);
+    CHECK(snapshotTelemetry.redoCountPath == journalTelemetry.redoCountPath);
+    CHECK(snapshotTelemetry.liveBytesPath == journalTelemetry.liveBytesPath);
+    CHECK(snapshotTelemetry.bytesRetainedPath == journalTelemetry.bytesRetainedPath);
+    CHECK(snapshotTelemetry.manualGcEnabled == journalTelemetry.manualGcEnabled);
+    CHECK(snapshotTelemetry.lastBytesAfterPath == journalTelemetry.lastBytesAfterPath);
+}
+
 TEST_CASE("history rejects unsupported payloads") {
     SUBCASE("task payloads surface descriptive errors and skip history entries") {
         auto space = makeUndoableSpace();

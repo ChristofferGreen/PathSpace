@@ -108,7 +108,8 @@ UndoableSpace::JournalOperationScope::JournalOperationScope(UndoableSpace& owner
     , state(state)
     , type(type)
     , startSteady(std::chrono::steady_clock::now())
-    , beforeStats(state.journal.stats()) {}
+    , beforeStats(state.journal.stats())
+    , beforeLiveBytes(state.liveBytes) {}
 
 void UndoableSpace::JournalOperationScope::setResult(bool success, std::string message) {
     succeeded   = success;
@@ -121,6 +122,7 @@ UndoableSpace::JournalOperationScope::~JournalOperationScope() {
                                  std::chrono::steady_clock::now() - startSteady,
                                  succeeded,
                                  beforeStats,
+                                 beforeLiveBytes,
                                  messageText);
 }
 
@@ -467,6 +469,7 @@ void UndoableSpace::recordJournalOperation(UndoJournalRootState& state,
                                            std::chrono::steady_clock::duration duration,
                                            bool success,
                                            UndoJournal::JournalState::Stats const& beforeStats,
+                                           std::size_t beforeLiveBytes,
                                            std::string const& message) {
     auto afterStats = state.journal.stats();
 
@@ -476,11 +479,11 @@ void UndoableSpace::recordJournalOperation(UndoJournalRootState& state,
     record.duration        = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
     record.success         = success;
     record.undoCountBefore = beforeStats.undoCount;
-   record.undoCountAfter  = afterStats.undoCount;
-   record.redoCountBefore = beforeStats.redoCount;
-   record.redoCountAfter  = afterStats.redoCount;
-    record.bytesBefore     = beforeStats.undoBytes + beforeStats.redoBytes;
-    record.bytesAfter      = afterStats.undoBytes + afterStats.redoBytes;
+    record.undoCountAfter  = afterStats.undoCount;
+    record.redoCountBefore = beforeStats.redoCount;
+    record.redoCountAfter  = afterStats.redoCount;
+    record.bytesBefore     = beforeStats.undoBytes + beforeStats.redoBytes + beforeLiveBytes;
+    record.bytesAfter      = afterStats.undoBytes + afterStats.redoBytes + state.liveBytes;
     record.message         = message;
     state.telemetry.lastOperation = std::move(record);
 
@@ -648,9 +651,14 @@ auto UndoableSpace::recordJournalMutation(UndoJournalRootState& state,
     entry.value        = std::move(valuePayloadExpected.value());
     entry.inverseValue = std::move(inversePayloadExpected.value());
 
+    auto beforeBytes = payloadBytes(inverseValue);
+    auto afterBytes  = payloadBytes(valueAfter);
+
     std::scoped_lock lock(state.mutex);
     if (!state.activeTransaction)
         return {};
+
+    adjustLiveBytes(state.liveBytes, beforeBytes, afterBytes);
     state.activeTransaction->pendingEntries.push_back(std::move(entry));
     state.activeTransaction->dirty = true;
     return {};
