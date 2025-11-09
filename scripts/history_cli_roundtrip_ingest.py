@@ -5,7 +5,7 @@ This helper scans the test artifact tree for `history_cli_roundtrip/telemetry.js
 files, aggregates their contents, and emits a consolidated JSON report that
 CI dashboards or the inspector backend can consume. Each entry exposes the
 original/roundtrip/import metrics along with relative paths to the archived
-PSHD bundles so downstream tooling can link directly to the artifacts.
+PSJL bundles so downstream tooling can link directly to the artifacts.
 """
 
 from __future__ import annotations
@@ -127,9 +127,11 @@ class TelemetryEntry:
             "telemetry": _relativize(telemetry_path, relative_base),
         }
         for name in ("original", "roundtrip"):
-            candidate = archive_dir / f"{name}.pshd"
-            if candidate.exists():
-                files[name] = _relativize(candidate, relative_base)
+            for suffix in (".psjl", ".pshd"):
+                candidate = archive_dir / f"{name}{suffix}"
+                if candidate.exists():
+                    files[name] = _relativize(candidate, relative_base)
+                    break
 
         return cls(
             timestamp_iso=timestamp_iso or parsed.isoformat(),
@@ -149,8 +151,8 @@ def collect_entries(artifacts_root: Path, relative_base: Optional[Path]) -> List
         archive_dir = telemetry_path.parent
         if not (
             archive_dir.name == "history_cli_roundtrip"
-            or (archive_dir / "original.pshd").exists()
-            or (archive_dir / "roundtrip.pshd").exists()
+            or any((archive_dir / f"original{suffix}").exists() for suffix in (".psjl", ".pshd"))
+            or any((archive_dir / f"roundtrip{suffix}").exists() for suffix in (".psjl", ".pshd"))
         ):
             continue
         try:
@@ -590,7 +592,7 @@ function buildRunsTable() {{
     const artifactsCell = document.createElement("td");
     const fileLinks = run.fileLinks || {{}};
     const linkParts = [];
-    [["telemetry", "Telemetry"], ["original", "Original PSHD"], ["roundtrip", "Roundtrip PSHD"]].forEach(([key, label]) => {{
+    [["telemetry", "Telemetry"], ["original", "Original PSJL"], ["roundtrip", "Roundtrip PSJL"]].forEach(([key, label]) => {{
       const href = fileLinks[key];
       if (href) {{
         const link = document.createElement("a");

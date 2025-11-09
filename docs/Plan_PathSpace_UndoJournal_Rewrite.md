@@ -86,6 +86,11 @@
 ### Phase 4 — Remove Snapshot Implementation
 - [ ] Once tests are green with the journal gated on, delete snapshot-specific code: `CowSubtreePrototype`, snapshot codecs, metadata codecs tied solely to snapshots, persistence helpers, `UndoableSpaceState` fields no longer used.
   - _Progress (November 9, 2025)_: `computeJournalByteMetrics` now derives undo/redo/live totals directly from `UndoJournalState::stats`, so runtime telemetry no longer depends on replaying `CowSubtreePrototype` snapshots. Next step is to remove the remaining snapshot-only helpers and headers.
+- [ ] Journal-first persistence & savefile plan (drafted November 9, 2025)
+  - ✅ (November 9, 2025) **Savefile format swap** — `UndoableSpaceSavefile.cpp` and `UndoSavefileCodec` now export/import `history.journal.v1` documents that stream journal entries with retention options. Snapshot payload packing has been removed from the savefile path, and journal exports/imports preserve undo/redo cursors.
+  - ✅ (November 9, 2025) **CLI + tests update** — `pathspace_history_cli_roundtrip` now archives PSJL bundles (`original.psjl` / `roundtrip.psjl`) alongside telemetry, `scripts/history_cli_roundtrip_ingest.py` and its dashboard tests ingest the journal artifacts, and the history unit suite asserts export/import telemetry parity plus unsupported payload reporting under the mutation journal backend.
+  3. **Persistence consolidation** — Remove snapshot persistence helpers after validating `UndoableSpacePersistence.cpp` journal replay and disk telemetry (ensure `journal.log` replay populates live state, trim counters, and retry paths).
+  4. **Docs/tooling** — Document the journal log format in `docs/AI_Debugging_Playbook.md`, update quickstarts, and provide migration notes or converters for legacy `.pshd` bundles.
 - [ ] Purge residual references (include headers, build targets, docs) and update inspector tool notes to mention the journal log format.
 - [ ] Rename transitional types (`UndoJournalRootState` → `RootState`) and clean up feature flags.
 - [ ] Run targeted grep to ensure no leftover references to `Snapshot`, `UndoSnapshotCodec`, or `CowSubtreePrototype`.

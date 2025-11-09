@@ -54,7 +54,7 @@ def run_test(repo_root: Path) -> None:
         telemetry_path = archive_dir / "telemetry.json"
         _write_telemetry(telemetry_path)
         for name in ("original", "roundtrip"):
-            (archive_dir / f"{name}.pshd").write_bytes(b"pshd")
+            (archive_dir / f"{name}.psjl").write_bytes(b"psjl")
 
         output_dir = artifacts_root / "history_cli_roundtrip"
         index_path = output_dir / "index.json"
@@ -91,18 +91,19 @@ def run_test(repo_root: Path) -> None:
         if report.get("runCount") != 1:
             raise SystemExit(f"unexpected runCount: {report.get('runCount')}")
         runs = report.get("runs", [])
-        if not runs or runs[0]["files"]["original"] != os.path.normpath(
-            "test-logs/HistorySavefileCLIRoundTrip_sample_20251107-000000.artifacts/history_cli_roundtrip/original.pshd"
-        ):
-            raise SystemExit("original.pshd link missing from report")
+        expected_path = os.path.normpath(
+            "test-logs/HistorySavefileCLIRoundTrip_sample_20251107-000000.artifacts/history_cli_roundtrip/original.psjl"
+        )
+        if not runs or runs[0]["files"]["original"] != expected_path:
+            raise SystemExit("original.psjl link missing from report")
 
         html_content = html_path.read_text(encoding="utf-8")
         if "PathSpace Undo History Dashboard" not in html_content:
             raise SystemExit("dashboard title missing from HTML output")
-        if "Original PSHD" not in html_content:
-            raise SystemExit("Original PSHD link label missing from HTML output")
-        if "../HistorySavefileCLIRoundTrip_sample_20251107-000000.artifacts/history_cli_roundtrip/original.pshd" not in html_content:
-            raise SystemExit("original.pshd relative link missing from HTML output")
+        if "Original PSJL" not in html_content:
+            raise SystemExit("Original PSJL link label missing from HTML output")
+        if "../HistorySavefileCLIRoundTrip_sample_20251107-000000.artifacts/history_cli_roundtrip/original.psjl" not in html_content:
+            raise SystemExit("original.psjl relative link missing from HTML output")
 
 
 def main() -> None:
