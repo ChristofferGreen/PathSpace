@@ -41,7 +41,8 @@ Provide a single index of active planning documents, ordered by current priority
 5. **Plan_Surface_Ray_Cache.md** — revisit once core rendering + web requirements are satisfied (deferred).
 6. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
 
-## Status Snapshot — November 8, 2025
+## Status Snapshot — November 9, 2025
+- ✅ (November 9, 2025) Multi-threaded journal stress coverage now runs inside `tests/unit/history/test_UndoableSpace.cpp` (“journal handles concurrent mutation and history operations”), interleaving inserts, takes, undo/redo, and manual garbage-collect commands on four threads. The harness drains and replays the journal to assert cursor stability, covering the Phase 3 stress-test requirement from the Undo Journal rewrite plan.
 - ✅ (November 8, 2025) Journal persistence now replays mutation logs on enable, restoring live node state and history from `journal.log`. Compaction runs after retention/GC, telemetry reflects disk usage, and the regression `tests/unit/history/test_UndoableSpace.cpp` (“journal persistence replays entries on enable”) covers the load path.
 - ✅ (November 8, 2025) Persistence namespaces and encoded roots now pass compile-time token guards and runtime validation, rejecting path traversal tokens before wiring journal or snapshot persistence. Regression coverage lives in `tests/unit/history/test_UndoableSpace.cpp` (“persistence namespace validation rejects path traversal tokens”).
 - ✅ (November 8, 2025) Journal telemetry endpoints now serve data via the mutation journal. `_history/stats/*`, `_history/lastOperation/*`, and `_history/unsupported/*` all flow through the new aggregator built on `UndoJournalState::Stats`, with commit-time retention syncing and regression coverage (`tests/unit/history/test_UndoableSpace.cpp`, `tests/unit/history/test_UndoJournalState.cpp`).

@@ -5,8 +5,14 @@
 #include "path/ConcretePath.hpp"
 #include "third_party/doctest.h"
 
+#include <atomic>
 #include <filesystem>
+#include <mutex>
 #include <span>
+#include <string>
+#include <thread>
+#include <utility>
+#include <vector>
 
 using namespace SP;
 using namespace SP::History;
@@ -821,6 +827,167 @@ TEST_CASE("savefile export import roundtrip retains history") {
     CHECK(stats->counts.undo >= 1);
 
     std::filesystem::remove(savePath, removeEc);
+}
+
+TEST_CASE("journal handles concurrent mutation and history operations") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    opts.maxEntries         = 4096;
+    opts.maxBytesRetained   = 512 * 1024;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/stress"}, opts).has_value());
+
+    constexpr int kThreadCount = 4;
+    constexpr int kIterations  = 80;
+
+    std::atomic<int> undoSuccess{0};
+    std::atomic<int> redoSuccess{0};
+    std::atomic<int> gcSuccess{0};
+
+    std::mutex errorMutex;
+    std::vector<std::string> errors;
+
+    auto recordError = [&](int threadIndex, std::string message) {
+        std::lock_guard<std::mutex> lock(errorMutex);
+        errors.emplace_back("[thread " + std::to_string(threadIndex) + "] " + std::move(message));
+    };
+
+    auto const root = ConcretePathStringView{"/stress"};
+    auto* const rawSpace = space.get();
+
+    auto worker = [&](int threadIndex) {
+        for (int iter = 0; iter < kIterations; ++iter) {
+            std::string key = "/stress/thread";
+            key += std::to_string(threadIndex);
+            key += "/value";
+            key += std::to_string(iter);
+
+            auto insertResult = rawSpace->insert(key.c_str(), iter);
+            if (!insertResult.errors.empty()) {
+                recordError(threadIndex, std::string("insert reported errors for ") + key);
+            }
+
+            switch (iter % 3) {
+            case 0: {
+                auto taken = rawSpace->take<int>(key.c_str());
+                if (taken.has_value()) {
+                    if (*taken != iter) {
+                        recordError(threadIndex, std::string("take returned unexpected value for ") + key);
+                    }
+                }
+
+                auto undoResult = rawSpace->undo(root);
+                if (undoResult.has_value()) {
+                    undoSuccess.fetch_add(1, std::memory_order_relaxed);
+                    auto redoResult = rawSpace->redo(root);
+                    if (redoResult.has_value()) {
+                        redoSuccess.fetch_add(1, std::memory_order_relaxed);
+                    } else if (redoResult.error().code != Error::Code::NoObjectFound) {
+                        recordError(threadIndex, "redo returned unexpected error code");
+                    }
+                } else if (undoResult.error().code != Error::Code::NoObjectFound) {
+                    recordError(threadIndex, "undo returned unexpected error code");
+                }
+                break;
+            }
+            case 1: {
+                auto undoResult = rawSpace->undo(root);
+                if (undoResult.has_value()) {
+                    undoSuccess.fetch_add(1, std::memory_order_relaxed);
+                    auto redoResult = rawSpace->redo(root);
+                    if (redoResult.has_value()) {
+                        redoSuccess.fetch_add(1, std::memory_order_relaxed);
+                    } else if (redoResult.error().code != Error::Code::NoObjectFound) {
+                        recordError(threadIndex, "redo returned unexpected error code");
+                    }
+                } else if (undoResult.error().code != Error::Code::NoObjectFound) {
+                    recordError(threadIndex, "undo returned unexpected error code");
+                }
+                break;
+            }
+            default: {
+                auto gcResult = rawSpace->insert("/stress/_history/garbage_collect", true);
+                if (!gcResult.errors.empty()) {
+                    recordError(threadIndex, "garbage_collect insert reported errors");
+                } else {
+                    gcSuccess.fetch_add(1, std::memory_order_relaxed);
+                }
+                break;
+            }
+            }
+
+            std::this_thread::yield();
+        }
+    };
+
+    std::vector<std::thread> threads;
+    threads.reserve(kThreadCount);
+    for (int i = 0; i < kThreadCount; ++i) {
+        threads.emplace_back(worker, i);
+    }
+    for (auto& workerThread : threads) {
+        workerThread.join();
+    }
+
+    if (!errors.empty()) {
+        for (auto const& err : errors) {
+            INFO(err);
+        }
+        FAIL("concurrent journal stress encountered errors");
+    }
+
+    CHECK(undoSuccess.load(std::memory_order_relaxed) > 0);
+    CHECK(redoSuccess.load(std::memory_order_relaxed) > 0);
+    CHECK(gcSuccess.load(std::memory_order_relaxed) > 0);
+
+    auto stats = space->getHistoryStats(root);
+    REQUIRE(stats.has_value());
+    CHECK(stats->counts.undo >= 0);
+    CHECK(stats->counts.redo >= 0);
+
+    auto markerInsert = space->insert("/stress/marker", std::string{"marker"});
+    CHECK(markerInsert.errors.empty());
+
+    std::size_t undone = 0;
+    for (;;) {
+        auto undoResult = space->undo(root);
+        if (!undoResult.has_value()) {
+            CHECK(undoResult.error().code == Error::Code::NoObjectFound);
+            break;
+        }
+        ++undone;
+    }
+    CHECK(undone > 0);
+
+    std::size_t redone = 0;
+    for (;;) {
+        auto redoResult = space->redo(root);
+        if (!redoResult.has_value()) {
+            CHECK(redoResult.error().code == Error::Code::NoObjectFound);
+            break;
+        }
+        ++redone;
+    }
+    CHECK(redone == undone);
+
+    auto markerCleanup = space->take<std::string>("/stress/marker");
+    REQUIRE(markerCleanup.has_value());
+    CHECK(*markerCleanup == "marker");
+
+    auto postInsert = space->insert("/stress/post_check", std::string{"ok"});
+    CHECK(postInsert.errors.empty());
+
+    REQUIRE(space->undo(root).has_value());
+    REQUIRE(space->redo(root).has_value());
+
+    auto cleanup = space->take<std::string>("/stress/post_check");
+    REQUIRE(cleanup.has_value());
+    CHECK(*cleanup == "ok");
+
+    auto finalGc = space->insert("/stress/_history/garbage_collect", true);
+    CHECK(finalGc.errors.empty());
 }
 
 TEST_CASE("mutation journal roots require explicit opt-in") {
