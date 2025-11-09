@@ -5,13 +5,18 @@
 #include "path/ConcretePath.hpp"
 #include "third_party/doctest.h"
 
+#include <array>
 #include <atomic>
 #include <filesystem>
 #include <mutex>
+#include <optional>
+#include <random>
 #include <span>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
+#include <unordered_map>
 #include <vector>
 
 using namespace SP;
@@ -988,6 +993,256 @@ TEST_CASE("journal handles concurrent mutation and history operations") {
 
     auto finalGc = space->insert("/stress/_history/garbage_collect", true);
     CHECK(finalGc.errors.empty());
+}
+
+TEST_CASE("journal fuzz sequence maintains parity with reference model") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.useMutationJournal   = true;
+    opts.manualGarbageCollect = true;
+    opts.maxEntries           = 4096;
+    opts.maxBytesRetained     = 2 * 1024 * 1024;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/fuzz"}, opts).has_value());
+
+    struct ReferenceModel {
+        enum class Kind { InsertReplace, Take };
+        struct Entry {
+            Kind kind;
+            std::string key;
+            std::optional<int> prior;
+            std::optional<int> value;
+        };
+
+        std::unordered_map<std::string, int> values;
+        std::vector<Entry> undoStack;
+        std::vector<Entry> redoStack;
+
+        void insert(std::string const& key, int value) {
+            Entry entry;
+            entry.kind  = Kind::InsertReplace;
+            entry.key   = key;
+            entry.value = value;
+            if (auto it = values.find(key); it != values.end()) {
+                entry.prior = it->second;
+            }
+            values[key] = value;
+            undoStack.push_back(entry);
+            redoStack.clear();
+        }
+
+        std::optional<int> take(std::string const& key) {
+            auto it = values.find(key);
+            if (it == values.end()) {
+                return std::nullopt;
+            }
+            Entry entry;
+            entry.kind  = Kind::Take;
+            entry.key   = key;
+            entry.prior = it->second;
+            values.erase(it);
+            undoStack.push_back(entry);
+            redoStack.clear();
+            return entry.prior;
+        }
+
+        bool undo() {
+            if (undoStack.empty()) {
+                return false;
+            }
+            auto entry = undoStack.back();
+            undoStack.pop_back();
+            switch (entry.kind) {
+            case Kind::InsertReplace:
+                if (entry.prior.has_value()) {
+                    values[entry.key] = *entry.prior;
+                } else {
+                    values.erase(entry.key);
+                }
+                break;
+            case Kind::Take:
+                if (entry.prior.has_value()) {
+                    values[entry.key] = *entry.prior;
+                }
+                break;
+            }
+            redoStack.push_back(entry);
+            return true;
+        }
+
+        bool redo() {
+            if (redoStack.empty()) {
+                return false;
+            }
+            auto entry = redoStack.back();
+            redoStack.pop_back();
+            switch (entry.kind) {
+            case Kind::InsertReplace:
+                REQUIRE(entry.value.has_value());
+                values[entry.key] = *entry.value;
+                break;
+            case Kind::Take:
+                values.erase(entry.key);
+                break;
+            }
+            undoStack.push_back(entry);
+            return true;
+        }
+
+        std::optional<int> read(std::string const& key) const {
+            if (auto it = values.find(key); it != values.end()) {
+                return it->second;
+            }
+            return std::nullopt;
+        }
+
+        void alignToStats(std::size_t undoCount, std::size_t redoCount) {
+            trimStackTo(undoStack, undoCount);
+            trimStackTo(redoStack, redoCount);
+        }
+
+        std::size_t undoCount() const { return undoStack.size(); }
+        std::size_t redoCount() const { return redoStack.size(); }
+
+    private:
+        static void trimStackTo(std::vector<Entry>& stack, std::size_t target) {
+            REQUIRE(stack.size() >= target);
+            while (stack.size() > target) {
+                stack.erase(stack.begin());
+            }
+        }
+    };
+
+    ReferenceModel reference;
+
+    constexpr std::array<std::string_view, 6> kKeySuffixes{
+        "/value/a", "/value/b", "/value/c", "/value/d", "/value/e", "/value/f"};
+    const ConcretePathStringView root{"/fuzz"};
+
+    auto buildKey = [](std::string_view suffix) {
+        std::string key{"/fuzz"};
+        key.append(suffix);
+        return key;
+    };
+
+    std::vector<std::string> keyPaths;
+    keyPaths.reserve(kKeySuffixes.size());
+    for (auto suffix : kKeySuffixes) {
+        keyPaths.push_back(buildKey(suffix));
+    }
+
+    auto checkStateMatches = [&] {
+        for (auto const& key : keyPaths) {
+            auto expected = reference.read(key);
+            auto actual   = space->read<int>(key.c_str());
+            if (expected.has_value()) {
+                REQUIRE(actual.has_value());
+                CHECK(*actual == *expected);
+            } else {
+                CHECK_FALSE(actual.has_value());
+            }
+        }
+    };
+
+    std::mt19937 rng{1337};
+    std::uniform_int_distribution<int> opDist(0, 5);
+    std::uniform_int_distribution<int> keyDist(0, static_cast<int>(keyPaths.size() - 1));
+    std::uniform_int_distribution<int> valueDist(-1000, 1000);
+
+    constexpr int kIterations = 250;
+
+    for (int iter = 0; iter < kIterations; ++iter) {
+        int opIndex = opDist(rng);
+        auto const& key = keyPaths[static_cast<std::size_t>(keyDist(rng))];
+
+        switch (opIndex) {
+        case 0:
+        case 1: {
+            int value = valueDist(rng);
+            auto result = space->insert(key.c_str(), value);
+            CHECK(result.errors.empty());
+            reference.insert(key, value);
+            break;
+        }
+        case 2: {
+            auto taken = space->take<int>(key.c_str());
+            auto refTaken = reference.take(key);
+            CHECK(taken.has_value() == refTaken.has_value());
+            if (taken.has_value()) {
+                CHECK(*taken == *refTaken);
+            }
+            break;
+        }
+        case 3: {
+            auto undoResult = space->undo(root);
+            bool refUndid   = reference.undo();
+            if (undoResult.has_value()) {
+                CHECK(refUndid);
+            } else {
+                CHECK_FALSE(refUndid);
+                CHECK(undoResult.error().code == Error::Code::NoObjectFound);
+            }
+            break;
+        }
+        case 4: {
+            auto redoResult = space->redo(root);
+            bool refRedid   = reference.redo();
+            if (redoResult.has_value()) {
+                CHECK(refRedid);
+            } else {
+                CHECK_FALSE(refRedid);
+                CHECK(redoResult.error().code == Error::Code::NoObjectFound);
+            }
+            break;
+        }
+        default: {
+            auto gc = space->insert("/fuzz/_history/garbage_collect", true);
+            CHECK(gc.errors.empty());
+            auto statsAfterGc = space->getHistoryStats(root);
+            REQUIRE(statsAfterGc.has_value());
+            reference.alignToStats(statsAfterGc->counts.undo, statsAfterGc->counts.redo);
+            CHECK(reference.undoCount() == statsAfterGc->counts.undo);
+            CHECK(reference.redoCount() == statsAfterGc->counts.redo);
+            checkStateMatches();
+            continue;
+        }
+        }
+
+        auto stats = space->getHistoryStats(root);
+        REQUIRE(stats.has_value());
+        reference.alignToStats(stats->counts.undo, stats->counts.redo);
+
+        CHECK(reference.undoCount() == stats->counts.undo);
+        CHECK(reference.redoCount() == stats->counts.redo);
+
+        checkStateMatches();
+    }
+
+    // Drain undo stack and ensure redo parity follows.
+    for (;;) {
+        auto undoResult = space->undo(root);
+        bool refUndid   = reference.undo();
+        if (!undoResult.has_value()) {
+            CHECK_FALSE(refUndid);
+            CHECK(undoResult.error().code == Error::Code::NoObjectFound);
+            break;
+        }
+        CHECK(refUndid);
+        checkStateMatches();
+    }
+
+    for (;;) {
+        auto redoResult = space->redo(root);
+        bool refRedid   = reference.redo();
+        if (!redoResult.has_value()) {
+            CHECK_FALSE(refRedid);
+            CHECK(redoResult.error().code == Error::Code::NoObjectFound);
+            break;
+        }
+        CHECK(refRedid);
+        checkStateMatches();
+    }
 }
 
 TEST_CASE("mutation journal roots require explicit opt-in") {

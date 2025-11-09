@@ -66,7 +66,8 @@
   - New doctest cases in `tests/unit/history/test_UndoableSpace.cpp` cover journal multi-step replay, manual garbage-collect toggles, retention limits, and the current transaction gating error. The byte-budget guardrails in `tests/unit/history/test_UndoJournalState.cpp` were also tightened to avoid SSO-dependent flakiness.
 - [x] Introduce multi-threaded stress suites that hammer undo/redo/trim sequences under concurrent insert/take traffic, validating journal invariants and cursor stability under contention.
    - `tests/unit/history/test_UndoableSpace.cpp` now adds `journal handles concurrent mutation and history operations`, a four-thread stress harness that interleaves inserts, takes, undo/redo replay, and manual garbage-collect commands. The test drains and replays the journal at the end of each run to ensure cursor stability and leaves guard inserts to guarantee undo coverage inside the concurrency window.
-- [ ] Add fuzz-style sequences (random insert/take/undo/redo/trim) comparing journal state vs a reference model to catch replay drift.
+- [x] Add fuzz-style sequences (random insert/take/undo/redo/trim) comparing journal state vs a reference model to catch replay drift.
+  - `tests/unit/history/test_UndoableSpace.cpp` now includes `journal fuzz sequence maintains parity with reference model`, a deterministic fuzz harness that cross-checks journal operations against a pure reference model, injects manual garbage-collect requests, and validates undo/redo availability via telemetry-aligned stack trimming.
 - [ ] Verify telemetry compatibility via inspector tests or snapshots; ensure `_history/stats/*` outputs match legacy expectations for equivalent scenarios.
 - [ ] Benchmark core flows (commit latency, undo/redo) versus the snapshot build to demonstrate improvements or parity.
 
