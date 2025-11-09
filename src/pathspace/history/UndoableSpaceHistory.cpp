@@ -115,48 +115,11 @@ auto UndoableSpace::computeJournalLiveBytes(UndoJournalRootState const& state) c
 
 auto UndoableSpace::computeJournalByteMetrics(UndoJournalRootState const& state) const
     -> Expected<JournalByteMetrics> {
+    auto stats = state.journal.stats();
     JournalByteMetrics metrics{};
-    CowSubtreePrototype prototype;
-    auto totalEntries = state.journal.size();
-
-    std::vector<CowSubtreePrototype::Snapshot> snapshots;
-    snapshots.reserve(totalEntries + 1);
-
-    auto snapshot = prototype.emptySnapshot();
-    snapshots.push_back(snapshot);
-
-    for (std::size_t index = 0; index < totalEntries; ++index) {
-        auto const& entry = state.journal.entryAt(index);
-        auto componentsExpected = parseJournalRelativeComponents(state, entry.path);
-        if (!componentsExpected)
-            return std::unexpected(componentsExpected.error());
-
-        CowSubtreePrototype::Mutation mutation;
-        mutation.components = std::move(componentsExpected.value());
-        if (entry.value.present) {
-            mutation.payload = CowSubtreePrototype::Payload(entry.value.bytes);
-        } else {
-            mutation.payload = CowSubtreePrototype::Payload{};
-        }
-
-        snapshot = prototype.apply(snapshot, mutation);
-        snapshots.push_back(snapshot);
-    }
-
-    auto undoCount = state.journal.cursor();
-    std::vector<std::size_t> snapshotBytes(snapshots.size());
-    for (std::size_t index = 0; index < snapshots.size(); ++index) {
-        snapshotBytes[index] = prototype.analyze(snapshots[index]).payloadBytes;
-    }
-
-    for (std::size_t index = 0; index < undoCount; ++index) {
-        metrics.undoBytes += snapshotBytes[index];
-    }
-    for (std::size_t index = undoCount; index < totalEntries; ++index) {
-        metrics.redoBytes += snapshotBytes[index];
-    }
-
-    metrics.liveBytes = snapshotBytes[undoCount];
+    metrics.undoBytes = stats.undoBytes;
+    metrics.redoBytes = stats.redoBytes;
+    metrics.liveBytes = state.liveBytes;
     return metrics;
 }
 

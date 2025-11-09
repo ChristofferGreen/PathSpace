@@ -23,6 +23,7 @@
 5. Deliver full regression coverage before removing old code, and ensure the repository no longer references snapshot infrastructure.
 
 ## Status — November 9, 2025
+- ✅ (November 9, 2025) Journal byte telemetry no longer replays `CowSubtreePrototype` snapshots; `computeJournalByteMetrics` now derives undo/redo/live totals straight from `UndoJournalState::stats`, eliminating the last runtime dependency on snapshot reconstruction.
 - ✅ Byte telemetry parity restored: journal `_history/stats/*` now derives undo/redo/live totals via `computeJournalByteMetrics`, matching the snapshot stack outputs and unblocking `journal telemetry matches snapshot telemetry outputs`.
 - ✅ Journal control commands wait on active transactions using per-root condition variables, eliminating the `Cannot … while transaction open` spurious failures observed in the multi-threaded stress harness.
 - ✅ Fuzz reference model tracks queue semantics (FIFO insert/take) so regression coverage exercises the same observable behaviour as the underlying `PathSpace` implementation; parity holds across random insert/take/undo/redo/trim sequences.
@@ -84,6 +85,7 @@
 
 ### Phase 4 — Remove Snapshot Implementation
 - [ ] Once tests are green with the journal gated on, delete snapshot-specific code: `CowSubtreePrototype`, snapshot codecs, metadata codecs tied solely to snapshots, persistence helpers, `UndoableSpaceState` fields no longer used.
+  - _Progress (November 9, 2025)_: `computeJournalByteMetrics` now derives undo/redo/live totals directly from `UndoJournalState::stats`, so runtime telemetry no longer depends on replaying `CowSubtreePrototype` snapshots. Next step is to remove the remaining snapshot-only helpers and headers.
 - [ ] Purge residual references (include headers, build targets, docs) and update inspector tool notes to mention the journal log format.
 - [ ] Rename transitional types (`UndoJournalRootState` → `RootState`) and clean up feature flags.
 - [ ] Run targeted grep to ensure no leftover references to `Snapshot`, `UndoSnapshotCodec`, or `CowSubtreePrototype`.
