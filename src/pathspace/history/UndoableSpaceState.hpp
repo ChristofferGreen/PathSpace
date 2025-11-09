@@ -6,6 +6,7 @@
 #include "history/UndoJournalPersistence.hpp"
 
 #include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -95,6 +96,7 @@ struct UndoableSpace::RootState {
     std::string                               encodedRoot;
     bool                                      stateDirty        = false;
     bool                                      hasPersistentState = false;
+    std::condition_variable                   transactionCv;
 };
 
 struct UndoableSpace::UndoJournalRootState {
@@ -113,6 +115,7 @@ struct UndoableSpace::UndoJournalRootState {
     bool                                      stateDirty       = false;
     std::unique_ptr<UndoJournal::JournalFileWriter> persistenceWriter;
     mutable std::mutex                        mutex;
+    std::condition_variable                   transactionCv;
     struct TransactionState {
         std::thread::id                       owner;
         std::size_t                           depth          = 0;
@@ -155,6 +158,7 @@ private:
     std::chrono::steady_clock::time_point  startSteady;
     UndoJournal::JournalState::Stats       beforeStats;
     std::size_t                            beforeLiveBytes = 0;
+    std::optional<JournalByteMetrics>      beforeMetrics;
     bool                                   succeeded = true;
     std::string                            messageText;
 };

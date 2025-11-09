@@ -6,6 +6,7 @@
 #include "third_party/doctest.h"
 
 #include <array>
+#include <deque>
 #include <atomic>
 #include <filesystem>
 #include <mutex>
@@ -571,7 +572,7 @@ TEST_CASE("journal telemetry matches snapshot telemetry outputs") {
         REQUIRE(space->insert("/doc/value", std::string{"bravo"}).errors.empty());
         auto taken = space->take<std::string>("/doc/value");
         REQUIRE(taken.has_value());
-        CHECK(*taken == std::string{"bravo"});
+        CHECK(*taken == std::string{"alpha"});
         REQUIRE(space->insert("/doc/value", std::string{"charlie"}).errors.empty());
 
         auto stats = space->getHistoryStats(ConcretePathStringView{"/doc"});
@@ -972,7 +973,17 @@ TEST_CASE("journal handles concurrent mutation and history operations") {
 
             auto insertResult = rawSpace->insert(key.c_str(), iter);
             if (!insertResult.errors.empty()) {
-                recordError(threadIndex, std::string("insert reported errors for ") + key);
+                auto const& err = insertResult.errors.front();
+                std::string msg = "insert reported errors for ";
+                msg.append(key);
+                msg.append(" [code=");
+                msg.append(std::to_string(static_cast<int>(err.code)));
+                msg.push_back(']');
+                if (err.message) {
+                    msg.push_back(' ');
+                    msg.append(*err.message);
+                }
+                recordError(threadIndex, std::move(msg));
             }
 
             switch (iter % 3) {
@@ -991,10 +1002,22 @@ TEST_CASE("journal handles concurrent mutation and history operations") {
                     if (redoResult.has_value()) {
                         redoSuccess.fetch_add(1, std::memory_order_relaxed);
                     } else if (redoResult.error().code != Error::Code::NoObjectFound) {
-                        recordError(threadIndex, "redo returned unexpected error code");
+                        auto msg = std::string("redo returned unexpected error code [code=")
+                                   + std::to_string(static_cast<int>(redoResult.error().code)) + "]";
+                        if (redoResult.error().message) {
+                            msg.push_back(' ');
+                            msg.append(*redoResult.error().message);
+                        }
+                        recordError(threadIndex, std::move(msg));
                     }
                 } else if (undoResult.error().code != Error::Code::NoObjectFound) {
-                    recordError(threadIndex, "undo returned unexpected error code");
+                    auto msg = std::string("undo returned unexpected error code [code=")
+                               + std::to_string(static_cast<int>(undoResult.error().code)) + "]";
+                    if (undoResult.error().message) {
+                        msg.push_back(' ');
+                        msg.append(*undoResult.error().message);
+                    }
+                    recordError(threadIndex, std::move(msg));
                 }
                 break;
             }
@@ -1006,17 +1029,37 @@ TEST_CASE("journal handles concurrent mutation and history operations") {
                     if (redoResult.has_value()) {
                         redoSuccess.fetch_add(1, std::memory_order_relaxed);
                     } else if (redoResult.error().code != Error::Code::NoObjectFound) {
-                        recordError(threadIndex, "redo returned unexpected error code");
+                        auto msg = std::string("redo returned unexpected error code [code=")
+                                   + std::to_string(static_cast<int>(redoResult.error().code)) + "]";
+                        if (redoResult.error().message) {
+                            msg.push_back(' ');
+                            msg.append(*redoResult.error().message);
+                        }
+                        recordError(threadIndex, std::move(msg));
                     }
                 } else if (undoResult.error().code != Error::Code::NoObjectFound) {
-                    recordError(threadIndex, "undo returned unexpected error code");
+                    auto msg = std::string("undo returned unexpected error code [code=")
+                               + std::to_string(static_cast<int>(undoResult.error().code)) + "]";
+                    if (undoResult.error().message) {
+                        msg.push_back(' ');
+                        msg.append(*undoResult.error().message);
+                    }
+                    recordError(threadIndex, std::move(msg));
                 }
                 break;
             }
             default: {
                 auto gcResult = rawSpace->insert("/stress/_history/garbage_collect", true);
                 if (!gcResult.errors.empty()) {
-                    recordError(threadIndex, "garbage_collect insert reported errors");
+                    auto const& err = gcResult.errors.front();
+                    std::string msg = "garbage_collect insert reported errors [code=";
+                    msg.append(std::to_string(static_cast<int>(err.code)));
+                    msg.push_back(']');
+                    if (err.message) {
+                        msg.push_back(' ');
+                        msg.append(*err.message);
+                    }
+                    recordError(threadIndex, std::move(msg));
                 } else {
                     gcSuccess.fetch_add(1, std::memory_order_relaxed);
                 }
@@ -1108,44 +1151,43 @@ TEST_CASE("journal fuzz sequence maintains parity with reference model") {
     REQUIRE(space->enableHistory(ConcretePathStringView{"/fuzz"}, opts).has_value());
 
     struct ReferenceModel {
-        enum class Kind { InsertReplace, Take };
+        enum class Kind { Insert, Take };
         struct Entry {
             Kind kind;
             std::string key;
-            std::optional<int> prior;
             std::optional<int> value;
         };
 
-        std::unordered_map<std::string, int> values;
+        std::unordered_map<std::string, std::deque<int>> values;
         std::vector<Entry> undoStack;
         std::vector<Entry> redoStack;
 
         void insert(std::string const& key, int value) {
             Entry entry;
-            entry.kind  = Kind::InsertReplace;
+            entry.kind  = Kind::Insert;
             entry.key   = key;
             entry.value = value;
-            if (auto it = values.find(key); it != values.end()) {
-                entry.prior = it->second;
-            }
-            values[key] = value;
+            values[key].push_back(value);
             undoStack.push_back(entry);
             redoStack.clear();
         }
 
         std::optional<int> take(std::string const& key) {
             auto it = values.find(key);
-            if (it == values.end()) {
+            if (it == values.end() || it->second.empty()) {
                 return std::nullopt;
             }
             Entry entry;
             entry.kind  = Kind::Take;
             entry.key   = key;
-            entry.prior = it->second;
-            values.erase(it);
+            entry.value = it->second.front();
+            it->second.pop_front();
+            if (it->second.empty()) {
+                values.erase(it);
+            }
             undoStack.push_back(entry);
             redoStack.clear();
-            return entry.prior;
+            return entry.value;
         }
 
         bool undo() {
@@ -1155,16 +1197,19 @@ TEST_CASE("journal fuzz sequence maintains parity with reference model") {
             auto entry = undoStack.back();
             undoStack.pop_back();
             switch (entry.kind) {
-            case Kind::InsertReplace:
-                if (entry.prior.has_value()) {
-                    values[entry.key] = *entry.prior;
-                } else {
-                    values.erase(entry.key);
+            case Kind::Insert: {
+                auto it = values.find(entry.key);
+                if (it != values.end() && !it->second.empty()) {
+                    it->second.pop_back();
+                    if (it->second.empty()) {
+                        values.erase(it);
+                    }
                 }
                 break;
+            }
             case Kind::Take:
-                if (entry.prior.has_value()) {
-                    values[entry.key] = *entry.prior;
+                if (entry.value.has_value()) {
+                    values[entry.key].push_front(*entry.value);
                 }
                 break;
             }
@@ -1179,12 +1224,17 @@ TEST_CASE("journal fuzz sequence maintains parity with reference model") {
             auto entry = redoStack.back();
             redoStack.pop_back();
             switch (entry.kind) {
-            case Kind::InsertReplace:
+            case Kind::Insert:
                 REQUIRE(entry.value.has_value());
-                values[entry.key] = *entry.value;
+                values[entry.key].push_back(*entry.value);
                 break;
             case Kind::Take:
-                values.erase(entry.key);
+                if (auto it = values.find(entry.key); it != values.end() && !it->second.empty()) {
+                    it->second.pop_front();
+                    if (it->second.empty()) {
+                        values.erase(it);
+                    }
+                }
                 break;
             }
             undoStack.push_back(entry);
@@ -1192,8 +1242,8 @@ TEST_CASE("journal fuzz sequence maintains parity with reference model") {
         }
 
         std::optional<int> read(std::string const& key) const {
-            if (auto it = values.find(key); it != values.end()) {
-                return it->second;
+            if (auto it = values.find(key); it != values.end() && !it->second.empty()) {
+                return it->second.front();
             }
             return std::nullopt;
         }

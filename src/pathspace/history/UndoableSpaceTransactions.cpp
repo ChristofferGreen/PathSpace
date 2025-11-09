@@ -109,7 +109,12 @@ UndoableSpace::JournalOperationScope::JournalOperationScope(UndoableSpace& owner
     , type(type)
     , startSteady(std::chrono::steady_clock::now())
     , beforeStats(state.journal.stats())
-    , beforeLiveBytes(state.liveBytes) {}
+    , beforeLiveBytes(state.liveBytes) {
+    auto metricsExpected = owner.computeJournalByteMetrics(state);
+    if (metricsExpected) {
+        beforeMetrics = metricsExpected.value();
+    }
+}
 
 void UndoableSpace::JournalOperationScope::setResult(bool success, std::string message) {
     succeeded   = success;
@@ -117,12 +122,18 @@ void UndoableSpace::JournalOperationScope::setResult(bool success, std::string m
 }
 
 UndoableSpace::JournalOperationScope::~JournalOperationScope() {
+    std::optional<JournalByteMetrics> afterMetrics;
+    if (auto metricsExpected = owner.computeJournalByteMetrics(state); metricsExpected) {
+        afterMetrics = metricsExpected.value();
+    }
     owner.recordJournalOperation(state,
                                  type,
                                  std::chrono::steady_clock::now() - startSteady,
                                  succeeded,
                                  beforeStats,
                                  beforeLiveBytes,
+                                 beforeMetrics,
+                                 afterMetrics,
                                  messageText);
 }
 
@@ -327,12 +338,13 @@ auto UndoableSpace::beginTransactionInternal(std::shared_ptr<RootState> const& s
 
     std::unique_lock lock(state->mutex);
     auto const currentThread = std::this_thread::get_id();
+    while (state->activeTransaction.has_value()
+           && state->activeTransaction->owner != currentThread) {
+        state->transactionCv.wait(lock);
+    }
+
     if (state->activeTransaction.has_value()) {
         auto& tx = *state->activeTransaction;
-        if (tx.owner != currentThread) {
-            return std::unexpected(Error{Error::Code::InvalidPermissions,
-                                         "History transaction already active on another thread"});
-        }
         tx.depth += 1;
     } else {
         state->activeTransaction = RootState::TransactionState{
@@ -367,6 +379,7 @@ auto UndoableSpace::commitTransaction(RootState& state) -> Expected<void> {
 
     if (depth == 0) {
         state.activeTransaction.reset();
+        state.transactionCv.notify_all();
         return {};
     }
 
@@ -376,6 +389,7 @@ auto UndoableSpace::commitTransaction(RootState& state) -> Expected<void> {
     }
 
     state.activeTransaction.reset();
+    state.transactionCv.notify_all();
 
     OperationScope scope(*this, state, "commit");
 
@@ -447,12 +461,13 @@ auto UndoableSpace::beginJournalTransactionInternal(
 
     std::unique_lock lock(state->mutex);
     auto const currentThread = std::this_thread::get_id();
+    while (state->activeTransaction.has_value()
+           && state->activeTransaction->owner != currentThread) {
+        state->transactionCv.wait(lock);
+    }
+
     if (state->activeTransaction.has_value()) {
         auto& tx = *state->activeTransaction;
-        if (tx.owner != currentThread) {
-            return std::unexpected(Error{Error::Code::InvalidPermissions,
-                                         "History transaction already active on another thread"});
-        }
         tx.depth += 1;
     } else {
         state->activeTransaction = UndoJournalRootState::TransactionState{
@@ -470,9 +485,27 @@ void UndoableSpace::recordJournalOperation(UndoJournalRootState& state,
                                            bool success,
                                            UndoJournal::JournalState::Stats const& beforeStats,
                                            std::size_t beforeLiveBytes,
+                                           std::optional<JournalByteMetrics> const& beforeMetrics,
+                                           std::optional<JournalByteMetrics> const& afterMetrics,
                                            std::string const& message) {
     auto afterStats = state.journal.stats();
 
+    auto resolveBytes = [](UndoJournal::JournalState::Stats const& stats,
+                           std::size_t liveBytes,
+                           std::optional<JournalByteMetrics> const& metrics) {
+        struct Totals {
+            std::size_t undo = 0;
+            std::size_t redo = 0;
+            std::size_t live = 0;
+        };
+        if (metrics) {
+            return Totals{metrics->undoBytes, metrics->redoBytes, metrics->liveBytes};
+        }
+        return Totals{stats.undoBytes, stats.redoBytes, liveBytes};
+    };
+
+    auto beforeTotals = resolveBytes(beforeStats, beforeLiveBytes, beforeMetrics);
+    auto afterTotals  = resolveBytes(afterStats, state.liveBytes, afterMetrics);
     RootState::OperationRecord record;
     record.type            = std::string(type);
     record.timestamp       = std::chrono::system_clock::now();
@@ -482,13 +515,13 @@ void UndoableSpace::recordJournalOperation(UndoJournalRootState& state,
     record.undoCountAfter  = afterStats.undoCount;
     record.redoCountBefore = beforeStats.redoCount;
     record.redoCountAfter  = afterStats.redoCount;
-    record.bytesBefore     = beforeStats.undoBytes + beforeStats.redoBytes + beforeLiveBytes;
-    record.bytesAfter      = afterStats.undoBytes + afterStats.redoBytes + state.liveBytes;
+    record.bytesBefore     = beforeTotals.undo + beforeTotals.redo + beforeTotals.live;
+    record.bytesAfter      = afterTotals.undo + afterTotals.redo + afterTotals.live;
     record.message         = message;
     state.telemetry.lastOperation = std::move(record);
 
-    state.telemetry.undoBytes        = afterStats.undoBytes;
-    state.telemetry.redoBytes        = afterStats.redoBytes;
+    state.telemetry.undoBytes        = afterTotals.undo;
+    state.telemetry.redoBytes        = afterTotals.redo;
     state.telemetry.trimmedEntries   = afterStats.trimmedEntries;
     state.telemetry.trimmedBytes     = afterStats.trimmedBytes;
     state.telemetry.cachedUndo       = afterStats.undoCount;
@@ -515,6 +548,7 @@ auto UndoableSpace::commitJournalTransaction(UndoJournalRootState& state) -> Exp
 
     if (tx.depth == 0) {
         state.activeTransaction.reset();
+        state.transactionCv.notify_all();
         return {};
     }
 
@@ -526,6 +560,7 @@ auto UndoableSpace::commitJournalTransaction(UndoJournalRootState& state) -> Exp
     bool dirty = tx.dirty;
     auto pendingEntries = std::move(tx.pendingEntries);
     state.activeTransaction.reset();
+    state.transactionCv.notify_all();
 
     if (!dirty || pendingEntries.empty())
         return {};
@@ -569,10 +604,6 @@ auto UndoableSpace::commitJournalTransaction(UndoJournalRootState& state) -> Exp
     }
 
     auto afterStats = state.journal.stats();
-    state.telemetry.cachedUndo = afterStats.undoCount;
-    state.telemetry.cachedRedo = afterStats.redoCount;
-    state.telemetry.undoBytes  = afterStats.undoBytes;
-    state.telemetry.redoBytes  = afterStats.redoBytes;
 
     auto trimmedEntriesDelta =
         afterStats.trimmedEntries >= beforeStats.trimmedEntries

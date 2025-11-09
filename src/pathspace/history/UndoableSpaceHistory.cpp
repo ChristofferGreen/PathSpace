@@ -113,6 +113,53 @@ auto UndoableSpace::computeJournalLiveBytes(UndoJournalRootState const& state) c
     return subtreePayloadBytes(*node);
 }
 
+auto UndoableSpace::computeJournalByteMetrics(UndoJournalRootState const& state) const
+    -> Expected<JournalByteMetrics> {
+    JournalByteMetrics metrics{};
+    CowSubtreePrototype prototype;
+    auto totalEntries = state.journal.size();
+
+    std::vector<CowSubtreePrototype::Snapshot> snapshots;
+    snapshots.reserve(totalEntries + 1);
+
+    auto snapshot = prototype.emptySnapshot();
+    snapshots.push_back(snapshot);
+
+    for (std::size_t index = 0; index < totalEntries; ++index) {
+        auto const& entry = state.journal.entryAt(index);
+        auto componentsExpected = parseJournalRelativeComponents(state, entry.path);
+        if (!componentsExpected)
+            return std::unexpected(componentsExpected.error());
+
+        CowSubtreePrototype::Mutation mutation;
+        mutation.components = std::move(componentsExpected.value());
+        if (entry.value.present) {
+            mutation.payload = CowSubtreePrototype::Payload(entry.value.bytes);
+        } else {
+            mutation.payload = CowSubtreePrototype::Payload{};
+        }
+
+        snapshot = prototype.apply(snapshot, mutation);
+        snapshots.push_back(snapshot);
+    }
+
+    auto undoCount = state.journal.cursor();
+    std::vector<std::size_t> snapshotBytes(snapshots.size());
+    for (std::size_t index = 0; index < snapshots.size(); ++index) {
+        snapshotBytes[index] = prototype.analyze(snapshots[index]).payloadBytes;
+    }
+
+    for (std::size_t index = 0; index < undoCount; ++index) {
+        metrics.undoBytes += snapshotBytes[index];
+    }
+    for (std::size_t index = undoCount; index < totalEntries; ++index) {
+        metrics.redoBytes += snapshotBytes[index];
+    }
+
+    metrics.liveBytes = snapshotBytes[undoCount];
+    return metrics;
+}
+
 auto UndoableSpace::captureSnapshotLocked(RootState& state)
     -> Expected<CowSubtreePrototype::Snapshot> {
     auto* rootNode = resolveRootNode();
@@ -382,14 +429,24 @@ auto UndoableSpace::gatherStatsLocked(RootState const& state) const -> HistorySt
 auto UndoableSpace::gatherJournalStatsLocked(UndoJournalRootState const& state) const -> HistoryStats {
     HistoryStats stats;
     auto         journalStats = state.journal.stats();
+    auto         metricsExpected = computeJournalByteMetrics(state);
+
+    std::size_t undoBytes = journalStats.undoBytes;
+    std::size_t redoBytes = journalStats.redoBytes;
+    std::size_t liveBytes = state.liveBytes;
+    if (metricsExpected) {
+        undoBytes = metricsExpected->undoBytes;
+        redoBytes = metricsExpected->redoBytes;
+        liveBytes = metricsExpected->liveBytes;
+    }
 
     stats.counts.undo = journalStats.undoCount;
     stats.counts.redo = journalStats.redoCount;
 
-    stats.bytes.undo  = journalStats.undoBytes;
-    stats.bytes.redo  = journalStats.redoBytes;
-    stats.bytes.live  = state.liveBytes;
-    stats.bytes.total = stats.bytes.undo + stats.bytes.redo + stats.bytes.live;
+    stats.bytes.undo  = undoBytes;
+    stats.bytes.redo  = redoBytes;
+    stats.bytes.live  = liveBytes;
+    stats.bytes.total = undoBytes + redoBytes + liveBytes;
     stats.bytes.disk  = state.telemetry.diskBytes;
 
     stats.counts.manualGarbageCollect = state.options.manualGarbageCollect;
@@ -671,7 +728,12 @@ auto UndoableSpace::applyHistorySteps(ConcretePathStringView root,
     std::unique_lock lock(state->mutex);
     auto const busyMessage = isUndo ? "Cannot undo while transaction open"
                                     : "Cannot redo while transaction open";
-    if (state->activeTransaction) {
+    auto const currentThread = std::this_thread::get_id();
+    state->transactionCv.wait(lock, [&] {
+        return !state->activeTransaction
+               || state->activeTransaction->owner == currentThread;
+    });
+    if (state->activeTransaction && state->activeTransaction->owner == currentThread) {
         return std::unexpected(Error{Error::Code::InvalidPermissions, busyMessage});
     }
     if (steps == 0)
@@ -700,7 +762,12 @@ auto UndoableSpace::applyJournalSteps(std::shared_ptr<UndoJournalRootState> cons
     std::unique_lock lock(state->mutex);
     auto const busyMessage = isUndo ? "Cannot undo while transaction open"
                                     : "Cannot redo while transaction open";
-    if (state->activeTransaction) {
+    auto const currentThread = std::this_thread::get_id();
+    state->transactionCv.wait(lock, [&] {
+        return !state->activeTransaction
+               || state->activeTransaction->owner == currentThread;
+    });
+    if (state->activeTransaction && state->activeTransaction->owner == currentThread) {
         return std::unexpected(Error{Error::Code::InvalidPermissions, busyMessage});
     }
 
@@ -1037,7 +1104,12 @@ auto UndoableSpace::handleJournalControlInsert(MatchedJournalRoot const& matched
     if (command == UndoPaths::CommandGarbageCollect) {
         std::unique_lock lock(state->mutex);
         JournalOperationScope scope(*this, *state, "garbage_collect");
-        if (state->activeTransaction) {
+        auto const currentThread = std::this_thread::get_id();
+        state->transactionCv.wait(lock, [&] {
+            return !state->activeTransaction
+                   || state->activeTransaction->owner == currentThread;
+        });
+        if (state->activeTransaction && state->activeTransaction->owner == currentThread) {
             scope.setResult(false, "transaction_active");
             ret.errors.push_back(Error{Error::Code::InvalidPermissions,
                                        "Cannot garbage collect while transaction open"});
@@ -1056,11 +1128,6 @@ auto UndoableSpace::handleJournalControlInsert(MatchedJournalRoot const& matched
             afterStats.trimmedBytes >= beforeStats.trimmedBytes
                 ? afterStats.trimmedBytes - beforeStats.trimmedBytes
                 : std::size_t{0};
-
-        state->telemetry.cachedUndo = afterStats.undoCount;
-        state->telemetry.cachedRedo = afterStats.redoCount;
-        state->telemetry.undoBytes  = afterStats.undoBytes;
-        state->telemetry.redoBytes  = afterStats.redoBytes;
 
         if (trimmedEntries == 0) {
             scope.setResult(true, "no_trim");

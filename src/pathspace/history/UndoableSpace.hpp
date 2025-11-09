@@ -298,6 +298,13 @@ private:
                                 std::size_t beforeBytes,
                                 std::size_t afterBytes);
     auto computeJournalLiveBytes(UndoJournalRootState const& state) const -> std::size_t;
+    struct JournalByteMetrics {
+        std::size_t undoBytes = 0;
+        std::size_t redoBytes = 0;
+        std::size_t liveBytes = 0;
+    };
+    auto computeJournalByteMetrics(UndoJournalRootState const& state) const
+        -> Expected<JournalByteMetrics>;
     void recordOperation(RootState& state,
                          std::string_view type,
                          std::chrono::steady_clock::duration duration,
@@ -386,6 +393,8 @@ private:
                                 bool success,
                                 UndoJournal::JournalState::Stats const& beforeStats,
                                 std::size_t beforeLiveBytes,
+                                std::optional<JournalByteMetrics> const& beforeMetrics,
+                                std::optional<JournalByteMetrics> const& afterMetrics,
                                 std::string const& message);
 
     std::unique_ptr<PathSpaceBase>                     inner;

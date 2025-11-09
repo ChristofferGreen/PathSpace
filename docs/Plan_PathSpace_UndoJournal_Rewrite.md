@@ -22,6 +22,12 @@
 4. Provide persistence as an append-only journal file with startup replay, including retention-aware compaction.
 5. Deliver full regression coverage before removing old code, and ensure the repository no longer references snapshot infrastructure.
 
+## Status — November 9, 2025
+- ✅ Byte telemetry parity restored: journal `_history/stats/*` now derives undo/redo/live totals via `computeJournalByteMetrics`, matching the snapshot stack outputs and unblocking `journal telemetry matches snapshot telemetry outputs`.
+- ✅ Journal control commands wait on active transactions using per-root condition variables, eliminating the `Cannot … while transaction open` spurious failures observed in the multi-threaded stress harness.
+- ✅ Fuzz reference model tracks queue semantics (FIFO insert/take) so regression coverage exercises the same observable behaviour as the underlying `PathSpace` implementation; parity holds across random insert/take/undo/redo/trim sequences.
+- ⛰️ Next major milestone: Phase 4 cleanup (snapshot code removal, feature-flag collapse) once additional integration validation lands.
+
 ## Implementation Phases
 
 ### Phase 0 — Foundations & Alignment
@@ -73,7 +79,8 @@
 - [x] Benchmark core flows (commit latency, undo/redo) versus the snapshot build to demonstrate improvements or parity.
   - Added `benchmarks/history/undo_journal_benchmark.cpp`, gated behind `BUILD_PATHSPACE_BENCHMARKS=ON`, to compare snapshot and journal insert/undo/redo throughput with configurable operation counts and payload sizes.
   - Release build measurements on November 9, 2025 (Apple M2 Max, 500 operations, 64-byte payloads, three repeats) recorded snapshot commit/undo/redo latencies of 3.79 s / 6.54 s / 6.53 s versus journal latencies of 10.7 ms / 17.1 ms / 45.6 ms, establishing >350× commit speedup and >600× undo throughput gain for the journal.
-  - Follow-up: `tests/unit/history/test_UndoableSpace.cpp` still reports mismatched byte telemetry in “journal telemetry matches snapshot telemetry outputs” (snapshot total bytes 202 vs. journal 507); investigate before Phase 4 cleanup.
+  - Follow-up (resolved November 9, 2025): `tests/unit/history/test_UndoableSpace.cpp` now shows byte telemetry parity after deriving undo/redo/live totals from replayed snapshots via `computeJournalByteMetrics`.
+  - Follow-up (resolved November 9, 2025): journal undo/redo/garbage_collect commands now wait on active transactions instead of surfacing `Cannot … while transaction open`, unblocking the multi-threaded stress harness.
 
 ### Phase 4 — Remove Snapshot Implementation
 - [ ] Once tests are green with the journal gated on, delete snapshot-specific code: `CowSubtreePrototype`, snapshot codecs, metadata codecs tied solely to snapshots, persistence helpers, `UndoableSpaceState` fields no longer used.

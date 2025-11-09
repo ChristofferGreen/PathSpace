@@ -142,15 +142,12 @@ auto UndoableSpace::loadJournalPersistence(UndoJournalRootState& state) -> Expec
             std::scoped_lock lock(state.mutex);
             state.journal.clear();
             state.nextSequence                 = 0;
-            state.telemetry.cachedUndo         = 0;
-            state.telemetry.cachedRedo         = 0;
-            state.telemetry.undoBytes          = 0;
-            state.telemetry.redoBytes          = 0;
             state.telemetry.trimmedEntries     = 0;
             state.telemetry.trimmedBytes       = 0;
             state.telemetry.trimOperations     = 0;
-            state.persistenceDirty             = false;
-            state.telemetry.persistenceDirty   = false;
+            state.liveBytes                    = 0;
+            state.persistenceDirty           = false;
+            state.telemetry.persistenceDirty = false;
             updateJournalDiskTelemetry(state);
             return {};
         }
