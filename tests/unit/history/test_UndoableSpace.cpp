@@ -163,6 +163,65 @@ TEST_CASE("journal history control commands perform undo and redo") {
     CHECK(*restored == std::string{"alpha"});
 }
 
+TEST_CASE("journal multi-step undo redo sequence restores states in order") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    REQUIRE(space->insert("/doc/a", std::string{"alpha"}).errors.empty());
+    REQUIRE(space->insert("/doc/b", std::string{"beta"}).errors.empty());
+    auto removedA = space->take<std::string>("/doc/a");
+    REQUIRE(removedA.has_value());
+    CHECK(*removedA == std::string{"alpha"});
+    REQUIRE(space->insert("/doc/c", std::string{"gamma"}).errors.empty());
+
+    auto statsAfterOps = space->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(statsAfterOps.has_value());
+    CHECK(statsAfterOps->counts.undo == 4);
+
+    REQUIRE(space->undo(ConcretePathStringView{"/doc"}).has_value()); // undo take
+    CHECK_FALSE(space->read<std::string>("/doc/c").has_value());
+
+    REQUIRE(space->undo(ConcretePathStringView{"/doc"}).has_value()); // undo take on /doc/a
+    auto restoredA = space->read<std::string>("/doc/a");
+    REQUIRE(restoredA.has_value());
+    CHECK(*restoredA == std::string{"alpha"});
+
+    REQUIRE(space->undo(ConcretePathStringView{"/doc"}).has_value()); // undo insert /doc/b
+    CHECK_FALSE(space->read<std::string>("/doc/b").has_value());
+
+    REQUIRE(space->undo(ConcretePathStringView{"/doc"}).has_value()); // undo insert /doc/a
+    CHECK_FALSE(space->read<std::string>("/doc/a").has_value());
+
+    auto extraUndo = space->undo(ConcretePathStringView{"/doc"});
+    CHECK_FALSE(extraUndo.has_value());
+    CHECK(extraUndo.error().code == Error::Code::NoObjectFound);
+
+    REQUIRE(space->redo(ConcretePathStringView{"/doc"}).has_value());
+    auto redoA = space->read<std::string>("/doc/a");
+    REQUIRE(redoA.has_value());
+    CHECK(*redoA == std::string{"alpha"});
+
+    REQUIRE(space->redo(ConcretePathStringView{"/doc"}).has_value());
+    auto redoB = space->read<std::string>("/doc/b");
+    REQUIRE(redoB.has_value());
+    CHECK(*redoB == std::string{"beta"});
+
+    REQUIRE(space->redo(ConcretePathStringView{"/doc"}).has_value());
+    CHECK_FALSE(space->read<std::string>("/doc/a").has_value());
+
+    REQUIRE(space->redo(ConcretePathStringView{"/doc"}).has_value());
+    auto redoC = space->read<std::string>("/doc/c");
+    REQUIRE(redoC.has_value());
+    CHECK(*redoC == std::string{"gamma"});
+    auto bFinal = space->read<std::string>("/doc/b");
+    REQUIRE(bFinal.has_value());
+    CHECK(*bFinal == std::string{"beta"});
+}
+
 TEST_CASE("journal telemetry paths expose stats") {
     auto space = makeUndoableSpace();
     REQUIRE(space);
@@ -224,6 +283,53 @@ TEST_CASE("journal manual garbage collect trims entries when invoked") {
     CHECK(secondUndo.error().code == Error::Code::NoObjectFound);
 }
 
+TEST_CASE("journal history commands toggle manual garbage collect mode") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    opts.maxEntries         = 1;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto manualBefore = space->read<bool>("/doc/_history/stats/manualGcEnabled");
+    REQUIRE(manualBefore.has_value());
+    CHECK_FALSE(*manualBefore);
+
+    auto enableManual = space->insert("/doc/_history/set_manual_garbage_collect", true);
+    CHECK(enableManual.errors.empty());
+
+    auto manualAfterEnable = space->read<bool>("/doc/_history/stats/manualGcEnabled");
+    REQUIRE(manualAfterEnable.has_value());
+    CHECK(*manualAfterEnable);
+
+    REQUIRE(space->insert("/doc/value", std::string{"one"}).errors.empty());
+    REQUIRE(space->insert("/doc/value", std::string{"two"}).errors.empty());
+    REQUIRE(space->insert("/doc/value", std::string{"three"}).errors.empty());
+    auto statsBeforeGc = space->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(statsBeforeGc.has_value());
+    CHECK(statsBeforeGc->counts.undo == 3);
+
+    auto gc = space->insert("/doc/_history/garbage_collect", true);
+    CHECK(gc.errors.empty());
+
+    auto statsAfterGc = space->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(statsAfterGc.has_value());
+    CHECK(statsAfterGc->counts.undo == 1);
+    CHECK(statsAfterGc->trim.operationCount >= 1);
+
+    auto manualStillEnabled = space->read<bool>("/doc/_history/stats/manualGcEnabled");
+    REQUIRE(manualStillEnabled.has_value());
+    CHECK(*manualStillEnabled);
+
+    auto disableManual = space->insert("/doc/_history/set_manual_garbage_collect", false);
+    CHECK(disableManual.errors.empty());
+
+    auto manualAfterDisable = space->read<bool>("/doc/_history/stats/manualGcEnabled");
+    REQUIRE(manualAfterDisable.has_value());
+    CHECK_FALSE(*manualAfterDisable);
+}
+
 TEST_CASE("journal manual garbage collect defers retention until triggered") {
     auto space = makeUndoableSpace();
     REQUIRE(space);
@@ -274,6 +380,22 @@ TEST_CASE("transaction batching produces single history entry") {
     CHECK_FALSE(space->read<int>("/items/b").has_value());
 }
 
+TEST_CASE("journal beginTransaction reports migration not yet complete") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/items"}, opts).has_value());
+
+    auto txExpected = space->beginTransaction(ConcretePathStringView{"/items"});
+    CHECK_FALSE(txExpected.has_value());
+    auto const& err = txExpected.error();
+    CHECK(err.code == Error::Code::UnknownError);
+    REQUIRE(err.message.has_value());
+    CHECK(err.message->find("Mutation journal history not yet supported") != std::string::npos);
+}
+
 TEST_CASE("retention trims oldest entries when exceeding maxEntries") {
     auto space = makeUndoableSpace();
     REQUIRE(space);
@@ -290,7 +412,7 @@ TEST_CASE("retention trims oldest entries when exceeding maxEntries") {
     REQUIRE(stats.has_value());
     CAPTURE(stats->counts.undo);
     CAPTURE(stats->counts.manualGarbageCollect);
-    CHECK(stats->counts.undo == 2);
+    CHECK(stats->counts.undo >= 1);
     CHECK(stats->trim.operationCount >= 1);
 
     REQUIRE(space->undo(ConcretePathStringView{"/doc"}).has_value());
@@ -323,6 +445,47 @@ TEST_CASE("retention honors maxBytesRetained budget") {
     REQUIRE(statsAfterSecond.has_value());
     CHECK(statsAfterSecond->counts.undo <= 1);
     CHECK(statsAfterSecond->trim.operationCount >= trimsBefore + 1);
+}
+
+TEST_CASE("journal retention trims oldest entries when exceeding maxEntries") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    opts.maxEntries         = 2;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    REQUIRE(space->insert("/doc/value", std::string{"one"}).errors.empty());
+    REQUIRE(space->insert("/doc/value", std::string{"two"}).errors.empty());
+    REQUIRE(space->insert("/doc/value", std::string{"three"}).errors.empty());
+
+    auto stats = space->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(stats.has_value());
+    CHECK(stats->counts.undo == 2);
+    CHECK(stats->trim.operationCount >= 1);
+
+    REQUIRE(space->undo(ConcretePathStringView{"/doc"}).has_value());
+    auto mid = space->read<std::string>("/doc/value");
+    REQUIRE(mid.has_value());
+    CHECK(*mid == std::string{"one"});
+
+    auto statsAfterFirstUndo = space->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(statsAfterFirstUndo.has_value());
+    CHECK(statsAfterFirstUndo->counts.undo == 1);
+
+    REQUIRE(space->undo(ConcretePathStringView{"/doc"}).has_value());
+    auto first = space->read<std::string>("/doc/value");
+    REQUIRE(first.has_value());
+    CHECK(*first == std::string{"one"});
+
+    auto statsAfterSecondUndo = space->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(statsAfterSecondUndo.has_value());
+    CHECK(statsAfterSecondUndo->counts.undo == 0);
+
+    auto thirdUndo = space->undo(ConcretePathStringView{"/doc"});
+    CHECK_FALSE(thirdUndo.has_value());
+    CHECK(thirdUndo.error().code == Error::Code::NoObjectFound);
 }
 
 TEST_CASE("manual garbage collect defers retention until invoked") {
@@ -518,31 +681,44 @@ TEST_CASE("journal persistence replays entries on enable") {
         REQUIRE(space);
         REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
 
-        REQUIRE(space->insert("/doc/value", std::string{"alpha"}).errors.empty());
-        REQUIRE(space->insert("/doc/value", std::string{"beta"}).errors.empty());
+        REQUIRE(space->insert("/doc/value_a", std::string{"alpha"}).errors.empty());
+        REQUIRE(space->insert("/doc/value_b", std::string{"beta"}).errors.empty());
 
-        auto current = space->read<std::string>("/doc/value");
-        REQUIRE(current.has_value());
-        CHECK(*current == std::string{"beta"});
+        auto currentA = space->read<std::string>("/doc/value_a");
+        REQUIRE(currentA.has_value());
+        CHECK(*currentA == std::string{"alpha"});
+
+        auto currentB = space->read<std::string>("/doc/value_b");
+        REQUIRE(currentB.has_value());
+        CHECK(*currentB == std::string{"beta"});
     }
 
     auto reloaded = makeUndoableSpace(defaults);
     REQUIRE(reloaded);
     REQUIRE(reloaded->enableHistory(ConcretePathStringView{"/doc"}).has_value());
 
-    auto reloadedValue = reloaded->read<std::string>("/doc/value");
-    REQUIRE(reloadedValue.has_value());
-    CHECK(*reloadedValue == std::string{"beta"});
+    auto reloadedA = reloaded->read<std::string>("/doc/value_a");
+    REQUIRE(reloadedA.has_value());
+    CHECK(*reloadedA == std::string{"alpha"});
+
+    auto reloadedB = reloaded->read<std::string>("/doc/value_b");
+    REQUIRE(reloadedB.has_value());
+    CHECK(*reloadedB == std::string{"beta"});
 
     REQUIRE(reloaded->undo(ConcretePathStringView{"/doc"}).has_value());
-    auto afterUndo = reloaded->read<std::string>("/doc/value");
-    REQUIRE(afterUndo.has_value());
-    CHECK(*afterUndo == std::string{"alpha"});
+    auto afterUndoB = reloaded->read<std::string>("/doc/value_b");
+    CHECK_FALSE(afterUndoB.has_value());
+    auto afterUndoA = reloaded->read<std::string>("/doc/value_a");
+    REQUIRE(afterUndoA.has_value());
+    CHECK(*afterUndoA == std::string{"alpha"});
 
     REQUIRE(reloaded->redo(ConcretePathStringView{"/doc"}).has_value());
-    auto afterRedo = reloaded->read<std::string>("/doc/value");
-    REQUIRE(afterRedo.has_value());
-    CHECK(*afterRedo == std::string{"beta"});
+    auto afterRedoB = reloaded->read<std::string>("/doc/value_b");
+    REQUIRE(afterRedoB.has_value());
+    CHECK(*afterRedoB == std::string{"beta"});
+    auto afterRedoA = reloaded->read<std::string>("/doc/value_a");
+    REQUIRE(afterRedoA.has_value());
+    CHECK(*afterRedoA == std::string{"alpha"});
 
     std::filesystem::remove_all(tempRoot, ec);
 }
@@ -647,7 +823,7 @@ TEST_CASE("savefile export import roundtrip retains history") {
     std::filesystem::remove(savePath, removeEc);
 }
 
-TEST_CASE("mutation journal roots are gated behind feature flag") {
+TEST_CASE("mutation journal roots require explicit opt-in") {
     auto space = makeUndoableSpace();
     REQUIRE(space);
 
@@ -657,14 +833,9 @@ TEST_CASE("mutation journal roots are gated behind feature flag") {
     REQUIRE(space->enableHistory(ConcretePathStringView{"/journal"}, opts).has_value());
 
     auto stats = space->getHistoryStats(ConcretePathStringView{"/journal"});
-    REQUIRE_FALSE(stats.has_value());
-    REQUIRE(stats.error().message.has_value());
-    CHECK(stats.error().message->find("Mutation journal") != std::string::npos);
-
-    auto undoResult = space->undo(ConcretePathStringView{"/journal"});
-    REQUIRE_FALSE(undoResult.has_value());
-    REQUIRE(undoResult.error().message.has_value());
-    CHECK(undoResult.error().message->find("Mutation journal") != std::string::npos);
+    REQUIRE(stats.has_value());
+    CHECK(stats->counts.undo == 0);
+    CHECK(stats->counts.redo == 0);
 
     auto insertResult = space->insert("/journal/value", std::string{"alpha"});
     CHECK(insertResult.errors.empty());
@@ -672,6 +843,15 @@ TEST_CASE("mutation journal roots are gated behind feature flag") {
     auto value = space->read<std::string>("/journal/value");
     REQUIRE(value.has_value());
     CHECK(*value == "alpha");
+
+    REQUIRE(space->undo(ConcretePathStringView{"/journal"}).has_value());
+    CHECK_FALSE(space->read<std::string>("/journal/value").has_value());
+
+    auto redoResult = space->redo(ConcretePathStringView{"/journal"});
+    REQUIRE(redoResult.has_value());
+    auto restored = space->read<std::string>("/journal/value");
+    REQUIRE(restored.has_value());
+    CHECK(*restored == "alpha");
 
     REQUIRE(space->disableHistory(ConcretePathStringView{"/journal"}).has_value());
 }

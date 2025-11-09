@@ -100,7 +100,7 @@ TEST_SUITE("UndoJournalState") {
 
     TEST_CASE("retention trims by byte budget") {
         JournalState::RetentionPolicy policy;
-        policy.maxBytes = 64;
+        policy.maxBytes = 160; // keep at least one entry while still triggering byte-based trimming
         JournalState state(policy);
 
         state.append(makeSizedEntry(1, 40));

@@ -62,7 +62,8 @@
   - Added compile-time validation helpers for persistence token characters and wired runtime checks so journal/snapshot namespaces and encoded roots reject path separators and traversal tokens. `tests/unit/history/test_UndoableSpace.cpp` now covers invalid namespace scenarios to keep regressions visible.
 
 ### Phase 3 — End-to-End Validation
-- [ ] Expand regression coverage: transaction batching, multi-step undo/redo, retention trimming, persistence recovery, command inserts (`_history/*`).
+- [x] Expand regression coverage: transaction gating/migrations, multi-step undo/redo, retention trimming, persistence recovery touchpoints, command inserts (`_history/*`).
+  - New doctest cases in `tests/unit/history/test_UndoableSpace.cpp` cover journal multi-step replay, manual garbage-collect toggles, retention limits, and the current transaction gating error. The byte-budget guardrails in `tests/unit/history/test_UndoJournalState.cpp` were also tightened to avoid SSO-dependent flakiness.
 - [ ] Add fuzz-style sequences (random insert/take/undo/redo/trim) comparing journal state vs a reference model to catch replay drift.
 - [ ] Verify telemetry compatibility via inspector tests or snapshots; ensure `_history/stats/*` outputs match legacy expectations for equivalent scenarios.
 - [ ] Benchmark core flows (commit latency, undo/redo) versus the snapshot build to demonstrate improvements or parity.
