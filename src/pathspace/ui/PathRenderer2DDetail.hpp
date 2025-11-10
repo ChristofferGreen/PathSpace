@@ -2,6 +2,7 @@
 
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/FontAtlas.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/ImageCache.hpp>
 #include <pathspace/ui/PipelineFlags.hpp>
@@ -17,6 +18,7 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+#include <memory>
 
 namespace SP::UI {
 
@@ -151,6 +153,10 @@ auto draw_rounded_rect_command(Scene::RoundedRectCommand const& command,
                                int height) -> bool;
 
 auto draw_shaped_text_command(Scene::TextGlyphsCommand const& command,
+                              Scene::DrawableBucketSnapshot const& bucket,
+                              std::shared_ptr<FontAtlasData const> const& atlas,
+                              LinearPremulColor const& base_color,
+                              LinearStraightColor const& tint_color,
                               std::vector<float>& buffer,
                               int width,
                               int height) -> bool;

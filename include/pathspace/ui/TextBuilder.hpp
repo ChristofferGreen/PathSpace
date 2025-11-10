@@ -1,5 +1,7 @@
 #pragma once
 
+#include <pathspace/PathSpace.hpp>
+#include <pathspace/app/AppPaths.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 
 #include <array>
@@ -32,6 +34,23 @@ struct BuildResult {
     std::uint64_t font_asset_fingerprint = 0;
     std::vector<std::string> font_features;
     std::vector<std::string> fallback_families;
+};
+
+class ScopedShapingContext {
+public:
+    ScopedShapingContext(SP::PathSpace& space, SP::App::AppRootPathView appRoot);
+    ~ScopedShapingContext();
+
+    ScopedShapingContext(ScopedShapingContext const&) = delete;
+    ScopedShapingContext& operator=(ScopedShapingContext const&) = delete;
+    ScopedShapingContext(ScopedShapingContext&&) = delete;
+    ScopedShapingContext& operator=(ScopedShapingContext&&) = delete;
+private:
+    bool active_ = false;
+    bool had_previous_ = false;
+    SP::PathSpace* previous_space_ = nullptr;
+    void* previous_manager_ = nullptr;
+    std::string previous_app_root_;
 };
 
 auto MeasureTextWidth(std::string_view text,

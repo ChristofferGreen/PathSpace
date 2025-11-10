@@ -12,6 +12,8 @@
 namespace SP::UI::PathRenderer2DDetail {
 namespace {
 
+namespace Scene = SP::UI::Scene;
+
 void blend_pixel(float* dest, LinearPremulColor const& src) {
     auto const inv_alpha = 1.0f - src.a;
     dest[0] = clamp_unit(src.r + dest[0] * inv_alpha);
@@ -55,6 +57,55 @@ auto multiply_straight(LinearStraightColor lhs, LinearStraightColor rhs) -> Line
         .b = clamp_unit(lhs.b * rhs.b),
         .a = clamp_unit(lhs.a * rhs.a),
     };
+}
+
+auto sample_font_atlas_alpha(FontAtlasData const& atlas,
+                             float u,
+                             float v) -> float {
+    if (atlas.width == 0 || atlas.height == 0 || atlas.pixels.empty()) {
+        return 0.0f;
+    }
+    u = clamp_unit(u);
+    v = clamp_unit(v);
+    auto max_x = static_cast<float>(atlas.width - 1);
+    auto max_y = static_cast<float>(atlas.height - 1);
+    auto x = std::clamp(static_cast<int>(std::round(u * max_x)), 0, static_cast<int>(atlas.width - 1));
+    auto y = std::clamp(static_cast<int>(std::round(v * max_y)), 0, static_cast<int>(atlas.height - 1));
+    auto index = static_cast<std::size_t>(y) * atlas.width + static_cast<std::size_t>(x);
+    if (index >= atlas.pixels.size()) {
+        return 0.0f;
+    }
+    return clamp_unit(static_cast<float>(atlas.pixels[index]) / 255.0f);
+}
+
+auto sample_font_atlas_rgba(FontAtlasData const& atlas,
+                            float u,
+                            float v) -> LinearPremulColor {
+    LinearPremulColor color{};
+    if (atlas.width == 0 || atlas.height == 0 || atlas.pixels.empty() || atlas.bytes_per_pixel < 4) {
+        return color;
+    }
+    u = clamp_unit(u);
+    v = clamp_unit(v);
+    auto max_x = static_cast<float>(atlas.width - 1);
+    auto max_y = static_cast<float>(atlas.height - 1);
+    auto x = std::clamp(static_cast<int>(std::round(u * max_x)), 0, static_cast<int>(atlas.width - 1));
+    auto y = std::clamp(static_cast<int>(std::round(v * max_y)), 0, static_cast<int>(atlas.height - 1));
+    auto index = (static_cast<std::size_t>(y) * atlas.width + static_cast<std::size_t>(x))
+                 * static_cast<std::size_t>(atlas.bytes_per_pixel);
+    if (index + 3 >= atlas.pixels.size()) {
+        return color;
+    }
+    float r = static_cast<float>(atlas.pixels[index + 0]) / 255.0f;
+    float g = static_cast<float>(atlas.pixels[index + 1]) / 255.0f;
+    float b = static_cast<float>(atlas.pixels[index + 2]) / 255.0f;
+    float a = static_cast<float>(atlas.pixels[index + 3]) / 255.0f;
+    a = clamp_unit(a);
+    color.a = a;
+    color.r = clamp_unit(r * a);
+    color.g = clamp_unit(g * a);
+    color.b = clamp_unit(b * a);
+    return color;
 }
 
 auto sample_image_linear(ImageCache::ImageData const& image,
@@ -378,11 +429,99 @@ auto draw_rounded_rect_command(Scene::RoundedRectCommand const& command,
     return drawn;
 }
 
-auto draw_shaped_text_command(Scene::TextGlyphsCommand const& /*command*/,
-                              std::vector<float>& /*buffer*/,
-                              int /*width*/,
-                              int /*height*/) -> bool {
-    return false;
+auto draw_shaped_text_command(Scene::TextGlyphsCommand const& command,
+                              Scene::DrawableBucketSnapshot const& bucket,
+                              std::shared_ptr<FontAtlasData const> const& atlas_ptr,
+                              LinearPremulColor const& base_color,
+                              LinearStraightColor const& tint_straight,
+                              std::vector<float>& buffer,
+                              int width,
+                              int height) -> bool {
+    if (!atlas_ptr || width <= 0 || height <= 0) {
+        return false;
+    }
+    auto const& atlas = *atlas_ptr;
+    if (atlas.width == 0 || atlas.height == 0 || atlas.pixels.empty()) {
+        return false;
+    }
+
+    auto const glyph_offset = static_cast<std::size_t>(command.glyph_offset);
+    auto const glyph_count = static_cast<std::size_t>(command.glyph_count);
+    if (glyph_offset > bucket.glyph_vertices.size()
+        || glyph_offset + glyph_count > bucket.glyph_vertices.size()) {
+        return false;
+    }
+
+    auto const* glyphs = bucket.glyph_vertices.data() + glyph_offset;
+    auto const row_stride = static_cast<std::size_t>(width) * 4u;
+    auto const uses_color_atlas =
+        (command.flags & Scene::kTextGlyphsFlagUsesColorAtlas) != 0u;
+
+    bool drawn = false;
+    for (std::size_t index = 0; index < glyph_count; ++index) {
+        auto const& glyph = glyphs[index];
+        auto glyph_min_x = std::min(glyph.min_x, glyph.max_x);
+        auto glyph_max_x = std::max(glyph.min_x, glyph.max_x);
+        auto glyph_min_y = std::min(glyph.min_y, glyph.max_y);
+        auto glyph_max_y = std::max(glyph.min_y, glyph.max_y);
+
+        auto width_f = glyph_max_x - glyph_min_x;
+        auto height_f = glyph_max_y - glyph_min_y;
+        if (width_f <= 0.0f || height_f <= 0.0f) {
+            continue;
+        }
+
+        auto min_x_i = std::clamp(static_cast<int>(std::floor(glyph_min_x)), 0, width);
+        auto max_x_i = std::clamp(static_cast<int>(std::ceil(glyph_max_x)), 0, width);
+        auto min_y_i = std::clamp(static_cast<int>(std::floor(glyph_min_y)), 0, height);
+        auto max_y_i = std::clamp(static_cast<int>(std::ceil(glyph_max_y)), 0, height);
+        if (min_x_i >= max_x_i || min_y_i >= max_y_i) {
+            continue;
+        }
+
+        auto u_range = glyph.u1 - glyph.u0;
+        auto v_range = glyph.v1 - glyph.v0;
+        if (std::fabs(u_range) <= std::numeric_limits<float>::epsilon()
+            || std::fabs(v_range) <= std::numeric_limits<float>::epsilon()) {
+            continue;
+        }
+
+        for (int y = min_y_i; y < max_y_i; ++y) {
+            auto base_index = static_cast<std::size_t>(y) * row_stride;
+            for (int x = min_x_i; x < max_x_i; ++x) {
+                float local_x = (static_cast<float>(x) + 0.5f - glyph_min_x) / width_f;
+                float local_y = (static_cast<float>(y) + 0.5f - glyph_min_y) / height_f;
+                auto atlas_u = glyph.u0 + u_range * clamp_unit(local_x);
+                auto atlas_v = glyph.v0 + v_range * clamp_unit(local_y);
+
+                LinearPremulColor src{};
+                if (uses_color_atlas && atlas.format == FontAtlasFormat::Rgba8) {
+                    src = sample_font_atlas_rgba(atlas, atlas_u, atlas_v);
+                    if (src.a == 0.0f) {
+                        continue;
+                    }
+                    src.r = clamp_unit(src.r * tint_straight.r);
+                    src.g = clamp_unit(src.g * tint_straight.g);
+                    src.b = clamp_unit(src.b * tint_straight.b);
+                    src.a = clamp_unit(src.a * tint_straight.a);
+                } else {
+                    auto alpha = sample_font_atlas_alpha(atlas, atlas_u, atlas_v);
+                    if (alpha <= 0.0f) {
+                        continue;
+                    }
+                    src.r = clamp_unit(base_color.r * alpha);
+                    src.g = clamp_unit(base_color.g * alpha);
+                    src.b = clamp_unit(base_color.b * alpha);
+                    src.a = clamp_unit(base_color.a * alpha);
+                }
+
+                auto* dest = buffer.data() + base_index + static_cast<std::size_t>(x) * 4u;
+                blend_pixel(dest, src);
+                drawn = true;
+            }
+        }
+    }
+    return drawn;
 }
 
 auto draw_text_glyphs_command(Scene::TextGlyphsCommand const& command,

@@ -7,6 +7,7 @@ namespace SP::UI {
 
 enum class FontAtlasFormat : std::uint32_t {
     Alpha8 = 0,
+    Rgba8 = 1,
 };
 
 struct FontAtlasGlyph {
@@ -27,6 +28,7 @@ struct FontAtlasData {
     std::uint32_t height = 0;
     FontAtlasFormat format = FontAtlasFormat::Alpha8;
     float em_size = 16.0f;
+    std::uint32_t bytes_per_pixel = 1;
     std::vector<FontAtlasGlyph> glyphs;
     std::vector<std::uint8_t> pixels;
 };

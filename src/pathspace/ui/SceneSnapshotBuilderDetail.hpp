@@ -75,6 +75,10 @@ struct BucketFontAssetsBinary {
     std::vector<FontAssetReference> font_assets;
 };
 
+struct BucketGlyphVerticesBinary {
+    std::vector<TextGlyphVertex> glyph_vertices;
+};
+
 struct SnapshotSummary {
     std::uint64_t drawable_count = 0;
     std::uint64_t command_count = 0;

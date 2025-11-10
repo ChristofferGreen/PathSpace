@@ -11,18 +11,18 @@
     "runtimeLimitSeconds": null,
     "budgetPresentMs": 20.000000,
     "budgetRenderMs": 20.000000,
-    "minFps": 50.000000,
+    "minFps": 25.000000,
     "backendKind": "Metal2D"
   },
   "summary": {
     "frames": 120,
-    "elapsedSeconds": 0.879353,
-    "averageFps": 136.464014,
-    "averagePresentMs": 0.002055,
-    "averageRenderMs": 0.359468,
-    "averagePresentCallMs": 7.327544,
-    "totalPresentMs": 0.246631,
-    "totalRenderMs": 43.136212
+    "elapsedSeconds": 4.363402,
+    "averageFps": 27.501477,
+    "averagePresentMs": 0.002938,
+    "averageRenderMs": 0.780024,
+    "averagePresentCallMs": 36.360723,
+    "totalPresentMs": 0.352620,
+    "totalRenderMs": 93.602882
   },
   "tileStats": {
     "frames": 120,

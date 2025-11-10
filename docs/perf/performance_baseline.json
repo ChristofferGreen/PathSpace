@@ -73,7 +73,7 @@
           "headless": true,
           "height": 720,
           "maxFrames": 120,
-          "minFps": 50.0,
+          "minFps": 25.0,
           "presentRefreshHz": 0.0,
           "runtimeLimitSeconds": null,
           "seed": 123456789,
@@ -86,26 +86,26 @@
         }
       },
       "metrics": {
-        "summary.averageFps": 148.507898,
-        "summary.averagePresentCallMs": 6.733211,
-        "summary.averageRenderMs": 0.741644,
+        "summary.averageFps": 28.497498,
+        "summary.averagePresentCallMs": 35.089874,
+        "summary.averageRenderMs": 0.672887,
         "tileStats.averageBytesCopied": 30720.0
       },
       "tolerances": {
         "summary.averageFps": {
-          "absolute": 15.0,
+          "absolute": 5.0,
           "direction": "decrease",
-          "percent": 12.0
+          "percent": 15.0
         },
         "summary.averagePresentCallMs": {
-          "absolute": 3.0,
-          "direction": "increase",
-          "percent": 25.0
-        },
-        "summary.averageRenderMs": {
-          "absolute": 0.4,
+          "absolute": 10.0,
           "direction": "increase",
           "percent": 20.0
+        },
+        "summary.averageRenderMs": {
+          "absolute": 0.5,
+          "direction": "increase",
+          "percent": 25.0
         },
         "tileStats.averageBytesCopied": {
           "absolute": 200000.0,

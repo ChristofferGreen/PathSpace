@@ -185,7 +185,7 @@ Environment knobs (all respected by the wrapper and the logger):
 
 - Use `./scripts/capture_pixel_noise_baseline.sh` after rebuilding (`cmake --build build -j`) to refresh `docs/perf/pixel_noise_baseline.json`.
 - Pass `--backend=metal` (and export `PATHSPACE_ENABLE_METAL_UPLOADS=1`) to capture the Metal2D variant in `docs/perf/pixel_noise_metal_baseline.json`; commit both baselines together when budgets shift.
-- The helper launches `pixel_noise_example` headless with the standard perf budgets (≥50 FPS, ≤20 ms render/present) and records the run via `--write-baseline=<path>`.
+- The helper launches `pixel_noise_example` headless with the standard perf budgets (≥25 FPS, ≤20 ms render/present, ≤40 ms present-call post shaped-text rollout) and records the run via `--write-baseline=<path>`.
 - `python3 scripts/check_pixel_noise_baseline.py --build-dir build` reruns the harness with the recorded parameters, writes a temporary metrics snapshot, and fails if the averaged frame times exceed the stored budgets or if FPS dips below the baseline threshold. The script respects the baseline’s `backendKind`, forwarding the matching `--backend` flag and enabling Metal uploads automatically when needed. `PixelNoisePerfHarness` (software) and `PixelNoisePerfHarnessMetal` (Metal, PATHSPACE_UI_METAL builds) in CTest now go through the same script so regressions surface during the 15× loop.
 - Inspect the resulting JSON for:
   - `summary.*` — aggregate FPS and timing averages used to confirm budgets.

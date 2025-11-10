@@ -454,6 +454,14 @@ auto SceneSnapshotBuilder::store_bucket(std::uint64_t revision,
         return status;
     }
 
+    auto glyphVerticesBytes = to_bytes(BucketGlyphVerticesBinary{ .glyph_vertices = bucket.glyph_vertices });
+    if (!glyphVerticesBytes) {
+        return std::unexpected(glyphVerticesBytes.error());
+    }
+    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/glyph-vertices.bin", *glyphVerticesBytes); !status) {
+        return status;
+    }
+
     std::unordered_set<std::string> unique_authoring_nodes;
     unique_authoring_nodes.reserve(authoringMap.size());
     for (auto const& entry : authoringMap) {
@@ -609,8 +617,11 @@ auto SceneSnapshotBuilder::prune_impl(std::vector<SnapshotRecord>& records, Snap
         (void)space_.take<std::vector<std::uint8_t>>(base + "/bucket/bounds.bin");
         (void)space_.take<std::vector<std::uint8_t>>(base + "/bucket/state.bin");
         (void)space_.take<std::vector<std::uint8_t>>(base + "/bucket/cmd-buffer.bin");
+        (void)space_.take<std::vector<std::uint8_t>>(base + "/bucket/strokes.bin");
         (void)space_.take<std::vector<std::uint32_t>>(base + "/bucket/indices/opaque.bin");
         (void)space_.take<std::vector<std::uint32_t>>(base + "/bucket/indices/alpha.bin");
+        (void)space_.take<std::vector<std::uint8_t>>(base + "/bucket/font-assets.bin");
+        (void)space_.take<std::vector<std::uint8_t>>(base + "/bucket/glyph-vertices.bin");
         for (auto layerId : layer_ids) {
             auto layerPath = base + "/bucket/indices/layer/" + std::to_string(layerId) + ".bin";
             (void)space_.take<std::vector<std::uint32_t>>(layerPath);

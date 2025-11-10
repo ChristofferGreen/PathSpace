@@ -26,6 +26,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <bit>
 #include <sstream>
 #include <string_view>
 #include <vector>
@@ -200,12 +201,96 @@ auto encode_mesh_command(UIScene::MeshCommand const& mesh,
     bucket.command_kinds.push_back(static_cast<std::uint32_t>(DrawCommandKind::Mesh));
 }
 
-auto encode_text_glyphs_command(UIScene::TextGlyphsCommand const& glyphs,
-                                DrawableBucketSnapshot& bucket) -> void {
+auto encode_text_glyphs_command(UIScene::TextGlyphsCommand glyphs,
+                                DrawableBucketSnapshot& bucket) -> std::uint64_t {
+    auto glyph_count = std::max<std::uint32_t>(glyphs.glyph_count, 1u);
+    auto glyph_offset = static_cast<std::uint32_t>(bucket.glyph_vertices.size());
+    glyphs.glyph_offset = glyph_offset;
+    glyphs.glyph_count = glyph_count;
+    if (glyphs.em_size <= 0.0f) {
+        glyphs.em_size = 16.0f;
+    }
+    if (glyphs.atlas_fingerprint == 0) {
+        glyphs.atlas_fingerprint = 0xC0FFEE1234ull;
+    }
+
+    auto span_x = std::max(glyphs.max_x - glyphs.min_x, 1.0f);
+    auto span_y = std::max(glyphs.max_y - glyphs.min_y, 1.0f);
+    auto step = span_x / static_cast<float>(glyph_count);
+    for (std::uint32_t i = 0; i < glyph_count; ++i) {
+        UIScene::TextGlyphVertex vertex{};
+        vertex.min_x = glyphs.min_x + step * static_cast<float>(i);
+        vertex.max_x = vertex.min_x + step * 0.8f;
+        vertex.min_y = glyphs.min_y;
+        vertex.max_y = glyphs.min_y + span_y;
+        vertex.u0 = static_cast<float>(i) / static_cast<float>(glyph_count);
+        vertex.v0 = 0.0f;
+        vertex.u1 = vertex.u0 + (0.8f / static_cast<float>(glyph_count));
+        vertex.v1 = 1.0f;
+        bucket.glyph_vertices.push_back(vertex);
+    }
+
     auto offset = bucket.command_payload.size();
     bucket.command_payload.resize(offset + sizeof(UIScene::TextGlyphsCommand));
     std::memcpy(bucket.command_payload.data() + offset, &glyphs, sizeof(UIScene::TextGlyphsCommand));
     bucket.command_kinds.push_back(static_cast<std::uint32_t>(DrawCommandKind::TextGlyphs));
+    return glyphs.atlas_fingerprint;
+}
+
+auto format_revision(std::uint64_t revision) -> std::string {
+    std::ostringstream oss;
+    oss << std::setw(16) << std::setfill('0') << revision;
+    return oss.str();
+}
+
+auto write_dummy_font_atlas(RendererFixture& fx,
+                            std::string const& resource_root,
+                            std::uint64_t revision) -> void {
+    constexpr std::size_t kHeaderSize = 28;
+    constexpr std::size_t kGlyphRecordSize = 40;
+    auto append_u16 = [](std::vector<std::uint8_t>& buffer, std::uint16_t value) {
+        buffer.push_back(static_cast<std::uint8_t>(value & 0xFFu));
+        buffer.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFFu));
+    };
+    auto append_u32 = [](std::vector<std::uint8_t>& buffer, std::uint32_t value) {
+        buffer.push_back(static_cast<std::uint8_t>(value & 0xFFu));
+        buffer.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFFu));
+        buffer.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFFu));
+        buffer.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFFu));
+    };
+auto append_f32 = [&](std::vector<std::uint8_t>& buffer, float value) {
+        auto bits = std::bit_cast<std::uint32_t>(value);
+        append_u32(buffer, bits);
+    };
+
+    std::vector<std::uint8_t> atlas_bytes;
+    atlas_bytes.reserve(kHeaderSize + kGlyphRecordSize + 16);
+    atlas_bytes.insert(atlas_bytes.end(), {'P', 'S', 'A', 'T'});
+    append_u16(atlas_bytes, 1u); // version
+    append_u16(atlas_bytes, 0u); // flags
+    append_u32(atlas_bytes, 4u); // width
+    append_u32(atlas_bytes, 4u); // height
+    append_u32(atlas_bytes, 1u); // glyph count
+    append_u32(atlas_bytes, 0u); // format Alpha8
+    append_f32(atlas_bytes, 16.0f); // em size
+
+    append_u32(atlas_bytes, 1u); // glyph id
+    append_u32(atlas_bytes, 65u); // codepoint 'A'
+    append_f32(atlas_bytes, 0.0f); // u0
+    append_f32(atlas_bytes, 0.0f); // v0
+    append_f32(atlas_bytes, 1.0f); // u1
+    append_f32(atlas_bytes, 1.0f); // v1
+    append_f32(atlas_bytes, 1.0f); // advance
+    append_f32(atlas_bytes, 0.0f); // offset_x
+    append_f32(atlas_bytes, 0.0f); // offset_y
+    append_f32(atlas_bytes, 1.0f); // px_range
+
+    atlas_bytes.insert(atlas_bytes.end(), 16u, static_cast<std::uint8_t>(255u));
+
+    auto base = resource_root + "/builds/" + format_revision(revision);
+    auto atlas_path = base + "/atlas.bin";
+    auto result = fx.space.insert(atlas_path, atlas_bytes);
+    REQUIRE(result.errors.empty());
 }
 
 auto encode_path_command(UIScene::PathCommand const& path,
@@ -302,12 +387,6 @@ auto make_rect_bucket(std::vector<RectDrawableDef> const& defs) -> DrawableBucke
     bucket.alpha_indices.clear();
 
     return bucket;
-}
-
-auto format_revision(std::uint64_t revision) -> std::string {
-    std::ostringstream oss;
-    oss << std::setw(16) << std::setfill('0') << revision;
-    return oss.str();
 }
 
 auto fingerprint_hex(std::uint64_t fingerprint) -> std::string {
@@ -2518,7 +2597,17 @@ TEST_CASE("render executes text glyphs command") {
     glyphs.max_y = 2.0f;
     glyphs.glyph_count = 4;
     glyphs.color = {0.2f, 0.6f, 1.0f, 0.75f};
-    encode_text_glyphs_command(glyphs, bucket);
+    auto fingerprint = encode_text_glyphs_command(glyphs, bucket);
+    auto resource_root = std::string(fx.root_view().getPath()) + "/resources/fonts/Test/Regular";
+    std::uint64_t revision = 1ull;
+    bucket.font_assets.push_back(UIScene::FontAssetReference{
+        bucket.drawable_ids.front(),
+        resource_root,
+        revision,
+        fingerprint,
+    });
+    bucket.drawable_fingerprints = {fingerprint};
+    write_dummy_font_atlas(fx, resource_root, revision);
 
     auto scenePath = create_scene(fx, "scene_text", bucket);
     auto rendererPath = create_renderer(fx, "renderer_text");
@@ -2596,7 +2685,7 @@ TEST_CASE("text fallback engages when shaped pipeline requested") {
     glyphs.max_y = 2.0f;
     glyphs.glyph_count = 6;
     glyphs.color = {0.5f, 0.3f, 0.9f, 1.0f};
-    encode_text_glyphs_command(glyphs, bucket);
+    auto fingerprint = encode_text_glyphs_command(glyphs, bucket);
 
     auto scenePath = create_scene(fx, "scene_text_fallback", bucket);
     auto rendererPath = create_renderer(fx, "renderer_text_fallback");

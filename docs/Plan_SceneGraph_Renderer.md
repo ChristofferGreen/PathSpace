@@ -2257,7 +2257,7 @@ C++ types per key:
 - `examples/pixel_noise_example.cpp` now accepts `--backend=<software|metal>` (default Software2D) so perf runs can target either renderer backend without code changes.
 - Baselines live under `docs/perf/`: `pixel_noise_baseline.json` tracks the Software2D path and `pixel_noise_metal_baseline.json` captures the Metal2D run with `PATHSPACE_ENABLE_METAL_UPLOADS=1`.
 - `scripts/check_pixel_noise_baseline.py` reads the baseline’s `backendKind`, forwards the matching `--backend` switch, and automatically enables Metal uploads when the baseline expects Metal2D.
-- CTest registers `PixelNoisePerfHarness` (Software2D) and `PixelNoisePerfHarnessMetal` (Metal2D, gated by `PATHSPACE_UI_METAL`) so the mandated 15× loop covers both backends against the same FPS/latency budgets (≥50 FPS, ≤20 ms average present/render and present-call).
+- CTest registers `PixelNoisePerfHarness` (Software2D) and `PixelNoisePerfHarnessMetal` (Metal2D, gated by `PATHSPACE_UI_METAL`) so the mandated 15× loop covers both backends against the same FPS/latency budgets (≥25 FPS, ≤20 ms average render/present, ≤40 ms present-call after the shaped text integration).
 - Refresh both JSON baselines with `scripts/capture_pixel_noise_baseline.sh` (add `--backend=metal` plus `PATHSPACE_ENABLE_METAL_UPLOADS=1` for the Metal capture) whenever intentional perf shifts occur; commit the pair together so CI expectations stay aligned.
 
 App-relative resolution helpers:

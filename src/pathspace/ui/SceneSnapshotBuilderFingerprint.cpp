@@ -191,6 +191,30 @@ auto compute_drawable_fingerprints(DrawableBucketSnapshot const& bucket)
                             hash.mix_value(static_cast<std::uint32_t>(0xDEADBEEF));
                         }
                     }
+                    if (kind == DrawCommandKind::TextGlyphs && available >= sizeof(TextGlyphsCommand)) {
+                        TextGlyphsCommand glyphs{};
+                        std::memcpy(&glyphs, ptr, sizeof(TextGlyphsCommand));
+                        hash.mix_value(glyphs.atlas_fingerprint);
+                        hash.mix_value(glyphs.flags);
+                        auto glyph_offset = static_cast<std::size_t>(glyphs.glyph_offset);
+                        auto glyph_count = static_cast<std::size_t>(glyphs.glyph_count);
+                        if (glyph_offset + glyph_count <= bucket.glyph_vertices.size()) {
+                            auto begin = bucket.glyph_vertices.data() + glyph_offset;
+                            auto end = begin + glyph_count;
+                            for (auto it = begin; it != end; ++it) {
+                                hash.mix_value(it->min_x);
+                                hash.mix_value(it->min_y);
+                                hash.mix_value(it->max_x);
+                                hash.mix_value(it->max_y);
+                                hash.mix_value(it->u0);
+                                hash.mix_value(it->v0);
+                                hash.mix_value(it->u1);
+                                hash.mix_value(it->v1);
+                            }
+                        } else {
+                            hash.mix_value(static_cast<std::uint32_t>(0xBADCAFE));
+                        }
+                    }
                 }
                 if (available < payload_size) {
                     hash.mix_value(static_cast<std::uint32_t>(payload_size - available));

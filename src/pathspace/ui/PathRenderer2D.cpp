@@ -26,6 +26,7 @@
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
+#include <memory>
 #include <thread>
 #include <mutex>
 #include <exception>
@@ -218,6 +219,7 @@ auto const start = std::chrono::steady_clock::now();
         material_descriptors.reserve(bucket->material_ids.size());
     }
     phmap::flat_hash_map<std::uint64_t, MaterialResourceResidency> resource_residency;
+    phmap::flat_hash_map<std::uint64_t, std::shared_ptr<FontAtlasData const>> font_atlases;
     phmap::flat_hash_set<std::uint64_t> processed_font_assets;
     if (!bucket->font_assets.empty()) {
         for (auto const& asset : bucket->font_assets) {
@@ -238,12 +240,14 @@ auto const start = std::chrono::steady_clock::now();
                 }
                 continue;
             }
+            font_atlases[asset.fingerprint] = *atlas;
             auto const& data = **atlas;
             auto& residency = resource_residency[asset.fingerprint];
             residency.fingerprint = asset.fingerprint;
             residency.cpu_bytes = static_cast<std::uint64_t>(data.pixels.size());
             residency.gpu_bytes = static_cast<std::uint64_t>(data.width)
-                                  * static_cast<std::uint64_t>(data.height);
+                                  * static_cast<std::uint64_t>(data.height)
+                                  * static_cast<std::uint64_t>(std::max<std::uint32_t>(1u, data.bytes_per_pixel));
             residency.width = data.width;
             residency.height = data.height;
             residency.uses_font_atlas = true;
@@ -921,6 +925,7 @@ auto const start = std::chrono::steady_clock::now();
                             material_desc->uses_image = false;
                         }
                         auto glyph_linear = make_linear_color(glyphs.color);
+                        auto glyph_straight = make_linear_straight(glyphs.color);
                         bool handled = false;
                         auto draw_glyph_quads = [&](bool count_fallback) -> bool {
                             bool drawn = false;
@@ -951,7 +956,16 @@ auto const start = std::chrono::steady_clock::now();
 
                         auto shaped_requested = (text_pipeline_mode == TextPipeline::Shaped);
                         if (shaped_requested) {
-                            if (draw_shaped_text_command(glyphs, linear_buffer, width, height)) {
+                            auto atlas_it = font_atlases.find(glyphs.atlas_fingerprint);
+                            if (atlas_it != font_atlases.end()
+                                && draw_shaped_text_command(glyphs,
+                                                            *bucket,
+                                                            atlas_it->second,
+                                                            glyph_linear,
+                                                            glyph_straight,
+                                                            linear_buffer,
+                                                            width,
+                                                            height)) {
                                 drawable_drawn = true;
                                 handled = true;
                             } else if (text_fallback_allowed) {

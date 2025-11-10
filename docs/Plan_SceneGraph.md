@@ -1,7 +1,7 @@
 # Scene Graph Implementation Plan
 
 > Completed milestones are archived in `docs/finished/Plan_SceneGraph_Implementation_Finished.md` (snapshot as of October 29, 2025).
-> Focus update (October 30, 2025): HarfBuzz shaping is live behind `FontManager::shape_text` with CoreText-backed font discovery, shaped-run cache capacity honors the atlas residency budgets stored under `meta/atlas/*`, and Phase 2 atlas persistence is online (default atlas writer, snapshot font-asset manifests, renderer prefetch). Performance guardrail regression resolved (PathRenderer2D incremental ~1.2 ms, `pixel_noise_software` ≈169 FPS) by clipping rect draws to damage regions, skipping no-damage render passes, and caching overdraw metrics so diagnostics stay stable. Next priority: Phase 3 widget/text integration to replace bitmap quads with shaped glyph draws and ensure atlas fingerprints flow end-to-end.
+> Focus update (November 10, 2025): HarfBuzz shaping now flows through `TextBuilder` and the widget pipeline, glyph buckets persist atlas fingerprints, and `PathRenderer2D` renders shaped text when the pipeline flag is enabled. The shaped path currently lands behind the existing environment/debug toggles while the default remains `GlyphQuads` to keep interactive workloads responsive (Software2D pixel noise baseline now ~28 FPS / 35 ms present-call). Budgets and perf baselines have been updated under `docs/perf/*.json` to reflect the higher text cost while Phase 4 optimization tasks are queued.
 
 ## Context and Objectives
 - Groundwork for implementing the renderer stack described in `docs/Plan_SceneGraph_Renderer.md` and the broader architecture contract in `docs/AI_Architecture.md`.
@@ -73,6 +73,7 @@ Ship the resource-backed font pipeline described in `docs/Plan_SceneGraph_Render
 - ✅ (October 30, 2025) Extend renderer target wiring to prefetch persisted atlases: `PathRenderer2D` now loads `atlas.bin` revisions via `FontAtlasCache`, publishes residency stats, and tracks font atlas fingerprints to avoid redundant uploads.
 
 **Phase 3 – Widget/Text Integration (2 days)**
+- ✅ (November 10, 2025) TextBuilder swaps bitmap quads for shaped glyph buckets when a shaping context is active, records font asset fingerprints, and stores glyph vertices for snapshot persistence. PathRenderer2D consumes the metadata and renders shaped text when the pipeline is forced to `Shaped`, falling back to glyph quads otherwise until perf optimizations land.
 - Replace `TextBuilder` bitmap glyphs with FontManager-backed shaping; maintain ASCII fallback by seeding a built-in resource pack.
 - Update `Widgets::TypographyStyle` to carry `font_family`, `font_weight`, `font_features`, `language`, `direction`.
 - Teach widget builders/examples to register required fonts on startup (gallery selects between default/sunset theme fonts).

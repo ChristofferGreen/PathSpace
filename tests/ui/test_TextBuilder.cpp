@@ -1,6 +1,10 @@
 #include "third_party/doctest.h"
 
+#include <pathspace/PathSpace.hpp>
+#include <pathspace/app/AppPaths.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/FontManager.hpp>
+#include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/TextBuilder.hpp>
 
 #include <array>
@@ -93,4 +97,55 @@ TEST_CASE("TextBuilder MeasureTextWidth provides non-negative widths") {
     CHECK(Text::MeasureTextWidth(" ", typography) >= 0.0f);
     CHECK(Text::MeasureTextWidth("Test", typography) >
           Text::MeasureTextWidth("T", typography));
+}
+
+TEST_CASE("TextBuilder builds shaped bucket when shaping context available") {
+    SP::PathSpace space;
+    SP::App::AppRootPath app_root{"/system/applications/demo_app"};
+    SP::App::AppRootPathView app_view{app_root.getPath()};
+
+    SP::UI::FontManager manager(space);
+    SP::UI::Builders::Resources::Fonts::RegisterFontParams params{
+        .family = "DemoSans",
+        .style = "Regular",
+        .weight = "400",
+        .fallback_families = {"system-ui"},
+        .initial_revision = 1ull,
+        .atlas_soft_bytes = 4ull * 1024ull * 1024ull,
+        .atlas_hard_bytes = 8ull * 1024ull * 1024ull,
+        .shaped_run_approx_bytes = 512ull,
+    };
+
+    auto registered = manager.register_font(app_view, params);
+    REQUIRE(registered);
+
+    Widgets::TypographyStyle typography{};
+    typography.font_family = params.family;
+    typography.font_style = params.style;
+    typography.font_weight = params.weight;
+    typography.font_resource_root = registered->root.getPath();
+    typography.font_active_revision = params.initial_revision;
+    typography.font_size = 24.0f;
+    typography.line_height = 24.0f;
+    typography.letter_spacing = 0.0f;
+
+    std::array<float, 4> color{1.0f, 1.0f, 1.0f, 1.0f};
+
+    Text::ScopedShapingContext shaping(space, app_view);
+    auto result = Text::BuildTextBucket("Hello",
+                                        0.0f,
+                                        0.0f,
+                                        typography,
+                                        color,
+                                        0xBEEF,
+                                        "widgets/test/shaped",
+                                        0.0f);
+    REQUIRE(result.has_value());
+    REQUIRE_EQ(result->bucket.command_kinds.size(), 1);
+    auto kind = static_cast<SP::UI::Scene::DrawCommandKind>(result->bucket.command_kinds.front());
+    CHECK(kind == SP::UI::Scene::DrawCommandKind::TextGlyphs);
+    CHECK_FALSE(result->bucket.glyph_vertices.empty());
+    CHECK_EQ(result->bucket.font_assets.size(), 1);
+    CHECK_EQ(result->bucket.font_assets.front().resource_root, typography.font_resource_root);
+    CHECK_EQ(result->bucket.font_assets.front().revision, typography.font_active_revision);
 }

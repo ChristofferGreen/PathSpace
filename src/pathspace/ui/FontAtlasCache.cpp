@@ -115,14 +115,19 @@ auto FontAtlasCache::decode(std::vector<std::uint8_t> const& bytes) const
     }
 
     auto format = static_cast<FontAtlasFormat>(format_raw);
+    std::size_t bytes_per_pixel = 1;
     switch (format) {
     case FontAtlasFormat::Alpha8:
+        bytes_per_pixel = 1;
+        break;
+    case FontAtlasFormat::Rgba8:
+        bytes_per_pixel = 4;
         break;
     default:
         return std::unexpected(make_decode_error("unsupported font atlas format"));
     }
 
-    auto expected_pixels = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    auto expected_pixels = static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * bytes_per_pixel;
     auto pixel_offset = header_size + glyph_table_bytes;
     auto pixel_bytes = bytes.size() - pixel_offset;
     if (pixel_bytes != expected_pixels) {
@@ -134,6 +139,7 @@ auto FontAtlasCache::decode(std::vector<std::uint8_t> const& bytes) const
     atlas->height = height;
     atlas->format = format;
     atlas->em_size = em_size;
+    atlas->bytes_per_pixel = static_cast<std::uint32_t>(bytes_per_pixel);
     atlas->glyphs.reserve(glyph_count);
 
     for (std::size_t i = 0; i < glyph_count; ++i) {

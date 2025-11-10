@@ -126,6 +126,17 @@ auto TranslateDrawableBucket(DrawableBucketSnapshot& bucket, float dx, float dy)
             command.min_y += dy;
             command.max_y += dy;
             write_command(bucket.command_payload, payload_offset, command);
+            auto glyph_offset = static_cast<std::size_t>(command.glyph_offset);
+            auto glyph_count = static_cast<std::size_t>(command.glyph_count);
+            if (glyph_offset + glyph_count <= bucket.glyph_vertices.size()) {
+                auto* glyphs = bucket.glyph_vertices.data() + glyph_offset;
+                for (std::size_t g = 0; g < glyph_count; ++g) {
+                    glyphs[g].min_x += dx;
+                    glyphs[g].max_x += dx;
+                    glyphs[g].min_y += dy;
+                    glyphs[g].max_y += dy;
+                }
+            }
             break;
         }
         default:
@@ -161,8 +172,33 @@ auto AppendDrawableBucket(DrawableBucketSnapshot& dest,
     }
     dest.command_counts.insert(dest.command_counts.end(), src.command_counts.begin(), src.command_counts.end());
 
+    auto glyph_base = static_cast<std::uint32_t>(dest.glyph_vertices.size());
+    if (!src.glyph_vertices.empty()) {
+        dest.glyph_vertices.insert(dest.glyph_vertices.end(), src.glyph_vertices.begin(), src.glyph_vertices.end());
+    }
+
+    auto payload_base = dest.command_payload.size();
     dest.command_kinds.insert(dest.command_kinds.end(), src.command_kinds.begin(), src.command_kinds.end());
     dest.command_payload.insert(dest.command_payload.end(), src.command_payload.begin(), src.command_payload.end());
+
+    if (!src.command_kinds.empty()) {
+        std::size_t payload_offset = payload_base;
+        for (std::size_t command_index = command_base; command_index < dest.command_kinds.size(); ++command_index) {
+            auto kind = static_cast<DrawCommandKind>(dest.command_kinds[command_index]);
+            auto size = payload_size_bytes(kind);
+            if (payload_offset + size > dest.command_payload.size()) {
+                break;
+            }
+            if (kind == DrawCommandKind::TextGlyphs && size >= sizeof(TextGlyphsCommand)) {
+                auto* ptr = dest.command_payload.data() + payload_offset;
+                TextGlyphsCommand command{};
+                std::memcpy(&command, ptr, sizeof(TextGlyphsCommand));
+                command.glyph_offset += glyph_base;
+                std::memcpy(ptr, &command, sizeof(TextGlyphsCommand));
+            }
+            payload_offset += size;
+        }
+    }
 
     for (auto index : src.opaque_indices) {
         dest.opaque_indices.push_back(index + drawable_base);
@@ -194,6 +230,7 @@ auto AppendDrawableBucket(DrawableBucketSnapshot& dest,
     dest.drawable_fingerprints.insert(dest.drawable_fingerprints.end(),
                                       src.drawable_fingerprints.begin(),
                                       src.drawable_fingerprints.end());
+    dest.font_assets.insert(dest.font_assets.end(), src.font_assets.begin(), src.font_assets.end());
 }
 
 } // namespace SP::UI::Scene

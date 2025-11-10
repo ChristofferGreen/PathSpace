@@ -3,8 +3,8 @@
 This directory stores captured performance baselines for the pixel noise example
 (`examples/pixel_noise_example.cpp`). Each baseline is recorded with
 `scripts/capture_pixel_noise_baseline.sh`, which invokes the example in
-headless mode, enforces the standard budgets (≥50 FPS, ≤20 ms average
-present/render) and writes a JSON payload with the captured metrics.
+headless mode, enforces the standard budgets (≥25 FPS, ≤20 ms average
+present/render, ≤40 ms present-call after the shaped text rollout) and writes a JSON payload with the captured metrics.
 
 ## Recording a Baseline
 

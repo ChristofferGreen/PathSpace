@@ -167,6 +167,24 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
         }
     }
 
+    std::vector<TextGlyphVertex> glyph_vertices;
+    {
+        auto glyphBytes = space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/glyph-vertices.bin");
+        if (glyphBytes) {
+            auto decoded = from_bytes<BucketGlyphVerticesBinary>(*glyphBytes);
+            if (!decoded) {
+                return std::unexpected(decoded.error());
+            }
+            glyph_vertices = std::move(decoded->glyph_vertices);
+        } else {
+            auto const& error = glyphBytes.error();
+            if (error.code != Error::Code::NoObjectFound
+                && error.code != Error::Code::NoSuchPath) {
+                return std::unexpected(error);
+            }
+        }
+    }
+
     DrawableBucketSnapshot bucket{};
     bucket.drawable_ids     = std::move(drawablesDecoded->drawable_ids);
     bucket.world_transforms = std::move(transformsDecoded->world_transforms);
@@ -190,6 +208,7 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
     bucket.authoring_map     = std::move(authoring_map);
     bucket.drawable_fingerprints = std::move(drawable_fingerprints);
     bucket.font_assets       = std::move(font_assets);
+    bucket.glyph_vertices    = std::move(glyph_vertices);
 
     bucket.layer_indices.reserve(summary->layer_ids.size());
     for (auto layerId : summary->layer_ids) {

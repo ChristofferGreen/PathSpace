@@ -54,12 +54,17 @@ struct TextGlyphsCommand {
     float min_y = 0.0f;
     float max_x = 0.0f;
     float max_y = 0.0f;
+    std::uint32_t glyph_offset = 0;
     std::uint32_t glyph_count = 0;
-    std::uint32_t atlas_page = 0;
-    float px_range = 1.0f;
+    std::uint64_t atlas_fingerprint = 0;
     float font_size = 12.0f;
+    float em_size = 12.0f;
+    float px_range = 1.0f;
+    std::uint32_t flags = 0;
     std::array<float, 4> color{0.0f, 0.0f, 0.0f, 1.0f};
 };
+
+inline constexpr std::uint32_t kTextGlyphsFlagUsesColorAtlas = 1u << 0;
 
 struct PathCommand {
     float min_x = 0.0f;

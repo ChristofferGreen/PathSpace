@@ -549,6 +549,7 @@ inline auto publish_text_field_state_scenes(PathSpace& space,
         return std::unexpected(widgetRoot.error());
     }
     Widgets::WidgetStateScenes scenes{};
+    SP::UI::Builders::Text::ScopedShapingContext shaping_ctx(space, appRoot);
     struct Variant {
         std::string_view suffix;
         Widgets::TextFieldState state;
@@ -608,6 +609,7 @@ inline auto publish_text_area_state_scenes(PathSpace& space,
         return std::unexpected(widgetRoot.error());
     }
     Widgets::WidgetStateScenes scenes{};
+    SP::UI::Builders::Text::ScopedShapingContext shaping_ctx(space, appRoot);
     auto base = sanitize_text_area_state(state, sanitize_text_area_style(style));
 
     struct Variant {

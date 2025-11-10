@@ -75,9 +75,20 @@ struct LayerIndices {
 
 struct FontAssetReference {
     std::uint64_t drawable_id = 0;
-    std::string   resource_root;
-    std::uint64_t revision = 0;
-    std::uint64_t fingerprint = 0;
+   std::string   resource_root;
+   std::uint64_t revision = 0;
+   std::uint64_t fingerprint = 0;
+};
+
+struct TextGlyphVertex {
+    float min_x = 0.0f;
+    float min_y = 0.0f;
+    float max_x = 0.0f;
+    float max_y = 0.0f;
+    float u0 = 0.0f;
+    float v0 = 0.0f;
+    float u1 = 0.0f;
+    float v1 = 0.0f;
 };
 
 struct DrawableBucketSnapshot {
@@ -104,6 +115,7 @@ struct DrawableBucketSnapshot {
     std::vector<DrawableAuthoringMapEntry> authoring_map;
     std::vector<std::uint64_t> drawable_fingerprints;
     std::vector<FontAssetReference> font_assets;
+    std::vector<TextGlyphVertex> glyph_vertices;
 };
 
 struct SnapshotMetadata {
