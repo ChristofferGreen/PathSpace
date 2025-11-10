@@ -46,7 +46,7 @@ void print_usage() {
                  "\n"
                  "Arguments:\n"
                  "  --root <path>            Concrete history root path (e.g. /doc)\n"
-                 "  --history-dir <dir>      Directory containing state.meta and entries/ for the undo root\n"
+                 "  --history-dir <dir>      Directory containing journal.log for the undo root\n"
                  "  --out <file>             Savefile path for export (history.journal.v1)\n"
                  "  --in <file>              Savefile path to import\n"
                  "  --persistence-root <dir> Override the persistence root directory (defaults to parent of --history-dir)\n"

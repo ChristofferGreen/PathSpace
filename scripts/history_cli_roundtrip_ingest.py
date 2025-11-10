@@ -127,11 +127,9 @@ class TelemetryEntry:
             "telemetry": _relativize(telemetry_path, relative_base),
         }
         for name in ("original", "roundtrip"):
-            for suffix in (".psjl", ".pshd"):
-                candidate = archive_dir / f"{name}{suffix}"
-                if candidate.exists():
-                    files[name] = _relativize(candidate, relative_base)
-                    break
+            candidate = archive_dir / f"{name}.psjl"
+            if candidate.exists():
+                files[name] = _relativize(candidate, relative_base)
 
         return cls(
             timestamp_iso=timestamp_iso or parsed.isoformat(),
@@ -151,8 +149,8 @@ def collect_entries(artifacts_root: Path, relative_base: Optional[Path]) -> List
         archive_dir = telemetry_path.parent
         if not (
             archive_dir.name == "history_cli_roundtrip"
-            or any((archive_dir / f"original{suffix}").exists() for suffix in (".psjl", ".pshd"))
-            or any((archive_dir / f"roundtrip{suffix}").exists() for suffix in (".psjl", ".pshd"))
+            or (archive_dir / "original.psjl").exists()
+            or (archive_dir / "roundtrip.psjl").exists()
         ):
             continue
         try:

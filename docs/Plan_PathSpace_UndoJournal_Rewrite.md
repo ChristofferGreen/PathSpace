@@ -22,12 +22,13 @@
 4. Provide persistence as an append-only journal file with startup replay, including retention-aware compaction.
 5. Deliver full regression coverage before removing old code, and ensure the repository no longer references snapshot infrastructure.
 
-## Status — November 9, 2025
+## Status — November 10, 2025
 - ✅ (November 9, 2025) Journal byte telemetry no longer replays `CowSubtreePrototype` snapshots; `computeJournalByteMetrics` now derives undo/redo/live totals straight from `UndoJournalState::stats`, eliminating the last runtime dependency on snapshot reconstruction.
 - ✅ Byte telemetry parity restored: journal `_history/stats/*` now derives undo/redo/live totals via `computeJournalByteMetrics`, matching the snapshot stack outputs and unblocking `journal telemetry matches snapshot telemetry outputs`.
 - ✅ Journal control commands wait on active transactions using per-root condition variables, eliminating the `Cannot … while transaction open` spurious failures observed in the multi-threaded stress harness.
 - ✅ Fuzz reference model tracks queue semantics (FIFO insert/take) so regression coverage exercises the same observable behaviour as the underlying `PathSpace` implementation; parity holds across random insert/take/undo/redo/trim sequences.
 - ✅ (November 10, 2025) Documentation sweep completed: architecture, overview, and debugging playbook now describe the journal-only backend, and the migration runbook for legacy snapshot bundles (`docs/AI_Debugging_Playbook.md`) walked through exporting on the November 9 bridge build and re-importing with `history.journal.v1`.
+- ✅ (November 10, 2025) CLI and ingestion tooling now default to journal savefiles: `pathspace_history_savefile` help text references `journal.log`, the telemetry ingest script archives `*.psjl` outputs only, and plan/docs references align with `history.journal.v1`.
 - ⛰️ Next major milestone: Phase 4 cleanup (snapshot code removal, feature-flag collapse) once additional integration validation lands.
 
 ## Implementation Phases
@@ -96,7 +97,7 @@
 - [x] Update architecture/docs overview (`docs/AI_Architecture.md`, `docs/Plan_Overview.md`) with the journal-only history note; follow up with inspector-specific documentation.
 - [x] Document persistence format (binary log layout, versioning) for tooling consumers.
   - Added `docs/AI_Architecture.md` -> "Journal Persistence Format" with file header/entry layout, versioning rules, and tooling notes.
-- [ ] Review scripts/CLIs relying on old persistence files, migrate them to the new format, and update examples.
+- [x] (November 10, 2025) Review scripts/CLIs relying on old persistence files, migrate them to the new format, and update examples.
 - [ ] Capture before/after telemetry samples for the debugging playbook.
 - [ ] Final audit that the repository no longer ships unused history code.
 
