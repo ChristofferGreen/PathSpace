@@ -60,8 +60,7 @@
 - Verify integration with `PaintSurface`: stroke history stored under `widgets/<id>/state/history` benefits from automatic snapshots; undo/redo updates `WidgetOp` streams and marks `render/dirty`.
 
 ## Open Questions
-- Should history metadata store arbitrary user tags (e.g., command names) for better UX?
-- How do we surface history stats and per-entry metadata to tooling without colliding with existing user paths (control namespace customization, documentation)?
+Open questions for follow-on work now live in `docs/Plan_SceneGraph.md` (see the migrated history integration tasks section).
 
 ## Status — November 7, 2025
 - ✅ `history::CowSubtreePrototype` models copy-on-write subtrees with node/payload sharing, provides memory + delta instrumentation, and is validated by unit tests (`apply clones modified branch only`) exercising node reuse and stack accounting.
@@ -74,21 +73,7 @@
 - ✅ (November 8, 2025) Added `PathSpace::listChildren()` / `PathSpace::listChildren(ConcretePathView)` to enumerate child component names (including nested `PathSpace` mounts) without decoding payloads; coverage lives in `tests/unit/test_PathSpace_listChildren.cpp`.
 
 ## Next Steps
-1. ✅ Prototype copy-on-write storage for a simple subtree, measuring memory impact. (Captured by `history::CowSubtreePrototype` and associated tests.)
-2. **Required design review:** walk the prototype with PathSpace maintainers to finalize the undo/redo stack API surface, retention policy knobs, and integration boundaries (see `docs/finished/Plan_PathSpace_UndoHistory_Finished.md`). Capture decisions in `docs/AI_Architecture.md` and any affected plan docs.
-3. Document how the copy-on-write layer plugs into `PathSpace` proper (stack wiring, notification hooks, multi-root behaviour) and outline migration steps for existing widget callers.
-4. Implement the route merger, then update widget/runtime plans to consume it. (Child enumeration landed on November 8, 2025 via the new `PathSpace::listChildren()` APIs.)
-5. Design `HistoryOptions` struct and telemetry schema.
-6. Update the paint widget plan to call the new APIs (already referenced in `docs/Plan_WidgetDeclarativeAPI.md`).
-7. ✅ (November 7, 2025) Run the Alpaca vs. binary metadata bake-off for persistence, adopt the versioned binary codec, and update `docs/AI_Architecture.md`, `docs/finished/Plan_PathSpace_UndoHistory_Finished.md`, and paint/inspector plans to reference the shared format.
-8. ✅ (November 7, 2025) Published debugging guidance: `pathspace_history_inspect` now documents on-disk inspection (see `docs/AI_Debugging_Playbook.md`) and this plan includes sample inspector payloads for `_history/stats/*` and `_history/lastOperation/*`.
-9. ✅ (November 7, 2025) Document save/load support: landed the PSJL (`history.journal.v1`) savefile codec plus `UndoableSpace::exportHistorySavefile` / `importHistorySavefile` helpers, preserving undo/redo stacks and retention budgets with regression coverage.
-10. ✅ (November 7, 2025) Publish CLI + doc workflows for the savefile helpers (`pathspace_history_savefile` wrapping export/import) so editors and recovery guides can automate PSJL round-trips without bespoke scripting.
-11. ✅ (November 7, 2025) Wired the savefile CLI into automation: `tests/HistorySavefileCLIRoundTrip` exercises export/import binaries, `pathspace_history_cli_roundtrip` runs from the pre-push hook, and importer persistence now writes every decoded snapshot back to disk so PSJL bundles round-trip cleanly.
-12. ✅ (November 7, 2025) Hooked the CLI roundtrip harness into automation: telemetry files (`history_cli_roundtrip/telemetry.json`) and PSJL pairs now land in the artifact directories for every CTest/pre-push run, giving dashboards and inspector tooling a stable feed of bundle hashes + entry counts. `scripts/history_cli_roundtrip_ingest.py` aggregates those artifacts into `build/test-logs/history_cli_roundtrip/index.json` with hash/entry trends and deep-link metadata so inspector/CI consumers can ingest the data without bespoke scraping.
-13. ✅ (November 7, 2025) Integrated the aggregated history telemetry into inspector dashboards and tooling: `scripts/history_cli_roundtrip_ingest.py` now serves both `index.json` and `dashboard.html` (charts plus PSJL links), and the pre-push hook publishes the HTML so Grafana + inspector views stay in sync with undo retention metrics.
-14. ➡️ Rewrite the declarative UI widgets (see `docs/Plan_WidgetDeclarativeAPI.md`) so builders/layouts publish through the consolidated routing layer and expose history-aware state consistently.
-15. ➡️ Once the widget rewrite is complete, promote the paint example (and eventual `PaintSurface` widget) to mount its buffer under an `UndoableSpace`, wiring `_history/undo` / `_history/redo` controls so the demo validates interactive undo/redo paths.
+Active and outstanding work items from this historical plan have been migrated to `docs/Plan_SceneGraph.md`; refer there for the current backlog.
 
 
 addendum:

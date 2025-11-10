@@ -23,6 +23,12 @@
 ## Task Backlog
 - ✅ (November 8, 2025) Land single-line and multi-line text input widgets with cursor/selection scaffolding, dirty hint propagation, scene snapshots, and binding hooks. `Widgets::CreateTextField` / `CreateTextArea` now publish focus-aware state scenes, sanitize metadata, and expose bindings that queue `Text*` widget ops; renderer buckets draw selections/caret/composition lanes. Follow-up: finish wiring widget input (pointer/keyboard, scroll deltas, IME composition publishing) and extend the demos/tests to exercise the full editing loop.
 - 📌 (November 10, 2025) Wrap the paint example canvas/root in an `UndoableSpace`, persist stroke history into the undo layer, and surface explicit Undo/Redo affordances (buttons + shortcuts) that drive `_history/undo` / `_history/redo` so the demo exercises history integration end-to-end; this follow-up moved from the undo-history plan now that journal work is complete.
+- 📌 (November 7, 2025) Complete the undo/redo stack design review with PathSpace maintainers, then capture the final API/retention decisions in `docs/AI_Architecture.md` and the finished undo history plans so downstream references stay correct.
+- 📌 (November 7, 2025) Document how the copy-on-write/journal history layer wires into PathSpace (stack plumbing, notification hooks, multi-root guardrails) and outline migration guidance for existing widget callers; publish the notes alongside the architecture update above.
+- 📌 (November 7, 2025) Implement the PathSpace event route merger (`PathSpace::RouteMerger`) and expose the merged dispatch plan/telemetry expected by declarative widgets and runtime tooling.
+- 📌 (November 7, 2025) Finalize the `HistoryOptions` struct plus the history telemetry schema (limits, compaction stats) so inspector tooling and widgets consume a stable contract.
+- 📌 (November 7, 2025) Update `docs/Plan_WidgetDeclarativeAPI.md` and related plans to consume the new routing/history APIs once they land, keeping the declarative widget roadmap aligned.
+- 📌 (November 7, 2025) Rewrite the declarative UI widgets to publish through the consolidated routing layer and ensure history-aware state is exposed consistently across builders/layouts.
 - ✅ (October 28, 2025) Wrapped every widget preview in `examples/widgets_example.cpp` with horizontal/vertical stack containers so the gallery reflows as the window resizes; reused the layout helpers landed in the stack container milestone (see archive doc for context).
 - ✅ (October 29, 2025) Hardened slider focus handoffs by storing default slider footprints at creation time and extending `PathSpaceUITests` with `Widget focus slider-to-list transition marks previous footprint without slider binding`. Slider → list transitions now queue dirty hints for both widgets even before bindings are attached, keeping the newly added highlight coverage test and the existing framebuffer diff case green.
 - ✅ (October 29, 2025) Built `examples/widgets_example_minimal.cpp`, a pared-down demo with slider/list/tree widgets plus keyboard focus navigation that skips diagnostics, trace capture, and screenshot plumbing to spotlight the ergonomic GUI builder surface.
@@ -106,6 +112,8 @@ Ship the resource-backed font pipeline described in `docs/Plan_SceneGraph_Render
 - Validate CAMetalLayer drawable lifetime, IOSurface reuse, and runloop coordination during resize and fullscreen transitions for the Metal presenter.
 - Nail down the metrics format (`output/v1/common` versus `diagnostics/metrics`) to keep profiler expectations stable.
 - Define sequencing for path-traced lighting and tetrahedral acceleration work (post-MVP versus incremental alongside GPU backends).
+- Determine whether history metadata should accept arbitrary user-provided tags (e.g., command names) for richer undo UX.
+- Decide how to surface history stats and per-entry metadata to tooling without conflicting with user namespace conventions.
 
 ## Documentation and Rollout Checklist
 - Update `README.md` build instructions once UI flags ship.

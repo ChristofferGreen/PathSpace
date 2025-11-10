@@ -116,7 +116,7 @@ Undo/redo integrations must keep all data for a logical command inside a single 
 - Missing route entries fall back to `<widget>/events/<kind>` to preserve legacy behavior during migration.
 - `meta/routing/version` marks the schema revision for both widget defaults and scene overrides. All participants must match the current runtime version (currently `1`). If an override advertises a different version, it is ignored, a warning is logged under `events/<event>/log/version`, and the widget falls back to its default route until everything is upgraded in lockstep.
 - Handlers return a tri-state result published as `Handled`, `Declined`, or `Error`. The dispatcher records this under `events/<event>/lastResult` for diagnostics. `exclusive` handlers stop traversal when they return `Handled`; `Declined` advances to the next handler; `Error` stops traversal and logs under `events/<event>/log` before invoking the configured `fallback` (if any).
-- Route precedence and merging are managed by the PathSpace event-merger described in `docs/Plan_PathSpace.md`; the widget plan consumes its output rather than reimplementing merge logic locally.
+- Route precedence and merging are managed by the PathSpace event-merger described in `docs/finished/Plan_PathSpace_Finished.md`; the widget plan consumes its output rather than reimplementing merge logic locally.
 
 Canonical namespaces stay consistent across widgets: `state/` for mutable widget data, `style/` for theme references and overrides, `layout/` for layout hints, `events/` for routing metadata plus handlers, `children/` for nested widget mount points, and `render/` for cached rendering artifacts.
 
@@ -149,7 +149,7 @@ Canonical namespaces stay consistent across widgets: `state/` for mutable widget
 - When focus changes, the controller updates `focus/current` under the scene, mirrors the target path under `widgets/<id>/focus/current`, and emits a `WidgetOp`/`WidgetAction` so reducers can react (e.g., render focus rings).
 - Pointer activation (`HandlePointerDown`) syncs focus to the pointed widget before dispatching the widget op. Keyboard/gamepad navigation invokes `Widgets::Focus::Cycle` helpers that produce the same depth-first traversal.
 - Multi-window scenes keep independent focus state per window under `structure/window/<window-id>/focus/current`; the controller never crosses window boundaries during traversal.
-- Traversal requires enumerating child nodes within a widget subtree. `PathSpace::listChildren()` (documented in `docs/Plan_PathSpace.md`) returns `std::vector<std::string>` component names for the current cursor or a supplied subpath without decoding payloads. The focus controller uses this API to perform depth-first traversal without widget-specific knowledge.
+- Traversal requires enumerating child nodes within a widget subtree. `PathSpace::listChildren()` (documented in `docs/finished/Plan_PathSpace_Finished.md`) returns `std::vector<std::string>` component names for the current cursor or a supplied subpath without decoding payloads. The focus controller uses this API to perform depth-first traversal without widget-specific knowledge.
 
 #### Paint Surface Resolution
 
@@ -162,7 +162,7 @@ Canonical namespaces stay consistent across widgets: `state/` for mutable widget
 
 The paintable surface widget reuses the same namespaces but adds `render/buffer` to store the current picture (CPU-readable texture) and an optional `assets/texture` node for GPU residency. Draw events append stroke metadata under `state/history/<id>` so undo/redo tasks can rebuild the buffer on demand.
 
-Undo/redo mechanics for stroke history, route merging, and child enumeration are defined in `docs/Plan_PathSpace.md`; paint widgets consume those PathSpace features rather than implementing custom versions.
+Undo/redo mechanics for stroke history, route merging, and child enumeration are defined in `docs/finished/Plan_PathSpace_Finished.md`; paint widgets consume those PathSpace features rather than implementing custom versions.
 History diagnostics rely on `_history/stats/*` telemetry published by the undo layer; downstream tooling should read those counters (versioned binary persistence) when presenting paint history/retention state.
 
 #### GPU Staging
