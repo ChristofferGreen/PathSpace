@@ -98,7 +98,7 @@
 - [x] Document persistence format (binary log layout, versioning) for tooling consumers.
   - Added `docs/AI_Architecture.md` -> "Journal Persistence Format" with file header/entry layout, versioning rules, and tooling notes.
 - [x] (November 10, 2025) Review scripts/CLIs relying on old persistence files, migrate them to the new format, and update examples.
-- [ ] Capture before/after telemetry samples for the debugging playbook.
+- [x] (November 10, 2025) Capture before/after telemetry samples for the debugging playbook.
 - [ ] Final audit that the repository no longer ships unused history code.
 
 ## Migration Guidance (Snapshot → Journal)

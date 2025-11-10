@@ -225,6 +225,53 @@ Environment knobs (all respected by the wrapper and the logger):
 - Aggregate the telemetry for dashboards/inspector runs with `scripts/history_cli_roundtrip_ingest.py --artifacts-root build/test-logs --relative-base build --output build/test-logs/history_cli_roundtrip/index.json`. The pre-push hook already invokes this helper, yielding a rolling history of bundle hashes, undo/redo counts, and direct download links for each PSJL pair.
 - Pass `--html-output build/test-logs/history_cli_roundtrip/dashboard.html` (enabled by default in the pre-push hook) to emit an inline dashboard that charts undo/redo counts and disk usage trends while linking directly to the archived PSJL bundles and telemetry JSON.
 
+#### History CLI telemetry sample
+
+The roundtrip helper prints a compact telemetry summary so you can compare the persisted journal before and after import without digging through the artifact tree. Treat `original` as the on-disk baseline, `roundtrip` as the freshly re-exported bundle, and `import` as the live state after replaying the journal into a fresh root. A representative output (captured November 10, 2025) looks like:
+
+```json
+Telemetry: {
+  "timestampIso": "2025-11-10T12:25:48.056Z",
+  "original": {
+    "hashFnv1a64": "05716157ded25f7e",
+    "sizeBytes": 328,
+    "undoCount": 2,
+    "redoCount": 0,
+    "diskEntries": 0,
+    "undoBytes": 203,
+    "redoBytes": 0,
+    "liveBytes": 17,
+    "manualGarbageCollect": false
+  },
+  "roundtrip": {
+    "hashFnv1a64": "05716157ded25f7e",
+    "sizeBytes": 328,
+    "undoCount": 2,
+    "redoCount": 0,
+    "diskEntries": 0,
+    "undoBytes": 203,
+    "redoBytes": 0,
+    "liveBytes": 17,
+    "manualGarbageCollect": false
+  },
+  "import": {
+    "undoCount": 2,
+    "redoCount": 0,
+    "diskEntries": 2,
+    "cachedUndo": 2,
+    "cachedRedo": 0,
+    "manualGarbageCollect": false,
+    "undoBytes": 203,
+    "redoBytes": 0,
+    "liveBytes": 17,
+    "diskBytes": 265,
+    "totalBytes": 220
+  }
+}
+```
+
+Check that `hashFnv1a64`, counts, and byte totals match between `original` and `roundtrip` to confirm the export/import loop is lossless. Differences under `import` are expected: it reports the live in-memory state after replay (including cache counters and disk usage). Capture a “before” sample, run your repro or retention workflow, then capture an “after” sample to quantify how trims or manual garbage-collect operations affected the journal.
+
 #### Undo journal migration runbook
 1. **Detect legacy persistence** — If a history root still contains `state.meta`, `snapshots/`, and `entries/`, it was authored by the snapshot backend. Do not mount the directory on the journal-only build.
 2. **Export with the bridge commit** — Check out the last pre-removal commit (`git log --before '2025-11-10' -1` surfaces the hash while snapshots were still active), build the tooling, and run  
