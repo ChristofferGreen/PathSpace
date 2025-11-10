@@ -33,6 +33,9 @@ Provide a single index of active planning documents, ordered by current priority
 8. **Plan_PrimeScript.md** (research)  
    Exploratory unified scripting/shading language idea; no implementation scheduled.
 
+9. **Plan_PathSpace_FanIn.md** (draft)  
+   Design notes for a lightweight fan-in combiner that exposes one path backed by multiple sources.
+
 ## Recommended Implementation Focus (Q4 2025)
 1. **Plan_SceneGraph.md** — active execution path for the renderer/presenter stack defined in `Plan_SceneGraph_Renderer.md`; keep driving the in-flight phases to completion while validating against the renderer blueprint.
 2. **Plan_Distributed_PathSpace.md** — begin Phase 0 once the current implementation milestone is stable; web/server work and the inspector depend on it.
