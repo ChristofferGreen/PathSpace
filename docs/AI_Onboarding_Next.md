@@ -12,7 +12,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 
 2. **Read-before-you-touch**
    - `docs/AI_Architecture.md` (legacy, but now annotated with hand-off notes).
-   - `docs/Plan_SceneGraph_Implementation.md` — check Phase 7 for the freshly completed Metal streaming work and remaining GPU milestones.
+   - `docs/Plan_SceneGraph.md` — check Phase 7 for the freshly completed Metal streaming work and remaining GPU milestones.
    - `docs/AI_Todo.task` — verify priority ordering and align new work with open items.
 
 3. **Build/Test Baseline**
@@ -50,7 +50,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 ## 3. Communication & Handoff Hygiene
 
 - Annotate every modified doc with a short hand-off note (keep the pattern used during this transition).
-- Document open questions or blockers in the PR body and, when relevant, in `docs/Plan_SceneGraph_Implementation.md`.
+- Document open questions or blockers in the PR body and, when relevant, in `docs/Plan_SceneGraph.md`.
 - Use the local pre-push hook (`scripts/git-hooks/pre-push.local.sh`) or `SKIP_LOOP_TESTS=1` only with maintainer approval.
 
 ## 4. Reference Index
@@ -60,7 +60,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 | `docs/AI_Architecture.md` | Core PathSpace architecture (paths, trie, concurrency). Archived but cross-referenced. |
 | `docs/AI_Paths.md` | Canonical path layout and namespace conventions. |
 | `docs/Plan_SceneGraph_Renderer.md` | Renderer and presenter plan, including snapshot semantics. |
-| `docs/Plan_SceneGraph_Implementation.md` | Phase tracker with latest renderer/diagnostics updates. |
+| `docs/Plan_SceneGraph.md` | Phase tracker with latest renderer/diagnostics updates. |
 | `docs/AI_Debugging_Playbook.md` | Loop test expectations, log locations, and diagnostics tooling. |
 | `docs/AI_Todo.task` | Structured backlog (P1/P2) with acceptance criteria. |
 | `docs/Widget_Contribution_Quickstart.md` | Checklist for authoring new widgets (paths, reducers, themes, tests). |
@@ -70,7 +70,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Confirm the build/test loop passes locally (see the quick test pass above).
 - Align your planned work with an entry in `docs/AI_Todo.task` (add one if missing).
 - Announce the scope in your PR description and keep doc updates synchronized with code changes. Remember to run `ctest -R HtmlCanvasVerify` when touching the adapter or HTML outputs so the headless replay harness stays green.
-- When you spot a gap in test coverage, either add the test immediately or log a follow-up in `docs/Plan_SceneGraph_Implementation.md` / `docs/AI_Todo.task` so the need is visible to the next maintainer.
+- When you spot a gap in test coverage, either add the test immediately or log a follow-up in `docs/Plan_SceneGraph.md` / `docs/AI_Todo.task` so the need is visible to the next maintainer.
 
 ### Latest Highlights (October 27, 2025)
 - `widgets_example` can now capture its own gallery with `./build/widgets_example --screenshot <path>`, making visual verification reproducible even inside scripted runs (October 27, 2025). The command runs headless, performs a scripted slider drag, writes a PNG, and exits automatically.

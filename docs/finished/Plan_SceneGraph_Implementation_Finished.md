@@ -1,6 +1,6 @@
 # Scene Graph Implementation — Completed Work
 
-> Archived snapshot of completed milestones (updated October 30, 2025). Active items live in `docs/Plan_SceneGraph_Implementation.md`.
+> Archived snapshot of completed milestones (updated October 30, 2025). Active items live in `docs/Plan_SceneGraph.md`.
 
 ## Handoff Notice
 
@@ -349,7 +349,7 @@ Next:
 - `WidgetOp` payload: `{ kind: WidgetOpKind, widget_path: string, pointer: { scene_x, scene_y, inside, primary }, value: float, sequence: uint64, timestamp_ns: uint64 }`.
 - Supported kinds (October 20, 2025): `HoverEnter`, `HoverExit`, `Press`, `Release`, `Activate`, `Toggle`, `SliderBegin`, `SliderUpdate`, `SliderCommit`, `ListHover`, `ListSelect`, `ListActivate`, `ListScroll` (document new ones alongside widget additions and clamp indices via widget metadata before mutating app state).
 - Reducer shape: wait/notify loop blocks on the queue, translates ops into app actions (`ops/<action>/inbox`) and calls `Widgets::Update*State` helpers to keep scenes in sync without republishing whole snapshots.
-  - Capture authoring guidelines in `docs/Plan_SceneGraph_Implementation.md`'s appendix so contributors can add new widgets consistently.
+  - Capture authoring guidelines in `docs/Plan_SceneGraph.md`'s appendix so contributors can add new widgets consistently.
 
 ## Dependencies and Ordering
 - Helpers (Phase 1) unblock snapshot builder and surfaces/presenters by standardizing paths.

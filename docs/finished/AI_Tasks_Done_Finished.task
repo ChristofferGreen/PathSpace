@@ -102,7 +102,7 @@ task {
 
   acceptance_criteria: [
     "Benchmark harness reports per-phase timings for 4K_full, 4K_incremental, and sub-2K cases.",
-    "Results summarized in docs/Plan_SceneGraph_Implementation.md with bottleneck callouts."
+    "Results summarized in docs/Plan_SceneGraph.md with bottleneck callouts."
   ]
 
   steps: [
@@ -121,7 +121,7 @@ task {
   acceptance_criteria: [
     "PathWindowView (and supporting UI library code) owns the CAMetalLayer drawable acquisition, Metal/IOSurface present path, and event-loop integration currently implemented in examples/macos/WindowEventPump.mm.",
     "examples/macos/* no longer compile any platform-specific presenter code; they reuse the shared UI bridge.",
-    "Docs updated (Plan_SceneGraph_Implementation.md, AI_Architecture.md) to reference the shared presenter instead of the example harness."
+    "Docs updated (Plan_SceneGraph.md, AI_Architecture.md) to reference the shared presenter instead of the example harness."
   ]
 
   steps: [
@@ -184,7 +184,7 @@ task {
 
   steps: [
     "Added `Widgets::Bindings::Dispatch{Button,Toggle,Slider}` helpers that coalesce state changes, submit dirty rect hints, and enqueue ops under `widgets/<id>/ops/inbox/queue`.",
-    "Documented the `WidgetOp` schema/path layout (Plan_SceneGraph_Implementation.md, AI_Paths.md) for reducers and tooling.",
+    "Documented the `WidgetOp` schema/path layout (Plan_SceneGraph.md, AI_Paths.md) for reducers and tooling.",
     "Extended doctests to cover button/toggle/slider interaction flows and verified auto-render queues remain stable in the 15× loop harness."
   ]
 }
@@ -204,6 +204,6 @@ task {
   steps: [
     "Added PaintControls helper that creates palette buttons + slider bindings, registers action callbacks, and merges the control bucket into the scene snapshot.",
     "Persisted brush color/size under /config paths and guarded paint input so UI interactions do not start strokes.",
-    "Documented completion in Plan_SceneGraph_Implementation.md and refreshed backlog focus for upcoming slider → listbox coverage work."
+    "Documented completion in Plan_SceneGraph.md and refreshed backlog focus for upcoming slider → listbox coverage work."
   ]
 }

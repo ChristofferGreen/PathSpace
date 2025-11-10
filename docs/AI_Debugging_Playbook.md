@@ -152,7 +152,7 @@ Environment knobs (all respected by the wrapper and the logger):
    - Re-run the failing test with doctest filters and specific tags enabled (`PATHSPACE_LOG_ENABLE_TAGS=TEST,UI`).
    - Use `--loop=3` on the helper to confirm the fix eliminates intermittent races before scaling back to the mandated 15.
 4. **Document findings**
-   - Update the relevant plan doc (`docs/Plan_SceneGraph_Implementation.md` or task entry) with repro steps, log references, and next actions.
+   - Update the relevant plan doc (`docs/Plan_SceneGraph.md` or task entry) with repro steps, log references, and next actions.
 
 ## 5. Tooling Quick Reference
 
@@ -216,7 +216,7 @@ Environment knobs (all respected by the wrapper and the logger):
 
 - Build the CLI with `cmake --build build -j` and run `./build/pathspace_history_inspect <history_dir>` to audit persisted undo stacks. The tool now emits a lightweight journal summary (entry count, inserts, takes, barrier markers). Snapshot decoding/diffs have been removed along with the snapshot backend; pull structured telemetry from `_history/stats/*` at runtime if deeper analysis is required.
 - Add `--dump <generation>` to traverse a snapshot and preview payload bytes; `--preview-bytes` tunes the hex sampler and `--no-analyze` skips snapshot decoding when only file coverage matters.
-- Point the CLI at `${PATHSPACE_HISTORY_ROOT:-$TMPDIR/pathspace_history}/<space_uuid>/<encoded_root>` when reproducing bugs; pair the findings with the `_history/stats/*` inspector nodes referenced in `docs/Plan_PathSpace_UndoHistory.md`.
+- Point the CLI at `${PATHSPACE_HISTORY_ROOT:-$TMPDIR/pathspace_history}/<space_uuid>/<encoded_root>` when reproducing bugs; pair the findings with the `_history/stats/*` inspector nodes referenced in `docs/finished/Plan_PathSpace_UndoHistory_Finished.md`.
 - Use `./build/pathspace_history_savefile export --root /doc --history-dir $PATHSPACE_HISTORY_ROOT/<space_uuid>/<encoded_root> --out doc.history.journal.v1` to author journal savefiles (`history.journal.v1`) directly from persisted history directories; the CLI derives the persistence namespace automatically and fsyncs by default. Pair with `import --root /doc --history-dir … --in doc.history.journal.v1` when seeding a fresh subtree before reproducing a bug—append `--no-apply-options` if you need to preserve local retention knobs.
 - The CLI works alongside the programmatic helpers (`UndoableSpace::exportHistorySavefile` / `importHistorySavefile`) so integration tests can still call straight into C++, but editor/recovery scripts should prefer the CLI to avoid bespoke harnesses. Update postmortem docs with the exact command + PSJL bundle whenever you capture undo history for analysis.
 - `./build/pathspace_history_cli_roundtrip` exercises both CLI commands against a temporary persistence tree, re-exports the result, and diffs the summaries (values, undo/redo counts). The harness now also writes `history_cli_roundtrip/telemetry.json` (bundle hashes, entry/byte counts) plus `original.history.journal.v1` / `roundtrip.history.journal.v1` into the active test artifact directory, so dashboards/inspector tooling can scrape the data automatically. Pre-push runs pick up the same artifacts under `build/test-logs/history_cli_roundtrip/` with a timestamped subdirectory.

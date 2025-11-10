@@ -1,6 +1,6 @@
 # Scene Graph Implementation Plan
 
-> Completed milestones are archived in `docs/Plan_SceneGraph_Implementation_Finished.md` (snapshot as of October 29, 2025).
+> Completed milestones are archived in `docs/finished/Plan_SceneGraph_Implementation_Finished.md` (snapshot as of October 29, 2025).
 > Focus update (October 30, 2025): HarfBuzz shaping is live behind `FontManager::shape_text` with CoreText-backed font discovery, shaped-run cache capacity honors the atlas residency budgets stored under `meta/atlas/*`, and Phase 2 atlas persistence is online (default atlas writer, snapshot font-asset manifests, renderer prefetch). Performance guardrail regression resolved (PathRenderer2D incremental ~1.2 ms, `pixel_noise_software` ≈169 FPS) by clipping rect draws to damage regions, skipping no-damage render passes, and caching overdraw metrics so diagnostics stay stable. Next priority: Phase 3 widget/text integration to replace bitmap quads with shaped glyph draws and ensure atlas fingerprints flow end-to-end.
 
 ## Context and Objectives
@@ -114,7 +114,7 @@ Ship the resource-backed font pipeline described in `docs/Plan_SceneGraph_Render
 - Track milestone completion in `AI_Todo.task` or the equivalent planning artifact.
 
 ## References
-- Completed implementation details: `docs/Plan_SceneGraph_Implementation_Finished.md`.
+- Completed implementation details: `docs/finished/Plan_SceneGraph_Implementation_Finished.md`.
 - Specification: `docs/Plan_SceneGraph_Renderer.md`.
 - Core architecture overview: `docs/AI_Architecture.md`.
 

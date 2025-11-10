@@ -8,7 +8,7 @@ layout, interaction queues, reducers, and diagnostics stay aligned across
 examples, tests, and tooling.
 
 ## Prerequisites
-- Read `docs/Plan_SceneGraph_Implementation.md` (Phase 8), `docs/AI_Paths.md`
+- Read `docs/Plan_SceneGraph.md` (Phase 8), `docs/AI_Paths.md`
   (widgets section), and skim existing builder code in
   `src/pathspace/ui/WidgetBuildersCore.cpp`.
 - Build the Release tree (`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release`)
@@ -95,7 +95,7 @@ Keep `docs/AI_Paths.md` in sync if you introduce new metadata keys or queues.
 ### 7. Examples, docs, and onboarding
 - Add the widget to `examples/widgets_example.cpp`, including interaction hooks
   and display text.
-- Update `docs/Plan_SceneGraph_Implementation.md` (Phase 8 status list) and
+- Update `docs/Plan_SceneGraph.md` (Phase 8 status list) and
   `docs/AI_Onboarding_Next.md` to mention the new widget and any follow-on work.
 - If new queues or metadata land, refresh `docs/AI_Debugging_Playbook.md` with
   inspection tips.
@@ -126,7 +126,7 @@ Keep `docs/AI_Paths.md` in sync if you introduce new metadata keys or queues.
   new widget correctly.
 
 ## Hand-off Requirements
-- Update `docs/Plan_SceneGraph_Implementation.md` to flip the relevant bullet
+- Update `docs/Plan_SceneGraph.md` to flip the relevant bullet
   (Phase 8) and capture follow-ups.
 - Mirror the change in `docs/AI_Onboarding_Next.md` so the next maintainer sees
   the fresh coverage status.

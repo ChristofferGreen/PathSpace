@@ -12,7 +12,7 @@ Provide a single index of active planning documents, ordered by current priority
 1. **Plan_SceneGraph_Renderer.md**  
    Core rendering/presenter roadmap, snapshot semantics, target contracts. Aligns all UI work.
 
-2. **Plan_SceneGraph_Implementation.md**  
+2. **Plan_SceneGraph.md**  
    Execution plan for landing the renderer stack (phases, diagnostics, testing discipline).
 
 3. **Plan_Distributed_PathSpace.md**  
@@ -34,7 +34,7 @@ Provide a single index of active planning documents, ordered by current priority
    Exploratory unified scripting/shading language idea; no implementation scheduled.
 
 ## Recommended Implementation Focus (Q4 2025)
-1. **Plan_SceneGraph_Implementation.md** — active execution path for the renderer/presenter stack defined in `Plan_SceneGraph_Renderer.md`; keep driving the in-flight phases to completion while validating against the renderer blueprint.
+1. **Plan_SceneGraph.md** — active execution path for the renderer/presenter stack defined in `Plan_SceneGraph_Renderer.md`; keep driving the in-flight phases to completion while validating against the renderer blueprint.
 2. **Plan_Distributed_PathSpace.md** — begin Phase 0 once the current implementation milestone is stable; web/server work and the inspector depend on it.
 3. **Plan_WebServer_Adapter.md** — build the baseline web endpoints (auth, REST, SSE) so downstream tooling has a foundation.
 4. **Plan_PathSpace_Inspector.md** — prototype the read-only inspector after distributed mounts, JSON serialization, and web server infrastructure are in place.
@@ -54,7 +54,7 @@ Provide a single index of active planning documents, ordered by current priority
 - ✅ (November 8, 2025) Journal telemetry endpoints now serve data via the mutation journal. `_history/stats/*`, `_history/lastOperation/*`, and `_history/unsupported/*` all flow through the new aggregator built on `UndoJournalState::Stats`, with commit-time retention syncing and regression coverage (`tests/unit/history/test_UndoableSpace.cpp`, `tests/unit/history/test_UndoJournalState.cpp`).
 - ✅ (November 8, 2025) Journal-backed history roots now honor the `_history/undo|redo|garbage_collect|set_manual_garbage_collect` control paths. Manual retention defers trimming until the GC command runs, and new tests (`tests/unit/history/test_UndoableSpace.cpp`, `tests/unit/history/test_UndoJournalState.cpp`) cover the command routing and retention behaviour. Telemetry endpoints remain in-progress per the Undo Journal rewrite plan.
 - ✅ (November 7, 2025) UndoableSpace persistence and unsupported-payload coverage remain solid, and the persistence-format bake-off is resolved: entry/state metadata now emits compact versioned binary headers, recovery paths share a single codec, and the undo tests cover encode/decode round-trips. Savefile export/import helpers (`UndoableSpace::exportHistorySavefile` / `importHistorySavefile`) now emit PSJL bundles with undo/redo retention honored, and the automation (`HistorySavefileCLIRoundTrip`, `pathspace_history_cli_roundtrip`) keeps the binaries honest while we transition to journal-only tooling.
-- ✅ (November 1, 2025) `history::CowSubtreePrototype` landed as the copy-on-write prototype for undo history, with instrumentation/tests in place and `docs/Plan_PathSpace.md` updated; `scripts/run-test-with-logs.sh` now hardens mktemp handling so the 15× loop stays stable; `docs/Plan_PathSpace_UndoHistory.md` captures the layered design, transactions, retention, and persistence roadmap.
+- ✅ (November 1, 2025) `history::CowSubtreePrototype` landed as the copy-on-write prototype for undo history, with instrumentation/tests in place and `docs/Plan_PathSpace.md` updated; `scripts/run-test-with-logs.sh` now hardens mktemp handling so the 15× loop stays stable; `docs/finished/Plan_PathSpace_UndoHistory_Finished.md` captures the layered design, transactions, retention, and persistence roadmap.
 - ✅ (October 24, 2025) PathSurfaceMetal now allocates IOSurface-backed textures when `iosurface_backing` is set, keeping Metal surface caching in step with CAMetalLayer presentation and the updated UITest coverage.
 - ✅ (October 24, 2025) `./scripts/compile.sh --test` now auto-enables example builds, runs the PixelNoise perf harness (software + Metal) inside the mandated 15× loop, and sets the looped per-test timeout baseline to 20 s so regressions surface without bespoke CTest invocations.
 - HSAT (HTML asset codec) remains mandatory and documented; `pathspace_hsat_inspect` regression stays green after the latest loop run.
@@ -63,7 +63,7 @@ Provide a single index of active planning documents, ordered by current priority
 - Default software presents now skip serializing `SoftwareFramebuffer`; the capture path remains opt-in via `capture_framebuffer=true`, keeping production presents on direct IOSurface writes.
 - Widget state scenes now publish canonical idle/hover/pressed/disabled snapshots under `scenes/widgets/<id>/states/*`; theme-aware styles (`Widgets::WidgetTheme`) landed and `widgets_example` uses env-selectable palettes without rewriting scenes.
 - ✅ (October 23, 2025) Added a renderer/presenter performance guardrail (`scripts/perf_guardrail.py`) that runs the PathRenderer2D benchmark plus pixel noise example, compares against `docs/perf/performance_baseline.json`, writes history under `build/perf/`, and runs from both the pre-push hook and `scripts/compile.sh --perf-report`.
-- ✅ (October 23, 2025) Phase 8 widget bindings fuzz harness landed (`tests/ui/test_WidgetReducersFuzz.cpp`), covering randomized pointer/keyboard flows, reducer drains, and republished action queues; monitor follow-on coverage in `docs/Plan_SceneGraph_Implementation.md`.
+- ✅ (October 23, 2025) Phase 8 widget bindings fuzz harness landed (`tests/ui/test_WidgetReducersFuzz.cpp`), covering randomized pointer/keyboard flows, reducer drains, and republished action queues; monitor follow-on coverage in `docs/Plan_SceneGraph.md`.
 - ✅ (October 22, 2025) Split the monolithic `ui/Builders.cpp` into focused translation units (Scene/Renderer/Surface/Window/App/Widgets/Diagnostics + shared detail helpers), keeping each under 1 000 lines and revalidating the 15× looped CTest run.
 - ✅ (October 23, 2025) Follow-up split trims widget internals further: widget helpers now live in `WidgetDrawablesDetail.inl` and `WidgetMetadataDetail.inl`, with runtime code in `WidgetBuildersCore.cpp`, `WidgetBindings.cpp`, `WidgetFocus.cpp`, and `WidgetReducers.cpp`, keeping the largest TU under 1 000 lines post-refactor.
 - ✅ (October 23, 2025) Broke `WidgetDrawablesDetail.inl` into per-widget include shards (common/button/toggle/slider/list) so each inline module remains compact while `WidgetDetail.hpp` still exposes a single entry point.
@@ -74,7 +74,7 @@ Provide a single index of active planning documents, ordered by current priority
 - `docs/AI_Paths.md` — Canonical path namespaces and layout conventions.
 - `docs/AI_Todo.task` — Backlog items; keep plans and backlog consistent.
 - `docs/AI_Debugging_Playbook.md` — Diagnostics workflow and troubleshooting commands.
-- `docs/Plan_PathSpace_UndoHistory.md` — Detailed undo/redo layer design (wrapper, control paths, retention, persistence).
+- `docs/finished/Plan_PathSpace_UndoHistory_Finished.md` — Detailed undo/redo layer design (wrapper, control paths, retention, persistence).
 
 ## Updating This Index
 - When a plan is added/retired or priority shifts, update the list and note the date.

@@ -1,6 +1,6 @@
 # Plan: PathSpace Undo/Redo Support
 
-> **Status (November 10, 2025):** The mutation journal rewrite replaced the snapshot-based design described below. This document is retained for historical context. See `docs/Plan_PathSpace_UndoJournal_Rewrite.md` for the active plan.
+> **Status (November 10, 2025):** The mutation journal rewrite replaced the snapshot-based design described below. This document is retained for historical context. See `docs/finished/Plan_PathSpace_UndoJournal_Rewrite_Finished.md` for the active plan.
 
 ## Motivation
 - Declarative widgets (e.g., `PaintSurface`) need efficient undo/redo without reimplementing history per widget.
@@ -66,7 +66,7 @@
 ## Status — November 7, 2025
 - ✅ `history::CowSubtreePrototype` models copy-on-write subtrees with node/payload sharing, provides memory + delta instrumentation, and is validated by unit tests (`apply clones modified branch only`) exercising node reuse and stack accounting.
 - ✅ Updated `scripts/run-test-with-logs.sh` temporary file allocation so the test loop tolerates mktemp collisions during 15× runs.
-- ✅ Authored `docs/Plan_PathSpace_UndoHistory.md` outlining the undo wrapper, `_history/*` control paths, retention, and persistence strategy for design review.
+- ✅ Authored `docs/finished/Plan_PathSpace_UndoHistory_Finished.md` outlining the undo wrapper, `_history/*` control paths, retention, and persistence strategy for design review.
 - ✅ (November 6, 2025) `_history/unsupported/*` telemetry now exposes the offending path, reason, timestamp, and occurrence counts for unsupported payload snapshots so the inspector surfaces failures without digging through logs; regression coverage updated to check the new nodes.
 - ✅ (November 7, 2025) Reaffirmed that undo-enabled roots must contain only serializable payloads; executions and nested PathSpaces stay outside the history subtree and are reported via `_history/unsupported/*`.
 - ✅ (November 7, 2025) Downstream plans (UndoHistory, inspector, paint widget) now reference the binary metadata codec, `_history/stats/*` telemetry, and integration checkpoints so consumers adopt the new persistence format consistently.
@@ -75,12 +75,12 @@
 
 ## Next Steps
 1. ✅ Prototype copy-on-write storage for a simple subtree, measuring memory impact. (Captured by `history::CowSubtreePrototype` and associated tests.)
-2. **Required design review:** walk the prototype with PathSpace maintainers to finalize the undo/redo stack API surface, retention policy knobs, and integration boundaries (see `docs/Plan_PathSpace_UndoHistory.md`). Capture decisions in `docs/AI_Architecture.md` and any affected plan docs.
+2. **Required design review:** walk the prototype with PathSpace maintainers to finalize the undo/redo stack API surface, retention policy knobs, and integration boundaries (see `docs/finished/Plan_PathSpace_UndoHistory_Finished.md`). Capture decisions in `docs/AI_Architecture.md` and any affected plan docs.
 3. Document how the copy-on-write layer plugs into `PathSpace` proper (stack wiring, notification hooks, multi-root behaviour) and outline migration steps for existing widget callers.
 4. Implement the route merger, then update widget/runtime plans to consume it. (Child enumeration landed on November 8, 2025 via the new `PathSpace::listChildren()` APIs.)
 5. Design `HistoryOptions` struct and telemetry schema.
 6. Update the paint widget plan to call the new APIs (already referenced in `docs/Plan_WidgetDeclarativeAPI.md`).
-7. ✅ (November 7, 2025) Run the Alpaca vs. binary metadata bake-off for persistence, adopt the versioned binary codec, and update `docs/AI_Architecture.md`, `docs/Plan_PathSpace_UndoHistory.md`, and paint/inspector plans to reference the shared format.
+7. ✅ (November 7, 2025) Run the Alpaca vs. binary metadata bake-off for persistence, adopt the versioned binary codec, and update `docs/AI_Architecture.md`, `docs/finished/Plan_PathSpace_UndoHistory_Finished.md`, and paint/inspector plans to reference the shared format.
 8. ✅ (November 7, 2025) Published debugging guidance: `pathspace_history_inspect` now documents on-disk inspection (see `docs/AI_Debugging_Playbook.md`) and this plan includes sample inspector payloads for `_history/stats/*` and `_history/lastOperation/*`.
 9. ✅ (November 7, 2025) Document save/load support: landed the PSJL (`history.journal.v1`) savefile codec plus `UndoableSpace::exportHistorySavefile` / `importHistorySavefile` helpers, preserving undo/redo stacks and retention budgets with regression coverage.
 10. ✅ (November 7, 2025) Publish CLI + doc workflows for the savefile helpers (`pathspace_history_savefile` wrapping export/import) so editors and recovery guides can automate PSJL round-trips without bespoke scripting.

@@ -1,6 +1,6 @@
 # Plan: PathSpace Undo History Layer
 
-> **Status (November 10, 2025):** Historical reference. The live implementation is the mutation journal captured in `docs/Plan_PathSpace_UndoJournal_Rewrite.md`. Migration steps for legacy snapshot persistence live in `docs/AI_Debugging_Playbook.md` (“Undo journal migration runbook”).
+> **Status (November 10, 2025):** Historical reference. The live implementation is the mutation journal captured in `docs/finished/Plan_PathSpace_UndoJournal_Rewrite_Finished.md`. Migration steps for legacy snapshot persistence live in `docs/AI_Debugging_Playbook.md` (“Undo journal migration runbook”).
 
 > **Drafted:** November 1, 2025 — evolves the undo/redo effort beyond the copy-on-write prototype by specifying the wrapping layer, transactions, retention, and persistence story.
 

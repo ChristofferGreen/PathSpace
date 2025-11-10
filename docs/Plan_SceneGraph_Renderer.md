@@ -1054,7 +1054,7 @@ Positioning:
 Implementation notes (October 23, 2025):
 - `Widgets::CreateStack`/`UpdateStackLayout` publish stack metadata under `widgets/<id>/layout/{style,children,computed}` and emit aggregated snapshots (`scenes/widgets/<id>`). Stack children reference existing widget scenes, so layout stays in sync with button/toggle/slider/list state styling.
 - `Widgets::Bindings::CreateStackBinding` wires stack layouts to renderer targets; `WidgetBindings::UpdateStack` recomputes layout when spacing/alignment changes and forwards dirty hints/auto-render requests automatically.
-- UITests (`tests/ui/test_Builders.cpp`) cover layout measurement, spacing/alignment, and dirty propagation. Gallery integration still pending (track in Plan_SceneGraph_Implementation Phase 8 follow-ups).
+- UITests (`tests/ui/test_Builders.cpp`) cover layout measurement, spacing/alignment, and dirty propagation. Gallery integration still pending (track in `docs/Plan_SceneGraph.md` Phase 8 follow-ups).
 
 Z-order and hit testing:
 - Order within a stack remains `(zIndex asc, then children[] order)`

@@ -58,7 +58,7 @@
   This wrapper will also trigger `HtmlCanvasVerify` and `HtmlAssetInspect` when Node is available.
 - When HTML outputs change intentionally, update:
   1. `docs/Plan_SceneGraph_Renderer.md` (fidelity, HSAT schema, mode semantics).
-  2. `docs/Plan_SceneGraph_Implementation.md` (status snapshot + follow-ups).
+  2. `docs/Plan_SceneGraph.md` (status snapshot + follow-ups).
   3. This quickstart with new commands, environment variables, or failure signatures.
 - Capture notable regressions in `docs/AI_Todo.task` with acceptance criteria so the next cycle can prioritize the fix.
 
