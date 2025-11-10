@@ -29,6 +29,7 @@
 - ✅ Fuzz reference model tracks queue semantics (FIFO insert/take) so regression coverage exercises the same observable behaviour as the underlying `PathSpace` implementation; parity holds across random insert/take/undo/redo/trim sequences.
 - ✅ (November 10, 2025) Documentation sweep completed: architecture, overview, and debugging playbook now describe the journal-only backend, and the migration runbook for legacy snapshot bundles (`docs/AI_Debugging_Playbook.md`) walked through exporting on the November 9 bridge build and re-importing with `history.journal.v1`.
 - ✅ (November 10, 2025) CLI and ingestion tooling now default to journal savefiles: `pathspace_history_savefile` help text references `journal.log`, the telemetry ingest script archives `*.psjl` outputs only, and plan/docs references align with `history.journal.v1`.
+- ✅ (November 10, 2025) Final audit confirms no snapshot-era history code remains: `rg --files -g '*snapshot*' src/pathspace/history` returns empty, `rg 'snapshot' tests/unit/history` flags only the telemetry parity test case name, and `UndoableSpace` now forces `useMutationJournal` during `enableHistory`, ensuring all runtime paths exercise the journal backend.
 - ⛰️ Next major milestone: Phase 4 cleanup (snapshot code removal, feature-flag collapse) once additional integration validation lands.
 
 ## Implementation Phases
@@ -99,7 +100,7 @@
   - Added `docs/AI_Architecture.md` -> "Journal Persistence Format" with file header/entry layout, versioning rules, and tooling notes.
 - [x] (November 10, 2025) Review scripts/CLIs relying on old persistence files, migrate them to the new format, and update examples.
 - [x] (November 10, 2025) Capture before/after telemetry samples for the debugging playbook.
-- [ ] Final audit that the repository no longer ships unused history code.
+- [x] (November 10, 2025) Final audit that the repository no longer ships unused history code (see Status note).
 
 ## Migration Guidance (Snapshot → Journal)
 1. **Locate legacy persistence** — Snapshot builds store undo data under `<persistence-root>/<namespace>/<encoded-root>/` with `state.meta`, `snapshots/`, and `entries/`. If those files exist, treat the root as pre-journal data.
