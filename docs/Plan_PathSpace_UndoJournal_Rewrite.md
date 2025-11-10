@@ -27,6 +27,7 @@
 - ✅ Byte telemetry parity restored: journal `_history/stats/*` now derives undo/redo/live totals via `computeJournalByteMetrics`, matching the snapshot stack outputs and unblocking `journal telemetry matches snapshot telemetry outputs`.
 - ✅ Journal control commands wait on active transactions using per-root condition variables, eliminating the `Cannot … while transaction open` spurious failures observed in the multi-threaded stress harness.
 - ✅ Fuzz reference model tracks queue semantics (FIFO insert/take) so regression coverage exercises the same observable behaviour as the underlying `PathSpace` implementation; parity holds across random insert/take/undo/redo/trim sequences.
+- ✅ (November 10, 2025) Documentation sweep completed: architecture, overview, and debugging playbook now describe the journal-only backend, and the migration runbook for legacy snapshot bundles (`docs/AI_Debugging_Playbook.md`) walked through exporting on the November 9 bridge build and re-importing with `history.journal.v1`.
 - ⛰️ Next major milestone: Phase 4 cleanup (snapshot code removal, feature-flag collapse) once additional integration validation lands.
 
 ## Implementation Phases
@@ -88,8 +89,8 @@
   1. **Landing zone (done November 10, 2025)** — `UndoableSpace` now enables the mutation journal by default and routes transaction control through `JournalTransactionGuard`. Snapshot roots are gone; all history entry points exercise the journal semantics (multi-step undo requires explicit step counts).
   2. **Prune dead snapshot code (done November 10, 2025)** — Removed `history/CowSubtreePrototype.*`, `UndoSnapshotCodec.*`, and the metadata helpers; deleted the snapshot-facing unit tests and CLI/inspection wiring, replacing them with journal-only coverage and a trimmed `pathspace_history_inspect` that reports journal metrics.
   3. **Persistence consolidation (done November 10, 2025)** — `UndoableSpaceHistory.cpp`, `UndoableSpaceTransactions.cpp`, and `UndoableSpacePersistence.cpp` now operate exclusively on journal state. Persistence setup/replay/compaction no longer branches through snapshot helpers, and savefile import/export preserves journal sequences without touching snapshot codecs.
-  4. **Docs & tooling cleanup (in progress)** — Snapshot references are being scrubbed from docs; the debugging playbook now points at journal inspection, but architecture/plan docs still need a full pass and we need to publish migration guidance for legacy bundles.
-- _Progress (November 10, 2025)_: Mutation journal is the only history backend in the tree. Snapshot code, tests, and CLIs were removed; persistence/import/export now replay journal entries directly. Remaining work is doc polish and optional migration tooling.
+ 4. **Docs & tooling cleanup (done November 10, 2025)** — Updated `docs/AI_Architecture.md`, `docs/Plan_Overview.md`, and `docs/AI_Debugging_Playbook.md` to remove snapshot-era guidance, documented the `history.journal.v1` savefile, and published a migration runbook for snapshot persistence directories and PSHD bundles.
+- _Progress (November 10, 2025)_: Mutation journal is the only history backend in the tree. Snapshot code, tests, and CLIs were removed; persistence/import/export now replay journal entries directly. Remaining work is doc polish and optional migration tooling. Migration runbook covers exporting from the November 9 bridge build and re-importing with the current CLI.
 
 ### Phase 5 — Cleanup & Docs
 - [x] Update architecture/docs overview (`docs/AI_Architecture.md`, `docs/Plan_Overview.md`) with the journal-only history note; follow up with inspector-specific documentation.
@@ -98,6 +99,18 @@
 - [ ] Review scripts/CLIs relying on old persistence files, migrate them to the new format, and update examples.
 - [ ] Capture before/after telemetry samples for the debugging playbook.
 - [ ] Final audit that the repository no longer ships unused history code.
+
+## Migration Guidance (Snapshot → Journal)
+1. **Locate legacy persistence** — Snapshot builds store undo data under `<persistence-root>/<namespace>/<encoded-root>/` with `state.meta`, `snapshots/`, and `entries/`. If those files exist, treat the root as pre-journal data.
+2. **Export with the November 9 bridge build** — Check out the last commit before snapshot removal (November 9, 2025); `git log --before '2025-11-10' -1` surfaces the hash. Build the tools on that revision and run\
+   `./build/pathspace_history_savefile export --root <path> --history-dir <legacy-dir> --out <bundle>.history.journal.v1`.\
+   The bridge build still mounts snapshot persistence, replays it through the journal layer, and writes a `history.journal.v1` bundle.
+3. **Import on the current build** — Create a new persistence directory (or remove the legacy one), then run\
+   `./build/pathspace_history_savefile import --root <path> --history-dir <new-dir> --in <bundle>.history.journal.v1`.\
+   Finish with a smoke insert/undo to verify the journal cursors and run `pathspace_history_inspect <new-dir>` to confirm undo/redo counts match expectations.
+4. **Archive and clean up** — Preserve the exported bundle plus notes in your handoff log, then delete the legacy snapshot directories to avoid mixing formats. Future exports should use the journal build exclusively.
+
+The operator checklist also lives in `docs/AI_Debugging_Playbook.md` (“Undo journal migration runbook”). Update both documents if the bridge commit, CLI arguments, or validation steps change.
 
 ## Testing Strategy
 - Reuse existing history regression suites with the journal implementation; ensure they pass without modification.

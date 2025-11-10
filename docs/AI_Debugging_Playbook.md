@@ -167,7 +167,7 @@ Environment knobs (all respected by the wrapper and the logger):
 | Verify HSAT asset inspection tooling | `ctest -R HtmlAssetInspect --output-on-failure` |
 | Inspect HSAT payload contents manually | `./build/pathspace_hsat_inspect --input <payload.hsat>` |
 | Inspect Undo history on disk | `./build/pathspace_history_inspect <history_dir>` |
-| Export/import undo savefiles | `./build/pathspace_history_savefile <export|import> --root <path> --history-dir <dir> --out/--in <psjl>` |
+| Export/import undo savefiles | `./build/pathspace_history_savefile <export|import> --root <path> --history-dir <dir> --out/--in <bundle>.history.journal.v1` |
 | Smoke-test savefile CLI roundtrip | `./build/pathspace_history_cli_roundtrip` |
 | Run CLI roundtrip regression | `ctest -R HistorySavefileCLIRoundTrip --output-on-failure` |
 | Tail latest failure log | `ls -t build/test-logs | head -1 | xargs -I{} tail -n 80 build/test-logs/{}` |
@@ -217,13 +217,25 @@ Environment knobs (all respected by the wrapper and the logger):
 - Build the CLI with `cmake --build build -j` and run `./build/pathspace_history_inspect <history_dir>` to audit persisted undo stacks. The tool now emits a lightweight journal summary (entry count, inserts, takes, barrier markers). Snapshot decoding/diffs have been removed along with the snapshot backend; pull structured telemetry from `_history/stats/*` at runtime if deeper analysis is required.
 - Add `--dump <generation>` to traverse a snapshot and preview payload bytes; `--preview-bytes` tunes the hex sampler and `--no-analyze` skips snapshot decoding when only file coverage matters.
 - Point the CLI at `${PATHSPACE_HISTORY_ROOT:-$TMPDIR/pathspace_history}/<space_uuid>/<encoded_root>` when reproducing bugs; pair the findings with the `_history/stats/*` inspector nodes referenced in `docs/Plan_PathSpace_UndoHistory.md`.
-- Use `./build/pathspace_history_savefile export --root /doc --history-dir $PATHSPACE_HISTORY_ROOT/<space_uuid>/<encoded_root> --out doc.psjl` to author journal savefiles (`history.journal.v1`) directly from persisted history directories; the CLI derives the persistence namespace automatically and fsyncs by default. Pair with `import --root /doc --history-dir … --in doc.psjl` when seeding a fresh subtree before reproducing a bug—append `--no-apply-options` if you need to preserve local retention knobs.
+- Use `./build/pathspace_history_savefile export --root /doc --history-dir $PATHSPACE_HISTORY_ROOT/<space_uuid>/<encoded_root> --out doc.history.journal.v1` to author journal savefiles (`history.journal.v1`) directly from persisted history directories; the CLI derives the persistence namespace automatically and fsyncs by default. Pair with `import --root /doc --history-dir … --in doc.history.journal.v1` when seeding a fresh subtree before reproducing a bug—append `--no-apply-options` if you need to preserve local retention knobs.
 - The CLI works alongside the programmatic helpers (`UndoableSpace::exportHistorySavefile` / `importHistorySavefile`) so integration tests can still call straight into C++, but editor/recovery scripts should prefer the CLI to avoid bespoke harnesses. Update postmortem docs with the exact command + PSJL bundle whenever you capture undo history for analysis.
-- `./build/pathspace_history_cli_roundtrip` exercises both CLI commands against a temporary persistence tree, re-exports the result, and diffs the summaries (values, undo/redo counts). The harness now also writes `history_cli_roundtrip/telemetry.json` (bundle hashes, entry/byte counts) plus `original.psjl`/`roundtrip.psjl` into the active test artifact directory, so dashboards/inspector tooling can scrape the data automatically. Pre-push runs pick up the same artifacts under `build/test-logs/history_cli_roundtrip/` with a timestamped subdirectory.
+- `./build/pathspace_history_cli_roundtrip` exercises both CLI commands against a temporary persistence tree, re-exports the result, and diffs the summaries (values, undo/redo counts). The harness now also writes `history_cli_roundtrip/telemetry.json` (bundle hashes, entry/byte counts) plus `original.history.journal.v1` / `roundtrip.history.journal.v1` into the active test artifact directory, so dashboards/inspector tooling can scrape the data automatically. Pre-push runs pick up the same artifacts under `build/test-logs/history_cli_roundtrip/` with a timestamped subdirectory.
 - The dedicated regression lives in CTest as `HistorySavefileCLIRoundTrip`; run it (or the pre-push hook) whenever the savefile codec or CLI surface changes to ensure PSJL bundles continue to round-trip end-to-end.
 - Override the artifact destination with `PATHSPACE_CLI_ROUNDTRIP_ARCHIVE_DIR=/path/to/dir ./build/pathspace_history_cli_roundtrip` when scripting ad-hoc captures. Test loops default to `PATHSPACE_TEST_ARTIFACT_DIR` (exported by `scripts/run-test-with-logs.sh`), so every failure leaves behind telemetry + PSJL pairs alongside other logs.
 - Aggregate the telemetry for dashboards/inspector runs with `scripts/history_cli_roundtrip_ingest.py --artifacts-root build/test-logs --relative-base build --output build/test-logs/history_cli_roundtrip/index.json`. The pre-push hook already invokes this helper, yielding a rolling history of bundle hashes, undo/redo counts, and direct download links for each PSJL pair.
 - Pass `--html-output build/test-logs/history_cli_roundtrip/dashboard.html` (enabled by default in the pre-push hook) to emit an inline dashboard that charts undo/redo counts and disk usage trends while linking directly to the archived PSJL bundles and telemetry JSON.
+
+#### Undo journal migration runbook
+1. **Detect legacy persistence** — If a history root still contains `state.meta`, `snapshots/`, and `entries/`, it was authored by the snapshot backend. Do not mount the directory on the journal-only build.
+2. **Export with the bridge commit** — Check out the last pre-removal commit (`git log --before '2025-11-10' -1` surfaces the hash while snapshots were still active), build the tooling, and run  
+   `./build/pathspace_history_savefile export --root <path> --history-dir <legacy-dir> --out <bundle>.history.journal.v1`.  
+   The bridge release transparently loads snapshot persistence, replays it through the journal layer, and emits the new bundle format.
+3. **Import on main** — Return to `master`, create an empty persistence directory, and execute  
+   `./build/pathspace_history_savefile import --root <path> --history-dir <new-dir> --in <bundle>.history.journal.v1`.  
+   Verify with a trivial insert/undo cycle and `./build/pathspace_history_inspect <new-dir>`—undo/redo counts should match the exported summary.
+4. **Archive artifacts** — Store the exported bundle with your handoff notes, then delete the legacy snapshot directories (or move them into `_archive/`) so future tooling never mixes formats. All subsequent exports should rely on the journal build.
+
+Record the export/import commands plus validation output in the working note so the next shift can trace exactly how the migration completed. If the bridge commit or tooling changes, update this section and the matching plan entry.
 
 ## 6. Closing the Loop
 
