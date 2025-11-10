@@ -32,3 +32,33 @@ _Last updated: October 31, 2025_
 - Pointer metadata is embedded per entry, but there is no shared payload schema that callers can extend. Adding route descriptors may require augmenting `WidgetOp`/`WidgetAction` or introducing an envelope structure.
 - Auto-render requests multiplex disparate reasons in one queue. If declarative routing introduces per-widget event routing, ensure the auto-render queue continues to function (or document a migration path).
 - Version flagging under `meta/routing/version` will help migrate existing apps to the richer contract incrementally.
+
+## Route merger implementation notes
+- The merger lives entirely under `src/pathspace/ui/RouteMerger.*` and consumes three namespaces: widget defaults (`<widget>/events/<event>/route`), scene overrides (`<scene>/widgets/runtime/routes/<widget>/<event>/route`), and shared tables (`<scene>/widgets/runtime/routes/shared/<event>/route`). No changes to `PathSpace` core are required.
+- Merge modes:
+  - `replace` swaps the entire handler list with the override.
+  - `prepend` injects override handlers ahead of defaults respecting their `priority`.
+  - `append` places handlers after defaults while still sorting by `priority`.
+- Cached plans are keyed by `(scene, widget, event, routingVersion)`. Cache invalidation triggers when:
+  - Any source node mutates (detected via `notify` watching the relevant paths).
+  - `meta/routing/version` changes on either the widget or override node.
+  - The dispatcher reports a handler failure that requests a refresh (e.g., missing handler path).
+- Diagnostics:
+  - `<scene>/widgets/runtime/routes/<widget>/<event>/stats/handlerCount`
+  - `<scene>/widgets/runtime/routes/<widget>/<event>/stats/overridesApplied`
+  - `<scene>/widgets/runtime/routes/<widget>/<event>/stats/lastRefreshMs`
+  - `<scene>/widgets/runtime/routes/<widget>/<event>/stats/cacheHits` / `cacheMisses`
+- Warnings for ignored overrides (version mismatch, malformed schema) land under `<scene>/widgets/runtime/routes/<widget>/<event>/log`.
+
+## Dispatcher notes
+- `src/pathspace/ui/WidgetEventDispatcher.*` drains `WidgetOp` queues, fetches merged plans, and executes handlers in ascending `priority`.
+- Result handling:
+  - `Handled` stops iteration for `exclusive` handlers and marks `events/<event>/lastResult = handled`.
+  - `Declined` advances to the next handler and records the intermediate decision under `events/<event>/log`.
+  - `Error` records the error payload, increments `stats/errors`, attempts the configured `fallback`, and emits a notification for tooling.
+- Telemetry mirrors dispatcher activity at `<widget>/events/<event>/stats`:
+  - `dispatchCount`, `handledCount`, `declinedCount`, `errorCount`
+  - `fallbackCount`, `exclusiveShortCircuits`, `sharedInvocations`
+  - `lastDispatchTimestampMs`, `lastErrorTimestampMs`
+- Keyboard and pointer bridges record the `WidgetOp` they produced so the dispatcher can add context (device ID, modifiers) to the log entry without altering the queue schema.
+- Legacy behaviour remains available: when no routing metadata exists the dispatcher synthesizes a single-handler plan pointing at `<widget>/events/<event>/handler` and emits `stats/mode = "legacy"`.

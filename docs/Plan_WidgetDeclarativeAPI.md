@@ -109,14 +109,16 @@ Undo/redo integrations must keep all data for a logical command inside a single 
 - Routes live under `<scene>/widgets/runtime/routes/<widget>/<event>/route` with mirrored defaults under each widget (`events/<event>/route`).
 - Each route node stores:
   - `target`: canonical handler or widget path (`ConcretePathString`).
-  - `handlers`: array of `{ path: "<widget>/handlers/<name>", mode: "exclusive" | "shared" }` entries.
+  - `handlers`: array of `{ path: "<widget>/handlers/<name>", mode: "exclusive" | "shared" | "fallback" }` entries.
   - `fallback`: optional handler path triggered when primary handlers decline the payload.
   - `priority`: 32-bit ordering key applied ascending.
-- Producers enqueue `WidgetOp` entries unchanged; the input runtime locates the route via `<widget>, kind`, then dispatches handlers in priority order. `exclusive` handlers stop on success, `shared` handlers always run.
+- Producers enqueue `WidgetOp` entries unchanged; the input runtime locates the route via `<widget>, kind`, then dispatches handlers in priority order. `exclusive` handlers stop on success, `shared` handlers always run, and `fallback` handlers run only when every prior handler declined or failed.
 - Missing route entries fall back to `<widget>/events/<kind>` to preserve legacy behavior during migration.
 - `meta/routing/version` marks the schema revision for both widget defaults and scene overrides. All participants must match the current runtime version (currently `1`). If an override advertises a different version, it is ignored, a warning is logged under `events/<event>/log/version`, and the widget falls back to its default route until everything is upgraded in lockstep.
-- Handlers return a tri-state result published as `Handled`, `Declined`, or `Error`. The dispatcher records this under `events/<event>/lastResult` for diagnostics. `exclusive` handlers stop traversal when they return `Handled`; `Declined` advances to the next handler; `Error` stops traversal and logs under `events/<event>/log` before invoking the configured `fallback` (if any).
-- Route precedence and merging are managed by the PathSpace event-merger described in `docs/finished/Plan_PathSpace_Finished.md`; the widget plan consumes its output rather than reimplementing merge logic locally.
+- Route precedence and merging are owned by the UI-only `RouteMerger` module (`src/pathspace/ui/RouteMerger.*`). The helper reads widget defaults, scene overrides, and shared tables under `<scene>/widgets/runtime/routes/shared/`, applies `replace` / `prepend` / `append` merge modes, and emits a deterministic merged plan without touching the core `PathSpace` implementation.
+- The merger caches merged plans per `(scene, widget, event, version)` and invalidates them when route nodes or `meta/routing/version` change. Diagnostics surface at `<scene>/widgets/runtime/routes/<widget>/<event>/stats` (handler counts, overrides applied, last refresh timestamp) so tooling can trace precedence decisions.
+- Handlers return a tri-state result published as `Handled`, `Declined`, or `Error`. The dispatcher records this under `events/<event>/lastResult` for diagnostics and appends structured entries to `events/<event>/log`. `exclusive` handlers stop traversal when they return `Handled`; `Declined` advances to the next handler; `Error` stops traversal, emits telemetry, and then invokes the configured `fallback` (if any).
+- A dedicated dispatcher in `src/pathspace/ui/WidgetEventDispatcher.*` owns queue draining, priority ordering, and telemetry emission. It depends only on the UI-layer merger output and the existing `WidgetOp` queues, keeping `PathSpace` untouched.
 
 Canonical namespaces stay consistent across widgets: `state/` for mutable widget data, `style/` for theme references and overrides, `layout/` for layout hints, `events/` for routing metadata plus handlers, `children/` for nested widget mount points, and `render/` for cached rendering artifacts.
 
