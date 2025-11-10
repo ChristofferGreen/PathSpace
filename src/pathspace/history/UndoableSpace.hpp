@@ -213,6 +213,10 @@ public:
     auto beginTransaction(SP::ConcretePathStringView root) -> Expected<HistoryTransaction>;
 
 protected:
+    // Guardrail: all mutating operations must pass through these overrides so that
+    // `UndoableSpace` can journal before/after payloads. New mutators should reuse
+    // the transaction helpers in UndoableSpaceHistory.cpp instead of touching the
+    // inner PathSpace directly.
     auto in(Iterator const& path, InputData const& data) -> InsertReturn override;
     auto out(Iterator const& path,
              InputMetadata const& inputMetadata,

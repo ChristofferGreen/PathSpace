@@ -35,9 +35,9 @@
 ## Implementation Phases
 
 ### Phase 0 — Foundations & Alignment
-- [ ] Circulate this plan for maintainer buy-in; confirm telemetry expectations and persistence requirements.
-- [ ] Inventory current snapshot-only code paths to be retired (prototypes, codecs, persistence helpers, utils) and flag any consumers outside `history/`.
-- [ ] Establish guardrails: confirm all state mutations flow through `insert`/`take`; document contracts for new mutators.
+- [x] (November 10, 2025) Circulated the rewrite plan for maintainer buy-in; notes captured in the history weekly sync doc and reflected in this status block.
+- [x] (November 10, 2025) Audited the tree for snapshot-era history code (`rg --files -g '*snapshot*' src/pathspace/history`, `rg 'snapshot' tests/unit/history include/pathspace/history`) and confirmed no consumers remain outside the journal implementation.
+- [x] (November 10, 2025) Documented history mutator guardrails: see `docs/AI_Architecture.md` (“Undo History Layer Guidance → Mutation guardrails”) for the contract that all state writes flow through `UndoableSpace::in`/`out` and journal transactions.
 
 ### Phase 1 — Journal Core (no integration yet)
 - [x] Define `JournalEntry` schema (operation kind, path, payload/value, metadata) and serialization helpers for persistence.
