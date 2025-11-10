@@ -47,7 +47,7 @@ void print_usage() {
                  "Arguments:\n"
                  "  --root <path>            Concrete history root path (e.g. /doc)\n"
                  "  --history-dir <dir>      Directory containing state.meta and entries/ for the undo root\n"
-                 "  --out <file>             Savefile path for export (PSHD)\n"
+                 "  --out <file>             Savefile path for export (history.journal.v1)\n"
                  "  --in <file>              Savefile path to import\n"
                  "  --persistence-root <dir> Override the persistence root directory (defaults to parent of --history-dir)\n"
                  "  --namespace <token>      Override the persistence namespace (defaults to parent directory name of --history-dir)\n"
@@ -72,6 +72,7 @@ std::string error_code_to_string(Error::Code code) {
     case Error::Code::NoObjectFound: return "NoObjectFound";
     case Error::Code::TypeMismatch: return "TypeMismatch";
     case Error::Code::NotFound: return "NotFound";
+    case Error::Code::NotSupported: return "NotSupported";
     }
     return "UnknownError";
 }
@@ -173,13 +174,16 @@ std::optional<ParsedArguments> parse_arguments(int argc, char** argv) {
     return args;
 }
 
-std::string hex_encode_root(std::string_view root) {
-    std::ostringstream oss;
-    oss << std::hex << std::nouppercase << std::setfill('0');
-    for (unsigned char c : root) {
-        oss << std::setw(2) << static_cast<int>(c);
+std::string encode_root_token(std::string_view root) {
+    if (root.empty() || root == "/") {
+        return "__root";
     }
-    return oss.str();
+    std::string encoded;
+    encoded.reserve(root.size());
+    for (char c : root) {
+        encoded.push_back(c == '/' ? '_' : c);
+    }
+    return encoded;
 }
 
 std::optional<PersistenceLayout> derive_layout(ParsedArguments const& args) {
@@ -217,7 +221,7 @@ std::optional<PersistenceLayout> derive_layout(ParsedArguments const& args) {
     }
 
     // Validate root encoding if we have a namespace token
-    auto encodedRootExpected = hex_encode_root(args.rootPath);
+    auto encodedRootExpected = encode_root_token(args.rootPath);
     if (encodedRootExpected != layout.encodedRoot) {
         std::cerr << "Encoded root directory (" << layout.encodedRoot
                   << ") does not match encoded --root (" << encodedRootExpected << ")\n";
@@ -248,6 +252,7 @@ std::unique_ptr<UndoableSpace> make_undoable_space(PersistenceLayout const& layo
     defaults.persistenceNamespace = layout.nsToken;
     defaults.restoreFromPersistence = true;
     defaults.allowNestedUndo      = true;
+    defaults.useMutationJournal   = true;
     return std::make_unique<UndoableSpace>(std::move(inner), defaults);
 }
 

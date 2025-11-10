@@ -35,10 +35,6 @@ namespace SP::History::UndoUtils {
 void removePathIfExists(std::filesystem::path const& path);
 [[nodiscard]] auto fileSizeOrZero(std::filesystem::path const& path) -> std::uintmax_t;
 
-inline constexpr std::uint32_t SnapshotMagic       = 0x50534853; // 'PSHS'
-inline constexpr std::uint32_t SnapshotVersion     = 1;
-inline constexpr std::uint32_t EntryMetaVersion    = 1;
-inline constexpr std::uint32_t StateMetaVersion    = 1;
 inline constexpr std::size_t  MaxUnsupportedLogEntries = 16;
 
 inline constexpr std::string_view UnsupportedNestedMessage =

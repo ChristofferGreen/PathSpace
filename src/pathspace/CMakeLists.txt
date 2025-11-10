@@ -54,17 +54,13 @@ add_library(PathSpace
     core/WaitMap.cpp
     core/WatchRegistry.hpp
     core/Leaf.cpp
-    history/CowSubtreePrototype.cpp
     history/UndoHistoryUtils.cpp
-    history/UndoHistoryMetadata.cpp
     history/UndoJournalEntry.cpp
     history/UndoJournalState.cpp
     history/UndoJournalPersistence.cpp
-    history/UndoSnapshotCodec.cpp
     history/UndoSavefileCodec.cpp
     history/UndoableSpace.cpp
     history/UndoableSpaceHistory.cpp
-    history/UndoHistoryInspection.cpp
     history/UndoableSpacePersistence.cpp
     history/UndoableSpaceSavefile.cpp
     history/UndoableSpaceTransactions.cpp

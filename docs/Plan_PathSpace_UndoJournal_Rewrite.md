@@ -84,20 +84,17 @@
   - Follow-up (resolved November 9, 2025): journal undo/redo/garbage_collect commands now wait on active transactions instead of surfacing `Cannot … while transaction open`, unblocking the multi-threaded stress harness.
 
 ### Phase 4 — Remove Snapshot Implementation
-- [ ] Once tests are green with the journal gated on, delete snapshot-specific code: `CowSubtreePrototype`, snapshot codecs, metadata codecs tied solely to snapshots, persistence helpers, `UndoableSpaceState` fields no longer used.
-  - _Progress (November 9, 2025)_: `computeJournalByteMetrics` now derives undo/redo/live totals directly from `UndoJournalState::stats`, so runtime telemetry no longer depends on replaying `CowSubtreePrototype` snapshots. Next step is to remove the remaining snapshot-only helpers and headers.
-- [ ] Journal-first persistence & savefile plan (drafted November 9, 2025)
-  - ✅ (November 9, 2025) **Savefile format swap** — `UndoableSpaceSavefile.cpp` and `UndoSavefileCodec` now export/import `history.journal.v1` documents that stream journal entries with retention options. Snapshot payload packing has been removed from the savefile path, and journal exports/imports preserve undo/redo cursors.
-  - ✅ (November 9, 2025) **CLI + tests update** — `pathspace_history_cli_roundtrip` now archives PSJL bundles (`original.psjl` / `roundtrip.psjl`) alongside telemetry, `scripts/history_cli_roundtrip_ingest.py` and its dashboard tests ingest the journal artifacts, and the history unit suite asserts export/import telemetry parity plus unsupported payload reporting under the mutation journal backend.
-  3. **Persistence consolidation** — Remove snapshot persistence helpers after validating `UndoableSpacePersistence.cpp` journal replay and disk telemetry (ensure `journal.log` replay populates live state, trim counters, and retry paths).
-  4. **Docs/tooling** — Document the journal log format in `docs/AI_Debugging_Playbook.md`, update quickstarts, and provide migration notes or converters for legacy `.pshd` bundles.
-- [ ] Purge residual references (include headers, build targets, docs) and update inspector tool notes to mention the journal log format.
-- [ ] Rename transitional types (`UndoJournalRootState` → `RootState`) and clean up feature flags.
-- [ ] Run targeted grep to ensure no leftover references to `Snapshot`, `UndoSnapshotCodec`, or `CowSubtreePrototype`.
+- **Execution steps:**
+  1. **Landing zone (done November 10, 2025)** — `UndoableSpace` now enables the mutation journal by default and routes transaction control through `JournalTransactionGuard`. Snapshot roots are gone; all history entry points exercise the journal semantics (multi-step undo requires explicit step counts).
+  2. **Prune dead snapshot code (done November 10, 2025)** — Removed `history/CowSubtreePrototype.*`, `UndoSnapshotCodec.*`, and the metadata helpers; deleted the snapshot-facing unit tests and CLI/inspection wiring, replacing them with journal-only coverage and a trimmed `pathspace_history_inspect` that reports journal metrics.
+  3. **Persistence consolidation (done November 10, 2025)** — `UndoableSpaceHistory.cpp`, `UndoableSpaceTransactions.cpp`, and `UndoableSpacePersistence.cpp` now operate exclusively on journal state. Persistence setup/replay/compaction no longer branches through snapshot helpers, and savefile import/export preserves journal sequences without touching snapshot codecs.
+  4. **Docs & tooling cleanup (in progress)** — Snapshot references are being scrubbed from docs; the debugging playbook now points at journal inspection, but architecture/plan docs still need a full pass and we need to publish migration guidance for legacy bundles.
+- _Progress (November 10, 2025)_: Mutation journal is the only history backend in the tree. Snapshot code, tests, and CLIs were removed; persistence/import/export now replay journal entries directly. Remaining work is doc polish and optional migration tooling.
 
 ### Phase 5 — Cleanup & Docs
-- [ ] Update architecture docs (`docs/AI_Architecture.md`, `docs/Plan_Overview.md`, inspector plans) to describe the journal design.
-- [ ] Document persistence format (binary log layout, versioning) for tooling consumers.
+- [x] Update architecture/docs overview (`docs/AI_Architecture.md`, `docs/Plan_Overview.md`) with the journal-only history note; follow up with inspector-specific documentation.
+- [x] Document persistence format (binary log layout, versioning) for tooling consumers.
+  - Added `docs/AI_Architecture.md` -> "Journal Persistence Format" with file header/entry layout, versioning rules, and tooling notes.
 - [ ] Review scripts/CLIs relying on old persistence files, migrate them to the new format, and update examples.
 - [ ] Capture before/after telemetry samples for the debugging playbook.
 - [ ] Final audit that the repository no longer ships unused history code.

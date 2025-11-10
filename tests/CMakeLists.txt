@@ -19,12 +19,10 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/test_PathSpace_multithreading.cpp
   unit/test_PathSpace_execution.cpp
   unit/path/test_UnvalidatedPath.cpp
-  unit/core/test_CowSubtreePrototype.cpp
   unit/history/test_UndoJournal.cpp
   unit/history/test_UndoJournalState.cpp
   unit/history/test_UndoJournalPersistence.cpp
   unit/history/test_UndoableSpace.cpp
-  unit/history/test_HistoryInspection.cpp
   test_main.cpp
 )
 

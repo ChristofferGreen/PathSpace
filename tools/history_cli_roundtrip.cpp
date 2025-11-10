@@ -113,12 +113,15 @@ private:
 };
 
 auto encodeRoot(std::string_view root) -> std::string {
-    std::ostringstream oss;
-    oss << std::hex << std::nouppercase << std::setfill('0');
-    for (unsigned char c : root) {
-        oss << std::setw(2) << static_cast<int>(c);
+    if (root.empty() || root == "/") {
+        return "__root";
     }
-    return oss.str();
+    std::string encoded;
+    encoded.reserve(root.size());
+    for (char c : root) {
+        encoded.push_back(c == '/' ? '_' : c);
+    }
+    return encoded;
 }
 
 auto makeScratchDirectory() -> fs::path {
@@ -189,6 +192,7 @@ auto collectHistorySummary(std::filesystem::path const& savefile,
                            ConcretePathStringView root,
                            bool debugLogging) -> std::optional<HistorySummary> {
     HistoryOptions options;
+    options.useMutationJournal = true;
     auto           space = makeUndoableSpace(options);
 
     auto enable = space->enableHistory(root);
@@ -385,6 +389,7 @@ int main(int argc, char** argv) {
         exportDefaults.persistenceNamespace = "cli_roundtrip_export";
         exportDefaults.ramCacheEntries      = 4;
         exportDefaults.allowNestedUndo      = true;
+        exportDefaults.useMutationJournal   = true;
 
         auto rootPath = std::string{"/doc"};
         auto rootView = ConcretePathStringView{rootPath};
@@ -427,8 +432,8 @@ int main(int argc, char** argv) {
 
         auto encodedRoot      = encodeRoot(rootPath);
         auto exportHistoryDir = exportBase / exportDefaults.persistenceNamespace / encodedRoot;
-        if (!fs::exists(exportHistoryDir / "state.meta")) {
-            std::cerr << "Export history directory missing expected state.meta at "
+        if (!fs::exists(exportHistoryDir / "journal.log")) {
+            std::cerr << "Export history directory missing expected journal.log at "
                       << exportHistoryDir << "\n";
             return EXIT_FAILURE;
         }
@@ -436,7 +441,7 @@ int main(int argc, char** argv) {
             std::cerr << "[debug] Export history dir: " << exportHistoryDir << "\n";
         }
 
-        auto originalSavefile = scratchRoot / "roundtrip.pshd";
+        auto originalSavefile = scratchRoot / "roundtrip.psjl";
         {
             std::error_code ec;
             fs::remove(originalSavefile, ec);
@@ -457,7 +462,7 @@ int main(int argc, char** argv) {
             std::cerr << "Export did not produce savefile: " << originalSavefile << "\n";
             return EXIT_FAILURE;
         }
-        archiver.addFile(originalSavefile, "original.pshd");
+        archiver.addFile(originalSavefile, "original.psjl");
 
         auto importNamespace = std::string{"cli_roundtrip_import"};
         auto importHistoryDir = importBase / importNamespace / encodedRoot;
@@ -476,10 +481,6 @@ int main(int argc, char** argv) {
         };
         if (runCommand(cliPath, importArgs) != 0)
             return EXIT_FAILURE;
-        if (!fs::exists(importHistoryDir / "state.meta")) {
-            std::cerr << "Import did not materialize state.meta at " << importHistoryDir << "\n";
-            return EXIT_FAILURE;
-        }
         if (debugLogging) {
             std::cerr << "[debug] Import history dir: " << importHistoryDir << "\n";
             std::error_code iterEc;
@@ -496,6 +497,7 @@ int main(int argc, char** argv) {
         importDefaults.persistenceNamespace = importNamespace;
         importDefaults.restoreFromPersistence = true;
         importDefaults.allowNestedUndo      = true;
+        importDefaults.useMutationJournal   = true;
 
         auto reloaded = makeUndoableSpace(importDefaults);
         auto enableReload = reloaded->enableHistory(rootView);
@@ -521,7 +523,7 @@ int main(int argc, char** argv) {
         }
 
 
-        auto roundtripSavefile = scratchRoot / "roundtrip-reexport.pshd";
+        auto roundtripSavefile = scratchRoot / "roundtrip-reexport.psjl";
         {
             std::error_code ec;
             fs::remove(roundtripSavefile, ec);
@@ -546,7 +548,7 @@ int main(int argc, char** argv) {
             std::cerr << "Roundtrip export did not produce savefile\n";
             return EXIT_FAILURE;
         }
-        archiver.addFile(roundtripSavefile, "roundtrip.pshd");
+        archiver.addFile(roundtripSavefile, "roundtrip.psjl");
 
         auto originalSummary = collectHistorySummary(originalSavefile, rootView, debugLogging);
         auto roundtripSummary = collectHistorySummary(roundtripSavefile, rootView, debugLogging);

@@ -166,7 +166,7 @@ Environment knobs (all respected by the wrapper and the logger):
 | Verify HTML adapter command stream | `ctest -R HtmlCanvasVerify --output-on-failure` |
 | Verify HSAT asset inspection tooling | `ctest -R HtmlAssetInspect --output-on-failure` |
 | Inspect HSAT payload contents manually | `./build/pathspace_hsat_inspect --input <payload.hsat>` |
-| Inspect Undo history on disk | `./build/pathspace_history_inspect <history_dir> [--json] [--decode [gen]] [--diff <genA:genB>]` |
+| Inspect Undo history on disk | `./build/pathspace_history_inspect <history_dir>` |
 | Export/import undo savefiles | `./build/pathspace_history_savefile <export|import> --root <path> --history-dir <dir> --out/--in <psjl>` |
 | Smoke-test savefile CLI roundtrip | `./build/pathspace_history_cli_roundtrip` |
 | Run CLI roundtrip regression | `ctest -R HistorySavefileCLIRoundTrip --output-on-failure` |
@@ -214,7 +214,7 @@ Environment knobs (all respected by the wrapper and the logger):
 
 ### 5.4 Undo history inspection
 
-- Build the CLI with `cmake --build build -j` and run `./build/pathspace_history_inspect <history_dir> [--json]` to audit persisted undo stacks. The tool reports expected generations, disk usage, and any missing metadata/snapshot files. Add `--decode [generation]` (defaults to the live generation) to see typed payload summaries, and `--diff <from:to>` to compare two snapshots—both outputs surface strings/numerics directly and emit inspector-ready JSON for `_history/stats/*` and `_history/lastOperation/*`.
+- Build the CLI with `cmake --build build -j` and run `./build/pathspace_history_inspect <history_dir>` to audit persisted undo stacks. The tool now emits a lightweight journal summary (entry count, inserts, takes, barrier markers). Snapshot decoding/diffs have been removed along with the snapshot backend; pull structured telemetry from `_history/stats/*` at runtime if deeper analysis is required.
 - Add `--dump <generation>` to traverse a snapshot and preview payload bytes; `--preview-bytes` tunes the hex sampler and `--no-analyze` skips snapshot decoding when only file coverage matters.
 - Point the CLI at `${PATHSPACE_HISTORY_ROOT:-$TMPDIR/pathspace_history}/<space_uuid>/<encoded_root>` when reproducing bugs; pair the findings with the `_history/stats/*` inspector nodes referenced in `docs/Plan_PathSpace_UndoHistory.md`.
 - Use `./build/pathspace_history_savefile export --root /doc --history-dir $PATHSPACE_HISTORY_ROOT/<space_uuid>/<encoded_root> --out doc.psjl` to author journal savefiles (`history.journal.v1`) directly from persisted history directories; the CLI derives the persistence namespace automatically and fsyncs by default. Pair with `import --root /doc --history-dir … --in doc.psjl` when seeding a fresh subtree before reproducing a bug—append `--no-apply-options` if you need to preserve local retention knobs.

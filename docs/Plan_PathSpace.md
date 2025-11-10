@@ -1,5 +1,7 @@
 # Plan: PathSpace Undo/Redo Support
 
+> **Status (November 10, 2025):** The mutation journal rewrite replaced the snapshot-based design described below. This document is retained for historical context. See `docs/Plan_PathSpace_UndoJournal_Rewrite.md` for the active plan.
+
 ## Motivation
 - Declarative widgets (e.g., `PaintSurface`) need efficient undo/redo without reimplementing history per widget.
 - Copying entire subtrees on every edit is too expensive; we need structural sharing with snapshot semantics inside `PathSpace`.
@@ -87,3 +89,7 @@
 13. ✅ (November 7, 2025) Integrated the aggregated history telemetry into inspector dashboards and tooling: `scripts/history_cli_roundtrip_ingest.py` now serves both `index.json` and `dashboard.html` (charts plus PSJL links), and the pre-push hook publishes the HTML so Grafana + inspector views stay in sync with undo retention metrics.
 14. ➡️ Rewrite the declarative UI widgets (see `docs/Plan_WidgetDeclarativeAPI.md`) so builders/layouts publish through the consolidated routing layer and expose history-aware state consistently.
 15. ➡️ Once the widget rewrite is complete, promote the paint example (and eventual `PaintSurface` widget) to mount its buffer under an `UndoableSpace`, wiring `_history/undo` / `_history/redo` controls so the demo validates interactive undo/redo paths.
+
+
+addendum:
+maybe use something like https://github.com/shytikov/pragmasevka as the default font

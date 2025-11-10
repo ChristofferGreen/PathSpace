@@ -20,7 +20,8 @@ struct Error {
         UnserializableType,
         NoObjectFound,
         TypeMismatch,
-        NotFound
+        NotFound,
+        NotSupported
     };
 
     Error(Code c, std::string m)

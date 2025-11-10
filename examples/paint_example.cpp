@@ -1,4 +1,5 @@
 #include <pathspace/PathSpace.hpp>
+#include <pathspace/history/UndoableSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
@@ -30,6 +31,8 @@
 
 using namespace SP;
 using namespace SP::UI;
+using SP::History::HistoryOptions;
+using SP::History::UndoableSpace;
 namespace UIScene = SP::UI::Scene;
 
 namespace PaintInput {
