@@ -108,8 +108,7 @@ auto PathSpaceTrellis::parseEnableCommand(InputData const& data) const -> Expect
     if (modeString == "queue") {
         mode = TrellisMode::Queue;
     } else if (modeString == "latest") {
-        return std::unexpected(Error{Error::Code::NotSupported,
-                                     "Latest mode is not yet supported"});
+        mode = TrellisMode::Latest;
     } else {
         return std::unexpected(Error{Error::Code::MalformedInput,
                                      "Unsupported trellis mode: " + command->mode});
@@ -336,36 +335,110 @@ auto PathSpaceTrellis::waitAndServeQueue(TrellisState& state,
     return err;
 }
 
-auto PathSpaceTrellis::serveLatest(TrellisState& state,
-                                   InputMetadata const& inputMetadata,
-                                   Out const& options,
-                                   void* obj) -> std::optional<Error> {
-    // Latest mode currently behaves as priority read across sources.
-    // It always prefers the first source that has data and performs a non-destructive read.
+auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
+                                          InputMetadata const& inputMetadata,
+                                          Out const& options,
+                                          void* obj,
+                                          std::chrono::system_clock::time_point deadline) -> std::optional<Error> {
+    if (!backing_) {
+        return Error{Error::Code::InvalidPermissions, "No backing PathSpace configured"};
+    }
+
+    std::vector<std::string> sourcesCopy;
+    std::size_t              waitIndex = 0;
     {
         std::lock_guard<std::mutex> lg(state.mutex);
         if (state.shuttingDown) {
             return Error{Error::Code::Timeout, "Trellis is shutting down"};
         }
-    }
-    auto attemptOptions = options;
-    attemptOptions.doBlock = false;
-    attemptOptions.doPop   = false;
-
-    std::vector<std::string> sourcesCopy;
-    {
-        std::lock_guard<std::mutex> lg(state.mutex);
         sourcesCopy = state.sources;
+        if (!sourcesCopy.empty() && state.policy == TrellisPolicy::RoundRobin) {
+            waitIndex = state.roundRobinCursor % sourcesCopy.size();
+        }
     }
 
     if (sourcesCopy.empty()) {
         return Error{Error::Code::NotFound, "No sources configured"};
     }
 
-    for (auto const& source : sourcesCopy) {
-        Iterator sourceIter{source};
+    auto now = std::chrono::system_clock::now();
+    if (now >= deadline) {
+        return Error{Error::Code::Timeout, "Trellis wait timed out"};
+    }
+    auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+    if (remaining <= std::chrono::milliseconds::zero()) {
+        return Error{Error::Code::Timeout, "Trellis wait timed out"};
+    }
+
+    auto blockingOptions   = options;
+    blockingOptions.doBlock = true;
+    blockingOptions.doPop   = false; // Latest mode is non-destructive.
+    blockingOptions.timeout = remaining;
+
+    Iterator sourceIter{sourcesCopy[waitIndex]};
+    auto     err = backing_->out(sourceIter, inputMetadata, blockingOptions, obj);
+    if (!err) {
+        if (state.policy == TrellisPolicy::RoundRobin) {
+            std::lock_guard<std::mutex> lg(state.mutex);
+            if (!state.sources.empty()) {
+                state.roundRobinCursor = (waitIndex + 1) % state.sources.size();
+            }
+        }
+        return std::nullopt;
+    }
+    return err;
+}
+
+auto PathSpaceTrellis::serveLatest(TrellisState& state,
+                                   InputMetadata const& inputMetadata,
+                                   Out const& options,
+                                   void* obj) -> std::optional<Error> {
+    // Latest mode performs a non-destructive read across sources, selecting a candidate
+    // using the configured policy. Round-robin rotates through sources that reported data
+    // so repeated reads can observe other producers without clearing the backing queues.
+    {
+        std::lock_guard<std::mutex> lg(state.mutex);
+        if (state.shuttingDown) {
+            return Error{Error::Code::Timeout, "Trellis is shutting down"};
+        }
+    }
+
+    std::vector<std::string> sourcesCopy;
+    std::size_t              startIndex = 0;
+    TrellisPolicy            policy;
+    {
+        std::lock_guard<std::mutex> lg(state.mutex);
+        sourcesCopy = state.sources;
+        policy      = state.policy;
+        if (!sourcesCopy.empty() && state.policy == TrellisPolicy::RoundRobin) {
+            startIndex = state.roundRobinCursor % sourcesCopy.size();
+        }
+    }
+
+    if (sourcesCopy.empty()) {
+        return Error{Error::Code::NotFound, "No sources configured"};
+    }
+
+    auto attemptOptions   = options;
+    attemptOptions.doBlock = false;
+    attemptOptions.doPop   = false; // Latest mode is intentionally non-destructive.
+
+    std::optional<Error> lastError;
+
+    auto advanceCursor = [&](std::size_t index) {
+        if (policy == TrellisPolicy::RoundRobin) {
+            std::lock_guard<std::mutex> lg(state.mutex);
+            if (!state.sources.empty()) {
+                state.roundRobinCursor = (index + 1) % state.sources.size();
+            }
+        }
+    };
+
+    auto visitIndex = [&](std::size_t idx) -> std::optional<Error> {
+        Iterator sourceIter{sourcesCopy[idx]};
         auto     err = backing_->out(sourceIter, inputMetadata, attemptOptions, obj);
         if (!err) {
+            advanceCursor(idx);
             return std::nullopt;
         }
         if (err->code != Error::Code::NoObjectFound
@@ -373,8 +446,34 @@ auto PathSpaceTrellis::serveLatest(TrellisState& state,
             && err->code != Error::Code::NoSuchPath) {
             return err;
         }
+        lastError = err;
+        return err;
+    };
+
+    if (policy == TrellisPolicy::RoundRobin) {
+        for (std::size_t offset = 0; offset < sourcesCopy.size(); ++offset) {
+            auto index = (startIndex + offset) % sourcesCopy.size();
+            if (auto res = visitIndex(index); !res.has_value()) {
+                return std::nullopt;
+            } else if (res->code != Error::Code::NoObjectFound
+                       && res->code != Error::Code::NotFound
+                       && res->code != Error::Code::NoSuchPath) {
+                return res;
+            }
+        }
+    } else {
+        for (std::size_t index = 0; index < sourcesCopy.size(); ++index) {
+            if (auto res = visitIndex(index); !res.has_value()) {
+                return std::nullopt;
+            } else if (res->code != Error::Code::NoObjectFound
+                       && res->code != Error::Code::NotFound
+                       && res->code != Error::Code::NoSuchPath) {
+                return res;
+            }
+        }
     }
-    return Error{Error::Code::NoObjectFound, "No data available in sources"};
+
+    return lastError.value_or(Error{Error::Code::NoObjectFound, "No data available in sources"});
 }
 
 auto PathSpaceTrellis::out(Iterator const& path,
@@ -439,7 +538,7 @@ auto PathSpaceTrellis::out(Iterator const& path,
     if (!options.doBlock) {
         return result;
     }
-    return waitAndServeQueue(*state, inputMetadata, options, obj, deadline);
+    return waitAndServeLatest(*state, inputMetadata, options, obj, deadline);
 }
 
 auto PathSpaceTrellis::notify(std::string const& notificationPath) -> void {

@@ -34,7 +34,7 @@ Provide a single index of active planning documents, ordered by current priority
    Exploratory unified scripting/shading language idea; no implementation scheduled.
 
 9. **Plan_PathSpace_FanIn.md** (draft)  
-   Design notes for a lightweight fan-in combiner that exposes one path backed by multiple sources. _Queue mode landed on November 11, 2025 (round-robin + priority policies); latest mode + buffering/metrics remain open._
+   Design notes for a lightweight fan-in combiner that exposes one path backed by multiple sources. _Queue and latest modes landed on November 11, 2025; persistence, metrics, and back-pressure remain open._
 
 ## Recommended Implementation Focus (Q4 2025)
 1. **Plan_SceneGraph.md** — active execution path for the renderer/presenter stack defined in `Plan_SceneGraph_Renderer.md`; keep driving the in-flight phases to completion while validating against the renderer blueprint.
@@ -44,7 +44,8 @@ Provide a single index of active planning documents, ordered by current priority
 5. **Plan_Surface_Ray_Cache.md** — revisit once core rendering + web requirements are satisfied (deferred).
 6. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
 
-## Status Snapshot — November 10, 2025
+## Status Snapshot — November 11, 2025
+- ✅ (November 11, 2025) `PathSpaceTrellis` latest-mode fan-in landed with non-destructive reads and updated tests; next focus is trellis persistence/metrics/back-pressure per `Plan_PathSpace_FanIn.md`.
 - ✅ (November 10, 2025) Snapshot infrastructure removed: `UndoableSpace` now ships journal-only history, the snapshot codecs/tests/inspection tooling are gone, and `pathspace_history_inspect` reports journal metrics (entries, inserts, takes, barriers) instead of decoding snapshot payloads. Persistence/import/export paths operate solely on mutation logs.
 - ✅ (November 10, 2025) Journal persistence format is now documented for tooling consumers. See `docs/AI_Architecture.md` (“Journal Persistence Format”) for header layout, entry schema, and versioning guidance.
 - ✅ (November 9, 2025) Journal telemetry now computes undo/redo/live byte totals directly from `UndoJournalState::stats`, removing the runtime dependency on replaying snapshot prototypes and paving the way for Phase 4 snapshot code removal.

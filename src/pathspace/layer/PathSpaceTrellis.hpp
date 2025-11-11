@@ -85,6 +85,11 @@ private:
                            Out const& options,
                            void* obj,
                            std::chrono::system_clock::time_point deadline) -> std::optional<Error>;
+    auto waitAndServeLatest(TrellisState& state,
+                            InputMetadata const& inputMetadata,
+                            Out const& options,
+                            void* obj,
+                            std::chrono::system_clock::time_point deadline) -> std::optional<Error>;
 
     std::shared_ptr<PathSpaceBase> backing_;
     mutable std::mutex             statesMutex_;

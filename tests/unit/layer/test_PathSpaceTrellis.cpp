@@ -262,7 +262,7 @@ TEST_CASE("Trellis nested inside PathSpace hierarchy") {
     CHECK_FALSE(empty);
 }
 
-TEST_CASE("Latest mode is reported as unsupported") {
+TEST_CASE("Latest mode provides non-destructive reads") {
     auto backing = std::make_shared<PathSpace>();
     PathSpaceTrellis trellis(backing);
 
@@ -274,8 +274,82 @@ TEST_CASE("Latest mode is reported as unsupported") {
     };
 
     auto result = trellis.insert("/_system/trellis/enable", enable);
-    REQUIRE(result.errors.size() == 1);
-    CHECK(result.errors.front().code == Error::Code::NotSupported);
+    REQUIRE(result.errors.empty());
+
+    REQUIRE(backing->insert("/latest/a", 1337).errors.empty());
+
+    auto read = trellis.read<int>("/latest/out", Block{});
+    REQUIRE(read);
+    CHECK(read.value() == 1337);
+
+    auto second = trellis.take<int>("/latest/out", Block{});
+    REQUIRE(second);
+    CHECK(second.value() == 1337);
+
+    auto direct = backing->read<int>("/latest/a", Block{});
+    REQUIRE(direct);
+    CHECK(direct.value() == 1337);
+}
+
+TEST_CASE("Latest mode round-robin rotates across sources") {
+    auto backing = std::make_shared<PathSpace>();
+    PathSpaceTrellis trellis(backing);
+
+    EnableTrellisCommand enable{
+        .name    = "/rr/out",
+        .sources = {"/rr/a", "/rr/b"},
+        .mode    = "latest",
+        .policy  = "round_robin",
+    };
+
+    auto enableResult = trellis.insert("/_system/trellis/enable", enable);
+    REQUIRE(enableResult.errors.empty());
+
+    REQUIRE(backing->insert("/rr/a", std::string("alpha")).errors.empty());
+    REQUIRE(backing->insert("/rr/b", std::string("beta")).errors.empty());
+
+    auto first = trellis.read<std::string>("/rr/out", Block{});
+    REQUIRE(first);
+    CHECK(first.value() == "alpha");
+
+    auto second = trellis.read<std::string>("/rr/out", Block{});
+    REQUIRE(second);
+    CHECK(second.value() == "beta");
+
+    auto third = trellis.read<std::string>("/rr/out", Block{});
+    REQUIRE(third);
+    CHECK(third.value() == "alpha");
+}
+
+TEST_CASE("Latest mode blocks until data arrives") {
+    auto backing = std::make_shared<PathSpace>();
+    PathSpaceTrellis trellis(backing);
+
+    EnableTrellisCommand enable{
+        .name    = "/wait/out",
+        .sources = {"/wait/a", "/wait/b"},
+        .mode    = "latest",
+        .policy  = "priority",
+    };
+    auto enableResult = trellis.insert("/_system/trellis/enable", enable);
+    REQUIRE(enableResult.errors.empty());
+
+    std::thread producer([backing] {
+        std::this_thread::sleep_for(30ms);
+        backing->insert("/wait/b", 2025);
+    });
+
+    auto begin  = std::chrono::steady_clock::now();
+    auto resultLatest = trellis.read<int>("/wait/out", Block{200ms});
+    producer.join();
+
+    if (!resultLatest) {
+        CAPTURE(static_cast<int>(resultLatest.error().code));
+        CAPTURE(resultLatest.error().message.value_or("<none>"));
+    }
+    REQUIRE(resultLatest);
+    CHECK(resultLatest.value() == 2025);
+    CHECK((std::chrono::steady_clock::now() - begin) >= 25ms);
 }
 
 } // TEST_SUITE
