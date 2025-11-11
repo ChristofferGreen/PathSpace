@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -27,7 +28,6 @@ struct EnableTrellisCommand {
     std::vector<std::string> sources;
     std::string              mode;
     std::string              policy;
-    std::optional<std::uint32_t> maxWaitersPerSource;
 };
 
 struct DisableTrellisCommand {
@@ -39,7 +39,6 @@ struct TrellisPersistedConfig {
     std::vector<std::string> sources;
     std::string              mode;
     std::string              policy;
-    std::uint32_t            maxWaitersPerSource{0};
 };
 
 struct TrellisStats {
@@ -81,6 +80,8 @@ private:
         mutable std::mutex          mutex;
         std::size_t                 maxWaitersPerSource{0};
         std::unordered_map<std::string, std::size_t> activeWaiters;
+        std::deque<std::string>     readySources;
+        std::unordered_set<std::string> readySourceSet;
     };
 
     struct EnableParseResult {
@@ -102,22 +103,26 @@ private:
         -> Expected<std::vector<std::string>>;
 
     auto tryServeQueue(TrellisState& state,
+                       std::string const& canonicalOutputPath,
                        InputMetadata const& inputMetadata,
                        Out const& options,
                        void* obj,
                        std::optional<std::string>& servicedSource) -> std::optional<Error>;
     auto serveLatest(TrellisState& state,
+                     std::string const& canonicalOutputPath,
                      InputMetadata const& inputMetadata,
                      Out const& options,
                      void* obj,
                      std::optional<std::string>& servicedSource) -> std::optional<Error>;
     auto waitAndServeQueue(TrellisState& state,
+                           std::string const& canonicalOutputPath,
                            InputMetadata const& inputMetadata,
                            Out const& options,
                            void* obj,
                            std::chrono::system_clock::time_point deadline,
                            std::optional<std::string>& servicedSource) -> std::optional<Error>;
     auto waitAndServeLatest(TrellisState& state,
+                            std::string const& canonicalOutputPath,
                             InputMetadata const& inputMetadata,
                             Out const& options,
                             void* obj,
@@ -135,6 +140,10 @@ private:
                             std::string const& sourcePath,
                             bool waited);
     void recordServeError(std::string const& canonicalOutputPath, Error const& error);
+    void updateBufferedReadyStats(std::string const& canonicalOutputPath);
+    std::optional<std::string> pickReadySource(TrellisState& state);
+    bool enqueueReadySource(TrellisState& state, std::string const& source);
+    std::size_t bufferedReadyCount(std::string const& canonicalOutputPath);
     void restorePersistedStatesLocked();
     static auto modeToString(TrellisMode mode) -> std::string;
     static auto policyToString(TrellisPolicy policy) -> std::string;
@@ -142,6 +151,8 @@ private:
     static auto policyFromString(std::string_view value) -> Expected<TrellisPolicy>;
     static auto stateConfigPathFor(std::string const& canonicalOutputPath) -> std::string;
     static auto stateStatsPathFor(std::string const& canonicalOutputPath) -> std::string;
+    static auto stateBackpressurePathFor(std::string const& canonicalOutputPath) -> std::string;
+    static auto stateBufferedReadyPathFor(std::string const& canonicalOutputPath) -> std::string;
 
     std::shared_ptr<PathSpaceBase> backing_;
     mutable std::mutex             statesMutex_;

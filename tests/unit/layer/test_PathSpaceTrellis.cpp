@@ -379,7 +379,13 @@ TEST_CASE("Trellis configuration persists to backing state registry") {
     CHECK(stored->sources == std::vector<std::string>{"/persist/a", "/persist/b"});
     CHECK(stored->mode == "queue");
     CHECK(stored->policy == "priority");
-    CHECK(stored->maxWaitersPerSource == 0);
+
+    auto limitPath = std::string{"/_system/trellis/state/"};
+    limitPath.append(keys.front());
+    limitPath.append("/config/max_waiters");
+    auto limit = backing->read<std::uint32_t>(limitPath);
+    REQUIRE(limit);
+    CHECK(limit.value() == 0);
 
     auto statsPath = std::string{"/_system/trellis/state/"};
     statsPath.append(keys.front());
@@ -393,6 +399,16 @@ TEST_CASE("Trellis configuration persists to backing state registry") {
     CHECK(stats->mode == "queue");
     CHECK(stats->policy == "priority");
     CHECK(stats->backpressureCount == 0);
+
+    auto bufferedPath = statsPath + "/buffered_ready";
+    auto bufferedReady = backing->read<std::uint64_t>(bufferedPath);
+    if (!bufferedReady) {
+        auto code = bufferedReady.error().code;
+        bool expected = code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath;
+        REQUIRE(expected);
+    } else {
+        CHECK(bufferedReady.value() == 0);
+    }
 
     DisableTrellisCommand disable{.name = "/persist/out"};
     auto disableResult = trellis.insert("/_system/trellis/disable", disable);
@@ -411,6 +427,19 @@ TEST_CASE("Trellis configuration persists to backing state registry") {
     bool statsCleared  = statsCode == Error::Code::NoObjectFound || statsCode == Error::Code::NoSuchPath;
     CAPTURE(static_cast<int>(statsCode));
     CHECK(statsCleared);
+    auto removedBuffered = backing->read<std::uint64_t>(bufferedPath);
+    REQUIRE_FALSE(removedBuffered);
+    auto bufferedCode = removedBuffered.error().code;
+    bool bufferedCleared = bufferedCode == Error::Code::NoObjectFound
+                           || bufferedCode == Error::Code::NoSuchPath;
+    CHECK(bufferedCleared);
+
+    auto removedLimit = backing->read<std::uint32_t>(limitPath);
+    REQUIRE_FALSE(removedLimit);
+    auto limitCode = removedLimit.error().code;
+    bool limitCleared = limitCode == Error::Code::NoObjectFound
+                        || limitCode == Error::Code::NoSuchPath;
+    CHECK(limitCleared);
 }
 
 TEST_CASE("Persisted trellis config restores on new instance") {
@@ -421,8 +450,7 @@ TEST_CASE("Persisted trellis config restores on new instance") {
             .name    = "/reload/out",
             .sources = {"/reload/a"},
             .mode    = "queue",
-            .policy  = "round_robin",
-            .maxWaitersPerSource = 1,
+            .policy  = "round_robin,max_waiters=1",
         };
         auto enableResult = trellis.insert("/_system/trellis/enable", enable);
         REQUIRE(enableResult.errors.empty());
@@ -449,6 +477,51 @@ TEST_CASE("Persisted trellis config restores on new instance") {
     CHECK(stats->lastSource == "/reload/a");
     CHECK(stats->waitCount == 0);
     CHECK(stats->backpressureCount == 0);
+    auto bufferedPath = statsPath + "/buffered_ready";
+    auto bufferedReady = backing->read<std::uint64_t>(bufferedPath);
+    if (!bufferedReady) {
+        auto code = bufferedReady.error().code;
+        bool expected = code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath;
+        REQUIRE(expected);
+    } else {
+        CHECK(bufferedReady.value() == 0);
+    }
+}
+
+TEST_CASE("Buffered readiness updates stats when queues fill") {
+    auto backing = std::make_shared<PathSpace>();
+    PathSpaceTrellis trellis(backing);
+
+    EnableTrellisCommand enable{
+        .name    = "/buffer/out",
+        .sources = {"/buffer/source"},
+        .mode    = "queue",
+        .policy  = "priority,max_waiters=1",
+    };
+    auto enableResult = trellis.insert("/_system/trellis/enable", enable);
+    REQUIRE(enableResult.errors.empty());
+
+    REQUIRE(backing->insert("/buffer/source", 7).errors.empty());
+
+    ConcretePathStringView stateRoot{"/_system/trellis/state"};
+    auto                   keys = backing->listChildren(stateRoot);
+    REQUIRE(keys.size() == 1);
+    auto statsPath = std::string{"/_system/trellis/state/"};
+    statsPath.append(keys.front());
+    statsPath.append("/stats");
+
+    auto bufferedPath = statsPath + "/buffered_ready";
+    auto bufferedReady = backing->read<std::uint64_t>(bufferedPath);
+    REQUIRE(bufferedReady);
+    CHECK(bufferedReady.value() == 1);
+
+    auto value = trellis.take<int>("/buffer/out", Block{});
+    REQUIRE(value);
+    CHECK(value.value() == 7);
+
+    bufferedReady = backing->read<std::uint64_t>(bufferedPath);
+    REQUIRE(bufferedReady);
+    CHECK(bufferedReady.value() == 0);
 }
 
 TEST_CASE("Back-pressure limit caps simultaneous waiters per source") {
@@ -459,8 +532,7 @@ TEST_CASE("Back-pressure limit caps simultaneous waiters per source") {
         .name    = "/bp/out",
         .sources = {"/bp/source"},
         .mode    = "queue",
-        .policy  = "priority",
-        .maxWaitersPerSource = 1,
+        .policy  = "priority,max_waiters=1",
     };
     auto enableResult = trellis.insert("/_system/trellis/enable", enable);
     REQUIRE(enableResult.errors.empty());
@@ -515,8 +587,7 @@ TEST_CASE("Trellis stats capture wait counts when blocking") {
         .name    = "/stats/out",
         .sources = {"/stats/source"},
         .mode    = "queue",
-        .policy  = "priority",
-        .maxWaitersPerSource = 2,
+        .policy  = "priority,max_waiters=2",
     };
     auto enableResult = trellis.insert("/_system/trellis/enable", enable);
     REQUIRE(enableResult.errors.empty());

@@ -15,10 +15,9 @@ Provide a lightweight "fan-in" overlay that exposes a single public path backed 
       std::vector<std::string> sources;  // absolute concrete paths
       std::string mode;                  // "queue" | "latest"
       std::string policy;                // "round_robin" | "priority"
-      std::optional<std::uint32_t> maxWaitersPerSource; // optional back-pressure cap (0 = unlimited)
   };
   ```
-  The trellis validates the payload, sets up state, registers notification hooks on each source, and keeps bookkeeping (optionally mirroring under `_system/trellis/state/<id>/config`).
+  The trellis validates the payload, sets up state, registers notification hooks on each source, and keeps bookkeeping (optionally mirroring under `_system/trellis/state/<id>/config`). `policy` accepts optional comma-separated modifiers—today `max_waiters=<n>` enables per-source back-pressure caps (e.g. `"priority,max_waiters=2"`).
 - **Disable** – insert `_system/trellis/disable` with:
   ```cpp
   struct DisableTrellisCommand { std::string name; };
@@ -45,12 +44,14 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
       mutable std::mutex mutex;
       std::size_t maxWaitersPerSource{0};
       std::unordered_map<std::string, std::size_t> activeWaiters;
+      std::deque<std::string> readySources;              // buffered fan-in notifications
+      std::unordered_set<std::string> readySourceSet;    // dedupe helper for readySources
   };
   ```
 - Queue mode performs non-blocking fan-out across the configured sources; if nothing is ready and the caller requested blocking semantics, `PathSpaceTrellis` delegates the wait to the backing `PathSpace` using that space's native timeout/notify machinery.
 - Latest mode performs a non-destructive sweep across the configured sources following the active policy. Round-robin rotates the selection cursor whenever a source produces data so subsequent reads surface other producers without clearing their backing queues.
-- Trellis configs persist automatically: enabling a trellis stores `TrellisPersistedConfig` under `/_system/trellis/state/<hash>/config`; new `PathSpaceTrellis` instances reload the configs on construction.
-- Trellis stats mirror live counters under `/_system/trellis/state/<hash>/stats` (`TrellisStats` with mode, policy, sources, servedCount, waitCount, errorCount, backpressureCount, lastSource, lastErrorCode, lastUpdateNs). Stats update after each serve, record waits keyed off blocking reads, increment `backpressureCount` when the waiter cap is hit, and reset the last error on success.
+- Trellis configs persist automatically: enabling a trellis stores `TrellisPersistedConfig` under `/_system/trellis/state/<hash>/config`; new `PathSpaceTrellis` instances reload the configs on construction. Back-pressure limits live alongside the config under `/_system/trellis/state/<hash>/config/max_waiters`.
+- Trellis stats mirror live counters under `/_system/trellis/state/<hash>/stats` (`TrellisStats` with mode, policy, sources, servedCount, waitCount, errorCount, backpressureCount, lastSource, lastErrorCode, lastUpdateNs). Stats update after each serve, record waits keyed off blocking reads, increment `backpressureCount` when the waiter cap is hit, and reset the last error on success. Buffered readiness is exposed separately via `/_system/trellis/state/<hash>/stats/buffered_ready`.
 
 ## Read/take behaviour
 - `out()` override checks whether the requested path matches a trellis output:
@@ -90,6 +91,7 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 - Persistence reload validates that trellis configs survive restart and disappear after disable.
 - Stats surface served/wait/error/back-pressure counters and last-source metadata under `/_system/trellis/state/<hash>/stats`.
 - Back-pressure caps reject excess concurrent waits (`Error::CapacityExceeded`) and bump `backpressureCount`.
+- Buffered readiness counter exposed under `/_system/trellis/state/<hash>/stats/buffered_ready`.
 
 ## Deferred work
 - Optional glob-based source discovery.
