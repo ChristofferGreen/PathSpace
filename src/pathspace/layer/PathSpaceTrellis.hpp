@@ -31,6 +31,13 @@ struct DisableTrellisCommand {
     std::string name;
 };
 
+struct TrellisPersistedConfig {
+    std::string              name;
+    std::vector<std::string> sources;
+    std::string              mode;
+    std::string              policy;
+};
+
 class PathSpaceTrellis final : public PathSpaceBase {
 public:
     explicit PathSpaceTrellis(std::shared_ptr<PathSpaceBase> backing);
@@ -90,11 +97,21 @@ private:
                             Out const& options,
                             void* obj,
                             std::chrono::system_clock::time_point deadline) -> std::optional<Error>;
+    auto persistStateLocked(std::string const& canonicalOutputPath, TrellisState const& state)
+        -> std::optional<Error>;
+    auto erasePersistedState(std::string const& canonicalOutputPath) -> std::optional<Error>;
+    void restorePersistedStatesLocked();
+    static auto modeToString(TrellisMode mode) -> std::string;
+    static auto policyToString(TrellisPolicy policy) -> std::string;
+    static auto modeFromString(std::string_view value) -> Expected<TrellisMode>;
+    static auto policyFromString(std::string_view value) -> Expected<TrellisPolicy>;
+    static auto stateConfigPathFor(std::string const& canonicalOutputPath) -> std::string;
 
     std::shared_ptr<PathSpaceBase> backing_;
     mutable std::mutex             statesMutex_;
     std::unordered_map<std::string, std::shared_ptr<TrellisState>> trellis_;
     std::string                                               mountPrefix_;
+    bool                                                      persistenceLoaded_{false};
 };
 
 } // namespace SP

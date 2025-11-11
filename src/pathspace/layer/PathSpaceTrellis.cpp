@@ -21,6 +21,17 @@ auto toLowerCopy(std::string_view value) -> std::string {
     return lowered;
 }
 
+auto encodeStateKey(std::string_view path) -> std::string {
+    constexpr char hexDigits[] = "0123456789abcdef";
+    std::string    encoded;
+    encoded.reserve(path.size() * 2);
+    for (unsigned char ch : path) {
+        encoded.push_back(hexDigits[(ch >> 4) & 0x0F]);
+        encoded.push_back(hexDigits[ch & 0x0F]);
+    }
+    return encoded;
+}
+
 } // namespace
 
 PathSpaceTrellis::PathSpaceTrellis(std::shared_ptr<PathSpaceBase> backing)
@@ -29,6 +40,10 @@ PathSpaceTrellis::PathSpaceTrellis(std::shared_ptr<PathSpaceBase> backing)
         if (auto ctx = backing_->getContext()) {
             this->adoptContextAndPrefix(ctx, {});
         }
+        std::lock_guard<std::mutex> lg(statesMutex_);
+        if (!persistenceLoaded_) {
+            restorePersistedStatesLocked();
+        }
     }
 }
 
@@ -36,6 +51,7 @@ void PathSpaceTrellis::adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> c
     PathSpaceBase::adoptContextAndPrefix(std::move(context), prefix);
     std::lock_guard<std::mutex> lg(statesMutex_);
     mountPrefix_ = std::move(prefix);
+    restorePersistedStatesLocked();
 }
 
 auto PathSpaceTrellis::canonicalizeAbsolute(std::string const& raw) -> Expected<std::string> {
@@ -70,6 +86,58 @@ auto PathSpaceTrellis::canonicalizeSourceList(std::vector<std::string> const& ra
         canonical.push_back(std::move(canonicalValue));
     }
     return canonical;
+}
+
+auto PathSpaceTrellis::stateConfigPathFor(std::string const& canonicalOutputPath) -> std::string {
+    auto key = encodeStateKey(canonicalOutputPath);
+    std::string path = "/_system/trellis/state/";
+    path.append(key);
+    path.append("/config");
+    return path;
+}
+
+auto PathSpaceTrellis::modeToString(TrellisMode mode) -> std::string {
+    switch (mode) {
+    case TrellisMode::Queue:
+        return "queue";
+    case TrellisMode::Latest:
+        return "latest";
+    }
+    return "queue";
+}
+
+auto PathSpaceTrellis::policyToString(TrellisPolicy policy) -> std::string {
+    switch (policy) {
+    case TrellisPolicy::RoundRobin:
+        return "round_robin";
+    case TrellisPolicy::Priority:
+        return "priority";
+    }
+    return "round_robin";
+}
+
+auto PathSpaceTrellis::modeFromString(std::string_view value) -> Expected<TrellisMode> {
+    auto lowered = toLowerCopy(value);
+    if (lowered == "queue") {
+        return TrellisMode::Queue;
+    }
+    if (lowered == "latest") {
+        return TrellisMode::Latest;
+    }
+    return std::unexpected(Error{Error::Code::MalformedInput,
+                                 "Unsupported trellis mode in persisted config: " + std::string(value)});
+}
+
+auto PathSpaceTrellis::policyFromString(std::string_view value) -> Expected<TrellisPolicy> {
+    auto lowered = toLowerCopy(value);
+    if (lowered == "round_robin") {
+        return TrellisPolicy::RoundRobin;
+    }
+    if (lowered == "priority") {
+        return TrellisPolicy::Priority;
+    }
+    return std::unexpected(Error{Error::Code::MalformedInput,
+                                 "Unsupported trellis policy in persisted config: " + std::string(value)});
 }
 
 auto PathSpaceTrellis::parseEnableCommand(InputData const& data) const -> Expected<EnableParseResult> {
@@ -149,6 +217,128 @@ auto PathSpaceTrellis::parseDisableCommand(InputData const& data) const -> Expec
     return canonical.value();
 }
 
+auto PathSpaceTrellis::persistStateLocked(std::string const& canonicalOutputPath, TrellisState const& state)
+    -> std::optional<Error> {
+    if (!backing_) {
+        return Error{Error::Code::InvalidPermissions, "No backing PathSpace configured"};
+    }
+
+    TrellisPersistedConfig config{
+        .name    = canonicalOutputPath,
+        .sources = state.sources,
+        .mode    = modeToString(state.mode),
+        .policy  = policyToString(state.policy),
+    };
+
+    auto const configPath = stateConfigPathFor(canonicalOutputPath);
+
+    while (true) {
+        auto existing = backing_->take<TrellisPersistedConfig>(configPath);
+        if (existing) {
+            continue;
+        }
+        auto const code = existing.error().code;
+        if (code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath) {
+            break;
+        }
+        return existing.error();
+    }
+
+    auto insertResult = backing_->insert(configPath, config);
+    if (!insertResult.errors.empty()) {
+        return insertResult.errors.front();
+    }
+    return std::nullopt;
+}
+
+auto PathSpaceTrellis::erasePersistedState(std::string const& canonicalOutputPath) -> std::optional<Error> {
+    if (!backing_) {
+        return Error{Error::Code::InvalidPermissions, "No backing PathSpace configured"};
+    }
+    auto const configPath = stateConfigPathFor(canonicalOutputPath);
+    while (true) {
+        auto existing = backing_->take<TrellisPersistedConfig>(configPath);
+        if (existing) {
+            continue;
+        }
+        auto const code = existing.error().code;
+        if (code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath) {
+            break;
+        }
+        if (code == Error::Code::InvalidType) {
+            // Drop mismatched legacy entries by attempting a raw string pop.
+            auto legacy = backing_->take<std::string>(configPath);
+            if (legacy) {
+                continue;
+            }
+            auto legacyCode = legacy.error().code;
+            if (legacyCode == Error::Code::NoObjectFound || legacyCode == Error::Code::NoSuchPath) {
+                break;
+            }
+            return legacy.error();
+        }
+        return existing.error();
+    }
+    return std::nullopt;
+}
+
+void PathSpaceTrellis::restorePersistedStatesLocked() {
+    if (persistenceLoaded_ || !backing_) {
+        persistenceLoaded_ = true;
+        return;
+    }
+
+    ConcretePathStringView stateRoot{"/_system/trellis/state"};
+    auto                   keys = backing_->listChildren(stateRoot);
+
+    for (auto const& key : keys) {
+        auto configPath = std::string{"/_system/trellis/state/"};
+        configPath.append(key);
+        configPath.append("/config");
+
+        auto persisted = backing_->read<TrellisPersistedConfig>(configPath);
+        if (!persisted) {
+            auto code = persisted.error().code;
+            if (code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath) {
+                continue;
+            }
+            continue;
+        }
+
+        auto canonicalOutput = canonicalizeAbsolute(persisted->name);
+        if (!canonicalOutput) {
+            continue;
+        }
+        if (trellis_.contains(canonicalOutput.value())) {
+            continue;
+        }
+
+        auto canonicalSources = canonicalizeSourceList(persisted->sources);
+        if (!canonicalSources) {
+            continue;
+        }
+        auto mode = modeFromString(persisted->mode);
+        if (!mode) {
+            continue;
+        }
+        auto policy = policyFromString(persisted->policy);
+        if (!policy) {
+            continue;
+        }
+
+        auto state = std::make_shared<TrellisState>();
+        state->mode    = mode.value();
+        state->policy  = policy.value();
+        state->sources = canonicalSources.value();
+        state->roundRobinCursor = 0;
+        state->shuttingDown     = false;
+
+        trellis_.emplace(canonicalOutput.value(), std::move(state));
+    }
+
+    persistenceLoaded_ = true;
+}
+
 auto PathSpaceTrellis::handleEnable(InputData const& data) -> InsertReturn {
     InsertReturn ret;
     auto parsed = parseEnableCommand(data);
@@ -168,7 +358,13 @@ auto PathSpaceTrellis::handleEnable(InputData const& data) -> InsertReturn {
     state->policy          = parsed->policy;
     state->sources         = parsed->sources;
     state->roundRobinCursor = 0;
-    trellis_.emplace(parsed->outputPath, std::move(state));
+    auto [it, inserted] = trellis_.emplace(parsed->outputPath, std::move(state));
+
+    if (auto persistError = persistStateLocked(parsed->outputPath, *it->second)) {
+        trellis_.erase(it);
+        ret.errors.emplace_back(*persistError);
+        return ret;
+    }
 
     if (auto ctx = this->getContext()) {
         ctx->notify(parsed->outputPath);
@@ -203,6 +399,9 @@ auto PathSpaceTrellis::handleDisable(InputData const& data) -> InsertReturn {
 
     if (auto ctx = this->getContext()) {
         ctx->notify(parsed.value());
+    }
+    if (auto persistError = erasePersistedState(parsed.value())) {
+        ret.errors.emplace_back(*persistError);
     }
     return ret;
 }

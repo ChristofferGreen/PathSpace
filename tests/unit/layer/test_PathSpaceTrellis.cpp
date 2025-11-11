@@ -352,6 +352,68 @@ TEST_CASE("Latest mode blocks until data arrives") {
     CHECK((std::chrono::steady_clock::now() - begin) >= 25ms);
 }
 
+TEST_CASE("Trellis configuration persists to backing state registry") {
+    auto backing = std::make_shared<PathSpace>();
+    PathSpaceTrellis trellis(backing);
+
+    EnableTrellisCommand enable{
+        .name    = "/persist/out",
+        .sources = {"/persist/a", "/persist/b"},
+        .mode    = "queue",
+        .policy  = "priority",
+    };
+    auto enableResult = trellis.insert("/_system/trellis/enable", enable);
+    REQUIRE(enableResult.errors.empty());
+
+    ConcretePathStringView stateRoot{"/_system/trellis/state"};
+    auto                   keys = backing->listChildren(stateRoot);
+    REQUIRE(keys.size() == 1);
+    auto configPath = std::string{"/_system/trellis/state/"};
+    configPath.append(keys.front());
+    configPath.append("/config");
+
+    auto stored = backing->read<TrellisPersistedConfig>(configPath);
+    REQUIRE(stored);
+    CHECK(stored->name == "/persist/out");
+    CHECK(stored->sources == std::vector<std::string>{"/persist/a", "/persist/b"});
+    CHECK(stored->mode == "queue");
+    CHECK(stored->policy == "priority");
+
+    DisableTrellisCommand disable{.name = "/persist/out"};
+    auto disableResult = trellis.insert("/_system/trellis/disable", disable);
+    REQUIRE(disableResult.errors.empty());
+
+    auto removed = backing->read<TrellisPersistedConfig>(configPath);
+    REQUIRE_FALSE(removed);
+    auto removeCode   = removed.error().code;
+    bool acceptable   = removeCode == Error::Code::NoObjectFound || removeCode == Error::Code::NoSuchPath;
+    CAPTURE(static_cast<int>(removeCode));
+    CHECK(acceptable);
+}
+
+TEST_CASE("Persisted trellis config restores on new instance") {
+    auto backing = std::make_shared<PathSpace>();
+    {
+        PathSpaceTrellis trellis(backing);
+        EnableTrellisCommand enable{
+            .name    = "/reload/out",
+            .sources = {"/reload/a"},
+            .mode    = "queue",
+            .policy  = "round_robin",
+        };
+        auto enableResult = trellis.insert("/_system/trellis/enable", enable);
+        REQUIRE(enableResult.errors.empty());
+    }
+
+    PathSpaceTrellis restored(backing);
+
+    REQUIRE(backing->insert("/reload/a", 77).errors.empty());
+
+    auto result = restored.take<int>("/reload/out", Block{});
+    REQUIRE(result);
+    CHECK(result.value() == 77);
+}
+
 } // TEST_SUITE
 
 } // namespace SP
