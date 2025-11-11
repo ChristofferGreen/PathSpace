@@ -379,6 +379,18 @@ TEST_CASE("Trellis configuration persists to backing state registry") {
     CHECK(stored->mode == "queue");
     CHECK(stored->policy == "priority");
 
+    auto statsPath = std::string{"/_system/trellis/state/"};
+    statsPath.append(keys.front());
+    statsPath.append("/stats");
+
+    auto stats = backing->read<TrellisStats>(statsPath);
+    REQUIRE(stats);
+    CHECK(stats->name == "/persist/out");
+    CHECK(stats->servedCount == 0);
+    CHECK(stats->sourceCount == 2);
+    CHECK(stats->mode == "queue");
+    CHECK(stats->policy == "priority");
+
     DisableTrellisCommand disable{.name = "/persist/out"};
     auto disableResult = trellis.insert("/_system/trellis/disable", disable);
     REQUIRE(disableResult.errors.empty());
@@ -389,6 +401,13 @@ TEST_CASE("Trellis configuration persists to backing state registry") {
     bool acceptable   = removeCode == Error::Code::NoObjectFound || removeCode == Error::Code::NoSuchPath;
     CAPTURE(static_cast<int>(removeCode));
     CHECK(acceptable);
+
+    auto removedStats = backing->read<TrellisStats>(statsPath);
+    REQUIRE_FALSE(removedStats);
+    auto statsCode     = removedStats.error().code;
+    bool statsCleared  = statsCode == Error::Code::NoObjectFound || statsCode == Error::Code::NoSuchPath;
+    CAPTURE(static_cast<int>(statsCode));
+    CHECK(statsCleared);
 }
 
 TEST_CASE("Persisted trellis config restores on new instance") {
@@ -412,6 +431,56 @@ TEST_CASE("Persisted trellis config restores on new instance") {
     auto result = restored.take<int>("/reload/out", Block{});
     REQUIRE(result);
     CHECK(result.value() == 77);
+
+    ConcretePathStringView stateRoot{"/_system/trellis/state"};
+    auto                   keys = backing->listChildren(stateRoot);
+    REQUIRE(keys.size() == 1);
+    auto statsPath = std::string{"/_system/trellis/state/"};
+    statsPath.append(keys.front());
+    statsPath.append("/stats");
+
+    auto stats = backing->read<TrellisStats>(statsPath);
+    REQUIRE(stats);
+    CHECK(stats->servedCount == 1);
+    CHECK(stats->lastSource == "/reload/a");
+    CHECK(stats->waitCount == 0);
+}
+
+TEST_CASE("Trellis stats capture wait counts when blocking") {
+    auto backing = std::make_shared<PathSpace>();
+    PathSpaceTrellis trellis(backing);
+
+    EnableTrellisCommand enable{
+        .name    = "/stats/out",
+        .sources = {"/stats/source"},
+        .mode    = "queue",
+        .policy  = "priority",
+    };
+    auto enableResult = trellis.insert("/_system/trellis/enable", enable);
+    REQUIRE(enableResult.errors.empty());
+
+    std::thread producer([backing] {
+        std::this_thread::sleep_for(25ms);
+        backing->insert("/stats/source", 9001);
+    });
+
+    auto value = trellis.take<int>("/stats/out", Block{200ms});
+    producer.join();
+    REQUIRE(value);
+    CHECK(value.value() == 9001);
+
+    ConcretePathStringView stateRoot{"/_system/trellis/state"};
+    auto                   keys = backing->listChildren(stateRoot);
+    REQUIRE(keys.size() == 1);
+    auto statsPath = std::string{"/_system/trellis/state/"};
+    statsPath.append(keys.front());
+    statsPath.append("/stats");
+
+    auto stats = backing->read<TrellisStats>(statsPath);
+    REQUIRE(stats);
+    CHECK(stats->servedCount == 1);
+    CHECK(stats->waitCount == 1);
+    CHECK(stats->lastSource == "/stats/source");
 }
 
 } // TEST_SUITE

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <functional>
 #include <string_view>
 
 namespace SP {
@@ -93,6 +94,14 @@ auto PathSpaceTrellis::stateConfigPathFor(std::string const& canonicalOutputPath
     std::string path = "/_system/trellis/state/";
     path.append(key);
     path.append("/config");
+    return path;
+}
+
+auto PathSpaceTrellis::stateStatsPathFor(std::string const& canonicalOutputPath) -> std::string {
+    auto key = encodeStateKey(canonicalOutputPath);
+    std::string path = "/_system/trellis/state/";
+    path.append(key);
+    path.append("/stats");
     return path;
 }
 
@@ -282,6 +291,176 @@ auto PathSpaceTrellis::erasePersistedState(std::string const& canonicalOutputPat
     return std::nullopt;
 }
 
+auto PathSpaceTrellis::persistStats(std::string const& canonicalOutputPath, TrellisState const& state)
+    -> std::optional<Error> {
+    if (!backing_) {
+        return Error{Error::Code::InvalidPermissions, "No backing PathSpace configured"};
+    }
+    auto const statsPath = stateStatsPathFor(canonicalOutputPath);
+
+    while (true) {
+        auto existing = backing_->take<TrellisStats>(statsPath);
+        if (existing) {
+            continue;
+        }
+        auto const code = existing.error().code;
+        if (code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath) {
+            break;
+        }
+        if (code == Error::Code::InvalidType) {
+            auto legacy = backing_->take<std::string>(statsPath);
+            if (legacy) {
+                continue;
+            }
+            auto legacyCode = legacy.error().code;
+            if (legacyCode == Error::Code::NoObjectFound || legacyCode == Error::Code::NoSuchPath) {
+                break;
+            }
+            return legacy.error();
+        }
+        return existing.error();
+    }
+
+    auto now = std::chrono::system_clock::now().time_since_epoch();
+    auto stats = TrellisStats{
+        .name          = canonicalOutputPath,
+        .mode          = modeToString(state.mode),
+        .policy        = policyToString(state.policy),
+        .sources       = state.sources,
+        .sourceCount   = static_cast<std::uint64_t>(state.sources.size()),
+        .servedCount   = 0,
+        .waitCount     = 0,
+        .errorCount    = 0,
+        .lastSource    = std::string{},
+        .lastErrorCode = 0,
+        .lastUpdateNs  = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(now).count()),
+    };
+
+    auto insertResult = backing_->insert(statsPath, stats);
+    if (!insertResult.errors.empty()) {
+        return insertResult.errors.front();
+    }
+    return std::nullopt;
+}
+
+auto PathSpaceTrellis::eraseStats(std::string const& canonicalOutputPath) -> std::optional<Error> {
+    if (!backing_) {
+        return Error{Error::Code::InvalidPermissions, "No backing PathSpace configured"};
+    }
+    auto const statsPath = stateStatsPathFor(canonicalOutputPath);
+    while (true) {
+        auto existing = backing_->take<TrellisStats>(statsPath);
+        if (existing) {
+            continue;
+        }
+        auto const code = existing.error().code;
+        if (code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath) {
+            break;
+        }
+        if (code == Error::Code::InvalidType) {
+            auto legacy = backing_->take<std::string>(statsPath);
+            if (legacy) {
+                continue;
+            }
+            auto legacyCode = legacy.error().code;
+            if (legacyCode == Error::Code::NoObjectFound || legacyCode == Error::Code::NoSuchPath) {
+                break;
+            }
+            return legacy.error();
+        }
+        return existing.error();
+    }
+    return std::nullopt;
+}
+
+auto PathSpaceTrellis::updateStats(std::string const& canonicalOutputPath,
+                                   std::function<void(TrellisStats&)> const& mutate) -> std::optional<Error> {
+    if (!backing_) {
+        return Error{Error::Code::InvalidPermissions, "No backing PathSpace configured"};
+    }
+    auto const statsPath = stateStatsPathFor(canonicalOutputPath);
+    TrellisStats stats{};
+    bool         haveStats = false;
+
+    while (true) {
+        auto existing = backing_->take<TrellisStats>(statsPath);
+        if (existing) {
+            stats     = std::move(existing.value());
+            haveStats = true;
+            break;
+        }
+        auto const code = existing.error().code;
+        if (code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath) {
+            break;
+        }
+        if (code == Error::Code::InvalidType) {
+            auto legacy = backing_->take<std::string>(statsPath);
+            if (legacy) {
+                continue;
+            }
+            auto legacyCode = legacy.error().code;
+            if (legacyCode == Error::Code::NoObjectFound || legacyCode == Error::Code::NoSuchPath) {
+                break;
+            }
+            return legacy.error();
+        }
+        return existing.error();
+    }
+
+    if (!haveStats) {
+        std::shared_ptr<TrellisState> stateSnapshot;
+        {
+            std::lock_guard<std::mutex> lg(statesMutex_);
+            auto it = trellis_.find(canonicalOutputPath);
+            if (it != trellis_.end()) {
+                stateSnapshot = it->second;
+            }
+        }
+        if (!stateSnapshot) {
+            return std::nullopt;
+        }
+        stats.name        = canonicalOutputPath;
+        stats.mode        = modeToString(stateSnapshot->mode);
+        stats.policy      = policyToString(stateSnapshot->policy);
+        stats.sources     = stateSnapshot->sources;
+        stats.sourceCount = static_cast<std::uint64_t>(stateSnapshot->sources.size());
+    }
+
+    mutate(stats);
+
+    auto insertResult = backing_->insert(statsPath, stats);
+    if (!insertResult.errors.empty()) {
+        return insertResult.errors.front();
+    }
+    return std::nullopt;
+}
+
+void PathSpaceTrellis::recordServeSuccess(std::string const& canonicalOutputPath,
+                                          std::string const& sourcePath,
+                                          bool waited) {
+    auto now = std::chrono::system_clock::now().time_since_epoch();
+    (void)updateStats(canonicalOutputPath, [&](TrellisStats& stats) {
+        stats.servedCount += 1;
+        if (waited) {
+            stats.waitCount += 1;
+        }
+        stats.lastSource    = sourcePath;
+        stats.lastErrorCode = 0;
+        stats.lastUpdateNs  = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
+    });
+}
+
+void PathSpaceTrellis::recordServeError(std::string const& canonicalOutputPath, Error const& error) {
+    auto now = std::chrono::system_clock::now().time_since_epoch();
+    (void)updateStats(canonicalOutputPath, [&](TrellisStats& stats) {
+        stats.errorCount += 1;
+        stats.lastErrorCode = static_cast<std::int32_t>(error.code);
+        stats.lastUpdateNs  = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
+    });
+}
+
 void PathSpaceTrellis::restorePersistedStatesLocked() {
     if (persistenceLoaded_ || !backing_) {
         persistenceLoaded_ = true;
@@ -334,6 +513,15 @@ void PathSpaceTrellis::restorePersistedStatesLocked() {
         state->shuttingDown     = false;
 
         trellis_.emplace(canonicalOutput.value(), std::move(state));
+        // Ensure stats exist but preserve counters when already present.
+        auto statsPath = stateStatsPathFor(canonicalOutput.value());
+        auto statsExisting = backing_->read<TrellisStats>(statsPath);
+        if (!statsExisting) {
+            auto it = trellis_.find(canonicalOutput.value());
+            if (it != trellis_.end()) {
+                (void)persistStats(canonicalOutput.value(), *it->second);
+            }
+        }
     }
 
     persistenceLoaded_ = true;
@@ -363,6 +551,11 @@ auto PathSpaceTrellis::handleEnable(InputData const& data) -> InsertReturn {
     if (auto persistError = persistStateLocked(parsed->outputPath, *it->second)) {
         trellis_.erase(it);
         ret.errors.emplace_back(*persistError);
+        return ret;
+    }
+    if (auto statsError = persistStats(parsed->outputPath, *it->second)) {
+        trellis_.erase(it);
+        ret.errors.emplace_back(*statsError);
         return ret;
     }
 
@@ -403,6 +596,9 @@ auto PathSpaceTrellis::handleDisable(InputData const& data) -> InsertReturn {
     if (auto persistError = erasePersistedState(parsed.value())) {
         ret.errors.emplace_back(*persistError);
     }
+    if (auto statsError = eraseStats(parsed.value())) {
+        ret.errors.emplace_back(*statsError);
+    }
     return ret;
 }
 
@@ -423,7 +619,8 @@ auto PathSpaceTrellis::in(Iterator const& path, InputData const& data) -> Insert
 auto PathSpaceTrellis::tryServeQueue(TrellisState& state,
                                      InputMetadata const& inputMetadata,
                                      Out const& options,
-                                     void* obj) -> std::optional<Error> {
+                                     void* obj,
+                                     std::optional<std::string>& servicedSource) -> std::optional<Error> {
     if (!backing_) {
         return Error{Error::Code::InvalidPermissions, "No backing PathSpace configured"};
     }
@@ -467,6 +664,7 @@ auto PathSpaceTrellis::tryServeQueue(TrellisState& state,
         Iterator    sourceIter = Iterator{sourcesCopy[index]};
         auto        err        = backing_->out(sourceIter, inputMetadata, attemptOptions, obj);
         if (!err) {
+            servicedSource = sourcesCopy[index];
             advanceCursor(index + 1);
             return std::nullopt;
         }
@@ -484,7 +682,8 @@ auto PathSpaceTrellis::waitAndServeQueue(TrellisState& state,
                                          InputMetadata const& inputMetadata,
                                          Out const& options,
                                          void* obj,
-                                         std::chrono::system_clock::time_point deadline) -> std::optional<Error> {
+                                         std::chrono::system_clock::time_point deadline,
+                                         std::optional<std::string>& servicedSource) -> std::optional<Error> {
     if (!backing_) {
         return Error{Error::Code::InvalidPermissions, "No backing PathSpace configured"};
     }
@@ -525,6 +724,7 @@ auto PathSpaceTrellis::waitAndServeQueue(TrellisState& state,
     Iterator sourceIter{sourcesCopy[waitIndex]};
     auto     err = backing_->out(sourceIter, inputMetadata, blockingOptions, obj);
     if (!err) {
+        servicedSource = sourcesCopy[waitIndex];
         if (state.policy == TrellisPolicy::RoundRobin) {
             std::lock_guard<std::mutex> lg(state.mutex);
             state.roundRobinCursor = (waitIndex + 1) % sourcesCopy.size();
@@ -538,7 +738,8 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
                                           InputMetadata const& inputMetadata,
                                           Out const& options,
                                           void* obj,
-                                          std::chrono::system_clock::time_point deadline) -> std::optional<Error> {
+                                          std::chrono::system_clock::time_point deadline,
+                                          std::optional<std::string>& servicedSource) -> std::optional<Error> {
     if (!backing_) {
         return Error{Error::Code::InvalidPermissions, "No backing PathSpace configured"};
     }
@@ -577,6 +778,7 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
     Iterator sourceIter{sourcesCopy[waitIndex]};
     auto     err = backing_->out(sourceIter, inputMetadata, blockingOptions, obj);
     if (!err) {
+        servicedSource = sourcesCopy[waitIndex];
         if (state.policy == TrellisPolicy::RoundRobin) {
             std::lock_guard<std::mutex> lg(state.mutex);
             if (!state.sources.empty()) {
@@ -591,7 +793,8 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
 auto PathSpaceTrellis::serveLatest(TrellisState& state,
                                    InputMetadata const& inputMetadata,
                                    Out const& options,
-                                   void* obj) -> std::optional<Error> {
+                                   void* obj,
+                                   std::optional<std::string>& servicedSource) -> std::optional<Error> {
     // Latest mode performs a non-destructive read across sources, selecting a candidate
     // using the configured policy. Round-robin rotates through sources that reported data
     // so repeated reads can observe other producers without clearing the backing queues.
@@ -637,6 +840,7 @@ auto PathSpaceTrellis::serveLatest(TrellisState& state,
         Iterator sourceIter{sourcesCopy[idx]};
         auto     err = backing_->out(sourceIter, inputMetadata, attemptOptions, obj);
         if (!err) {
+            servicedSource = sourcesCopy[idx];
             advanceCursor(idx);
             return std::nullopt;
         }
@@ -700,6 +904,7 @@ auto PathSpaceTrellis::out(Iterator const& path,
         return canonicalAbsolute.error();
     }
     absolutePath = canonicalAbsolute.value();
+    std::string const trellisPath = absolutePath;
 
     std::shared_ptr<TrellisState> state;
     {
@@ -720,24 +925,68 @@ auto PathSpaceTrellis::out(Iterator const& path,
     auto deadline = std::chrono::system_clock::now() + options.timeout;
 
     if (state->mode == TrellisMode::Queue) {
-        auto result = tryServeQueue(*state, inputMetadata, options, obj);
+        std::optional<std::string> servicedSource;
+        auto result = tryServeQueue(*state, inputMetadata, options, obj, servicedSource);
         if (!result) {
+            if (servicedSource) {
+                recordServeSuccess(trellisPath, *servicedSource, false);
+            }
             return result;
         }
         if (!options.doBlock) {
+            if (result->code != Error::Code::NoObjectFound
+                && result->code != Error::Code::NotFound
+                && result->code != Error::Code::NoSuchPath) {
+                recordServeError(trellisPath, *result);
+            }
             return result;
         }
-        return waitAndServeQueue(*state, inputMetadata, options, obj, deadline);
+        std::optional<std::string> waitedSource;
+        auto waitResult = waitAndServeQueue(*state, inputMetadata, options, obj, deadline, waitedSource);
+        if (!waitResult) {
+            if (waitedSource) {
+                recordServeSuccess(trellisPath, *waitedSource, true);
+            }
+        } else {
+            if (waitResult->code != Error::Code::NoObjectFound
+                && waitResult->code != Error::Code::NotFound
+                && waitResult->code != Error::Code::NoSuchPath) {
+                recordServeError(trellisPath, *waitResult);
+            }
+        }
+        return waitResult;
     }
 
-    auto result = serveLatest(*state, inputMetadata, options, obj);
+    std::optional<std::string> servicedSource;
+    auto result = serveLatest(*state, inputMetadata, options, obj, servicedSource);
     if (!result) {
+        if (servicedSource) {
+            recordServeSuccess(trellisPath, *servicedSource, false);
+        }
         return result;
     }
     if (!options.doBlock) {
+        if (result->code != Error::Code::NoObjectFound
+            && result->code != Error::Code::NotFound
+            && result->code != Error::Code::NoSuchPath) {
+            recordServeError(trellisPath, *result);
+        }
         return result;
     }
-    return waitAndServeLatest(*state, inputMetadata, options, obj, deadline);
+    std::optional<std::string> waitedSource;
+    auto waitResult = waitAndServeLatest(*state, inputMetadata, options, obj, deadline, waitedSource);
+    if (!waitResult) {
+        if (waitedSource) {
+            recordServeSuccess(trellisPath, *waitedSource, true);
+        }
+    } else {
+        if (waitResult->code != Error::Code::NoObjectFound
+            && waitResult->code != Error::Code::NotFound
+            && waitResult->code != Error::Code::NoSuchPath) {
+            recordServeError(trellisPath, *waitResult);
+        }
+    }
+    return waitResult;
 }
 
 auto PathSpaceTrellis::notify(std::string const& notificationPath) -> void {

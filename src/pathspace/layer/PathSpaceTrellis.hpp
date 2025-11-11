@@ -10,6 +10,8 @@
 #include "type/InputMetadata.hpp"
 
 #include <chrono>
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -36,6 +38,20 @@ struct TrellisPersistedConfig {
     std::vector<std::string> sources;
     std::string              mode;
     std::string              policy;
+};
+
+struct TrellisStats {
+    std::string              name;
+    std::string              mode;
+    std::string              policy;
+    std::vector<std::string> sources;
+    std::uint64_t            sourceCount{0};
+    std::uint64_t            servedCount{0};
+    std::uint64_t            waitCount{0};
+    std::uint64_t            errorCount{0};
+    std::string              lastSource;
+    std::int32_t             lastErrorCode{0};
+    std::uint64_t            lastUpdateNs{0};
 };
 
 class PathSpaceTrellis final : public PathSpaceBase {
@@ -82,30 +98,44 @@ private:
     auto tryServeQueue(TrellisState& state,
                        InputMetadata const& inputMetadata,
                        Out const& options,
-                       void* obj) -> std::optional<Error>;
+                       void* obj,
+                       std::optional<std::string>& servicedSource) -> std::optional<Error>;
     auto serveLatest(TrellisState& state,
                      InputMetadata const& inputMetadata,
                      Out const& options,
-                     void* obj) -> std::optional<Error>;
+                     void* obj,
+                     std::optional<std::string>& servicedSource) -> std::optional<Error>;
     auto waitAndServeQueue(TrellisState& state,
                            InputMetadata const& inputMetadata,
                            Out const& options,
                            void* obj,
-                           std::chrono::system_clock::time_point deadline) -> std::optional<Error>;
+                           std::chrono::system_clock::time_point deadline,
+                           std::optional<std::string>& servicedSource) -> std::optional<Error>;
     auto waitAndServeLatest(TrellisState& state,
                             InputMetadata const& inputMetadata,
                             Out const& options,
                             void* obj,
-                            std::chrono::system_clock::time_point deadline) -> std::optional<Error>;
+                            std::chrono::system_clock::time_point deadline,
+                            std::optional<std::string>& servicedSource) -> std::optional<Error>;
     auto persistStateLocked(std::string const& canonicalOutputPath, TrellisState const& state)
         -> std::optional<Error>;
     auto erasePersistedState(std::string const& canonicalOutputPath) -> std::optional<Error>;
+    auto persistStats(std::string const& canonicalOutputPath, TrellisState const& state)
+        -> std::optional<Error>;
+    auto eraseStats(std::string const& canonicalOutputPath) -> std::optional<Error>;
+    auto updateStats(std::string const& canonicalOutputPath,
+                     std::function<void(TrellisStats&)> const& mutate) -> std::optional<Error>;
+    void recordServeSuccess(std::string const& canonicalOutputPath,
+                            std::string const& sourcePath,
+                            bool waited);
+    void recordServeError(std::string const& canonicalOutputPath, Error const& error);
     void restorePersistedStatesLocked();
     static auto modeToString(TrellisMode mode) -> std::string;
     static auto policyToString(TrellisPolicy policy) -> std::string;
     static auto modeFromString(std::string_view value) -> Expected<TrellisMode>;
     static auto policyFromString(std::string_view value) -> Expected<TrellisPolicy>;
     static auto stateConfigPathFor(std::string const& canonicalOutputPath) -> std::string;
+    static auto stateStatsPathFor(std::string const& canonicalOutputPath) -> std::string;
 
     std::shared_ptr<PathSpaceBase> backing_;
     mutable std::mutex             statesMutex_;
