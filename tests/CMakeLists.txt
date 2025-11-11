@@ -23,6 +23,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/history/test_UndoJournalState.cpp
   unit/history/test_UndoJournalPersistence.cpp
   unit/history/test_UndoableSpace.cpp
+  unit/layer/test_PathSpaceTrellis.cpp
   test_main.cpp
 )
 

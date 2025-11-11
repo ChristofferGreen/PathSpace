@@ -34,7 +34,7 @@ Provide a single index of active planning documents, ordered by current priority
    Exploratory unified scripting/shading language idea; no implementation scheduled.
 
 9. **Plan_PathSpace_FanIn.md** (draft)  
-   Design notes for a lightweight fan-in combiner that exposes one path backed by multiple sources.
+   Design notes for a lightweight fan-in combiner that exposes one path backed by multiple sources. _Queue mode landed on November 11, 2025 (round-robin + priority policies); latest mode + buffering/metrics remain open._
 
 ## Recommended Implementation Focus (Q4 2025)
 1. **Plan_SceneGraph.md** — active execution path for the renderer/presenter stack defined in `Plan_SceneGraph_Renderer.md`; keep driving the in-flight phases to completion while validating against the renderer blueprint.

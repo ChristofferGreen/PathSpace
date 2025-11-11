@@ -1,6 +1,8 @@
 # PathSpace Trellis (Fan-In Draft)
 
-_Last updated: November 10, 2025_
+_Last updated: November 11, 2025_
+
+> **Status (November 11, 2025):** `PathSpaceTrellis` now ships in-tree with queue-mode fan-in for concrete sources. Enable/disable commands are live, both round-robin and priority policies are exercised by unit tests, and consumers can block on the trellis output path while the layer forwards reads/takes to the backing `PathSpace`. Latest mode and the richer queue buffering described below remain deferred; attempting to enable a trellis in `latest` mode returns `Error::NotSupported`.
 
 ## Goal
 Provide a lightweight "fan-in" overlay that exposes a single public path backed by multiple concrete source paths. Consumers read/take from the trellis path and receive whichever source produces the next payload (including executions). The trellis is implemented as a `PathSpaceBase` subclass that forwards most operations to an underlying `PathSpace` but intercepts control commands and reads for managed paths.
@@ -26,46 +28,36 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 
 ## Internals
 - `class PathSpaceTrellis : public PathSpaceBase` stores:
-  - `std::shared_ptr<PathSpace> backing_` – the real space used to fetch values.
-  - `std::unordered_map<std::string, TrellisState> states_` protected by a mutex.
-- `TrellisState` fields:
+  - `std::shared_ptr<PathSpaceBase> backing_` – the concrete space used to satisfy requests.
+  - `std::unordered_map<std::string, std::shared_ptr<TrellisState>> trellis_` protected by a mutex.
+- `TrellisState` (first landing) keeps:
   ```cpp
   struct TrellisState {
       enum class Mode { Queue, Latest };
       enum class Policy { RoundRobin, Priority };
 
-      Mode mode;
-      Policy policy;
-
-      struct SourceState {
-          ConcretePath path;
-          std::deque<NodeData> queue;        // used in Queue mode
-          std::optional<NodeData> latest;    // used in Latest mode
-          std::uint64_t rr_token = 0;        // round-robin slot
-          SubscriptionHandle notification;   // cancel on disable
-      };
-      std::vector<SourceState> sources;
-
-      std::deque<NodeData> merged;           // ready-to-serve outputs
-      std::vector<std::promise<NodeData>> waiters;
-      std::size_t rr_cursor = 0;
-      bool shutting_down = false;
+      Mode mode{Mode::Queue};
+      Policy policy{Policy::RoundRobin};
+      std::vector<std::string> sources; // canonical absolute paths
+      std::size_t roundRobinCursor{0};
+      bool shuttingDown{false};
+      mutable std::mutex mutex;
   };
   ```
-- Notification callbacks perform a non-blocking `backing_->take`/`read` per source (depending on mode), store the result in `queue/latest`, and call `emit_ready_items()` to either satisfy waiting consumers or append to `merged`.
+- Queue mode performs non-blocking fan-out across the configured sources; if nothing is ready and the caller requested blocking semantics, `PathSpaceTrellis` delegates the wait to the backing `PathSpace` using that space's native timeout/notify machinery.
+- Latest mode is **not implemented yet**—the `enable` command rejects `mode=="latest"` with `Error::NotSupported`. The original `TrellisState` buffering design (per-source queues, merged output deque, explicit waiter promises) is kept here as future work should we need richer semantics (e.g., prefetching, metrics, or back-pressure).
 
 ## Read/take behaviour
 - `out()` override checks whether the requested path matches a trellis output:
   - If yes: call `read_trellis(state, meta, opts, obj, consume)`.
-    - In **Queue** mode, pop from per-source queues according to policy.
-    - In **Latest** mode, move the most recent value for a source and clear the slot.
-    - Executions are passed through as untouched `NodeData` so consumers still see callable nodes.
-    - If no payload is ready, register a waiter promise and block until a notification fills the queue.
+    - In **Queue** mode, attempt non-blocking `take`/`read` on each source respecting the active policy. When blocking is requested and no source is ready, the layer blocks on the next policy-selected source using the backing `PathSpace` wait loop.
+    - **Latest** mode is currently rejected (see Status note above).
+    - Executions are forwarded untouched so downstream code still observes callable nodes.
   - If no: delegate to `backing_->out()`.
 
 ## Modes & policy
-- **Mode::Queue** – each source preserves FIFO order; `Policy` decides which source to pull from next (`RoundRobin` rotates through non-empty sources; `Priority` always takes the first non-empty source).
-- **Mode::Latest** – only the most recent value per source is stored; consumers always see the most up-to-date item when it becomes available.
+- **Mode::Queue** – each source preserves FIFO order; `Policy` decides which source to pull from next (`RoundRobin` rotates through non-empty sources; `Priority` always favors the first configured source that has data).
+- **Mode::Latest** – planned but **not yet available**. Enabling a trellis in `latest` mode fails with `Error::NotSupported`; the buffering primitives sketched in the original draft remain the blueprint for that follow-up.
 
 ## Validation rules
 - `name` must be an absolute concrete path (not under `_system/trellis/` itself) and unused.
@@ -74,26 +66,26 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 - On error, return the usual `InsertReturn::errors` entry (e.g., `Error::InvalidPath`, `Error::AlreadyExists`).
 
 ## Waiters & shutdown
-- Blocked readers/takers are stored as promises inside `TrellisState.waiters`.
-- When new data arrives `emit_ready_items()` resolves waiters before appending to `merged`.
-- On disable, set `shutting_down = true`, resolve all remaining waiters with `Error::Shutdown`, remove notification hooks, and erase the state entry.
+- Blocking callers rely on the backing `PathSpace` wait/notify loop; the trellis does not yet maintain its own waiter list.
+- On disable, the trellis marks the state as shutting down and notifies through the shared `PathSpaceContext` so outstanding waits observe `Error::Shutdown`.
+- Future iterations can re-introduce explicit waiter queues when we add buffered fan-in or metrics.
 
 ## Usage examples
 1. **Widget event bridge** – enable a trellis where `sources` are multiple widget op queues; automation waits on `/system/trellis/widgetOps/out`.
 2. **Lambda launch pad** – combine execution queues under `/jobs/<id>/inbox`; worker calls `take(out_path)` to run whichever job becomes available first.
-3. **Status mirror** – in `latest` mode, keep `/system/trellis/devices/telemetry` updated with the most recent status across `/devices/<id>/state`.
+3. **Status mirror** – (future latest mode) keep `/system/trellis/devices/telemetry` updated with the most recent status across `/devices/<id>/state`.
 
 ## Testing checklist
 - Enable / disable via command inserts (success and failure cases).
 - Round-robin ordering across two sources producing alternately.
-- Priority mode always favors the first source.
-- Latest mode replaces older values.
-- Execution payload is forwarded as an execution node.
-- Concurrency stress: multiple producers + a blocking consumer.
+- Priority mode favors the first source when both have queued items.
+- Blocking consumer wakes as soon as one of the sources produces.
 - Disable wakes blocked readers with `Error::Shutdown`.
+- (Future) Latest mode should replace older values when the implementation lands.
 
 ## Deferred work
 - Persist trellis configs (reload on restart).
 - Expose metrics (`/system/trellis/<name>/stats/*`).
 - Optional glob-based source discovery.
-- Back-pressure controls (per-source queue limits).
+- Back-pressure controls (per-source queue limits) and the richer per-source buffering/waiter infrastructure outlined in the original design.
+- Implement `latest` mode atop the buffering hooks above.
