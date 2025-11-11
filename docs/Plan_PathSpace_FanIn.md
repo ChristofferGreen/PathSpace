@@ -2,7 +2,7 @@
 
 _Last updated: November 11, 2025_
 
-> **Status (November 11, 2025):** `PathSpaceTrellis` now ships with queue/latest fan-in, persisted configuration reloads, and live stats under `_system/trellis/state/*/stats`. Latest mode performs non-destructive reads across all configured sources, honours the round-robin and priority policies, and persistence keeps trellis configs + counters across restarts. Remaining follow-ups focus on back-pressure and buffered fan-in (see Deferred work).
+> **Status (November 11, 2025):** `PathSpaceTrellis` now ships with queue/latest fan-in, persisted configuration reloads, live stats under `_system/trellis/state/*/stats`, and per-source back-pressure limits for blocking waiters. Latest mode performs non-destructive reads across all configured sources, honours the round-robin and priority policies, and persistence keeps trellis configs + counters across restarts. Remaining follow-ups focus on buffered fan-in (see Deferred work).
 
 ## Goal
 Provide a lightweight "fan-in" overlay that exposes a single public path backed by multiple concrete source paths. Consumers read/take from the trellis path and receive whichever source produces the next payload (including executions). The trellis is implemented as a `PathSpaceBase` subclass that forwards most operations to an underlying `PathSpace` but intercepts control commands and reads for managed paths.
@@ -15,6 +15,7 @@ Provide a lightweight "fan-in" overlay that exposes a single public path backed 
       std::vector<std::string> sources;  // absolute concrete paths
       std::string mode;                  // "queue" | "latest"
       std::string policy;                // "round_robin" | "priority"
+      std::optional<std::uint32_t> maxWaitersPerSource; // optional back-pressure cap (0 = unlimited)
   };
   ```
   The trellis validates the payload, sets up state, registers notification hooks on each source, and keeps bookkeeping (optionally mirroring under `_system/trellis/state/<id>/config`).
@@ -42,12 +43,14 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
       std::size_t roundRobinCursor{0};
       bool shuttingDown{false};
       mutable std::mutex mutex;
+      std::size_t maxWaitersPerSource{0};
+      std::unordered_map<std::string, std::size_t> activeWaiters;
   };
   ```
 - Queue mode performs non-blocking fan-out across the configured sources; if nothing is ready and the caller requested blocking semantics, `PathSpaceTrellis` delegates the wait to the backing `PathSpace` using that space's native timeout/notify machinery.
 - Latest mode performs a non-destructive sweep across the configured sources following the active policy. Round-robin rotates the selection cursor whenever a source produces data so subsequent reads surface other producers without clearing their backing queues.
 - Trellis configs persist automatically: enabling a trellis stores `TrellisPersistedConfig` under `/_system/trellis/state/<hash>/config`; new `PathSpaceTrellis` instances reload the configs on construction.
-- Trellis stats mirror live counters under `/_system/trellis/state/<hash>/stats` (`TrellisStats` with mode, policy, sources, servedCount, waitCount, errorCount, lastSource, lastErrorCode, lastUpdateNs). Stats update after each serve, record waits keyed off blocking reads, and reset error code on success.
+- Trellis stats mirror live counters under `/_system/trellis/state/<hash>/stats` (`TrellisStats` with mode, policy, sources, servedCount, waitCount, errorCount, backpressureCount, lastSource, lastErrorCode, lastUpdateNs). Stats update after each serve, record waits keyed off blocking reads, increment `backpressureCount` when the waiter cap is hit, and reset the last error on success.
 
 ## Read/take behaviour
 - `out()` override checks whether the requested path matches a trellis output:
@@ -68,9 +71,9 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 - On error, return the usual `InsertReturn::errors` entry (e.g., `Error::InvalidPath`, `Error::AlreadyExists`).
 
 ## Waiters & shutdown
-- Blocking callers rely on the backing `PathSpace` wait/notify loop; the trellis does not yet maintain its own waiter list.
+- Blocking callers still rely on the backing `PathSpace` wait/notify loop, but the trellis now tracks active waiters per source so it can enforce the optional `maxWaitersPerSource` cap (returning `Error::CapacityExceeded` when the limit is reached).
 - On disable, the trellis marks the state as shutting down and notifies through the shared `PathSpaceContext` so outstanding waits observe `Error::Shutdown`.
-- Future iterations can re-introduce explicit waiter queues when we add buffered fan-in or metrics.
+- Future iterations can build on the waiter tracking to add buffered fan-in or richer queue visibility.
 
 ## Usage examples
 1. **Widget event bridge** – enable a trellis where `sources` are multiple widget op queues; automation waits on `/system/trellis/widgetOps/out`.
@@ -85,14 +88,15 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 - Disable wakes blocked readers with `Error::Shutdown`.
 - Latest mode mirrors recent values without popping sources; cover both policies (priority and round-robin) plus blocking waits.
 - Persistence reload validates that trellis configs survive restart and disappear after disable.
-- Stats surface served/wait/error counters and last-source metadata under `/_system/trellis/state/<hash>/stats`.
+- Stats surface served/wait/error/back-pressure counters and last-source metadata under `/_system/trellis/state/<hash>/stats`.
+- Back-pressure caps reject excess concurrent waits (`Error::CapacityExceeded`) and bump `backpressureCount`.
 
 ## Deferred work
 - Optional glob-based source discovery.
-- Back-pressure controls (per-source queue limits) and the richer per-source buffering/waiter infrastructure outlined in the original design.
-- Document persistence format guarantees alongside metrics/back-pressure once schemas settle.
+- Buffered fan-in: richer per-source buffering/waiter infrastructure and queue visibility built atop the current back-pressure hooks.
+- Document persistence/stat format guarantees once buffered fan-in lands.
 
 ## Shutdown note — November 11, 2025
-- Latest mode (priority + round-robin), persisted configs, and stats counters are live and covered by tests; trellis takes remain non-destructive so source queues stay intact.
-- Next focus: design back-pressure controls and feed the trellis stats into residency dashboards before tackling buffered fan-in.
-- When resuming, start with the back-pressure plan while keeping the persistence/stat schemas stable (`TrellisPersistedConfig` + `TrellisStats` under `_system/trellis/state/*`).
+- Latest mode (priority + round-robin), persisted configs, stats counters, and back-pressure limits are live and covered by tests; trellis takes remain non-destructive so source queues stay intact.
+- Next focus: tackle buffered fan-in and evaluate how the current stats/back-pressure signals feed into residency dashboards.
+- When resuming, keep the persistence/stat schemas stable (`TrellisPersistedConfig` + `TrellisStats` under `_system/trellis/state/*`) while layering buffered fan-in on top.

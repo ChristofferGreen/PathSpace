@@ -21,7 +21,8 @@ struct Error {
         NoObjectFound,
         TypeMismatch,
         NotFound,
-        NotSupported
+        NotSupported,
+        CapacityExceeded
     };
 
     Error(Code c, std::string m)

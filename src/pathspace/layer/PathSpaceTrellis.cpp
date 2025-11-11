@@ -201,11 +201,17 @@ auto PathSpaceTrellis::parseEnableCommand(InputData const& data) const -> Expect
                                      "Unsupported trellis policy: " + command->policy});
     }
 
+    std::size_t maxWaiters = 0;
+    if (command->maxWaitersPerSource) {
+        maxWaiters = *command->maxWaitersPerSource;
+    }
+
     EnableParseResult result{
         .outputPath  = std::move(outputPath.value()),
         .mode        = mode,
         .policy      = policy,
         .sources     = sources,
+        .maxWaitersPerSource = maxWaiters,
     };
     return result;
 }
@@ -237,6 +243,7 @@ auto PathSpaceTrellis::persistStateLocked(std::string const& canonicalOutputPath
         .sources = state.sources,
         .mode    = modeToString(state.mode),
         .policy  = policyToString(state.policy),
+        .maxWaitersPerSource = static_cast<std::uint32_t>(state.maxWaitersPerSource),
     };
 
     auto const configPath = stateConfigPathFor(canonicalOutputPath);
@@ -249,6 +256,17 @@ auto PathSpaceTrellis::persistStateLocked(std::string const& canonicalOutputPath
         auto const code = existing.error().code;
         if (code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath) {
             break;
+        }
+        if (code == Error::Code::InvalidType) {
+            auto legacy = backing_->take<std::string>(configPath);
+            if (legacy) {
+                continue;
+            }
+            auto legacyCode = legacy.error().code;
+            if (legacyCode == Error::Code::NoObjectFound || legacyCode == Error::Code::NoSuchPath) {
+                break;
+            }
+            return legacy.error();
         }
         return existing.error();
     }
@@ -331,6 +349,7 @@ auto PathSpaceTrellis::persistStats(std::string const& canonicalOutputPath, Trel
         .servedCount   = 0,
         .waitCount     = 0,
         .errorCount    = 0,
+        .backpressureCount = 0,
         .lastSource    = std::string{},
         .lastErrorCode = 0,
         .lastUpdateNs  = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(now).count()),
@@ -424,6 +443,7 @@ auto PathSpaceTrellis::updateStats(std::string const& canonicalOutputPath,
         stats.policy      = policyToString(stateSnapshot->policy);
         stats.sources     = stateSnapshot->sources;
         stats.sourceCount = static_cast<std::uint64_t>(stateSnapshot->sources.size());
+        stats.backpressureCount = 0;
     }
 
     mutate(stats);
@@ -455,6 +475,9 @@ void PathSpaceTrellis::recordServeError(std::string const& canonicalOutputPath, 
     auto now = std::chrono::system_clock::now().time_since_epoch();
     (void)updateStats(canonicalOutputPath, [&](TrellisStats& stats) {
         stats.errorCount += 1;
+        if (error.code == Error::Code::CapacityExceeded) {
+            stats.backpressureCount += 1;
+        }
         stats.lastErrorCode = static_cast<std::int32_t>(error.code);
         stats.lastUpdateNs  = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
@@ -511,6 +534,7 @@ void PathSpaceTrellis::restorePersistedStatesLocked() {
         state->sources = canonicalSources.value();
         state->roundRobinCursor = 0;
         state->shuttingDown     = false;
+        state->maxWaitersPerSource = persisted->maxWaitersPerSource;
 
         trellis_.emplace(canonicalOutput.value(), std::move(state));
         // Ensure stats exist but preserve counters when already present.
@@ -721,10 +745,49 @@ auto PathSpaceTrellis::waitAndServeQueue(TrellisState& state,
     blockingOptions.doBlock = true;
     blockingOptions.timeout = remaining;
 
-    Iterator sourceIter{sourcesCopy[waitIndex]};
+    auto const& selectedSource = sourcesCopy[waitIndex];
+    auto registerWaiterIfNeeded = [&](std::string const& src) -> std::optional<Error> {
+        std::lock_guard<std::mutex> lg(state.mutex);
+        if (state.shuttingDown) {
+            return Error{Error::Code::Timeout, "Trellis is shutting down"};
+        }
+        if (state.maxWaitersPerSource == 0) {
+            return std::nullopt;
+        }
+        auto current = state.activeWaiters[src];
+        if (current >= state.maxWaitersPerSource) {
+            return Error{Error::Code::CapacityExceeded,
+                         "Back-pressure: wait limit reached for source"};
+        }
+        state.activeWaiters[src] = current + 1;
+        return std::nullopt;
+    };
+    auto unregisterWaiter = [&](std::string const& src) {
+        if (state.maxWaitersPerSource == 0) {
+            return;
+        }
+        std::lock_guard<std::mutex> lg(state.mutex);
+        auto it = state.activeWaiters.find(src);
+        if (it != state.activeWaiters.end()) {
+            if (it->second <= 1) {
+                state.activeWaiters.erase(it);
+            } else {
+                it->second -= 1;
+            }
+        }
+    };
+
+    if (auto registrationError = registerWaiterIfNeeded(selectedSource)) {
+        return registrationError;
+    }
+    auto unregisterGuard = std::unique_ptr<void, std::function<void(void*)>>(
+        nullptr, [&](void*) { unregisterWaiter(selectedSource); });
+
+    Iterator sourceIter{selectedSource};
     auto     err = backing_->out(sourceIter, inputMetadata, blockingOptions, obj);
+    unregisterGuard.reset();
     if (!err) {
-        servicedSource = sourcesCopy[waitIndex];
+        servicedSource = selectedSource;
         if (state.policy == TrellisPolicy::RoundRobin) {
             std::lock_guard<std::mutex> lg(state.mutex);
             state.roundRobinCursor = (waitIndex + 1) % sourcesCopy.size();
@@ -775,10 +838,49 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
     blockingOptions.doPop   = false; // Latest mode is non-destructive.
     blockingOptions.timeout = remaining;
 
-    Iterator sourceIter{sourcesCopy[waitIndex]};
+    auto const& selectedSource = sourcesCopy[waitIndex];
+    auto registerWaiterIfNeeded = [&](std::string const& src) -> std::optional<Error> {
+        std::lock_guard<std::mutex> lg(state.mutex);
+        if (state.shuttingDown) {
+            return Error{Error::Code::Timeout, "Trellis is shutting down"};
+        }
+        if (state.maxWaitersPerSource == 0) {
+            return std::nullopt;
+        }
+        auto current = state.activeWaiters[src];
+        if (current >= state.maxWaitersPerSource) {
+            return Error{Error::Code::CapacityExceeded,
+                         "Back-pressure: wait limit reached for source"};
+        }
+        state.activeWaiters[src] = current + 1;
+        return std::nullopt;
+    };
+    auto unregisterWaiter = [&](std::string const& src) {
+        if (state.maxWaitersPerSource == 0) {
+            return;
+        }
+        std::lock_guard<std::mutex> lg(state.mutex);
+        auto it = state.activeWaiters.find(src);
+        if (it != state.activeWaiters.end()) {
+            if (it->second <= 1) {
+                state.activeWaiters.erase(it);
+            } else {
+                it->second -= 1;
+            }
+        }
+    };
+
+    if (auto registrationError = registerWaiterIfNeeded(selectedSource)) {
+        return registrationError;
+    }
+    auto unregisterGuard = std::unique_ptr<void, std::function<void(void*)>>(
+        nullptr, [&](void*) { unregisterWaiter(selectedSource); });
+
+    Iterator sourceIter{selectedSource};
     auto     err = backing_->out(sourceIter, inputMetadata, blockingOptions, obj);
+    unregisterGuard.reset();
     if (!err) {
-        servicedSource = sourcesCopy[waitIndex];
+        servicedSource = selectedSource;
         if (state.policy == TrellisPolicy::RoundRobin) {
             std::lock_guard<std::mutex> lg(state.mutex);
             if (!state.sources.empty()) {

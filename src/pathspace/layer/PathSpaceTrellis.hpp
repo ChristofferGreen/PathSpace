@@ -27,6 +27,7 @@ struct EnableTrellisCommand {
     std::vector<std::string> sources;
     std::string              mode;
     std::string              policy;
+    std::optional<std::uint32_t> maxWaitersPerSource;
 };
 
 struct DisableTrellisCommand {
@@ -38,6 +39,7 @@ struct TrellisPersistedConfig {
     std::vector<std::string> sources;
     std::string              mode;
     std::string              policy;
+    std::uint32_t            maxWaitersPerSource{0};
 };
 
 struct TrellisStats {
@@ -49,6 +51,7 @@ struct TrellisStats {
     std::uint64_t            servedCount{0};
     std::uint64_t            waitCount{0};
     std::uint64_t            errorCount{0};
+    std::uint64_t            backpressureCount{0};
     std::string              lastSource;
     std::int32_t             lastErrorCode{0};
     std::uint64_t            lastUpdateNs{0};
@@ -76,6 +79,8 @@ private:
         std::size_t                 roundRobinCursor{0};
         bool                        shuttingDown{false};
         mutable std::mutex          mutex;
+        std::size_t                 maxWaitersPerSource{0};
+        std::unordered_map<std::string, std::size_t> activeWaiters;
     };
 
     struct EnableParseResult {
@@ -83,6 +88,7 @@ private:
         TrellisMode                             mode;
         TrellisPolicy                           policy;
         std::vector<std::string>                sources;
+        std::size_t                             maxWaitersPerSource;
     };
 
     auto handleEnable(InputData const& data) -> InsertReturn;

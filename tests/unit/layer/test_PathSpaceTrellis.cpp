@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <future>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -378,6 +379,7 @@ TEST_CASE("Trellis configuration persists to backing state registry") {
     CHECK(stored->sources == std::vector<std::string>{"/persist/a", "/persist/b"});
     CHECK(stored->mode == "queue");
     CHECK(stored->policy == "priority");
+    CHECK(stored->maxWaitersPerSource == 0);
 
     auto statsPath = std::string{"/_system/trellis/state/"};
     statsPath.append(keys.front());
@@ -390,6 +392,7 @@ TEST_CASE("Trellis configuration persists to backing state registry") {
     CHECK(stats->sourceCount == 2);
     CHECK(stats->mode == "queue");
     CHECK(stats->policy == "priority");
+    CHECK(stats->backpressureCount == 0);
 
     DisableTrellisCommand disable{.name = "/persist/out"};
     auto disableResult = trellis.insert("/_system/trellis/disable", disable);
@@ -419,6 +422,7 @@ TEST_CASE("Persisted trellis config restores on new instance") {
             .sources = {"/reload/a"},
             .mode    = "queue",
             .policy  = "round_robin",
+            .maxWaitersPerSource = 1,
         };
         auto enableResult = trellis.insert("/_system/trellis/enable", enable);
         REQUIRE(enableResult.errors.empty());
@@ -444,6 +448,63 @@ TEST_CASE("Persisted trellis config restores on new instance") {
     CHECK(stats->servedCount == 1);
     CHECK(stats->lastSource == "/reload/a");
     CHECK(stats->waitCount == 0);
+    CHECK(stats->backpressureCount == 0);
+}
+
+TEST_CASE("Back-pressure limit caps simultaneous waiters per source") {
+    auto backing = std::make_shared<PathSpace>();
+    PathSpaceTrellis trellis(backing);
+
+    EnableTrellisCommand enable{
+        .name    = "/bp/out",
+        .sources = {"/bp/source"},
+        .mode    = "queue",
+        .policy  = "priority",
+        .maxWaitersPerSource = 1,
+    };
+    auto enableResult = trellis.insert("/_system/trellis/enable", enable);
+    REQUIRE(enableResult.errors.empty());
+
+    std::promise<void> ready;
+    std::atomic<bool>  waiterRunning{false};
+    std::optional<Expected<int>> waiterResult;
+    std::thread waiter([&] {
+        ready.set_value();
+        waiterRunning.store(true, std::memory_order_release);
+        waiterResult = trellis.take<int>("/bp/out", Block{250ms});
+    });
+    ready.get_future().wait();
+
+    // Allow the first waiter to register.
+    while (!waiterRunning.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+    std::this_thread::sleep_for(10ms);
+
+    auto second = trellis.take<int>("/bp/out", Block{50ms});
+    REQUIRE_FALSE(second);
+    CHECK(second.error().code == Error::Code::CapacityExceeded);
+
+    // Provide data to release the first waiter.
+    REQUIRE(backing->insert("/bp/source", 42).errors.empty());
+    waiter.join();
+    REQUIRE(waiterResult.has_value());
+    REQUIRE(waiterResult->has_value());
+    CHECK(waiterResult->value() == 42);
+
+    ConcretePathStringView stateRoot{"/_system/trellis/state"};
+    auto                   keys = backing->listChildren(stateRoot);
+    REQUIRE(keys.size() == 1);
+    auto statsPath = std::string{"/_system/trellis/state/"};
+    statsPath.append(keys.front());
+    statsPath.append("/stats");
+
+    auto stats = backing->read<TrellisStats>(statsPath);
+    REQUIRE(stats);
+    CHECK(stats->servedCount == 1);
+    CHECK(stats->backpressureCount == 1);
+    CHECK(stats->errorCount >= 1);
+    CHECK(stats->lastErrorCode == static_cast<std::int32_t>(Error::Code::CapacityExceeded));
 }
 
 TEST_CASE("Trellis stats capture wait counts when blocking") {
@@ -455,6 +516,7 @@ TEST_CASE("Trellis stats capture wait counts when blocking") {
         .sources = {"/stats/source"},
         .mode    = "queue",
         .policy  = "priority",
+        .maxWaitersPerSource = 2,
     };
     auto enableResult = trellis.insert("/_system/trellis/enable", enable);
     REQUIRE(enableResult.errors.empty());
@@ -481,6 +543,7 @@ TEST_CASE("Trellis stats capture wait counts when blocking") {
     CHECK(stats->servedCount == 1);
     CHECK(stats->waitCount == 1);
     CHECK(stats->lastSource == "/stats/source");
+    CHECK(stats->backpressureCount == 0);
 }
 
 } // TEST_SUITE
