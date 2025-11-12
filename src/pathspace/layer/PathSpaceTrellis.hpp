@@ -56,6 +56,15 @@ struct TrellisStats {
     std::uint64_t            lastUpdateNs{0};
 };
 
+struct TrellisTraceEvent {
+    std::uint64_t timestampNs{0};
+    std::string   message;
+};
+
+struct TrellisTraceSnapshot {
+    std::vector<TrellisTraceEvent> events;
+};
+
 class PathSpaceTrellis final : public PathSpaceBase {
 public:
     explicit PathSpaceTrellis(std::shared_ptr<PathSpaceBase> backing);
@@ -82,6 +91,7 @@ private:
         std::unordered_map<std::string, std::size_t> activeWaiters;
         std::deque<std::string>     readySources;
         std::unordered_set<std::string> readySourceSet;
+        std::deque<TrellisTraceEvent> trace;
     };
 
     struct EnableParseResult {
@@ -144,6 +154,12 @@ private:
                                   std::optional<std::size_t> readyCountOverride = std::nullopt);
     std::optional<std::string> pickReadySource(TrellisState& state);
     bool enqueueReadySource(TrellisState& state, std::string const& source);
+    void appendTraceEvent(std::string const& canonicalOutputPath,
+                          TrellisState& state,
+                          std::string message);
+    static auto formatDurationMs(std::chrono::milliseconds value) -> std::string;
+    static auto errorCodeToString(Error::Code code) -> std::string;
+    static auto describeError(Error const& error) -> std::string;
     std::size_t bufferedReadyCount(std::string const& canonicalOutputPath);
     void restorePersistedStatesLocked();
     static auto modeToString(TrellisMode mode) -> std::string;
@@ -154,17 +170,24 @@ private:
     static auto stateStatsPathFor(std::string const& canonicalOutputPath) -> std::string;
     static auto stateBackpressurePathFor(std::string const& canonicalOutputPath) -> std::string;
     static auto stateBufferedReadyPathFor(std::string const& canonicalOutputPath) -> std::string;
+    static auto stateTracePathFor(std::string const& canonicalOutputPath) -> std::string;
     static auto legacyStateBackpressurePathFor(std::string const& canonicalOutputPath) -> std::string;
     static auto stateRootPathFor(std::string const& canonicalOutputPath) -> std::string;
 
     auto clearLegacyStateNode(std::string const& canonicalOutputPath,
                               bool removeActiveConfig = false) -> std::optional<Error>;
+    auto persistTraceSnapshot(std::string const& canonicalOutputPath,
+                              std::vector<TrellisTraceEvent> const& snapshot)
+        -> std::optional<Error>;
+    auto eraseTraceSnapshot(std::string const& canonicalOutputPath) -> std::optional<Error>;
 
     std::shared_ptr<PathSpaceBase> backing_;
     mutable std::mutex             statesMutex_;
     std::unordered_map<std::string, std::shared_ptr<TrellisState>> trellis_;
     std::string                                               mountPrefix_;
     bool                                                      persistenceLoaded_{false};
+
+    static constexpr std::size_t kTraceCapacity{64};
 };
 
 } // namespace SP

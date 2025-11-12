@@ -5,10 +5,11 @@
 #include "log/TaggedLogger.hpp"
 
 #include <algorithm>
-#include <iostream>
 #include <cctype>
 #include <chrono>
+#include <iomanip>
 #include <functional>
+#include <sstream>
 #include <string_view>
 #include <vector>
 #include <array>
@@ -157,11 +158,73 @@ auto PathSpaceTrellis::stateBufferedReadyPathFor(std::string const& canonicalOut
     return path;
 }
 
+auto PathSpaceTrellis::stateTracePathFor(std::string const& canonicalOutputPath) -> std::string {
+    auto key = encodeStateKey(canonicalOutputPath);
+    std::string path = "/_system/trellis/state/";
+    path.append(key);
+    path.append("/stats/latest_trace");
+    return path;
+}
+
 auto PathSpaceTrellis::stateRootPathFor(std::string const& canonicalOutputPath) -> std::string {
     auto key = encodeStateKey(canonicalOutputPath);
     std::string path = "/_system/trellis/state/";
     path.append(key);
     return path;
+}
+
+auto PathSpaceTrellis::formatDurationMs(std::chrono::milliseconds value) -> std::string {
+    std::ostringstream oss;
+    oss << value.count();
+    return oss.str();
+}
+
+auto PathSpaceTrellis::errorCodeToString(Error::Code code) -> std::string {
+    switch (code) {
+    case Error::Code::InvalidError:
+        return "invalid_error";
+    case Error::Code::UnknownError:
+        return "unknown_error";
+    case Error::Code::NoSuchPath:
+        return "no_such_path";
+    case Error::Code::InvalidPath:
+        return "invalid_path";
+    case Error::Code::InvalidPathSubcomponent:
+        return "invalid_path_subcomponent";
+    case Error::Code::InvalidType:
+        return "invalid_type";
+    case Error::Code::Timeout:
+        return "timeout";
+    case Error::Code::MalformedInput:
+        return "malformed_input";
+    case Error::Code::InvalidPermissions:
+        return "invalid_permissions";
+    case Error::Code::SerializationFunctionMissing:
+        return "serialization_function_missing";
+    case Error::Code::UnserializableType:
+        return "unserializable_type";
+    case Error::Code::NoObjectFound:
+        return "no_object_found";
+    case Error::Code::TypeMismatch:
+        return "type_mismatch";
+    case Error::Code::NotFound:
+        return "not_found";
+    case Error::Code::NotSupported:
+        return "not_supported";
+    case Error::Code::CapacityExceeded:
+        return "capacity_exceeded";
+    }
+    return "unknown_error";
+}
+
+auto PathSpaceTrellis::describeError(Error const& error) -> std::string {
+    std::ostringstream oss;
+    oss << errorCodeToString(error.code);
+    if (error.message && !error.message->empty()) {
+        oss << ":";
+        oss << *error.message;
+    }
+    return oss.str();
 }
 
 auto PathSpaceTrellis::modeToString(TrellisMode mode) -> std::string {
@@ -516,6 +579,47 @@ auto PathSpaceTrellis::persistStats(std::string const& canonicalOutputPath, Trel
     return std::nullopt;
 }
 
+auto PathSpaceTrellis::persistTraceSnapshot(std::string const& canonicalOutputPath,
+                                            std::vector<TrellisTraceEvent> const& snapshot)
+    -> std::optional<Error> {
+    if (!backing_) {
+        return Error{Error::Code::InvalidPermissions, "No backing PathSpace configured"};
+    }
+    auto const tracePath = stateTracePathFor(canonicalOutputPath);
+
+    while (true) {
+        auto existing = backing_->take<TrellisTraceSnapshot>(tracePath);
+        if (existing) {
+            continue;
+        }
+        auto const code = existing.error().code;
+        if (code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath) {
+            break;
+        }
+        if (code == Error::Code::InvalidType) {
+            auto legacy = backing_->take<std::vector<std::string>>(tracePath);
+            if (legacy) {
+                continue;
+            }
+            auto legacyCode = legacy.error().code;
+            if (legacyCode == Error::Code::NoObjectFound || legacyCode == Error::Code::NoSuchPath) {
+                break;
+            }
+            return legacy.error();
+        }
+        return existing.error();
+    }
+
+    TrellisTraceSnapshot payload{
+        .events = snapshot,
+    };
+    auto insertResult = backing_->insert(tracePath, payload);
+    if (!insertResult.errors.empty()) {
+        return insertResult.errors.front();
+    }
+    return std::nullopt;
+}
+
 auto PathSpaceTrellis::eraseStats(std::string const& canonicalOutputPath) -> std::optional<Error> {
     if (!backing_) {
         return Error{Error::Code::InvalidPermissions, "No backing PathSpace configured"};
@@ -555,6 +659,39 @@ auto PathSpaceTrellis::eraseStats(std::string const& canonicalOutputPath) -> std
         }
         if (code == Error::Code::InvalidType) {
             auto legacy = backing_->take<std::string>(bufferedPath);
+            if (legacy) {
+                continue;
+            }
+            auto legacyCode = legacy.error().code;
+            if (legacyCode == Error::Code::NoObjectFound || legacyCode == Error::Code::NoSuchPath) {
+                break;
+            }
+            return legacy.error();
+        }
+        return existing.error();
+    }
+    if (auto traceError = eraseTraceSnapshot(canonicalOutputPath)) {
+        return traceError;
+    }
+    return std::nullopt;
+}
+
+auto PathSpaceTrellis::eraseTraceSnapshot(std::string const& canonicalOutputPath) -> std::optional<Error> {
+    if (!backing_) {
+        return Error{Error::Code::InvalidPermissions, "No backing PathSpace configured"};
+    }
+    auto const tracePath = stateTracePathFor(canonicalOutputPath);
+    while (true) {
+        auto existing = backing_->take<TrellisTraceSnapshot>(tracePath);
+        if (existing) {
+            continue;
+        }
+        auto const code = existing.error().code;
+        if (code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath) {
+            break;
+        }
+        if (code == Error::Code::InvalidType) {
+            auto legacy = backing_->take<std::vector<std::string>>(tracePath);
             if (legacy) {
                 continue;
             }
@@ -714,8 +851,32 @@ bool PathSpaceTrellis::enqueueReadySource(TrellisState& state, std::string const
     }
     state.readySources.push_back(source);
     state.readySourceSet.insert(source);
-    std::cout << "[debug] enqueueReadySource: " << source << "\n";
     return true;
+}
+
+void PathSpaceTrellis::appendTraceEvent(std::string const& canonicalOutputPath,
+                                        TrellisState& state,
+                                        std::string message) {
+    if (!backing_) {
+        return;
+    }
+    auto now       = std::chrono::system_clock::now();
+    auto timestamp = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count());
+
+    std::vector<TrellisTraceEvent> snapshot;
+    {
+        std::lock_guard<std::mutex> lg(state.mutex);
+        if (state.trace.size() >= kTraceCapacity) {
+            state.trace.pop_front();
+        }
+        state.trace.push_back(TrellisTraceEvent{
+            .timestampNs = timestamp,
+            .message     = std::move(message),
+        });
+        snapshot.assign(state.trace.begin(), state.trace.end());
+    }
+    (void)persistTraceSnapshot(canonicalOutputPath, snapshot);
 }
 
 std::size_t PathSpaceTrellis::bufferedReadyCount(std::string const& canonicalOutputPath) {
@@ -1300,13 +1461,15 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
 
     std::vector<std::string> sourcesCopy;
     std::size_t              startIndex = 0;
+    TrellisPolicy            policySnapshot = TrellisPolicy::RoundRobin;
     {
         std::lock_guard<std::mutex> lg(state.mutex);
         if (state.shuttingDown) {
             return Error{Error::Code::Timeout, "Trellis is shutting down"};
         }
         sourcesCopy = state.sources;
-        if (!sourcesCopy.empty() && state.policy == TrellisPolicy::RoundRobin) {
+        policySnapshot = state.policy;
+        if (!sourcesCopy.empty() && policySnapshot == TrellisPolicy::RoundRobin) {
             startIndex = state.roundRobinCursor % sourcesCopy.size();
         }
     }
@@ -1323,6 +1486,8 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
     if (remaining <= std::chrono::milliseconds::zero()) {
         return Error{Error::Code::Timeout, "Trellis wait timed out"};
     }
+
+    auto const policyLabel = policyToString(policySnapshot);
 
     auto registerWaiterIfNeeded = [&](std::string const& src) -> std::optional<Error> {
         std::lock_guard<std::mutex> lg(state.mutex);
@@ -1382,10 +1547,26 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
         blockingOptions.timeout = perSourceTimeout;
 
         if (auto registrationError = registerWaiterIfNeeded(selectedSource)) {
+            std::ostringstream failed;
+            failed << "wait_latest.register_failed"
+                   << " policy=" << policyLabel
+                   << " src=" << selectedSource
+                   << " error=" << describeError(*registrationError);
+            appendTraceEvent(canonicalOutputPath, state, failed.str());
             if (registrationError->code != Error::Code::CapacityExceeded) {
                 return registrationError;
             }
             continue;
+        }
+        {
+            std::ostringstream waiting;
+            waiting << "wait_latest.block"
+                    << " policy=" << policyLabel
+                    << " src=" << selectedSource
+                    << " attempt=" << (attempt + 1) << "/" << sourcesCopy.size()
+                    << " remaining_ms=" << formatDurationMs(remaining)
+                    << " timeout_ms=" << formatDurationMs(perSourceTimeout);
+            appendTraceEvent(canonicalOutputPath, state, waiting.str());
         }
         auto unregisterGuard = std::unique_ptr<void, std::function<void(void*)>>(
             nullptr, [&](void*) { unregisterWaiter(selectedSource); });
@@ -1401,15 +1582,47 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
                     state.roundRobinCursor = (index + 1) % state.sources.size();
                 }
             }
+            std::ostringstream success;
+            success << "wait_latest.result"
+                    << " policy=" << policyLabel
+                    << " src=" << selectedSource
+                    << " outcome=success";
+            appendTraceEvent(canonicalOutputPath, state, success.str());
             return std::nullopt;
         }
-        if (err->code != Error::Code::Timeout
-            && err->code != Error::Code::NoObjectFound
-            && err->code != Error::Code::NotFound
-            && err->code != Error::Code::NoSuchPath) {
-            return err;
+        if (err->code == Error::Code::Timeout) {
+            std::ostringstream timeoutMsg;
+            timeoutMsg << "wait_latest.result"
+                       << " policy=" << policyLabel
+                       << " src=" << selectedSource
+                       << " outcome=timeout";
+            appendTraceEvent(canonicalOutputPath, state, timeoutMsg.str());
+            continue;
         }
+        if (err->code == Error::Code::NoObjectFound
+            || err->code == Error::Code::NotFound
+            || err->code == Error::Code::NoSuchPath) {
+            std::ostringstream emptyMsg;
+            emptyMsg << "wait_latest.result"
+                     << " policy=" << policyLabel
+                     << " src=" << selectedSource
+                     << " outcome=empty"
+                     << " error=" << describeError(*err);
+            appendTraceEvent(canonicalOutputPath, state, emptyMsg.str());
+            continue;
+        }
+        std::ostringstream errorMsg;
+        errorMsg << "wait_latest.result"
+                 << " policy=" << policyLabel
+                 << " src=" << selectedSource
+                 << " outcome=error"
+                 << " error=" << describeError(*err);
+        appendTraceEvent(canonicalOutputPath, state, errorMsg.str());
+        return err;
     }
+    appendTraceEvent(canonicalOutputPath,
+                     state,
+                     "wait_latest.result policy=" + policyLabel + " outcome=timeout");
     return Error{Error::Code::Timeout, "Trellis wait timed out"};
 }
 
@@ -1436,7 +1649,7 @@ auto PathSpaceTrellis::serveLatest(TrellisState& state,
         std::lock_guard<std::mutex> lg(state.mutex);
         sourcesCopy = state.sources;
         policy      = state.policy;
-        if (!sourcesCopy.empty() && state.policy == TrellisPolicy::RoundRobin) {
+        if (!sourcesCopy.empty() && policy == TrellisPolicy::RoundRobin) {
             startIndex = state.roundRobinCursor % sourcesCopy.size();
         }
     }
@@ -1449,6 +1662,7 @@ auto PathSpaceTrellis::serveLatest(TrellisState& state,
     attemptOptions.doBlock = false;
     attemptOptions.doPop   = false; // Latest mode is intentionally non-destructive.
 
+    auto const policyLabel = policyToString(policy);
     std::optional<Error> lastError;
 
     auto advanceCursor = [&](std::size_t index) {
@@ -1462,6 +1676,13 @@ auto PathSpaceTrellis::serveLatest(TrellisState& state,
 
     if (auto readySource = pickReadySource(state)) {
         updateBufferedReadyStats(canonicalOutputPath);
+        {
+            std::ostringstream cached;
+            cached << "serve_latest.cache"
+                   << " policy=" << policyLabel
+                   << " src=" << *readySource;
+            appendTraceEvent(canonicalOutputPath, state, cached.str());
+        }
         auto attemptOptions   = options;
         attemptOptions.doBlock = false;
         attemptOptions.doPop   = false;
@@ -1474,13 +1695,36 @@ auto PathSpaceTrellis::serveLatest(TrellisState& state,
                 auto idx = static_cast<std::size_t>(std::distance(sourcesCopy.begin(), it));
                 advanceCursor(idx);
             }
+            std::ostringstream success;
+            success << "serve_latest.result"
+                    << " policy=" << policyLabel
+                    << " src=" << *readySource
+                    << " cached=true"
+                    << " outcome=success";
+            appendTraceEvent(canonicalOutputPath, state, success.str());
             return std::nullopt;
         }
         if (err->code != Error::Code::NoObjectFound
             && err->code != Error::Code::NotFound
             && err->code != Error::Code::NoSuchPath) {
+            std::ostringstream errorMsg;
+            errorMsg << "serve_latest.result"
+                     << " policy=" << policyLabel
+                     << " src=" << *readySource
+                     << " cached=true"
+                     << " outcome=error"
+                     << " error=" << describeError(*err);
+            appendTraceEvent(canonicalOutputPath, state, errorMsg.str());
             return err;
         }
+        std::ostringstream emptyMsg;
+        emptyMsg << "serve_latest.result"
+                 << " policy=" << policyLabel
+                 << " src=" << *readySource
+                 << " cached=true"
+                 << " outcome=empty"
+                 << " error=" << describeError(*err);
+        appendTraceEvent(canonicalOutputPath, state, emptyMsg.str());
     }
 
     auto visitIndex = [&](std::size_t idx) -> std::optional<Error> {
@@ -1489,14 +1733,37 @@ auto PathSpaceTrellis::serveLatest(TrellisState& state,
         if (!err) {
             servicedSource = sourcesCopy[idx];
             advanceCursor(idx);
+            std::ostringstream success;
+            success << "serve_latest.result"
+                    << " policy=" << policyLabel
+                    << " src=" << sourcesCopy[idx]
+                    << " cached=false"
+                    << " outcome=success";
+            appendTraceEvent(canonicalOutputPath, state, success.str());
             return std::nullopt;
         }
         if (err->code != Error::Code::NoObjectFound
             && err->code != Error::Code::NotFound
             && err->code != Error::Code::NoSuchPath) {
+            std::ostringstream errorMsg;
+            errorMsg << "serve_latest.result"
+                     << " policy=" << policyLabel
+                     << " src=" << sourcesCopy[idx]
+                     << " cached=false"
+                     << " outcome=error"
+                     << " error=" << describeError(*err);
+            appendTraceEvent(canonicalOutputPath, state, errorMsg.str());
             return err;
         }
         lastError = err;
+        std::ostringstream emptyMsg;
+        emptyMsg << "serve_latest.result"
+                 << " policy=" << policyLabel
+                 << " src=" << sourcesCopy[idx]
+                 << " cached=false"
+                 << " outcome=empty"
+                 << " error=" << describeError(*err);
+        appendTraceEvent(canonicalOutputPath, state, emptyMsg.str());
         return err;
     };
 
@@ -1523,6 +1790,11 @@ auto PathSpaceTrellis::serveLatest(TrellisState& state,
         }
     }
 
+    if (!lastError.has_value()) {
+        appendTraceEvent(canonicalOutputPath,
+                         state,
+                         "serve_latest.result policy=" + policyLabel + " outcome=no_data");
+    }
     return lastError.value_or(Error{Error::Code::NoObjectFound, "No data available in sources"});
 }
 
@@ -1637,28 +1909,49 @@ auto PathSpaceTrellis::out(Iterator const& path,
 }
 
 auto PathSpaceTrellis::notify(std::string const& notificationPath) -> void {
+    struct TraceEntry {
+        std::shared_ptr<TrellisState> state;
+        std::string                   output;
+        std::string                   source;
+    };
     std::vector<std::string> outputsToUpdate;
-    std::cout << "[debug] notify called with: " << notificationPath << "\n";
+    std::vector<TraceEntry>  tracesToRecord;
+
     auto canonical = canonicalizeAbsolute(notificationPath);
     if (canonical) {
         std::lock_guard<std::mutex> lg(statesMutex_);
         for (auto const& [outputPath, statePtr] : trellis_) {
             if (!statePtr) continue;
-            std::lock_guard<std::mutex> stateLock(statePtr->mutex);
-            if (std::find(statePtr->sources.begin(), statePtr->sources.end(), canonical.value())
-                != statePtr->sources.end()) {
-                std::cout << "[debug] notify matched source " << canonical.value()
-                          << " for output " << outputPath << "\n";
-                if (enqueueReadySource(*statePtr, canonical.value())) {
-                    outputsToUpdate.push_back(outputPath);
+            bool enqueued = false;
+            {
+                std::lock_guard<std::mutex> stateLock(statePtr->mutex);
+                if (std::find(statePtr->sources.begin(), statePtr->sources.end(), canonical.value())
+                    != statePtr->sources.end()) {
+                    enqueued = enqueueReadySource(*statePtr, canonical.value());
                 }
             }
+            if (enqueued) {
+                outputsToUpdate.push_back(outputPath);
+                tracesToRecord.push_back(TraceEntry{
+                    .state  = statePtr,
+                    .output = outputPath,
+                    .source = canonical.value(),
+                });
+            }
         }
-    } else {
-        std::cout << "[debug] canonicalize failed for: " << notificationPath << "\n";
     }
     for (auto const& output : outputsToUpdate) {
         updateBufferedReadyStats(output);
+    }
+    for (auto& entry : tracesToRecord) {
+        if (!entry.state) {
+            continue;
+        }
+        std::ostringstream traceMsg;
+        traceMsg << "notify.ready"
+                 << " output=" << entry.output
+                 << " src=" << entry.source;
+        appendTraceEvent(entry.output, *entry.state, traceMsg.str());
     }
     if (auto ctx = this->getContext()) {
         ctx->notify(notificationPath);

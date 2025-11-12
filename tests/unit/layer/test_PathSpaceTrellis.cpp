@@ -427,6 +427,64 @@ TEST_CASE("Latest mode blocks until data arrives") {
     CHECK((std::chrono::steady_clock::now() - begin) >= 25ms);
 }
 
+TEST_CASE("Latest mode trace captures priority wake path") {
+    auto backing = std::make_shared<PathSpace>();
+    PathSpaceTrellis trellis(backing);
+
+    EnableTrellisCommand enable{
+        .name    = "/trace/out",
+        .sources = {"/trace/a", "/trace/b"},
+        .mode    = "latest",
+        .policy  = "priority",
+    };
+    auto enableResult = trellis.insert("/_system/trellis/enable", enable);
+    REQUIRE(enableResult.errors.empty());
+
+    auto consumerFuture = std::async(std::launch::async, [&]() {
+        return trellis.read<int>("/trace/out", Block{200ms});
+    });
+
+    std::this_thread::sleep_for(40ms);
+    REQUIRE(backing->insert("/trace/b", 77).errors.empty());
+
+    auto result = consumerFuture.get();
+    REQUIRE(result);
+    CHECK(result.value() == 77);
+
+    ConcretePathStringView stateRoot{"/_system/trellis/state"};
+    auto keys = backing->listChildren(stateRoot);
+    REQUIRE(keys.size() == 1);
+
+    auto tracePath = std::string{"/_system/trellis/state/"};
+    tracePath.append(keys.front());
+    tracePath.append("/stats/latest_trace");
+
+    auto trace = backing->read<TrellisTraceSnapshot>(tracePath);
+    REQUIRE(trace);
+
+    auto containsMessage = [&](std::string_view needle) -> bool {
+        return std::any_of(trace->events.begin(),
+                           trace->events.end(),
+                           [&](TrellisTraceEvent const& event) {
+                               return event.message.find(needle) != std::string::npos;
+                           });
+    };
+
+    CHECK(containsMessage("wait_latest.block"));
+    CHECK(containsMessage("notify.ready output=/trace/out src=/trace/b"));
+    CHECK(containsMessage("wait_latest.result policy=priority src=/trace/b outcome=success"));
+
+    DisableTrellisCommand disable{.name = "/trace/out"};
+    auto disableResult = trellis.insert("/_system/trellis/disable", disable);
+    REQUIRE(disableResult.errors.empty());
+
+    auto traceAfterDisable = backing->read<TrellisTraceSnapshot>(tracePath);
+    REQUIRE_FALSE(traceAfterDisable);
+    auto code = traceAfterDisable.error().code;
+    bool cleared = code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath;
+    CHECK(cleared);
+}
+
 TEST_CASE("Trellis configuration persists to backing state registry") {
     auto backing = std::make_shared<PathSpace>();
     PathSpaceTrellis trellis(backing);

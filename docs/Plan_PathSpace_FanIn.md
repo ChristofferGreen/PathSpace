@@ -2,7 +2,7 @@
 
 _Last updated: November 12, 2025_
 
-> **Status (November 12, 2025):** Latest-mode blocking still times out under the priority policy (`tests/unit/layer/test_PathSpaceTrellis.cpp`, “Latest mode blocks until data arrives”). The enable-path InvalidPathSubcomponent failure is mitigated by the new legacy cleanup, but notifications from non-primary sources never reach the waiting consumer, so the harness exits on timeout. Current focus is instrumenting waiter registration, enforcing per-source wake-ups, and validating that notifications propagate through the shared `PathSpaceContext`.
+> **Status (November 12, 2025):** Latest-mode blocking still times out under the priority policy (`tests/unit/layer/test_PathSpaceTrellis.cpp`, “Latest mode blocks until data arrives”). The enable-path InvalidPathSubcomponent failure is mitigated by the new legacy cleanup, and `PathSpaceTrellis` now records waiter registration, notification, and result events under `/_system/trellis/state/<hash>/stats/latest_trace` (bounded to 64 entries). Priority-mode reads still starve on secondary sources; use the new trace plus `tests/unit/layer/test_PathSpaceTrellis.cpp` (“Latest mode trace captures priority wake path”) to confirm notifications flow through the shared `PathSpaceContext` before tightening the wake logic.
 
 > **Previous snapshot (November 11, 2025):** `PathSpaceTrellis` ships with queue/latest fan-in, persisted configuration reloads, live stats under `_system/trellis/state/*/stats`, and per-source back-pressure limits. Latest mode performs non-destructive reads across all configured sources, honours round-robin and priority policies, and persistence keeps trellis configs + counters across restarts. Buffered fan-in remains in Deferred work.
 
@@ -54,6 +54,7 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 - Latest mode performs a non-destructive sweep across the configured sources following the active policy. Round-robin rotates the selection cursor whenever a source produces data so subsequent reads surface other producers without clearing their backing queues.
 - Trellis configs persist automatically: enabling a trellis stores `TrellisPersistedConfig` under `/_system/trellis/state/<hash>/config`; new `PathSpaceTrellis` instances reload the configs on construction. Back-pressure limits live alongside the config under `/_system/trellis/state/<hash>/config/max_waiters`.
 - Trellis stats mirror live counters under `/_system/trellis/state/<hash>/stats` (`TrellisStats` with mode, policy, sources, servedCount, waitCount, errorCount, backpressureCount, lastSource, lastErrorCode, lastUpdateNs). Stats update after each serve, record waits keyed off blocking reads, increment `backpressureCount` when the waiter cap is hit, and reset the last error on success. Buffered readiness is exposed separately via `/_system/trellis/state/<hash>/stats/buffered_ready`.
+- Latest-mode traces persist to `/_system/trellis/state/<hash>/stats/latest_trace` as a bounded (`64` entries) `TrellisTraceSnapshot`. Each `TrellisTraceEvent` records a nanosecond timestamp plus a human-readable message (register, wait/block, notify, result) so priority wake paths can be inspected without the temporary `std::cout` logging.
 
 ## Read/take behaviour
 - `out()` override checks whether the requested path matches a trellis output:
@@ -94,6 +95,7 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 - Stats surface served/wait/error/back-pressure counters and last-source metadata under `/_system/trellis/state/<hash>/stats`.
 - Back-pressure caps reject excess concurrent waits (`Error::CapacityExceeded`) and bump `backpressureCount`.
 - Buffered readiness counter exposed under `/_system/trellis/state/<hash>/stats/buffered_ready`.
+- Latest trace snapshot under `/_system/trellis/state/<hash>/stats/latest_trace` captures waiter/notify/result events; covered by `tests/unit/layer/test_PathSpaceTrellis.cpp` (“Latest mode trace captures priority wake path”).
 
 ## Deferred work
 - Optional glob-based source discovery.
@@ -101,7 +103,7 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 - Document persistence/stat format guarantees once buffered fan-in lands.
 
 ## Immediate follow-ups — November 12, 2025
-- **Trace latest-mode waits.** Capture waiter registration and wake paths for priority mode to confirm `PathSpaceContext::notify` sees every source and that the trellis restarts non-destructive reads after a wake.
+- **Analyze latest-mode trace output.** Review the persisted `latest_trace` snapshot for priority mode to confirm `PathSpaceContext::notify` sees every source and that the trellis restarts non-destructive reads after a wake.
 - **Distribute blocking time across sources.** Adjust the per-source blocking window so priority mode polls each configured source within the caller’s timeout budget; ensure the shared wait loop doesn’t starve secondary sources.
 - **Verify legacy cleanup post-disable.** Keep the supplemental doctest logging until the suite passes, then replace it with assertions that formally cover the removal of `/config/max_waiters` and bare `/state/<hash>` payloads.
 - **Looped test discipline.** Once the priority wake path succeeds, rerun `./scripts/compile.sh --clean --test --loop=15 --release` to confirm no regressions before returning to buffered fan-in.
