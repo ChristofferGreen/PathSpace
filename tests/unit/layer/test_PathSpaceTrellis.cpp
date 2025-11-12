@@ -14,83 +14,12 @@
 #include <vector>
 #include <numeric>
 #include <string_view>
-#include <iostream>
 
 using namespace std::chrono_literals;
 
 namespace SP {
 
 TEST_SUITE("PathSpaceTrellis") {
-TEST_CASE("DEBUG inspect trellis persistence") {
-    auto backing = std::make_shared<PathSpace>();
-    PathSpaceTrellis trellis(backing);
-
-    EnableTrellisCommand enable{
-        .name    = "/debug/out",
-        .sources = {"/debug/a"},
-        .mode    = "queue",
-        .policy  = "priority",
-    };
-
-    auto enableResult = trellis.insert("/_system/trellis/enable", enable);
-    std::cout << "[debug] enable errors: " << enableResult.errors.size() << "\n";
-    for (auto const& err : enableResult.errors) {
-        std::cout << "[debug] error code: " << static_cast<int>(err.code)
-                  << " message: " << err.message.value_or("<none>") << "\n";
-    }
-    REQUIRE(enableResult.errors.empty());
-
-    ConcretePathStringView stateRoot{"/_system/trellis/state"};
-    auto keys = backing->listChildren(stateRoot);
-    std::cout << "[debug] state keys count: " << keys.size() << "\n";
-    for (auto const& key : keys) {
-        std::cout << "[debug] state key: " << key << "\n";
-        auto configPath = std::string{"/_system/trellis/state/"};
-        configPath.append(key);
-        configPath.append("/config");
-        auto stored = backing->read<TrellisPersistedConfig>(configPath);
-        if (!stored) {
-            std::cout << "[debug] read config error code: " << static_cast<int>(stored.error().code) << "\n";
-            std::cout << "[debug] read config message: "
-                      << stored.error().message.value_or("<none>") << "\n";
-        } else {
-            std::cout << "[debug] stored name: " << stored->name << "\n";
-            std::cout << "[debug] stored mode: " << stored->mode << "\n";
-        }
-        auto legacyLimitPath = std::string{"/_system/trellis/state/"};
-        legacyLimitPath.append(key);
-        legacyLimitPath.append("/config/max_waiters");
-        auto legacyLimit = backing->read<std::uint32_t>(legacyLimitPath);
-        if (legacyLimit) {
-            std::cout << "[debug] legacy limit still present: " << legacyLimit.value() << "\n";
-        } else {
-            std::cout << "[debug] legacy limit read code: "
-                      << static_cast<int>(legacyLimit.error().code) << "\n";
-        }
-        auto limitPath = std::string{"/_system/trellis/state/"};
-        limitPath.append(key);
-        limitPath.append("/backpressure/max_waiters");
-        auto limit = backing->read<std::uint32_t>(limitPath);
-        if (!limit) {
-            std::cout << "[debug] backpressure limit read code: "
-                      << static_cast<int>(limit.error().code) << "\n";
-        } else {
-            std::cout << "[debug] backpressure limit: " << limit.value() << "\n";
-        }
-
-        DisableTrellisCommand disable{.name = "/debug/out"};
-        auto disableResult = trellis.insert("/_system/trellis/disable", disable);
-        std::cout << "[debug] disable errors: " << disableResult.errors.size() << "\n";
-        auto afterDisable = backing->read<TrellisPersistedConfig>(configPath);
-        if (!afterDisable) {
-            std::cout << "[debug] config after disable error code: "
-                      << static_cast<int>(afterDisable.error().code) << "\n";
-        } else {
-            std::cout << "[debug] config after disable still present\n";
-        }
-    }
-}
-
 TEST_CASE("Queue mode round-robin across sources") {
     auto backing = std::make_shared<PathSpace>();
     PathSpaceTrellis trellis(backing);
@@ -418,9 +347,6 @@ TEST_CASE("Latest mode blocks until data arrives") {
     if (!resultLatest) {
         CAPTURE(static_cast<int>(resultLatest.error().code));
         CAPTURE(resultLatest.error().message.value_or("<none>"));
-        std::cout << "[debug] latest error code: " << static_cast<int>(resultLatest.error().code) << "\n";
-        std::cout << "[debug] latest error message: "
-                  << resultLatest.error().message.value_or("<none>") << "\n";
     }
     REQUIRE(resultLatest);
     CHECK(resultLatest.value() == 2025);
