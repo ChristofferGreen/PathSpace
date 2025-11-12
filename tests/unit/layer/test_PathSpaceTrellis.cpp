@@ -438,6 +438,21 @@ TEST_CASE("Latest mode priority polls secondary sources promptly") {
     CHECK(result.value() == 9);
     CHECK(elapsed < 80ms);
 
+    ConcretePathStringView stateRoot{"/_system/trellis/state"};
+    auto keys = backing->listChildren(stateRoot);
+    REQUIRE(keys.size() == 1);
+    auto tracePath = std::string{"/_system/trellis/state/"};
+    tracePath.append(keys.front());
+    tracePath.append("/stats/latest_trace");
+    auto trace = backing->read<TrellisTraceSnapshot>(tracePath);
+    REQUIRE(trace);
+    auto contains = [&](std::string_view needle) {
+        return std::any_of(trace->events.begin(), trace->events.end(), [&](TrellisTraceEvent const& event) {
+            return event.message.find(needle) != std::string::npos;
+        });
+    };
+    CHECK(contains("wait_latest.ready policy=priority src=/latency/b outcome=success"));
+
     DisableTrellisCommand disable{.name = "/latency/out"};
     auto disableResult = trellis.insert("/_system/trellis/disable", disable);
     REQUIRE(disableResult.errors.empty());

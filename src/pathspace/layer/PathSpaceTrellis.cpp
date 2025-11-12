@@ -1476,6 +1476,49 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
     };
 
     for (std::size_t attempt = 0; attempt < sourcesCopy.size(); ++attempt) {
+        if (auto ready = pickReadySource(state)) {
+            updateBufferedReadyStats(canonicalOutputPath);
+            auto readyOptions   = options;
+            readyOptions.doBlock = false;
+            readyOptions.doPop   = false;
+            Iterator readyIter{*ready};
+            auto     readyErr = backing_->out(readyIter, inputMetadata, readyOptions, obj);
+            if (!readyErr) {
+                servicedSource = *ready;
+                if (policySnapshot == TrellisPolicy::RoundRobin) {
+                    auto it = std::find(sourcesCopy.begin(), sourcesCopy.end(), *ready);
+                    if (it != sourcesCopy.end()) {
+                        std::lock_guard<std::mutex> lg(state.mutex);
+                        if (!state.sources.empty()) {
+                            state.roundRobinCursor
+                                = (static_cast<std::size_t>(std::distance(sourcesCopy.begin(), it)) + 1)
+                                  % state.sources.size();
+                        }
+                    }
+                }
+                std::ostringstream readyMsg;
+                readyMsg << "wait_latest.ready"
+                         << " policy=" << policyLabel
+                         << " src=" << *ready
+                         << " outcome=success";
+                appendTraceEvent(canonicalOutputPath, state, readyMsg.str());
+                return std::nullopt;
+            }
+            if (readyErr->code != Error::Code::Timeout
+                && readyErr->code != Error::Code::NoObjectFound
+                && readyErr->code != Error::Code::NotFound
+                && readyErr->code != Error::Code::NoSuchPath) {
+                std::ostringstream readyError;
+                readyError << "wait_latest.ready"
+                           << " policy=" << policyLabel
+                           << " src=" << *ready
+                           << " outcome=error"
+                           << " error=" << describeError(*readyErr);
+                appendTraceEvent(canonicalOutputPath, state, readyError.str());
+                return readyErr;
+            }
+        }
+
         auto index = (startIndex + attempt) % sourcesCopy.size();
         auto const& selectedSource = sourcesCopy[index];
 

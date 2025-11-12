@@ -2,7 +2,7 @@
 
 _Last updated: November 12, 2025_
 
-> **Status (November 12, 2025):** Latest-mode blocking still times out under the priority policy (`tests/unit/layer/test_PathSpaceTrellis.cpp`, “Latest mode blocks until data arrives”). The enable-path InvalidPathSubcomponent failure is mitigated by the new legacy cleanup, and `PathSpaceTrellis` now records waiter registration, notification, and result events under `/_system/trellis/state/<hash>/stats/latest_trace` (bounded to 64 entries). Priority-mode reads cap each per-source wait slice at 20 ms to keep secondary sources polling promptly, and the trace-backed tests confirm both primary and secondary sources wake the consumer (`tests/unit/layer/test_PathSpaceTrellis.cpp`, “Latest mode priority polls secondary sources promptly” / “Latest mode priority wakes every source”). Next focus: translate the remaining legacy cleanup diagnostics into formal assertions before resuming buffered fan-in.
+> **Status (November 12, 2025):** Latest-mode priority waits now complete reliably in the looped suite. `waitAndServeLatest` checks the ready queue between per-source waits so secondary sources wake immediately (`tests/unit/layer/test_PathSpaceTrellis.cpp`, “Latest mode priority polls secondary sources promptly”), and the trellis trace captures both sources notifying and serving the consumer (“Latest mode priority wakes every source”). Legacy back-pressure/config nodes are formally covered, so buffered fan-in work can resume once the queued fan-in design is re-evaluated.
 
 > **Previous snapshot (November 11, 2025):** `PathSpaceTrellis` ships with queue/latest fan-in, persisted configuration reloads, live stats under `_system/trellis/state/*/stats`, and per-source back-pressure limits. Latest mode performs non-destructive reads across all configured sources, honours round-robin and priority policies, and persistence keeps trellis configs + counters across restarts. Buffered fan-in remains in Deferred work.
 
@@ -106,9 +106,9 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 - Document persistence/stat format guarantees once buffered fan-in lands.
 
 ## Immediate follow-ups — November 12, 2025
-- **Resolve priority latest timeout.** Trace `PathSpaceContext::notify` propagation to understand why the priority-mode latest test still times out under the suite and land the fix before resuming buffered fan-in.
-- **Document buffered fan-in restart criteria.** Capture the acceptance checks (trace coverage, timeout fix, persistence invariants) required before picking the deferred buffered fan-in work back up.
-- **Looped test discipline.** Once the priority wake path succeeds, rerun `./scripts/compile.sh --clean --test --loop=15 --release` to confirm no regressions before returning to buffered fan-in.
+- **Revisit buffered fan-in design.** Fold the latest-mode fixes into the queued fan-in plan and confirm the acceptance criteria for buffered readiness visibility.
+- **Extend trace coverage to queue mode.** Mirror the latest-mode trace hooks for queue mode so we can debug buffered fan-in readiness once implementation resumes.
+- **Looped test discipline.** Keep running `./scripts/compile.sh --clean --test --loop=15 --release` after each trellis change while buffered fan-in is in flight.
 
 ## Shutdown note — November 12, 2025
 - Queue/latest functionality, stats mirrors, and back-pressure limits remain implemented, but the latest-mode priority timeout must be resolved before buffered fan-in resumes.
