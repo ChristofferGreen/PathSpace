@@ -4,6 +4,7 @@
 #include "core/Error.hpp"
 #include "core/InsertReturn.hpp"
 #include "core/Out.hpp"
+#include "PathSpaceTrellisTypes.hpp"
 #include "path/ConcretePath.hpp"
 #include "path/Iterator.hpp"
 #include "type/InputData.hpp"
@@ -22,48 +23,6 @@
 #include <vector>
 
 namespace SP {
-
-struct EnableTrellisCommand {
-    std::string              name;
-    std::vector<std::string> sources;
-    std::string              mode;
-    std::string              policy;
-};
-
-struct DisableTrellisCommand {
-    std::string name;
-};
-
-struct TrellisPersistedConfig {
-    std::string              name;
-    std::vector<std::string> sources;
-    std::string              mode;
-    std::string              policy;
-};
-
-struct TrellisStats {
-    std::string              name;
-    std::string              mode;
-    std::string              policy;
-    std::vector<std::string> sources;
-    std::uint64_t            sourceCount{0};
-    std::uint64_t            servedCount{0};
-    std::uint64_t            waitCount{0};
-    std::uint64_t            errorCount{0};
-    std::uint64_t            backpressureCount{0};
-    std::string              lastSource;
-    std::int32_t             lastErrorCode{0};
-    std::uint64_t            lastUpdateNs{0};
-};
-
-struct TrellisTraceEvent {
-    std::uint64_t timestampNs{0};
-    std::string   message;
-};
-
-struct TrellisTraceSnapshot {
-    std::vector<TrellisTraceEvent> events;
-};
 
 class PathSpaceTrellis final : public PathSpaceBase {
 public:

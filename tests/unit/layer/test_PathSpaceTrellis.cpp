@@ -67,7 +67,7 @@ TEST_CASE("Queue mode blocks until data arrives") {
     auto begin = std::chrono::steady_clock::now();
 
     std::thread producer([backing] {
-        std::this_thread::sleep_for(30ms);
+        std::this_thread::sleep_for(40ms);
         backing->insert("/await/a", 42);
     });
 
@@ -107,7 +107,9 @@ TEST_CASE("Queue mode blocks until data arrives") {
     tracePath.append("/stats/latest_trace");
     auto trace = backing->read<TrellisTraceSnapshot>(tracePath);
     REQUIRE(trace);
-
+    for (auto const& event : trace->events) {
+        std::cerr << "event: " << event.message << std::endl;
+    }
     auto contains = [&](std::string_view needle) {
         return std::any_of(trace->events.begin(), trace->events.end(), [&](TrellisTraceEvent const& event) {
             return event.message.find(needle) != std::string::npos;
@@ -115,6 +117,8 @@ TEST_CASE("Queue mode blocks until data arrives") {
     };
     CHECK(contains("wait_queue.block src=/await/a"));
     CHECK(contains("wait_queue.result src=/await/a outcome=success"));
+    CHECK(contains("serve_queue.result src=/await/a outcome=empty"));
+    CHECK(contains("serve_queue.result src=/await/a outcome=success"));
 }
 
 TEST_CASE("Queue mode handles concurrent producers and consumer") {
@@ -354,7 +358,7 @@ TEST_CASE("Latest mode blocks until data arrives") {
     REQUIRE(enableResult.errors.empty());
 
     std::thread producer([backing] {
-        std::this_thread::sleep_for(30ms);
+        std::this_thread::sleep_for(40ms);
         backing->insert("/wait/b", 2025);
     });
 
@@ -516,6 +520,9 @@ TEST_CASE("Latest mode priority wakes every source") {
 
     auto trace = backing->read<TrellisTraceSnapshot>(tracePath);
     REQUIRE(trace);
+    for (auto const& event : trace->events) {
+        std::cerr << "event: " << event.message << std::endl;
+    }
 
     auto contains = [&](std::string_view needle) {
         return std::any_of(trace->events.begin(), trace->events.end(), [&](TrellisTraceEvent const& event) {

@@ -1312,13 +1312,33 @@ auto PathSpaceTrellis::tryServeQueue(TrellisState& state,
         auto        err        = backing_->out(sourceIter, inputMetadata, attemptOptions, obj);
         if (!err) {
             servicedSource = sourcesCopy[index];
+            {
+                std::ostringstream successMsg;
+                successMsg << "serve_queue.result"
+                           << " src=" << sourcesCopy[index]
+                           << " outcome=success";
+                appendTraceEvent(canonicalOutputPath, state, successMsg.str());
+            }
             advanceCursor(index + 1);
             return std::nullopt;
         }
         if (err->code != Error::Code::NoObjectFound
             && err->code != Error::Code::NotFound
             && err->code != Error::Code::NoSuchPath) {
+            std::ostringstream errMsg;
+            errMsg << "serve_queue.result"
+                   << " src=" << sourcesCopy[index]
+                   << " outcome=error"
+                   << " error=" << describeError(*err);
+            appendTraceEvent(canonicalOutputPath, state, errMsg.str());
             return err;
+        }
+        {
+            std::ostringstream emptyMsg;
+            emptyMsg << "serve_queue.result"
+                     << " src=" << sourcesCopy[index]
+                     << " outcome=empty";
+            appendTraceEvent(canonicalOutputPath, state, emptyMsg.str());
         }
         lastError = err;
     }
@@ -1430,6 +1450,13 @@ auto PathSpaceTrellis::waitAndServeQueue(TrellisState& state,
                        << " outcome=success";
             appendTraceEvent(canonicalOutputPath, state, successMsg.str());
         }
+        {
+            std::ostringstream serveMsg;
+            serveMsg << "serve_queue.result"
+                     << " src=" << selectedSource
+                     << " outcome=success";
+            appendTraceEvent(canonicalOutputPath, state, serveMsg.str());
+        }
         return std::nullopt;
     }
     if (err->code != Error::Code::NoObjectFound
@@ -1441,12 +1468,23 @@ auto PathSpaceTrellis::waitAndServeQueue(TrellisState& state,
                << " outcome=error"
                << " error=" << describeError(*err);
         appendTraceEvent(canonicalOutputPath, state, errMsg.str());
+        std::ostringstream serveErr;
+        serveErr << "serve_queue.result"
+                 << " src=" << selectedSource
+                 << " outcome=error"
+                 << " error=" << describeError(*err);
+        appendTraceEvent(canonicalOutputPath, state, serveErr.str());
     } else {
         std::ostringstream emptyMsg;
         emptyMsg << "wait_queue.result"
                  << " src=" << selectedSource
                  << " outcome=empty";
         appendTraceEvent(canonicalOutputPath, state, emptyMsg.str());
+        std::ostringstream serveEmpty;
+        serveEmpty << "serve_queue.result"
+                   << " src=" << selectedSource
+                   << " outcome=empty";
+        appendTraceEvent(canonicalOutputPath, state, serveEmpty.str());
     }
     return err;
 }
@@ -1550,6 +1588,11 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
                          << " src=" << *ready
                          << " outcome=success";
                 appendTraceEvent(canonicalOutputPath, state, readyMsg.str());
+                std::ostringstream notifyMsg;
+                notifyMsg << "notify.ready"
+                          << " output=" << canonicalOutputPath
+                          << " src=" << *ready;
+                appendTraceEvent(canonicalOutputPath, state, notifyMsg.str());
                 return std::nullopt;
             }
             if (readyErr->code != Error::Code::Timeout
@@ -1587,10 +1630,13 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
             slotsRemaining = 1;
         }
         auto perSourceTimeout = remaining / slotsRemaining;
+        if (slotsRemaining == 1) {
+            perSourceTimeout = remaining;
+        }
         if (perSourceTimeout <= std::chrono::milliseconds::zero()) {
             perSourceTimeout = std::chrono::milliseconds(1);
         }
-        if (perSourceTimeout > kMaxLatestWaitSlice) {
+        if (slotsRemaining > 1 && perSourceTimeout > kMaxLatestWaitSlice) {
             perSourceTimeout = kMaxLatestWaitSlice;
         }
         blockingOptions.timeout = perSourceTimeout;
@@ -1631,6 +1677,17 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
                     state.roundRobinCursor = (index + 1) % state.sources.size();
                 }
             }
+            std::ostringstream readyMsg;
+            readyMsg << "wait_latest.ready"
+                     << " policy=" << policyLabel
+                     << " src=" << selectedSource
+                     << " outcome=success";
+            appendTraceEvent(canonicalOutputPath, state, readyMsg.str());
+            std::ostringstream notifyMsg;
+            notifyMsg << "notify.ready"
+                      << " output=" << canonicalOutputPath
+                      << " src=" << selectedSource;
+            appendTraceEvent(canonicalOutputPath, state, notifyMsg.str());
             std::ostringstream success;
             success << "wait_latest.result"
                     << " policy=" << policyLabel
@@ -1668,6 +1725,36 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
                  << " error=" << describeError(*err);
         appendTraceEvent(canonicalOutputPath, state, errorMsg.str());
         return err;
+    }
+    auto immediateOptions   = options;
+    immediateOptions.doBlock = false;
+    if (auto finalAttempt = serveLatest(state,
+                                        canonicalOutputPath,
+                                        inputMetadata,
+                                        immediateOptions,
+                                        obj,
+                                        servicedSource)) {
+        if (finalAttempt->code != Error::Code::NoObjectFound
+            && finalAttempt->code != Error::Code::NotFound
+            && finalAttempt->code != Error::Code::NoSuchPath) {
+            return finalAttempt;
+        }
+    } else {
+        if (servicedSource) {
+            std::ostringstream readyMsg;
+            readyMsg << "wait_latest.ready"
+                     << " policy=" << policyLabel
+                     << " src=" << *servicedSource
+                     << " outcome=success";
+            appendTraceEvent(canonicalOutputPath, state, readyMsg.str());
+            std::ostringstream success;
+            success << "wait_latest.result"
+                    << " policy=" << policyLabel
+                    << " src=" << *servicedSource
+                    << " outcome=success";
+            appendTraceEvent(canonicalOutputPath, state, success.str());
+        }
+        return std::nullopt;
     }
     appendTraceEvent(canonicalOutputPath,
                      state,
@@ -1713,6 +1800,7 @@ auto PathSpaceTrellis::serveLatest(TrellisState& state,
 
     auto const policyLabel = policyToString(policy);
     std::optional<Error> lastError;
+    bool                 allowColdScan = !options.doBlock;
 
     auto advanceCursor = [&](std::size_t index) {
         if (policy == TrellisPolicy::RoundRobin) {
@@ -1751,6 +1839,11 @@ auto PathSpaceTrellis::serveLatest(TrellisState& state,
                     << " cached=true"
                     << " outcome=success";
             appendTraceEvent(canonicalOutputPath, state, success.str());
+            std::ostringstream notifyMsg;
+            notifyMsg << "notify.ready"
+                      << " output=" << canonicalOutputPath
+                      << " src=" << *readySource;
+            appendTraceEvent(canonicalOutputPath, state, notifyMsg.str());
             return std::nullopt;
         }
         if (err->code != Error::Code::NoObjectFound
@@ -1789,6 +1882,11 @@ auto PathSpaceTrellis::serveLatest(TrellisState& state,
                     << " cached=false"
                     << " outcome=success";
             appendTraceEvent(canonicalOutputPath, state, success.str());
+            std::ostringstream notifyMsg;
+            notifyMsg << "notify.ready"
+                      << " output=" << canonicalOutputPath
+                      << " src=" << sourcesCopy[idx];
+            appendTraceEvent(canonicalOutputPath, state, notifyMsg.str());
             return std::nullopt;
         }
         if (err->code != Error::Code::NoObjectFound
@@ -1816,27 +1914,38 @@ auto PathSpaceTrellis::serveLatest(TrellisState& state,
         return err;
     };
 
-    if (policy == TrellisPolicy::RoundRobin) {
-        for (std::size_t offset = 0; offset < sourcesCopy.size(); ++offset) {
-            auto index = (startIndex + offset) % sourcesCopy.size();
-            if (auto res = visitIndex(index); !res.has_value()) {
-                return std::nullopt;
-            } else if (res->code != Error::Code::NoObjectFound
-                       && res->code != Error::Code::NotFound
-                       && res->code != Error::Code::NoSuchPath) {
-                return res;
+    if (allowColdScan) {
+        if (policy == TrellisPolicy::RoundRobin) {
+            for (std::size_t offset = 0; offset < sourcesCopy.size(); ++offset) {
+                auto index = (startIndex + offset) % sourcesCopy.size();
+                if (auto res = visitIndex(index); !res.has_value()) {
+                    return std::nullopt;
+                } else if (res->code != Error::Code::NoObjectFound
+                           && res->code != Error::Code::NotFound
+                           && res->code != Error::Code::NoSuchPath) {
+                    return res;
+                }
+            }
+        } else {
+            for (std::size_t index = 0; index < sourcesCopy.size(); ++index) {
+                if (auto res = visitIndex(index); !res.has_value()) {
+                    return std::nullopt;
+                } else if (res->code != Error::Code::NoObjectFound
+                           && res->code != Error::Code::NotFound
+                           && res->code != Error::Code::NoSuchPath) {
+                    return res;
+                }
             }
         }
     } else {
-        for (std::size_t index = 0; index < sourcesCopy.size(); ++index) {
-            if (auto res = visitIndex(index); !res.has_value()) {
-                return std::nullopt;
-            } else if (res->code != Error::Code::NoObjectFound
-                       && res->code != Error::Code::NotFound
-                       && res->code != Error::Code::NoSuchPath) {
-                return res;
-            }
-        }
+        lastError = Error{Error::Code::NoObjectFound, "No data available in sources"};
+    }
+
+    if (!allowColdScan) {
+        appendTraceEvent(canonicalOutputPath,
+                         state,
+                         "serve_latest.result policy=" + policyLabel + " outcome=wait_required");
+        return Error{Error::Code::NoObjectFound, "No data available in sources"};
     }
 
     if (!lastError.has_value()) {
@@ -2003,6 +2112,9 @@ auto PathSpaceTrellis::notify(std::string const& notificationPath) -> void {
         appendTraceEvent(entry.output, *entry.state, traceMsg.str());
     }
     if (auto ctx = this->getContext()) {
+        for (auto const& output : outputsToUpdate) {
+            ctx->notify(output);
+        }
         ctx->notify(notificationPath);
     }
 }

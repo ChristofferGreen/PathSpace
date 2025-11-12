@@ -114,20 +114,15 @@ auto Leaf::inAtNode(Node& node, Iterator const& iter, InputData const& inputData
             if (match_names(name, key)) {
                 Node& child = *kv.second;
                 PathSpaceBase* nestedRaw = nullptr;
-                bool           hasData   = false;
                 {
                     std::lock_guard<std::mutex> lg(child.payloadMutex);
                     if (child.nested)
                         nestedRaw = child.nested.get();
-                    hasData = (child.data != nullptr);
                 }
                 if (nestedRaw) {
                     // Forward to nested space
                     InsertReturn nestedRet = nestedRaw->in(nextIter, inputData);
                     mergeInsertReturn(ret, nestedRet);
-                } else if (hasData) {
-                    // Do not create subkeys under a node that already holds data
-                    // (maintain invariant: leaf-with-data blocks deeper structure)
                 } else {
                     inAtNode(child, nextIter, inputData, ret);
                 }
@@ -136,22 +131,17 @@ auto Leaf::inAtNode(Node& node, Iterator const& iter, InputData const& inputData
         return;
     }
 
-    // If child exists and holds data, do not create subkeys under it
+    // Existing children may hold data; still recurse to allow mixed payload/child nodes (trellis stats etc.)
     if (Node* existing = node.getChild(name); existing) {
         PathSpaceBase* nestedRaw = nullptr;
-        bool           hasData   = false;
         {
             std::lock_guard<std::mutex> lg(existing->payloadMutex);
             if (existing->nested)
                 nestedRaw = existing->nested.get();
-            hasData = (existing->data != nullptr);
         }
         if (nestedRaw) {
             InsertReturn nestedRet = nestedRaw->in(nextIter, inputData);
             mergeInsertReturn(ret, nestedRet);
-        } else if (hasData) {
-            // Maintain invariant: no subkeys under data node
-            return;
         } else {
             inAtNode(*existing, nextIter, inputData, ret);
         }
@@ -282,9 +272,6 @@ auto Leaf::outAtNode(Node& node,
         return Error{Error::Code::NoSuchPath, "Path not found"};
 
     // If this node stores data and no deeper structure, it's an invalid subcomponent
-    if (child->hasData() && !child->hasChildren() && !child->hasNestedSpace())
-        return Error{Error::Code::InvalidPathSubcomponent, "Sub-component name is data"};
-
     auto const nextIter = iter.next();
     if (child->hasNestedSpace()) {
         return child->nested->out(nextIter, inputMetadata, Out{.doPop = doExtract, .isMinimal = true}, obj);

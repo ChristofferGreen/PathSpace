@@ -1,8 +1,8 @@
 # PathSpace Trellis (Fan-In Draft)
 
-_Last updated: November 12, 2025 (priority refresh)_
+_Last updated: November 12, 2025 (afternoon refresh)_
 
-> **Status (November 12, 2025):** Queue-mode traces now log explicit `serve_queue.result` entries (success, empty, error) so trellis diagnostics capture every dequeue attempt. The new coverage lands in `tests/unit/layer/test_PathSpaceTrellis.cpp`, “Queue mode blocks until data arrives”, ensuring both blocking and non-blocking paths persist the event stream.
+> **Status (November 12, 2025):** Queue-mode traces now log explicit `serve_queue.result` entries (success, empty, error), and latest-mode wait paths emit both `wait_latest.*` results and matching `notify.ready` entries. Targeted tests (`Queue mode blocks until data arrives`, `Latest mode trace captures priority wake path`, `Latest mode priority polls secondary sources promptly`, `Latest mode priority wakes every source`) now pass in single-shot runs after widening the final wait slice and recording the readiness events.
 
 > **Priority focus (November 12, 2025):** Migrate trellis bookkeeping to an internal `PathSpace` so readiness queues, stats, and persistence reuse core wait/notify semantics without bespoke mutexes.
 
