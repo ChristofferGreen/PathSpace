@@ -1,8 +1,10 @@
 # PathSpace Trellis (Fan-In Draft)
 
-_Last updated: November 11, 2025_
+_Last updated: November 12, 2025_
 
-> **Status (November 11, 2025):** `PathSpaceTrellis` now ships with queue/latest fan-in, persisted configuration reloads, live stats under `_system/trellis/state/*/stats`, and per-source back-pressure limits for blocking waiters. Latest mode performs non-destructive reads across all configured sources, honours the round-robin and priority policies, and persistence keeps trellis configs + counters across restarts. Remaining follow-ups focus on buffered fan-in (see Deferred work).
+> **Status (November 12, 2025):** Latest-mode blocking still times out under the priority policy (`tests/unit/layer/test_PathSpaceTrellis.cpp`, “Latest mode blocks until data arrives”). The enable-path InvalidPathSubcomponent failure is mitigated by the new legacy cleanup, but notifications from non-primary sources never reach the waiting consumer, so the harness exits on timeout. Current focus is instrumenting waiter registration, enforcing per-source wake-ups, and validating that notifications propagate through the shared `PathSpaceContext`.
+
+> **Previous snapshot (November 11, 2025):** `PathSpaceTrellis` ships with queue/latest fan-in, persisted configuration reloads, live stats under `_system/trellis/state/*/stats`, and per-source back-pressure limits. Latest mode performs non-destructive reads across all configured sources, honours round-robin and priority policies, and persistence keeps trellis configs + counters across restarts. Buffered fan-in remains in Deferred work.
 
 ## Goal
 Provide a lightweight "fan-in" overlay that exposes a single public path backed by multiple concrete source paths. Consumers read/take from the trellis path and receive whichever source produces the next payload (including executions). The trellis is implemented as a `PathSpaceBase` subclass that forwards most operations to an underlying `PathSpace` but intercepts control commands and reads for managed paths.
@@ -98,7 +100,13 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 - Buffered fan-in: richer per-source buffering/waiter infrastructure and queue visibility built atop the current back-pressure hooks.
 - Document persistence/stat format guarantees once buffered fan-in lands.
 
-## Shutdown note — November 11, 2025
-- Latest mode (priority + round-robin), persisted configs, stats counters, and back-pressure limits are live and covered by tests; trellis takes remain non-destructive so source queues stay intact.
-- Next focus: tackle buffered fan-in and evaluate how the current stats/back-pressure signals feed into residency dashboards.
-- When resuming, keep the persistence/stat schemas stable (`TrellisPersistedConfig` + `TrellisStats` under `_system/trellis/state/*`) while layering buffered fan-in on top.
+## Immediate follow-ups — November 12, 2025
+- **Trace latest-mode waits.** Capture waiter registration and wake paths for priority mode to confirm `PathSpaceContext::notify` sees every source and that the trellis restarts non-destructive reads after a wake.
+- **Distribute blocking time across sources.** Adjust the per-source blocking window so priority mode polls each configured source within the caller’s timeout budget; ensure the shared wait loop doesn’t starve secondary sources.
+- **Verify legacy cleanup post-disable.** Keep the supplemental doctest logging until the suite passes, then replace it with assertions that formally cover the removal of `/config/max_waiters` and bare `/state/<hash>` payloads.
+- **Looped test discipline.** Once the priority wake path succeeds, rerun `./scripts/compile.sh --clean --test --loop=15 --release` to confirm no regressions before returning to buffered fan-in.
+
+## Shutdown note — November 12, 2025
+- Queue/latest functionality, stats mirrors, and back-pressure limits remain implemented, but the latest-mode priority timeout must be resolved before buffered fan-in resumes.
+- Buffered fan-in stays blocked until the trellis latest-mode test passes reliably in the looped suite.
+- Keep the persistence/stat schemas stable (`TrellisPersistedConfig`, `/_system/trellis/state/<hash>/backpressure/max_waiters`, `/_system/trellis/state/<hash>/stats`, `stats/buffered_ready`) while refining the notification + wait logic.

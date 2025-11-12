@@ -140,7 +140,8 @@ private:
                             std::string const& sourcePath,
                             bool waited);
     void recordServeError(std::string const& canonicalOutputPath, Error const& error);
-    void updateBufferedReadyStats(std::string const& canonicalOutputPath);
+    void updateBufferedReadyStats(std::string const& canonicalOutputPath,
+                                  std::optional<std::size_t> readyCountOverride = std::nullopt);
     std::optional<std::string> pickReadySource(TrellisState& state);
     bool enqueueReadySource(TrellisState& state, std::string const& source);
     std::size_t bufferedReadyCount(std::string const& canonicalOutputPath);
@@ -153,6 +154,11 @@ private:
     static auto stateStatsPathFor(std::string const& canonicalOutputPath) -> std::string;
     static auto stateBackpressurePathFor(std::string const& canonicalOutputPath) -> std::string;
     static auto stateBufferedReadyPathFor(std::string const& canonicalOutputPath) -> std::string;
+    static auto legacyStateBackpressurePathFor(std::string const& canonicalOutputPath) -> std::string;
+    static auto stateRootPathFor(std::string const& canonicalOutputPath) -> std::string;
+
+    auto clearLegacyStateNode(std::string const& canonicalOutputPath,
+                              bool removeActiveConfig = false) -> std::optional<Error>;
 
     std::shared_ptr<PathSpaceBase> backing_;
     mutable std::mutex             statesMutex_;

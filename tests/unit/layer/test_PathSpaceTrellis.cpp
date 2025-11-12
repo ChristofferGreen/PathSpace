@@ -13,12 +13,83 @@
 #include <thread>
 #include <vector>
 #include <numeric>
+#include <string_view>
+#include <iostream>
 
 using namespace std::chrono_literals;
 
 namespace SP {
 
 TEST_SUITE("PathSpaceTrellis") {
+TEST_CASE("DEBUG inspect trellis persistence") {
+    auto backing = std::make_shared<PathSpace>();
+    PathSpaceTrellis trellis(backing);
+
+    EnableTrellisCommand enable{
+        .name    = "/debug/out",
+        .sources = {"/debug/a"},
+        .mode    = "queue",
+        .policy  = "priority",
+    };
+
+    auto enableResult = trellis.insert("/_system/trellis/enable", enable);
+    std::cout << "[debug] enable errors: " << enableResult.errors.size() << "\n";
+    for (auto const& err : enableResult.errors) {
+        std::cout << "[debug] error code: " << static_cast<int>(err.code)
+                  << " message: " << err.message.value_or("<none>") << "\n";
+    }
+    REQUIRE(enableResult.errors.empty());
+
+    ConcretePathStringView stateRoot{"/_system/trellis/state"};
+    auto keys = backing->listChildren(stateRoot);
+    std::cout << "[debug] state keys count: " << keys.size() << "\n";
+    for (auto const& key : keys) {
+        std::cout << "[debug] state key: " << key << "\n";
+        auto configPath = std::string{"/_system/trellis/state/"};
+        configPath.append(key);
+        configPath.append("/config");
+        auto stored = backing->read<TrellisPersistedConfig>(configPath);
+        if (!stored) {
+            std::cout << "[debug] read config error code: " << static_cast<int>(stored.error().code) << "\n";
+            std::cout << "[debug] read config message: "
+                      << stored.error().message.value_or("<none>") << "\n";
+        } else {
+            std::cout << "[debug] stored name: " << stored->name << "\n";
+            std::cout << "[debug] stored mode: " << stored->mode << "\n";
+        }
+        auto legacyLimitPath = std::string{"/_system/trellis/state/"};
+        legacyLimitPath.append(key);
+        legacyLimitPath.append("/config/max_waiters");
+        auto legacyLimit = backing->read<std::uint32_t>(legacyLimitPath);
+        if (legacyLimit) {
+            std::cout << "[debug] legacy limit still present: " << legacyLimit.value() << "\n";
+        } else {
+            std::cout << "[debug] legacy limit read code: "
+                      << static_cast<int>(legacyLimit.error().code) << "\n";
+        }
+        auto limitPath = std::string{"/_system/trellis/state/"};
+        limitPath.append(key);
+        limitPath.append("/backpressure/max_waiters");
+        auto limit = backing->read<std::uint32_t>(limitPath);
+        if (!limit) {
+            std::cout << "[debug] backpressure limit read code: "
+                      << static_cast<int>(limit.error().code) << "\n";
+        } else {
+            std::cout << "[debug] backpressure limit: " << limit.value() << "\n";
+        }
+
+        DisableTrellisCommand disable{.name = "/debug/out"};
+        auto disableResult = trellis.insert("/_system/trellis/disable", disable);
+        std::cout << "[debug] disable errors: " << disableResult.errors.size() << "\n";
+        auto afterDisable = backing->read<TrellisPersistedConfig>(configPath);
+        if (!afterDisable) {
+            std::cout << "[debug] config after disable error code: "
+                      << static_cast<int>(afterDisable.error().code) << "\n";
+        } else {
+            std::cout << "[debug] config after disable still present\n";
+        }
+    }
+}
 
 TEST_CASE("Queue mode round-robin across sources") {
     auto backing = std::make_shared<PathSpace>();
@@ -347,6 +418,9 @@ TEST_CASE("Latest mode blocks until data arrives") {
     if (!resultLatest) {
         CAPTURE(static_cast<int>(resultLatest.error().code));
         CAPTURE(resultLatest.error().message.value_or("<none>"));
+        std::cout << "[debug] latest error code: " << static_cast<int>(resultLatest.error().code) << "\n";
+        std::cout << "[debug] latest error message: "
+                  << resultLatest.error().message.value_or("<none>") << "\n";
     }
     REQUIRE(resultLatest);
     CHECK(resultLatest.value() == 2025);
@@ -382,7 +456,7 @@ TEST_CASE("Trellis configuration persists to backing state registry") {
 
     auto limitPath = std::string{"/_system/trellis/state/"};
     limitPath.append(keys.front());
-    limitPath.append("/config/max_waiters");
+    limitPath.append("/backpressure/max_waiters");
     auto limit = backing->read<std::uint32_t>(limitPath);
     REQUIRE(limit);
     CHECK(limit.value() == 0);
@@ -440,6 +514,62 @@ TEST_CASE("Trellis configuration persists to backing state registry") {
     bool limitCleared = limitCode == Error::Code::NoObjectFound
                         || limitCode == Error::Code::NoSuchPath;
     CHECK(limitCleared);
+}
+
+TEST_CASE("Legacy trellis config migrates to backpressure path") {
+    auto backing = std::make_shared<PathSpace>();
+
+    auto encodeKey = [](std::string_view path) {
+        constexpr char hexDigits[] = "0123456789abcdef";
+        std::string    encoded;
+        encoded.reserve(path.size() * 2);
+        for (unsigned char ch : path) {
+            encoded.push_back(hexDigits[(ch >> 4) & 0x0F]);
+            encoded.push_back(hexDigits[ch & 0x0F]);
+        }
+        return encoded;
+    };
+
+    auto const key        = encodeKey("/legacy/out");
+    auto       stateRoot  = std::string{"/_system/trellis/state/"};
+    stateRoot.append(key);
+
+    TrellisPersistedConfig legacyConfig{
+        .name    = "/legacy/out",
+        .sources = {"/legacy/a"},
+        .mode    = "queue",
+        .policy  = "priority",
+    };
+    REQUIRE(backing->insert(stateRoot + "/config", legacyConfig).errors.empty());
+    REQUIRE(backing->insert(stateRoot + "/config/max_waiters", static_cast<std::uint32_t>(3)).errors.empty());
+
+    PathSpaceTrellis trellis(backing);
+
+    EnableTrellisCommand enable{
+        .name    = "/legacy/out",
+        .sources = {"/legacy/a"},
+        .mode    = "queue",
+        .policy  = "priority",
+    };
+    auto enableResult = trellis.insert("/_system/trellis/enable", enable);
+    REQUIRE(enableResult.errors.empty());
+
+    auto configPath = stateRoot + "/config";
+    auto stored     = backing->read<TrellisPersistedConfig>(configPath);
+    REQUIRE(stored);
+    CHECK(stored->name == "/legacy/out");
+
+    auto limitPath = stateRoot + "/backpressure/max_waiters";
+    auto limit     = backing->read<std::uint32_t>(limitPath);
+    REQUIRE(limit);
+    CHECK(limit.value() == 3);
+
+    auto legacyLimit = backing->read<std::uint32_t>(stateRoot + "/config/max_waiters");
+    REQUIRE_FALSE(legacyLimit);
+    auto legacyCode = legacyLimit.error().code;
+    bool legacyAbsent = legacyCode == Error::Code::NoObjectFound
+                        || legacyCode == Error::Code::NoSuchPath;
+    CHECK(legacyAbsent);
 }
 
 TEST_CASE("Persisted trellis config restores on new instance") {

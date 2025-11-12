@@ -5,11 +5,13 @@
 #include "log/TaggedLogger.hpp"
 
 #include <algorithm>
+#include <iostream>
 #include <cctype>
 #include <chrono>
 #include <functional>
 #include <string_view>
 #include <vector>
+#include <array>
 
 namespace SP {
 
@@ -75,6 +77,7 @@ PathSpaceTrellis::PathSpaceTrellis(std::shared_ptr<PathSpaceBase> backing)
 
 void PathSpaceTrellis::adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context, std::string prefix) {
     PathSpaceBase::adoptContextAndPrefix(std::move(context), prefix);
+    (void)this->getNotificationSink();
     std::lock_guard<std::mutex> lg(statesMutex_);
     mountPrefix_ = std::move(prefix);
     restorePersistedStatesLocked();
@@ -134,6 +137,14 @@ auto PathSpaceTrellis::stateBackpressurePathFor(std::string const& canonicalOutp
     auto key = encodeStateKey(canonicalOutputPath);
     std::string path = "/_system/trellis/state/";
     path.append(key);
+    path.append("/backpressure/max_waiters");
+    return path;
+}
+
+auto PathSpaceTrellis::legacyStateBackpressurePathFor(std::string const& canonicalOutputPath) -> std::string {
+    auto key = encodeStateKey(canonicalOutputPath);
+    std::string path = "/_system/trellis/state/";
+    path.append(key);
     path.append("/config/max_waiters");
     return path;
 }
@@ -143,6 +154,13 @@ auto PathSpaceTrellis::stateBufferedReadyPathFor(std::string const& canonicalOut
     std::string path = "/_system/trellis/state/";
     path.append(key);
     path.append("/stats/buffered_ready");
+    return path;
+}
+
+auto PathSpaceTrellis::stateRootPathFor(std::string const& canonicalOutputPath) -> std::string {
+    auto key = encodeStateKey(canonicalOutputPath);
+    std::string path = "/_system/trellis/state/";
+    path.append(key);
     return path;
 }
 
@@ -330,10 +348,31 @@ auto PathSpaceTrellis::persistStateLocked(std::string const& canonicalOutputPath
         return existing.error();
     }
 
-    auto insertResult = backing_->insert(configPath, config);
-    if (!insertResult.errors.empty()) {
-        return insertResult.errors.front();
+    auto attemptInsert = [&]() -> std::optional<Error> {
+        auto insertResult = backing_->insert(configPath, config);
+        if (!insertResult.errors.empty()) {
+            return insertResult.errors.front();
+        }
+        return std::nullopt;
+    };
+
+    if (auto insertError = attemptInsert()) {
+        if (insertError->code == Error::Code::InvalidPathSubcomponent) {
+            if (auto legacyClear = clearLegacyStateNode(canonicalOutputPath)) {
+                return legacyClear;
+            }
+            if (auto retryError = attemptInsert()) {
+                return retryError;
+            }
+        } else {
+            return insertError;
+        }
     }
+
+    if (auto legacyClear = clearLegacyStateNode(canonicalOutputPath)) {
+        return legacyClear;
+    }
+
     auto const limitPath = stateBackpressurePathFor(canonicalOutputPath);
     while (true) {
         auto existingLimit = backing_->take<std::uint32_t>(limitPath);
@@ -361,7 +400,7 @@ auto PathSpaceTrellis::persistStateLocked(std::string const& canonicalOutputPath
     if (!limitInsert.errors.empty()) {
         return limitInsert.errors.front();
     }
-    return std::nullopt;
+    return clearLegacyStateNode(canonicalOutputPath);
 }
 
 auto PathSpaceTrellis::erasePersistedState(std::string const& canonicalOutputPath) -> std::optional<Error> {
@@ -468,7 +507,12 @@ auto PathSpaceTrellis::persistStats(std::string const& canonicalOutputPath, Trel
     if (!insertResult.errors.empty()) {
         return insertResult.errors.front();
     }
-    updateBufferedReadyStats(canonicalOutputPath);
+    std::size_t readyCountSnapshot = 0;
+    {
+        std::lock_guard<std::mutex> readyLock(state.mutex);
+        readyCountSnapshot = state.readySources.size();
+    }
+    updateBufferedReadyStats(canonicalOutputPath, readyCountSnapshot);
     return std::nullopt;
 }
 
@@ -619,11 +663,12 @@ void PathSpaceTrellis::recordServeError(std::string const& canonicalOutputPath, 
     updateBufferedReadyStats(canonicalOutputPath);
 }
 
-void PathSpaceTrellis::updateBufferedReadyStats(std::string const& canonicalOutputPath) {
+void PathSpaceTrellis::updateBufferedReadyStats(std::string const& canonicalOutputPath,
+                                                std::optional<std::size_t> readyCountOverride) {
     if (!backing_) {
         return;
     }
-    auto readyCount = bufferedReadyCount(canonicalOutputPath);
+    auto readyCount = readyCountOverride.value_or(bufferedReadyCount(canonicalOutputPath));
     auto path       = stateBufferedReadyPathFor(canonicalOutputPath);
     while (true) {
         auto existing = backing_->take<std::uint64_t>(path);
@@ -669,6 +714,7 @@ bool PathSpaceTrellis::enqueueReadySource(TrellisState& state, std::string const
     }
     state.readySources.push_back(source);
     state.readySourceSet.insert(source);
+    std::cout << "[debug] enqueueReadySource: " << source << "\n";
     return true;
 }
 
@@ -740,15 +786,48 @@ void PathSpaceTrellis::restorePersistedStatesLocked() {
         state->shuttingDown     = false;
         auto limitPath = stateBackpressurePathFor(canonicalOutput.value());
         auto limitRead = backing_->read<std::uint32_t>(limitPath);
+        bool migratedLegacyLimit = false;
         if (limitRead) {
             state->maxWaitersPerSource = limitRead.value();
         } else if (limitRead.error().code == Error::Code::InvalidType) {
             (void)backing_->take<std::string>(limitPath);
             state->maxWaitersPerSource = 0;
+        } else {
+            auto legacyLimitPath = legacyStateBackpressurePathFor(canonicalOutput.value());
+            auto legacyLimitRead = backing_->read<std::uint32_t>(legacyLimitPath);
+            if (legacyLimitRead) {
+                state->maxWaitersPerSource = legacyLimitRead.value();
+                migratedLegacyLimit        = true;
+            } else if (legacyLimitRead.error().code == Error::Code::InvalidType) {
+                (void)backing_->take<std::string>(legacyLimitPath);
+                state->maxWaitersPerSource = 0;
+                migratedLegacyLimit        = true;
+            } else {
+                auto fallbackPath = stateRootPathFor(canonicalOutput.value());
+                fallbackPath.append("/max_waiters");
+                auto fallbackRead = backing_->read<std::uint32_t>(fallbackPath);
+                if (fallbackRead) {
+                    state->maxWaitersPerSource = fallbackRead.value();
+                    migratedLegacyLimit        = true;
+                } else if (fallbackRead.error().code == Error::Code::InvalidType) {
+                    (void)backing_->take<std::string>(fallbackPath);
+                    state->maxWaitersPerSource = 0;
+                    migratedLegacyLimit        = true;
+                } else {
+                    state->maxWaitersPerSource = 0;
+                }
+            }
         }
 
         trellis_.emplace(canonicalOutput.value(), std::move(state));
-        updateBufferedReadyStats(canonicalOutput.value());
+        if (migratedLegacyLimit) {
+            auto it = trellis_.find(canonicalOutput.value());
+            if (it != trellis_.end()) {
+                (void)clearLegacyStateNode(canonicalOutput.value());
+                (void)persistStateLocked(canonicalOutput.value(), *it->second);
+            }
+        }
+        updateBufferedReadyStats(canonicalOutput.value(), 0);
         // Ensure stats exist but preserve counters when already present.
         auto statsPath = stateStatsPathFor(canonicalOutput.value());
         auto statsExisting = backing_->read<TrellisStats>(statsPath);
@@ -763,6 +842,169 @@ void PathSpaceTrellis::restorePersistedStatesLocked() {
     persistenceLoaded_ = true;
 }
 
+auto PathSpaceTrellis::clearLegacyStateNode(std::string const& canonicalOutputPath,
+                                            bool removeActiveConfig) -> std::optional<Error> {
+    if (!backing_) {
+        return Error{Error::Code::InvalidPermissions, "No backing PathSpace configured"};
+    }
+    auto const rootPath          = stateRootPathFor(canonicalOutputPath);
+    auto const legacyConfigPath  = rootPath + "/config";
+    auto const legacyLimitPaths  = std::array{
+        legacyStateBackpressurePathFor(canonicalOutputPath),
+        rootPath + "/max_waiters",
+    };
+
+    auto clearRootValue = [&]() -> std::optional<Error> {
+        while (true) {
+            auto existing = backing_->take<std::string>(rootPath);
+            if (existing) {
+                continue;
+            }
+            auto const code = existing.error().code;
+            if (code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath) {
+                break;
+            }
+            if (code == Error::Code::InvalidType) {
+                auto legacyConfig = backing_->take<TrellisPersistedConfig>(rootPath);
+                if (legacyConfig) {
+                    continue;
+                }
+                auto const legacyCode = legacyConfig.error().code;
+                if (legacyCode == Error::Code::NoObjectFound || legacyCode == Error::Code::NoSuchPath) {
+                    break;
+                }
+                if (legacyCode == Error::Code::InvalidType) {
+                    auto legacyLimit = backing_->take<std::uint32_t>(rootPath);
+                    if (legacyLimit) {
+                        continue;
+                    }
+                    auto const limitCode = legacyLimit.error().code;
+                    if (limitCode == Error::Code::NoObjectFound || limitCode == Error::Code::NoSuchPath) {
+                        break;
+                    }
+                    return legacyLimit.error();
+                }
+                return legacyConfig.error();
+            }
+            return existing.error();
+        }
+        return std::nullopt;
+    };
+
+    auto clearConfigValue = [&]() -> std::optional<Error> {
+        if (removeActiveConfig) {
+            while (true) {
+                auto existing = backing_->take<TrellisPersistedConfig>(legacyConfigPath);
+                if (existing) {
+                    continue;
+                }
+                auto const code = existing.error().code;
+                if (code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath
+                    || code == Error::Code::InvalidPathSubcomponent) {
+                    break;
+                }
+                if (code == Error::Code::InvalidType) {
+                    auto legacyString = backing_->take<std::string>(legacyConfigPath);
+                    if (legacyString) {
+                        continue;
+                    }
+                    auto const legacyCode = legacyString.error().code;
+                    if (legacyCode == Error::Code::NoObjectFound || legacyCode == Error::Code::NoSuchPath
+                        || legacyCode == Error::Code::InvalidPathSubcomponent) {
+                        break;
+                    }
+                    return legacyString.error();
+                }
+                return existing.error();
+            }
+            return std::nullopt;
+        }
+        while (true) {
+            auto existing = backing_->read<TrellisPersistedConfig>(legacyConfigPath);
+            if (existing) {
+                return std::nullopt;
+            }
+            auto const code = existing.error().code;
+            if (code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath) {
+                return std::nullopt;
+            }
+            if (code == Error::Code::InvalidType) {
+                while (true) {
+                    auto legacyString = backing_->take<std::string>(legacyConfigPath);
+                    if (legacyString) {
+                        continue;
+                    }
+                    auto const legacyCode = legacyString.error().code;
+                    if (legacyCode == Error::Code::NoObjectFound || legacyCode == Error::Code::NoSuchPath) {
+                        break;
+                    }
+                    if (legacyCode == Error::Code::InvalidType) {
+                        auto legacyLimit = backing_->take<std::uint32_t>(legacyConfigPath);
+                        if (legacyLimit) {
+                            continue;
+                        }
+                        auto const limitCode = legacyLimit.error().code;
+                        if (limitCode == Error::Code::NoObjectFound || limitCode == Error::Code::NoSuchPath) {
+                            break;
+                        }
+                        return legacyLimit.error();
+                    }
+                    return legacyString.error();
+                }
+                continue;
+            }
+            if (code == Error::Code::InvalidPathSubcomponent) {
+                if (auto rootClear = clearRootValue()) {
+                    return rootClear;
+                }
+                continue;
+            }
+            return existing.error();
+        }
+    };
+
+    auto clearLimitValue = [&](std::string const& path) -> std::optional<Error> {
+        while (true) {
+            auto existing = backing_->take<std::uint32_t>(path);
+            if (existing) {
+                continue;
+            }
+            auto const code = existing.error().code;
+            if (code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath
+                || code == Error::Code::InvalidPathSubcomponent) {
+                break;
+            }
+            if (code == Error::Code::InvalidType) {
+                auto legacyString = backing_->take<std::string>(path);
+                if (legacyString) {
+                    continue;
+                }
+                auto const legacyCode = legacyString.error().code;
+                if (legacyCode == Error::Code::NoObjectFound || legacyCode == Error::Code::NoSuchPath
+                    || legacyCode == Error::Code::InvalidPathSubcomponent) {
+                    break;
+                }
+                return legacyString.error();
+            }
+            return existing.error();
+        }
+        return std::nullopt;
+    };
+
+    if (auto rootError = clearRootValue()) {
+        return rootError;
+    }
+    if (auto configError = clearConfigValue()) {
+        return configError;
+    }
+    for (auto const& path : legacyLimitPaths) {
+        if (auto limitError = clearLimitValue(path)) {
+            return limitError;
+        }
+    }
+    return std::nullopt;
+}
+
 auto PathSpaceTrellis::handleEnable(InputData const& data) -> InsertReturn {
     InsertReturn ret;
     auto parsed = parseEnableCommand(data);
@@ -771,26 +1013,36 @@ auto PathSpaceTrellis::handleEnable(InputData const& data) -> InsertReturn {
         return ret;
     }
 
-    std::lock_guard<std::mutex> lg(statesMutex_);
+    std::unique_lock<std::mutex> statesLock(statesMutex_);
     if (trellis_.contains(parsed->outputPath)) {
         ret.errors.emplace_back(Error{Error::Code::InvalidPath, "Trellis already enabled for path"});
         return ret;
     }
 
-    auto state = std::make_shared<TrellisState>();
-    state->mode            = parsed->mode;
-    state->policy          = parsed->policy;
-    state->sources         = parsed->sources;
-    state->roundRobinCursor = 0;
-    auto [it, inserted] = trellis_.emplace(parsed->outputPath, std::move(state));
+    auto statePtr = std::make_shared<TrellisState>();
+    statePtr->mode             = parsed->mode;
+    statePtr->policy           = parsed->policy;
+    statePtr->sources          = parsed->sources;
+    statePtr->roundRobinCursor = 0;
 
-    if (auto persistError = persistStateLocked(parsed->outputPath, *it->second)) {
-        trellis_.erase(it);
+    auto [it, inserted] = trellis_.emplace(parsed->outputPath, statePtr);
+    if (!inserted) {
+        statesLock.unlock();
+        ret.errors.emplace_back(Error{Error::Code::InvalidPath, "Trellis already enabled for path"});
+        return ret;
+    }
+
+    statesLock.unlock();
+
+    if (auto persistError = persistStateLocked(parsed->outputPath, *statePtr)) {
+        std::lock_guard<std::mutex> eraseLock(statesMutex_);
+        trellis_.erase(parsed->outputPath);
         ret.errors.emplace_back(*persistError);
         return ret;
     }
-    if (auto statsError = persistStats(parsed->outputPath, *it->second)) {
-        trellis_.erase(it);
+    if (auto statsError = persistStats(parsed->outputPath, *statePtr)) {
+        std::lock_guard<std::mutex> eraseLock(statesMutex_);
+        trellis_.erase(parsed->outputPath);
         ret.errors.emplace_back(*statsError);
         return ret;
     }
@@ -1047,7 +1299,7 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
     }
 
     std::vector<std::string> sourcesCopy;
-    std::size_t              waitIndex = 0;
+    std::size_t              startIndex = 0;
     {
         std::lock_guard<std::mutex> lg(state.mutex);
         if (state.shuttingDown) {
@@ -1055,7 +1307,7 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
         }
         sourcesCopy = state.sources;
         if (!sourcesCopy.empty() && state.policy == TrellisPolicy::RoundRobin) {
-            waitIndex = state.roundRobinCursor % sourcesCopy.size();
+            startIndex = state.roundRobinCursor % sourcesCopy.size();
         }
     }
 
@@ -1072,12 +1324,6 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
         return Error{Error::Code::Timeout, "Trellis wait timed out"};
     }
 
-    auto blockingOptions   = options;
-    blockingOptions.doBlock = true;
-    blockingOptions.doPop   = false; // Latest mode is non-destructive.
-    blockingOptions.timeout = remaining;
-
-    auto const& selectedSource = sourcesCopy[waitIndex];
     auto registerWaiterIfNeeded = [&](std::string const& src) -> std::optional<Error> {
         std::lock_guard<std::mutex> lg(state.mutex);
         if (state.shuttingDown) {
@@ -1109,26 +1355,62 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
         }
     };
 
-    if (auto registrationError = registerWaiterIfNeeded(selectedSource)) {
-        return registrationError;
-    }
-    auto unregisterGuard = std::unique_ptr<void, std::function<void(void*)>>(
-        nullptr, [&](void*) { unregisterWaiter(selectedSource); });
+    for (std::size_t attempt = 0; attempt < sourcesCopy.size(); ++attempt) {
+        auto index = (startIndex + attempt) % sourcesCopy.size();
+        auto const& selectedSource = sourcesCopy[index];
 
-    Iterator sourceIter{selectedSource};
-    auto     err = backing_->out(sourceIter, inputMetadata, blockingOptions, obj);
-    unregisterGuard.reset();
-    if (!err) {
-        servicedSource = selectedSource;
-        if (state.policy == TrellisPolicy::RoundRobin) {
-            std::lock_guard<std::mutex> lg(state.mutex);
-            if (!state.sources.empty()) {
-                state.roundRobinCursor = (waitIndex + 1) % state.sources.size();
-            }
+        auto now = std::chrono::system_clock::now();
+        if (now >= deadline) {
+            break;
         }
-        return std::nullopt;
+        auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+        if (remaining <= std::chrono::milliseconds::zero()) {
+            break;
+        }
+
+        auto blockingOptions   = options;
+        blockingOptions.doBlock = true;
+        blockingOptions.doPop   = false; // Latest mode is non-destructive.
+        auto slotsRemaining      = static_cast<long>(sourcesCopy.size() - attempt);
+        if (slotsRemaining < 1) {
+            slotsRemaining = 1;
+        }
+        auto perSourceTimeout = remaining / slotsRemaining;
+        if (perSourceTimeout <= std::chrono::milliseconds::zero()) {
+            perSourceTimeout = std::chrono::milliseconds(1);
+        }
+        blockingOptions.timeout = perSourceTimeout;
+
+        if (auto registrationError = registerWaiterIfNeeded(selectedSource)) {
+            if (registrationError->code != Error::Code::CapacityExceeded) {
+                return registrationError;
+            }
+            continue;
+        }
+        auto unregisterGuard = std::unique_ptr<void, std::function<void(void*)>>(
+            nullptr, [&](void*) { unregisterWaiter(selectedSource); });
+
+        Iterator sourceIter{selectedSource};
+        auto     err = backing_->out(sourceIter, inputMetadata, blockingOptions, obj);
+        unregisterGuard.reset();
+        if (!err) {
+            servicedSource = selectedSource;
+            if (state.policy == TrellisPolicy::RoundRobin) {
+                std::lock_guard<std::mutex> lg(state.mutex);
+                if (!state.sources.empty()) {
+                    state.roundRobinCursor = (index + 1) % state.sources.size();
+                }
+            }
+            return std::nullopt;
+        }
+        if (err->code != Error::Code::Timeout
+            && err->code != Error::Code::NoObjectFound
+            && err->code != Error::Code::NotFound
+            && err->code != Error::Code::NoSuchPath) {
+            return err;
+        }
     }
-    return err;
+    return Error{Error::Code::Timeout, "Trellis wait timed out"};
 }
 
 auto PathSpaceTrellis::serveLatest(TrellisState& state,
@@ -1356,6 +1638,7 @@ auto PathSpaceTrellis::out(Iterator const& path,
 
 auto PathSpaceTrellis::notify(std::string const& notificationPath) -> void {
     std::vector<std::string> outputsToUpdate;
+    std::cout << "[debug] notify called with: " << notificationPath << "\n";
     auto canonical = canonicalizeAbsolute(notificationPath);
     if (canonical) {
         std::lock_guard<std::mutex> lg(statesMutex_);
@@ -1364,11 +1647,15 @@ auto PathSpaceTrellis::notify(std::string const& notificationPath) -> void {
             std::lock_guard<std::mutex> stateLock(statePtr->mutex);
             if (std::find(statePtr->sources.begin(), statePtr->sources.end(), canonical.value())
                 != statePtr->sources.end()) {
+                std::cout << "[debug] notify matched source " << canonical.value()
+                          << " for output " << outputPath << "\n";
                 if (enqueueReadySource(*statePtr, canonical.value())) {
                     outputsToUpdate.push_back(outputPath);
                 }
             }
         }
+    } else {
+        std::cout << "[debug] canonicalize failed for: " << notificationPath << "\n";
     }
     for (auto const& output : outputsToUpdate) {
         updateBufferedReadyStats(output);
