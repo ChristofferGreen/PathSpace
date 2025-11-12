@@ -1236,6 +1236,13 @@ auto PathSpaceTrellis::tryServeQueue(TrellisState& state,
         Iterator sourceIter{*readySource};
         auto     err = backing_->out(sourceIter, inputMetadata, attemptOptions, obj);
         if (!err) {
+            {
+                std::ostringstream readyMsg;
+                readyMsg << "serve_queue.ready"
+                         << " src=" << *readySource
+                         << " outcome=success";
+                appendTraceEvent(canonicalOutputPath, state, readyMsg.str());
+            }
             servicedSource = *readySource;
             if (state.policy == TrellisPolicy::RoundRobin) {
                 std::lock_guard<std::mutex> lg(state.mutex);
@@ -1250,8 +1257,19 @@ auto PathSpaceTrellis::tryServeQueue(TrellisState& state,
         if (err->code != Error::Code::NoObjectFound
             && err->code != Error::Code::NotFound
             && err->code != Error::Code::NoSuchPath) {
+            std::ostringstream readyErr;
+            readyErr << "serve_queue.ready"
+                     << " src=" << *readySource
+                     << " outcome=error"
+                     << " error=" << describeError(*err);
+            appendTraceEvent(canonicalOutputPath, state, readyErr.str());
             return err;
         }
+        std::ostringstream readyEmpty;
+        readyEmpty << "serve_queue.ready"
+                   << " src=" << *readySource
+                   << " outcome=empty";
+        appendTraceEvent(canonicalOutputPath, state, readyEmpty.str());
     }
     {
         std::lock_guard<std::mutex> lg(state.mutex);
@@ -1386,6 +1404,13 @@ auto PathSpaceTrellis::waitAndServeQueue(TrellisState& state,
     if (auto registrationError = registerWaiterIfNeeded(selectedSource)) {
         return registrationError;
     }
+    {
+        std::ostringstream waitMsg;
+        waitMsg << "wait_queue.block"
+                << " src=" << selectedSource
+                << " timeout_ms=" << formatDurationMs(remaining);
+        appendTraceEvent(canonicalOutputPath, state, waitMsg.str());
+    }
     auto unregisterGuard = std::unique_ptr<void, std::function<void(void*)>>(
         nullptr, [&](void*) { unregisterWaiter(selectedSource); });
 
@@ -1398,7 +1423,30 @@ auto PathSpaceTrellis::waitAndServeQueue(TrellisState& state,
             std::lock_guard<std::mutex> lg(state.mutex);
             state.roundRobinCursor = (waitIndex + 1) % sourcesCopy.size();
         }
+        {
+            std::ostringstream successMsg;
+            successMsg << "wait_queue.result"
+                       << " src=" << selectedSource
+                       << " outcome=success";
+            appendTraceEvent(canonicalOutputPath, state, successMsg.str());
+        }
         return std::nullopt;
+    }
+    if (err->code != Error::Code::NoObjectFound
+        && err->code != Error::Code::NotFound
+        && err->code != Error::Code::NoSuchPath) {
+        std::ostringstream errMsg;
+        errMsg << "wait_queue.result"
+               << " src=" << selectedSource
+               << " outcome=error"
+               << " error=" << describeError(*err);
+        appendTraceEvent(canonicalOutputPath, state, errMsg.str());
+    } else {
+        std::ostringstream emptyMsg;
+        emptyMsg << "wait_queue.result"
+                 << " src=" << selectedSource
+                 << " outcome=empty";
+        appendTraceEvent(canonicalOutputPath, state, emptyMsg.str());
     }
     return err;
 }

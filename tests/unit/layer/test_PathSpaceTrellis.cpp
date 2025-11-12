@@ -97,6 +97,24 @@ TEST_CASE("Queue mode blocks until data arrives") {
     REQUIRE(result);
     CHECK(result.value() == 42);
     CHECK((std::chrono::steady_clock::now() - begin) >= 25ms);
+
+    ConcretePathStringView stateRoot{"/_system/trellis/state"};
+    auto keys = backing->listChildren(stateRoot);
+    REQUIRE(keys.size() == 1);
+
+    auto tracePath = std::string{"/_system/trellis/state/"};
+    tracePath.append(keys.front());
+    tracePath.append("/stats/latest_trace");
+    auto trace = backing->read<TrellisTraceSnapshot>(tracePath);
+    REQUIRE(trace);
+
+    auto contains = [&](std::string_view needle) {
+        return std::any_of(trace->events.begin(), trace->events.end(), [&](TrellisTraceEvent const& event) {
+            return event.message.find(needle) != std::string::npos;
+        });
+    };
+    CHECK(contains("wait_queue.block src=/await/a"));
+    CHECK(contains("wait_queue.result src=/await/a outcome=success"));
 }
 
 TEST_CASE("Queue mode handles concurrent producers and consumer") {
