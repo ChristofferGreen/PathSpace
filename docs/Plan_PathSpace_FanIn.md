@@ -1,8 +1,40 @@
 # PathSpace Trellis (Fan-In Draft)
 
-_Last updated: November 12, 2025_
+_Last updated: November 12, 2025 (priority refresh)_
 
-> **Status (November 12, 2025):** Latest-mode priority waits now complete reliably in the looped suite. `waitAndServeLatest` checks the ready queue between per-source waits so secondary sources wake immediately (`tests/unit/layer/test_PathSpaceTrellis.cpp`, “Latest mode priority polls secondary sources promptly”), and the trellis trace captures both sources notifying and serving the consumer (“Latest mode priority wakes every source”). Legacy back-pressure/config nodes are formally covered, so buffered fan-in work can resume once the queued fan-in design is re-evaluated.
+> **Status (November 12, 2025):** Queue-mode traces now log explicit `serve_queue.result` entries (success, empty, error) so trellis diagnostics capture every dequeue attempt. The new coverage lands in `tests/unit/layer/test_PathSpaceTrellis.cpp`, “Queue mode blocks until data arrives”, ensuring both blocking and non-blocking paths persist the event stream.
+
+> **Priority focus (November 12, 2025):** Migrate trellis bookkeeping to an internal `PathSpace` so readiness queues, stats, and persistence reuse core wait/notify semantics without bespoke mutexes.
+
+## Highest priority (as of November 12, 2025)
+
+- **Internal PathSpace state migration.** Replace the ad-hoc in-memory `TrellisState` structures and mutexes with an embedded `PathSpace` that owns trellis state (`/_system/trellis/state/*`, buffered readiness, round-robin cursors, waiter counts). Requirements:
+  - provision an internal `std::shared_ptr<PathSpace>` per `PathSpaceTrellis` instance (or shared static) that is isolated from consumer-facing mounts but inherits the same `PathSpaceContext` so notification propagation stays consistent;
+  - move state mutations (`readySources`, `activeWaiters`, stats counters, trace buffers) into canonical paths within the internal space; leverage native waits and transactions instead of manual mutex protection;
+  - ensure existing persistence schema (`TrellisPersistedConfig`, back-pressure limits, stats, trace snapshots) maps cleanly onto the internal space so reloads work by replaying persisted inserts;
+  - confirm queue/latest serving paths use the embedded space’s wait APIs to block on readiness instead of custom condition handling, preserving current timeout semantics;
+  - remove now-redundant mutex fields and associated locking, documenting the concurrency shift in both the code and this plan once implemented.
+
+### Implementation plan
+
+1. **Isolate the embedded PathSpace.**
+   - Introduce a dedicated internal `PathSpace` instance that mounts under a private prefix (e.g. `/_system/trellis/internal/*`) and inherits the parent `PathSpaceContext`.
+   - Audit initialization (`PathSpaceTrellis` ctor, `adoptContextAndPrefix`) to ensure the embedded space is configured before persistence reload happens.
+2. **Mirror existing state into the internal space.**
+   - Define canonical keys for readiness queues, active waiters, round-robin cursors, and trace buffers; document the mapping in this plan.
+   - Add transitional writes so the current `TrellisState` mirrors updates into the internal space while the migration is in progress.
+3. **Switch read/serve paths to rely on internal storage.**
+   - Update queue/latest serving routines to load and update readiness/priority data via the embedded space, using its atomic operations instead of locking `TrellisState`.
+   - Replace manual waiter registration with `PathSpace` wait tokens and rely on native timeout semantics.
+4. **Retire the legacy mutex-backed structures.**
+   - Remove the `TrellisState` mutex fields and in-memory queues, folding persistence helpers (`persistStats`, `persistTraceSnapshot`, etc.) onto the embedded space.
+   - Verify persistence reload now simply replays the stored config into the embedded space; adjust tests accordingly.
+5. **Update diagnostics and tests.**
+   - Extend `tests/unit/layer/test_PathSpaceTrellis.cpp` for regression coverage: readiness counters, trace snapshots, reload after shutdown, and wait/back-pressure paths using the new storage.
+   - Add stress tests to confirm concurrency works without explicit mutexes (multiple producers/consumers, persistence reload under load).
+6. **Document and clean up.**
+   - Amend this plan and `docs/AI_Architecture.md` to describe the embedded-PathSpace architecture and removal of bespoke locking.
+   - Ensure the plan’s deferred items and status notes reflect the migration completion.
 
 > **Previous snapshot (November 11, 2025):** `PathSpaceTrellis` ships with queue/latest fan-in, persisted configuration reloads, live stats under `_system/trellis/state/*/stats`, and per-source back-pressure limits. Latest mode performs non-destructive reads across all configured sources, honours round-robin and priority policies, and persistence keeps trellis configs + counters across restarts. Buffered fan-in remains in Deferred work.
 
@@ -48,8 +80,10 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
       std::unordered_map<std::string, std::size_t> activeWaiters;
       std::deque<std::string> readySources;              // buffered fan-in notifications
       std::unordered_set<std::string> readySourceSet;    // dedupe helper for readySources
+      std::deque<TrellisTraceEvent> trace;
   };
   ```
+- _Current-state note:_ This structure reflects the mutex-backed implementation that shipped through November 12, 2025. The migration plan above replaces these in-memory fields with records stored inside an embedded `PathSpace`, eliminating the bespoke locking while preserving the on-disk schema.
 - Queue mode performs non-blocking fan-out across the configured sources; if nothing is ready and the caller requested blocking semantics, `PathSpaceTrellis` delegates the wait to the backing `PathSpace` using that space's native timeout/notify machinery.
 - Latest mode performs a non-destructive sweep across the configured sources following the active policy. Round-robin rotates the selection cursor whenever a source produces data so subsequent reads surface other producers without clearing their backing queues.
 - Trellis configs persist automatically: enabling a trellis stores `TrellisPersistedConfig` under `/_system/trellis/state/<hash>/config`; new `PathSpaceTrellis` instances reload the configs on construction. Back-pressure limits live alongside the config under `/_system/trellis/state/<hash>/config/max_waiters`.
@@ -100,6 +134,7 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 - Priority polling latency covered by `tests/unit/layer/test_PathSpaceTrellis.cpp` (“Latest mode priority polls secondary sources promptly”).
 - Queue-mode waits now emit trace entries (`tests/unit/layer/test_PathSpaceTrellis.cpp`, “Queue mode blocks until data arrives”) so buffered fan-in tooling can reuse the same inspection surface.
 - Legacy back-pressure/config nodes are removed on disable; validated by `tests/unit/layer/test_PathSpaceTrellis.cpp` (“Trellis configuration persists to backing state registry”).
+- Buffered depth accounting covered by `tests/unit/layer/test_PathSpaceTrellis.cpp` (“Queue mode buffers multiple notifications per source”, “Buffered ready count drains after blocking queue wait”).
 
 ## Deferred work
 - Optional glob-based source discovery.
@@ -107,9 +142,9 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 - Document persistence/stat format guarantees once buffered fan-in lands.
 
 ## Immediate follow-ups — November 12, 2025
-- **Revisit buffered fan-in design.** Fold the latest-mode fixes into the queued fan-in plan and confirm the acceptance criteria for buffered readiness visibility.
-- **Extend trace coverage to queue mode.** Mirror the latest-mode trace hooks for queue mode so we can debug buffered fan-in readiness once implementation resumes.
-- **Looped test discipline.** Keep running `./scripts/compile.sh --clean --test --loop=15 --release` after each trellis change while buffered fan-in is in flight.
+- **Revisit buffered fan-in design.** Reconfirm the acceptance criteria for per-source buffering now that trace coverage exists; decide whether aggregate counters should reflect per-item depth or per-source readiness and document the outcome.
+- **Persistence reload coverage.** Add a regression that reenables a trellis after shutdown, seeds buffered items, reloads persisted configs, and verifies readiness state reconciles correctly on startup (no stale notifications).
+- **Looped test discipline.** Keep running `./scripts/compile.sh --clean --test --loop=15 --release` after each trellis change while buffered fan-in work continues.
 
 ## Shutdown note — November 12, 2025
 - Queue/latest functionality, stats mirrors, and back-pressure limits remain implemented, but the latest-mode priority timeout must be resolved before buffered fan-in resumes.
