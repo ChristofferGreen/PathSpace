@@ -1,5 +1,6 @@
 #include "PathSpaceTrellis.hpp"
 
+#include "PathSpace.hpp"
 #include "core/Error.hpp"
 #include "core/PathSpaceContext.hpp"
 #include "log/TaggedLogger.hpp"
@@ -16,6 +17,8 @@
 namespace SP {
 
 namespace {
+
+constexpr std::string_view kInternalRoot = "/_system/trellis/internal";
 
 auto toLowerCopy(std::string_view value) -> std::string {
     std::string lowered(value);
@@ -72,6 +75,7 @@ PathSpaceTrellis::PathSpaceTrellis(std::shared_ptr<PathSpaceBase> backing)
         if (auto ctx = backing_->getContext()) {
             this->adoptContextAndPrefix(ctx, {});
         }
+        ensureInternalSpace();
         std::lock_guard<std::mutex> lg(statesMutex_);
         if (!persistenceLoaded_) {
             restorePersistedStatesLocked();
@@ -82,6 +86,7 @@ PathSpaceTrellis::PathSpaceTrellis(std::shared_ptr<PathSpaceBase> backing)
 void PathSpaceTrellis::adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context, std::string prefix) {
     PathSpaceBase::adoptContextAndPrefix(std::move(context), prefix);
     (void)this->getNotificationSink();
+    ensureInternalSpace();
     std::lock_guard<std::mutex> lg(statesMutex_);
     mountPrefix_ = std::move(prefix);
     restorePersistedStatesLocked();
@@ -174,6 +179,24 @@ auto PathSpaceTrellis::stateRootPathFor(std::string const& canonicalOutputPath) 
     std::string path = "/_system/trellis/state/";
     path.append(key);
     return path;
+}
+
+void PathSpaceTrellis::ensureInternalSpace() {
+    std::lock_guard<std::mutex> guard(internalMutex_);
+    if (internalSpace_) {
+        return;
+    }
+    auto ctx = this->getContext();
+    if (!ctx && backing_) {
+        ctx = backing_->getContext();
+    }
+    if (!ctx) {
+        return;
+    }
+    if (internalPrefix_.empty()) {
+        internalPrefix_ = std::string{kInternalRoot};
+    }
+    internalSpace_ = std::make_shared<PathSpace>(ctx, internalPrefix_);
 }
 
 auto PathSpaceTrellis::formatDurationMs(std::chrono::milliseconds value) -> std::string {

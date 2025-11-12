@@ -20,6 +20,32 @@ using namespace std::chrono_literals;
 namespace SP {
 
 TEST_SUITE("PathSpaceTrellis") {
+TEST_CASE("Internal PathSpace is instantiated") {
+    auto backing = std::make_shared<PathSpace>();
+    PathSpaceTrellis trellis(backing);
+
+    auto internal = trellis.debugInternalSpace();
+    REQUIRE(internal);
+    CHECK(internal->listChildren().empty());
+
+    EnableTrellisCommand enable{
+        .name    = "/probe/out",
+        .sources = {"/probe/a"},
+        .mode    = "queue",
+        .policy  = "priority",
+    };
+    auto enableResult = trellis.insert("/_system/trellis/enable", enable);
+    REQUIRE(enableResult.errors.empty());
+
+    auto internalAfter = trellis.debugInternalSpace();
+    REQUIRE(internalAfter);
+    CHECK(internalAfter.get() == internal.get());
+
+    DisableTrellisCommand disable{.name = "/probe/out"};
+    auto disableResult = trellis.insert("/_system/trellis/disable", disable);
+    REQUIRE(disableResult.errors.empty());
+}
+
 TEST_CASE("Queue mode round-robin across sources") {
     auto backing = std::make_shared<PathSpace>();
     PathSpaceTrellis trellis(backing);

@@ -4,6 +4,7 @@
 Renderer snapshot builder details have moved out of this architecture document. See docs/Plan_SceneGraph_Renderer.md (“Decision: Snapshot Builder”) for the authoritative policy, rebuild triggers, publish/GC protocol, and performance notes. This file focuses on PathSpace core (paths, trie storage, concurrency/wait/notify, views/alias layers, and OS I/O). New AI assistants should first walk through docs/AI_Onboarding.md for the session bootstrap checklist.
 
 > **Context update (October 15, 2025):** PathSpace documentation now assumes the assistant context launched for this cycle; earlier references to legacy contexts should be interpreted accordingly.
+> **Concurrency update (November 12, 2025):** `PathSpaceTrellis` now bootstraps an internal `PathSpace` under `/_system/trellis/internal/*` during construction/enable so future phases can migrate mutex-backed bookkeeping into the shared space without touching the public API.
 
 ## UI/Rendering — cross-reference
 

@@ -2,7 +2,7 @@
 
 _Last updated: November 12, 2025 (afternoon refresh)_
 
-> **Status (November 12, 2025):** Queue-mode traces now log explicit `serve_queue.result` entries (success, empty, error), and latest-mode wait paths emit both `wait_latest.*` results and matching `notify.ready` entries. Targeted tests (`Queue mode blocks until data arrives`, `Latest mode trace captures priority wake path`, `Latest mode priority polls secondary sources promptly`, `Latest mode priority wakes every source`) now pass in single-shot runs after widening the final wait slice and recording the readiness events.
+> **Status (November 12, 2025):** Queue-mode traces now log explicit `serve_queue.result` entries (success, empty, error), and latest-mode wait paths emit both `wait_latest.*` results and matching `notify.ready` entries. Targeted tests (`Queue mode blocks until data arrives`, `Latest mode trace captures priority wake path`, `Latest mode priority polls secondary sources promptly`, `Latest mode priority wakes every source`) now pass in single-shot runs after widening the final wait slice and recording the readiness events. Phase A of the internal `PathSpace` migration is in place (trellises now bootstrap a private `PathSpace` mounted under `/_system/trellis/internal/*`, ready for runtime bookkeeping in later phases).
 
 > **Priority focus (November 12, 2025):** Migrate trellis bookkeeping to an internal `PathSpace` so readiness queues, stats, and persistence reuse core wait/notify semantics without bespoke mutexes.
 
@@ -15,26 +15,37 @@ _Last updated: November 12, 2025 (afternoon refresh)_
   - confirm queue/latest serving paths use the embedded space’s wait APIs to block on readiness instead of custom condition handling, preserving current timeout semantics;
   - remove now-redundant mutex fields and associated locking, documenting the concurrency shift in both the code and this plan once implemented.
 
-### Implementation plan
+### Migration roadmap (drafted November 12, 2025 — Codex)
 
-1. **Isolate the embedded PathSpace.**
-   - Introduce a dedicated internal `PathSpace` instance that mounts under a private prefix (e.g. `/_system/trellis/internal/*`) and inherits the parent `PathSpaceContext`.
-   - Audit initialization (`PathSpaceTrellis` ctor, `adoptContextAndPrefix`) to ensure the embedded space is configured before persistence reload happens.
-2. **Mirror existing state into the internal space.**
-   - Define canonical keys for readiness queues, active waiters, round-robin cursors, and trace buffers; document the mapping in this plan.
-   - Add transitional writes so the current `TrellisState` mirrors updates into the internal space while the migration is in progress.
-3. **Switch read/serve paths to rely on internal storage.**
-   - Update queue/latest serving routines to load and update readiness/priority data via the embedded space, using its atomic operations instead of locking `TrellisState`.
-   - Replace manual waiter registration with `PathSpace` wait tokens and rely on native timeout semantics.
-4. **Retire the legacy mutex-backed structures.**
-   - Remove the `TrellisState` mutex fields and in-memory queues, folding persistence helpers (`persistStats`, `persistTraceSnapshot`, etc.) onto the embedded space.
-   - Verify persistence reload now simply replays the stored config into the embedded space; adjust tests accordingly.
-5. **Update diagnostics and tests.**
-   - Extend `tests/unit/layer/test_PathSpaceTrellis.cpp` for regression coverage: readiness counters, trace snapshots, reload after shutdown, and wait/back-pressure paths using the new storage.
-   - Add stress tests to confirm concurrency works without explicit mutexes (multiple producers/consumers, persistence reload under load).
-6. **Document and clean up.**
-   - Amend this plan and `docs/AI_Architecture.md` to describe the embedded-PathSpace architecture and removal of bespoke locking.
-   - Ensure the plan’s deferred items and status notes reflect the migration completion.
+We will land the embedded-`PathSpace` migration in four incremental phases so each step keeps the suite green and isolates risk.
+
+1. **Phase A — Bootstrap internal space (no behavioural changes).** ✅ _Completed November 12, 2025._
+   - Instantiate a private `PathSpace` inside `PathSpaceTrellis`, mounting it under a reserved prefix (e.g. `/_system/trellis/internal/*`) while sharing the existing `PathSpaceContext`.
+   - Expose a test-only hook to confirm the embedded space exists after construction/enables; runtime bookkeeping will migrate into this space during Phase B/C.
+
+2. **Phase B — Ready-queue and trace storage migration.**
+   - Redirect queue-mode readiness bookkeeping (`readySources`, trace ring) to the internal `PathSpace` while preserving the legacy containers as an authoritative source of truth.
+   - Gate the new storage behind a feature flag or compile-time switch so we can A/B the behaviour in tests if we detect regressions.
+   - Update tests to assert `/_system/trellis/internal/<id>/runtime` mirrors ready counts and trace snapshots; extend buffered ready stats coverage accordingly.
+
+3. **Phase C — Waiter accounting and round-robin cursor.**
+   - Move `activeWaiters`, `roundRobinCursor`, and `shuttingDown` state into the internal `PathSpace`, switching queue/latest wait paths to read/write the internal records.
+   - Remove the corresponding mutex fields once the internal storage fully drives waiter registration.
+   - Add concurrency stress tests (multiple readers/writers plus shutdown) to verify we no longer depend on bespoke locking.
+
+4. **Phase D — Legacy removal and cleanup.**
+   - Delete the old `TrellisState` containers, replacing them with lightweight descriptors (mode/policy/source list/max waiters) and internal-path helpers.
+   - Simplify persistence helpers to replay solely into the internal space.
+   - Refresh documentation (`docs/AI_Architecture.md`, this plan) and update tooling references to the new runtime paths.
+
+**Validation cadence**
+- After each phase: `cmake --build build -j` followed by `./scripts/compile.sh --clean --test --loop=15 --release`.
+- Add focused doctest invocations for any new stress cases introduced in Phases B/C.
+
+**Risks & mitigations**
+- *Runtime drift between legacy and internal state (Phases B/C).* Mitigate with dual-write assertions in tests until the legacy structures are removed.
+- *Performance regressions from internal `PathSpace` overhead.* Profile queue-mode hot paths during Phase B; fall back via feature flag if we observe measurable regressions.
+- *Persistence schema compatibility.* Maintain existing stats/config nodes; internal runtime path is private and excluded from persisted state to avoid upgrade churn.
 
 > **Previous snapshot (November 11, 2025):** `PathSpaceTrellis` ships with queue/latest fan-in, persisted configuration reloads, live stats under `_system/trellis/state/*/stats`, and per-source back-pressure limits. Latest mode performs non-destructive reads across all configured sources, honours round-robin and priority policies, and persistence keeps trellis configs + counters across restarts. Buffered fan-in remains in Deferred work.
 

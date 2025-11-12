@@ -34,7 +34,7 @@ Provide a single index of active planning documents, ordered by current priority
    Exploratory unified scripting/shading language idea; no implementation scheduled.
 
 9. **Plan_PathSpace_FanIn.md** (draft)  
-   Design notes for a lightweight fan-in combiner that exposes one path backed by multiple sources. _Queue/latest modes, persisted configs, stats, back-pressure, and buffered depth accounting landed through November 12, 2025; next up is publishing per-source buffered metrics and exercising persistence reload with buffered queues—see the plan for follow-ups._
+   Design notes for a lightweight fan-in combiner that exposes one path backed by multiple sources. _Queue/latest modes, persisted configs, stats, back-pressure, and buffered depth accounting landed through November 12, 2025. A four-phase roadmap (Phase A–D) now sequences the embedded `PathSpace` migration to replace bespoke mutex bookkeeping—see the plan for details and validation cadence._
 
 ## Recommended Implementation Focus (Q4 2025)
 1. **Plan_SceneGraph.md** — active execution path for the renderer/presenter stack defined in `Plan_SceneGraph_Renderer.md`; keep driving the in-flight phases to completion while validating against the renderer blueprint.
@@ -45,7 +45,7 @@ Provide a single index of active planning documents, ordered by current priority
 6. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
 
 ## Status Snapshot — November 12, 2025
-- 🟨 (November 12, 2025) `PathSpaceTrellis` queue traces now log explicit `serve_queue.result` events for each dequeue attempt, improving diagnostics when consuming buffered sources. Follow-up work revisits buffered fan-in design and persistence coverage; see `Plan_PathSpace_FanIn.md`.
+- 🟨 (November 12, 2025) `PathSpaceTrellis` queue traces now log explicit `serve_queue.result` events for each dequeue attempt, improving diagnostics when consuming buffered sources. Phase A of the embedded-`PathSpace` roadmap is complete (internal space bootstrap; runtime bookkeeping migrates in later phases); Phase B/C migrate readiness + waiter state and Phase D retires legacy mutex structures—see `Plan_PathSpace_FanIn.md`.
 - ✅ (November 11, 2025) `PathSpaceTrellis` latest-mode fan-in landed with non-destructive reads, persisted configs, live stats, and back-pressure caps under `/_system/trellis/state/*`.
 - ✅ (November 10, 2025) Snapshot infrastructure removed: `UndoableSpace` now ships journal-only history, the snapshot codecs/tests/inspection tooling are gone, and `pathspace_history_inspect` reports journal metrics (entries, inserts, takes, barriers) instead of decoding snapshot payloads. Persistence/import/export paths operate solely on mutation logs.
 - ✅ (November 10, 2025) Journal persistence format is now documented for tooling consumers. See `docs/AI_Architecture.md` (“Journal Persistence Format”) for header layout, entry schema, and versioning guidance.

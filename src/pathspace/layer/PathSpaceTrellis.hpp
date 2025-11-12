@@ -24,6 +24,8 @@
 
 namespace SP {
 
+class PathSpace;
+
 class PathSpaceTrellis final : public PathSpaceBase {
 public:
     explicit PathSpaceTrellis(std::shared_ptr<PathSpaceBase> backing);
@@ -34,6 +36,11 @@ public:
     auto shutdown() -> void override;
     auto notify(std::string const& notificationPath) -> void override;
     void adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context, std::string prefix) override;
+
+    std::shared_ptr<PathSpace> debugInternalSpace() const {
+        std::lock_guard<std::mutex> guard(internalMutex_);
+        return internalSpace_;
+    }
 
 private:
     enum class TrellisMode { Queue, Latest };
@@ -130,6 +137,7 @@ private:
     static auto stateTracePathFor(std::string const& canonicalOutputPath) -> std::string;
     static auto legacyStateBackpressurePathFor(std::string const& canonicalOutputPath) -> std::string;
     static auto stateRootPathFor(std::string const& canonicalOutputPath) -> std::string;
+    void ensureInternalSpace();
 
     auto clearLegacyStateNode(std::string const& canonicalOutputPath,
                               bool removeActiveConfig = false) -> std::optional<Error>;
@@ -143,6 +151,9 @@ private:
     std::unordered_map<std::string, std::shared_ptr<TrellisState>> trellis_;
     std::string                                               mountPrefix_;
     bool                                                      persistenceLoaded_{false};
+    std::shared_ptr<PathSpace>                                internalSpace_;
+    std::string                                               internalPrefix_;
+    mutable std::mutex                                        internalMutex_;
 
     static constexpr std::size_t kTraceCapacity{64};
 };
