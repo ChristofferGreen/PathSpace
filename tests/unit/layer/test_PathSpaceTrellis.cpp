@@ -534,6 +534,18 @@ TEST_CASE("Trellis configuration persists to backing state registry") {
     REQUIRE(limit);
     CHECK(limit.value() == 0);
 
+    auto legacyBackpressurePath = std::string{"/_system/trellis/state/"};
+    legacyBackpressurePath.append(keys.front());
+    legacyBackpressurePath.append("/config/max_waiters");
+    auto legacyBackpressure = backing->read<std::uint32_t>(legacyBackpressurePath);
+    if (!legacyBackpressure) {
+        auto legacyCode      = legacyBackpressure.error().code;
+        bool legacyNotFound  = legacyCode == Error::Code::NoObjectFound || legacyCode == Error::Code::NoSuchPath;
+        CHECK(legacyNotFound);
+    } else {
+        CHECK(legacyBackpressure.value() == 0);
+    }
+
     auto statsPath = std::string{"/_system/trellis/state/"};
     statsPath.append(keys.front());
     statsPath.append("/stats");
@@ -587,6 +599,22 @@ TEST_CASE("Trellis configuration persists to backing state registry") {
     bool limitCleared = limitCode == Error::Code::NoObjectFound
                         || limitCode == Error::Code::NoSuchPath;
     CHECK(limitCleared);
+
+    auto removedLegacy = backing->read<std::uint32_t>(legacyBackpressurePath);
+    REQUIRE_FALSE(removedLegacy);
+    auto legacyCode = removedLegacy.error().code;
+    bool legacyCleared = legacyCode == Error::Code::NoObjectFound
+                         || legacyCode == Error::Code::NoSuchPath;
+    CHECK(legacyCleared);
+
+    auto legacyRootPath = std::string{"/_system/trellis/state/"};
+    legacyRootPath.append(keys.front());
+    auto legacyRoot = backing->read<std::string>(legacyRootPath.c_str());
+    REQUIRE_FALSE(legacyRoot);
+    auto rootCode = legacyRoot.error().code;
+    bool rootCleared = rootCode == Error::Code::NoObjectFound
+                       || rootCode == Error::Code::NoSuchPath;
+    CHECK(rootCleared);
 }
 
 TEST_CASE("Legacy trellis config migrates to backpressure path") {

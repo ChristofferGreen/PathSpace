@@ -98,6 +98,7 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 - Buffered readiness counter exposed under `/_system/trellis/state/<hash>/stats/buffered_ready`.
 - Latest trace snapshot under `/_system/trellis/state/<hash>/stats/latest_trace` captures waiter/notify/result events; covered by `tests/unit/layer/test_PathSpaceTrellis.cpp` (“Latest mode trace captures priority wake path”).
 - Priority polling latency covered by `tests/unit/layer/test_PathSpaceTrellis.cpp` (“Latest mode priority polls secondary sources promptly”).
+- Legacy back-pressure/config nodes are removed on disable; validated by `tests/unit/layer/test_PathSpaceTrellis.cpp` (“Trellis configuration persists to backing state registry”).
 
 ## Deferred work
 - Optional glob-based source discovery.
@@ -105,8 +106,8 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 - Document persistence/stat format guarantees once buffered fan-in lands.
 
 ## Immediate follow-ups — November 12, 2025
-- **Retire doctest logging.** Replace the temporary `std::cout` diagnostics in `tests/unit/layer/test_PathSpaceTrellis.cpp` with assertions backed by the new trace snapshots.
-- **Verify legacy cleanup post-disable.** Keep the supplemental doctest logging until the suite passes, then replace it with assertions that formally cover the removal of `/config/max_waiters` and bare `/state/<hash>` payloads.
+- **Resolve priority latest timeout.** Trace `PathSpaceContext::notify` propagation to understand why the priority-mode latest test still times out under the suite and land the fix before resuming buffered fan-in.
+- **Document buffered fan-in restart criteria.** Capture the acceptance checks (trace coverage, timeout fix, persistence invariants) required before picking the deferred buffered fan-in work back up.
 - **Looped test discipline.** Once the priority wake path succeeds, rerun `./scripts/compile.sh --clean --test --loop=15 --release` to confirm no regressions before returning to buffered fan-in.
 
 ## Shutdown note — November 12, 2025
