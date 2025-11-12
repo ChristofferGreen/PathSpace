@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
-#include <iomanip>
 #include <functional>
 #include <sstream>
 #include <string_view>
@@ -176,54 +175,6 @@ auto PathSpaceTrellis::stateRootPathFor(std::string const& canonicalOutputPath) 
 auto PathSpaceTrellis::formatDurationMs(std::chrono::milliseconds value) -> std::string {
     std::ostringstream oss;
     oss << value.count();
-    return oss.str();
-}
-
-auto PathSpaceTrellis::errorCodeToString(Error::Code code) -> std::string {
-    switch (code) {
-    case Error::Code::InvalidError:
-        return "invalid_error";
-    case Error::Code::UnknownError:
-        return "unknown_error";
-    case Error::Code::NoSuchPath:
-        return "no_such_path";
-    case Error::Code::InvalidPath:
-        return "invalid_path";
-    case Error::Code::InvalidPathSubcomponent:
-        return "invalid_path_subcomponent";
-    case Error::Code::InvalidType:
-        return "invalid_type";
-    case Error::Code::Timeout:
-        return "timeout";
-    case Error::Code::MalformedInput:
-        return "malformed_input";
-    case Error::Code::InvalidPermissions:
-        return "invalid_permissions";
-    case Error::Code::SerializationFunctionMissing:
-        return "serialization_function_missing";
-    case Error::Code::UnserializableType:
-        return "unserializable_type";
-    case Error::Code::NoObjectFound:
-        return "no_object_found";
-    case Error::Code::TypeMismatch:
-        return "type_mismatch";
-    case Error::Code::NotFound:
-        return "not_found";
-    case Error::Code::NotSupported:
-        return "not_supported";
-    case Error::Code::CapacityExceeded:
-        return "capacity_exceeded";
-    }
-    return "unknown_error";
-}
-
-auto PathSpaceTrellis::describeError(Error const& error) -> std::string {
-    std::ostringstream oss;
-    oss << errorCodeToString(error.code);
-    if (error.message && !error.message->empty()) {
-        oss << ":";
-        oss << *error.message;
-    }
     return oss.str();
 }
 

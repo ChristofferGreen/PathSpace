@@ -158,8 +158,6 @@ private:
                           TrellisState& state,
                           std::string message);
     static auto formatDurationMs(std::chrono::milliseconds value) -> std::string;
-    static auto errorCodeToString(Error::Code code) -> std::string;
-    static auto describeError(Error const& error) -> std::string;
     std::size_t bufferedReadyCount(std::string const& canonicalOutputPath);
     void restorePersistedStatesLocked();
     static auto modeToString(TrellisMode mode) -> std::string;
