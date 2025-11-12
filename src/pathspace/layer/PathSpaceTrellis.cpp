@@ -50,17 +50,21 @@ auto splitCommaSeparated(std::string_view value) -> std::vector<std::string> {
 }
 
 auto encodeStateKey(std::string_view path) -> std::string {
-    constexpr char hexDigits[] = "0123456789abcdef";
-    std::string    encoded;
-    encoded.reserve(path.size() * 2);
-    for (unsigned char ch : path) {
-        encoded.push_back(hexDigits[(ch >> 4) & 0x0F]);
+constexpr char hexDigits[] = "0123456789abcdef";
+std::string    encoded;
+encoded.reserve(path.size() * 2);
+for (unsigned char ch : path) {
+    encoded.push_back(hexDigits[(ch >> 4) & 0x0F]);
         encoded.push_back(hexDigits[ch & 0x0F]);
     }
     return encoded;
 }
 
 } // namespace
+
+namespace {
+constexpr auto kMaxLatestWaitSlice = std::chrono::milliseconds(20);
+}
 
 PathSpaceTrellis::PathSpaceTrellis(std::shared_ptr<PathSpaceBase> backing)
     : backing_(std::move(backing)) {
@@ -1494,6 +1498,9 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
         auto perSourceTimeout = remaining / slotsRemaining;
         if (perSourceTimeout <= std::chrono::milliseconds::zero()) {
             perSourceTimeout = std::chrono::milliseconds(1);
+        }
+        if (perSourceTimeout > kMaxLatestWaitSlice) {
+            perSourceTimeout = kMaxLatestWaitSlice;
         }
         blockingOptions.timeout = perSourceTimeout;
 

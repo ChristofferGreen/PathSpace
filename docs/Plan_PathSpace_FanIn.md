@@ -2,7 +2,7 @@
 
 _Last updated: November 12, 2025_
 
-> **Status (November 12, 2025):** Latest-mode blocking still times out under the priority policy (`tests/unit/layer/test_PathSpaceTrellis.cpp`, “Latest mode blocks until data arrives”). The enable-path InvalidPathSubcomponent failure is mitigated by the new legacy cleanup, and `PathSpaceTrellis` now records waiter registration, notification, and result events under `/_system/trellis/state/<hash>/stats/latest_trace` (bounded to 64 entries). Priority-mode reads still starve on secondary sources; use the new trace plus `tests/unit/layer/test_PathSpaceTrellis.cpp` (“Latest mode trace captures priority wake path”) to confirm notifications flow through the shared `PathSpaceContext` before tightening the wake logic.
+> **Status (November 12, 2025):** Latest-mode blocking still times out under the priority policy (`tests/unit/layer/test_PathSpaceTrellis.cpp`, “Latest mode blocks until data arrives”). The enable-path InvalidPathSubcomponent failure is mitigated by the new legacy cleanup, and `PathSpaceTrellis` now records waiter registration, notification, and result events under `/_system/trellis/state/<hash>/stats/latest_trace` (bounded to 64 entries). Priority-mode reads cap each per-source wait slice at 20 ms to keep secondary sources polling promptly (see `tests/unit/layer/test_PathSpaceTrellis.cpp`, “Latest mode priority polls secondary sources promptly”), but we still need to confirm wake propagation covers every configured source before removing the doc-test logging.
 
 > **Previous snapshot (November 11, 2025):** `PathSpaceTrellis` ships with queue/latest fan-in, persisted configuration reloads, live stats under `_system/trellis/state/*/stats`, and per-source back-pressure limits. Latest mode performs non-destructive reads across all configured sources, honours round-robin and priority policies, and persistence keeps trellis configs + counters across restarts. Buffered fan-in remains in Deferred work.
 
@@ -78,6 +78,7 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 - Blocking callers still rely on the backing `PathSpace` wait/notify loop, but the trellis now tracks active waiters per source so it can enforce the optional `maxWaitersPerSource` cap (returning `Error::CapacityExceeded` when the limit is reached).
 - On disable, the trellis marks the state as shutting down and notifies through the shared `PathSpaceContext` so outstanding waits observe `Error::Shutdown`.
 - Future iterations can build on the waiter tracking to add buffered fan-in or richer queue visibility.
+- Latest-mode priority waits limit each per-source blocking slice to 20 ms so the polling loop revisits secondary sources within the caller’s timeout budget; trace snapshots record the resulting wait/notify cycle.
 
 ## Usage examples
 1. **Widget event bridge** – enable a trellis where `sources` are multiple widget op queues; automation waits on `/system/trellis/widgetOps/out`.
@@ -96,6 +97,7 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 - Back-pressure caps reject excess concurrent waits (`Error::CapacityExceeded`) and bump `backpressureCount`.
 - Buffered readiness counter exposed under `/_system/trellis/state/<hash>/stats/buffered_ready`.
 - Latest trace snapshot under `/_system/trellis/state/<hash>/stats/latest_trace` captures waiter/notify/result events; covered by `tests/unit/layer/test_PathSpaceTrellis.cpp` (“Latest mode trace captures priority wake path”).
+- Priority polling latency covered by `tests/unit/layer/test_PathSpaceTrellis.cpp` (“Latest mode priority polls secondary sources promptly”).
 
 ## Deferred work
 - Optional glob-based source discovery.
@@ -104,7 +106,7 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 
 ## Immediate follow-ups — November 12, 2025
 - **Analyze latest-mode trace output.** Review the persisted `latest_trace` snapshot for priority mode to confirm `PathSpaceContext::notify` sees every source and that the trellis restarts non-destructive reads after a wake.
-- **Distribute blocking time across sources.** Adjust the per-source blocking window so priority mode polls each configured source within the caller’s timeout budget; ensure the shared wait loop doesn’t starve secondary sources.
+- **Validate priority wake coverage.** Use the trace plus doctest logging to prove every configured source wakes the consumer before removing the temporary logging harness.
 - **Verify legacy cleanup post-disable.** Keep the supplemental doctest logging until the suite passes, then replace it with assertions that formally cover the removal of `/config/max_waiters` and bare `/state/<hash>` payloads.
 - **Looped test discipline.** Once the priority wake path succeeds, rerun `./scripts/compile.sh --clean --test --loop=15 --release` to confirm no regressions before returning to buffered fan-in.
 

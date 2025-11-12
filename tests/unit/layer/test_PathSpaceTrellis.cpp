@@ -485,6 +485,38 @@ TEST_CASE("Latest mode trace captures priority wake path") {
     CHECK(cleared);
 }
 
+TEST_CASE("Latest mode priority polls secondary sources promptly") {
+    auto backing = std::make_shared<PathSpace>();
+    PathSpaceTrellis trellis(backing);
+
+    EnableTrellisCommand enable{
+        .name    = "/latency/out",
+        .sources = {"/latency/a", "/latency/b"},
+        .mode    = "latest",
+        .policy  = "priority",
+    };
+    auto enableResult = trellis.insert("/_system/trellis/enable", enable);
+    REQUIRE(enableResult.errors.empty());
+
+    auto begin = std::chrono::steady_clock::now();
+    auto consumer = std::async(std::launch::async, [&]() {
+        return trellis.read<int>("/latency/out", Block{150ms});
+    });
+
+    std::this_thread::sleep_for(10ms);
+    REQUIRE(backing->insert("/latency/b", 9).errors.empty());
+
+    auto result = consumer.get();
+    auto elapsed = std::chrono::steady_clock::now() - begin;
+    REQUIRE(result);
+    CHECK(result.value() == 9);
+    CHECK(elapsed < 80ms);
+
+    DisableTrellisCommand disable{.name = "/latency/out"};
+    auto disableResult = trellis.insert("/_system/trellis/disable", disable);
+    REQUIRE(disableResult.errors.empty());
+}
+
 TEST_CASE("Trellis configuration persists to backing state registry") {
     auto backing = std::make_shared<PathSpace>();
     PathSpaceTrellis trellis(backing);
