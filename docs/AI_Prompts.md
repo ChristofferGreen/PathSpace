@@ -1,9 +1,11 @@
 Never create a new git branch, only ever use master.
-Current Plan doc is ./docs/Plan_PathSpace_FanIn.md
+Current_Plan_Doc is ./docs/Plan_PathSpace_FanIn.md
 1. Have a read through of the docs in ./docs.
-2. Pick the highest prio item we should implement from Current Plan doc.
-3. Come up with a plan for implementation
+2. From Current_Plan_Doc, identify the highest-priority unfinished item (follow its own priority markers or sequencing). Explain why it’s next.
+3. Produce an implementation plan: scope, affected files/modules, validation/tests (include loop expectations), risks, and required doc updates. Ask for confirmation before executing the plan.
 
-1. Implement that, run the tests and make a commit then tell me what the next thing to implement is.
-2. Shut down, update the pertinent docs in ./docs with the current status so that we can hit the ground running fast when we start working again.
-3. If the Current Plan doc is finished, has nothing left to do then append _Finished to it's name and move it to ./docs/finished/ and update any docs that point to it.
+1. Implement the change, rebuild (`cmake --build build -j`), execute ./scripts/compile.sh --clean --test --loop=15 --release (unless maintainer-approved skips are set), and report results. Use Conventional Commit format when committing.
+2. Update all relevant docs under docs/ to reflect the new status and decisions (mention specific files touched). Summarize remaining TODOs.
+3. If Current_Plan_Docis complete, verify references (use rg), append _Finished to its name, move it into docs/finished/, and update any docs linking to it.
+4. If we made a new commit we shall perform: "git push origin master" and fix any issues it shows.
+5. Provide a final recap: code changes, test evidence, doc updates, next recommended task.
