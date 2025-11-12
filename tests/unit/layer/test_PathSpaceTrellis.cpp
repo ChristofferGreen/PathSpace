@@ -517,6 +517,63 @@ TEST_CASE("Latest mode priority polls secondary sources promptly") {
     REQUIRE(disableResult.errors.empty());
 }
 
+TEST_CASE("Latest mode priority wakes every source") {
+    auto backing = std::make_shared<PathSpace>();
+    PathSpaceTrellis trellis(backing);
+
+    EnableTrellisCommand enable{
+        .name    = "/wake/out",
+        .sources = {"/wake/a", "/wake/b"},
+        .mode    = "latest",
+        .policy  = "priority",
+    };
+    auto enableResult = trellis.insert("/_system/trellis/enable", enable);
+    REQUIRE(enableResult.errors.empty());
+
+    auto produceAndConsume = [&](std::string const& src, int value) {
+        auto begin = std::chrono::steady_clock::now();
+        auto future = std::async(std::launch::async, [&]() {
+            return trellis.read<int>("/wake/out", Block{200ms});
+        });
+        std::this_thread::sleep_for(10ms);
+        REQUIRE(backing->insert(src, value).errors.empty());
+        auto result = future.get();
+        REQUIRE(result);
+        CHECK(result.value() == value);
+        auto elapsed = std::chrono::steady_clock::now() - begin;
+        CHECK(elapsed < 120ms);
+    };
+
+    produceAndConsume("/wake/a", 301);
+    produceAndConsume("/wake/b", 302);
+
+    ConcretePathStringView stateRoot{"/_system/trellis/state"};
+    auto keys = backing->listChildren(stateRoot);
+    REQUIRE(keys.size() == 1);
+
+    auto tracePath = std::string{"/_system/trellis/state/"};
+    tracePath.append(keys.front());
+    tracePath.append("/stats/latest_trace");
+
+    auto trace = backing->read<TrellisTraceSnapshot>(tracePath);
+    REQUIRE(trace);
+
+    auto contains = [&](std::string_view needle) {
+        return std::any_of(trace->events.begin(), trace->events.end(), [&](TrellisTraceEvent const& event) {
+            return event.message.find(needle) != std::string::npos;
+        });
+    };
+
+    CHECK(contains("notify.ready output=/wake/out src=/wake/a"));
+    CHECK(contains("notify.ready output=/wake/out src=/wake/b"));
+    CHECK(contains("wait_latest.result policy=priority src=/wake/a outcome=success"));
+    CHECK(contains("wait_latest.result policy=priority src=/wake/b outcome=success"));
+
+    DisableTrellisCommand disable{.name = "/wake/out"};
+    auto disableResult = trellis.insert("/_system/trellis/disable", disable);
+    REQUIRE(disableResult.errors.empty());
+}
+
 TEST_CASE("Trellis configuration persists to backing state registry") {
     auto backing = std::make_shared<PathSpace>();
     PathSpaceTrellis trellis(backing);
