@@ -58,6 +58,7 @@ private:
         std::deque<std::string>     readySources;
         std::unordered_set<std::string> readySourceSet;
         std::deque<TrellisTraceEvent> trace;
+        std::unordered_map<std::string, std::vector<std::uint8_t>> lastSnapshots;
     };
 
     struct EnableParseResult {
@@ -123,6 +124,12 @@ private:
     void appendTraceEvent(std::string const& canonicalOutputPath,
                           TrellisState& state,
                           std::string message);
+    static std::optional<std::vector<std::uint8_t>> serializeValue(InputMetadata const& inputMetadata,
+                                                                   void* obj);
+    bool shouldAcceptLatestValue(TrellisState& state,
+                                 std::string const& source,
+                                 std::vector<std::uint8_t>&& snapshot,
+                                 bool hasMultipleSources);
     static auto formatDurationMs(std::chrono::milliseconds value) -> std::string;
     std::size_t bufferedReadyCount(std::string const& canonicalOutputPath);
     void restorePersistedStatesLocked();
@@ -154,7 +161,6 @@ private:
     std::shared_ptr<PathSpace>                                internalSpace_;
     std::string                                               internalPrefix_;
     mutable std::mutex                                        internalMutex_;
-
     static constexpr std::size_t kTraceCapacity{64};
 };
 

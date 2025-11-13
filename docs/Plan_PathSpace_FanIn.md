@@ -1,19 +1,16 @@
 # PathSpace Trellis (Fan-In Draft)
 
-_Last updated: November 12, 2025 (afternoon refresh)_
+_Last updated: November 12, 2025 (Phase C spike blocked)_
 
 > **Status (November 12, 2025):** Queue-mode traces now log explicit `serve_queue.result` entries (success, empty, error), and latest-mode wait paths emit both `wait_latest.*` results and matching `notify.ready` entries. Targeted tests (`Queue mode blocks until data arrives`, `Latest mode trace captures priority wake path`, `Latest mode priority polls secondary sources promptly`, `Latest mode priority wakes every source`) now pass in single-shot runs after widening the final wait slice and recording the readiness events. Phase A of the internal `PathSpace` migration is in place (trellises now bootstrap a private `PathSpace` mounted under `/_system/trellis/internal/*`, ready for runtime bookkeeping in later phases).
+> **Status (November 12, 2025 — evening):** Queue-mode readiness and trace buffers now dual-write to the embedded `PathSpace` under `/_system/trellis/internal/state/<hash>/runtime/*` while the legacy `TrellisState` containers remain authoritative. A feature flag (`PATHSPACE_TRELLIS_INTERNAL_RUNTIME=0`) disables mirroring if regressions appear. New tests assert the internal runtime queue/count and trace snapshots stay aligned with the backing space.
+> **Status (November 12, 2025 — night):** Phase C spike (waiter/cursor/shutdown mirroring) was prototyped but not landed. Latest-mode regressions (`Latest mode priority wakes every source`, `Latest mode priority polls secondary sources promptly`, legacy config migration) surfaced during the 15× loop, so the code changes were rolled back. Internal mirroring of waiters/cursor/shutdown remains pending (legacy mutex fields are still authoritative).
 
 > **Priority focus (November 12, 2025):** Migrate trellis bookkeeping to an internal `PathSpace` so readiness queues, stats, and persistence reuse core wait/notify semantics without bespoke mutexes.
 
-## Highest priority (as of November 12, 2025)
+## Highest priority (as of November 12, 2025 — night)
 
-- **Internal PathSpace state migration.** Replace the ad-hoc in-memory `TrellisState` structures and mutexes with an embedded `PathSpace` that owns trellis state (`/_system/trellis/state/*`, buffered readiness, round-robin cursors, waiter counts). Requirements:
-  - provision an internal `std::shared_ptr<PathSpace>` per `PathSpaceTrellis` instance (or shared static) that is isolated from consumer-facing mounts but inherits the same `PathSpaceContext` so notification propagation stays consistent;
-  - move state mutations (`readySources`, `activeWaiters`, stats counters, trace buffers) into canonical paths within the internal space; leverage native waits and transactions instead of manual mutex protection;
-  - ensure existing persistence schema (`TrellisPersistedConfig`, back-pressure limits, stats, trace snapshots) maps cleanly onto the internal space so reloads work by replaying persisted inserts;
-  - confirm queue/latest serving paths use the embedded space’s wait APIs to block on readiness instead of custom condition handling, preserving current timeout semantics;
-  - remove now-redundant mutex fields and associated locking, documenting the concurrency shift in both the code and this plan once implemented.
+- **Phase C — Waiter accounting and cursor migration (blocked).** The first implementation pass exposed latest-mode ordering regressions and intermittent legacy-config crashes during the looped suite. Rework is required before re-attempting the mirror: diagnose the latest-mode wake ordering, restore test parity, and only then reintroduce the internal runtime nodes for waiters/cursor/shutdown.
 
 ### Migration roadmap (drafted November 12, 2025 — Codex)
 
@@ -23,15 +20,15 @@ We will land the embedded-`PathSpace` migration in four incremental phases so ea
    - Instantiate a private `PathSpace` inside `PathSpaceTrellis`, mounting it under a reserved prefix (e.g. `/_system/trellis/internal/*`) while sharing the existing `PathSpaceContext`.
    - Expose a test-only hook to confirm the embedded space exists after construction/enables; runtime bookkeeping will migrate into this space during Phase B/C.
 
-2. **Phase B — Ready-queue and trace storage migration.**
-   - Redirect queue-mode readiness bookkeeping (`readySources`, trace ring) to the internal `PathSpace` while preserving the legacy containers as an authoritative source of truth.
-   - Gate the new storage behind a feature flag or compile-time switch so we can A/B the behaviour in tests if we detect regressions.
-   - Update tests to assert `/_system/trellis/internal/<id>/runtime` mirrors ready counts and trace snapshots; extend buffered ready stats coverage accordingly.
+2. **Phase B — Ready-queue and trace storage migration.** ✅ _Completed November 12, 2025._
+   - Queue-mode readiness buffers now dual-write to `/_system/trellis/internal/state/<hash>/runtime/ready/{queue,count}` while the legacy `readySources` deque stays authoritative.
+   - Trace snapshots mirror into `/_system/trellis/internal/state/<hash>/runtime/trace/latest`, kept in lock-step with persisted stats.
+   - Mirroring can be disabled via `PATHSPACE_TRELLIS_INTERNAL_RUNTIME=0`. Unit coverage (`Queue mode mirrors internal runtime ready queue and trace`) guards the internal paths.
 
-3. **Phase C — Waiter accounting and round-robin cursor.**
-   - Move `activeWaiters`, `roundRobinCursor`, and `shuttingDown` state into the internal `PathSpace`, switching queue/latest wait paths to read/write the internal records.
-   - Remove the corresponding mutex fields once the internal storage fully drives waiter registration.
-   - Add concurrency stress tests (multiple readers/writers plus shutdown) to verify we no longer depend on bespoke locking.
+3. **Phase C — Waiter accounting and round-robin cursor.** ⏸️ _On hold November 12, 2025._
+   - ⛔ Latest-mode loop failures (`Latest mode priority wakes every source`, `Latest mode priority polls secondary sources promptly`) appeared after introducing internal mirroring; the code was reverted.
+   - 🔁 Next restart: reproduce the failures with targeted doctest seeds, capture traces, and fix ordering before re-attempting mirroring. Add a focused regression to guard the wake ordering paths.
+   - 📊 Once stable, re-run the mirroring spike with incremental commits, padding the loop suite to confirm no timing regressions, then proceed to perf sampling.
 
 4. **Phase D — Legacy removal and cleanup.**
    - Delete the old `TrellisState` containers, replacing them with lightweight descriptors (mode/policy/source list/max waiters) and internal-path helpers.
@@ -146,16 +143,24 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 - Queue-mode waits now emit trace entries (`tests/unit/layer/test_PathSpaceTrellis.cpp`, “Queue mode blocks until data arrives”) so buffered fan-in tooling can reuse the same inspection surface.
 - Legacy back-pressure/config nodes are removed on disable; validated by `tests/unit/layer/test_PathSpaceTrellis.cpp` (“Trellis configuration persists to backing state registry”).
 - Buffered depth accounting covered by `tests/unit/layer/test_PathSpaceTrellis.cpp` (“Queue mode buffers multiple notifications per source”, “Buffered ready count drains after blocking queue wait”).
+- Internal runtime waiter/cursor/shutdown mirrors — _pending; ensure new regression covers this once mirroring lands._
 
 ## Deferred work
 - Optional glob-based source discovery.
 - Buffered fan-in: richer per-source buffering/waiter infrastructure and queue visibility built atop the current back-pressure hooks.
 - Document persistence/stat format guarantees once buffered fan-in lands.
 
-## Immediate follow-ups — November 12, 2025
-- **Revisit buffered fan-in design.** Reconfirm the acceptance criteria for per-source buffering now that trace coverage exists; decide whether aggregate counters should reflect per-item depth or per-source readiness and document the outcome.
-- **Persistence reload coverage.** Add a regression that reenables a trellis after shutdown, seeds buffered items, reloads persisted configs, and verifies readiness state reconciles correctly on startup (no stale notifications).
-- **Looped test discipline.** Keep running `./scripts/compile.sh --clean --test --loop=15 --release` after each trellis change while buffered fan-in work continues.
+## Immediate follow-ups — November 12, 2025 (Phase C on hold)
+- **Latest-mode regression triage.** Reproduce the loop failures (`Latest mode priority wakes every source`, `Latest mode priority polls secondary sources promptly`) with tracing enabled, capture the wake ordering, and fix the priority hand-off so both sources surface in the trace output again.
+- **Legacy config crash.** Investigate the `Legacy trellis config migrates to backpressure path` SIGTERM seen in the loop (likely from the rolled-back spike) to confirm no latent shutdown issues remain before the next attempt.
+- **Feature-flag safety net.** Ensure `PATHSPACE_TRELLIS_INTERNAL_RUNTIME=0` shortcuts the new paths before re-landing mirroring so the spike can be isolated without impacting production usage.
+- **Loop discipline.** Keep using `./scripts/compile.sh --clean --test --loop=15 --release` after each trellis change while buffered fan-in work continues.
+
+### Work breakdown (Phase C restart checklist)
+1. **Stabilize latest-mode priority wake path.** Add focused doctest coverage that asserts alternating sources appear in traces and results, preventing regressions.
+2. **Reintroduce waiter/cursor/shutdown mirroring incrementally.** Land dual-write helpers behind the feature flag, then layer in dedicated tests before turning the flag on by default.
+3. **Concurrency stress coverage.** Add the planned multi-waiter/shutdown regression to exercise mirrored state once the core wake ordering is stable.
+4. **Legacy field deprecation plan.** After mirroring is proven, document the cutover steps for deleting mutex-backed fields and persisting the internal runtime nodes.
 
 ## Shutdown note — November 12, 2025
 - Queue/latest functionality, stats mirrors, and back-pressure limits remain implemented, but the latest-mode priority timeout must be resolved before buffered fan-in resumes.

@@ -4,6 +4,7 @@
 #include "core/Error.hpp"
 #include "core/PathSpaceContext.hpp"
 #include "log/TaggedLogger.hpp"
+#include "type/SlidingBuffer.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -783,11 +784,14 @@ void PathSpaceTrellis::updateBufferedReadyStats(std::string const& canonicalOutp
     if (!backing_) {
         return;
     }
-    auto readyCount = readyCountOverride.value_or(bufferedReadyCount(canonicalOutputPath));
+    auto readyCount = readyCountOverride ? readyCountOverride.value()
+                                         : bufferedReadyCount(canonicalOutputPath);
     auto path       = stateBufferedReadyPathFor(canonicalOutputPath);
-    while (true) {
+    int  attempts   = 0;
+    while (attempts < 8) {
         auto existing = backing_->take<std::uint64_t>(path);
         if (existing) {
+            ++attempts;
             continue;
         }
         auto const code = existing.error().code;
@@ -797,6 +801,7 @@ void PathSpaceTrellis::updateBufferedReadyStats(std::string const& canonicalOutp
         if (code == Error::Code::InvalidType) {
             auto legacy = backing_->take<std::string>(path);
             if (legacy) {
+                ++attempts;
                 continue;
             }
             auto legacyCode = legacy.error().code;
@@ -805,6 +810,9 @@ void PathSpaceTrellis::updateBufferedReadyStats(std::string const& canonicalOutp
             }
             return;
         }
+        return;
+    }
+    if (attempts >= 8) {
         return;
     }
     (void)backing_->insert(path, static_cast<std::uint64_t>(readyCount));
@@ -855,6 +863,35 @@ void PathSpaceTrellis::appendTraceEvent(std::string const& canonicalOutputPath,
         snapshot.assign(state.trace.begin(), state.trace.end());
     }
     (void)persistTraceSnapshot(canonicalOutputPath, snapshot);
+}
+
+static auto serializeLatestSnapshot(InputMetadata const& inputMetadata, void* obj)
+    -> std::optional<std::vector<std::uint8_t>> {
+    if (!inputMetadata.serialize || obj == nullptr) {
+        return std::nullopt;
+    }
+    SlidingBuffer buffer;
+    inputMetadata.serialize(obj, buffer);
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(buffer.size());
+    bytes.insert(bytes.end(), buffer.begin(), buffer.end());
+    return bytes;
+}
+
+bool PathSpaceTrellis::shouldAcceptLatestValue(TrellisState& state,
+                                               std::string const& source,
+                                               std::vector<std::uint8_t>&& snapshot,
+                                               bool hasMultipleSources) {
+    if (!hasMultipleSources) {
+        state.lastSnapshots[source] = std::move(snapshot);
+        return true;
+    }
+    auto& last = state.lastSnapshots[source];
+    if (last == snapshot) {
+        return false;
+    }
+    last = std::move(snapshot);
+    return true;
 }
 
 std::size_t PathSpaceTrellis::bufferedReadyCount(std::string const& canonicalOutputPath) {
@@ -994,6 +1031,9 @@ auto PathSpaceTrellis::clearLegacyStateNode(std::string const& canonicalOutputPa
     };
 
     auto clearRootValue = [&]() -> std::optional<Error> {
+        if (!removeActiveConfig) {
+            return std::nullopt;
+        }
         while (true) {
             auto existing = backing_->take<std::string>(rootPath);
             if (existing) {
@@ -1154,6 +1194,12 @@ auto PathSpaceTrellis::handleEnable(InputData const& data) -> InsertReturn {
 
     std::unique_lock<std::mutex> statesLock(statesMutex_);
     if (trellis_.contains(parsed->outputPath)) {
+        auto existing = trellis_.at(parsed->outputPath);
+        if (existing && existing->mode == parsed->mode && existing->policy == parsed->policy
+            && existing->sources == parsed->sources) {
+            // Idempotent enable — path already configured with identical settings.
+            return ret;
+        }
         ret.errors.emplace_back(Error{Error::Code::InvalidPath, "Trellis already enabled for path"});
         return ret;
     }
@@ -1593,30 +1639,47 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
             Iterator readyIter{*ready};
             auto     readyErr = backing_->out(readyIter, inputMetadata, readyOptions, obj);
             if (!readyErr) {
-                servicedSource = *ready;
-                if (policySnapshot == TrellisPolicy::RoundRobin) {
-                    auto it = std::find(sourcesCopy.begin(), sourcesCopy.end(), *ready);
-                    if (it != sourcesCopy.end()) {
-                        std::lock_guard<std::mutex> lg(state.mutex);
-                        if (!state.sources.empty()) {
-                            state.roundRobinCursor
-                                = (static_cast<std::size_t>(std::distance(sourcesCopy.begin(), it)) + 1)
-                                  % state.sources.size();
-                        }
+                bool enforceFreshness = (policySnapshot == TrellisPolicy::Priority);
+                bool accept = true;
+                if (enforceFreshness) {
+                    if (auto snapshot = serializeLatestSnapshot(inputMetadata, obj)) {
+                        accept = shouldAcceptLatestValue(state, *ready, std::move(*snapshot), sourcesCopy.size() > 1);
                     }
                 }
-                std::ostringstream readyMsg;
-                readyMsg << "wait_latest.ready"
-                         << " policy=" << policyLabel
-                         << " src=" << *ready
-                         << " outcome=success";
-                appendTraceEvent(canonicalOutputPath, state, readyMsg.str());
-                std::ostringstream notifyMsg;
-                notifyMsg << "notify.ready"
-                          << " output=" << canonicalOutputPath
-                          << " src=" << *ready;
-                appendTraceEvent(canonicalOutputPath, state, notifyMsg.str());
-                return std::nullopt;
+                if (!accept) {
+                    std::ostringstream staleMsg;
+                    staleMsg << "wait_latest.ready"
+                             << " policy=" << policyLabel
+                             << " src=" << *ready
+                             << " outcome=stale";
+                    appendTraceEvent(canonicalOutputPath, state, staleMsg.str());
+                    readyErr = Error{Error::Code::NoObjectFound, "No new data available"};
+                } else {
+                    servicedSource = *ready;
+                    if (policySnapshot == TrellisPolicy::RoundRobin) {
+                        auto it = std::find(sourcesCopy.begin(), sourcesCopy.end(), *ready);
+                        if (it != sourcesCopy.end()) {
+                            std::lock_guard<std::mutex> lg(state.mutex);
+                            if (!state.sources.empty()) {
+                                state.roundRobinCursor
+                                    = (static_cast<std::size_t>(std::distance(sourcesCopy.begin(), it)) + 1)
+                                      % state.sources.size();
+                            }
+                        }
+                    }
+                    std::ostringstream readyMsg;
+                    readyMsg << "wait_latest.ready"
+                             << " policy=" << policyLabel
+                             << " src=" << *ready
+                             << " outcome=success";
+                    appendTraceEvent(canonicalOutputPath, state, readyMsg.str());
+                    std::ostringstream notifyMsg;
+                    notifyMsg << "notify.ready"
+                              << " output=" << canonicalOutputPath
+                              << " src=" << *ready;
+                    appendTraceEvent(canonicalOutputPath, state, notifyMsg.str());
+                    return std::nullopt;
+                }
             }
             if (readyErr->code != Error::Code::Timeout
                 && readyErr->code != Error::Code::NoObjectFound
@@ -1693,6 +1756,22 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
         auto     err = backing_->out(sourceIter, inputMetadata, blockingOptions, obj);
         unregisterGuard.reset();
         if (!err) {
+            bool enforceFreshness = (policySnapshot == TrellisPolicy::Priority);
+            bool accept = true;
+            if (enforceFreshness) {
+                if (auto snapshot = serializeLatestSnapshot(inputMetadata, obj)) {
+                    accept = shouldAcceptLatestValue(state, selectedSource, std::move(*snapshot), sourcesCopy.size() > 1);
+                }
+            }
+            if (!accept) {
+                std::ostringstream staleMsg;
+                staleMsg << "wait_latest.result"
+                         << " policy=" << policyLabel
+                         << " src=" << selectedSource
+                         << " outcome=stale";
+                appendTraceEvent(canonicalOutputPath, state, staleMsg.str());
+                continue;
+            }
             servicedSource = selectedSource;
             if (state.policy == TrellisPolicy::RoundRobin) {
                 std::lock_guard<std::mutex> lg(state.mutex);
@@ -1849,25 +1928,43 @@ auto PathSpaceTrellis::serveLatest(TrellisState& state,
         Iterator sourceIter{*readySource};
         auto     err = backing_->out(sourceIter, inputMetadata, attemptOptions, obj);
         if (!err) {
-            servicedSource = *readySource;
-            auto it = std::find(sourcesCopy.begin(), sourcesCopy.end(), *readySource);
-            if (it != sourcesCopy.end()) {
-                auto idx = static_cast<std::size_t>(std::distance(sourcesCopy.begin(), it));
-                advanceCursor(idx);
+            bool enforceFreshness = (policy == TrellisPolicy::Priority);
+            bool accept = true;
+            if (enforceFreshness) {
+                if (auto snapshot = serializeLatestSnapshot(inputMetadata, obj)) {
+                    accept = shouldAcceptLatestValue(state, *readySource, std::move(*snapshot), sourcesCopy.size() > 1);
+                }
             }
-            std::ostringstream success;
-            success << "serve_latest.result"
-                    << " policy=" << policyLabel
-                    << " src=" << *readySource
-                    << " cached=true"
-                    << " outcome=success";
-            appendTraceEvent(canonicalOutputPath, state, success.str());
-            std::ostringstream notifyMsg;
-            notifyMsg << "notify.ready"
-                      << " output=" << canonicalOutputPath
-                      << " src=" << *readySource;
-            appendTraceEvent(canonicalOutputPath, state, notifyMsg.str());
-            return std::nullopt;
+            if (!accept) {
+                std::ostringstream stale;
+                stale << "serve_latest.result"
+                      << " policy=" << policyLabel
+                      << " src=" << *readySource
+                      << " cached=true"
+                      << " outcome=stale";
+                appendTraceEvent(canonicalOutputPath, state, stale.str());
+                err = Error{Error::Code::NoObjectFound, "No new data available"};
+            } else {
+                servicedSource = *readySource;
+                auto it = std::find(sourcesCopy.begin(), sourcesCopy.end(), *readySource);
+                if (it != sourcesCopy.end()) {
+                    auto idx = static_cast<std::size_t>(std::distance(sourcesCopy.begin(), it));
+                    advanceCursor(idx);
+                }
+                std::ostringstream success;
+                success << "serve_latest.result"
+                        << " policy=" << policyLabel
+                        << " src=" << *readySource
+                        << " cached=true"
+                        << " outcome=success";
+                appendTraceEvent(canonicalOutputPath, state, success.str());
+                std::ostringstream notifyMsg;
+                notifyMsg << "notify.ready"
+                          << " output=" << canonicalOutputPath
+                          << " src=" << *readySource;
+                appendTraceEvent(canonicalOutputPath, state, notifyMsg.str());
+                return std::nullopt;
+            }
         }
         if (err->code != Error::Code::NoObjectFound
             && err->code != Error::Code::NotFound
@@ -1896,6 +1993,23 @@ auto PathSpaceTrellis::serveLatest(TrellisState& state,
         Iterator sourceIter{sourcesCopy[idx]};
         auto     err = backing_->out(sourceIter, inputMetadata, attemptOptions, obj);
         if (!err) {
+            bool enforceFreshness = (policy == TrellisPolicy::Priority);
+            bool accept = true;
+            if (enforceFreshness) {
+                if (auto snapshot = serializeLatestSnapshot(inputMetadata, obj)) {
+                    accept = shouldAcceptLatestValue(state, sourcesCopy[idx], std::move(*snapshot), sourcesCopy.size() > 1);
+                }
+            }
+            if (!accept) {
+                std::ostringstream staleMsg;
+                staleMsg << "serve_latest.result"
+                         << " policy=" << policyLabel
+                         << " src=" << sourcesCopy[idx]
+                         << " cached=false"
+                         << " outcome=stale";
+                appendTraceEvent(canonicalOutputPath, state, staleMsg.str());
+                return Error{Error::Code::NoObjectFound, "No new data available"};
+            }
             servicedSource = sourcesCopy[idx];
             advanceCursor(idx);
             std::ostringstream success;

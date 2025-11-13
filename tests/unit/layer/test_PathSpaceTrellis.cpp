@@ -35,6 +35,10 @@ TEST_CASE("Internal PathSpace is instantiated") {
         .policy  = "priority",
     };
     auto enableResult = trellis.insert("/_system/trellis/enable", enable);
+    for (auto const& err : enableResult.errors) {
+        std::cerr << "[legacy-test] enable error code=" << static_cast<int>(err.code)
+                  << " message=" << err.message.value_or("<none>") << std::endl;
+    }
     REQUIRE(enableResult.errors.empty());
 
     auto internalAfter = trellis.debugInternalSpace();
@@ -58,6 +62,10 @@ TEST_CASE("Queue mode round-robin across sources") {
     };
 
     auto enableResult = trellis.insert("/_system/trellis/enable", enable);
+    for (auto const& err : enableResult.errors) {
+        std::cerr << "[legacy-test] enable error code=" << static_cast<int>(err.code)
+                  << " message=" << err.message.value_or("<none>") << std::endl;
+    }
     REQUIRE(enableResult.errors.empty());
 
     REQUIRE(backing->insert("/sources/a", 1).errors.empty());
