@@ -61,4 +61,15 @@ struct TrellisRuntimeFlags {
     bool shuttingDown{false};
 };
 
+struct TrellisRuntimeDescriptor {
+    TrellisPersistedConfig       config;
+    std::vector<std::string>     readyQueue;
+    std::uint64_t                bufferedReady{0};
+    std::uint64_t                roundRobinCursor{0};
+    std::uint64_t                maxWaitersPerSource{0};
+    TrellisRuntimeFlags          flags;
+    TrellisRuntimeWaiterSnapshot waiters;
+    TrellisTraceSnapshot         trace;
+};
+
 } // namespace SP

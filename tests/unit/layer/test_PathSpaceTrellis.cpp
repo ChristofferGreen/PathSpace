@@ -42,6 +42,25 @@ struct ScopedEnvVar {
     std::optional<std::string> previous;
 };
 
+auto encodeStateKey(std::string_view path) -> std::string {
+    static constexpr char hexDigits[] = "0123456789abcdef";
+    std::string           encoded;
+    encoded.reserve(path.size() * 2);
+    for (unsigned char ch : path) {
+        encoded.push_back(hexDigits[(ch >> 4) & 0x0F]);
+        encoded.push_back(hexDigits[ch & 0x0F]);
+    }
+    return encoded;
+}
+
+auto runtimeDescriptorPath(std::string_view outputPath) -> std::string {
+    auto key = encodeStateKey(outputPath);
+    std::string path{"/state/"};
+    path.append(key);
+    path.append("/runtime/descriptor");
+    return path;
+}
+
 } // namespace
 
 TEST_SUITE("PathSpaceTrellis") {
@@ -71,10 +90,60 @@ TEST_CASE("Internal PathSpace is instantiated") {
     CHECK(internalAfter.get() == internal.get());
 
     DisableTrellisCommand disable{.name = "/probe/out"};
-    auto disableResult = trellis.insert("/_system/trellis/disable", disable);
+   auto disableResult = trellis.insert("/_system/trellis/disable", disable);
     REQUIRE(disableResult.errors.empty());
 }
 
+TEST_CASE("Runtime descriptor mirrors trellis state") {
+    auto backing = std::make_shared<PathSpace>();
+    PathSpaceTrellis trellis(backing);
+
+    EnableTrellisCommand enable{
+        .name    = "/descriptor/out",
+        .sources = {"/descriptor/a", "/descriptor/b"},
+        .mode    = "queue",
+        .policy  = "round_robin",
+    };
+    auto enableResult = trellis.insert("/_system/trellis/enable", enable);
+    REQUIRE(enableResult.errors.empty());
+
+    auto internal = trellis.debugInternalSpace();
+    REQUIRE(internal);
+
+    auto const descriptorPath = runtimeDescriptorPath("/descriptor/out");
+
+    auto descriptor = internal->read<TrellisRuntimeDescriptor>(descriptorPath);
+    REQUIRE(descriptor);
+    CHECK(descriptor->config.name == "/descriptor/out");
+    CHECK(descriptor->config.mode == "queue");
+    CHECK(descriptor->config.policy == "round_robin");
+    CHECK(descriptor->config.sources
+          == std::vector<std::string>{"/descriptor/a", "/descriptor/b"});
+    CHECK(descriptor->readyQueue.empty());
+    CHECK(descriptor->bufferedReady == 0);
+    CHECK(descriptor->flags.shuttingDown == false);
+
+    auto inserted = backing->insert("/descriptor/a", 77);
+    REQUIRE(inserted.errors.empty());
+
+    auto value = trellis.take<int>("/descriptor/out");
+    REQUIRE(value);
+    CHECK(value.value() == 77);
+
+    auto descriptorAfterTake = internal->read<TrellisRuntimeDescriptor>(descriptorPath);
+    REQUIRE(descriptorAfterTake);
+    CHECK(descriptorAfterTake->trace.events.size() >= descriptor->trace.events.size());
+
+    DisableTrellisCommand disable{.name = "/descriptor/out"};
+    auto disableResult = trellis.insert("/_system/trellis/disable", disable);
+    REQUIRE(disableResult.errors.empty());
+
+    auto descriptorAfterDisable = internal->read<TrellisRuntimeDescriptor>(descriptorPath);
+    REQUIRE_FALSE(descriptorAfterDisable);
+    auto code = descriptorAfterDisable.error().code;
+    bool isExpectedCode = (code == Error::Code::NoObjectFound) || (code == Error::Code::NoSuchPath);
+    CHECK(isExpectedCode);
+}
 TEST_CASE("Queue mode round-robin across sources") {
     auto backing = std::make_shared<PathSpace>();
     PathSpaceTrellis trellis(backing);

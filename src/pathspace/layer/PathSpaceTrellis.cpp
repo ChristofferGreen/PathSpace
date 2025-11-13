@@ -304,6 +304,13 @@ auto PathSpaceTrellis::internalRuntimeShutdownPathFor(std::string const& canonic
     return base;
 }
 
+auto PathSpaceTrellis::internalRuntimeDescriptorPathFor(std::string const& canonicalOutputPath) const
+    -> std::string {
+    auto base = internalRuntimeRootPathFor(canonicalOutputPath);
+    base.append("/descriptor");
+    return base;
+}
+
 void PathSpaceTrellis::mirrorReadyState(std::string const& canonicalOutputPath,
                                         TrellisState const& state) {
     if (!internalRuntimeEnabled()) {
@@ -323,10 +330,12 @@ void PathSpaceTrellis::mirrorReadyState(std::string const& canonicalOutputPath,
     overwriteInternalValue(*internal,
                            internalRuntimeReadyCountPathFor(canonicalOutputPath),
                            static_cast<std::uint64_t>(queueSnapshot.size()));
+    publishRuntimeDescriptor(canonicalOutputPath, state);
 }
 
 void PathSpaceTrellis::mirrorTraceSnapshotInternal(std::string const& canonicalOutputPath,
-                                                   std::vector<TrellisTraceEvent> const& snapshot) {
+                                                   std::vector<TrellisTraceEvent> const& snapshot,
+                                                   TrellisState const* state) {
     if (!internalRuntimeEnabled()) {
         return;
     }
@@ -337,6 +346,9 @@ void PathSpaceTrellis::mirrorTraceSnapshotInternal(std::string const& canonicalO
     }
     TrellisTraceSnapshot trace{.events = snapshot};
     overwriteInternalValue(*internal, internalRuntimeTracePathFor(canonicalOutputPath), trace);
+    if (state) {
+        publishRuntimeDescriptor(canonicalOutputPath, *state);
+    }
 }
 
 void PathSpaceTrellis::mirrorActiveWaiters(std::string const& canonicalOutputPath,
@@ -365,20 +377,14 @@ void PathSpaceTrellis::mirrorActiveWaiters(std::string const& canonicalOutputPat
               [](TrellisRuntimeWaiterEntry const& lhs, TrellisRuntimeWaiterEntry const& rhs) {
                   return lhs.source < rhs.source;
               });
-    std::uint64_t totalCount = 0;
-    for (auto const& entry : snapshot.entries) {
-        totalCount += entry.count;
-    }
-    fprintf(stderr, "[trellis-debug] mirrorActiveWaiters %s size=%zu total=%llu\n",
-            canonicalOutputPath.c_str(),
-            snapshot.entries.size(),
-            static_cast<unsigned long long>(totalCount));
     auto const path = internalRuntimeWaitersPathFor(canonicalOutputPath);
     overwriteInternalValue(*internal, path, snapshot);
+    publishRuntimeDescriptor(canonicalOutputPath, state);
 }
 
 void PathSpaceTrellis::mirrorRoundRobinCursor(std::string const& canonicalOutputPath,
-                                              std::size_t cursor) {
+                                              std::size_t cursor,
+                                              TrellisState const* state) {
     if (!internalRuntimeEnabled()) {
         return;
     }
@@ -390,9 +396,14 @@ void PathSpaceTrellis::mirrorRoundRobinCursor(std::string const& canonicalOutput
     overwriteInternalValue(*internal,
                            internalRuntimeCursorPathFor(canonicalOutputPath),
                            static_cast<std::uint64_t>(cursor));
+    if (state) {
+        publishRuntimeDescriptor(canonicalOutputPath, *state);
+    }
 }
 
-void PathSpaceTrellis::mirrorShuttingDownFlag(std::string const& canonicalOutputPath, bool shuttingDown) {
+void PathSpaceTrellis::mirrorShuttingDownFlag(std::string const& canonicalOutputPath,
+                                              bool shuttingDown,
+                                              TrellisState const* state) {
     if (!internalRuntimeEnabled()) {
         return;
     }
@@ -403,6 +414,9 @@ void PathSpaceTrellis::mirrorShuttingDownFlag(std::string const& canonicalOutput
     }
     TrellisRuntimeFlags flags{.shuttingDown = shuttingDown};
     overwriteInternalValue(*internal, internalRuntimeShutdownPathFor(canonicalOutputPath), flags);
+    if (state) {
+        publishRuntimeDescriptor(canonicalOutputPath, *state);
+    }
 }
 
 void PathSpaceTrellis::clearInternalRuntime(std::string const& canonicalOutputPath) {
@@ -426,6 +440,8 @@ void PathSpaceTrellis::clearInternalRuntime(std::string const& canonicalOutputPa
                                      internalRuntimeCursorPathFor(canonicalOutputPath));
     drainInternalPath<TrellisRuntimeFlags>(*internal,
                                            internalRuntimeShutdownPathFor(canonicalOutputPath));
+    drainInternalPath<TrellisRuntimeDescriptor>(*internal,
+                                                internalRuntimeDescriptorPathFor(canonicalOutputPath));
 }
 
 void PathSpaceTrellis::initializeInternalRuntime(std::string const& canonicalOutputPath,
@@ -435,9 +451,74 @@ void PathSpaceTrellis::initializeInternalRuntime(std::string const& canonicalOut
     }
     mirrorReadyState(canonicalOutputPath, state);
     mirrorActiveWaiters(canonicalOutputPath, state);
-    mirrorRoundRobinCursor(canonicalOutputPath, 0);
-    mirrorShuttingDownFlag(canonicalOutputPath, false);
-    mirrorTraceSnapshotInternal(canonicalOutputPath, {});
+    mirrorRoundRobinCursor(canonicalOutputPath, 0, &state);
+    mirrorShuttingDownFlag(canonicalOutputPath, false, &state);
+    mirrorTraceSnapshotInternal(canonicalOutputPath, {}, &state);
+    publishRuntimeDescriptor(canonicalOutputPath, state);
+}
+
+void PathSpaceTrellis::publishRuntimeDescriptor(std::string const& canonicalOutputPath,
+                                                TrellisState const& state) {
+    if (!internalRuntimeEnabled()) {
+        return;
+    }
+    ensureInternalSpace();
+    auto internal = snapshotInternalSpace();
+    if (!internal) {
+        return;
+    }
+
+    std::vector<std::string>              sourcesSnapshot;
+    std::vector<std::string>              readyQueueSnapshot;
+    std::vector<TrellisTraceEvent>        traceSnapshot;
+    std::vector<TrellisRuntimeWaiterEntry> waiterEntries;
+    std::size_t                           roundRobinCursorSnapshot = 0;
+    std::size_t                           maxWaitersSnapshot       = 0;
+    bool                                  shuttingDownSnapshot     = false;
+    TrellisMode                           modeSnapshot             = TrellisMode::Queue;
+    TrellisPolicy                         policySnapshot           = TrellisPolicy::RoundRobin;
+
+    {
+        std::lock_guard<std::mutex> lg(state.mutex);
+        sourcesSnapshot            = state.sources;
+        readyQueueSnapshot.assign(state.readySources.begin(), state.readySources.end());
+        traceSnapshot.assign(state.trace.begin(), state.trace.end());
+        waiterEntries.reserve(state.activeWaiters.size());
+        for (auto const& [source, count] : state.activeWaiters) {
+            waiterEntries.push_back(TrellisRuntimeWaiterEntry{
+                .source = source,
+                .count  = static_cast<std::uint64_t>(count),
+            });
+        }
+        roundRobinCursorSnapshot = state.roundRobinCursor;
+        maxWaitersSnapshot       = state.maxWaitersPerSource;
+        shuttingDownSnapshot     = state.shuttingDown;
+        modeSnapshot             = state.mode;
+        policySnapshot           = state.policy;
+    }
+
+    std::sort(waiterEntries.begin(),
+              waiterEntries.end(),
+              [](TrellisRuntimeWaiterEntry const& lhs, TrellisRuntimeWaiterEntry const& rhs) {
+                  return lhs.source < rhs.source;
+              });
+
+    TrellisRuntimeDescriptor descriptor;
+    descriptor.config.name    = canonicalOutputPath;
+    descriptor.config.sources = std::move(sourcesSnapshot);
+    descriptor.config.mode    = modeToString(modeSnapshot);
+    descriptor.config.policy  = policyToString(policySnapshot);
+    descriptor.readyQueue     = std::move(readyQueueSnapshot);
+    descriptor.bufferedReady  = static_cast<std::uint64_t>(descriptor.readyQueue.size());
+    descriptor.roundRobinCursor = static_cast<std::uint64_t>(roundRobinCursorSnapshot);
+    descriptor.maxWaitersPerSource = static_cast<std::uint64_t>(maxWaitersSnapshot);
+    descriptor.flags.shuttingDown  = shuttingDownSnapshot;
+    descriptor.waiters.entries     = std::move(waiterEntries);
+    descriptor.trace.events        = std::move(traceSnapshot);
+
+    overwriteInternalValue(*internal,
+                           internalRuntimeDescriptorPathFor(canonicalOutputPath),
+                           descriptor);
 }
 
 auto PathSpaceTrellis::registerWaiter(TrellisState& state,
@@ -1169,7 +1250,7 @@ void PathSpaceTrellis::appendTraceEvent(std::string const& canonicalOutputPath,
         snapshot.assign(state.trace.begin(), state.trace.end());
     }
     (void)persistTraceSnapshot(canonicalOutputPath, snapshot);
-    mirrorTraceSnapshotInternal(canonicalOutputPath, snapshot);
+    mirrorTraceSnapshotInternal(canonicalOutputPath, snapshot, &state);
 }
 
 static auto serializeLatestSnapshot(InputMetadata const& inputMetadata, void* obj)
@@ -1576,7 +1657,7 @@ auto PathSpaceTrellis::handleDisable(InputData const& data) -> InsertReturn {
         removed->shuttingDown = true;
     }
     if (removed) {
-        mirrorShuttingDownFlag(parsed.value(), true);
+        mirrorShuttingDownFlag(parsed.value(), true, removed.get());
         mirrorActiveWaiters(parsed.value(), *removed);
     }
 
@@ -1646,7 +1727,7 @@ auto PathSpaceTrellis::tryServeQueue(TrellisState& state,
                     }
                 }
                 if (nextCursor) {
-                    mirrorRoundRobinCursor(canonicalOutputPath, *nextCursor);
+                    mirrorRoundRobinCursor(canonicalOutputPath, *nextCursor, &state);
                 }
             }
             return std::nullopt;
@@ -1712,7 +1793,7 @@ auto PathSpaceTrellis::tryServeQueue(TrellisState& state,
             }
         }
         if (newCursor) {
-            mirrorRoundRobinCursor(canonicalOutputPath, *newCursor);
+            mirrorRoundRobinCursor(canonicalOutputPath, *newCursor, &state);
         }
     };
 
@@ -1839,7 +1920,7 @@ auto PathSpaceTrellis::waitAndServeQueue(TrellisState& state,
                 }
             }
             if (newCursor) {
-                mirrorRoundRobinCursor(canonicalOutputPath, *newCursor);
+                mirrorRoundRobinCursor(canonicalOutputPath, *newCursor, &state);
             }
         }
         {
@@ -2001,7 +2082,7 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
                             }
                         }
                         if (newCursor) {
-                            mirrorRoundRobinCursor(canonicalOutputPath, *newCursor);
+                            mirrorRoundRobinCursor(canonicalOutputPath, *newCursor, &state);
                         }
                     }
                     std::ostringstream readyMsg;
@@ -2124,7 +2205,7 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
                     }
                 }
                 if (newCursor) {
-                    mirrorRoundRobinCursor(canonicalOutputPath, *newCursor);
+                    mirrorRoundRobinCursor(canonicalOutputPath, *newCursor, &state);
                 }
             }
             std::ostringstream readyMsg;
@@ -2268,7 +2349,7 @@ auto PathSpaceTrellis::serveLatest(TrellisState& state,
             }
         }
         if (newCursor) {
-            mirrorRoundRobinCursor(canonicalOutputPath, *newCursor);
+            mirrorRoundRobinCursor(canonicalOutputPath, *newCursor, &state);
         }
     };
 
@@ -2636,7 +2717,7 @@ auto PathSpaceTrellis::shutdown() -> void {
             state->shuttingDown = true;
             state->activeWaiters.clear();
         }
-        mirrorShuttingDownFlag(output, true);
+        mirrorShuttingDownFlag(output, true, state.get());
         mirrorActiveWaiters(output, *state);
     }
     if (auto ctx = this->getContext()) {

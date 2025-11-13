@@ -14,6 +14,8 @@ _Last updated: November 13, 2025 (Phase C stress coverage landed)_
 
 - **Phase C follow-through — Flag perf & rollback discipline.** Waiter/cursor/shutdown mirroring now ships behind `PATHSPACE_TRELLIS_INTERNAL_RUNTIME` with multi-waiter/shutdown coverage. Benchmark the runtime flag loops, record rollback guidance, then outline Phase D cleanup sequencing.
   - ✅ **Benchmark (November 13, 2025, Codex):** `./scripts/compile.sh --test --loop=15 --release --runtime-flag-report` completes for both `PATHSPACE_TRELLIS_INTERNAL_RUNTIME=1` and `0`. Results are captured in `build/trellis_flag_bench.json` (flag on: 265.98 s total / 17.73 s avg, flag off: 265.16 s total / 17.68 s avg).
+  - ✅ **Runtime descriptor snapshots (November 13, 2025, evening):** Trellis state now publishes `TrellisRuntimeDescriptor` metadata under `/_system/trellis/internal/state/<hash>/runtime/descriptor`, capturing config, ready queue, waiters, cursor, back-pressure limits, and latest trace entries for live inspection.
+  - ✅ **Phase D prep outline:** Docs below capture the descriptor contract, migration checkpoints, and remaining work to retire legacy mutex-backed bookkeeping once the descriptor surfaces drive tooling parity.
 
 ### Migration roadmap (drafted November 12, 2025 — Codex)
 
@@ -34,6 +36,7 @@ We will land the embedded-`PathSpace` migration in four incremental phases so ea
    - The `PATHSPACE_TRELLIS_INTERNAL_RUNTIME` flag stays in place for emergency rollback; loop stability was validated with the flag enabled and disabled.
 
 4. **Phase D — Legacy removal and cleanup.**
+   - Runtime descriptors (`/_system/trellis/internal/state/<hash>/runtime/descriptor`) now publish the live config/queue/waiter/trace snapshot for each trellis path; tooling can switch to the descriptor immediately.
    - Delete the old `TrellisState` containers, replacing them with lightweight descriptors (mode/policy/source list/max waiters) and internal-path helpers.
    - Simplify persistence helpers to replay solely into the internal space.
    - Refresh documentation (`docs/AI_Architecture.md`, this plan) and update tooling references to the new runtime paths.
@@ -149,6 +152,11 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 - Buffered depth accounting covered by `tests/unit/layer/test_PathSpaceTrellis.cpp` (“Queue mode buffers multiple notifications per source”, “Buffered ready count drains after blocking queue wait”).
 - Internal runtime snapshots covered by `tests/unit/layer/test_PathSpaceTrellis.cpp` (“Internal runtime mirrors ready queue state”, “Internal runtime tracks waiters, cursor, and shutdown”, “Internal runtime multi-waiter shutdown clears waiters”); keep flag-off smoke runs in the loop to validate fallback readiness.
 
+### Runtime descriptor snapshot (added November 13, 2025)
+- The internal runtime now exports `TrellisRuntimeDescriptor` under `/_system/trellis/internal/state/<hash>/runtime/descriptor`. Fields capture the persisted config (name/mode/policy/sources), ready queue contents, buffered-ready count, round-robin cursor, `max_waiters_per_source`, shutdown flag, waiter snapshot, and the most recent trace events.
+- Tooling can read the descriptor for live diagnostics instead of stitching together queue, waiter, and trace mirrors. See `tests/unit/layer/test_PathSpaceTrellis.cpp` (“Runtime descriptor mirrors trellis state”) for coverage.
+- Remaining work before Phase D: move latest-value dedupe caches and ready-queue bookkeeping onto descriptor-backed helpers, then delete the legacy `TrellisState` containers once the descriptor drives all observability.
+
 ## Deferred work
 - Optional glob-based source discovery.
 - Buffered fan-in: richer per-source buffering/waiter infrastructure and queue visibility built atop the current back-pressure hooks.
@@ -157,13 +165,14 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 ## Immediate follow-ups — November 13, 2025
 - ✅ **Multi-waiter/shutdown stress regression (completed November 13, 2025).** Added `Internal runtime multi-waiter shutdown clears waiters`, ensured `max_waiters` is populated on enable, and fixed the waiter scope guard so mirrored snapshots drain on shutdown with the feature flag enabled and disabled.
 - ✅ **Feature-flag perf sampling.** Captured 15× loop timings with `PATHSPACE_TRELLIS_INTERNAL_RUNTIME={1,0}` (see `build/trellis_flag_bench.json`). The delta between modes is <0.3 % (avg iteration cost 17.73 s with mirrors vs. 17.68 s without).
-- **Phase D preparation.** Draft the teardown plan for mutex-backed bookkeeping (TrellisState fields, legacy persistence helpers) and sequence cleanup behind the new internal runtime snapshots.
+- 🔄 **Phase D migration.** With descriptors publishing live runtime state, migrate latest-value dedupe and queue bookkeeping to descriptor helpers so the legacy mutex-backed containers can be deleted safely.
 - ✅ **Back-pressure regression.** `Back-pressure limit caps simultaneous waiters per source` is back to green after the waiter snapshot fixes; feature-flag loops exercised both flag states without triggering the timeout.
 
 ### Work breakdown (Phase C follow-through)
 1. ✅ **Land the stress doctest.** Codified the multi-waiter/shutdown regression and wired it into the loop helper (`Internal runtime multi-waiter shutdown clears waiters`).
 2. ✅ **Benchmark flag toggles.** `./scripts/compile.sh --test --loop=15 --release --runtime-flag-report` writes `build/trellis_flag_bench.json` with the flag-on/flag-off totals and averages; loops now run green in both configurations.
-3. **Outline legacy cleanup.** Enumerate the TrellisState fields that can migrate to descriptors once the stress test is green, paving the way for Phase D.
+3. ✅ **Outline legacy cleanup.** Runtime descriptor snapshots now export Trellis config, ready queue, waiters, cursor, back-pressure limits, and trace data for each trellis path; docs below track the remaining state that must migrate before removing the legacy containers.
+4. 🔄 **Execution tracking.** Next steps: move latest-value dedupe and queue bookkeeping behind the descriptor helpers, then remove the legacy mutex-backed containers once tooling reads from the descriptor path.
 
 ## Shutdown note — November 12, 2025
 - Queue/latest functionality, stats mirrors, and back-pressure limits remain implemented, but the latest-mode priority timeout must be resolved before buffered fan-in resumes.

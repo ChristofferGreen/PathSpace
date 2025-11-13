@@ -163,14 +163,21 @@ private:
     auto internalRuntimeWaitersPathFor(std::string const& canonicalOutputPath) const -> std::string;
     auto internalRuntimeCursorPathFor(std::string const& canonicalOutputPath) const -> std::string;
     auto internalRuntimeShutdownPathFor(std::string const& canonicalOutputPath) const -> std::string;
+    auto internalRuntimeDescriptorPathFor(std::string const& canonicalOutputPath) const -> std::string;
     void mirrorReadyState(std::string const& canonicalOutputPath, TrellisState const& state);
     void mirrorTraceSnapshotInternal(std::string const& canonicalOutputPath,
-                                     std::vector<TrellisTraceEvent> const& snapshot);
+                                     std::vector<TrellisTraceEvent> const& snapshot,
+                                     TrellisState const* state = nullptr);
     void mirrorActiveWaiters(std::string const& canonicalOutputPath, TrellisState const& state);
-    void mirrorRoundRobinCursor(std::string const& canonicalOutputPath, std::size_t cursor);
-    void mirrorShuttingDownFlag(std::string const& canonicalOutputPath, bool shuttingDown);
+    void mirrorRoundRobinCursor(std::string const& canonicalOutputPath,
+                                std::size_t cursor,
+                                TrellisState const* state = nullptr);
+    void mirrorShuttingDownFlag(std::string const& canonicalOutputPath,
+                                bool shuttingDown,
+                                TrellisState const* state = nullptr);
     void clearInternalRuntime(std::string const& canonicalOutputPath);
     void initializeInternalRuntime(std::string const& canonicalOutputPath, TrellisState const& state);
+    void publishRuntimeDescriptor(std::string const& canonicalOutputPath, TrellisState const& state);
     auto registerWaiter(TrellisState& state,
                         std::string const& canonicalOutputPath,
                         std::string const& source) -> std::optional<Error>;
