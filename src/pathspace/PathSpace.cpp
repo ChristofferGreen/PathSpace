@@ -170,6 +170,13 @@ auto PathSpace::in(Iterator const& path, InputData const& data) -> InsertReturn 
             this->context_->notify(notePath);
         }
     }
+    if (ret.nbrValuesSuppressed > 0) {
+        if (ret.nbrValuesInserted >= ret.nbrValuesSuppressed) {
+            ret.nbrValuesInserted -= ret.nbrValuesSuppressed;
+        } else {
+            ret.nbrValuesInserted = 0;
+        }
+    }
     return ret;
 }
 

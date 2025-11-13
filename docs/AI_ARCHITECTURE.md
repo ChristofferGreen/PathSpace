@@ -5,6 +5,8 @@ Renderer snapshot builder details have moved out of this architecture document. 
 
 > **Context update (October 15, 2025):** PathSpace documentation now assumes the assistant context launched for this cycle; earlier references to legacy contexts should be interpreted accordingly.
 > **Concurrency update (November 12, 2025):** `PathSpaceTrellis` now bootstraps an internal `PathSpace` under `/_system/trellis/internal/*` during construction/enable so future phases can migrate mutex-backed bookkeeping into the shared space without touching the public API.
+> **Concurrency update (November 13, 2025):** Trellis waiters, round-robin cursor updates, ready-queue mirrors, and shutdown flags now dual-write into `/_system/trellis/internal/state/<hash>/runtime/{waiters,cursor,ready,flags}` behind the `PATHSPACE_TRELLIS_INTERNAL_RUNTIME` guard. See `docs/Plan_PathSpace_FanIn.md` for rollout notes and `tests/unit/layer/test_PathSpaceTrellis.cpp` for regression coverage.
+> **Concurrency update (November 13, 2025 — afternoon):** The new “Internal runtime multi-waiter shutdown clears waiters” doctest verifies concurrent waiter registration, the `max_waiters` limit now persists on enable, and mirrored snapshots drain on shutdown while the runtime flag toggles; follow-on work benchmarks the flag to document rollback guidance ahead of Phase D.
 
 ## UI/Rendering — cross-reference
 

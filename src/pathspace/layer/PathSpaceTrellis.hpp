@@ -119,7 +119,8 @@ private:
     void recordServeError(std::string const& canonicalOutputPath, Error const& error);
     void updateBufferedReadyStats(std::string const& canonicalOutputPath,
                                   std::optional<std::size_t> readyCountOverride = std::nullopt);
-    std::optional<std::string> pickReadySource(TrellisState& state);
+    std::optional<std::string> pickReadySource(TrellisState& state,
+                                               std::string const& canonicalOutputPath);
     bool enqueueReadySource(TrellisState& state, std::string const& source);
     void appendTraceEvent(std::string const& canonicalOutputPath,
                           TrellisState& state,
@@ -152,6 +153,30 @@ private:
                               std::vector<TrellisTraceEvent> const& snapshot)
         -> std::optional<Error>;
     auto eraseTraceSnapshot(std::string const& canonicalOutputPath) -> std::optional<Error>;
+
+    static bool internalRuntimeEnabled();
+    std::shared_ptr<PathSpace> snapshotInternalSpace() const;
+    auto internalRuntimeRootPathFor(std::string const& canonicalOutputPath) const -> std::string;
+    auto internalRuntimeReadyQueuePathFor(std::string const& canonicalOutputPath) const -> std::string;
+    auto internalRuntimeReadyCountPathFor(std::string const& canonicalOutputPath) const -> std::string;
+    auto internalRuntimeTracePathFor(std::string const& canonicalOutputPath) const -> std::string;
+    auto internalRuntimeWaitersPathFor(std::string const& canonicalOutputPath) const -> std::string;
+    auto internalRuntimeCursorPathFor(std::string const& canonicalOutputPath) const -> std::string;
+    auto internalRuntimeShutdownPathFor(std::string const& canonicalOutputPath) const -> std::string;
+    void mirrorReadyState(std::string const& canonicalOutputPath, TrellisState const& state);
+    void mirrorTraceSnapshotInternal(std::string const& canonicalOutputPath,
+                                     std::vector<TrellisTraceEvent> const& snapshot);
+    void mirrorActiveWaiters(std::string const& canonicalOutputPath, TrellisState const& state);
+    void mirrorRoundRobinCursor(std::string const& canonicalOutputPath, std::size_t cursor);
+    void mirrorShuttingDownFlag(std::string const& canonicalOutputPath, bool shuttingDown);
+    void clearInternalRuntime(std::string const& canonicalOutputPath);
+    void initializeInternalRuntime(std::string const& canonicalOutputPath, TrellisState const& state);
+    auto registerWaiter(TrellisState& state,
+                        std::string const& canonicalOutputPath,
+                        std::string const& source) -> std::optional<Error>;
+    void unregisterWaiter(TrellisState& state,
+                          std::string const& canonicalOutputPath,
+                          std::string const& source);
 
     std::shared_ptr<PathSpaceBase> backing_;
     mutable std::mutex             statesMutex_;

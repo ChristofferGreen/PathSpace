@@ -42,6 +42,7 @@ void Leaf::mergeInsertReturn(InsertReturn& into, InsertReturn const& from) {
     into.nbrValuesInserted += from.nbrValuesInserted;
     into.nbrSpacesInserted += from.nbrSpacesInserted;
     into.nbrTasksInserted  += from.nbrTasksInserted;
+    into.nbrValuesSuppressed += from.nbrValuesSuppressed;
     if (!from.errors.empty()) {
         into.errors.insert(into.errors.end(), from.errors.begin(), from.errors.end());
     }
@@ -80,6 +81,11 @@ auto Leaf::inAtNode(Node& node, Iterator const& iter, InputData const& inputData
         }
 
         // Concrete final component
+        bool parentHasValue = false;
+        {
+            std::lock_guard<std::mutex> parentLock(node.payloadMutex);
+            parentHasValue = (node.data != nullptr) && !node.nested;
+        }
         Node& child = node.getOrCreateChild(name);
         if (inputData.metadata.dataCategory == DataCategory::UniquePtr) {
             // Move nested PathSpaceBase into place and adopt parent context/prefix when available
@@ -99,8 +105,11 @@ auto Leaf::inAtNode(Node& node, Iterator const& iter, InputData const& inputData
             ensureNodeData(child, inputData, ret);
             if (inputData.task)
                 ret.nbrTasksInserted++;
-            else
+            else {
                 ret.nbrValuesInserted++;
+                if (parentHasValue)
+                    ret.nbrValuesSuppressed++;
+            }
         }
         return;
     }

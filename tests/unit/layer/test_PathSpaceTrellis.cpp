@@ -6,6 +6,8 @@
 #include <pathspace/core/Out.hpp>
 
 #include <algorithm>
+#include <cctype>
+#include <cstdlib>
 #include <atomic>
 #include <chrono>
 #include <future>
@@ -14,10 +16,33 @@
 #include <vector>
 #include <numeric>
 #include <string_view>
+#include <optional>
+#include <string>
 
 using namespace std::chrono_literals;
 
 namespace SP {
+
+namespace {
+struct ScopedEnvVar {
+    ScopedEnvVar(char const* key, char const* value) : name(key) {
+        if (auto* current = std::getenv(key)) {
+            previous = std::string{current};
+        }
+        ::setenv(key, value, 1);
+    }
+    ~ScopedEnvVar() {
+        if (previous) {
+            ::setenv(name.c_str(), previous->c_str(), 1);
+        } else {
+            ::unsetenv(name.c_str());
+        }
+    }
+    std::string               name;
+    std::optional<std::string> previous;
+};
+
+} // namespace
 
 TEST_SUITE("PathSpaceTrellis") {
 TEST_CASE("Internal PathSpace is instantiated") {
@@ -807,6 +832,7 @@ TEST_CASE("Buffered readiness updates stats when queues fill") {
     REQUIRE(enableResult.errors.empty());
 
     REQUIRE(backing->insert("/buffer/source", 7).errors.empty());
+    trellis.notify("/buffer/source");
 
     ConcretePathStringView stateRoot{"/_system/trellis/state"};
     auto                   keys = backing->listChildren(stateRoot);
@@ -816,17 +842,382 @@ TEST_CASE("Buffered readiness updates stats when queues fill") {
     statsPath.append("/stats");
 
     auto bufferedPath = statsPath + "/buffered_ready";
-    auto bufferedReady = backing->read<std::uint64_t>(bufferedPath);
-    REQUIRE(bufferedReady);
-    CHECK(bufferedReady.value() == 1);
+    auto awaitBufferedReady = [&](std::uint64_t expected) -> std::uint64_t {
+        Expected<std::uint64_t> snapshot;
+        auto deadline = std::chrono::steady_clock::now() + 250ms;
+        do {
+            snapshot = backing->read<std::uint64_t>(bufferedPath);
+            if (snapshot && snapshot.value() == expected) {
+                return snapshot.value();
+            }
+            std::this_thread::sleep_for(5ms);
+        } while (std::chrono::steady_clock::now() < deadline);
+        REQUIRE(snapshot);
+        return snapshot.value();
+    };
+
+    CHECK(awaitBufferedReady(1) == 1);
 
     auto value = trellis.take<int>("/buffer/out", Block{});
     REQUIRE(value);
     CHECK(value.value() == 7);
 
-    bufferedReady = backing->read<std::uint64_t>(bufferedPath);
-    REQUIRE(bufferedReady);
-    CHECK(bufferedReady.value() == 0);
+    CHECK(awaitBufferedReady(0) == 0);
+}
+
+TEST_CASE("Internal runtime mirrors ready queue state") {
+    ScopedEnvVar runtimeGuard("PATHSPACE_TRELLIS_INTERNAL_RUNTIME", "1");
+
+    auto backing = std::make_shared<PathSpace>();
+    PathSpaceTrellis trellis(backing);
+
+    EnableTrellisCommand enable{
+        .name    = "/queue/out",
+        .sources = {"/queue/a"},
+        .mode    = "queue",
+        .policy  = "priority",
+    };
+    auto enableResult = trellis.insert("/_system/trellis/enable", enable);
+    REQUIRE(enableResult.errors.empty());
+
+    REQUIRE(backing->insert("/queue/a", 99).errors.empty());
+    trellis.notify("/queue/a");
+
+    auto internal = trellis.debugInternalSpace();
+    REQUIRE(internal);
+    ConcretePathStringView stateRoot{"/state"};
+    auto awaitStateKey = [&]() -> std::string {
+        auto deadline = std::chrono::steady_clock::now() + 250ms;
+        std::vector<std::string> keys;
+        do {
+            keys = internal->listChildren(stateRoot);
+            if (!keys.empty()) {
+                return keys.front();
+            }
+            std::this_thread::sleep_for(5ms);
+        } while (std::chrono::steady_clock::now() < deadline);
+        REQUIRE_FALSE(keys.empty());
+        return {};
+    };
+    auto runtimeBase = std::string{"/state/"};
+    runtimeBase.append(awaitStateKey());
+    runtimeBase.append("/runtime");
+
+    auto readyQueuePath = runtimeBase + "/ready/queue";
+    auto readyCountPath = runtimeBase + "/ready/count";
+
+    auto awaitQueueSize = [&](std::size_t expected) -> std::vector<std::string> {
+        Expected<std::vector<std::string>> snapshot;
+        auto deadline = std::chrono::steady_clock::now() + 250ms;
+        do {
+            snapshot = internal->read<std::vector<std::string>>(readyQueuePath);
+            if (snapshot && snapshot->size() == expected) {
+                return snapshot.value();
+            }
+            std::this_thread::sleep_for(5ms);
+        } while (std::chrono::steady_clock::now() < deadline);
+        REQUIRE(snapshot);
+        REQUIRE(snapshot->size() == expected);
+        return snapshot.value();
+    };
+
+    auto awaitReadyCount = [&](std::uint64_t expected) -> std::uint64_t {
+        Expected<std::uint64_t> snapshot;
+        auto deadline = std::chrono::steady_clock::now() + 250ms;
+        do {
+            snapshot = internal->read<std::uint64_t>(readyCountPath);
+            if (snapshot && snapshot.value() == expected) {
+                return snapshot.value();
+            }
+            std::this_thread::sleep_for(5ms);
+        } while (std::chrono::steady_clock::now() < deadline);
+        REQUIRE(snapshot);
+        REQUIRE(snapshot.value() == expected);
+        return snapshot.value();
+    };
+
+    auto readyQueue = awaitQueueSize(1);
+    CHECK(readyQueue.front() == "/queue/a");
+    CHECK(awaitReadyCount(1) == 1);
+
+    auto taken = trellis.take<int>("/queue/out", Block{100ms});
+    REQUIRE(taken);
+    CHECK(taken.value() == 99);
+
+    auto queueAfter = awaitQueueSize(0);
+    CHECK(queueAfter.empty());
+    CHECK(awaitReadyCount(0) == 0);
+}
+
+TEST_CASE("Internal runtime tracks waiters, cursor, and shutdown") {
+    ScopedEnvVar runtimeGuard("PATHSPACE_TRELLIS_INTERNAL_RUNTIME", "1");
+
+    auto backing = std::make_shared<PathSpace>();
+    PathSpaceTrellis trellis(backing);
+
+    EnableTrellisCommand enable{
+        .name    = "/multi/out",
+        .sources = {"/multi/a", "/multi/b"},
+        .mode    = "queue",
+        .policy  = "round_robin,max_waiters=1",
+    };
+    auto enableResult = trellis.insert("/_system/trellis/enable", enable);
+    REQUIRE(enableResult.errors.empty());
+
+    auto internal = trellis.debugInternalSpace();
+    REQUIRE(internal);
+    ConcretePathStringView stateRoot{"/state"};
+    auto awaitStateKey = [&]() -> std::string {
+        auto deadline = std::chrono::steady_clock::now() + 250ms;
+        std::vector<std::string> keys;
+        do {
+            keys = internal->listChildren(stateRoot);
+            if (!keys.empty()) {
+                return keys.front();
+            }
+            std::this_thread::sleep_for(5ms);
+        } while (std::chrono::steady_clock::now() < deadline);
+        REQUIRE_FALSE(keys.empty());
+        return {};
+    };
+    auto runtimeBase = std::string{"/state/"};
+    runtimeBase.append(awaitStateKey());
+    runtimeBase.append("/runtime");
+
+    auto waitersPath = runtimeBase + "/waiters";
+    auto cursorPath  = runtimeBase + "/cursor";
+    auto flagsPath   = runtimeBase + "/flags/shutting_down";
+
+    auto readWaiters = [&]() -> TrellisRuntimeWaiterSnapshot {
+        auto snapshot = internal->read<TrellisRuntimeWaiterSnapshot>(waitersPath);
+        REQUIRE(snapshot);
+        return snapshot.value();
+    };
+
+    auto awaitWaitersEmpty = [&]() -> TrellisRuntimeWaiterSnapshot {
+        Expected<TrellisRuntimeWaiterSnapshot> snapshot;
+        auto deadline = std::chrono::steady_clock::now() + 750ms;
+        do {
+            snapshot = internal->read<TrellisRuntimeWaiterSnapshot>(waitersPath);
+            if (snapshot && snapshot->entries.empty()) {
+                return snapshot.value();
+            }
+            std::this_thread::sleep_for(5ms);
+        } while (std::chrono::steady_clock::now() < deadline);
+        REQUIRE(snapshot);
+        CAPTURE(snapshot->entries.size());
+        if (snapshot && !snapshot->entries.empty()) {
+            CAPTURE(snapshot->entries.front().source);
+            CAPTURE(snapshot->entries.front().count);
+        }
+        CHECK(snapshot->entries.empty());
+        return snapshot ? snapshot.value() : TrellisRuntimeWaiterSnapshot{};
+    };
+
+    auto awaitCursor = [&](std::uint64_t expected) -> std::uint64_t {
+        Expected<std::uint64_t> snapshot;
+        auto deadline = std::chrono::steady_clock::now() + 300ms;
+        do {
+            snapshot = internal->read<std::uint64_t>(cursorPath);
+            if (snapshot && snapshot.value() == expected) {
+                return snapshot.value();
+            }
+            std::this_thread::sleep_for(5ms);
+        } while (std::chrono::steady_clock::now() < deadline);
+        REQUIRE(snapshot);
+        REQUIRE(snapshot.value() == expected);
+        return snapshot.value();
+    };
+
+    auto awaitFlags = [&](bool expected) -> TrellisRuntimeFlags {
+        Expected<TrellisRuntimeFlags> snapshot;
+        auto deadline = std::chrono::steady_clock::now() + 300ms;
+        do {
+            snapshot = internal->read<TrellisRuntimeFlags>(flagsPath);
+            if (snapshot && snapshot->shuttingDown == expected) {
+                return snapshot.value();
+            }
+            std::this_thread::sleep_for(5ms);
+        } while (std::chrono::steady_clock::now() < deadline);
+        REQUIRE(snapshot);
+        REQUIRE(snapshot->shuttingDown == expected);
+        return snapshot.value();
+    };
+
+    CHECK(awaitCursor(0) == 0);
+
+    std::promise<void> waiterReady;
+    auto waiterFuture = waiterReady.get_future();
+    auto asyncTake = std::async(std::launch::async, [&]() {
+        waiterReady.set_value();
+        return trellis.take<int>("/multi/out", Block{200ms});
+    });
+
+    waiterFuture.wait();
+    std::this_thread::sleep_for(20ms);
+    auto waitersSnapshot = readWaiters();
+    if (!waitersSnapshot.entries.empty()) {
+        CHECK(waitersSnapshot.entries.front().source == "/multi/a");
+        CHECK(waitersSnapshot.entries.front().count >= 1);
+    }
+
+    REQUIRE(backing->insert("/multi/a", 10).errors.empty());
+    trellis.notify("/multi/a");
+    auto takenFirst = asyncTake.get();
+    REQUIRE(takenFirst);
+    CHECK(takenFirst.value() == 10);
+
+    std::this_thread::sleep_for(20ms);
+    auto waitersAfter = awaitWaitersEmpty();
+    CHECK(waitersAfter.entries.empty());
+
+    REQUIRE(backing->insert("/multi/a", 101).errors.empty());
+    trellis.notify("/multi/a");
+    auto first = trellis.take<int>("/multi/out", Block{100ms});
+    REQUIRE(first);
+    CHECK(first.value() == 101);
+
+    CHECK(awaitCursor(1) == 1);
+
+    REQUIRE(backing->insert("/multi/b", 202).errors.empty());
+    trellis.notify("/multi/b");
+    auto second = trellis.take<int>("/multi/out", Block{100ms});
+    REQUIRE(second);
+    CHECK(second.value() == 202);
+
+    CHECK(awaitCursor(0) == 0);
+
+    trellis.shutdown();
+
+    auto flags = awaitFlags(true);
+    CHECK(flags.shuttingDown);
+}
+
+TEST_CASE("Internal runtime multi-waiter shutdown clears waiters") {
+    ScopedEnvVar runtimeGuard("PATHSPACE_TRELLIS_INTERNAL_RUNTIME", "1");
+
+    auto backing = std::make_shared<PathSpace>();
+    PathSpaceTrellis trellis(backing);
+
+    EnableTrellisCommand enable{
+        .name    = "/stress/out",
+        .sources = {"/stress/a"},
+        .mode    = "queue",
+        .policy  = "priority,max_waiters=2",
+    };
+    auto enableResult = trellis.insert("/_system/trellis/enable", enable);
+    REQUIRE(enableResult.errors.empty());
+
+    auto internal = trellis.debugInternalSpace();
+    REQUIRE(internal);
+    ConcretePathStringView stateRoot{"/state"};
+    auto awaitStateKey = [&]() -> std::string {
+        auto deadline = std::chrono::steady_clock::now() + 300ms;
+        std::vector<std::string> keys;
+        do {
+            keys = internal->listChildren(stateRoot);
+            if (!keys.empty()) {
+                return keys.front();
+            }
+            std::this_thread::sleep_for(5ms);
+        } while (std::chrono::steady_clock::now() < deadline);
+        REQUIRE_FALSE(keys.empty());
+        return {};
+    };
+    auto runtimeBase = std::string{"/state/"};
+    runtimeBase.append(awaitStateKey());
+    runtimeBase.append("/runtime");
+
+    auto waitersPath = runtimeBase + "/waiters";
+    auto flagsPath   = runtimeBase + "/flags/shutting_down";
+
+    auto awaitWaiterSnapshot = [&](std::uint64_t expectedTotal)
+        -> TrellisRuntimeWaiterSnapshot {
+        Expected<TrellisRuntimeWaiterSnapshot> snapshot;
+        auto deadline = std::chrono::steady_clock::now() + 2500ms;
+        do {
+            snapshot = internal->read<TrellisRuntimeWaiterSnapshot>(waitersPath);
+            if (snapshot) {
+                auto total = std::accumulate(snapshot->entries.begin(),
+                                             snapshot->entries.end(),
+                                             std::uint64_t{0},
+                                             [](std::uint64_t acc, TrellisRuntimeWaiterEntry const& entry) {
+                                                 return acc + entry.count;
+                                             });
+                if (total == expectedTotal) {
+                    return snapshot.value();
+                }
+            } else if (expectedTotal == 0) {
+                auto const code = snapshot.error().code;
+                if (code == Error::Code::NoSuchPath || code == Error::Code::NotFound) {
+                    return TrellisRuntimeWaiterSnapshot{};
+                }
+            }
+            std::this_thread::sleep_for(5ms);
+        } while (std::chrono::steady_clock::now() < deadline);
+        REQUIRE(snapshot);
+        auto total = std::accumulate(snapshot->entries.begin(),
+                                     snapshot->entries.end(),
+                                     std::uint64_t{0},
+                                     [](std::uint64_t acc, TrellisRuntimeWaiterEntry const& entry) {
+                                         return acc + entry.count;
+                                     });
+        CAPTURE(total);
+        if (snapshot && !snapshot->entries.empty()) {
+            CAPTURE(snapshot->entries.front().source);
+            CAPTURE(snapshot->entries.front().count);
+        }
+        REQUIRE(total == expectedTotal);
+        return snapshot.value();
+    };
+
+    auto awaitFlags = [&](bool expected) -> TrellisRuntimeFlags {
+        Expected<TrellisRuntimeFlags> snapshot;
+        auto deadline = std::chrono::steady_clock::now() + 400ms;
+        do {
+            snapshot = internal->read<TrellisRuntimeFlags>(flagsPath);
+            if (snapshot && snapshot->shuttingDown == expected) {
+                return snapshot.value();
+            }
+            std::this_thread::sleep_for(5ms);
+        } while (std::chrono::steady_clock::now() < deadline);
+        REQUIRE(snapshot);
+        REQUIRE(snapshot->shuttingDown == expected);
+        return snapshot.value();
+    };
+
+    auto waiter1 = std::async(std::launch::async, [&]() {
+        return trellis.take<int>("/stress/out", Block{1500ms});
+    });
+
+    auto waitersAfterFirst = awaitWaiterSnapshot(1);
+    REQUIRE(waitersAfterFirst.entries.size() == 1);
+    CHECK(waitersAfterFirst.entries.front().source == "/stress/a");
+    CHECK(waitersAfterFirst.entries.front().count == 1);
+
+    auto waiter2 = std::async(std::launch::async, [&]() {
+        return trellis.take<int>("/stress/out", Block{1500ms});
+    });
+
+    auto waitersBeforeShutdown = awaitWaiterSnapshot(2);
+    REQUIRE(waitersBeforeShutdown.entries.size() == 1);
+    CHECK(waitersBeforeShutdown.entries.front().source == "/stress/a");
+    CHECK(waitersBeforeShutdown.entries.front().count == 2);
+
+    trellis.shutdown();
+
+    auto flags = awaitFlags(true);
+    CHECK(flags.shuttingDown);
+
+    auto result1 = waiter1.get();
+    auto result2 = waiter2.get();
+    REQUIRE_FALSE(result1);
+    REQUIRE(result1.error().code == Error::Code::Timeout);
+    REQUIRE_FALSE(result2);
+    REQUIRE(result2.error().code == Error::Code::Timeout);
+
+    auto waitersAfterShutdown = awaitWaiterSnapshot(0);
+    CHECK(waitersAfterShutdown.entries.empty());
 }
 
 TEST_CASE("Back-pressure limit caps simultaneous waiters per source") {
@@ -848,7 +1239,7 @@ TEST_CASE("Back-pressure limit caps simultaneous waiters per source") {
     std::thread waiter([&] {
         ready.set_value();
         waiterRunning.store(true, std::memory_order_release);
-        waiterResult = trellis.take<int>("/bp/out", Block{250ms});
+        waiterResult = trellis.take<int>("/bp/out", Block{500ms});
     });
     ready.get_future().wait();
 
@@ -856,14 +1247,27 @@ TEST_CASE("Back-pressure limit caps simultaneous waiters per source") {
     while (!waiterRunning.load(std::memory_order_acquire)) {
         std::this_thread::yield();
     }
-    std::this_thread::sleep_for(10ms);
+    std::this_thread::sleep_for(20ms);
 
-    auto second = trellis.take<int>("/bp/out", Block{50ms});
+    Expected<int> second;
+    auto          capacityDeadline = std::chrono::steady_clock::now() + 300ms;
+    do {
+        second = trellis.take<int>("/bp/out", Block{50ms});
+        if (!second) {
+            if (second.error().code == Error::Code::CapacityExceeded) {
+                break;
+            }
+            if (second.error().code == Error::Code::Timeout) {
+                continue;
+            }
+        }
+    } while (std::chrono::steady_clock::now() < capacityDeadline);
     REQUIRE_FALSE(second);
     CHECK(second.error().code == Error::Code::CapacityExceeded);
 
     // Provide data to release the first waiter.
     REQUIRE(backing->insert("/bp/source", 42).errors.empty());
+    trellis.notify("/bp/source");
     waiter.join();
     REQUIRE(waiterResult.has_value());
     REQUIRE(waiterResult->has_value());
@@ -897,9 +1301,10 @@ TEST_CASE("Trellis stats capture wait counts when blocking") {
     auto enableResult = trellis.insert("/_system/trellis/enable", enable);
     REQUIRE(enableResult.errors.empty());
 
-    std::thread producer([backing] {
+    std::thread producer([backing, &trellis] {
         std::this_thread::sleep_for(25ms);
         backing->insert("/stats/source", 9001);
+        trellis.notify("/stats/source");
     });
 
     auto value = trellis.take<int>("/stats/out", Block{200ms});

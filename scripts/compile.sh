@@ -49,6 +49,8 @@ PERF_HISTORY_DIR=""
 PERF_BASELINE_DEFAULT="$ROOT_DIR/docs/perf/performance_baseline.json"
 PERF_PRINT=0
 METAL_FLAG_EXPLICIT=0
+RUNTIME_FLAG_REPORT=0
+RUNTIME_FLAG_REPORT_PATH=""
 
 # ----------------------------
 # Helpers
@@ -325,6 +327,21 @@ while [[ $# -gt 0 ]]; do
     --perf-history-dir=*)
       PERF_HISTORY_DIR="${1#*=}"
       ;;
+    --runtime-flag-report)
+      RUNTIME_FLAG_REPORT=1
+      TEST=1
+      if [[ "$LOOP" -eq 0 ]]; then
+        LOOP=15
+      fi
+      ;;
+    --runtime-flag-report=*)
+      RUNTIME_FLAG_REPORT=1
+      RUNTIME_FLAG_REPORT_PATH="${1#*=}"
+      TEST=1
+      if [[ "$LOOP" -eq 0 ]]; then
+        LOOP=15
+      fi
+      ;;
     -h|--help)
       print_help
       exit 0
@@ -366,6 +383,10 @@ fi
 
 if [[ -z "$BUILD_DIR" ]]; then
   BUILD_DIR="$BUILD_DIR_DEFAULT"
+fi
+
+if [[ "$RUNTIME_FLAG_REPORT" -eq 1 && -z "$RUNTIME_FLAG_REPORT_PATH" ]]; then
+  RUNTIME_FLAG_REPORT_PATH="$BUILD_DIR/trellis_flag_bench.json"
 fi
 
 # Jobs sanity and default parallelism
@@ -635,6 +656,10 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
       die "No tests configured to run."
     fi
 
+    if [[ "$RUNTIME_FLAG_REPORT" -eq 1 ]]; then
+      require_tool python3
+    fi
+
     run_test_command() {
       local display_name="$1"
       local iteration="$2"
@@ -655,26 +680,127 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
 
     if [[ "$LOOP" -gt 0 ]]; then
       COUNT="$LOOP"
-      info "Running tests in a loop ($COUNT iterations)..."
-      for i in $(seq 1 "$COUNT"); do
-        info "Loop $i/$COUNT: starting"
-        for idx in "${!TEST_LABELS[@]}"; do
-          name="${TEST_LABELS[$idx]}"
-          command_str="${TEST_COMMAND_STRINGS[$idx]}"
-          IFS=$'\x1f' read -r -a COMMAND <<< "$command_str"
-          info "  Running ${name}..."
-          if ! run_test_command "$name" "$i" "$COUNT" "${COMMAND[@]}"; then
-            RC=$?
-            if [[ $RC -eq 124 ]]; then
-              die "Loop $i failed (${name} timed out after ${PER_TEST_TIMEOUT} seconds)"
-            else
-              die "Loop $i failed (${name} exit code $RC)"
-            fi
+      if [[ "$RUNTIME_FLAG_REPORT" -eq 1 ]]; then
+        info "Runtime flag report enabled; writing results to $RUNTIME_FLAG_REPORT_PATH"
+        RUNTIME_FLAG_OUTPUT_LINES=()
+
+        runtime_flag_loop() {
+          local flag="$1"
+          local label="$2"
+          local count="$COUNT"
+          local original_env_flags=("${TEST_ENV_FLAGS[@]}")
+          TEST_ENV_FLAGS+=("--env" "PATHSPACE_TRELLIS_INTERNAL_RUNTIME=${flag}")
+
+          local start_time
+          start_time=$(python3 - <<'PY'
+import time
+print(f"{time.time():.6f}")
+PY
+)
+
+          info "[$label] Running tests in a loop ($count iterations) with PATHSPACE_TRELLIS_INTERNAL_RUNTIME=${flag}"
+          for i in $(seq 1 "$count"); do
+            info "[$label] Loop $i/$count: starting"
+            for idx in "${!TEST_LABELS[@]}"; do
+              name="${TEST_LABELS[$idx]}"
+              command_str="${TEST_COMMAND_STRINGS[$idx]}"
+              IFS=$'\x1f' read -r -a COMMAND <<< "$command_str"
+              info "  [$label] Running ${name}..."
+              if ! run_test_command "$name" "$i" "$count" "${COMMAND[@]}"; then
+                RC=$?
+                if [[ $RC -eq 124 ]]; then
+                  die "[$label] Loop $i failed (${name} timed out after ${PER_TEST_TIMEOUT} seconds)"
+                else
+                  die "[$label] Loop $i failed (${name} exit code $RC)"
+                fi
+              fi
+            done
+            info "[$label] Loop $i/$count: passed"
+          done
+          info "[$label] All $count iterations passed."
+
+          local end_time
+          end_time=$(python3 - <<'PY'
+import time
+print(f"{time.time():.6f}")
+PY
+)
+
+          local summary
+          summary=$(COUNT="$count" START="$start_time" END="$end_time" python3 - <<'PY'
+import os
+total = float(os.environ["END"]) - float(os.environ["START"])
+count = int(os.environ["COUNT"])
+print(f"{total:.6f}|{total/count:.6f}")
+PY
+)
+          local total_seconds="${summary%%|*}"
+          local average_seconds="${summary##*|}"
+          info "[$label] Total loop time: ${total_seconds}s (avg ${average_seconds}s/iter)."
+
+          RUNTIME_FLAG_OUTPUT_LINES+=("${flag}|${total_seconds}|${average_seconds}")
+          if [[ ${#original_env_flags[@]} -gt 0 ]]; then
+            TEST_ENV_FLAGS=("${original_env_flags[@]}")
+          else
+            TEST_ENV_FLAGS=()
           fi
+        }
+
+        runtime_flag_loop 1 "runtime-on"
+        runtime_flag_loop 0 "runtime-off"
+
+        if [[ ${#RUNTIME_FLAG_OUTPUT_LINES[@]} -gt 0 ]]; then
+          run_lines=$(printf '%s\n' "${RUNTIME_FLAG_OUTPUT_LINES[@]}")
+          RUN_LINES="$run_lines" python3 - "$RUNTIME_FLAG_REPORT_PATH" "$COUNT" "$PER_TEST_TIMEOUT" "$BUILD_TYPE" <<'PY'
+import json, os, sys, datetime
+path = sys.argv[1]
+loop = int(sys.argv[2])
+timeout = int(sys.argv[3])
+build_type = sys.argv[4]
+runs = []
+for line in os.environ.get("RUN_LINES", "").splitlines():
+    if not line:
+        continue
+    flag, total, average = line.split("|")
+    runs.append({
+        "flag": int(flag),
+        "total_seconds": float(total),
+        "average_seconds": float(average)
+    })
+report = {
+    "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    "loop_iterations": loop,
+    "per_test_timeout": timeout,
+    "build_type": build_type,
+    "runs": runs
+}
+with open(path, "w", encoding="ascii") as handle:
+    json.dump(report, handle, indent=2)
+PY
+          info "Runtime flag report written to $RUNTIME_FLAG_REPORT_PATH"
+        fi
+      else
+        info "Running tests in a loop ($COUNT iterations)..."
+        for i in $(seq 1 "$COUNT"); do
+          info "Loop $i/$COUNT: starting"
+          for idx in "${!TEST_LABELS[@]}"; do
+            name="${TEST_LABELS[$idx]}"
+            command_str="${TEST_COMMAND_STRINGS[$idx]}"
+            IFS=$'\x1f' read -r -a COMMAND <<< "$command_str"
+            info "  Running ${name}..."
+            if ! run_test_command "$name" "$i" "$COUNT" "${COMMAND[@]}"; then
+              RC=$?
+              if [[ $RC -eq 124 ]]; then
+                die "Loop $i failed (${name} timed out after ${PER_TEST_TIMEOUT} seconds)"
+              else
+                die "Loop $i failed (${name} exit code $RC)"
+              fi
+            fi
+          done
+          info "Loop $i/$COUNT: passed"
         done
-        info "Loop $i/$COUNT: passed"
-      done
-      info "All $COUNT iterations passed."
+        info "All $COUNT iterations passed."
+      fi
     else
       for idx in "${!TEST_LABELS[@]}"; do
         name="${TEST_LABELS[$idx]}"

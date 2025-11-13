@@ -16,6 +16,8 @@
 
 namespace SP {
 struct TrellisTraceSnapshot;
+struct TrellisRuntimeWaiterSnapshot;
+struct TrellisRuntimeFlags;
 
 template <typename T>
 struct Wrapper {
@@ -208,6 +210,131 @@ inline auto deserialize_pop<TrellisTraceSnapshot>(SlidingBuffer& buffer) -> Expe
     }
     buffer.advance(decoded->second);
     return std::move(decoded->first);
+}
+
+// ----- Trellis runtime snapshots -----
+namespace detail {
+
+inline auto deserializeWaiterSnapshot(uint8_t const* data, size_t size)
+    -> Expected<std::pair<TrellisRuntimeWaiterSnapshot, size_t>> {
+    auto cursor = data;
+    auto bytes  = size;
+
+    auto require = [&](size_t needed) -> bool { return bytes >= needed; };
+    auto read = [&](auto& value) -> bool {
+        using Scalar = std::remove_reference_t<decltype(value)>;
+        if (!require(sizeof(Scalar))) {
+            return false;
+        }
+        std::memcpy(&value, cursor, sizeof(Scalar));
+        cursor += sizeof(Scalar);
+        bytes -= sizeof(Scalar);
+        return true;
+    };
+
+    std::uint32_t count = 0;
+    if (!read(count)) {
+        return std::unexpected(Error{Error::Code::MalformedInput, "Waiter snapshot header missing"});
+    }
+
+    TrellisRuntimeWaiterSnapshot snapshot;
+    snapshot.entries.reserve(count);
+    for (std::uint32_t idx = 0; idx < count; ++idx) {
+        std::uint32_t len = 0;
+        if (!read(len)) {
+            return std::unexpected(Error{Error::Code::MalformedInput, "Waiter snapshot missing source length"});
+        }
+        if (!require(len)) {
+            return std::unexpected(Error{Error::Code::MalformedInput, "Waiter snapshot truncated source bytes"});
+        }
+        std::string source;
+        source.assign(reinterpret_cast<char const*>(cursor), len);
+        cursor += len;
+        bytes -= len;
+
+        std::uint64_t waiterCount = 0;
+        if (!read(waiterCount)) {
+            return std::unexpected(Error{Error::Code::MalformedInput, "Waiter snapshot missing waiter count"});
+        }
+
+        snapshot.entries.push_back(TrellisRuntimeWaiterEntry{
+            .source = std::move(source),
+            .count  = waiterCount,
+        });
+    }
+
+    size_t consumed = size - bytes;
+    return std::pair<TrellisRuntimeWaiterSnapshot, size_t>{std::move(snapshot), consumed};
+}
+
+} // namespace detail
+
+template <>
+inline auto serialize<TrellisRuntimeWaiterSnapshot>(TrellisRuntimeWaiterSnapshot const& snapshot,
+                                                    SlidingBuffer& buffer) -> std::optional<Error> {
+    if (snapshot.entries.size() > std::numeric_limits<std::uint32_t>::max()) {
+        return Error{Error::Code::MalformedInput, "Waiter snapshot exceeds supported entry count"};
+    }
+
+    std::uint32_t count = static_cast<std::uint32_t>(snapshot.entries.size());
+    buffer.append(reinterpret_cast<uint8_t const*>(&count), sizeof(count));
+    for (auto const& entry : snapshot.entries) {
+        std::uint32_t len = static_cast<std::uint32_t>(entry.source.size());
+        buffer.append(reinterpret_cast<uint8_t const*>(&len), sizeof(len));
+        if (len > 0) {
+            buffer.append(reinterpret_cast<uint8_t const*>(entry.source.data()), len);
+        }
+        buffer.append(reinterpret_cast<uint8_t const*>(&entry.count), sizeof(entry.count));
+    }
+    return std::nullopt;
+}
+
+template <>
+inline auto deserialize<TrellisRuntimeWaiterSnapshot>(SlidingBuffer const& buffer)
+    -> Expected<TrellisRuntimeWaiterSnapshot> {
+    auto decoded = detail::deserializeWaiterSnapshot(buffer.data(), buffer.size());
+    if (!decoded) {
+        return std::unexpected(decoded.error());
+    }
+    return std::move(decoded->first);
+}
+
+template <>
+inline auto deserialize_pop<TrellisRuntimeWaiterSnapshot>(SlidingBuffer& buffer)
+    -> Expected<TrellisRuntimeWaiterSnapshot> {
+    auto decoded = detail::deserializeWaiterSnapshot(buffer.data(), buffer.size());
+    if (!decoded) {
+        return std::unexpected(decoded.error());
+    }
+    buffer.advance(decoded->second);
+    return std::move(decoded->first);
+}
+
+template <>
+inline auto serialize<TrellisRuntimeFlags>(TrellisRuntimeFlags const& flags, SlidingBuffer& buffer)
+    -> std::optional<Error> {
+    uint8_t value = flags.shuttingDown ? static_cast<uint8_t>(1) : static_cast<uint8_t>(0);
+    buffer.append(&value, sizeof(value));
+    return std::nullopt;
+}
+
+template <>
+inline auto deserialize<TrellisRuntimeFlags>(SlidingBuffer const& buffer) -> Expected<TrellisRuntimeFlags> {
+    if (buffer.size() < 1) {
+        return std::unexpected(Error{Error::Code::MalformedInput, "Flags buffer too small"});
+    }
+    TrellisRuntimeFlags flags{.shuttingDown = buffer.data()[0] != 0};
+    return flags;
+}
+
+template <>
+inline auto deserialize_pop<TrellisRuntimeFlags>(SlidingBuffer& buffer) -> Expected<TrellisRuntimeFlags> {
+    auto decoded = deserialize<TrellisRuntimeFlags>(buffer);
+    if (!decoded) {
+        return decoded;
+    }
+    buffer.advance(1);
+    return decoded;
 }
 
 } // namespace SP

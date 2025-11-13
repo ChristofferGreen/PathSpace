@@ -48,5 +48,17 @@ struct TrellisTraceSnapshot {
     std::vector<TrellisTraceEvent> events;
 };
 
-} // namespace SP
+struct TrellisRuntimeWaiterEntry {
+    std::string   source;
+    std::uint64_t count{0};
+};
 
+struct TrellisRuntimeWaiterSnapshot {
+    std::vector<TrellisRuntimeWaiterEntry> entries;
+};
+
+struct TrellisRuntimeFlags {
+    bool shuttingDown{false};
+};
+
+} // namespace SP

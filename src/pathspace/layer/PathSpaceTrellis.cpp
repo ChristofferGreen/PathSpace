@@ -14,6 +14,7 @@
 #include <string_view>
 #include <vector>
 #include <array>
+#include <cstdlib>
 
 namespace SP {
 
@@ -54,11 +55,11 @@ auto splitCommaSeparated(std::string_view value) -> std::vector<std::string> {
 }
 
 auto encodeStateKey(std::string_view path) -> std::string {
-constexpr char hexDigits[] = "0123456789abcdef";
-std::string    encoded;
-encoded.reserve(path.size() * 2);
-for (unsigned char ch : path) {
-    encoded.push_back(hexDigits[(ch >> 4) & 0x0F]);
+    constexpr char hexDigits[] = "0123456789abcdef";
+    std::string    encoded;
+    encoded.reserve(path.size() * 2);
+    for (unsigned char ch : path) {
+        encoded.push_back(hexDigits[(ch >> 4) & 0x0F]);
         encoded.push_back(hexDigits[ch & 0x0F]);
     }
     return encoded;
@@ -68,6 +69,43 @@ for (unsigned char ch : path) {
 
 namespace {
 constexpr auto kMaxLatestWaitSlice = std::chrono::milliseconds(20);
+}
+
+template <typename T>
+void drainInternalPath(PathSpace& space, std::string const& path) {
+    int attempt = 0;
+    while (true) {
+        auto existing = space.take<T>(path);
+        if (existing) {
+            ++attempt;
+            continue;
+        }
+        auto const code = existing.error().code;
+        if (code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath) {
+            break;
+        }
+        if (code == Error::Code::InvalidType || code == Error::Code::InvalidPathSubcomponent
+            || code == Error::Code::InvalidPath) {
+            break;
+        }
+        if (++attempt > 4096) {
+            break;
+        }
+    }
+}
+
+template <typename T>
+void overwriteInternalValue(PathSpace& space, std::string const& path, T const& value) {
+    drainInternalPath<T>(space, path);
+    auto insertResult = space.insert(path, value);
+    if (!insertResult.errors.empty()) {
+        auto const code = insertResult.errors.front().code;
+        if (code == Error::Code::InvalidType || code == Error::Code::InvalidPathSubcomponent
+            || code == Error::Code::InvalidPath) {
+            drainInternalPath<T>(space, path);
+            (void)space.insert(path, value);
+        }
+    }
 }
 
 PathSpaceTrellis::PathSpaceTrellis(std::shared_ptr<PathSpaceBase> backing)
@@ -198,6 +236,258 @@ void PathSpaceTrellis::ensureInternalSpace() {
         internalPrefix_ = std::string{kInternalRoot};
     }
     internalSpace_ = std::make_shared<PathSpace>(ctx, internalPrefix_);
+}
+
+bool PathSpaceTrellis::internalRuntimeEnabled() {
+    if (auto* raw = std::getenv("PATHSPACE_TRELLIS_INTERNAL_RUNTIME")) {
+        auto lowered = toLowerCopy(raw);
+        if (lowered == "0" || lowered == "false" || lowered == "off" || lowered == "no") {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::shared_ptr<PathSpace> PathSpaceTrellis::snapshotInternalSpace() const {
+    std::lock_guard<std::mutex> guard(internalMutex_);
+    return internalSpace_;
+}
+
+auto PathSpaceTrellis::internalRuntimeRootPathFor(std::string const& canonicalOutputPath) const
+    -> std::string {
+    auto key = encodeStateKey(canonicalOutputPath);
+    std::string path = "/state/";
+    path.append(key);
+    path.append("/runtime");
+    return path;
+}
+
+auto PathSpaceTrellis::internalRuntimeReadyQueuePathFor(std::string const& canonicalOutputPath) const
+    -> std::string {
+    auto base = internalRuntimeRootPathFor(canonicalOutputPath);
+    base.append("/ready/queue");
+    return base;
+}
+
+auto PathSpaceTrellis::internalRuntimeReadyCountPathFor(std::string const& canonicalOutputPath) const
+    -> std::string {
+    auto base = internalRuntimeRootPathFor(canonicalOutputPath);
+    base.append("/ready/count");
+    return base;
+}
+
+auto PathSpaceTrellis::internalRuntimeTracePathFor(std::string const& canonicalOutputPath) const
+    -> std::string {
+    auto base = internalRuntimeRootPathFor(canonicalOutputPath);
+    base.append("/trace/latest");
+    return base;
+}
+
+auto PathSpaceTrellis::internalRuntimeWaitersPathFor(std::string const& canonicalOutputPath) const
+    -> std::string {
+    auto base = internalRuntimeRootPathFor(canonicalOutputPath);
+    base.append("/waiters");
+    return base;
+}
+
+auto PathSpaceTrellis::internalRuntimeCursorPathFor(std::string const& canonicalOutputPath) const
+    -> std::string {
+    auto base = internalRuntimeRootPathFor(canonicalOutputPath);
+    base.append("/cursor");
+    return base;
+}
+
+auto PathSpaceTrellis::internalRuntimeShutdownPathFor(std::string const& canonicalOutputPath) const
+    -> std::string {
+    auto base = internalRuntimeRootPathFor(canonicalOutputPath);
+    base.append("/flags/shutting_down");
+    return base;
+}
+
+void PathSpaceTrellis::mirrorReadyState(std::string const& canonicalOutputPath,
+                                        TrellisState const& state) {
+    if (!internalRuntimeEnabled()) {
+        return;
+    }
+    ensureInternalSpace();
+    auto internal = snapshotInternalSpace();
+    if (!internal) {
+        return;
+    }
+    std::vector<std::string> queueSnapshot;
+    {
+        std::lock_guard<std::mutex> lg(state.mutex);
+        queueSnapshot.assign(state.readySources.begin(), state.readySources.end());
+    }
+    overwriteInternalValue(*internal, internalRuntimeReadyQueuePathFor(canonicalOutputPath), queueSnapshot);
+    overwriteInternalValue(*internal,
+                           internalRuntimeReadyCountPathFor(canonicalOutputPath),
+                           static_cast<std::uint64_t>(queueSnapshot.size()));
+}
+
+void PathSpaceTrellis::mirrorTraceSnapshotInternal(std::string const& canonicalOutputPath,
+                                                   std::vector<TrellisTraceEvent> const& snapshot) {
+    if (!internalRuntimeEnabled()) {
+        return;
+    }
+    ensureInternalSpace();
+    auto internal = snapshotInternalSpace();
+    if (!internal) {
+        return;
+    }
+    TrellisTraceSnapshot trace{.events = snapshot};
+    overwriteInternalValue(*internal, internalRuntimeTracePathFor(canonicalOutputPath), trace);
+}
+
+void PathSpaceTrellis::mirrorActiveWaiters(std::string const& canonicalOutputPath,
+                                           TrellisState const& state) {
+    if (!internalRuntimeEnabled()) {
+        return;
+    }
+    ensureInternalSpace();
+    auto internal = snapshotInternalSpace();
+    if (!internal) {
+        return;
+    }
+    TrellisRuntimeWaiterSnapshot snapshot;
+    {
+        std::lock_guard<std::mutex> lg(state.mutex);
+        snapshot.entries.reserve(state.activeWaiters.size());
+        for (auto const& [source, count] : state.activeWaiters) {
+            snapshot.entries.push_back(TrellisRuntimeWaiterEntry{
+                .source = source,
+                .count  = static_cast<std::uint64_t>(count),
+            });
+        }
+    }
+    std::sort(snapshot.entries.begin(),
+              snapshot.entries.end(),
+              [](TrellisRuntimeWaiterEntry const& lhs, TrellisRuntimeWaiterEntry const& rhs) {
+                  return lhs.source < rhs.source;
+              });
+    std::uint64_t totalCount = 0;
+    for (auto const& entry : snapshot.entries) {
+        totalCount += entry.count;
+    }
+    fprintf(stderr, "[trellis-debug] mirrorActiveWaiters %s size=%zu total=%llu\n",
+            canonicalOutputPath.c_str(),
+            snapshot.entries.size(),
+            static_cast<unsigned long long>(totalCount));
+    auto const path = internalRuntimeWaitersPathFor(canonicalOutputPath);
+    overwriteInternalValue(*internal, path, snapshot);
+}
+
+void PathSpaceTrellis::mirrorRoundRobinCursor(std::string const& canonicalOutputPath,
+                                              std::size_t cursor) {
+    if (!internalRuntimeEnabled()) {
+        return;
+    }
+    ensureInternalSpace();
+    auto internal = snapshotInternalSpace();
+    if (!internal) {
+        return;
+    }
+    overwriteInternalValue(*internal,
+                           internalRuntimeCursorPathFor(canonicalOutputPath),
+                           static_cast<std::uint64_t>(cursor));
+}
+
+void PathSpaceTrellis::mirrorShuttingDownFlag(std::string const& canonicalOutputPath, bool shuttingDown) {
+    if (!internalRuntimeEnabled()) {
+        return;
+    }
+    ensureInternalSpace();
+    auto internal = snapshotInternalSpace();
+    if (!internal) {
+        return;
+    }
+    TrellisRuntimeFlags flags{.shuttingDown = shuttingDown};
+    overwriteInternalValue(*internal, internalRuntimeShutdownPathFor(canonicalOutputPath), flags);
+}
+
+void PathSpaceTrellis::clearInternalRuntime(std::string const& canonicalOutputPath) {
+    if (!internalRuntimeEnabled()) {
+        return;
+    }
+    ensureInternalSpace();
+    auto internal = snapshotInternalSpace();
+    if (!internal) {
+        return;
+    }
+    drainInternalPath<std::vector<std::string>>(*internal,
+                                                internalRuntimeReadyQueuePathFor(canonicalOutputPath));
+    drainInternalPath<std::uint64_t>(*internal,
+                                     internalRuntimeReadyCountPathFor(canonicalOutputPath));
+    drainInternalPath<TrellisTraceSnapshot>(*internal,
+                                            internalRuntimeTracePathFor(canonicalOutputPath));
+    drainInternalPath<TrellisRuntimeWaiterSnapshot>(*internal,
+                                                    internalRuntimeWaitersPathFor(canonicalOutputPath));
+    drainInternalPath<std::uint64_t>(*internal,
+                                     internalRuntimeCursorPathFor(canonicalOutputPath));
+    drainInternalPath<TrellisRuntimeFlags>(*internal,
+                                           internalRuntimeShutdownPathFor(canonicalOutputPath));
+}
+
+void PathSpaceTrellis::initializeInternalRuntime(std::string const& canonicalOutputPath,
+                                                 TrellisState const& state) {
+    if (!internalRuntimeEnabled()) {
+        return;
+    }
+    mirrorReadyState(canonicalOutputPath, state);
+    mirrorActiveWaiters(canonicalOutputPath, state);
+    mirrorRoundRobinCursor(canonicalOutputPath, 0);
+    mirrorShuttingDownFlag(canonicalOutputPath, false);
+    mirrorTraceSnapshotInternal(canonicalOutputPath, {});
+}
+
+auto PathSpaceTrellis::registerWaiter(TrellisState& state,
+                                      std::string const& canonicalOutputPath,
+                                      std::string const& source) -> std::optional<Error> {
+    bool mirrored = false;
+    {
+        std::lock_guard<std::mutex> lg(state.mutex);
+        if (state.shuttingDown) {
+            return Error{Error::Code::Timeout, "Trellis is shutting down"};
+        }
+        if (state.maxWaitersPerSource == 0) {
+            return std::nullopt;
+        }
+        auto current = state.activeWaiters[source];
+        if (current >= state.maxWaitersPerSource) {
+            return Error{Error::Code::CapacityExceeded,
+                         "Back-pressure: wait limit reached for source"};
+        }
+        state.activeWaiters[source] = current + 1;
+        mirrored                    = true;
+    }
+    if (mirrored) {
+        mirrorActiveWaiters(canonicalOutputPath, state);
+    }
+    return std::nullopt;
+}
+
+void PathSpaceTrellis::unregisterWaiter(TrellisState& state,
+                                        std::string const& canonicalOutputPath,
+                                        std::string const& source) {
+    if (state.maxWaitersPerSource == 0) {
+        return;
+    }
+    bool mirrored = false;
+    {
+        std::lock_guard<std::mutex> lg(state.mutex);
+        auto it = state.activeWaiters.find(source);
+        if (it != state.activeWaiters.end()) {
+            if (it->second <= 1) {
+                state.activeWaiters.erase(it);
+            } else {
+                it->second -= 1;
+            }
+            mirrored = true;
+        }
+    }
+    if (mirrored) {
+        mirrorActiveWaiters(canonicalOutputPath, state);
+    }
 }
 
 auto PathSpaceTrellis::formatDurationMs(std::chrono::milliseconds value) -> std::string {
@@ -682,6 +972,13 @@ auto PathSpaceTrellis::eraseTraceSnapshot(std::string const& canonicalOutputPath
         }
         return existing.error();
     }
+    if (internalRuntimeEnabled()) {
+        ensureInternalSpace();
+        if (auto internal = snapshotInternalSpace()) {
+            drainInternalPath<TrellisTraceSnapshot>(*internal,
+                                                    internalRuntimeTracePathFor(canonicalOutputPath));
+        }
+    }
     return std::nullopt;
 }
 
@@ -758,7 +1055,6 @@ void PathSpaceTrellis::recordServeSuccess(std::string const& canonicalOutputPath
             stats.waitCount += 1;
         }
         stats.lastSource    = sourcePath;
-        stats.lastErrorCode = 0;
         stats.lastUpdateNs  = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
     });
@@ -818,17 +1114,27 @@ void PathSpaceTrellis::updateBufferedReadyStats(std::string const& canonicalOutp
     (void)backing_->insert(path, static_cast<std::uint64_t>(readyCount));
 }
 
-std::optional<std::string> PathSpaceTrellis::pickReadySource(TrellisState& state) {
-    std::lock_guard<std::mutex> lg(state.mutex);
-    while (!state.readySources.empty()) {
-        auto source = std::move(state.readySources.front());
-        state.readySources.pop_front();
-        state.readySourceSet.erase(source);
-        if (std::find(state.sources.begin(), state.sources.end(), source) != state.sources.end()) {
-            return source;
+std::optional<std::string> PathSpaceTrellis::pickReadySource(TrellisState& state,
+                                                             std::string const& canonicalOutputPath) {
+    std::optional<std::string> result;
+    bool                       mutated = false;
+    {
+        std::lock_guard<std::mutex> lg(state.mutex);
+        while (!state.readySources.empty()) {
+            auto source = state.readySources.front();
+            state.readySources.pop_front();
+            state.readySourceSet.erase(source);
+            mutated = true;
+            if (std::find(state.sources.begin(), state.sources.end(), source) != state.sources.end()) {
+                result = std::move(source);
+                break;
+            }
         }
     }
-    return std::nullopt;
+    if (mutated) {
+        mirrorReadyState(canonicalOutputPath, state);
+    }
+    return result;
 }
 
 bool PathSpaceTrellis::enqueueReadySource(TrellisState& state, std::string const& source) {
@@ -863,6 +1169,7 @@ void PathSpaceTrellis::appendTraceEvent(std::string const& canonicalOutputPath,
         snapshot.assign(state.trace.begin(), state.trace.end());
     }
     (void)persistTraceSnapshot(canonicalOutputPath, snapshot);
+    mirrorTraceSnapshotInternal(canonicalOutputPath, snapshot);
 }
 
 static auto serializeLatestSnapshot(InputMetadata const& inputMetadata, void* obj)
@@ -996,8 +1303,11 @@ void PathSpaceTrellis::restorePersistedStatesLocked() {
         }
 
         trellis_.emplace(canonicalOutput.value(), std::move(state));
+        auto it = trellis_.find(canonicalOutput.value());
+        if (it != trellis_.end() && it->second) {
+            initializeInternalRuntime(canonicalOutput.value(), *it->second);
+        }
         if (migratedLegacyLimit) {
-            auto it = trellis_.find(canonicalOutput.value());
             if (it != trellis_.end()) {
                 (void)clearLegacyStateNode(canonicalOutput.value());
                 (void)persistStateLocked(canonicalOutput.value(), *it->second);
@@ -1205,10 +1515,11 @@ auto PathSpaceTrellis::handleEnable(InputData const& data) -> InsertReturn {
     }
 
     auto statePtr = std::make_shared<TrellisState>();
-    statePtr->mode             = parsed->mode;
-    statePtr->policy           = parsed->policy;
-    statePtr->sources          = parsed->sources;
-    statePtr->roundRobinCursor = 0;
+    statePtr->mode                 = parsed->mode;
+    statePtr->policy               = parsed->policy;
+    statePtr->sources              = parsed->sources;
+    statePtr->roundRobinCursor     = 0;
+    statePtr->maxWaitersPerSource  = parsed->maxWaitersPerSource;
 
     auto [it, inserted] = trellis_.emplace(parsed->outputPath, statePtr);
     if (!inserted) {
@@ -1231,6 +1542,8 @@ auto PathSpaceTrellis::handleEnable(InputData const& data) -> InsertReturn {
         ret.errors.emplace_back(*statsError);
         return ret;
     }
+
+    initializeInternalRuntime(parsed->outputPath, *statePtr);
 
     if (auto ctx = this->getContext()) {
         ctx->notify(parsed->outputPath);
@@ -1262,6 +1575,10 @@ auto PathSpaceTrellis::handleDisable(InputData const& data) -> InsertReturn {
         std::lock_guard<std::mutex> stateLock(removed->mutex);
         removed->shuttingDown = true;
     }
+    if (removed) {
+        mirrorShuttingDownFlag(parsed.value(), true);
+        mirrorActiveWaiters(parsed.value(), *removed);
+    }
 
     if (auto ctx = this->getContext()) {
         ctx->notify(parsed.value());
@@ -1272,6 +1589,7 @@ auto PathSpaceTrellis::handleDisable(InputData const& data) -> InsertReturn {
     if (auto statsError = eraseStats(parsed.value())) {
         ret.errors.emplace_back(*statsError);
     }
+    clearInternalRuntime(parsed.value());
     return ret;
 }
 
@@ -1298,7 +1616,7 @@ auto PathSpaceTrellis::tryServeQueue(TrellisState& state,
     if (!backing_) {
         return Error{Error::Code::InvalidPermissions, "No backing PathSpace configured"};
     }
-    if (auto readySource = pickReadySource(state)) {
+    if (auto readySource = pickReadySource(state, canonicalOutputPath)) {
         updateBufferedReadyStats(canonicalOutputPath);
         auto attemptOptions   = options;
         attemptOptions.doBlock = false;
@@ -1314,11 +1632,21 @@ auto PathSpaceTrellis::tryServeQueue(TrellisState& state,
             }
             servicedSource = *readySource;
             if (state.policy == TrellisPolicy::RoundRobin) {
-                std::lock_guard<std::mutex> lg(state.mutex);
-                auto it = std::find(state.sources.begin(), state.sources.end(), *readySource);
-                if (it != state.sources.end()) {
-                    state.roundRobinCursor = static_cast<std::size_t>(std::distance(state.sources.begin(), it) + 1)
-                                             % state.sources.size();
+                std::optional<std::size_t> nextCursor;
+                {
+                    std::lock_guard<std::mutex> lg(state.mutex);
+                    auto it = std::find(state.sources.begin(), state.sources.end(), *readySource);
+                    if (it != state.sources.end() && !state.sources.empty()) {
+                        auto candidate = (static_cast<std::size_t>(std::distance(state.sources.begin(), it)) + 1)
+                                         % state.sources.size();
+                        if (state.roundRobinCursor != candidate) {
+                            state.roundRobinCursor = candidate;
+                            nextCursor             = candidate;
+                        }
+                    }
+                }
+                if (nextCursor) {
+                    mirrorRoundRobinCursor(canonicalOutputPath, *nextCursor);
                 }
             }
             return std::nullopt;
@@ -1369,9 +1697,22 @@ auto PathSpaceTrellis::tryServeQueue(TrellisState& state,
     std::optional<Error> lastError;
 
     auto advanceCursor = [&](std::size_t next) {
-        if (state.policy == TrellisPolicy::RoundRobin) {
+        if (state.policy != TrellisPolicy::RoundRobin) {
+            return;
+        }
+        std::optional<std::size_t> newCursor;
+        {
             std::lock_guard<std::mutex> lg(state.mutex);
-            state.roundRobinCursor = next % sourcesCopy.size();
+            if (!state.sources.empty()) {
+                auto candidate = next % state.sources.size();
+                if (state.roundRobinCursor != candidate) {
+                    state.roundRobinCursor = candidate;
+                    newCursor              = candidate;
+                }
+            }
+        }
+        if (newCursor) {
+            mirrorRoundRobinCursor(canonicalOutputPath, *newCursor);
         }
     };
 
@@ -1460,34 +1801,10 @@ auto PathSpaceTrellis::waitAndServeQueue(TrellisState& state,
 
     auto const& selectedSource = sourcesCopy[waitIndex];
     auto registerWaiterIfNeeded = [&](std::string const& src) -> std::optional<Error> {
-        std::lock_guard<std::mutex> lg(state.mutex);
-        if (state.shuttingDown) {
-            return Error{Error::Code::Timeout, "Trellis is shutting down"};
-        }
-        if (state.maxWaitersPerSource == 0) {
-            return std::nullopt;
-        }
-        auto current = state.activeWaiters[src];
-        if (current >= state.maxWaitersPerSource) {
-            return Error{Error::Code::CapacityExceeded,
-                         "Back-pressure: wait limit reached for source"};
-        }
-        state.activeWaiters[src] = current + 1;
-        return std::nullopt;
+        return this->registerWaiter(state, canonicalOutputPath, src);
     };
     auto unregisterWaiter = [&](std::string const& src) {
-        if (state.maxWaitersPerSource == 0) {
-            return;
-        }
-        std::lock_guard<std::mutex> lg(state.mutex);
-        auto it = state.activeWaiters.find(src);
-        if (it != state.activeWaiters.end()) {
-            if (it->second <= 1) {
-                state.activeWaiters.erase(it);
-            } else {
-                it->second -= 1;
-            }
-        }
+        this->unregisterWaiter(state, canonicalOutputPath, src);
     };
 
     if (auto registrationError = registerWaiterIfNeeded(selectedSource)) {
@@ -1500,8 +1817,9 @@ auto PathSpaceTrellis::waitAndServeQueue(TrellisState& state,
                 << " timeout_ms=" << formatDurationMs(remaining);
         appendTraceEvent(canonicalOutputPath, state, waitMsg.str());
     }
+    // Use non-null sentinel so reset() triggers the deleter and unregisters the waiter.
     auto unregisterGuard = std::unique_ptr<void, std::function<void(void*)>>(
-        nullptr, [&](void*) { unregisterWaiter(selectedSource); });
+        reinterpret_cast<void*>(1), [&](void*) { unregisterWaiter(selectedSource); });
 
     Iterator sourceIter{selectedSource};
     auto     err = backing_->out(sourceIter, inputMetadata, blockingOptions, obj);
@@ -1509,8 +1827,20 @@ auto PathSpaceTrellis::waitAndServeQueue(TrellisState& state,
     if (!err) {
         servicedSource = selectedSource;
         if (state.policy == TrellisPolicy::RoundRobin) {
-            std::lock_guard<std::mutex> lg(state.mutex);
-            state.roundRobinCursor = (waitIndex + 1) % sourcesCopy.size();
+            std::optional<std::size_t> newCursor;
+            {
+                std::lock_guard<std::mutex> lg(state.mutex);
+                if (!state.sources.empty()) {
+                    auto candidate = (waitIndex + 1) % sourcesCopy.size();
+                    if (state.roundRobinCursor != candidate) {
+                        state.roundRobinCursor = candidate;
+                        newCursor              = candidate;
+                    }
+                }
+            }
+            if (newCursor) {
+                mirrorRoundRobinCursor(canonicalOutputPath, *newCursor);
+            }
         }
         {
             std::ostringstream successMsg;
@@ -1631,7 +1961,7 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
     };
 
     for (std::size_t attempt = 0; attempt < sourcesCopy.size(); ++attempt) {
-        if (auto ready = pickReadySource(state)) {
+        if (auto ready = pickReadySource(state, canonicalOutputPath)) {
             updateBufferedReadyStats(canonicalOutputPath);
             auto readyOptions   = options;
             readyOptions.doBlock = false;
@@ -1657,14 +1987,21 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
                 } else {
                     servicedSource = *ready;
                     if (policySnapshot == TrellisPolicy::RoundRobin) {
-                        auto it = std::find(sourcesCopy.begin(), sourcesCopy.end(), *ready);
+                        std::optional<std::size_t> newCursor;
+                        auto                       it = std::find(sourcesCopy.begin(), sourcesCopy.end(), *ready);
                         if (it != sourcesCopy.end()) {
                             std::lock_guard<std::mutex> lg(state.mutex);
                             if (!state.sources.empty()) {
-                                state.roundRobinCursor
-                                    = (static_cast<std::size_t>(std::distance(sourcesCopy.begin(), it)) + 1)
-                                      % state.sources.size();
+                                auto candidate = (static_cast<std::size_t>(std::distance(sourcesCopy.begin(), it)) + 1)
+                                                 % state.sources.size();
+                                if (state.roundRobinCursor != candidate) {
+                                    state.roundRobinCursor = candidate;
+                                    newCursor              = candidate;
+                                }
                             }
+                        }
+                        if (newCursor) {
+                            mirrorRoundRobinCursor(canonicalOutputPath, *newCursor);
                         }
                     }
                     std::ostringstream readyMsg;
@@ -1749,8 +2086,9 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
                     << " timeout_ms=" << formatDurationMs(perSourceTimeout);
             appendTraceEvent(canonicalOutputPath, state, waiting.str());
         }
+        // Non-null sentinel keeps the scope guard active until reset() runs.
         auto unregisterGuard = std::unique_ptr<void, std::function<void(void*)>>(
-            nullptr, [&](void*) { unregisterWaiter(selectedSource); });
+            reinterpret_cast<void*>(1), [&](void*) { unregisterWaiter(selectedSource); });
 
         Iterator sourceIter{selectedSource};
         auto     err = backing_->out(sourceIter, inputMetadata, blockingOptions, obj);
@@ -1774,9 +2112,19 @@ auto PathSpaceTrellis::waitAndServeLatest(TrellisState& state,
             }
             servicedSource = selectedSource;
             if (state.policy == TrellisPolicy::RoundRobin) {
-                std::lock_guard<std::mutex> lg(state.mutex);
-                if (!state.sources.empty()) {
-                    state.roundRobinCursor = (index + 1) % state.sources.size();
+                std::optional<std::size_t> newCursor;
+                {
+                    std::lock_guard<std::mutex> lg(state.mutex);
+                    if (!state.sources.empty()) {
+                        auto candidate = (index + 1) % state.sources.size();
+                        if (state.roundRobinCursor != candidate) {
+                            state.roundRobinCursor = candidate;
+                            newCursor              = candidate;
+                        }
+                    }
+                }
+                if (newCursor) {
+                    mirrorRoundRobinCursor(canonicalOutputPath, *newCursor);
                 }
             }
             std::ostringstream readyMsg;
@@ -1905,15 +2253,26 @@ auto PathSpaceTrellis::serveLatest(TrellisState& state,
     bool                 allowColdScan = !options.doBlock;
 
     auto advanceCursor = [&](std::size_t index) {
-        if (policy == TrellisPolicy::RoundRobin) {
+        if (policy != TrellisPolicy::RoundRobin) {
+            return;
+        }
+        std::optional<std::size_t> newCursor;
+        {
             std::lock_guard<std::mutex> lg(state.mutex);
             if (!state.sources.empty()) {
-                state.roundRobinCursor = (index + 1) % state.sources.size();
+                auto candidate = index % state.sources.size();
+                if (state.roundRobinCursor != candidate) {
+                    state.roundRobinCursor = candidate;
+                    newCursor              = candidate;
+                }
             }
+        }
+        if (newCursor) {
+            mirrorRoundRobinCursor(canonicalOutputPath, *newCursor);
         }
     };
 
-    if (auto readySource = pickReadySource(state)) {
+    if (auto readySource = pickReadySource(state, canonicalOutputPath)) {
         updateBufferedReadyStats(canonicalOutputPath);
         {
             std::ostringstream cached;
@@ -1922,11 +2281,11 @@ auto PathSpaceTrellis::serveLatest(TrellisState& state,
                    << " src=" << *readySource;
             appendTraceEvent(canonicalOutputPath, state, cached.str());
         }
-        auto attemptOptions   = options;
-        attemptOptions.doBlock = false;
-        attemptOptions.doPop   = false;
+        auto readyOptions   = options;
+        readyOptions.doBlock = false;
+        readyOptions.doPop   = false;
         Iterator sourceIter{*readySource};
-        auto     err = backing_->out(sourceIter, inputMetadata, attemptOptions, obj);
+        auto     err = backing_->out(sourceIter, inputMetadata, readyOptions, obj);
         if (!err) {
             bool enforceFreshness = (policy == TrellisPolicy::Priority);
             bool accept = true;
@@ -2211,6 +2570,7 @@ auto PathSpaceTrellis::notify(std::string const& notificationPath) -> void {
     };
     std::vector<std::string> outputsToUpdate;
     std::vector<TraceEntry>  tracesToRecord;
+    std::vector<std::pair<std::string, std::shared_ptr<TrellisState>>> readyMirrors;
 
     auto canonical = canonicalizeAbsolute(notificationPath);
     if (canonical) {
@@ -2227,6 +2587,7 @@ auto PathSpaceTrellis::notify(std::string const& notificationPath) -> void {
             }
             if (enqueued) {
                 outputsToUpdate.push_back(outputPath);
+                readyMirrors.emplace_back(outputPath, statePtr);
                 tracesToRecord.push_back(TraceEntry{
                     .state  = statePtr,
                     .output = outputPath,
@@ -2237,6 +2598,11 @@ auto PathSpaceTrellis::notify(std::string const& notificationPath) -> void {
     }
     for (auto const& output : outputsToUpdate) {
         updateBufferedReadyStats(output);
+    }
+    for (auto const& [output, statePtr] : readyMirrors) {
+        if (statePtr) {
+            mirrorReadyState(output, *statePtr);
+        }
     }
     for (auto& entry : tracesToRecord) {
         if (!entry.state) {
@@ -2263,10 +2629,15 @@ auto PathSpaceTrellis::shutdown() -> void {
         snapshot = trellis_;
         trellis_.clear();
     }
-    for (auto& [_, state] : snapshot) {
+    for (auto& [output, state] : snapshot) {
         if (!state) continue;
-        std::lock_guard<std::mutex> lg(state->mutex);
-        state->shuttingDown = true;
+        {
+            std::lock_guard<std::mutex> lg(state->mutex);
+            state->shuttingDown = true;
+            state->activeWaiters.clear();
+        }
+        mirrorShuttingDownFlag(output, true);
+        mirrorActiveWaiters(output, *state);
     }
     if (auto ctx = this->getContext()) {
         ctx->shutdown();
