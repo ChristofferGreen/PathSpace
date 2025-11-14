@@ -125,6 +125,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/declarative/InputTask.cpp
         ui/declarative/Runtime.cpp
         ui/declarative/Schema.cpp
+        ui/declarative/Widgets.cpp
         ui/FontResources.cpp
         ui/FontAtlasCache.cpp
         ui/ThemeResources.cpp

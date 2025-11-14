@@ -66,6 +66,7 @@ if(PATHSPACE_ENABLE_UI)
     ui/test_HtmlPresent.cpp
     ui/test_HtmlReplay.cpp
     ui/test_SceneHitTest.cpp
+    ui/test_DeclarativeWidgets.cpp
   ui/test_PathWindowView.cpp
   ui/test_BackendAdapters.cpp
   ui/test_DeclarativeRuntime.cpp

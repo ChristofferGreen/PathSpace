@@ -2,6 +2,8 @@
 
 _Last updated: October 31, 2025_
 
+> **Update (November 14, 2025):** Declarative widgets now register handlers via `HandlerBinding` records. `events/<event>/handler` stores `{ registry_key, kind }` and the helper layer keeps an in-memory registry mapping those ids back to the user-provided lambdas (button press, slider change, etc.). The binding id format is `<widget_path>#<event>#<sequence>` so removals can drop every handler under a widget subtree deterministically. Runtime dispatch will resolve the binding id before running the callback; PathSpace no longer stores `std::function` payloads directly.
+
 > **Decision (November 14, 2025):** Declarative routes were removed. Widgets now execute the `events/<event>/handler` callable directly without intermediate routing tables. The details below describe the shelved design and remain here purely for historical reference.
 
 ## Auto-render request queue
@@ -27,6 +29,12 @@ _Last updated: October 31, 2025_
 
 ## Related device/event entry points
 - PathIO adapters expose device event queues at `<device mount>/events` (mouse, keyboard, gamepad) with device-specific payload structs (`src/pathspace/layer/io/PathIOMouse.hpp`, `src/pathspace/layer/io/PathIOKeyboard.hpp`, `src/pathspace/layer/io/PathIOGamepad.cpp`). Declarative widgets ingest these events indirectly through existing input mixers before dispatching `WidgetOp` records.
+
+### Handler bindings (new)
+
+- Declarative helpers now emit a small `HandlerBinding` struct at `events/<event>/handler` with `{ registry_key, kind }`. The registry key is generated as `<widget_root>#<event>#<sequence>` so removal simply drops every entry matching the widget root prefix.
+- Actual `std::function` callbacks live in an in-memory registry keyed by that id. Consumers resolve the binding id at dispatch time (button press, slider change, etc.) and invoke the stored lambda with the appropriate context (`ButtonContext`, `SliderContext`, ...).
+- The helper automatically registers/unregisters bindings when fragments mount or `Widgets::Remove` is called, so PathSpace never stores raw function objects.
 
 ## Observations for declarative routing contract
 - Existing queues assume a single logical consumer; the plan now introduces shared route tables under `<scene>/widgets/runtime/routes/...` plus per-widget defaults to unlock multi-route dispatch without breaking legacy queues.

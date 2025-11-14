@@ -127,8 +127,8 @@ Canonical schema definitions for the declarative workflow live in `include/paths
   - `focus/order`, `focus/disabled`, `focus/wrap`, `focus/current` — focus traversal metadata
   - `layout/orientation`, `layout/spacing`, `layout/computed/*` — layout hints and computed metrics
   - `children/<child-name>` — child widget mounts
-  - `events/<event>/handler` — callable stored at the event path and executed directly by the widget dispatcher
-  - `render/synthesize`, `render/bucket`, `render/dirty` — render cache contract
+  - `events/<event>/handler` — `HandlerBinding { registry_key, kind }` referencing the declarative callback registry
+  - `render/synthesize`, `render/bucket`, `render/dirty` — render cache contract (descriptor + cached bucket + dirty flag)
   - `log/events` — runtime diagnostics queue
 
 | Widget | Authored nodes | Runtime-managed nodes |
@@ -142,6 +142,10 @@ Canonical schema definitions for the declarative workflow live in `include/paths
 | label | `state/text`, `events/activate/handler` | `render/bucket`, `render/dirty` |
 | input_field | `state/text`, `state/placeholder`, `events/submit/handler` | `state/focused`, `render/dirty` |
 | paint_surface | `state/brush/*`, `events/draw/handler` | `state/history/<stroke-id>`, `render/buffer/*`, `render/gpu/*`, `assets/texture` |
+
+> **Handler bindings:** the declarative helper registers each handler in an in-memory registry and stores `HandlerBinding { registry_key, kind }` at `events/<event>/handler`. Removal drops every key rooted at the widget path so stale lambdas never fire.
+>
+> **Render descriptors:** `render/synthesize` now holds a `RenderDescriptor` (widget kind enum). The renderer reads that descriptor plus the widget’s `state/*` and `meta/*` payloads to rebuild buckets when `render/dirty = true`; `render/bucket` remains as the cached snapshot for compatibility while the descriptor path rolls out.
 
 - Surfaces (offscreen targets)
   - `surfaces/<surface-id>/`

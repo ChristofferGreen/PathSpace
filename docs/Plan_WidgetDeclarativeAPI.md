@@ -173,7 +173,7 @@ History diagnostics rely on `_history/stats/*` telemetry published by the undo l
 - Input routing remains in sync: when VoiceOver activates an element, the bridge emits a declarative event (`WidgetOpKind::AccessibilityActivate`) that flows through the standard routing pipeline.
 - Testing: add VoiceOver-driven smoke tests that tab through declarative widgets, validate labels/roles via the Accessibility Inspector, and ensure actions fire through the same handler-wrapping logic. Document troubleshooting steps for developers configuring localized strings and custom roles.
 
-Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenience overloads (`Label::Fragment("Hello")`, `Button::Fragment("Label", on_press)`) alongside structure-based overloads (`Label::Fragment(LabelArgs{...})`, `Button::Fragment(ButtonArgs{...})`) so simple cases remain ergonomic while complex cases stay expressive.
+Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenience overloads (`Label::Fragment("Hello")`, `Button::Fragment("Label", on_press)`) alongside structure-based overloads (`Label::Fragment(LabelArgs{...})`, `Button::Fragment(ButtonArgs{...})`) so simple cases remain ergonomic while complex cases stay expressive. **Update (November 14, 2025):** `include/pathspace/ui/declarative/Widgets.hpp` now exposes `WidgetFragment`, `Widgets::Mount`, widget-specific `Create` helpers, and update utilities. Fragments encapsulate both their populate lambda and child fragments so containers can bulk-mount declarative children without re-authoring PathSpace writes.
 
 1. **Schema definition**
    - ✅ (November 14, 2025) Canonical schema captured in `include/pathspace/ui/declarative/Schema.hpp`; docs updated (`docs/AI_PATHS.md`) to publish the shared namespaces and widget overlays.
@@ -185,14 +185,17 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - Provide helpers for installing/uninstalling handlers directly via PathSpace inserts so fragments and scenes can replace lambdas safely.
    - Document how fragments publish handlers during mount and how scenes override/restore them.
    - Add tests covering registration, invocation, and propagation.
+   - ✅ (November 14, 2025) `events/<event>/handler` now stores a `HandlerBinding { registry_key, kind }`. Declarative helpers register handlers with an in-memory registry so runtime dispatch can resolve the user lambda without storing `std::function` payloads in PathSpace. Removal cleans up registry entries, and tests exercise button/list slider bindings.
 3. **Render synthesis contract**
    - Define callable signature (inputs: widget path/context; output: `DrawableBucketSnapshot`), including conventions for composing child widget buckets.
    - Provide caching semantics (`render/bucket`, `render/dirty`) and cascade rules (parents mark descendants dirty when shared state changes).
    - Add tests comparing new bucket output vs. current builder output.
+   - ✅ (November 14, 2025) `render/synthesize` nodes store a lightweight `RenderDescriptor` (widget kind enum) instead of opaque callables. Declarative setters flip `render/dirty` whenever state changes; the runtime synthesizer will read the descriptor and rebuild buckets from the stored state/style.
 4. **Fragment specification**
    - Define the `WidgetFragment` structure (scratch PathSpace + metadata) returned by helper functions like `Button::Fragment`, `List::Fragment`, etc.
    - Document how event handlers/render lambdas are re-bound when fragments are mounted under a concrete path.
    - Provide utilities for merging fragments via container argument structs (e/g., `ListArgs::children`) and ensure copying/moving semantics are well-defined.
+   - ✅ (November 14, 2025) `WidgetFragment` now owns its populate lambda and child fragments; helpers expose strongly-typed args, automatically register handlers, and mount children via `Widgets::Mount`.
 5. **Builder input abstraction**
    - Refactor preview builders to consume `WidgetDescriptor` populated from path data.
    - Resolve themes with inheritance/defaults.
@@ -207,11 +210,8 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - ✅ (Nov 14, 2025) Added `SP::System::LaunchStandard`, `SP::App::Create`, `SP::Window::Create`, and `SP::Scene::Create` under `include/pathspace/ui/declarative/Runtime.hpp`. The helpers seed `/system/themes`, normalize `/system/applications/<app>`, and wire `windows/<id>/views/<view>` to `scenes/<scene>` under the declarative schema so later phases can assume the canonical nodes exist.
    - ✅ (Nov 14, 2025) Runtime now starts the `/system/widgets/runtime/input` pump (draining `widgets/<widget>/ops/inbox/queue` into `ops/actions/...`), tracks health metrics, and auto-attaches a default renderer/surface binding so every window view has a populated `surface`/`renderer` pair plus `structure/window/<id>/{surface,renderer,present}` mirrors. Scene + window helpers also stamp the active theme onto `style/theme`.
 1. **API surface**
-   - Provide mounting overloads (`Button::Create(space, parentPath, name, args)`, etc.) that internally build fragments (e.g., `Label::Create` delegates to `Label::Fragment`), compute child paths, mount them, and return canonical widget paths.
-   - Expose fragment helpers (`Button::Fragment`, `List::Fragment`, etc.) for container arguments (`ListArgs::children`, `TreeArgs::nodes`).
-   - Offer removal/move helpers alongside `Widgets::Mount` for lifecycle management.
-   - Supply update helpers (`Button::SetLabel`, `List::SetChildren`, `Slider::SetValue`, etc.) that operate on mounted widget paths and mark relevant nodes dirty.
-   - Introduce `PaintSurface::Create`/`Fragment` helpers that wire draw handlers and supply paint buffer metadata consistent with the legacy paint example.
+   - ✅ (November 14, 2025) Declarative helpers now ship in `include/pathspace/ui/declarative/Widgets.hpp`. `Widgets::Mount` consumes `WidgetFragment`s, every widget exposes `Create` + `Fragment` helpers, and update utilities (`Button::SetLabel`, `Slider::SetValue`, `List::SetItems`, `Label::SetText`, etc.) mark `render/dirty` when state changes. Removal is currently logical (`state/removed = true`) so runtime consumers can detach widgets without blowing away history; the `Move` helper stubs out with `Error::UnimplementedFeature` and is tracked below so we can preserve arbitrary subtree state when reparenting. `PaintSurface::Create` seeds brush/gpu metadata and registers draw handlers using the new registry.
+   - 🔜 Follow-up: implement true widget reparent/move semantics so `Widgets::Move` can re-home existing subtrees without forcing consumers to recreate widgets manually.
 2. **Scene lifecycle**
    - Ensure `Scene::Create` installs watches on widget namespaces (monitoring `render/dirty`), cascades dirty flags, and publishes initial bucket revisions.
    - Provide helpers for scene teardown/transitions.
