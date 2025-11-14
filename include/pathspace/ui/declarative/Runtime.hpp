@@ -3,6 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/declarative/InputTask.hpp>
 
 #include <optional>
 #include <string>
@@ -12,15 +13,21 @@ namespace SP::System {
 
 struct LaunchOptions {
     std::string default_theme_name = "default";
+    bool start_input_runtime = true;
+    SP::UI::Declarative::InputTaskOptions input_task_options{};
 };
 
 struct LaunchResult {
     bool already_launched = false;
     std::string default_theme_path;
+    bool input_runtime_started = false;
+    std::string input_runtime_state_path;
 };
 
 [[nodiscard]] auto LaunchStandard(PathSpace& space,
                                   LaunchOptions const& options = {}) -> SP::Expected<LaunchResult>;
+
+auto ShutdownDeclarativeRuntime(PathSpace& space) -> void;
 
 } // namespace SP::System
 

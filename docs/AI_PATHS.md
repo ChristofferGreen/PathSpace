@@ -31,6 +31,10 @@ Conventions:
 - System IO (logs)
   - `/system/io/stdout`
   - `/system/io/stderr`
+- Declarative runtime (global services)
+  - `/system/widgets/runtime/input/state/running` — bool flag toggled by `SP::System::LaunchStandard`/`ShutdownDeclarativeRuntime`.
+  - `/system/widgets/runtime/input/metrics/{widgets_processed_total,widgets_with_work_total,actions_published_total,last_pump_ns}`
+  - `/system/widgets/runtime/input/log/errors/queue` — string queue capturing reducer/pump failures.
 
 ## 2) Application subtree layout (app-relative)
 
@@ -113,8 +117,8 @@ Canonical schema definitions for the declarative workflow live in `include/paths
   - `application` — `state/title`, `windows/<window-id>`, `scenes/<scene-id>`, `themes/default`, `events/lifecycle/handler`
 - `window` — `state/title`, `state/visible`, `style/theme`, `widgets/<widget-name>`, `events/{close,focus}/handler`, `render/dirty`
 - Runtime bootstrap (November 14, 2025): `SP::System::LaunchStandard` + `SP::Window::Create` now seed `state/visible`, `render/dirty`, and `views/<view>/scene|surface|htmlTarget` so declarative scenes can rely on these leaves before wiring presenters.
-- `scene` — `structure/widgets/<widget-path>`, `structure/window/<window-id>/focus/current`, `structure/window/<window-id>/metrics/dpi`, `views/<view-id>/dirty`, `snapshot/<revision>`, `state/attached`, `render/dirty`
-- Runtime bootstrap (November 14, 2025): `SP::Scene::Create` populates `structure/window/<window-id>/*`, `state/attached`, and marks the bound window view so focus/metrics scaffolding exists prior to widget mounts.
+- `scene` — `structure/widgets/<widget-path>`, `structure/window/<window-id>/{focus/current,metrics/dpi,surface,renderer,present}`, `views/<view-id>/dirty`, `snapshot/<revision>`, `state/attached`, `render/dirty`
+- Runtime bootstrap (November 14, 2025): `SP::Scene::Create` populates `structure/window/<window-id>/*`, `state/attached`, and marks the bound window view so focus/metrics/rendering scaffolding exists prior to widget mounts.
   - `theme` — `colors/<token>`, `typography/<token>`, `spacing/<token>`, `style/inherits`
 
 - Common widget nodes (applies to every declarative widget)
@@ -154,7 +158,9 @@ Canonical schema definitions for the declarative workflow live in `include/paths
   - `windows/<window-id>/`
     - `window` — platform-native window shell
     - `views/<view-id>/`
+      - `scene` — app-relative pointer to the bound scene (`scenes/...`)
       - `surface` — app-relative reference to a surface
+      - `renderer` — app-relative renderer target path (e.g., `renderers/.../targets/surfaces/...`)
       - `htmlTarget` — app-relative reference to an HTML renderer target
       - `present` — execution to present the surface to the window
       - `present/policy` — optional string selector (`AlwaysFresh`, `PreferLatestCompleteWithBudget`, `AlwaysLatestComplete`)
@@ -186,6 +192,7 @@ Canonical schema definitions for the declarative workflow live in `include/paths
 - `config/theme/`
     - `active` — string canonical name of the active widget theme
     - `theme/<name>/value` — stored `WidgetTheme` struct describing colors, typography, and widget styles
+- `config/renderer/default` — app-relative renderer root (e.g., `renderers/widgets_declarative_renderer`), written by `SP::App::Create`.
 
 - IO logging (app-local)
   - `io/log/error` — authoritative error log (UTF-8, newline-delimited)

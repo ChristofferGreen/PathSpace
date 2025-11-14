@@ -127,6 +127,7 @@ Canonical namespaces stay consistent across widgets: `state/` for mutable widget
   - `views/<view-id>/present` — execution the presenter calls to display the current snapshot.
   - `views/<view-id>/dirty` — per-window dirty mirror so slow presenters do not stall others.
   - `state/attached` — bool flag signalling whether the window actively presents the scene.
+- LaunchStandard/Window::Create now populate `views/<view-id>/{surface,renderer,scene}` plus the matching `structure/window/<window-id>/{surface,renderer,present}` entries automatically, wiring each view to the default declarative renderer/target pair seeded under `renderers/widgets_declarative_renderer`.
 - Reattachment flow: set `state/attached = false`, flush pending presents, update renderer bindings, then set `state/attached = true`, mark `render/dirty = true`, and enqueue an auto-render request to force a fresh frame whenever a window is recreated or reassigned.
 - Multi-window support: allow multiple `structure/window` entries; input routing keys off the window ID so focus and pointer events remain scoped. Each presenter watches its own `views/<view-id>/dirty` flag and auto-render queue.
 - Paint surface resize semantics: expanding the layout grows `render/buffer` (and `assets/texture` when present) to the new bounds and republishes the full stroke history; shrinking retains the existing buffer and clips presentation to the visible rect so strokes persist for future expansions.
@@ -203,8 +204,8 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
 
 ### Phase 1 – New Declarative Runtime
 0. **Runtime bootstrap**
-   - ✅ (Nov 14, 2025) Added `SP::System::LaunchStandard`, `SP::App::Create`, `SP::Window::Create`, and `SP::Scene::Create` under `include/pathspace/ui/declarative/Runtime.hpp`. The helpers seed `/system/themes`, normalize `/system/applications/<app>`, and wire `windows/<id>/views/<view>` to `scenes/<scene>` under the declarative schema so later phases can assume the canonical nodes exist. Side effects plus extension hooks are documented below; follow-ups focus on input queues and widget tasks.
-   - Remaining TODOs: extend the runtime to launch the declarative input task (`widgets/runtime/input`), queue reducers, and attach default themes/renderers so Phase 1’s later steps (focus controller, scene lifecycle) can reuse the bootstrap contracts.
+   - ✅ (Nov 14, 2025) Added `SP::System::LaunchStandard`, `SP::App::Create`, `SP::Window::Create`, and `SP::Scene::Create` under `include/pathspace/ui/declarative/Runtime.hpp`. The helpers seed `/system/themes`, normalize `/system/applications/<app>`, and wire `windows/<id>/views/<view>` to `scenes/<scene>` under the declarative schema so later phases can assume the canonical nodes exist.
+   - ✅ (Nov 14, 2025) Runtime now starts the `/system/widgets/runtime/input` pump (draining `widgets/<widget>/ops/inbox/queue` into `ops/actions/...`), tracks health metrics, and auto-attaches a default renderer/surface binding so every window view has a populated `surface`/`renderer` pair plus `structure/window/<id>/{surface,renderer,present}` mirrors. Scene + window helpers also stamp the active theme onto `style/theme`.
 1. **API surface**
    - Provide mounting overloads (`Button::Create(space, parentPath, name, args)`, etc.) that internally build fragments (e.g., `Label::Create` delegates to `Label::Fragment`), compute child paths, mount them, and return canonical widget paths.
    - Expose fragment helpers (`Button::Fragment`, `List::Fragment`, etc.) for container arguments (`ListArgs::children`, `TreeArgs::nodes`).
@@ -223,7 +224,7 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - Keep enqueue lightweight; hit-testing identifies widget IDs; input processing node looks up `events/.../handler` callables and invokes them directly.
    - Ensure fragment mounts relocate handler callables when they are inserted, and provide helpers for scenes to wrap/replace handlers on demand.
 5. **Input processing node**
-   - Implement PathSpace task (e/g., `/widgets/runtime/input`) that reads event queues, invokes widget handlers, and writes resultant state updates.
+   - Runtime pump now drains widget ops into `WidgetAction` queues; follow-ups must extend it to invoke widget handlers and commit resultant state updates.
    - Ensure the task runs safely on existing task pool, honors the handler return enum, records failures to `<widget>/log/events`, and exposes logging hooks.
    - For paint surfaces, translate pointer/touch input into stroke primitives (lines, circles, pixel edits) and append them to `state/history/<id>` while triggering buffer updates. Mount the paint buffer beneath an `UndoableSpace` wrapper so stroke edits participate in undo history automatically.
    - Consume device events from existing PathIO providers (`/system/devices/in/pointer/<id>/events`, `/system/devices/in/text/<id>/events`, `/system/devices/in/gamepad/<id>/events`) using `PathIOPointerMixer` for pointer aggregation. No new IO queues are introduced; the task transforms device events into `WidgetOp` records and handles backpressure using the mixers' built-in depth/timeout policies.

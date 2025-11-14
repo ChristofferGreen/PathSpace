@@ -48,6 +48,14 @@ For AI-facing workflows (branching, PR creation, troubleshooting, commit guideli
 
 PathSpace is a coordination language that enables insertion and extractions from paths in a thread safe datastructure. The data structure supports views of the paths similar to Plan 9. The data attached to the paths are more like a JSON datastructure than files though. The data supported is standard C++ data types and data structures from the standard library, user created structs/classes as well as function pointers, std::function or function objects for storing executions that generate values to be inserted at a path.
 
+### Declarative Runtime Services (November 14, 2025)
+- `SP::System::LaunchStandard` (`include/pathspace/ui/declarative/Runtime.hpp`) now performs end-to-end bootstrap for declarative UI runs:
+  - Seeds `/system/themes/<name>` and app-local `config/theme/active`, then mirrors the normalized theme name into each window’s `style/theme`.
+  - Ensures every app owns `renderers/widgets_declarative_renderer` plus per-view surfaces named `surfaces/widgets_surface_<window>_<view>`, wiring `windows/<id>/views/<view>/{surface,renderer,scene}` and mirroring those values under `scenes/<scene>/structure/window/<id>/{surface,renderer,present}`.
+  - Starts the `/system/widgets/runtime/input` pump unless `LaunchOptions::start_input_runtime` is disabled. The worker drains `widgets/<widget>/ops/inbox/queue`, publishes `WidgetAction`s back to `ops/actions/inbox/queue`, and maintains metrics under `/system/widgets/runtime/input/metrics/*` (`widgets_processed_total`, `widgets_with_work_total`, `actions_published_total`, `last_pump_ns`). Failures enqueue strings to `/system/widgets/runtime/input/log/errors/queue`.
+- Call `SP::System::ShutdownDeclarativeRuntime(space)` in short-lived tests/examples to stop the pump; production apps can leave it running for the PathSpace lifetime.
+- The runtime remains idempotent: repeated `LaunchStandard` runs reuse the existing theme/renderer/surface scaffolding and report `LaunchResult::input_runtime_started = false` when the pump already exists.
+
 ### Undo History Layer Guidance
 - Each history-enabled subtree owns exactly one undo/redo stack. We do not coordinate history across multiple roots; a logical command must mutate a single root so one stack captures the full change.
 - If a feature naturally spans several areas, route it through a command-log subtree or reorganize the data so related metadata lives alongside the primary payload before enabling history. `enableHistory` now rejects configurations that expect shared stacks—setting the same `HistoryOptions::sharedStackKey` on multiple roots triggers an error so callers regroup under a single undo root instead.
