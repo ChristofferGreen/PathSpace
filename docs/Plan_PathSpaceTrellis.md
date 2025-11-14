@@ -40,7 +40,10 @@
   3. Mixed types (copyable + move-only payloads).
   4. Fan-out insert semantics (copy vs move-only).
   5. Bypass writes forwarding to backing space.
-  - Pending additions: executions, blocking poll verification, notify fan-out instrumentation, shutdown behavior, multithreaded stress, reconfiguration under load.
+  6. Blocking read/take behaviour (poll loop exercised).
+  7. Shutdown waking blocked readers.
+  8. Concurrent producers/consumers stress with delivery accounting.
+- ⏳ Pending additions: execution payload fan-in, notify fan-out instrumentation, reconfiguration under load while producers run.
 
 Run the standard loop: `cmake --build build -j`, `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20`. Add a targeted doctest regex if we need faster iteration during development.
 

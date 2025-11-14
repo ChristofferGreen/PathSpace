@@ -5,11 +5,17 @@
 #include <core/Out.hpp>
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <future>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace SP;
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -128,5 +134,120 @@ TEST_SUITE("PathSpaceTrellis") {
         auto value = space->take<int>("/cursor/log/events");
         REQUIRE(value);
         CHECK_EQ(value.value(), 5);
+    }
+
+    TEST_CASE("blocking take waits until a source publishes") {
+        auto space   = std::make_shared<PathSpace>();
+        auto* trellis = mountTrellis(space);
+        (void)trellis;
+
+        space->insert<"/cursor/_system/enable">(std::string{"/data/mouse"});
+        space->insert<"/cursor/_system/enable">(std::string{"/data/gamepad"});
+
+        std::promise<int> received;
+        auto future = received.get_future();
+
+        std::thread consumer([&]() {
+            auto value = space->take<int>("/cursor", Block{100ms});
+            REQUIRE(value);
+            received.set_value(value.value());
+        });
+
+        std::this_thread::sleep_for(5ms);
+        space->insert<"/data/gamepad">(77);
+
+        CHECK_EQ(future.get(), 77);
+        consumer.join();
+    }
+
+    TEST_CASE("take with timeout returns timeout when no sources ready") {
+        auto space   = std::make_shared<PathSpace>();
+        auto* trellis = mountTrellis(space);
+        (void)trellis;
+
+        space->insert<"/cursor/_system/enable">(std::string{"/data/mouse"});
+
+        auto result = space->take<int>("/cursor", Block{10ms});
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().code == Error::Code::Timeout || result.error().code == Error::Code::NoObjectFound);
+    }
+
+    TEST_CASE("shutdown wakes blocked readers") {
+        auto space   = std::make_shared<PathSpace>();
+        auto* trellis = mountTrellis(space);
+
+        space->insert<"/cursor/_system/enable">(std::string{"/data/mouse"});
+
+        std::promise<Error::Code> observed;
+        auto future = observed.get_future();
+
+        std::thread consumer([&]() {
+            auto value = space->take<int>("/cursor", Block{});
+            REQUIRE_FALSE(value.has_value());
+            observed.set_value(value.error().code);
+        });
+
+        std::this_thread::sleep_for(5ms);
+        trellis->shutdown();
+
+        auto code = future.get();
+        CHECK(code == Error::Code::Timeout || code == Error::Code::NoObjectFound);
+        consumer.join();
+    }
+
+    TEST_CASE("concurrent producers and consumers preserve delivery") {
+        auto space   = std::make_shared<PathSpace>();
+        auto* trellis = mountTrellis(space);
+        (void)trellis;
+
+        space->insert<"/cursor/_system/enable">(std::string{"/data/mouse"});
+        space->insert<"/cursor/_system/enable">(std::string{"/data/gamepad"});
+
+        constexpr int perProducer   = 10;
+        constexpr int producerCount = 2;
+        constexpr int expectedTotal = perProducer * producerCount;
+
+        std::atomic<int> consumed{0};
+        std::mutex       valuesMutex;
+        std::vector<int> values;
+        values.reserve(expectedTotal);
+
+        std::thread prodMouse([&]() {
+            for (int i = 0; i < perProducer; ++i) {
+                space->insert<"/data/mouse">(1000 + i);
+            }
+        });
+        std::thread prodGamepad([&]() {
+            for (int i = 0; i < perProducer; ++i) {
+                space->insert<"/data/gamepad">(2000 + i);
+            }
+        });
+
+        auto consumerWorker = [&]() {
+            while (consumed.load(std::memory_order_relaxed) < expectedTotal) {
+                auto value = space->take<int>("/cursor", Block{50ms});
+                if (!value.has_value())
+                    continue;
+                {
+                    std::lock_guard<std::mutex> lock(valuesMutex);
+                    values.push_back(value.value());
+                }
+                consumed.fetch_add(1, std::memory_order_relaxed);
+            }
+        };
+
+        std::thread consA(consumerWorker);
+        std::thread consB(consumerWorker);
+
+        prodMouse.join();
+        prodGamepad.join();
+        consA.join();
+        consB.join();
+
+        CHECK_EQ(consumed.load(), expectedTotal);
+        std::sort(values.begin(), values.end());
+        CHECK(values.size() == static_cast<size_t>(expectedTotal));
+        CHECK(std::count_if(values.begin(), values.end(), [](int v) { return v >= 1000 && v < 1000 + perProducer; }) == perProducer);
+        CHECK(std::count_if(values.begin(), values.end(), [](int v) { return v >= 2000 && v < 2000 + perProducer; }) == perProducer);
     }
 }
