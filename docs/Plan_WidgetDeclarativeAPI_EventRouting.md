@@ -2,6 +2,8 @@
 
 _Last updated: October 31, 2025_
 
+> **Status update (November 14, 2025):** RouteMerger work has been shelved; routing remains hard-coded in C++ dispatchers. This document is retained for historical context only.
+
 ## Auto-render request queue
 - **Path**: `<target>/events/renderRequested/queue`
 - **Producers**: `SP::UI::Builders::Detail::enqueue_auto_render_event` is invoked from widget bindings (button/toggle/slider/list/tree), focus helpers, and scene hit-testing code to request redraws after state mutations (see `src/pathspace/ui/BuildersDetail.hpp:189`, `src/pathspace/ui/WidgetBindings.cpp`, `src/pathspace/ui/SceneBuilders.cpp`).
@@ -34,7 +36,7 @@ _Last updated: October 31, 2025_
 - Version flagging under `meta/routing/version` will help migrate existing apps to the richer contract incrementally.
 
 ## Route merger implementation notes
-- The merger lives entirely under `src/pathspace/ui/RouteMerger.*` and consumes three namespaces: widget defaults (`<widget>/events/<event>/route`), scene overrides (`<scene>/widgets/runtime/routes/<widget>/<event>/route`), and shared tables (`<scene>/widgets/runtime/routes/shared/<event>/route`). No changes to `PathSpace` core are required.
+- The (abandoned) merger concept would have lived fully in the UI layer, consuming three namespaces: widget defaults (`<widget>/events/<event>/route`), scene overrides (`<scene>/widgets/runtime/routes/<widget>/<event>/route`), and shared tables (`<scene>/widgets/runtime/routes/shared/<event>/route`). No core PathSpace changes were required.
 - Merge modes:
   - `replace` swaps the entire handler list with the override.
   - `prepend` injects override handlers ahead of defaults respecting their `priority`.

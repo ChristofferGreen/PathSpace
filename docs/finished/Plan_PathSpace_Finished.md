@@ -22,7 +22,7 @@
 - Use cases: focus traversal, debugging tools, inspectors, and undo snapshot diagnostics.
 
 ### Event Route Merger
-- Introduce `PathSpace::RouteMerger`, a helper that takes multiple route namespaces (widget defaults, scene overrides, global policies) and produces a single, ordered dispatch plan.
+- Proposed `PathSpace::RouteMerger`, a helper that would take multiple route namespaces (widget defaults, scene overrides, global policies) and produce a single, ordered dispatch plan. (Abandoned November 14, 2025.)
 - Merge handlers by priority order; when duplicates exist, keep the override definition and record the decision under `routes/<widget>/<event>/stats`.
 - Support merge modes (`replace`, `append`, `prepend`) specified in the override metadata. The merged result is cached per `(widget,event)` until invalidated by a schema change.
 - Expose diagnostics (handler count, overrides applied, last refresh timestamp) for tooling.
