@@ -46,15 +46,13 @@
 - ✅ Execution payload fan-in (`FutureAny` fan-out across sources).
 - ✅ Notify fan-out instrumentation via recording PathSpace.
 - ✅ Reconfiguration under producer load stress test.
-- ⏳ Pending additions: explicit notify integration tests across external contexts (if needed).
+- (Optional) Future work: evaluate cross-context notify bridging if higher-level workflows require it.
 
 Run the standard loop: `cmake --build build -j`, `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20`. Add a targeted doctest regex if we need faster iteration during development.
 
 ## Next Steps
-1. Implement `PathSpaceTrellis` class/files and wire into build.
-2. Flesh out the command handling + round-robin helper utilities.
-3. Author the test suite above (reuse patterns from multithreading doctests).
-4. Update overview/status docs once implementation lands.
+- ✅ Core implementation, tests, and documentation complete in this cycle.
+- 🚀 Optional follow-up: consider cross-context notify integration if future requirements surface.
 
 ## Status Tracking
-- **2025-11-14** — Restarted design from scratch; plan documented here. Implementation pending.
+- **2025-11-14** — Minimal trellis fan-in implementation delivered with comprehensive tests.
