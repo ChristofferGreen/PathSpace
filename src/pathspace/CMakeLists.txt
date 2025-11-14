@@ -122,6 +122,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/WidgetTrace.cpp
         ui/WidgetFocus.cpp
         ui/WidgetReducers.cpp
+        ui/declarative/Runtime.cpp
         ui/declarative/Schema.cpp
         ui/FontResources.cpp
         ui/FontAtlasCache.cpp

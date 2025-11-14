@@ -15,6 +15,7 @@ examples, tests, and tooling.
   and keep `cmake --build build -j` handy while iterating.
 - Plan to run the full 15× UI loop before committing:
   `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20`.
+- Runtime bootstrap tip (November 14, 2025): use `SP::System::LaunchStandard`, `SP::App::Create`, `SP::Window::Create`, and `SP::Scene::Create` from `include/pathspace/ui/declarative/Runtime.hpp` when spinning up new examples—the helpers pre-create the canonical paths listed below so widgets can be mounted without bespoke scaffolding.
 
 ## Widget Data Contract (must stay in sync)
 

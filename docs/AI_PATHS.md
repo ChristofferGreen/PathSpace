@@ -111,8 +111,10 @@ Canonical schema definitions for the declarative workflow live in `include/paths
 
 - Namespaces
   - `application` — `state/title`, `windows/<window-id>`, `scenes/<scene-id>`, `themes/default`, `events/lifecycle/handler`
-  - `window` — `state/title`, `state/visible`, `style/theme`, `widgets/<widget-name>`, `events/{close,focus}/handler`, `render/dirty`
-  - `scene` — `structure/widgets/<widget-path>`, `structure/window/<window-id>/focus/current`, `structure/window/<window-id>/metrics/dpi`, `views/<view-id>/dirty`, `snapshot/<revision>`, `state/attached`, `render/dirty`
+- `window` — `state/title`, `state/visible`, `style/theme`, `widgets/<widget-name>`, `events/{close,focus}/handler`, `render/dirty`
+- Runtime bootstrap (November 14, 2025): `SP::System::LaunchStandard` + `SP::Window::Create` now seed `state/visible`, `render/dirty`, and `views/<view>/scene|surface|htmlTarget` so declarative scenes can rely on these leaves before wiring presenters.
+- `scene` — `structure/widgets/<widget-path>`, `structure/window/<window-id>/focus/current`, `structure/window/<window-id>/metrics/dpi`, `views/<view-id>/dirty`, `snapshot/<revision>`, `state/attached`, `render/dirty`
+- Runtime bootstrap (November 14, 2025): `SP::Scene::Create` populates `structure/window/<window-id>/*`, `state/attached`, and marks the bound window view so focus/metrics scaffolding exists prior to widget mounts.
   - `theme` — `colors/<token>`, `typography/<token>`, `spacing/<token>`, `style/inherits`
 
 - Common widget nodes (applies to every declarative widget)

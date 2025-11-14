@@ -66,10 +66,11 @@ if(PATHSPACE_ENABLE_UI)
     ui/test_HtmlPresent.cpp
     ui/test_HtmlReplay.cpp
     ui/test_SceneHitTest.cpp
-    ui/test_PathWindowView.cpp
-    ui/test_BackendAdapters.cpp
-    test_main.cpp
-  )
+  ui/test_PathWindowView.cpp
+  ui/test_BackendAdapters.cpp
+  ui/test_DeclarativeRuntime.cpp
+  test_main.cpp
+)
   if(APPLE AND PATHSPACE_UI_METAL)
   target_sources(PathSpaceUITests PRIVATE
     ui/test_PathWindowView_Metal.mm

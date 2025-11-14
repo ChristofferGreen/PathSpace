@@ -203,11 +203,8 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
 
 ### Phase 1 – New Declarative Runtime
 0. **Runtime bootstrap**
-   - Implement `SP::System::LaunchStandard(space)` to start default renderers, themes, input queues, and processing tasks.
-   - Implement `SP::App::Create(space, name)` returning canonical application root path.
-   - Implement `SP::Scene::Create(space, appRoot, windowPath)` to create/ensure the scene namespace, attach the window, and install watches.
-   - Implement `SP::Window::Create(space, appRoot, title)` returning window path.
-   - Document side effects and extension hooks.
+   - ✅ (Nov 14, 2025) Added `SP::System::LaunchStandard`, `SP::App::Create`, `SP::Window::Create`, and `SP::Scene::Create` under `include/pathspace/ui/declarative/Runtime.hpp`. The helpers seed `/system/themes`, normalize `/system/applications/<app>`, and wire `windows/<id>/views/<view>` to `scenes/<scene>` under the declarative schema so later phases can assume the canonical nodes exist. Side effects plus extension hooks are documented below; follow-ups focus on input queues and widget tasks.
+   - Remaining TODOs: extend the runtime to launch the declarative input task (`widgets/runtime/input`), queue reducers, and attach default themes/renderers so Phase 1’s later steps (focus controller, scene lifecycle) can reuse the bootstrap contracts.
 1. **API surface**
    - Provide mounting overloads (`Button::Create(space, parentPath, name, args)`, etc.) that internally build fragments (e.g., `Label::Create` delegates to `Label::Fragment`), compute child paths, mount them, and return canonical widget paths.
    - Expose fragment helpers (`Button::Fragment`, `List::Fragment`, etc.) for container arguments (`ListArgs::children`, `TreeArgs::nodes`).
