@@ -105,6 +105,38 @@ The following subtrees are standardized within each application root (one of the
     - `current_revision` — revision pointer adopted by renderer targets
     - `meta/{name,description}` — human-readable labels stamped on first publish
 
+### Declarative widget API (November 14, 2025)
+
+Canonical schema definitions for the declarative workflow live in `include/pathspace/ui/declarative/Schema.hpp` and surface through `SP::UI::Declarative::widget_schemas()`. The namespace overlays are implemented in `src/pathspace/ui/declarative/Schema.cpp`.
+
+- Namespaces
+  - `application` — `state/title`, `windows/<window-id>`, `scenes/<scene-id>`, `themes/default`, `events/lifecycle/handler`
+  - `window` — `state/title`, `state/visible`, `style/theme`, `widgets/<widget-name>`, `events/{close,focus}/handler`, `render/dirty`
+  - `scene` — `structure/widgets/<widget-path>`, `structure/window/<window-id>/focus/current`, `structure/window/<window-id>/metrics/dpi`, `views/<view-id>/dirty`, `snapshot/<revision>`, `state/attached`, `render/dirty`
+  - `theme` — `colors/<token>`, `typography/<token>`, `spacing/<token>`, `style/inherits`
+
+- Common widget nodes (applies to every declarative widget)
+  - `state` — widget state payload exposed to applications
+  - `style/theme` — theme override bound to the subtree
+  - `focus/order`, `focus/disabled`, `focus/wrap`, `focus/current` — focus traversal metadata
+  - `layout/orientation`, `layout/spacing`, `layout/computed/*` — layout hints and computed metrics
+  - `children/<child-name>` — child widget mounts
+  - `events/<event>/route`, `events/<event>/handler` — routing metadata plus callable handler
+  - `render/synthesize`, `render/bucket`, `render/dirty` — render cache contract
+  - `log/events` — runtime diagnostics queue
+
+| Widget | Authored nodes | Runtime-managed nodes |
+|---|---|---|
+| button | `state/label`, `state/enabled`, `events/press/handler` | `render/bucket`, `render/dirty` |
+| toggle | `state/checked`, `events/toggle/handler` | `render/bucket`, `render/dirty` |
+| slider | `state/value`, `state/range/{min,max}`, `events/change/handler` | `state/dragging`, `render/bucket`, `render/dirty` |
+| list | `layout/orientation`, `layout/spacing`, `events/child_event/handler` | `state/scroll_offset` |
+| tree | `events/node_event/handler` | `nodes/<node-id>/state`, `nodes/<node-id>/children` |
+| stack | `state/active_panel`, `events/panel_select/handler` | `panels/<panel-id>/state` |
+| label | `state/text`, `events/activate/handler` | `render/bucket`, `render/dirty` |
+| input_field | `state/text`, `state/placeholder`, `events/submit/handler` | `state/focused`, `render/dirty` |
+| paint_surface | `state/brush/*`, `events/draw/handler` | `state/history/<stroke-id>`, `render/buffer/*`, `render/gpu/*`, `assets/texture` |
+
 - Surfaces (offscreen targets)
   - `surfaces/<surface-id>/`
     - `renderer` — app-relative, e.g. `renderers/2d`

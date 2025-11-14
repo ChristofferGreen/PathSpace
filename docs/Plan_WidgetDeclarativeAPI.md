@@ -187,8 +187,9 @@ History diagnostics rely on `_history/stats/*` telemetry published by the undo l
 Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenience overloads (`Label::Fragment("Hello")`, `Button::Fragment("Label", on_press)`) alongside structure-based overloads (`Label::Fragment(LabelArgs{...})`, `Button::Fragment(ButtonArgs{...})`) so simple cases remain ergonomic while complex cases stay expressive.
 
 1. **Schema definition**
+   - ✅ (November 14, 2025) Canonical schema captured in `include/pathspace/ui/declarative/Schema.hpp`; docs updated (`docs/AI_PATHS.md`) to publish the shared namespaces and widget overlays.
    - Inventory widgets and document required/optional fields, including `children`, `render/*`, `state/*`, and event nodes.
-   - Update `docs/AI_Paths/md` with canonical layout.
+   - Update `docs/AI_PATHS.md` with canonical layout.
    - Ensure composition rules are defined (parents adopting child buckets/paths).
 2. **Event nodes**
    - Map each widget event to canonical `events/<event>` nodes with `route` and `handler` children.
@@ -209,7 +210,7 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - Materialize composite widget data by enumerating `children/` subtrees (lists, trees, composite buttons).
    - Supply unit tests ensuring descriptor-driven output matches legacy builders.
 6. **Documentation updates**
-   - Expand `docs/AI_Paths/md` with the schema.
+   - Expand `docs/AI_PATHS.md` with the schema.
    - Add a “Widget Schema Reference” appendix for maintainers.
 
 ### Phase 1 – New Declarative Runtime
