@@ -71,6 +71,7 @@ add_library(PathSpace
     type/SlidingBuffer.cpp
     log/TaggedLogger.cpp
     PathSpace.cpp
+    layer/PathSpaceTrellis.cpp
 )
 
 if(PATHSPACE_ENABLE_APP)
@@ -245,6 +246,7 @@ target_link_libraries(PathSpace
 
 set(_pathspace_public_headers
     PathSpace.hpp
+    layer/PathSpaceTrellis.hpp
 )
 if(PATHSPACE_ENABLE_EXTRA)
     list(APPEND _pathspace_public_headers

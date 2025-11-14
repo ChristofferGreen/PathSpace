@@ -252,6 +252,7 @@ private:
     friend class PathSpace;
     friend class Leaf;
     friend class PathAlias;
+    friend class PathSpaceTrellis;
     friend class History::UndoableSpace;
 
     // Core virtual hooks implemented by concrete spaces.
