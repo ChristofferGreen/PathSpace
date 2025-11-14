@@ -121,7 +121,7 @@ Canonical schema definitions for the declarative workflow live in `include/paths
   - `focus/order`, `focus/disabled`, `focus/wrap`, `focus/current` — focus traversal metadata
   - `layout/orientation`, `layout/spacing`, `layout/computed/*` — layout hints and computed metrics
   - `children/<child-name>` — child widget mounts
-  - `events/<event>/route`, `events/<event>/handler` — routing metadata plus callable handler
+  - `events/<event>/handler` — callable executed when the widget event fires
   - `render/synthesize`, `render/bucket`, `render/dirty` — render cache contract
   - `log/events` — runtime diagnostics queue
 

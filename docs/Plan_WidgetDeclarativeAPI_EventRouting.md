@@ -2,7 +2,7 @@
 
 _Last updated: October 31, 2025_
 
-> **Status update (November 14, 2025):** RouteMerger work has been shelved; routing remains hard-coded in C++ dispatchers. This document is retained for historical context only.
+> **Decision (November 14, 2025):** Declarative routes were removed. Widgets now execute the `events/<event>/handler` callable directly without intermediate routing tables. The details below describe the shelved design and remain here purely for historical reference.
 
 ## Auto-render request queue
 - **Path**: `<target>/events/renderRequested/queue`

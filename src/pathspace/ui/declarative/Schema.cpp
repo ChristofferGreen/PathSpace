@@ -69,7 +69,6 @@ constexpr SchemaEntry kWidgetCommonEntries[] = {
     {"layout/computed/size", NodeKind::Value, Requirement::RuntimeManaged, "Latest computed widget size in layout units."},
     {"layout/computed/children/<child-name>", NodeKind::Value, Requirement::RuntimeManaged, "Computed layout metrics for each child widget."},
     {"children/<child-name>", NodeKind::Directory, Requirement::Optional, "Child widget fragments keyed by stable names."},
-    {"events/<event>/route", NodeKind::Value, Requirement::Optional, "Routing metadata that binds device events to widget handlers."},
     {"events/<event>/handler", NodeKind::Callable, Requirement::Optional, "Callable executed when the widget event fires."},
     {"render/synthesize", NodeKind::Callable, Requirement::Required, "Callable that produces the widget's DrawableBucketSnapshot."},
     {"render/bucket", NodeKind::Value, Requirement::RuntimeManaged, "Cached render bucket for the current widget state."},
@@ -80,13 +79,11 @@ constexpr SchemaEntry kWidgetCommonEntries[] = {
 constexpr SchemaEntry kButtonEntries[] = {
     {"state/label", NodeKind::Value, Requirement::Required, "Displayed label string for the button."},
     {"state/enabled", NodeKind::Flag, Requirement::Optional, "Indicates whether the button accepts interaction."},
-    {"events/press/route", NodeKind::Value, Requirement::Optional, "Routing metadata for button press events."},
     {"events/press/handler", NodeKind::Callable, Requirement::Optional, "Handler invoked when the button is pressed."},
 };
 
 constexpr SchemaEntry kToggleEntries[] = {
     {"state/checked", NodeKind::Flag, Requirement::Required, "Current toggle state (true when selected)."},
-    {"events/toggle/route", NodeKind::Value, Requirement::Optional, "Routing metadata for toggle events."},
     {"events/toggle/handler", NodeKind::Callable, Requirement::Optional, "Handler invoked when the toggle changes state."},
 };
 
@@ -95,7 +92,6 @@ constexpr SchemaEntry kSliderEntries[] = {
     {"state/range/min", NodeKind::Value, Requirement::Required, "Inclusive lower bound for the slider value."},
     {"state/range/max", NodeKind::Value, Requirement::Required, "Inclusive upper bound for the slider value."},
     {"state/dragging", NodeKind::Flag, Requirement::RuntimeManaged, "Runtime-managed flag indicating the slider is being dragged."},
-    {"events/change/route", NodeKind::Value, Requirement::Optional, "Routing metadata for slider change events."},
     {"events/change/handler", NodeKind::Callable, Requirement::Optional, "Handler invoked when the slider value changes."},
 };
 
@@ -103,21 +99,18 @@ constexpr SchemaEntry kListEntries[] = {
     {"layout/orientation", NodeKind::Value, Requirement::Optional, "Layout orientation for list items."},
     {"layout/spacing", NodeKind::Value, Requirement::Optional, "Spacing between list entries."},
     {"state/scroll_offset", NodeKind::Value, Requirement::RuntimeManaged, "Current scroll offset tracked by the runtime."},
-    {"events/child_event/route", NodeKind::Value, Requirement::Optional, "Routing metadata for child events bubbling out of the list."},
     {"events/child_event/handler", NodeKind::Callable, Requirement::Optional, "Handler invoked when a child event is emitted."},
 };
 
 constexpr SchemaEntry kTreeEntries[] = {
     {"nodes/<node-id>/state", NodeKind::Directory, Requirement::RuntimeManaged, "State payload for a tree node (expanded, selected, metadata)."},
     {"nodes/<node-id>/children", NodeKind::Directory, Requirement::RuntimeManaged, "Child node descriptors linked under the parent node."},
-    {"events/node_event/route", NodeKind::Value, Requirement::Optional, "Routing metadata for tree node interactions."},
     {"events/node_event/handler", NodeKind::Callable, Requirement::Optional, "Handler invoked when a tree node interaction occurs."},
 };
 
 constexpr SchemaEntry kStackEntries[] = {
     {"panels/<panel-id>/state", NodeKind::Directory, Requirement::RuntimeManaged, "Panel state metadata hosted by the stack."},
     {"state/active_panel", NodeKind::Value, Requirement::Required, "Identifier of the currently active panel."},
-    {"events/panel_select/route", NodeKind::Value, Requirement::Optional, "Routing metadata for panel selection events."},
     {"events/panel_select/handler", NodeKind::Callable, Requirement::Optional, "Handler invoked when the active panel changes."},
 };
 
@@ -152,7 +145,6 @@ constexpr SchemaEntry kPaintSurfaceEntries[] = {
     {"render/gpu/log/events", NodeKind::Queue, Requirement::RuntimeManaged, "Log of GPU staging events and fallback transitions."},
     {"render/gpu/stats", NodeKind::Value, Requirement::RuntimeManaged, "Staging metrics (bytes uploaded, last duration, partial updates)."},
     {"assets/texture", NodeKind::Value, Requirement::RuntimeManaged, "GPU texture resource mirroring the paint buffer when staging is enabled."},
-    {"events/draw/route", NodeKind::Value, Requirement::Optional, "Routing metadata translating pointer input into draw events."},
     {"events/draw/handler", NodeKind::Callable, Requirement::Optional, "Handler invoked to process draw events for the surface."},
 };
 
@@ -199,4 +191,3 @@ auto find_widget_schema(std::string_view kind) -> WidgetSchema const* {
 }
 
 } // namespace SP::UI::Declarative
-

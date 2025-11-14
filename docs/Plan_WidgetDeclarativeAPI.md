@@ -88,48 +88,37 @@ auto main(int /*argc*/, char** /*argv*/) -> int {
 | **Window** | `/system/applications/<app>/windows/<window>` | `state/title`, `state/visible`, `style/theme`, `widgets/<widgetName>`, `events/close/handler`, `events/focus/handler`, `render/dirty` | Widget helpers mount under `widgets/`; focus routing starts here. |
 | **Scene** | `/system/applications/<app>/scenes/<scene>` | `structure/widgets/<widgetPath>`, `snapshot/<rev>`, `metrics/*`, `events/present/handler` | Scene buckets are composed from cached widget buckets and attach to a window during `Scene::Create`. |
 | **Theme** | `/system/applications/<app>/themes/<name>` | `colors/<token>`, `typography/<token>`, `spacing/<token>`, `style/inherits` | Widgets reference theme names; runtime merges theme stacks. |
-| **Button** | `/system/applications/<app>/windows/<window>/widgets/<name>` | `state/label`, `state/enabled`, `style/theme`, `events/press/route`, `events/press/handler`, `children/<childName>`, `render/synthesize`, `render/bucket`, `render/dirty` | `children` host nested widgets (labels, lists, etc.); `render/synthesize` stores the bucket callable. |
-| **Toggle** | same as Button | `state/checked`, `style/theme`, `events/toggle/route`, `events/toggle/handler`, `children/<childName>`, `render/*` | Parent theme + metadata; toggles can host nested widgets (icon, label). |
-| **Slider** | same as Button | `state/value`, `state/range/min`, `state/range/max`, `style/theme`, `events/change/route`, `events/change/handler`, `children/<childName>`, `render/*` | `state/dragging` tracked internally by runtime. |
-| **List** | same as Button | `layout/orientation`, `layout/spacing`, `state/scroll_offset`, `style/theme`, `events/child_event/route`, `events/child_event/handler`, `children/<childName>`, `render/*` | Children widgets mount under `children/` and render sequentially. |
-| **Tree** | same as Button | `nodes/<id>/state`, `nodes/<id>/children`, `style/theme`, `events/node_event/route`, `events/node_event/handler`, `render/*` | Tree nodes own child widget subtrees; metadata lives under `nodes/<id>`. |
-| **Stack/Gallery** | same as Button | `panels/<id>/state`, `state/active_panel`, `style/theme`, `events/panel_select/route`, `events/panel_select/handler`, `children/<childName>`, `render/*` | Panels can host nested widgets; active panel tracked in `state/active_panel`. |
+| **Button** | `/system/applications/<app>/windows/<window>/widgets/<name>` | `state/label`, `state/enabled`, `style/theme`, `events/press/handler`, `children/<childName>`, `render/synthesize`, `render/bucket`, `render/dirty` | `children` host nested widgets (labels, lists, etc.); `render/synthesize` stores the bucket callable. |
+| **Toggle** | same as Button | `state/checked`, `style/theme`, `events/toggle/handler`, `children/<childName>`, `render/*` | Parent theme + metadata; toggles can host nested widgets (icon, label). |
+| **Slider** | same as Button | `state/value`, `state/range/min`, `state/range/max`, `style/theme`, `events/change/handler`, `children/<childName>`, `render/*` | `state/dragging` tracked internally by runtime. |
+| **List** | same as Button | `layout/orientation`, `layout/spacing`, `state/scroll_offset`, `style/theme`, `events/child_event/handler`, `children/<childName>`, `render/*` | Children widgets mount under `children/` and render sequentially. |
+| **Tree** | same as Button | `nodes/<id>/state`, `nodes/<id>/children`, `style/theme`, `events/node_event/handler`, `render/*` | Tree nodes own child widget subtrees; metadata lives under `nodes/<id>`. |
+| **Stack/Gallery** | same as Button | `panels/<id>/state`, `state/active_panel`, `style/theme`, `events/panel_select/handler`, `children/<childName>`, `render/*` | Panels can host nested widgets; active panel tracked in `state/active_panel`. |
 | **Text Label** | same as Button | `state/text`, `style/theme`, `events/activate/handler`, `render/*` | Non-interactive by default; handler optional for advanced use. |
-| **Input Field** | same as Button | `state/text`, `state/placeholder`, `state/focused`, `style/theme`, `events/change/handler`, `events/submit/handler`, `render/*` | Focus controller maintains `state/focused`; route metadata optional. |
-| **Paint Surface** | same as Button | `state/brush/size`, `state/brush/color`, `state/stroke_mode`, `state/history/<id>`, `events/draw/route`, `events/draw/handler`, `render/buffer`, `render/dirty`, `assets/texture` | Runtime-owned picture buffer accepts circle/line/pixel operations; history enables undo/redo. |
+| **Input Field** | same as Button | `state/text`, `state/placeholder`, `state/focused`, `style/theme`, `events/change/handler`, `events/submit/handler`, `render/*` | Focus controller maintains `state/focused`; handlers fire directly on input events. |
+| **Paint Surface** | same as Button | `state/brush/size`, `state/brush/color`, `state/stroke_mode`, `state/history/<id>`, `events/draw/handler`, `render/buffer`, `render/dirty`, `assets/texture` | Runtime-owned picture buffer accepts circle/line/pixel operations; history enables undo/redo. |
 
-Within each widget subtree we store focus metadata (`focus/order`), layout hints (`layout/<prop>`), event metadata (`events/<event>/route`) and handlers (`events/<event>/handler`), cached bucket metadata (`render/bucket`, `render/dirty`), and composition (`children/<childName>` subtrees). Event handlers live under `events/.../handler` as callable entries executed by the input task. Each widget exposes a render synthesis callable (`render/synthesize`). When widget state changes, the runtime invokes the callable, caches the resulting bucket, propagates `render/dirty` to children if needed, and the renderer consumes cached buckets—avoiding per-frame scenegraph traversal.
+Within each widget subtree we store focus metadata (`focus/order`), layout hints (`layout/<prop>`), event handler callables (`events/<event>/handler`), cached bucket metadata (`render/bucket`, `render/dirty`), and composition (`children/<childName>` subtrees). Event handlers live under `events/.../handler` as callable entries executed directly by the input task. Each widget exposes a render synthesis callable (`render/synthesize`). When widget state changes, the runtime invokes the callable, caches the resulting bucket, propagates `render/dirty` to children if needed, and the renderer consumes cached buckets—avoiding per-frame scenegraph traversal.
 
 Undo/redo integrations must keep all data for a logical command inside a single widget root. For paint surfaces that means colocating stroke history, layout/index metadata, and any ancillary bookkeeping under `widgets/<id>/state/...`. Editors that need to update shared indexes should funnel those writes through a command-log subtree owned by the same root before enabling history; duplicate `HistoryOptions::sharedStackKey` values across siblings are now rejected by `enableHistory`, so regrouping is required before opting-in.
 
-`events/<event>/route` holds routing metadata the runtime uses to bind raw input (pointer hits, keyboard focus changes) to a widget event. Simple widgets rely on defaults derived from the widget path, while advanced widgets can point routes at shared processors. `events/<event>/handler` stores the user-provided callable to execute when the event fires. Separating route metadata from handlers keeps declarative wiring data-driven while still letting applications supply logic.
+#### Event Dispatch Contract
 
-#### Event Routing Contract
+- Widget bindings enqueue `WidgetOp` items describing the widget path and event kind (e.g., `Press`, `Toggle`, `Draw`).
+- The dispatcher resolves `<widget>/events/<event>/handler` and, when present, invokes the stored callable inline on the task thread handling the op.
+- Missing handlers are treated as no-ops; the dispatcher records a warning under `<widget>/log/events` so tooling can detect unhandled interactions.
+- Handlers return an enum (`Handled`, `Declined`, `Error`) mirroring today’s imperative builders. `Declined` allows layered handlers (e.g., a list forwarding to a child widget) by explicitly re-enqueuing the operation on the child path.
+- Scenes that need higher-level interception can swap the handler node entirely (write a different callable) or wrap the existing callback in a delegating lambda—no separate routing tables are required.
 
-- Routes live under `<scene>/widgets/runtime/routes/<widget>/<event>/route` with mirrored defaults under each widget (`events/<event>/route`).
-- Each route node stores:
-  - `target`: canonical handler or widget path (`ConcretePathString`).
-  - `handlers`: array of `{ path: "<widget>/handlers/<name>", mode: "exclusive" | "shared" | "fallback" }` entries.
-  - `fallback`: optional handler path triggered when primary handlers decline the payload.
-  - `priority`: 32-bit ordering key applied ascending.
-- Producers enqueue `WidgetOp` entries unchanged; the input runtime locates the route via `<widget>, kind`, then dispatches handlers in priority order. `exclusive` handlers stop on success, `shared` handlers always run, and `fallback` handlers run only when every prior handler declined or failed.
-- Missing route entries fall back to `<widget>/events/<kind>` to preserve legacy behavior during migration.
-- `meta/routing/version` marks the schema revision for both widget defaults and scene overrides. All participants must match the current runtime version (currently `1`). If an override advertises a different version, it is ignored, a warning is logged under `events/<event>/log/version`, and the widget falls back to its default route until everything is upgraded in lockstep.
-- Route precedence and merging were slated to live in a UI-only `RouteMerger` helper that would read widget defaults, scene overrides, and shared tables under `<scene>/widgets/runtime/routes/shared/`, apply `replace` / `prepend` / `append` merge modes, and emit a deterministic plan without touching core PathSpace. With the plan shelved, keep routing logic in C++ dispatchers.
-- Status (November 14, 2025): RouteMerger proposal abandoned; keep routing logic in C++ dispatchers and revise this section when/if data-driven routing resurfaces.
-- The merger caches merged plans per `(scene, widget, event, version)` and invalidates them when route nodes or `meta/routing/version` change. Diagnostics surface at `<scene>/widgets/runtime/routes/<widget>/<event>/stats` (handler counts, overrides applied, last refresh timestamp) so tooling can trace precedence decisions.
-- Handlers return a tri-state result published as `Handled`, `Declined`, or `Error`. The dispatcher records this under `events/<event>/lastResult` for diagnostics and appends structured entries to `events/<event>/log`. `exclusive` handlers stop traversal when they return `Handled`; `Declined` advances to the next handler; `Error` stops traversal, emits telemetry, and then invokes the configured `fallback` (if any).
-- A dedicated dispatcher in `src/pathspace/ui/WidgetEventDispatcher.*` owns queue draining, priority ordering, and telemetry emission. It depends only on the UI-layer merger output and the existing `WidgetOp` queues, keeping `PathSpace` untouched.
-
-Canonical namespaces stay consistent across widgets: `state/` for mutable widget data, `style/` for theme references and overrides, `layout/` for layout hints, `events/` for routing metadata plus handlers, `children/` for nested widget mount points, and `render/` for cached rendering artifacts.
+Canonical namespaces stay consistent across widgets: `state/` for mutable widget data, `style/` for theme references and overrides, `layout/` for layout hints, `events/` for handler callables and their logs, `children/` for nested widget mount points, and `render/` for cached rendering artifacts.
 
 #### Fragment Mount Lifecycle
 
 - Treat fragments as widgets already instantiated inside a private subspace. Mounting relocates that subspace under the parent widget tree without schema translation.
 - Simple mounts only require inserting the fragment root into the parent PathSpace (`Widgets::MountFragment` performs a subtree insert). The runtime then marks `render/dirty` and enqueues an auto-render event so the new widget is visible immediately.
-- Callable nodes (lambdas, callbacks) live under `callbacks/<id>` inside the fragment. During mount, their captured widget paths are rewritten to the destination path and the handlers are registered in the routing table (`events/<event>/route.handlers`). Shared callbacks use `std::shared_ptr` delegates so relocation preserves ownership semantics.
+- Callable nodes (lambdas, callbacks) live under `callbacks/<id>` inside the fragment. During mount, their captured widget paths are rewritten to the destination path and the handlers are copied into the destination `events/<event>/handler`. Shared callbacks use `std::shared_ptr` delegates so relocation preserves ownership semantics.
 - Containers that accept child fragments (lists, stacks) enumerate `children/*` in the fragment subspace and insert each child subtree in order under the parent widget path. Dirtiness/bubble rules follow the standard widget schema; no fragment-specific namespaces exist once mounted.
-- When fragment and parent provide overlapping route entries, parent-owned routes win; fragment routes append with lower priority. The mount process records the precedence result so scene-level tables stay deterministic.
+- When fragment and parent both define `events/<event>/handler`, the parent win strategy applies: the fragment mount preserves the parent handler unless explicitly overridden. Document the override semantics so tooling can flag accidental handler replacement.
 
 #### Scene & Window Wiring
 
@@ -165,7 +154,7 @@ Canonical namespaces stay consistent across widgets: `state/` for mutable widget
 
 The paintable surface widget reuses the same namespaces but adds `render/buffer` to store the current picture (CPU-readable texture) and an optional `assets/texture` node for GPU residency. Draw events append stroke metadata under `state/history/<id>` so undo/redo tasks can rebuild the buffer on demand.
 
-Undo/redo mechanics for stroke history, route merging, and child enumeration are defined in `docs/finished/Plan_PathSpace_Finished.md`; paint widgets consume those PathSpace features rather than implementing custom versions.
+Undo/redo mechanics for stroke history and child enumeration are defined in `docs/finished/Plan_PathSpace_Finished.md`; paint widgets consume those PathSpace features rather than implementing custom versions.
 History diagnostics rely on `_history/stats/*` telemetry published by the undo layer; downstream tooling should read those counters (versioned binary persistence) when presenting paint history/retention state.
 
 #### GPU Staging
@@ -192,9 +181,9 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - Update `docs/AI_PATHS.md` with canonical layout.
    - Ensure composition rules are defined (parents adopting child buckets/paths).
 2. **Event nodes**
-   - Map each widget event to canonical `events/<event>` nodes with `route` and `handler` children.
-   - Implement helper utilities for installing/uninstalling handlers.
-   - Define routing metadata defaults (`events/<event>/route`) and runtime rewrites when fragments insert their subspaces into the parent.
+   - Map each widget event to canonical `events/<event>/handler` nodes (single callable per event) and document defaults.
+   - Implement helper utilities for installing/uninstalling handlers and re-binding lambda captures when widgets move.
+   - Document how fragments publish handlers during mount and how scenes override/restore them.
    - Add tests covering registration, invocation, and propagation.
 3. **Render synthesis contract**
    - Define callable signature (inputs: widget path/context; output: `DrawableBucketSnapshot`), including conventions for composing child widget buckets.
@@ -232,15 +221,14 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
 3. **Focus controller**
    - Design focus metadata and build focus graph automatically.
    - Integrate with existing bindings so focus/activation events propagate transparently.
-4. **Event routing**
+4. **Event dispatch**
    - Forward raw pointer/keyboard events into PathSpace queues.
    - Define canonical event paths with payload metadata.
-   - Keep enqueue lightweight; hit-testing identifies widget IDs; input processing node resolves `events/.../route` entries and dispatches to `events/.../handler` callables.
-   - Author central route tables under `<scene>/widgets/runtime/routes/...` with exclusivity/shared semantics and fallback behavior per the contract.
-   - Ensure fragment mounts patch handler paths and register them in the routing table immediately after subtree insertion.
+   - Keep enqueue lightweight; hit-testing identifies widget IDs; input processing node looks up `events/.../handler` callables and invokes them directly.
+   - Ensure fragment mounts relocate handler callables when they are inserted, and provide helpers for scenes to wrap/replace handlers on demand.
 5. **Input processing node**
-   - Implement PathSpace task (e/g., `/widgets/runtime/input`) that reads event queues, consults routing metadata, invokes widget handlers, and writes resultant state updates.
-   - Ensure the task runs safely on existing task pool, honors `exclusive` vs. `shared` handler modes, records failures to `<widget>/log/events`, and exposes logging hooks.
+   - Implement PathSpace task (e/g., `/widgets/runtime/input`) that reads event queues, invokes widget handlers, and writes resultant state updates.
+   - Ensure the task runs safely on existing task pool, honors the handler return enum, records failures to `<widget>/log/events`, and exposes logging hooks.
    - For paint surfaces, translate pointer/touch input into stroke primitives (lines, circles, pixel edits) and append them to `state/history/<id>` while triggering buffer updates. Mount the paint buffer beneath an `UndoableSpace` wrapper so stroke edits participate in undo history automatically.
    - Consume device events from existing PathIO providers (`/system/devices/in/pointer/<id>/events`, `/system/devices/in/text/<id>/events`, `/system/devices/in/gamepad/<id>/events`) using `PathIOPointerMixer` for pointer aggregation. No new IO queues are introduced; the task transforms device events into `WidgetOp` records and handles backpressure using the mixers' built-in depth/timeout policies.
 6. **Rendering pipeline**
