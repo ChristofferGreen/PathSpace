@@ -33,8 +33,8 @@ Provide a single index of active planning documents, ordered by current priority
 8. **Plan_PrimeScript.md** (research)  
    Exploratory unified scripting/shading language idea; no implementation scheduled.
 
-9. **Plan_PathSpaceTrellis.md** (draft)  
-   Tracking document for the upcoming trellis redesign. Captures the high-level goals, immediate questions, and migration checkpoints while we prototype the new layer. _Historical fan-in work has been archived in `docs/finished/Plan_PathSpace_FanIn_Abandoned.md` for reference._
+9. **Plan_PathSpaceTrellis_Finished.md**  
+   Final record for the completed trellis redesign. _Historical fan-in work has been archived in `docs/finished/Plan_PathSpace_FanIn_Abandoned.md` for reference._
 
 ## Recommended Implementation Focus (Q4 2025)
 1. **Plan_SceneGraph.md** — active execution path for the renderer/presenter stack defined in `Plan_SceneGraph_Renderer.md`; keep driving the in-flight phases to completion while validating against the renderer blueprint.
@@ -45,7 +45,7 @@ Provide a single index of active planning documents, ordered by current priority
 6. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
 
 ## Status Snapshot — November 14, 2025
-- 🚧 (November 14, 2025) PathSpaceTrellis layer removed pending full redesign; fan-in roadmap paused while the replacement architecture is sketched.
+- ✅ (November 14, 2025) PathSpaceTrellis fan-in layer rebuilt; see `docs/finished/Plan_PathSpaceTrellis_Finished.md` for the final notes.
 - ✅ (November 10, 2025) Snapshot infrastructure removed: `UndoableSpace` now ships journal-only history, the snapshot codecs/tests/inspection tooling are gone, and `pathspace_history_inspect` reports journal metrics (entries, inserts, takes, barriers) instead of decoding snapshot payloads. Persistence/import/export paths operate solely on mutation logs.
 - ✅ (November 10, 2025) Journal persistence format is now documented for tooling consumers. See `docs/AI_Architecture.md` (“Journal Persistence Format”) for header layout, entry schema, and versioning guidance.
 - ✅ (November 9, 2025) Journal telemetry now computes undo/redo/live byte totals directly from `UndoJournalState::stats`, removing the runtime dependency on replaying snapshot prototypes and paving the way for Phase 4 snapshot code removal.

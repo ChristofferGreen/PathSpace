@@ -4,7 +4,7 @@
 Renderer snapshot builder details have moved out of this architecture document. See docs/Plan_SceneGraph_Renderer.md (“Decision: Snapshot Builder”) for the authoritative policy, rebuild triggers, publish/GC protocol, and performance notes. This file focuses on PathSpace core (paths, trie storage, concurrency/wait/notify, views/alias layers, and OS I/O). New AI assistants should first walk through docs/AI_Onboarding.md for the session bootstrap checklist.
 
 > **Context update (October 15, 2025):** PathSpace documentation now assumes the assistant context launched for this cycle; earlier references to legacy contexts should be interpreted accordingly.
-> **Concurrency update (November 14, 2025):** PathSpaceTrellis and its runtime descriptor mirrors were removed pending a redesign. Archived notes remain in `docs/finished/Plan_PathSpace_FanIn_Abandoned.md` until the replacement layer ships; current planning lives in `docs/Plan_PathSpaceTrellis.md`.
+> **Concurrency update (November 14, 2025):** PathSpaceTrellis redesign completed; see `docs/finished/Plan_PathSpaceTrellis_Finished.md` for the final fan-in notes. Historical background remains in `docs/finished/Plan_PathSpace_FanIn_Abandoned.md`.
 
 ## UI/Rendering — cross-reference
 
