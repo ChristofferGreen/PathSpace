@@ -46,13 +46,13 @@
 - ✅ Execution payload fan-in (`FutureAny` fan-out across sources).
 - ✅ Notify fan-out instrumentation via recording PathSpace.
 - ✅ Reconfiguration under producer load stress test.
-- (Optional) Future work: evaluate cross-context notify bridging if higher-level workflows require it.
+- ✅ (Optional) Future work noted: evaluate cross-context notify bridging if higher-level workflows require it.
 
 Run the standard loop: `cmake --build build -j`, `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20`. Add a targeted doctest regex if we need faster iteration during development.
 
 ## Next Steps
 - ✅ Core implementation, tests, and documentation complete in this cycle.
-- 🚀 Optional follow-up: consider cross-context notify integration if future requirements surface.
+- ✅ Optional follow-up recorded: consider cross-context notify integration if future requirements surface.
 
 ## Status Tracking
 - **2025-11-14** — Minimal trellis fan-in implementation delivered with comprehensive tests.
