@@ -6,6 +6,7 @@
 #include "core/Out.hpp"
 #include "path/Iterator.hpp"
 #include "path/UnvalidatedPath.hpp"
+#include "task/IFutureAny.hpp"
 
 #include "parallel_hashmap/phmap.h"
 
@@ -37,6 +38,7 @@ public:
 
 protected:
     auto getRootNode() -> Node* override;
+    [[nodiscard]] auto typedPeekFuture(std::string_view pathIn) const -> std::optional<FutureAny> override;
 
 private:
     using SourceSet = phmap::flat_hash_set<std::string>;
@@ -56,6 +58,7 @@ private:
                                      Out const& options,
                                      void* obj,
                                      bool doPop) -> std::optional<Error>;
+    [[nodiscard]] auto tryFanOutFuture() const -> std::optional<FutureAny>;
 
     static auto mergeInsertReturn(InsertReturn& target, InsertReturn const& source) -> void;
     static auto isSystemPath(Iterator const& path) -> bool;
@@ -65,9 +68,8 @@ private:
     mutable std::shared_mutex      registryMutex_;
     SourceSet                      sourceSet_;
     std::vector<std::string>       sourceOrder_;
-    std::atomic<size_t>            roundRobinCursor_{0};
+    mutable std::atomic<size_t>    roundRobinCursor_{0};
     std::atomic<bool>              isShutdown_{false};
 };
 
 } // namespace SP
-

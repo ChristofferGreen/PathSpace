@@ -43,7 +43,10 @@
   6. Blocking read/take behaviour (poll loop exercised).
   7. Shutdown waking blocked readers.
   8. Concurrent producers/consumers stress with delivery accounting.
-- ⏳ Pending additions: execution payload fan-in, notify fan-out instrumentation, reconfiguration under load while producers run.
+- ✅ Execution payload fan-in (`FutureAny` fan-out across sources).
+- ✅ Notify fan-out instrumentation via recording PathSpace.
+- ✅ Reconfiguration under producer load stress test.
+- ⏳ Pending additions: explicit notify integration tests across external contexts (if needed).
 
 Run the standard loop: `cmake --build build -j`, `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20`. Add a targeted doctest regex if we need faster iteration during development.
 

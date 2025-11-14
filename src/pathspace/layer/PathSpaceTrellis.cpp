@@ -128,6 +128,27 @@ auto PathSpaceTrellis::getRootNode() -> Node* {
     return backing_->getRootNode();
 }
 
+auto PathSpaceTrellis::typedPeekFuture(std::string_view pathIn) const -> std::optional<FutureAny> {
+    if (!backing_)
+        return std::nullopt;
+
+    if (pathIn.empty() || pathIn == "/" || pathIn == ".") {
+        return tryFanOutFuture();
+    }
+
+    Iterator const iter{pathIn};
+    if (!iter.isAtEnd()) {
+        auto component = iter.currentComponent();
+        if (component == "_system") {
+            return std::nullopt;
+        }
+        auto joined = joinWithMount(pathIn);
+        return backing_->typedPeekFuture(joined);
+    }
+
+    return tryFanOutFuture();
+}
+
 auto PathSpaceTrellis::joinWithMount(std::string_view tail) const -> std::string {
     if (mountPrefix_.empty())
         return std::string{tail};
@@ -348,6 +369,23 @@ auto PathSpaceTrellis::tryFanOutRead(InputMetadata const& metadata,
     }
 }
 
+auto PathSpaceTrellis::tryFanOutFuture() const -> std::optional<FutureAny> {
+    auto sources = snapshotSources();
+    if (sources.empty())
+        return std::nullopt;
+
+    size_t baseCursor = roundRobinCursor_.fetch_add(1, std::memory_order_relaxed);
+    size_t startIndex = baseCursor % sources.size();
+
+    for (size_t offset = 0; offset < sources.size(); ++offset) {
+        size_t index = (startIndex + offset) % sources.size();
+        if (auto fut = backing_->typedPeekFuture(sources[index])) {
+            return fut;
+        }
+    }
+    return std::nullopt;
+}
+
 auto PathSpaceTrellis::mergeInsertReturn(InsertReturn& target, InsertReturn const& source) -> void {
     target.nbrValuesInserted += source.nbrValuesInserted;
     target.nbrSpacesInserted += source.nbrSpacesInserted;
@@ -363,4 +401,3 @@ auto PathSpaceTrellis::isSystemPath(Iterator const& path) -> bool {
 }
 
 } // namespace SP
-
