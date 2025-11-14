@@ -19,7 +19,6 @@
 
 namespace SP {
 struct PathSpace;
-struct TrellisTraceSnapshot;
 
 // ########### Type Detection Concepts ###########
 

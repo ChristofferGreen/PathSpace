@@ -33,8 +33,8 @@ Provide a single index of active planning documents, ordered by current priority
 8. **Plan_PrimeScript.md** (research)  
    Exploratory unified scripting/shading language idea; no implementation scheduled.
 
-9. **Plan_PathSpace_FanIn.md** (draft)  
-   Design notes for a lightweight fan-in combiner that exposes one path backed by multiple sources. _Queue/latest modes, persisted configs, stats, back-pressure, and buffered depth accounting landed through November 12, 2025. A four-phase roadmap (Phase A–D) now sequences the embedded `PathSpace` migration to replace bespoke mutex bookkeeping—see the plan for details and validation cadence._
+9. **Plan_PathSpaceTrellis.md** (draft)  
+   Tracking document for the upcoming trellis redesign. Captures the high-level goals, immediate questions, and migration checkpoints while we prototype the new layer. _Historical fan-in work has been archived in `docs/finished/Plan_PathSpace_FanIn_Abandoned.md` for reference._
 
 ## Recommended Implementation Focus (Q4 2025)
 1. **Plan_SceneGraph.md** — active execution path for the renderer/presenter stack defined in `Plan_SceneGraph_Renderer.md`; keep driving the in-flight phases to completion while validating against the renderer blueprint.
@@ -45,13 +45,7 @@ Provide a single index of active planning documents, ordered by current priority
 6. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
 
 ## Status Snapshot — November 14, 2025
-- ✅ (November 14, 2025) Queue-mode regression green with descriptor-backed assertions: `tests/unit/layer/test_PathSpaceTrellis.cpp` now verifies descriptor, internal mirror, and persisted trace surfaces using the new `PathSpaceTrellis::debugRuntimeDescriptor` hook. Docs reference the descriptor-first workflow instead of legacy mutex state, and `Plan_PathSpace_FanIn.md` now tracks a Phase E follow-up to migrate enable/disable/config mutations into internal `PathSpace` transactions so the legacy mutex can be retired.
-- ✅ (November 14, 2025) Buffered fan-in roadmap captured in `Plan_PathSpace_FanIn.md`: descriptor-first phases (BF-1 → BF-4) define per-source buffered depth metadata, persistence updates, replay semantics, and tooling hooks, unblocking implementation work without revisiting legacy mutex state.
-- ✅ (November 13, 2025 — night) Phase D landed: descriptor writes now own ready queue ordering, waiters, cursor, shutdown flags, and traces; `TrellisState` retains only config/max-waiter metadata. `PATHSPACE_TRELLIS_INTERNAL_RUNTIME=0` now emits a rollback warning while leaving mirrors enabled.
-- ✅ (November 13, 2025 — afternoon) Multi-waiter/shutdown stress coverage landed: `tests/unit/layer/test_PathSpaceTrellis.cpp` now includes “Internal runtime multi-waiter shutdown clears waiters”, exercising concurrent waiter registration and shutdown drain with the runtime flag enabled and disabled. The enable path now persists `max_waiters` into runtime state so back-pressure mirrors stay consistent. `Plan_PathSpace_FanIn.md` rolls this into the Phase C follow-through and shifts focus to descriptor-first tooling updates.
-- ✅ (November 13, 2025) Trellis loop benchmarking captured: `./scripts/compile.sh --test --loop=15 --release --runtime-flag-report` still runs with `PATHSPACE_TRELLIS_INTERNAL_RUNTIME={1,0}` and records totals in `build/trellis_flag_bench.json`. The `{0}` pass now serves as a comparative timing run (mirrors remain enabled) rather than a rollback toggle.
-- 🟨 (November 12, 2025) `PathSpaceTrellis` queue traces now log explicit `serve_queue.result` events for each dequeue attempt, improving diagnostics when consuming buffered sources. Phase A of the embedded-`PathSpace` roadmap is complete (internal space bootstrap; runtime bookkeeping migrates in later phases); Phase B/C migrate readiness + waiter state and Phase D retires legacy mutex structures—see `Plan_PathSpace_FanIn.md`.
-- ✅ (November 11, 2025) `PathSpaceTrellis` latest-mode fan-in landed with non-destructive reads, persisted configs, live stats, and back-pressure caps under `/_system/trellis/state/*`.
+- 🚧 (November 14, 2025) PathSpaceTrellis layer removed pending full redesign; fan-in roadmap paused while the replacement architecture is sketched.
 - ✅ (November 10, 2025) Snapshot infrastructure removed: `UndoableSpace` now ships journal-only history, the snapshot codecs/tests/inspection tooling are gone, and `pathspace_history_inspect` reports journal metrics (entries, inserts, takes, barriers) instead of decoding snapshot payloads. Persistence/import/export paths operate solely on mutation logs.
 - ✅ (November 10, 2025) Journal persistence format is now documented for tooling consumers. See `docs/AI_Architecture.md` (“Journal Persistence Format”) for header layout, entry schema, and versioning guidance.
 - ✅ (November 9, 2025) Journal telemetry now computes undo/redo/live byte totals directly from `UndoJournalState::stats`, removing the runtime dependency on replaying snapshot prototypes and paving the way for Phase 4 snapshot code removal.

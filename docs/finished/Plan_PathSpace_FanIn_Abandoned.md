@@ -2,6 +2,8 @@
 
 _Last updated: November 14, 2025 (Buffered fan-in roadmap drafted)_
 
+> **Update (November 14, 2025 — afternoon):** PathSpaceTrellis and its supporting tests were removed pending a full redesign. The historical notes below are retained for context only and will be rewritten once the new fan-in layer is defined.
+
 > **Status (November 12, 2025):** Queue-mode traces now log explicit `serve_queue.result` entries (success, empty, error), and latest-mode wait paths emit both `wait_latest.*` results and matching `notify.ready` entries. Targeted tests (`Queue mode blocks until data arrives`, `Latest mode trace captures priority wake path`, `Latest mode priority polls secondary sources promptly`, `Latest mode priority wakes every source`) now pass in single-shot runs after widening the final wait slice and recording the readiness events. Phase A of the internal `PathSpace` migration is in place (trellises now bootstrap a private `PathSpace` mounted under `/_system/trellis/internal/*`, ready for runtime bookkeeping in later phases).
 > **Status (November 12, 2025 — evening):** Queue-mode readiness and trace buffers now dual-write to the embedded `PathSpace` under `/_system/trellis/internal/state/<hash>/runtime/*` while the legacy `TrellisState` containers remain authoritative. (At the time `PATHSPACE_TRELLIS_INTERNAL_RUNTIME=0` disabled the mirrors; as of November 13 it prints a rollback warning and leaves descriptor updates enabled.) New tests assert the internal runtime queue/count and trace snapshots stay aligned with the backing space.
 > **Status (November 13, 2025):** Phase C landed with waiter accounting, round-robin cursor updates, and shutdown flags mirrored into the internal runtime tree. New coverage (`Internal runtime mirrors ready queue state`, `Internal runtime tracks waiters, cursor, and shutdown`) exercises the mirrored paths and keeps the feature-flag fallback honest. Queue and latest-mode ordering held across the 15× loop after restoring cursor updates to dual-write the internal snapshot.
@@ -12,12 +14,9 @@ _Last updated: November 14, 2025 (Buffered fan-in roadmap drafted)_
 
 > **Priority focus (November 14, 2025):** With Phase D merged, descriptor-driven tooling is the default surface. The buffered fan-in roadmap below now assumes the descriptor as its authoritative state and captures milestones for exposing per-source buffers, leaving Phase E free to focus on config mutation transactions.
 
-## Highest priority (as of November 14, 2025)
+## Highest priority (archived)
 
-- ✅ **Descriptor-first tooling.** `AI_Debugging_Playbook.md`, `AI_ARCHITECTURE.md`, and queue-mode regression tests reference the descriptor as the primary surface. `PathSpaceTrellis::debugRuntimeDescriptor` keeps tests out of persistence while exercising descriptor-backed data; rollback guidance now points to reverting commits rather than toggling feature flags.
-- ✅ **Buffered fan-in roadmap (November 14, 2025).** Descriptor-backed fan-in design captured below covers new per-source buffer projections, snapshot schema, and validation cadence so implementation can begin without re-litigating legacy mutex state.
-- 🔄 **Mutex retirement plan.** Schedule a follow-up milestone after buffered fan-in implementation to relocate enable/disable/config rewrites into internal `PathSpace` compare-and-swap transactions. Once these flows run entirely through the embedded space we can delete `TrellisState::mutex` and let the internal PathSpace own multithreaded coordination end-to-end.
-  - ✅ **Runtime descriptor snapshots (November 13, 2025, evening):** Trellis state now publishes `TrellisRuntimeDescriptor` metadata under `/_system/trellis/internal/state/<hash>/runtime/descriptor`, capturing config, ready queue, waiters, cursor, back-pressure limits, trace entries, and latest snapshot payloads for live inspection.
+- ⛔ **On hold.** Prior milestones and follow-ups applied to the removed implementation; revisit once the replacement design is ready.
 
 ### Migration roadmap (drafted November 12, 2025 — Codex)
 

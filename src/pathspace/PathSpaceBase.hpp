@@ -27,7 +27,6 @@ namespace SP {
 struct InputMetadata;
 struct Out;
 struct Node;
-class PathSpaceTrellis;
 namespace History {
 class UndoableSpace;
 }
@@ -254,7 +253,6 @@ private:
     friend class Leaf;
     friend class PathAlias;
     friend class History::UndoableSpace;
-    friend class PathSpaceTrellis;
 
     // Core virtual hooks implemented by concrete spaces.
     virtual auto in(Iterator const& path, InputData const& data) -> InsertReturn                                                      = 0;
