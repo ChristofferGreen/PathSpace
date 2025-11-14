@@ -105,9 +105,8 @@ Undo/redo integrations must keep all data for a logical command inside a single 
 #### Event Dispatch Contract
 
 - Widget bindings enqueue `WidgetOp` items describing the widget path and event kind (e.g., `Press`, `Toggle`, `Draw`).
-- The dispatcher resolves `<widget>/events/<event>/handler` and, when present, invokes the stored callable inline on the task thread handling the op.
-- Missing handlers are treated as no-ops; the dispatcher records a warning under `<widget>/log/events` so tooling can detect unhandled interactions.
-- Handlers return an enum (`Handled`, `Declined`, `Error`) mirroring today’s imperative builders. `Declined` allows layered handlers (e.g., a list forwarding to a child widget) by explicitly re-enqueuing the operation on the child path.
+- The dispatcher resolves `<widget>/events/<event>/handler` and, when present, invokes the stored callable inline on the task thread handling the op. Handlers use the signature `void()` and read any required context from PathSpace state (e.g., op queues or widget state nodes).
+- Missing handlers are treated as no-ops; future telemetry work will decide whether to mirror these drops under `<widget>/log/events`.
 - Scenes that need higher-level interception can swap the handler node entirely (write a different callable) or wrap the existing callback in a delegating lambda—no separate routing tables are required.
 
 Canonical namespaces stay consistent across widgets: `state/` for mutable widget data, `style/` for theme references and overrides, `layout/` for layout hints, `events/` for handler callables and their logs, `children/` for nested widget mount points, and `render/` for cached rendering artifacts.
@@ -182,7 +181,7 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - Ensure composition rules are defined (parents adopting child buckets/paths).
 2. **Event nodes**
    - Map each widget event to canonical `events/<event>/handler` nodes (single callable per event) and document defaults.
-   - Implement helper utilities for installing/uninstalling handlers and re-binding lambda captures when widgets move.
+   - Provide helpers for installing/uninstalling handlers directly via PathSpace inserts so fragments and scenes can replace lambdas safely.
    - Document how fragments publish handlers during mount and how scenes override/restore them.
    - Add tests covering registration, invocation, and propagation.
 3. **Render synthesis contract**

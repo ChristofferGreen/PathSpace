@@ -1,5 +1,7 @@
 #include "WidgetDetail.hpp"
 
+#include <functional>
+
 namespace SP::UI::Builders::Widgets::Bindings {
 
 using namespace Detail;
@@ -113,6 +115,33 @@ auto schedule_auto_render(PathSpace& space,
                                      options.target.getPath(),
                                      reason,
                                      *frame_index);
+}
+
+using EventHandler = std::function<void()>;
+
+auto invoke_handler_if_present(PathSpace& space,
+                               WidgetPath const& widget,
+                               std::string_view event) -> SP::Expected<void> {
+    if (event.empty()) {
+        return {};
+    }
+    std::string handler_path = std::string(widget.getPath());
+    handler_path.append("/events/");
+    handler_path.append(event);
+    handler_path.append("/handler");
+
+    auto handler = space.read<EventHandler, std::string>(handler_path);
+    if (!handler) {
+        auto const& error = handler.error();
+        if (error.code == SP::Error::Code::NoObjectFound
+            || error.code == SP::Error::Code::NoSuchPath) {
+            return {};
+        }
+        return std::unexpected(error);
+    }
+
+    (*handler)();
+    return {};
 }
 
 auto enqueue_widget_op(PathSpace& space,
@@ -424,8 +453,14 @@ auto DispatchButton(PathSpace& space,
                                         binding.widget.root.getPath(),
                                         op_kind,
                                         pointer,
-                                        value); !status) {
+                                        value);
+        !status) {
         return std::unexpected(status.error());
+    }
+    if (op_kind == WidgetOpKind::Press || op_kind == WidgetOpKind::Activate) {
+        if (auto handler = invoke_handler_if_present(space, binding.widget.root, "press"); !handler) {
+            return std::unexpected(handler.error());
+        }
     }
     bool focus_changed = false;
     if (op_kind == WidgetOpKind::Press || op_kind == WidgetOpKind::Activate) {
@@ -475,8 +510,14 @@ auto DispatchToggle(PathSpace& space,
                                         binding.widget.root.getPath(),
                                         op_kind,
                                         pointer,
-                                        value); !status) {
+                                        value);
+        !status) {
         return std::unexpected(status.error());
+    }
+    if (op_kind == WidgetOpKind::Toggle) {
+        if (auto handler = invoke_handler_if_present(space, binding.widget.root, "toggle"); !handler) {
+            return std::unexpected(handler.error());
+        }
     }
     bool focus_changed = false;
     if (op_kind == WidgetOpKind::Press || op_kind == WidgetOpKind::Toggle) {
@@ -535,8 +576,14 @@ auto DispatchSlider(PathSpace& space,
                                             binding.widget.root.getPath(),
                                             op_kind,
                                             pointer,
-                                            current_state->value); !status) {
+                                            current_state->value);
+            !status) {
             return std::unexpected(status.error());
+        }
+        if (op_kind == WidgetOpKind::SliderCommit) {
+            if (auto handler = invoke_handler_if_present(space, binding.widget.root, "change"); !handler) {
+                return std::unexpected(handler.error());
+            }
         }
     }
     bool focus_changed = false;
@@ -633,8 +680,14 @@ auto DispatchList(PathSpace& space,
                                         binding.widget.root.getPath(),
                                         op_kind,
                                         pointer,
-                                        op_value); !status) {
+                                        op_value);
+        !status) {
         return std::unexpected(status.error());
+    }
+    if (op_kind == WidgetOpKind::ListSelect || op_kind == WidgetOpKind::ListActivate) {
+        if (auto handler = invoke_handler_if_present(space, binding.widget.root, "child_event"); !handler) {
+            return std::unexpected(handler.error());
+        }
     }
     bool focus_changed = false;
     if (op_kind == WidgetOpKind::ListSelect || op_kind == WidgetOpKind::ListActivate) {
@@ -821,8 +874,19 @@ auto DispatchTree(PathSpace& space,
                                         op_kind,
                                         pointer,
                                         op_value,
-                                        node_key); !status) {
+                                        node_key);
+        !status) {
         return std::unexpected(status.error());
+    }
+    switch (op_kind) {
+    case WidgetOpKind::TreeHover:
+    case WidgetOpKind::TreeScroll:
+        break;
+    default:
+        if (auto handler = invoke_handler_if_present(space, binding.widget.root, "node_event"); !handler) {
+            return std::unexpected(handler.error());
+        }
+        break;
     }
 
     if (should_request_load) {
@@ -831,9 +895,13 @@ auto DispatchTree(PathSpace& space,
                                             binding.widget.root.getPath(),
                                             WidgetOpKind::TreeRequestLoad,
                                             pointer,
-                                           0.0f,
-                                           node_key); !status) {
+                                            0.0f,
+                                            node_key);
+            !status) {
             return std::unexpected(status.error());
+        }
+        if (auto handler = invoke_handler_if_present(space, binding.widget.root, "node_event"); !handler) {
+            return std::unexpected(handler.error());
         }
     }
 
@@ -906,6 +974,17 @@ auto DispatchTextField(PathSpace& space,
             !status) {
             return std::unexpected(status.error());
         }
+        std::string_view event_name;
+        if (op_kind == WidgetOpKind::TextSubmit) {
+            event_name = "submit";
+        } else {
+            event_name = "change";
+        }
+        if (!event_name.empty()) {
+            if (auto handler = invoke_handler_if_present(space, binding.widget.root, event_name); !handler) {
+                return std::unexpected(handler.error());
+            }
+        }
     }
 
     return *changed || focus_changed;
@@ -970,6 +1049,17 @@ auto DispatchTextArea(PathSpace& space,
                                             value);
             !status) {
             return std::unexpected(status.error());
+        }
+        std::string_view event_name;
+        if (op_kind == WidgetOpKind::TextSubmit) {
+            event_name = "submit";
+        } else {
+            event_name = "change";
+        }
+        if (!event_name.empty()) {
+            if (auto handler = invoke_handler_if_present(space, binding.widget.root, event_name); !handler) {
+                return std::unexpected(handler.error());
+            }
         }
     }
 
