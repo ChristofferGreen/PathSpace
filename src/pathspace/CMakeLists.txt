@@ -126,6 +126,16 @@ if(PATHSPACE_ENABLE_UI)
         ui/declarative/Runtime.cpp
         ui/declarative/Schema.cpp
         ui/declarative/Widgets.cpp
+        ui/declarative/widgets/Common.cpp
+        ui/declarative/widgets/Button.cpp
+        ui/declarative/widgets/Toggle.cpp
+        ui/declarative/widgets/Slider.cpp
+        ui/declarative/widgets/Label.cpp
+        ui/declarative/widgets/List.cpp
+        ui/declarative/widgets/Tree.cpp
+        ui/declarative/widgets/Stack.cpp
+        ui/declarative/widgets/InputField.cpp
+        ui/declarative/widgets/PaintSurface.cpp
         ui/FontResources.cpp
         ui/FontAtlasCache.cpp
         ui/ThemeResources.cpp

@@ -6,6 +6,7 @@
 #include <pathspace/ui/declarative/Runtime.hpp>
 
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -26,6 +27,41 @@ struct WidgetFragment {
     std::string kind;
     std::function<SP::Expected<void>(FragmentContext const&)> populate;
     std::vector<std::pair<std::string, WidgetFragment>> children;
+};
+
+enum class WidgetKind : std::uint8_t {
+    Button,
+    Toggle,
+    Slider,
+    List,
+    Tree,
+    Stack,
+    Label,
+    InputField,
+    PaintSurface,
+};
+
+struct RenderDescriptor {
+    WidgetKind kind = WidgetKind::Button;
+};
+
+enum class HandlerKind : std::uint8_t {
+    None = 0,
+    ButtonPress,
+    Toggle,
+    Slider,
+    ListChild,
+    TreeNode,
+    StackPanel,
+    LabelActivate,
+    InputChange,
+    InputSubmit,
+    PaintDraw,
+};
+
+struct HandlerBinding {
+    std::string registry_key;
+    HandlerKind kind = HandlerKind::None;
 };
 
 enum class MountPolicy {
@@ -90,6 +126,17 @@ using StackPanelHandler = std::function<void(StackPanelContext&)>;
 using LabelHandler = std::function<void(LabelContext&)>;
 using InputFieldHandler = std::function<void(InputFieldContext&)>;
 using PaintSurfaceHandler = std::function<void(PaintSurfaceContext&)>;
+
+using HandlerVariant = std::variant<std::monostate,
+                                    ButtonHandler,
+                                    ToggleHandler,
+                                    SliderHandler,
+                                    ListChildHandler,
+                                    TreeNodeHandler,
+                                    StackPanelHandler,
+                                    LabelHandler,
+                                    InputFieldHandler,
+                                    PaintSurfaceHandler>;
 
 namespace Button {
 
