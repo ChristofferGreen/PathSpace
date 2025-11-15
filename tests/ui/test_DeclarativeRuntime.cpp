@@ -65,6 +65,9 @@ TEST_CASE("Declarative runtime wires app, window, and scene") {
     auto stored_surface = space.read<std::string, std::string>(structure_surface_path);
     REQUIRE(stored_surface);
     CHECK_FALSE(stored_surface->empty());
+
+    auto shutdown_scene = SP::Scene::Shutdown(space, scene->path);
+    REQUIRE(shutdown_scene);
 }
 
 TEST_CASE("Declarative input task drains widget ops") {
