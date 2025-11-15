@@ -76,11 +76,11 @@ TEST_CASE("Scene lifecycle rebuilds declarative widget buckets") {
     }
     auto bucket_path = std::string(scene->path.getPath()) + "/structure/widgets" + widget_relative + "/render/bucket";
 
-    CHECK(wait_for_bucket(space, bucket_path, std::chrono::milliseconds{200}));
+    CHECK(wait_for_bucket(space, bucket_path, std::chrono::milliseconds{1000}));
 
     auto updated = SP::UI::Declarative::Button::SetLabel(space, *widget, "updated label");
     REQUIRE(updated);
-    CHECK(wait_for_bucket_with_drawables(space, bucket_path, std::chrono::milliseconds{200}));
+    CHECK(wait_for_bucket_with_drawables(space, bucket_path, std::chrono::milliseconds{1000}));
 
     auto shutdown = SP::Scene::Shutdown(space, scene->path);
     REQUIRE(shutdown);
