@@ -11,6 +11,7 @@ namespace SP::UI::Declarative::SceneLifecycle {
 
 struct Options {
     std::chrono::milliseconds trellis_wait = std::chrono::milliseconds{5};
+    std::chrono::milliseconds publish_throttle = std::chrono::milliseconds{0};
 };
 
 [[nodiscard]] auto Start(PathSpace& space,
@@ -22,5 +23,8 @@ struct Options {
 
 [[nodiscard]] auto Stop(PathSpace& space,
                         SP::UI::Builders::ScenePath const& scene_path) -> SP::Expected<void>;
+
+auto InvalidateThemes(PathSpace& space,
+                      SP::App::AppRootPathView app_root) -> void;
 
 } // namespace SP::UI::Declarative::SceneLifecycle

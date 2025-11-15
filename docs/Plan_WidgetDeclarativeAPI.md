@@ -215,7 +215,7 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - ✅ (November 15, 2025) `Widgets::Move` now relocates existing widget subtrees by remounting the trie nodes, re-binding event handlers, and marking both the widget and its parents dirty so the lifecycle worker rebuilds buckets on the next pass. Moving between containers no longer requires recreating widgets or re-registering handlers.
 2. **Scene lifecycle**
    - ✅ (November 15, 2025) `Scene::Create` now spins up a trellis-backed lifecycle worker per scene. Widgets publish dirty events under `render/events/dirty`, the worker fans them into `scene/runtime/lifecycle/trellis`, rebuilds buckets via `WidgetDescriptor`, writes them to `scene/structure/widgets/<widget>/render/bucket`, and exposes metrics/state under `scene/runtime/lifecycle/*`. `SP::Scene::Shutdown` tears the worker down, and doctest coverage (`tests/ui/test_DeclarativeSceneLifecycle.cpp`) exercises the end-to-end flow.
-   - 🔜 Follow-ups: cascade lifecycle rebuilds into `SceneSnapshotBuilder` revisions, cover theme/focus invalidation events, and tighten cleanup for removed widgets so trellis source lists shrink automatically.
+   - ✅ (November 15, 2025) Scene lifecycle worker now caches per-widget buckets, aggregates them into `SceneSnapshotBuilder` revisions, exposes publish/queue metrics, and reacts to theme + focus invalidations. Removed widgets trigger trellis deregistration, cache eviction, and `structure/widgets/.../render/bucket` cleanup so lifecycle metrics stay accurate.
 3. **Focus controller**
    - Design focus metadata and build focus graph automatically.
    - Integrate with existing bindings so focus/activation events propagate transparently.

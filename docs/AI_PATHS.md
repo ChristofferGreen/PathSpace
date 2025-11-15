@@ -92,83 +92,18 @@ The following subtrees are standardized within each application root (one of the
         - `inbox` — capture requests inserted by external profilers
         - `active` — renderer acknowledgement + status metadata
         - `dump/*` — optional blobs captured for that request (framebuffers, GPU counters)
-- Widgets
-  - `widgets/<widget-id>/`
-    - `state` — current widget state payload (button/toggle/slider/list/tree structs)
-    - `meta/*` — style, label, range/list/tree metadata authored by widget builders
-    - `meta/nodes` — tree view node metadata (`id`, `parent_id`, `label`, `enabled`, `expandable`, `loaded`)
-    - `layout/style` — layout container style (axis, spacing, alignment)
-    - `layout/children` — layout child specs (widget path + weight/constraints)
-    - `layout/computed` — latest measured bounds per child (layout containers)
-    - `authoring/<component>` — canonical authoring nodes written by widget builders and consumed by hit testing (`Widgets::ResolveHitTarget`)
-    - `ops/actions/inbox/queue` — reduced widget actions emitted by `Widgets::Reducers`
-    - `ops/inbox/queue` — `WidgetOp` FIFO written by `Widgets::Bindings` helpers (hover/press/toggle/slider events)
-  - `widgets/focus/current` — current focused widget name written by focus helpers
-  - `widgets/<id>/focus/current` — runtime-managed boolean flag indicating whether the widget currently holds focus
-  - `widgets/<id>/focus/order` — zero-based depth-first traversal index published by the focus controller
-  - `scenes/widgets/<widget-id>/`
-    - `states/<state-name>/snapshot` — immutable per-state display list
-    - `current_revision` — revision pointer adopted by renderer targets
-    - `meta/{name,description}` — human-readable labels stamped on first publish
+- Widgets (details in `docs/Widget_Schema_Reference.md`)
+  - `widgets/<widget-id>/` — canonical widget roots; the appendix tracks every `state/*`, `meta/*`, `layout/*`, `events/*`, and `render/*` leaf so this file can stay focused on high-level namespace placement.
+  - `widgets/focus/current` and `widgets/<id>/focus/{current,order}` — app-level and per-widget focus mirrors maintained by the focus controller.
+  - `scenes/widgets/<widget-id>/` — widget snapshot subtrees (`states/*`, `current_revision`, `meta/*`) consumed by renderer targets.
 
-### Declarative widget API (November 14, 2025 — schema appendix refreshed November 15, 2025)
+### Declarative widget API summary
 
-See `docs/Widget_Schema_Reference.md` for the authoritative per-node tables (mirrors `include/pathspace/ui/declarative/Schema.hpp` + `Descriptor.hpp`). The summary below highlights the most frequently accessed nodes so path authors stay oriented without flipping between documents.
+For schema tables, handler metadata, theme resolution rules, and per-widget specifics refer to `docs/Widget_Schema_Reference.md` (source of truth for `include/pathspace/ui/declarative/Schema.hpp`). This document only records the system-level plumbing so the namespace map stays concise:
 
-Canonical schema definitions for the declarative workflow live in `include/pathspace/ui/declarative/Schema.hpp` and surface through `SP::UI::Declarative::widget_schemas()`. The namespace overlays are implemented in `src/pathspace/ui/declarative/Schema.cpp`.
-
-- Namespaces
-  - `application` — `state/title`, `windows/<window-id>`, `scenes/<scene-id>`, `themes/default`, `events/lifecycle/handler`
-- `window` — `state/title`, `state/visible`, `style/theme`, `widgets/<widget-name>`, `events/{close,focus}/handler`, `render/dirty`
-- Runtime bootstrap (November 14, 2025): `SP::System::LaunchStandard` + `SP::Window::Create` now seed `state/visible`, `render/dirty`, and `views/<view>/scene|surface|htmlTarget` so declarative scenes can rely on these leaves before wiring presenters.
-  - `scene` — `structure/widgets/<widget-path>`, `structure/window/<window-id>/{focus/current,metrics/dpi,surface,renderer,present}`, `views/<view-id>/dirty`, `snapshot/<revision>`, `state/attached`, `render/dirty`
-- Runtime bootstrap (November 14, 2025): `SP::Scene::Create` populates `structure/window/<window-id>/*`, `state/attached`, and marks the bound window view so focus/metrics/rendering scaffolding exists prior to widget mounts.
-  - Lifecycle worker (November 15, 2025): each scene mounts `runtime/lifecycle/trellis` (a `PathSpaceTrellis`) that fans in widget dirty queues (`widgets/.../render/events/dirty`). Worker state/metrics live under `runtime/lifecycle/state/*` and `runtime/lifecycle/metrics/*`; control events are published to `runtime/lifecycle/control` so `SP::Scene::Shutdown` can stop the worker without leaking threads.
-  - `theme` — `colors/<token>`, `typography/<token>`, `spacing/<token>`, `style/inherits`
-
-**Declarative theme resolution (November 15, 2025).** Descriptor synthesis now resolves themes without persisting `meta/style` copies:
-- Start at the widget root and look for `style/theme`. Walk up through parent widgets (`.../children/...`), then the owning window (`/windows/<window>/style/theme`), and finally `/system/applications/<app>/themes/default`.
-- The resolved name passes through `Config::Theme::SanitizeName` and loads `config/theme/<name>/value`. Results are cached per (app root, theme) pair so repeated descriptor loads avoid redundant PathSpace reads.
-- Empty/missing values fall back to the literal `"default"`, ensuring every widget can hydrate styles even before the theme editing API ships. Future work will layer per-theme `style/inherits` on top of this resolver.
-
-- Common widget nodes (applies to every declarative widget)
-  - `state` — widget state payload exposed to applications
-  - `style/theme` — theme override bound to the subtree
-  - `focus/order`, `focus/disabled`, `focus/wrap`, `focus/current` — focus traversal metadata
-  - `layout/orientation`, `layout/spacing`, `layout/computed/*` — layout hints and computed metrics
-  - `children/<child-name>` — child widget mounts
-  - `events/<event>/handler` — `HandlerBinding { registry_key, kind }` referencing the declarative callback registry
-  - `render/synthesize`, `render/bucket`, `render/dirty` — render cache contract (descriptor + cached bucket + dirty flag)
-  - `render/events/dirty` — queue of widget-path strings published whenever declarative helpers mark the widget dirty; consumed by the scene lifecycle trellis worker.
-  - `log/events` — runtime diagnostics queue
-
-| Widget | Authored nodes | Runtime-managed nodes |
-|---|---|---|
-| button | `state/label`, `state/enabled`, `events/press/handler` | `render/bucket`, `render/dirty` |
-| toggle | `state/checked`, `events/toggle/handler` | `render/bucket`, `render/dirty` |
-| slider | `state/value`, `state/range/{min,max}`, `events/change/handler` | `state/dragging`, `render/bucket`, `render/dirty` |
-| list | `layout/orientation`, `layout/spacing`, `events/child_event/handler` | `state/scroll_offset` |
-| tree | `events/node_event/handler` | `nodes/<node-id>/state`, `nodes/<node-id>/children` |
-| stack | `state/active_panel`, `events/panel_select/handler` | `panels/<panel-id>/state` |
-| label | `state/text`, `events/activate/handler` | `render/bucket`, `render/dirty` |
-| input_field | `state/text`, `state/placeholder`, `events/{change,submit}/handler` | `state/focused`, `render/dirty` |
-| paint_surface | `state/brush/*`, `events/draw/handler` | `state/history/<stroke-id>`, `render/buffer/*`, `render/gpu/*`, `assets/texture` |
-
-**Handler bindings.** Each `events/<event>/handler` leaf stores a `HandlerBinding { registry_key, kind }`. Declarative helpers register lambdas in an in-memory registry keyed by `<widget_path>#<event>#<sequence>` and write the binding record into PathSpace. Removing a widget removes every binding sharing the prefix so stale handlers never fire.
-
-**Widget relocation (November 15, 2025).** `Widgets::Move` now re-homes an existing widget subtree by moving the trie nodes in-place, re-registering handler bindings for the new path, and marking both the widget and its parents dirty so the lifecycle trellis rebuilds buckets on the next pass. No schema translation or fragment re-mounting is required when containers shuffle children at runtime.
-
-**Render descriptors.** `render/synthesize` holds a `RenderDescriptor` (widget kind enum). The runtime converts descriptors + `state/*` + `style/*` into a `WidgetDescriptor` and synthesizes `DrawableBucketSnapshot` data via the legacy preview builders. Cached buckets live at `render/bucket`, and `SceneSnapshotBuilder` reads them via `structure/widgets/<widget>/render/bucket`.
-
-**Dirty + lifecycle flow.**
-1. Declarative helpers update widget state, flip `render/dirty`, and push the widget path onto `render/events/dirty`.
-2. The scene lifecycle trellis (`runtime/lifecycle/trellis`) drains dirty queues, calls into the descriptor synthesizer, and writes updated buckets under `scene/structure/widgets/<widget>/render/bucket`.
-3. Renderer targets consume the updated bucket set, publish a new snapshot, and presenters pick up the fresh revision (window `render/dirty` or per-view dirty bits).
-4. Focus controller mirrors the active widget under both `widgets/<id>/focus/current` and `structure/window/<window>/focus/current` so input + accessibility bridges stay aligned.
-
-> **Handler bindings:** the declarative helper registers each handler in an in-memory registry and stores `HandlerBinding { registry_key, kind }` at `events/<event>/handler`. Removal drops every key rooted at the widget path so stale lambdas never fire.
->
-> **Render descriptors:** `render/synthesize` now holds a `RenderDescriptor` (widget kind enum). The renderer reads that descriptor plus the widget’s `state/*` and `meta/*` payloads to rebuild buckets when `render/dirty = true`; `render/bucket` remains as the cached snapshot for compatibility while the descriptor path rolls out. `include/pathspace/ui/declarative/Descriptor.hpp` exposes the shared `WidgetDescriptor` loader + bucket synthesizer so runtime tasks can normalize button/toggle/slider/list/tree/label payloads without duplicating builder logic.
+- Runtime bootstrap — `SP::System::LaunchStandard`, `SP::App::Create`, `SP::Window::Create`, and `SP::Scene::Create` seed the application, window, and scene nodes listed above (visibility flags, view bindings, `structure/window/<window>/*`) before any widgets mount.
+- Lifecycle worker — every declarative scene owns `runtime/lifecycle/trellis`, a `PathSpaceTrellis` that drains `widgets/.../render/events/dirty`, rebuilds buckets, and reports metrics under `runtime/lifecycle/metrics/*`. Control messages live under `runtime/lifecycle/control` so `SP::Scene::Shutdown` can stop the worker and the theme runtime can broadcast invalidations (`:invalidate_theme`). Metrics now include `widgets_registered_total`, `sources_active_total`, `events_processed_total`, `widgets_with_buckets`, `last_revision`, `last_published_widget`, `last_published_ms`, `pending_publish`, and `last_error` for snapshot failures.
+- Snapshot feeds — updated widget buckets flow into `scene/structure/widgets/<widget>/render/bucket` and then into the normal `scenes/<scene>/builds/<revision>` publish/adopt flow described later in this document.
 
 - Surfaces (offscreen targets)
   - `surfaces/<surface-id>/`

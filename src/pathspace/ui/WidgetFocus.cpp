@@ -1,4 +1,5 @@
 #include "WidgetDetail.hpp"
+#include "declarative/widgets/Common.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -14,6 +15,18 @@ namespace SP::UI::Builders::Widgets {
 using namespace Detail;
 
 namespace {
+
+auto mark_declarative_focus_dirty(PathSpace& space,
+                                  std::string const& widget_root) -> void {
+    auto dirty = read_optional<bool>(space, widget_root + "/render/dirty");
+    if (!dirty) {
+        return;
+    }
+    if (!dirty->has_value()) {
+        return;
+    }
+    (void)SP::UI::Declarative::Detail::mark_render_dirty(space, widget_root);
+}
 
 auto determine_widget_kind(PathSpace& space,
                            std::string const& rootPath) -> SP::Expected<WidgetKind>;
@@ -104,24 +117,46 @@ auto is_focusable_widget(PathSpace& space,
 auto set_widget_focus_flag(PathSpace& space,
                            std::string const& widget_root,
                            bool focused) -> SP::Expected<void> {
-    return replace_single<bool>(space, widget_root + "/focus/current", focused);
+    auto path = widget_root + "/focus/current";
+    auto existing = read_optional<bool>(space, path);
+    if (!existing) {
+        return std::unexpected(existing.error());
+    }
+    if (existing->has_value() && **existing == focused) {
+        return {};
+    }
+    if (auto status = replace_single<bool>(space, path, focused); !status) {
+        return std::unexpected(status.error());
+    }
+    mark_declarative_focus_dirty(space, widget_root);
+    return {};
 }
 
 auto update_window_focus_nodes(PathSpace& space,
                                FocusScope const& scope,
                                std::optional<std::string> const& widget_path) -> void {
-    if (!scope.window_component.has_value()) {
+    std::optional<std::string> window_component = scope.window_component;
+    if (!window_component.has_value() && widget_path.has_value()) {
+        auto derived = window_component_for(*widget_path);
+        if (derived) {
+            window_component = *derived;
+        }
+    }
+    if (!window_component.has_value()) {
         return;
     }
     std::string scenes_root = scope.app_root + "/scenes";
     auto scenes = space.listChildren(SP::ConcretePathStringView{scenes_root});
     for (auto const& scene : scenes) {
-        auto focus_path = scenes_root + "/" + scene + "/structure/window/" + *scope.window_component + "/focus/current";
+        auto focus_path = scenes_root + "/" + scene + "/structure/window/" + *window_component + "/focus/current";
         auto existing = read_optional<std::string>(space, focus_path);
         if (!existing) {
             continue;
         }
         auto value = widget_path.value_or(std::string{});
+#if 0
+        std::cerr << "[focus] update " << focus_path << " <= '" << value << "'" << std::endl;
+#endif
         (void)replace_single<std::string>(space, focus_path, value);
     }
 }
@@ -223,11 +258,25 @@ auto append_unique_hint(std::vector<DirtyRectHint>& hints,
 auto widget_name_from_root(std::string const& app_root,
                            std::string const& widget_root) -> SP::Expected<std::string> {
     auto prefix = app_root + "/widgets/";
-    if (widget_root.rfind(prefix, 0) != 0) {
+    if (widget_root.rfind(prefix, 0) == 0) {
+        auto name = widget_root.substr(prefix.size());
+        if (name.empty()) {
+            return std::unexpected(make_error("widget path missing identifier", SP::Error::Code::InvalidPath));
+        }
+        return name;
+    }
+
+    auto windows_prefix = app_root + "/windows/";
+    if (widget_root.rfind(windows_prefix, 0) != 0) {
         return std::unexpected(make_error("widget path must belong to app widgets subtree",
                                           SP::Error::Code::InvalidPath));
     }
-    auto name = widget_root.substr(prefix.size());
+    auto widgets_pos = widget_root.find("/widgets/", windows_prefix.size());
+    if (widgets_pos == std::string::npos) {
+        return std::unexpected(make_error("widget path missing '/widgets' segment",
+                                          SP::Error::Code::InvalidPath));
+    }
+    auto name = widget_root.substr(widgets_pos + std::strlen("/widgets/"));
     if (name.empty()) {
         return std::unexpected(make_error("widget path missing identifier", SP::Error::Code::InvalidPath));
     }
@@ -788,7 +837,6 @@ auto Set(PathSpace& space,
     if (!set_flag) {
         return std::unexpected(set_flag.error());
     }
-    update_window_focus_nodes(space, *scope, target_path);
     bool changed = *apply_focus;
     bool mark_new_dirty = *apply_focus;
     bool mark_prev_dirty = false;
@@ -817,6 +865,8 @@ auto Set(PathSpace& space,
         changed = true;
         mark_new_dirty = true;
     }
+
+    update_window_focus_nodes(space, *scope, target_path);
 
     if (mark_new_dirty) {
         if (auto status = append_dirty_hint(target_path); !status) {

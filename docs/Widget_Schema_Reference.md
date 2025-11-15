@@ -16,55 +16,17 @@ This appendix summarizes the canonical nodes, handlers, and runtime-managed leav
 
 Unless noted otherwise, all paths are application-relative and live under `/system/applications/<app>/…`.
 
-## Namespaces
+## Relationship to `docs/AI_PATHS.md`
 
-### Application namespace
+`docs/AI_PATHS.md` remains the authoritative map for application, window, scene, renderer, device, and logging namespaces. Rather than repeat that content, this appendix focuses on **widget-specific** nodes and the declarative runtime leaves that hang off the base paths. Use the documents together:
 
-| Path | Kind | Req | Notes |
-| --- | --- | --- | --- |
-| `state/title` | value | req | Human-readable title stored by `SP::App::Create`. |
-| `windows/<window-id>` | dir | rt | Declarative window namespaces mounted under the app. |
-| `scenes/<scene-id>` | dir | rt | Declarative scenes created via `SP::Scene::Create`. |
-| `themes/default` | value | opt | Default widget theme (string id). |
-| `themes/<theme>` | dir | opt | Theme definitions; see Theme namespace below. |
-| `events/lifecycle/handler` | callable | opt | App-level lifecycle handler (optional). |
+- Consult `AI_PATHS.md` when you need the overall layout (e.g., where `scenes/<id>/builds/<revision>` or `renderers/<rid>/targets/...` live) or when changing non-widget namespaces.
+- Use this appendix when editing `widgets/<widget-id>/...`, `widgets/focus/current`, or the declarative lifecycle plumbing (`scene/structure/widgets/*`, `runtime/lifecycle/*`, handler/descriptor nodes).
+- When you introduce or retire base nodes (application/window/scene/theme), update `AI_PATHS.md` first, then reference the change here only if there is a widget-facing implication.
 
-### Window namespace
+### Theme resolver (November 15, 2025)
 
-| Path | Kind | Req | Notes |
-| --- | --- | --- | --- |
-| `state/title` | value | req | Mirrored into OS windows. |
-| `state/visible` | flag | rt | Controlled by runtime presenters. |
-| `style/theme` | value | opt | Theme override for the entire window subtree. |
-| `widgets/<widget-id>` | dir | rt | Widget roots attached to the window. |
-| `events/{close,focus}/handler` | callable | opt | Optional handlers for close/focus events. |
-| `render/dirty` | flag | rt | Presenter uses this to schedule redraws. |
-
-### Scene namespace
-
-| Path | Kind | Req | Notes |
-| --- | --- | --- | --- |
-| `structure/widgets/<widget-path>` | dir | rt | Snapshot buckets consumed by renderers. |
-| `structure/window/<window-id>/{focus/current,metrics/dpi,accessibility/dirty}` | value/flag | rt | Focus (active widget path), DPI, and accessibility mirrors per window. |
-| `snapshot/<revision>` | dir | rt | Immutable scene revision artifacts. |
-| `snapshot/current` | value | rt | Pointer to current revision. |
-| `metrics/<metric>` | value | rt | Scene diagnostics (render ms, residency, etc.). |
-| `events/present/handler` | callable | opt | Handler invoked when the scene presents. |
-| `views/<view-id>/dirty` | flag | rt | Per-view dirty bit to avoid cross-window stalls. |
-| `state/attached` | flag | rt | Indicates whether the scene is attached to a presenter. |
-| `render/dirty` | flag | rt | Triggers scene re-synthesis. |
-| `runtime/lifecycle/trellis` | dir | rt | PathSpaceTrellis worker fanning in widget dirty queues. |
-
-### Theme namespace
-
-| Path | Kind | Req | Notes |
-| --- | --- | --- | --- |
-| `colors/<token>` | value | req | Color tokens referenced by widgets. |
-| `typography/<token>` | value | opt | Typography tokens. |
-| `spacing/<token>` | value | opt | Spacing tokens. |
-| `style/inherits` | value | opt | Parent theme id for inheritance (resolver support planned). |
-
-> **Theme resolver (November 15, 2025):** Declarative descriptors now derive styles by walking `style/theme` from the widget up through parent widgets, the owning window, and finally `/system/applications/<app>/themes/default`. The resolved name is sanitized and loaded from `config/theme/<name>/value`, and cached per (app, theme) pair to keep synthesis cheap. Persist literal `meta/style` blobs only when a widget truly needs bespoke values; otherwise rely on the resolver.
+Declarative descriptors resolve styles by walking `style/theme` from the widget up through parent widgets, the owning window, and finally `/system/applications/<app>/themes/default`. The resolved name passes through `Config::Theme::SanitizeName`, then loads `config/theme/<name>/value`, and the result is cached per (app, theme) pair. Persist literal `meta/style` blobs only when a widget truly needs bespoke values; otherwise rely on the resolver.
 
 ## Common widget nodes
 
@@ -183,7 +145,9 @@ Descriptor status: paint surfaces expose brush metadata + GPU flags through the 
 ## Dirty + lifecycle flow
 
 1. Declarative helpers update widget state, flip `render/dirty`, and push the widget path onto `render/events/dirty`.
-2. The scene lifecycle trellis (`runtime/lifecycle/trellis`) drains dirty queues, calls into the descriptor synthesizer, and writes updated buckets under `scene/structure/widgets/<widget>/render/bucket`.
+2. The scene lifecycle trellis (`runtime/lifecycle/trellis`) drains dirty queues, calls into the descriptor synthesizer, writes updated buckets under `scene/structure/widgets/<widget>/render/bucket`, and aggregates those buckets into scene-wide revisions via `SceneSnapshotBuilder`. Snapshot stats mirror under `runtime/lifecycle/metrics` so tooling can inspect `widgets_registered_total`, `sources_active_total`, `widgets_with_buckets`, `events_processed_total`, `last_revision`, `last_published_widget`, `last_published_ms`, and `pending_publish` when throttling kicks in.
+3. Theme/focus invalidations: the focus controller now marks declarative widgets dirty whenever `focus/current` flips, and the theme runtime (`Config::Theme::SetActive`) notifies the scene lifecycle worker via `runtime/lifecycle/control`. The worker walks `/widgets` and `/windows/<id>/widgets`, re-enqueues dirty events, and republishes buckets so descriptor caches pick up style changes.
+4. Removal is logical (`state/removed = true`), but lifecycle workers immediately deregister trellis sources, evict cached buckets, and clear `scene/structure/widgets/.../render/bucket` so metrics reflect the shrinking tree.
 3. Renderer targets consume the updated bucket set, publish a new snapshot, and presenters pick up the fresh revision (window `render/dirty` or per-view dirty bits).
 4. Focus controller mirrors the active widget under both `widgets/<id>/focus/current` (boolean) and `structure/window/<window>/focus/current` (absolute widget path) so input + accessibility bridges stay aligned.
 

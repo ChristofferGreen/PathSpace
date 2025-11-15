@@ -84,6 +84,7 @@ auto Remove(PathSpace& space, SP::UI::Builders::WidgetPath const& widget) -> SP:
         !status) {
         return status;
     }
+    (void)WidgetDetail::mark_render_dirty(space, widget.getPath());
     WidgetDetail::clear_handlers(widget.getPath());
     return {};
 }

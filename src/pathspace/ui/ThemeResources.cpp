@@ -1,6 +1,8 @@
 #include <pathspace/ui/Builders.hpp>
 #include "BuildersDetail.hpp"
 
+#include <pathspace/ui/declarative/SceneLifecycle.hpp>
+
 #include <pathspace/app/AppPaths.hpp>
 
 #include <algorithm>
@@ -106,6 +108,7 @@ auto SetActive(PathSpace& space,
     if (auto status = replace_single<std::string>(space, active->getPath(), sanitized); !status) {
         return std::unexpected(status.error());
     }
+    SP::UI::Declarative::SceneLifecycle::InvalidateThemes(space, appRoot);
     return {};
 }
 

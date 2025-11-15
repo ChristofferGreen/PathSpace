@@ -577,6 +577,14 @@ auto LoadWidgetDescriptor(PathSpace& space,
                           SP::UI::Builders::WidgetPath const& widget)
     -> SP::Expected<WidgetDescriptor> {
     auto root = widget.getPath();
+    auto removed = read_optional_value<bool>(space, root + "/state/removed");
+    if (!removed) {
+        return std::unexpected(removed.error());
+    }
+    if (removed->value_or(false)) {
+        return std::unexpected(make_descriptor_error("Widget removed",
+                                                     SP::Error::Code::NoObjectFound));
+    }
     auto kind_value = space.read<std::string, std::string>(root + "/meta/kind");
     if (!kind_value) {
         return std::unexpected(kind_value.error());
