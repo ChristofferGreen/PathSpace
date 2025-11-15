@@ -1752,6 +1752,10 @@ auto Move(PathSpace& space,
           std::span<WidgetPath const> order,
           Direction direction) -> SP::Expected<std::optional<UpdateResult>>;
 
+auto Move(PathSpace& space,
+          Config const& config,
+          Direction direction) -> SP::Expected<std::optional<UpdateResult>>;
+
 auto ApplyHit(PathSpace& space,
               Config const& config,
               Scene::HitTestResult const& hit) -> SP::Expected<std::optional<UpdateResult>>;

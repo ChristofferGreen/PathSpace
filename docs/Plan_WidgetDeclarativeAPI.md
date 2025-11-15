@@ -220,7 +220,7 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - Design focus metadata and build focus graph automatically.
    - Integrate with existing bindings so focus/activation events propagate transparently.
    - ✅ (November 15, 2025) Focus controller now assigns depth-first `focus/order` indices, mirrors active widgets via `widgets/<id>/focus/current`, and writes the active widget path to `structure/window/<window-id>/focus/current`. Declarative helpers rebuild the order whenever focus changes, so keyboard/gamepad traversal no longer requires app-authored lists. `tests/ui/test_DeclarativeWidgets.cpp` exercises the metadata + window mirror flow end-to-end.
-   - 🔜 Wire focus order directly into the declarative event dispatcher so keyboard/gamepad routing calls the controller instead of bespoke focus lists.
+   - ✅ (November 15, 2025) Wired the declarative dispatcher into the focus controller: `Widgets::Focus::Move(space, config, Direction)` now derives traversal order from the runtime metadata, so keyboard/gamepad routing simply calls the controller without maintaining bespoke focus lists. UITests cover the new overload and the auto-render telemetry it triggers during Tab/Shift+Tab and gamepad hops.
 4. **Event dispatch**
    - Forward raw pointer/keyboard events into PathSpace queues.
    - Define canonical event paths with payload metadata.

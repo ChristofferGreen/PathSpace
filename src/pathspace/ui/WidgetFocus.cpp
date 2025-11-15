@@ -1021,6 +1021,49 @@ auto Move(PathSpace& space,
     return std::optional<UpdateResult>{*result};
 }
 
+auto Move(PathSpace& space,
+          Config const& config,
+          Direction direction) -> SP::Expected<std::optional<UpdateResult>> {
+    auto current = Current(space, ConcretePathView{config.focus_state.getPath()});
+    if (!current) {
+        return std::unexpected(current.error());
+    }
+
+    auto app_root = derive_app_root_for(ConcretePathView{config.focus_state.getPath()});
+    if (!app_root) {
+        return std::unexpected(app_root.error());
+    }
+    auto app_root_view = SP::App::AppRootPathView{app_root->getPath()};
+
+    std::string app_root_string{app_root_view.getPath()};
+    FocusScope scope{
+        .app_root = app_root_string,
+        .widgets_root = app_root_string + "/widgets",
+        .window_component = std::nullopt,
+    };
+
+    if (current->has_value()) {
+        auto derived = make_focus_scope(app_root_view, **current);
+        if (!derived) {
+            return std::unexpected(derived.error());
+        }
+        scope = *derived;
+    }
+
+    auto order = build_focus_order(space, scope);
+    if (!order) {
+        return std::unexpected(order.error());
+    }
+    if (order->empty()) {
+        return std::optional<UpdateResult>{};
+    }
+
+    return Move(space,
+                config,
+                std::span<const WidgetPath>(order->data(), order->size()),
+                direction);
+}
+
 auto ApplyHit(PathSpace& space,
               Config const& config,
               Scene::HitTestResult const& hit) -> SP::Expected<std::optional<UpdateResult>> {

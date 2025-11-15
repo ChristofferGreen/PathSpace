@@ -3915,22 +3915,22 @@ TEST_CASE("Widget list states match golden snapshots") {
 TEST_CASE("Widgets::Focus::Set and Move update widget states") {
     BuildersFixture fx;
 
-    auto buttonParams = Widgets::MakeButtonParams("focus_button", "Focus").Build();
+    auto buttonParams = Widgets::MakeButtonParams("focus_01_button", "Focus").Build();
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
     REQUIRE(button);
 
-    auto toggleParams = Widgets::MakeToggleParams("focus_toggle").Build();
+    auto toggleParams = Widgets::MakeToggleParams("focus_02_toggle").Build();
     auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), toggleParams);
     REQUIRE(toggle);
 
-    auto sliderParams = Widgets::MakeSliderParams("focus_slider")
+    auto sliderParams = Widgets::MakeSliderParams("focus_03_slider")
                              .WithRange(0.0f, 1.0f)
                              .WithValue(0.25f)
                              .Build();
     auto slider = Widgets::CreateSlider(fx.space, fx.root_view(), sliderParams);
     REQUIRE(slider);
 
-    auto listParams = Widgets::MakeListParams("focus_list")
+    auto listParams = Widgets::MakeListParams("focus_04_list")
                           .WithItems({
                               Widgets::ListItem{.id = "alpha", .label = "Alpha"},
                               Widgets::ListItem{.id = "beta", .label = "Beta"},
@@ -3959,16 +3959,8 @@ TEST_CASE("Widgets::Focus::Set and Move update widget states") {
     CHECK_FALSE(toggleState->hovered);
     CHECK_FALSE(toggleState->focused);
 
-    std::array<WidgetPath, 4> order{
-        button->root,
-        toggle->root,
-        slider->root,
-        list->root,
-    };
-
     auto moveToggle = WidgetFocus::Move(fx.space,
                                         config,
-                                        std::span<const WidgetPath>(order.data(), order.size()),
                                         WidgetFocus::Direction::Forward);
     REQUIRE(moveToggle);
     REQUIRE(moveToggle->has_value());
@@ -3993,11 +3985,9 @@ TEST_CASE("Widgets::Focus::Set and Move update widget states") {
     // Advance to slider, then list
     (void)WidgetFocus::Move(fx.space,
                             config,
-                            std::span<const WidgetPath>(order.data(), order.size()),
                             WidgetFocus::Direction::Forward);
     auto moveList = WidgetFocus::Move(fx.space,
                                       config,
-                                      std::span<const WidgetPath>(order.data(), order.size()),
                                       WidgetFocus::Direction::Forward);
     REQUIRE(moveList);
     REQUIRE(moveList->has_value());
@@ -4179,10 +4169,8 @@ TEST_CASE("Widget focus shift marks previous footprint dirty") {
     auto hintsPath = targetAbs->getPath() + "/hints/dirtyRects";
     (void)fx.space.read<std::vector<DirtyRectHint>, std::string>(hintsPath);
 
-    std::array<WidgetPath, 2> order{button->root, toggle->root};
     auto moveToggle = WidgetFocus::Move(fx.space,
                                         config,
-                                        std::span<const WidgetPath>(order.data(), order.size()),
                                         WidgetFocus::Direction::Forward);
     REQUIRE(moveToggle);
     REQUIRE(moveToggle->has_value());
@@ -5333,22 +5321,22 @@ TEST_CASE("Widget focus pulsing highlight sets pipeline flag") {
 TEST_CASE("Widgets::Focus keyboard navigation cycles focus order and schedules renders") {
     BuildersFixture fx;
 
-    auto buttonParams = Widgets::MakeButtonParams("keyboard_focus_button", "KeyboardButton").Build();
+    auto buttonParams = Widgets::MakeButtonParams("keyboard_focus_01_button", "KeyboardButton").Build();
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), buttonParams);
     REQUIRE(button);
 
-    auto toggleParams = Widgets::MakeToggleParams("keyboard_focus_toggle").Build();
+    auto toggleParams = Widgets::MakeToggleParams("keyboard_focus_02_toggle").Build();
     auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), toggleParams);
     REQUIRE(toggle);
 
-    auto sliderParams = Widgets::MakeSliderParams("keyboard_focus_slider")
+    auto sliderParams = Widgets::MakeSliderParams("keyboard_focus_03_slider")
                              .WithRange(0.0f, 1.0f)
                              .WithValue(0.42f)
                              .Build();
     auto slider = Widgets::CreateSlider(fx.space, fx.root_view(), sliderParams);
     REQUIRE(slider);
 
-    auto listParams = Widgets::MakeListParams("keyboard_focus_list")
+    auto listParams = Widgets::MakeListParams("keyboard_focus_04_list")
                           .WithItems({
                               Widgets::ListItem{.id = "one", .label = "One"},
                               Widgets::ListItem{.id = "two", .label = "Two"},
@@ -5386,13 +5374,6 @@ TEST_CASE("Widgets::Focus keyboard navigation cycles focus order and schedules r
         fx.root_view(),
         SP::UI::Builders::ConcretePath{targetAbs->getPath()});
 
-    std::array<WidgetPath, 4> order{
-        button->root,
-        toggle->root,
-        slider->root,
-        list->root,
-    };
-
     auto queuePath = targetAbs->getPath() + "/events/renderRequested/queue";
     auto ensure_event = [&](std::uint64_t last_seq) -> std::uint64_t {
         auto event = fx.space.take<AutoRenderRequestEvent, std::string>(queuePath);
@@ -5407,7 +5388,6 @@ TEST_CASE("Widgets::Focus keyboard navigation cycles focus order and schedules r
     // Simulate Tab key: focus advances to the first widget.
     auto moveButton = WidgetFocus::Move(fx.space,
                                         config,
-                                        std::span<const WidgetPath>(order.data(), order.size()),
                                         WidgetFocus::Direction::Forward);
     REQUIRE(moveButton);
     REQUIRE(moveButton->has_value());
@@ -5430,7 +5410,6 @@ TEST_CASE("Widgets::Focus keyboard navigation cycles focus order and schedules r
     // Another Tab: advance focus to the toggle.
     auto moveToggle = WidgetFocus::Move(fx.space,
                                         config,
-                                        std::span<const WidgetPath>(order.data(), order.size()),
                                         WidgetFocus::Direction::Forward);
     REQUIRE(moveToggle);
     REQUIRE(moveToggle->has_value());
@@ -5453,7 +5432,6 @@ TEST_CASE("Widgets::Focus keyboard navigation cycles focus order and schedules r
     // Shift+Tab: move focus back to the button.
     auto moveBack = WidgetFocus::Move(fx.space,
                                       config,
-                                      std::span<const WidgetPath>(order.data(), order.size()),
                                       WidgetFocus::Direction::Backward);
     REQUIRE(moveBack);
     REQUIRE(moveBack->has_value());

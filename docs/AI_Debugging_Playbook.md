@@ -123,6 +123,7 @@ Environment knobs (all respected by the wrapper and the logger):
 
 - Declarative focus issues? Inspect `widgets/focus/current` for the active widget path, `widgets/<id>/focus/current` for per-widget booleans, and `widgets/<id>/focus/order` for the depth-first index. Every scene mirrors the active widget under `scenes/<scene>/structure/window/<window-id>/focus/current`; if that string is empty while `widgets/<id>/focus/current = true`, the scene detachment logic is out of sync.
 - `WidgetFocus::BuildWindowOrder` now dumps the computed traversal order—use it in targeted doctests or REPL builds when you need to confirm that depth-first ordering matches the mounted widget tree.
+- `Widgets::Focus::Move(space, config, Direction)` now consumes the stored `focus/order` metadata directly, so you can reproduce Tab/Shift+Tab or gamepad hops in doctests by calling the controller without crafting bespoke focus lists. The helper automatically schedules the `focus-navigation` auto-render events, making it easy to verify dirty-rect hints in isolation.
 2. The tail section is also echoed to stderr at the time of failure; the full file includes tagged entries (`[TEST][INFO] …`) plus doctest progress markers.
 3. When ASAN/UBSAN is enabled, the helper preserves the sanitizer output verbatim. Re-run with `PATHSPACE_ENABLE_CORES=1` to generate core dumps for deeper analysis.
 

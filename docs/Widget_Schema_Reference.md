@@ -150,6 +150,7 @@ Descriptor status: paint surfaces expose brush metadata + GPU flags through the 
 4. Removal is logical (`state/removed = true`), but lifecycle workers immediately deregister trellis sources, evict cached buckets, and clear `scene/structure/widgets/.../render/bucket` so metrics reflect the shrinking tree.
 3. Renderer targets consume the updated bucket set, publish a new snapshot, and presenters pick up the fresh revision (window `render/dirty` or per-view dirty bits).
 4. Focus controller mirrors the active widget under both `widgets/<id>/focus/current` (boolean) and `structure/window/<window>/focus/current` (absolute widget path) so input + accessibility bridges stay aligned.
+5. *Dispatcher integration (November 15, 2025):* `Widgets::Focus::Move(space, config, Direction)` now reads the published `focus/order` metadata directly. Keyboard/gamepad dispatchers simply call the controller with a direction; the helper walks the stored ordering, updates focus flags, and schedules the `focus-navigation` auto-render events without bespoke focus lists.
 
 ## Related paths & queues
 
