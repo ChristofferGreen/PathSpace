@@ -198,8 +198,8 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - ✅ (November 14, 2025) `WidgetFragment` now owns its populate lambda and child fragments; helpers expose strongly-typed args, automatically register handlers, and mount children via `Widgets::Mount`.
 5. **Builder input abstraction**
    - ✅ (November 15, 2025) Introduced `include/pathspace/ui/declarative/Descriptor.hpp` plus the loader/synthesizer in `src/pathspace/ui/declarative/Descriptor.cpp`. Buttons, toggles, sliders, lists, trees, and labels now load their sanitized state/style directly from PathSpace, convert to a `WidgetDescriptor`, and rebuild buckets via the existing preview builders. New doctest coverage (`tests/ui/test_DeclarativeWidgets.cpp`) compares descriptor-built buckets with the legacy `Build*Preview` output to guard regressions.
-   - Declarative runtime can now take `render/synthesize` → `WidgetDescriptor` without storing opaque lambdas; container children stay in canonical `children/` paths for later traversal.
-   - TODO follow-ups: extend the descriptor pipeline to cover `Stack`, `InputField` (text field) and `PaintSurface` widgets, and layer in theme inheritance when widgets omit explicit styles. Track these under Phase 1 once runtime consumers begin calling the descriptors.
+   - ✅ (November 15, 2025) Descriptor coverage now includes `Stack`, `InputField`, and `PaintSurface`. Input fields derive their style from the active theme (widget → parent → window → application default) and feed the text-field bucket builder; stack/paint surfaces currently publish metadata and synthesize empty buckets until their layout/paint buffers land in later phases.
+   - Declarative runtime can now take `render/synthesize` → `WidgetDescriptor` without storing opaque lambdas; container children stay in canonical `children/` paths for later traversal. *Follow-ups:* wire stack layout metadata + panel visibility into descriptor buckets, and plug paint-surface stroke/buffer emitters into the synthesizer so the placeholder buckets gain real content.
 6. **Documentation updates**
    - ✅ (November 15, 2025) Expanded `docs/AI_PATHS.md` with the declarative namespace summary and dirty/lifecycle flow. Authored `docs/Widget_Schema_Reference.md` as the long-form appendix mirroring the schema headers so maintainers have a single reference for widget node contracts.
    - Keep both docs in sync whenever schema headers change; future widget additions should update the appendix and the high-level summary in `AI_PATHS.md`.
@@ -239,7 +239,8 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
 
 ### Phase 1/1 – Theme Runtime
 1. **Theme resolution helpers**
-   - Merge theme stacks with parent fallback, caching results.
+   - ✅ (November 15, 2025) Theme resolver walks widget → parent widget → window → app default (`/themes/default`) and caches the resolved `WidgetTheme` so descriptors can hydrate styles without duplicating `meta/style` payloads.
+   - 🔜 Extend the helper to honor per-theme `style/inherits` chains once the editing API lands.
 2. **Theme editing API**
    - Provide `Theme::Create`, `Theme::SetColor`, etc., validating resources.
 3. **Examples & tests**

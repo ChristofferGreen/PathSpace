@@ -62,7 +62,9 @@ Unless noted otherwise, all paths are application-relative and live under `/syst
 | `colors/<token>` | value | req | Color tokens referenced by widgets. |
 | `typography/<token>` | value | opt | Typography tokens. |
 | `spacing/<token>` | value | opt | Spacing tokens. |
-| `style/inherits` | value | opt | Parent theme id for inheritance. |
+| `style/inherits` | value | opt | Parent theme id for inheritance (resolver support planned). |
+
+> **Theme resolver (November 15, 2025):** Declarative descriptors now derive styles by walking `style/theme` from the widget up through parent widgets, the owning window, and finally `/system/applications/<app>/themes/default`. The resolved name is sanitized and loaded from `config/theme/<name>/value`, and cached per (app, theme) pair to keep synthesis cheap. Persist literal `meta/style` blobs only when a widget truly needs bespoke values; otherwise rely on the resolver.
 
 ## Common widget nodes
 
@@ -133,7 +135,10 @@ All widgets also inherit the global queues documented elsewhere (e.g., `widgets/
 | --- | --- | --- | --- |
 | `state/active_panel` | value | req | Currently visible panel id. |
 | `panels/<panel-id>/state` | dir | rt | Panel metadata (title, enabled, loaded). |
+| `panels/<panel-id>/target` | value | rt | Path to the mounted child fragment. |
 | `events/panel_select/handler` | callable | opt | Panel selection handler. |
+
+Descriptor status: Stack widgets now participate in descriptor synthesis so dirty queues stay healthy even though the current bucket is a placeholder. Follow-up work will hydrate layout metadata and render panel chrome so stack buckets no longer return empty geometry.
 
 ### Label
 
@@ -164,6 +169,8 @@ All widgets also inherit the global queues documented elsewhere (e.g., `widgets/
 | `render/gpu/{enabled,state,dirtyRects,fence/start,fence/end,log/events,stats}` | mixed | opt/rt | GPU staging controls + diagnostics. |
 | `assets/texture` | value | rt | GPU texture resource (when staging enabled). |
 | `events/draw/handler` | callable | opt | Draw handler translating pointer events into strokes. |
+
+Descriptor status: paint surfaces expose brush metadata + GPU flags through the descriptor so the runtime can track dirty state without special cases. Rendering still depends on the forthcoming paint-buffer integration; until then the descriptor emits an empty bucket and relies on the remaining runtime work to stream stroke textures.
 
 ## Handler bindings & descriptors
 

@@ -5,6 +5,7 @@
 #include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
+#include <pathspace/ui/WidgetDetail.hpp>
 
 #include <string>
 #include <span>
@@ -15,6 +16,7 @@ using namespace SP;
 using namespace SP::UI::Declarative;
 namespace Builders = SP::UI::Builders;
 namespace WidgetsNS = SP::UI::Builders::Widgets;
+namespace DetailNS = SP::UI::Builders::Detail;
 
 struct DeclarativeFixture {
     PathSpace space;
@@ -202,6 +204,76 @@ TEST_CASE("WidgetDescriptor reproduces list bucket") {
 
     CHECK(bucket->command_counts == reference.bucket.command_counts);
     CHECK(bucket->drawable_ids == reference.bucket.drawable_ids);
+}
+
+TEST_CASE("WidgetDescriptor reproduces input field bucket with theme defaults") {
+    DeclarativeFixture fx;
+    InputField::Args args{};
+    args.text = "Hello declarative";
+    args.placeholder = "Type here";
+    auto input = InputField::Create(fx.space, fx.parent_view(), "descriptor_input", args);
+    REQUIRE(input.has_value());
+
+    auto descriptor = LoadWidgetDescriptor(fx.space, *input);
+    REQUIRE(descriptor.has_value());
+    auto bucket = BuildWidgetBucket(*descriptor);
+    REQUIRE(bucket.has_value());
+
+    auto const& data = std::get<InputFieldDescriptor>(descriptor->data);
+    auto reference = DetailNS::build_text_field_bucket(data.style,
+                                                       data.state,
+                                                       input->getPath(),
+                                                       true);
+    CHECK(bucket->drawable_ids == reference.drawable_ids);
+    CHECK(bucket->command_payload == reference.command_payload);
+}
+
+TEST_CASE("WidgetDescriptor loads stack metadata even when bucket is empty") {
+    DeclarativeFixture fx;
+    Stack::Args args{};
+    args.active_panel = "first";
+    args.panels.push_back(Stack::Panel{
+        .id = "first",
+        .fragment = Label::Fragment(Label::Args{.text = "Panel A"}),
+    });
+    args.panels.push_back(Stack::Panel{
+        .id = "second",
+        .fragment = Label::Fragment(Label::Args{.text = "Panel B"}),
+    });
+    auto stack = Stack::Create(fx.space, fx.parent_view(), "descriptor_stack", std::move(args));
+    REQUIRE(stack.has_value());
+
+    auto descriptor = LoadWidgetDescriptor(fx.space, *stack);
+    REQUIRE(descriptor.has_value());
+    auto const& data = std::get<StackDescriptor>(descriptor->data);
+    CHECK_EQ(data.active_panel, "first");
+    CHECK_EQ(data.panels.size(), 2U);
+    auto bucket = BuildWidgetBucket(*descriptor);
+    REQUIRE(bucket.has_value());
+    CHECK(bucket->drawable_ids.empty());
+}
+
+TEST_CASE("PaintSurface descriptor captures brush metadata") {
+    DeclarativeFixture fx;
+    PaintSurface::Args args{};
+    args.brush_size = 12.0f;
+    args.brush_color = {1.0f, 0.25f, 0.1f, 1.0f};
+    auto paint = PaintSurface::Create(fx.space, fx.parent_view(), "descriptor_paint", args);
+    REQUIRE(paint.has_value());
+
+    auto descriptor = LoadWidgetDescriptor(fx.space, *paint);
+    REQUIRE(descriptor.has_value());
+    auto const& data = std::get<PaintSurfaceDescriptor>(descriptor->data);
+    CHECK_EQ(data.gpu_enabled, false);
+    CHECK_EQ(data.brush_size, doctest::Approx(12.0f));
+    CHECK_EQ(data.brush_color[0], doctest::Approx(1.0f));
+    CHECK_EQ(data.brush_color[1], doctest::Approx(0.25f));
+    CHECK_EQ(data.brush_color[2], doctest::Approx(0.1f));
+    CHECK_EQ(data.brush_color[3], doctest::Approx(1.0f));
+
+    auto bucket = BuildWidgetBucket(*descriptor);
+    REQUIRE(bucket.has_value());
+    CHECK(bucket->drawable_ids.empty());
 }
 
 } // namespace

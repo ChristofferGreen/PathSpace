@@ -48,6 +48,27 @@ struct LabelDescriptor {
     std::array<float, 4> color{1.0f, 1.0f, 1.0f, 1.0f};
 };
 
+struct StackPanelDescriptor {
+    std::string id;
+    std::string target;
+};
+
+struct StackDescriptor {
+    std::string active_panel;
+    std::vector<StackPanelDescriptor> panels;
+};
+
+struct InputFieldDescriptor {
+    BuilderWidgets::TextFieldStyle style{};
+    BuilderWidgets::TextFieldState state{};
+};
+
+struct PaintSurfaceDescriptor {
+    float brush_size = 0.0f;
+    std::array<float, 4> brush_color{1.0f, 1.0f, 1.0f, 1.0f};
+    bool gpu_enabled = false;
+};
+
 struct WidgetDescriptor {
     WidgetKind kind = WidgetKind::Button;
     SP::UI::Builders::WidgetPath widget;
@@ -56,7 +77,10 @@ struct WidgetDescriptor {
                  SliderDescriptor,
                  ListDescriptor,
                  TreeDescriptor,
-                 LabelDescriptor> data;
+                 LabelDescriptor,
+                 StackDescriptor,
+                 InputFieldDescriptor,
+                 PaintSurfaceDescriptor> data;
 };
 
 struct DescriptorBucketOptions {

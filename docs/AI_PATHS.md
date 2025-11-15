@@ -124,6 +124,11 @@ Canonical schema definitions for the declarative workflow live in `include/paths
   - Lifecycle worker (November 15, 2025): each scene mounts `runtime/lifecycle/trellis` (a `PathSpaceTrellis`) that fans in widget dirty queues (`widgets/.../render/events/dirty`). Worker state/metrics live under `runtime/lifecycle/state/*` and `runtime/lifecycle/metrics/*`; control events are published to `runtime/lifecycle/control` so `SP::Scene::Shutdown` can stop the worker without leaking threads.
   - `theme` — `colors/<token>`, `typography/<token>`, `spacing/<token>`, `style/inherits`
 
+**Declarative theme resolution (November 15, 2025).** Descriptor synthesis now resolves themes without persisting `meta/style` copies:
+- Start at the widget root and look for `style/theme`. Walk up through parent widgets (`.../children/...`), then the owning window (`/windows/<window>/style/theme`), and finally `/system/applications/<app>/themes/default`.
+- The resolved name passes through `Config::Theme::SanitizeName` and loads `config/theme/<name>/value`. Results are cached per (app root, theme) pair so repeated descriptor loads avoid redundant PathSpace reads.
+- Empty/missing values fall back to the literal `"default"`, ensuring every widget can hydrate styles even before the theme editing API ships. Future work will layer per-theme `style/inherits` on top of this resolver.
+
 - Common widget nodes (applies to every declarative widget)
   - `state` — widget state payload exposed to applications
   - `style/theme` — theme override bound to the subtree
