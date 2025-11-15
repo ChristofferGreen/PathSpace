@@ -137,8 +137,10 @@ Canonical namespaces stay consistent across widgets: `state/` for mutable widget
 
 - Focus eligibility defaults to the widget tree structure: any widget with an interaction handler (`events/<event>/handler`) is considered focusable unless `focus/disabled = true`.
 - Focus order follows depth-first traversal of the mounted widget subtree. Developers control traversal order by arranging children in the desired sequence; no additional ordering metadata is required.
+- *Update (November 15, 2025):* the runtime now writes zero-based `focus/order` values for every widget in the window’s depth-first traversal. `WidgetFocus::BuildWindowOrder` exposes the computed order for tooling/tests.
 - Navigating forward advances to the next widget in depth-first order within the same window. Navigating backward walks the inverse order. By default the controller wraps, so advancing past the final widget jumps back to the first focusable widget (and vice-versa when moving backward). Containers may override this by setting `focus/wrap = false` under their root to clamp within their subtree.
 - When focus changes, the controller updates `focus/current` under the scene, mirrors the target path under `widgets/<id>/focus/current`, and emits a `WidgetOp`/`WidgetAction` so reducers can react (e.g., render focus rings).
+- *Update (November 15, 2025):* `widgets/<id>/focus/current` is now a runtime-managed boolean flag, and `structure/window/<window-id>/focus/current` mirrors the absolute widget path when a declarative scene is attached to the window.
 - Pointer activation (`HandlePointerDown`) syncs focus to the pointed widget before dispatching the widget op. Keyboard/gamepad navigation invokes `Widgets::Focus::Cycle` helpers that produce the same depth-first traversal.
 - Multi-window scenes keep independent focus state per window under `structure/window/<window-id>/focus/current`; the controller never crosses window boundaries during traversal.
 - Traversal requires enumerating child nodes within a widget subtree. `PathSpace::listChildren()` (documented in `docs/finished/Plan_PathSpace_Finished.md`) returns `std::vector<std::string>` component names for the current cursor or a supplied subpath without decoding payloads. The focus controller uses this API to perform depth-first traversal without widget-specific knowledge.
@@ -217,6 +219,8 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
 3. **Focus controller**
    - Design focus metadata and build focus graph automatically.
    - Integrate with existing bindings so focus/activation events propagate transparently.
+   - ✅ (November 15, 2025) Focus controller now assigns depth-first `focus/order` indices, mirrors active widgets via `widgets/<id>/focus/current`, and writes the active widget path to `structure/window/<window-id>/focus/current`. Declarative helpers rebuild the order whenever focus changes, so keyboard/gamepad traversal no longer requires app-authored lists. `tests/ui/test_DeclarativeWidgets.cpp` exercises the metadata + window mirror flow end-to-end.
+   - 🔜 Wire focus order directly into the declarative event dispatcher so keyboard/gamepad routing calls the controller instead of bespoke focus lists.
 4. **Event dispatch**
    - Forward raw pointer/keyboard events into PathSpace queues.
    - Define canonical event paths with payload metadata.

@@ -1,8 +1,13 @@
 #include "WidgetDetail.hpp"
 
 #include <algorithm>
+#include <cstdint>
+#include <optional>
 #include <span>
+#include <string>
 #include <vector>
+
+#include <pathspace/path/ConcretePath.hpp>
 
 namespace SP::UI::Builders::Widgets {
 
@@ -10,8 +15,169 @@ using namespace Detail;
 
 namespace {
 
+auto determine_widget_kind(PathSpace& space,
+                           std::string const& rootPath) -> SP::Expected<WidgetKind>;
+
+struct FocusScope {
+    std::string app_root;
+    std::string widgets_root;
+    std::optional<std::string> window_component;
+};
+
+auto make_focus_scope(SP::App::AppRootPathView app_root,
+                      std::string const& widget_root) -> SP::Expected<FocusScope> {
+    FocusScope scope{
+        .app_root = std::string(app_root.getPath()),
+        .widgets_root = std::string(app_root.getPath()) + "/widgets",
+        .window_component = std::nullopt,
+    };
+
+    if (widget_root.find("/windows/") == std::string::npos) {
+        return scope;
+    }
+
+    auto window_root = derive_window_root_for(widget_root);
+    if (!window_root) {
+        return std::unexpected(window_root.error());
+    }
+    scope.widgets_root = window_root->getPath() + "/widgets";
+
+    auto component = window_component_for(widget_root);
+    if (!component) {
+        return std::unexpected(component.error());
+    }
+    scope.window_component = *component;
+    return scope;
+}
+
+auto make_focus_scope_for_window(SP::App::AppRootPathView app_root,
+                                 WindowPath const& window_path) -> SP::Expected<FocusScope> {
+    FocusScope scope{
+        .app_root = std::string(app_root.getPath()),
+        .widgets_root = std::string(window_path.getPath()) + "/widgets",
+        .window_component = std::nullopt,
+    };
+    auto component = window_component_for(window_path.getPath());
+    if (!component) {
+        return std::unexpected(component.error());
+    }
+    scope.window_component = *component;
+    return scope;
+}
+
 auto widget_footprint_path(std::string const& widget_root) -> std::string {
     return widget_root + "/meta/footprint";
+}
+
+auto is_focusable_kind(WidgetKind kind) -> bool {
+    switch (kind) {
+    case WidgetKind::Button:
+    case WidgetKind::Toggle:
+    case WidgetKind::Slider:
+    case WidgetKind::List:
+    case WidgetKind::Tree:
+    case WidgetKind::TextField:
+    case WidgetKind::TextArea:
+    case WidgetKind::InputField:
+    case WidgetKind::PaintSurface:
+        return true;
+    case WidgetKind::Stack:
+    case WidgetKind::Label:
+        return false;
+    }
+    return false;
+}
+
+auto is_focusable_widget(PathSpace& space,
+                         std::string const& widget_root,
+                         WidgetKind kind) -> SP::Expected<bool> {
+    auto disabled = read_optional<bool>(space, widget_root + "/focus/disabled");
+    if (!disabled) {
+        return std::unexpected(disabled.error());
+    }
+    if (disabled->value_or(false)) {
+        return false;
+    }
+    return is_focusable_kind(kind);
+}
+
+auto set_widget_focus_flag(PathSpace& space,
+                           std::string const& widget_root,
+                           bool focused) -> SP::Expected<void> {
+    return replace_single<bool>(space, widget_root + "/focus/current", focused);
+}
+
+auto update_window_focus_nodes(PathSpace& space,
+                               FocusScope const& scope,
+                               std::optional<std::string> const& widget_path) -> void {
+    if (!scope.window_component.has_value()) {
+        return;
+    }
+    std::string scenes_root = scope.app_root + "/scenes";
+    auto scenes = space.listChildren(SP::ConcretePathStringView{scenes_root});
+    for (auto const& scene : scenes) {
+        auto focus_path = scenes_root + "/" + scene + "/structure/window/" + *scope.window_component + "/focus/current";
+        auto existing = read_optional<std::string>(space, focus_path);
+        if (!existing) {
+            continue;
+        }
+        auto value = widget_path.value_or(std::string{});
+        (void)replace_single<std::string>(space, focus_path, value);
+    }
+}
+
+auto collect_focus_order(PathSpace& space,
+                         std::string const& widget_root,
+                         std::vector<WidgetPath>& order) -> SP::Expected<void> {
+    auto kind = determine_widget_kind(space, widget_root);
+    if (!kind) {
+        return std::unexpected(kind.error());
+    }
+    auto focusable = is_focusable_widget(space, widget_root, *kind);
+    if (!focusable) {
+        return std::unexpected(focusable.error());
+    }
+    if (*focusable) {
+        order.emplace_back(widget_root);
+    }
+
+    auto children_root = widget_root + "/children";
+    auto children = space.listChildren(SP::ConcretePathStringView{children_root});
+    for (auto const& child : children) {
+        auto status = collect_focus_order(space, children_root + "/" + child, order);
+        if (!status) {
+            return std::unexpected(status.error());
+        }
+    }
+    return {};
+}
+
+auto build_focus_order(PathSpace& space,
+                       FocusScope const& scope) -> SP::Expected<std::vector<WidgetPath>> {
+    std::vector<WidgetPath> order;
+    auto roots = space.listChildren(SP::ConcretePathStringView{scope.widgets_root});
+    for (auto const& name : roots) {
+        auto root = scope.widgets_root + "/" + name;
+        auto status = collect_focus_order(space, root, order);
+        if (!status) {
+            return std::unexpected(status.error());
+        }
+    }
+
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        auto order_path = std::string(order[i].getPath()) + "/focus/order";
+        (void)replace_single<std::uint32_t>(space, order_path, static_cast<std::uint32_t>(i));
+    }
+    return order;
+}
+
+auto ensure_focus_order(PathSpace& space,
+                        FocusScope const& scope) -> SP::Expected<void> {
+    auto order = build_focus_order(space, scope);
+    if (!order) {
+        return std::unexpected(order.error());
+    }
+    return {};
 }
 
 auto read_widget_footprint(PathSpace& space,
@@ -131,6 +297,15 @@ auto determine_widget_kind(PathSpace& space,
         }
         if (kind == "text_area") {
             return WidgetKind::TextArea;
+        }
+        if (kind == "label") {
+            return WidgetKind::Label;
+        }
+        if (kind == "input_field" || kind == "input" || kind == "text_input") {
+            return WidgetKind::InputField;
+        }
+        if (kind == "paint_surface") {
+            return WidgetKind::PaintSurface;
         }
     }
 
@@ -483,6 +658,12 @@ auto update_widget_focus(PathSpace& space,
             return update_text_field_focus(space, widget_root, app_root, focused);
         case WidgetKind::TextArea:
             return update_text_area_focus(space, widget_root, app_root, focused);
+        case WidgetKind::Label:
+            return false;
+        case WidgetKind::InputField:
+            return update_text_field_focus(space, widget_root, app_root, focused);
+        case WidgetKind::PaintSurface:
+            return false;
     }
     return std::unexpected(make_error("unknown widget kind", SP::Error::Code::InvalidType));
 }
@@ -561,6 +742,13 @@ auto Set(PathSpace& space,
         return std::unexpected(app_root_path.error());
     }
     auto app_root_view = SP::App::AppRootPathView{app_root_path->getPath()};
+    auto scope = make_focus_scope(app_root_view, target_path);
+    if (!scope) {
+        return std::unexpected(scope.error());
+    }
+    if (auto ensured = ensure_focus_order(space, *scope); !ensured) {
+        return std::unexpected(ensured.error());
+    }
     if (config.pulsing_highlight.has_value()) {
         if (auto status = SetPulsingHighlight(space, app_root_view, *config.pulsing_highlight); !status) {
             return std::unexpected(status.error());
@@ -596,18 +784,32 @@ auto Set(PathSpace& space,
     if (!apply_focus) {
         return std::unexpected(apply_focus.error());
     }
+    auto set_flag = set_widget_focus_flag(space, target_path, true);
+    if (!set_flag) {
+        return std::unexpected(set_flag.error());
+    }
+    update_window_focus_nodes(space, *scope, target_path);
     bool changed = *apply_focus;
     bool mark_new_dirty = *apply_focus;
     bool mark_prev_dirty = false;
 
     if (!previous.has_value() || *previous != target_path) {
         if (previous.has_value()) {
+            auto prev_scope = make_focus_scope(app_root_view, *previous);
+            if (!prev_scope) {
+                return std::unexpected(prev_scope.error());
+            }
             auto clear_prev = update_widget_focus(space, *previous, false);
             if (!clear_prev) {
                 return std::unexpected(clear_prev.error());
             }
             changed = changed || *clear_prev;
             mark_prev_dirty = true;
+            auto clear_flag = set_widget_focus_flag(space, *previous, false);
+            if (!clear_flag) {
+                return std::unexpected(clear_flag.error());
+            }
+            update_window_focus_nodes(space, *prev_scope, std::nullopt);
         }
         if (auto status = set_focus_string(space, ConcretePathView{config.focus_state.getPath()}, target_path); !status) {
             return std::unexpected(status.error());
@@ -662,6 +864,10 @@ auto Clear(PathSpace& space,
         return std::unexpected(app_root_path.error());
     }
     auto app_root_view = SP::App::AppRootPathView{app_root_path->getPath()};
+    auto scope = make_focus_scope(app_root_view, **current);
+    if (!scope) {
+        return std::unexpected(scope.error());
+    }
     if (config.pulsing_highlight.has_value()) {
         if (auto status = SetPulsingHighlight(space, app_root_view, *config.pulsing_highlight); !status) {
             return std::unexpected(status.error());
@@ -693,6 +899,11 @@ auto Clear(PathSpace& space,
     if (!clear_prev) {
         return std::unexpected(clear_prev.error());
     }
+    auto clear_flag = set_widget_focus_flag(space, **current, false);
+    if (!clear_flag) {
+        return std::unexpected(clear_flag.error());
+    }
+    update_window_focus_nodes(space, *scope, std::nullopt);
     changed = *clear_prev;
     if (auto status = append_dirty_hint(**current); !status) {
         return std::unexpected(status.error());
@@ -785,6 +996,20 @@ auto PulsingHighlightEnabled(PathSpace& space,
                              AppRootPathView appRoot) -> SP::Expected<bool> {
     std::string root{appRoot.getPath()};
     return read_pulsing_highlight(space, root);
+}
+
+auto BuildWindowOrder(PathSpace& space,
+                      WindowPath const& window_path) -> SP::Expected<std::vector<WidgetPath>> {
+    auto app_root = derive_app_root_for(ConcretePathView{window_path.getPath()});
+    if (!app_root) {
+        return std::unexpected(app_root.error());
+    }
+    auto app_root_view = SP::App::AppRootPathView{app_root->getPath()};
+    auto scope = make_focus_scope_for_window(app_root_view, window_path);
+    if (!scope) {
+        return std::unexpected(scope.error());
+    }
+    return build_focus_order(space, *scope);
 }
 
 } // namespace Focus

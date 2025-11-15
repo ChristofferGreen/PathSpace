@@ -3950,6 +3950,9 @@ TEST_CASE("Widgets::Focus::Set and Move update widget states") {
     REQUIRE(buttonState);
     CHECK(buttonState->hovered);
     CHECK(buttonState->focused);
+    auto buttonFocusFlag = fx.space.read<bool, std::string>(button->root.getPath() + "/focus/current");
+    REQUIRE(buttonFocusFlag);
+    CHECK(*buttonFocusFlag);
 
     auto toggleState = fx.space.read<Widgets::ToggleState, std::string>(toggle->state.getPath());
     REQUIRE(toggleState);
@@ -3975,11 +3978,17 @@ TEST_CASE("Widgets::Focus::Set and Move update widget states") {
     REQUIRE(toggleState);
     CHECK(toggleState->hovered);
     CHECK(toggleState->focused);
+    auto toggleFocusFlag = fx.space.read<bool, std::string>(toggle->root.getPath() + "/focus/current");
+    REQUIRE(toggleFocusFlag);
+    CHECK(*toggleFocusFlag);
 
     buttonState = fx.space.read<Widgets::ButtonState, std::string>(button->state.getPath());
     REQUIRE(buttonState);
     CHECK_FALSE(buttonState->hovered);
     CHECK_FALSE(buttonState->focused);
+    buttonFocusFlag = fx.space.read<bool, std::string>(button->root.getPath() + "/focus/current");
+    REQUIRE(buttonFocusFlag);
+    CHECK_FALSE(*buttonFocusFlag);
 
     // Advance to slider, then list
     (void)WidgetFocus::Move(fx.space,
@@ -4002,6 +4011,9 @@ TEST_CASE("Widgets::Focus::Set and Move update widget states") {
     REQUIRE(listState);
     CHECK(listState->hovered_index >= 0);
     CHECK(listState->focused);
+    auto listFocusFlag = fx.space.read<bool, std::string>(list->root.getPath() + "/focus/current");
+    REQUIRE(listFocusFlag);
+    CHECK(*listFocusFlag);
 
     auto cleared = WidgetFocus::Clear(fx.space, config);
     REQUIRE(cleared);
@@ -4011,6 +4023,9 @@ TEST_CASE("Widgets::Focus::Set and Move update widget states") {
     REQUIRE(listState);
     CHECK(listState->hovered_index == -1);
     CHECK_FALSE(listState->focused);
+    listFocusFlag = fx.space.read<bool, std::string>(list->root.getPath() + "/focus/current");
+    REQUIRE(listFocusFlag);
+    CHECK_FALSE(*listFocusFlag);
 }
 
 TEST_CASE("Widgets::Focus::ApplyHit focuses widget from hit test") {

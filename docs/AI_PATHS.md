@@ -104,6 +104,8 @@ The following subtrees are standardized within each application root (one of the
     - `ops/actions/inbox/queue` — reduced widget actions emitted by `Widgets::Reducers`
     - `ops/inbox/queue` — `WidgetOp` FIFO written by `Widgets::Bindings` helpers (hover/press/toggle/slider events)
   - `widgets/focus/current` — current focused widget name written by focus helpers
+  - `widgets/<id>/focus/current` — runtime-managed boolean flag indicating whether the widget currently holds focus
+  - `widgets/<id>/focus/order` — zero-based depth-first traversal index published by the focus controller
   - `scenes/widgets/<widget-id>/`
     - `states/<state-name>/snapshot` — immutable per-state display list
     - `current_revision` — revision pointer adopted by renderer targets
@@ -119,7 +121,7 @@ Canonical schema definitions for the declarative workflow live in `include/paths
   - `application` — `state/title`, `windows/<window-id>`, `scenes/<scene-id>`, `themes/default`, `events/lifecycle/handler`
 - `window` — `state/title`, `state/visible`, `style/theme`, `widgets/<widget-name>`, `events/{close,focus}/handler`, `render/dirty`
 - Runtime bootstrap (November 14, 2025): `SP::System::LaunchStandard` + `SP::Window::Create` now seed `state/visible`, `render/dirty`, and `views/<view>/scene|surface|htmlTarget` so declarative scenes can rely on these leaves before wiring presenters.
-- `scene` — `structure/widgets/<widget-path>`, `structure/window/<window-id>/{focus/current,metrics/dpi,surface,renderer,present}`, `views/<view-id>/dirty`, `snapshot/<revision>`, `state/attached`, `render/dirty`
+  - `scene` — `structure/widgets/<widget-path>`, `structure/window/<window-id>/{focus/current,metrics/dpi,surface,renderer,present}`, `views/<view-id>/dirty`, `snapshot/<revision>`, `state/attached`, `render/dirty`
 - Runtime bootstrap (November 14, 2025): `SP::Scene::Create` populates `structure/window/<window-id>/*`, `state/attached`, and marks the bound window view so focus/metrics/rendering scaffolding exists prior to widget mounts.
   - Lifecycle worker (November 15, 2025): each scene mounts `runtime/lifecycle/trellis` (a `PathSpaceTrellis`) that fans in widget dirty queues (`widgets/.../render/events/dirty`). Worker state/metrics live under `runtime/lifecycle/state/*` and `runtime/lifecycle/metrics/*`; control events are published to `runtime/lifecycle/control` so `SP::Scene::Shutdown` can stop the worker without leaking threads.
   - `theme` — `colors/<token>`, `typography/<token>`, `spacing/<token>`, `style/inherits`

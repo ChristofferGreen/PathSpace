@@ -45,7 +45,7 @@ Unless noted otherwise, all paths are application-relative and live under `/syst
 | Path | Kind | Req | Notes |
 | --- | --- | --- | --- |
 | `structure/widgets/<widget-path>` | dir | rt | Snapshot buckets consumed by renderers. |
-| `structure/window/<window-id>/{focus/current,metrics/dpi,accessibility/dirty}` | value/flag | rt | Focus, DPI, and accessibility mirrors per window. |
+| `structure/window/<window-id>/{focus/current,metrics/dpi,accessibility/dirty}` | value/flag | rt | Focus (active widget path), DPI, and accessibility mirrors per window. |
 | `snapshot/<revision>` | dir | rt | Immutable scene revision artifacts. |
 | `snapshot/current` | value | rt | Pointer to current revision. |
 | `metrics/<metric>` | value | rt | Scene diagnostics (render ms, residency, etc.). |
@@ -74,7 +74,10 @@ These nodes exist under every declarative widget root (`widgets/<widget-id>/…`
 | --- | --- | --- | --- |
 | `state` | dir | req | Widget state payload (struct per widget type). |
 | `style/theme` | value | opt | Theme override scoped to the widget subtree. |
-| `focus/{order,disabled,wrap,current}` | value/flag | mixed | Focus metadata managed by the runtime. |
+| `focus/order` | value | rt | Zero-based depth-first order assigned by the focus controller. |
+| `focus/disabled` | flag | opt | When true, the widget is skipped during traversal. |
+| `focus/wrap` | flag | opt | Containers may opt out of wrap-around traversal (`false`). |
+| `focus/current` | flag | rt | Boolean flag indicating the widget currently holds focus. |
 | `layout/{orientation,spacing,computed/*}` | value | opt/rt | Layout hints plus computed metrics. |
 | `children/<child-name>` | dir | opt | Nested widget fragments. |
 | `events/<event>/handler` | callable | opt | Stores `HandlerBinding { registry_key, kind }`; runtime resolves registry ids to lambdas. |
@@ -182,7 +185,7 @@ Descriptor status: paint surfaces expose brush metadata + GPU flags through the 
 1. Declarative helpers update widget state, flip `render/dirty`, and push the widget path onto `render/events/dirty`.
 2. The scene lifecycle trellis (`runtime/lifecycle/trellis`) drains dirty queues, calls into the descriptor synthesizer, and writes updated buckets under `scene/structure/widgets/<widget>/render/bucket`.
 3. Renderer targets consume the updated bucket set, publish a new snapshot, and presenters pick up the fresh revision (window `render/dirty` or per-view dirty bits).
-4. Focus controller mirrors the active widget under both `widgets/<id>/focus/current` and `structure/window/<window>/focus/current` so input + accessibility bridges stay aligned.
+4. Focus controller mirrors the active widget under both `widgets/<id>/focus/current` (boolean) and `structure/window/<window>/focus/current` (absolute widget path) so input + accessibility bridges stay aligned.
 
 ## Related paths & queues
 

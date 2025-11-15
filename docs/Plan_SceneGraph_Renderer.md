@@ -96,6 +96,7 @@ Example (abridged):
   - Layout containers (stacks today) extend the namespace with `layout/{style,children,computed}` so layout recomputation stays observable.
 - Widget display lists publish under `<app>/scenes/widgets/<widget-id>`. Builders stamp `meta/name` and `meta/description`, cache per-state drawables in `states/<state-name>/snapshot`, and point `current_revision` at the active state.
 - Focus metadata uses the shared path `<app>/widgets/focus/current` (string name of the focused widget). Helper APIs (`Widgets::Focus::*`) keep focus publishes atomic and optionally queue auto-render events.
+- *Update (November 15, 2025):* helper APIs now publish per-widget `focus/current` booleans and depth-first `focus/order` indices, and declarative scenes mirror the active widget under `structure/window/<window-id>/focus/current`.
 - Bindings enqueue dirty hints and auto-render events against the target they drive:
   - Dirty hints: `renderers/<rid>/targets/<kind>/<name>/dirty/rects` via `Renderer::SubmitDirtyRects`.
     - **Update (October 27, 2025):** Bindings must pass the widget’s recorded footprint rectangle verbatim; PathRenderer2D expands that footprint into tile-aligned damage and handles neighbouring redraws.

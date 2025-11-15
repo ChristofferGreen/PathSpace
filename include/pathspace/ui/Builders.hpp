@@ -1366,6 +1366,9 @@ enum class WidgetKind {
     Tree,
     TextField,
     TextArea,
+    Label,
+    InputField,
+    PaintSurface,
 };
 
 struct HitTarget {
@@ -1740,6 +1743,9 @@ auto Set(PathSpace& space,
 
 auto Clear(PathSpace& space,
            Config const& config) -> SP::Expected<bool>;
+
+auto BuildWindowOrder(PathSpace& space,
+                      WindowPath const& window_path) -> SP::Expected<std::vector<WidgetPath>>;
 
 auto Move(PathSpace& space,
           Config const& config,

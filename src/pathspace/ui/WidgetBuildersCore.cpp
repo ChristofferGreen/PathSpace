@@ -2068,6 +2068,15 @@ auto determine_widget_kind(PathSpace& space,
         if (kind == "text_area") {
             return WidgetKind::TextArea;
         }
+        if (kind == "label") {
+            return WidgetKind::Label;
+        }
+        if (kind == "input_field" || kind == "input" || kind == "text_input") {
+            return WidgetKind::InputField;
+        }
+        if (kind == "paint_surface") {
+            return WidgetKind::PaintSurface;
+        }
     }
 
     auto computedPath = rootPath + "/layout/computed";
@@ -2428,6 +2437,12 @@ auto update_widget_focus(PathSpace& space,
             return update_text_field_focus(space, widget_root, app_root, focused);
         case WidgetKind::TextArea:
             return update_text_area_focus(space, widget_root, app_root, focused);
+        case WidgetKind::Label:
+            return false;
+        case WidgetKind::InputField:
+            return update_text_field_focus(space, widget_root, app_root, focused);
+        case WidgetKind::PaintSurface:
+            return false;
     }
     return std::unexpected(make_error("unknown widget kind", SP::Error::Code::InvalidType));
 }

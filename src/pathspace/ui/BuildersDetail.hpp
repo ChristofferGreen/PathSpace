@@ -18,6 +18,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <cctype>
 #include <cstdint>
 #include <cmath>
@@ -501,6 +502,38 @@ inline auto relative_to_root(AppRootPathView root,
 
 inline auto derive_app_root_for(ConcretePathView absolute) -> SP::Expected<AppRootPath> {
     return SP::App::derive_app_root(absolute);
+}
+
+inline auto derive_window_root_for(std::string_view absolute) -> SP::Expected<WindowPath> {
+    auto path = std::string{absolute};
+    auto windows_pos = path.find("/windows/");
+    if (windows_pos == std::string::npos) {
+        return std::unexpected(
+            make_error("path '" + path + "' missing '/windows/<id>' segment",
+                       SP::Error::Code::InvalidPath));
+    }
+    windows_pos += std::strlen("/windows/");
+    auto next_slash = path.find('/', windows_pos);
+    if (next_slash == std::string::npos) {
+        return WindowPath{path};
+    }
+    return WindowPath{std::string(path.substr(0, next_slash))};
+}
+
+inline auto window_component_for(std::string_view absolute) -> SP::Expected<std::string> {
+    auto path = std::string{absolute};
+    auto windows_pos = path.find("/windows/");
+    if (windows_pos == std::string::npos) {
+        return std::unexpected(
+            make_error("path '" + path + "' missing '/windows/<id>' segment",
+                       SP::Error::Code::InvalidPath));
+    }
+    windows_pos += std::strlen("/windows/");
+    auto next_slash = path.find('/', windows_pos);
+    if (next_slash == std::string::npos) {
+        next_slash = path.size();
+    }
+    return std::string(path.substr(windows_pos, next_slash - windows_pos));
 }
 
 inline auto ensure_contains_segment(ConcretePathView path,

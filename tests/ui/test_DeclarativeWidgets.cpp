@@ -29,7 +29,7 @@ struct DeclarativeFixture {
         REQUIRE(app.has_value());
         app_root = *app;
         SP::Window::CreateOptions window_opts{};
-        window_opts.name = "main_window";
+        window_opts.name = window_name;
         window_opts.title = "Main";
         auto window_result =
             SP::Window::Create(space, app_root, window_opts);
@@ -47,6 +47,7 @@ struct DeclarativeFixture {
 
     SP::App::AppRootPath app_root;
     SP::UI::Builders::WindowPath window_path;
+    std::string window_name = "main_window";
 };
 
 TEST_CASE("Declarative Button mounts under window widgets") {
@@ -206,6 +207,84 @@ TEST_CASE("WidgetDescriptor reproduces list bucket") {
 
     CHECK(bucket->command_counts == reference.bucket.command_counts);
     CHECK(bucket->drawable_ids == reference.bucket.drawable_ids);
+}
+
+TEST_CASE("Declarative focus metadata mirrors window and widget state") {
+    DeclarativeFixture fx;
+    auto scene = SP::Scene::Create(fx.space, fx.app_root, fx.window_path);
+    REQUIRE(scene.has_value());
+
+    auto button = Button::Create(fx.space,
+                                 fx.parent_view(),
+                                 "focus_button",
+                                 Button::Args{.label = "Primary"});
+    REQUIRE(button.has_value());
+
+    Slider::Args slider_args{};
+    slider_args.minimum = 0.0f;
+    slider_args.maximum = 10.0f;
+    slider_args.value = 5.0f;
+    auto slider = Slider::Create(fx.space, fx.parent_view(), "focus_slider", slider_args);
+    REQUIRE(slider.has_value());
+
+    auto config = Builders::Widgets::Focus::MakeConfig(SP::App::AppRootPathView{fx.app_root.getPath()});
+
+    auto set_button = Builders::Widgets::Focus::Set(fx.space, config, *button);
+    REQUIRE(set_button);
+    CHECK(set_button->changed);
+
+    auto button_order = fx.space.read<std::uint32_t, std::string>((*button).getPath()
+                                                                  + "/focus/order");
+    REQUIRE(button_order.has_value());
+    auto slider_order = fx.space.read<std::uint32_t, std::string>((*slider).getPath()
+                                                                  + "/focus/order");
+    REQUIRE(slider_order.has_value());
+    CHECK_NE(*button_order, *slider_order);
+
+    auto button_flag = fx.space.read<bool, std::string>((*button).getPath() + "/focus/current");
+    REQUIRE(button_flag.has_value());
+    CHECK(*button_flag);
+    auto slider_flag = fx.space.read<bool, std::string>((*slider).getPath() + "/focus/current");
+    REQUIRE(slider_flag.has_value());
+    CHECK_FALSE(*slider_flag);
+
+    auto focus_path = std::string(scene->path.getPath())
+                     + "/structure/window/" + fx.window_name + "/focus/current";
+    auto window_focus = fx.space.read<std::string, std::string>(focus_path);
+    REQUIRE(window_focus.has_value());
+    CHECK_EQ(*window_focus, button->getPath());
+
+    auto order = Builders::Widgets::Focus::BuildWindowOrder(fx.space, fx.window_path);
+    REQUIRE(order.has_value());
+    REQUIRE(order->size() >= 2);
+
+    auto move_forward = Builders::Widgets::Focus::Move(
+        fx.space,
+        config,
+        std::span<const Builders::WidgetPath>(order->data(), order->size()),
+        Builders::Widgets::Focus::Direction::Forward);
+    REQUIRE(move_forward);
+    REQUIRE(move_forward->has_value());
+    CHECK_EQ(move_forward->value().widget.getPath(), slider->getPath());
+
+    slider_flag = fx.space.read<bool, std::string>((*slider).getPath() + "/focus/current");
+    REQUIRE(slider_flag.has_value());
+    CHECK(*slider_flag);
+    window_focus = fx.space.read<std::string, std::string>(focus_path);
+    REQUIRE(window_focus.has_value());
+    CHECK_EQ(*window_focus, slider->getPath());
+
+    auto cleared = Builders::Widgets::Focus::Clear(fx.space, config);
+    REQUIRE(cleared);
+    CHECK(*cleared);
+    slider_flag = fx.space.read<bool, std::string>((*slider).getPath() + "/focus/current");
+    REQUIRE(slider_flag.has_value());
+    CHECK_FALSE(*slider_flag);
+    window_focus = fx.space.read<std::string, std::string>(focus_path);
+    REQUIRE(window_focus.has_value());
+    CHECK(window_focus->empty());
+
+    REQUIRE(SP::Scene::Shutdown(fx.space, scene->path));
 }
 
 TEST_CASE("WidgetDescriptor reproduces input field bucket with theme defaults") {
