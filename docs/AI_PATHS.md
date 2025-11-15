@@ -145,7 +145,7 @@ Canonical schema definitions for the declarative workflow live in `include/paths
 
 > **Handler bindings:** the declarative helper registers each handler in an in-memory registry and stores `HandlerBinding { registry_key, kind }` at `events/<event>/handler`. Removal drops every key rooted at the widget path so stale lambdas never fire.
 >
-> **Render descriptors:** `render/synthesize` now holds a `RenderDescriptor` (widget kind enum). The renderer reads that descriptor plus the widget’s `state/*` and `meta/*` payloads to rebuild buckets when `render/dirty = true`; `render/bucket` remains as the cached snapshot for compatibility while the descriptor path rolls out.
+> **Render descriptors:** `render/synthesize` now holds a `RenderDescriptor` (widget kind enum). The renderer reads that descriptor plus the widget’s `state/*` and `meta/*` payloads to rebuild buckets when `render/dirty = true`; `render/bucket` remains as the cached snapshot for compatibility while the descriptor path rolls out. `include/pathspace/ui/declarative/Descriptor.hpp` exposes the shared `WidgetDescriptor` loader + bucket synthesizer so runtime tasks can normalize button/toggle/slider/list/tree/label payloads without duplicating builder logic.
 
 - Surfaces (offscreen targets)
   - `surfaces/<surface-id>/`

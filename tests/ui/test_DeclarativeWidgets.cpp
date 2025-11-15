@@ -2,15 +2,19 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
 #include <string>
+#include <span>
 
 namespace {
 
 using namespace SP;
 using namespace SP::UI::Declarative;
+namespace Builders = SP::UI::Builders;
+namespace WidgetsNS = SP::UI::Builders::Widgets;
 
 struct DeclarativeFixture {
     PathSpace space;
@@ -106,6 +110,98 @@ TEST_CASE("Slider clamps value and SetValue updates render flag") {
         fx.space.read<bool, std::string>(slider->getPath() + "/render/dirty");
     REQUIRE(dirty.has_value());
     CHECK(*dirty);
+}
+
+TEST_CASE("WidgetDescriptor reproduces button bucket") {
+    DeclarativeFixture fx;
+    auto button = Button::Create(fx.space,
+                                 fx.parent_view(),
+                                 "descriptor_button",
+                                 Button::Args{.label = "Descriptor"});
+    REQUIRE(button.has_value());
+
+    auto descriptor = LoadWidgetDescriptor(fx.space, *button);
+    REQUIRE(descriptor.has_value());
+
+    auto bucket = BuildWidgetBucket(*descriptor);
+    REQUIRE(bucket.has_value());
+
+    auto style = fx.space.read<WidgetsNS::ButtonStyle, std::string>((*button).getPath()
+                                                                    + "/meta/style");
+    REQUIRE(style.has_value());
+    auto state = fx.space.read<WidgetsNS::ButtonState, std::string>((*button).getPath()
+                                                                    + "/state");
+    REQUIRE(state.has_value());
+    WidgetsNS::ButtonPreviewOptions preview{};
+    preview.authoring_root = button->getPath();
+    auto reference = WidgetsNS::BuildButtonPreview(*style, *state, preview);
+
+    CHECK(bucket->drawable_ids == reference.drawable_ids);
+    CHECK(bucket->command_payload == reference.command_payload);
+    CHECK(bucket->command_kinds == reference.command_kinds);
+}
+
+TEST_CASE("WidgetDescriptor reproduces slider bucket") {
+    DeclarativeFixture fx;
+    Slider::Args args{};
+    args.minimum = 0.0f;
+    args.maximum = 2.0f;
+    args.value = 1.0f;
+    auto slider = Slider::Create(fx.space, fx.parent_view(), "descriptor_slider", args);
+    REQUIRE(slider.has_value());
+
+    auto descriptor = LoadWidgetDescriptor(fx.space, *slider);
+    REQUIRE(descriptor.has_value());
+    auto bucket = BuildWidgetBucket(*descriptor);
+    REQUIRE(bucket.has_value());
+
+    auto style = fx.space.read<WidgetsNS::SliderStyle, std::string>((*slider).getPath()
+                                                                    + "/meta/style");
+    REQUIRE(style.has_value());
+    auto state = fx.space.read<WidgetsNS::SliderState, std::string>((*slider).getPath()
+                                                                    + "/state");
+    REQUIRE(state.has_value());
+    auto range = fx.space.read<WidgetsNS::SliderRange, std::string>((*slider).getPath()
+                                                                    + "/meta/range");
+    REQUIRE(range.has_value());
+    WidgetsNS::SliderPreviewOptions preview{};
+    preview.authoring_root = slider->getPath();
+    auto reference = WidgetsNS::BuildSliderPreview(*style, *range, *state, preview);
+
+    CHECK(bucket->command_payload == reference.command_payload);
+    CHECK(bucket->drawable_ids == reference.drawable_ids);
+}
+
+TEST_CASE("WidgetDescriptor reproduces list bucket") {
+    DeclarativeFixture fx;
+    List::Args args{};
+    args.items.push_back({.id = "alpha", .label = "Alpha"});
+    args.items.push_back({.id = "beta", .label = "Beta"});
+    auto list = List::Create(fx.space, fx.parent_view(), "descriptor_list", args);
+    REQUIRE(list.has_value());
+
+    auto descriptor = LoadWidgetDescriptor(fx.space, *list);
+    REQUIRE(descriptor.has_value());
+    auto bucket = BuildWidgetBucket(*descriptor);
+    REQUIRE(bucket.has_value());
+
+    auto style = fx.space.read<WidgetsNS::ListStyle, std::string>((*list).getPath()
+                                                                  + "/meta/style");
+    REQUIRE(style.has_value());
+    auto state = fx.space.read<WidgetsNS::ListState, std::string>((*list).getPath()
+                                                                  + "/state");
+    REQUIRE(state.has_value());
+    auto items =
+        fx.space.read<std::vector<WidgetsNS::ListItem>, std::string>((*list).getPath()
+                                                                     + "/meta/items");
+    REQUIRE(items.has_value());
+    WidgetsNS::ListPreviewOptions preview{};
+    preview.authoring_root = list->getPath();
+    auto item_span = std::span<WidgetsNS::ListItem const>{items->data(), items->size()};
+    auto reference = WidgetsNS::BuildListPreview(*style, item_span, *state, preview);
+
+    CHECK(bucket->command_counts == reference.bucket.command_counts);
+    CHECK(bucket->drawable_ids == reference.bucket.drawable_ids);
 }
 
 } // namespace

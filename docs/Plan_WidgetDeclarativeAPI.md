@@ -197,10 +197,9 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - Provide utilities for merging fragments via container argument structs (e/g., `ListArgs::children`) and ensure copying/moving semantics are well-defined.
    - ✅ (November 14, 2025) `WidgetFragment` now owns its populate lambda and child fragments; helpers expose strongly-typed args, automatically register handlers, and mount children via `Widgets::Mount`.
 5. **Builder input abstraction**
-   - Refactor preview builders to consume `WidgetDescriptor` populated from path data.
-   - Resolve themes with inheritance/defaults.
-   - Materialize composite widget data by enumerating `children/` subtrees (lists, trees, composite buttons).
-   - Supply unit tests ensuring descriptor-driven output matches legacy builders.
+   - ✅ (November 15, 2025) Introduced `include/pathspace/ui/declarative/Descriptor.hpp` plus the loader/synthesizer in `src/pathspace/ui/declarative/Descriptor.cpp`. Buttons, toggles, sliders, lists, trees, and labels now load their sanitized state/style directly from PathSpace, convert to a `WidgetDescriptor`, and rebuild buckets via the existing preview builders. New doctest coverage (`tests/ui/test_DeclarativeWidgets.cpp`) compares descriptor-built buckets with the legacy `Build*Preview` output to guard regressions.
+   - Declarative runtime can now take `render/synthesize` → `WidgetDescriptor` without storing opaque lambdas; container children stay in canonical `children/` paths for later traversal.
+   - TODO follow-ups: extend the descriptor pipeline to cover `Stack`, `InputField` (text field) and `PaintSurface` widgets, and layer in theme inheritance when widgets omit explicit styles. Track these under Phase 1 once runtime consumers begin calling the descriptors.
 6. **Documentation updates**
    - Expand `docs/AI_PATHS.md` with the schema.
    - Add a “Widget Schema Reference” appendix for maintainers.

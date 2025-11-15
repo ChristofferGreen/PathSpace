@@ -123,6 +123,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/WidgetFocus.cpp
         ui/WidgetReducers.cpp
         ui/declarative/InputTask.cpp
+        ui/declarative/Descriptor.cpp
         ui/declarative/Runtime.cpp
         ui/declarative/Schema.cpp
         ui/declarative/Widgets.cpp
