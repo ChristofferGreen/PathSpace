@@ -3,9 +3,11 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
+#include <pathspace/ui/declarative/SceneLifecycle.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
 #include <chrono>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -27,6 +29,28 @@ auto wait_for_metric(PathSpace& space,
     }
     return false;
 }
+
+struct SceneGuard {
+    SceneGuard() = default;
+    SceneGuard(PathSpace& space_in, SP::UI::Builders::ScenePath const& scene_in) {
+        reset(space_in, scene_in);
+    }
+
+    void reset(PathSpace& space_in, SP::UI::Builders::ScenePath const& scene_in) {
+        space = &space_in;
+        scene = scene_in;
+    }
+
+    ~SceneGuard() {
+        if (space && scene) {
+            (void)SP::Scene::Shutdown(*space, *scene);
+        }
+    }
+
+private:
+    PathSpace* space = nullptr;
+    std::optional<SP::UI::Builders::ScenePath> scene;
+};
 
 } // namespace
 
@@ -50,13 +74,20 @@ TEST_CASE("Scene lifecycle rebuilds declarative widget buckets") {
     scene_options.name = "main_scene";
     auto scene = SP::Scene::Create(space, *app_root, window->path, scene_options);
     REQUIRE(scene);
-    struct SceneGuard {
-        PathSpace& space;
-        SP::UI::Builders::ScenePath scene_path;
-        ~SceneGuard() {
-            (void)SP::Scene::Shutdown(space, scene_path);
-        }
-    } guard{space, scene->path};
+    SceneGuard guard;
+
+    auto stop_default = SP::Scene::Shutdown(space, scene->path);
+    REQUIRE(stop_default);
+    SP::UI::Declarative::SceneLifecycle::Options lifecycle_options;
+    lifecycle_options.trellis_wait = std::chrono::milliseconds{1};
+    auto restart = SP::UI::Declarative::SceneLifecycle::Start(space,
+                                                              SP::App::AppRootPathView{app_root->getPath()},
+                                                              scene->path,
+                                                              window->path,
+                                                              window->view_name,
+                                                              lifecycle_options);
+    REQUIRE(restart);
+    guard.reset(space, scene->path);
 
     auto widget = SP::UI::Declarative::Button::Create(space,
                                                       SP::App::ConcretePathView{window->path.getPath()},
