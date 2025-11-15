@@ -65,6 +65,10 @@ auto write_handler(PathSpace& space,
 
 auto clear_handlers(std::string const& widget_root) -> void;
 
+auto rebind_handlers(PathSpace& space,
+                     std::string const& old_root,
+                     std::string const& new_root) -> SP::Expected<void>;
+
 struct FragmentBuilder {
     WidgetFragment fragment;
 

@@ -1,10 +1,13 @@
 #include "Common.hpp"
 
+#include <pathspace/path/ConcretePath.hpp>
 #include <pathspace/ui/Builders.hpp>
 
 #include <atomic>
 #include <mutex>
+#include <optional>
 #include <unordered_map>
+#include <vector>
 
 namespace SP::UI::Declarative::Detail {
 namespace {
@@ -27,6 +30,7 @@ public:
         auto id = compose_id(widget_root, event_name);
         entries_[id] = HandlerEntry{
             .widget_root = widget_root,
+            .event_name = std::string(event_name),
             .kind = kind,
             .handler = std::move(handler),
         };
@@ -47,6 +51,7 @@ public:
 private:
     struct HandlerEntry {
         std::string widget_root;
+        std::string event_name;
         HandlerKind kind = HandlerKind::None;
         HandlerVariant handler;
     };
@@ -64,6 +69,62 @@ private:
     std::mutex mutex_;
     std::unordered_map<std::string, HandlerEntry> entries_;
     std::atomic<std::uint64_t> counter_{0};
+
+public:
+    auto rebind(std::string const& from_root,
+                std::string const& to_root)
+        -> std::vector<std::pair<std::string, HandlerBinding>> {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::vector<std::pair<std::string, HandlerBinding>> updates;
+        for (auto it = entries_.begin(); it != entries_.end();) {
+            if (it->second.widget_root != from_root) {
+                ++it;
+                continue;
+            }
+            auto entry = HandlerEntry{
+                .widget_root = to_root,
+                .event_name = it->second.event_name,
+                .kind = it->second.kind,
+                .handler = std::move(it->second.handler),
+            };
+            it = entries_.erase(it);
+
+            auto new_key = compose_id(to_root, entry.event_name);
+            HandlerBinding binding{
+                .registry_key = new_key,
+                .kind = entry.kind,
+            };
+            entries_.emplace(new_key, std::move(entry));
+            updates.emplace_back(entry.event_name, binding);
+        }
+        return updates;
+    }
+
+    auto rebind_by_key(std::string const& registry_key,
+                       std::string const& new_root)
+        -> std::optional<HandlerBinding> {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = entries_.find(registry_key);
+        if (it == entries_.end()) {
+            return std::nullopt;
+        }
+
+        auto entry = HandlerEntry{
+            .widget_root = new_root,
+            .event_name = it->second.event_name,
+            .kind = it->second.kind,
+            .handler = std::move(it->second.handler),
+        };
+        entries_.erase(it);
+
+        auto new_key = compose_id(new_root, entry.event_name);
+        HandlerBinding binding{
+            .registry_key = new_key,
+            .kind = entry.kind,
+        };
+        entries_.emplace(new_key, std::move(entry));
+        return binding;
+    }
 };
 
 } // namespace
@@ -163,6 +224,29 @@ auto write_handler(PathSpace& space,
 
 auto clear_handlers(std::string const& widget_root) -> void {
     CallbackRegistry::instance().erase_prefix(widget_root);
+}
+
+auto rebind_handlers(PathSpace& space,
+                     std::string const& old_root,
+                     std::string const& new_root) -> SP::Expected<void> {
+    (void)old_root;
+    auto events_base = new_root + "/events";
+    auto events = space.listChildren(SP::ConcretePathStringView{events_base});
+    for (auto const& event : events) {
+        auto handler_path = make_path(make_path(new_root, "events"), event) + "/handler";
+        auto binding = space.read<HandlerBinding, std::string>(handler_path);
+        if (!binding) {
+            continue;
+        }
+        auto updated = CallbackRegistry::instance().rebind_by_key(binding->registry_key, new_root);
+        if (!updated) {
+            continue;
+        }
+        if (auto status = write_value(space, handler_path, *updated); !status) {
+            return status;
+        }
+    }
+    return {};
 }
 
 } // namespace SP::UI::Declarative::Detail

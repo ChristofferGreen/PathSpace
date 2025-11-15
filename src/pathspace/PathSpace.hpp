@@ -1,6 +1,7 @@
 #pragma once
 #include "PathSpaceBase.hpp"
 
+#include "core/Error.hpp"
 #include "core/InsertReturn.hpp"
 #include "core/Leaf.hpp"
 #include "core/Out.hpp"
@@ -39,6 +40,9 @@ public:
     ~PathSpace();
 
     virtual auto clear() -> void;
+
+    auto relocateSubtree(std::string_view sourcePath,
+                         std::string_view destinationPath) -> Expected<void>;
 
 
 protected:

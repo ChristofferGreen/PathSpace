@@ -2,6 +2,7 @@
 #include "task/TaskPool.hpp"
 #include "core/PathSpaceContext.hpp"
 #include "log/TaggedLogger.hpp"
+#include "path/ConcretePath.hpp"
 #include <algorithm>
 #include <cstdlib>
 #include <mutex>
@@ -50,6 +51,74 @@ auto buildRemainingPath(std::vector<std::string> const& components, std::size_t 
         result.append(components[idx]);
     }
     return result;
+}
+
+} // namespace
+
+namespace {
+
+struct SubtreeEndpoints {
+    Node* parent = nullptr;
+    std::string leaf;
+};
+
+auto make_error(Error::Code code, std::string message) -> Error {
+    return Error{code, std::move(message)};
+}
+
+auto split_components(std::string const& canonicalPath)
+    -> Expected<std::vector<std::string>> {
+    ConcretePathStringView view{canonicalPath};
+    auto components = view.components();
+    if (!components) {
+        return std::unexpected(make_error(Error::Code::InvalidPath,
+                                          "failed to parse path components"));
+    }
+    if (components->empty()) {
+        return std::unexpected(make_error(Error::Code::InvalidPath,
+                                          "root path cannot be relocated"));
+    }
+    return *components;
+}
+
+auto locate_parent(Node& root,
+                   std::vector<std::string> const& components,
+                   bool allow_children_creation)
+    -> Expected<SubtreeEndpoints> {
+    if (components.size() < 1) {
+        return std::unexpected(make_error(Error::Code::InvalidPath,
+                                          "path requires at least one component"));
+    }
+    Node* current = &root;
+    for (std::size_t idx = 0; idx + 1 < components.size(); ++idx) {
+        auto const& component = components[idx];
+        Node* child = current->getChild(component);
+        if (!child) {
+            if (allow_children_creation && component == "children") {
+                child = &current->getOrCreateChild(component);
+            } else {
+                return std::unexpected(make_error(Error::Code::NoSuchPath,
+                                                  "missing component: " + component));
+            }
+        }
+        std::lock_guard<std::mutex> guard(child->payloadMutex);
+        if (child->nested) {
+            return std::unexpected(make_error(Error::Code::NotSupported,
+                                              "relocation across nested spaces is not supported"));
+        }
+        current = child;
+    }
+
+    return SubtreeEndpoints{.parent = current, .leaf = components.back()};
+}
+
+auto canonicalize(std::string_view path) -> Expected<std::string> {
+    ConcretePathString raw{std::string(path)};
+    auto canonical = raw.canonicalized();
+    if (!canonical) {
+        return std::unexpected(canonical.error());
+    }
+    return canonical->getPath();
 }
 
 } // namespace
@@ -396,6 +465,70 @@ auto PathSpace::listChildrenCanonical(std::string_view canonicalPath) const -> s
         current = child;
     }
 
+    return {};
+}
+
+auto PathSpace::relocateSubtree(std::string_view sourcePath,
+                                std::string_view destinationPath) -> Expected<void> {
+    auto canonicalSource = canonicalize(sourcePath);
+    if (!canonicalSource) {
+        return std::unexpected(canonicalSource.error());
+    }
+    auto canonicalDestination = canonicalize(destinationPath);
+    if (!canonicalDestination) {
+        return std::unexpected(canonicalDestination.error());
+    }
+
+    auto const& src = *canonicalSource;
+    auto const& dst = *canonicalDestination;
+
+    if (src == "/" || dst == "/") {
+        return std::unexpected(make_error(Error::Code::InvalidPath,
+                                          "cannot relocate the root path"));
+    }
+    if (src == dst) {
+        return {};
+    }
+    if (dst.rfind(src, 0) == 0 && (dst.size() == src.size() || dst[src.size()] == '/')) {
+        return std::unexpected(make_error(Error::Code::InvalidPath,
+                                          "destination lies within source subtree"));
+    }
+
+    auto sourceComponents = split_components(src);
+    if (!sourceComponents) {
+        return std::unexpected(sourceComponents.error());
+    }
+    auto destinationComponents = split_components(dst);
+    if (!destinationComponents) {
+        return std::unexpected(destinationComponents.error());
+    }
+
+    auto sourceParent = locate_parent(this->leaf.rootNode(), *sourceComponents, false);
+    if (!sourceParent) {
+        return std::unexpected(sourceParent.error());
+    }
+    auto destParent = locate_parent(this->leaf.rootNode(), *destinationComponents, true);
+    if (!destParent) {
+        return std::unexpected(destParent.error());
+    }
+
+    if (auto* existing = destParent->parent->getChild(destParent->leaf); existing) {
+        return std::unexpected(make_error(Error::Code::InvalidPath,
+                                          "destination already exists"));
+    }
+
+    auto sourceIt = sourceParent->parent->children.find(sourceParent->leaf);
+    if (sourceIt == sourceParent->parent->children.end()) {
+        return std::unexpected(make_error(Error::Code::NoSuchPath,
+                                          "source widget missing"));
+    }
+
+    auto nodePtr = std::move(sourceIt->second);
+    sourceParent->parent->children.erase(sourceIt);
+    destParent->parent->children.emplace(destParent->leaf, std::move(nodePtr));
+
+    this->context_->notify(src);
+    this->context_->notify(dst);
     return {};
 }
 

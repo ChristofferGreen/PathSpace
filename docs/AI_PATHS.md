@@ -154,6 +154,8 @@ Canonical schema definitions for the declarative workflow live in `include/paths
 
 **Handler bindings.** Each `events/<event>/handler` leaf stores a `HandlerBinding { registry_key, kind }`. Declarative helpers register lambdas in an in-memory registry keyed by `<widget_path>#<event>#<sequence>` and write the binding record into PathSpace. Removing a widget removes every binding sharing the prefix so stale handlers never fire.
 
+**Widget relocation (November 15, 2025).** `Widgets::Move` now re-homes an existing widget subtree by moving the trie nodes in-place, re-registering handler bindings for the new path, and marking both the widget and its parents dirty so the lifecycle trellis rebuilds buckets on the next pass. No schema translation or fragment re-mounting is required when containers shuffle children at runtime.
+
 **Render descriptors.** `render/synthesize` holds a `RenderDescriptor` (widget kind enum). The runtime converts descriptors + `state/*` + `style/*` into a `WidgetDescriptor` and synthesizes `DrawableBucketSnapshot` data via the legacy preview builders. Cached buckets live at `render/bucket`, and `SceneSnapshotBuilder` reads them via `structure/widgets/<widget>/render/bucket`.
 
 **Dirty + lifecycle flow.**

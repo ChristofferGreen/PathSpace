@@ -343,6 +343,14 @@ auto Mount(PathSpace& space,
            WidgetFragment const& fragment,
            MountOptions const& options = {}) -> SP::Expected<SP::UI::Builders::WidgetPath>;
 
+inline auto Move(PathSpace& space,
+                 SP::UI::Builders::WidgetPath const& widget,
+                 SP::App::ConcretePathView new_parent,
+                 std::string_view new_name,
+                 MountOptions const& options = {}) -> SP::Expected<SP::UI::Builders::WidgetPath> {
+    return SP::UI::Declarative::Move(space, widget, new_parent, new_name, options);
+}
+
 } // namespace Widgets
 
 } // namespace SP::UI::Declarative

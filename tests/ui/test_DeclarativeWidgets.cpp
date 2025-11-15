@@ -1,12 +1,14 @@
 #include "third_party/doctest.h"
 
 #include <pathspace/PathSpace.hpp>
+#include <pathspace/path/ConcretePath.hpp>
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/WidgetDetail.hpp>
 
+#include <algorithm>
 #include <string>
 #include <span>
 
@@ -274,6 +276,65 @@ TEST_CASE("PaintSurface descriptor captures brush metadata") {
     auto bucket = BuildWidgetBucket(*descriptor);
     REQUIRE(bucket.has_value());
     CHECK(bucket->drawable_ids.empty());
+}
+
+TEST_CASE("Widgets::Move relocates widget and preserves handlers") {
+    DeclarativeFixture fx;
+
+    auto list_a = List::Create(fx.space, fx.parent_view(), "list_a", List::Args{});
+    REQUIRE(list_a.has_value());
+    auto list_b = List::Create(fx.space, fx.parent_view(), "list_b", List::Args{});
+    REQUIRE(list_b.has_value());
+
+    Label::Args label_args{};
+    label_args.text = "Alpha";
+    label_args.on_activate = [](LabelContext&) {};
+
+    auto child = Label::Create(fx.space,
+                               SP::App::ConcretePathView{list_a->getPath()},
+                               "child_one",
+                               label_args);
+    REQUIRE(child.has_value());
+
+    auto original_binding = fx.space.read<HandlerBinding, std::string>(child->getPath() + "/events/activate/handler");
+    REQUIRE(original_binding.has_value());
+
+    auto moved = Move(fx.space,
+                      *child,
+                      SP::App::ConcretePathView{list_b->getPath()},
+                      "moved_child");
+    REQUIRE_MESSAGE(moved.has_value(), SP::describeError(moved.error()));
+
+    auto new_path = moved->getPath();
+    auto text = fx.space.read<std::string, std::string>(new_path + "/state/text");
+    REQUIRE(text.has_value());
+    CHECK_EQ(*text, "Alpha");
+
+    auto binding = fx.space.read<HandlerBinding, std::string>(new_path + "/events/activate/handler");
+    REQUIRE(binding.has_value());
+    CHECK(binding->registry_key != original_binding->registry_key);
+
+    auto dirty = fx.space.read<bool, std::string>(new_path + "/render/dirty");
+    REQUIRE(dirty.has_value());
+    CHECK(*dirty);
+
+    auto old_children = fx.space.listChildren(SP::ConcretePathStringView{list_a->getPath() + "/children"});
+    CHECK(std::find(old_children.begin(), old_children.end(), "child_one") == old_children.end());
+}
+
+TEST_CASE("Widgets::Move rejects duplicate destinations") {
+    DeclarativeFixture fx;
+    auto first = Button::Create(fx.space, fx.parent_view(), "first_button", Button::Args{.label = "First"});
+    REQUIRE(first.has_value());
+    auto second = Button::Create(fx.space, fx.parent_view(), "second_button", Button::Args{.label = "Second"});
+    REQUIRE(second.has_value());
+
+    auto result = Move(fx.space,
+                       *first,
+                       fx.parent_view(),
+                       "second_button");
+    REQUIRE_FALSE(result.has_value());
+    CHECK_EQ(result.error().code, Error::Code::InvalidPath);
 }
 
 } // namespace
