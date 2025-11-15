@@ -96,8 +96,11 @@ struct CreateResult {
 [[nodiscard]] inline auto Create(PathSpace& space,
                                  SP::App::AppRootPath const& app_root,
                                  SP::UI::Builders::WindowPath const& window_path,
-                                 CreateOptions const& options = {}) -> SP::Expected<CreateResult> {
+                                  CreateOptions const& options = {}) -> SP::Expected<CreateResult> {
     return Create(space, SP::App::AppRootPathView{app_root.getPath()}, window_path, options);
 }
+
+[[nodiscard]] auto Shutdown(PathSpace& space,
+                            SP::UI::Builders::ScenePath const& scene_path) -> SP::Expected<void>;
 
 } // namespace SP::Scene

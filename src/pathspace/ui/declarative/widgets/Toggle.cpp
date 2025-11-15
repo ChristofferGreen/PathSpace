@@ -76,7 +76,7 @@ auto SetChecked(PathSpace& space,
     if (auto status = WidgetDetail::write_state(space, widget.getPath(), *state); !status) {
         return status;
     }
-    return WidgetDetail::write_value(space, widget.getPath() + "/render/dirty", true);
+    return WidgetDetail::mark_render_dirty(space, widget.getPath());
 }
 
 } // namespace Toggle

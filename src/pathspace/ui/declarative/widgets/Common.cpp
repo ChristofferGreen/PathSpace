@@ -124,7 +124,20 @@ auto initialize_render(PathSpace& space,
         !status) {
         return status;
     }
-    return write_value(space, root + "/render/dirty", true);
+    return mark_render_dirty(space, root);
+}
+
+auto mark_render_dirty(PathSpace& space,
+                       std::string const& root) -> SP::Expected<void> {
+    if (auto status = write_value(space, root + "/render/dirty", true); !status) {
+        return status;
+    }
+    auto event_path = root + "/render/events/dirty";
+    auto inserted = space.insert(event_path, root);
+    if (!inserted.errors.empty()) {
+        return std::unexpected(inserted.errors.front());
+    }
+    return {};
 }
 
 auto write_handler(PathSpace& space,
@@ -153,4 +166,3 @@ auto clear_handlers(std::string const& widget_root) -> void {
 }
 
 } // namespace SP::UI::Declarative::Detail
-

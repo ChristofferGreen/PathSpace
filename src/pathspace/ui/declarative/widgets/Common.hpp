@@ -54,6 +54,9 @@ auto initialize_render(PathSpace& space,
                        std::string const& root,
                        WidgetKind kind) -> SP::Expected<void>;
 
+auto mark_render_dirty(PathSpace& space,
+                       std::string const& root) -> SP::Expected<void>;
+
 auto write_handler(PathSpace& space,
                    std::string const& root,
                    std::string_view event,

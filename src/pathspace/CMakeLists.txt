@@ -124,6 +124,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/WidgetReducers.cpp
         ui/declarative/InputTask.cpp
         ui/declarative/Descriptor.cpp
+        ui/declarative/SceneLifecycle.cpp
         ui/declarative/Runtime.cpp
         ui/declarative/Schema.cpp
         ui/declarative/Widgets.cpp

@@ -4,6 +4,7 @@
 
 #include <pathspace/core/Error.hpp>
 #include <pathspace/ui/Helpers.hpp>
+#include <pathspace/ui/declarative/SceneLifecycle.hpp>
 
 #include <chrono>
 #include <cctype>
@@ -522,7 +523,21 @@ auto Create(PathSpace& space,
     CreateResult result{};
     result.path = *scene;
     result.view_name = *view;
+
+    auto lifecycle = SP::UI::Declarative::SceneLifecycle::Start(space,
+                                                                app_root,
+                                                                result.path,
+                                                                window_path,
+                                                                *view);
+    if (!lifecycle) {
+        return std::unexpected(lifecycle.error());
+    }
     return result;
+}
+
+auto Shutdown(PathSpace& space,
+              SP::UI::Builders::ScenePath const& scene_path) -> SP::Expected<void> {
+    return SP::UI::Declarative::SceneLifecycle::Stop(space, scene_path);
 }
 
 } // namespace SP::Scene

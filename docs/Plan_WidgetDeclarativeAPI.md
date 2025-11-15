@@ -212,8 +212,8 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - ✅ (November 14, 2025) Declarative helpers now ship in `include/pathspace/ui/declarative/Widgets.hpp`. `Widgets::Mount` consumes `WidgetFragment`s, every widget exposes `Create` + `Fragment` helpers, and update utilities (`Button::SetLabel`, `Slider::SetValue`, `List::SetItems`, `Label::SetText`, etc.) mark `render/dirty` when state changes. Removal is currently logical (`state/removed = true`) so runtime consumers can detach widgets without blowing away history; the `Move` helper stubs out with `Error::UnimplementedFeature` and is tracked below so we can preserve arbitrary subtree state when reparenting. `PaintSurface::Create` seeds brush/gpu metadata and registers draw handlers using the new registry.
    - 🔜 Follow-up: implement true widget reparent/move semantics so `Widgets::Move` can re-home existing subtrees without forcing consumers to recreate widgets manually.
 2. **Scene lifecycle**
-   - Ensure `Scene::Create` installs watches on widget namespaces (monitoring `render/dirty`), cascades dirty flags, and publishes initial bucket revisions.
-   - Provide helpers for scene teardown/transitions.
+   - ✅ (November 15, 2025) `Scene::Create` now spins up a trellis-backed lifecycle worker per scene. Widgets publish dirty events under `render/events/dirty`, the worker fans them into `scene/runtime/lifecycle/trellis`, rebuilds buckets via `WidgetDescriptor`, writes them to `scene/structure/widgets/<widget>/render/bucket`, and exposes metrics/state under `scene/runtime/lifecycle/*`. `SP::Scene::Shutdown` tears the worker down, and doctest coverage (`tests/ui/test_DeclarativeSceneLifecycle.cpp`) exercises the end-to-end flow.
+   - 🔜 Follow-ups: cascade lifecycle rebuilds into `SceneSnapshotBuilder` revisions, cover theme/focus invalidation events, and tighten cleanup for removed widgets so trellis source lists shrink automatically.
 3. **Focus controller**
    - Design focus metadata and build focus graph automatically.
    - Integrate with existing bindings so focus/activation events propagate transparently.

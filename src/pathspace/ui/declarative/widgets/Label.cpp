@@ -71,7 +71,7 @@ auto SetText(PathSpace& space,
         !status) {
         return status;
     }
-    return WidgetDetail::write_value(space, widget.getPath() + "/render/dirty", true);
+    return WidgetDetail::mark_render_dirty(space, widget.getPath());
 }
 
 } // namespace Label
