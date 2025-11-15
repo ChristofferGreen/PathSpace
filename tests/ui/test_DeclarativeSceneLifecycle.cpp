@@ -50,6 +50,13 @@ TEST_CASE("Scene lifecycle rebuilds declarative widget buckets") {
     scene_options.name = "main_scene";
     auto scene = SP::Scene::Create(space, *app_root, window->path, scene_options);
     REQUIRE(scene);
+    struct SceneGuard {
+        PathSpace& space;
+        SP::UI::Builders::ScenePath scene_path;
+        ~SceneGuard() {
+            (void)SP::Scene::Shutdown(space, scene_path);
+        }
+    } guard{space, scene->path};
 
     auto widget = SP::UI::Declarative::Button::Create(space,
                                                       SP::App::ConcretePathView{window->path.getPath()},
@@ -65,6 +72,8 @@ TEST_CASE("Scene lifecycle rebuilds declarative widget buckets") {
     auto metrics_path = std::string(scene->path.getPath()) + "/runtime/lifecycle/metrics/events_processed_total";
     auto initial_metric = space.read<std::uint64_t, std::string>(metrics_path).value_or(0);
 
+    auto prime = SP::UI::Declarative::Button::SetLabel(space, *widget, "initial label");
+    REQUIRE(prime);
     CHECK(wait_for_metric(space, metrics_path, initial_metric + 1, std::chrono::milliseconds{1500}));
     auto first_bucket = space.read<SP::UI::Scene::DrawableBucketSnapshot, std::string>(bucket_path);
     REQUIRE(first_bucket);
@@ -75,8 +84,5 @@ TEST_CASE("Scene lifecycle rebuilds declarative widget buckets") {
     auto second_bucket = space.read<SP::UI::Scene::DrawableBucketSnapshot, std::string>(bucket_path);
     REQUIRE(second_bucket);
     CHECK(second_bucket->drawable_ids.size() == first_bucket->drawable_ids.size());
-
-    auto shutdown = SP::Scene::Shutdown(space, scene->path);
-    REQUIRE(shutdown);
     SP::System::ShutdownDeclarativeRuntime(space);
 }
