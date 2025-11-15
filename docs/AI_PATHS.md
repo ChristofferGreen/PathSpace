@@ -109,7 +109,9 @@ The following subtrees are standardized within each application root (one of the
     - `current_revision` — revision pointer adopted by renderer targets
     - `meta/{name,description}` — human-readable labels stamped on first publish
 
-### Declarative widget API (November 14, 2025)
+### Declarative widget API (November 14, 2025 — schema appendix refreshed November 15, 2025)
+
+See `docs/Widget_Schema_Reference.md` for the authoritative per-node tables (mirrors `include/pathspace/ui/declarative/Schema.hpp` + `Descriptor.hpp`). The summary below highlights the most frequently accessed nodes so path authors stay oriented without flipping between documents.
 
 Canonical schema definitions for the declarative workflow live in `include/pathspace/ui/declarative/Schema.hpp` and surface through `SP::UI::Declarative::widget_schemas()`. The namespace overlays are implemented in `src/pathspace/ui/declarative/Schema.cpp`.
 
@@ -142,8 +144,18 @@ Canonical schema definitions for the declarative workflow live in `include/paths
 | tree | `events/node_event/handler` | `nodes/<node-id>/state`, `nodes/<node-id>/children` |
 | stack | `state/active_panel`, `events/panel_select/handler` | `panels/<panel-id>/state` |
 | label | `state/text`, `events/activate/handler` | `render/bucket`, `render/dirty` |
-| input_field | `state/text`, `state/placeholder`, `events/submit/handler` | `state/focused`, `render/dirty` |
+| input_field | `state/text`, `state/placeholder`, `events/{change,submit}/handler` | `state/focused`, `render/dirty` |
 | paint_surface | `state/brush/*`, `events/draw/handler` | `state/history/<stroke-id>`, `render/buffer/*`, `render/gpu/*`, `assets/texture` |
+
+**Handler bindings.** Each `events/<event>/handler` leaf stores a `HandlerBinding { registry_key, kind }`. Declarative helpers register lambdas in an in-memory registry keyed by `<widget_path>#<event>#<sequence>` and write the binding record into PathSpace. Removing a widget removes every binding sharing the prefix so stale handlers never fire.
+
+**Render descriptors.** `render/synthesize` holds a `RenderDescriptor` (widget kind enum). The runtime converts descriptors + `state/*` + `style/*` into a `WidgetDescriptor` and synthesizes `DrawableBucketSnapshot` data via the legacy preview builders. Cached buckets live at `render/bucket`, and `SceneSnapshotBuilder` reads them via `structure/widgets/<widget>/render/bucket`.
+
+**Dirty + lifecycle flow.**
+1. Declarative helpers update widget state, flip `render/dirty`, and push the widget path onto `render/events/dirty`.
+2. The scene lifecycle trellis (`runtime/lifecycle/trellis`) drains dirty queues, calls into the descriptor synthesizer, and writes updated buckets under `scene/structure/widgets/<widget>/render/bucket`.
+3. Renderer targets consume the updated bucket set, publish a new snapshot, and presenters pick up the fresh revision (window `render/dirty` or per-view dirty bits).
+4. Focus controller mirrors the active widget under both `widgets/<id>/focus/current` and `structure/window/<window>/focus/current` so input + accessibility bridges stay aligned.
 
 > **Handler bindings:** the declarative helper registers each handler in an in-memory registry and stores `HandlerBinding { registry_key, kind }` at `events/<event>/handler`. Removal drops every key rooted at the widget path so stale lambdas never fire.
 >

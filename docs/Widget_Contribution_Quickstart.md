@@ -11,6 +11,7 @@ examples, tests, and tooling.
 - Read `docs/Plan_SceneGraph.md` (Phase 8), `docs/AI_Paths.md`
   (widgets section), and skim existing builder code in
   `src/pathspace/ui/WidgetBuildersCore.cpp`.
+- Keep `docs/Widget_Schema_Reference.md` nearby; it mirrors the declarative schema headers so you can confirm every node you author.
 - Build the Release tree (`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release`)
   and keep `cmake --build build -j` handy while iterating.
 - Plan to run the full 15× UI loop before committing:

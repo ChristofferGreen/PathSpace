@@ -201,8 +201,8 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - Declarative runtime can now take `render/synthesize` → `WidgetDescriptor` without storing opaque lambdas; container children stay in canonical `children/` paths for later traversal.
    - TODO follow-ups: extend the descriptor pipeline to cover `Stack`, `InputField` (text field) and `PaintSurface` widgets, and layer in theme inheritance when widgets omit explicit styles. Track these under Phase 1 once runtime consumers begin calling the descriptors.
 6. **Documentation updates**
-   - Expand `docs/AI_PATHS.md` with the schema.
-   - Add a “Widget Schema Reference” appendix for maintainers.
+   - ✅ (November 15, 2025) Expanded `docs/AI_PATHS.md` with the declarative namespace summary and dirty/lifecycle flow. Authored `docs/Widget_Schema_Reference.md` as the long-form appendix mirroring the schema headers so maintainers have a single reference for widget node contracts.
+   - Keep both docs in sync whenever schema headers change; future widget additions should update the appendix and the high-level summary in `AI_PATHS.md`.
 
 ### Phase 1 – New Declarative Runtime
 0. **Runtime bootstrap**
