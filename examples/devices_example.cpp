@@ -1,4 +1,5 @@
 #include <atomic>
+#include <cstdint>
 
 #include <csignal>
 #include <iostream>
@@ -85,6 +86,11 @@ static inline void initialize_devices(PathSpace& space) {
     space.insert<"/system/devices/in/text/default">(std::move(keyboard));
     space.insert<"/system/devices/in/gamepad/default">(std::move(gamepad));
 #endif
+
+    // Enable push-mode delivery for the default pointer device and register a subscriber.
+    space.insert("/system/devices/in/pointer/default/config/push/enabled", true);
+    space.insert("/system/devices/in/pointer/default/config/push/rate_limit_hz", static_cast<std::uint32_t>(480));
+    space.insert("/system/devices/in/pointer/default/config/push/subscribers/devices_example", true);
 }
 
 int main() {

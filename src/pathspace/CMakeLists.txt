@@ -85,6 +85,7 @@ if(PATHSPACE_ENABLE_EXTRA)
     target_sources(PathSpace PRIVATE
         layer/PathView.cpp
         layer/io/PathFileSystem.cpp
+        layer/io/DevicePushConfigNodes.cpp
         layer/io/PathIOGamepad.cpp
         layer/io/PathIOPointerMixer.cpp
         layer/io/PathIOMouse.cpp

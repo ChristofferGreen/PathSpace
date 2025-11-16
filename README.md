@@ -308,6 +308,14 @@ int main() {
 }
 ```
 
+After mounting a provider, opt-in to push delivery (and throttling/telemetry) via the shared config nodes:
+```cpp
+ps.insert("/system/devices/in/pointer/default/config/push/enabled", true);
+ps.insert("/system/devices/in/pointer/default/config/push/rate_limit_hz", static_cast<std::uint32_t>(480));
+ps.insert("/system/devices/in/pointer/default/config/push/subscribers/your_app", true);
+```
+Normalized IO Trellis structs live in `<pathspace/io/IoEvents.hpp>` for consumers that want canonical `PointerEvent`, `ButtonEvent`, or `TextEvent` payloads.
+
 Notes:
 - These providers are evolving; platform-specific backends may require flags (ENABLE_PATHIO_MACOS)
 - The example simulates events if no OS backend is active

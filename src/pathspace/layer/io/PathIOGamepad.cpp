@@ -78,6 +78,9 @@ auto PathIOGamepad::in(Iterator const& path, InputData const& data) -> InsertRet
 
     // Tail under the current iterator (relative to mount)
     const std::string tail = std::string(path.currentToEnd());
+    if (auto handled = pushConfig_.handleInsert(tail, data)) {
+        return *handled;
+    }
 
     // 1) Accept and enqueue Event writes at ".../events"
     if (data.metadata.typeInfo == &typeid(Event)) {
@@ -128,10 +131,15 @@ auto PathIOGamepad::in(Iterator const& path, InputData const& data) -> InsertRet
     return ret;
 }
 
-auto PathIOGamepad::out(Iterator const& /*path*/,
+auto PathIOGamepad::out(Iterator const& path,
                         InputMetadata const& inputMetadata,
                         Out const& options,
                         void* obj) -> std::optional<Error> {
+    const std::string tail = std::string(path.currentToEnd());
+    if (auto handled = pushConfig_.handleRead(tail, inputMetadata, obj); handled.handled) {
+        return handled.error;
+    }
+
     if (inputMetadata.typeInfo != &typeid(Event)) {
         return Error{Error::Code::InvalidType, "PathIOGamepad only supports GamepadEvent reads"};
     }

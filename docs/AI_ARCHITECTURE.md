@@ -405,6 +405,12 @@ Device IO is provided by path-agnostic layers that can be mounted anywhere in a 
     - `/system/devices/in/pointer/default/events`
     - `/system/devices/in/text/default/events`
     - `/system/devices/in/gamepad/default/events`
+  - Push config nodes (`/system/devices/in/<class>/<id>/config/push/*`), surfaced directly by each provider:
+    - `enabled` (bool) gates provider-side push to Trellis subscribers
+    - `rate_limit_hz` / `max_queue` (uint32) express throttling hints and queue caps
+    - `telemetry_enabled` (bool) toggles per-device metrics emission
+    - `subscribers/<name>` (bool) lets pumps register/unregister downstream consumers
+  - Normalized IO Trellis queues live under `/system/io/events/{pointer,button,text,pose}` with canonical structs defined in `include/pathspace/io/IoEvents.hpp`; future pump stages drain those queues instead of per-device types.
   - Discovery mount (recommended): `/system/devices/discovery`
   - Haptics (outputs): `/system/devices/out/gamepad/<id>/rumble`
 - Notifications: providers perform targeted `notify(mountPrefix)` and `notify(mountPrefix + "/events")` on enqueue; use `notifyAll()` only for broad updates (e.g., retargeting or clear).

@@ -1,5 +1,6 @@
 #pragma once
 #include "PathSpace.hpp"
+#include "layer/io/DevicePushConfigNodes.hpp"
 
 #include <condition_variable>
 #include <cstdint>
@@ -93,6 +94,7 @@ private:
     std::deque<Event>               queue_;
     std::string                     mountPrefix_;
     std::optional<Command>          lastHaptics_;
+    DevicePushConfigNodes           pushConfig_;
 };
 
 } // namespace SP

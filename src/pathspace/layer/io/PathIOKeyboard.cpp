@@ -8,14 +8,18 @@ namespace SP {
 auto PathIOKeyboard::in(Iterator const& path, InputData const& data) -> InsertReturn {
     InsertReturn ret;
 
+    // Path tail must be "events" (relative to mount)
+    const std::string tail = std::string(path.currentToEnd());
+    if (auto handled = pushConfig_.handleInsert(tail, data)) {
+        return *handled;
+    }
+
     // Only support KeyboardEvent writes
     if (data.metadata.typeInfo != &typeid(Event)) {
         ret.errors.emplace_back(Error::Code::InvalidType, "PathIOKeyboard only accepts Event at 'events'");
         return ret;
     }
 
-    // Path tail must be "events" (relative to mount)
-    const std::string tail = std::string(path.currentToEnd());
     const bool okTail = (tail == "events") || (tail.size() > 7 && tail.rfind("/events") == tail.size() - 7);
     if (!okTail) {
         ret.errors.emplace_back(Error::Code::InvalidPath, "Unsupported path for keyboard event; expected 'events'");
@@ -41,10 +45,15 @@ auto PathIOKeyboard::in(Iterator const& path, InputData const& data) -> InsertRe
     return ret;
 }
 
-auto PathIOKeyboard::out(Iterator const& /*path*/,
+auto PathIOKeyboard::out(Iterator const& path,
                          InputMetadata const& inputMetadata,
                          Out const& options,
                          void* obj) -> std::optional<Error> {
+    const std::string tail = std::string(path.currentToEnd());
+    if (auto handled = pushConfig_.handleRead(tail, inputMetadata, obj); handled.handled) {
+        return handled.error;
+    }
+
     // Type-check: only support KeyboardEvent payloads here
     if (inputMetadata.typeInfo != &typeid(Event)) {
         return Error{Error::Code::InvalidType, "PathIOKeyboard only supports KeyboardEvent"};

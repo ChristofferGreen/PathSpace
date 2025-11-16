@@ -1,4 +1,5 @@
 #include "third_party/doctest.h"
+#include <cstdint>
 #include <string>
 
 #include <pathspace/PathSpace.hpp>
@@ -216,4 +217,46 @@ TEST_CASE("PathIOKeyboard - typed out()/take() semantics") {
         REQUIRE(popped.has_value());
         CHECK(popped->type == KeyEventType::KeyDown);
     }
+}
+
+TEST_CASE("PathIO devices expose push config nodes") {
+    PathIOMouse device{PathIOMouse::BackendMode::Off};
+
+    bool enabled = true;
+    auto retEnabled = device.insert("/config/push/enabled", enabled);
+    CHECK(retEnabled.nbrValuesInserted == 1);
+    auto readEnabled = device.read<bool>("/config/push/enabled");
+    REQUIRE(readEnabled.has_value());
+    CHECK(*readEnabled);
+
+    std::uint32_t rate = 480;
+    auto retRate = device.insert("/config/push/rate_limit_hz", rate);
+    CHECK(retRate.nbrValuesInserted == 1);
+    auto readRate = device.read<std::uint32_t>("/config/push/rate_limit_hz");
+    REQUIRE(readRate.has_value());
+    CHECK(*readRate == rate);
+
+    bool telemetry = true;
+    auto retTelemetry = device.insert("/config/push/telemetry_enabled", telemetry);
+    CHECK(retTelemetry.nbrValuesInserted == 1);
+    auto readTelemetry = device.read<bool>("/config/push/telemetry_enabled");
+    REQUIRE(readTelemetry.has_value());
+    CHECK(*readTelemetry);
+
+    bool subscriber = true;
+    auto retSub = device.insert("/config/push/subscribers/test_subscriber", subscriber);
+    CHECK(retSub.nbrValuesInserted == 1);
+    auto readSub = device.read<bool>("/config/push/subscribers/test_subscriber");
+    REQUIRE(readSub.has_value());
+    CHECK(*readSub);
+
+    PathSpace space;
+    auto nested = std::make_unique<PathIOMouse>(PathIOMouse::BackendMode::Off);
+    auto mountRet = space.insert<"/system/devices/in/pointer/default">(std::move(nested));
+    CHECK(mountRet.nbrSpacesInserted == 1);
+    auto spaceSet = space.insert("/system/devices/in/pointer/default/config/push/enabled", true);
+    CHECK(spaceSet.nbrValuesInserted == 1);
+    auto spaceRead = space.read<bool>("/system/devices/in/pointer/default/config/push/enabled");
+    REQUIRE(spaceRead.has_value());
+    CHECK(*spaceRead);
 }

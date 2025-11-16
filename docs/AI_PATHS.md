@@ -24,10 +24,21 @@ Conventions:
     - `/system/devices/in/pointer/default/events`
     - `/system/devices/in/text/default/events`
     - `/system/devices/in/gamepad/default/events`
+  - Push configuration (per-device):
+    - `/system/devices/in/<class>/<id>/config/push/enabled` — bool opt-in for Trellis subscribers
+    - `/system/devices/in/<class>/<id>/config/push/rate_limit_hz` — uint32 throttling hint
+    - `/system/devices/in/<class>/<id>/config/push/max_queue` — uint32 queue cap hint
+    - `/system/devices/in/<class>/<id>/config/push/telemetry_enabled` — bool gating device telemetry
+    - `/system/devices/in/<class>/<id>/config/push/subscribers/<name>` — bool registration for downstream pumps
   - Discovery (recommended mount):
     - `/system/devices/discovery`
   - Haptics (outputs):
     - `/system/devices/out/gamepad/<id>/rumble`
+- IO Trellis (normalized queues):
+  - `/system/io/events/pointer`
+  - `/system/io/events/button`
+  - `/system/io/events/text`
+  - `/system/io/events/pose`
 - System IO (logs)
   - `/system/io/stdout`
   - `/system/io/stderr`

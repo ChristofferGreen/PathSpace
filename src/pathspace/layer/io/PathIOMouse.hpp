@@ -1,5 +1,6 @@
 #pragma once
 #include "PathSpace.hpp"
+#include "layer/io/DevicePushConfigNodes.hpp"
 
 #include <chrono>
 #include <condition_variable>
@@ -199,6 +200,7 @@ private:
     std::atomic<bool>         running_{false};
     std::thread               worker_;
     BackendMode               mode_{BackendMode::Off};
+    DevicePushConfigNodes     pushConfig_;
 
 #if defined(PATHIO_BACKEND_MACOS)
     // macOS OS event-tap backend (CGEventTap)
