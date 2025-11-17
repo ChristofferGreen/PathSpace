@@ -11,14 +11,26 @@
 
 using namespace SP;
 
+namespace {
+
+struct RuntimeGuard {
+    explicit RuntimeGuard(SP::PathSpace& s) : space(s) {}
+    ~RuntimeGuard() { SP::System::ShutdownDeclarativeRuntime(space); }
+    SP::PathSpace& space;
+};
+
+} // namespace
+
 TEST_CASE("Declarative runtime wires app, window, and scene") {
     PathSpace space;
 
     SP::System::LaunchOptions launch_options{};
     launch_options.start_input_runtime = false;
     launch_options.start_io_pump = false;
+    launch_options.start_io_telemetry_control = false;
     auto launch = SP::System::LaunchStandard(space, launch_options);
     REQUIRE(launch);
+    RuntimeGuard runtime_guard{space};
     CHECK_FALSE(launch->default_theme_path.empty());
 
     auto app_root = SP::App::Create(space, "hello_widgets");
@@ -81,8 +93,10 @@ TEST_CASE("Declarative input task drains widget ops") {
     SP::System::LaunchOptions launch_options{};
     launch_options.input_task_options.poll_interval = std::chrono::milliseconds{1};
     launch_options.start_io_pump = false;
+    launch_options.start_io_telemetry_control = false;
     auto launch = SP::System::LaunchStandard(space, launch_options);
     REQUIRE(launch);
+    RuntimeGuard runtime_guard{space};
 
     auto app_root = SP::App::Create(space, "inputwidgets");
     REQUIRE(app_root);
@@ -103,7 +117,6 @@ TEST_CASE("Declarative input task drains widget ops") {
     REQUIRE(action);
     CHECK(action->kind == op.kind);
 
-    SP::System::ShutdownDeclarativeRuntime(space);
 }
 
 TEST_CASE("Declarative input task invokes registered handlers") {
@@ -113,8 +126,10 @@ TEST_CASE("Declarative input task invokes registered handlers") {
     SP::System::LaunchOptions launch_options{};
     launch_options.start_io_pump = false;
     launch_options.input_task_options.poll_interval = std::chrono::milliseconds{1};
+    launch_options.start_io_telemetry_control = false;
     auto launch = SP::System::LaunchStandard(space, launch_options);
     REQUIRE(launch);
+    RuntimeGuard runtime_guard{space};
 
     auto app_root = SP::App::Create(space, "handlerapp");
     REQUIRE(app_root);
@@ -152,5 +167,4 @@ TEST_CASE("Declarative input task invokes registered handlers") {
     }
     CHECK(observed);
 
-    SP::System::ShutdownDeclarativeRuntime(space);
 }

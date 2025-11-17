@@ -14,7 +14,7 @@ struct TelemetryToggleCommand {
 
 struct DevicePushCommand {
     std::string device;         // Absolute path or pattern ("*" / prefix*)
-    std::string subscriber = "io_trellis";
+    std::string subscriber;     // Empty -> use TelemetryControlOptions::default_subscriber
     bool enable = true;
     bool touch_push_enabled = true;
     bool set_telemetry = false;
@@ -38,6 +38,7 @@ struct TelemetryControlOptions {
     std::string log_path = "/_system/telemetry/log/errors/queue";
     std::string devices_root = "/system/devices/in";
     std::string state_path = "/_system/telemetry/io/state/running";
+    std::string default_subscriber = "io_trellis";
     std::chrono::milliseconds idle_sleep{std::chrono::milliseconds{5}};
     std::chrono::milliseconds block_timeout{std::chrono::milliseconds{25}};
 };

@@ -4,6 +4,7 @@
 #include <pathspace/runtime/TelemetryControl.hpp>
 
 #include <chrono>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -16,12 +17,36 @@ auto wait_for_bool(SP::PathSpace& space,
                    bool expected,
                    std::chrono::milliseconds timeout = 1000ms) -> bool {
     auto deadline = std::chrono::steady_clock::now() + timeout;
+    bool saw_value = false;
+    bool last_value = false;
+    std::optional<SP::Error> last_error;
     while (std::chrono::steady_clock::now() < deadline) {
         auto value = space.read<bool, std::string>(path);
         if (value && *value == expected) {
             return true;
         }
+        if (value) {
+            saw_value = true;
+            last_value = *value;
+        } else {
+            last_error = value.error();
+        }
         std::this_thread::sleep_for(5ms);
+    }
+    if (last_error) {
+        if (last_error->message) {
+            INFO("wait_for_bool(" << path << ") last_error="
+                 << static_cast<int>(last_error->code)
+                 << " message=" << *last_error->message);
+        } else {
+            INFO("wait_for_bool(" << path << ") last_error="
+                 << static_cast<int>(last_error->code));
+        }
+    } else if (saw_value) {
+        INFO("wait_for_bool(" << path << ") last_value="
+             << (last_value ? "true" : "false"));
+    } else {
+        INFO("wait_for_bool(" << path << ") saw no values");
     }
     return false;
 }
@@ -62,8 +87,7 @@ TEST_CASE("TelemetryControl toggles telemetry state via command queues") {
             if (!log_entry) {
                 break;
             }
-            auto message = std::string(label) + ": " + *log_entry;
-            INFO(message.c_str());
+            INFO(label << ": " << *log_entry);
         }
     };
 
@@ -102,8 +126,7 @@ TEST_CASE("TelemetryControl applies subscriber commands") {
             if (!log_entry) {
                 break;
             }
-            auto message = std::string(label) + ": " + *log_entry;
-            INFO(message.c_str());
+            INFO(label << ": " << *log_entry);
         }
     };
 
@@ -129,11 +152,10 @@ TEST_CASE("TelemetryControl applies subscriber commands") {
 
     CHECK(wait_for_bool(space, device + "/config/push/enabled", true));
     if (auto subscriber_value = space.read<bool, std::string>(device + "/config/push/subscribers/telemetry_test"); subscriber_value) {
-        auto info_message = std::string("subscriber value before wait: ") + (*subscriber_value ? "true" : "false");
-        INFO(info_message.c_str());
+        INFO("subscriber value before wait: " << (*subscriber_value ? "true" : "false"));
     } else {
-        auto error_message = std::string("subscriber read error: ") + subscriber_value.error().message.value_or("unknown");
-        INFO(error_message.c_str());
+        INFO("subscriber read error: "
+             << subscriber_value.error().message.value_or("unknown"));
     }
     CHECK(wait_for_bool(space, device + "/config/push/subscribers/telemetry_test", true));
     drain_logs("final-subscriber");

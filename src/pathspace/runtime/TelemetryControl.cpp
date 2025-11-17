@@ -138,8 +138,14 @@ private:
             if (command.touch_push_enabled) {
                 set_bool(device + std::string{kConfigPushEnabled}, command.enable);
             }
-            auto subscriber_path = device + "/config/push/subscribers/" + command.subscriber;
-            set_bool(subscriber_path, command.enable);
+            auto subscriber = command.subscriber.empty() ? options_.default_subscriber
+                                                         : command.subscriber;
+            if (!subscriber.empty()) {
+                auto subscriber_path = device + "/config/push/subscribers/" + subscriber;
+                set_bool(subscriber_path, command.enable);
+            } else {
+                log_error("TelemetryControl push command missing subscriber for device " + device);
+            }
             if (command.set_telemetry) {
                 set_bool(device + std::string{kConfigPushTelemetry}, command.telemetry_enabled);
             }

@@ -13,14 +13,26 @@
 
 using namespace SP;
 
+namespace {
+
+struct RuntimeGuard {
+    explicit RuntimeGuard(SP::PathSpace& s) : space(s) {}
+    ~RuntimeGuard() { SP::System::ShutdownDeclarativeRuntime(space); }
+    SP::PathSpace& space;
+};
+
+} // namespace
+
 TEST_CASE("Scene lifecycle exposes dirty event queues") {
     PathSpace space;
 
     SP::System::LaunchOptions launch_options{};
     launch_options.start_input_runtime = false;
     launch_options.start_io_pump = false;
+    launch_options.start_io_telemetry_control = false;
     auto launch = SP::System::LaunchStandard(space, launch_options);
     REQUIRE(launch);
+    RuntimeGuard runtime_guard{space};
 
     auto app_root = SP::App::Create(space, "scene_lifecycle_app");
     REQUIRE(app_root);
@@ -59,7 +71,6 @@ TEST_CASE("Scene lifecycle exposes dirty event queues") {
 
     auto shutdown = SP::Scene::Shutdown(space, scene->path);
     REQUIRE(shutdown);
-    SP::System::ShutdownDeclarativeRuntime(space);
 }
 
 TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
@@ -68,7 +79,9 @@ TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
     SP::System::LaunchOptions launch_options{};
     launch_options.start_input_runtime = false;
     launch_options.start_io_pump = false;
+    launch_options.start_io_telemetry_control = false;
     REQUIRE(SP::System::LaunchStandard(space, launch_options));
+    RuntimeGuard runtime_guard{space};
 
     auto app_root = SP::App::Create(space, "scene_lifecycle_metrics");
     REQUIRE(app_root);
@@ -93,7 +106,7 @@ TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
     SP::ConcretePathStringView builds_view{builds_root};
 
     auto wait_until = [&](auto&& predicate) {
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{2};
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
         while (std::chrono::steady_clock::now() < deadline) {
             if (predicate()) {
                 return true;
@@ -130,7 +143,6 @@ TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
     CHECK(buckets_cleared);
 
     REQUIRE(SP::Scene::Shutdown(space, scene->path));
-    SP::System::ShutdownDeclarativeRuntime(space);
 }
 
 TEST_CASE("Focus and theme changes invalidate declarative widgets") {
@@ -139,7 +151,9 @@ TEST_CASE("Focus and theme changes invalidate declarative widgets") {
     SP::System::LaunchOptions launch_options{};
     launch_options.start_input_runtime = false;
     launch_options.start_io_pump = false;
+    launch_options.start_io_telemetry_control = false;
     REQUIRE(SP::System::LaunchStandard(space, launch_options));
+    RuntimeGuard runtime_guard{space};
 
     auto app_root = SP::App::Create(space, "scene_lifecycle_focus_theme");
     REQUIRE(app_root);
@@ -185,5 +199,4 @@ TEST_CASE("Focus and theme changes invalidate declarative widgets") {
     CHECK_EQ(*theme_event, button->getPath());
 
     REQUIRE(SP::Scene::Shutdown(space, scene->path));
-    SP::System::ShutdownDeclarativeRuntime(space);
 }

@@ -3,6 +3,7 @@
 
 #include "third_party/doctest.h"
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <unistd.h>
@@ -28,10 +29,11 @@ auto makeEntry(int seq) -> JournalEntry {
 }
 
 auto tempPath(std::string_view suffix) -> std::filesystem::path {
-    auto base = std::filesystem::temp_directory_path()
-                / ("undo_journal_test_" + std::to_string(::getpid()));
-    std::filesystem::create_directories(base);
-    return base / suffix;
+    auto now = std::chrono::steady_clock::now().time_since_epoch().count();
+    auto name = "undo_journal_test_" + std::to_string(::getpid()) + "_" + std::to_string(now);
+    auto dir = std::filesystem::temp_directory_path() / name;
+    std::filesystem::create_directories(dir);
+    return dir / suffix;
 }
 
 } // namespace
