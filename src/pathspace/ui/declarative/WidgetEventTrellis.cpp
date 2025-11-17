@@ -1,6 +1,7 @@
 #include <pathspace/ui/declarative/WidgetEventTrellis.hpp>
 
 #include "../BuildersDetail.hpp"
+#include "widgets/Common.hpp"
 
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/io/IoEvents.hpp>
@@ -10,6 +11,7 @@
 #include <atomic>
 #include <chrono>
 #include <cctype>
+#include <cmath>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -25,20 +27,34 @@ namespace {
 using namespace SP::UI::Builders;
 using namespace SP::UI::Builders::Detail;
 namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
+namespace BuilderWidgets = SP::UI::Builders::Widgets;
 namespace BuildersScene = SP::UI::Builders::Scene;
+namespace DeclarativeDetail = SP::UI::Declarative::Detail;
 
 constexpr std::string_view kLogErrorsQueue = "/system/widgets/runtime/events/log/errors/queue";
 
 enum class TargetKind {
     Unknown = 0,
     Button,
-    Toggle
+    Toggle,
+    Slider,
+    List,
+    TreeRow,
+    TreeToggle,
+    InputField,
+    PaintSurface
 };
 
 struct TargetInfo {
     std::string widget_path;
     std::string component;
     TargetKind kind = TargetKind::Unknown;
+    std::optional<std::int32_t> list_index;
+    std::optional<std::string> list_item_id;
+    std::optional<std::string> tree_node_id;
+    float local_x = 0.0f;
+    float local_y = 0.0f;
+    bool has_local = false;
 
     [[nodiscard]] auto valid() const -> bool {
         return !widget_path.empty() && kind != TargetKind::Unknown;
@@ -52,6 +68,18 @@ struct PointerState {
     bool primary_down = false;
     std::optional<TargetInfo> hover_target;
     std::optional<TargetInfo> active_target;
+    std::optional<std::string> slider_active_widget;
+    float slider_active_value = 0.0f;
+    std::optional<std::string> list_press_widget;
+    std::optional<std::int32_t> list_press_index;
+    std::optional<std::string> list_hover_widget;
+    std::optional<std::int32_t> list_hover_index;
+    std::optional<std::string> tree_press_widget;
+    std::optional<std::string> tree_press_node;
+    bool tree_press_toggle = false;
+    std::optional<std::string> tree_hover_widget;
+    std::optional<std::string> tree_hover_node;
+    std::optional<std::string> text_focus_widget;
 };
 
 struct WindowBinding {
@@ -91,6 +119,185 @@ auto normalize_root(std::string root) -> std::string {
 auto list_children(PathSpace& space, std::string const& path) -> std::vector<std::string> {
     SP::ConcretePathStringView view{path};
     return space.listChildren(view);
+}
+
+struct SliderData {
+    BuilderWidgets::SliderState state;
+    BuilderWidgets::SliderStyle style;
+    BuilderWidgets::SliderRange range;
+};
+
+struct ListData {
+    BuilderWidgets::ListState state;
+    BuilderWidgets::ListStyle style;
+    std::vector<BuilderWidgets::ListItem> items;
+};
+
+
+auto mark_widget_dirty(PathSpace& space, std::string const& widget_path) -> void {
+    auto status = DeclarativeDetail::mark_render_dirty(space, widget_path);
+    if (!status) {
+        enqueue_error(space,
+                      "WidgetEventTrellis failed to mark render dirty for " + widget_path);
+    }
+}
+
+auto read_slider_data(PathSpace& space, std::string const& widget_path)
+    -> std::optional<SliderData> {
+    SliderData data{};
+    auto state = space.read<BuilderWidgets::SliderState, std::string>(widget_path + "/state");
+    if (!state) {
+        enqueue_error(space, "WidgetEventTrellis failed to read slider state for " + widget_path);
+        return std::nullopt;
+    }
+    data.state = *state;
+    auto style = space.read<BuilderWidgets::SliderStyle, std::string>(widget_path + "/meta/style");
+    if (!style) {
+        enqueue_error(space, "WidgetEventTrellis failed to read slider style for " + widget_path);
+        return std::nullopt;
+    }
+    data.style = *style;
+    auto range = space.read<BuilderWidgets::SliderRange, std::string>(widget_path + "/meta/range");
+    if (!range) {
+        enqueue_error(space, "WidgetEventTrellis failed to read slider range for " + widget_path);
+        return std::nullopt;
+    }
+    data.range = *range;
+    return data;
+}
+
+auto write_slider_state(PathSpace& space,
+                        std::string const& widget_path,
+                        BuilderWidgets::SliderState const& state) -> bool {
+    auto status = replace_single<BuilderWidgets::SliderState>(space,
+                                                             widget_path + "/state",
+                                                             state);
+    if (!status) {
+        enqueue_error(space,
+                      "WidgetEventTrellis failed to write slider state for " + widget_path);
+        return false;
+    }
+    mark_widget_dirty(space, widget_path);
+    return true;
+}
+
+auto read_list_data(PathSpace& space, std::string const& widget_path)
+    -> std::optional<ListData> {
+    ListData data{};
+    auto state = space.read<BuilderWidgets::ListState, std::string>(widget_path + "/state");
+    if (!state) {
+        enqueue_error(space, "WidgetEventTrellis failed to read list state for " + widget_path);
+        return std::nullopt;
+    }
+    data.state = *state;
+    auto style = space.read<BuilderWidgets::ListStyle, std::string>(widget_path + "/meta/style");
+    if (!style) {
+        enqueue_error(space, "WidgetEventTrellis failed to read list style for " + widget_path);
+        return std::nullopt;
+    }
+    data.style = *style;
+    auto items = space.read<std::vector<BuilderWidgets::ListItem>, std::string>(widget_path + "/meta/items");
+    if (!items) {
+        enqueue_error(space, "WidgetEventTrellis failed to read list items for " + widget_path);
+        return std::nullopt;
+    }
+    data.items = *items;
+    return data;
+}
+
+auto update_slider_hover(PathSpace& space,
+                         std::string const& widget_path,
+                         bool hovered) -> void {
+    auto data = read_slider_data(space, widget_path);
+    if (!data) {
+        return;
+    }
+    if (data->state.hovered == hovered) {
+        return;
+    }
+    data->state.hovered = hovered;
+    write_slider_state(space, widget_path, data->state);
+}
+
+
+auto clamp_slider_value(BuilderWidgets::SliderRange const& range, float value) -> float {
+    float minimum = std::min(range.minimum, range.maximum);
+    float maximum = std::max(range.minimum, range.maximum);
+    if (minimum == maximum) {
+        maximum = minimum + 1.0f;
+    }
+    float clamped = std::clamp(value, minimum, maximum);
+    if (range.step > 0.0f) {
+        float steps = std::round((clamped - minimum) / range.step);
+        clamped = minimum + steps * range.step;
+        clamped = std::clamp(clamped, minimum, maximum);
+    }
+    return clamped;
+}
+
+auto slider_value_from_local(SliderData const& data, float local_x) -> float {
+    float width = std::max(data.style.width, 1.0f);
+    float clamped_x = std::clamp(local_x, 0.0f, width);
+    float progress = clamped_x / width;
+    float value = data.range.minimum + (data.range.maximum - data.range.minimum) * progress;
+    return clamp_slider_value(data.range, value);
+}
+
+auto slider_thumb_radius(SliderData const& data) -> float {
+    return std::clamp(data.style.thumb_radius,
+                      data.style.track_height * 0.5f,
+                      data.style.height * 0.5f);
+}
+
+auto slider_hover_from_local(SliderData const& data, float local_x, float local_y) -> bool {
+    float height = std::max(data.style.height, 1.0f);
+    float thumb_r = slider_thumb_radius(data);
+    float thumb_x = (data.state.value - data.range.minimum)
+        / std::max(data.range.maximum - data.range.minimum, 1e-6f);
+    thumb_x = std::clamp(thumb_x, 0.0f, 1.0f);
+    float thumb_center_x = thumb_x * std::max(data.style.width, 1.0f);
+    float thumb_center_y = height * 0.5f;
+    float dx = local_x - thumb_center_x;
+    float dy = local_y - thumb_center_y;
+    return (dx * dx + dy * dy) <= (thumb_r * thumb_r);
+}
+
+auto list_index_from_local(ListData const& data, float local_y) -> std::optional<std::int32_t> {
+    if (data.items.empty()) {
+        return std::nullopt;
+    }
+    float row_height = std::max(data.style.item_height, 1.0f);
+    float relative = local_y + data.state.scroll_offset - data.style.border_thickness;
+    if (relative < 0.0f) {
+        return std::nullopt;
+    }
+    auto index = static_cast<std::int32_t>(std::floor(relative / row_height));
+    if (index < 0 || index >= static_cast<std::int32_t>(data.items.size())) {
+        return std::nullopt;
+    }
+    return index;
+}
+
+auto list_item_id(ListData const& data, std::int32_t index) -> std::optional<std::string> {
+    if (index < 0 || index >= static_cast<std::int32_t>(data.items.size())) {
+        return std::nullopt;
+    }
+    return data.items[static_cast<std::size_t>(index)].id;
+}
+
+auto focused_widget_path(PathSpace& space,
+                         WindowBinding const& binding) -> std::optional<std::string> {
+    auto component = window_component_for(binding.window_path);
+    if (!component) {
+        enqueue_error(space, "WidgetEventTrellis failed to derive window component for focus path");
+        return std::nullopt;
+    }
+    std::string focus_path = binding.scene_path + "/structure/window/" + *component + "/focus/current";
+    auto value = space.read<std::string, std::string>(focus_path);
+    if (!value) {
+        return std::nullopt;
+    }
+    return *value;
 }
 
 class WidgetEventTrellisWorker : public std::enable_shared_from_this<WidgetEventTrellisWorker> {
@@ -179,6 +386,7 @@ private:
             for (auto& binding : bindings_) {
                 processed |= drain_pointer(binding);
                 processed |= drain_button(binding);
+                processed |= drain_text(binding);
             }
 
             if (!processed) {
@@ -309,6 +517,25 @@ private:
         return processed;
     }
 
+    auto drain_text(WindowBinding const& binding) -> bool {
+        bool processed = false;
+        while (!stop_flag_.load(std::memory_order_relaxed)) {
+            auto taken = space_.take<SP::IO::TextEvent, std::string>(binding.text_queue);
+            if (!taken) {
+                auto const& error = taken.error();
+                if (error.code == SP::Error::Code::NoObjectFound) {
+                    break;
+                }
+                enqueue_error(space_, "WidgetEventTrellis text read failed: "
+                        + error.message.value_or("unknown error"));
+                break;
+            }
+            processed = true;
+            handle_text_event(binding, *taken);
+        }
+        return processed;
+    }
+
     void handle_pointer_event(WindowBinding const& binding,
                               SP::IO::PointerEvent const& event) {
         auto& state = pointer_state(binding.token);
@@ -328,7 +555,11 @@ private:
         }
 
         auto target = resolve_target(binding, state);
-        update_hover(binding, state, std::move(target));
+        update_hover(binding, state, target);
+        if (state.primary_down && state.slider_active_widget && target && target->kind == TargetKind::Slider
+            && target->widget_path == *state.slider_active_widget) {
+            handle_slider_update(binding, state, *target);
+        }
     }
 
     void handle_button_event(WindowBinding const& binding,
@@ -344,7 +575,28 @@ private:
             state.primary_down = true;
             state.active_target = state.hover_target;
             if (state.active_target && state.active_target->valid()) {
-                emit_widget_op(binding, *state.active_target, WidgetBindings::WidgetOpKind::Press, 1.0f, true);
+                switch (state.active_target->kind) {
+                case TargetKind::Button:
+                case TargetKind::Toggle:
+                    emit_widget_op(binding,
+                                   *state.active_target,
+                                   WidgetBindings::WidgetOpKind::Press,
+                                   1.0f,
+                                   true);
+                    break;
+                case TargetKind::Slider:
+                    handle_slider_begin(binding, state, *state.active_target);
+                    break;
+                case TargetKind::List:
+                    handle_list_press(state, *state.active_target);
+                    break;
+                case TargetKind::TreeRow:
+                case TargetKind::TreeToggle:
+                    handle_tree_press(state, *state.active_target);
+                    break;
+                default:
+                    break;
+                }
             }
             return;
         }
@@ -355,19 +607,236 @@ private:
         state.primary_down = false;
 
         if (state.active_target && state.active_target->valid()) {
-            emit_widget_op(binding, *state.active_target, WidgetBindings::WidgetOpKind::Release, 0.0f, true);
-            if (state.hover_target
-                && state.hover_target->widget_path == state.active_target->widget_path
-                && state.active_target->kind == TargetKind::Button) {
-                emit_widget_op(binding, *state.active_target, WidgetBindings::WidgetOpKind::Activate, 1.0f, true);
-            } else if (state.hover_target
-                       && state.hover_target->widget_path == state.active_target->widget_path
-                       && state.active_target->kind == TargetKind::Toggle) {
-                emit_widget_op(binding, *state.active_target, WidgetBindings::WidgetOpKind::Toggle, 1.0f, true);
+            switch (state.active_target->kind) {
+            case TargetKind::Button:
+                emit_widget_op(binding,
+                               *state.active_target,
+                               WidgetBindings::WidgetOpKind::Release,
+                               0.0f,
+                               true);
+                if (state.hover_target
+                    && state.hover_target->widget_path == state.active_target->widget_path) {
+                    emit_widget_op(binding,
+                                   *state.active_target,
+                                   WidgetBindings::WidgetOpKind::Activate,
+                                   1.0f,
+                                   true);
+                }
+                break;
+            case TargetKind::Toggle:
+                emit_widget_op(binding,
+                               *state.active_target,
+                               WidgetBindings::WidgetOpKind::Release,
+                               0.0f,
+                               true);
+                if (state.hover_target
+                    && state.hover_target->widget_path == state.active_target->widget_path) {
+                    emit_widget_op(binding,
+                                   *state.active_target,
+                                   WidgetBindings::WidgetOpKind::Toggle,
+                                   1.0f,
+                                   true);
+                }
+                break;
+            case TargetKind::Slider: {
+                bool inside = state.hover_target
+                    && state.hover_target->widget_path == state.active_target->widget_path;
+                handle_slider_commit(binding, state, inside);
+                break;
+            }
+            case TargetKind::List:
+                handle_list_release(binding, state, *state.active_target);
+                break;
+            case TargetKind::TreeRow:
+            case TargetKind::TreeToggle:
+                handle_tree_release(binding, state, *state.active_target);
+                break;
+            case TargetKind::InputField:
+                handle_text_focus(binding, state, *state.active_target);
+                break;
+            default:
+                break;
             }
         }
 
         state.active_target.reset();
+    }
+
+    void handle_slider_begin(WindowBinding const& binding,
+                             PointerState& state,
+                             TargetInfo const& target) {
+        if (!target.has_local) {
+            return;
+        }
+        auto data = read_slider_data(space_, target.widget_path);
+        if (!data) {
+            return;
+        }
+        auto value = slider_value_from_local(*data, target.local_x);
+        state.slider_active_widget = target.widget_path;
+        state.slider_active_value = value;
+        emit_widget_op(binding,
+                       target,
+                       WidgetBindings::WidgetOpKind::SliderBegin,
+                       value,
+                       true);
+    }
+
+    void handle_slider_update(WindowBinding const& binding,
+                              PointerState& state,
+                              TargetInfo const& target) {
+        if (!state.slider_active_widget
+            || *state.slider_active_widget != target.widget_path
+            || !target.has_local) {
+            return;
+        }
+        auto data = read_slider_data(space_, target.widget_path);
+        if (!data) {
+            return;
+        }
+        auto value = slider_value_from_local(*data, target.local_x);
+        if (std::abs(value - state.slider_active_value) < 1e-4f) {
+            return;
+        }
+        state.slider_active_value = value;
+        emit_widget_op(binding,
+                       target,
+                       WidgetBindings::WidgetOpKind::SliderUpdate,
+                       value,
+                       true);
+    }
+
+    void handle_slider_commit(WindowBinding const& binding,
+                              PointerState& state,
+                              bool inside) {
+        if (!state.slider_active_widget) {
+            return;
+        }
+        TargetInfo info{};
+        info.widget_path = *state.slider_active_widget;
+        info.component = "slider/thumb";
+        info.kind = TargetKind::Slider;
+        emit_widget_op(binding,
+                       info,
+                       WidgetBindings::WidgetOpKind::SliderCommit,
+                       state.slider_active_value,
+                       inside);
+        state.slider_active_widget.reset();
+    }
+
+    void handle_list_press(PointerState& state, TargetInfo const& target) {
+        if (!target.has_local) {
+            return;
+        }
+        auto data = read_list_data(space_, target.widget_path);
+        if (!data) {
+            return;
+        }
+        auto index = list_index_from_local(*data, target.local_y);
+        state.list_press_widget = target.widget_path;
+        state.list_press_index = index;
+    }
+
+    void handle_list_release(WindowBinding const& binding,
+                             PointerState& state,
+                             TargetInfo const& target) {
+        if (!state.list_press_widget || *state.list_press_widget != target.widget_path) {
+            return;
+        }
+        if (!state.list_press_index || *state.list_press_index < 0) {
+            state.list_press_widget.reset();
+            state.list_press_index.reset();
+            return;
+        }
+        if (!state.hover_target || state.hover_target->widget_path != target.widget_path) {
+            state.list_press_widget.reset();
+            state.list_press_index.reset();
+            return;
+        }
+        auto index = *state.list_press_index;
+        TargetInfo info = target;
+        info.component = "list/item/" + std::to_string(index);
+        emit_widget_op(binding,
+                       info,
+                       WidgetBindings::WidgetOpKind::ListSelect,
+                       static_cast<float>(index),
+                       true);
+        emit_widget_op(binding,
+                       info,
+                       WidgetBindings::WidgetOpKind::ListActivate,
+                       static_cast<float>(index),
+                       true);
+        state.list_press_widget.reset();
+        state.list_press_index.reset();
+    }
+
+    void handle_tree_press(PointerState& state, TargetInfo const& target) {
+        state.tree_press_widget = target.widget_path;
+        state.tree_press_node = target.tree_node_id;
+        state.tree_press_toggle = (target.kind == TargetKind::TreeToggle);
+    }
+
+    void handle_tree_release(WindowBinding const& binding,
+                             PointerState& state,
+                             TargetInfo const& target) {
+        if (!state.tree_press_widget || *state.tree_press_widget != target.widget_path) {
+            return;
+        }
+        if (!state.tree_press_node || target.tree_node_id != state.tree_press_node) {
+            state.tree_press_widget.reset();
+            state.tree_press_node.reset();
+            state.tree_press_toggle = false;
+            return;
+        }
+        auto info = target;
+        if (state.tree_press_toggle) {
+            emit_widget_op(binding,
+                           info,
+                           WidgetBindings::WidgetOpKind::TreeToggle,
+                           0.0f,
+                           true);
+        } else {
+            emit_widget_op(binding,
+                           info,
+                           WidgetBindings::WidgetOpKind::TreeSelect,
+                           0.0f,
+                           true);
+        }
+        state.tree_press_widget.reset();
+        state.tree_press_node.reset();
+        state.tree_press_toggle = false;
+    }
+
+    void handle_text_focus(WindowBinding const& binding,
+                           PointerState& state,
+                           TargetInfo const& target) {
+        state.text_focus_widget = target.widget_path;
+        emit_widget_op(binding,
+                       target,
+                       WidgetBindings::WidgetOpKind::TextFocus,
+                       0.0f,
+                       true);
+    }
+
+    void handle_text_event(WindowBinding const& binding,
+                           SP::IO::TextEvent const& event) {
+        auto& state = pointer_state(binding.token);
+        std::optional<std::string> target_widget = state.text_focus_widget;
+        if (!target_widget) {
+            target_widget = focused_widget_path(space_, binding);
+        }
+        if (!target_widget || target_widget->empty()) {
+            return;
+        }
+        TargetInfo info{};
+        info.widget_path = *target_widget;
+        info.component = "input_field/text";
+        info.kind = TargetKind::InputField;
+        emit_widget_op(binding,
+                       info,
+                       WidgetBindings::WidgetOpKind::TextInput,
+                       static_cast<float>(event.codepoint),
+                       true);
     }
 
     auto resolve_target(WindowBinding const& binding,
@@ -385,7 +854,7 @@ private:
             return std::nullopt;
         }
 
-        auto target = Widgets::ResolveHitTarget(*result);
+        auto target = BuilderWidgets::ResolveHitTarget(*result);
         if (!target) {
             return std::nullopt;
         }
@@ -393,7 +862,10 @@ private:
         TargetInfo info{};
         info.widget_path = target->widget.getPath();
         info.component = target->component;
-        info.kind = classify_component(target->component);
+        info.local_x = result->position.local_x;
+        info.local_y = result->position.local_y;
+        info.has_local = result->position.has_local;
+        parse_component(info);
         if (!info.valid()) {
             return std::nullopt;
         }
@@ -415,19 +887,78 @@ private:
         return BuildersScene::HitTest(space_, scene_path, request);
     }
 
-    static auto classify_component(std::string const& component) -> TargetKind {
-        if (component.empty()) {
-            return TargetKind::Unknown;
+    static auto parse_component(TargetInfo& info) -> void {
+        if (info.component.empty()) {
+            info.kind = TargetKind::Unknown;
+            return;
         }
-        auto slash = component.find('/');
-        auto prefix = component.substr(0, slash);
+        std::vector<std::string> parts;
+        std::string current;
+        for (char ch : info.component) {
+            if (ch == '/') {
+                if (!current.empty()) {
+                    parts.push_back(current);
+                    current.clear();
+                }
+            } else {
+                current.push_back(ch);
+            }
+        }
+        if (!current.empty()) {
+            parts.push_back(current);
+        }
+        if (parts.empty()) {
+            info.kind = TargetKind::Unknown;
+            return;
+        }
+        auto const& prefix = parts.front();
         if (prefix == "button") {
-            return TargetKind::Button;
+            info.kind = TargetKind::Button;
+            return;
         }
         if (prefix == "toggle") {
-            return TargetKind::Toggle;
+            info.kind = TargetKind::Toggle;
+            return;
         }
-        return TargetKind::Unknown;
+        if (prefix == "slider") {
+            info.kind = TargetKind::Slider;
+            return;
+        }
+        if (prefix == "list") {
+            info.kind = TargetKind::List;
+            if (parts.size() >= 3 && parts[1] == "item") {
+                info.list_item_id = parts[2];
+                try {
+                    info.list_index = std::stoi(parts[2]);
+                } catch (...) {
+                    info.list_index.reset();
+                }
+            }
+            return;
+        }
+        if (prefix == "tree") {
+            if (parts.size() >= 3 && parts[1] == "toggle") {
+                info.kind = TargetKind::TreeToggle;
+                info.tree_node_id = parts[2];
+                return;
+            }
+            if (parts.size() >= 3 && parts[1] == "row") {
+                info.kind = TargetKind::TreeRow;
+                info.tree_node_id = parts[2];
+                return;
+            }
+            info.kind = TargetKind::TreeRow;
+            return;
+        }
+        if (prefix == "input_field") {
+            info.kind = TargetKind::InputField;
+            return;
+        }
+        if (prefix == "paint_surface") {
+            info.kind = TargetKind::PaintSurface;
+            return;
+        }
+        info.kind = TargetKind::Unknown;
     }
 
     void update_hover(WindowBinding const& binding,
@@ -444,12 +975,92 @@ private:
             return;
         }
 
+        auto previous = state.hover_target;
         if (state.hover_target && state.hover_target->valid()) {
             emit_widget_op(binding, *state.hover_target, WidgetBindings::WidgetOpKind::HoverExit, 0.0f, false);
         }
         state.hover_target = target;
         if (state.hover_target && state.hover_target->valid()) {
             emit_widget_op(binding, *state.hover_target, WidgetBindings::WidgetOpKind::HoverEnter, 0.0f, true);
+        }
+        handle_hover_state(binding, state, previous, state.hover_target);
+    }
+
+    void handle_hover_state(WindowBinding const& binding,
+                            PointerState& state,
+                            std::optional<TargetInfo> const& previous,
+                            std::optional<TargetInfo> const& current) {
+        (void)binding;
+        if (previous) {
+            switch (previous->kind) {
+            case TargetKind::Slider:
+                update_slider_hover(space_, previous->widget_path, false);
+                break;
+            case TargetKind::List:
+                state.list_hover_widget.reset();
+                state.list_hover_index.reset();
+                break;
+            case TargetKind::TreeRow:
+            case TargetKind::TreeToggle:
+                state.tree_hover_widget.reset();
+                state.tree_hover_node.reset();
+                break;
+            default:
+                break;
+            }
+        }
+
+        if (!current) {
+            return;
+        }
+
+        switch (current->kind) {
+        case TargetKind::Slider:
+            update_slider_hover(space_, current->widget_path, true);
+            break;
+        case TargetKind::List: {
+            if (!current->has_local) {
+                break;
+            }
+            auto data = read_list_data(space_, current->widget_path);
+            if (!data) {
+                break;
+            }
+            auto index = list_index_from_local(*data, current->local_y);
+            if (state.list_hover_widget == current->widget_path && state.list_hover_index == index) {
+                break;
+            }
+            state.list_hover_widget = current->widget_path;
+            state.list_hover_index = index;
+            if (index) {
+                auto hover_target = *current;
+                hover_target.component = "list/item/" + std::to_string(*index);
+                emit_widget_op(binding,
+                               hover_target,
+                               WidgetBindings::WidgetOpKind::ListHover,
+                               static_cast<float>(*index),
+                               true);
+            }
+            break;
+        }
+        case TargetKind::TreeRow:
+        case TargetKind::TreeToggle:
+            if (state.tree_hover_widget == current->widget_path
+                && state.tree_hover_node == current->tree_node_id) {
+                break;
+            }
+            state.tree_hover_widget = current->widget_path;
+            state.tree_hover_node = current->tree_node_id;
+            if (current->tree_node_id) {
+                emit_widget_op(binding,
+                               *current,
+                               WidgetBindings::WidgetOpKind::TreeHover,
+                               0.0f,
+                               true);
+            }
+            break;
+        default:
+            break;
         }
     }
 

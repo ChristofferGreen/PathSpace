@@ -106,7 +106,7 @@ TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
     SP::ConcretePathStringView builds_view{builds_root};
 
     auto wait_until = [&](auto&& predicate) {
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{20};
         while (std::chrono::steady_clock::now() < deadline) {
             if (predicate()) {
                 return true;

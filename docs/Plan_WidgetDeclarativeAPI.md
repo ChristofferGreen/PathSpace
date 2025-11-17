@@ -78,12 +78,12 @@ auto main(int /*argc*/, char** /*argv*/) -> int {
 
 ## Technical Approach
 
-Declarative widgets now rely on the IO Pump feeds introduced in `docs/finished/Plan_IOPump_Finished.md` Phase 2: OS/device providers write raw events under `/system/devices/in/...`, `CreateIOTrellis` normalizes them into `/system/io/events/{pointer,button,text}`, and `CreateIOPump` republishes those events into `/system/widgets/runtime/events/<window-token>/{pointer,button,text}/queue` based on each window’s subscriptions stored under `/system/widgets/runtime/windows/<token>/subscriptions/{pointer,button,text}/devices`. Phase 3 landed `CreateWidgetEventTrellis`, which drains the per-window streams, runs `Scene::HitTest`, and emits `WidgetOp`s for button/toggle widgets today (hover, press, release, activate/toggle). Slider/list/tree/text routing remains on the TODO list once we plumb the corresponding handler bindings—see “Remaining TODOs” below for the follow-up scope.
+Declarative widgets now rely on the IO Pump feeds introduced in `docs/finished/Plan_IOPump_Finished.md` Phase 2: OS/device providers write raw events under `/system/devices/in/...`, `CreateIOTrellis` normalizes them into `/system/io/events/{pointer,button,text}`, and `CreateIOPump` republishes those events into `/system/widgets/runtime/events/<window-token>/{pointer,button,text}/queue` based on each window’s subscriptions stored under `/system/widgets/runtime/windows/<token>/subscriptions/{pointer,button,text}/devices`. Phase 3 landed `CreateWidgetEventTrellis`, which drains the per-window streams, runs `Scene::HitTest`, and now emits `WidgetOp`s for buttons, toggles, sliders, lists, trees, and text inputs (hover/press/release/drag/select/toggle/focus). Paint-surface gestures and stack panel interactions remain TODO items until those widgets grow declarative handlers—see “Remaining TODOs” below for the follow-up scope.
 
 ### Remaining TODOs (WidgetEventTrellis)
-- Extend routing beyond buttons/toggles so sliders, lists, trees, text inputs, and paint surfaces receive the same synthesized `WidgetOp` patterns that bespoke loops emit today.
-- Reuse the binding helpers (`Widgets::Bindings::Dispatch*`) or equivalent state-mutating utilities so routed events continue to update widget state/dirty hints and trigger handler bindings without duplicating logic.
-- Layer keyboard/gamepad routing (leveraging the focus controller) and text input/IME flows so declarative apps no longer need their own loops for those device classes.
+- Finish the paint-surface and stack panel routes so draw/drag gestures emit structured `WidgetOp`s (currently only logging placeholder events).
+- Reuse the binding helpers (`Widgets::Bindings::Dispatch*`) or equivalent state-mutating utilities so routed events continue to update widget state/dirty hints instead of relying solely on handlers.
+- Layer keyboard/gamepad routing (leveraging the focus controller) so declarative apps no longer need bespoke loops for those device classes; IME composition queues still need parity with legacy flows.
 
 ### Phase 0 – Foundations
 
@@ -239,7 +239,8 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - For paint surfaces, translate pointer/touch input into stroke primitives (lines, circles, pixel edits) and append them to `state/history/<id>` while triggering buffer updates. Mount the paint buffer beneath an `UndoableSpace` wrapper so stroke edits participate in undo history automatically.
    - Consume device events from existing PathIO providers (`/system/devices/in/pointer/<id>/events`, `/system/devices/in/text/<id>/events`, `/system/devices/in/gamepad/<id>/events`) using `PathIOPointerMixer` for pointer aggregation. No new IO queues are introduced; the task transforms device events into `WidgetOp` records and handles backpressure using the mixers' built-in depth/timeout policies.
    - ✅ (November 17, 2025) `CreateInputTask` now resolves `HandlerBinding` records, invokes the bound button/toggle/slider/list/tree/input handlers, and publishes metrics at `/system/widgets/runtime/input/metrics/{handlers_invoked_total,handler_failures_total,handler_missing_total,last_handler_ns}` while logging dispatch failures to `/system/widgets/runtime/input/log/errors/queue`.
-   - **Remaining TODOs:** extend `WidgetEventTrellis` so slider/list/tree/text widgets emit the richer `WidgetOp`s this dispatcher already understands, add paint-surface and stack-panel dispatch contexts once their events exist, and surface per-widget success counters for handler debugging.
+   - ✅ (November 17, 2025) `CreateWidgetEventTrellis` now emits `WidgetOp`s for sliders (begin/update/commit), lists (hover/select/activate), trees (hover/toggle/select), and text inputs (focus/input) in addition to the existing button/toggle route. Regression coverage lives in `tests/ui/test_WidgetEventTrellis.cpp` so declarative apps no longer need bespoke loops for those widgets.
+   - **Remaining TODOs:** wire paint-surface and stack-panel dispatch contexts once their events exist, and surface per-widget success counters/telemetry for handler debugging.
 6. **Rendering pipeline**
    - Renderer consumes cached widget buckets without traversing widget trees each frame.
    - Aggregator combines updated buckets into the scene snapshot when notified of dirty widgets.

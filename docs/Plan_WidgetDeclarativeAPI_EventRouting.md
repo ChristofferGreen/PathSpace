@@ -10,6 +10,8 @@ _Last updated: October 31, 2025_
 
 > **Update (November 17, 2025):** `CreateInputTask` now resolves `HandlerBinding` records on each `WidgetAction`, invokes the corresponding button/toggle/slider/list/tree/input handlers (paint + stack handlers remain TODO), logs failures to `/system/widgets/runtime/input/log/errors/queue`, and publishes telemetry under `/system/widgets/runtime/input/metrics/{handlers_invoked_total,handler_failures_total,handler_missing_total,last_handler_ns}`.
 
+> **Update (November 17, 2025):** WidgetEventTrellis now emits `WidgetOp`s for slider drags (begin/update/commit), list hover/select/activate flows, tree toggle/select flows, and text focus/input in addition to the existing button/toggle coverage. Paint-surface gestures and stack-panel switching remain TODOs.
+
 ## Auto-render request queue
 - **Path**: `<target>/events/renderRequested/queue`
 - **Producers**: `SP::UI::Builders::Detail::enqueue_auto_render_event` is invoked from widget bindings (button/toggle/slider/list/tree), focus helpers, and scene hit-testing code to request redraws after state mutations (see `src/pathspace/ui/BuildersDetail.hpp:189`, `src/pathspace/ui/WidgetBindings.cpp`, `src/pathspace/ui/SceneBuilders.cpp`).

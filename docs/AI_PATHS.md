@@ -72,6 +72,7 @@ Conventions:
   - `/system/widgets/runtime/events/global/{pointer,button,text}/queue` — unmatched events (no window subscription) land here for diagnostics/tooling.
   - `/system/widgets/runtime/events/state/running` — bool flag toggled by `CreateWidgetEventTrellis` / `ShutdownWidgetEventTrellis`.
   - `/system/widgets/runtime/events/metrics/{pointer_events_total,button_events_total,widget_ops_total,hit_test_failures_total,last_dispatch_ns}` — routing telemetry for the WidgetEventTrellis worker.
+  - `CreateWidgetEventTrellis` currently emits `WidgetOp`s for buttons, toggles, sliders, lists, trees, and text inputs; paint-surface gestures remain TODOs.
   - `/system/widgets/runtime/events/log/errors/queue` — string queue capturing hit-test and routing failures.
 
 ## 2) Application subtree layout (app-relative)
