@@ -72,6 +72,8 @@ add_library(PathSpace
     log/TaggedLogger.cpp
     PathSpace.cpp
     layer/PathSpaceTrellis.cpp
+    io/IoEventsSerialization.cpp
+    runtime/IOPump.cpp
 )
 
 if(PATHSPACE_ENABLE_APP)
@@ -92,6 +94,7 @@ if(PATHSPACE_ENABLE_EXTRA)
         layer/io/PathIOKeyboard.cpp
         layer/io/PathIODeviceDiscovery.cpp
         layer/io/PathIOStdOut.cpp
+        io/IoTrellis.cpp
     )
     target_compile_definitions(PathSpace PUBLIC PATHSPACE_ENABLE_EXTRA=1)
 else()

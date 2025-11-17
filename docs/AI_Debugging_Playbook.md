@@ -22,6 +22,7 @@ This guide consolidates the practical steps for investigating failures across un
 - Logs land under `build/test-logs/` using the pattern `<test>_loop<iteration>of<total>_<timestamp>.log` if a failure occurs.
 - `PATHSPACE_LOG` defaults to `1` in the helper so tagged logging is enabled when an error surfaces; adjust via `--env PATHSPACE_LOG=0` if you need silence.
 - Want to exercise the Metal presenter path locally? Append `--enable-metal-tests` (macOS only) so the helper sets `PATHSPACE_UI_METAL=ON` during configuration and runs the suites with `PATHSPACE_ENABLE_METAL_UPLOADS=1`.
+- Watching the IO Pump? Check `/system/widgets/runtime/input/metrics/{pointer_events_total,button_events_total,text_events_total,events_dropped_total,last_pump_ns}` plus `/system/widgets/runtime/io/state/running` to confirm the worker is alive and consuming Trellis events. Pump errors share the same `/system/widgets/runtime/input/log/errors/queue` as reducer failures, so grep for `io_pump` tags when diagnosing drops.
 
 ### 1.2 Single test reproduction
 

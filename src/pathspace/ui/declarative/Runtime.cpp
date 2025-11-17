@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -259,7 +260,7 @@ auto LaunchStandard(PathSpace& space, LaunchOptions const& options) -> SP::Expec
     }
 
     if (options.start_input_runtime) {
-        auto started = SP::UI::Declarative::EnsureInputTask(space, options.input_task_options);
+        auto started = SP::UI::Declarative::CreateInputTask(space, options.input_task_options);
         if (!started) {
             return std::unexpected(started.error());
         }
@@ -267,10 +268,22 @@ auto LaunchStandard(PathSpace& space, LaunchOptions const& options) -> SP::Expec
         result.input_runtime_state_path = std::string{kInputRuntimeState};
     }
 
+    if (options.start_io_pump) {
+        auto pump_started = SP::Runtime::CreateIOPump(space, options.io_pump_options);
+        if (!pump_started) {
+            return std::unexpected(pump_started.error());
+        }
+        result.io_pump_started = *pump_started;
+        result.io_pump_state_path = options.io_pump_options.state_path.empty()
+            ? std::string{"/system/widgets/runtime/io/state/running"}
+            : options.io_pump_options.state_path;
+    }
+
     return result;
 }
 
 auto ShutdownDeclarativeRuntime(PathSpace& space) -> void {
+    SP::Runtime::ShutdownIOPump(space);
     SP::UI::Declarative::ShutdownInputTask(space);
 }
 
@@ -404,6 +417,31 @@ auto Create(PathSpace& space,
                                                   view_base + "/renderer",
                                                   binding->renderer_relative);
         !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto runtime_token = SP::Runtime::MakeRuntimeWindowToken(window->getPath());
+    std::string runtime_base = "/system/widgets/runtime/windows/";
+    runtime_base.append(runtime_token);
+
+    if (auto status = ensure_value<std::string>(space,
+                                        runtime_base + "/window",
+                                        window->getPath());
+        !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto ensure_vector = [&](std::string const& path) -> SP::Expected<void> {
+        return ensure_value<std::vector<std::string>>(space, path, std::vector<std::string>{});
+    };
+
+    if (auto status = ensure_vector(runtime_base + "/subscriptions/pointer/devices"); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = ensure_vector(runtime_base + "/subscriptions/button/devices"); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = ensure_vector(runtime_base + "/subscriptions/text/devices"); !status) {
         return std::unexpected(status.error());
     }
 

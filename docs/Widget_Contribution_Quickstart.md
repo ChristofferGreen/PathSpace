@@ -16,7 +16,7 @@ examples, tests, and tooling.
   and keep `cmake --build build -j` handy while iterating.
 - Plan to run the full 15× UI loop before committing:
   `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20`.
-- Runtime bootstrap tip (November 14, 2025): `SP::System::LaunchStandard`, `SP::App::Create`, `SP::Window::Create`, and `SP::Scene::Create` now seed `/config/theme`, `/config/renderer/default`, `windows/<id>/views/<view>/{scene,surface,renderer}`, and `scenes/<id>/structure/window/<window>` automatically and start the `/system/widgets/runtime/input` pump. Call `SP::System::ShutdownDeclarativeRuntime` in short-lived tests/examples when you do not want the pump thread to survive `PathSpace` teardown.
+- Runtime bootstrap tip (November 17, 2025): `SP::System::LaunchStandard`, `SP::App::Create`, `SP::Window::Create`, and `SP::Scene::Create` now seed `/config/theme`, `/config/renderer/default`, `windows/<id>/views/<view>/{scene,surface,renderer}`, and `scenes/<id>/structure/window/<window>` automatically and start both the `/system/widgets/runtime/input` worker and the `/system/widgets/runtime/io` pump by default. Window creation also registers `/system/widgets/runtime/windows/<token>` entries so bridges can populate `subscriptions/{pointer,button,text}/devices` (device paths such as `/system/devices/in/pointer/default`). Call `SP::System::ShutdownDeclarativeRuntime` in short-lived tests/examples when you do not want either worker thread to survive `PathSpace` teardown.
 
 ## Widget Data Contract (must stay in sync)
 

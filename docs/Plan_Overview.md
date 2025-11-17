@@ -33,7 +33,10 @@ Provide a single index of active planning documents, ordered by current priority
 8. **Plan_PrimeScript.md** (research)  
    Exploratory unified scripting/shading language idea; no implementation scheduled.
 
-9. **Plan_PathSpaceTrellis_Finished.md**  
+9. **Plan_IOPump.md**  
+   Input runtime roadmap that introduces the IO Trellis, IO Pump, routing Trellis, and telemetry/throttling knobs feeding declarative widgets.
+
+10. **Plan_PathSpaceTrellis_Finished.md**  
    Final record for the completed trellis redesign. _Historical fan-in work has been archived in `docs/finished/Plan_PathSpace_FanIn_Abandoned.md` for reference._
 
 ## Recommended Implementation Focus (Q4 2025)
@@ -44,7 +47,9 @@ Provide a single index of active planning documents, ordered by current priority
 5. **Plan_Surface_Ray_Cache.md** — revisit once core rendering + web requirements are satisfied (deferred).
 6. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
 
-## Status Snapshot — November 14, 2025
+## Status Snapshot — November 17, 2025
+- ✅ (November 17, 2025) IO Trellis Phase 1 landed: `CreateIOTrellis` now drains `/system/devices/in/{pointer,text,keyboard,gamepad}` providers, emits canonical events under `/system/io/events/{pointer,button,text}`, exposes metrics at `/system/io/events/metrics/*`, and ships with coverage in `tests/unit/io/test_IoTrellis.cpp`. Telemetry stays off until `/_system/telemetry/io/events_enabled` is toggled.
+- ✅ (November 17, 2025) IO Pump Phase 2 landed: `CreateIOPump` registers window subscriptions under `/system/widgets/runtime/windows/<token>`, forwards Trellis events into `/system/widgets/runtime/events/<token>/{pointer,button,text}/queue` (with `/global/*` fallbacks), and records per-stream metrics plus drop counts beside the existing input runtime stats.
 - ✅ (November 14, 2025) PathSpaceTrellis fan-in layer rebuilt; see `docs/finished/Plan_PathSpaceTrellis_Finished.md` for the final notes.
 - ✅ (November 10, 2025) Snapshot infrastructure removed: `UndoableSpace` now ships journal-only history, the snapshot codecs/tests/inspection tooling are gone, and `pathspace_history_inspect` reports journal metrics (entries, inserts, takes, barriers) instead of decoding snapshot payloads. Persistence/import/export paths operate solely on mutation logs.
 - ✅ (November 10, 2025) Journal persistence format is now documented for tooling consumers. See `docs/AI_Architecture.md` (“Journal Persistence Format”) for header layout, entry schema, and versioning guidance.

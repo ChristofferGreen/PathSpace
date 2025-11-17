@@ -18,6 +18,7 @@ TEST_CASE("Scene lifecycle exposes dirty event queues") {
 
     SP::System::LaunchOptions launch_options{};
     launch_options.start_input_runtime = false;
+    launch_options.start_io_pump = false;
     auto launch = SP::System::LaunchStandard(space, launch_options);
     REQUIRE(launch);
 
@@ -66,6 +67,7 @@ TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
 
     SP::System::LaunchOptions launch_options{};
     launch_options.start_input_runtime = false;
+    launch_options.start_io_pump = false;
     REQUIRE(SP::System::LaunchStandard(space, launch_options));
 
     auto app_root = SP::App::Create(space, "scene_lifecycle_metrics");
@@ -136,6 +138,7 @@ TEST_CASE("Focus and theme changes invalidate declarative widgets") {
 
     SP::System::LaunchOptions launch_options{};
     launch_options.start_input_runtime = false;
+    launch_options.start_io_pump = false;
     REQUIRE(SP::System::LaunchStandard(space, launch_options));
 
     auto app_root = SP::App::Create(space, "scene_lifecycle_focus_theme");

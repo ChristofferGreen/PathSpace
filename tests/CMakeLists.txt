@@ -23,6 +23,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/history/test_UndoJournalState.cpp
   unit/history/test_UndoJournalPersistence.cpp
   unit/history/test_UndoableSpace.cpp
+  unit/runtime/test_IOPump.cpp
   test_main.cpp
 )
 
@@ -44,6 +45,7 @@ if(PATHSPACE_ENABLE_EXTRA)
     unit/layer/test_PathIOPointerMixer.cpp
     unit/layer/test_PathIOGamepad.cpp
     unit/layer/test_PointerDefault_Composition.cpp
+    unit/io/test_IoTrellis.cpp
   )
 endif()
 

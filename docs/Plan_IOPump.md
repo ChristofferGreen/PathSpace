@@ -29,14 +29,14 @@
 - ### Phase 0 – Foundations
   - ✅ (November 16, 2025) Defined canonical normalized event structs + paths in `include/pathspace/io/IoEvents.hpp` and updated `/system/io/events/{pointer,button,text,pose}` + `/system/devices/in/<class>/<id>/config/push/*` documentation (AI_Paths/AI_Architecture). Providers/tests reference the shared types going forward.
   - ✅ (November 16, 2025) Added provider config nodes (enable/rate_limit/max_queue/telemetry/subscribers) via `DevicePushConfigNodes`, wiring mouse/keyboard/gamepad PathIO layers plus sample apps; tests cover the new surfaces.
-  - ☐ Document launch options + environment flags (docs/AI_PATHS.md, docs/AI_ARCHITECTURE.md).
-  - ☐ Rename runtime-start helpers that actually create services (e.g., `EnsureInputTask`, `EnsureIOPump`) to `Create*` for consistent nomenclature across the plan and implementation.
+  - ✅ (November 17, 2025) Documented IO runtime launch options and provider environment flags in `docs/AI_ARCHITECTURE.md` (“IO runtime launch & environment knobs”) and `docs/AI_PATHS.md` (Device IO + declarative runtime sections), clarifying defaults and per-node behavior.
+  - ✅ (November 17, 2025) Renamed `EnsureInputTask` → `CreateInputTask` in headers/sources/tests and updated docs to consistently refer to future `CreateIOPump` helpers so all runtime-start APIs follow the `Create*` convention.
 - ### Phase 1 – IO Trellis
-  - ☐ Implement `CreateIOTrellis(PathSpace&, IoTrellisOptions const&)` that watches mouse/keyboard/gamepad paths and publishes normalized queues.
-  - ☐ Add opt-in telemetry signals (disabled until `/_system/telemetry/...` toggled).
+  - ✅ (November 17, 2025) Landed `CreateIOTrellis(PathSpace&, IoTrellisOptions const&)` + `IoTrellisHandle` (`include/pathspace/io/IoTrellis.hpp`, `src/pathspace/io/IoTrellis.cpp`). The worker auto-discovers `/system/devices/in/{pointer,text,keyboard,gamepad}/*`, enables push/subscriber config, drains provider queues, and writes canonical `PointerEvent`/`ButtonEvent`/`TextEvent` payloads into `/system/io/events/{pointer,button,text}`. Regression coverage lives in `tests/unit/io/test_IoTrellis.cpp`.
+  - ✅ (November 17, 2025) Added opt-in telemetry: `/_system/telemetry/io/events_enabled` gates publishing, and `CreateIOTrellis` emits counters under `/system/io/events/metrics/{pointer_events_total,button_events_total,text_events_total}` once enabled.
 - ### Phase 2 – IO Pump (Action Layer)
-  - ☐ Implement `CreateIOPump` / `ShutdownIOPump` that block on the IO Trellis outputs and forward events to per-window streams.
-  - ☐ Add metrics under `/system/widgets/runtime/input/metrics/*` mirroring the existing input worker.
+  - ✅ (November 17, 2025) Landed `CreateIOPump(PathSpace&, IoPumpOptions const&)` + `ShutdownIOPump` inside `include/pathspace/runtime/IOPump.hpp` / `src/pathspace/runtime/IOPump.cpp`. The worker watches `/system/io/events/{pointer,button,text}`, tracks window subscriptions under `/system/widgets/runtime/windows/<token>/subscriptions/{pointer,button,text}/devices`, and fans events into per-window queues at `/system/widgets/runtime/events/<token>/{pointer,button,text}/queue` with a global fallback.
+  - ✅ (November 17, 2025) Extended `/system/widgets/runtime/input/metrics/*` with `pointer_events_total`, `button_events_total`, `text_events_total`, `events_dropped_total`, and `last_pump_ns` so telemetry mirrors the InputTask worker.
 - ### Phase 3 – WidgetEventTrellis (Routing)
   - ☐ Implement `CreateWidgetEventTrellis(PathSpace&, WidgetEventTrellisOptions const&)` that consumes the pump outputs, runs hit tests, and writes `WidgetOp`s.
   - ☐ Publish diagnostics/logs for routing failures (missing scene, empty hit, etc.).
@@ -75,16 +75,20 @@ struct StylusInfo {
 struct PointerEvent {
     std::string device_path; // e.g., /system/devices/in/pointer/default
     std::uint64_t pointer_id; // per-device contact ID (0 for single-pointer devices)
-    float delta_x;
-    float delta_y;
-    float absolute_x; // last known absolute position (best-effort for relative devices)
-    float absolute_y;
-    bool absolute;    // true when hardware reports absolute coordinates
+    struct Motion {
+        float delta_x;
+        float delta_y;
+        float absolute_x;
+        float absolute_y;
+        bool absolute;
+    } motion;
     PointerType type; // Mouse, Stylus, Touch, GamepadStick, VRController, etc.
     std::optional<Pose> pose; // VR controllers / headsets populate this
     std::optional<StylusInfo> stylus; // populated for stylus-capable devices
-    ButtonModifiers modifiers; // bitmask (Shift, Ctrl, Alt, Command, Function)
-    std::chrono::nanoseconds timestamp;
+    struct Meta {
+        ButtonModifiers modifiers;
+        std::chrono::nanoseconds timestamp;
+    } meta;
 };
 
 enum class ButtonSource {
@@ -101,18 +105,22 @@ struct ButtonEvent {
     std::string device_path; // full provider path for traceability
     uint32_t button_code;    // HID-style code or platform keycode (for keyboards)
     int button_id;           // logical index (e.g., 0=left mouse, 1=right mouse, ASCII for keyboards when available)
-    bool pressed;
-    bool repeat;             // true when auto-repeat generated the event (keyboards)
-    float analog_value;      // 0..1 for analog buttons/triggers (0 for digital-only devices)
-    ButtonModifiers modifiers;
-    std::chrono::nanoseconds timestamp;
+    struct State {
+        bool pressed;
+        bool repeat;
+        float analog_value;
+    } state;
+    struct Meta {
+        ButtonModifiers modifiers;
+        std::chrono::nanoseconds timestamp;
+    } meta;
 };
 
 // Gamepad stick mapping note: the IO Trellis emits PointerEvent entries with
 // type = PointerType::GamepadStick, pointer_id identifying the stick (0 = left,
-// 1 = right, etc.), absolute_x/absolute_y = normalized stick deflection [-1,1],
-// and delta_x/delta_y = per-sample changes. Triggers/analog buttons continue to
-// use ButtonEvent with non-zero analog_value.
+// 1 = right, etc.), motion.absolute_{x,y} = normalized stick deflection [-1,1],
+// and motion.delta_{x,y} = per-sample changes. Triggers/analog buttons continue
+// to use ButtonEvent::state.analog_value.
 
 // VR controller note: controllers publish PointerEvent entries with type
 // PointerType::VRController, pointer_id = hand index, pose populated with the
@@ -186,10 +194,12 @@ Key helpers referenced above:
 - `update_metrics` keeps `/system/widgets/runtime/input/metrics/*` in sync (widgets processed, events routed, drops, last_pump_ns).
 
 ## Deliverables
-- `include/pathspace/runtime/IOPump.hpp` + `src/pathspace/runtime/IOPump.cpp` (naming TBD) exporting `CreateIOPump`.
+- `include/pathspace/runtime/IOPump.hpp` + `src/pathspace/runtime/IOPump.cpp` exporting `CreateIOPump`/`ShutdownIOPump` plus `MakeRuntimeWindowToken`.
 - IO Trellis + routing Trellis helpers (header + source) inside `src/pathspace/ui/declarative`.
 - Updated docs: `Plan_WidgetDeclarativeAPI.md`, `Plan_WidgetDeclarativeAPI_EventRouting.md`, `AI_PATHS.md`, `AI_ARCHITECTURE.md`, plus this plan.
 - Telemetry/throttling config nodes under `/system/devices/in/<class>/<id>/config/*` with shared documentation.
+- Runtime subscription surface: `/system/widgets/runtime/windows/<token>` stores `window` (absolute window path) and `subscriptions/{pointer,button,text}/devices` vectors so OS/window bridges can register interested device paths.
+- Per-window queues live under `/system/widgets/runtime/events/<token>/{pointer,button,text}/queue` with `global/*` fallbacks for tools that have not registered their windows yet.
 
 ## Open Questions / Risks
 - **Blocking sources in Trellis** — today Trellis expects tree mutations as triggers. We may need a lightweight watcher that copies device events into the tree before Trellis can react. This plan assumes we can stage that work without blocking the entire Trellis thread.

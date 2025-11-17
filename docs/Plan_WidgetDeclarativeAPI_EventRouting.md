@@ -6,6 +6,8 @@ _Last updated: October 31, 2025_
 
 > **Decision (November 14, 2025):** Declarative routes were removed. Widgets now execute the `events/<event>/handler` callable directly without intermediate routing tables. The details below describe the shelved design and remain here purely for historical reference.
 
+> **Update (November 17, 2025):** IO Pump Phase 2 introduced canonical per-window event queues at `/system/widgets/runtime/events/<window-token>/{pointer,button,text}/queue` plus `/global/*` fallbacks. Window bridges register device subscriptions under `/system/widgets/runtime/windows/<token>/subscriptions/{pointer,button,text}/devices`. The upcoming routing Trellis will drain those queues instead of bespoke app loops.
+
 ## Auto-render request queue
 - **Path**: `<target>/events/renderRequested/queue`
 - **Producers**: `SP::UI::Builders::Detail::enqueue_auto_render_event` is invoked from widget bindings (button/toggle/slider/list/tree), focus helpers, and scene hit-testing code to request redraws after state mutations (see `src/pathspace/ui/BuildersDetail.hpp:189`, `src/pathspace/ui/WidgetBindings.cpp`, `src/pathspace/ui/SceneBuilders.cpp`).

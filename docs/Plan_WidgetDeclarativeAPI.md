@@ -78,6 +78,8 @@ auto main(int /*argc*/, char** /*argv*/) -> int {
 
 ## Technical Approach
 
+Declarative widgets now rely on the IO Pump feeds introduced in `Plan_IOPump.md` Phase 2: OS/device providers write raw events under `/system/devices/in/...`, `CreateIOTrellis` normalizes them into `/system/io/events/{pointer,button,text}`, and `CreateIOPump` republishes those events into `/system/widgets/runtime/events/<window-token>/{pointer,button,text}/queue` based on each window’s subscriptions stored under `/system/widgets/runtime/windows/<token>/subscriptions/{pointer,button,text}/devices`. Phase 3’s routing Trellis will consume those per-window streams to run hit tests and emit `WidgetOp`s without bespoke example loops.
+
 ### Phase 0 – Foundations
 
 #### Canonical Path Schema

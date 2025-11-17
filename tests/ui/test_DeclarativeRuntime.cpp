@@ -13,6 +13,7 @@ TEST_CASE("Declarative runtime wires app, window, and scene") {
 
     SP::System::LaunchOptions launch_options{};
     launch_options.start_input_runtime = false;
+    launch_options.start_io_pump = false;
     auto launch = SP::System::LaunchStandard(space, launch_options);
     REQUIRE(launch);
     CHECK_FALSE(launch->default_theme_path.empty());
@@ -76,6 +77,7 @@ TEST_CASE("Declarative input task drains widget ops") {
 
     SP::System::LaunchOptions launch_options{};
     launch_options.input_task_options.poll_interval = std::chrono::milliseconds{1};
+    launch_options.start_io_pump = false;
     auto launch = SP::System::LaunchStandard(space, launch_options);
     REQUIRE(launch);
 

@@ -2,6 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
+#include <pathspace/runtime/IOPump.hpp>
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/declarative/InputTask.hpp>
 
@@ -15,6 +16,8 @@ struct LaunchOptions {
     std::string default_theme_name = "default";
     bool start_input_runtime = true;
     SP::UI::Declarative::InputTaskOptions input_task_options{};
+    bool start_io_pump = true;
+    SP::Runtime::IoPumpOptions io_pump_options{};
 };
 
 struct LaunchResult {
@@ -22,6 +25,8 @@ struct LaunchResult {
     std::string default_theme_path;
     bool input_runtime_started = false;
     std::string input_runtime_state_path;
+    bool io_pump_started = false;
+    std::string io_pump_state_path;
 };
 
 [[nodiscard]] auto LaunchStandard(PathSpace& space,
