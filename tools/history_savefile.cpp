@@ -73,6 +73,7 @@ std::string error_code_to_string(Error::Code code) {
     case Error::Code::TypeMismatch: return "TypeMismatch";
     case Error::Code::NotFound: return "NotFound";
     case Error::Code::NotSupported: return "NotSupported";
+    case Error::Code::CapacityExceeded: return "CapacityExceeded";
     }
     return "UnknownError";
 }
