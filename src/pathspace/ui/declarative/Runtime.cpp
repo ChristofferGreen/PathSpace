@@ -279,10 +279,23 @@ auto LaunchStandard(PathSpace& space, LaunchOptions const& options) -> SP::Expec
             : options.io_pump_options.state_path;
     }
 
+    if (options.start_io_telemetry_control) {
+        auto telemetry_started = SP::Runtime::CreateTelemetryControl(space,
+                                                                     options.telemetry_control_options);
+        if (!telemetry_started) {
+            return std::unexpected(telemetry_started.error());
+        }
+        result.telemetry_control_started = *telemetry_started;
+        result.telemetry_state_path = options.telemetry_control_options.state_path.empty()
+            ? std::string{"/_system/telemetry/io/state/running"}
+            : options.telemetry_control_options.state_path;
+    }
+
     return result;
 }
 
 auto ShutdownDeclarativeRuntime(PathSpace& space) -> void {
+    SP::Runtime::ShutdownTelemetryControl(space);
     SP::Runtime::ShutdownIOPump(space);
     SP::UI::Declarative::ShutdownInputTask(space);
 }

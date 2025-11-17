@@ -74,6 +74,7 @@ add_library(PathSpace
     layer/PathSpaceTrellis.cpp
     io/IoEventsSerialization.cpp
     runtime/IOPump.cpp
+    runtime/TelemetryControl.cpp
 )
 
 if(PATHSPACE_ENABLE_APP)

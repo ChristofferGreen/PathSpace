@@ -45,6 +45,12 @@ Conventions:
 - System IO (logs)
   - `/system/io/stdout`
   - `/system/io/stderr`
+- Telemetry + push control (runtime-managed)
+  - `/_system/telemetry/start/queue` / `/_system/telemetry/stop/queue` — accept `TelemetryToggleCommand` payloads to flip telemetry and device mirrors via `CreateTelemetryControl`.
+  - `/_system/telemetry/io/state/running` — bool flag reflecting the telemetry controller lifecycle.
+  - `/_system/telemetry/log/errors/queue` — string queue capturing command failures (bad device paths, invalid payloads, etc.).
+  - `/_system/io/push/subscriptions/queue` — accepts `DevicePushCommand` payloads; the controller toggles `config/push/enabled`, `config/push/subscribers/<name>`, and optional telemetry overrides for the targeted devices.
+  - `/_system/io/push/throttle/queue` — accepts `DeviceThrottleCommand` payloads; updates `/config/push/{rate_limit_hz,max_queue}` for each matched device.
 - Telemetry toggles
   - `/_system/telemetry/io/events_enabled` — bool gate for IO Trellis metrics/publication, default `false`.
 - Declarative runtime (global services)

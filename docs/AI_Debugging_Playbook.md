@@ -24,6 +24,17 @@ This guide consolidates the practical steps for investigating failures across un
 - Want to exercise the Metal presenter path locally? Append `--enable-metal-tests` (macOS only) so the helper sets `PATHSPACE_UI_METAL=ON` during configuration and runs the suites with `PATHSPACE_ENABLE_METAL_UPLOADS=1`.
 - Watching the IO Pump? Check `/system/widgets/runtime/input/metrics/{pointer_events_total,button_events_total,text_events_total,events_dropped_total,last_pump_ns}` plus `/system/widgets/runtime/io/state/running` to confirm the worker is alive and consuming Trellis events. Pump errors share the same `/system/widgets/runtime/input/log/errors/queue` as reducer failures, so grep for `io_pump` tags when diagnosing drops.
 
+### 1.4 Telemetry, throttling, and subscriber toggles
+
+- `CreateTelemetryControl` is enabled by default (see `LaunchOptions::start_io_telemetry_control`). Use it to flip telemetry without spelunking through every device path:
+  - Enable metrics: `space.insert("/_system/telemetry/start/queue", SP::Runtime::TelemetryToggleCommand{.enable = true});`
+  - Disable: push `.enable = false` to `/_system/telemetry/stop/queue`.
+  - Health: verify `/_system/telemetry/io/state/running = true` and tail `/_system/telemetry/log/errors/queue` for malformed commands.
+- Device push/subscriber tweaks:
+  - Queue `DevicePushCommand{.device = "/system/devices/in/pointer/default", .subscriber = "io_trellis", .enable = true}` at `/_system/io/push/subscriptions/queue` to opt a device+subscriber pair in. Set `.device = "*"` or `/system/devices/in/pointer/*` to broadcast across multiple mounts. Use `.set_telemetry = true` to force `config/push/telemetry_enabled` for the same devices.
+  - Queue `DeviceThrottleCommand{.device = "*", .set_rate_limit = true, .rate_limit_hz = 480, .set_max_queue = true, .max_queue = 64}` at `/_system/io/push/throttle/queue` to clamp every provider. Commands without `set_rate_limit` and `set_max_queue` set are ignored (and reported via the telemetry log).
+- Every command runs asynchronously; confirm success by re-reading the relevant nodes (config paths or metrics roots). When debugging throttling or subscriber issues in production, capture both the command you posted and the resulting telemetry log entry so follow-up shifts understand the change history.
+
 ### 1.2 Single test reproduction
 
 Use doctest filters with the wrapper when isolating a case:

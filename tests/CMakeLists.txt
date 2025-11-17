@@ -24,6 +24,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/history/test_UndoJournalPersistence.cpp
   unit/history/test_UndoableSpace.cpp
   unit/runtime/test_IOPump.cpp
+  unit/runtime/test_TelemetryControl.cpp
   test_main.cpp
 )
 

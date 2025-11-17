@@ -33,8 +33,8 @@ Provide a single index of active planning documents, ordered by current priority
 8. **Plan_PrimeScript.md** (research)  
    Exploratory unified scripting/shading language idea; no implementation scheduled.
 
-9. **Plan_IOPump.md**  
-   Input runtime roadmap that introduces the IO Trellis, IO Pump, routing Trellis, and telemetry/throttling knobs feeding declarative widgets.
+9. **Plan_IOPump_Finished.md**  
+   Input runtime roadmap that introduces the IO Trellis, IO Pump, routing Trellis, and telemetry/throttling knobs feeding declarative widgets. _Completed November 17, 2025 — see `docs/finished/Plan_IOPump_Finished.md` for history._
 
 10. **Plan_PathSpaceTrellis_Finished.md**  
    Final record for the completed trellis redesign. _Historical fan-in work has been archived in `docs/finished/Plan_PathSpace_FanIn_Abandoned.md` for reference._

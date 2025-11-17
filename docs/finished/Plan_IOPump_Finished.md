@@ -1,4 +1,6 @@
-# Plan: IO Pump & Input Trellis
+# Plan: IO Pump & Input Trellis (Finished)
+
+> **Status (November 17, 2025):** Plan completed after landing telemetry/throttling controls (Phase 4). Future updates should reference this document for historical context and use the runtime APIs described below.
 
 ## Motivation
 - Today each sample app (or the macOS window bridge) owns an infinite loop that polls PathIO providers and hand-wires hit testing. Declarative widgets never see input unless every app reimplements that plumbing.
@@ -38,11 +40,11 @@
   - ✅ (November 17, 2025) Landed `CreateIOPump(PathSpace&, IoPumpOptions const&)` + `ShutdownIOPump` inside `include/pathspace/runtime/IOPump.hpp` / `src/pathspace/runtime/IOPump.cpp`. The worker watches `/system/io/events/{pointer,button,text}`, tracks window subscriptions under `/system/widgets/runtime/windows/<token>/subscriptions/{pointer,button,text}/devices`, and fans events into per-window queues at `/system/widgets/runtime/events/<token>/{pointer,button,text}/queue` with a global fallback.
   - ✅ (November 17, 2025) Extended `/system/widgets/runtime/input/metrics/*` with `pointer_events_total`, `button_events_total`, `text_events_total`, `events_dropped_total`, and `last_pump_ns` so telemetry mirrors the InputTask worker.
 - ### Phase 3 – WidgetEventTrellis (Routing)
-  - ☐ Implement `CreateWidgetEventTrellis(PathSpace&, WidgetEventTrellisOptions const&)` that consumes the pump outputs, runs hit tests, and writes `WidgetOp`s.
-  - ☐ Publish diagnostics/logs for routing failures (missing scene, empty hit, etc.).
+  - ✅ (November 17, 2025) Added `CreateWidgetEventTrellis(PathSpace&, WidgetEventTrellisOptions const&)` / `ShutdownWidgetEventTrellis` plus per-window pointer state so the worker drains `/system/widgets/runtime/events/<token>/{pointer,button}` queues, runs `Scene::HitTest`, and emits `WidgetOp`s for button/toggle widgets (hover/press/release/activate/toggle). Remaining work: extend routing to slider/list/tree/text widgets and sync reducer hooks once handler bindings land.
+  - ✅ (November 17, 2025) Routing diagnostics land under `/system/widgets/runtime/events/log/errors/queue` with telemetry at `/system/widgets/runtime/events/metrics/*` (`pointer_events_total`, `button_events_total`, `widget_ops_total`, `hit_test_failures_total`, `last_dispatch_ns`) plus `/system/widgets/runtime/events/state/running`.
 - ### Phase 4 – Handler Integration & Tooling
-  - ☐ Wire reducers to handler bindings once Phase 1 item 5 from the declarative plan lands.
-  - ☐ Provide troubleshooting docs + toggles for telemetry, throttling, and subscription-based push.
+  - ✅ (November 17, 2025) Wired the declarative input task to handler bindings: the worker now resolves `events/<event>/handler = HandlerBinding` entries, looks up the in-memory registry, invokes button/toggle/slider/list/tree/input callbacks, and records results under `/system/widgets/runtime/input/metrics/{handlers_invoked_total,handler_failures_total,handler_missing_total,last_handler_ns}` with failures mirrored into `/system/widgets/runtime/input/log/errors/queue`.
+  - ✅ (November 17, 2025) Introduced `CreateTelemetryControl` / `TelemetryControlOptions`. The worker watches `/_system/telemetry/start|stop/queue`, `/_system/io/push/subscriptions/queue`, and `/_system/io/push/throttle/queue`, toggles `/_system/telemetry/io/state/running`, and fans out device push/telemetry updates across `/system/devices/in/<class>/<id>/config/push/*`. Troubleshooting docs now describe the command flow plus the shared error log at `/_system/telemetry/log/errors/queue`.
 
 ## Pseudo-code Sketch
 
@@ -200,6 +202,7 @@ Key helpers referenced above:
 - Telemetry/throttling config nodes under `/system/devices/in/<class>/<id>/config/*` with shared documentation.
 - Runtime subscription surface: `/system/widgets/runtime/windows/<token>` stores `window` (absolute window path) and `subscriptions/{pointer,button,text}/devices` vectors so OS/window bridges can register interested device paths.
 - Per-window queues live under `/system/widgets/runtime/events/<token>/{pointer,button,text}/queue` with `global/*` fallbacks for tools that have not registered their windows yet.
+- Telemetry control commands: Queue a `TelemetryToggleCommand` on `/_system/telemetry/start/queue` or `/_system/telemetry/stop/queue` to flip `/_system/telemetry/io/events_enabled`, submit `DevicePushCommand` payloads to `/_system/io/push/subscriptions/queue` to opt specific devices/subscribers in or out (with optional telemetry mirroring), and push `DeviceThrottleCommand` entries through `/_system/io/push/throttle/queue` to set `config/push/{rate_limit_hz,max_queue}` for one device, a prefix (e.g., `/system/devices/in/pointer/*`), or every device via `device="*"`. All activity is logged under `/_system/telemetry/log/errors/queue`, and the controller exposes its lifecycle flag at `/_system/telemetry/io/state/running` for health checks.
 
 ## Open Questions / Risks
 - **Blocking sources in Trellis** — today Trellis expects tree mutations as triggers. We may need a lightweight watcher that copies device events into the tree before Trellis can react. This plan assumes we can stage that work without blocking the entire Trellis thread.

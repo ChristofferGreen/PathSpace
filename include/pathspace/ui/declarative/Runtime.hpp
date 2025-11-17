@@ -3,6 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/runtime/IOPump.hpp>
+#include <pathspace/runtime/TelemetryControl.hpp>
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/declarative/InputTask.hpp>
 
@@ -18,6 +19,8 @@ struct LaunchOptions {
     SP::UI::Declarative::InputTaskOptions input_task_options{};
     bool start_io_pump = true;
     SP::Runtime::IoPumpOptions io_pump_options{};
+    bool start_io_telemetry_control = true;
+    SP::Runtime::TelemetryControlOptions telemetry_control_options{};
 };
 
 struct LaunchResult {
@@ -27,6 +30,8 @@ struct LaunchResult {
     std::string input_runtime_state_path;
     bool io_pump_started = false;
     std::string io_pump_state_path;
+    bool telemetry_control_started = false;
+    std::string telemetry_state_path;
 };
 
 [[nodiscard]] auto LaunchStandard(PathSpace& space,
