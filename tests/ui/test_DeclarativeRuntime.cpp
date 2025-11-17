@@ -167,4 +167,19 @@ TEST_CASE("Declarative input task invokes registered handlers") {
     }
     CHECK(observed);
 
+    auto events_inbox = std::string(button->getPath()) + "/events/inbox/queue";
+    auto press_events = std::string(button->getPath()) + "/events/press/queue";
+
+    auto inbox_event = space.take<SP::UI::Builders::Widgets::Reducers::WidgetAction>(
+        events_inbox,
+        SP::Out{} & SP::Block{200ms});
+    REQUIRE(inbox_event);
+    CHECK(inbox_event->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Activate);
+
+    auto press_event = space.take<SP::UI::Builders::Widgets::Reducers::WidgetAction>(
+        press_events,
+        SP::Out{} & SP::Block{200ms});
+    REQUIRE(press_event);
+    CHECK(press_event->sequence == inbox_event->sequence);
+
 }

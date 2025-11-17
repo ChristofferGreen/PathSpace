@@ -12,6 +12,8 @@ _Last updated: October 31, 2025_
 
 > **Update (November 17, 2025):** WidgetEventTrellis now emits `WidgetOp`s for slider drags (begin/update/commit), list hover/select/activate flows, tree toggle/select flows, and text focus/input in addition to the existing button/toggle coverage. Paint-surface gestures and stack-panel switching remain TODOs.
 
+> **Update (November 17, 2025):** The declarative runtime mirrors every reduced `WidgetAction` into `widgets/<id>/events/inbox/queue` plus per-event queues (`events/press/queue`, `events/toggle/queue`, etc.) and tracks enqueue/drop telemetry via `/system/widgets/runtime/input/metrics/{events_enqueued_total,events_dropped_total}`.
+
 ## Auto-render request queue
 - **Path**: `<target>/events/renderRequested/queue`
 - **Producers**: `SP::UI::Builders::Detail::enqueue_auto_render_event` is invoked from widget bindings (button/toggle/slider/list/tree), focus helpers, and scene hit-testing code to request redraws after state mutations (see `src/pathspace/ui/BuildersDetail.hpp:189`, `src/pathspace/ui/WidgetBindings.cpp`, `src/pathspace/ui/SceneBuilders.cpp`).
@@ -32,6 +34,12 @@ _Last updated: October 31, 2025_
 - **Payload**: `WidgetAction { kind, widget_path, target_id, pointer, analog_value, discrete_index, sequence, timestamp_ns }` (`include/pathspace/ui/Builders.hpp:2290-2304`).
 - **Consumers**: Application logic that prefers semantic actions over raw ops; examples wire the queue into logging and automation harnesses.
 - **Notes**: Queue is optional; reducers also return the action vector directly. Like `WidgetOp`, there is no routing metadata beyond `widget_path`.
+
+### `widgets/<widget>/events/inbox/queue`
+- **Producers**: `CreateInputTask` mirrors every reduced `WidgetAction` before resolving handler bindings. Successful enqueue also pushes the same payload into `widgets/<widget>/events/<event>/queue` for the event name associated with the handler binding (`press`, `toggle`, `change`, `child_event`, `node_event`, `submit`).
+- **Payload**: Identical to `WidgetAction` so tooling can reuse the existing structs/decoders.
+- **Consumers**: Diagnostics, automation harnesses, or future middleware that want to observe canonical widget events without touching the reducers. Because the queue is managed by the input runtime, events appear even when apps bypass the legacy actions queue.
+- **Notes**: Enqueue/drop telemetry surfaces via `/system/widgets/runtime/input/metrics/{events_enqueued_total,events_dropped_total}`; failures also log to `/system/widgets/runtime/input/log/errors/queue` with the widget path + handler event.
 
 ## Related device/event entry points
 - PathIO adapters expose device event queues at `<device mount>/events` (mouse, keyboard, gamepad) with device-specific payload structs (`src/pathspace/layer/io/PathIOMouse.hpp`, `src/pathspace/layer/io/PathIOKeyboard.hpp`, `src/pathspace/layer/io/PathIOGamepad.cpp`). Declarative widgets ingest these events indirectly through existing input mixers before dispatching `WidgetOp` records.

@@ -70,6 +70,8 @@ constexpr SchemaEntry kWidgetCommonEntries[] = {
     {"layout/computed/children/<child-name>", NodeKind::Value, Requirement::RuntimeManaged, "Computed layout metrics for each child widget."},
     {"children/<child-name>", NodeKind::Directory, Requirement::Optional, "Child widget fragments keyed by stable names."},
     {"events/<event>/handler", NodeKind::Callable, Requirement::Optional, "Callable executed when the widget event fires."},
+    {"events/inbox/queue", NodeKind::Queue, Requirement::RuntimeManaged, "Canonical event queue populated with WidgetAction payloads."},
+    {"events/<event>/queue", NodeKind::Queue, Requirement::Optional, "Per-event filtered queue mirroring `events/inbox/queue`."},
     {"render/synthesize", NodeKind::Callable, Requirement::Required, "Callable that produces the widget's DrawableBucketSnapshot."},
     {"render/bucket", NodeKind::Value, Requirement::RuntimeManaged, "Cached render bucket for the current widget state."},
     {"render/dirty", NodeKind::Flag, Requirement::RuntimeManaged, "Dirty flag signaling cached render data must be refreshed."},

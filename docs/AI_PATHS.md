@@ -59,6 +59,7 @@ Conventions:
   - `/system/widgets/runtime/input/state/running` — bool flag toggled by `SP::System::LaunchStandard`/`ShutdownDeclarativeRuntime`.
   - `/system/widgets/runtime/input/metrics/{widgets_processed_total,widgets_with_work_total,actions_published_total,last_pump_ns}`
   - `/system/widgets/runtime/input/metrics/{handlers_invoked_total,handler_failures_total,handler_missing_total,last_handler_ns}` — handler-dispatch telemetry produced by `CreateInputTask`.
+  - `/system/widgets/runtime/input/metrics/{events_enqueued_total,events_dropped_total}` — mirrors how many widget events were mirrored into the canonical queues vs. dropped due to storage errors.
   - `/system/widgets/runtime/input/log/errors/queue` — string queue capturing reducer/pump failures.
   - Launch controls:
     - `LaunchOptions::start_input_runtime` (default `true`) decides whether `CreateInputTask` launches automatically when `LaunchStandard` runs.
@@ -133,6 +134,7 @@ The following subtrees are standardized within each application root (one of the
         - `dump/*` — optional blobs captured for that request (framebuffers, GPU counters)
 - Widgets (details in `docs/Widget_Schema_Reference.md`)
   - `widgets/<widget-id>/` — canonical widget roots; the appendix tracks every `state/*`, `meta/*`, `layout/*`, `events/*`, and `render/*` leaf so this file can stay focused on high-level namespace placement.
+  - `widgets/<widget-id>/events/inbox/queue` — runtime-populated stream of `WidgetAction` payloads emitted whenever the trellis reduces ops for that widget; consumers can also watch `events/<event>/queue` for filtered views (press, toggle, change, child_event, node_event, submit).
   - `widgets/focus/current` and `widgets/<id>/focus/{current,order}` — app-level and per-widget focus mirrors maintained by the focus controller.
   - `scenes/widgets/<widget-id>/` — widget snapshot subtrees (`states/*`, `current_revision`, `meta/*`) consumed by renderer targets.
 

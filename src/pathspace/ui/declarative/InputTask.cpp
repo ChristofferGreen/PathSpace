@@ -46,6 +46,8 @@ constexpr std::string_view kMetricsHandlersInvoked = "/system/widgets/runtime/in
 constexpr std::string_view kMetricsHandlerFailures = "/system/widgets/runtime/input/metrics/handler_failures_total";
 constexpr std::string_view kMetricsHandlerMissing = "/system/widgets/runtime/input/metrics/handler_missing_total";
 constexpr std::string_view kMetricsLastHandler = "/system/widgets/runtime/input/metrics/last_handler_ns";
+constexpr std::string_view kMetricsEventsEnqueued = "/system/widgets/runtime/input/metrics/events_enqueued_total";
+constexpr std::string_view kMetricsEventsDropped = "/system/widgets/runtime/input/metrics/events_dropped_total";
 constexpr std::string_view kLogErrors = "/system/widgets/runtime/input/log/errors/queue";
 
 template <typename T>
@@ -90,6 +92,12 @@ auto ensure_runtime_roots(PathSpace& space) -> SP::Expected<void> {
     if (auto status = ensure_value<std::uint64_t>(space, std::string{kMetricsLastHandler}, 0); !status) {
         return status;
     }
+    if (auto status = ensure_value<std::uint64_t>(space, std::string{kMetricsEventsEnqueued}, 0); !status) {
+        return status;
+    }
+    if (auto status = ensure_value<std::uint64_t>(space, std::string{kMetricsEventsDropped}, 0); !status) {
+        return status;
+    }
     return {};
 }
 
@@ -110,6 +118,8 @@ struct PumpStats {
     std::size_t handler_failures = 0;
     std::size_t handler_missing = 0;
     std::uint64_t last_handler_ns = 0;
+    std::size_t events_enqueued = 0;
+    std::size_t events_dropped = 0;
 };
 
 auto now_ns() -> std::uint64_t;
@@ -176,6 +186,57 @@ auto format_handler_error(SP::UI::Builders::Widgets::Reducers::WidgetAction cons
     oss << "InputTask handler error for " << action.widget_path
         << " event '" << event << "': " << message;
     return oss.str();
+}
+
+auto format_event_error(SP::UI::Builders::Widgets::Reducers::WidgetAction const& action,
+                        std::string_view event,
+                        std::string_view message) -> std::string {
+    std::ostringstream oss;
+    oss << "InputTask event enqueue error for " << action.widget_path
+        << " event '" << event << "': " << message;
+    return oss.str();
+}
+
+auto event_inbox_path(std::string const& widget_path) -> std::string {
+    std::string path = widget_path;
+    path.append("/events/inbox/queue");
+    return path;
+}
+
+auto event_specific_path(std::string const& widget_path, std::string_view event) -> std::string {
+    std::string path = widget_path;
+    path.append("/events/");
+    path.append(event);
+    path.append("/queue");
+    return path;
+}
+
+void enqueue_widget_event(PathSpace& space,
+                          SP::UI::Builders::Widgets::Reducers::WidgetAction const& action,
+                          HandlerRoute const& route,
+                          PumpStats& stats) {
+    bool dropped = false;
+    auto insert_event = [&](std::string const& path) {
+        auto inserted = space.insert(path, action);
+        if (!inserted.errors.empty()) {
+            auto const& error = inserted.errors.front();
+            auto message = error.message.value_or("unknown error");
+            enqueue_error(space,
+                          format_event_error(action,
+                                             route.event,
+                                             std::string(message).append(" (path: ").append(path).append(")")));
+            dropped = true;
+        }
+    };
+
+    insert_event(event_inbox_path(action.widget_path));
+    insert_event(event_specific_path(action.widget_path, route.event));
+
+    if (dropped) {
+        stats.events_dropped++;
+    } else {
+        stats.events_enqueued++;
+    }
 }
 
 auto invoke_handler(PathSpace& space,
@@ -273,6 +334,8 @@ void dispatch_action(PathSpace& space,
     if (!route) {
         return;
     }
+
+    enqueue_widget_event(space, action, *route, stats);
 
     auto path = handler_binding_path(action.widget_path, route->event);
     auto binding = space.read<HandlerBinding, std::string>(path);
@@ -415,6 +478,8 @@ private:
         total_handlers_ += stats.handlers_invoked;
         total_handler_failures_ += stats.handler_failures;
         total_handler_missing_ += stats.handler_missing;
+        total_events_enqueued_ += stats.events_enqueued;
+        total_events_dropped_ += stats.events_dropped;
         if (stats.last_handler_ns != 0) {
             last_handler_ns_ = stats.last_handler_ns;
         }
@@ -427,6 +492,8 @@ private:
         (void)replace_single<std::uint64_t>(space_, std::string{kMetricsHandlerFailures}, total_handler_failures_);
         (void)replace_single<std::uint64_t>(space_, std::string{kMetricsHandlerMissing}, total_handler_missing_);
         (void)replace_single<std::uint64_t>(space_, std::string{kMetricsLastHandler}, last_handler_ns_);
+        (void)replace_single<std::uint64_t>(space_, std::string{kMetricsEventsEnqueued}, total_events_enqueued_);
+        (void)replace_single<std::uint64_t>(space_, std::string{kMetricsEventsDropped}, total_events_dropped_);
     }
 
 private:
@@ -442,6 +509,8 @@ private:
     std::uint64_t total_handler_failures_ = 0;
     std::uint64_t total_handler_missing_ = 0;
     std::uint64_t last_handler_ns_ = 0;
+    std::uint64_t total_events_enqueued_ = 0;
+    std::uint64_t total_events_dropped_ = 0;
 };
 
 std::mutex g_runtime_mutex;

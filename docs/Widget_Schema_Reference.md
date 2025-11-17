@@ -43,6 +43,8 @@ These nodes exist under every declarative widget root (`widgets/<widget-id>/…`
 | `layout/{orientation,spacing,computed/*}` | value | opt/rt | Layout hints plus computed metrics. |
 | `children/<child-name>` | dir | opt | Nested widget fragments. |
 | `events/<event>/handler` | callable | opt | Stores `HandlerBinding { registry_key, kind }`; runtime resolves registry ids to lambdas. |
+| `events/inbox/queue` | queue | rt | Canonical `WidgetAction` stream populated by the declarative runtime. |
+| `events/<event>/queue` | queue | opt | Optional filtered queue (press/toggle/change/etc.) for tooling that only needs a single event family. |
 | `render/synthesize` | value | req | `RenderDescriptor` describing the widget kind. |
 | `render/bucket` | value | rt | Cached `DrawableBucketSnapshot` rebuilt when `render/dirty` flips. |
 | `render/dirty` | flag | rt | Raised by helpers whenever state/style changes. |
@@ -156,6 +158,8 @@ Descriptor status: paint surfaces expose brush metadata + GPU flags through the 
 
 - `widgets/<id>/ops/inbox/queue` — `WidgetOp` events produced by bindings.
 - `widgets/<id>/ops/actions/inbox/queue` — Reduced `WidgetAction` payloads from reducers.
+- `widgets/<id>/events/inbox/queue` — Canonical event queue emitted by the declarative runtime (same payload as `WidgetAction`).
+- `widgets/<id>/events/<event>/queue` — Filtered queues scoped to a handler name (press, toggle, change, child_event, node_event, submit, draw, etc.).
 - `<target>/events/renderRequested/queue` — Auto-render requests emitted when widgets mutate.
 - `structure/window/<window>/accessibility/dirty` + `widgets/<id>/accessibility/*` — macOS bridge uses these nodes to synchronize with VoiceOver (see `Plan_WidgetDeclarativeAPI.md` for details).
 

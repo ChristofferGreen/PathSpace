@@ -229,9 +229,8 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - ✅ (November 15, 2025) Focus controller now assigns depth-first `focus/order` indices, mirrors active widgets via `widgets/<id>/focus/current`, and writes the active widget path to `structure/window/<window-id>/focus/current`. Declarative helpers rebuild the order whenever focus changes, so keyboard/gamepad traversal no longer requires app-authored lists. `tests/ui/test_DeclarativeWidgets.cpp` exercises the metadata + window mirror flow end-to-end.
    - ✅ (November 15, 2025) Wired the declarative dispatcher into the focus controller: `Widgets::Focus::Move(space, config, Direction)` now derives traversal order from the runtime metadata, so keyboard/gamepad routing simply calls the controller without maintaining bespoke focus lists. UITests cover the new overload and the auto-render telemetry it triggers during Tab/Shift+Tab and gamepad hops.
 4. **Event dispatch**
-   - Forward raw pointer/keyboard events into PathSpace queues.
-   - Define canonical event paths with payload metadata.
-   - Keep enqueue lightweight; hit-testing identifies widget IDs; input processing node looks up `events/.../handler` callables and invokes them directly.
+   - ✅ (November 17, 2025) InputTask now mirrors every reduced `WidgetAction` into `widgets/<id>/events/inbox/queue` plus per-event queues (`events/press/queue`, `events/toggle/queue`, `events/change/queue`, etc.), publishes enqueue telemetry under `/system/widgets/runtime/input/metrics/{events_enqueued_total,events_dropped_total}`, and logs enqueue failures to `/system/widgets/runtime/input/log/errors/queue`.
+   - ✅ (November 17, 2025) The runtime keeps enqueue lightweight by reusing reducer payloads; handler dispatch resolves the same canonical queue before invoking `events/.../handler` callables, so tooling can read the queue without touching reducers.
    - Ensure fragment mounts relocate handler callables when they are inserted, and provide helpers for scenes to wrap/replace handlers on demand.
 5. **Input processing node**
    - Runtime pump now drains widget ops into `WidgetAction` queues; follow-ups must extend it to invoke widget handlers and commit resultant state updates.
