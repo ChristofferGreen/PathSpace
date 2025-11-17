@@ -8,6 +8,8 @@ _Last updated: October 31, 2025_
 
 > **Update (November 17, 2025):** IO Pump Phase 2 introduced canonical per-window event queues at `/system/widgets/runtime/events/<window-token>/{pointer,button,text}/queue` plus `/global/*` fallbacks. Window bridges register device subscriptions under `/system/widgets/runtime/windows/<token>/subscriptions/{pointer,button,text}/devices`. The upcoming routing Trellis will drain those queues instead of bespoke app loops.
 
+> **Update (November 17, 2025):** `CreateInputTask` now resolves `HandlerBinding` records on each `WidgetAction`, invokes the corresponding button/toggle/slider/list/tree/input handlers (paint + stack handlers remain TODO), logs failures to `/system/widgets/runtime/input/log/errors/queue`, and publishes telemetry under `/system/widgets/runtime/input/metrics/{handlers_invoked_total,handler_failures_total,handler_missing_total,last_handler_ns}`.
+
 ## Auto-render request queue
 - **Path**: `<target>/events/renderRequested/queue`
 - **Producers**: `SP::UI::Builders::Detail::enqueue_auto_render_event` is invoked from widget bindings (button/toggle/slider/list/tree), focus helpers, and scene hit-testing code to request redraws after state mutations (see `src/pathspace/ui/BuildersDetail.hpp:189`, `src/pathspace/ui/WidgetBindings.cpp`, `src/pathspace/ui/SceneBuilders.cpp`).
@@ -37,6 +39,12 @@ _Last updated: October 31, 2025_
 - Declarative helpers now emit a small `HandlerBinding` struct at `events/<event>/handler` with `{ registry_key, kind }`. The registry key is generated as `<widget_root>#<event>#<sequence>` so removal simply drops every entry matching the widget root prefix.
 - Actual `std::function` callbacks live in an in-memory registry keyed by that id. Consumers resolve the binding id at dispatch time (button press, slider change, etc.) and invoke the stored lambda with the appropriate context (`ButtonContext`, `SliderContext`, ...).
 - The helper automatically registers/unregisters bindings when fragments mount or `Widgets::Remove` is called, so PathSpace never stores raw function objects.
+
+### Runtime handler telemetry
+
+- `/system/widgets/runtime/input/metrics/{handlers_invoked_total,handler_failures_total,handler_missing_total,last_handler_ns}` provide a running count of successful dispatches, registry/handler mismatches, total failures (binding mismatches, exceptions), and the most recent successful handler timestamp, respectively.
+- `/system/widgets/runtime/input/log/errors/queue` receives stringified failure entries (missing registry keys, handler kind mismatches, exceptions thrown from handlers) so diagnostics only need to watch a single queue for reducer + dispatch errors.
+- Missing handler bindings (i.e., no `events/<event>/handler` node) are treated as opt-out: the dispatcher simply records the action for downstream consumers without logging a failure, enabling widgets that intentionally decline to attach handlers.
 
 ## Observations for declarative routing contract
 - Existing queues assume a single logical consumer; the plan now introduces shared route tables under `<scene>/widgets/runtime/routes/...` plus per-widget defaults to unlock multi-route dispatch without breaking legacy queues.

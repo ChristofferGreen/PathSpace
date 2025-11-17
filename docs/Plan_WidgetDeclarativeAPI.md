@@ -78,7 +78,12 @@ auto main(int /*argc*/, char** /*argv*/) -> int {
 
 ## Technical Approach
 
-Declarative widgets now rely on the IO Pump feeds introduced in `docs/finished/Plan_IOPump_Finished.md` Phase 2: OS/device providers write raw events under `/system/devices/in/...`, `CreateIOTrellis` normalizes them into `/system/io/events/{pointer,button,text}`, and `CreateIOPump` republishes those events into `/system/widgets/runtime/events/<window-token>/{pointer,button,text}/queue` based on each window’s subscriptions stored under `/system/widgets/runtime/windows/<token>/subscriptions/{pointer,button,text}/devices`. Phase 3’s routing Trellis will consume those per-window streams to run hit tests and emit `WidgetOp`s without bespoke example loops.
+Declarative widgets now rely on the IO Pump feeds introduced in `docs/finished/Plan_IOPump_Finished.md` Phase 2: OS/device providers write raw events under `/system/devices/in/...`, `CreateIOTrellis` normalizes them into `/system/io/events/{pointer,button,text}`, and `CreateIOPump` republishes those events into `/system/widgets/runtime/events/<window-token>/{pointer,button,text}/queue` based on each window’s subscriptions stored under `/system/widgets/runtime/windows/<token>/subscriptions/{pointer,button,text}/devices`. Phase 3 landed `CreateWidgetEventTrellis`, which drains the per-window streams, runs `Scene::HitTest`, and emits `WidgetOp`s for button/toggle widgets today (hover, press, release, activate/toggle). Slider/list/tree/text routing remains on the TODO list once we plumb the corresponding handler bindings—see “Remaining TODOs” below for the follow-up scope.
+
+### Remaining TODOs (WidgetEventTrellis)
+- Extend routing beyond buttons/toggles so sliders, lists, trees, text inputs, and paint surfaces receive the same synthesized `WidgetOp` patterns that bespoke loops emit today.
+- Reuse the binding helpers (`Widgets::Bindings::Dispatch*`) or equivalent state-mutating utilities so routed events continue to update widget state/dirty hints and trigger handler bindings without duplicating logic.
+- Layer keyboard/gamepad routing (leveraging the focus controller) and text input/IME flows so declarative apps no longer need their own loops for those device classes.
 
 ### Phase 0 – Foundations
 
@@ -233,6 +238,8 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - Ensure the task runs safely on existing task pool, honors the handler return enum, records failures to `<widget>/log/events`, and exposes logging hooks.
    - For paint surfaces, translate pointer/touch input into stroke primitives (lines, circles, pixel edits) and append them to `state/history/<id>` while triggering buffer updates. Mount the paint buffer beneath an `UndoableSpace` wrapper so stroke edits participate in undo history automatically.
    - Consume device events from existing PathIO providers (`/system/devices/in/pointer/<id>/events`, `/system/devices/in/text/<id>/events`, `/system/devices/in/gamepad/<id>/events`) using `PathIOPointerMixer` for pointer aggregation. No new IO queues are introduced; the task transforms device events into `WidgetOp` records and handles backpressure using the mixers' built-in depth/timeout policies.
+   - ✅ (November 17, 2025) `CreateInputTask` now resolves `HandlerBinding` records, invokes the bound button/toggle/slider/list/tree/input handlers, and publishes metrics at `/system/widgets/runtime/input/metrics/{handlers_invoked_total,handler_failures_total,handler_missing_total,last_handler_ns}` while logging dispatch failures to `/system/widgets/runtime/input/log/errors/queue`.
+   - **Remaining TODOs:** extend `WidgetEventTrellis` so slider/list/tree/text widgets emit the richer `WidgetOp`s this dispatcher already understands, add paint-surface and stack-panel dispatch contexts once their events exist, and surface per-widget success counters for handler debugging.
 6. **Rendering pipeline**
    - Renderer consumes cached widget buckets without traversing widget trees each frame.
    - Aggregator combines updated buckets into the scene snapshot when notified of dirty widgets.

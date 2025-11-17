@@ -2,6 +2,8 @@
 
 #include <pathspace/ui/TextBuilder.hpp>
 
+#include <cstring>
+
 namespace SP::UI::Builders::Widgets {
 
 using namespace Detail;
@@ -2019,11 +2021,25 @@ namespace {
 auto widget_name_from_root(std::string const& app_root,
                            std::string const& widget_root) -> SP::Expected<std::string> {
     auto prefix = app_root + "/widgets/";
-    if (widget_root.rfind(prefix, 0) != 0) {
+    if (widget_root.rfind(prefix, 0) == 0) {
+        auto name = widget_root.substr(prefix.size());
+        if (name.empty()) {
+            return std::unexpected(make_error("widget path missing identifier", SP::Error::Code::InvalidPath));
+        }
+        return name;
+    }
+
+    auto windows_prefix = app_root + "/windows/";
+    if (widget_root.rfind(windows_prefix, 0) != 0) {
         return std::unexpected(make_error("widget path must belong to app widgets subtree",
                                           SP::Error::Code::InvalidPath));
     }
-    auto name = widget_root.substr(prefix.size());
+    auto widgets_pos = widget_root.find("/widgets/", windows_prefix.size());
+    if (widgets_pos == std::string::npos) {
+        return std::unexpected(make_error("widget path missing '/widgets' segment",
+                                          SP::Error::Code::InvalidPath));
+    }
+    auto name = widget_root.substr(widgets_pos + std::strlen("/widgets/"));
     if (name.empty()) {
         return std::unexpected(make_error("widget path missing identifier", SP::Error::Code::InvalidPath));
     }

@@ -291,12 +291,25 @@ auto LaunchStandard(PathSpace& space, LaunchOptions const& options) -> SP::Expec
             : options.telemetry_control_options.state_path;
     }
 
+    if (options.start_widget_event_trellis) {
+        auto trellis_started = SP::UI::Declarative::CreateWidgetEventTrellis(space,
+                                                                             options.widget_event_options);
+        if (!trellis_started) {
+            return std::unexpected(trellis_started.error());
+        }
+        result.widget_event_trellis_started = *trellis_started;
+        result.widget_event_trellis_state_path = options.widget_event_options.state_path.empty()
+            ? std::string{"/system/widgets/runtime/events/state/running"}
+            : options.widget_event_options.state_path;
+    }
+
     return result;
 }
 
 auto ShutdownDeclarativeRuntime(PathSpace& space) -> void {
-    SP::Runtime::ShutdownTelemetryControl(space);
+    SP::UI::Declarative::ShutdownWidgetEventTrellis(space);
     SP::Runtime::ShutdownIOPump(space);
+    SP::Runtime::ShutdownTelemetryControl(space);
     SP::UI::Declarative::ShutdownInputTask(space);
 }
 

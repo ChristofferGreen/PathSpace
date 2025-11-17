@@ -1,5 +1,7 @@
 #pragma once
 
+#include <pathspace/core/Error.hpp>
+
 #include <chrono>
 #include <cstdint>
 #include <optional>
@@ -62,17 +64,36 @@ struct StylusInfo {
     bool  eraser   = false;
 };
 
-struct PointerEvent {
-    std::string device_path;
-    std::uint64_t pointer_id = 0;
+struct PointerMotion {
     float delta_x = 0.0f;
     float delta_y = 0.0f;
     float absolute_x = 0.0f;
     float absolute_y = 0.0f;
     bool absolute = false;
+};
+
+struct PointerMeta {
+    ButtonModifiers modifiers = ButtonModifiers::None;
+    std::chrono::nanoseconds timestamp{};
+};
+
+struct PointerEvent {
+    std::string device_path;
+    std::uint64_t pointer_id = 0;
+    PointerMotion motion{};
     PointerType type = PointerType::Mouse;
     std::optional<Pose> pose{};
     std::optional<StylusInfo> stylus{};
+    PointerMeta meta{};
+};
+
+struct ButtonState {
+    bool pressed = false;
+    bool repeat = false;
+    float analog_value = 0.0f;
+};
+
+struct ButtonMeta {
     ButtonModifiers modifiers = ButtonModifiers::None;
     std::chrono::nanoseconds timestamp{};
 };
@@ -82,11 +103,8 @@ struct ButtonEvent {
     std::string device_path;
     std::uint32_t button_code = 0;
     int button_id = 0;
-    bool pressed = false;
-    bool repeat = false;
-    float analog_value = 0.0f;
-    ButtonModifiers modifiers = ButtonModifiers::None;
-    std::chrono::nanoseconds timestamp{};
+    ButtonState state{};
+    ButtonMeta meta{};
 };
 
 struct TextEvent {
@@ -116,3 +134,44 @@ struct DevicePushConfigSnapshot {
 
 } // namespace SP::IO
 
+namespace SP {
+
+struct SlidingBuffer;
+
+template <typename T>
+auto serialize(T const& value, SlidingBuffer& buffer) -> std::optional<Error>;
+
+template <typename T>
+auto deserialize(SlidingBuffer const& buffer) -> Expected<T>;
+
+template <typename T>
+auto deserialize_pop(SlidingBuffer& buffer) -> Expected<T>;
+
+template <>
+auto serialize(IO::PointerEvent const& event, SlidingBuffer& buffer) -> std::optional<Error>;
+
+template <>
+auto serialize(IO::ButtonEvent const& event, SlidingBuffer& buffer) -> std::optional<Error>;
+
+template <>
+auto serialize(IO::TextEvent const& event, SlidingBuffer& buffer) -> std::optional<Error>;
+
+template <>
+auto deserialize<IO::PointerEvent>(SlidingBuffer const& buffer) -> Expected<IO::PointerEvent>;
+
+template <>
+auto deserialize_pop<IO::PointerEvent>(SlidingBuffer& buffer) -> Expected<IO::PointerEvent>;
+
+template <>
+auto deserialize<IO::ButtonEvent>(SlidingBuffer const& buffer) -> Expected<IO::ButtonEvent>;
+
+template <>
+auto deserialize_pop<IO::ButtonEvent>(SlidingBuffer& buffer) -> Expected<IO::ButtonEvent>;
+
+template <>
+auto deserialize<IO::TextEvent>(SlidingBuffer const& buffer) -> Expected<IO::TextEvent>;
+
+template <>
+auto deserialize_pop<IO::TextEvent>(SlidingBuffer& buffer) -> Expected<IO::TextEvent>;
+
+} // namespace SP

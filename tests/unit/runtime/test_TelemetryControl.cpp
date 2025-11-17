@@ -96,6 +96,17 @@ TEST_CASE("TelemetryControl applies subscriber commands") {
     options.block_timeout = 1ms;
     options.idle_sleep = 1ms;
 
+    auto drain_logs = [&](char const* label) {
+        while (true) {
+            auto log_entry = space.take<std::string, std::string>(options.log_path);
+            if (!log_entry) {
+                break;
+            }
+            auto message = std::string(label) + ": " + *log_entry;
+            INFO(message.c_str());
+        }
+    };
+
     auto device = std::string{"/system/devices/in/pointer/default"};
     ensure_device_defaults(space, device);
 
@@ -112,10 +123,20 @@ TEST_CASE("TelemetryControl applies subscriber commands") {
     command.enable = true;
     command.set_telemetry = true;
     command.telemetry_enabled = true;
-    space.insert(options.push_command_queue, command);
+    auto command_insert = space.insert(options.push_command_queue, command);
+    REQUIRE(command_insert.errors.empty());
+    drain_logs("after-subscribe-command");
 
     CHECK(wait_for_bool(space, device + "/config/push/enabled", true));
+    if (auto subscriber_value = space.read<bool, std::string>(device + "/config/push/subscribers/telemetry_test"); subscriber_value) {
+        auto info_message = std::string("subscriber value before wait: ") + (*subscriber_value ? "true" : "false");
+        INFO(info_message.c_str());
+    } else {
+        auto error_message = std::string("subscriber read error: ") + subscriber_value.error().message.value_or("unknown");
+        INFO(error_message.c_str());
+    }
     CHECK(wait_for_bool(space, device + "/config/push/subscribers/telemetry_test", true));
+    drain_logs("final-subscriber");
     CHECK(wait_for_bool(space, device + "/config/push/telemetry_enabled", true));
 
     SP::Runtime::ShutdownTelemetryControl(space);

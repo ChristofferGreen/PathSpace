@@ -12,11 +12,11 @@ struct InputTaskOptions {
 };
 
 /**
- * Ensure that the declarative input task is running for the provided PathSpace.
+ * Create the declarative input task for the provided PathSpace if it is not already running.
  *
  * @return true when a new worker was started, false if one was already running.
  */
-auto EnsureInputTask(PathSpace& space,
+auto CreateInputTask(PathSpace& space,
                      InputTaskOptions const& options = {}) -> SP::Expected<bool>;
 
 /**
@@ -25,4 +25,3 @@ auto EnsureInputTask(PathSpace& space,
 auto ShutdownInputTask(PathSpace& space) -> void;
 
 } // namespace SP::UI::Declarative
-

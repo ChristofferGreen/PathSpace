@@ -32,7 +32,7 @@ This guide consolidates the practical steps for investigating failures across un
   - Health: verify `/_system/telemetry/io/state/running = true` and tail `/_system/telemetry/log/errors/queue` for malformed commands.
 - Device push/subscriber tweaks:
   - Queue `DevicePushCommand{.device = "/system/devices/in/pointer/default", .subscriber = "io_trellis", .enable = true}` at `/_system/io/push/subscriptions/queue` to opt a device+subscriber pair in. Set `.device = "*"` or `/system/devices/in/pointer/*` to broadcast across multiple mounts. Use `.set_telemetry = true` to force `config/push/telemetry_enabled` for the same devices.
-  - Queue `DeviceThrottleCommand{.device = "*", .set_rate_limit = true, .rate_limit_hz = 480, .set_max_queue = true, .max_queue = 64}` at `/_system/io/push/throttle/queue` to clamp every provider. Commands without `set_rate_limit` and `set_max_queue` set are ignored (and reported via the telemetry log).
+  - Queue `DeviceThrottleCommand{.device = "*", .set_rate_limit = true, .rate_limit_hz = 480, .set_max_queue = true, .max_queue = 64}` at `/_system/io/push/throttle/queue` to clamp every provider. Leave `set_*` flags false when you do not want a field to change (commands without either flag are ignored and reported via the telemetry log).
 - Every command runs asynchronously; confirm success by re-reading the relevant nodes (config paths or metrics roots). When debugging throttling or subscriber issues in production, capture both the command you posted and the resulting telemetry log entry so follow-up shifts understand the change history.
 
 ### 1.2 Single test reproduction

@@ -71,6 +71,7 @@ if(PATHSPACE_ENABLE_UI)
     ui/test_SceneHitTest.cpp
     ui/test_DeclarativeWidgets.cpp
     ui/test_DeclarativeSceneLifecycle.cpp
+    ui/test_WidgetEventTrellis.cpp
   ui/test_PathWindowView.cpp
   ui/test_BackendAdapters.cpp
   ui/test_DeclarativeRuntime.cpp

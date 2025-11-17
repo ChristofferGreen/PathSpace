@@ -11,6 +11,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -90,32 +91,53 @@ auto Move(PathSpace& space,
           MountOptions const& options = {}) -> SP::Expected<SP::UI::Builders::WidgetPath>;
 
 struct WidgetContext {
+    WidgetContext(PathSpace& space_in, SP::UI::Builders::WidgetPath widget_in)
+        : space(space_in)
+        , widget(std::move(widget_in)) {}
+
     PathSpace& space;
     SP::UI::Builders::WidgetPath widget;
 };
 
-struct ButtonContext : WidgetContext {};
-struct ToggleContext : WidgetContext {};
+struct ButtonContext : WidgetContext {
+    using WidgetContext::WidgetContext;
+};
+
+struct ToggleContext : WidgetContext {
+    using WidgetContext::WidgetContext;
+};
 
 struct SliderContext : WidgetContext {
+    using WidgetContext::WidgetContext;
     float value = 0.0f;
 };
 
 struct ListChildContext : WidgetContext {
+    using WidgetContext::WidgetContext;
     std::string child_id;
 };
 
 struct TreeNodeContext : WidgetContext {
+    using WidgetContext::WidgetContext;
     std::string node_id;
 };
 
 struct StackPanelContext : WidgetContext {
+    using WidgetContext::WidgetContext;
     std::string panel_id;
 };
 
-struct LabelContext : WidgetContext {};
-struct InputFieldContext : WidgetContext {};
-struct PaintSurfaceContext : WidgetContext {};
+struct LabelContext : WidgetContext {
+    using WidgetContext::WidgetContext;
+};
+
+struct InputFieldContext : WidgetContext {
+    using WidgetContext::WidgetContext;
+};
+
+struct PaintSurfaceContext : WidgetContext {
+    using WidgetContext::WidgetContext;
+};
 
 using ButtonHandler = std::function<void(ButtonContext&)>;
 using ToggleHandler = std::function<void(ToggleContext&)>;

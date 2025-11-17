@@ -3,8 +3,11 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
+#include <pathspace/ui/declarative/Widgets.hpp>
 
+#include <atomic>
 #include <chrono>
+#include <thread>
 
 using namespace SP;
 
@@ -99,6 +102,55 @@ TEST_CASE("Declarative input task drains widget ops") {
         SP::Out{} & SP::Block{200ms});
     REQUIRE(action);
     CHECK(action->kind == op.kind);
+
+    SP::System::ShutdownDeclarativeRuntime(space);
+}
+
+TEST_CASE("Declarative input task invokes registered handlers") {
+    using namespace std::chrono_literals;
+    PathSpace space;
+
+    SP::System::LaunchOptions launch_options{};
+    launch_options.start_io_pump = false;
+    launch_options.input_task_options.poll_interval = std::chrono::milliseconds{1};
+    auto launch = SP::System::LaunchStandard(space, launch_options);
+    REQUIRE(launch);
+
+    auto app_root = SP::App::Create(space, "handlerapp");
+    REQUIRE(app_root);
+
+    SP::UI::Declarative::Button::Args args{};
+    args.label = "Invoke";
+    auto handler_flag = std::make_shared<std::atomic<bool>>(false);
+    args.on_press = [handler_flag](SP::UI::Declarative::ButtonContext&) {
+        handler_flag->store(true, std::memory_order_release);
+    };
+
+    SP::UI::Declarative::MountOptions mount_options;
+    mount_options.policy = SP::UI::Declarative::MountPolicy::WindowWidgets;
+    auto button = SP::UI::Declarative::Button::Create(space,
+                                                      SP::App::ConcretePathView{app_root->getPath()},
+                                                      "handler_button",
+                                                      std::move(args),
+                                                      mount_options);
+    REQUIRE(button);
+
+    auto queue_path = std::string(button->getPath()) + "/ops/inbox/queue";
+    SP::UI::Builders::Widgets::Bindings::WidgetOp op{};
+    op.kind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Activate;
+    op.widget_path = button->getPath();
+    op.value = 1.0f;
+    (void)space.insert(queue_path, op);
+
+    bool observed = false;
+    for (int attempts = 0; attempts < 50; ++attempts) {
+        if (handler_flag->load(std::memory_order_acquire)) {
+            observed = true;
+            break;
+        }
+        std::this_thread::sleep_for(10ms);
+    }
+    CHECK(observed);
 
     SP::System::ShutdownDeclarativeRuntime(space);
 }

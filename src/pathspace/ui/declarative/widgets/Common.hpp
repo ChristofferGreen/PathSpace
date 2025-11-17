@@ -69,6 +69,8 @@ auto rebind_handlers(PathSpace& space,
                      std::string const& old_root,
                      std::string const& new_root) -> SP::Expected<void>;
 
+auto resolve_handler(std::string const& registry_key) -> std::optional<HandlerVariant>;
+
 struct FragmentBuilder {
     WidgetFragment fragment;
 

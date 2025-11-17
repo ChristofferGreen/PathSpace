@@ -125,6 +125,15 @@ public:
         entries_.emplace(new_key, std::move(entry));
         return binding;
     }
+
+    auto resolve(std::string const& registry_key) -> std::optional<HandlerVariant> {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = entries_.find(registry_key);
+        if (it == entries_.end()) {
+            return std::nullopt;
+        }
+        return it->second.handler;
+    }
 };
 
 } // namespace
@@ -247,6 +256,10 @@ auto rebind_handlers(PathSpace& space,
         }
     }
     return {};
+}
+
+auto resolve_handler(std::string const& registry_key) -> std::optional<HandlerVariant> {
+    return CallbackRegistry::instance().resolve(registry_key);
 }
 
 } // namespace SP::UI::Declarative::Detail

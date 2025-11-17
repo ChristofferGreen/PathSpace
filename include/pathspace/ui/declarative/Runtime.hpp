@@ -6,6 +6,7 @@
 #include <pathspace/runtime/TelemetryControl.hpp>
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/declarative/InputTask.hpp>
+#include <pathspace/ui/declarative/WidgetEventTrellis.hpp>
 
 #include <optional>
 #include <string>
@@ -21,6 +22,8 @@ struct LaunchOptions {
     SP::Runtime::IoPumpOptions io_pump_options{};
     bool start_io_telemetry_control = true;
     SP::Runtime::TelemetryControlOptions telemetry_control_options{};
+    bool start_widget_event_trellis = true;
+    SP::UI::Declarative::WidgetEventTrellisOptions widget_event_options{};
 };
 
 struct LaunchResult {
@@ -32,6 +35,8 @@ struct LaunchResult {
     std::string io_pump_state_path;
     bool telemetry_control_started = false;
     std::string telemetry_state_path;
+    bool widget_event_trellis_started = false;
+    std::string widget_event_trellis_state_path;
 };
 
 [[nodiscard]] auto LaunchStandard(PathSpace& space,

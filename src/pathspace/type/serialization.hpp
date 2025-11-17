@@ -79,12 +79,12 @@ inline auto deserialize_with_alpaca(SlidingBuffer const& buffer) -> Expected<std
 } // namespace detail
 
 template <typename T>
-static auto serialize(T const& obj, SlidingBuffer& buffer) -> std::optional<Error> {
+inline auto serialize(T const& obj, SlidingBuffer& buffer) -> std::optional<Error> {
     return detail::serialize_with_alpaca<T>(obj, buffer);
 }
 
 template <typename T>
-static auto deserialize(SlidingBuffer const& buffer) -> Expected<T> {
+inline auto deserialize(SlidingBuffer const& buffer) -> Expected<T> {
     auto decoded = detail::deserialize_with_alpaca<T>(buffer);
     if (!decoded) {
         return std::unexpected(decoded.error());
@@ -93,7 +93,7 @@ static auto deserialize(SlidingBuffer const& buffer) -> Expected<T> {
 }
 
 template <typename T>
-static auto deserialize_pop(SlidingBuffer& buffer) -> Expected<T> {
+inline auto deserialize_pop(SlidingBuffer& buffer) -> Expected<T> {
     auto decoded = detail::deserialize_with_alpaca<T>(buffer);
     if (!decoded) {
         return std::unexpected(decoded.error());
@@ -103,4 +103,3 @@ static auto deserialize_pop(SlidingBuffer& buffer) -> Expected<T> {
 }
 
 } // namespace SP
-

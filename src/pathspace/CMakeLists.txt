@@ -132,6 +132,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/declarative/SceneLifecycle.cpp
         ui/declarative/Runtime.cpp
         ui/declarative/Schema.cpp
+        ui/declarative/WidgetEventTrellis.cpp
         ui/declarative/Widgets.cpp
         ui/declarative/widgets/Common.cpp
         ui/declarative/widgets/Button.cpp
