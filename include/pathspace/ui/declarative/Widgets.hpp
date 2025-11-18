@@ -345,6 +345,9 @@ struct Args {
     float brush_size = 6.0f;
     std::array<float, 4> brush_color{1.0f, 1.0f, 1.0f, 1.0f};
     bool gpu_enabled = false;
+    std::uint32_t buffer_width = 512;
+    std::uint32_t buffer_height = 512;
+    float buffer_dpi = 96.0f;
     std::optional<PaintSurfaceHandler> on_draw;
 };
 

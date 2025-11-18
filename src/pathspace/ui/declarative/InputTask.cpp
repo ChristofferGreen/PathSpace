@@ -3,6 +3,8 @@
 #include "../BuildersDetail.hpp"
 #include "widgets/Common.hpp"
 
+#include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
+
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
@@ -31,9 +33,12 @@ using SP::UI::Declarative::HandlerKind;
 using SP::UI::Declarative::HandlerVariant;
 using SP::UI::Declarative::InputFieldContext;
 using SP::UI::Declarative::ListChildContext;
+using SP::UI::Declarative::PaintSurfaceContext;
 using SP::UI::Declarative::SliderContext;
+using SP::UI::Declarative::StackPanelContext;
 using SP::UI::Declarative::ToggleContext;
 using SP::UI::Declarative::TreeNodeContext;
+namespace PaintRuntime = SP::UI::Declarative::PaintRuntime;
 
 constexpr std::string_view kRuntimeBase = "/system/widgets/runtime/input";
 constexpr std::string_view kStateRunning = "/system/widgets/runtime/input/state/running";
@@ -122,7 +127,48 @@ struct PumpStats {
     std::size_t events_dropped = 0;
 };
 
+struct WidgetHandlerCounters {
+    std::uint64_t invoked = 0;
+    std::uint64_t failures = 0;
+    std::uint64_t missing = 0;
+    bool dirty = false;
+};
+
+using WidgetMetricsMap = std::unordered_map<std::string, WidgetHandlerCounters>;
+
+struct PumpResult {
+    PumpStats stats;
+    WidgetMetricsMap widget_metrics;
+};
+
 auto now_ns() -> std::uint64_t;
+
+enum class HandlerMetricKind {
+    Invoked,
+    Failure,
+    Missing
+};
+
+auto record_handler_metric(WidgetMetricsMap& metrics,
+                           std::string const& widget_path,
+                           HandlerMetricKind kind) -> void {
+    if (widget_path.empty()) {
+        return;
+    }
+    auto& counters = metrics[widget_path];
+    counters.dirty = true;
+    switch (kind) {
+    case HandlerMetricKind::Invoked:
+        counters.invoked += 1;
+        break;
+    case HandlerMetricKind::Failure:
+        counters.failures += 1;
+        break;
+    case HandlerMetricKind::Missing:
+        counters.missing += 1;
+        break;
+    }
+}
 
 struct HandlerRoute {
     std::string_view event;
@@ -136,6 +182,14 @@ auto handler_binding_path(std::string const& widget_path,
     path.append(event);
     path.append("/handler");
     return path;
+}
+
+auto component_suffix(std::string_view component) -> std::string_view {
+    auto pos = component.find_last_of('/');
+    if (pos == std::string_view::npos) {
+        return component;
+    }
+    return component.substr(pos + 1);
 }
 
 auto route_for_action(SP::UI::Builders::Widgets::Bindings::WidgetOpKind kind)
@@ -174,6 +228,12 @@ auto route_for_action(SP::UI::Builders::Widgets::Bindings::WidgetOpKind kind)
         return HandlerRoute{"change", HandlerKind::InputChange};
     case WidgetOpKind::TextSubmit:
         return HandlerRoute{"submit", HandlerKind::InputSubmit};
+    case WidgetOpKind::StackSelect:
+        return HandlerRoute{"panel_select", HandlerKind::StackPanel};
+    case WidgetOpKind::PaintStrokeBegin:
+    case WidgetOpKind::PaintStrokeUpdate:
+    case WidgetOpKind::PaintStrokeCommit:
+        return HandlerRoute{"draw", HandlerKind::PaintDraw};
     default:
         return std::nullopt;
     }
@@ -314,8 +374,28 @@ auto invoke_handler(PathSpace& space,
             return std::nullopt;
         }
         case HandlerKind::StackPanel:
+            {
+                auto fn = std::get_if<StackPanelHandler>(&handler);
+                if (!fn || !(*fn)) {
+                    return std::string{"stack handler not registered"};
+                }
+                StackPanelContext ctx{space, SP::UI::Builders::WidgetPath{action.widget_path}};
+                auto suffix = component_suffix(action.target_id);
+                ctx.panel_id = std::string{suffix};
+                (*fn)(ctx);
+                return std::nullopt;
+            }
         case HandlerKind::LabelActivate:
-        case HandlerKind::PaintDraw:
+            return std::string{"handler kind not supported by InputTask"};
+        case HandlerKind::PaintDraw: {
+            auto fn = std::get_if<PaintSurfaceHandler>(&handler);
+            if (!fn || !(*fn)) {
+                return std::string{"paint handler not registered"};
+            }
+            PaintSurfaceContext ctx{space, SP::UI::Builders::WidgetPath{action.widget_path}};
+            (*fn)(ctx);
+            return std::nullopt;
+        }
         case HandlerKind::None:
             return std::string{"handler kind not supported by InputTask"};
         }
@@ -329,13 +409,25 @@ auto invoke_handler(PathSpace& space,
 
 void dispatch_action(PathSpace& space,
                      SP::UI::Builders::Widgets::Reducers::WidgetAction const& action,
-                     PumpStats& stats) {
+                     PumpStats& stats,
+                     WidgetMetricsMap& widget_metrics) {
     auto route = route_for_action(action.kind);
     if (!route) {
         return;
     }
 
     enqueue_widget_event(space, action, *route, stats);
+
+    if (route->kind == HandlerKind::PaintDraw) {
+        auto runtime_status = PaintRuntime::HandleAction(space, action);
+        if (!runtime_status) {
+            auto message = runtime_status.error().message.value_or("paint runtime failure");
+            enqueue_error(space,
+                          format_handler_error(action,
+                                               route->event,
+                                               std::string{"runtime error: "}.append(message)));
+        }
+    }
 
     auto path = handler_binding_path(action.widget_path, route->event);
     auto binding = space.read<HandlerBinding, std::string>(path);
@@ -346,12 +438,18 @@ void dispatch_action(PathSpace& space,
             return;
         }
         stats.handler_failures++;
+        record_handler_metric(widget_metrics,
+                              action.widget_path,
+                              HandlerMetricKind::Failure);
         enqueue_error(space, format_handler_error(action, route->event, "failed to read handler binding"));
         return;
     }
 
     if (binding->kind != route->kind) {
         stats.handler_failures++;
+        record_handler_metric(widget_metrics,
+                              action.widget_path,
+                              HandlerMetricKind::Failure);
         enqueue_error(space,
                       format_handler_error(action,
                                            route->event,
@@ -362,6 +460,9 @@ void dispatch_action(PathSpace& space,
     auto handler = SP::UI::Declarative::Detail::resolve_handler(binding->registry_key);
     if (!handler || std::holds_alternative<std::monostate>(*handler)) {
         stats.handler_missing++;
+        record_handler_metric(widget_metrics,
+                              action.widget_path,
+                              HandlerMetricKind::Missing);
         enqueue_error(space,
                       format_handler_error(action,
                                            route->event,
@@ -372,18 +473,25 @@ void dispatch_action(PathSpace& space,
     auto error = invoke_handler(space, route->kind, *handler, action);
     if (error) {
         stats.handler_failures++;
+        record_handler_metric(widget_metrics,
+                              action.widget_path,
+                              HandlerMetricKind::Failure);
         enqueue_error(space, format_handler_error(action, route->event, *error));
         return;
     }
 
     stats.handlers_invoked++;
     stats.last_handler_ns = now_ns();
+    record_handler_metric(widget_metrics,
+                          action.widget_path,
+                          HandlerMetricKind::Invoked);
 }
 
 auto pump_widget(PathSpace& space,
                  std::string const& widget_root,
                  std::size_t max_actions,
-                 PumpStats& stats) -> void {
+                 PumpStats& stats,
+                 WidgetMetricsMap& widget_metrics) -> void {
     auto widget_path = WidgetPath{widget_root};
     auto processed = WidgetReducers::ProcessPendingActions(space, widget_path, max_actions);
     if (!processed) {
@@ -402,13 +510,13 @@ auto pump_widget(PathSpace& space,
         stats.widgets_with_work++;
         stats.actions_published += processed->actions.size();
         for (auto const& action : processed->actions) {
-            dispatch_action(space, action, stats);
+            dispatch_action(space, action, stats, widget_metrics);
         }
     }
 }
 
-auto pump_once(PathSpace& space, InputTaskOptions const& options) -> PumpStats {
-    PumpStats stats{};
+auto pump_once(PathSpace& space, InputTaskOptions const& options) -> PumpResult {
+    PumpResult result{};
 
     auto apps = list_children(space, "/system/applications");
     for (auto const& app : apps) {
@@ -421,11 +529,15 @@ auto pump_once(PathSpace& space, InputTaskOptions const& options) -> PumpStats {
             std::string widget_root = widgets_root;
             widget_root.push_back('/');
             widget_root.append(widget);
-            pump_widget(space, widget_root, options.max_actions_per_widget, stats);
+            pump_widget(space,
+                        widget_root,
+                        options.max_actions_per_widget,
+                        result.stats,
+                        result.widget_metrics);
         }
     }
 
-    return stats;
+    return result;
 }
 
 auto now_ns() -> std::uint64_t {
@@ -465,8 +577,9 @@ private:
             ? std::chrono::milliseconds{1}
             : options_.poll_interval;
         while (!stop_flag_.load(std::memory_order_acquire)) {
-            auto stats = pump_once(space_, options_);
-            publish_metrics(stats);
+            auto result = pump_once(space_, options_);
+            publish_metrics(result.stats);
+            publish_widget_metrics(result.widget_metrics);
             std::this_thread::sleep_for(sleep_interval);
         }
     }
@@ -496,6 +609,30 @@ private:
         (void)replace_single<std::uint64_t>(space_, std::string{kMetricsEventsDropped}, total_events_dropped_);
     }
 
+    void write_widget_handler_metric(std::string const& widget_path,
+                                     std::string_view name,
+                                     std::uint64_t value) {
+        std::string path = widget_path;
+        path.append("/metrics/handlers/");
+        path.append(name);
+        (void)replace_single<std::uint64_t>(space_, path, value);
+    }
+
+    void publish_widget_metrics(WidgetMetricsMap const& metrics) {
+        for (auto const& [widget, counters] : metrics) {
+            if (!counters.dirty) {
+                continue;
+            }
+            auto& totals = widget_handler_totals_[widget];
+            totals.invoked += counters.invoked;
+            totals.failures += counters.failures;
+            totals.missing += counters.missing;
+            write_widget_handler_metric(widget, "invoked_total", totals.invoked);
+            write_widget_handler_metric(widget, "failures_total", totals.failures);
+            write_widget_handler_metric(widget, "missing_total", totals.missing);
+        }
+    }
+
 private:
     PathSpace& space_;
     InputTaskOptions options_;
@@ -511,6 +648,7 @@ private:
     std::uint64_t last_handler_ns_ = 0;
     std::uint64_t total_events_enqueued_ = 0;
     std::uint64_t total_events_dropped_ = 0;
+    std::unordered_map<std::string, WidgetHandlerCounters> widget_handler_totals_;
 };
 
 std::mutex g_runtime_mutex;

@@ -1418,6 +1418,10 @@ enum class WidgetOpKind : std::uint32_t {
     TextClipboardPaste,
     TextScroll,
     TextSubmit,
+    StackSelect,
+    PaintStrokeBegin,
+    PaintStrokeUpdate,
+    PaintStrokeCommit,
 };
 
 struct PointerInfo {
@@ -1425,6 +1429,9 @@ struct PointerInfo {
     float scene_y = 0.0f;
     bool inside = false;
     bool primary = true;
+    float local_x = 0.0f;
+    float local_y = 0.0f;
+    bool has_local = false;
 
     [[nodiscard]] static auto Make(float x, float y) -> PointerInfo {
         PointerInfo info{};
@@ -1450,6 +1457,20 @@ struct PointerInfo {
 
     auto WithPrimary(bool value) && -> PointerInfo {
         primary = value;
+        return std::move(*this);
+    }
+
+    auto WithLocal(float x, float y) & -> PointerInfo& {
+        local_x = x;
+        local_y = y;
+        has_local = true;
+        return *this;
+    }
+
+    auto WithLocal(float x, float y) && -> PointerInfo {
+        local_x = x;
+        local_y = y;
+        has_local = true;
         return std::move(*this);
     }
 };

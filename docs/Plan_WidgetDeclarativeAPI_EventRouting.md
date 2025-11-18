@@ -18,11 +18,13 @@ _Last updated: October 31, 2025_
 
 > **Update (November 17, 2025):** Paint-surface hit tests produce `PaintStrokeBegin/Update/Commit` ops with pointer-local coordinates. The trellis enqueues each op and InputTask calls the `events/draw/handler` binding after mirroring the same payload into the widget's action queues.
 
-<<<<<<< HEAD
 > **Update (November 18, 2025):** WidgetEventTrellis now mutates canonical widget state (button hover/press, toggle checked, slider value/dragging, list hover/selection, tree hover/selection/expanded) and flips `render/dirty` before each `WidgetOp` is published, guaranteeing that declarative widgets stay visually in sync even when user handlers are empty; see `tests/ui/test_WidgetStateMutators.cpp` for unit-level coverage of the state mutators.
-=======
-> **Update (November 18, 2025):** WidgetEventTrellis now mutates canonical widget state (button hover/press, toggle checked, slider value/dragging, list hover/selection, tree hover/selection/expanded) and flips `render/dirty` before each `WidgetOp` is published, guaranteeing that declarative widgets stay visually in sync even when user handlers are empty; see `tests/ui/test_WidgetStateMutators.cpp` for unit-level coverage of the state mutators.
->>>>>>> dabef75 (fix(declarative): auto-update widget state)
+
+> **Update (November 18, 2025):** InputTask writes paint-surface strokes into `state/history/<id>/{meta,points}`, increments `render/buffer/revision`, and rebuilds cached buckets before resolving handler bindings, so declarative paint widgets redraw even when no `draw` handler is installed.
+
+> **Update (November 18, 2025):** Keyboard and gamepad devices now travel the same declarative path: Tab/Shift+Tab and gamepad shoulders step focus through `Widgets::Focus`, D-pad/arrow keys drive slider/list/tree navigation, and Space/Enter/A emit the same press/toggle/list-activate ops that mouse input already produced. Text inputs receive cursor/delete/submit ops without bespoke loops, so declarative apps can remove their ad-hoc keyboard bridges.
+
+> **Update (November 18, 2025):** InputTask now mirrors handler results back to `widgets/<id>/metrics/handlers/{invoked_total,failures_total,missing_total}` in addition to the global `/system/widgets/runtime/input/metrics/*` counters, so dashboards can flag a specific widget whose handler never fires or keeps throwing.
 
 ## Auto-render request queue
 - **Path**: `<target>/events/renderRequested/queue`

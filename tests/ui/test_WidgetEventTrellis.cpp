@@ -11,6 +11,7 @@
 
 using namespace std::chrono_literals;
 using namespace SP;
+namespace BuilderWidgets = SP::UI::Builders::Widgets;
 
 TEST_CASE("WidgetEventTrellis routes pointer and button events to WidgetOps") {
     PathSpace space;
@@ -85,6 +86,77 @@ TEST_CASE("WidgetEventTrellis routes pointer and button events to WidgetOps") {
         SP::Out{} & SP::Block{200ms});
     REQUIRE(next_op);
     CHECK(next_op->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Press);
+
+    auto release_op = space.take<WidgetOp, std::string>(
+        widget_ops_queue,
+        SP::Out{} & SP::Block{200ms});
+    REQUIRE(release_op);
+    CHECK(release_op->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Release);
+
+    auto activate_op = space.take<WidgetOp, std::string>(
+        widget_ops_queue,
+        SP::Out{} & SP::Block{200ms});
+    REQUIRE(activate_op);
+    CHECK(activate_op->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Activate);
+
+    SP::UI::Declarative::ShutdownWidgetEventTrellis(space);
+}
+
+TEST_CASE("WidgetEventTrellis handles keyboard button activation") {
+    PathSpace space;
+    std::string app_root = "/system/applications/test_app";
+    std::string window_path = app_root + "/windows/main";
+    auto token = SP::Runtime::MakeRuntimeWindowToken(window_path);
+    std::string runtime_base = "/system/widgets/runtime/windows/" + token;
+
+    (void)space.insert(runtime_base + "/window", window_path);
+    (void)space.insert(runtime_base + "/subscriptions/pointer/devices",
+                       std::vector<std::string>{});
+    (void)space.insert(runtime_base + "/subscriptions/button/devices",
+                       std::vector<std::string>{"/system/devices/in/keyboard/default"});
+    (void)space.insert(runtime_base + "/subscriptions/text/devices",
+                       std::vector<std::string>{});
+
+    (void)space.insert(window_path + "/views/main/scene", "scenes/main_scene");
+    (void)space.insert(app_root + "/widgets/focus/current",
+                       window_path + "/widgets/test_button");
+    (void)space.insert(std::string("scenes/main_scene/structure/window/main/focus/current"),
+                       window_path + "/widgets/test_button");
+
+    const std::string widget_path = window_path + "/widgets/test_button";
+    const std::string button_queue = "/system/widgets/runtime/events/" + token + "/button/queue";
+    const std::string widget_ops_queue = widget_path + "/ops/inbox/queue";
+
+    BuilderWidgets::ButtonState state{};
+    (void)space.insert(widget_path + "/state", state);
+    (void)space.insert(widget_path + "/render/dirty", false);
+    (void)space.insert(widget_path + "/meta/kind", std::string{"button"});
+
+    SP::UI::Declarative::WidgetEventTrellisOptions options;
+    options.refresh_interval = 1ms;
+    options.idle_sleep = 1ms;
+    auto started = SP::UI::Declarative::CreateWidgetEventTrellis(space, options);
+    REQUIRE(started);
+    REQUIRE(*started);
+
+    SP::IO::ButtonEvent press{};
+    press.source = SP::IO::ButtonSource::Keyboard;
+    press.device_path = "/system/devices/in/keyboard/default";
+    press.button_code = 0x31;
+    press.button_id = 0;
+    press.state.pressed = true;
+    (void)space.insert(button_queue, press);
+
+    SP::IO::ButtonEvent release = press;
+    release.state.pressed = false;
+    (void)space.insert(button_queue, release);
+
+    using WidgetOp = SP::UI::Builders::Widgets::Bindings::WidgetOp;
+    auto press_op = space.take<WidgetOp, std::string>(
+        widget_ops_queue,
+        SP::Out{} & SP::Block{200ms});
+    REQUIRE(press_op);
+    CHECK(press_op->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Press);
 
     auto release_op = space.take<WidgetOp, std::string>(
         widget_ops_queue,

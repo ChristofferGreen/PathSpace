@@ -83,7 +83,7 @@ Declarative widgets now rely on the IO Pump feeds introduced in `docs/finished/P
 ### Remaining TODOs (WidgetEventTrellis)
 - ✅ (November 17, 2025) Stack panel taps now emit `StackSelect` widget ops and paint surfaces stream `PaintStrokeBegin/Update/Commit` ops with pointer-local coordinates, so declarative handlers receive structured draw metadata instead of placeholder logs.
 - ✅ (November 18, 2025) WidgetEventTrellis now mutates canonical button/toggle/slider/list/tree state (hover, pressed, value, selection, expansion) and marks `render/dirty` before delivering each `WidgetOp`, so declarative apps no longer depend on user handlers to keep widget nodes in sync.
-- Layer keyboard/gamepad routing (leveraging the focus controller) so declarative apps no longer need bespoke loops for those device classes; IME composition queues still need parity with legacy flows.
+- ✅ (November 18, 2025) Keyboard and gamepad routing now flow through the focus controller: Tab/Shift+Tab and shoulder/D-pad hops cycle focus, Space/Enter/A press buttons/toggles, arrow keys adjust sliders, lists, and trees, and focused text inputs receive cursor/delete/submit ops without bespoke loops. Declarative runtimes now provide parity with the legacy keyboard/gamepad helpers.
 
 ### Phase 0 – Foundations
 
@@ -241,13 +241,14 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - ✅ (November 17, 2025) `CreateWidgetEventTrellis` now emits `WidgetOp`s for sliders (begin/update/commit), lists (hover/select/activate), trees (hover/toggle/select), and text inputs (focus/input) in addition to the existing button/toggle route. Regression coverage lives in `tests/ui/test_WidgetEventTrellis.cpp` so declarative apps no longer need bespoke loops for those widgets.
    - ✅ (November 18, 2025) The trellis now mutates canonical widget state (button/toggle hover & press, slider value/dragging, list hover/selection, tree hover/expanded) and marks `render/dirty` before enqueuing each `WidgetOp`; targeted coverage was added in `tests/ui/test_WidgetStateMutators.cpp` to verify the state mutators independent of the trellis thread.
    - ✅ (November 17, 2025) InputTask routes `StackSelect` and `PaintStroke*` actions to the `panel_select` and `draw` handlers respectively, mirroring each action into the per-widget inbox/queues with pointer-local coordinates before invoking user lambdas.
-   - **Remaining TODOs:** surface per-widget success counters/telemetry for handler debugging and extend the dispatcher to cover keyboard/gamepad focus hops.
+   - ✅ (November 18, 2025) InputTask now tracks per-widget handler telemetry under `widgets/<id>/metrics/handlers/{invoked_total,failures_total,missing_total}` so debugging missing bindings or flaky callbacks no longer requires scraping the shared logs; dashboards can pivot on widget-level counts while the global `/system/widgets/runtime/input/metrics/*` totals remain for fleet health.
 6. **Rendering pipeline**
    - Renderer consumes cached widget buckets without traversing widget trees each frame.
    - Aggregator combines updated buckets into the scene snapshot when notified of dirty widgets.
    - Updated buckets swap in incrementally so presents pick up refreshed data on the next frame.
    - Publish revisions via `SceneSnapshotBuilder` to preserve presenter compatibility.
-   - Paint surface synthesis must translate stroke/history data into texture updates (CPU + optional GPU staging) and expose incremental dirty regions for efficient redraw.
+   - ✅ (November 18, 2025) Paint surface runtime now records stroke metadata under `state/history/<id>/{meta,points}`, rebuilds render buckets using `Scene::DrawCommandKind::Stroke`, tracks buffer metrics/revisions, and keeps the scene lifecycle cache in sync with dirty signals. GPU staging/upload workers remain TODO.
+   - Paint surface synthesis must still translate stroke histories into GPU textures (optional) and expose incremental dirty regions for efficient redraw.
 7. **Telemetry / logging**
    - Add debug logging for schema loads, focus transitions, input processing, and render updates.
    - Track perf counters comparing declarative vs. legacy pipeline.

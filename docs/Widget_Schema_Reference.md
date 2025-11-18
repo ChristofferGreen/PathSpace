@@ -45,6 +45,7 @@ These nodes exist under every declarative widget root (`widgets/<widget-id>/…`
 | `events/<event>/handler` | callable | opt | Stores `HandlerBinding { registry_key, kind }`; runtime resolves registry ids to lambdas. |
 | `events/inbox/queue` | queue | rt | Canonical `WidgetAction` stream populated by the declarative runtime. |
 | `events/<event>/queue` | queue | opt | Optional filtered queue (press/toggle/change/etc.) for tooling that only needs a single event family. |
+| `metrics/handlers/{invoked_total,failures_total,missing_total}` | value | rt | Per-widget handler telemetry recorded by the input runtime. |
 | `render/synthesize` | value | req | `RenderDescriptor` describing the widget kind. |
 | `render/bucket` | value | rt | Cached `DrawableBucketSnapshot` rebuilt when `render/dirty` flips. |
 | `render/dirty` | flag | rt | Raised by helpers whenever state/style changes. |
@@ -107,6 +108,8 @@ All widgets also inherit the global queues documented elsewhere (e.g., `widgets/
 
 Descriptor status: Stack widgets now participate in descriptor synthesis so dirty queues stay healthy even though the current bucket is a placeholder. Follow-up work will hydrate layout metadata and render panel chrome so stack buckets no longer return empty geometry.
 
+Runtime hit tests now emit `StackSelect` widget ops when a user activates a rendered preview (`stack/panel/<panel-id>`). Those ops flow through `/widgets/<id>/ops/inbox/queue`, mirror into `events/panel_select/queue`, and invoke the optional handler with `panel_id` populated so containers can react without bespoke routing tables.
+
 ### Label
 
 | Path | Kind | Req | Notes |
@@ -130,14 +133,20 @@ Descriptor status: Stack widgets now participate in descriptor synthesis so dirt
 | `state/brush/{size,color}` | value | opt | Brush metadata for new strokes. |
 | `state/stroke_mode` | value | opt | Draw, erase, or flood mode. |
 | `state/history/<stroke-id>` | dir | rt | Ordered stroke history (UndoableSpace-backed). |
+| `state/history/<stroke-id>/meta` | value | rt | Stroke metadata (brush size, color, commit flag). |
+| `state/history/<stroke-id>/points` | value | rt | Widget-local points captured for the stroke. |
+| `state/history/last_stroke_id` | value | rt | Last stroke identifier processed by the runtime. |
 | `render/buffer` | value | rt | CPU-readable paint buffer. |
 | `render/buffer/metrics/{width,height,dpi}` | value | rt | Buffer metrics derived from layout × DPI. |
 | `render/buffer/viewport` | value | rt | Visible rect when buffer > layout. |
+| `render/buffer/revision` | value | rt | Monotonic counter incremented whenever stroke data mutates. |
 | `render/gpu/{enabled,state,dirtyRects,fence/start,fence/end,log/events,stats}` | mixed | opt/rt | GPU staging controls + diagnostics. |
 | `assets/texture` | value | rt | GPU texture resource (when staging enabled). |
 | `events/draw/handler` | callable | opt | Draw handler translating pointer events into strokes. |
 
-Descriptor status: paint surfaces expose brush metadata + GPU flags through the descriptor so the runtime can track dirty state without special cases. Rendering still depends on the forthcoming paint-buffer integration; until then the descriptor emits an empty bucket and relies on the remaining runtime work to stream stroke textures.
+Descriptor status: paint surfaces now expose brush metadata, buffer metrics, and recorded stroke paths through the descriptor so the runtime can synthesize `DrawCommandKind::Stroke` buckets without storing opaque lambdas. GPU staging/uploaders remain a follow-up.
+
+`PaintStrokeBegin`, `PaintStrokeUpdate`, and `PaintStrokeCommit` ops now populate the paint surface action queue with pointer-local coordinates. The runtime forwards each op to `events/draw/queue`, appends points under `state/history/<id>/{meta,points}`, increments `render/buffer/revision`, and invokes the optional `draw` handler so reducers can append custom behavior or upload deltas to `render/buffer`/`assets/texture`.
 
 ## Handler bindings & descriptors
 

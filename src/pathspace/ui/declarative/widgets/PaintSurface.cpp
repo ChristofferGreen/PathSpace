@@ -1,5 +1,7 @@
 #include "Common.hpp"
 
+#include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
+
 #include <utility>
 
 namespace SP::UI::Declarative {
@@ -31,6 +33,18 @@ auto Fragment(Args args) -> WidgetFragment {
                                                !status) {
                                                return status;
                                            }
+                                           PaintBufferMetrics buffer_defaults{
+                                               .width = args.buffer_width,
+                                               .height = args.buffer_height,
+                                               .dpi = args.buffer_dpi,
+                                           };
+                                           if (auto status = PaintRuntime::EnsureBufferDefaults(ctx.space,
+                                                                                            ctx.root,
+                                                                                            buffer_defaults);
+                                               !status) {
+                                               return status;
+                                           }
+
                                            if (args.on_draw) {
                                                HandlerVariant handler = PaintSurfaceHandler{*args.on_draw};
                                                if (auto status = WidgetDetail::write_handler(ctx.space,

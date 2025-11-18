@@ -60,6 +60,7 @@ Conventions:
   - `/system/widgets/runtime/input/metrics/{widgets_processed_total,widgets_with_work_total,actions_published_total,last_pump_ns}`
   - `/system/widgets/runtime/input/metrics/{handlers_invoked_total,handler_failures_total,handler_missing_total,last_handler_ns}` — handler-dispatch telemetry produced by `CreateInputTask`.
   - `/system/widgets/runtime/input/metrics/{events_enqueued_total,events_dropped_total}` — mirrors how many widget events were mirrored into the canonical queues vs. dropped due to storage errors.
+  - `widgets/<id>/metrics/handlers/{invoked_total,failures_total,missing_total}` — per-widget handler telemetry updated by `CreateInputTask`, allowing debugging of missing bindings or flaky callbacks without scraping the shared logs.
   - `/system/widgets/runtime/input/log/errors/queue` — string queue capturing reducer/pump failures.
   - Launch controls:
     - `LaunchOptions::start_input_runtime` (default `true`) decides whether `CreateInputTask` launches automatically when `LaunchStandard` runs.
@@ -137,7 +138,7 @@ The following subtrees are standardized within each application root (one of the
   - `widgets/<widget-id>/` — canonical widget roots; the appendix tracks every `state/*`, `meta/*`, `layout/*`, `events/*`, and `render/*` leaf so this file can stay focused on high-level namespace placement.
   - `widgets/<widget-id>/events/inbox/queue` — runtime-populated stream of `WidgetAction` payloads emitted whenever the trellis reduces ops for that widget; consumers can also watch `events/<event>/queue` for filtered views (press, toggle, change, child_event, node_event, submit).
   - Stack previews expose `stack/panel/<panel-id>` targets; `StackSelect` ops flow through the widget inbox and bubble to `events/panel_select/queue` before invoking the optional handler.
-  - Paint surfaces emit `PaintStrokeBegin/Update/Commit` ops with pointer-local coordinates; each op lands in the widget inbox plus `events/draw/queue` so reducers/handlers can append strokes under `state/history/*` and refresh `render/buffer`.
+  - Paint surfaces emit `PaintStrokeBegin/Update/Commit` ops with pointer-local coordinates; the runtime mirrors those ops into `events/draw/queue`, persists stroke metadata under `state/history/<id>/{meta,points}`, bumps `render/buffer/revision`, and rebuilds stroke buckets so reducers/handlers can react without touching widget state directly.
   - `widgets/focus/current` and `widgets/<id>/focus/{current,order}` — app-level and per-widget focus mirrors maintained by the focus controller.
   - `scenes/widgets/<widget-id>/` — widget snapshot subtrees (`states/*`, `current_revision`, `meta/*`) consumed by renderer targets.
 

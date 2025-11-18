@@ -224,8 +224,12 @@ auto read_text_area_style(PathSpace& space,
 } // namespace
 
 auto PointerFromHit(Scene::HitTestResult const& hit) -> PointerInfo {
-    return PointerInfo::Make(hit.position.scene_x, hit.position.scene_y)
-        .WithInside(hit.hit);
+    auto pointer = PointerInfo::Make(hit.position.scene_x, hit.position.scene_y)
+                        .WithInside(hit.hit);
+    if (hit.position.has_local) {
+        pointer.WithLocal(hit.position.local_x, hit.position.local_y);
+    }
+    return pointer;
 }
 
 auto CreateButtonBinding(PathSpace& space,

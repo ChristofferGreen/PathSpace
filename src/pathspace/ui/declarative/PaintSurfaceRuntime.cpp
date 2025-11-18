@@ -1,0 +1,369 @@
+#include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
+
+#include "../BuildersDetail.hpp"
+#include "widgets/Common.hpp"
+
+#include <pathspace/path/ConcretePath.hpp>
+
+#include <algorithm>
+#include <charconv>
+#include <cmath>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <type_traits>
+
+namespace SP::UI::Declarative::PaintRuntime {
+
+namespace {
+
+namespace BuilderDetail = SP::UI::Builders::Detail;
+namespace WidgetDetail = SP::UI::Declarative::Detail;
+using SP::UI::Builders::Widgets::Bindings::WidgetOpKind;
+
+constexpr std::string_view kStrokePrefix{"paint_surface/stroke/"};
+
+auto ensure_value(PathSpace& space, std::string const& path, auto const& value) -> SP::Expected<void> {
+    auto existing = BuilderDetail::read_optional<std::decay_t<decltype(value)>>(space, path);
+    if (!existing) {
+        return std::unexpected(existing.error());
+    }
+    if (existing->has_value()) {
+        return {};
+    }
+    return BuilderDetail::replace_single(space, path, value);
+}
+
+auto increment_revision(PathSpace& space, std::string const& widget_path) -> void {
+    auto path = widget_path + "/render/buffer/revision";
+    auto current = BuilderDetail::read_optional<std::uint64_t>(space, path);
+    if (!current) {
+        return;
+    }
+    auto value = current->value_or(0);
+    (void)BuilderDetail::replace_single(space, path, value + 1);
+}
+
+auto parse_stroke_id(std::string const& component) -> std::optional<std::uint64_t> {
+    if (component.rfind(kStrokePrefix, 0) != 0) {
+        return std::nullopt;
+    }
+    auto suffix = component.substr(kStrokePrefix.size());
+    std::uint64_t value = 0;
+    auto result = std::from_chars(suffix.data(), suffix.data() + suffix.size(), value);
+    if (result.ec != std::errc{}) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+auto parse_child_id(std::string const& name) -> std::optional<std::uint64_t> {
+    std::uint64_t value = 0;
+    auto result = std::from_chars(name.data(), name.data() + name.size(), value);
+    if (result.ec != std::errc{}) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+auto read_brush_size(PathSpace& space, std::string const& widget_path) -> SP::Expected<float> {
+    auto path = widget_path + "/state/brush/size";
+    auto value = BuilderDetail::read_optional<float>(space, path);
+    if (!value) {
+        return std::unexpected(value.error());
+    }
+    return value->value_or(6.0f);
+}
+
+auto read_brush_color(PathSpace& space, std::string const& widget_path)
+    -> SP::Expected<std::array<float, 4>> {
+    auto path = widget_path + "/state/brush/color";
+    auto value = BuilderDetail::read_optional<std::array<float, 4>>(space, path);
+    if (!value) {
+        return std::unexpected(value.error());
+    }
+    return value->value_or(std::array<float, 4>{1.0f, 1.0f, 1.0f, 1.0f});
+}
+
+auto clamp_point(PaintBufferMetrics const& metrics, float x, float y) -> PaintStrokePoint {
+    auto width = std::max<std::uint32_t>(1u, metrics.width);
+    auto height = std::max<std::uint32_t>(1u, metrics.height);
+    PaintStrokePoint point{};
+    point.x = std::clamp(x, 0.0f, static_cast<float>(width));
+    point.y = std::clamp(y, 0.0f, static_cast<float>(height));
+    return point;
+}
+
+auto points_path(std::string const& widget_path, std::uint64_t stroke_id) -> std::string {
+    std::string path = widget_path;
+    path.append("/state/history/");
+    path.append(std::to_string(stroke_id));
+    path.append("/points");
+    return path;
+}
+
+auto meta_path(std::string const& widget_path, std::uint64_t stroke_id) -> std::string {
+    std::string path = widget_path;
+    path.append("/state/history/");
+    path.append(std::to_string(stroke_id));
+    path.append("/meta");
+    return path;
+}
+
+auto read_points(PathSpace& space, std::string const& widget_path, std::uint64_t stroke_id)
+    -> SP::Expected<std::vector<PaintStrokePoint>> {
+    auto path = points_path(widget_path, stroke_id);
+    auto value = BuilderDetail::read_optional<std::vector<PaintStrokePoint>>(space, path);
+    if (!value) {
+        return std::unexpected(value.error());
+    }
+    return value->value_or(std::vector<PaintStrokePoint>{});
+}
+
+auto read_meta(PathSpace& space, std::string const& widget_path, std::uint64_t stroke_id)
+    -> SP::Expected<std::optional<PaintStrokeMeta>> {
+    auto path = meta_path(widget_path, stroke_id);
+    auto value = BuilderDetail::read_optional<PaintStrokeMeta>(space, path);
+    if (!value) {
+        return std::unexpected(value.error());
+    }
+    return *value;
+}
+
+auto write_stroke(PathSpace& space,
+                  std::string const& widget_path,
+                  std::uint64_t stroke_id,
+                  PaintStrokeMeta const& meta,
+                  std::vector<PaintStrokePoint> const& points) -> SP::Expected<void> {
+    auto meta_status = BuilderDetail::replace_single(space, meta_path(widget_path, stroke_id), meta);
+    if (!meta_status) {
+        return meta_status;
+    }
+    return BuilderDetail::replace_single(space,
+                                         points_path(widget_path, stroke_id),
+                                         points);
+}
+
+} // namespace
+
+auto EnsureBufferDefaults(PathSpace& space,
+                          std::string const& widget_path,
+                          PaintBufferMetrics const& defaults) -> SP::Expected<void> {
+    auto width_path = widget_path + "/render/buffer/metrics/width";
+    auto height_path = widget_path + "/render/buffer/metrics/height";
+    auto dpi_path = widget_path + "/render/buffer/metrics/dpi";
+    auto viewport_path = widget_path + "/render/buffer/viewport";
+    auto revision_path = widget_path + "/render/buffer/revision";
+
+    if (auto status = ensure_value(space, width_path, defaults.width); !status) {
+        return status;
+    }
+    if (auto status = ensure_value(space, height_path, defaults.height); !status) {
+        return status;
+    }
+    if (auto status = ensure_value(space, dpi_path, defaults.dpi); !status) {
+        return status;
+    }
+    PaintBufferViewport viewport{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = static_cast<float>(defaults.width),
+        .max_y = static_cast<float>(defaults.height),
+    };
+    if (auto status = ensure_value(space, viewport_path, viewport); !status) {
+        return status;
+    }
+    if (auto status = ensure_value(space, revision_path, std::uint64_t{0}); !status) {
+        return status;
+    }
+    return {};
+}
+
+auto ReadBufferMetrics(PathSpace& space, std::string const& widget_path)
+    -> SP::Expected<PaintBufferMetrics> {
+    PaintBufferMetrics defaults{};
+    if (auto status = EnsureBufferDefaults(space, widget_path, defaults); !status) {
+        return std::unexpected(status.error());
+    }
+
+    PaintBufferMetrics metrics = defaults;
+    auto read_u32 = [&](std::string const& path) -> SP::Expected<std::uint32_t> {
+        auto value = space.read<std::uint32_t, std::string>(path);
+        if (!value) {
+            return std::unexpected(value.error());
+        }
+        return *value;
+    };
+
+    if (auto width = read_u32(widget_path + "/render/buffer/metrics/width")) {
+        metrics.width = *width;
+    } else {
+        return std::unexpected(width.error());
+    }
+    if (auto height = read_u32(widget_path + "/render/buffer/metrics/height")) {
+        metrics.height = *height;
+    } else {
+        return std::unexpected(height.error());
+    }
+    auto dpi_value = space.read<float, std::string>(widget_path + "/render/buffer/metrics/dpi");
+    if (!dpi_value) {
+        return std::unexpected(dpi_value.error());
+    }
+    metrics.dpi = *dpi_value;
+    return metrics;
+}
+
+auto append_point(PathSpace& space,
+                  std::string const& widget_path,
+                  std::uint64_t stroke_id,
+                  PaintStrokeMeta meta,
+                  std::vector<PaintStrokePoint>&& points,
+                  std::optional<PaintStrokePoint> const& point,
+                  bool commit) -> SP::Expected<bool> {
+    bool mutated = false;
+    if (point) {
+        points.push_back(*point);
+        mutated = true;
+    }
+    if (commit && !meta.committed) {
+        meta.committed = true;
+        mutated = true;
+    }
+    if (!mutated) {
+        return false;
+    }
+    auto status = write_stroke(space, widget_path, stroke_id, meta, points);
+    if (!status) {
+        return std::unexpected(status.error());
+    }
+    return true;
+}
+
+auto HandleAction(PathSpace& space, WidgetAction const& action) -> SP::Expected<bool> {
+    switch (action.kind) {
+    case WidgetOpKind::PaintStrokeBegin:
+    case WidgetOpKind::PaintStrokeUpdate:
+    case WidgetOpKind::PaintStrokeCommit:
+        break;
+    default:
+        return false;
+    }
+
+    auto stroke_id = parse_stroke_id(action.target_id);
+    if (!stroke_id) {
+        return false;
+    }
+
+    auto metrics = ReadBufferMetrics(space, action.widget_path);
+    if (!metrics) {
+        return std::unexpected(metrics.error());
+    }
+
+    std::optional<PaintStrokePoint> point;
+    if (action.pointer.has_local) {
+        point = clamp_point(*metrics, action.pointer.local_x, action.pointer.local_y);
+    }
+
+    auto brush_size = read_brush_size(space, action.widget_path);
+    if (!brush_size) {
+        return std::unexpected(brush_size.error());
+    }
+    auto brush_color = read_brush_color(space, action.widget_path);
+    if (!brush_color) {
+        return std::unexpected(brush_color.error());
+    }
+
+    auto existing_meta = read_meta(space, action.widget_path, *stroke_id);
+    if (!existing_meta) {
+        return std::unexpected(existing_meta.error());
+    }
+
+    std::vector<PaintStrokePoint> points;
+    PaintStrokeMeta meta{
+        .brush_size = *brush_size,
+        .color = *brush_color,
+        .committed = false,
+    };
+
+    if (existing_meta->has_value()) {
+        meta = existing_meta->value();
+        auto loaded = read_points(space, action.widget_path, *stroke_id);
+        if (!loaded) {
+            return std::unexpected(loaded.error());
+        }
+        points = std::move(*loaded);
+        if (action.kind == WidgetOpKind::PaintStrokeBegin) {
+            points.clear();
+            meta.brush_size = *brush_size;
+            meta.color = *brush_color;
+            meta.committed = false;
+        }
+    } else if (action.kind == WidgetOpKind::PaintStrokeUpdate
+               || action.kind == WidgetOpKind::PaintStrokeCommit) {
+        // Ignore updates for unknown strokes until a begin arrives.
+        return false;
+    }
+
+    auto updated = append_point(space,
+                                action.widget_path,
+                                *stroke_id,
+                                meta,
+                                std::move(points),
+                                point,
+                                action.kind == WidgetOpKind::PaintStrokeCommit);
+    if (!updated) {
+        return std::unexpected(updated.error());
+    }
+
+    if (*updated) {
+        (void)BuilderDetail::replace_single(space,
+                                            action.widget_path + "/state/history/last_stroke_id",
+                                            *stroke_id);
+        auto dirty = WidgetDetail::mark_render_dirty(space, action.widget_path);
+        if (!dirty) {
+            return std::unexpected(dirty.error());
+        }
+        increment_revision(space, action.widget_path);
+    }
+    return *updated;
+}
+
+auto LoadStrokeRecords(PathSpace& space,
+                       std::string const& widget_path)
+    -> SP::Expected<std::vector<PaintStrokeRecord>> {
+    auto history_root = widget_path + "/state/history";
+    auto view = SP::ConcretePathStringView{history_root};
+    auto children = space.listChildren(view);
+    std::vector<PaintStrokeRecord> records;
+    records.reserve(children.size());
+    for (auto const& child : children) {
+        if (child == "next_id" || child == "last_stroke_id") {
+            continue;
+        }
+        auto id = parse_child_id(child);
+        if (!id) {
+            continue;
+        }
+        auto meta = space.read<PaintStrokeMeta, std::string>(history_root + "/" + child + "/meta");
+        if (!meta) {
+            continue;
+        }
+        auto points = BuilderDetail::read_optional<std::vector<PaintStrokePoint>>(space,
+                                                                                 history_root + "/" + child + "/points");
+        if (!points) {
+            continue;
+        }
+        PaintStrokeRecord record{};
+        record.id = *id;
+        record.meta = *meta;
+        record.points = points->value_or(std::vector<PaintStrokePoint>{});
+        records.push_back(std::move(record));
+    }
+    std::sort(records.begin(), records.end(), [](auto const& lhs, auto const& rhs) {
+        return lhs.id < rhs.id;
+    });
+    return records;
+}
+
+} // namespace SP::UI::Declarative::PaintRuntime

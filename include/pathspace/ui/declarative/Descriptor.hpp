@@ -2,6 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/declarative/PaintSurfaceTypes.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
 #include <array>
@@ -63,10 +64,18 @@ struct InputFieldDescriptor {
     BuilderWidgets::TextFieldState state{};
 };
 
+struct PaintSurfaceStrokeDescriptor {
+    std::uint64_t id = 0;
+    PaintStrokeMeta meta{};
+    std::vector<PaintStrokePoint> points;
+};
+
 struct PaintSurfaceDescriptor {
     float brush_size = 0.0f;
     std::array<float, 4> brush_color{1.0f, 1.0f, 1.0f, 1.0f};
     bool gpu_enabled = false;
+    PaintBufferMetrics buffer{};
+    std::vector<PaintSurfaceStrokeDescriptor> strokes;
 };
 
 struct WidgetDescriptor {
