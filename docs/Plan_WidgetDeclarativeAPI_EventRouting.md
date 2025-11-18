@@ -18,7 +18,11 @@ _Last updated: October 31, 2025_
 
 > **Update (November 17, 2025):** Paint-surface hit tests produce `PaintStrokeBegin/Update/Commit` ops with pointer-local coordinates. The trellis enqueues each op and InputTask calls the `events/draw/handler` binding after mirroring the same payload into the widget's action queues.
 
-> **Update (November 18, 2025):** WidgetEventTrellis now mutates canonical widget state (button hover/press, toggle checked, slider value/dragging, list hover/selection, tree hover/selection/expanded) and flips `render/dirty` before each `WidgetOp` is published, guaranteeing that declarative widgets stay visually in sync even when user handlers are empty; see `tests/ui/test_WidgetEventTrellis.cpp` for button/slider/list coverage.
+<<<<<<< HEAD
+> **Update (November 18, 2025):** WidgetEventTrellis now mutates canonical widget state (button hover/press, toggle checked, slider value/dragging, list hover/selection, tree hover/selection/expanded) and flips `render/dirty` before each `WidgetOp` is published, guaranteeing that declarative widgets stay visually in sync even when user handlers are empty; see `tests/ui/test_WidgetStateMutators.cpp` for unit-level coverage of the state mutators.
+=======
+> **Update (November 18, 2025):** WidgetEventTrellis now mutates canonical widget state (button hover/press, toggle checked, slider value/dragging, list hover/selection, tree hover/selection/expanded) and flips `render/dirty` before each `WidgetOp` is published, guaranteeing that declarative widgets stay visually in sync even when user handlers are empty; see `tests/ui/test_WidgetStateMutators.cpp` for unit-level coverage of the state mutators.
+>>>>>>> dabef75 (fix(declarative): auto-update widget state)
 
 ## Auto-render request queue
 - **Path**: `<target>/events/renderRequested/queue`
