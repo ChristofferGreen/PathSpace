@@ -12,7 +12,8 @@ namespace Toggle {
 
 auto Fragment(Args args) -> WidgetFragment {
     auto children = std::move(args.children);
-    return WidgetDetail::FragmentBuilder{"toggle",
+    auto on_toggle = std::move(args.on_toggle);
+    auto builder = WidgetDetail::FragmentBuilder{"toggle",
                                    [args = std::move(args)](FragmentContext const& ctx)
                                        -> SP::Expected<void> {
                                            BuilderWidgets::ToggleState state{};
@@ -30,17 +31,6 @@ auto Fragment(Args args) -> WidgetFragment {
                                                !status) {
                                                return status;
                                            }
-                                           if (args.on_toggle) {
-                                               HandlerVariant handler = ToggleHandler{*args.on_toggle};
-                                               if (auto status = WidgetDetail::write_handler(ctx.space,
-                                                                                      ctx.root,
-                                                                                      "toggle",
-                                                                                      HandlerKind::Toggle,
-                                                                                      std::move(handler));
-                                                   !status) {
-                                                   return status;
-                                               }
-                                           }
                                            if (auto status = WidgetDetail::initialize_render(ctx.space,
                                                                                       ctx.root,
                                                                                       WidgetKind::Toggle);
@@ -49,8 +39,14 @@ auto Fragment(Args args) -> WidgetFragment {
                                            }
                                            return SP::Expected<void>{};
                                        }}
-        .with_children(std::move(children))
-        .build();
+        .with_children(std::move(children));
+
+    if (on_toggle) {
+        HandlerVariant handler = ToggleHandler{std::move(*on_toggle)};
+        builder.with_handler("toggle", HandlerKind::Toggle, std::move(handler));
+    }
+
+    return builder.build();
 }
 
 auto Create(PathSpace& space,

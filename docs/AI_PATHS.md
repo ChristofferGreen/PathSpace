@@ -61,6 +61,7 @@ Conventions:
   - `/system/widgets/runtime/input/metrics/{handlers_invoked_total,handler_failures_total,handler_missing_total,last_handler_ns}` — handler-dispatch telemetry produced by `CreateInputTask`.
   - `/system/widgets/runtime/input/metrics/{events_enqueued_total,events_dropped_total}` — mirrors how many widget events were mirrored into the canonical queues vs. dropped due to storage errors.
   - `widgets/<id>/metrics/handlers/{invoked_total,failures_total,missing_total}` — per-widget handler telemetry updated by `CreateInputTask`, allowing debugging of missing bindings or flaky callbacks without scraping the shared logs.
+  - Declarative fragments carry handler specs and `Widgets::Mount` rebinds them under the destination widget path, while instrumentation layers can call `Widgets::Handlers::{Read,Replace,Wrap,Restore}` to observe or override handlers without rewriting the raw `events/<event>/handler` node.
   - `/system/widgets/runtime/input/log/errors/queue` — string queue capturing reducer/pump failures.
   - Launch controls:
     - `LaunchOptions::start_input_runtime` (default `true`) decides whether `CreateInputTask` launches automatically when `LaunchStandard` runs.

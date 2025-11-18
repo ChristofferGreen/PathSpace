@@ -26,7 +26,8 @@ namespace List {
 auto Fragment(Args args) -> WidgetFragment {
     auto items = sanitize_list_items(std::move(args.items));
     auto children = std::move(args.children);
-    return WidgetDetail::FragmentBuilder{"list",
+    auto on_child_event = std::move(args.on_child_event);
+    auto builder = WidgetDetail::FragmentBuilder{"list",
                                    [args = std::move(args),
                                     items = std::move(items)](FragmentContext const& ctx)
                                        -> SP::Expected<void> {
@@ -49,17 +50,6 @@ auto Fragment(Args args) -> WidgetFragment {
                                                !status) {
                                                return status;
                                            }
-                                           if (args.on_child_event) {
-                                               HandlerVariant handler = ListChildHandler{*args.on_child_event};
-                                               if (auto status = WidgetDetail::write_handler(ctx.space,
-                                                                                      ctx.root,
-                                                                                      "child_event",
-                                                                                      HandlerKind::ListChild,
-                                                                                      std::move(handler));
-                                                   !status) {
-                                                   return status;
-                                               }
-                                           }
                                            if (auto status = WidgetDetail::initialize_render(ctx.space,
                                                                                       ctx.root,
                                                                                       WidgetKind::List);
@@ -68,8 +58,14 @@ auto Fragment(Args args) -> WidgetFragment {
                                            }
                                            return SP::Expected<void>{};
                                        }}
-        .with_children(std::move(children))
-        .build();
+        .with_children(std::move(children));
+
+    if (on_child_event) {
+        HandlerVariant handler = ListChildHandler{std::move(*on_child_event)};
+        builder.with_handler("child_event", HandlerKind::ListChild, std::move(handler));
+    }
+
+    return builder.build();
 }
 
 auto Create(PathSpace& space,

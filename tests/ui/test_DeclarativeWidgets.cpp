@@ -425,4 +425,96 @@ TEST_CASE("Widgets::Move rejects duplicate destinations") {
     CHECK_EQ(result.error().code, Error::Code::InvalidPath);
 }
 
+TEST_CASE("Widget fragments register handlers during mount") {
+    DeclarativeFixture fx;
+    Button::Args args{};
+    bool invoked = false;
+    args.on_press = [&](ButtonContext&) { invoked = true; };
+    auto fragment = Button::Fragment(std::move(args));
+    auto mounted = Widgets::Mount(fx.space, fx.parent_view(), "fragment_button", fragment);
+    REQUIRE(mounted.has_value());
+
+    auto binding = fx.space.read<HandlerBinding, std::string>(mounted->getPath() + "/events/press/handler");
+    REQUIRE(binding.has_value());
+    auto handler = Handlers::Read(fx.space, *mounted, "press");
+    REQUIRE(handler);
+    REQUIRE(handler->has_value());
+    auto button_handler = std::get_if<ButtonHandler>(&handler->value());
+    REQUIRE(button_handler != nullptr);
+
+    ButtonContext ctx{fx.space, *mounted};
+    (*button_handler)(ctx);
+    CHECK(invoked);
+}
+
+TEST_CASE("Handler helpers replace, wrap, and restore callbacks") {
+    DeclarativeFixture fx;
+    bool base_called = false;
+    Button::Args args{};
+    args.on_press = [&](ButtonContext&) { base_called = true; };
+    auto button = Button::Create(fx.space, fx.parent_view(), "handler_button", std::move(args));
+    REQUIRE(button.has_value());
+
+    bool override_called = false;
+    HandlerVariant override_handler = ButtonHandler{[&](ButtonContext&) { override_called = true; }};
+    auto replace_token = Handlers::Replace(fx.space,
+                                           *button,
+                                           "press",
+                                           HandlerKind::ButtonPress,
+                                           std::move(override_handler));
+    REQUIRE(replace_token.has_value());
+
+    auto binding = fx.space.read<HandlerBinding, std::string>(button->getPath() + "/events/press/handler");
+    REQUIRE(binding.has_value());
+    auto handler = Handlers::Read(fx.space, *button, "press");
+    REQUIRE(handler);
+    REQUIRE(handler->has_value());
+    ButtonContext ctx{fx.space, *button};
+    std::get<ButtonHandler>(handler->value())(ctx);
+    CHECK(override_called);
+    CHECK_FALSE(base_called);
+
+    REQUIRE(Handlers::Restore(fx.space, *replace_token));
+
+    auto restored = fx.space.read<HandlerBinding, std::string>(button->getPath() + "/events/press/handler");
+    REQUIRE(restored.has_value());
+    auto restored_handler = Handlers::Read(fx.space, *button, "press");
+    REQUIRE(restored_handler);
+    REQUIRE(restored_handler->has_value());
+    std::get<ButtonHandler>(restored_handler->value())(ctx);
+    CHECK(base_called);
+
+    auto label = Label::Create(fx.space, fx.parent_view(), "handler_label", Label::Args{.text = "Plain"});
+    REQUIRE(label.has_value());
+
+    bool wrapped_called = false;
+    auto wrap_token = Handlers::Wrap(
+        fx.space,
+        *label,
+        "activate",
+        HandlerKind::LabelActivate,
+        [&](HandlerVariant const& existing) {
+            CHECK(std::holds_alternative<std::monostate>(existing));
+            return HandlerVariant{LabelHandler{[&](LabelContext&) { wrapped_called = true; }}};
+        });
+    REQUIRE(wrap_token.has_value());
+
+    auto label_binding = fx.space.read<HandlerBinding, std::string>(label->getPath() + "/events/activate/handler");
+    REQUIRE(label_binding.has_value());
+    auto label_handler = Handlers::Read(fx.space, *label, "activate");
+    REQUIRE(label_handler);
+    REQUIRE(label_handler->has_value());
+    LabelContext label_ctx{fx.space, *label};
+    std::get<LabelHandler>(label_handler->value())(label_ctx);
+    CHECK(wrapped_called);
+
+    REQUIRE(Handlers::Restore(fx.space, *wrap_token));
+    auto missing = fx.space.read<HandlerBinding, std::string>(label->getPath() + "/events/activate/handler");
+    REQUIRE_FALSE(missing.has_value());
+    auto code = missing.error().code;
+    bool expected_code = (code == Error::Code::NoObjectFound)
+                         || (code == Error::Code::NoSuchPath);
+    CHECK(expected_code);
+}
+
 } // namespace

@@ -115,6 +115,7 @@ Undo/redo integrations must keep all data for a logical command inside a single 
 - The dispatcher resolves `<widget>/events/<event>/handler` and, when present, invokes the stored callable inline on the task thread handling the op. Handlers use the signature `void()` and read any required context from PathSpace state (e.g., op queues or widget state nodes).
 - Missing handlers are treated as no-ops; future telemetry work will decide whether to mirror these drops under `<widget>/log/events`.
 - Scenes that need higher-level interception can swap the handler node entirely (write a different callable) or wrap the existing callback in a delegating lambda—no separate routing tables are required.
+- Declarative scenes now have first-class helpers: `Widgets::Handlers::Read/Replace/Wrap/Restore` expose the live handler registry so instrumentation layers can wrap callbacks in place and roll back when overlays de-mount.
 
 Canonical namespaces stay consistent across widgets: `state/` for mutable widget data, `style/` for theme references and overrides, `layout/` for layout hints, `events/` for handler callables and their logs, `children/` for nested widget mount points, and `render/` for cached rendering artifacts.
 
@@ -123,6 +124,7 @@ Canonical namespaces stay consistent across widgets: `state/` for mutable widget
 - Treat fragments as widgets already instantiated inside a private subspace. Mounting relocates that subspace under the parent widget tree without schema translation.
 - Simple mounts only require inserting the fragment root into the parent PathSpace (`Widgets::MountFragment` performs a subtree insert). The runtime then marks `render/dirty` and enqueues an auto-render event so the new widget is visible immediately.
 - Callable nodes (lambdas, callbacks) live under `callbacks/<id>` inside the fragment. During mount, their captured widget paths are rewritten to the destination path and the handlers are copied into the destination `events/<event>/handler`. Shared callbacks use `std::shared_ptr` delegates so relocation preserves ownership semantics.
+ - Callable nodes (lambdas, callbacks) now travel with fragments: `WidgetFragment` carries handler specs and `Widgets::Mount` re-registers them under the destination `events/<event>/handler` path so bindings survive reuse or container mounts automatically.
 - Containers that accept child fragments (lists, stacks) enumerate `children/*` in the fragment subspace and insert each child subtree in order under the parent widget path. Dirtiness/bubble rules follow the standard widget schema; no fragment-specific namespaces exist once mounted.
 - When fragment and parent both define `events/<event>/handler`, the parent win strategy applies: the fragment mount preserves the parent handler unless explicitly overridden. Document the override semantics so tooling can flag accidental handler replacement.
 
@@ -231,7 +233,7 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
 4. **Event dispatch**
    - ✅ (November 17, 2025) InputTask now mirrors every reduced `WidgetAction` into `widgets/<id>/events/inbox/queue` plus per-event queues (`events/press/queue`, `events/toggle/queue`, `events/change/queue`, etc.), publishes enqueue telemetry under `/system/widgets/runtime/input/metrics/{events_enqueued_total,events_dropped_total}`, and logs enqueue failures to `/system/widgets/runtime/input/log/errors/queue`.
    - ✅ (November 17, 2025) The runtime keeps enqueue lightweight by reusing reducer payloads; handler dispatch resolves the same canonical queue before invoking `events/.../handler` callables, so tooling can read the queue without touching reducers.
-   - Ensure fragment mounts relocate handler callables when they are inserted, and provide helpers for scenes to wrap/replace handlers on demand.
+   - ✅ (November 18, 2025) Fragment mounts now relocate handler bindings automatically, and the new `Widgets::Handlers::{Read,Replace,Wrap,Restore}` helpers let scenes override or wrap callbacks without custom routing tables.
 5. **Input processing node**
    - Runtime pump now drains widget ops into `WidgetAction` queues; follow-ups must extend it to invoke widget handlers and commit resultant state updates.
    - Ensure the task runs safely on existing task pool, honors the handler return enum, records failures to `<widget>/log/events`, and exposes logging hooks.

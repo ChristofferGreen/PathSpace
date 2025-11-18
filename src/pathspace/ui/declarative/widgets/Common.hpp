@@ -63,6 +63,10 @@ auto write_handler(PathSpace& space,
                    HandlerKind kind,
                    HandlerVariant handler) -> SP::Expected<void>;
 
+auto write_fragment_handlers(PathSpace& space,
+                             std::string const& root,
+                             std::vector<FragmentHandler> const& handlers) -> SP::Expected<void>;
+
 auto clear_handlers(std::string const& widget_root) -> void;
 
 auto rebind_handlers(PathSpace& space,
@@ -70,6 +74,15 @@ auto rebind_handlers(PathSpace& space,
                      std::string const& new_root) -> SP::Expected<void>;
 
 auto resolve_handler(std::string const& registry_key) -> std::optional<HandlerVariant>;
+
+auto read_handler_binding(PathSpace& space,
+                          std::string const& root,
+                          std::string_view event)
+    -> SP::Expected<std::optional<HandlerBinding>>;
+
+auto clear_handler_binding(PathSpace& space,
+                           std::string const& root,
+                           std::string_view event) -> SP::Expected<void>;
 
 struct FragmentBuilder {
     WidgetFragment fragment;
@@ -82,6 +95,17 @@ struct FragmentBuilder {
 
     FragmentBuilder& with_children(std::vector<std::pair<std::string, WidgetFragment>> children) {
         fragment.children = std::move(children);
+        return *this;
+    }
+
+    FragmentBuilder& with_handler(std::string event,
+                                  HandlerKind kind,
+                                  HandlerVariant handler) {
+        fragment.handlers.emplace_back(FragmentHandler{
+            .event = std::move(event),
+            .kind = kind,
+            .handler = std::move(handler),
+        });
         return *this;
     }
 

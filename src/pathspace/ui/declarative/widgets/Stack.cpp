@@ -22,27 +22,16 @@ auto Fragment(Args args) -> WidgetFragment {
         child_fragments.emplace_back(panel.id, std::move(panel.fragment));
     }
 
-    return WidgetDetail::FragmentBuilder{"stack",
+    auto on_select = std::move(args.on_select);
+    auto builder = WidgetDetail::FragmentBuilder{"stack",
                                    [panel_ids = std::move(panel_ids),
-                                    active_panel = std::move(args.active_panel),
-                                    handler = std::move(args.on_select)](FragmentContext const& ctx)
+                                    active_panel = std::move(args.active_panel)](FragmentContext const& ctx)
                                        -> SP::Expected<void> {
                                            if (auto status = WidgetDetail::write_value(ctx.space,
                                                                                 ctx.root + "/state/active_panel",
                                                                                 active_panel);
                                                !status) {
                                                return status;
-                                           }
-                                           if (handler) {
-                                               HandlerVariant stored = StackPanelHandler{*handler};
-                                               if (auto status = WidgetDetail::write_handler(ctx.space,
-                                                                                      ctx.root,
-                                                                                      "panel_select",
-                                                                                      HandlerKind::StackPanel,
-                                                                                      std::move(stored));
-                                                   !status) {
-                                                   return status;
-                                               }
                                            }
                                            if (auto status = WidgetDetail::initialize_render(ctx.space,
                                                                                       ctx.root,
@@ -65,8 +54,14 @@ auto Fragment(Args args) -> WidgetFragment {
                                            }
                                            return SP::Expected<void>{};
                                        }}
-        .with_children(std::move(child_fragments))
-        .build();
+        .with_children(std::move(child_fragments));
+
+    if (on_select) {
+        HandlerVariant handler = StackPanelHandler{std::move(*on_select)};
+        builder.with_handler("panel_select", HandlerKind::StackPanel, std::move(handler));
+    }
+
+    return builder.build();
 }
 
 auto Create(PathSpace& space,

@@ -42,7 +42,7 @@ These nodes exist under every declarative widget root (`widgets/<widget-id>/…`
 | `focus/current` | flag | rt | Boolean flag indicating the widget currently holds focus. |
 | `layout/{orientation,spacing,computed/*}` | value | opt/rt | Layout hints plus computed metrics. |
 | `children/<child-name>` | dir | opt | Nested widget fragments. |
-| `events/<event>/handler` | callable | opt | Stores `HandlerBinding { registry_key, kind }`; runtime resolves registry ids to lambdas. |
+| `events/<event>/handler` | callable | opt | Stores `HandlerBinding { registry_key, kind }`; runtime resolves registry ids to lambdas. Fragment specs carry handler metadata so `Widgets::Mount` re-registers them automatically, and scenes can override a binding with `Widgets::Handlers::{Replace,Wrap,Restore}` without touching the raw path. |
 | `events/inbox/queue` | queue | rt | Canonical `WidgetAction` stream populated by the declarative runtime. |
 | `events/<event>/queue` | queue | opt | Optional filtered queue (press/toggle/change/etc.) for tooling that only needs a single event family. |
 | `metrics/handlers/{invoked_total,failures_total,missing_total}` | value | rt | Per-widget handler telemetry recorded by the input runtime. |
@@ -150,7 +150,7 @@ Descriptor status: paint surfaces now expose brush metadata, buffer metrics, and
 
 ## Handler bindings & descriptors
 
-- Every `events/<event>/handler` leaf stores a `HandlerBinding` struct (`registry_key`, `kind`). Declarative helpers register the lambda in an in-memory registry keyed by `<widget_path>#<event>#<sequence>` and write the binding record into PathSpace. Removing a widget drops every binding with that prefix so stale handlers never fire.
+- Every `events/<event>/handler` leaf stores a `HandlerBinding` struct (`registry_key`, `kind`). Declarative helpers register the lambda in an in-memory registry keyed by `<widget_path>#<event>#<sequence>` and write the binding record into PathSpace. Removing a widget drops every binding with that prefix so stale handlers never fire. Fragments can bundle handler specs and `Widgets::Mount` rewrites them for the destination path, while instrumentation layers can call `Widgets::Handlers::Read/Replace/Wrap/Restore` to observe, override, or restore bindings without hand-editing the schema.
 - `render/synthesize` entries store a `RenderDescriptor` (widget kind enum). The runtime converts descriptors + `state/*` + `style/*` into a `WidgetDescriptor` (`Descriptor.hpp`) and synthesizes `DrawableBucketSnapshot` data via the legacy preview builders. Cached buckets live at `render/bucket`, and `SceneSnapshotBuilder` reads them via `structure/widgets/<widget>/render/bucket`.
 
 ## Dirty + lifecycle flow

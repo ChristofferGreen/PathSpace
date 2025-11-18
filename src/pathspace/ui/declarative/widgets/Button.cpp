@@ -31,7 +31,8 @@ namespace Button {
 auto Fragment(Args args) -> WidgetFragment {
     args.style = sanitize_button_style(args.style);
     auto children = std::move(args.children);
-    return WidgetDetail::FragmentBuilder{"button",
+    auto on_press = std::move(args.on_press);
+    auto builder = WidgetDetail::FragmentBuilder{"button",
                                    [args = std::move(args)](FragmentContext const& ctx)
                                        -> SP::Expected<void> {
                                            BuilderWidgets::ButtonState state{};
@@ -62,17 +63,6 @@ auto Fragment(Args args) -> WidgetFragment {
                                                    return status;
                                                }
                                            }
-                                           if (args.on_press) {
-                                               HandlerVariant handler = ButtonHandler{*args.on_press};
-                                               if (auto status = WidgetDetail::write_handler(ctx.space,
-                                                                                      ctx.root,
-                                                                                      "press",
-                                                                                      HandlerKind::ButtonPress,
-                                                                                       std::move(handler));
-                                                   !status) {
-                                                   return status;
-                                               }
-                                           }
                                            if (auto status = WidgetDetail::initialize_render(ctx.space,
                                                                                       ctx.root,
                                                                                       WidgetKind::Button);
@@ -81,8 +71,14 @@ auto Fragment(Args args) -> WidgetFragment {
                                            }
                                            return SP::Expected<void>{};
                                        }}
-        .with_children(std::move(children))
-        .build();
+        .with_children(std::move(children));
+
+    if (on_press) {
+        HandlerVariant handler = ButtonHandler{std::move(*on_press)};
+        builder.with_handler("press", HandlerKind::ButtonPress, std::move(handler));
+    }
+
+    return builder.build();
 }
 
 auto Create(PathSpace& space,

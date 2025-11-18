@@ -24,12 +24,6 @@ struct FragmentContext {
 
 struct WidgetFragment;
 
-struct WidgetFragment {
-    std::string kind;
-    std::function<SP::Expected<void>(FragmentContext const&)> populate;
-    std::vector<std::pair<std::string, WidgetFragment>> children;
-};
-
 enum class WidgetKind : std::uint8_t {
     Button,
     Toggle,
@@ -159,6 +153,51 @@ using HandlerVariant = std::variant<std::monostate,
                                     LabelHandler,
                                     InputFieldHandler,
                                     PaintSurfaceHandler>;
+
+struct FragmentHandler {
+    std::string event;
+    HandlerKind kind = HandlerKind::None;
+    HandlerVariant handler;
+};
+
+struct WidgetFragment {
+    std::string kind;
+    std::function<SP::Expected<void>(FragmentContext const&)> populate;
+    std::vector<std::pair<std::string, WidgetFragment>> children;
+    std::vector<FragmentHandler> handlers;
+};
+
+struct HandlerOverrideToken {
+    std::string widget_path;
+    std::string event;
+    HandlerKind kind = HandlerKind::None;
+    bool had_previous = false;
+    std::optional<HandlerVariant> previous_handler;
+};
+
+namespace Handlers {
+
+using HandlerTransformer = std::function<HandlerVariant(HandlerVariant const&)>;
+
+auto Read(PathSpace& space,
+          SP::UI::Builders::WidgetPath const& widget,
+          std::string_view event) -> SP::Expected<std::optional<HandlerVariant>>;
+
+auto Replace(PathSpace& space,
+             SP::UI::Builders::WidgetPath const& widget,
+             std::string_view event,
+             HandlerKind kind,
+             HandlerVariant handler) -> SP::Expected<HandlerOverrideToken>;
+
+auto Wrap(PathSpace& space,
+          SP::UI::Builders::WidgetPath const& widget,
+          std::string_view event,
+          HandlerKind kind,
+          HandlerTransformer const& transformer) -> SP::Expected<HandlerOverrideToken>;
+
+auto Restore(PathSpace& space, HandlerOverrideToken const& token) -> SP::Expected<void>;
+
+} // namespace Handlers
 
 namespace Button {
 

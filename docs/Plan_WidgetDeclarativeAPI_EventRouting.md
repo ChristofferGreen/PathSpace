@@ -26,6 +26,8 @@ _Last updated: October 31, 2025_
 
 > **Update (November 18, 2025):** InputTask now mirrors handler results back to `widgets/<id>/metrics/handlers/{invoked_total,failures_total,missing_total}` in addition to the global `/system/widgets/runtime/input/metrics/*` counters, so dashboards can flag a specific widget whose handler never fires or keeps throwing.
 
+> **Update (November 18, 2025):** `WidgetFragment` now records handler specs and `Widgets::Mount` rebinds them at insertion time; scenes can intercept callbacks via `Widgets::Handlers::{Read,Replace,Wrap,Restore}` without copying handler nodes or adding bespoke routing tables.
+
 ## Auto-render request queue
 - **Path**: `<target>/events/renderRequested/queue`
 - **Producers**: `SP::UI::Builders::Detail::enqueue_auto_render_event` is invoked from widget bindings (button/toggle/slider/list/tree), focus helpers, and scene hit-testing code to request redraws after state mutations (see `src/pathspace/ui/BuildersDetail.hpp:189`, `src/pathspace/ui/WidgetBindings.cpp`, `src/pathspace/ui/SceneBuilders.cpp`).

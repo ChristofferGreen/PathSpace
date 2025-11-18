@@ -55,6 +55,11 @@ auto MountFragment(PathSpace& space,
         }
     }
 
+    if (auto handlers = WidgetDetail::write_fragment_handlers(space, root, fragment.handlers);
+        !handlers) {
+        return std::unexpected(handlers.error());
+    }
+
     for (auto const& child : fragment.children) {
         if (auto mounted = MountFragment(space,
                                          SP::App::ConcretePathView{root},
@@ -128,5 +133,92 @@ auto Move(PathSpace& space,
 
     return SP::UI::Builders::WidgetPath{destination_root};
 }
+
+namespace Handlers {
+
+auto Read(PathSpace& space,
+          WidgetPath const& widget,
+          std::string_view event) -> SP::Expected<std::optional<HandlerVariant>> {
+    auto binding = WidgetDetail::read_handler_binding(space, widget.getPath(), event);
+    if (!binding) {
+        return std::unexpected(binding.error());
+    }
+    if (!binding->has_value()) {
+        return std::optional<HandlerVariant>{};
+    }
+    auto handler = WidgetDetail::resolve_handler(binding->value().registry_key);
+    if (!handler) {
+        return std::optional<HandlerVariant>{};
+    }
+    return std::optional<HandlerVariant>{*handler};
+}
+
+auto Replace(PathSpace& space,
+             WidgetPath const& widget,
+             std::string_view event,
+             HandlerKind kind,
+             HandlerVariant handler) -> SP::Expected<HandlerOverrideToken> {
+    HandlerOverrideToken token{
+        .widget_path = widget.getPath(),
+        .event = std::string(event),
+        .kind = kind,
+    };
+
+    auto current_binding = WidgetDetail::read_handler_binding(space, widget.getPath(), event);
+    if (!current_binding) {
+        return std::unexpected(current_binding.error());
+    }
+    if (current_binding->has_value()) {
+        token.had_previous = true;
+        auto resolved = WidgetDetail::resolve_handler(current_binding->value().registry_key);
+        if (resolved) {
+            token.previous_handler = *resolved;
+        }
+    }
+
+    if (auto status = WidgetDetail::write_handler(space,
+                                                  widget.getPath(),
+                                                  event,
+                                                  kind,
+                                                  std::move(handler));
+        !status) {
+        return std::unexpected(status.error());
+    }
+
+    return token;
+}
+
+auto Wrap(PathSpace& space,
+          WidgetPath const& widget,
+          std::string_view event,
+          HandlerKind kind,
+          HandlerTransformer const& transformer) -> SP::Expected<HandlerOverrideToken> {
+    auto existing = Read(space, widget, event);
+    if (!existing) {
+        return std::unexpected(existing.error());
+    }
+    HandlerVariant const empty{};
+    auto const& current = existing->has_value() ? existing->value() : empty;
+    auto next = transformer(current);
+    return Replace(space, widget, event, kind, std::move(next));
+}
+
+auto Restore(PathSpace& space, HandlerOverrideToken const& token) -> SP::Expected<void> {
+    WidgetPath widget{token.widget_path};
+    if (token.previous_handler.has_value()) {
+        if (auto status = WidgetDetail::write_handler(space,
+                                                      widget.getPath(),
+                                                      token.event,
+                                                      token.kind,
+                                                      *token.previous_handler);
+            !status) {
+            return std::unexpected(status.error());
+        }
+        return {};
+    }
+    return WidgetDetail::clear_handler_binding(space, widget.getPath(), token.event);
+}
+
+} // namespace Handlers
 
 } // namespace SP::UI::Declarative

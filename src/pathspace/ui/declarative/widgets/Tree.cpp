@@ -11,7 +11,8 @@ using SP::UI::Builders::WidgetPath;
 namespace Tree {
 
 auto Fragment(Args args) -> WidgetFragment {
-    return WidgetDetail::FragmentBuilder{"tree",
+    auto on_node_event = std::move(args.on_node_event);
+    auto builder = WidgetDetail::FragmentBuilder{"tree",
                                    [args = std::move(args)](FragmentContext const& ctx)
                                        -> SP::Expected<void> {
                                            BuilderWidgets::TreeState state{};
@@ -33,17 +34,6 @@ auto Fragment(Args args) -> WidgetFragment {
                                                !status) {
                                                return status;
                                            }
-                                           if (args.on_node_event) {
-                                               HandlerVariant handler = TreeNodeHandler{*args.on_node_event};
-                                               if (auto status = WidgetDetail::write_handler(ctx.space,
-                                                                                      ctx.root,
-                                                                                      "node_event",
-                                                                                      HandlerKind::TreeNode,
-                                                                                      std::move(handler));
-                                                   !status) {
-                                                   return status;
-                                               }
-                                           }
                                            if (auto status = WidgetDetail::initialize_render(ctx.space,
                                                                                       ctx.root,
                                                                                       WidgetKind::Tree);
@@ -52,7 +42,14 @@ auto Fragment(Args args) -> WidgetFragment {
                                            }
                                            return SP::Expected<void>{};
                                        }}
-        .build();
+        ;
+
+    if (on_node_event) {
+        HandlerVariant handler = TreeNodeHandler{std::move(*on_node_event)};
+        builder.with_handler("node_event", HandlerKind::TreeNode, std::move(handler));
+    }
+
+    return builder.build();
 }
 
 auto Create(PathSpace& space,

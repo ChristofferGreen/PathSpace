@@ -48,7 +48,8 @@ auto Fragment(Args args) -> WidgetFragment {
         std::clamp(args.style.thumb_radius, args.style.track_height * 0.5f, args.style.height * 0.5f);
     auto clamped_value = clamp_slider_value(args.value, range);
 
-    return WidgetDetail::FragmentBuilder{"slider",
+    auto on_change = std::move(args.on_change);
+    auto builder = WidgetDetail::FragmentBuilder{"slider",
                                    [args = std::move(args),
                                     range,
                                     clamped_value](FragmentContext const& ctx) -> SP::Expected<void> {
@@ -73,17 +74,6 @@ auto Fragment(Args args) -> WidgetFragment {
                                            !status) {
                                            return status;
                                        }
-                                       if (args.on_change) {
-                                           HandlerVariant handler = SliderHandler{*args.on_change};
-                                           if (auto status = WidgetDetail::write_handler(ctx.space,
-                                                                                  ctx.root,
-                                                                                  "change",
-                                                                                  HandlerKind::Slider,
-                                                                                  std::move(handler));
-                                               !status) {
-                                               return status;
-                                           }
-                                       }
                                        if (auto status = WidgetDetail::initialize_render(ctx.space,
                                                                                   ctx.root,
                                                                                   WidgetKind::Slider);
@@ -92,7 +82,14 @@ auto Fragment(Args args) -> WidgetFragment {
                                        }
                                        return SP::Expected<void>{};
                                    }}
-        .build();
+        ;
+
+    if (on_change) {
+        HandlerVariant handler = SliderHandler{std::move(*on_change)};
+        builder.with_handler("change", HandlerKind::Slider, std::move(handler));
+    }
+
+    return builder.build();
 }
 
 auto Create(PathSpace& space,

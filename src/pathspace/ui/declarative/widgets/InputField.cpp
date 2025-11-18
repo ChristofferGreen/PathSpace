@@ -10,7 +10,9 @@ using SP::UI::Builders::WidgetPath;
 namespace InputField {
 
 auto Fragment(Args args) -> WidgetFragment {
-    return WidgetDetail::FragmentBuilder{"input_field",
+    auto on_change = std::move(args.on_change);
+    auto on_submit = std::move(args.on_submit);
+    auto builder = WidgetDetail::FragmentBuilder{"input_field",
                                    [args = std::move(args)](FragmentContext const& ctx)
                                        -> SP::Expected<void> {
                                            if (auto status = WidgetDetail::write_value(ctx.space,
@@ -25,28 +27,6 @@ auto Fragment(Args args) -> WidgetFragment {
                                                !status) {
                                                return status;
                                            }
-                                           if (args.on_change) {
-                                               HandlerVariant handler = InputFieldHandler{*args.on_change};
-                                               if (auto status = WidgetDetail::write_handler(ctx.space,
-                                                                                      ctx.root,
-                                                                                      "change",
-                                                                                      HandlerKind::InputChange,
-                                                                                      std::move(handler));
-                                                   !status) {
-                                                   return status;
-                                               }
-                                           }
-                                           if (args.on_submit) {
-                                               HandlerVariant handler = InputFieldHandler{*args.on_submit};
-                                               if (auto status = WidgetDetail::write_handler(ctx.space,
-                                                                                      ctx.root,
-                                                                                      "submit",
-                                                                                      HandlerKind::InputSubmit,
-                                                                                      std::move(handler));
-                                                   !status) {
-                                                   return status;
-                                               }
-                                           }
                                            if (auto status = WidgetDetail::initialize_render(ctx.space,
                                                                                       ctx.root,
                                                                                       WidgetKind::InputField);
@@ -55,7 +35,18 @@ auto Fragment(Args args) -> WidgetFragment {
                                            }
                                            return SP::Expected<void>{};
                                        }}
-        .build();
+        ;
+
+    if (on_change) {
+        HandlerVariant handler = InputFieldHandler{std::move(*on_change)};
+        builder.with_handler("change", HandlerKind::InputChange, std::move(handler));
+    }
+    if (on_submit) {
+        HandlerVariant handler = InputFieldHandler{std::move(*on_submit)};
+        builder.with_handler("submit", HandlerKind::InputSubmit, std::move(handler));
+    }
+
+    return builder.build();
 }
 
 auto Create(PathSpace& space,

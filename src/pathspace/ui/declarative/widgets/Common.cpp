@@ -28,12 +28,15 @@ public:
             return {};
         }
         auto id = compose_id(widget_root, event_name);
+        auto handler_path = handler_path_string(widget_root, event_name);
         entries_[id] = HandlerEntry{
             .widget_root = widget_root,
             .event_name = std::string(event_name),
             .kind = kind,
             .handler = std::move(handler),
+            .handler_path = handler_path,
         };
+        path_index_[handler_path] = id;
         return id;
     }
 
@@ -49,11 +52,19 @@ public:
     }
 
 private:
+    auto handler_path_string(std::string const& widget_root,
+                             std::string_view event_name) -> std::string {
+        auto path = make_path(widget_root, "events");
+        path = make_path(std::move(path), event_name);
+        return make_path(std::move(path), "handler");
+    }
+
     struct HandlerEntry {
         std::string widget_root;
         std::string event_name;
         HandlerKind kind = HandlerKind::None;
         HandlerVariant handler;
+        std::string handler_path;
     };
 
     auto compose_id(std::string const& widget_root,
@@ -68,6 +79,7 @@ private:
 
     std::mutex mutex_;
     std::unordered_map<std::string, HandlerEntry> entries_;
+    std::unordered_map<std::string, std::string> path_index_;
     std::atomic<std::uint64_t> counter_{0};
 
 public:
@@ -86,6 +98,7 @@ public:
                 .event_name = it->second.event_name,
                 .kind = it->second.kind,
                 .handler = std::move(it->second.handler),
+                .handler_path = handler_path_string(to_root, it->second.event_name),
             };
             it = entries_.erase(it);
 
@@ -94,7 +107,8 @@ public:
                 .registry_key = new_key,
                 .kind = entry.kind,
             };
-            entries_.emplace(new_key, std::move(entry));
+            entries_.emplace(new_key, entry);
+            path_index_[entry.handler_path] = new_key;
             updates.emplace_back(entry.event_name, binding);
         }
         return updates;
@@ -114,6 +128,7 @@ public:
             .event_name = it->second.event_name,
             .kind = it->second.kind,
             .handler = std::move(it->second.handler),
+            .handler_path = handler_path_string(new_root, it->second.event_name),
         };
         entries_.erase(it);
 
@@ -122,7 +137,8 @@ public:
             .registry_key = new_key,
             .kind = entry.kind,
         };
-        entries_.emplace(new_key, std::move(entry));
+        entries_.emplace(new_key, entry);
+        path_index_[entry.handler_path] = new_key;
         return binding;
     }
 
@@ -133,6 +149,34 @@ public:
             return std::nullopt;
         }
         return it->second.handler;
+    }
+
+    auto erase(std::string const& registry_key) -> void {
+        std::lock_guard<std::mutex> lock(mutex_);
+        entries_.erase(registry_key);
+        for (auto it = path_index_.begin(); it != path_index_.end();) {
+            if (it->second == registry_key) {
+                it = path_index_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    auto unlink_path(std::string const& handler_path) -> std::optional<std::string> {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = path_index_.find(handler_path);
+        if (it == path_index_.end()) {
+            return std::nullopt;
+        }
+        auto key = it->second;
+        path_index_.erase(it);
+        return key;
+    }
+
+    auto register_path(std::string handler_path, std::string registry_key) -> void {
+        std::lock_guard<std::mutex> lock(mutex_);
+        path_index_[std::move(handler_path)] = std::move(registry_key);
     }
 };
 
@@ -157,6 +201,12 @@ auto make_path(std::string base, std::string_view component) -> std::string {
     }
     base.append(component);
     return base;
+}
+
+auto handler_binding_path(std::string const& root, std::string_view event) -> std::string {
+    auto path = make_path(root, "events");
+    path = make_path(std::move(path), event);
+    return make_path(std::move(path), "handler");
 }
 
 auto mount_base(std::string_view parent,
@@ -218,17 +268,35 @@ auto write_handler(PathSpace& space,
     if (std::holds_alternative<std::monostate>(handler)) {
         return {};
     }
+    auto path = handler_binding_path(root, event);
+    if (auto previous = CallbackRegistry::instance().unlink_path(path); previous) {
+        CallbackRegistry::instance().erase(*previous);
+    }
     auto key = CallbackRegistry::instance().store(root, event, kind, std::move(handler));
     if (key.empty()) {
         return {};
     }
     HandlerBinding binding{
-        .registry_key = std::move(key),
+        .registry_key = key,
         .kind = kind,
     };
-    auto path = make_path(make_path(root, "events"), event);
-    path.append("/handler");
     return write_value(space, path, binding);
+}
+
+auto write_fragment_handlers(PathSpace& space,
+                             std::string const& root,
+                             std::vector<FragmentHandler> const& handlers) -> SP::Expected<void> {
+    for (auto const& handler : handlers) {
+        if (auto status = write_handler(space,
+                                        root,
+                                        handler.event,
+                                        handler.kind,
+                                        handler.handler);
+            !status) {
+            return status;
+        }
+    }
+    return {};
 }
 
 auto clear_handlers(std::string const& widget_root) -> void {
@@ -260,6 +328,42 @@ auto rebind_handlers(PathSpace& space,
 
 auto resolve_handler(std::string const& registry_key) -> std::optional<HandlerVariant> {
     return CallbackRegistry::instance().resolve(registry_key);
+}
+
+auto read_handler_binding(PathSpace& space,
+                          std::string const& root,
+                          std::string_view event)
+    -> SP::Expected<std::optional<HandlerBinding>> {
+    auto path = handler_binding_path(root, event);
+    auto binding = space.read<HandlerBinding, std::string>(path);
+    if (!binding) {
+        auto const& error = binding.error();
+        if (error.code == SP::Error::Code::NoObjectFound
+            || error.code == SP::Error::Code::NoSuchPath) {
+            return std::optional<HandlerBinding>{};
+        }
+        return std::unexpected(error);
+    }
+    return std::optional<HandlerBinding>{*binding};
+}
+
+auto clear_handler_binding(PathSpace& space,
+                           std::string const& root,
+                           std::string_view event) -> SP::Expected<void> {
+    auto path = handler_binding_path(root, event);
+    if (auto previous = CallbackRegistry::instance().unlink_path(path); previous) {
+        CallbackRegistry::instance().erase(*previous);
+    }
+    auto removed = space.take<HandlerBinding>(path);
+    if (!removed) {
+        auto const& error = removed.error();
+        if (error.code == SP::Error::Code::NoObjectFound
+            || error.code == SP::Error::Code::NoSuchPath) {
+            return {};
+        }
+        return std::unexpected(error);
+    }
+    return {};
 }
 
 } // namespace SP::UI::Declarative::Detail

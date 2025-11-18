@@ -12,7 +12,8 @@ using SP::UI::Builders::WidgetPath;
 namespace PaintSurface {
 
 auto Fragment(Args args) -> WidgetFragment {
-    return WidgetDetail::FragmentBuilder{"paint_surface",
+    auto on_draw = std::move(args.on_draw);
+    auto builder = WidgetDetail::FragmentBuilder{"paint_surface",
                                    [args = std::move(args)](FragmentContext const& ctx)
                                        -> SP::Expected<void> {
                                            if (auto status = WidgetDetail::write_value(ctx.space,
@@ -45,17 +46,6 @@ auto Fragment(Args args) -> WidgetFragment {
                                                return status;
                                            }
 
-                                           if (args.on_draw) {
-                                               HandlerVariant handler = PaintSurfaceHandler{*args.on_draw};
-                                               if (auto status = WidgetDetail::write_handler(ctx.space,
-                                                                                      ctx.root,
-                                                                                      "draw",
-                                                                                      HandlerKind::PaintDraw,
-                                                                                      std::move(handler));
-                                                   !status) {
-                                                   return status;
-                                               }
-                                           }
                                            if (auto status = WidgetDetail::initialize_render(ctx.space,
                                                                                       ctx.root,
                                                                                       WidgetKind::PaintSurface);
@@ -64,7 +54,14 @@ auto Fragment(Args args) -> WidgetFragment {
                                            }
                                            return SP::Expected<void>{};
                                        }}
-        .build();
+        ;
+
+    if (on_draw) {
+        HandlerVariant handler = PaintSurfaceHandler{std::move(*on_draw)};
+        builder.with_handler("draw", HandlerKind::PaintDraw, std::move(handler));
+    }
+
+    return builder.build();
 }
 
 auto Create(PathSpace& space,

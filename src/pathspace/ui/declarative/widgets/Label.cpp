@@ -10,7 +10,8 @@ using SP::UI::Builders::WidgetPath;
 namespace Label {
 
 auto Fragment(Args args) -> WidgetFragment {
-    return WidgetDetail::FragmentBuilder{"label",
+    auto on_activate = std::move(args.on_activate);
+    auto builder = WidgetDetail::FragmentBuilder{"label",
                                    [args = std::move(args)](FragmentContext const& ctx)
                                        -> SP::Expected<void> {
                                            if (auto status = WidgetDetail::write_value(ctx.space,
@@ -31,17 +32,6 @@ auto Fragment(Args args) -> WidgetFragment {
                                                !status) {
                                                return status;
                                            }
-                                           if (args.on_activate) {
-                                               HandlerVariant handler = LabelHandler{*args.on_activate};
-                                               if (auto status = WidgetDetail::write_handler(ctx.space,
-                                                                                      ctx.root,
-                                                                                      "activate",
-                                                                                      HandlerKind::LabelActivate,
-                                                                                      std::move(handler));
-                                                   !status) {
-                                                   return status;
-                                               }
-                                           }
                                            if (auto status = WidgetDetail::initialize_render(ctx.space,
                                                                                       ctx.root,
                                                                                       WidgetKind::Label);
@@ -50,7 +40,14 @@ auto Fragment(Args args) -> WidgetFragment {
                                            }
                                            return SP::Expected<void>{};
                                        }}
-        .build();
+        ;
+
+    if (on_activate) {
+        HandlerVariant handler = LabelHandler{std::move(*on_activate)};
+        builder.with_handler("activate", HandlerKind::LabelActivate, std::move(handler));
+    }
+
+    return builder.build();
 }
 
 auto Create(PathSpace& space,
