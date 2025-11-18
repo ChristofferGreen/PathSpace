@@ -27,6 +27,7 @@ _Last updated: October 31, 2025_
 > **Update (November 18, 2025):** InputTask now mirrors handler results back to `widgets/<id>/metrics/handlers/{invoked_total,failures_total,missing_total}` in addition to the global `/system/widgets/runtime/input/metrics/*` counters, so dashboards can flag a specific widget whose handler never fires or keeps throwing.
 
 > **Update (November 18, 2025):** `WidgetFragment` now records handler specs and `Widgets::Mount` rebinds them at insertion time; scenes can intercept callbacks via `Widgets::Handlers::{Read,Replace,Wrap,Restore}` without copying handler nodes or adding bespoke routing tables.
+> **Update (November 18, 2025):** Declarative paint surfaces also enqueue `DirtyRectHint`s under `render/buffer/pendingDirty` + `/render/gpu/dirtyRects`, flip `render/gpu/state` to `DirtyPartial`, and the `/system/widgets/runtime/paint_gpu` uploader rasterizes stroke history into `assets/texture` while SceneLifecycle forwards those pending rectangles to `targets/<tid>/hints/dirtyRects` for incremental presents.
 
 ## Auto-render request queue
 - **Path**: `<target>/events/renderRequested/queue`

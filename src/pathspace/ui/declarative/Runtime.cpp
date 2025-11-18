@@ -4,6 +4,7 @@
 
 #include <pathspace/core/Error.hpp>
 #include <pathspace/ui/Helpers.hpp>
+#include <pathspace/ui/declarative/PaintSurfaceUploader.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
 
 #include <chrono>
@@ -303,6 +304,16 @@ auto LaunchStandard(PathSpace& space, LaunchOptions const& options) -> SP::Expec
             : options.widget_event_options.state_path;
     }
 
+    if (options.start_paint_gpu_uploader) {
+        auto uploader_started = SP::UI::Declarative::CreatePaintSurfaceUploader(space,
+                                                                               options.paint_gpu_options);
+        if (!uploader_started) {
+            return std::unexpected(uploader_started.error());
+        }
+        result.paint_gpu_uploader_started = *uploader_started;
+        result.paint_gpu_state_path = options.paint_gpu_options.state_path;
+    }
+
     return result;
 }
 
@@ -311,6 +322,7 @@ auto ShutdownDeclarativeRuntime(PathSpace& space) -> void {
     SP::Runtime::ShutdownIOPump(space);
     SP::Runtime::ShutdownTelemetryControl(space);
     SP::UI::Declarative::ShutdownInputTask(space);
+    SP::UI::Declarative::ShutdownPaintSurfaceUploader(space);
 }
 
 } // namespace SP::System

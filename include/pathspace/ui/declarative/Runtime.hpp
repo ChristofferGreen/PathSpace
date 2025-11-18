@@ -6,6 +6,7 @@
 #include <pathspace/runtime/TelemetryControl.hpp>
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/declarative/InputTask.hpp>
+#include <pathspace/ui/declarative/PaintSurfaceUploader.hpp>
 #include <pathspace/ui/declarative/WidgetEventTrellis.hpp>
 
 #include <optional>
@@ -24,6 +25,8 @@ struct LaunchOptions {
     SP::Runtime::TelemetryControlOptions telemetry_control_options{};
     bool start_widget_event_trellis = true;
     SP::UI::Declarative::WidgetEventTrellisOptions widget_event_options{};
+    bool start_paint_gpu_uploader = true;
+    SP::UI::Declarative::PaintSurfaceUploaderOptions paint_gpu_options{};
 };
 
 struct LaunchResult {
@@ -37,6 +40,8 @@ struct LaunchResult {
     std::string telemetry_state_path;
     bool widget_event_trellis_started = false;
     std::string widget_event_trellis_state_path;
+    bool paint_gpu_uploader_started = false;
+    std::string paint_gpu_state_path;
 };
 
 [[nodiscard]] auto LaunchStandard(PathSpace& space,

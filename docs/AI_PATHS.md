@@ -78,6 +78,9 @@ Conventions:
   - `CreateWidgetEventTrellis` emits `WidgetOp`s for buttons, toggles, sliders, lists, trees, text inputs, stack panels (`StackSelect`), and paint surfaces (`PaintStrokeBegin/Update/Commit`).
   - **New (Nov 18, 2025):** Before each enqueue the trellis mutates `widgets/<id>/state/*` (hover, pressed, value, selection, expansion) and flips `widgets/<id>/render/dirty`, guaranteeing that declarative widgets visually react to input even when user handlers are no-ops.
   - `/system/widgets/runtime/events/log/errors/queue` — string queue capturing hit-test and routing failures.
+  - `/system/widgets/runtime/paint_gpu/state/running` — bool flag managed by the declarative paint-surface uploader worker responsible for keeping `assets/texture` in sync.
+  - `/system/widgets/runtime/paint_gpu/metrics/{uploads_total,partial_uploads_total,full_uploads_total,failures_total,widgets_pending,last_upload_ns}` — telemetry describing staged texture uploads and queue depth.
+  - `/system/widgets/runtime/paint_gpu/log/errors/queue` — string queue capturing rasterization or upload failures before the runtime falls back to CPU stroke buckets.
 
 ## 2) Application subtree layout (app-relative)
 
@@ -200,6 +203,7 @@ For schema tables, handler metadata, theme resolution rules, and per-widget spec
 - `config/theme/`
     - `active` — string canonical name of the active widget theme
     - `theme/<name>/value` — stored `WidgetTheme` struct describing colors, typography, and widget styles
+    - `theme/<name>/style/inherits` — optional canonical parent name; theme resolver walks up to 16 ancestors, errors on cycles, and treats an empty or missing node as “no parent”
 - `config/renderer/default` — app-relative renderer root (e.g., `renderers/widgets_declarative_renderer`), written by `SP::App::Create`.
 
 - IO logging (app-local)

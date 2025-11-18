@@ -2,6 +2,7 @@
 
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/layer/PathSpaceTrellis.hpp>
+#include <pathspace/log/TaggedLogger.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/SceneUtilities.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
@@ -9,11 +10,14 @@
 
 #include "../BuildersDetail.hpp"
 
+#include <pathspace/ui/Builders.hpp>
+
 #include <pathspace/path/ConcretePath.hpp>
 
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <exception>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -31,6 +35,8 @@ namespace SP::UI::Declarative::SceneLifecycle {
 namespace {
 
 namespace BuilderDetail = SP::UI::Builders::Detail;
+namespace BuilderRenderer = SP::UI::Builders::Renderer;
+using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
 constexpr std::string_view kPublishAuthor = "declarative-runtime";
 
 auto to_epoch_ms(std::chrono::system_clock::time_point tp) -> std::int64_t {
@@ -60,6 +66,16 @@ struct SceneLifecycleWorker {
         control_queue_path_ = scene_path_ + "/runtime/lifecycle/control";
         theme_invalidate_command_ = control_queue_path_ + ":invalidate_theme";
         metrics_base_ = scene_path_ + "/runtime/lifecycle/metrics";
+        auto renderer_leaf = window_path_ + "/views/" + view_name_ + "/renderer";
+        auto renderer_relative = space_.read<std::string, std::string>(renderer_leaf);
+        if (renderer_relative) {
+            auto resolved = SP::App::resolve_app_relative(SP::App::AppRootPathView{app_root_value_.getPath()},
+                                                          *renderer_relative);
+            if (resolved) {
+                renderer_target_path_ = resolved->getPath();
+                has_renderer_target_ = true;
+            }
+        }
     }
 
     ~SceneLifecycleWorker() {
@@ -115,26 +131,33 @@ private:
     }
 
     void run() {
-        while (!stop_flag_.load(std::memory_order_acquire)) {
-            register_widget_sources();
-            scan_dirty_widgets();
-            flush_pending_publish();
+        try {
+            while (!stop_flag_.load(std::memory_order_acquire)) {
+                register_widget_sources();
+                scan_dirty_widgets();
+                flush_pending_publish();
 
-            auto result = space_.take<std::string>(trellis_path_, SP::Out{} & SP::Block{options_.trellis_wait});
-            if (!result) {
-                auto const& error = result.error();
-                if (error.code == Error::Code::NoObjectFound || error.code == Error::Code::Timeout) {
+                auto result = space_.take<std::string>(trellis_path_,
+                                                       SP::Out{} & SP::Block{options_.trellis_wait});
+                if (!result) {
+                    auto const& error = result.error();
+                    if (error.code == Error::Code::NoObjectFound || error.code == Error::Code::Timeout) {
+                        continue;
+                    }
                     continue;
                 }
-                continue;
-            }
 
-            auto const& widget_path = *result;
-            if (widget_path.rfind(control_queue_path_, 0) == 0) {
-                handle_control_command(widget_path);
-                continue;
+                auto const& widget_path = *result;
+                if (widget_path.rfind(control_queue_path_, 0) == 0) {
+                    handle_control_command(widget_path);
+                    continue;
+                }
+                process_event(widget_path);
             }
-            process_event(widget_path);
+        } catch (std::exception const& ex) {
+            handle_worker_exception(ex.what());
+        } catch (...) {
+            handle_worker_exception("scene lifecycle worker terminated due to unknown exception");
         }
     }
 
@@ -293,6 +316,7 @@ private:
             return;
         }
         store_widget_bucket(widget_path, std::move(*bucket));
+        submit_dirty_hints(widget_path);
         schedule_publish(widget_path);
         clear_dirty();
         ++events_processed_;
@@ -400,6 +424,27 @@ private:
         write_metric("widgets_with_buckets", bucket_cache_size_);
     }
 
+    void submit_dirty_hints(std::string const& widget_path) {
+        if (!has_renderer_target_) {
+            return;
+        }
+        auto pending_path = widget_path + "/render/buffer/pendingDirty";
+        auto pending = BuilderDetail::read_optional<std::vector<DirtyRectHint>>(space_, pending_path);
+        if (!pending || !pending->has_value()) {
+            return;
+        }
+        auto hints = **pending;
+        if (hints.empty()) {
+            return;
+        }
+        auto target_view = SP::ConcretePathStringView{renderer_target_path_};
+        auto submitted = BuilderRenderer::SubmitDirtyRects(space_, target_view, hints);
+        if (!submitted) {
+            return;
+        }
+        (void)BuilderDetail::replace_single(space_, pending_path, std::vector<DirtyRectHint>{});
+    }
+
     void remove_widget_bucket(std::string const& widget_path) {
         bool erased = false;
         {
@@ -462,6 +507,24 @@ private:
         (void)BuilderDetail::replace_single<T>(space_, metrics_base_ + "/" + leaf, value);
     }
 
+    void handle_worker_exception(std::string_view reason) noexcept {
+        pending_publish_.store(false, std::memory_order_release);
+        auto message = std::string(reason);
+        sp_log("SceneLifecycleWorker[" + scene_path_ + "] terminated: " + message, "SceneLifecycle");
+        try {
+            write_metric("last_error", message);
+        } catch (...) {
+            sp_log("SceneLifecycleWorker[" + scene_path_ + "] failed to write last_error metric", "SceneLifecycle");
+        }
+        try {
+            (void)BuilderDetail::replace_single<bool>(space_,
+                                                      scene_path_ + "/runtime/lifecycle/state/running",
+                                                      false);
+        } catch (...) {
+            sp_log("SceneLifecycleWorker[" + scene_path_ + "] failed to update running state", "SceneLifecycle");
+        }
+    }
+
 private:
     PathSpace& space_;
     std::string app_root_path_;
@@ -479,6 +542,7 @@ private:
     std::string control_queue_path_;
     std::string theme_invalidate_command_;
     std::string metrics_base_;
+    std::string renderer_target_path_;
     std::thread worker_;
     std::atomic<bool> stop_flag_{false};
     std::mutex registration_mutex_;
@@ -495,6 +559,7 @@ private:
     std::chrono::steady_clock::time_point last_publish_clock_{};
     std::mutex bucket_mutex_;
     std::map<std::string, std::shared_ptr<SP::UI::Scene::DrawableBucketSnapshot>> bucket_cache_;
+    bool has_renderer_target_ = false;
 };
 
 std::mutex g_lifecycle_mutex;

@@ -24,9 +24,9 @@ Unless noted otherwise, all paths are application-relative and live under `/syst
 - Use this appendix when editing `widgets/<widget-id>/...`, `widgets/focus/current`, or the declarative lifecycle plumbing (`scene/structure/widgets/*`, `runtime/lifecycle/*`, handler/descriptor nodes).
 - When you introduce or retire base nodes (application/window/scene/theme), update `AI_PATHS.md` first, then reference the change here only if there is a widget-facing implication.
 
-### Theme resolver (November 15, 2025)
+### Theme resolver (November 18, 2025)
 
-Declarative descriptors resolve styles by walking `style/theme` from the widget up through parent widgets, the owning window, and finally `/system/applications/<app>/themes/default`. The resolved name passes through `Config::Theme::SanitizeName`, then loads `config/theme/<name>/value`, and the result is cached per (app, theme) pair. Persist literal `meta/style` blobs only when a widget truly needs bespoke values; otherwise rely on the resolver.
+Declarative descriptors resolve styles by walking `style/theme` from the widget up through parent widgets, the owning window, and finally `/system/applications/<app>/themes/default`. The resolved name passes through `Config::Theme::SanitizeName`, then the loader walks `config/theme/<name>/style/inherits` (up to 16 ancestors) until it finds the nearest layer with a `value` payload. Cycles raise `Error::InvalidType`, missing payloads after the walk raise `Error::NoSuchPath`, and edits take effect the next time a descriptor is loaded—no persistent cache needs to be flushed. Persist literal `meta/style` blobs only when a widget truly needs bespoke values; otherwise rely on the resolver + inheritance.
 
 ## Common widget nodes
 
@@ -50,6 +50,7 @@ These nodes exist under every declarative widget root (`widgets/<widget-id>/…`
 | `render/bucket` | value | rt | Cached `DrawableBucketSnapshot` rebuilt when `render/dirty` flips. |
 | `render/dirty` | flag | rt | Raised by helpers whenever state/style changes. |
 | `render/events/dirty` | queue | rt | Widget-path FIFO consumed by the scene lifecycle trellis. |
+| `render/buffer/pendingDirty` | value | rt | Coalesced `DirtyRectHint` list flushed into `targets/<tid>/hints/dirtyRects` once SceneLifecycle stores the refreshed bucket. |
 | `log/events` | queue | rt | Diagnostics for handler failures, staging errors, etc. |
 
 All widgets also inherit the global queues documented elsewhere (e.g., `widgets/<id>/ops/inbox/queue`, `ops/actions/inbox/queue`) plus the auto-render queue under the window target.
@@ -140,13 +141,13 @@ Runtime hit tests now emit `StackSelect` widget ops when a user activates a rend
 | `render/buffer/metrics/{width,height,dpi}` | value | rt | Buffer metrics derived from layout × DPI. |
 | `render/buffer/viewport` | value | rt | Visible rect when buffer > layout. |
 | `render/buffer/revision` | value | rt | Monotonic counter incremented whenever stroke data mutates. |
-| `render/gpu/{enabled,state,dirtyRects,fence/start,fence/end,log/events,stats}` | mixed | opt/rt | GPU staging controls + diagnostics. |
-| `assets/texture` | value | rt | GPU texture resource (when staging enabled). |
+| `render/gpu/{enabled,state,dirtyRects,fence/start,fence/end,log/events,stats}` | mixed | opt/rt | GPU staging controls + diagnostics. `state` cycles through `Idle`, `DirtyPartial`, `DirtyFull`, `Uploading`, `Ready`, `Error`; `dirtyRects` queues `DirtyRectHint`s for the uploader, `fence/*` capture the last upload timestamps, and `stats` mirrors upload counters/bytes/revisions. |
+| `assets/texture` | value | rt | Serialized `PaintTexturePayload` (width, height, stride, revision, RGBA8 pixels) written by the paint GPU uploader. |
 | `events/draw/handler` | callable | opt | Draw handler translating pointer events into strokes. |
 
-Descriptor status: paint surfaces now expose brush metadata, buffer metrics, and recorded stroke paths through the descriptor so the runtime can synthesize `DrawCommandKind::Stroke` buckets without storing opaque lambdas. GPU staging/uploaders remain a follow-up.
+Descriptor status: paint surfaces expose brush metadata, buffer metrics, recorded stroke paths, and GPU staging metadata through the descriptor so the runtime can synthesize `DrawCommandKind::Stroke` buckets or, when `render/gpu/state == Ready`, hand the presenter an up-to-date texture published under `assets/texture`.
 
-`PaintStrokeBegin`, `PaintStrokeUpdate`, and `PaintStrokeCommit` ops now populate the paint surface action queue with pointer-local coordinates. The runtime forwards each op to `events/draw/queue`, appends points under `state/history/<id>/{meta,points}`, increments `render/buffer/revision`, and invokes the optional `draw` handler so reducers can append custom behavior or upload deltas to `render/buffer`/`assets/texture`.
+`PaintStrokeBegin`, `PaintStrokeUpdate`, and `PaintStrokeCommit` ops now populate the paint surface action queue with pointer-local coordinates. The runtime forwards each op to `events/draw/queue`, appends points under `state/history/<id>/{meta,points}`, increments `render/buffer/revision`, records stroke footprints under `render/buffer/pendingDirty` + `/render/gpu/dirtyRects`, flips `render/gpu/state` to `DirtyPartial`, and invokes the optional `draw` handler so reducers can append custom behavior or enqueue uploads manually if desired.
 
 ## Handler bindings & descriptors
 

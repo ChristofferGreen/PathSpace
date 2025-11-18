@@ -6,6 +6,7 @@
 #include <pathspace/ui/declarative/Widgets.hpp>
 
 #include <array>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -74,7 +75,11 @@ struct PaintSurfaceDescriptor {
     float brush_size = 0.0f;
     std::array<float, 4> brush_color{1.0f, 1.0f, 1.0f, 1.0f};
     bool gpu_enabled = false;
+    bool gpu_ready = false;
     PaintBufferMetrics buffer{};
+    std::vector<Builders::DirtyRectHint> pending_dirty;
+    std::optional<PaintTexturePayload> texture;
+    PaintGpuStats gpu_stats{};
     std::vector<PaintSurfaceStrokeDescriptor> strokes;
 };
 

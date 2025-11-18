@@ -171,10 +171,11 @@ History diagnostics rely on `_history/stats/*` telemetry published by the undo l
 #### GPU Staging
 
 - Optional staging is controlled by `widgets/<id>/render/gpu/enabled` (default `false`). When enabled, a background upload task watches `render/buffer` and publishes GPU resources under `widgets/<id>/assets/texture`.
-- Synchronization state lives under `widgets/<id>/render/gpu/state` with values `Idle`, `Uploading`, `Ready`, and `DirtyPartial`. Uploads set `Uploading`, record timestamps at `render/gpu/fence/start` and `/end`, then flip back to `Ready` when the texture is current.
+- Synchronization state lives under `widgets/<id>/render/gpu/state` with values `Idle`, `DirtyPartial`, `DirtyFull`, `Uploading`, `Ready`, and `Error`. Uploads set `Uploading`, record timestamps at `render/gpu/fence/start` and `/end`, then flip back to `Ready` when the texture is current.
 - Sub-rectangle uploads reuse dirty hints appended to `render/gpu/dirtyRects`. The uploader processes each rect, clears the list on success, or logs to `render/gpu/log/events` and performs a full upload on failure.
 - Presenter integration: window targets check `render/gpu/state`. If `Ready`, they bind `assets/texture`; otherwise they sample the CPU buffer. Multiple windows share the same staging metadata to avoid redundant uploads.
 - Metrics (last upload duration, bytes staged, partial update count) surface at `render/gpu/stats`. Regression tests should exercise full uploads, incremental updates, toggling GPU staging at runtime, and fallback behaviour when uploads fail.
+- `/system/widgets/runtime/paint_gpu/{state,metrics,log}` track the dedicated uploader worker started by `LaunchStandard`. The worker scans paint widgets, drains `render/gpu/dirtyRects`, rasterizes stroke history into RGBA8 payloads, writes them to `assets/texture`, and bumps the per-widget stats. SceneLifecycle simultaneously forwards `render/buffer/pendingDirty` rectangles into the active renderer target so partial updates reuse existing tiling.
 
 #### Accessibility (macOS)
 
@@ -250,15 +251,15 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - Updated buckets swap in incrementally so presents pick up refreshed data on the next frame.
    - Publish revisions via `SceneSnapshotBuilder` to preserve presenter compatibility.
    - ✅ (November 18, 2025) Paint surface runtime now records stroke metadata under `state/history/<id>/{meta,points}`, rebuilds render buckets using `Scene::DrawCommandKind::Stroke`, tracks buffer metrics/revisions, and keeps the scene lifecycle cache in sync with dirty signals. GPU staging/upload workers remain TODO.
-   - Paint surface synthesis must still translate stroke histories into GPU textures (optional) and expose incremental dirty regions for efficient redraw.
+   - ✅ (November 18, 2025) `render/buffer/pendingDirty` now tracks coalesced dirty rectangles per widget, SceneLifecycle forwards them to the active renderer target (`targets/<tid>/hints/dirtyRects`), and the new paint GPU uploader watches `render/gpu/state`, rasterizes stroke history into `assets/texture`, and publishes telemetry/logs under `/system/widgets/runtime/paint_gpu/*`. Presenters can bind the staged texture whenever the state flips to `Ready`.
 7. **Telemetry / logging**
    - Add debug logging for schema loads, focus transitions, input processing, and render updates.
    - Track perf counters comparing declarative vs. legacy pipeline.
 
 ### Phase 1/1 – Theme Runtime
 1. **Theme resolution helpers**
-   - ✅ (November 15, 2025) Theme resolver walks widget → parent widget → window → app default (`/themes/default`) and caches the resolved `WidgetTheme` so descriptors can hydrate styles without duplicating `meta/style` payloads.
-   - 🔜 Extend the helper to honor per-theme `style/inherits` chains once the editing API lands.
+   - ✅ (November 15, 2025) Theme resolver walks widget → parent widget → window → app default (`/themes/default`) and loads the resolved `WidgetTheme` on demand so descriptors do not need to duplicate style blobs.
+   - ✅ (November 18, 2025) Theme resolver now walks `config/theme/<name>/style/inherits` chains (up to 16 levels), falling back to the nearest ancestor that provides a `WidgetTheme` payload when the derived layer omits `value`, and raises `InvalidType` when a cycle is detected.
 2. **Theme editing API**
    - Provide `Theme::Create`, `Theme::SetColor`, etc., validating resources.
 3. **Examples & tests**

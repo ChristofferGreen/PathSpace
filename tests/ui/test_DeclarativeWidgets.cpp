@@ -4,6 +4,7 @@
 #include <pathspace/path/ConcretePath.hpp>
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
+#include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/WidgetDetail.hpp>
@@ -12,6 +13,8 @@
 #include <string>
 #include <span>
 
+using namespace std::chrono_literals;
+
 namespace {
 
 using namespace SP;
@@ -19,6 +22,7 @@ using namespace SP::UI::Declarative;
 namespace Builders = SP::UI::Builders;
 namespace WidgetsNS = SP::UI::Builders::Widgets;
 namespace DetailNS = SP::UI::Builders::Detail;
+namespace ThemeConfig = SP::UI::Builders::Config::Theme;
 
 struct DeclarativeFixture {
     PathSpace space;
@@ -366,6 +370,37 @@ TEST_CASE("PaintSurface descriptor captures brush metadata") {
     CHECK(bucket->drawable_ids.empty());
 }
 
+TEST_CASE("PaintSurfaceRuntime marks GPU state and dirty hints") {
+    DeclarativeFixture fx;
+    PaintSurface::Args args{};
+    args.gpu_enabled = true;
+    auto paint = PaintSurface::Create(fx.space, fx.parent_view(), "gpu_paint", args);
+    REQUIRE(paint.has_value());
+
+    SP::UI::Builders::Widgets::Reducers::WidgetAction action{};
+    action.widget_path = paint->getPath();
+    action.kind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind::PaintStrokeBegin;
+    action.target_id = "paint_surface/stroke/1";
+    auto pointer = SP::UI::Builders::Widgets::Bindings::PointerInfo{};
+    pointer.WithLocal(48.0f, 24.0f);
+    action.pointer = pointer;
+
+    auto handled = PaintRuntime::HandleAction(fx.space, action);
+    REQUIRE(handled.has_value());
+    CHECK(handled.value());
+
+    auto state_path = std::string(paint->getPath()) + "/render/gpu/state";
+    auto gpu_state = fx.space.read<std::string, std::string>(state_path);
+    REQUIRE(gpu_state.has_value());
+    CHECK_EQ(*gpu_state, "DirtyPartial");
+
+    auto pending_path = std::string(paint->getPath()) + "/render/buffer/pendingDirty";
+    auto pending = DetailNS::read_optional<std::vector<Builders::DirtyRectHint>>(fx.space, pending_path);
+    REQUIRE(pending.has_value());
+    REQUIRE(pending->has_value());
+    CHECK_FALSE((*pending)->empty());
+}
+
 TEST_CASE("Widgets::Move relocates widget and preserves handlers") {
     DeclarativeFixture fx;
 
@@ -515,6 +550,85 @@ TEST_CASE("Handler helpers replace, wrap, and restore callbacks") {
     bool expected_code = (code == Error::Code::NoObjectFound)
                          || (code == Error::Code::NoSuchPath);
     CHECK(expected_code);
+}
+
+TEST_CASE("Theme resolver uses inherited theme when child theme omits value") {
+    DeclarativeFixture fx;
+    SP::App::AppRootPathView app_root_view{fx.app_root.getPath()};
+
+    auto parent_theme = WidgetsNS::MakeDefaultWidgetTheme();
+    parent_theme.button.width = 512.0f;
+
+    auto parent_paths = ThemeConfig::Ensure(fx.space,
+                                            app_root_view,
+                                            "parent_theme",
+                                            parent_theme);
+    REQUIRE(parent_paths.has_value());
+    REQUIRE(DetailNS::replace_single(fx.space,
+                                     parent_paths->value.getPath(),
+                                     parent_theme)
+                .has_value());
+
+    auto inherits_path = SP::App::resolve_app_relative(app_root_view,
+                                                       "config/theme/child_theme/style/inherits");
+    REQUIRE(inherits_path.has_value());
+    auto sanitized_parent = ThemeConfig::SanitizeName("parent_theme");
+    REQUIRE(DetailNS::replace_single(fx.space,
+                                     inherits_path->getPath(),
+                                     sanitized_parent)
+                .has_value());
+
+    auto button = Button::Create(fx.space,
+                                 fx.parent_view(),
+                                 "theme_child_button",
+                                 Button::Args{.label = "Child"});
+    REQUIRE(button.has_value());
+    REQUIRE(DetailNS::replace_single(fx.space,
+                                     button->getPath() + "/style/theme",
+                                     std::string{"child_theme"})
+                .has_value());
+
+    auto descriptor = LoadWidgetDescriptor(fx.space, *button);
+    REQUIRE(descriptor.has_value());
+    auto const& data = std::get<ButtonDescriptor>(descriptor->data);
+    CHECK(data.style.width == doctest::Approx(parent_theme.button.width));
+}
+
+TEST_CASE("Theme resolver detects inheritance cycles") {
+    DeclarativeFixture fx;
+    SP::App::AppRootPathView app_root_view{fx.app_root.getPath()};
+
+    auto theme_a = WidgetsNS::MakeDefaultWidgetTheme();
+    auto paths_a = ThemeConfig::Ensure(fx.space, app_root_view, "cycle_a", theme_a);
+    REQUIRE(paths_a.has_value());
+    auto theme_b = WidgetsNS::MakeDefaultWidgetTheme();
+    auto paths_b = ThemeConfig::Ensure(fx.space, app_root_view, "cycle_b", theme_b);
+    REQUIRE(paths_b.has_value());
+
+    auto inherits_a = SP::App::resolve_app_relative(app_root_view,
+                                                    "config/theme/cycle_a/style/inherits");
+    auto inherits_b = SP::App::resolve_app_relative(app_root_view,
+                                                    "config/theme/cycle_b/style/inherits");
+    REQUIRE(inherits_a.has_value());
+    REQUIRE(inherits_b.has_value());
+
+    auto name_a = ThemeConfig::SanitizeName("cycle_a");
+    auto name_b = ThemeConfig::SanitizeName("cycle_b");
+
+    REQUIRE(DetailNS::replace_single(fx.space,
+                                     inherits_a->getPath(),
+                                     name_b)
+                .has_value());
+    REQUIRE(DetailNS::replace_single(fx.space,
+                                     inherits_b->getPath(),
+                                     name_a)
+                .has_value());
+
+    auto resolved = ThemeConfig::Resolve(app_root_view, name_a);
+    REQUIRE(resolved.has_value());
+    auto loaded = ThemeConfig::Load(fx.space, *resolved);
+    REQUIRE_FALSE(loaded.has_value());
+    CHECK_EQ(loaded.error().code, Error::Code::InvalidType);
 }
 
 } // namespace

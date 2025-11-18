@@ -4,6 +4,7 @@
 #include "widgets/Common.hpp"
 
 #include <pathspace/path/ConcretePath.hpp>
+#include <pathspace/ui/Builders.hpp>
 
 #include <algorithm>
 #include <charconv>
@@ -13,6 +14,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <vector>
 
 namespace SP::UI::Declarative::PaintRuntime {
 
@@ -20,12 +22,15 @@ namespace {
 
 namespace BuilderDetail = SP::UI::Builders::Detail;
 namespace WidgetDetail = SP::UI::Declarative::Detail;
+using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
 using SP::UI::Builders::Widgets::Bindings::WidgetOpKind;
 
 constexpr std::string_view kStrokePrefix{"paint_surface/stroke/"};
+constexpr std::size_t kMaxPendingDirty = 32;
 
-auto ensure_value(PathSpace& space, std::string const& path, auto const& value) -> SP::Expected<void> {
-    auto existing = BuilderDetail::read_optional<std::decay_t<decltype(value)>>(space, path);
+template <typename T>
+auto ensure_value(PathSpace& space, std::string const& path, T const& value) -> SP::Expected<void> {
+    auto existing = BuilderDetail::read_optional<T>(space, path);
     if (!existing) {
         return std::unexpected(existing.error());
     }
@@ -33,6 +38,122 @@ auto ensure_value(PathSpace& space, std::string const& path, auto const& value) 
         return {};
     }
     return BuilderDetail::replace_single(space, path, value);
+}
+
+auto log_gpu_event(PathSpace& space, std::string const& widget_path, std::string_view message) -> void {
+    auto path = widget_path + "/render/gpu/log/events";
+    (void)space.insert(path, std::string(message));
+}
+
+auto ensure_gpu_defaults(PathSpace& space, std::string const& widget_path) -> SP::Expected<void> {
+    auto state_path = widget_path + "/render/gpu/state";
+    if (auto status = ensure_value(space,
+                                   state_path,
+                                   std::string(PaintGpuStateToString(PaintGpuState::Idle)));
+        !status) {
+        return status;
+    }
+    auto dirty_path = widget_path + "/render/buffer/pendingDirty";
+    if (auto status = ensure_value(space, dirty_path, std::vector<DirtyRectHint>{}); !status) {
+        return status;
+    }
+    auto stats_path = widget_path + "/render/gpu/stats";
+    if (auto status = ensure_value(space, stats_path, PaintGpuStats{}); !status) {
+        return status;
+    }
+    auto fence_start = widget_path + "/render/gpu/fence/start";
+    if (auto status = ensure_value(space, fence_start, std::uint64_t{0}); !status) {
+        return status;
+    }
+    auto fence_end = widget_path + "/render/gpu/fence/end";
+    if (auto status = ensure_value(space, fence_end, std::uint64_t{0}); !status) {
+        return status;
+    }
+    return {};
+}
+
+auto write_gpu_state(PathSpace& space,
+                     std::string const& widget_path,
+                     PaintGpuState state) -> void {
+    auto path = widget_path + "/render/gpu/state";
+    (void)BuilderDetail::replace_single(space,
+                                        path,
+                                        std::string(PaintGpuStateToString(state)));
+}
+
+auto read_gpu_state(PathSpace& space, std::string const& widget_path) -> PaintGpuState {
+    auto path = widget_path + "/render/gpu/state";
+    auto stored = BuilderDetail::read_optional<std::string>(space, path);
+    if (!stored || !stored->has_value()) {
+        return PaintGpuState::Idle;
+    }
+    return PaintGpuStateFromString(**stored);
+}
+
+auto make_dirty_hint(PaintStrokePoint const& point,
+                     PaintBufferMetrics const& metrics,
+                     float brush_size) -> DirtyRectHint {
+    auto radius = std::max(brush_size * 0.5f, 1.0f);
+    DirtyRectHint hint{};
+    hint.min_x = point.x - radius;
+    hint.min_y = point.y - radius;
+    hint.max_x = point.x + radius;
+    hint.max_y = point.y + radius;
+    auto width = static_cast<float>(std::max<std::uint32_t>(1u, metrics.width));
+    auto height = static_cast<float>(std::max<std::uint32_t>(1u, metrics.height));
+    hint.min_x = std::clamp(hint.min_x, 0.0f, width);
+    hint.min_y = std::clamp(hint.min_y, 0.0f, height);
+    hint.max_x = std::clamp(hint.max_x, 0.0f, width);
+    hint.max_y = std::clamp(hint.max_y, 0.0f, height);
+    if (hint.max_x <= hint.min_x) {
+        hint.max_x = hint.min_x;
+    }
+    if (hint.max_y <= hint.min_y) {
+        hint.max_y = hint.min_y;
+    }
+    return hint;
+}
+
+auto append_pending_dirty(PathSpace& space,
+                          std::string const& widget_path,
+                          DirtyRectHint const& hint) -> SP::Expected<void> {
+    if (hint.max_x <= hint.min_x || hint.max_y <= hint.min_y) {
+        return {};
+    }
+    auto pending_path = widget_path + "/render/buffer/pendingDirty";
+    auto pending = BuilderDetail::read_optional<std::vector<DirtyRectHint>>(space, pending_path);
+    if (!pending) {
+        return std::unexpected(pending.error());
+    }
+    auto values = pending->value_or(std::vector<DirtyRectHint>{});
+    values.push_back(hint);
+    if (values.size() > kMaxPendingDirty) {
+        values.erase(values.begin(), values.end() - kMaxPendingDirty);
+    }
+    return BuilderDetail::replace_single(space, pending_path, values);
+}
+
+auto enqueue_dirty_hint(PathSpace& space,
+                        std::string const& widget_path,
+                        DirtyRectHint const& hint) -> SP::Expected<void> {
+    if (hint.max_x <= hint.min_x || hint.max_y <= hint.min_y) {
+        return {};
+    }
+    auto queue_path = widget_path + "/render/gpu/dirtyRects";
+    auto inserted = space.insert(queue_path, hint);
+    if (!inserted.errors.empty()) {
+        return std::unexpected(inserted.errors.front());
+    }
+    return append_pending_dirty(space, widget_path, hint);
+}
+
+auto gpu_enabled(PathSpace& space, std::string const& widget_path) -> bool {
+    auto path = widget_path + "/render/gpu/enabled";
+    auto value = BuilderDetail::read_optional<bool>(space, path);
+    if (!value || !value->has_value()) {
+        return false;
+    }
+    return **value;
 }
 
 auto increment_revision(PathSpace& space, std::string const& widget_path) -> void {
@@ -177,7 +298,7 @@ auto EnsureBufferDefaults(PathSpace& space,
     if (auto status = ensure_value(space, revision_path, std::uint64_t{0}); !status) {
         return status;
     }
-    return {};
+    return ensure_gpu_defaults(space, widget_path);
 }
 
 auto ReadBufferMetrics(PathSpace& space, std::string const& widget_path)
@@ -273,6 +394,7 @@ auto HandleAction(PathSpace& space, WidgetAction const& action) -> SP::Expected<
     if (!brush_color) {
         return std::unexpected(brush_color.error());
     }
+    auto wants_gpu_upload = gpu_enabled(space, action.widget_path);
 
     auto existing_meta = read_meta(space, action.widget_path, *stroke_id);
     if (!existing_meta) {
@@ -325,6 +447,17 @@ auto HandleAction(PathSpace& space, WidgetAction const& action) -> SP::Expected<
             return std::unexpected(dirty.error());
         }
         increment_revision(space, action.widget_path);
+
+        if (point) {
+            auto hint = make_dirty_hint(*point, *metrics, *brush_size);
+            auto hint_status = enqueue_dirty_hint(space, action.widget_path, hint);
+            if (!hint_status) {
+                auto message = hint_status.error().message.value_or("failed to enqueue dirty hint");
+                log_gpu_event(space, action.widget_path, message);
+            } else if (wants_gpu_upload) {
+                write_gpu_state(space, action.widget_path, PaintGpuState::DirtyPartial);
+            }
+        }
     }
     return *updated;
 }

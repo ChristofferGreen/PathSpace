@@ -9,14 +9,14 @@
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 
 #include <array>
+#include <cstring>
 #include <functional>
 #include <limits>
-#include <mutex>
 #include <optional>
 #include <span>
 #include <string_view>
-#include <unordered_map>
-#include <cstring>
+#include <unordered_set>
+#include <vector>
 
 namespace SP::UI::Declarative {
 namespace {
@@ -235,39 +235,54 @@ struct ThemeContext {
     std::string name;
 };
 
-auto load_theme_from_cache(PathSpace& space,
-                           SP::App::AppRootPathView app_root,
-                           std::string_view requested) -> SP::Expected<BuilderWidgets::WidgetTheme> {
-    static std::mutex cache_mutex;
-    static std::unordered_map<std::string, BuilderWidgets::WidgetTheme> cache;
+constexpr std::size_t kMaxThemeInheritanceDepth = 16;
 
+auto load_theme_with_inheritance(PathSpace& space,
+                                 SP::App::AppRootPathView app_root,
+                                 std::string_view requested)
+    -> SP::Expected<BuilderWidgets::WidgetTheme> {
     auto sanitized = SP::UI::Builders::Config::Theme::SanitizeName(requested);
-    auto key = std::string(app_root.getPath());
-    key.append(":");
-    key.append(sanitized);
+    std::unordered_set<std::string> visited;
+    visited.reserve(4);
 
-    {
-        std::lock_guard<std::mutex> guard(cache_mutex);
-        auto it = cache.find(key);
-        if (it != cache.end()) {
-            return it->second;
+    for (std::size_t depth = 0; depth < kMaxThemeInheritanceDepth; ++depth) {
+        if (!visited.insert(sanitized).second) {
+            return std::unexpected(
+                make_descriptor_error("theme inheritance cycle detected at '" + sanitized + "'",
+                                      SP::Error::Code::InvalidType));
         }
+
+        auto resolved = SP::UI::Builders::Config::Theme::Resolve(app_root, sanitized);
+        if (!resolved) {
+            return std::unexpected(resolved.error());
+        }
+
+        auto loaded = SP::UI::Builders::Config::Theme::Load(space, *resolved);
+        if (loaded) {
+            return *loaded;
+        }
+
+        auto const code = loaded.error().code;
+        if (code != SP::Error::Code::NoSuchPath && code != SP::Error::Code::NoObjectFound) {
+            return std::unexpected(loaded.error());
+        }
+
+        auto inherits_path = resolved->root.getPath() + "/style/inherits";
+        auto inherits_value = read_optional_value<std::string>(space, inherits_path);
+        if (!inherits_value) {
+            return std::unexpected(inherits_value.error());
+        }
+        if (!inherits_value->has_value() || inherits_value->value().empty()) {
+            return std::unexpected(make_descriptor_error(
+                "theme '" + sanitized + "' missing value and inherits",
+                SP::Error::Code::NoSuchPath));
+        }
+        sanitized = SP::UI::Builders::Config::Theme::SanitizeName(**inherits_value);
     }
 
-    auto resolved = SP::UI::Builders::Config::Theme::Resolve(app_root, sanitized);
-    if (!resolved) {
-        return std::unexpected(resolved.error());
-    }
-    auto loaded = SP::UI::Builders::Config::Theme::Load(space, *resolved);
-    if (!loaded) {
-        return std::unexpected(loaded.error());
-    }
-
-    {
-        std::lock_guard<std::mutex> guard(cache_mutex);
-        cache[key] = *loaded;
-    }
-    return *loaded;
+    return std::unexpected(
+        make_descriptor_error("theme inheritance depth exceeded",
+                              SP::Error::Code::CapacityExceeded));
 }
 
 auto resolve_theme_for_widget(PathSpace& space,
@@ -318,14 +333,15 @@ auto resolve_theme_for_widget(PathSpace& space,
         }
     }
 
-    auto loaded = load_theme_from_cache(space, app_root_view, *theme_value);
+    auto sanitized = SP::UI::Builders::Config::Theme::SanitizeName(*theme_value);
+    auto loaded = load_theme_with_inheritance(space, app_root_view, sanitized);
     if (!loaded) {
         return std::unexpected(loaded.error());
     }
 
     ThemeContext context{};
     context.theme = *loaded;
-    context.name = SP::UI::Builders::Config::Theme::SanitizeName(*theme_value);
+    context.name = sanitized;
     return context;
 }
 
@@ -480,6 +496,37 @@ auto read_paint_surface_descriptor(PathSpace& space, std::string const& root)
         return std::unexpected(gpu_flag.error());
     }
     descriptor.gpu_enabled = gpu_flag->value_or(false);
+
+    auto gpu_state_value = read_optional_value<std::string>(space, root + "/render/gpu/state");
+    if (!gpu_state_value) {
+        return std::unexpected(gpu_state_value.error());
+    }
+    descriptor.gpu_ready = PaintGpuStateFromString(gpu_state_value->value_or("Idle")) == PaintGpuState::Ready;
+
+    auto dirty_batch = read_optional_value<std::vector<SP::UI::Builders::DirtyRectHint>>(space,
+                                                                                        root + "/render/buffer/pendingDirty");
+    if (!dirty_batch) {
+        return std::unexpected(dirty_batch.error());
+    }
+    descriptor.pending_dirty = dirty_batch->value_or(std::vector<SP::UI::Builders::DirtyRectHint>{});
+
+    auto gpu_stats = read_optional_value<PaintGpuStats>(space, root + "/render/gpu/stats");
+    if (!gpu_stats) {
+        return std::unexpected(gpu_stats.error());
+    }
+    if (gpu_stats->has_value()) {
+        descriptor.gpu_stats = **gpu_stats;
+    }
+
+    auto texture_payload = read_optional_value<PaintTexturePayload>(space, root + "/assets/texture");
+    if (!texture_payload) {
+        return std::unexpected(texture_payload.error());
+    }
+    if (texture_payload->has_value()) {
+        PaintTexturePayload payload = **texture_payload;
+        payload.pixels.clear();
+        descriptor.texture = std::move(payload);
+    }
 
     auto buffer_metrics = PaintRuntime::ReadBufferMetrics(space, root);
     if (!buffer_metrics) {
