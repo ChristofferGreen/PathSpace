@@ -10,9 +10,15 @@ _Last updated: October 31, 2025_
 
 > **Update (November 17, 2025):** `CreateInputTask` now resolves `HandlerBinding` records on each `WidgetAction`, invokes the corresponding button/toggle/slider/list/tree/input handlers (paint + stack handlers remain TODO), logs failures to `/system/widgets/runtime/input/log/errors/queue`, and publishes telemetry under `/system/widgets/runtime/input/metrics/{handlers_invoked_total,handler_failures_total,handler_missing_total,last_handler_ns}`.
 
-> **Update (November 17, 2025):** WidgetEventTrellis now emits `WidgetOp`s for slider drags (begin/update/commit), list hover/select/activate flows, tree toggle/select flows, and text focus/input in addition to the existing button/toggle coverage. Paint-surface gestures and stack-panel switching remain TODOs.
+> **Update (November 17, 2025):** WidgetEventTrellis drains per-window queues, runs `Scene::HitTest`, and now emits `WidgetOp`s for sliders (begin/update/commit), lists (hover/select/activate), trees (hover/toggle/select), text inputs (focus/input), stack panels (`StackSelect`), and paint surfaces (`PaintStrokeBegin/Update/Commit`) in addition to the existing button/toggle coverage.
 
 > **Update (November 17, 2025):** The declarative runtime mirrors every reduced `WidgetAction` into `widgets/<id>/events/inbox/queue` plus per-event queues (`events/press/queue`, `events/toggle/queue`, etc.) and tracks enqueue/drop telemetry via `/system/widgets/runtime/input/metrics/{events_enqueued_total,events_dropped_total}`.
+
+> **Update (November 17, 2025):** Stack previews now emit `StackSelect` widget ops keyed by `stack/panel/<panel-id>` so `events/panel_select/handler` invocations no longer require bespoke routing tables.
+
+> **Update (November 17, 2025):** Paint-surface hit tests produce `PaintStrokeBegin/Update/Commit` ops with pointer-local coordinates. The trellis enqueues each op and InputTask calls the `events/draw/handler` binding after mirroring the same payload into the widget's action queues.
+
+> **Update (November 18, 2025):** WidgetEventTrellis now mutates canonical widget state (button hover/press, toggle checked, slider value/dragging, list hover/selection, tree hover/selection/expanded) and flips `render/dirty` before each `WidgetOp` is published, guaranteeing that declarative widgets stay visually in sync even when user handlers are empty; see `tests/ui/test_WidgetEventTrellis.cpp` for button/slider/list coverage.
 
 ## Auto-render request queue
 - **Path**: `<target>/events/renderRequested/queue`
@@ -24,7 +30,7 @@ _Last updated: October 31, 2025_
 ## Widget interaction queues
 
 ### `widgets/<widget>/ops/inbox/queue`
-- **Producers**: `Widgets::Bindings::Dispatch*` functions emit `WidgetOp` entries in response to input (`src/pathspace/ui/WidgetBindings.cpp`). Pointer-driven flows originate in `WidgetInput::HandlePointer*` helpers (`src/pathspace/ui/WidgetInput.cpp`) which diff local state and call the dispatchers.
+- **Producers**: `CreateWidgetEventTrellis` now reads device events, mutates the canonical widget state (hover, pressed, value, selection, expanded) under `widgets/<id>/state/*`, flips `render/dirty`, and then enqueues `WidgetOp` entries using the same schema as the legacy `Widgets::Bindings::Dispatch*` helpers (`src/pathspace/ui/WidgetBindings.cpp`). Imperative apps can still call the bindings directly; declarative apps rely on the trellis-driven mutations.
 - **Payload**: `WidgetOp { kind, widget_path, target_id, pointer, value, sequence, timestamp_ns }` with `pointer = PointerInfo { scene_x, scene_y, inside, primary }` (`include/pathspace/ui/Builders.hpp:1268-1335`). `kind` covers hover/press/activate/list/tree ops; `value` encodes analog data (slider position, scroll delta) and is reused for discrete indices by reducers.
 - **Consumers**: Reducer pipelines (either app-side or `Widgets::Reducers::ReducePending`) drain the queue, mutate widget state, and optionally publish derived actions. The queue is single-consumer—no fan-out semantics today.
 - **Notes**: Entries repeat `widget_path` even though the queue path already scopes the widget. No schema is attached to distinguish device/source; routing relies on UI layout state when the op was generated.
@@ -40,6 +46,9 @@ _Last updated: October 31, 2025_
 - **Payload**: Identical to `WidgetAction` so tooling can reuse the existing structs/decoders.
 - **Consumers**: Diagnostics, automation harnesses, or future middleware that want to observe canonical widget events without touching the reducers. Because the queue is managed by the input runtime, events appear even when apps bypass the legacy actions queue.
 - **Notes**: Enqueue/drop telemetry surfaces via `/system/widgets/runtime/input/metrics/{events_enqueued_total,events_dropped_total}`; failures also log to `/system/widgets/runtime/input/log/errors/queue` with the widget path + handler event.
+
+- **Stack select ops (new)**: hits on `stack/panel/<panel-id>` surfaces enqueue a `StackSelect` action, mirror it into `events/panel_select/queue`, and invoke the optional `panel_select` handler with `panel_id` populated so containers can react without manual routing tables.
+- **Paint stroke ops (new)**: pointer down/move/up gestures over `paint_surface` widgets emit `PaintStrokeBegin`, `PaintStrokeUpdate`, and `PaintStrokeCommit` actions that capture pointer-local coordinates. The runtime mirrors those actions into `events/draw/queue` and calls the optional `draw` handler after enqueueing.
 
 ## Related device/event entry points
 - PathIO adapters expose device event queues at `<device mount>/events` (mouse, keyboard, gamepad) with device-specific payload structs (`src/pathspace/layer/io/PathIOMouse.hpp`, `src/pathspace/layer/io/PathIOKeyboard.hpp`, `src/pathspace/layer/io/PathIOGamepad.cpp`). Declarative widgets ingest these events indirectly through existing input mixers before dispatching `WidgetOp` records.

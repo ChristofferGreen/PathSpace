@@ -73,7 +73,8 @@ Conventions:
   - `/system/widgets/runtime/events/global/{pointer,button,text}/queue` — unmatched events (no window subscription) land here for diagnostics/tooling.
   - `/system/widgets/runtime/events/state/running` — bool flag toggled by `CreateWidgetEventTrellis` / `ShutdownWidgetEventTrellis`.
   - `/system/widgets/runtime/events/metrics/{pointer_events_total,button_events_total,widget_ops_total,hit_test_failures_total,last_dispatch_ns}` — routing telemetry for the WidgetEventTrellis worker.
-  - `CreateWidgetEventTrellis` currently emits `WidgetOp`s for buttons, toggles, sliders, lists, trees, and text inputs; paint-surface gestures remain TODOs.
+  - `CreateWidgetEventTrellis` emits `WidgetOp`s for buttons, toggles, sliders, lists, trees, text inputs, stack panels (`StackSelect`), and paint surfaces (`PaintStrokeBegin/Update/Commit`).
+  - **New (Nov 18, 2025):** Before each enqueue the trellis mutates `widgets/<id>/state/*` (hover, pressed, value, selection, expansion) and flips `widgets/<id>/render/dirty`, guaranteeing that declarative widgets visually react to input even when user handlers are no-ops.
   - `/system/widgets/runtime/events/log/errors/queue` — string queue capturing hit-test and routing failures.
 
 ## 2) Application subtree layout (app-relative)
@@ -135,6 +136,8 @@ The following subtrees are standardized within each application root (one of the
 - Widgets (details in `docs/Widget_Schema_Reference.md`)
   - `widgets/<widget-id>/` — canonical widget roots; the appendix tracks every `state/*`, `meta/*`, `layout/*`, `events/*`, and `render/*` leaf so this file can stay focused on high-level namespace placement.
   - `widgets/<widget-id>/events/inbox/queue` — runtime-populated stream of `WidgetAction` payloads emitted whenever the trellis reduces ops for that widget; consumers can also watch `events/<event>/queue` for filtered views (press, toggle, change, child_event, node_event, submit).
+  - Stack previews expose `stack/panel/<panel-id>` targets; `StackSelect` ops flow through the widget inbox and bubble to `events/panel_select/queue` before invoking the optional handler.
+  - Paint surfaces emit `PaintStrokeBegin/Update/Commit` ops with pointer-local coordinates; each op lands in the widget inbox plus `events/draw/queue` so reducers/handlers can append strokes under `state/history/*` and refresh `render/buffer`.
   - `widgets/focus/current` and `widgets/<id>/focus/{current,order}` — app-level and per-widget focus mirrors maintained by the focus controller.
   - `scenes/widgets/<widget-id>/` — widget snapshot subtrees (`states/*`, `current_revision`, `meta/*`) consumed by renderer targets.
 
