@@ -211,6 +211,10 @@ For schema tables, handler metadata, theme resolution rules, and per-widget spec
     - `active` — string canonical name of the active widget theme
     - `theme/<name>/value` — stored `WidgetTheme` struct describing colors, typography, and widget styles
     - `theme/<name>/style/inherits` — optional canonical parent name; theme resolver walks up to 16 ancestors, errors on cycles, and treats an empty or missing node as “no parent”
+- `/system/applications/<app>/themes/<name>/`
+    - `colors/<token>` — RGBA arrays written by `Theme::SetColor` (`button/background`, `slider/thumb`, `text_field/caret`, etc.)
+    - `style/inherits` — human-edited inheritance chain mirrored into `config/theme/<name>/style/inherits`
+    - Declarative helpers compile these editable leaves back into `config/theme/<name>/value` so descriptors can hydrate styles without reading user-authored blobs directly.
 - `config/renderer/default` — app-relative renderer root (e.g., `renderers/widgets_declarative_renderer`), written by `SP::App::Create`.
 
 - IO logging (app-local)

@@ -28,6 +28,25 @@ Unless noted otherwise, all paths are application-relative and live under `/syst
 
 Declarative descriptors resolve styles by walking `style/theme` from the widget up through parent widgets, the owning window, and finally `/system/applications/<app>/themes/default`. The resolved name passes through `Config::Theme::SanitizeName`, then the loader walks `config/theme/<name>/style/inherits` (up to 16 ancestors) until it finds the nearest layer with a `value` payload. Cycles raise `Error::InvalidType`, missing payloads after the walk raise `Error::NoSuchPath`, and edits take effect the next time a descriptor is loaded—no persistent cache needs to be flushed. Persist literal `meta/style` blobs only when a widget truly needs bespoke values; otherwise rely on the resolver + inheritance.
 
+### Theme editing API (November 19, 2025)
+
+`SP::UI::Declarative::Theme::Create` seeds `/system/applications/<app>/themes/<name>` with human-editable nodes and mirrors the compiled `WidgetTheme` into `config/theme/<name>/value`. Callers may supply a seed struct, optional inheritance chain (`style/inherits`), and request activation. `Theme::SetColor` validates canonical tokens, stores the RGBA array under `/themes/<name>/colors/<token>`, rewrites the compiled value, and invokes `SceneLifecycle::InvalidateThemes` so scenes repaint automatically. `Theme::RebuildValue` replays stored tokens onto the serialized struct after manual edits.
+
+Supported color tokens:
+
+| Token | Field |
+| --- | --- |
+| `button/background`, `button/text` | `WidgetTheme::button.{background_color,text_color}` |
+| `toggle/track_off`, `toggle/track_on`, `toggle/thumb` | Toggle colors |
+| `slider/track`, `slider/fill`, `slider/thumb`, `slider/label` | Slider palette |
+| `list/background`, `list/border`, `list/item`, `list/item_hover`, `list/item_selected`, `list/separator`, `list/item_text` | List palette |
+| `tree/background`, `tree/border`, `tree/row`, `tree/row_hover`, `tree/row_selected`, `tree/row_disabled`, `tree/connector`, `tree/toggle`, `tree/text` | Tree palette |
+| `text_field/background`, `text_field/border`, `text_field/text`, `text_field/placeholder`, `text_field/selection`, `text_field/composition`, `text_field/caret` | Text input palette |
+| `text_area/background`, `text_area/border`, `text_area/text`, `text_area/placeholder`, `text_area/selection`, `text_area/composition`, `text_area/caret` | Text area palette |
+| `heading/color`, `caption/color`, `accent_text/color`, `muted_text/color` | Theme-level typography accents |
+
+Colors are clamped to `[0.0, 1.0]`, components use lowercase/underscore tokens, and invalid components yield `Error::InvalidPath`.
+
 ## Common widget nodes
 
 These nodes exist under every declarative widget root (`widgets/<widget-id>/…`).

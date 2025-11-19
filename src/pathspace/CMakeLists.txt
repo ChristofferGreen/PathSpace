@@ -131,6 +131,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/declarative/Descriptor.cpp
         ui/declarative/DescriptorDetail.cpp
         ui/declarative/SceneLifecycle.cpp
+        ui/declarative/Theme.cpp
         ui/declarative/Runtime.cpp
         ui/declarative/Schema.cpp
         ui/declarative/Telemetry.cpp
