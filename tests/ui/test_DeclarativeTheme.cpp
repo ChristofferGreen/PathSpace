@@ -17,6 +17,10 @@ struct ThemeFixture {
         app_root = *app;
     }
 
+    ~ThemeFixture() {
+        SP::System::ShutdownDeclarativeRuntime(space);
+    }
+
     auto app_root_view() const -> SP::App::AppRootPathView {
         return SP::App::AppRootPathView{app_root.getPath()};
     }
