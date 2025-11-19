@@ -28,6 +28,7 @@ _Last updated: October 31, 2025_
 
 > **Update (November 18, 2025):** `WidgetFragment` now records handler specs and `Widgets::Mount` rebinds them at insertion time; scenes can intercept callbacks via `Widgets::Handlers::{Read,Replace,Wrap,Restore}` without copying handler nodes or adding bespoke routing tables.
 > **Update (November 18, 2025):** Declarative paint surfaces also enqueue `DirtyRectHint`s under `render/buffer/pendingDirty` + `/render/gpu/dirtyRects`, flip `render/gpu/state` to `DirtyPartial`, and the `/system/widgets/runtime/paint_gpu` uploader rasterizes stroke history into `assets/texture` while SceneLifecycle forwards those pending rectangles to `targets/<tid>/hints/dirtyRects` for incremental presents.
+> **Update (November 19, 2025):** Schema/descriptor loads now expose `/system/widgets/runtime/schema/metrics/*` + `/log/events`, InputTask tracks loop latency + backlog while mirroring handler failures/slow-handler warnings into `widgets/<id>/log/events`, and focus transfers feed `scene/runtime/focus/metrics/*` plus per-widget `metrics/focus/*` counters so routing regressions are easier to triage.
 
 ## Auto-render request queue
 - **Path**: `<target>/events/renderRequested/queue`

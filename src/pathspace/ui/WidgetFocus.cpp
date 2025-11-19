@@ -9,10 +9,12 @@
 #include <vector>
 
 #include <pathspace/path/ConcretePath.hpp>
+#include <pathspace/ui/declarative/Telemetry.hpp>
 
 namespace SP::UI::Builders::Widgets {
 
 using namespace Detail;
+namespace Telemetry = SP::UI::Declarative::Telemetry;
 
 namespace {
 
@@ -103,12 +105,15 @@ auto is_focusable_kind(WidgetKind kind) -> bool {
 
 auto is_focusable_widget(PathSpace& space,
                          std::string const& widget_root,
-                         WidgetKind kind) -> SP::Expected<bool> {
+                         WidgetKind kind,
+                         bool& disabled_flag) -> SP::Expected<bool> {
+    disabled_flag = false;
     auto disabled = read_optional<bool>(space, widget_root + "/focus/disabled");
     if (!disabled) {
         return std::unexpected(disabled.error());
     }
     if (disabled->value_or(false)) {
+        disabled_flag = true;
         return false;
     }
     return is_focusable_kind(kind);
@@ -161,25 +166,67 @@ auto update_window_focus_nodes(PathSpace& space,
     }
 }
 
+auto scene_paths_for_scope(PathSpace& space, FocusScope const& scope) -> std::vector<std::string> {
+    std::vector<std::string> scenes;
+    std::string scenes_root = scope.app_root + "/scenes";
+    auto names = space.listChildren(SP::ConcretePathStringView{scenes_root});
+    for (auto const& name : names) {
+        scenes.push_back(scenes_root + "/" + name);
+    }
+    return scenes;
+}
+
+auto record_disabled_skip_for_scope(PathSpace& space, FocusScope const& scope) -> void {
+    for (auto const& scene_path : scene_paths_for_scope(space, scope)) {
+        Telemetry::RecordFocusDisabledSkip(space, scene_path);
+    }
+}
+
+auto record_focus_transition(PathSpace& space,
+                             FocusScope const& scope,
+                             std::optional<std::string> const& previous,
+                             std::string const& target,
+                             bool wrapped) -> void {
+    auto scenes = scene_paths_for_scope(space, scope);
+    if (scenes.empty()) {
+        return;
+    }
+    auto window_component = scope.window_component.value_or(std::string{"global"});
+    for (auto const& scene_path : scenes) {
+        Telemetry::RecordFocusTransition(space,
+                                         Telemetry::FocusTransitionSample{
+                                             .scene_path = scene_path,
+                                             .window_component = window_component,
+                                             .previous_widget = previous.value_or(std::string{}),
+                                             .next_widget = target,
+                                             .wrapped = wrapped,
+                                         });
+    }
+}
+
 auto collect_focus_order(PathSpace& space,
+                         FocusScope const& scope,
                          std::string const& widget_root,
                          std::vector<WidgetPath>& order) -> SP::Expected<void> {
     auto kind = determine_widget_kind(space, widget_root);
     if (!kind) {
         return std::unexpected(kind.error());
     }
-    auto focusable = is_focusable_widget(space, widget_root, *kind);
+    bool disabled_flag = false;
+    auto focusable = is_focusable_widget(space, widget_root, *kind, disabled_flag);
     if (!focusable) {
         return std::unexpected(focusable.error());
     }
     if (*focusable) {
         order.emplace_back(widget_root);
+    } else if (disabled_flag) {
+        record_disabled_skip_for_scope(space, scope);
     }
 
     auto children_root = widget_root + "/children";
     auto children = space.listChildren(SP::ConcretePathStringView{children_root});
     for (auto const& child : children) {
-        auto status = collect_focus_order(space, children_root + "/" + child, order);
+        auto status = collect_focus_order(space, scope, children_root + "/" + child, order);
         if (!status) {
             return std::unexpected(status.error());
         }
@@ -193,7 +240,7 @@ auto build_focus_order(PathSpace& space,
     auto roots = space.listChildren(SP::ConcretePathStringView{scope.widgets_root});
     for (auto const& name : roots) {
         auto root = scope.widgets_root + "/" + name;
-        auto status = collect_focus_order(space, root, order);
+        auto status = collect_focus_order(space, scope, root, order);
         if (!status) {
             return std::unexpected(status.error());
         }
@@ -784,7 +831,8 @@ auto maybe_schedule_focus_render(PathSpace& space,
 
 auto Set(PathSpace& space,
          Config const& config,
-         WidgetPath const& widget) -> SP::Expected<UpdateResult> {
+         WidgetPath const& widget,
+         std::optional<FocusTransitionInfo> telemetry_info) -> SP::Expected<UpdateResult> {
     std::string target_path{widget.getPath()};
     auto app_root_path = derive_app_root_for(ConcretePathView{target_path});
     if (!app_root_path) {
@@ -841,7 +889,9 @@ auto Set(PathSpace& space,
     bool mark_new_dirty = *apply_focus;
     bool mark_prev_dirty = false;
 
-    if (!previous.has_value() || *previous != target_path) {
+    bool focus_changed = !previous.has_value() || *previous != target_path;
+
+    if (focus_changed) {
         if (previous.has_value()) {
             auto prev_scope = make_focus_scope(app_root_view, *previous);
             if (!prev_scope) {
@@ -867,6 +917,15 @@ auto Set(PathSpace& space,
     }
 
     update_window_focus_nodes(space, *scope, target_path);
+
+    if (focus_changed) {
+        auto wrapped = telemetry_info.has_value() ? telemetry_info->wrapped : false;
+        record_focus_transition(space, *scope, previous, target_path, wrapped);
+        Telemetry::IncrementFocusOwnership(space, target_path, true);
+        if (previous.has_value()) {
+            Telemetry::IncrementFocusOwnership(space, *previous, false);
+        }
+    }
 
     if (mark_new_dirty) {
         if (auto status = append_dirty_hint(target_path); !status) {
@@ -1014,7 +1073,24 @@ auto Move(PathSpace& space,
         next_index = (direction == Direction::Forward) ? 0 : order.size() - 1;
     }
 
-    auto result = Set(space, config, order[next_index]);
+    bool wrapped = false;
+    if (!order.empty() && !current_value.empty()) {
+        auto it = std::find_if(order.begin(), order.end(), [&](WidgetPath const& path) {
+            return path.getPath() == current_value;
+        });
+        if (it != order.end()) {
+            auto index = static_cast<std::size_t>(std::distance(order.begin(), it));
+            if (direction == Direction::Forward) {
+                wrapped = (index == order.size() - 1) && next_index == 0;
+            } else {
+                wrapped = (index == 0) && next_index == order.size() - 1;
+            }
+        }
+    }
+    FocusTransitionInfo telemetry{
+        .wrapped = wrapped,
+    };
+    auto result = Set(space, config, order[next_index], telemetry);
     if (!result) {
         return std::unexpected(result.error());
     }

@@ -9,6 +9,7 @@ namespace SP::UI::Declarative {
 struct InputTaskOptions {
     std::chrono::milliseconds poll_interval{std::chrono::milliseconds{4}};
     std::size_t max_actions_per_widget = 64;
+    std::chrono::milliseconds slow_handler_threshold{std::chrono::milliseconds{5}};
 };
 
 /**

@@ -1744,6 +1744,10 @@ struct Config {
     std::optional<bool> pulsing_highlight;
 };
 
+struct FocusTransitionInfo {
+    bool wrapped = false;
+};
+
 struct UpdateResult {
     WidgetPath widget;
     bool changed = false;
@@ -1760,7 +1764,8 @@ auto Current(PathSpace const& space,
 
 auto Set(PathSpace& space,
          Config const& config,
-         WidgetPath const& widget) -> SP::Expected<UpdateResult>;
+         WidgetPath const& widget,
+         std::optional<FocusTransitionInfo> telemetry = std::nullopt) -> SP::Expected<UpdateResult>;
 
 auto Clear(PathSpace& space,
            Config const& config) -> SP::Expected<bool>;

@@ -46,12 +46,13 @@ These nodes exist under every declarative widget root (`widgets/<widget-id>/…`
 | `events/inbox/queue` | queue | rt | Canonical `WidgetAction` stream populated by the declarative runtime. |
 | `events/<event>/queue` | queue | opt | Optional filtered queue (press/toggle/change/etc.) for tooling that only needs a single event family. |
 | `metrics/handlers/{invoked_total,failures_total,missing_total}` | value | rt | Per-widget handler telemetry recorded by the input runtime. |
+| `metrics/focus/{acquired_total,lost_total}` | value | rt | Counters tracking how often the widget gains or loses focus; useful for spotting flapping focus targets. |
 | `render/synthesize` | value | req | `RenderDescriptor` describing the widget kind. |
 | `render/bucket` | value | rt | Cached `DrawableBucketSnapshot` rebuilt when `render/dirty` flips. |
 | `render/dirty` | flag | rt | Raised by helpers whenever state/style changes. |
 | `render/events/dirty` | queue | rt | Widget-path FIFO consumed by the scene lifecycle trellis. |
 | `render/buffer/pendingDirty` | value | rt | Coalesced `DirtyRectHint` list flushed into `targets/<tid>/hints/dirtyRects` once SceneLifecycle stores the refreshed bucket. |
-| `log/events` | queue | rt | Diagnostics for handler failures, staging errors, etc. |
+| `log/events` | queue | rt | Per-widget diagnostic log; the InputTask mirrors handler failures, reducer errors, enqueue drops, and slow-handler warnings (> configurable threshold) into this queue so tooling can audit misbehaving widgets without scraping global logs. |
 
 All widgets also inherit the global queues documented elsewhere (e.g., `widgets/<id>/ops/inbox/queue`, `ops/actions/inbox/queue`) plus the auto-render queue under the window target.
 

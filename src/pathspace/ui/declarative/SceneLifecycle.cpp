@@ -6,6 +6,7 @@
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/SceneUtilities.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
+#include <pathspace/ui/declarative/Telemetry.hpp>
 #include <pathspace/ui/declarative/widgets/Common.hpp>
 
 #include "../BuildersDetail.hpp"
@@ -22,6 +23,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -37,11 +39,43 @@ namespace {
 namespace BuilderDetail = SP::UI::Builders::Detail;
 namespace BuilderRenderer = SP::UI::Builders::Renderer;
 using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
+namespace Telemetry = SP::UI::Declarative::Telemetry;
 constexpr std::string_view kPublishAuthor = "declarative-runtime";
 
 auto to_epoch_ms(std::chrono::system_clock::time_point tp) -> std::int64_t {
     return std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count();
 }
+
+auto widget_kind_to_string(SP::UI::Declarative::WidgetKind kind) -> std::string_view {
+    using SP::UI::Declarative::WidgetKind;
+    switch (kind) {
+    case WidgetKind::Button:
+        return "button";
+    case WidgetKind::Toggle:
+        return "toggle";
+    case WidgetKind::Slider:
+        return "slider";
+    case WidgetKind::List:
+        return "list";
+    case WidgetKind::Tree:
+        return "tree";
+    case WidgetKind::Stack:
+        return "stack";
+    case WidgetKind::Label:
+        return "label";
+    case WidgetKind::InputField:
+        return "input_field";
+    case WidgetKind::PaintSurface:
+        return "paint_surface";
+    }
+    return "unknown";
+}
+
+struct BucketCompareResult {
+    bool had_previous = false;
+    bool parity_ok = true;
+    float diff_percent = 0.0f;
+};
 
 struct SceneLifecycleWorker {
     SceneLifecycleWorker(PathSpace& space,
@@ -285,6 +319,7 @@ private:
     }
 
     void process_event(std::string const& widget_path) {
+        auto dirty_start = std::chrono::steady_clock::now();
         SP::UI::Builders::WidgetPath widget{widget_path};
         auto dirty_version = space_.read<std::uint64_t, std::string>(widget_path + "/render/dirty_version");
         std::uint64_t observed_version = dirty_version.value_or(0);
@@ -300,7 +335,19 @@ private:
             (void)BuilderDetail::replace_single<bool>(space_, widget_path + "/render/dirty", false);
             cleared = true;
         };
+        auto schema_start = std::chrono::steady_clock::now();
         auto descriptor = LoadWidgetDescriptor(space_, widget);
+        auto schema_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()
+                                                                              - schema_start)
+                             .count();
+        Telemetry::SchemaSample schema_sample{
+            .widget_path = widget_path,
+            .widget_kind = descriptor ? std::string(widget_kind_to_string((*descriptor).kind)) : std::string("unknown"),
+            .success = descriptor.has_value(),
+            .duration_ns = static_cast<std::uint64_t>(schema_ns),
+            .error = descriptor ? std::string{} : descriptor.error().message.value_or("descriptor failure"),
+        };
+        Telemetry::RecordSchemaSample(space_, schema_sample);
         if (!descriptor) {
             clear_dirty();
             if (descriptor.error().code == Error::Code::NoObjectFound
@@ -314,6 +361,7 @@ private:
             clear_dirty();
             return;
         }
+        auto compare_result = compare_existing_bucket(widget_path, *bucket);
         auto relative = make_relative(widget_path);
         auto structure_base = scene_path_ + "/structure/widgets" + relative;
         auto bucket_path = structure_base + "/render/bucket";
@@ -327,6 +375,28 @@ private:
         clear_dirty();
         ++events_processed_;
         write_metric("events_processed_total", events_processed_);
+        auto dirty_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()
+                                                                             - dirty_start)
+                            .count();
+        Telemetry::RecordRenderDirtySample(space_,
+                                           Telemetry::RenderDirtySample{
+                                               .scene_path = scene_path_,
+                                               .widget_path = widget_path,
+                                               .duration_ns = static_cast<std::uint64_t>(dirty_ns),
+                                           });
+        Telemetry::RenderCompareSample render_compare{
+            .scene_path = scene_path_,
+            .parity_ok = compare_result.parity_ok,
+        };
+        if (compare_result.had_previous) {
+            render_compare.diff_percent = compare_result.diff_percent;
+            if (!compare_result.parity_ok) {
+                std::ostringstream oss;
+                oss << "widget=" << widget_path << " diff=" << compare_result.diff_percent << "%";
+                Telemetry::AppendRenderCompareLog(space_, scene_path_, oss.str());
+            }
+        }
+        Telemetry::RecordRenderCompareSample(space_, render_compare);
     }
 
     void schedule_publish(std::string const& widget_path) {
@@ -367,6 +437,7 @@ private:
     }
 
     void publish_scene_snapshot(std::string const& reason) {
+        auto publish_start = std::chrono::steady_clock::now();
         auto aggregate = aggregate_scene_bucket();
         if (!aggregate.has_value()) {
             return;
@@ -384,6 +455,14 @@ private:
             record_publish_failure(revision.error());
             return;
         }
+        auto publish_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()
+                                                                               - publish_start)
+                              .count();
+        Telemetry::RecordRenderPublishSample(space_,
+                                             Telemetry::RenderPublishSample{
+                                                 .scene_path = scene_path_,
+                                                 .duration_ns = static_cast<std::uint64_t>(publish_ns),
+                                             });
 
         last_revision_ = *revision;
         last_publish_clock_ = std::chrono::steady_clock::now();
@@ -461,6 +540,56 @@ private:
         if (erased) {
             write_metric("widgets_with_buckets", bucket_cache_size_);
         }
+    }
+
+    auto compare_existing_bucket(std::string const& widget_path,
+                                 SP::UI::Scene::DrawableBucketSnapshot const& bucket) -> BucketCompareResult {
+        std::shared_ptr<SP::UI::Scene::DrawableBucketSnapshot> previous;
+        {
+            std::lock_guard<std::mutex> guard(bucket_mutex_);
+            auto it = bucket_cache_.find(widget_path);
+            if (it != bucket_cache_.end()) {
+                previous = it->second;
+            }
+        }
+        BucketCompareResult result{};
+        if (!previous) {
+            return result;
+        }
+        result.had_previous = true;
+        auto const& prev = *previous;
+        bool same = prev.drawable_ids == bucket.drawable_ids
+            && prev.command_kinds == bucket.command_kinds
+            && prev.drawable_fingerprints == bucket.drawable_fingerprints;
+        result.parity_ok = same;
+        if (!same) {
+            auto total = std::max(prev.drawable_ids.size(), bucket.drawable_ids.size());
+            if (total == 0) {
+                result.diff_percent = 0.0f;
+            } else {
+                std::size_t matched = 0;
+                auto limit = std::min(prev.drawable_fingerprints.size(), bucket.drawable_fingerprints.size());
+                if (limit == 0) {
+                    limit = std::min(prev.drawable_ids.size(), bucket.drawable_ids.size());
+                    for (std::size_t i = 0; i < limit; ++i) {
+                        if (prev.drawable_ids[i] == bucket.drawable_ids[i]) {
+                            ++matched;
+                        }
+                    }
+                } else {
+                    for (std::size_t i = 0; i < limit; ++i) {
+                        if (prev.drawable_fingerprints[i] == bucket.drawable_fingerprints[i]) {
+                            ++matched;
+                        }
+                    }
+                }
+                auto diff = total > matched ? total - matched : 0;
+                result.diff_percent = static_cast<float>(diff) / static_cast<float>(total) * 100.0f;
+            }
+        } else {
+            result.diff_percent = 0.0f;
+        }
+        return result;
     }
 
     void cleanup_widget(std::string const& widget_root) {

@@ -132,6 +132,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/declarative/SceneLifecycle.cpp
         ui/declarative/Runtime.cpp
         ui/declarative/Schema.cpp
+        ui/declarative/Telemetry.cpp
         ui/declarative/PaintSurfaceRuntime.cpp
         ui/declarative/PaintSurfaceUploader.cpp
         ui/declarative/WidgetEventTrellis.cpp

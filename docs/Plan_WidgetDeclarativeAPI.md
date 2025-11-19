@@ -254,8 +254,7 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - ✅ (November 18, 2025) Paint surface runtime now records stroke metadata under `state/history/<id>/{meta,points}`, rebuilds render buckets using `Scene::DrawCommandKind::Stroke`, tracks buffer metrics/revisions, and keeps the scene lifecycle cache in sync with dirty signals. GPU staging/upload workers remain TODO.
    - ✅ (November 18, 2025) `render/buffer/pendingDirty` now tracks coalesced dirty rectangles per widget, SceneLifecycle forwards them to the active renderer target (`targets/<tid>/hints/dirtyRects`), and the new paint GPU uploader watches `render/gpu/state`, rasterizes stroke history into `assets/texture`, and publishes telemetry/logs under `/system/widgets/runtime/paint_gpu/*`. Presenters can bind the staged texture whenever the state flips to `Ready`.
 7. **Telemetry / logging**
-   - Add debug logging for schema loads, focus transitions, input processing, and render updates.
-   - Track perf counters comparing declarative vs. legacy pipeline.
+   - ✅ (November 19, 2025) Added schema/focus/input/render telemetry: descriptor loads now publish `loads_total`/`failures_total` and per-widget logs, focus transitions emit `scene/runtime/focus/metrics` counters plus `widgets/<id>/metrics/focus/*`, InputTask records loop latency/backlog while mirroring handler failures/slow handlers to `widgets/<id>/log/events`, and SceneLifecycle reports dirty/publish timings with parity diffs under `scene/runtime/lifecycle/*`.
 
 ### Phase 1/1 – Theme Runtime
 1. **Theme resolution helpers**

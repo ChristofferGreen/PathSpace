@@ -60,7 +60,10 @@ Conventions:
   - `/system/widgets/runtime/input/metrics/{widgets_processed_total,widgets_with_work_total,actions_published_total,last_pump_ns}`
   - `/system/widgets/runtime/input/metrics/{handlers_invoked_total,handler_failures_total,handler_missing_total,last_handler_ns}` — handler-dispatch telemetry produced by `CreateInputTask`.
   - `/system/widgets/runtime/input/metrics/{events_enqueued_total,events_dropped_total}` — mirrors how many widget events were mirrored into the canonical queues vs. dropped due to storage errors.
+  - `/system/widgets/runtime/input/metrics/{actions_latency_ns,ops_backlog}` — loop duration (nanoseconds) and the count of actions drained during the last pump iteration; use these gauges to flag backlog growth before handler failures appear.
   - `widgets/<id>/metrics/handlers/{invoked_total,failures_total,missing_total}` — per-widget handler telemetry updated by `CreateInputTask`, allowing debugging of missing bindings or flaky callbacks without scraping the shared logs.
+  - `/system/widgets/runtime/schema/metrics/{loads_total,failures_total,last_load_ns}` — descriptor/schema load counters plus the most recent load duration.
+  - `/system/widgets/runtime/schema/log/events` — textual records of descriptor load failures (widget path, kind, error).
   - Declarative fragments carry handler specs and `Widgets::Mount` rebinds them under the destination widget path, while instrumentation layers can call `Widgets::Handlers::{Read,Replace,Wrap,Restore}` to observe or override handlers without rewriting the raw `events/<event>/handler` node.
   - `/system/widgets/runtime/input/log/errors/queue` — string queue capturing reducer/pump failures.
   - Launch controls:
@@ -144,6 +147,8 @@ The following subtrees are standardized within each application root (one of the
   - Stack previews expose `stack/panel/<panel-id>` targets; `StackSelect` ops flow through the widget inbox and bubble to `events/panel_select/queue` before invoking the optional handler.
   - Paint surfaces emit `PaintStrokeBegin/Update/Commit` ops with pointer-local coordinates; the runtime mirrors those ops into `events/draw/queue`, persists stroke metadata under `state/history/<id>/{meta,points}`, bumps `render/buffer/revision`, and rebuilds stroke buckets so reducers/handlers can react without touching widget state directly.
   - `widgets/focus/current` and `widgets/<id>/focus/{current,order}` — app-level and per-widget focus mirrors maintained by the focus controller.
+  - `widgets/<id>/metrics/focus/{acquired_total,lost_total}` — counters incremented whenever declarative focus transfers to/from a widget, enabling dashboards to spot thrashing focus targets.
+  - `widgets/<id>/log/events` — per-widget log queue capturing handler failures, reducer errors, and slow-handler warnings emitted by the InputTask for that widget.
   - `scenes/widgets/<widget-id>/` — widget snapshot subtrees (`states/*`, `current_revision`, `meta/*`) consumed by renderer targets.
 
 ### Declarative widget API summary
@@ -151,7 +156,8 @@ The following subtrees are standardized within each application root (one of the
 For schema tables, handler metadata, theme resolution rules, and per-widget specifics refer to `docs/Widget_Schema_Reference.md` (source of truth for `include/pathspace/ui/declarative/Schema.hpp`). This document only records the system-level plumbing so the namespace map stays concise:
 
 - Runtime bootstrap — `SP::System::LaunchStandard`, `SP::App::Create`, `SP::Window::Create`, and `SP::Scene::Create` seed the application, window, and scene nodes listed above (visibility flags, view bindings, `structure/window/<window>/*`) before any widgets mount.
-- Lifecycle worker — every declarative scene owns `runtime/lifecycle/trellis`, a `PathSpaceTrellis` that drains `widgets/.../render/events/dirty`, rebuilds buckets, and reports metrics under `runtime/lifecycle/metrics/*`. Control messages live under `runtime/lifecycle/control` so `SP::Scene::Shutdown` can stop the worker and the theme runtime can broadcast invalidations (`:invalidate_theme`). Metrics now include `widgets_registered_total`, `sources_active_total`, `events_processed_total`, `widgets_with_buckets`, `last_revision`, `last_published_widget`, `last_published_ms`, `pending_publish`, and `last_error` for snapshot failures.
+- Lifecycle worker — every declarative scene owns `runtime/lifecycle/trellis`, a `PathSpaceTrellis` that drains `widgets/.../render/events/dirty`, rebuilds buckets, and reports metrics under `runtime/lifecycle/metrics/*`. Control messages live under `runtime/lifecycle/control` so `SP::Scene::Shutdown` can stop the worker and the theme runtime can broadcast invalidations (`:invalidate_theme`). Metrics now include `widgets_registered_total`, `sources_active_total`, `events_processed_total`, `widgets_with_buckets`, `last_revision`, `last_published_widget`, `last_published_ms`, `pending_publish`, `last_error`, plus the new timing/comparison gauges (`dirty_batch_ns`, `last_dirty_widget`, `publish_ns`, `legacy_parity_ok`, `legacy_diff_percent`). `runtime/lifecycle/log/compare` captures parity failures or large diffs so regressions can be triaged without scraping stdout.
+- Focus telemetry — `scene/runtime/focus/metrics/{transitions_total,wraps_total,disabled_skips_total,last_transition_ms}` mirrors declarative focus events per scene, while `scene/runtime/focus/log/events` records the most recent transitions (window component, from/to widgets, wrap indicator) for debug tooling.
 - Snapshot feeds — updated widget buckets flow into `scene/structure/widgets/<widget>/render/bucket` and then into the normal `scenes/<scene>/builds/<revision>` publish/adopt flow described later in this document.
 
 - Surfaces (offscreen targets)
