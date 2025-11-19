@@ -318,6 +318,7 @@ auto LaunchStandard(PathSpace& space, LaunchOptions const& options) -> SP::Expec
 }
 
 auto ShutdownDeclarativeRuntime(PathSpace& space) -> void {
+    SP::UI::Declarative::SceneLifecycle::StopAll(space);
     SP::UI::Declarative::ShutdownWidgetEventTrellis(space);
     SP::Runtime::ShutdownIOPump(space);
     SP::Runtime::ShutdownTelemetryControl(space);

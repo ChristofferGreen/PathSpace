@@ -27,4 +27,6 @@ struct Options {
 auto InvalidateThemes(PathSpace& space,
                       SP::App::AppRootPathView app_root) -> void;
 
+auto StopAll(PathSpace& space) -> void;
+
 } // namespace SP::UI::Declarative::SceneLifecycle

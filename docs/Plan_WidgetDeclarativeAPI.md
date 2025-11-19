@@ -83,7 +83,8 @@ Declarative widgets now rely on the IO Pump feeds introduced in `docs/finished/P
 ### Remaining TODOs (WidgetEventTrellis)
 - ✅ (November 17, 2025) Stack panel taps now emit `StackSelect` widget ops and paint surfaces stream `PaintStrokeBegin/Update/Commit` ops with pointer-local coordinates, so declarative handlers receive structured draw metadata instead of placeholder logs.
 - ✅ (November 18, 2025) WidgetEventTrellis now mutates canonical button/toggle/slider/list/tree state (hover, pressed, value, selection, expansion) and marks `render/dirty` before delivering each `WidgetOp`, so declarative apps no longer depend on user handlers to keep widget nodes in sync.
-- ✅ (November 18, 2025) Keyboard and gamepad routing now flow through the focus controller: Tab/Shift+Tab and shoulder/D-pad hops cycle focus, Space/Enter/A press buttons/toggles, arrow keys adjust sliders, lists, and trees, and focused text inputs receive cursor/delete/submit ops without bespoke loops. Declarative runtimes now provide parity with the legacy keyboard/gamepad helpers.
+- ✅ (November 18, 2025) Keyboard and gamepad button presses for focused widgets now flow through the focus controller: Space/Enter/A trigger the full press→release→activate/toggle sequence without pointer state, and the worker falls back to `<app>/widgets/focus/current` when scene mirrors are absent. Arrow-key adjustments for sliders/lists/trees and text-input cursor/delete/submit routing remain pending (see TODOs below).
+- ☐ Finish keyboard/gamepad parity for non-button widgets: map arrow keys and shoulder/D-pad events to slider/list/tree adjustments, and route text-input cursor/delete/submit ops so declarative apps no longer need bespoke helpers.
 
 ### Phase 0 – Foundations
 

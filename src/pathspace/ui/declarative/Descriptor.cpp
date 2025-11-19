@@ -233,57 +233,8 @@ auto read_theme_override(PathSpace& space, std::string const& base) -> SP::Expec
 struct ThemeContext {
     BuilderWidgets::WidgetTheme theme{};
     std::string name;
+    bool has_override = false;
 };
-
-constexpr std::size_t kMaxThemeInheritanceDepth = 16;
-
-auto load_theme_with_inheritance(PathSpace& space,
-                                 SP::App::AppRootPathView app_root,
-                                 std::string_view requested)
-    -> SP::Expected<BuilderWidgets::WidgetTheme> {
-    auto sanitized = SP::UI::Builders::Config::Theme::SanitizeName(requested);
-    std::unordered_set<std::string> visited;
-    visited.reserve(4);
-
-    for (std::size_t depth = 0; depth < kMaxThemeInheritanceDepth; ++depth) {
-        if (!visited.insert(sanitized).second) {
-            return std::unexpected(
-                make_descriptor_error("theme inheritance cycle detected at '" + sanitized + "'",
-                                      SP::Error::Code::InvalidType));
-        }
-
-        auto resolved = SP::UI::Builders::Config::Theme::Resolve(app_root, sanitized);
-        if (!resolved) {
-            return std::unexpected(resolved.error());
-        }
-
-        auto loaded = SP::UI::Builders::Config::Theme::Load(space, *resolved);
-        if (loaded) {
-            return *loaded;
-        }
-
-        auto const code = loaded.error().code;
-        if (code != SP::Error::Code::NoSuchPath && code != SP::Error::Code::NoObjectFound) {
-            return std::unexpected(loaded.error());
-        }
-
-        auto inherits_path = resolved->root.getPath() + "/style/inherits";
-        auto inherits_value = read_optional_value<std::string>(space, inherits_path);
-        if (!inherits_value) {
-            return std::unexpected(inherits_value.error());
-        }
-        if (!inherits_value->has_value() || inherits_value->value().empty()) {
-            return std::unexpected(make_descriptor_error(
-                "theme '" + sanitized + "' missing value and inherits",
-                SP::Error::Code::NoSuchPath));
-        }
-        sanitized = SP::UI::Builders::Config::Theme::SanitizeName(**inherits_value);
-    }
-
-    return std::unexpected(
-        make_descriptor_error("theme inheritance depth exceeded",
-                              SP::Error::Code::CapacityExceeded));
-}
 
 auto resolve_theme_for_widget(PathSpace& space,
                               SP::UI::Builders::WidgetPath const& widget)
@@ -295,6 +246,7 @@ auto resolve_theme_for_widget(PathSpace& space,
     }
     SP::App::AppRootPathView app_root_view{app_root->getPath()};
     std::optional<std::string> theme_value;
+    bool found_override = false;
 
     std::string current = widget_root;
     auto const& app_root_raw = app_root->getPath();
@@ -305,6 +257,7 @@ auto resolve_theme_for_widget(PathSpace& space,
         }
         if (candidate->has_value()) {
             theme_value = **candidate;
+            found_override = current.find("/widgets/") != std::string::npos;
             break;
         }
         if (current == app_root_raw) {
@@ -331,10 +284,15 @@ auto resolve_theme_for_widget(PathSpace& space,
         } else {
             theme_value = std::string{"default"};
         }
+        found_override = false;
     }
 
     auto sanitized = SP::UI::Builders::Config::Theme::SanitizeName(*theme_value);
-    auto loaded = load_theme_with_inheritance(space, app_root_view, sanitized);
+    auto resolved = SP::UI::Builders::Config::Theme::Resolve(app_root_view, sanitized);
+    if (!resolved) {
+        return std::unexpected(resolved.error());
+    }
+    auto loaded = SP::UI::Builders::Config::Theme::Load(space, *resolved);
     if (!loaded) {
         return std::unexpected(loaded.error());
     }
@@ -342,7 +300,44 @@ auto resolve_theme_for_widget(PathSpace& space,
     ThemeContext context{};
     context.theme = *loaded;
     context.name = sanitized;
+    context.has_override = found_override;
     return context;
+}
+
+void apply_theme_override(ThemeContext const& theme, WidgetDescriptor& descriptor) {
+    if (!theme.has_override) {
+        return;
+    }
+
+    switch (descriptor.kind) {
+    case WidgetKind::Button: {
+        auto& data = std::get<ButtonDescriptor>(descriptor.data);
+        data.style = theme.theme.button;
+        break;
+    }
+    case WidgetKind::Toggle: {
+        auto& data = std::get<ToggleDescriptor>(descriptor.data);
+        data.style = theme.theme.toggle;
+        break;
+    }
+    case WidgetKind::Slider: {
+        auto& data = std::get<SliderDescriptor>(descriptor.data);
+        data.style = theme.theme.slider;
+        break;
+    }
+    case WidgetKind::List: {
+        auto& data = std::get<ListDescriptor>(descriptor.data);
+        data.style = theme.theme.list;
+        break;
+    }
+    case WidgetKind::Tree: {
+        auto& data = std::get<TreeDescriptor>(descriptor.data);
+        data.style = theme.theme.tree;
+        break;
+    }
+    default:
+        break;
+    }
 }
 
 auto read_stack_descriptor(PathSpace& space, std::string const& root)
@@ -373,15 +368,11 @@ auto read_stack_descriptor(PathSpace& space, std::string const& root)
 }
 
 auto read_input_field_descriptor(PathSpace& space,
-                                 SP::UI::Builders::WidgetPath const& widget)
+                                 SP::UI::Builders::WidgetPath const& widget,
+                                 ThemeContext const& theme)
     -> SP::Expected<InputFieldDescriptor> {
-    auto theme = resolve_theme_for_widget(space, widget);
-    if (!theme) {
-        return std::unexpected(theme.error());
-    }
-
     InputFieldDescriptor descriptor{};
-    descriptor.style = theme->theme.text_field;
+    descriptor.style = theme.theme.text_field;
     descriptor.state = BuilderWidgets::TextFieldState{};
     descriptor.state.enabled = true;
     descriptor.state.cursor = 0;
@@ -763,6 +754,11 @@ auto LoadWidgetDescriptor(PathSpace& space,
                                                      SP::Error::Code::NotSupported));
     }
 
+    auto theme = resolve_theme_for_widget(space, widget);
+    if (!theme) {
+        return std::unexpected(theme.error());
+    }
+
     WidgetDescriptor descriptor{};
     descriptor.kind = *kind;
     descriptor.widget = widget;
@@ -825,7 +821,7 @@ auto LoadWidgetDescriptor(PathSpace& space,
         break;
     }
     case WidgetKind::InputField: {
-        auto loaded = read_input_field_descriptor(space, widget);
+        auto loaded = read_input_field_descriptor(space, widget, *theme);
         if (!loaded) {
             return std::unexpected(loaded.error());
         }
@@ -842,6 +838,7 @@ auto LoadWidgetDescriptor(PathSpace& space,
     }
     }
 
+    apply_theme_override(*theme, descriptor);
     return descriptor;
 }
 

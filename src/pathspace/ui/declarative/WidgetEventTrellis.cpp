@@ -92,6 +92,7 @@ struct PointerState {
     float paint_last_local_x = 0.0f;
     float paint_last_local_y = 0.0f;
     bool paint_has_last_local = false;
+    std::optional<TargetInfo> focus_press_target;
 };
 
 struct WindowBinding {
@@ -492,17 +493,36 @@ auto list_item_id(ListData const& data, std::int32_t index) -> std::optional<std
 
 auto focused_widget_path(PathSpace& space,
                          WindowBinding const& binding) -> std::optional<std::string> {
+    if (!binding.app_root.empty()) {
+        auto app_focus = space.read<std::string, std::string>(binding.app_root + "/widgets/focus/current");
+        if (app_focus && !app_focus->empty()) {
+            return *app_focus;
+        }
+    }
+
     auto component = window_component_for(binding.window_path);
     if (!component) {
         enqueue_error(space, "WidgetEventTrellis failed to derive window component for focus path");
         return std::nullopt;
     }
-    std::string focus_path = binding.scene_path + "/structure/window/" + *component + "/focus/current";
-    auto value = space.read<std::string, std::string>(focus_path);
-    if (!value) {
-        return std::nullopt;
+    auto make_focus_path = [&](std::string const& root) {
+        return root + "/structure/window/" + *component + "/focus/current";
+    };
+
+    auto read_focus = [&](std::string const& path) -> std::optional<std::string> {
+        auto value = space.read<std::string, std::string>(path);
+        if (!value || value->empty()) {
+            return std::nullopt;
+        }
+        return *value;
+    };
+
+    if (!binding.scene_path.empty()) {
+        if (auto value = read_focus(make_focus_path(binding.scene_path))) {
+            return value;
+        }
     }
-    return *value;
+    return std::nullopt;
 }
 
 class WidgetEventTrellisWorker : public std::enable_shared_from_this<WidgetEventTrellisWorker> {
@@ -774,10 +794,21 @@ private:
 
     void handle_button_event(WindowBinding const& binding,
                              SP::IO::ButtonEvent const& event) {
-        if (event.source != SP::IO::ButtonSource::Mouse) {
-            return;
+        switch (event.source) {
+        case SP::IO::ButtonSource::Mouse:
+            handle_mouse_button_event(binding, event);
+            break;
+        case SP::IO::ButtonSource::Keyboard:
+        case SP::IO::ButtonSource::Gamepad:
+            handle_focus_button_event(binding, event);
+            break;
+        default:
+            break;
         }
+    }
 
+    void handle_mouse_button_event(WindowBinding const& binding,
+                                   SP::IO::ButtonEvent const& event) {
         auto& state = pointer_state(binding.token);
         bool pressed = event.state.pressed;
 
@@ -794,7 +825,7 @@ private:
                                    1.0f,
                                    true);
                     if (state.active_target->kind == TargetKind::Button) {
-                    DeclarativeDetail::SetButtonPressed(space_, state.active_target->widget_path, true);
+                        DeclarativeDetail::SetButtonPressed(space_, state.active_target->widget_path, true);
                     }
                     break;
                 case TargetKind::Slider:
@@ -890,6 +921,116 @@ private:
         }
 
         state.active_target.reset();
+    }
+
+    void handle_focus_button_event(WindowBinding const& binding,
+                                   SP::IO::ButtonEvent const& event) {
+        auto& state = pointer_state(binding.token);
+        bool pressed = event.state.pressed;
+        auto focused = focused_widget_path(space_, binding);
+
+        if (pressed) {
+            if (!focused || focused->empty()) {
+                return;
+            }
+            auto target = focus_target_for_widget(*focused);
+            if (!target) {
+                return;
+            }
+            if (state.focus_press_target
+                && state.focus_press_target->widget_path == target->widget_path
+                && state.focus_press_target->kind == target->kind) {
+                return;
+            }
+            switch (target->kind) {
+            case TargetKind::Button:
+                state.focus_press_target = target;
+                DeclarativeDetail::SetButtonPressed(space_, target->widget_path, true);
+                emit_widget_op(binding,
+                               *target,
+                               WidgetBindings::WidgetOpKind::Press,
+                               1.0f,
+                               true);
+                break;
+            case TargetKind::Toggle:
+                state.focus_press_target = target;
+                emit_widget_op(binding,
+                               *target,
+                               WidgetBindings::WidgetOpKind::Press,
+                               1.0f,
+                               true);
+                break;
+            default:
+                break;
+            }
+            return;
+        }
+
+        if (!state.focus_press_target) {
+            return;
+        }
+
+        auto target = *state.focus_press_target;
+        state.focus_press_target.reset();
+        bool inside = focused && !focused->empty() && *focused == target.widget_path;
+
+        switch (target.kind) {
+        case TargetKind::Button:
+            emit_widget_op(binding,
+                           target,
+                           WidgetBindings::WidgetOpKind::Release,
+                           0.0f,
+                           inside);
+            DeclarativeDetail::SetButtonPressed(space_, target.widget_path, false);
+            if (inside) {
+                emit_widget_op(binding,
+                               target,
+                               WidgetBindings::WidgetOpKind::Activate,
+                               1.0f,
+                               true);
+            }
+            break;
+        case TargetKind::Toggle:
+            emit_widget_op(binding,
+                           target,
+                           WidgetBindings::WidgetOpKind::Release,
+                           0.0f,
+                           inside);
+            if (inside) {
+                emit_widget_op(binding,
+                               target,
+                               WidgetBindings::WidgetOpKind::Toggle,
+                               1.0f,
+                               true);
+                DeclarativeDetail::ToggleToggleChecked(space_, target.widget_path);
+            }
+            break;
+        default:
+            break;
+        }
+    }
+
+    auto focus_target_for_widget(std::string const& widget_path) -> std::optional<TargetInfo> {
+        auto kind = space_.read<std::string, std::string>(widget_path + "/meta/kind");
+        if (!kind) {
+            auto const& error = kind.error();
+            if (error.code != SP::Error::Code::NoObjectFound
+                && error.code != SP::Error::Code::NoSuchPath) {
+                enqueue_error(space_, "WidgetEventTrellis failed to read widget kind for "
+                        + widget_path + ": " + error.message.value_or("unknown error"));
+            }
+            return std::nullopt;
+        }
+        TargetInfo info{};
+        info.widget_path = widget_path;
+        info.component = *kind + "/focus";
+        parse_component(info);
+        if (!info.valid()) {
+            enqueue_error(space_, "WidgetEventTrellis could not derive focus target for "
+                    + widget_path + " (kind=" + *kind + ")");
+            return std::nullopt;
+        }
+        return info;
     }
 
     void handle_slider_begin(WindowBinding const& binding,

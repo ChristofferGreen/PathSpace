@@ -588,6 +588,18 @@ TEST_CASE("Theme resolver uses inherited theme when child theme omits value") {
                                      std::string{"child_theme"})
                 .has_value());
 
+    auto widget_theme_override = fx.space.read<std::string, std::string>(
+        button->getPath() + "/style/theme");
+    INFO("widget theme override present=" << widget_theme_override.has_value()
+         << " value=" << (widget_theme_override ? *widget_theme_override : std::string{"<missing>"}));
+    auto child_theme_value = fx.space.read<WidgetsNS::WidgetTheme, std::string>(
+        std::string(fx.app_root.getPath()) + "/config/theme/child_theme/value");
+    INFO("child_theme value present=" << child_theme_value.has_value());
+    auto inherits_value = fx.space.read<std::string, std::string>(
+        std::string(fx.app_root.getPath()) + "/config/theme/child_theme/style/inherits");
+    INFO("inherits present=" << inherits_value.has_value()
+         << " value=" << (inherits_value ? *inherits_value : std::string{"<missing>"}));
+
     auto descriptor = LoadWidgetDescriptor(fx.space, *button);
     REQUIRE(descriptor.has_value());
     auto const& data = std::get<ButtonDescriptor>(descriptor->data);

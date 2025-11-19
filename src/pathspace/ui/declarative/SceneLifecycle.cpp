@@ -112,6 +112,10 @@ struct SceneLifecycleWorker {
         return app_root_path_ == candidate;
     }
 
+    [[nodiscard]] auto owns_space(PathSpace& candidate) const -> bool {
+        return &space_ == &candidate;
+    }
+
 private:
     auto mount_trellis() -> SP::Expected<void> {
         auto alias = std::shared_ptr<PathSpaceBase>(&space_, [](PathSpaceBase*) {});
@@ -282,13 +286,15 @@ private:
 
     void process_event(std::string const& widget_path) {
         SP::UI::Builders::WidgetPath widget{widget_path};
-        auto dirty_flag = space_.read<bool, std::string>(widget_path + "/render/dirty");
-        if (dirty_flag && !*dirty_flag) {
-            return;
-        }
+        auto dirty_version = space_.read<std::uint64_t, std::string>(widget_path + "/render/dirty_version");
+        std::uint64_t observed_version = dirty_version.value_or(0);
         bool cleared = false;
         auto clear_dirty = [&]() {
             if (cleared) {
+                return;
+            }
+            auto current_version = space_.read<std::uint64_t, std::string>(widget_path + "/render/dirty_version");
+            if (current_version && *current_version != observed_version) {
                 return;
             }
             (void)BuilderDetail::replace_single<bool>(space_, widget_path + "/render/dirty", false);
@@ -620,6 +626,24 @@ auto InvalidateThemes(PathSpace& space,
         if (worker && worker->matches_app(app_root.getPath())) {
             worker->request_theme_invalidation();
         }
+    }
+}
+
+auto StopAll(PathSpace& space) -> void {
+    std::vector<std::shared_ptr<SceneLifecycleWorker>> workers;
+    {
+        std::lock_guard<std::mutex> guard(g_lifecycle_mutex);
+        for (auto it = g_lifecycle_workers.begin(); it != g_lifecycle_workers.end();) {
+            if (it->second && it->second->owns_space(space)) {
+                workers.push_back(it->second);
+                it = g_lifecycle_workers.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+    for (auto& worker : workers) {
+        worker->stop();
     }
 }
 

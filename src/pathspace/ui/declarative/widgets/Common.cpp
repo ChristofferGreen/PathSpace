@@ -4,6 +4,7 @@
 #include <pathspace/ui/Builders.hpp>
 
 #include <atomic>
+#include <cstdint>
 #include <mutex>
 #include <optional>
 #include <unordered_map>
@@ -244,6 +245,9 @@ auto initialize_render(PathSpace& space,
         !status) {
         return status;
     }
+    if (auto status = write_value(space, root + "/render/dirty_version", std::uint64_t{0}); !status) {
+        return status;
+    }
     return mark_render_dirty(space, root);
 }
 
@@ -256,6 +260,12 @@ auto mark_render_dirty(PathSpace& space,
     auto inserted = space.insert(event_path, root);
     if (!inserted.errors.empty()) {
         return std::unexpected(inserted.errors.front());
+    }
+    auto version_path = root + "/render/dirty_version";
+    auto current_version = space.read<std::uint64_t, std::string>(version_path);
+    std::uint64_t next_version = current_version ? (*current_version + 1) : 1;
+    if (auto status = BuilderDetail::replace_single<std::uint64_t>(space, version_path, next_version); !status) {
+        return status;
     }
     return {};
 }
