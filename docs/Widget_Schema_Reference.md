@@ -128,6 +128,8 @@ Runtime hit tests now emit `StackSelect` widget ops when a user activates a rend
 | `state/focused` | flag | rt | Updated by focus controller + input pipeline. |
 | `events/{change,submit}/handler` | callable | opt | Text change + submit handlers. |
 
+Runtime note (Nov 19, 2025): Focused input fields now receive synthesized `TextDelete`, `TextMoveCursor`, and `TextSubmit` `WidgetOp`s directly from WidgetEventTrellis whenever keyboards or gamepads dispatch delete/arrow/submit events. The runtime mutates `state/text`, updates `cursor`/selection fields, flips `render/dirty`, and mirrors the ops into both `events/inbox/queue` and the typed queues (`events/change/queue`, `events/submit/queue`) before resolving the registered handlers, so declarative apps no longer need bespoke glue for cursor/edit parity.
+
 ### Paint Surface
 
 | Path | Kind | Req | Notes |

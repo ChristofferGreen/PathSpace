@@ -13,6 +13,7 @@
 #include <atomic>
 #include <chrono>
 #include <cctype>
+#include <cstdint>
 #include <cmath>
 #include <mutex>
 #include <optional>
@@ -145,6 +146,63 @@ struct ListData {
     BuilderWidgets::ListStyle style;
     std::vector<BuilderWidgets::ListItem> items;
 };
+
+struct TreeData {
+    BuilderWidgets::TreeState state;
+    BuilderWidgets::TreeStyle style;
+    std::vector<BuilderWidgets::TreeNode> nodes;
+};
+
+struct TreeRowInfo {
+    std::string id;
+    std::string parent_id;
+    bool expandable = false;
+    bool expanded = false;
+    bool enabled = true;
+    int depth = 0;
+};
+
+enum class FocusDirection {
+    None = 0,
+    Left,
+    Right,
+    Up,
+    Down
+};
+
+enum class FocusCommand {
+    None = 0,
+    Submit,
+    DeleteBackward,
+    DeleteForward
+};
+
+struct FocusNavEvent {
+    FocusDirection direction = FocusDirection::None;
+    FocusCommand command = FocusCommand::None;
+    bool pressed = false;
+    bool repeat = false;
+    bool from_keyboard = false;
+    bool from_gamepad = false;
+};
+
+constexpr std::uint32_t kKeycodeLeft = 0x7B;
+constexpr std::uint32_t kKeycodeRight = 0x7C;
+constexpr std::uint32_t kKeycodeDown = 0x7D;
+constexpr std::uint32_t kKeycodeUp = 0x7E;
+constexpr std::uint32_t kKeycodeReturn = 0x24;
+constexpr std::uint32_t kKeycodeEnter = 0x4C;
+constexpr std::uint32_t kKeycodeDeleteBackward = 0x33;
+constexpr std::uint32_t kKeycodeDeleteForward = 0x75;
+
+constexpr int kGamepadButtonA = 0;
+constexpr int kGamepadButtonB = 1;
+constexpr int kGamepadLeftShoulder = 4;
+constexpr int kGamepadRightShoulder = 5;
+constexpr int kGamepadDpadUp = 12;
+constexpr int kGamepadDpadDown = 13;
+constexpr int kGamepadDpadLeft = 14;
+constexpr int kGamepadDpadRight = 15;
 
 
 auto mark_widget_dirty(PathSpace& space, std::string const& widget_path) -> void {
@@ -491,6 +549,224 @@ auto list_item_id(ListData const& data, std::int32_t index) -> std::optional<std
     return data.items[static_cast<std::size_t>(index)].id;
 }
 
+auto slider_step_size(SliderData const& data) -> float {
+    if (data.range.step > 0.0f) {
+        return std::abs(data.range.step);
+    }
+    float span = std::abs(data.range.maximum - data.range.minimum);
+    if (!(span > 0.0f)) {
+        span = 1.0f;
+    }
+    float candidate = span * 0.05f;
+    if (!(candidate > 0.0f)) {
+        candidate = 0.01f;
+    }
+    return candidate;
+}
+
+auto slider_local_from_value(SliderData const& data, float value) -> float {
+    float width = std::max(data.style.width, 1.0f);
+    float span = std::max(std::abs(data.range.maximum - data.range.minimum), 1e-6f);
+    float progress = (value - data.range.minimum) / span;
+    progress = std::clamp(progress, 0.0f, 1.0f);
+    return progress * width;
+}
+
+auto list_local_center(ListData const& data, std::int32_t index) -> std::pair<float, float> {
+    float row_height = std::max(data.style.item_height, 1.0f);
+    float x = std::max(data.style.width, 1.0f) * 0.5f;
+    float y = data.style.border_thickness
+        + (static_cast<float>(index) + 0.5f) * row_height
+        - data.state.scroll_offset;
+    return {x, y};
+}
+
+auto read_tree_data(PathSpace& space, std::string const& widget_path) -> std::optional<TreeData> {
+    TreeData data{};
+    auto state = space.read<BuilderWidgets::TreeState, std::string>(widget_path + "/state");
+    if (!state) {
+        enqueue_error(space, "WidgetEventTrellis failed to read tree state for " + widget_path);
+        return std::nullopt;
+    }
+    data.state = *state;
+
+    auto style = space.read<BuilderWidgets::TreeStyle, std::string>(widget_path + "/meta/style");
+    if (!style) {
+        enqueue_error(space, "WidgetEventTrellis failed to read tree style for " + widget_path);
+        return std::nullopt;
+    }
+    data.style = *style;
+
+    auto nodes = space.read<std::vector<BuilderWidgets::TreeNode>, std::string>(widget_path + "/meta/nodes");
+    if (!nodes) {
+        enqueue_error(space, "WidgetEventTrellis failed to read tree nodes for " + widget_path);
+        return std::nullopt;
+    }
+    data.nodes = *nodes;
+    return data;
+}
+
+auto tree_node_expanded(TreeData const& data, std::string const& node_id) -> bool {
+    auto const& expanded = data.state.expanded_ids;
+    return std::find(expanded.begin(), expanded.end(), node_id) != expanded.end();
+}
+
+auto build_tree_rows(TreeData const& data) -> std::vector<TreeRowInfo> {
+    std::unordered_map<std::string, std::vector<BuilderWidgets::TreeNode>> children;
+    for (auto const& node : data.nodes) {
+        children[node.parent_id].push_back(node);
+    }
+
+    std::vector<TreeRowInfo> rows;
+    auto visit = [&](auto&& self, std::string const& parent, int depth) -> void {
+        auto it = children.find(parent);
+        if (it == children.end()) {
+            return;
+        }
+        for (auto const& child : it->second) {
+            TreeRowInfo row{};
+            row.id = child.id;
+            row.parent_id = child.parent_id;
+            row.expandable = child.expandable;
+            row.expanded = child.expandable && tree_node_expanded(data, child.id);
+            row.enabled = child.enabled;
+            row.depth = depth;
+            rows.push_back(row);
+            if (row.expandable && row.expanded) {
+                self(self, child.id, depth + 1);
+            }
+        }
+    };
+
+    visit(visit, std::string{}, 0);
+    return rows;
+}
+
+auto tree_row_index(std::vector<TreeRowInfo> const& rows,
+                    std::string const& node_id) -> std::optional<std::size_t> {
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        if (rows[i].id == node_id) {
+            return i;
+        }
+    }
+    return std::nullopt;
+}
+
+auto read_text_state(PathSpace& space, std::string const& widget_path)
+    -> std::optional<BuilderWidgets::TextFieldState> {
+    auto state = space.read<BuilderWidgets::TextFieldState, std::string>(widget_path + "/state");
+    if (!state) {
+        enqueue_error(space, "WidgetEventTrellis failed to read text state for " + widget_path);
+        return std::nullopt;
+    }
+    return *state;
+}
+
+auto write_text_state(PathSpace& space,
+                      std::string const& widget_path,
+                      BuilderWidgets::TextFieldState const& state) -> bool {
+    auto status = replace_single<BuilderWidgets::TextFieldState>(space,
+                                                                widget_path + "/state",
+                                                                state);
+    if (!status) {
+        enqueue_error(space,
+                      "WidgetEventTrellis failed to write text state for " + widget_path);
+        return false;
+    }
+    mark_widget_dirty(space, widget_path);
+    return true;
+}
+
+auto default_focus_pointer() -> WidgetBindings::PointerInfo {
+    WidgetBindings::PointerInfo pointer = WidgetBindings::PointerInfo::Make(0.0f, 0.0f);
+    pointer.WithInside(true);
+    pointer.WithPrimary(true);
+    return pointer;
+}
+
+auto focus_pointer_with_local(float local_x, float local_y) -> WidgetBindings::PointerInfo {
+    WidgetBindings::PointerInfo pointer = default_focus_pointer();
+    pointer.WithLocal(local_x, local_y);
+    return pointer;
+}
+
+auto classify_focus_nav(SP::IO::ButtonEvent const& event) -> std::optional<FocusNavEvent> {
+    if (event.source != SP::IO::ButtonSource::Keyboard
+        && event.source != SP::IO::ButtonSource::Gamepad) {
+        return std::nullopt;
+    }
+
+    FocusNavEvent nav{};
+    nav.pressed = event.state.pressed;
+    nav.repeat = event.state.repeat;
+    nav.from_keyboard = (event.source == SP::IO::ButtonSource::Keyboard);
+    nav.from_gamepad = (event.source == SP::IO::ButtonSource::Gamepad);
+
+    if (!nav.pressed) {
+        return std::nullopt;
+    }
+
+    if (nav.from_keyboard) {
+        switch (event.button_code) {
+        case kKeycodeLeft:
+            nav.direction = FocusDirection::Left;
+            break;
+        case kKeycodeRight:
+            nav.direction = FocusDirection::Right;
+            break;
+        case kKeycodeUp:
+            nav.direction = FocusDirection::Up;
+            break;
+        case kKeycodeDown:
+            nav.direction = FocusDirection::Down;
+            break;
+        case kKeycodeReturn:
+        case kKeycodeEnter:
+            nav.command = FocusCommand::Submit;
+            break;
+        case kKeycodeDeleteBackward:
+            nav.command = FocusCommand::DeleteBackward;
+            break;
+        case kKeycodeDeleteForward:
+            nav.command = FocusCommand::DeleteForward;
+            break;
+        default:
+            break;
+        }
+    } else {
+        switch (event.button_id) {
+        case kGamepadDpadLeft:
+            nav.direction = FocusDirection::Left;
+            break;
+        case kGamepadDpadRight:
+            nav.direction = FocusDirection::Right;
+            break;
+        case kGamepadDpadUp:
+            nav.direction = FocusDirection::Up;
+            break;
+        case kGamepadDpadDown:
+            nav.direction = FocusDirection::Down;
+            break;
+        case kGamepadLeftShoulder:
+            nav.direction = FocusDirection::Left;
+            break;
+        case kGamepadRightShoulder:
+            nav.direction = FocusDirection::Right;
+            break;
+        case kGamepadButtonA:
+            nav.command = FocusCommand::Submit;
+            break;
+        default:
+            break;
+        }
+    }
+
+    if (nav.direction == FocusDirection::None && nav.command == FocusCommand::None) {
+        return std::nullopt;
+    }
+    return nav;
+}
+
 auto focused_widget_path(PathSpace& space,
                          WindowBinding const& binding) -> std::optional<std::string> {
     if (!binding.app_root.empty()) {
@@ -800,7 +1076,9 @@ private:
             break;
         case SP::IO::ButtonSource::Keyboard:
         case SP::IO::ButtonSource::Gamepad:
-            handle_focus_button_event(binding, event);
+            if (!handle_focus_nav_event(binding, event)) {
+                handle_focus_button_event(binding, event);
+            }
             break;
         default:
             break;
@@ -921,6 +1199,441 @@ private:
         }
 
         state.active_target.reset();
+    }
+
+    bool handle_focus_nav_event(WindowBinding const& binding,
+                                SP::IO::ButtonEvent const& event) {
+        auto nav = classify_focus_nav(event);
+        if (!nav) {
+            return false;
+        }
+        auto focused = focused_widget_path(space_, binding);
+        if (!focused || focused->empty()) {
+            return false;
+        }
+        auto target = focus_target_for_widget(*focused);
+        if (!target) {
+            return false;
+        }
+
+        switch (target->kind) {
+        case TargetKind::Slider:
+            return handle_slider_focus_nav(binding, *target, *nav);
+        case TargetKind::List:
+            if (nav->direction != FocusDirection::None) {
+                return handle_list_focus_nav(binding, *target, *nav);
+            }
+            if (nav->command == FocusCommand::Submit) {
+                return handle_list_submit(binding, *target);
+            }
+            return false;
+        case TargetKind::TreeRow:
+        case TargetKind::TreeToggle:
+            if (nav->direction != FocusDirection::None) {
+                return handle_tree_focus_nav(binding, *target, *nav);
+            }
+            return false;
+        case TargetKind::InputField:
+            return handle_text_focus_nav(binding, *target, *nav);
+        default:
+            return false;
+        }
+    }
+
+    bool handle_slider_focus_nav(WindowBinding const& binding,
+                                 TargetInfo const& target,
+                                 FocusNavEvent const& nav) {
+        int step_direction = 0;
+        switch (nav.direction) {
+        case FocusDirection::Left:
+        case FocusDirection::Down:
+            step_direction = -1;
+            break;
+        case FocusDirection::Right:
+        case FocusDirection::Up:
+            step_direction = 1;
+            break;
+        default:
+            return false;
+        }
+        auto data = read_slider_data(space_, target.widget_path);
+        if (!data) {
+            return false;
+        }
+        float step = slider_step_size(*data);
+        float next_value = clamp_slider_value(data->range,
+                                              data->state.value + static_cast<float>(step_direction) * step);
+        if (std::abs(next_value - data->state.value) < 1e-6f) {
+            return false;
+        }
+        data->state.dragging = false;
+        data->state.value = next_value;
+        if (!write_slider_state(space_, target.widget_path, data->state)) {
+            return false;
+        }
+
+        TargetInfo info = target;
+        info.kind = TargetKind::Slider;
+        info.component = "slider/thumb";
+        info.has_local = true;
+        info.local_x = slider_local_from_value(*data, next_value);
+        info.local_y = std::max(data->style.height, 1.0f) * 0.5f;
+        auto pointer = focus_pointer_with_local(info.local_x, info.local_y);
+
+        emit_widget_op(binding,
+                       info,
+                       WidgetBindings::WidgetOpKind::SliderUpdate,
+                       next_value,
+                       true,
+                       pointer);
+        emit_widget_op(binding,
+                       info,
+                       WidgetBindings::WidgetOpKind::SliderCommit,
+                       next_value,
+                       true,
+                       pointer);
+        return true;
+    }
+
+    bool handle_list_focus_nav(WindowBinding const& binding,
+                               TargetInfo const& target,
+                               FocusNavEvent const& nav) {
+        int delta = 0;
+        if (nav.direction == FocusDirection::Up) {
+            delta = -1;
+        } else if (nav.direction == FocusDirection::Down) {
+            delta = 1;
+        } else {
+            return false;
+        }
+
+        auto data = read_list_data(space_, target.widget_path);
+        if (!data || data->items.empty()) {
+            return false;
+        }
+
+        std::int32_t current = data->state.selected_index;
+        if (current < 0) {
+            current = data->state.hovered_index >= 0 ? data->state.hovered_index : 0;
+        }
+        auto max_index = static_cast<std::int32_t>(data->items.size()) - 1;
+        auto next = std::clamp(current + delta, 0, std::max<std::int32_t>(0, max_index));
+        if (next == current) {
+            return false;
+        }
+
+        DeclarativeDetail::SetListHoverIndex(space_, target.widget_path, next);
+        DeclarativeDetail::SetListSelectionIndex(space_, target.widget_path, next);
+
+        auto [local_x, local_y] = list_local_center(*data, next);
+        TargetInfo info{};
+        info.widget_path = target.widget_path;
+        info.kind = TargetKind::List;
+        info.component = "list/item/" + std::to_string(next);
+        info.list_index = next;
+        info.list_item_id = list_item_id(*data, next);
+        auto pointer = focus_pointer_with_local(local_x, local_y);
+
+        {
+            auto& state = pointer_state(binding.token);
+            state.list_hover_widget = target.widget_path;
+            state.list_hover_index = next;
+        }
+
+        emit_widget_op(binding,
+                       info,
+                       WidgetBindings::WidgetOpKind::ListHover,
+                       static_cast<float>(next),
+                       true,
+                       pointer);
+        emit_widget_op(binding,
+                       info,
+                       WidgetBindings::WidgetOpKind::ListSelect,
+                       static_cast<float>(next),
+                       true,
+                       pointer);
+        return true;
+    }
+
+    bool handle_list_submit(WindowBinding const& binding,
+                            TargetInfo const& target) {
+        auto data = read_list_data(space_, target.widget_path);
+        if (!data) {
+            return false;
+        }
+        std::int32_t index = data->state.selected_index >= 0
+            ? data->state.selected_index
+            : data->state.hovered_index;
+        if (index < 0 || index >= static_cast<std::int32_t>(data->items.size())) {
+            return false;
+        }
+        auto [local_x, local_y] = list_local_center(*data, index);
+        TargetInfo info{};
+        info.widget_path = target.widget_path;
+        info.kind = TargetKind::List;
+        info.component = "list/item/" + std::to_string(index);
+        info.list_index = index;
+        info.list_item_id = list_item_id(*data, index);
+        auto pointer = focus_pointer_with_local(local_x, local_y);
+        emit_widget_op(binding,
+                       info,
+                       WidgetBindings::WidgetOpKind::ListActivate,
+                       static_cast<float>(index),
+                       true,
+                       pointer);
+        return true;
+    }
+
+    bool handle_tree_focus_nav(WindowBinding const& binding,
+                               TargetInfo const& target,
+                               FocusNavEvent const& nav) {
+        auto data = read_tree_data(space_, target.widget_path);
+        if (!data) {
+            return false;
+        }
+        auto rows = build_tree_rows(*data);
+        if (rows.empty()) {
+            return false;
+        }
+
+        std::string current_id = data->state.selected_id;
+        auto idx_opt = tree_row_index(rows, current_id);
+        std::size_t idx = idx_opt.value_or(0);
+        if (!idx_opt) {
+            select_tree_row(binding, target.widget_path, rows[idx].id);
+        }
+
+        auto select_if_valid = [&](std::size_t new_index) -> bool {
+            if (new_index >= rows.size()) {
+                return false;
+            }
+            return select_tree_row(binding, target.widget_path, rows[new_index].id);
+        };
+
+        switch (nav.direction) {
+        case FocusDirection::Up:
+            if (idx == 0) {
+                return false;
+            }
+            return select_if_valid(idx - 1);
+        case FocusDirection::Down:
+            if (idx + 1 >= rows.size()) {
+                return false;
+            }
+            return select_if_valid(idx + 1);
+        case FocusDirection::Left:
+            if (rows[idx].expandable && rows[idx].expanded) {
+                DeclarativeDetail::ToggleTreeExpanded(space_, target.widget_path, rows[idx].id);
+                return emit_tree_toggle(binding, target.widget_path, rows[idx].id);
+            }
+            if (!rows[idx].parent_id.empty()) {
+                if (auto parent_idx = tree_row_index(rows, rows[idx].parent_id)) {
+                    return select_if_valid(*parent_idx);
+                }
+            }
+            return false;
+        case FocusDirection::Right:
+            if (rows[idx].expandable && !rows[idx].expanded) {
+                DeclarativeDetail::ToggleTreeExpanded(space_, target.widget_path, rows[idx].id);
+                return emit_tree_toggle(binding, target.widget_path, rows[idx].id);
+            }
+            if (rows[idx].expandable && rows[idx].expanded) {
+                if (idx + 1 < rows.size() && rows[idx + 1].depth == rows[idx].depth + 1) {
+                    return select_if_valid(idx + 1);
+                }
+            }
+            return false;
+        default:
+            return false;
+        }
+    }
+
+    bool select_tree_row(WindowBinding const& binding,
+                         std::string const& widget_path,
+                         std::string const& node_id) {
+        TargetInfo info{};
+        info.widget_path = widget_path;
+        info.kind = TargetKind::TreeRow;
+        info.component = "tree/row/" + node_id;
+        info.tree_node_id = node_id;
+
+        DeclarativeDetail::SetTreeHoveredNode(space_, widget_path, node_id);
+        DeclarativeDetail::SetTreeSelectedNode(space_, widget_path, node_id);
+
+        {
+            auto& state = pointer_state(binding.token);
+            state.tree_hover_widget = widget_path;
+            state.tree_hover_node = node_id;
+        }
+
+        emit_widget_op(binding,
+                       info,
+                       WidgetBindings::WidgetOpKind::TreeHover,
+                       0.0f,
+                       true);
+        emit_widget_op(binding,
+                       info,
+                       WidgetBindings::WidgetOpKind::TreeSelect,
+                       0.0f,
+                       true);
+        return true;
+    }
+
+    bool emit_tree_toggle(WindowBinding const& binding,
+                          std::string const& widget_path,
+                          std::string const& node_id) {
+        TargetInfo info{};
+        info.widget_path = widget_path;
+        info.kind = TargetKind::TreeToggle;
+        info.component = "tree/toggle/" + node_id;
+        info.tree_node_id = node_id;
+        emit_widget_op(binding,
+                       info,
+                       WidgetBindings::WidgetOpKind::TreeToggle,
+                       0.0f,
+                       true);
+        return true;
+    }
+
+    bool handle_text_focus_nav(WindowBinding const& binding,
+                               TargetInfo const& target,
+                               FocusNavEvent const& nav) {
+        switch (nav.direction) {
+        case FocusDirection::Left:
+            return handle_text_cursor_step(binding, target, -1);
+        case FocusDirection::Right:
+            return handle_text_cursor_step(binding, target, 1);
+        case FocusDirection::Up:
+            return handle_text_cursor_step(binding, target, -1);
+        case FocusDirection::Down:
+            return handle_text_cursor_step(binding, target, 1);
+        default:
+            break;
+        }
+
+        switch (nav.command) {
+        case FocusCommand::DeleteBackward:
+            return handle_text_delete(binding, target, false);
+        case FocusCommand::DeleteForward:
+            return handle_text_delete(binding, target, true);
+        case FocusCommand::Submit:
+            return handle_text_submit(binding, target);
+        case FocusCommand::None:
+            return false;
+        }
+        return false;
+    }
+
+    bool handle_text_cursor_step(WindowBinding const& binding,
+                                 TargetInfo const& target,
+                                 int delta) {
+        if (delta == 0) {
+            return false;
+        }
+        auto state = read_text_state(space_, target.widget_path);
+        if (!state) {
+            return false;
+        }
+        std::uint32_t start = std::min(state->selection_start, state->selection_end);
+        std::uint32_t end = std::max(state->selection_start, state->selection_end);
+        bool changed = false;
+        if (start != end) {
+            state->cursor = (delta < 0) ? start : end;
+            changed = true;
+        } else {
+            auto cursor = static_cast<std::int64_t>(state->cursor);
+            cursor += delta;
+            auto max_cursor = static_cast<std::int64_t>(state->text.size());
+            auto clamped = std::clamp(cursor,
+                                      static_cast<std::int64_t>(0),
+                                      max_cursor);
+            if (static_cast<std::uint32_t>(clamped) == state->cursor) {
+                return false;
+            }
+            state->cursor = static_cast<std::uint32_t>(clamped);
+            changed = true;
+        }
+        state->selection_start = state->cursor;
+        state->selection_end = state->cursor;
+        if (!changed || !write_text_state(space_, target.widget_path, *state)) {
+            return false;
+        }
+
+        TargetInfo info = target;
+        info.kind = TargetKind::InputField;
+        info.component = "input_field/text";
+        emit_widget_op(binding,
+                       info,
+                       WidgetBindings::WidgetOpKind::TextMoveCursor,
+                       static_cast<float>(delta),
+                       true);
+        return true;
+    }
+
+    bool handle_text_delete(WindowBinding const& binding,
+                            TargetInfo const& target,
+                            bool forward) {
+        auto state = read_text_state(space_, target.widget_path);
+        if (!state) {
+            return false;
+        }
+
+        std::uint32_t start = std::min(state->selection_start, state->selection_end);
+        std::uint32_t end = std::max(state->selection_start, state->selection_end);
+        bool changed = false;
+        std::size_t text_size = state->text.size();
+
+        if (start != end) {
+            if (start < text_size) {
+                auto count = std::min<std::size_t>(text_size - static_cast<std::size_t>(start),
+                                                   static_cast<std::size_t>(end - start));
+                state->text.erase(static_cast<std::size_t>(start), count);
+            }
+            state->cursor = start;
+            changed = true;
+        } else if (!forward && state->cursor > 0) {
+            auto erase_index = static_cast<std::size_t>(state->cursor - 1);
+            if (erase_index < text_size) {
+                state->text.erase(erase_index, 1);
+                state->cursor = static_cast<std::uint32_t>(erase_index);
+                changed = true;
+            }
+        } else if (forward && state->cursor < text_size) {
+            state->text.erase(static_cast<std::size_t>(state->cursor), 1);
+            changed = true;
+        }
+
+        if (!changed) {
+            return false;
+        }
+        state->selection_start = state->cursor;
+        state->selection_end = state->cursor;
+        if (!write_text_state(space_, target.widget_path, *state)) {
+            return false;
+        }
+
+        TargetInfo info = target;
+        info.kind = TargetKind::InputField;
+        info.component = "input_field/text";
+        emit_widget_op(binding,
+                       info,
+                       WidgetBindings::WidgetOpKind::TextDelete,
+                       forward ? 1.0f : -1.0f,
+                       true);
+        return true;
+    }
+
+    bool handle_text_submit(WindowBinding const& binding,
+                            TargetInfo const& target) {
+        TargetInfo info = target;
+        info.kind = TargetKind::InputField;
+        info.component = "input_field/text";
+        emit_widget_op(binding,
+                       info,
+                       WidgetBindings::WidgetOpKind::TextSubmit,
+                       1.0f,
+                       true);
+        return true;
     }
 
     void handle_focus_button_event(WindowBinding const& binding,
@@ -1631,18 +2344,21 @@ private:
                         TargetInfo const& target,
                         WidgetBindings::WidgetOpKind kind,
                         float value,
-                        bool inside) {
+                        bool inside,
+                        std::optional<WidgetBindings::PointerInfo> pointer_override = std::nullopt) {
         if (target.kind == TargetKind::Unknown) {
             return;
         }
 
         auto const& ptr_state = pointer_state(binding.token);
-        WidgetBindings::PointerInfo pointer = WidgetBindings::PointerInfo::Make(ptr_state.x,
-                                                                                ptr_state.y)
-            .WithInside(inside)
-            .WithPrimary(true);
-        if (target.has_local) {
-            pointer.WithLocal(target.local_x, target.local_y);
+        WidgetBindings::PointerInfo pointer = pointer_override.value_or(
+            WidgetBindings::PointerInfo::Make(ptr_state.x, ptr_state.y));
+        if (!pointer_override) {
+            pointer.WithInside(inside);
+            pointer.WithPrimary(true);
+            if (target.has_local) {
+                pointer.WithLocal(target.local_x, target.local_y);
+            }
         }
 
         WidgetBindings::WidgetOp op{};

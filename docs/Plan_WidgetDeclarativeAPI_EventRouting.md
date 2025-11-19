@@ -22,7 +22,7 @@ _Last updated: October 31, 2025_
 
 > **Update (November 18, 2025):** InputTask writes paint-surface strokes into `state/history/<id>/{meta,points}`, increments `render/buffer/revision`, and rebuilds cached buckets before resolving handler bindings, so declarative paint widgets redraw even when no `draw` handler is installed.
 
-> **Update (November 18, 2025):** Keyboard and gamepad devices now travel the same declarative path: Tab/Shift+Tab and gamepad shoulders step focus through `Widgets::Focus`, D-pad/arrow keys drive slider/list/tree navigation, and Space/Enter/A emit the same press/toggle/list-activate ops that mouse input already produced. Text inputs receive cursor/delete/submit ops without bespoke loops, so declarative apps can remove their ad-hoc keyboard bridges.
+> **Update (November 19, 2025):** Keyboard and gamepad devices now travel the same declarative path end-to-end: Tab/Shift+Tab and shoulder buttons step focus through `Widgets::Focus`, D-pad/arrow keys re-use WidgetEventTrellis to step sliders, scroll/select list rows, and expand/collapse trees, Space/Enter/A continue to fire Press/Toggle/ListActivate, and focused input fields synthesize `TextDelete`, `TextMoveCursor`, and `TextSubmit` ops so declarative apps can drop bespoke keyboard bridges entirely. Tests live in `tests/ui/test_WidgetEventTrellis.cpp`.
 
 > **Update (November 18, 2025):** InputTask now mirrors handler results back to `widgets/<id>/metrics/handlers/{invoked_total,failures_total,missing_total}` in addition to the global `/system/widgets/runtime/input/metrics/*` counters, so dashboards can flag a specific widget whose handler never fires or keeps throwing.
 
