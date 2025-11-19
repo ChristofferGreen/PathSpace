@@ -209,6 +209,38 @@ auto ensure_view_binding(PathSpace& space,
                                           SP::Error::Code::InvalidPath));
     }
 
+    auto target_absolute = SP::App::resolve_app_relative(app_root, **target_relative);
+    if (!target_absolute) {
+        return std::unexpected(target_absolute.error());
+    }
+
+    auto settings_path = std::string(target_absolute->getPath()) + "/settings";
+    auto existing_settings = read_optional<SP::UI::Builders::RenderSettings>(space, settings_path);
+    if (!existing_settings) {
+        return std::unexpected(existing_settings.error());
+    }
+    if (!existing_settings->has_value()) {
+        SP::UI::Builders::RenderSettings defaults{};
+        defaults.surface.size_px.width = surface_params.desc.size_px.width > 0
+            ? surface_params.desc.size_px.width
+            : (width > 0 ? width : 1280);
+        defaults.surface.size_px.height = surface_params.desc.size_px.height > 0
+            ? surface_params.desc.size_px.height
+            : (height > 0 ? height : 720);
+        defaults.surface.dpi_scale = 1.0f;
+        defaults.surface.visibility = true;
+        defaults.renderer.backend_kind = SP::UI::Builders::RendererKind::Software2D;
+        defaults.renderer.metal_uploads_enabled = false;
+        defaults.clear_color = {0.11f, 0.12f, 0.15f, 1.0f};
+
+        auto settings_status = SP::UI::Builders::Renderer::UpdateSettings(space,
+                                                                          SP::App::ConcretePathView{target_absolute->getPath()},
+                                                                          defaults);
+        if (!settings_status) {
+            return std::unexpected(settings_status.error());
+        }
+    }
+
     ViewBinding binding{
         .surface_relative = *surface_relative,
         .renderer_relative = **target_relative,

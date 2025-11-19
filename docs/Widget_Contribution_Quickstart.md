@@ -18,6 +18,12 @@ examples, tests, and tooling.
   `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20`.
 - Runtime bootstrap tip (November 17, 2025): `SP::System::LaunchStandard`, `SP::App::Create`, `SP::Window::Create`, and `SP::Scene::Create` now seed `/config/theme`, `/config/renderer/default`, `windows/<id>/views/<view>/{scene,surface,renderer}`, and `scenes/<id>/structure/window/<window>` automatically and start both the `/system/widgets/runtime/input` worker and the `/system/widgets/runtime/io` pump by default. Window creation also registers `/system/widgets/runtime/windows/<token>` entries so bridges can populate `subscriptions/{pointer,button,text}/devices` (device paths such as `/system/devices/in/pointer/default`). Call `SP::System::ShutdownDeclarativeRuntime` in short-lived tests/examples when you do not want either worker thread to survive `PathSpace` teardown.
 
+### Declarative samples (November 19, 2025)
+- `examples/widgets_example.cpp` now mounts the full gallery via the declarative API (`Button`, `Toggle`, `Slider`, `List`, `Tree`, `Label`), forwards `LocalWindowBridge` events through `/system/devices/in/{pointer,text}/default`, and uses `Builders::App::PresentToLocalWindow` to present the runtime-generated buckets. The scaffolding lives in `examples/declarative_example_shared.hpp` so future demos can reuse the LaunchStandard → window bootstrap → device subscription flow without rebuilding `App::Bootstrap`.
+- `examples/widgets_example_minimal.cpp` is the stripped-down variant (button + slider + status label) built on the same helper; use it when you need a compact repro of declarative widget plumbing.
+- `examples/declarative_hello_example.cpp` is the literal quickstart: it creates an app, window, button, list, and label via `SP::UI::Declarative::*`, registers pointer/text devices, and runs the standard present loop. Point new contributors at this sample when they need the smallest runnable declarative app.
+- All declarative demos share the helper header. When you add a new sample, include `"declarative_example_shared.hpp"`, call `build_bootstrap_from_window` after `Window::Create`, register the pointer/text device you care about via `subscribe_window_devices`, and wrap the present loop with `run_present_loop`.
+
 ## Widget Data Contract (must stay in sync)
 
 | Path | Owner | Purpose |
@@ -93,10 +99,21 @@ Keep `docs/AI_Paths.md` in sync if you introduce new metadata keys or queues.
   `ApplyTheme` in `WidgetBuildersCore.cpp`.
 - Update `examples/widgets_example.cpp` so theme swaps (default vs `sunset`)
   restyle the new widget.
+- **Update (November 19, 2025):** `examples/declarative_theme_example.cpp` seeds
+  sunrise/sunset themes entirely through `SP::UI::Declarative::Theme::{Create,SetColor}`
+  and toggles actives to show inheritance; mirror that flow when wiring new
+  declarative widgets, and keep token semantics in sync with
+  `tests/ui/test_DeclarativeTheme.cpp`.
 
 ### 7. Examples, docs, and onboarding
-- Add the widget to `examples/widgets_example.cpp`, including interaction hooks
-  and display text.
+- Add the widget to `examples/widgets_example.cpp` (and the corresponding
+  minimal + hello samples) via the declarative API, including interaction hooks
+  and display text. Follow the new helper flow: include
+  `declarative_example_shared.hpp`, register pointer/text devices, mount the
+  widget under the window root, and let the shared present loop drive
+  `Window::Present`.
+- Point declarative contributors at `declarative_theme_example` when documenting
+  theme overrides so the runtime-focused sample stays current.
 - Update `docs/Plan_SceneGraph.md` (Phase 8 status list) and
   `docs/AI_Onboarding_Next.md` to mention the new widget and any follow-on work.
 - If new queues or metadata land, refresh `docs/AI_Debugging_Playbook.md` with

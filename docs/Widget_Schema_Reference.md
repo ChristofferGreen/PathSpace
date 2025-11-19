@@ -31,6 +31,7 @@ Declarative descriptors resolve styles by walking `style/theme` from the widget 
 ### Theme editing API (November 19, 2025)
 
 `SP::UI::Declarative::Theme::Create` seeds `/system/applications/<app>/themes/<name>` with human-editable nodes and mirrors the compiled `WidgetTheme` into `config/theme/<name>/value`. Callers may supply a seed struct, optional inheritance chain (`style/inherits`), and request activation. `Theme::SetColor` validates canonical tokens, stores the RGBA array under `/themes/<name>/colors/<token>`, rewrites the compiled value, and invokes `SceneLifecycle::InvalidateThemes` so scenes repaint automatically. `Theme::RebuildValue` replays stored tokens onto the serialized struct after manual edits.
+Regression coverage: `tests/ui/test_DeclarativeTheme.cpp` now checks both inheritance fallbacks (`Theme::SetColor` across parent/child themes) and the manual-edit repair path (`Theme::RebuildValue`).
 
 Supported color tokens:
 
