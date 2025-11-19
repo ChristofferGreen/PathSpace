@@ -283,7 +283,7 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - ✅ (November 19, 2025) Added `examples/declarative_hello_example.cpp` as the quick-start sample (button + list + label) so onboarding docs can link to a runnable “hello world” that mirrors the plan’s design sketch verbatim.
    - ✅ (November 19, 2025) `examples/paint_example.cpp` now boots entirely through the declarative runtime, wires palette + brush-size controls via `SP::UI::Declarative::{Button,Slider,Label}`, and wraps the paint widget root in an `UndoableSpace` view (PathAlias → UndoableSpace) so the “Undo/Redo Stroke” buttons replay the journaled history without touching legacy builders. The sample reuses `declarative_example_shared.hpp` for IO subscriptions and demonstrates how to set `state/brush/*` plus handler telemetry from `PaintSurface::Create`.
    - ✅ (November 19, 2025) Legacy paint GPU staging smoke test now lives on the declarative sample: `examples/paint_example --gpu-smoke[=png]` replays scripted strokes headlessly, waits for `render/gpu/state` to reach `Ready`, verifies staged texture stats/dirty queues, and optionally dumps the GPU payload for visual diffs so CI/devs share the same workflow.
-   - ✅ (November 19, 2025) Added declarative paint parity + fuzz coverage: `tests/ui/test_DeclarativePaintSurface.cpp` compares descriptor stroke points with recorded history and exercises the GPU uploader, and `tests/ui/test_WidgetEventTrellis.cpp` drives randomized paint strokes through the Trellis, replaying the emitted ops with `PaintRuntime` to guard pointer sequencing regressions.
+- ✅ (November 19, 2025) Added declarative paint parity + fuzz coverage: `tests/ui/test_DeclarativePaintSurface.cpp` compares descriptor stroke points with recorded history and exercises the GPU uploader, and `tests/ui/test_WidgetEventTrellis.cpp` drives randomized paint strokes through the Trellis, replaying the emitted ops with `PaintRuntime` to guard pointer sequencing regressions.
 2. **Tests**
    - Add parity tests comparing declarative buckets vs. legacy.
    - Cover focus navigation (including list/tree selections).
@@ -291,6 +291,19 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
 3. **Docs**
    - Document the workflow (`docs/WidgetDeclarativeAPI/md`).
    - Update onboarding/checklists and provide migration notes.
+
+## Debug Journal — November 19, 2025
+
+Status snapshot for the empty paint window investigation:
+
+1. **Lifecycle watcher root** — `SceneLifecycleWorker` was still walking `/windows/<id>/widgets`; declarative widgets actually live under `/windows/<id>/views/<view>/widgets`. Pointing the worker at the view-specific subtree is required or no buckets ever publish.
+2. **Scene readiness wait** — `examples/paint_example.cpp` now needs to block on `/scenes/<scene>/current_revision` _and_ the corresponding `/builds/<rev>/bucket/drawables.bin` before running the screenshot loop. Without this, `Window::Present` just returns `NoSuchPath` while the lifecycle is still emitting buckets.
+3. **Remaining blocker** — Even after the fixes above, `Window::Present` fails with `Error::Code::InvalidType`/`UnserializableType` (“deserialization failed: Value too large to be stored in data type”) because `SceneSnapshotBuilder::decode_bucket` reads `bucket/drawables.bin` before all bucket files land. We suspect `PublishRevision` updates `current_revision` too early. Next steps:
+   - Instrument `SceneSnapshotBuilder::{store_bucket,decode_bucket}` to log which file fails and verify offsets/counts vs. `drawable_ids.size()`.
+   - Reorder `PublishRevision` so `current_revision` flips only after every `/bucket/*.bin` write succeeds, or add a retry path in the decoder for “bucket incomplete” errors.
+   - Once decoding succeeds, re-run `./build/paint_example --screenshot <path>` followed by the mandated `./scripts/compile.sh --clean --test --loop=15 --release` gate.
+
+Keep this journal in sync as we chip away at the serialization issue so we can pick up right where we left off next session.
 
 ### Phase 3 – Migration & Parity
 1. **Feature audit**

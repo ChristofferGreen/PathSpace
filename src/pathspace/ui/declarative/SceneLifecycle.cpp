@@ -93,7 +93,7 @@ struct SceneLifecycleWorker {
         , app_root_value_(app_root_path_)
         , scene_path_value_(scene_path_)
         , snapshot_builder_(space_, SP::App::AppRootPathView{app_root_value_.getPath()}, scene_path_value_) {
-        window_widgets_root_ = window_path_ + "/widgets";
+        window_widgets_root_ = window_path_ + std::string{"/views/"} + view_name_ + "/widgets";
         trellis_path_ = scene_path_ + "/runtime/lifecycle/trellis";
         trellis_enable_path_ = trellis_path_ + "/_system/enable";
         trellis_disable_path_ = trellis_path_ + "/_system/disable";

@@ -357,9 +357,9 @@ auto read_gpu_state(SP::PathSpace& space,
 }
 
 auto wait_for_gpu_state(SP::PathSpace& space,
-                        std::string const& widget_path,
-                        SP::UI::Declarative::PaintGpuState desired,
-                        std::chrono::milliseconds timeout)
+                       std::string const& widget_path,
+                       SP::UI::Declarative::PaintGpuState desired,
+                       std::chrono::milliseconds timeout)
     -> std::optional<SP::UI::Declarative::PaintGpuState> {
     auto start = std::chrono::steady_clock::now();
     while (std::chrono::steady_clock::now() - start < timeout) {
@@ -373,6 +373,59 @@ auto wait_for_gpu_state(SP::PathSpace& space,
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     return read_gpu_state(space, widget_path);
+}
+
+auto wait_for_scene_revision(SP::PathSpace& space,
+                             SP::UI::Builders::ScenePath const& scene_path,
+                             std::chrono::milliseconds timeout) -> bool {
+    auto revision_path = std::string(scene_path.getPath()) + "/current_revision";
+    auto format_revision = [](std::uint64_t revision) {
+        std::ostringstream oss;
+        oss << std::setw(16) << std::setfill('0') << revision;
+        return oss.str();
+    };
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    std::optional<std::uint64_t> ready_revision;
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto revision = space.read<std::uint64_t, std::string>(revision_path);
+        if (revision) {
+            if (*revision != 0) {
+                ready_revision = *revision;
+                break;
+            }
+        } else {
+            auto const& error = revision.error();
+            if (error.code != SP::Error::Code::NoObjectFound
+                && error.code != SP::Error::Code::NoSuchPath) {
+                log_expected_error("read scene revision", error);
+                return false;
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    if (!ready_revision) {
+        std::cerr << "paint_example: timed out waiting for scene '"
+                  << scene_path.getPath() << "' to publish" << std::endl;
+        return false;
+    }
+    auto revision_str = format_revision(*ready_revision);
+    auto bucket_path = std::string(scene_path.getPath()) + "/builds/" + revision_str + "/bucket/drawables.bin";
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto drawables = space.read<std::vector<std::uint8_t>, std::string>(bucket_path);
+        if (drawables) {
+            return true;
+        }
+        auto const& error = drawables.error();
+        if (error.code != SP::Error::Code::NoSuchPath
+            && error.code != SP::Error::Code::NoObjectFound) {
+            log_expected_error("read scene bucket", error);
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    std::cerr << "paint_example: timed out waiting for scene bucket '"
+              << bucket_path << "'" << std::endl;
+    return false;
 }
 
 auto run_gpu_smoke(SP::PathSpace& space,
@@ -745,6 +798,11 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    if (!wait_for_scene_revision(space, scene_result.path, std::chrono::seconds(3))) {
+        SP::System::ShutdownDeclarativeRuntime(space);
+        return 1;
+    }
+
     bool screenshot_mode = options.screenshot_path.has_value();
 
     if (options.gpu_smoke) {
@@ -801,7 +859,14 @@ int main(int argc, char** argv) {
             }
             auto present = SP::UI::Builders::Window::Present(space, window->path, window->view_name);
             if (!present) {
-                log_expected_error("Window::Present", present.error());
+                auto const& error = present.error();
+                if (error.code == SP::Error::Code::NoSuchPath
+                    || error.code == SP::Error::Code::InvalidType
+                    || error.code == SP::Error::Code::UnserializableType) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(16));
+                    continue;
+                }
+                log_expected_error("Window::Present", error);
                 screenshot_failed = true;
                 break;
             }
