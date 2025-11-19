@@ -11,6 +11,7 @@
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -27,6 +28,62 @@ namespace Detail = SP::UI::Builders::Detail;
 namespace BuilderWidgets = SP::UI::Builders::Widgets;
 namespace PaintRuntime = SP::UI::Declarative::PaintRuntime;
 namespace DescriptorDetail = SP::UI::Declarative::DescriptorDetail;
+
+auto append_rect_drawable(SP::UI::Scene::DrawableBucketSnapshot& bucket,
+                          std::uint64_t drawable_id,
+                          float min_x,
+                          float min_y,
+                          float max_x,
+                          float max_y,
+                          std::array<float, 4> const& color,
+                          float z,
+                          std::string const& authoring_root,
+                          [[maybe_unused]] std::string_view suffix) -> void {
+    bucket.drawable_ids.push_back(drawable_id);
+    bucket.world_transforms.push_back(SP::UI::Scene::MakeIdentityTransform());
+
+    SP::UI::Scene::BoundingBox box{};
+    box.min = {min_x, min_y, 0.0f};
+    box.max = {max_x, max_y, 0.0f};
+    bucket.bounds_boxes.push_back(box);
+    bucket.bounds_box_valid.push_back(1);
+
+    auto center_x = (min_x + max_x) * 0.5f;
+    auto center_y = (min_y + max_y) * 0.5f;
+    auto half_w = (max_x - min_x) * 0.5f;
+    auto half_h = (max_y - min_y) * 0.5f;
+    SP::UI::Scene::BoundingSphere sphere{};
+    sphere.center = {center_x, center_y, 0.0f};
+    sphere.radius = std::sqrt(std::max(0.0f, half_w * half_w + half_h * half_h));
+    bucket.bounds_spheres.push_back(sphere);
+
+    bucket.layers.push_back(0);
+    bucket.z_values.push_back(z);
+    bucket.material_ids.push_back(0);
+    bucket.pipeline_flags.push_back(0);
+    bucket.visibility.push_back(1);
+
+    bucket.command_offsets.push_back(static_cast<std::uint32_t>(bucket.command_kinds.size()));
+    bucket.command_counts.push_back(1);
+
+    SP::UI::Scene::RoundedRectCommand command{};
+    command.min_x = min_x;
+    command.min_y = min_y;
+    command.max_x = max_x;
+    command.max_y = max_y;
+    command.radius_top_left = 8.0f;
+    command.radius_top_right = 8.0f;
+    command.radius_bottom_left = 8.0f;
+    command.radius_bottom_right = 8.0f;
+    command.color = color;
+
+    auto payload_offset = bucket.command_payload.size();
+    bucket.command_payload.resize(payload_offset + sizeof(command));
+    std::memcpy(bucket.command_payload.data() + payload_offset, &command, sizeof(command));
+    bucket.command_kinds.push_back(static_cast<std::uint32_t>(SP::UI::Scene::DrawCommandKind::RoundedRect));
+
+    bucket.drawable_fingerprints.push_back(drawable_id);
+}
 
 struct BucketVisitor {
     DescriptorBucketOptions options;
@@ -100,9 +157,54 @@ struct BucketVisitor {
         return built->bucket;
     }
 
-    auto operator()(StackDescriptor const&) const
+    auto operator()(StackDescriptor const& descriptor) const
         -> SP::Expected<SP::UI::Scene::DrawableBucketSnapshot> {
-        return SP::UI::Scene::DrawableBucketSnapshot{};
+        BuilderWidgets::StackPreviewOptions preview{};
+        preview.authoring_root = authoring_root.empty() ? std::string{"widgets/stack"} : authoring_root;
+        auto preview_result = BuilderWidgets::BuildStackPreview(descriptor.style,
+                                                                descriptor.layout,
+                                                                preview);
+        auto bucket = std::move(preview_result.bucket);
+
+        std::string active_id = descriptor.active_panel;
+        for (auto const& panel : descriptor.panels) {
+            if (panel.visible) {
+                active_id = panel.id;
+                break;
+            }
+        }
+
+        if (!active_id.empty()) {
+            auto const& computed_children = preview_result.layout.state.children;
+            auto const& child_bounds = preview_result.layout.child_bounds;
+            if (!computed_children.empty() && computed_children.size() == child_bounds.size()) {
+                for (std::size_t index = 0; index < computed_children.size(); ++index) {
+                    if (computed_children[index].id != active_id) {
+                        continue;
+                    }
+                    auto const& rect = child_bounds[index];
+                    auto highlight_color = std::array<float, 4>{0.18f, 0.55f, 0.95f, 0.35f};
+                    std::string highlight_suffix = std::string{"stack/active/"} + active_id;
+                    std::string highlight_authoring = preview.authoring_root.empty()
+                        ? highlight_suffix
+                        : preview.authoring_root + "/" + highlight_suffix;
+                    auto drawable_id = std::hash<std::string>{}(highlight_authoring) ^ 0x5AFEC0DEull;
+                    append_rect_drawable(bucket,
+                                         drawable_id,
+                                         rect.min_x,
+                                         rect.min_y,
+                                         rect.max_x,
+                                         rect.max_y,
+                                         highlight_color,
+                                         1.0f,
+                                         preview.authoring_root,
+                                         std::string_view{highlight_suffix});
+                    break;
+                }
+            }
+        }
+
+        return bucket;
     }
 
     auto operator()(InputFieldDescriptor const& descriptor) const
@@ -117,14 +219,33 @@ struct BucketVisitor {
     auto operator()(PaintSurfaceDescriptor const& descriptor) const
         -> SP::Expected<SP::UI::Scene::DrawableBucketSnapshot> {
         SP::UI::Scene::DrawableBucketSnapshot bucket{};
+        auto width = static_cast<float>(std::max<std::uint32_t>(1u, descriptor.buffer.width));
+        auto height = static_cast<float>(std::max<std::uint32_t>(1u, descriptor.buffer.height));
+        float min_x = descriptor.viewport.max_x > descriptor.viewport.min_x ? descriptor.viewport.min_x : 0.0f;
+        float max_x = descriptor.viewport.max_x > descriptor.viewport.min_x ? descriptor.viewport.max_x : width;
+        float min_y = descriptor.viewport.max_y > descriptor.viewport.min_y ? descriptor.viewport.min_y : 0.0f;
+        float max_y = descriptor.viewport.max_y > descriptor.viewport.min_y ? descriptor.viewport.max_y : height;
+        auto background_color = std::array<float, 4>{0.11f, 0.12f, 0.14f, 1.0f};
+        std::string bg_suffix{"paint/background"};
+        std::string bg_authoring = authoring_root.empty()
+            ? bg_suffix
+            : authoring_root + "/" + bg_suffix;
+        auto background_id = std::hash<std::string>{}(bg_authoring) ^ descriptor.buffer_revision;
+        append_rect_drawable(bucket,
+                             background_id,
+                             min_x,
+                             min_y,
+                             max_x,
+                             max_y,
+                             background_color,
+                             -1.0f,
+                             authoring_root,
+                             std::string_view{bg_suffix});
+
         std::size_t total_points = 0;
         for (auto const& stroke : descriptor.strokes) {
             total_points += stroke.points.size();
         }
-        if (total_points == 0) {
-            return bucket;
-        }
-
         bucket.stroke_points.reserve(total_points);
         std::vector<std::uint32_t> opaque_indices;
         std::vector<std::uint32_t> alpha_indices;

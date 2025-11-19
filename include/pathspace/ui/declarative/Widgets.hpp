@@ -17,6 +17,8 @@
 
 namespace SP::UI::Declarative {
 
+namespace BuilderWidgets = SP::UI::Builders::Widgets;
+
 struct FragmentContext {
     PathSpace& space;
     std::string root;
@@ -342,6 +344,7 @@ struct Panel {
 struct Args {
     std::vector<Panel> panels;
     std::string active_panel;
+    BuilderWidgets::StackLayoutStyle style{};
     std::optional<StackPanelHandler> on_select;
 };
 

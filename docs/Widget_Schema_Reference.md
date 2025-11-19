@@ -124,11 +124,16 @@ All widgets also inherit the global queues documented elsewhere (e.g., `widgets/
 | Path | Kind | Req | Notes |
 | --- | --- | --- | --- |
 | `state/active_panel` | value | req | Currently visible panel id. |
+| `panels/<panel-id>/order` | value | rt | Stable ordering written during mount so layout recomputes deterministically. |
 | `panels/<panel-id>/state` | dir | rt | Panel metadata (title, enabled, loaded). |
 | `panels/<panel-id>/target` | value | rt | Path to the mounted child fragment. |
+| `panels/<panel-id>/visible` | value | rt | Boolean flag managed by `Stack::SetActivePanel`; mirrors whether the panel is currently shown. |
 | `events/panel_select/handler` | callable | opt | Panel selection handler. |
+| `layout/style` | value | rt | Serialized `Widgets::StackLayoutStyle` (axis, spacing, padding). |
+| `layout/children` | value | rt | `std::vector<StackChildSpec>` describing child widget paths + constraints. |
+| `layout/computed` | value | rt | Cached `StackLayoutState` produced by the declarative runtime so descriptors/previews can reuse measured bounds. |
 
-Descriptor status: Stack widgets now participate in descriptor synthesis so dirty queues stay healthy even though the current bucket is a placeholder. Follow-up work will hydrate layout metadata and render panel chrome so stack buckets no longer return empty geometry.
+Descriptor status: Stack descriptors now emit full `StackLayoutStyle` + `StackLayoutState` metadata and reuse the builder preview to render background + panel placeholders. The active panel receives a highlighted overlay derived from the stored layout bounds, so stack buckets remain meaningful even before child widgets render.
 
 Runtime hit tests now emit `StackSelect` widget ops when a user activates a rendered preview (`stack/panel/<panel-id>`). Those ops flow through `/widgets/<id>/ops/inbox/queue`, mirror into `events/panel_select/queue`, and invoke the optional handler with `panel_id` populated so containers can react without bespoke routing tables.
 
@@ -168,7 +173,7 @@ Runtime note (Nov 19, 2025): Focused input fields now receive synthesized `TextD
 | `assets/texture` | value | rt | Serialized `PaintTexturePayload` (width, height, stride, revision, RGBA8 pixels) written by the paint GPU uploader. |
 | `events/draw/handler` | callable | opt | Draw handler translating pointer events into strokes. |
 
-Descriptor status: paint surfaces expose brush metadata, buffer metrics, recorded stroke paths, and GPU staging metadata through the descriptor so the runtime can synthesize `DrawCommandKind::Stroke` buckets or, when `render/gpu/state == Ready`, hand the presenter an up-to-date texture published under `assets/texture`.
+Descriptor status: paint surfaces expose brush metadata, buffer metrics, viewport and revision info, recorded stroke paths, and GPU staging metadata through the descriptor so the runtime can synthesize background quads plus `DrawCommandKind::Stroke` buckets. When `render/gpu/state == Ready`, the uploader also writes `assets/texture` for future image-command use.
 
 `PaintStrokeBegin`, `PaintStrokeUpdate`, and `PaintStrokeCommit` ops now populate the paint surface action queue with pointer-local coordinates. The runtime forwards each op to `events/draw/queue`, appends points under `state/history/<id>/{meta,points}`, increments `render/buffer/revision`, records stroke footprints under `render/buffer/pendingDirty` + `/render/gpu/dirtyRects`, flips `render/gpu/state` to `DirtyPartial`, and invokes the optional `draw` handler so reducers can append custom behavior or enqueue uploads manually if desired.
 

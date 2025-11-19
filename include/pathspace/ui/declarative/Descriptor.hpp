@@ -6,6 +6,7 @@
 #include <pathspace/ui/declarative/Widgets.hpp>
 
 #include <array>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <variant>
@@ -53,10 +54,14 @@ struct LabelDescriptor {
 struct StackPanelDescriptor {
     std::string id;
     std::string target;
+    bool visible = false;
 };
 
 struct StackDescriptor {
     std::string active_panel;
+    BuilderWidgets::StackLayoutStyle style{};
+    BuilderWidgets::StackLayoutState layout{};
+    std::vector<BuilderWidgets::StackChildSpec> children;
     std::vector<StackPanelDescriptor> panels;
 };
 
@@ -77,6 +82,8 @@ struct PaintSurfaceDescriptor {
     bool gpu_enabled = false;
     bool gpu_ready = false;
     PaintBufferMetrics buffer{};
+    PaintBufferViewport viewport{};
+    std::uint64_t buffer_revision = 0;
     std::vector<Builders::DirtyRectHint> pending_dirty;
     std::optional<PaintTexturePayload> texture;
     PaintGpuStats gpu_stats{};

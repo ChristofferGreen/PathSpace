@@ -3,6 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/path/ConcretePath.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
@@ -322,10 +323,12 @@ TEST_CASE("WidgetDescriptor reproduces input field bucket with theme defaults") 
     CHECK(bucket->command_payload == reference.command_payload);
 }
 
-TEST_CASE("WidgetDescriptor loads stack metadata even when bucket is empty") {
+TEST_CASE("WidgetDescriptor publishes stack layout metadata and preview bucket") {
     DeclarativeFixture fx;
     Stack::Args args{};
     args.active_panel = "first";
+    args.style.axis = WidgetsNS::StackAxis::Vertical;
+    args.style.spacing = 4.0f;
     args.panels.push_back(Stack::Panel{
         .id = "first",
         .fragment = Label::Fragment(Label::Args{.text = "Panel A"}),
@@ -341,10 +344,46 @@ TEST_CASE("WidgetDescriptor loads stack metadata even when bucket is empty") {
     REQUIRE(descriptor.has_value());
     auto const& data = std::get<StackDescriptor>(descriptor->data);
     CHECK_EQ(data.active_panel, "first");
-    CHECK_EQ(data.panels.size(), 2U);
+    REQUIRE_EQ(data.panels.size(), 2U);
+    CHECK(data.panels.front().visible);
+    CHECK_FALSE(data.panels.back().visible);
+    CHECK_EQ(data.style.axis, WidgetsNS::StackAxis::Vertical);
+    CHECK_EQ(data.layout.children.size(), 2U);
     auto bucket = BuildWidgetBucket(*descriptor);
     REQUIRE(bucket.has_value());
-    CHECK(bucket->drawable_ids.empty());
+    CHECK_FALSE(bucket->drawable_ids.empty());
+}
+
+TEST_CASE("Stack::SetActivePanel rewrites visibility metadata") {
+    DeclarativeFixture fx;
+    Stack::Args args{};
+    args.active_panel = "alpha";
+    args.panels.push_back(Stack::Panel{
+        .id = "alpha",
+        .fragment = Label::Fragment(Label::Args{.text = "Alpha"}),
+    });
+    args.panels.push_back(Stack::Panel{
+        .id = "beta",
+        .fragment = Label::Fragment(Label::Args{.text = "Beta"}),
+    });
+    auto stack = Stack::Create(fx.space, fx.parent_view(), "visibility_stack", std::move(args));
+    REQUIRE(stack.has_value());
+
+    auto alpha_visible = fx.space.read<bool, std::string>(stack->getPath() + "/panels/alpha/visible");
+    auto beta_visible = fx.space.read<bool, std::string>(stack->getPath() + "/panels/beta/visible");
+    REQUIRE(alpha_visible.has_value());
+    REQUIRE(beta_visible.has_value());
+    CHECK(*alpha_visible);
+    CHECK_FALSE(*beta_visible);
+
+    auto switched = Stack::SetActivePanel(fx.space, *stack, "beta");
+    REQUIRE(switched.has_value());
+    alpha_visible = fx.space.read<bool, std::string>(stack->getPath() + "/panels/alpha/visible");
+    beta_visible = fx.space.read<bool, std::string>(stack->getPath() + "/panels/beta/visible");
+    REQUIRE(alpha_visible.has_value());
+    REQUIRE(beta_visible.has_value());
+    CHECK_FALSE(*alpha_visible);
+    CHECK(*beta_visible);
 }
 
 TEST_CASE("PaintSurface descriptor captures brush metadata") {
@@ -367,7 +406,23 @@ TEST_CASE("PaintSurface descriptor captures brush metadata") {
 
     auto bucket = BuildWidgetBucket(*descriptor);
     REQUIRE(bucket.has_value());
-    CHECK(bucket->drawable_ids.empty());
+    CHECK_FALSE(bucket->drawable_ids.empty());
+}
+
+TEST_CASE("PaintSurface bucket includes buffer background before strokes") {
+    DeclarativeFixture fx;
+    PaintSurface::Args args{};
+    auto paint = PaintSurface::Create(fx.space, fx.parent_view(), "background_paint", args);
+    REQUIRE(paint.has_value());
+
+    auto descriptor = LoadWidgetDescriptor(fx.space, *paint);
+    REQUIRE(descriptor.has_value());
+    auto bucket = BuildWidgetBucket(*descriptor);
+    REQUIRE(bucket.has_value());
+    REQUIRE_FALSE(bucket->drawable_ids.empty());
+    REQUIRE_FALSE(bucket->command_kinds.empty());
+    CHECK(bucket->command_kinds.front()
+          == static_cast<std::uint32_t>(SP::UI::Scene::DrawCommandKind::RoundedRect));
 }
 
 TEST_CASE("PaintSurfaceRuntime marks GPU state and dirty hints") {

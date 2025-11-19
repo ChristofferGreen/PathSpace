@@ -6,7 +6,9 @@
 #include <pathspace/ui/TextBuilder.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 
+#include <algorithm>
 #include <array>
+#include <cstdint>
 #include <charconv>
 #include <limits>
 #include <optional>
@@ -241,19 +243,79 @@ auto ReadStackDescriptor(PathSpace& space, std::string const& root)
         return std::unexpected(active_panel.error());
     }
     descriptor.active_panel = active_panel->value_or("");
-    auto panels_root = root + "/children";
-    auto children = space.listChildren(SP::ConcretePathStringView{panels_root});
-    for (auto const& panel_name : children) {
-        StackPanelDescriptor panel{};
-        panel.id = panel_name;
-        auto target_path = ReadOptionalValue<std::string>(space, panels_root + "/" + panel_name + "/target");
+    auto style = ReadOptionalValue<BuilderWidgets::StackLayoutStyle>(space, root + "/layout/style");
+    if (!style) {
+        return std::unexpected(style.error());
+    }
+    descriptor.style = style->value_or(BuilderWidgets::StackLayoutStyle{});
+
+    auto layout_children = ReadOptionalValue<std::vector<BuilderWidgets::StackChildSpec>>(space,
+                                                                                         root + "/layout/children");
+    if (!layout_children) {
+        return std::unexpected(layout_children.error());
+    }
+    descriptor.children = layout_children->value_or(std::vector<BuilderWidgets::StackChildSpec>{});
+
+    auto layout_state = ReadOptionalValue<BuilderWidgets::StackLayoutState>(space, root + "/layout/computed");
+    if (!layout_state) {
+        return std::unexpected(layout_state.error());
+    }
+    descriptor.layout = layout_state->value_or(BuilderWidgets::StackLayoutState{});
+
+    auto panels_root = root + "/panels";
+    auto panels = space.listChildren(SP::ConcretePathStringView{panels_root});
+    struct PanelRecord {
+        StackPanelDescriptor panel;
+        std::uint32_t order = 0;
+    };
+    std::vector<PanelRecord> ordered;
+    ordered.reserve(panels.size());
+    for (auto const& panel_name : panels) {
+        PanelRecord record{};
+        record.panel.id = panel_name;
+        auto panel_root = panels_root + "/" + panel_name;
+        auto order_value = space.read<std::uint32_t, std::string>(panel_root + "/order");
+        if (order_value) {
+            record.order = *order_value;
+        }
+        auto target_path = ReadOptionalValue<std::string>(space, panel_root + "/target");
         if (!target_path) {
             return std::unexpected(target_path.error());
         }
         if (target_path->has_value()) {
-            panel.target = **target_path;
+            record.panel.target = **target_path;
         }
-        descriptor.panels.push_back(std::move(panel));
+        auto visible = ReadOptionalValue<bool>(space, panel_root + "/visible");
+        if (!visible) {
+            return std::unexpected(visible.error());
+        }
+        record.panel.visible = visible->value_or(false);
+        ordered.push_back(std::move(record));
+    }
+
+    if (ordered.empty()) {
+        auto children_root = root + "/children";
+        auto children = space.listChildren(SP::ConcretePathStringView{children_root});
+        for (auto const& panel_name : children) {
+            StackPanelDescriptor panel{};
+            panel.id = panel_name;
+            auto target_path = ReadOptionalValue<std::string>(space, children_root + "/" + panel_name + "/target");
+            if (target_path && target_path->has_value()) {
+                panel.target = **target_path;
+            }
+            panel.visible = panel_name == descriptor.active_panel;
+            ordered.push_back(PanelRecord{std::move(panel), static_cast<std::uint32_t>(ordered.size())});
+        }
+    }
+
+    std::sort(ordered.begin(), ordered.end(), [](PanelRecord const& lhs, PanelRecord const& rhs) {
+        if (lhs.order == rhs.order) {
+            return lhs.panel.id < rhs.panel.id;
+        }
+        return lhs.order < rhs.order;
+    });
+    for (auto& record : ordered) {
+        descriptor.panels.push_back(std::move(record.panel));
     }
     return descriptor;
 }
@@ -456,6 +518,16 @@ auto ReadPaintSurfaceDescriptor(PathSpace& space, std::string const& root)
         return std::unexpected(dirty_rects.error());
     }
     descriptor.pending_dirty = dirty_rects->value_or(std::vector<SP::UI::Builders::DirtyRectHint>{});
+    auto viewport = ReadOptionalValue<PaintBufferViewport>(space, root + "/render/buffer/viewport");
+    if (!viewport) {
+        return std::unexpected(viewport.error());
+    }
+    descriptor.viewport = viewport->value_or(PaintBufferViewport{});
+    auto buffer_revision = ReadOptionalValue<std::uint64_t>(space, root + "/render/buffer/revision");
+    if (!buffer_revision) {
+        return std::unexpected(buffer_revision.error());
+    }
+    descriptor.buffer_revision = buffer_revision->value_or(0);
     auto texture_payload = ReadOptionalValue<PaintTexturePayload>(space, root + "/assets/texture");
     if (!texture_payload) {
         return std::unexpected(texture_payload.error());
