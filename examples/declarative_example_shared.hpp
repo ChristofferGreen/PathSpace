@@ -291,6 +291,7 @@ struct PresentLoopHooks {
     std::function<void()> before_present;
     std::function<void()> after_present;
     std::function<void()> per_frame;
+    std::function<void(SP::UI::Builders::Window::WindowPresentResult const&)> on_present;
 };
 
 inline void run_present_loop(SP::PathSpace& space,
@@ -328,6 +329,9 @@ inline void run_present_loop(SP::PathSpace& space,
         }
         auto present_result = SP::UI::Builders::Window::Present(space, window, view_name);
         if (present_result) {
+            if (hooks.on_present) {
+                hooks.on_present(*present_result);
+            }
             SP::UI::Builders::App::PresentToLocalWindow(*present_result,
                                                         window_width,
                                                         window_height);

@@ -3,10 +3,13 @@
 #include <pathspace/history/UndoableSpace.hpp>
 #include <pathspace/layer/PathAlias.hpp>
 #include <pathspace/path/ConcretePath.hpp>
+#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
 #include <algorithm>
 #include <array>
+#include <filesystem>
 #include <charconv>
 #include <iostream>
 #include <memory>
@@ -18,6 +21,9 @@
 #include <utility>
 #include <vector>
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <third_party/stb_image_write.h>
+
 using namespace PathSpaceExamples;
 
 namespace {
@@ -26,6 +32,7 @@ struct CommandLineOptions {
     int width = 1280;
     int height = 800;
     bool headless = false;
+    std::optional<std::filesystem::path> screenshot_path;
 };
 
 auto parse_options(int argc, char** argv) -> CommandLineOptions {
@@ -55,6 +62,27 @@ auto parse_options(int argc, char** argv) -> CommandLineOptions {
             continue;
         }
         if (parse_dimension("--height=", opts.height)) {
+            continue;
+        }
+        constexpr std::string_view kScreenshotPrefix = "--screenshot=";
+        if (arg == "--screenshot") {
+            if (i + 1 >= argc) {
+                std::cerr << "paint_example: --screenshot requires a path\n";
+                continue;
+            }
+            ++i;
+            opts.screenshot_path = std::filesystem::path{argv[i]};
+            opts.headless = true;
+            continue;
+        }
+        if (arg.rfind(kScreenshotPrefix, 0) == 0) {
+            auto value = arg.substr(kScreenshotPrefix.size());
+            if (value.empty()) {
+                std::cerr << "paint_example: --screenshot requires a path\n";
+                continue;
+            }
+            opts.screenshot_path = std::filesystem::path{std::string{value}};
+            opts.headless = true;
             continue;
         }
         std::cerr << "paint_example: ignoring unknown argument '" << arg << "'\n";
@@ -119,6 +147,104 @@ auto apply_brush_color(SP::PathSpace& space,
                        std::string const& widget_path,
                        std::array<float, 4> const& color) -> SP::Expected<void> {
     return replace_value(space, widget_path + "/state/brush/color", color);
+}
+
+auto log_expected_error(std::string const& context, SP::Error const& error) -> void;
+
+using WidgetAction = SP::UI::Builders::Widgets::Reducers::WidgetAction;
+using WidgetOpKind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind;
+
+auto make_paint_action(std::string const& widget_path,
+                       WidgetOpKind kind,
+                       std::uint64_t stroke_id,
+                       float x,
+                       float y) -> WidgetAction {
+    WidgetAction action{};
+    action.widget_path = widget_path;
+    action.kind = kind;
+    action.target_id = std::string{"paint_surface/stroke/"} + std::to_string(stroke_id);
+    action.pointer.has_local = true;
+    action.pointer.local_x = x;
+    action.pointer.local_y = y;
+    return action;
+}
+
+auto scripted_stroke_actions(std::string const& widget_path) -> std::vector<WidgetAction> {
+    constexpr std::uint64_t kPrimaryStroke = 1;
+    constexpr std::uint64_t kAccentStroke = 2;
+    std::vector<WidgetAction> actions;
+    actions.push_back(make_paint_action(widget_path,
+                                       WidgetOpKind::PaintStrokeBegin,
+                                       kPrimaryStroke,
+                                       80.0f,
+                                       120.0f));
+    actions.push_back(make_paint_action(widget_path,
+                                       WidgetOpKind::PaintStrokeUpdate,
+                                       kPrimaryStroke,
+                                       320.0f,
+                                       260.0f));
+    actions.push_back(make_paint_action(widget_path,
+                                       WidgetOpKind::PaintStrokeCommit,
+                                       kPrimaryStroke,
+                                       460.0f,
+                                       420.0f));
+    actions.push_back(make_paint_action(widget_path,
+                                       WidgetOpKind::PaintStrokeBegin,
+                                       kAccentStroke,
+                                       420.0f,
+                                       140.0f));
+    actions.push_back(make_paint_action(widget_path,
+                                       WidgetOpKind::PaintStrokeCommit,
+                                       kAccentStroke,
+                                       160.0f,
+                                       420.0f));
+    return actions;
+}
+
+auto playback_scripted_strokes(SP::PathSpace& space, std::string const& widget_path) -> bool {
+    auto actions = scripted_stroke_actions(widget_path);
+    for (auto& action : actions) {
+        auto handled = SP::UI::Declarative::PaintRuntime::HandleAction(space, action);
+        if (!handled) {
+            log_expected_error("PaintRuntime::HandleAction", handled.error());
+            return false;
+        }
+        if (!*handled) {
+            std::cerr << "paint_example: scripted stroke had no effect\n";
+            return false;
+        }
+    }
+    return true;
+}
+
+auto write_framebuffer_png(SP::UI::Builders::Window::WindowPresentResult const& present,
+                           std::filesystem::path const& output_path,
+                           int width,
+                           int height) -> bool {
+    auto parent = output_path.parent_path();
+    if (!parent.empty()) {
+        std::error_code ec;
+        std::filesystem::create_directories(parent, ec);
+        if (ec) {
+            std::cerr << "paint_example: failed to create directory '" << parent.string() << "': " << ec.message() << '\n';
+            return false;
+        }
+    }
+    if (present.framebuffer.empty() || width <= 0 || height <= 0) {
+        std::cerr << "paint_example: framebuffer capture is empty\n";
+        return false;
+    }
+    auto row_stride = width * 4;
+    if (stbi_write_png(output_path.string().c_str(),
+                       width,
+                       height,
+                       4,
+                       present.framebuffer.data(),
+                       row_stride) == 0) {
+        std::cerr << "paint_example: failed to write PNG to '" << output_path.string() << "'\n";
+        return false;
+    }
+    return true;
 }
 
 struct HistoryBinding {
@@ -203,6 +329,7 @@ int main(int argc, char** argv) {
         SP::System::ShutdownDeclarativeRuntime(space);
         return 1;
     }
+    auto scene_result = *scene;
 
     auto bootstrap = build_bootstrap_from_window(space,
                                                  app_root_view,
@@ -210,6 +337,14 @@ int main(int argc, char** argv) {
                                                  window->view_name);
     if (!bootstrap) {
         log_expected_error("failed to prepare presenter bootstrap", bootstrap.error());
+        SP::System::ShutdownDeclarativeRuntime(space);
+        return 1;
+    }
+    bootstrap->present_policy.capture_framebuffer = true;
+
+    auto bind_scene = SP::UI::Builders::Surface::SetScene(space, (*bootstrap).surface, scene_result.path);
+    if (!bind_scene) {
+        log_expected_error("Surface::SetScene", bind_scene.error());
         SP::System::ShutdownDeclarativeRuntime(space);
         return 1;
     }
@@ -271,9 +406,9 @@ int main(int argc, char** argv) {
         SP::System::ShutdownDeclarativeRuntime(space);
         return 1;
     }
-    auto paint_path = paint_surface->getPath();
+    std::string paint_widget_path = paint_surface->getPath();
 
-    auto history_binding_result = make_history_binding(space, paint_path);
+    auto history_binding_result = make_history_binding(space, paint_widget_path);
     if (!history_binding_result) {
         log_expected_error("failed to enable UndoableSpace history", history_binding_result.error());
         SP::System::ShutdownDeclarativeRuntime(space);
@@ -287,11 +422,11 @@ int main(int argc, char** argv) {
     slider_args.step = 1.0f;
     slider_args.value = brush_state->size;
     slider_args.on_change = [brush_state,
-                             paint_path,
+                             paint_widget_path,
                              brush_label_path = *brush_label,
                              status_label_path = *status_label](SP::UI::Declarative::SliderContext& ctx) {
         brush_state->size = ctx.value;
-        auto status = apply_brush_size(ctx.space, paint_path, brush_state->size);
+        auto status = apply_brush_size(ctx.space, paint_widget_path, brush_state->size);
         if (!status) {
             log_error(status, "apply_brush_size");
             return;
@@ -319,12 +454,12 @@ int main(int argc, char** argv) {
         SP::UI::Declarative::Button::Args palette_args{};
         palette_args.label = entry.label;
         palette_args.on_press = [brush_state,
-                                 paint_path,
+                                 paint_widget_path,
                                  brush_label_path = *brush_label,
                                  status_label_path = *status_label,
                                  entry](SP::UI::Declarative::ButtonContext& ctx) {
             brush_state->color = entry.color;
-            auto status = apply_brush_color(ctx.space, paint_path, brush_state->color);
+            auto status = apply_brush_color(ctx.space, paint_widget_path, brush_state->color);
             if (!status) {
                 log_error(status, "apply_brush_color");
                 return;
@@ -401,9 +536,18 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    if (options.headless) {
+    bool screenshot_mode = options.screenshot_path.has_value();
+    if (screenshot_mode) {
+        if (!playback_scripted_strokes(space, paint_widget_path)) {
+            SP::System::ShutdownDeclarativeRuntime(space);
+            return 1;
+        }
+        options.headless = true;
+    }
+
+    if (options.headless && !screenshot_mode) {
         std::cout << "paint_example: headless mode enabled, declarative widgets mounted at\n"
-                  << "  " << paint_path << "\n";
+                  << "  " << paint_widget_path << "\n";
         SP::System::ShutdownDeclarativeRuntime(space);
         return 0;
     }
@@ -413,6 +557,32 @@ int main(int argc, char** argv) {
     install_local_window_bridge(bridge);
 
     PresentLoopHooks hooks{};
+    bool screenshot_taken = false;
+    std::filesystem::path screenshot_path;
+    if (screenshot_mode) {
+        screenshot_path = *options.screenshot_path;
+        auto view_base = std::string(window->path.getPath()) + "/views/" + window->view_name;
+        space.insert(view_base + "/present/params/capture_framebuffer", true);
+        hooks.on_present = [&](SP::UI::Builders::Window::WindowPresentResult const& present) {
+            if (screenshot_taken) {
+                return;
+            }
+            if (present.framebuffer.empty()) {
+                std::cerr << "paint_example: debug framebuffer empty" << std::endl;
+                return;
+            }
+            int capture_width = bootstrap->surface_desc.size_px.width;
+            int capture_height = bootstrap->surface_desc.size_px.height;
+            if (write_framebuffer_png(present, screenshot_path, capture_width, capture_height)) {
+                std::cout << "paint_example: saved screenshot to " << screenshot_path.string() << "\n";
+            } else {
+                std::cerr << "paint_example: failed to save screenshot to '" << screenshot_path.string() << "'\n";
+            }
+            screenshot_taken = true;
+            SP::UI::RequestLocalWindowQuit();
+        };
+    }
+
     run_present_loop(space,
                      window->path,
                      window->view_name,
@@ -420,6 +590,12 @@ int main(int argc, char** argv) {
                      options.width,
                      options.height,
                      hooks);
+
+    if (screenshot_mode && !screenshot_taken) {
+        std::cerr << "paint_example: screenshot request did not complete\n";
+        SP::System::ShutdownDeclarativeRuntime(space);
+        return 1;
+    }
 
     SP::System::ShutdownDeclarativeRuntime(space);
     return 0;
