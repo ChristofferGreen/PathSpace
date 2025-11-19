@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <filesystem>
 #include <charconv>
 #include <iostream>
@@ -18,6 +19,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -217,10 +219,8 @@ auto playback_scripted_strokes(SP::PathSpace& space, std::string const& widget_p
     return true;
 }
 
-auto write_framebuffer_png(SP::UI::Builders::Window::WindowPresentResult const& present,
-                           std::filesystem::path const& output_path,
-                           int width,
-                           int height) -> bool {
+auto write_framebuffer_png(SP::UI::Builders::SoftwareFramebuffer const& framebuffer,
+                           std::filesystem::path const& output_path) -> bool {
     auto parent = output_path.parent_path();
     if (!parent.empty()) {
         std::error_code ec;
@@ -230,17 +230,28 @@ auto write_framebuffer_png(SP::UI::Builders::Window::WindowPresentResult const& 
             return false;
         }
     }
-    if (present.framebuffer.empty() || width <= 0 || height <= 0) {
+    if (framebuffer.width <= 0 || framebuffer.height <= 0 || framebuffer.pixels.empty()) {
         std::cerr << "paint_example: framebuffer capture is empty\n";
         return false;
     }
-    auto row_stride = width * 4;
+    auto row_bytes = static_cast<std::size_t>(framebuffer.width) * 4u;
+    auto stride = static_cast<std::size_t>(framebuffer.row_stride_bytes);
+    if (stride < row_bytes) {
+        std::cerr << "paint_example: framebuffer stride smaller than row\n";
+        return false;
+    }
+    std::vector<std::uint8_t> packed(row_bytes * static_cast<std::size_t>(framebuffer.height));
+    for (int y = 0; y < framebuffer.height; ++y) {
+        auto* src = framebuffer.pixels.data() + static_cast<std::size_t>(y) * stride;
+        auto* dst = packed.data() + static_cast<std::size_t>(y) * row_bytes;
+        std::copy_n(src, row_bytes, dst);
+    }
     if (stbi_write_png(output_path.string().c_str(),
-                       width,
-                       height,
+                       framebuffer.width,
+                       framebuffer.height,
                        4,
-                       present.framebuffer.data(),
-                       row_stride) == 0) {
+                       packed.data(),
+                       static_cast<int>(row_bytes)) == 0) {
         std::cerr << "paint_example: failed to write PNG to '" << output_path.string() << "'\n";
         return false;
     }
@@ -542,10 +553,82 @@ int main(int argc, char** argv) {
             SP::System::ShutdownDeclarativeRuntime(space);
             return 1;
         }
-        options.headless = true;
+
+        auto view_base = std::string(window->path.getPath()) + "/views/" + window->view_name;
+        auto capture_flag = space.insert(view_base + "/present/params/capture_framebuffer", true);
+        if (!capture_flag.errors.empty()) {
+            log_expected_error("enable framebuffer capture", capture_flag.errors.front());
+            SP::System::ShutdownDeclarativeRuntime(space);
+            return 1;
+        }
+
+        auto target_desc = space.read<SP::UI::Builders::SurfaceDesc, std::string>(
+            std::string(bootstrap->target.getPath()) + "/desc");
+        if (!target_desc) {
+            log_expected_error("read target desc", target_desc.error());
+            SP::System::ShutdownDeclarativeRuntime(space);
+            return 1;
+        }
+
+        LocalInputBridge bridge{};
+        bridge.space = &space;
+        install_local_window_bridge(bridge);
+
+        int window_width = options.width;
+        int window_height = options.height;
+        SP::UI::InitLocalWindowWithSize(window_width, window_height, "PathSpace Declarative Window");
+        auto last_frame = std::chrono::steady_clock::now();
+        bool screenshot_taken = false;
+        bool screenshot_failed = false;
+        constexpr int kMaxScreenshotAttempts = 180;
+
+        for (int attempt = 0; attempt < kMaxScreenshotAttempts; ++attempt) {
+            SP::UI::PollLocalWindow();
+            if (SP::UI::LocalWindowQuitRequested()) {
+                break;
+            }
+            auto present = SP::UI::Builders::Window::Present(space, window->path, window->view_name);
+            if (!present) {
+                log_expected_error("Window::Present", present.error());
+                screenshot_failed = true;
+                break;
+            }
+            auto framebuffer = SP::UI::Builders::Diagnostics::ReadSoftwareFramebuffer(
+                space,
+                SP::ConcretePathStringView{bootstrap->target.getPath()});
+            if (!framebuffer) {
+                log_expected_error("ReadSoftwareFramebuffer", framebuffer.error());
+                screenshot_failed = true;
+                break;
+            }
+            if (!framebuffer->pixels.empty()) {
+                screenshot_taken = write_framebuffer_png(*framebuffer, *options.screenshot_path);
+                if (!screenshot_taken) {
+                    screenshot_failed = true;
+                }
+                break;
+            }
+            SP::UI::Builders::App::PresentToLocalWindow(*present,
+                                                        window_width,
+                                                        window_height);
+            auto now = std::chrono::steady_clock::now();
+            auto elapsed = now - last_frame;
+            if (elapsed < std::chrono::milliseconds(4)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(4) - elapsed);
+            }
+            last_frame = now;
+        }
+
+        if (!screenshot_taken && !screenshot_failed) {
+            std::cerr << "paint_example: screenshot request did not complete\n";
+        } else if (screenshot_taken) {
+            std::cout << "paint_example: saved screenshot to " << options.screenshot_path->string() << "\n";
+        }
+        SP::System::ShutdownDeclarativeRuntime(space);
+        return (screenshot_taken && !screenshot_failed) ? 0 : 1;
     }
 
-    if (options.headless && !screenshot_mode) {
+    if (options.headless) {
         std::cout << "paint_example: headless mode enabled, declarative widgets mounted at\n"
                   << "  " << paint_widget_path << "\n";
         SP::System::ShutdownDeclarativeRuntime(space);
@@ -557,31 +640,6 @@ int main(int argc, char** argv) {
     install_local_window_bridge(bridge);
 
     PresentLoopHooks hooks{};
-    bool screenshot_taken = false;
-    std::filesystem::path screenshot_path;
-    if (screenshot_mode) {
-        screenshot_path = *options.screenshot_path;
-        auto view_base = std::string(window->path.getPath()) + "/views/" + window->view_name;
-        space.insert(view_base + "/present/params/capture_framebuffer", true);
-        hooks.on_present = [&](SP::UI::Builders::Window::WindowPresentResult const& present) {
-            if (screenshot_taken) {
-                return;
-            }
-            if (present.framebuffer.empty()) {
-                std::cerr << "paint_example: debug framebuffer empty" << std::endl;
-                return;
-            }
-            int capture_width = bootstrap->surface_desc.size_px.width;
-            int capture_height = bootstrap->surface_desc.size_px.height;
-            if (write_framebuffer_png(present, screenshot_path, capture_width, capture_height)) {
-                std::cout << "paint_example: saved screenshot to " << screenshot_path.string() << "\n";
-            } else {
-                std::cerr << "paint_example: failed to save screenshot to '" << screenshot_path.string() << "'\n";
-            }
-            screenshot_taken = true;
-            SP::UI::RequestLocalWindowQuit();
-        };
-    }
 
     run_present_loop(space,
                      window->path,
@@ -590,12 +648,6 @@ int main(int argc, char** argv) {
                      options.width,
                      options.height,
                      hooks);
-
-    if (screenshot_mode && !screenshot_taken) {
-        std::cerr << "paint_example: screenshot request did not complete\n";
-        SP::System::ShutdownDeclarativeRuntime(space);
-        return 1;
-    }
 
     SP::System::ShutdownDeclarativeRuntime(space);
     return 0;
