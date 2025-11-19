@@ -11,6 +11,7 @@
 #include <array>
 #include <chrono>
 #include <filesystem>
+#include <iomanip>
 #include <charconv>
 #include <iostream>
 #include <memory>
@@ -35,6 +36,8 @@ struct CommandLineOptions {
     int height = 800;
     bool headless = false;
     std::optional<std::filesystem::path> screenshot_path;
+    bool gpu_smoke = false;
+    std::optional<std::filesystem::path> gpu_texture_path;
 };
 
 auto parse_options(int argc, char** argv) -> CommandLineOptions {
@@ -85,6 +88,21 @@ auto parse_options(int argc, char** argv) -> CommandLineOptions {
             }
             opts.screenshot_path = std::filesystem::path{std::string{value}};
             opts.headless = true;
+            continue;
+        }
+        constexpr std::string_view kGpuSmokePrefix = "--gpu-smoke=";
+        if (arg == "--gpu-smoke") {
+            opts.gpu_smoke = true;
+            opts.headless = true;
+            continue;
+        }
+        if (arg.rfind(kGpuSmokePrefix, 0) == 0) {
+            auto value = arg.substr(kGpuSmokePrefix.size());
+            opts.gpu_smoke = true;
+            opts.headless = true;
+            if (!value.empty()) {
+                opts.gpu_texture_path = std::filesystem::path{std::string{value}};
+            }
             continue;
         }
         std::cerr << "paint_example: ignoring unknown argument '" << arg << "'\n";
@@ -155,6 +173,7 @@ auto log_expected_error(std::string const& context, SP::Error const& error) -> v
 
 using WidgetAction = SP::UI::Builders::Widgets::Reducers::WidgetAction;
 using WidgetOpKind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind;
+using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
 
 auto make_paint_action(std::string const& widget_path,
                        WidgetOpKind kind,
@@ -254,6 +273,184 @@ auto write_framebuffer_png(SP::UI::Builders::SoftwareFramebuffer const& framebuf
                        static_cast<int>(row_bytes)) == 0) {
         std::cerr << "paint_example: failed to write PNG to '" << output_path.string() << "'\n";
         return false;
+    }
+    return true;
+}
+
+struct GpuSmokeConfig {
+    std::chrono::milliseconds timeout{std::chrono::milliseconds{2000}};
+    std::optional<std::filesystem::path> dump_path;
+};
+
+auto compute_texture_digest(std::vector<std::uint8_t> const& pixels) -> std::uint64_t {
+    std::uint64_t hash = 1469598103934665603ull;
+    for (auto byte : pixels) {
+        hash ^= static_cast<std::uint64_t>(byte);
+        hash *= 1099511628211ull;
+    }
+    return hash;
+}
+
+auto write_texture_png(SP::UI::Declarative::PaintTexturePayload const& texture,
+                       std::filesystem::path const& output_path) -> bool {
+    auto parent = output_path.parent_path();
+    if (!parent.empty()) {
+        std::error_code ec;
+        std::filesystem::create_directories(parent, ec);
+        if (ec) {
+            std::cerr << "paint_example: failed to create directory '" << parent.string()
+                      << "': " << ec.message() << '\n';
+            return false;
+        }
+    }
+    if (texture.width == 0 || texture.height == 0 || texture.pixels.empty()) {
+        std::cerr << "paint_example: GPU texture payload missing pixels\n";
+        return false;
+    }
+    auto row_bytes = static_cast<std::size_t>(texture.width) * 4u;
+    auto stride = texture.stride == 0 ? row_bytes : static_cast<std::size_t>(texture.stride);
+    if (stride < row_bytes) {
+        std::cerr << "paint_example: GPU texture stride smaller than row bytes\n";
+        return false;
+    }
+    if (texture.pixels.size() < stride * static_cast<std::size_t>(texture.height)) {
+        std::cerr << "paint_example: GPU texture payload too small for framebuffer copy\n";
+        return false;
+    }
+    std::vector<std::uint8_t> packed(row_bytes * static_cast<std::size_t>(texture.height));
+    for (std::uint32_t y = 0; y < texture.height; ++y) {
+        auto* src = texture.pixels.data() + static_cast<std::size_t>(y) * stride;
+        auto* dst = packed.data() + static_cast<std::size_t>(y) * row_bytes;
+        std::copy_n(src, row_bytes, dst);
+    }
+    if (stbi_write_png(output_path.string().c_str(),
+                       static_cast<int>(texture.width),
+                       static_cast<int>(texture.height),
+                       4,
+                       packed.data(),
+                       static_cast<int>(row_bytes)) == 0) {
+        std::cerr << "paint_example: failed to write GPU texture PNG to '"
+                  << output_path.string() << "'\n";
+        return false;
+    }
+    return true;
+}
+
+auto read_gpu_state(SP::PathSpace& space,
+                    std::string const& widget_path)
+    -> std::optional<SP::UI::Declarative::PaintGpuState> {
+    auto state_path = widget_path + "/render/gpu/state";
+    auto stored = space.read<std::string, std::string>(state_path);
+    if (!stored) {
+        auto const& error = stored.error();
+        if (error.code == SP::Error::Code::NoObjectFound
+            || error.code == SP::Error::Code::NoSuchPath) {
+            return std::nullopt;
+        }
+        log_expected_error("read gpu state", error);
+        return std::nullopt;
+    }
+    if (stored->empty()) {
+        return std::nullopt;
+    }
+    return SP::UI::Declarative::PaintGpuStateFromString(*stored);
+}
+
+auto wait_for_gpu_state(SP::PathSpace& space,
+                        std::string const& widget_path,
+                        SP::UI::Declarative::PaintGpuState desired,
+                        std::chrono::milliseconds timeout)
+    -> std::optional<SP::UI::Declarative::PaintGpuState> {
+    auto start = std::chrono::steady_clock::now();
+    while (std::chrono::steady_clock::now() - start < timeout) {
+        auto state = read_gpu_state(space, widget_path);
+        if (state && *state == desired) {
+            return state;
+        }
+        if (state && *state == SP::UI::Declarative::PaintGpuState::Error) {
+            return state;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return read_gpu_state(space, widget_path);
+}
+
+auto run_gpu_smoke(SP::PathSpace& space,
+                   std::string const& widget_path,
+                   GpuSmokeConfig const& config) -> bool {
+    if (!playback_scripted_strokes(space, widget_path)) {
+        return false;
+    }
+
+    auto state = wait_for_gpu_state(space,
+                                    widget_path,
+                                    SP::UI::Declarative::PaintGpuState::Ready,
+                                    config.timeout);
+    if (!state || *state != SP::UI::Declarative::PaintGpuState::Ready) {
+        std::cerr << "paint_example: GPU smoke timed out waiting for Ready "
+                  << "(state=" << (state ? std::string(SP::UI::Declarative::PaintGpuStateToString(*state))
+                                         : std::string("unknown"))
+                  << ")\n";
+        return false;
+    }
+
+    auto texture_path = widget_path + "/assets/texture";
+    auto texture = space.read<SP::UI::Declarative::PaintTexturePayload, std::string>(texture_path);
+    if (!texture) {
+        log_expected_error("read GPU texture", texture.error());
+        return false;
+    }
+    if (texture->pixels.empty()) {
+        std::cerr << "paint_example: GPU texture has no pixels\n";
+        return false;
+    }
+
+    auto metrics = SP::UI::Declarative::PaintRuntime::ReadBufferMetrics(space, widget_path);
+    if (!metrics) {
+        log_expected_error("read paint buffer metrics", metrics.error());
+        return false;
+    }
+
+    if (texture->width != metrics->width || texture->height != metrics->height) {
+        std::cerr << "paint_example: GPU texture dimensions (" << texture->width << "x"
+                  << texture->height << ") differ from buffer metrics (" << metrics->width
+                  << "x" << metrics->height << ")\n";
+        return false;
+    }
+
+    auto stats_path = widget_path + "/render/gpu/stats";
+    auto stats = space.read<SP::UI::Declarative::PaintGpuStats, std::string>(stats_path);
+    if (!stats) {
+        log_expected_error("read GPU stats", stats.error());
+        return false;
+    }
+    if (stats->uploads_total == 0) {
+        std::cerr << "paint_example: GPU uploader never staged a texture\n";
+        return false;
+    }
+
+    auto pending_path = widget_path + "/render/buffer/pendingDirty";
+    auto pending_dirty = space.read<std::vector<DirtyRectHint>, std::string>(pending_path);
+    if (!pending_dirty) {
+        log_expected_error("read pending dirty hints", pending_dirty.error());
+        return false;
+    }
+    if (!pending_dirty->empty()) {
+        std::cerr << "paint_example: pending dirty hints not drained after GPU upload\n";
+        return false;
+    }
+
+    auto digest = compute_texture_digest(texture->pixels);
+    std::cout << "paint_example: GPU smoke ready (revision " << texture->revision
+              << ", bytes " << texture->pixels.size()
+              << ", digest 0x" << std::hex << digest << std::dec << ")\n";
+
+    if (config.dump_path) {
+        if (!write_texture_png(*texture, *config.dump_path)) {
+            return false;
+        }
+        std::cout << "paint_example: wrote GPU texture PNG to "
+                  << config.dump_path->string() << "\n";
     }
     return true;
 }
@@ -402,6 +599,7 @@ int main(int argc, char** argv) {
     paint_args.brush_color = brush_state->color;
     paint_args.buffer_width = static_cast<std::uint32_t>(options.width);
     paint_args.buffer_height = static_cast<std::uint32_t>(options.height);
+    paint_args.gpu_enabled = options.gpu_smoke;
     paint_args.on_draw = [status_label_path = *status_label](SP::UI::Declarative::PaintSurfaceContext& ctx) {
         log_error(SP::UI::Declarative::Label::SetText(ctx.space,
                                                       status_label_path,
@@ -548,6 +746,20 @@ int main(int argc, char** argv) {
     }
 
     bool screenshot_mode = options.screenshot_path.has_value();
+
+    if (options.gpu_smoke) {
+        GpuSmokeConfig smoke_config{};
+        smoke_config.dump_path = options.gpu_texture_path;
+        if (!run_gpu_smoke(space, paint_widget_path, smoke_config)) {
+            SP::System::ShutdownDeclarativeRuntime(space);
+            return 1;
+        }
+        if (!screenshot_mode) {
+            SP::System::ShutdownDeclarativeRuntime(space);
+            return 0;
+        }
+    }
+
     if (screenshot_mode) {
         if (!playback_scripted_strokes(space, paint_widget_path)) {
             SP::System::ShutdownDeclarativeRuntime(space);

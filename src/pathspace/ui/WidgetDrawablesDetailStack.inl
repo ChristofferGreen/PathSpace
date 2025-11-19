@@ -123,6 +123,11 @@ inline auto measure_widget(PathSpace& space,
     if (*kind == "list") {
         return measure_list(space, root);
     }
+    if (*kind == "label") {
+        // Labels do not publish layout metadata today; estimate a reasonable
+        // footprint so stack layout can proceed.
+        return StackWidgetSize{120.0f, 24.0f};
+    }
     if (*kind == "tree") {
         return measure_tree(space, root);
     }

@@ -3,15 +3,28 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/io/IoEvents.hpp>
 #include <pathspace/runtime/IOPump.hpp>
+#include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
+#include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/WidgetEventTrellis.hpp>
+#include <pathspace/ui/declarative/Widgets.hpp>
 
 #include <chrono>
+#include <random>
 #include <string>
 #include <vector>
 
 using namespace std::chrono_literals;
 using namespace SP;
 namespace BuilderWidgets = SP::UI::Builders::Widgets;
+using WidgetOp = SP::UI::Builders::Widgets::Bindings::WidgetOp;
+using WidgetAction = SP::UI::Builders::Widgets::Reducers::WidgetAction;
+namespace PaintRuntime = SP::UI::Declarative::PaintRuntime;
+
+struct RuntimeGuard {
+    explicit RuntimeGuard(SP::PathSpace& s) : space(s) {}
+    ~RuntimeGuard() { SP::System::ShutdownDeclarativeRuntime(space); }
+    SP::PathSpace& space;
+};
 
 TEST_CASE("WidgetEventTrellis routes pointer and button events to WidgetOps") {
     PathSpace space;
@@ -463,4 +476,154 @@ TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widget
 
         SP::UI::Declarative::ShutdownWidgetEventTrellis(space);
     }
+}
+
+TEST_CASE("WidgetEventTrellis fuzzes declarative paint stroke ops") {
+    constexpr std::string_view kPointerDevice = "/system/devices/in/pointer/default";
+    PathSpace space;
+    SP::System::LaunchOptions launch_options{};
+    launch_options.start_input_runtime = false;
+    launch_options.start_io_pump = false;
+    launch_options.start_io_telemetry_control = false;
+    launch_options.start_widget_event_trellis = false;
+    launch_options.start_paint_gpu_uploader = false;
+    REQUIRE(SP::System::LaunchStandard(space, launch_options));
+    RuntimeGuard runtime_guard{space};
+
+    auto app_root = SP::App::Create(space, "trellis_paint_app");
+    REQUIRE(app_root);
+
+    SP::Window::CreateOptions window_options;
+    window_options.name = "paint_window";
+    auto window = SP::Window::Create(space, *app_root, window_options);
+    REQUIRE(window);
+
+    auto scene = SP::Scene::Create(space, *app_root, window->path, {});
+    REQUIRE(scene);
+
+    auto token = SP::Runtime::MakeRuntimeWindowToken(window->path.getPath());
+    std::string runtime_base = "/system/widgets/runtime/windows/" + token;
+    (void)space.insert(runtime_base + "/subscriptions/pointer/devices",
+                       std::vector<std::string>{std::string{kPointerDevice}});
+    (void)space.insert(runtime_base + "/subscriptions/button/devices",
+                       std::vector<std::string>{std::string{kPointerDevice}});
+    (void)space.insert(runtime_base + "/subscriptions/text/devices",
+                       std::vector<std::string>{});
+
+    std::string view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
+    auto view = SP::App::ConcretePathView{view_path};
+
+    SP::UI::Declarative::PaintSurface::Args args{};
+    args.buffer_width = 160;
+    args.buffer_height = 120;
+    auto paint_widget = SP::UI::Declarative::PaintSurface::Create(space, view, "trellis_canvas", args);
+    REQUIRE(paint_widget);
+    auto widget_path = paint_widget->getPath();
+
+    auto pointer_queue = "/system/widgets/runtime/events/" + token + "/pointer/queue";
+    auto button_queue = "/system/widgets/runtime/events/" + token + "/button/queue";
+    auto widget_ops_queue = widget_path + "/ops/inbox/queue";
+
+    SP::UI::Declarative::WidgetEventTrellisOptions options;
+    options.refresh_interval = 1ms;
+    options.idle_sleep = 1ms;
+    options.hit_test_override =
+        [widget_path](PathSpace&,
+                      std::string const&,
+                      float scene_x,
+                      float scene_y) -> SP::Expected<SP::UI::Builders::Scene::HitTestResult> {
+            SP::UI::Builders::Scene::HitTestResult result{};
+            result.hit = true;
+            result.target.authoring_node_id = widget_path + "/authoring/paint_surface/canvas";
+            result.position.scene_x = scene_x;
+            result.position.scene_y = scene_y;
+            result.position.local_x = scene_x;
+            result.position.local_y = scene_y;
+            result.position.has_local = true;
+            return result;
+        };
+
+    auto started = SP::UI::Declarative::CreateWidgetEventTrellis(space, options);
+    REQUIRE(started);
+    REQUIRE(*started);
+
+    auto send_pointer = [&](float x, float y) {
+        SP::IO::PointerEvent evt{};
+        evt.device_path = std::string{kPointerDevice};
+        evt.motion.absolute = true;
+        evt.motion.absolute_x = x;
+        evt.motion.absolute_y = y;
+        (void)space.insert(pointer_queue, evt);
+    };
+
+    auto send_button = [&](bool pressed) {
+        SP::IO::ButtonEvent evt{};
+        evt.source = SP::IO::ButtonSource::Mouse;
+        evt.device_path = std::string{kPointerDevice};
+        evt.button_code = 1;
+        evt.button_id = 1;
+        evt.state.pressed = pressed;
+        (void)space.insert(button_queue, evt);
+    };
+
+    std::mt19937 rng{1337};
+    std::uniform_real_distribution<float> dist_x(4.0f, static_cast<float>(args.buffer_width) - 4.0f);
+    std::uniform_real_distribution<float> dist_y(4.0f, static_cast<float>(args.buffer_height) - 4.0f);
+    std::uniform_int_distribution<int> dist_updates(1, 4);
+    std::size_t commit_count = 0;
+
+    auto drain_widget_ops = [&]() {
+        while (true) {
+            auto op = space.take<WidgetOp, std::string>(
+                widget_ops_queue,
+                SP::Out{} & SP::Block{50ms});
+            if (!op) {
+                auto const& error = op.error();
+                if (error.code == SP::Error::Code::NoObjectFound
+                    || error.code == SP::Error::Code::NoSuchPath
+                    || error.code == SP::Error::Code::Timeout) {
+                    break;
+                }
+                FAIL_CHECK("WidgetOp read failed: " << static_cast<int>(error.code));
+                break;
+            }
+            WidgetAction action{};
+            action.widget_path = op->widget_path;
+            action.target_id = op->target_id;
+            action.kind = op->kind;
+            action.pointer = op->pointer;
+            auto handled = PaintRuntime::HandleAction(space, action);
+            REQUIRE(handled);
+            if (action.kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::PaintStrokeCommit) {
+                ++commit_count;
+            }
+        }
+    };
+
+    constexpr int kStrokeIterations = 8;
+    for (int stroke = 0; stroke < kStrokeIterations; ++stroke) {
+        send_pointer(dist_x(rng), dist_y(rng));
+        send_button(true);
+        drain_widget_ops();
+
+        int updates = dist_updates(rng);
+        for (int step = 0; step < updates; ++step) {
+            send_pointer(dist_x(rng), dist_y(rng));
+            drain_widget_ops();
+        }
+
+        send_button(false);
+        drain_widget_ops();
+    }
+
+    drain_widget_ops();
+
+    auto records = PaintRuntime::LoadStrokeRecords(space, widget_path);
+    REQUIRE(records);
+    CHECK(records->size() == commit_count);
+    for (auto const& stroke : *records) {
+        CHECK_FALSE(stroke.points.empty());
+    }
+
+    SP::UI::Declarative::ShutdownWidgetEventTrellis(space);
 }

@@ -284,7 +284,19 @@ auto Create(PathSpace& space,
     }
 
     auto sanitized = SP::UI::Builders::Config::Theme::SanitizeName(options.name);
+    std::optional<std::string> sanitized_inherits;
+    if (options.inherits && !options.inherits->empty()) {
+        sanitized_inherits = SP::UI::Builders::Config::Theme::SanitizeName(*options.inherits);
+    }
+
     WidgetTheme seed = options.seed_theme.value_or(SP::UI::Builders::Widgets::MakeDefaultWidgetTheme());
+    if (sanitized_inherits) {
+        auto parent_theme = load_theme_value(space, app_root, *sanitized_inherits);
+        if (!parent_theme) {
+            return std::unexpected(parent_theme.error());
+        }
+        seed = *parent_theme;
+    }
 
     auto config_paths =
         SP::UI::Builders::Config::Theme::Ensure(space, app_root, sanitized, seed);
@@ -304,15 +316,14 @@ auto Create(PathSpace& space,
         return std::unexpected(edit_root.error());
     }
 
-    if (options.inherits && !options.inherits->empty()) {
-        auto inherits = SP::UI::Builders::Config::Theme::SanitizeName(*options.inherits);
+    if (sanitized_inherits) {
         auto edit_inherits = edit_root->getPath() + "/style/inherits";
-        auto status = replace_single<std::string>(space, edit_inherits, inherits);
+        auto status = replace_single<std::string>(space, edit_inherits, *sanitized_inherits);
         if (!status) {
             return std::unexpected(status.error());
         }
         auto config_inherits = config_paths->root.getPath() + "/style/inherits";
-        status = replace_single<std::string>(space, config_inherits, inherits);
+        status = replace_single<std::string>(space, config_inherits, *sanitized_inherits);
         if (!status) {
             return std::unexpected(status.error());
         }

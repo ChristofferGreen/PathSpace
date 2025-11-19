@@ -108,6 +108,14 @@ Environment knobs (all respected by the wrapper and the logger):
 
   This flag flips the sample into headless mode, replays a fixed set of brush strokes through `PaintRuntime::HandleAction`, enables framebuffer capture, presents once, and saves `out/paint_demo.png`. Re-run after UI or renderer tweaks to produce before/after PNGs for quick visual diffs; the scripted strokes keep outputs stable across hosts.
 
+- Smoke-test the declarative paint GPU uploader without launching the UI:
+
+  ```bash
+  ./build/paint_example --gpu-smoke=out/paint_gpu.png
+  ```
+
+  The `--gpu-smoke` flag enables the paint widget’s GPU staging path, replays the scripted strokes, waits for `render/gpu/state` to transition to `Ready`, confirms dirty queues drain, prints a staged-texture digest, and (optionally) dumps the RGBA payload to `out/paint_gpu.png` for pixel diffing. Use it in CI or before landing renderer changes to ensure the declarative pipeline replaces the legacy smoke run.
+
 - `build/tests/PathSpaceUITests --test-case "Widget focus slider-to-list transition covers highlight footprint"` guards the historical lingering highlight bug. The case now asserts that dirty hints cover both slider and list footprints, checks focus hand-off, and compares framebuffer diffs; it must pass. If it fails, confirm slider footprints are persisted and that `Widgets::Input::FocusHighlightPadding()` matches the renderer’s highlight inflation before digging into pointer routing.
 - Because the capture is headless, the LocalWindow bridge is skipped—no IOSurface hand-off is required. If you need to reproduce an interactive issue instead, run without `--screenshot` or use the trace replay helpers below.
 
