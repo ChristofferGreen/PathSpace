@@ -7,6 +7,7 @@
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 
 #include <array>
+#include <charconv>
 #include <limits>
 #include <optional>
 #include <span>
@@ -42,6 +43,15 @@ auto ReadOptionalValue(PathSpace& space, std::string const& path) -> SP::Expecte
         return std::optional<T>{};
     }
     return std::unexpected(value.error());
+}
+
+auto parse_stroke_id(std::string const& id) -> std::optional<std::uint64_t> {
+    std::uint64_t value = 0;
+    auto result = std::from_chars(id.data(), id.data() + id.size(), value);
+    if (result.ec != std::errc{} || result.ptr != id.data() + id.size()) {
+        return std::nullopt;
+    }
+    return value;
 }
 
 auto ReadThemeOverride(PathSpace& space, std::string const& base)
@@ -464,6 +474,10 @@ auto ReadPaintSurfaceDescriptor(PathSpace& space, std::string const& root)
     auto strokes_root = root + "/state/history";
     auto stroke_ids = space.listChildren(SP::ConcretePathStringView{strokes_root});
     for (auto const& id : stroke_ids) {
+        auto parsed = parse_stroke_id(id);
+        if (!parsed) {
+            continue;
+        }
         auto stroke_root = strokes_root + "/" + id;
         auto meta = ReadRequired<PaintStrokeMeta>(space, stroke_root + "/meta");
         if (!meta) {
@@ -474,7 +488,7 @@ auto ReadPaintSurfaceDescriptor(PathSpace& space, std::string const& root)
             return std::unexpected(points.error());
         }
         PaintSurfaceStrokeDescriptor stroke{};
-        stroke.id = std::stoull(id);
+        stroke.id = *parsed;
         stroke.meta = *meta;
         stroke.points = *points;
         descriptor.strokes.push_back(std::move(stroke));
