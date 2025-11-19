@@ -129,6 +129,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/WidgetReducers.cpp
         ui/declarative/InputTask.cpp
         ui/declarative/Descriptor.cpp
+        ui/declarative/DescriptorDetail.cpp
         ui/declarative/SceneLifecycle.cpp
         ui/declarative/Runtime.cpp
         ui/declarative/Schema.cpp
@@ -136,6 +137,11 @@ if(PATHSPACE_ENABLE_UI)
         ui/declarative/PaintSurfaceRuntime.cpp
         ui/declarative/PaintSurfaceUploader.cpp
         ui/declarative/WidgetEventTrellis.cpp
+        ui/declarative/WidgetEventTrellisWorker.cpp
+        ui/declarative/WidgetEventPointerHandlers.cpp
+        ui/declarative/WidgetEventFocusHandlers.cpp
+        ui/declarative/WidgetEventHelpers.cpp
+        ui/declarative/WidgetStateMutators.cpp
         ui/declarative/Widgets.cpp
         ui/declarative/widgets/Common.cpp
         ui/declarative/widgets/Button.cpp
