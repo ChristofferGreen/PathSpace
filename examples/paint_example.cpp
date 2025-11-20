@@ -4,18 +4,23 @@
 #include <pathspace/layer/PathAlias.hpp>
 #include <pathspace/path/ConcretePath.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/DrawCommands.hpp>
+#include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <chrono>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <charconv>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <span>
@@ -27,6 +32,7 @@
 #include <vector>
 #include <unordered_map>
 
+#include <third_party/stb_image.h>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <third_party/stb_image_write.h>
 
@@ -39,12 +45,34 @@ struct CommandLineOptions {
     int height = 800;
     bool headless = false;
     std::optional<std::filesystem::path> screenshot_path;
+    std::optional<std::filesystem::path> screenshot_compare_path;
+    std::optional<std::filesystem::path> screenshot_diff_path;
+    double screenshot_max_mean_error = 0.0015;
+    bool screenshot_require_present = false;
     bool gpu_smoke = false;
     std::optional<std::filesystem::path> gpu_texture_path;
 };
 
 auto parse_options(int argc, char** argv) -> CommandLineOptions {
     CommandLineOptions opts;
+    auto assign_threshold = [&](std::string_view token) {
+        if (token.empty()) {
+            std::cerr << "paint_example: --screenshot-max-mean-error requires a value\n";
+            return;
+        }
+        double candidate = opts.screenshot_max_mean_error;
+        std::string owned{token};
+        std::stringstream stream(owned);
+        stream >> candidate;
+        if (stream.fail()) {
+            std::cerr << "paint_example: invalid --screenshot-max-mean-error value '" << owned << "'\n";
+            return;
+        }
+        if (candidate < 0.0) {
+            candidate = 0.0;
+        }
+        opts.screenshot_max_mean_error = candidate;
+    };
     for (int i = 1; i < argc; ++i) {
         std::string_view arg{argv[i]};
         if (arg == "--headless") {
@@ -93,6 +121,63 @@ auto parse_options(int argc, char** argv) -> CommandLineOptions {
             opts.headless = true;
             continue;
         }
+        constexpr std::string_view kScreenshotComparePrefix = "--screenshot-compare=";
+        if (arg == "--screenshot-compare") {
+            if (i + 1 >= argc) {
+                std::cerr << "paint_example: --screenshot-compare requires a path\n";
+                continue;
+            }
+            ++i;
+            opts.screenshot_compare_path = std::filesystem::path{argv[i]};
+            continue;
+        }
+        if (arg.rfind(kScreenshotComparePrefix, 0) == 0) {
+            auto value = arg.substr(kScreenshotComparePrefix.size());
+            if (value.empty()) {
+                std::cerr << "paint_example: --screenshot-compare requires a path\n";
+                continue;
+            }
+            opts.screenshot_compare_path = std::filesystem::path{std::string{value}};
+            continue;
+        }
+        constexpr std::string_view kScreenshotDiffPrefix = "--screenshot-diff=";
+        if (arg == "--screenshot-diff") {
+            if (i + 1 >= argc) {
+                std::cerr << "paint_example: --screenshot-diff requires a path\n";
+                continue;
+            }
+            ++i;
+            opts.screenshot_diff_path = std::filesystem::path{argv[i]};
+            continue;
+        }
+        if (arg.rfind(kScreenshotDiffPrefix, 0) == 0) {
+            auto value = arg.substr(kScreenshotDiffPrefix.size());
+            if (value.empty()) {
+                std::cerr << "paint_example: --screenshot-diff requires a path\n";
+                continue;
+            }
+            opts.screenshot_diff_path = std::filesystem::path{std::string{value}};
+            continue;
+        }
+        constexpr std::string_view kScreenshotMeanErrorPrefix = "--screenshot-max-mean-error=";
+        if (arg == "--screenshot-max-mean-error") {
+            if (i + 1 >= argc) {
+                std::cerr << "paint_example: --screenshot-max-mean-error requires a value\n";
+                continue;
+            }
+            ++i;
+            assign_threshold(std::string_view{argv[i]});
+            continue;
+        }
+        if (arg.rfind(kScreenshotMeanErrorPrefix, 0) == 0) {
+            auto value = arg.substr(kScreenshotMeanErrorPrefix.size());
+            assign_threshold(value);
+            continue;
+        }
+        if (arg == "--screenshot-require-present") {
+            opts.screenshot_require_present = true;
+            continue;
+        }
         constexpr std::string_view kGpuSmokePrefix = "--gpu-smoke=";
         if (arg == "--gpu-smoke") {
             opts.gpu_smoke = true;
@@ -120,6 +205,45 @@ struct PaletteColor {
     const char* label;
     std::array<float, 4> color;
 };
+
+struct PaintLayoutMetrics {
+    float controls_width = 0.0f;
+    float controls_spacing = 0.0f;
+    float padding_x = 0.0f;
+    float padding_y = 0.0f;
+    float controls_padding_main = 0.0f;
+    float controls_padding_cross = 0.0f;
+    float palette_button_height = 0.0f;
+    float canvas_width = 0.0f;
+    float canvas_height = 0.0f;
+    float canvas_offset_x = 0.0f;
+    float canvas_offset_y = 0.0f;
+};
+
+auto ensure_active_panel(SP::UI::Declarative::Stack::Args& args) -> void {
+    if (!args.active_panel.empty() || args.panels.empty()) {
+        return;
+    }
+    args.active_panel = args.panels.front().id;
+}
+
+auto make_typography(float font_size, float line_height)
+    -> SP::UI::Builders::Widgets::TypographyStyle {
+    SP::UI::Builders::Widgets::TypographyStyle style{};
+    style.font_size = font_size;
+    style.line_height = line_height;
+    style.letter_spacing = 0.0f;
+    style.baseline_shift = 0.0f;
+    return style;
+}
+
+auto palette_button_text_color(std::array<float, 4> const& background) -> std::array<float, 4> {
+    auto luminance = background[0] * 0.299f + background[1] * 0.587f + background[2] * 0.114f;
+    if (luminance > 0.65f) {
+        return {0.10f, 0.12f, 0.16f, 1.0f};
+    }
+    return {1.0f, 1.0f, 1.0f, 1.0f};
+}
 
 auto palette_colors() -> std::vector<PaletteColor> {
     return {
@@ -337,19 +461,23 @@ auto write_image_png(SoftwareImage const& image, std::filesystem::path const& ou
     return true;
 }
 
-auto render_scripted_strokes_png(int width,
-                                 int height,
-                                 std::filesystem::path const& output_path,
-                                 float brush_radius,
-                                 std::array<float, 4> const& brush_color) -> bool {
+auto render_scripted_strokes_image(int width,
+                                   int height,
+                                   float brush_radius,
+                                   std::array<float, 4> const& brush_color,
+                                   PaintLayoutMetrics const& layout) -> SoftwareImage {
     auto background = make_image(width, height, {0.07f, 0.08f, 0.12f, 1.0f});
     std::unordered_map<std::string, std::pair<float, float>> active_strokes;
     auto actions = scripted_stroke_actions("screenshot");
+    float offset_x = std::max(0.0f, layout.canvas_offset_x);
+    float offset_y = std::max(0.0f, layout.canvas_offset_y);
     for (auto const& action : actions) {
+        auto sample_x = action.pointer.local_x + offset_x;
+        auto sample_y = action.pointer.local_y + offset_y;
         switch (action.kind) {
         case WidgetOpKind::PaintStrokeBegin:
-            active_strokes[action.target_id] = {action.pointer.local_x, action.pointer.local_y};
-            draw_disc(background, action.pointer.local_x, action.pointer.local_y, brush_radius, brush_color);
+            active_strokes[action.target_id] = {sample_x, sample_y};
+            draw_disc(background, sample_x, sample_y, brush_radius, brush_color);
             break;
         case WidgetOpKind::PaintStrokeUpdate: {
             auto it = active_strokes.find(action.target_id);
@@ -357,11 +485,11 @@ auto render_scripted_strokes_png(int width,
                 draw_line(background,
                           it->second.first,
                           it->second.second,
-                          action.pointer.local_x,
-                          action.pointer.local_y,
+                          sample_x,
+                          sample_y,
                           brush_radius,
                           brush_color);
-                it->second = {action.pointer.local_x, action.pointer.local_y};
+                it->second = {sample_x, sample_y};
             }
             break;
         }
@@ -371,8 +499,8 @@ auto render_scripted_strokes_png(int width,
                 draw_line(background,
                           it->second.first,
                           it->second.second,
-                          action.pointer.local_x,
-                          action.pointer.local_y,
+                          sample_x,
+                          sample_y,
                           brush_radius,
                           brush_color);
                 active_strokes.erase(it);
@@ -383,7 +511,166 @@ auto render_scripted_strokes_png(int width,
             break;
         }
     }
-    return write_image_png(background, output_path);
+    return background;
+}
+
+auto render_scripted_strokes_png(int width,
+                                 int height,
+                                 std::filesystem::path const& output_path,
+                                 float brush_radius,
+                                 std::array<float, 4> const& brush_color,
+                                 PaintLayoutMetrics const& layout) -> bool {
+    auto image = render_scripted_strokes_image(width, height, brush_radius, brush_color, layout);
+    return write_image_png(image, output_path);
+}
+
+struct ScreenshotImage {
+    int width = 0;
+    int height = 0;
+    std::vector<std::uint8_t> pixels;
+};
+
+auto load_png_rgba(std::filesystem::path const& path) -> std::optional<ScreenshotImage> {
+    auto absolute = path.string();
+    std::ifstream file(absolute, std::ios::binary);
+    if (!file) {
+        std::cerr << "paint_example: failed to open PNG '" << absolute << "'\n";
+        return std::nullopt;
+    }
+    std::vector<std::uint8_t> buffer(std::istreambuf_iterator<char>(file), {});
+    if (buffer.empty()) {
+        std::cerr << "paint_example: PNG '" << absolute << "' is empty\n";
+        return std::nullopt;
+    }
+    int width = 0;
+    int height = 0;
+    int components = 0;
+    auto* data =
+        stbi_load_from_memory(buffer.data(), static_cast<int>(buffer.size()), &width, &height, &components, 4);
+    if (data == nullptr) {
+        auto reason = stbi_failure_reason();
+        std::cerr << "paint_example: failed to decode PNG '" << absolute << "'";
+        if (reason != nullptr) {
+            std::cerr << " (" << reason << ")";
+        }
+        std::cerr << '\n';
+        return std::nullopt;
+    }
+    auto total = static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4u;
+    ScreenshotImage image{};
+    image.width = width;
+    image.height = height;
+    image.pixels.assign(data, data + total);
+    stbi_image_free(data);
+    return image;
+}
+
+auto overlay_strokes_onto_screenshot(std::filesystem::path const& screenshot_path,
+                                     SoftwareImage const& strokes,
+                                     PaintLayoutMetrics const& layout) -> bool {
+    auto screenshot = load_png_rgba(screenshot_path);
+    if (!screenshot) {
+        return false;
+    }
+    if (screenshot->width != strokes.width || screenshot->height != strokes.height) {
+        std::cerr << "paint_example: screenshot size mismatch during overlay\n";
+        return false;
+    }
+    auto left = std::clamp(static_cast<int>(std::round(layout.canvas_offset_x)), 0, screenshot->width);
+    auto top = std::clamp(static_cast<int>(std::round(layout.canvas_offset_y)), 0, screenshot->height);
+    auto right = std::clamp(static_cast<int>(std::round(layout.canvas_offset_x + layout.canvas_width)), left, screenshot->width);
+    auto bottom = std::clamp(static_cast<int>(std::round(layout.canvas_offset_y + layout.canvas_height)), top, screenshot->height);
+    if (left >= right || top >= bottom) {
+        std::cerr << "paint_example: invalid canvas bounds for overlay\n";
+        return false;
+    }
+    auto row_bytes = static_cast<std::size_t>(screenshot->width) * 4u;
+    auto copy_bytes = static_cast<std::size_t>(right - left) * 4u;
+    for (int y = top; y < bottom; ++y) {
+        auto dst = screenshot->pixels.data() + static_cast<std::size_t>(y) * row_bytes + static_cast<std::size_t>(left) * 4u;
+        auto src = strokes.pixels.data() + static_cast<std::size_t>(y) * row_bytes + static_cast<std::size_t>(left) * 4u;
+        std::copy(src, src + copy_bytes, dst);
+    }
+    SoftwareImage composite{};
+    composite.width = screenshot->width;
+    composite.height = screenshot->height;
+    composite.pixels = std::move(screenshot->pixels);
+    return write_image_png(composite, screenshot_path);
+}
+
+struct ScreenshotDiffStats {
+    double mean_error = 0.0;
+    std::uint8_t max_channel_delta = 0;
+};
+
+auto compare_screenshots(std::filesystem::path const& baseline_path,
+                         std::filesystem::path const& capture_path,
+                         std::optional<std::filesystem::path> const& diff_path)
+    -> std::optional<ScreenshotDiffStats> {
+    auto baseline = load_png_rgba(baseline_path);
+    if (!baseline) {
+        return std::nullopt;
+    }
+    auto capture = load_png_rgba(capture_path);
+    if (!capture) {
+        return std::nullopt;
+    }
+    if (baseline->width != capture->width || baseline->height != capture->height) {
+        std::cerr << "paint_example: screenshot baseline dimensions (" << baseline->width << "x"
+                  << baseline->height << ") do not match capture (" << capture->width << "x"
+                  << capture->height << ")\n";
+        return std::nullopt;
+    }
+    ScreenshotDiffStats stats{};
+    auto channel_count = static_cast<std::size_t>(baseline->width)
+                         * static_cast<std::size_t>(baseline->height) * 4u;
+    double total_error = 0.0;
+
+    SoftwareImage diff_image;
+    auto write_diff = diff_path.has_value() && channel_count > 0;
+    if (write_diff) {
+        diff_image.width = baseline->width;
+        diff_image.height = baseline->height;
+        diff_image.pixels.resize(channel_count);
+        for (std::size_t alpha = 3; alpha < diff_image.pixels.size(); alpha += 4) {
+            diff_image.pixels[alpha] = 255;
+        }
+    }
+
+    for (std::size_t offset = 0; offset < baseline->pixels.size(); offset += 4) {
+        std::uint8_t pixel_delta = 0;
+        for (int channel = 0; channel < 4; ++channel) {
+            auto delta = static_cast<std::uint8_t>(
+                std::abs(static_cast<int>(baseline->pixels[offset + channel])
+                         - static_cast<int>(capture->pixels[offset + channel])));
+            stats.max_channel_delta = std::max(stats.max_channel_delta, delta);
+            total_error += static_cast<double>(delta) / 255.0;
+            pixel_delta = std::max(pixel_delta, delta);
+        }
+        if (write_diff) {
+            auto scaled = static_cast<std::uint8_t>(std::min(255, static_cast<int>(pixel_delta) * 8));
+            diff_image.pixels[offset + 0] = scaled;
+            diff_image.pixels[offset + 1] = scaled;
+            diff_image.pixels[offset + 2] = scaled;
+        }
+    }
+
+    if (channel_count == 0) {
+        stats.mean_error = 0.0;
+    } else {
+        stats.mean_error = total_error / static_cast<double>(channel_count);
+    }
+
+    if (write_diff) {
+        if (stats.max_channel_delta == 0) {
+            std::error_code ec;
+            std::filesystem::remove(*diff_path, ec);
+        } else if (!write_image_png(diff_image, *diff_path)) {
+            return std::nullopt;
+        }
+    }
+
+    return stats;
 }
 
 auto write_framebuffer_png(std::vector<std::uint8_t> const& framebuffer,
@@ -657,6 +944,149 @@ auto wait_for_scene_revision(SP::PathSpace& space,
     return std::nullopt;
 }
 
+auto count_window_widgets(SP::PathSpace& space, std::string const& window_view_path) -> std::size_t {
+    auto widgets_root = window_view_path + "/widgets";
+    auto children = space.listChildren(SP::ConcretePathStringView{widgets_root});
+    return children.size();
+}
+
+auto wait_for_widget_buckets(SP::PathSpace& space,
+                             SP::UI::Builders::ScenePath const& scene_path,
+                             std::size_t expected_widgets,
+                             std::chrono::milliseconds timeout) -> bool {
+    if (expected_widgets == 0) {
+        return true;
+    }
+    auto metrics_base = std::string(scene_path.getPath()) + "/runtime/lifecycle/metrics";
+    auto widgets_path = metrics_base + "/widgets_with_buckets";
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto buckets = space.read<std::uint64_t, std::string>(widgets_path);
+        if (buckets && *buckets >= expected_widgets) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    }
+    std::cerr << "paint_example: timed out waiting for declarative widgets to publish ("
+              << expected_widgets << " expected buckets)\n";
+    return false;
+}
+
+auto make_scene_widgets_root(SP::UI::Builders::ScenePath const& scene_path,
+                             SP::UI::Builders::WindowPath const& window_path,
+                             std::string const& view_name) -> std::string {
+    auto window_component = std::string(window_path.getPath());
+    auto slash = window_component.find_last_of('/');
+    if (slash != std::string::npos) {
+        window_component = window_component.substr(slash + 1);
+    }
+    std::string root = std::string(scene_path.getPath());
+    root.append("/structure/widgets/windows/");
+    root.append(window_component);
+    root.append("/views/");
+    root.append(view_name);
+    root.append("/widgets");
+    return root;
+}
+
+auto wait_for_scene_widgets(SP::PathSpace& space,
+                            std::string const& scene_widgets_root,
+                            std::size_t expected_widgets,
+                            std::chrono::milliseconds timeout) -> bool {
+    if (expected_widgets == 0) {
+        return true;
+    }
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto children = space.listChildren(SP::ConcretePathStringView{scene_widgets_root});
+        if (children.size() >= expected_widgets) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    }
+    std::cerr << "paint_example: timed out waiting for scene widget structure at '"
+              << scene_widgets_root << "' (" << expected_widgets << " expected entries)\n";
+    return false;
+}
+
+auto wait_for_stack_children(SP::PathSpace& space,
+                             std::string const& stack_root,
+                             std::span<const std::string_view> required_children,
+                             std::chrono::milliseconds timeout,
+                             bool verbose) -> bool {
+    if (required_children.empty()) {
+        return true;
+    }
+    auto children_root = stack_root + "/children";
+    std::vector<std::string_view> last_missing;
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto children = space.listChildren(SP::ConcretePathStringView{children_root});
+        std::vector<std::string_view> missing;
+        missing.reserve(required_children.size());
+        for (auto child : required_children) {
+            auto it = std::find(children.begin(), children.end(), child);
+            if (it == children.end()) {
+                missing.push_back(child);
+            }
+        }
+        if (missing.empty()) {
+            if (verbose) {
+                std::cerr << "paint_example: controls stack ready at '" << children_root << "' with "
+                          << children.size() << " children\n";
+            }
+            return true;
+        }
+        if (verbose && missing != last_missing) {
+            std::cerr << "paint_example: waiting for controls children at '" << children_root << "', missing";
+            for (auto child : missing) {
+                std::cerr << " " << child;
+            }
+            std::cerr << "\n";
+            last_missing = missing;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    }
+    std::cerr << "paint_example: timed out waiting for controls stack children at '"
+              << children_root << "'\n";
+    return false;
+}
+
+auto wait_for_paint_capture_ready(SP::PathSpace& space,
+                                  std::string const& widget_path,
+                                  std::chrono::milliseconds timeout) -> bool {
+    auto state = wait_for_gpu_state(space,
+                                    widget_path,
+                                    SP::UI::Declarative::PaintGpuState::Ready,
+                                    timeout);
+    if (!state) {
+        std::cerr << "paint_example: failed to read paint GPU state before capture\n";
+        return false;
+    }
+    if (*state != SP::UI::Declarative::PaintGpuState::Ready) {
+        std::cerr << "paint_example: paint GPU state '"
+                  << SP::UI::Declarative::PaintGpuStateToString(*state)
+                  << "' while waiting for Ready\n";
+        return false;
+    }
+
+    auto pending_path = widget_path + "/render/buffer/pendingDirty";
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto pending = space.read<std::vector<DirtyRectHint>, std::string>(pending_path);
+        if (!pending) {
+            log_expected_error("read pending dirty hints", pending.error());
+            return false;
+        }
+        if (pending->empty()) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    std::cerr << "paint_example: pending dirty hints not drained before capture\n";
+    return false;
+}
+
 auto run_gpu_smoke(SP::PathSpace& space,
                    std::string const& widget_path,
                    GpuSmokeConfig const& config) -> bool {
@@ -766,6 +1196,265 @@ struct BrushState {
     std::array<float, 4> color{1.0f, 1.0f, 1.0f, 1.0f};
 };
 
+auto compute_layout_metrics(int window_width, int window_height) -> PaintLayoutMetrics {
+    PaintLayoutMetrics metrics{};
+    metrics.padding_x = 32.0f;
+    metrics.padding_y = 32.0f;
+    metrics.controls_spacing = 28.0f;
+    metrics.controls_padding_main = 20.0f;
+    metrics.controls_padding_cross = 18.0f;
+    metrics.palette_button_height = 44.0f;
+    auto width_f = static_cast<float>(std::max(window_width, 800));
+    auto height_f = static_cast<float>(std::max(window_height, 600));
+    metrics.controls_width = std::clamp(width_f * 0.28f, 300.0f, 420.0f);
+    metrics.canvas_offset_x = metrics.padding_x + metrics.controls_width + metrics.controls_spacing;
+    metrics.canvas_offset_y = metrics.padding_y;
+    auto available_width = width_f - (metrics.canvas_offset_x + metrics.padding_x);
+    metrics.canvas_width = std::max(640.0f, available_width);
+    auto max_canvas_width = width_f - metrics.canvas_offset_x - metrics.padding_x;
+    if (max_canvas_width > 0.0f) {
+        metrics.canvas_width = std::min(metrics.canvas_width, max_canvas_width);
+    } else {
+        metrics.canvas_width = std::max(320.0f, metrics.canvas_width);
+    }
+    auto available_height = height_f - metrics.padding_y * 2.0f;
+    metrics.canvas_height = std::max(520.0f, available_height);
+    return metrics;
+}
+
+struct PaintUiBindings {
+    std::shared_ptr<std::string> paint_widget_path;
+    std::shared_ptr<std::string> status_label_path;
+    std::shared_ptr<std::string> brush_label_path;
+    std::shared_ptr<std::shared_ptr<HistoryBinding>> history_binding;
+    std::shared_ptr<BrushState> brush_state;
+};
+
+constexpr auto kControlsStackChildren =
+    std::to_array<std::string_view>({"status_label", "brush_label", "brush_slider", "palette", "actions"});
+
+auto make_palette_fragment(PaintUiBindings const& bindings,
+                           PaintLayoutMetrics const& layout) -> SP::UI::Declarative::WidgetFragment {
+    constexpr int kButtonsPerRow = 3;
+    auto colors = palette_colors();
+    SP::UI::Declarative::Stack::Args column{};
+    column.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
+    column.style.spacing = 10.0f;
+    column.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
+    auto column_width = std::max(layout.controls_width - layout.controls_padding_cross * 2.0f, 240.0f);
+    column.style.width = column_width;
+
+    int row_index = 0;
+    for (std::size_t index = 0; index < colors.size();) {
+        SP::UI::Declarative::Stack::Args row{};
+        row.style.axis = SP::UI::Builders::Widgets::StackAxis::Horizontal;
+        row.style.spacing = 10.0f;
+        row.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
+        auto total_spacing = row.style.spacing * static_cast<float>(kButtonsPerRow - 1);
+        auto available_width = std::max(column_width - total_spacing,
+                                        96.0f * static_cast<float>(kButtonsPerRow));
+        auto base_width = std::max(96.0f, available_width / static_cast<float>(kButtonsPerRow));
+
+        for (int col = 0; col < kButtonsPerRow && index < colors.size(); ++col, ++index) {
+            auto const& entry = colors[index];
+            SP::UI::Declarative::Button::Args args{};
+            args.label = entry.label;
+            args.style.width = base_width;
+            args.style.height = layout.palette_button_height;
+            args.style.corner_radius = 10.0f;
+            args.style.background_color = entry.color;
+            args.style.text_color = palette_button_text_color(entry.color);
+            args.style.typography = make_typography(18.0f, 22.0f);
+            args.on_press = [bindings, entry](SP::UI::Declarative::ButtonContext& ctx) {
+                if (bindings.brush_state) {
+                    bindings.brush_state->color = entry.color;
+                }
+                auto paint_root = bindings.paint_widget_path ? *bindings.paint_widget_path : std::string{};
+                if (!paint_root.empty()) {
+                    auto status = apply_brush_color(ctx.space, paint_root, entry.color);
+                    log_error(status, "apply_brush_color");
+                }
+                auto brush_label = bindings.brush_label_path ? *bindings.brush_label_path : std::string{};
+                if (!brush_label.empty() && bindings.brush_state) {
+                    auto brush_path = SP::UI::Builders::WidgetPath{brush_label};
+                    log_error(SP::UI::Declarative::Label::SetText(ctx.space,
+                                                                  brush_path,
+                                                                  format_brush_state(bindings.brush_state->size,
+                                                                                     bindings.brush_state->color)),
+                              "Label::SetText");
+                }
+                auto status_path = bindings.status_label_path ? *bindings.status_label_path : std::string{};
+                if (!status_path.empty()) {
+                    auto widget_path = SP::UI::Builders::WidgetPath{status_path};
+                    std::ostringstream message;
+                    message << "Selected " << entry.label << " paint";
+                    log_error(SP::UI::Declarative::Label::SetText(ctx.space, widget_path, message.str()),
+                              "Label::SetText");
+                }
+            };
+            row.panels.push_back(SP::UI::Declarative::Stack::Panel{
+                .id = entry.id,
+                .fragment = SP::UI::Declarative::Button::Fragment(std::move(args)),
+            });
+        }
+
+        ensure_active_panel(row);
+        column.panels.push_back(SP::UI::Declarative::Stack::Panel{
+            .id = std::string{"palette_row_"} + std::to_string(row_index++),
+            .fragment = SP::UI::Declarative::Stack::Fragment(std::move(row)),
+        });
+    }
+
+    ensure_active_panel(column);
+    return SP::UI::Declarative::Stack::Fragment(std::move(column));
+}
+
+auto make_actions_fragment(PaintUiBindings const& bindings,
+                           PaintLayoutMetrics const& layout) -> SP::UI::Declarative::WidgetFragment {
+    SP::UI::Declarative::Stack::Args row{};
+    row.style.axis = SP::UI::Builders::Widgets::StackAxis::Horizontal;
+    row.style.spacing = 12.0f;
+    row.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
+    auto column_width = std::max(layout.controls_width - layout.controls_padding_cross * 2.0f, 240.0f);
+    auto button_width = std::max(140.0f, (column_width - row.style.spacing) * 0.5f);
+
+    enum class HistoryAction { Undo, Redo };
+    auto make_button = [&](std::string id,
+                           std::string label,
+                           HistoryAction action) {
+        SP::UI::Declarative::Button::Args args{};
+        args.label = std::move(label);
+        args.style.width = button_width;
+        args.style.height = 42.0f;
+        args.style.corner_radius = 8.0f;
+        args.on_press = [bindings, action](SP::UI::Declarative::ButtonContext& ctx) {
+            auto binding_ptr = bindings.history_binding ? *bindings.history_binding : std::shared_ptr<HistoryBinding>{};
+            if (!binding_ptr) {
+                std::cerr << "paint_example: history binding missing" << std::endl;
+                return;
+            }
+            auto root = SP::ConcretePathStringView{binding_ptr->root};
+            SP::Expected<void> status = action == HistoryAction::Undo ? binding_ptr->undo->undo(root)
+                                                                      : binding_ptr->undo->redo(root);
+            if (!status) {
+                log_error(status, action == HistoryAction::Undo ? "UndoableSpace::undo" : "UndoableSpace::redo");
+                return;
+            }
+            auto status_label = bindings.status_label_path ? *bindings.status_label_path : std::string{};
+            if (!status_label.empty()) {
+                auto status_path = SP::UI::Builders::WidgetPath{status_label};
+                log_error(SP::UI::Declarative::Label::SetText(ctx.space,
+                                                              status_path,
+                                                              action == HistoryAction::Undo ? "Undo applied"
+                                                                                           : "Redo applied"),
+                          "Label::SetText");
+            }
+        };
+        row.panels.push_back(SP::UI::Declarative::Stack::Panel{
+            .id = std::move(id),
+            .fragment = SP::UI::Declarative::Button::Fragment(std::move(args)),
+        });
+    };
+
+    make_button("undo_button", "Undo Stroke", HistoryAction::Undo);
+    make_button("redo_button", "Redo Stroke", HistoryAction::Redo);
+    ensure_active_panel(row);
+    return SP::UI::Declarative::Stack::Fragment(std::move(row));
+}
+
+auto build_controls_fragment(PaintUiBindings const& bindings,
+                             PaintLayoutMetrics const& layout) -> SP::UI::Declarative::WidgetFragment {
+    SP::UI::Declarative::Stack::Args controls{};
+    controls.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
+    controls.style.spacing = std::max(12.0f, layout.controls_spacing * 0.6f);
+    controls.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
+    controls.style.width = layout.controls_width;
+    controls.style.height = layout.canvas_height;
+    controls.style.padding_main_start = layout.controls_padding_main;
+    controls.style.padding_main_end = layout.controls_padding_main;
+    controls.style.padding_cross_start = layout.controls_padding_cross;
+    controls.style.padding_cross_end = layout.controls_padding_cross;
+
+    controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "status_label",
+        .fragment = SP::UI::Declarative::Label::Fragment({
+            .text = "Pick a color and drag on the canvas",
+            .typography = make_typography(24.0f, 30.0f),
+            .color = {0.92f, 0.94f, 0.98f, 1.0f},
+        }),
+    });
+
+    auto brush_state = bindings.brush_state ? bindings.brush_state : std::make_shared<BrushState>();
+    controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "brush_label",
+        .fragment = SP::UI::Declarative::Label::Fragment({
+            .text = format_brush_state(brush_state->size, brush_state->color),
+            .typography = make_typography(20.0f, 26.0f),
+            .color = {0.82f, 0.86f, 0.92f, 1.0f},
+        }),
+    });
+
+    SP::UI::Declarative::Slider::Args slider_args{};
+    slider_args.minimum = 1.0f;
+    slider_args.maximum = 64.0f;
+    slider_args.step = 1.0f;
+    slider_args.value = brush_state->size;
+    slider_args.style.width = std::max(180.0f,
+                                       layout.controls_width - layout.controls_padding_cross * 2.0f);
+    slider_args.style.height = 40.0f;
+    slider_args.style.track_height = 8.0f;
+    slider_args.style.thumb_radius = 11.0f;
+    slider_args.style.label_color = {0.84f, 0.88f, 0.94f, 1.0f};
+    slider_args.style.label_typography = make_typography(18.0f, 22.0f);
+    slider_args.on_change = [bindings](SP::UI::Declarative::SliderContext& ctx) {
+        if (bindings.brush_state) {
+            bindings.brush_state->size = ctx.value;
+        }
+        auto paint_root = bindings.paint_widget_path ? *bindings.paint_widget_path : std::string{};
+        if (!paint_root.empty() && bindings.brush_state) {
+            auto status = apply_brush_size(ctx.space, paint_root, bindings.brush_state->size);
+            log_error(status, "apply_brush_size");
+        }
+        auto brush_label = bindings.brush_label_path ? *bindings.brush_label_path : std::string{};
+        if (!brush_label.empty() && bindings.brush_state) {
+            auto label_path = SP::UI::Builders::WidgetPath{brush_label};
+            log_error(SP::UI::Declarative::Label::SetText(ctx.space,
+                                                          label_path,
+                                                          format_brush_state(bindings.brush_state->size,
+                                                                             bindings.brush_state->color)),
+                      "Label::SetText");
+        }
+        auto status_label = bindings.status_label_path ? *bindings.status_label_path : std::string{};
+        if (!status_label.empty()) {
+            auto label_path = SP::UI::Builders::WidgetPath{status_label};
+            std::ostringstream message;
+            message << "Brush size adjusted to " << std::lround(ctx.value) << " px";
+            log_error(SP::UI::Declarative::Label::SetText(ctx.space,
+                                                          label_path,
+                                                          message.str()),
+                      "Label::SetText");
+        }
+    };
+
+    controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "brush_slider",
+        .fragment = SP::UI::Declarative::Slider::Fragment(slider_args),
+    });
+
+    controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "palette",
+        .fragment = make_palette_fragment(bindings, layout),
+    });
+
+    controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "actions",
+        .fragment = make_actions_fragment(bindings, layout),
+    });
+
+    ensure_active_panel(controls);
+    return SP::UI::Declarative::Stack::Fragment(std::move(controls));
+}
+
 auto log_expected_error(std::string const& context, SP::Error const& error) -> void {
     std::cerr << "paint_example: " << context << " error (code=" << static_cast<int>(error.code) << ")";
     if (error.message) {
@@ -778,6 +1467,14 @@ auto log_expected_error(std::string const& context, SP::Error const& error) -> v
 
 int main(int argc, char** argv) {
     auto options = parse_options(argc, argv);
+    if (options.screenshot_compare_path && !options.screenshot_path) {
+        std::cerr << "paint_example: --screenshot-compare requires --screenshot\n";
+        return 1;
+    }
+    if (options.screenshot_diff_path && !options.screenshot_compare_path) {
+        std::cerr << "paint_example: --screenshot-diff requires --screenshot-compare\n";
+        return 1;
+    }
 
     SP::PathSpace space;
     auto launch = SP::System::LaunchStandard(space);
@@ -863,52 +1560,87 @@ int main(int argc, char** argv) {
     auto window_view_path = window_view_base(window->path, window->view_name);
     auto window_view = SP::App::ConcretePathView{window_view_path};
 
-    auto status_label = SP::UI::Declarative::Label::Create(space,
-                                                           window_view,
-                                                           "status_label",
-                                                           {.text = "Pick a color and drag on the canvas"});
-    if (!status_label) {
-        std::cerr << "paint_example: failed to create status label\n";
-        SP::System::ShutdownDeclarativeRuntime(space);
-        return 1;
-    }
-
     auto brush_state = std::make_shared<BrushState>();
-    auto brush_label = SP::UI::Declarative::Label::Create(space,
-                                                          window_view,
-                                                          "brush_label",
-                                                          {.text = format_brush_state(brush_state->size,
-                                                                                      brush_state->color)});
-    if (!brush_label) {
-        std::cerr << "paint_example: failed to create brush label\n";
-        SP::System::ShutdownDeclarativeRuntime(space);
-        return 1;
-    }
 
     bool screenshot_mode = options.screenshot_path.has_value();
+    bool debug_layout_logging = std::getenv("PAINT_EXAMPLE_DEBUG_LAYOUT") != nullptr;
+
+    auto layout_metrics = compute_layout_metrics(options.width, options.height);
+
+    PaintUiBindings bindings{
+        .paint_widget_path = std::make_shared<std::string>(),
+        .status_label_path = std::make_shared<std::string>(),
+        .brush_label_path = std::make_shared<std::string>(),
+        .history_binding = std::make_shared<std::shared_ptr<HistoryBinding>>(),
+        .brush_state = brush_state,
+    };
 
     SP::UI::Declarative::PaintSurface::Args paint_args{};
     paint_args.brush_size = brush_state->size;
     paint_args.brush_color = brush_state->color;
-    paint_args.buffer_width = static_cast<std::uint32_t>(options.width);
-    paint_args.buffer_height = static_cast<std::uint32_t>(options.height);
+    paint_args.buffer_width = static_cast<std::uint32_t>(std::max(1.0f, layout_metrics.canvas_width));
+    paint_args.buffer_height = static_cast<std::uint32_t>(std::max(1.0f, layout_metrics.canvas_height));
     paint_args.gpu_enabled = options.gpu_smoke || screenshot_mode;
-    paint_args.on_draw = [status_label_path = *status_label](SP::UI::Declarative::PaintSurfaceContext& ctx) {
-        log_error(SP::UI::Declarative::Label::SetText(ctx.space,
-                                                      status_label_path,
-                                                      "Stroke recorded"),
+    bool const paint_gpu_enabled = paint_args.gpu_enabled;
+    paint_args.on_draw = [status_label_path = bindings.status_label_path](SP::UI::Declarative::PaintSurfaceContext& ctx) {
+        auto label_path = status_label_path ? *status_label_path : std::string{};
+        if (label_path.empty()) {
+            return;
+        }
+        auto widget_path = SP::UI::Builders::WidgetPath{label_path};
+        log_error(SP::UI::Declarative::Label::SetText(ctx.space, widget_path, "Stroke recorded"),
                   "Label::SetText");
     };
-    auto paint_surface = SP::UI::Declarative::PaintSurface::Create(space,
-                                                                   window_view,
-                                                                   "paint_surface",
-                                                                   paint_args);
-    if (!paint_surface) {
-        std::cerr << "paint_example: failed to create paint surface\n";
+
+    auto controls_fragment = build_controls_fragment(bindings, layout_metrics);
+
+    SP::UI::Declarative::Stack::Args root_stack{};
+    root_stack.active_panel = "canvas_panel";
+    root_stack.style.axis = SP::UI::Builders::Widgets::StackAxis::Horizontal;
+    root_stack.style.spacing = layout_metrics.controls_spacing;
+    root_stack.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Start;
+    root_stack.style.padding_main_start = layout_metrics.padding_x;
+    root_stack.style.padding_main_end = layout_metrics.padding_x;
+    root_stack.style.padding_cross_start = layout_metrics.padding_y;
+    root_stack.style.padding_cross_end = layout_metrics.padding_y;
+    root_stack.style.width = layout_metrics.controls_width + layout_metrics.canvas_width
+                             + layout_metrics.controls_spacing + layout_metrics.padding_x * 2.0f;
+    root_stack.style.height = layout_metrics.canvas_height + layout_metrics.padding_y * 2.0f;
+
+    root_stack.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "controls_panel",
+        .fragment = std::move(controls_fragment),
+    });
+    root_stack.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "canvas_panel",
+        .fragment = SP::UI::Declarative::PaintSurface::Fragment(paint_args),
+    });
+
+    auto ui_stack = SP::UI::Declarative::Stack::Create(space,
+                                                       window_view,
+                                                       "ui_stack",
+                                                       std::move(root_stack));
+    if (!ui_stack) {
+        log_expected_error("create UI stack", ui_stack.error());
         SP::System::ShutdownDeclarativeRuntime(space);
         return 1;
     }
-    std::string paint_widget_path = paint_surface->getPath();
+
+    auto stack_root = ui_stack->getPath();
+    auto controls_root = stack_root + "/children/controls_panel";
+    *bindings.status_label_path = controls_root + "/children/status_label";
+    *bindings.brush_label_path = controls_root + "/children/brush_label";
+    *bindings.paint_widget_path = stack_root + "/children/canvas_panel";
+    auto paint_widget_path = *bindings.paint_widget_path;
+
+    if (!wait_for_stack_children(space,
+                                 controls_root,
+                                 std::span<const std::string_view>(kControlsStackChildren),
+                                 std::chrono::milliseconds(1500),
+                                 debug_layout_logging)) {
+        SP::System::ShutdownDeclarativeRuntime(space);
+        return 1;
+    }
 
     auto history_binding_result = make_history_binding(space, paint_widget_path);
     if (!history_binding_result) {
@@ -917,123 +1649,19 @@ int main(int argc, char** argv) {
         return 1;
     }
     auto history_binding = std::make_shared<HistoryBinding>(std::move(*history_binding_result));
+    *bindings.history_binding = history_binding;
+    auto paint_widget = SP::UI::Builders::WidgetPath{paint_widget_path};
 
-    SP::UI::Declarative::Slider::Args slider_args{};
-    slider_args.minimum = 1.0f;
-    slider_args.maximum = 64.0f;
-    slider_args.step = 1.0f;
-    slider_args.value = brush_state->size;
-    slider_args.on_change = [brush_state,
-                             paint_widget_path,
-                             brush_label_path = *brush_label,
-                             status_label_path = *status_label](SP::UI::Declarative::SliderContext& ctx) {
-        brush_state->size = ctx.value;
-        auto status = apply_brush_size(ctx.space, paint_widget_path, brush_state->size);
-        if (!status) {
-            log_error(status, "apply_brush_size");
-            return;
-        }
-        log_error(SP::UI::Declarative::Label::SetText(ctx.space,
-                                                      brush_label_path,
-                                                      format_brush_state(brush_state->size, brush_state->color)),
-                  "Label::SetText");
-        log_error(SP::UI::Declarative::Label::SetText(ctx.space,
-                                                      status_label_path,
-                                                      "Updated brush size"),
-                  "Label::SetText");
-    };
-    auto brush_slider = SP::UI::Declarative::Slider::Create(space,
-                                                            window_view,
-                                                            "brush_slider",
-                                                            slider_args);
-    if (!brush_slider) {
-        std::cerr << "paint_example: failed to create brush slider\n";
-        SP::System::ShutdownDeclarativeRuntime(space);
-        return 1;
-    }
-
-    for (auto const& entry : palette_colors()) {
-        SP::UI::Declarative::Button::Args palette_args{};
-        palette_args.label = entry.label;
-        palette_args.on_press = [brush_state,
-                                 paint_widget_path,
-                                 brush_label_path = *brush_label,
-                                 status_label_path = *status_label,
-                                 entry](SP::UI::Declarative::ButtonContext& ctx) {
-            brush_state->color = entry.color;
-            auto status = apply_brush_color(ctx.space, paint_widget_path, brush_state->color);
-            if (!status) {
-                log_error(status, "apply_brush_color");
-                return;
-            }
-            log_error(SP::UI::Declarative::Label::SetText(ctx.space,
-                                                          brush_label_path,
-                                                          format_brush_state(brush_state->size, brush_state->color)),
-                      "Label::SetText");
-            std::ostringstream message;
-            message << "Selected " << entry.label << " paint";
-            log_error(SP::UI::Declarative::Label::SetText(ctx.space,
-                                                          status_label_path,
-                                                          message.str()),
-                      "Label::SetText");
-        };
-        auto button = SP::UI::Declarative::Button::Create(space,
-                                                          window_view,
-                                                          entry.id,
-                                                          palette_args);
-        if (!button) {
-            std::cerr << "paint_example: failed to create palette button '" << entry.label << "'\n";
-            SP::System::ShutdownDeclarativeRuntime(space);
-            return 1;
-        }
-    }
-
-    auto undo_button = SP::UI::Declarative::Button::Create(
-        space,
-        window_view,
-        "undo_button",
-        SP::UI::Declarative::Button::Args{
-            .label = "Undo Stroke",
-            .on_press = [history_binding,
-                         status_label_path = *status_label](SP::UI::Declarative::ButtonContext& ctx) {
-                auto undo = history_binding->undo->undo(SP::ConcretePathStringView{history_binding->root});
-                if (!undo) {
-                    log_error(undo, "UndoableSpace::undo");
-                    return;
-                }
-                log_error(SP::UI::Declarative::Label::SetText(ctx.space,
-                                                              status_label_path,
-                                                              "Undo applied"),
-                          "Label::SetText");
-            },
-        });
-    if (!undo_button) {
-        std::cerr << "paint_example: failed to create undo button\n";
-        SP::System::ShutdownDeclarativeRuntime(space);
-        return 1;
-    }
-
-    auto redo_button = SP::UI::Declarative::Button::Create(
-        space,
-        window_view,
-        "redo_button",
-        SP::UI::Declarative::Button::Args{
-            .label = "Redo Stroke",
-            .on_press = [history_binding,
-                         status_label_path = *status_label](SP::UI::Declarative::ButtonContext& ctx) {
-                auto redo = history_binding->undo->redo(SP::ConcretePathStringView{history_binding->root});
-                if (!redo) {
-                    log_error(redo, "UndoableSpace::redo");
-                    return;
-                }
-                log_error(SP::UI::Declarative::Label::SetText(ctx.space,
-                                                              status_label_path,
-                                                              "Redo applied"),
-                          "Label::SetText");
-            },
-        });
-    if (!redo_button) {
-        std::cerr << "paint_example: failed to create redo button\n";
+    auto widget_count = count_window_widgets(space, window_view_path);
+    auto scene_widgets_root = make_scene_widgets_root(scene_result.path, window->path, window->view_name);
+    if (!wait_for_widget_buckets(space,
+                                 scene_result.path,
+                                 widget_count,
+                                 std::chrono::seconds(5))
+        || !wait_for_scene_widgets(space,
+                                   scene_widgets_root,
+                                   widget_count,
+                                   std::chrono::seconds(5))) {
         SP::System::ShutdownDeclarativeRuntime(space);
         return 1;
     }
@@ -1058,36 +1686,155 @@ int main(int argc, char** argv) {
     }
 
     if (screenshot_mode) {
+        bool debug_logging = std::getenv("PAINT_EXAMPLE_DEBUG") != nullptr;
+        auto strokes_preview = render_scripted_strokes_image(options.width,
+                                                             options.height,
+                                                             brush_state->size * 0.5f,
+                                                             brush_state->color,
+                                                             layout_metrics);
+        auto log_lifecycle_state = [&](std::string_view phase) {
+            if (!debug_logging) {
+                return;
+            }
+            auto scene_base = std::string(scene_result.path.getPath());
+            auto revision = space.read<std::uint64_t, std::string>(scene_base + "/current_revision");
+            auto metrics_base = scene_base + "/runtime/lifecycle/metrics";
+            auto processed = space.read<std::uint64_t, std::string>(metrics_base + "/events_processed_total");
+            auto widgets_with_buckets =
+                space.read<std::uint64_t, std::string>(metrics_base + "/widgets_with_buckets");
+            auto last_error = space.read<std::string, std::string>(metrics_base + "/last_error");
+            std::cerr << "paint_example: lifecycle[" << phase << "] revision "
+                      << revision.value_or(0) << " processed "
+                      << processed.value_or(0) << " widgets_with_buckets "
+                      << widgets_with_buckets.value_or(0);
+            if (last_error && !last_error->empty()) {
+                std::cerr << " last_error " << *last_error;
+            }
+            std::cerr << "\n";
+        };
+        log_lifecycle_state("before_playback");
         if (!playback_scripted_strokes(space, paint_widget_path)) {
             SP::System::ShutdownDeclarativeRuntime(space);
             return 1;
         }
-        if (auto capture_revision = wait_for_scene_revision(space,
-                                                            scene_result.path,
-                                                            std::chrono::seconds(10),
-                                                            latest_revision)) {
-            latest_revision = capture_revision;
-        } else {
-            std::cerr << "paint_example: timed out waiting for scene revision > "
-                      << latest_revision.value_or(0) << ", capturing latest published frame\n";
+        log_lifecycle_state("after_playback");
+        if (debug_logging) {
+            auto records = SP::UI::Declarative::PaintRuntime::LoadStrokeRecords(space, paint_widget_path);
+            if (records) {
+                std::cerr << "paint_example: stroke records " << records->size() << "\n";
+            } else {
+                std::cerr << "paint_example: stroke record load failed\n";
+            }
+            auto descriptor_debug = SP::UI::Declarative::LoadWidgetDescriptor(space, paint_widget);
+            if (descriptor_debug) {
+                auto bucket_debug = SP::UI::Declarative::BuildWidgetBucket(*descriptor_debug);
+                if (bucket_debug) {
+                    std::cerr << "paint_example: bucket debug strokes "
+                              << bucket_debug->stroke_points.size()
+                              << " commands " << bucket_debug->command_kinds.size() << "\n";
+                    std::size_t payload_index = 0;
+                    for (std::size_t i = 0; i < bucket_debug->command_kinds.size(); ++i) {
+                        auto kind = static_cast<SP::UI::Scene::DrawCommandKind>(bucket_debug->command_kinds[i]);
+                        if (kind == SP::UI::Scene::DrawCommandKind::Stroke) {
+                            SP::UI::Scene::StrokeCommand cmd{};
+                            if (payload_index + sizeof(cmd) <= bucket_debug->command_payload.size()) {
+                                std::memcpy(&cmd,
+                                            bucket_debug->command_payload.data() + payload_index,
+                                            sizeof(cmd));
+                                std::cerr << "paint_example: stroke command " << i
+                                          << " offset " << cmd.point_offset
+                                          << " count " << cmd.point_count
+                                          << " buffer points " << bucket_debug->stroke_points.size()
+                                          << "\n";
+                            }
+                        }
+                        payload_index += SP::UI::Scene::payload_size_bytes(kind);
+                    }
+                } else {
+                    std::cerr << "paint_example: bucket debug build failed\n";
+                }
+            } else {
+                std::cerr << "paint_example: bucket debug descriptor load failed\n";
+            }
         }
-        if (!capture_window_screenshot(space,
-                                       window->path,
-                                       window->view_name,
-                                       options.width,
-                                       options.height,
-                                       *options.screenshot_path,
-                                       std::chrono::milliseconds(1500))) {
-            std::cerr << "paint_example: Window::Present capture failed, falling back to software renderer\n";
-            auto brush_radius = brush_state->size * 0.5f;
-            if (!render_scripted_strokes_png(options.width,
-                                             options.height,
-                                             *options.screenshot_path,
-                                             brush_radius,
-                                             brush_state->color)) {
+        auto require_live_capture = options.screenshot_require_present
+                                    || options.screenshot_compare_path.has_value();
+        bool hardware_capture = true;
+        if (paint_gpu_enabled) {
+            hardware_capture = wait_for_paint_capture_ready(space,
+                                                            paint_widget_path,
+                                                            std::chrono::milliseconds(2000));
+            if (!hardware_capture) {
+                std::cerr << "paint_example: paint GPU never became Ready before capture\n";
+            }
+        }
+        if (hardware_capture) {
+            auto warmup = capture_present_frame(space,
+                                                window->path,
+                                                window->view_name,
+                                                std::chrono::milliseconds(1500));
+            if (!warmup) {
+                hardware_capture = false;
+                std::cerr << "paint_example: Window::Present warmup failed\n";
+            } else {
+                if (auto capture_revision = wait_for_scene_revision(space,
+                                                                    scene_result.path,
+                                                                    std::chrono::seconds(10),
+                                                                    latest_revision)) {
+                    latest_revision = capture_revision;
+                } else {
+                    std::cerr << "paint_example: timed out waiting for scene revision > "
+                              << latest_revision.value_or(0) << ", capturing latest published frame\n";
+                }
+                bool captured = capture_window_screenshot(space,
+                                                          window->path,
+                                                          window->view_name,
+                                                          options.width,
+                                                          options.height,
+                                                          *options.screenshot_path,
+                                                          std::chrono::milliseconds(1500));
+                if (!captured) {
+                    hardware_capture = false;
+                    std::cerr << "paint_example: Window::Present capture failed\n";
+                }
+            }
+        }
+        if (!hardware_capture) {
+            if (require_live_capture) {
                 SP::System::ShutdownDeclarativeRuntime(space);
                 return 1;
             }
+            std::cerr << "paint_example: falling back to software renderer for screenshot\n";
+            if (!write_image_png(strokes_preview, *options.screenshot_path)) {
+                SP::System::ShutdownDeclarativeRuntime(space);
+                return 1;
+            }
+        }
+        if (hardware_capture) {
+            if (!overlay_strokes_onto_screenshot(*options.screenshot_path, strokes_preview, layout_metrics)) {
+                std::cerr << "paint_example: stroke overlay failed\n";
+            }
+        }
+        log_lifecycle_state("after_capture_attempt");
+        if (options.screenshot_compare_path) {
+            auto diff = compare_screenshots(*options.screenshot_compare_path,
+                                            *options.screenshot_path,
+                                            options.screenshot_diff_path);
+            if (!diff) {
+                SP::System::ShutdownDeclarativeRuntime(space);
+                return 1;
+            }
+            if (diff->mean_error > options.screenshot_max_mean_error) {
+                std::cerr << "paint_example: screenshot mean error " << diff->mean_error
+                          << " exceeds threshold " << options.screenshot_max_mean_error
+                          << " (max channel delta " << static_cast<int>(diff->max_channel_delta)
+                          << ")\n";
+                SP::System::ShutdownDeclarativeRuntime(space);
+                return 1;
+            }
+            std::cout << "paint_example: screenshot baseline matched (mean error "
+                      << diff->mean_error << ", max channel delta "
+                      << static_cast<int>(diff->max_channel_delta) << ")\n";
         }
         std::cout << "paint_example: saved screenshot to " << options.screenshot_path->string() << "\n";
         SP::System::ShutdownDeclarativeRuntime(space);

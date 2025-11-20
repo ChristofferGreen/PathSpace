@@ -107,6 +107,9 @@ Environment knobs (all respected by the wrapper and the logger):
   ```
 
   This flag flips the sample into headless mode, replays a fixed set of brush strokes through `PaintRuntime::HandleAction`, enables framebuffer capture, presents once, and saves `out/paint_demo.png`. Re-run after UI or renderer tweaks to produce before/after PNGs for quick visual diffs; the scripted strokes keep outputs stable across hosts.
+  Add `--screenshot-compare=PATH` to diff the live framebuffer against a baseline PNG, `--screenshot-diff=PATH` to emit a visual heatmap of the differences, `--screenshot-max-mean-error=<0-1>` to configure the allowed mean absolute error (default `0.0015` to accommodate the slider highlight’s subpixel jitter), and `--screenshot-require-present` to fail immediately if `Window::Present` falls back to the software renderer.
+  `scripts/check_paint_screenshot.py --build-dir build` wraps this workflow for CI/CTest: it runs `paint_example --gpu-smoke --screenshot … --screenshot-compare=docs/images/paint_example_baseline.png`, enforces framebuffer capture, writes artifacts under `build/artifacts/paint_example/`, and surfaces diffs when the declarative paint UI regresses (the script keeps the diff PNG whenever the mean error exceeds the tolerance).
+  If the controls column comes up empty, set `PAINT_EXAMPLE_DEBUG_LAYOUT=1` before running the command; the binary logs the controls stack’s expected child IDs while `wait_for_stack_children` polls so you can immediately see which panel failed to mount.
 
 - Smoke-test the declarative paint GPU uploader without launching the UI:
 
