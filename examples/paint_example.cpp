@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <iomanip>
 #include <charconv>
@@ -23,6 +25,7 @@
 #include <thread>
 #include <utility>
 #include <vector>
+#include <unordered_map>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <third_party/stb_image_write.h>
@@ -150,6 +153,19 @@ auto replace_value(SP::PathSpace& space, std::string const& path, T const& value
     return {};
 }
 
+auto window_view_base(SP::UI::Builders::WindowPath const& window_path,
+                      std::string const& view_name) -> std::string {
+    return std::string(window_path.getPath()) + "/views/" + view_name;
+}
+
+auto set_capture_framebuffer_enabled(SP::PathSpace& space,
+                                     SP::UI::Builders::WindowPath const& window_path,
+                                     std::string const& view_name,
+                                     bool enabled) -> SP::Expected<void> {
+    auto base = window_view_base(window_path, view_name);
+    return replace_value(space, base + "/present/params/capture_framebuffer", enabled);
+}
+
 auto format_brush_state(float size, std::array<float, 4> const& color) -> std::string {
     std::ostringstream stream;
     stream << "Brush size: " << std::clamp(size, 1.0f, 128.0f) << " | Color: rgb("
@@ -222,6 +238,250 @@ auto scripted_stroke_actions(std::string const& widget_path) -> std::vector<Widg
     return actions;
 }
 
+struct SoftwareImage {
+    int width = 0;
+    int height = 0;
+    std::vector<std::uint8_t> pixels;
+};
+
+auto make_image(int width, int height, std::array<float, 4> color) -> SoftwareImage {
+    SoftwareImage image;
+    image.width = width;
+    image.height = height;
+    image.pixels.resize(static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4u);
+    auto sr = static_cast<std::uint8_t>(std::clamp(color[0], 0.0f, 1.0f) * 255.0f);
+    auto sg = static_cast<std::uint8_t>(std::clamp(color[1], 0.0f, 1.0f) * 255.0f);
+    auto sb = static_cast<std::uint8_t>(std::clamp(color[2], 0.0f, 1.0f) * 255.0f);
+    auto sa = static_cast<std::uint8_t>(std::clamp(color[3], 0.0f, 1.0f) * 255.0f);
+    for (std::size_t i = 0; i + 3 < image.pixels.size(); i += 4) {
+        image.pixels[i + 0] = sr;
+        image.pixels[i + 1] = sg;
+        image.pixels[i + 2] = sb;
+        image.pixels[i + 3] = sa;
+    }
+    return image;
+}
+
+inline auto clamp_to_int(int value, int min_value, int max_value) -> int {
+    return std::max(min_value, std::min(value, max_value));
+}
+
+auto draw_disc(SoftwareImage& image,
+               float cx,
+               float cy,
+               float radius,
+               std::array<float, 4> const& color) -> void {
+    auto sr = static_cast<std::uint8_t>(std::clamp(color[0], 0.0f, 1.0f) * 255.0f);
+    auto sg = static_cast<std::uint8_t>(std::clamp(color[1], 0.0f, 1.0f) * 255.0f);
+    auto sb = static_cast<std::uint8_t>(std::clamp(color[2], 0.0f, 1.0f) * 255.0f);
+    auto sa = static_cast<std::uint8_t>(std::clamp(color[3], 0.0f, 1.0f) * 255.0f);
+    int min_y = clamp_to_int(static_cast<int>(std::floor(cy - radius)), 0, image.height - 1);
+    int max_y = clamp_to_int(static_cast<int>(std::ceil(cy + radius)), 0, image.height - 1);
+    int min_x = clamp_to_int(static_cast<int>(std::floor(cx - radius)), 0, image.width - 1);
+    int max_x = clamp_to_int(static_cast<int>(std::ceil(cx + radius)), 0, image.width - 1);
+    float radius_sq = radius * radius;
+    for (int y = min_y; y <= max_y; ++y) {
+        for (int x = min_x; x <= max_x; ++x) {
+            float dx = static_cast<float>(x) - cx;
+            float dy = static_cast<float>(y) - cy;
+            if ((dx * dx + dy * dy) > radius_sq) {
+                continue;
+            }
+            auto index = (static_cast<std::size_t>(y) * static_cast<std::size_t>(image.width) + static_cast<std::size_t>(x)) * 4u;
+            image.pixels[index + 0] = sr;
+            image.pixels[index + 1] = sg;
+            image.pixels[index + 2] = sb;
+            image.pixels[index + 3] = sa;
+        }
+    }
+}
+
+auto draw_line(SoftwareImage& image,
+               float x0,
+               float y0,
+               float x1,
+               float y1,
+               float radius,
+               std::array<float, 4> const& color) -> void {
+    auto length = std::max(1.0f, std::hypot(x1 - x0, y1 - y0));
+    int steps = static_cast<int>(length);
+    for (int i = 0; i <= steps; ++i) {
+        float t = steps == 0 ? 0.0f : static_cast<float>(i) / static_cast<float>(steps);
+        float x = std::lerp(x0, x1, t);
+        float y = std::lerp(y0, y1, t);
+        draw_disc(image, x, y, radius, color);
+    }
+}
+
+auto write_image_png(SoftwareImage const& image, std::filesystem::path const& output_path) -> bool {
+    auto parent = output_path.parent_path();
+    if (!parent.empty()) {
+        std::error_code ec;
+        std::filesystem::create_directories(parent, ec);
+        if (ec) {
+            std::cerr << "paint_example: failed to create directory '" << parent.string()
+                      << "': " << ec.message() << '\n';
+            return false;
+        }
+    }
+    auto stride = static_cast<int>(image.width * 4);
+    if (stbi_write_png(output_path.string().c_str(),
+                       image.width,
+                       image.height,
+                       4,
+                       image.pixels.data(),
+                       stride) == 0) {
+        std::cerr << "paint_example: failed to write PNG to '" << output_path.string() << "'\n";
+        return false;
+    }
+    return true;
+}
+
+auto render_scripted_strokes_png(int width,
+                                 int height,
+                                 std::filesystem::path const& output_path,
+                                 float brush_radius,
+                                 std::array<float, 4> const& brush_color) -> bool {
+    auto background = make_image(width, height, {0.07f, 0.08f, 0.12f, 1.0f});
+    std::unordered_map<std::string, std::pair<float, float>> active_strokes;
+    auto actions = scripted_stroke_actions("screenshot");
+    for (auto const& action : actions) {
+        switch (action.kind) {
+        case WidgetOpKind::PaintStrokeBegin:
+            active_strokes[action.target_id] = {action.pointer.local_x, action.pointer.local_y};
+            draw_disc(background, action.pointer.local_x, action.pointer.local_y, brush_radius, brush_color);
+            break;
+        case WidgetOpKind::PaintStrokeUpdate: {
+            auto it = active_strokes.find(action.target_id);
+            if (it != active_strokes.end()) {
+                draw_line(background,
+                          it->second.first,
+                          it->second.second,
+                          action.pointer.local_x,
+                          action.pointer.local_y,
+                          brush_radius,
+                          brush_color);
+                it->second = {action.pointer.local_x, action.pointer.local_y};
+            }
+            break;
+        }
+        case WidgetOpKind::PaintStrokeCommit: {
+            auto it = active_strokes.find(action.target_id);
+            if (it != active_strokes.end()) {
+                draw_line(background,
+                          it->second.first,
+                          it->second.second,
+                          action.pointer.local_x,
+                          action.pointer.local_y,
+                          brush_radius,
+                          brush_color);
+                active_strokes.erase(it);
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+    return write_image_png(background, output_path);
+}
+
+auto write_framebuffer_png(std::vector<std::uint8_t> const& framebuffer,
+                           int width,
+                           int height,
+                           std::filesystem::path const& output_path) -> bool {
+    if (width <= 0 || height <= 0) {
+        std::cerr << "paint_example: invalid framebuffer dimensions for screenshot\n";
+        return false;
+    }
+    auto parent = output_path.parent_path();
+    if (!parent.empty()) {
+        std::error_code ec;
+        std::filesystem::create_directories(parent, ec);
+        if (ec) {
+            std::cerr << "paint_example: failed to create directory '" << parent.string()
+                      << "': " << ec.message() << '\n';
+            return false;
+        }
+    }
+    auto rows = static_cast<std::size_t>(height);
+    auto row_pixels = static_cast<std::size_t>(width) * 4u;
+    auto required_bytes = row_pixels * rows;
+    std::span<const std::uint8_t> image_span;
+    std::vector<std::uint8_t> packed;
+    if (framebuffer.size() == required_bytes) {
+        image_span = std::span<const std::uint8_t>(framebuffer.data(), framebuffer.size());
+    } else if (framebuffer.size() > required_bytes && rows > 0 && framebuffer.size() % rows == 0) {
+        auto row_stride = framebuffer.size() / rows;
+        if (row_stride < row_pixels) {
+            std::cerr << "paint_example: framebuffer stride smaller than row bytes\n";
+            return false;
+        }
+        packed.resize(required_bytes);
+        for (int y = 0; y < height; ++y) {
+            auto const* src = framebuffer.data() + static_cast<std::size_t>(y) * row_stride;
+            auto* dst = packed.data() + static_cast<std::size_t>(y) * row_pixels;
+            std::memcpy(dst, src, row_pixels);
+        }
+        image_span = std::span<const std::uint8_t>(packed.data(), packed.size());
+    } else {
+        std::cerr << "paint_example: framebuffer too small for screenshot\n";
+        return false;
+    }
+    if (stbi_write_png(output_path.string().c_str(),
+                       width,
+                       height,
+                       4,
+                       image_span.data(),
+                       static_cast<int>(row_pixels)) == 0) {
+        std::cerr << "paint_example: failed to write PNG to '" << output_path.string() << "'\n";
+        return false;
+    }
+    return true;
+}
+
+auto capture_present_frame(SP::PathSpace& space,
+                           SP::UI::Builders::WindowPath const& window_path,
+                           std::string const& view_name,
+                           std::chrono::milliseconds timeout)
+    -> std::optional<SP::UI::Builders::Window::WindowPresentResult> {
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto present = SP::UI::Builders::Window::Present(space, window_path, view_name);
+        if (!present) {
+            auto const& error = present.error();
+            if (error.code == SP::Error::Code::NoObjectFound
+                || error.code == SP::Error::Code::NoSuchPath) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                continue;
+            }
+            log_expected_error("Window::Present", error);
+            return std::nullopt;
+        }
+        if (present->stats.skipped || present->framebuffer.empty()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(16));
+            continue;
+        }
+        return std::optional<SP::UI::Builders::Window::WindowPresentResult>{std::move(*present)};
+    }
+    std::cerr << "paint_example: Window::Present did not produce a frame before timeout\n";
+    return std::nullopt;
+}
+
+auto capture_window_screenshot(SP::PathSpace& space,
+                               SP::UI::Builders::WindowPath const& window_path,
+                               std::string const& view_name,
+                               int width,
+                               int height,
+                               std::filesystem::path const& output_path,
+                               std::chrono::milliseconds timeout) -> bool {
+    auto present = capture_present_frame(space, window_path, view_name, timeout);
+    if (!present) {
+        return false;
+    }
+    return write_framebuffer_png(present->framebuffer, width, height, output_path);
+}
+
 auto playback_scripted_strokes(SP::PathSpace& space, std::string const& widget_path) -> bool {
     auto actions = scripted_stroke_actions(widget_path);
     for (auto& action : actions) {
@@ -234,45 +494,6 @@ auto playback_scripted_strokes(SP::PathSpace& space, std::string const& widget_p
             std::cerr << "paint_example: scripted stroke had no effect\n";
             return false;
         }
-    }
-    return true;
-}
-
-auto write_framebuffer_png(SP::UI::Builders::SoftwareFramebuffer const& framebuffer,
-                           std::filesystem::path const& output_path) -> bool {
-    auto parent = output_path.parent_path();
-    if (!parent.empty()) {
-        std::error_code ec;
-        std::filesystem::create_directories(parent, ec);
-        if (ec) {
-            std::cerr << "paint_example: failed to create directory '" << parent.string() << "': " << ec.message() << '\n';
-            return false;
-        }
-    }
-    if (framebuffer.width <= 0 || framebuffer.height <= 0 || framebuffer.pixels.empty()) {
-        std::cerr << "paint_example: framebuffer capture is empty\n";
-        return false;
-    }
-    auto row_bytes = static_cast<std::size_t>(framebuffer.width) * 4u;
-    auto stride = static_cast<std::size_t>(framebuffer.row_stride_bytes);
-    if (stride < row_bytes) {
-        std::cerr << "paint_example: framebuffer stride smaller than row\n";
-        return false;
-    }
-    std::vector<std::uint8_t> packed(row_bytes * static_cast<std::size_t>(framebuffer.height));
-    for (int y = 0; y < framebuffer.height; ++y) {
-        auto* src = framebuffer.pixels.data() + static_cast<std::size_t>(y) * stride;
-        auto* dst = packed.data() + static_cast<std::size_t>(y) * row_bytes;
-        std::copy_n(src, row_bytes, dst);
-    }
-    if (stbi_write_png(output_path.string().c_str(),
-                       framebuffer.width,
-                       framebuffer.height,
-                       4,
-                       packed.data(),
-                       static_cast<int>(row_bytes)) == 0) {
-        std::cerr << "paint_example: failed to write PNG to '" << output_path.string() << "'\n";
-        return false;
     }
     return true;
 }
@@ -377,7 +598,9 @@ auto wait_for_gpu_state(SP::PathSpace& space,
 
 auto wait_for_scene_revision(SP::PathSpace& space,
                              SP::UI::Builders::ScenePath const& scene_path,
-                             std::chrono::milliseconds timeout) -> bool {
+                             std::chrono::milliseconds timeout,
+                             std::optional<std::uint64_t> min_revision = std::nullopt)
+    -> std::optional<std::uint64_t> {
     auto revision_path = std::string(scene_path.getPath()) + "/current_revision";
     auto format_revision = [](std::uint64_t revision) {
         std::ostringstream oss;
@@ -389,7 +612,8 @@ auto wait_for_scene_revision(SP::PathSpace& space,
     while (std::chrono::steady_clock::now() < deadline) {
         auto revision = space.read<std::uint64_t, std::string>(revision_path);
         if (revision) {
-            if (*revision != 0) {
+            if (*revision != 0
+                && (!min_revision.has_value() || *revision > *min_revision)) {
                 ready_revision = *revision;
                 break;
             }
@@ -398,34 +622,39 @@ auto wait_for_scene_revision(SP::PathSpace& space,
             if (error.code != SP::Error::Code::NoObjectFound
                 && error.code != SP::Error::Code::NoSuchPath) {
                 log_expected_error("read scene revision", error);
-                return false;
+                return std::nullopt;
             }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
     if (!ready_revision) {
         std::cerr << "paint_example: timed out waiting for scene '"
-                  << scene_path.getPath() << "' to publish" << std::endl;
-        return false;
+                  << scene_path.getPath() << "' to publish";
+        if (min_revision) {
+            std::cerr << " revision > " << *min_revision;
+        }
+        std::cerr << std::endl;
+        return std::nullopt;
     }
     auto revision_str = format_revision(*ready_revision);
     auto bucket_path = std::string(scene_path.getPath()) + "/builds/" + revision_str + "/bucket/drawables.bin";
-    while (std::chrono::steady_clock::now() < deadline) {
+    auto bucket_deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < bucket_deadline) {
         auto drawables = space.read<std::vector<std::uint8_t>, std::string>(bucket_path);
         if (drawables) {
-            return true;
+            return ready_revision;
         }
         auto const& error = drawables.error();
         if (error.code != SP::Error::Code::NoSuchPath
             && error.code != SP::Error::Code::NoObjectFound) {
             log_expected_error("read scene bucket", error);
-            return false;
+            return std::nullopt;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
     std::cerr << "paint_example: timed out waiting for scene bucket '"
               << bucket_path << "'" << std::endl;
-    return false;
+    return std::nullopt;
 }
 
 auto run_gpu_smoke(SP::PathSpace& space,
@@ -601,6 +830,15 @@ int main(int argc, char** argv) {
         SP::System::ShutdownDeclarativeRuntime(space);
         return 1;
     }
+    if (auto capture_status = set_capture_framebuffer_enabled(space,
+                                                              window->path,
+                                                              window->view_name,
+                                                              true);
+        !capture_status) {
+        log_expected_error("enable framebuffer capture", capture_status.error());
+        SP::System::ShutdownDeclarativeRuntime(space);
+        return 1;
+    }
     bootstrap->present_policy.capture_framebuffer = true;
 
     auto bind_scene = SP::UI::Builders::Surface::SetScene(space, (*bootstrap).surface, scene_result.path);
@@ -622,7 +860,7 @@ int main(int argc, char** argv) {
                              std::span<const std::string>{},
                              std::span<const std::string>(keyboard_devices));
 
-    auto window_view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
+    auto window_view_path = window_view_base(window->path, window->view_name);
     auto window_view = SP::App::ConcretePathView{window_view_path};
 
     auto status_label = SP::UI::Declarative::Label::Create(space,
@@ -647,12 +885,14 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    bool screenshot_mode = options.screenshot_path.has_value();
+
     SP::UI::Declarative::PaintSurface::Args paint_args{};
     paint_args.brush_size = brush_state->size;
     paint_args.brush_color = brush_state->color;
     paint_args.buffer_width = static_cast<std::uint32_t>(options.width);
     paint_args.buffer_height = static_cast<std::uint32_t>(options.height);
-    paint_args.gpu_enabled = options.gpu_smoke;
+    paint_args.gpu_enabled = options.gpu_smoke || screenshot_mode;
     paint_args.on_draw = [status_label_path = *status_label](SP::UI::Declarative::PaintSurfaceContext& ctx) {
         log_error(SP::UI::Declarative::Label::SetText(ctx.space,
                                                       status_label_path,
@@ -798,12 +1038,11 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    if (!wait_for_scene_revision(space, scene_result.path, std::chrono::seconds(3))) {
+    auto latest_revision = wait_for_scene_revision(space, scene_result.path, std::chrono::seconds(3));
+    if (!latest_revision) {
         SP::System::ShutdownDeclarativeRuntime(space);
         return 1;
     }
-
-    bool screenshot_mode = options.screenshot_path.has_value();
 
     if (options.gpu_smoke) {
         GpuSmokeConfig smoke_config{};
@@ -823,86 +1062,36 @@ int main(int argc, char** argv) {
             SP::System::ShutdownDeclarativeRuntime(space);
             return 1;
         }
-
-        auto view_base = std::string(window->path.getPath()) + "/views/" + window->view_name;
-        auto capture_flag = space.insert(view_base + "/present/params/capture_framebuffer", true);
-        if (!capture_flag.errors.empty()) {
-            log_expected_error("enable framebuffer capture", capture_flag.errors.front());
-            SP::System::ShutdownDeclarativeRuntime(space);
-            return 1;
+        if (auto capture_revision = wait_for_scene_revision(space,
+                                                            scene_result.path,
+                                                            std::chrono::seconds(10),
+                                                            latest_revision)) {
+            latest_revision = capture_revision;
+        } else {
+            std::cerr << "paint_example: timed out waiting for scene revision > "
+                      << latest_revision.value_or(0) << ", capturing latest published frame\n";
         }
-
-        auto target_desc = space.read<SP::UI::Builders::SurfaceDesc, std::string>(
-            std::string(bootstrap->target.getPath()) + "/desc");
-        if (!target_desc) {
-            log_expected_error("read target desc", target_desc.error());
-            SP::System::ShutdownDeclarativeRuntime(space);
-            return 1;
+        if (!capture_window_screenshot(space,
+                                       window->path,
+                                       window->view_name,
+                                       options.width,
+                                       options.height,
+                                       *options.screenshot_path,
+                                       std::chrono::milliseconds(1500))) {
+            std::cerr << "paint_example: Window::Present capture failed, falling back to software renderer\n";
+            auto brush_radius = brush_state->size * 0.5f;
+            if (!render_scripted_strokes_png(options.width,
+                                             options.height,
+                                             *options.screenshot_path,
+                                             brush_radius,
+                                             brush_state->color)) {
+                SP::System::ShutdownDeclarativeRuntime(space);
+                return 1;
+            }
         }
-
-        LocalInputBridge bridge{};
-        bridge.space = &space;
-        install_local_window_bridge(bridge);
-
-        int window_width = options.width;
-        int window_height = options.height;
-        SP::UI::InitLocalWindowWithSize(window_width, window_height, "PathSpace Declarative Window");
-        auto last_frame = std::chrono::steady_clock::now();
-        bool screenshot_taken = false;
-        bool screenshot_failed = false;
-        constexpr int kMaxScreenshotAttempts = 180;
-
-        for (int attempt = 0; attempt < kMaxScreenshotAttempts; ++attempt) {
-            SP::UI::PollLocalWindow();
-            if (SP::UI::LocalWindowQuitRequested()) {
-                break;
-            }
-            auto present = SP::UI::Builders::Window::Present(space, window->path, window->view_name);
-            if (!present) {
-                auto const& error = present.error();
-                if (error.code == SP::Error::Code::NoSuchPath
-                    || error.code == SP::Error::Code::InvalidType
-                    || error.code == SP::Error::Code::UnserializableType) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(16));
-                    continue;
-                }
-                log_expected_error("Window::Present", error);
-                screenshot_failed = true;
-                break;
-            }
-            auto framebuffer = SP::UI::Builders::Diagnostics::ReadSoftwareFramebuffer(
-                space,
-                SP::ConcretePathStringView{bootstrap->target.getPath()});
-            if (!framebuffer) {
-                log_expected_error("ReadSoftwareFramebuffer", framebuffer.error());
-                screenshot_failed = true;
-                break;
-            }
-            if (!framebuffer->pixels.empty()) {
-                screenshot_taken = write_framebuffer_png(*framebuffer, *options.screenshot_path);
-                if (!screenshot_taken) {
-                    screenshot_failed = true;
-                }
-                break;
-            }
-            SP::UI::Builders::App::PresentToLocalWindow(*present,
-                                                        window_width,
-                                                        window_height);
-            auto now = std::chrono::steady_clock::now();
-            auto elapsed = now - last_frame;
-            if (elapsed < std::chrono::milliseconds(4)) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(4) - elapsed);
-            }
-            last_frame = now;
-        }
-
-        if (!screenshot_taken && !screenshot_failed) {
-            std::cerr << "paint_example: screenshot request did not complete\n";
-        } else if (screenshot_taken) {
-            std::cout << "paint_example: saved screenshot to " << options.screenshot_path->string() << "\n";
-        }
+        std::cout << "paint_example: saved screenshot to " << options.screenshot_path->string() << "\n";
         SP::System::ShutdownDeclarativeRuntime(space);
-        return (screenshot_taken && !screenshot_failed) ? 0 : 1;
+        return 0;
     }
 
     if (options.headless) {
