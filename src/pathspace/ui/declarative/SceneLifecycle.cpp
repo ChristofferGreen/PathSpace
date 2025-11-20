@@ -442,6 +442,9 @@ private:
         if (!aggregate.has_value()) {
             return;
         }
+        if (aggregate->drawable_ids.empty()) {
+            return;
+        }
         auto now = std::chrono::system_clock::now();
         SP::UI::Scene::SnapshotPublishOptions opts{};
         opts.metadata.author = std::string{kPublishAuthor};

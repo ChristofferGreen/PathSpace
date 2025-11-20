@@ -319,15 +319,6 @@ auto SceneSnapshotBuilder::store_bucket(std::uint64_t revision,
         return std::unexpected(encodedMetadata.error());
     }
 
-    auto publish = Builders::Scene::PublishRevision(space_,
-                                                    scene_path_,
-                                                    revisionDesc,
-                                                    to_view(*encodedManifest),
-                                                    to_view(*encodedMetadata));
-    if (!publish) {
-        return std::unexpected(publish.error());
-    }
-
     auto revisionBase = make_revision_base(scene_path_, revision);
     std::vector<std::uint64_t> fingerprints = bucket.drawable_fingerprints;
     if (fingerprints.size() != bucket.drawable_ids.size()) {
@@ -508,7 +499,22 @@ auto SceneSnapshotBuilder::store_bucket(std::uint64_t revision,
     summary.layer_ids          = std::move(layer_ids);
     summary.fingerprint_count  = static_cast<std::uint64_t>(metadata.fingerprint_digests.size());
 
-    return replace_single<SnapshotSummary>(space_, revisionBase + std::string(kBucketSummary), summary);
+    if (auto status = replace_single<SnapshotSummary>(space_,
+                                                      revisionBase + std::string(kBucketSummary),
+                                                      summary);
+        !status) {
+        return status;
+    }
+
+    auto publish = Builders::Scene::PublishRevision(space_,
+                                                    scene_path_,
+                                                    revisionDesc,
+                                                    to_view(*encodedManifest),
+                                                    to_view(*encodedMetadata));
+    if (!publish) {
+        return std::unexpected(publish.error());
+    }
+    return {};
 }
 
 auto SceneSnapshotBuilder::record_snapshot(std::uint64_t revision,

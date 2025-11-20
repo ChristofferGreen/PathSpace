@@ -298,10 +298,7 @@ Status snapshot for the empty paint window investigation:
 
 1. **Lifecycle watcher root** — `SceneLifecycleWorker` was still walking `/windows/<id>/widgets`; declarative widgets actually live under `/windows/<id>/views/<view>/widgets`. Pointing the worker at the view-specific subtree is required or no buckets ever publish.
 2. **Scene readiness wait** — `examples/paint_example.cpp` now needs to block on `/scenes/<scene>/current_revision` _and_ the corresponding `/builds/<rev>/bucket/drawables.bin` before running the screenshot loop. Without this, `Window::Present` just returns `NoSuchPath` while the lifecycle is still emitting buckets.
-3. **Remaining blocker** — Even after the fixes above, `Window::Present` fails with `Error::Code::InvalidType`/`UnserializableType` (“deserialization failed: Value too large to be stored in data type”) because `SceneSnapshotBuilder::decode_bucket` reads `bucket/drawables.bin` before all bucket files land. We suspect `PublishRevision` updates `current_revision` too early. Next steps:
-   - Instrument `SceneSnapshotBuilder::{store_bucket,decode_bucket}` to log which file fails and verify offsets/counts vs. `drawable_ids.size()`.
-   - Reorder `PublishRevision` so `current_revision` flips only after every `/bucket/*.bin` write succeeds, or add a retry path in the decoder for “bucket incomplete” errors.
-   - Once decoding succeeds, re-run `./build/paint_example --screenshot <path>` followed by the mandated `./scripts/compile.sh --clean --test --loop=15 --release` gate.
+3. **Snapshot ordering fix (November 20, 2025)** — The lifecycle worker now waits until aggregated buckets are non-empty and `SceneSnapshotBuilder::store_bucket` writes every `/bucket/*.bin` plus the summary before `PublishRevision` updates `current_revision`. `SceneSnapshotBuilder::decode_bucket` also reports the exact failing file path, so corrupt artifacts are easy to spot. With the serialization race eliminated, `Window::Present` and `examples/paint_example --headless` finally render the declarative UI without “Value too large to be stored in data type” errors, so the screenshot flow is unblocked again.
 
 Keep this journal in sync as we chip away at the serialization issue so we can pick up right where we left off next session.
 

@@ -9,10 +9,19 @@ namespace SP::UI::Scene {
 
 auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
                                          std::string const& revisionBase) -> Expected<DrawableBucketSnapshot> {
+    auto annotate_error = [](SP::Error error, std::string const& path) -> SP::Error {
+        if (error.message && !error.message->empty()) {
+            error.message = path + ": " + *error.message;
+        } else {
+            error.message = path;
+        }
+        return error;
+    };
+
     auto read_bytes = [&](std::string const& path) -> Expected<std::vector<std::uint8_t>> {
         auto value = space.read<std::vector<std::uint8_t>>(path);
         if (!value) {
-            return std::unexpected(value.error());
+            return std::unexpected(annotate_error(value.error(), path));
         }
         return *value;
     };
@@ -20,7 +29,7 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
     auto drawablesBytes = read_bytes(revisionBase + "/bucket/drawables.bin");
     if (!drawablesBytes) return std::unexpected(drawablesBytes.error());
     auto drawablesDecoded = from_bytes<BucketDrawablesBinary>(*drawablesBytes);
-    if (!drawablesDecoded) return std::unexpected(drawablesDecoded.error());
+    if (!drawablesDecoded) return std::unexpected(annotate_error(drawablesDecoded.error(), revisionBase + "/bucket/drawables.bin"));
 
     std::vector<std::uint64_t> drawable_fingerprints;
     {
@@ -28,7 +37,7 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
         if (fingerprintBytes) {
             auto decoded = from_bytes<BucketFingerprintsBinary>(*fingerprintBytes);
             if (!decoded) {
-                return std::unexpected(decoded.error());
+                return std::unexpected(annotate_error(decoded.error(), revisionBase + "/bucket/fingerprints.bin"));
             }
             drawable_fingerprints = std::move(decoded->drawable_fingerprints);
         } else {
@@ -43,22 +52,22 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
     auto transformsBytes = read_bytes(revisionBase + "/bucket/transforms.bin");
     if (!transformsBytes) return std::unexpected(transformsBytes.error());
     auto transformsDecoded = from_bytes<BucketTransformsBinary>(*transformsBytes);
-    if (!transformsDecoded) return std::unexpected(transformsDecoded.error());
+    if (!transformsDecoded) return std::unexpected(annotate_error(transformsDecoded.error(), revisionBase + "/bucket/transforms.bin"));
 
     auto boundsBytes = read_bytes(revisionBase + "/bucket/bounds.bin");
     if (!boundsBytes) return std::unexpected(boundsBytes.error());
     auto boundsDecoded = from_bytes<BucketBoundsBinary>(*boundsBytes);
-    if (!boundsDecoded) return std::unexpected(boundsDecoded.error());
+    if (!boundsDecoded) return std::unexpected(annotate_error(boundsDecoded.error(), revisionBase + "/bucket/bounds.bin"));
 
     auto stateBytes = read_bytes(revisionBase + "/bucket/state.bin");
     if (!stateBytes) return std::unexpected(stateBytes.error());
     auto stateDecoded = from_bytes<BucketStateBinary>(*stateBytes);
-    if (!stateDecoded) return std::unexpected(stateDecoded.error());
+    if (!stateDecoded) return std::unexpected(annotate_error(stateDecoded.error(), revisionBase + "/bucket/state.bin"));
 
     auto cmdBytes = read_bytes(revisionBase + "/bucket/cmd-buffer.bin");
     if (!cmdBytes) return std::unexpected(cmdBytes.error());
     auto cmdDecoded = from_bytes<BucketCommandBufferBinary>(*cmdBytes);
-    if (!cmdDecoded) return std::unexpected(cmdDecoded.error());
+    if (!cmdDecoded) return std::unexpected(annotate_error(cmdDecoded.error(), revisionBase + "/bucket/cmd-buffer.bin"));
 
     std::vector<StrokePoint> stroke_points;
     {
@@ -66,7 +75,7 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
         if (strokeBytes) {
             auto decoded = from_bytes<BucketStrokePointsBinary>(*strokeBytes);
             if (!decoded) {
-                return std::unexpected(decoded.error());
+                return std::unexpected(annotate_error(decoded.error(), revisionBase + "/bucket/strokes.bin"));
             }
             stroke_points = std::move(decoded->stroke_points);
         } else {
@@ -83,8 +92,9 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
     auto alpha = space.read<std::vector<std::uint32_t>>(revisionBase + "/bucket/indices/alpha.bin");
     if (!alpha) return std::unexpected(alpha.error());
 
-    auto summary = space.read<SnapshotSummary>(revisionBase + std::string(kBucketSummary));
-    if (!summary) return std::unexpected(summary.error());
+    auto summaryPath = revisionBase + std::string(kBucketSummary);
+    auto summary = space.read<SnapshotSummary>(summaryPath);
+    if (!summary) return std::unexpected(annotate_error(summary.error(), summaryPath));
 
     std::vector<std::int32_t> clip_head_indices;
     {
@@ -92,7 +102,7 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
         if (clipHeadsBytes) {
             auto decoded = from_bytes<BucketClipHeadsBinary>(*clipHeadsBytes);
             if (!decoded) {
-                return std::unexpected(decoded.error());
+                return std::unexpected(annotate_error(decoded.error(), revisionBase + "/bucket/clip-heads.bin"));
             }
             clip_head_indices = std::move(decoded->clip_head_indices);
         } else {
@@ -112,7 +122,7 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
         if (clipNodesBytes) {
             auto decoded = from_bytes<BucketClipNodesBinary>(*clipNodesBytes);
             if (!decoded) {
-                return std::unexpected(decoded.error());
+                return std::unexpected(annotate_error(decoded.error(), revisionBase + "/bucket/clip-nodes.bin"));
             }
             clip_nodes = std::move(decoded->clip_nodes);
         } else {
@@ -132,7 +142,7 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
         if (authoringBytes) {
             auto decoded = from_bytes<BucketAuthoringMapBinary>(*authoringBytes);
             if (!decoded) {
-                return std::unexpected(decoded.error());
+                return std::unexpected(annotate_error(decoded.error(), revisionBase + "/bucket/authoring-map.bin"));
             }
             authoring_map = std::move(decoded->authoring_map);
         } else {
@@ -155,7 +165,7 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
         if (fontBytes) {
             auto decoded = from_bytes<BucketFontAssetsBinary>(*fontBytes);
             if (!decoded) {
-                return std::unexpected(decoded.error());
+                return std::unexpected(annotate_error(decoded.error(), revisionBase + "/bucket/font-assets.bin"));
             }
             font_assets = std::move(decoded->font_assets);
         } else {
@@ -173,7 +183,7 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
         if (glyphBytes) {
             auto decoded = from_bytes<BucketGlyphVerticesBinary>(*glyphBytes);
             if (!decoded) {
-                return std::unexpected(decoded.error());
+                return std::unexpected(annotate_error(decoded.error(), revisionBase + "/bucket/glyph-vertices.bin"));
             }
             glyph_vertices = std::move(decoded->glyph_vertices);
         } else {
