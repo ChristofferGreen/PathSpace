@@ -29,6 +29,21 @@ namespace BuilderWidgets = SP::UI::Builders::Widgets;
 namespace PaintRuntime = SP::UI::Declarative::PaintRuntime;
 namespace DescriptorDetail = SP::UI::Declarative::DescriptorDetail;
 
+auto make_authoring_id(std::string const& base_path, std::string const& suffix) -> std::string {
+    if (base_path.empty()) {
+        std::string id = "widget/";
+        id.append(suffix);
+        return id;
+    }
+    std::string id = base_path;
+    if (!id.empty() && id.back() != '/') {
+        id.push_back('/');
+    }
+    id.append("authoring/");
+    id.append(suffix);
+    return id;
+}
+
 auto append_rect_drawable(SP::UI::Scene::DrawableBucketSnapshot& bucket,
                           std::uint64_t drawable_id,
                           float min_x,
@@ -38,7 +53,8 @@ auto append_rect_drawable(SP::UI::Scene::DrawableBucketSnapshot& bucket,
                           std::array<float, 4> const& color,
                           float z,
                           std::string const& authoring_root,
-                          [[maybe_unused]] std::string_view suffix) -> void {
+                          std::string const& suffix,
+                          std::uint32_t generation) -> void {
     bucket.drawable_ids.push_back(drawable_id);
     bucket.world_transforms.push_back(SP::UI::Scene::MakeIdentityTransform());
 
@@ -83,6 +99,12 @@ auto append_rect_drawable(SP::UI::Scene::DrawableBucketSnapshot& bucket,
     bucket.command_kinds.push_back(static_cast<std::uint32_t>(SP::UI::Scene::DrawCommandKind::RoundedRect));
 
     bucket.drawable_fingerprints.push_back(drawable_id);
+    bucket.clip_head_indices.push_back(-1);
+    bucket.authoring_map.push_back(SP::UI::Scene::DrawableAuthoringMapEntry{
+        drawable_id,
+       make_authoring_id(authoring_root, suffix),
+       0,
+       generation});
 }
 
 struct BucketVisitor {
@@ -198,7 +220,8 @@ struct BucketVisitor {
                                          highlight_color,
                                          1.0f,
                                          preview.authoring_root,
-                                         std::string_view{highlight_suffix});
+                                         highlight_suffix,
+                                         0);
                     break;
                 }
             }
@@ -240,7 +263,8 @@ struct BucketVisitor {
                              background_color,
                              -1.0f,
                              authoring_root,
-                             std::string_view{bg_suffix});
+                             bg_suffix,
+                             static_cast<std::uint32_t>(descriptor.buffer_revision));
 
         std::size_t total_points = 0;
         for (auto const& stroke : descriptor.strokes) {
@@ -323,6 +347,12 @@ struct BucketVisitor {
             bucket.pipeline_flags.push_back(0);
             bucket.visibility.push_back(1);
             bucket.clip_head_indices.push_back(-1);
+            auto stroke_suffix = std::string{"paint/stroke/"} + std::to_string(stroke.id);
+            bucket.authoring_map.push_back(SP::UI::Scene::DrawableAuthoringMapEntry{
+                drawable_id,
+                make_authoring_id(authoring_root, stroke_suffix),
+                0,
+                static_cast<std::uint32_t>(descriptor.buffer_revision)});
 
             if (stroke.meta.color[3] < 0.999f) {
                 alpha_indices.push_back(static_cast<std::uint32_t>(bucket.drawable_ids.size() - 1));

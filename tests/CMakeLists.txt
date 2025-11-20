@@ -184,6 +184,21 @@ if(PATHSPACE_ENABLE_UI)
   )
   set_tests_properties(PathSpaceUITests PROPERTIES LABELS ui)
 
+  add_test(NAME PaintExampleScreenshot
+    COMMAND "${PATHSPACE_TEST_RUNNER}"
+            --label PaintExampleScreenshot
+            --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+            --timeout 120
+            --env PATHSPACE_LOG=1
+            --env PATHSPACE_TEST_TIMEOUT=1
+            --env MallocNanoZone=0
+            --
+            python3
+            "${CMAKE_SOURCE_DIR}/scripts/check_paint_screenshot.py"
+            --build-dir "${CMAKE_BINARY_DIR}"
+  )
+  set_tests_properties(PaintExampleScreenshot PROPERTIES LABELS ui)
+
   if(APPLE)
     add_test(NAME PixelNoisePerfHarness
       COMMAND "${PATHSPACE_TEST_RUNNER}"

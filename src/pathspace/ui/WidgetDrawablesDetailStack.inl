@@ -104,6 +104,17 @@ inline auto measure_stack(PathSpace& space,
     return StackWidgetSize{std::max(layout->width, 0.0f), std::max(layout->height, 0.0f)};
 }
 
+inline auto measure_paint_surface(PathSpace& space,
+                                  std::string const& root) -> SP::Expected<StackWidgetSize> {
+    auto metrics = SP::UI::Declarative::PaintRuntime::ReadBufferMetrics(space, root);
+    if (!metrics) {
+        return std::unexpected(metrics.error());
+    }
+    auto width = static_cast<float>(metrics->width);
+    auto height = static_cast<float>(metrics->height);
+    return StackWidgetSize{std::max(width, 0.0f), std::max(height, 0.0f)};
+}
+
 inline auto measure_widget(PathSpace& space,
                            std::string const& root) -> SP::Expected<StackWidgetSize> {
     auto kindPath = root + "/meta/kind";
@@ -133,6 +144,9 @@ inline auto measure_widget(PathSpace& space,
     }
     if (*kind == "stack") {
         return measure_stack(space, root);
+    }
+    if (*kind == "paint_surface") {
+        return measure_paint_surface(space, root);
     }
     return std::unexpected(make_error("Unsupported widget kind for stack layout: " + *kind,
                                       SP::Error::Code::InvalidType));

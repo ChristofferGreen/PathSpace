@@ -112,6 +112,12 @@ struct FragmentBuilder {
     auto build() -> WidgetFragment {
         return std::move(fragment);
     }
+
+    template <typename Fn>
+    FragmentBuilder& with_finalize(Fn&& fn) {
+        fragment.finalize = std::forward<Fn>(fn);
+        return *this;
+    }
 };
 
 } // namespace SP::UI::Declarative::Detail

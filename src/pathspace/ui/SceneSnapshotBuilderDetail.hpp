@@ -95,7 +95,8 @@ template <typename T>
 inline auto to_bytes(T const& obj) -> Expected<std::vector<std::uint8_t>> {
     std::vector<std::uint8_t> buffer;
     try {
-        alpaca::serialize(obj, buffer);
+        std::size_t byte_index = 0;
+        alpaca::serialize<alpaca::options::fixed_length_encoding>(obj, buffer, byte_index);
     } catch (std::exception const& ex) {
         return std::unexpected(make_error("serialization failed: " + std::string(ex.what()),
                                           Error::Code::SerializationFunctionMissing));
@@ -109,7 +110,7 @@ inline auto to_bytes(T const& obj) -> Expected<std::vector<std::uint8_t>> {
 template <typename T>
 inline auto from_bytes(std::vector<std::uint8_t> const& buffer) -> Expected<T> {
     std::error_code ec;
-    auto            decoded = alpaca::deserialize<T>(buffer, ec);
+    auto decoded = alpaca::deserialize<alpaca::options::fixed_length_encoding, T>(buffer, ec);
     if (ec) {
         return std::unexpected(make_error("deserialization failed: " + ec.message(),
                                           Error::Code::UnserializableType));

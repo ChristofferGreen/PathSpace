@@ -93,12 +93,15 @@ TEST_CASE("Declarative paint surface records strokes and builds stroke buckets")
     auto scene = SP::Scene::Create(space, *app_root, window->path, {});
     REQUIRE(scene);
 
+    auto window_view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
+    auto window_view = SP::App::ConcretePathView{window_view_path};
+
     SP::UI::Declarative::PaintSurface::Args args{};
     args.brush_size = 10.0f;
     args.buffer_width = 128;
     args.buffer_height = 96;
     auto widget = SP::UI::Declarative::PaintSurface::Create(space,
-                                                            SP::App::ConcretePathView{window->path.getPath()},
+                                                            window_view,
                                                             "canvas",
                                                             args);
     REQUIRE(widget);
@@ -158,12 +161,15 @@ TEST_CASE("Declarative paint surface GPU uploader stages texture payload") {
     auto scene = SP::Scene::Create(space, *app_root, window->path, {});
     REQUIRE(scene);
 
+    auto window_view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
+    auto window_view = SP::App::ConcretePathView{window_view_path};
+
     SP::UI::Declarative::PaintSurface::Args args{};
     args.gpu_enabled = true;
     args.buffer_width = 96;
     args.buffer_height = 64;
     auto widget = SP::UI::Declarative::PaintSurface::Create(space,
-                                                            SP::App::ConcretePathView{window->path.getPath()},
+                                                            window_view,
                                                             "gpu_canvas",
                                                             args);
     REQUIRE(widget);

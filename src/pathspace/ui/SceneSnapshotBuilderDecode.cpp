@@ -2,10 +2,90 @@
 
 #include <algorithm>
 #include <chrono>
+#include <limits>
 #include <string>
 #include <vector>
 
 namespace SP::UI::Scene {
+
+namespace {
+
+template <typename UInt>
+auto read_varuint(std::vector<std::uint8_t> const& bytes,
+                  std::size_t& index,
+                  std::size_t end) -> Expected<UInt> {
+    constexpr auto max_bits = std::numeric_limits<UInt>::digits;
+    UInt value = 0;
+    unsigned int shift = 0;
+    while (index < end) {
+        auto byte = bytes[index++];
+        auto chunk = static_cast<UInt>(byte & 0x7Fu);
+        if (shift >= max_bits && chunk != 0) {
+            return std::unexpected(make_error("varuint overflow while decoding bucket",
+                                              Error::Code::UnserializableType));
+        }
+        value |= static_cast<UInt>(chunk << shift);
+        if ((byte & 0x80u) == 0) {
+            return value;
+        }
+        shift += 7;
+        if (shift > max_bits + 7) {
+            return std::unexpected(make_error("varuint exceeds target width",
+                                              Error::Code::UnserializableType));
+        }
+    }
+    return std::unexpected(make_error("unexpected end of data while decoding bucket",
+                                      Error::Code::UnserializableType));
+}
+
+template <typename UInt>
+auto decode_varint_vector(std::vector<std::uint8_t> const& bytes,
+                          std::size_t& index,
+                          std::size_t end,
+                          std::vector<UInt>& output) -> Expected<void> {
+    auto length = read_varuint<std::size_t>(bytes, index, end);
+    if (!length) {
+        return std::unexpected(length.error());
+    }
+    if (index > end) {
+        return std::unexpected(make_error("bucket buffer truncated",
+                                          Error::Code::UnserializableType));
+    }
+    output.clear();
+    output.reserve(*length);
+    for (std::size_t i = 0; i < *length; ++i) {
+        auto value = read_varuint<UInt>(bytes, index, end);
+        if (!value) {
+            return std::unexpected(value.error());
+        }
+        output.push_back(*value);
+    }
+    return {};
+}
+
+auto decode_drawables_binary_varint(std::vector<std::uint8_t> const& bytes)
+    -> Expected<BucketDrawablesBinary> {
+    BucketDrawablesBinary decoded{};
+    std::size_t index = 0;
+    auto end = bytes.size();
+
+    if (auto status = decode_varint_vector<std::uint64_t>(bytes, index, end, decoded.drawable_ids); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = decode_varint_vector<std::uint32_t>(bytes, index, end, decoded.command_offsets); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = decode_varint_vector<std::uint32_t>(bytes, index, end, decoded.command_counts); !status) {
+        return std::unexpected(status.error());
+    }
+    if (index != end) {
+        return std::unexpected(make_error("unexpected trailing data in drawables bucket",
+                                          Error::Code::UnserializableType));
+    }
+    return decoded;
+}
+
+} // namespace
 
 auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
                                          std::string const& revisionBase) -> Expected<DrawableBucketSnapshot> {
@@ -28,8 +108,17 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
 
     auto drawablesBytes = read_bytes(revisionBase + "/bucket/drawables.bin");
     if (!drawablesBytes) return std::unexpected(drawablesBytes.error());
-    auto drawablesDecoded = from_bytes<BucketDrawablesBinary>(*drawablesBytes);
-    if (!drawablesDecoded) return std::unexpected(annotate_error(drawablesDecoded.error(), revisionBase + "/bucket/drawables.bin"));
+    BucketDrawablesBinary drawablesBinary{};
+    if (auto decoded = from_bytes<BucketDrawablesBinary>(*drawablesBytes); decoded) {
+        drawablesBinary = std::move(*decoded);
+    } else {
+        auto fallback = decode_drawables_binary_varint(*drawablesBytes);
+        if (!fallback) {
+            return std::unexpected(annotate_error(decoded.error(),
+                                                  revisionBase + "/bucket/drawables.bin"));
+        }
+        drawablesBinary = std::move(*fallback);
+    }
 
     std::vector<std::uint64_t> drawable_fingerprints;
     {
@@ -109,7 +198,7 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
             auto const& error = clipHeadsBytes.error();
             if (error.code == Error::Code::NoObjectFound
                 || error.code == Error::Code::NoSuchPath) {
-                clip_head_indices.assign(drawablesDecoded->drawable_ids.size(), -1);
+                clip_head_indices.assign(drawablesBinary.drawable_ids.size(), -1);
             } else {
                 return std::unexpected(error);
             }
@@ -149,9 +238,9 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
             auto const& error = authoringBytes.error();
             if (error.code == Error::Code::NoObjectFound
                 || error.code == Error::Code::NoSuchPath) {
-                authoring_map.assign(drawablesDecoded->drawable_ids.size(), DrawableAuthoringMapEntry{});
+                authoring_map.assign(drawablesBinary.drawable_ids.size(), DrawableAuthoringMapEntry{});
                 for (std::size_t i = 0; i < authoring_map.size(); ++i) {
-                    authoring_map[i].drawable_id = drawablesDecoded->drawable_ids[i];
+                    authoring_map[i].drawable_id = drawablesBinary.drawable_ids[i];
                 }
             } else {
                 return std::unexpected(error);
@@ -196,7 +285,7 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
     }
 
     DrawableBucketSnapshot bucket{};
-    bucket.drawable_ids     = std::move(drawablesDecoded->drawable_ids);
+    bucket.drawable_ids     = std::move(drawablesBinary.drawable_ids);
     bucket.world_transforms = std::move(transformsDecoded->world_transforms);
     bucket.bounds_spheres   = std::move(boundsDecoded->spheres);
     bucket.bounds_boxes     = std::move(boundsDecoded->boxes);
@@ -206,8 +295,8 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
     bucket.material_ids     = std::move(stateDecoded->material_ids);
     bucket.pipeline_flags   = std::move(stateDecoded->pipeline_flags);
     bucket.visibility       = std::move(stateDecoded->visibility);
-    bucket.command_offsets  = std::move(drawablesDecoded->command_offsets);
-    bucket.command_counts   = std::move(drawablesDecoded->command_counts);
+    bucket.command_offsets  = std::move(drawablesBinary.command_offsets);
+    bucket.command_counts   = std::move(drawablesBinary.command_counts);
     bucket.opaque_indices   = *opaque;
     bucket.alpha_indices    = *alpha;
     bucket.command_kinds    = std::move(cmdDecoded->command_kinds);

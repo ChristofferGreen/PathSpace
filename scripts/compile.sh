@@ -652,6 +652,13 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
       fi
     fi
 
+    paint_screenshot_script="$ROOT_DIR/scripts/check_paint_screenshot.py"
+    if command -v python3 >/dev/null 2>&1 && [[ -f "$paint_screenshot_script" ]]; then
+      add_test_command "PaintExampleScreenshot" python3 "$paint_screenshot_script" --build-dir "$BUILD_DIR"
+    else
+      info "PaintExampleScreenshot harness unavailable; skipping (python3 or script missing)."
+    fi
+
     if [[ ${#TEST_LABELS[@]} -eq 0 ]]; then
       die "No tests configured to run."
     fi

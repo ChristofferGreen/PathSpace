@@ -167,6 +167,7 @@ struct WidgetFragment {
     std::function<SP::Expected<void>(FragmentContext const&)> populate;
     std::vector<std::pair<std::string, WidgetFragment>> children;
     std::vector<FragmentHandler> handlers;
+    std::function<SP::Expected<void>(FragmentContext const&)> finalize;
 };
 
 struct HandlerOverrideToken {

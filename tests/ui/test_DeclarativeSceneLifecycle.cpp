@@ -47,13 +47,16 @@ TEST_CASE("Scene lifecycle exposes dirty event queues") {
     auto scene = SP::Scene::Create(space, *app_root, window->path, scene_options);
     REQUIRE(scene);
 
+    auto window_view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
+    auto window_view = SP::App::ConcretePathView{window_view_path};
+
     auto lifecycle_state_path = std::string(scene->path.getPath()) + "/runtime/lifecycle/state/running";
     auto running = space.read<bool, std::string>(lifecycle_state_path);
     REQUIRE(running);
     CHECK(*running);
 
     auto widget = SP::UI::Declarative::Button::Create(space,
-                                                      SP::App::ConcretePathView{window->path.getPath()},
+                                                      window_view,
                                                       "watch_me",
                                                       {});
     REQUIRE(widget);
@@ -94,8 +97,11 @@ TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
     auto scene = SP::Scene::Create(space, *app_root, window->path, {});
     REQUIRE(scene);
 
+    auto window_view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
+    auto window_view = SP::App::ConcretePathView{window_view_path};
+
     auto button = SP::UI::Declarative::Button::Create(space,
-                                                      SP::App::ConcretePathView{window->path.getPath()},
+                                                      window_view,
                                                       "metrics_button",
                                                       {});
     REQUIRE(button);
@@ -166,8 +172,11 @@ TEST_CASE("Focus and theme changes invalidate declarative widgets") {
     auto scene = SP::Scene::Create(space, *app_root, window->path, {});
     REQUIRE(scene);
 
+    auto window_view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
+    auto window_view = SP::App::ConcretePathView{window_view_path};
+
     auto button = SP::UI::Declarative::Button::Create(space,
-                                                      SP::App::ConcretePathView{window->path.getPath()},
+                                                      window_view,
                                                       "focus_button",
                                                       {});
     REQUIRE(button);

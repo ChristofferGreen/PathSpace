@@ -136,7 +136,8 @@ auto Fragment(Args args) -> WidgetFragment {
     }
 
     auto on_select = std::move(args.on_select);
-    auto builder = WidgetDetail::FragmentBuilder{"stack",
+auto style_override = args.style;
+auto builder = WidgetDetail::FragmentBuilder{"stack",
                                    [panel_ids = std::move(panel_ids),
                                     active_panel = std::move(args.active_panel)](FragmentContext const& ctx)
                                        -> SP::Expected<void> {
@@ -176,6 +177,10 @@ auto Fragment(Args args) -> WidgetFragment {
         builder.with_handler("panel_select", HandlerKind::StackPanel, std::move(handler));
     }
 
+    builder.with_finalize([style_override = std::move(style_override)](FragmentContext const& ctx) {
+        return rebuild_layout(ctx.space, ctx.root, style_override);
+    });
+
     return builder.build();
 }
 
@@ -184,17 +189,12 @@ auto Create(PathSpace& space,
             std::string_view name,
             Args args,
             MountOptions const& options) -> SP::Expected<WidgetPath> {
-    auto style_override = args.style;
-    auto fragment = Fragment(std::move(args));
-    auto mounted = MountFragment(space, parent, name, fragment, options);
-    if (!mounted) {
-        return mounted;
-    }
-    auto status = rebuild_layout(space, mounted->getPath(), style_override);
-    if (!status) {
-        return std::unexpected(status.error());
-    }
+auto fragment = Fragment(std::move(args));
+auto mounted = MountFragment(space, parent, name, fragment, options);
+if (!mounted) {
     return mounted;
+}
+return mounted;
 }
 
 auto SetActivePanel(PathSpace& space,

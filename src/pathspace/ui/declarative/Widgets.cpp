@@ -71,6 +71,12 @@ auto MountFragment(PathSpace& space,
         }
     }
 
+    if (fragment.finalize) {
+        if (auto status = fragment.finalize(ctx); !status) {
+            return std::unexpected(status.error());
+        }
+    }
+
     return SP::UI::Builders::WidgetPath{root};
 }
 

@@ -336,7 +336,12 @@ private:
         auto windows = space_.listChildren(SP::ConcretePathStringView{root});
         for (auto const& window_name : windows) {
             auto window_root = root + "/" + window_name;
-            collect_widget_subtree(window_root + "/widgets", widgets);
+            auto views_root = window_root + "/views";
+            auto views = space_.listChildren(SP::ConcretePathStringView{views_root});
+            for (auto const& view_name : views) {
+                auto view_root = views_root + "/" + view_name + "/widgets";
+                collect_widget_subtree(view_root, widgets);
+            }
         }
     }
 
