@@ -111,11 +111,11 @@ def write_html(path: Path, runs: List[Dict[str, Any]]) -> None:
 <meta charset=\"utf-8\" />
 <title>Paint Example Screenshot Diagnostics</title>
 <style>
-body { font-family: sans-serif; margin: 2rem; }
-table { border-collapse: collapse; width: 100%; }
-th, td { border: 1px solid #ccc; padding: 0.25rem 0.5rem; text-align: left; }
-tr.ok { background: #f2fff2; }
-tr.fail { background: #fff2f2; }
+body {{ font-family: sans-serif; margin: 2rem; }}
+table {{ border-collapse: collapse; width: 100%; }}
+th, td {{ border: 1px solid #ccc; padding: 0.25rem 0.5rem; text-align: left; }}
+tr.ok {{ background: #f2fff2; }}
+tr.fail {{ background: #fff2f2; }}
 </style>
 </head>
 <body>
