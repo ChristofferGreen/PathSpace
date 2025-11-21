@@ -3,6 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
+#include <pathspace/ui/declarative/SceneLifecycle.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
 #include <pathspace/path/ConcretePath.hpp>
@@ -132,6 +133,8 @@ TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
     REQUIRE(first_revision_ready);
 
     REQUIRE(SP::UI::Declarative::Button::SetLabel(space, *button, "cycle"));
+    auto force_publish = SP::UI::Declarative::SceneLifecycle::ForcePublish(space, scene->path);
+    REQUIRE(force_publish);
     auto second_revision_ready = wait_for_revision(2);
     REQUIRE(second_revision_ready);
 

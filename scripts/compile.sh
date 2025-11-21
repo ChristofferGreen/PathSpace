@@ -738,6 +738,87 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
       fi
     }
 
+    archive_loop_failure() {
+      local label="$1"
+      local iteration="$2"
+      local exit_code="$3"
+      local reason="$4"
+      local failure_root="$ROOT_DIR/test-logs/loop_failures"
+      mkdir -p "$failure_root"
+      local timestamp
+      timestamp="$(date +"%Y%m%d-%H%M%S")"
+      local safe_label="${label//[^A-Za-z0-9._-]/_}"
+      local iteration_slug="loop${iteration:-unknown}"
+      local failure_dir="$failure_root/${timestamp}_${safe_label}_${iteration_slug}"
+      mkdir -p "$failure_dir"
+
+      if [[ -n "${TEST_LOG_MANIFEST:-}" && -s "$TEST_LOG_MANIFEST" ]]; then
+        cp "$TEST_LOG_MANIFEST" "$failure_dir/loop_manifest.tsv" >/dev/null 2>&1 || true
+      fi
+
+      local log_path=""
+      local artifact_dir=""
+      if command -v python3 >/dev/null 2>&1 && [[ -n "${TEST_LOG_MANIFEST:-}" && -s "$TEST_LOG_MANIFEST" ]]; then
+        local -a manifest_lookup=()
+        if mapfile -t manifest_lookup < <(python3 - "$TEST_LOG_MANIFEST" "$label" "${iteration:-}" <<'PY'
+import csv
+import sys
+
+manifest_path = sys.argv[1]
+label = sys.argv[2]
+iteration = sys.argv[3]
+rows = []
+with open(manifest_path, newline='') as fh:
+    reader = csv.reader(fh, delimiter='\t')
+    for row in reader:
+        if len(row) < 5:
+            continue
+        if row[0] != label:
+            continue
+        if iteration and row[1] != iteration:
+            continue
+        rows.append(row)
+if not rows:
+    sys.exit(1)
+row = rows[-1]
+print(row[3])
+print(row[4])
+PY
+); then
+          if [[ ${#manifest_lookup[@]} -ge 1 ]]; then
+            log_path="${manifest_lookup[0]}"
+          fi
+          if [[ ${#manifest_lookup[@]} -ge 2 ]]; then
+            artifact_dir="${manifest_lookup[1]}"
+          fi
+        fi
+      fi
+
+      if [[ -n "$log_path" && -f "$log_path" ]]; then
+        cp "$log_path" "$failure_dir/" >/dev/null 2>&1 || true
+      fi
+      if [[ -n "$artifact_dir" && -d "$artifact_dir" ]]; then
+        cp -R "$artifact_dir" "$failure_dir/" >/dev/null 2>&1 || true
+      fi
+
+      {
+        echo "label: $label"
+        echo "iteration: ${iteration:-unknown}"
+        echo "exit_code: $exit_code"
+        if [[ -n "$reason" ]]; then
+          echo "reason: $reason"
+        fi
+        if [[ -n "$log_path" ]]; then
+          echo "log: $log_path"
+        fi
+        if [[ -n "$artifact_dir" ]]; then
+          echo "artifacts: $artifact_dir"
+        fi
+      } >"$failure_dir/summary.txt"
+
+      info "Archived ${label} loop ${iteration:-?} logs to $failure_dir"
+    }
+
     loop_should_run_label() {
       local label="$1"
       if [[ "$LOOP" -le 0 ]]; then
@@ -801,9 +882,10 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
     fi
 
     paint_screenshot_script="$ROOT_DIR/scripts/check_paint_screenshot.py"
+    paint_manifest="$ROOT_DIR/docs/images/paint_example_baselines.json"
     if command -v python3 >/dev/null 2>&1 && [[ -f "$paint_screenshot_script" ]]; then
-      add_test_command "PaintExampleScreenshot" python3 "$paint_screenshot_script" --build-dir "$BUILD_DIR"
-      add_test_command "PaintExampleScreenshot720" python3 "$paint_screenshot_script" --build-dir "$BUILD_DIR" --baseline "$ROOT_DIR/docs/images/paint_example_720_baseline.png" --height 720 --tag paint_720
+      add_test_command "PaintExampleScreenshot" python3 "$paint_screenshot_script" --build-dir "$BUILD_DIR" --manifest "$paint_manifest"
+      add_test_command "PaintExampleScreenshot720" python3 "$paint_screenshot_script" --build-dir "$BUILD_DIR" --baseline "$ROOT_DIR/docs/images/paint_example_720_baseline.png" --height 720 --tag paint_720 --manifest "$paint_manifest"
     else
       info "PaintExampleScreenshot harness unavailable; skipping (python3 or script missing)."
     fi
@@ -957,14 +1039,22 @@ PY
           fi
           IFS=$'\x1f' read -r -a COMMAND <<< "$command_str"
           info "  Running ${name}..."
-            if ! run_test_command "$name" "$i" "$COUNT" "${COMMAND[@]}"; then
-              RC=$?
-              if [[ $RC -eq 124 ]]; then
-                die "Loop $i failed (${name} timed out after ${PER_TEST_TIMEOUT} seconds)"
-              else
-                die "Loop $i failed (${name} exit code $RC)"
-              fi
+          set +e
+          run_test_command "$name" "$i" "$COUNT" "${COMMAND[@]}"
+          RC=$?
+          set -e
+          if [[ $RC -ne 0 ]]; then
+            failure_reason="exit code ${RC}"
+            if [[ $RC -eq 124 ]]; then
+              failure_reason="timeout after ${PER_TEST_TIMEOUT} seconds"
             fi
+            archive_loop_failure "$name" "$i" "$RC" "$failure_reason"
+            if [[ $RC -eq 124 ]]; then
+              die "Loop $i failed (${name} timed out after ${PER_TEST_TIMEOUT} seconds)"
+            else
+              die "Loop $i failed (${name} exit code $RC)"
+            fi
+          fi
           done
           info "Loop $i/$COUNT: passed"
         done
@@ -977,8 +1067,11 @@ PY
         command_str="${TEST_COMMAND_STRINGS[$idx]}"
         IFS=$'\x1f' read -r -a COMMAND <<< "$command_str"
         info "Running ${name}..."
-        if ! run_test_command "$name" "" "" "${COMMAND[@]}"; then
-          RC=$?
+        set +e
+        run_test_command "$name" "" "" "${COMMAND[@]}"
+        RC=$?
+        set -e
+        if [[ $RC -ne 0 ]]; then
           if [[ $RC -eq 124 ]]; then
             die "${name} timed out after ${PER_TEST_TIMEOUT} seconds"
           else

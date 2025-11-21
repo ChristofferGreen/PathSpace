@@ -196,6 +196,7 @@ if(PATHSPACE_ENABLE_UI)
             python3
             "${CMAKE_SOURCE_DIR}/scripts/check_paint_screenshot.py"
             --build-dir "${CMAKE_BINARY_DIR}"
+            --manifest "${CMAKE_SOURCE_DIR}/docs/images/paint_example_baselines.json"
   )
 set_tests_properties(PaintExampleScreenshot PROPERTIES LABELS ui RESOURCE_LOCK ui_gpu_capture)
 
@@ -214,6 +215,7 @@ set_tests_properties(PaintExampleScreenshot PROPERTIES LABELS ui RESOURCE_LOCK u
             --baseline "${CMAKE_SOURCE_DIR}/docs/images/paint_example_720_baseline.png"
             --height 720
             --tag paint_720
+            --manifest "${CMAKE_SOURCE_DIR}/docs/images/paint_example_baselines.json"
   )
 set_tests_properties(PaintExampleScreenshot720 PROPERTIES LABELS ui RESOURCE_LOCK ui_gpu_capture)
 

@@ -24,6 +24,9 @@ struct Options {
 [[nodiscard]] auto Stop(PathSpace& space,
                         SP::UI::Builders::ScenePath const& scene_path) -> SP::Expected<void>;
 
+[[nodiscard]] auto ForcePublish(PathSpace& space,
+                                 SP::UI::Builders::ScenePath const& scene_path) -> SP::Expected<void>;
+
 auto InvalidateThemes(PathSpace& space,
                       SP::App::AppRootPathView app_root) -> void;
 

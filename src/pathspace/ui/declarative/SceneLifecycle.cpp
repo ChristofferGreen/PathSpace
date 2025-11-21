@@ -99,6 +99,7 @@ struct SceneLifecycleWorker {
         trellis_disable_path_ = trellis_path_ + "/_system/disable";
         control_queue_path_ = scene_path_ + "/runtime/lifecycle/control";
         theme_invalidate_command_ = control_queue_path_ + ":invalidate_theme";
+        force_publish_command_ = control_queue_path_ + ":force_publish";
         metrics_base_ = scene_path_ + "/runtime/lifecycle/metrics";
         auto renderer_leaf = window_path_ + "/views/" + view_name_ + "/renderer";
         auto renderer_relative = space_.read<std::string, std::string>(renderer_leaf);
@@ -140,6 +141,10 @@ struct SceneLifecycleWorker {
 
     void request_theme_invalidation() {
         (void)space_.insert(control_queue_path_, theme_invalidate_command_);
+    }
+
+    void request_force_publish() {
+        (void)space_.insert(control_queue_path_, force_publish_command_);
     }
 
     [[nodiscard]] auto matches_app(std::string_view candidate) const -> bool {
@@ -213,6 +218,13 @@ private:
         }
         if (payload == theme_invalidate_command_) {
             mark_all_widgets_dirty();
+            return;
+        }
+        if (payload == force_publish_command_) {
+            pending_publish_.store(false, std::memory_order_release);
+            write_metric("pending_publish", false);
+            publish_scene_snapshot(scene_path_);
+            return;
         }
     }
 
@@ -679,6 +691,7 @@ private:
     std::string trellis_disable_path_;
     std::string control_queue_path_;
     std::string theme_invalidate_command_;
+    std::string force_publish_command_;
     std::string metrics_base_;
     std::string renderer_target_path_;
     std::thread worker_;
@@ -746,6 +759,24 @@ auto Stop(PathSpace& space,
     }
     if (worker) {
         worker->stop();
+    }
+    return {};
+}
+
+auto ForcePublish(PathSpace& space,
+                  SP::UI::Builders::ScenePath const& scene_path) -> SP::Expected<void> {
+    (void)space;
+    std::shared_ptr<SceneLifecycleWorker> worker;
+    {
+        std::lock_guard<std::mutex> guard(g_lifecycle_mutex);
+        auto key = std::string(scene_path.getPath());
+        auto it = g_lifecycle_workers.find(key);
+        if (it != g_lifecycle_workers.end()) {
+            worker = it->second;
+        }
+    }
+    if (worker) {
+        worker->request_force_publish();
     }
     return {};
 }

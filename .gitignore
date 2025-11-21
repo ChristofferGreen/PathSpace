@@ -7,3 +7,4 @@ output.txt
 log.txt
 collected_sources.txt
 out.log
+test-logs/

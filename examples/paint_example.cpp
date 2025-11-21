@@ -15,6 +15,7 @@
 #include <array>
 #include <cstdlib>
 #include <chrono>
+#include <cstdint>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -41,6 +42,8 @@
 using namespace PathSpaceExamples;
 
 namespace {
+
+constexpr int kRequiredBaselineManifestRevision = 1;
 
 struct CommandLineOptions {
     int width = 1280;
@@ -294,6 +297,23 @@ auto log_error(SP::Expected<void> const& status, std::string const& context) -> 
     std::cerr << std::endl;
 }
 
+auto read_env_string(char const* key) -> std::optional<std::string> {
+    auto value = std::getenv(key);
+    if (value == nullptr) {
+        return std::nullopt;
+    }
+    return std::string{value};
+}
+
+auto parse_env_int(std::string const& text) -> std::optional<int> {
+    int result = 0;
+    auto parsed = std::from_chars(text.data(), text.data() + text.size(), result);
+    if (parsed.ec != std::errc{}) {
+        return std::nullopt;
+    }
+    return result;
+}
+
 template <typename T>
 auto replace_value(SP::PathSpace& space, std::string const& path, T const& value) -> SP::Expected<void> {
     auto inserted = space.insert(path, value);
@@ -301,6 +321,25 @@ auto replace_value(SP::PathSpace& space, std::string const& path, T const& value
         return std::unexpected(inserted.errors.front());
     }
     return {};
+}
+
+auto publish_baseline_metrics(SP::PathSpace& space,
+                              std::optional<int> const& manifest_revision,
+                              std::optional<std::string> const& tag,
+                              std::optional<std::string> const& sha) -> void {
+    if (!manifest_revision && !tag && !sha) {
+        return;
+    }
+    auto root = std::string{"/diagnostics/ui/paint_example/screenshot_baseline"};
+    if (manifest_revision) {
+        replace_value(space, root + "/manifest_revision", static_cast<std::int64_t>(*manifest_revision));
+    }
+    if (tag) {
+        replace_value(space, root + "/tag", *tag);
+    }
+    if (sha) {
+        replace_value(space, root + "/sha256", *sha);
+    }
 }
 
 auto history_metrics_root(std::string const& widget_path) -> std::string {
@@ -1775,12 +1814,35 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    auto baseline_version_env = read_env_string("PAINT_EXAMPLE_BASELINE_VERSION");
+    auto baseline_tag_env = read_env_string("PAINT_EXAMPLE_BASELINE_TAG");
+    auto baseline_sha_env = read_env_string("PAINT_EXAMPLE_BASELINE_SHA256");
+    std::optional<int> baseline_manifest_revision;
+    if (baseline_version_env) {
+        auto parsed_revision = parse_env_int(*baseline_version_env);
+        if (!parsed_revision) {
+            std::cerr << "paint_example: invalid PAINT_EXAMPLE_BASELINE_VERSION='" << *baseline_version_env << "'\n";
+            return 1;
+        }
+        if (*parsed_revision < kRequiredBaselineManifestRevision) {
+            std::cerr << "paint_example: baseline manifest revision " << *parsed_revision
+                      << " is older than required revision " << kRequiredBaselineManifestRevision << "\n";
+            std::cerr << "Re-run scripts/paint_example_capture.py to refresh the baseline manifest.\n";
+            return 1;
+        }
+        baseline_manifest_revision = parsed_revision;
+        std::cout << "paint_example: baseline manifest revision " << *parsed_revision
+                  << " (required " << kRequiredBaselineManifestRevision << ")\n";
+    }
+
     SP::PathSpace space;
     auto launch = SP::System::LaunchStandard(space);
     if (!launch) {
         std::cerr << "paint_example: failed to launch declarative runtime\n";
         return 1;
     }
+
+    publish_baseline_metrics(space, baseline_manifest_revision, baseline_tag_env, baseline_sha_env);
 
     auto app = SP::App::Create(space,
                                "paint_example",

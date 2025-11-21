@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "manifest_revision": 1,
+  "captures": {
+    "1280x800": {
+      "path": "docs/images/paint_example_baseline.png",
+      "width": 1280,
+      "height": 800,
+      "renderer": "metal_present",
+      "sha256": "8a9f6daabd69d66b385a27b72f717eab87537608f8276b880abf369919aa28e6",
+      "captured_at": "2025-11-21T11:36:07Z",
+      "commit": "3c9e0ece9ca392b122d674282edd161c38470b6e",
+      "notes": "PATHSPACE_ENABLE_METAL_UPLOADS=1 PATHSPACE_UI_METAL=ON ./build/paint_example --gpu-smoke --screenshot --screenshot-require-present",
+      "revision": 1
+    },
+    "paint_720": {
+      "path": "docs/images/paint_example_720_baseline.png",
+      "width": 1280,
+      "height": 720,
+      "renderer": "metal_present",
+      "sha256": "184578b683d35539b478b66a9673a15b1807ae2642fbeb4427820a19b8975771",
+      "captured_at": "2025-11-21T11:42:18Z",
+      "commit": "3c9e0ece9ca392b122d674282edd161c38470b6e",
+      "notes": "PATHSPACE_ENABLE_METAL_UPLOADS=1 PATHSPACE_UI_METAL=ON ./build/paint_example --gpu-smoke --height=720 --screenshot --screenshot-require-present",
+      "revision": 1
+    }
+  }
+}
