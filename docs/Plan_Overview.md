@@ -27,16 +27,22 @@ Provide a single index of active planning documents, ordered by current priority
 6. **Plan_WebServer_Adapter.md**  
    HTML/web delivery via embedded server, bridging native and browser apps.
 
-7. **Plan_CartaLinea.md** (paused)  
+7. **Plan_PathSpaceWindowManager.md**  
+   NextStep-inspired window manager that manages declarative windows, chrome, and the dock on top of the UI layer.
+
+8. **Plan_PathSpaceTerminal.md**  
+   Carta Linea-aware terminal emulator where commands launch apps, capture returned PathSpaces, and visualize them with generic viewers.
+
+9. **Plan_CartaLinea.md** (paused)  
    Cross-app deck/timeline/filesystem concept; re-evaluate once renderer priorities stabilize.
 
-8. **Plan_PrimeScript.md** (research)  
+10. **Plan_PrimeScript.md** (research)  
    Exploratory unified scripting/shading language idea; no implementation scheduled.
 
-9. **Plan_IOPump_Finished.md**  
+11. **Plan_IOPump_Finished.md**  
    Input runtime roadmap that introduces the IO Trellis, IO Pump, routing Trellis, and telemetry/throttling knobs feeding declarative widgets. _Completed November 17, 2025 — see `docs/finished/Plan_IOPump_Finished.md` for history._
 
-10. **Plan_PathSpaceTrellis_Finished.md**  
+12. **Plan_PathSpaceTrellis_Finished.md**  
    Final record for the completed trellis redesign. _Historical fan-in work has been archived in `docs/finished/Plan_PathSpace_FanIn_Abandoned.md` for reference._
 
 ## Recommended Implementation Focus (Q4 2025)
@@ -45,7 +51,9 @@ Provide a single index of active planning documents, ordered by current priority
 3. **Plan_WebServer_Adapter.md** — build the baseline web endpoints (auth, REST, SSE) so downstream tooling has a foundation.
 4. **Plan_PathSpace_Inspector.md** — prototype the read-only inspector after distributed mounts, JSON serialization, and web server infrastructure are in place.
 5. **Plan_Surface_Ray_Cache.md** — revisit once core rendering + web requirements are satisfied (deferred).
-6. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
+6. **Plan_PathSpaceWindowManager.md** — design shared window chrome/dock controls so multi-app sessions feel cohesive once the renderer work stabilizes.
+7. **Plan_PathSpaceTerminal.md** (after Carta Linea resumes) — prototype the command-driven launcher/visualizer so command outputs become Carta Linea cards.
+8. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
 
 ## Status Snapshot — November 17, 2025
 - ✅ (November 17, 2025) IO Trellis Phase 1 landed: `CreateIOTrellis` now drains `/system/devices/in/{pointer,text,keyboard,gamepad}` providers, emits canonical events under `/system/io/events/{pointer,button,text}`, exposes metrics at `/system/io/events/metrics/*`, and ships with coverage in `tests/unit/io/test_IoTrellis.cpp`. Telemetry stays off until `/_system/telemetry/io/events_enabled` is toggled.
