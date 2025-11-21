@@ -29,6 +29,7 @@ Usage: run-test-with-logs.sh [options] -- command [args...]
   --env KEY=VALUE       Environment variable to pass to the test (repeatable)
   --iteration N         Loop iteration (for log naming)
   --iterations N        Loop iteration count (for log naming)
+  --keep-success-log    Preserve the log even when the command succeeds
   -h, --help            Show this help
 EOF
 }
@@ -42,6 +43,7 @@ TIMEOUT=0
 ENV_VARS=()
 ITERATION=""
 ITERATIONS=""
+KEEP_SUCCESS_LOG=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -68,6 +70,9 @@ while [[ $# -gt 0 ]]; do
     --iterations)
       shift || { usage >&2; exit 2; }
       ITERATIONS="$1"
+      ;;
+    --keep-success-log)
+      KEEP_SUCCESS_LOG=1
       ;;
     -h|--help)
       usage
@@ -212,6 +217,29 @@ run_with_manual_timeout() {
   return "$rc"
 }
 
+append_log_manifest() {
+  local status="$1"
+  local log_path="$2"
+  if [[ -z "${PATHSPACE_TEST_LOG_MANIFEST:-}" ]]; then
+    return
+  fi
+  if [[ -z "$log_path" ]]; then
+    return
+  fi
+  local iteration_label="${ITERATION:-}"
+  if [[ -z "$iteration_label" ]]; then
+    iteration_label="-"
+  fi
+  {
+    printf '%s\t%s\t%s\t%s\t%s\n' \
+      "$LABEL" \
+      "$iteration_label" \
+      "$status" \
+      "$log_path" \
+      "$ARTIFACT_DIR"
+  } >>"$PATHSPACE_TEST_LOG_MANIFEST" || true
+}
+
 RC=0
 if [[ "$TIMEOUT" -gt 0 && -n "$TIMEOUT_CMD" ]]; then
   if ! "${TIMEOUT_CMD}" "${TIMEOUT}s" "${BASE_CMD[@]}" >"$TMP_LOG" 2>&1; then
@@ -222,11 +250,18 @@ else
 fi
 
 if [[ "$RC" -eq 0 ]]; then
-  rm -f "$TMP_LOG"
+  if [[ "$KEEP_SUCCESS_LOG" -eq 1 ]]; then
+    mv "$TMP_LOG" "$FINAL_LOG"
+    append_log_manifest "success" "$FINAL_LOG"
+    echo "[test-runner] ${LABEL} succeeded; log saved to: ${FINAL_LOG}" >&2
+  else
+    rm -f "$TMP_LOG"
+  fi
   exit 0
 fi
 
 mv "$TMP_LOG" "$FINAL_LOG"
+append_log_manifest "failure" "$FINAL_LOG"
 echo "[test-runner] ${LABEL} failed (exit ${RC}). Log saved to: ${FINAL_LOG}" >&2
 if command -v tail >/dev/null 2>&1; then
   echo "[test-runner] Last 40 log lines:" >&2

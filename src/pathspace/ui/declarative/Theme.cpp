@@ -192,6 +192,8 @@ constexpr ColorBinding kColorBindings[] = {
     THEME_COLOR_BINDING("caption/color", theme.caption_color),
     THEME_COLOR_BINDING("accent_text/color", theme.accent_text_color),
     THEME_COLOR_BINDING("muted_text/color", theme.muted_text_color),
+    THEME_COLOR_BINDING("palette/text_on_light", theme.palette_text_on_light),
+    THEME_COLOR_BINDING("palette/text_on_dark", theme.palette_text_on_dark),
 };
 
 #undef THEME_COLOR_BINDING

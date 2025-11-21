@@ -3,6 +3,7 @@
 import argparse
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
@@ -115,11 +116,20 @@ def main() -> int:
         "--gpu-smoke",
     ]
 
-    print(f"[paint-example-screenshot] Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, cwd=repo_root)
+    def run_capture(attempt: int) -> subprocess.CompletedProcess:
+        print(f"[paint-example-screenshot] Running (attempt {attempt}): {' '.join(cmd)}")
+        return subprocess.run(cmd, cwd=repo_root)
+
+    result = run_capture(1)
     if result.returncode != 0:
         print("[paint-example-screenshot] paint_example reported a failure", file=sys.stderr)
-        return result.returncode
+        print("[paint-example-screenshot] Retrying once after 0.5s...", file=sys.stderr)
+        time.sleep(0.5)
+        retry = run_capture(2)
+        if retry.returncode != 0:
+            print("[paint-example-screenshot] paint_example reported a failure after retry", file=sys.stderr)
+            return retry.returncode
+        result = retry
 
     if diff_path.exists():
         # paint_example removes the diff file when screenshots match; if it remains, surface it.

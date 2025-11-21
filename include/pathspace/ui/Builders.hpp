@@ -2033,6 +2033,8 @@ struct WidgetTheme {
     std::array<float, 4> caption_color{0.90f, 0.92f, 0.96f, 1.0f};
     std::array<float, 4> accent_text_color{0.85f, 0.88f, 0.95f, 1.0f};
     std::array<float, 4> muted_text_color{0.70f, 0.72f, 0.78f, 1.0f};
+    std::array<float, 4> palette_text_on_light{0.10f, 0.12f, 0.16f, 1.0f};
+    std::array<float, 4> palette_text_on_dark{1.0f, 1.0f, 1.0f, 1.0f};
 };
 
 struct ThemeSelection {

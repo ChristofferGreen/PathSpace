@@ -1605,6 +1605,8 @@ auto make_blue_theme() -> WidgetTheme {
     theme.caption_color = {0.90f, 0.92f, 0.96f, 1.0f};
     theme.accent_text_color = {0.85f, 0.88f, 0.95f, 1.0f};
     theme.muted_text_color = {0.70f, 0.72f, 0.78f, 1.0f};
+    theme.palette_text_on_light = {0.10f, 0.12f, 0.16f, 1.0f};
+    theme.palette_text_on_dark = {1.0f, 1.0f, 1.0f, 1.0f};
 
     return theme;
 }
@@ -1646,9 +1648,11 @@ auto make_orange_theme() -> WidgetTheme {
     theme.tree.toggle_color = {0.996f, 0.949f, 0.902f, 1.0f};
     theme.tree.text_color = {0.996f, 0.949f, 0.902f, 1.0f};
     theme.heading_color = {0.996f, 0.949f, 0.902f, 1.0f};
-   theme.caption_color = {0.965f, 0.886f, 0.812f, 1.0f};
-   theme.accent_text_color = {0.996f, 0.949f, 0.902f, 1.0f};
-   theme.muted_text_color = {0.855f, 0.698f, 0.612f, 1.0f};
+    theme.caption_color = {0.965f, 0.886f, 0.812f, 1.0f};
+    theme.accent_text_color = {0.996f, 0.949f, 0.902f, 1.0f};
+    theme.muted_text_color = {0.855f, 0.698f, 0.612f, 1.0f};
+    theme.palette_text_on_light = {0.15f, 0.08f, 0.02f, 1.0f};
+    theme.palette_text_on_dark = {1.0f, 0.984f, 0.945f, 1.0f};
     return theme;
 }
 

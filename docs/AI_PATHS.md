@@ -62,6 +62,7 @@ Conventions:
   - `/system/widgets/runtime/input/metrics/{events_enqueued_total,events_dropped_total}` — mirrors how many widget events were mirrored into the canonical queues vs. dropped due to storage errors.
   - `/system/widgets/runtime/input/metrics/{actions_latency_ns,ops_backlog}` — loop duration (nanoseconds) and the count of actions drained during the last pump iteration; use these gauges to flag backlog growth before handler failures appear.
   - `widgets/<id>/metrics/handlers/{invoked_total,failures_total,missing_total}` — per-widget handler telemetry updated by `CreateInputTask`, allowing debugging of missing bindings or flaky callbacks without scraping the shared logs.
+  - `widgets/<id>/metrics/history_binding/{state,state_timestamp_ns,buttons_enabled,buttons_enabled_last_change_ns,undo_total,undo_failures_total,redo_total,redo_failures_total,last_error_context,last_error_message,last_error_code,last_error_timestamp_ns}` — paint surfaces (and any widget that wires an `UndoableSpace`) expose their binding readiness, button toggles, undo/redo counters, and latest failure metadata here so inspectors/tests can flag regressions without scraping logs.
   - `/system/widgets/runtime/schema/metrics/{loads_total,failures_total,last_load_ns}` — descriptor/schema load counters plus the most recent load duration.
   - `/system/widgets/runtime/schema/log/events` — textual records of descriptor load failures (widget path, kind, error).
   - Declarative fragments carry handler specs and `Widgets::Mount` rebinds them under the destination widget path, while instrumentation layers can call `Widgets::Handlers::{Read,Replace,Wrap,Restore}` to observe or override handlers without rewriting the raw `events/<event>/handler` node.
@@ -214,7 +215,7 @@ For schema tables, handler metadata, theme resolution rules, and per-widget spec
     - `theme/<name>/value` — stored `WidgetTheme` struct describing colors, typography, and widget styles
     - `theme/<name>/style/inherits` — optional canonical parent name; theme resolver walks up to 16 ancestors, errors on cycles, and treats an empty or missing node as “no parent”
 - `/system/applications/<app>/themes/<name>/`
-    - `colors/<token>` — RGBA arrays written by `Theme::SetColor` (`button/background`, `slider/thumb`, `text_field/caret`, etc.)
+    - `colors/<token>` — RGBA arrays written by `Theme::SetColor` (`button/background`, `slider/thumb`, `text_field/caret`, `palette/text_on_light`, `palette/text_on_dark`, etc.)
     - `style/inherits` — human-edited inheritance chain mirrored into `config/theme/<name>/style/inherits`
     - Declarative helpers compile these editable leaves back into `config/theme/<name>/value` so descriptors can hydrate styles without reading user-authored blobs directly.
 - `config/renderer/default` — app-relative renderer root (e.g., `renderers/widgets_declarative_renderer`), written by `SP::App::Create`.

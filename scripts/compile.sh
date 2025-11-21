@@ -35,6 +35,7 @@ TEST=0        # run tests after build if 1
 LOOP=0        # run tests in a loop N times (default 15 if provided without value)
 PER_TEST_TIMEOUT=""  # override seconds per test; default 60 (single), 120 (when --loop is used)
 EXTRA_ARGS=""        # extra args passed to test executable (doctest)
+UI_TEST_EXTRA_ARGS="${PATHSPACE_UI_TEST_EXTRA_ARGS:-}" # extra args passed only to PathSpaceUITests
 DOCS=0               # generate Doxygen docs if 1
 ENABLE_METAL_TESTS=1 # Metal presenter tests run by default
 SIZE_REPORT=0
@@ -51,6 +52,8 @@ PERF_PRINT=0
 METAL_FLAG_EXPLICIT=0
 RUNTIME_FLAG_REPORT=0
 RUNTIME_FLAG_REPORT_PATH=""
+LOOP_KEEP_LOGS="${PATHSPACE_LOOP_KEEP_LOGS:-}"
+LOOP_LABEL_FILTER="${PATHSPACE_LOOP_LABEL_FILTER:-}"
 
 # ----------------------------
 # Helpers
@@ -83,8 +86,13 @@ Options:
       --per-test-timeout SECS  Override per-test timeout (default: 60; 120 when --loop is used).
       --docs                 Generate Doxygen docs into build/docs/html (requires doxygen).
       --args "..."           Extra arguments passed to the test runner (doctest)
+      --ui-test-extra-args "..."
+                             Extra arguments passed only to PathSpaceUITests (e.g. "--success")
       --enable-metal-tests   (default) Build with PATHSPACE_UI_METAL and run Metal presenter tests.
       --disable-metal-tests  Skip building/running the Metal presenter tests.
+      --loop-keep-logs LABELS  Comma/space separated labels whose logs are preserved even on success
+                             (default when --loop is used: PathSpaceUITests). Use "none" to disable.
+      --loop-label LABEL       Restrict --loop runs to one or more labels (repeat or comma-separate, supports globs)
       --size-report[=PATH]    Generate a binary size report for demo binaries and check against the
                              guardrail baseline (default baseline path: $SIZE_BASELINE_DEFAULT).
       --size-write-baseline[=PATH]
@@ -285,6 +293,22 @@ while [[ $# -gt 0 ]]; do
     --args=*)
       EXTRA_ARGS="${1#*=}"
       ;;
+    --ui-test-extra-args)
+      shift || die "Missing argument for $1"
+      if [[ -z "$UI_TEST_EXTRA_ARGS" ]]; then
+        UI_TEST_EXTRA_ARGS="$1"
+      else
+        UI_TEST_EXTRA_ARGS+=" $1"
+      fi
+      ;;
+    --ui-test-extra-args=*)
+      value="${1#*=}"
+      if [[ -z "$UI_TEST_EXTRA_ARGS" ]]; then
+        UI_TEST_EXTRA_ARGS="$value"
+      else
+        UI_TEST_EXTRA_ARGS+=" $value"
+      fi
+      ;;
     --enable-metal-tests)
       ENABLE_METAL_TESTS=1
       METAL_FLAG_EXPLICIT=1
@@ -292,6 +316,29 @@ while [[ $# -gt 0 ]]; do
     --disable-metal-tests)
       ENABLE_METAL_TESTS=0
       METAL_FLAG_EXPLICIT=1
+      ;;
+    --loop-keep-logs)
+      shift || die "Missing argument for $1"
+      LOOP_KEEP_LOGS="$1"
+      ;;
+    --loop-keep-logs=*)
+      LOOP_KEEP_LOGS="${1#*=}"
+      ;;
+    --loop-label)
+      shift || die "Missing argument for $1"
+      if [[ -z "$LOOP_LABEL_FILTER" ]]; then
+        LOOP_LABEL_FILTER="$1"
+      else
+        LOOP_LABEL_FILTER+=" $1"
+      fi
+      ;;
+    --loop-label=*)
+      value="${1#*=}"
+      if [[ -z "$LOOP_LABEL_FILTER" ]]; then
+        LOOP_LABEL_FILTER="$value"
+      else
+        LOOP_LABEL_FILTER+=" $value"
+      fi
       ;;
     --size-report)
       SIZE_REPORT=1
@@ -571,11 +618,22 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
 
     TEST_LOG_DIR="$BUILD_DIR/test-logs"
     mkdir -p "$TEST_LOG_DIR"
+    TEST_LOG_MANIFEST=""
+    if [[ "$LOOP" -gt 0 ]]; then
+      TEST_LOG_MANIFEST="$TEST_LOG_DIR/loop_manifest.tsv"
+      : > "$TEST_LOG_MANIFEST"
+    fi
 
     if [[ -n "$EXTRA_ARGS" ]]; then
       IFS=' ' read -r -a EXTRA_ARGS_ARRAY <<< "$EXTRA_ARGS"
     else
       EXTRA_ARGS_ARRAY=()
+    fi
+
+    if [[ -n "$UI_TEST_EXTRA_ARGS" ]]; then
+      IFS=' ' read -r -a UI_TEST_EXTRA_ARGS_ARRAY <<< "$UI_TEST_EXTRA_ARGS"
+    else
+      UI_TEST_EXTRA_ARGS_ARRAY=()
     fi
 
     PATHSPACE_TEST_TIMEOUT_VALUE="${PATHSPACE_TEST_TIMEOUT:-1}"
@@ -587,6 +645,10 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
       "--env" "PATHSPACE_TEST_TIMEOUT=${PATHSPACE_TEST_TIMEOUT_VALUE}"
       "--env" "MallocNanoZone=${MALLOC_NANO_ZONE_VALUE}"
     )
+    if [[ -n "$TEST_LOG_MANIFEST" ]]; then
+      export PATHSPACE_TEST_LOG_MANIFEST="$TEST_LOG_MANIFEST"
+      TEST_ENV_FLAGS+=("--env" "PATHSPACE_TEST_LOG_MANIFEST=${TEST_LOG_MANIFEST}")
+    fi
     if [[ "$ENABLE_METAL_TESTS" -eq 1 ]]; then
       TEST_ENV_FLAGS+=("--env" "PATHSPACE_ENABLE_METAL_UPLOADS=1")
     fi
@@ -625,9 +687,95 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
       TEST_COMMAND_STRINGS+=("$command_str")
     }
 
+    KEEP_SUCCESS_LABELS_RAW="$LOOP_KEEP_LOGS"
+    if [[ -z "$KEEP_SUCCESS_LABELS_RAW" && "$LOOP" -gt 0 ]]; then
+      KEEP_SUCCESS_LABELS_RAW="PathSpaceUITests"
+    fi
+
+    KEEP_SUCCESS_LABELS=()
+    if [[ -n "$KEEP_SUCCESS_LABELS_RAW" ]]; then
+      if [[ "$KEEP_SUCCESS_LABELS_RAW" == "none" || "$KEEP_SUCCESS_LABELS_RAW" == "NONE" ]]; then
+        KEEP_SUCCESS_LABELS=()
+      else
+        KEEP_SUCCESS_LABELS_RAW="${KEEP_SUCCESS_LABELS_RAW//,/ }"
+        for entry in $KEEP_SUCCESS_LABELS_RAW; do
+          [[ -z "$entry" ]] && continue
+          KEEP_SUCCESS_LABELS+=("$entry")
+        done
+      fi
+    fi
+
+    LOOP_FILTER_LABELS=()
+    if [[ -n "$LOOP_LABEL_FILTER" ]]; then
+      LOOP_LABEL_FILTER="${LOOP_LABEL_FILTER//,/ }"
+      for entry in $LOOP_LABEL_FILTER; do
+        [[ -z "$entry" ]] && continue
+        LOOP_FILTER_LABELS+=("$entry")
+      done
+    fi
+
+    should_keep_success_log() {
+      local label="$1"
+      if [[ "$LOOP" -le 0 ]]; then
+        return 1
+      fi
+      if [[ ${#KEEP_SUCCESS_LABELS[@]} -eq 0 ]]; then
+        return 1
+      fi
+      for entry in "${KEEP_SUCCESS_LABELS[@]}"; do
+        case "$label" in
+          $entry)
+            return 0
+            ;;
+        esac
+      done
+      return 1
+    }
+
+    report_log_manifest() {
+      if [[ -n "$TEST_LOG_MANIFEST" && -s "$TEST_LOG_MANIFEST" ]]; then
+        info "Loop log manifest: $TEST_LOG_MANIFEST"
+      fi
+    }
+
+    loop_should_run_label() {
+      local label="$1"
+      if [[ "$LOOP" -le 0 ]]; then
+        return 0
+      fi
+      if [[ ${#LOOP_FILTER_LABELS[@]} -eq 0 ]]; then
+        return 0
+      fi
+      for entry in "${LOOP_FILTER_LABELS[@]}"; do
+        case "$label" in
+          $entry)
+            return 0
+            ;;
+        esac
+      done
+      return 1
+    }
+
+    if [[ "$LOOP" -gt 0 && ${#LOOP_FILTER_LABELS[@]} -gt 0 ]]; then
+      for entry in "${LOOP_FILTER_LABELS[@]}"; do
+        found_match=0
+        for existing in "${TEST_LABELS[@]}"; do
+          case "$existing" in
+            $entry)
+              found_match=1
+              break
+              ;;
+          esac
+        done
+        if [[ "$found_match" -eq 0 ]]; then
+          die "Loop label filter '$entry' did not match any configured tests"
+        fi
+      done
+    fi
+
     add_test_command "PathSpaceTests" "$CORE_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}"
     if [[ -x "$UI_TEST_EXE" ]]; then
-      add_test_command "PathSpaceUITests" "$UI_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}"
+      add_test_command "PathSpaceUITests" "$UI_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}" "${UI_TEST_EXTRA_ARGS_ARRAY[@]}"
     fi
 
     if [[ "$(uname)" == "Darwin" ]]; then
@@ -679,6 +827,9 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
         args+=("--iteration" "$iteration" "--iterations" "$total")
       fi
       args+=("${TEST_ENV_FLAGS[@]}")
+      if should_keep_success_log "$display_name"; then
+        args+=("--keep-success-log")
+      fi
       args+=("--")
       args+=("$@")
 
@@ -712,6 +863,10 @@ PY
             for idx in "${!TEST_LABELS[@]}"; do
               name="${TEST_LABELS[$idx]}"
               command_str="${TEST_COMMAND_STRINGS[$idx]}"
+              if ! loop_should_run_label "$name"; then
+                info "  [$label] Skipping ${name} (loop filter)"
+                continue
+              fi
               IFS=$'\x1f' read -r -a COMMAND <<< "$command_str"
               info "  [$label] Running ${name}..."
               if ! run_test_command "$name" "$i" "$count" "${COMMAND[@]}"; then
@@ -787,15 +942,21 @@ with open(path, "w", encoding="ascii") as handle:
 PY
           info "Runtime flag report written to $RUNTIME_FLAG_REPORT_PATH"
         fi
+
+        report_log_manifest
       else
         info "Running tests in a loop ($COUNT iterations)..."
         for i in $(seq 1 "$COUNT"); do
           info "Loop $i/$COUNT: starting"
-          for idx in "${!TEST_LABELS[@]}"; do
-            name="${TEST_LABELS[$idx]}"
-            command_str="${TEST_COMMAND_STRINGS[$idx]}"
-            IFS=$'\x1f' read -r -a COMMAND <<< "$command_str"
-            info "  Running ${name}..."
+        for idx in "${!TEST_LABELS[@]}"; do
+          name="${TEST_LABELS[$idx]}"
+          command_str="${TEST_COMMAND_STRINGS[$idx]}"
+          if ! loop_should_run_label "$name"; then
+            info "  Skipping ${name} (loop filter)"
+            continue
+          fi
+          IFS=$'\x1f' read -r -a COMMAND <<< "$command_str"
+          info "  Running ${name}..."
             if ! run_test_command "$name" "$i" "$COUNT" "${COMMAND[@]}"; then
               RC=$?
               if [[ $RC -eq 124 ]]; then
@@ -808,6 +969,7 @@ PY
           info "Loop $i/$COUNT: passed"
         done
         info "All $COUNT iterations passed."
+        report_log_manifest
       fi
     else
       for idx in "${!TEST_LABELS[@]}"; do

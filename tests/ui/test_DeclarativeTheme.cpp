@@ -84,6 +84,25 @@ TEST_CASE("Theme::SetColor updates storage and compiled value") {
     REQUIRE(compiled.has_value());
     CHECK_EQ(compiled->button.background_color[0], doctest::Approx(1.0f));
     CHECK_EQ(compiled->button.background_color[1], doctest::Approx(0.0f));
+
+    SP::UI::Declarative::Theme::ColorValue readable{};
+    readable.rgba = {0.20f, 0.24f, 0.30f, 1.0f};
+    status = SP::UI::Declarative::Theme::SetColor(fx.space,
+                                                  fx.app_root_view(),
+                                                  result->canonical_name,
+                                                  "palette/text_on_light",
+                                                  readable);
+    REQUIRE(status.has_value());
+    auto palette_token = fx.space.read<std::array<float, 4>, std::string>(
+        result->edit_root.getPath() + "/colors/palette/text_on_light");
+    REQUIRE(palette_token.has_value());
+    CHECK_EQ((*palette_token)[0], doctest::Approx(readable.rgba[0]));
+    CHECK_EQ((*palette_token)[1], doctest::Approx(readable.rgba[1]));
+    auto recompiled =
+        fx.space.read<SP::UI::Builders::Widgets::WidgetTheme, std::string>(theme_paths->value.getPath());
+    REQUIRE(recompiled.has_value());
+    CHECK_EQ(recompiled->palette_text_on_light[0], doctest::Approx(readable.rgba[0]));
+    CHECK_EQ(recompiled->palette_text_on_light[1], doctest::Approx(readable.rgba[1]));
 }
 
 TEST_CASE("Theme::SetColor rejects unknown token") {

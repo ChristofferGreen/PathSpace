@@ -18,11 +18,18 @@ This guide consolidates the practical steps for investigating failures across un
 ./scripts/compile.sh --test --loop=15 --per-test-timeout=20
 ```
 
-- Runs both `PathSpaceTests` and `PathSpaceUITests` each iteration.
-- Logs land under `build/test-logs/` using the pattern `<test>_loop<iteration>of<total>_<timestamp>.log` if a failure occurs.
+- Runs both `PathSpaceTests` and `PathSpaceUITests` each iteration (unless you filter via the new `--loop-label` flag described below).
+- PathSpaceUITests now keeps its logs even when a loop iteration “passes.” Every saved log/artifact pair is recorded in `build/test-logs/loop_manifest.tsv`, which the helper prints after the loop completes.
+- Additional logs use the pattern `<test>_loop<iteration>of<total>_<timestamp>.log`; the manifest is the authoritative index when `--loop-keep-logs` names more tests.
 - `PATHSPACE_LOG` defaults to `1` in the helper so tagged logging is enabled when an error surfaces; adjust via `--env PATHSPACE_LOG=0` if you need silence.
 - Want to exercise the Metal presenter path locally? Append `--enable-metal-tests` (macOS only) so the helper sets `PATHSPACE_UI_METAL=ON` during configuration and runs the suites with `PATHSPACE_ENABLE_METAL_UPLOADS=1`.
 - Watching the IO Pump? Check `/system/widgets/runtime/input/metrics/{pointer_events_total,button_events_total,text_events_total,events_dropped_total,last_pump_ns}` plus `/system/widgets/runtime/io/state/running` to confirm the worker is alive and consuming Trellis events. Pump errors share the same `/system/widgets/runtime/input/log/errors/queue` as reducer failures, so grep for `io_pump` tags when diagnosing drops.
+
+New helper switches (November 21, 2025):
+
+- `--loop-keep-logs LABELS` keeps success logs for additional tests (default = `PathSpaceUITests` when `--loop` is used). Disable via `--loop-keep-logs=none`.
+- `--loop-label LABEL` (repeatable, glob-friendly) restricts the loop to specific tests so you can hammer just `PathSpaceUITests` without re-running `PathSpaceTests`.
+- `--ui-test-extra-args "--success"` appends doctest flags to `PathSpaceUITests` only; this is the recommended way to surface doctest’s `--success` output when chasing flakes. Environment equivalents exist for automation: `PATHSPACE_LOOP_KEEP_LOGS`, `PATHSPACE_LOOP_LABEL_FILTER`, and `PATHSPACE_UI_TEST_EXTRA_ARGS`.
 
 ### 1.4 Telemetry, throttling, and subscriber toggles
 

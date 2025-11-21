@@ -197,7 +197,7 @@ if(PATHSPACE_ENABLE_UI)
             "${CMAKE_SOURCE_DIR}/scripts/check_paint_screenshot.py"
             --build-dir "${CMAKE_BINARY_DIR}"
   )
-  set_tests_properties(PaintExampleScreenshot PROPERTIES LABELS ui)
+set_tests_properties(PaintExampleScreenshot PROPERTIES LABELS ui RESOURCE_LOCK ui_gpu_capture)
 
   add_test(NAME PaintExampleScreenshot720
     COMMAND "${PATHSPACE_TEST_RUNNER}"
@@ -215,7 +215,7 @@ if(PATHSPACE_ENABLE_UI)
             --height 720
             --tag paint_720
   )
-  set_tests_properties(PaintExampleScreenshot720 PROPERTIES LABELS ui)
+set_tests_properties(PaintExampleScreenshot720 PROPERTIES LABELS ui RESOURCE_LOCK ui_gpu_capture)
 
   if(APPLE)
     add_test(NAME PixelNoisePerfHarness
@@ -231,7 +231,7 @@ if(PATHSPACE_ENABLE_UI)
               "${CMAKE_SOURCE_DIR}/scripts/check_pixel_noise_baseline.py"
               --build-dir "${CMAKE_BINARY_DIR}"
     )
-    set_tests_properties(PixelNoisePerfHarness PROPERTIES LABELS perf)
+  set_tests_properties(PixelNoisePerfHarness PROPERTIES LABELS perf RESOURCE_LOCK ui_gpu_capture)
     if(PATHSPACE_UI_METAL)
       add_test(NAME PixelNoisePerfHarnessMetal
         COMMAND "${PATHSPACE_TEST_RUNNER}"
@@ -248,7 +248,7 @@ if(PATHSPACE_ENABLE_UI)
                 --build-dir "${CMAKE_BINARY_DIR}"
                 --baseline "${CMAKE_SOURCE_DIR}/docs/perf/pixel_noise_metal_baseline.json"
       )
-      set_tests_properties(PixelNoisePerfHarnessMetal PROPERTIES LABELS perf)
+    set_tests_properties(PixelNoisePerfHarnessMetal PROPERTIES LABELS perf RESOURCE_LOCK ui_gpu_capture)
     endif()
   endif()
 endif()

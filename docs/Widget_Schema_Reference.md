@@ -44,6 +44,7 @@ Supported color tokens:
 | `tree/background`, `tree/border`, `tree/row`, `tree/row_hover`, `tree/row_selected`, `tree/row_disabled`, `tree/connector`, `tree/toggle`, `tree/text` | Tree palette |
 | `text_field/background`, `text_field/border`, `text_field/text`, `text_field/placeholder`, `text_field/selection`, `text_field/composition`, `text_field/caret` | Text input palette |
 | `text_area/background`, `text_area/border`, `text_area/text`, `text_area/placeholder`, `text_area/selection`, `text_area/composition`, `text_area/caret` | Text area palette |
+| `palette/text_on_light`, `palette/text_on_dark` | Palette control label colors (paint example swatches choose whichever contrast fits the swatch background). |
 | `heading/color`, `caption/color`, `accent_text/color`, `muted_text/color` | Theme-level typography accents |
 
 Colors are clamped to `[0.0, 1.0]`, components use lowercase/underscore tokens, and invalid components yield `Error::InvalidPath`.
