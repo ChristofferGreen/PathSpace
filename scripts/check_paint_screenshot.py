@@ -68,6 +68,13 @@ def build_argument_parser(repo_root: Path) -> argparse.ArgumentParser:
         type=Path,
         help="Baseline manifest describing expected PNG metadata (default: %(default)s)",
     )
+    parser.add_argument(
+        "--metrics-output",
+        type=Path,
+        help=(
+            "Optional JSON path to store screenshot diagnostics (default: build/artifacts/paint_example/<tag>_metrics.json)"
+        ),
+    )
     return parser
 
 
@@ -188,6 +195,27 @@ def load_manifest_entry(repo_root: Path, args) -> tuple[int, dict, str]:
     return revision, entry, actual_sha
 
 
+def populate_baseline_env(env: dict, entry: dict, args, manifest_revision: int | None, manifest_sha: str | None, tag: str) -> None:
+    if manifest_revision is not None:
+        env["PAINT_EXAMPLE_BASELINE_VERSION"] = str(manifest_revision)
+    if manifest_sha is not None:
+        env["PAINT_EXAMPLE_BASELINE_SHA256"] = manifest_sha
+    env["PAINT_EXAMPLE_BASELINE_TAG"] = tag
+    if entry.get("width") is not None:
+        env["PAINT_EXAMPLE_BASELINE_WIDTH"] = str(entry["width"])
+    if entry.get("height") is not None:
+        env["PAINT_EXAMPLE_BASELINE_HEIGHT"] = str(entry["height"])
+    if entry.get("renderer"):
+        env["PAINT_EXAMPLE_BASELINE_RENDERER"] = entry["renderer"]
+    if entry.get("captured_at"):
+        env["PAINT_EXAMPLE_BASELINE_CAPTURED_AT"] = entry["captured_at"]
+    if entry.get("commit"):
+        env["PAINT_EXAMPLE_BASELINE_COMMIT"] = entry["commit"]
+    if entry.get("notes"):
+        env["PAINT_EXAMPLE_BASELINE_NOTES"] = entry["notes"]
+    env["PAINT_EXAMPLE_BASELINE_TOLERANCE"] = str(args.tolerance)
+
+
 def main() -> int:
     repo_root = Path(__file__).resolve().parents[1]
     parser = build_argument_parser(repo_root)
@@ -207,9 +235,10 @@ def main() -> int:
         return 1
 
     manifest_revision = None
+    manifest_entry = None
     manifest_sha = None
     if args.manifest:
-        manifest_revision, _entry, manifest_sha = load_manifest_entry(repo_root, args)
+        manifest_revision, manifest_entry, manifest_sha = load_manifest_entry(repo_root, args)
 
     artifact_dir = build_dir / "artifacts" / "paint_example"
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -233,6 +262,14 @@ def main() -> int:
     if not diff_path.is_absolute():
         diff_path = (repo_root / diff_path).resolve()
     ensure_path_dir(diff_path)
+    metrics_path = (
+        args.metrics_output
+        if args.metrics_output is not None
+        else artifact_dir / f"{base_name}_metrics.json"
+    )
+    if not metrics_path.is_absolute():
+        metrics_path = (repo_root / metrics_path).resolve()
+    ensure_path_dir(metrics_path)
 
     cmd = [
         str(paint_example),
@@ -244,14 +281,15 @@ def main() -> int:
         f"--screenshot-max-mean-error={args.tolerance}",
         "--screenshot-require-present",
         "--gpu-smoke",
+        f"--screenshot-metrics-json={metrics_path}",
     ]
 
     env = os.environ.copy()
-    if manifest_revision is not None:
-        env["PAINT_EXAMPLE_BASELINE_VERSION"] = str(manifest_revision)
-    if manifest_sha is not None:
-        env["PAINT_EXAMPLE_BASELINE_SHA256"] = manifest_sha
-    env["PAINT_EXAMPLE_BASELINE_TAG"] = tag
+    if manifest_entry is not None:
+        populate_baseline_env(env, manifest_entry, args, manifest_revision, manifest_sha, tag)
+    else:
+        env.setdefault("PAINT_EXAMPLE_BASELINE_TAG", tag)
+        env.setdefault("PAINT_EXAMPLE_BASELINE_TOLERANCE", str(args.tolerance))
 
     def run_capture(attempt: int) -> subprocess.CompletedProcess:
         print(f"[paint-example-screenshot] Running (attempt {attempt}): {' '.join(cmd)}")
@@ -274,6 +312,15 @@ def main() -> int:
     else:
         print("[paint-example-screenshot] Screenshot matched baseline; no diff generated.")
     print(f"[paint-example-screenshot] Screenshot written to {screenshot_path}")
+
+    try:
+        snapshot = json.loads(metrics_path.read_text())
+        status = snapshot.get("run", {}).get("status")
+        print(f"[paint-example-screenshot] Metrics status: {status}")
+    except FileNotFoundError:
+        print(f"[paint-example-screenshot] Metrics file missing: {metrics_path}", file=sys.stderr)
+    except json.JSONDecodeError as exc:
+        print(f"[paint-example-screenshot] Failed to parse metrics JSON: {exc}", file=sys.stderr)
     return 0
 
 

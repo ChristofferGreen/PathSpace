@@ -170,6 +170,13 @@ add_test(NAME HistoryTelemetryDashboard
 )
 set_tests_properties(HistoryTelemetryDashboard PROPERTIES LABELS history)
 
+add_test(NAME PaintExampleDiagnosticsIngest
+  COMMAND python3
+          "${CMAKE_SOURCE_DIR}/tests/tools/test_paint_example_diagnostics_ingest.py"
+          --repo-root "${CMAKE_SOURCE_DIR}"
+)
+set_tests_properties(PaintExampleDiagnosticsIngest PROPERTIES LABELS ui)
+
 if(PATHSPACE_ENABLE_UI)
   add_test(NAME PathSpaceUITests
     COMMAND "${PATHSPACE_TEST_RUNNER}"

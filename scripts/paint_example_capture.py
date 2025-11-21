@@ -113,6 +113,7 @@ def capture_once(
     binary: Path,
     tag: str,
     entry: Dict,
+    manifest_revision: int | None,
     extra_args: list[str],
     dry_run: bool,
 ) -> None:
@@ -131,6 +132,21 @@ def capture_once(
     env.setdefault("PATHSPACE_ENABLE_METAL_UPLOADS", "1")
     env.setdefault("PATHSPACE_UI_METAL", "ON")
     env["PAINT_EXAMPLE_BASELINE_TAG"] = tag
+    env["PAINT_EXAMPLE_BASELINE_WIDTH"] = str(entry["width"])
+    env["PAINT_EXAMPLE_BASELINE_HEIGHT"] = str(entry["height"])
+    env["PAINT_EXAMPLE_BASELINE_TOLERANCE"] = "0.0015"
+    if entry.get("renderer"):
+        env["PAINT_EXAMPLE_BASELINE_RENDERER"] = entry["renderer"]
+    if entry.get("captured_at"):
+        env["PAINT_EXAMPLE_BASELINE_CAPTURED_AT"] = entry["captured_at"]
+    if entry.get("commit"):
+        env["PAINT_EXAMPLE_BASELINE_COMMIT"] = entry["commit"]
+    if entry.get("notes"):
+        env["PAINT_EXAMPLE_BASELINE_NOTES"] = entry["notes"]
+    if entry.get("sha256"):
+        env["PAINT_EXAMPLE_BASELINE_SHA256"] = entry["sha256"]
+    if manifest_revision is not None:
+        env["PAINT_EXAMPLE_BASELINE_VERSION"] = str(manifest_revision)
     print(f"[paint-example-capture] {' '.join(cmd)}")
     if dry_run:
         return
@@ -181,10 +197,11 @@ def main() -> int:
 
     commit = git_commit(repo_root)
     updated = False
+    manifest_revision = manifest.get("manifest_revision")
     for tag in tags:
         entry = captures[tag]
         try:
-            capture_once(repo_root, binary, tag, entry, args.extra_arg, args.dry_run)
+            capture_once(repo_root, binary, tag, entry, manifest_revision, args.extra_arg, args.dry_run)
         except RuntimeError as exc:
             print(f"[paint-example-capture] {exc}", file=sys.stderr)
             return 1

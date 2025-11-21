@@ -52,6 +52,7 @@ struct CommandLineOptions {
     std::optional<std::filesystem::path> screenshot_path;
     std::optional<std::filesystem::path> screenshot_compare_path;
     std::optional<std::filesystem::path> screenshot_diff_path;
+    std::optional<std::filesystem::path> screenshot_metrics_path;
     double screenshot_max_mean_error = 0.0015;
     bool screenshot_require_present = false;
     bool gpu_smoke = false;
@@ -103,6 +104,25 @@ auto parse_options(int argc, char** argv) -> CommandLineOptions {
             continue;
         }
         if (parse_dimension("--height=", opts.height)) {
+            continue;
+        }
+        constexpr std::string_view kScreenshotMetricsPrefix = "--screenshot-metrics-json=";
+        if (arg == "--screenshot-metrics-json") {
+            if (i + 1 >= argc) {
+                std::cerr << "paint_example: --screenshot-metrics-json requires a path\n";
+                continue;
+            }
+            ++i;
+            opts.screenshot_metrics_path = std::filesystem::path{argv[i]};
+            continue;
+        }
+        if (arg.rfind(kScreenshotMetricsPrefix, 0) == 0) {
+            auto value = arg.substr(kScreenshotMetricsPrefix.size());
+            if (value.empty()) {
+                std::cerr << "paint_example: --screenshot-metrics-json requires a path\n";
+                continue;
+            }
+            opts.screenshot_metrics_path = std::filesystem::path{std::string{value}};
             continue;
         }
         constexpr std::string_view kScreenshotPrefix = "--screenshot=";
@@ -203,6 +223,58 @@ auto parse_options(int argc, char** argv) -> CommandLineOptions {
     opts.width = std::max(800, opts.width);
     opts.height = std::max(600, opts.height);
     return opts;
+}
+
+struct BaselineTelemetryInputs {
+    std::optional<int> manifest_revision;
+    std::optional<std::string> tag;
+    std::optional<std::string> sha256;
+    std::optional<int> width;
+    std::optional<int> height;
+    std::optional<std::string> renderer;
+    std::optional<std::string> captured_at;
+    std::optional<std::string> commit;
+    std::optional<std::string> notes;
+    std::optional<double> tolerance;
+};
+
+struct ScreenshotRunMetrics {
+    std::string status;
+    std::uint64_t timestamp_ns = 0;
+    bool hardware_capture = false;
+    bool require_present = false;
+    std::optional<double> mean_error;
+    std::optional<std::uint32_t> max_channel_delta;
+    std::optional<std::string> screenshot_path;
+    std::optional<std::string> diff_path;
+};
+
+auto escape_json_string(std::string_view value) -> std::string {
+    std::string escaped;
+    escaped.reserve(value.size() + 8);
+    for (char ch : value) {
+        switch (ch) {
+        case '\\':
+            escaped.append("\\\\");
+            break;
+        case '\"':
+            escaped.append("\\\"");
+            break;
+        case '\n':
+            escaped.append("\\n");
+            break;
+        case '\r':
+            escaped.append("\\r");
+            break;
+        case '\t':
+            escaped.append("\\t");
+            break;
+        default:
+            escaped.push_back(ch);
+            break;
+        }
+    }
+    return escaped;
 }
 
 struct PaletteColor {
@@ -314,6 +386,16 @@ auto parse_env_int(std::string const& text) -> std::optional<int> {
     return result;
 }
 
+auto parse_env_double(std::string const& text) -> std::optional<double> {
+    double value = 0.0;
+    std::stringstream stream(text);
+    stream >> value;
+    if (stream.fail()) {
+        return std::nullopt;
+    }
+    return value;
+}
+
 template <typename T>
 auto replace_value(SP::PathSpace& space, std::string const& path, T const& value) -> SP::Expected<void> {
     auto inserted = space.insert(path, value);
@@ -323,23 +405,143 @@ auto replace_value(SP::PathSpace& space, std::string const& path, T const& value
     return {};
 }
 
-auto publish_baseline_metrics(SP::PathSpace& space,
-                              std::optional<int> const& manifest_revision,
-                              std::optional<std::string> const& tag,
-                              std::optional<std::string> const& sha) -> void {
-    if (!manifest_revision && !tag && !sha) {
+auto publish_baseline_metrics(SP::PathSpace& space, BaselineTelemetryInputs const& telemetry) -> void {
+    auto make_leaf_path = [](std::string const& root, std::string_view leaf) {
+        std::string path = root;
+        path.push_back('/');
+        path.append(leaf.begin(), leaf.end());
+        return path;
+    };
+    auto root = std::string{"/diagnostics/ui/paint_example/screenshot_baseline"};
+    replace_value(space,
+                  make_leaf_path(root, "manifest_revision"),
+                  static_cast<std::int64_t>(telemetry.manifest_revision.value_or(0)));
+    replace_value(space, make_leaf_path(root, "tag"), telemetry.tag.value_or(std::string{}));
+    replace_value(space, make_leaf_path(root, "sha256"), telemetry.sha256.value_or(std::string{}));
+    replace_value(space, make_leaf_path(root, "width"), static_cast<std::int64_t>(telemetry.width.value_or(0)));
+    replace_value(space,
+                  make_leaf_path(root, "height"),
+                  static_cast<std::int64_t>(telemetry.height.value_or(0)));
+    replace_value(space, make_leaf_path(root, "renderer"), telemetry.renderer.value_or(std::string{}));
+    replace_value(space, make_leaf_path(root, "captured_at"), telemetry.captured_at.value_or(std::string{}));
+    replace_value(space, make_leaf_path(root, "commit"), telemetry.commit.value_or(std::string{}));
+    replace_value(space, make_leaf_path(root, "notes"), telemetry.notes.value_or(std::string{}));
+    replace_value(space, make_leaf_path(root, "tolerance"), telemetry.tolerance.value_or(0.0));
+}
+
+auto record_last_run_metrics(SP::PathSpace& space, ScreenshotRunMetrics const& metrics) -> void {
+    auto root = std::string{"/diagnostics/ui/paint_example/screenshot_baseline/last_run"};
+    auto make_leaf_path = [&](std::string_view leaf) {
+        std::string path = root;
+        path.push_back('/');
+        path.append(leaf.begin(), leaf.end());
+        return path;
+    };
+    replace_value(space,
+                  make_leaf_path("timestamp_ns"),
+                  static_cast<std::int64_t>(metrics.timestamp_ns));
+    replace_value(space, make_leaf_path("status"), metrics.status);
+    replace_value(space, make_leaf_path("hardware_capture"), metrics.hardware_capture);
+    replace_value(space, make_leaf_path("require_present"), metrics.require_present);
+    replace_value(space, make_leaf_path("mean_error"), metrics.mean_error.value_or(0.0));
+    replace_value(space,
+                  make_leaf_path("max_channel_delta"),
+                  static_cast<std::int64_t>(metrics.max_channel_delta.value_or(0)));
+    replace_value(space, make_leaf_path("screenshot_path"), metrics.screenshot_path.value_or(std::string{}));
+    replace_value(space, make_leaf_path("diff_path"), metrics.diff_path.value_or(std::string{}));
+}
+
+auto write_metrics_snapshot_json(std::filesystem::path const& output_path,
+                                 BaselineTelemetryInputs const& telemetry,
+                                 ScreenshotRunMetrics const& run) -> void {
+    if (output_path.empty()) {
         return;
     }
-    auto root = std::string{"/diagnostics/ui/paint_example/screenshot_baseline"};
-    if (manifest_revision) {
-        replace_value(space, root + "/manifest_revision", static_cast<std::int64_t>(*manifest_revision));
+    auto parent = output_path.parent_path();
+    if (!parent.empty()) {
+        std::error_code ec;
+        std::filesystem::create_directories(parent, ec);
+        if (ec) {
+            std::cerr << "paint_example: failed to create metrics directory '" << parent.string() << "'\n";
+            return;
+        }
     }
-    if (tag) {
-        replace_value(space, root + "/tag", *tag);
+    std::ofstream stream(output_path, std::ios::trunc);
+    if (!stream) {
+        std::cerr << "paint_example: failed to open metrics file '" << output_path.string() << "'\n";
+        return;
     }
-    if (sha) {
-        replace_value(space, root + "/sha256", *sha);
+    auto format_string = [](std::optional<std::string> const& value) {
+        if (!value || value->empty()) {
+            return std::string{"null"};
+        }
+        return std::string{"\""} + escape_json_string(*value) + "\"";
+    };
+    auto format_int = [](std::optional<int> const& value) {
+        if (!value) {
+            return std::string{"null"};
+        }
+        return std::to_string(*value);
+    };
+    auto format_double = [](std::optional<double> const& value) {
+        if (!value) {
+            return std::string{"null"};
+        }
+        std::ostringstream out;
+        out << std::setprecision(8) << *value;
+        return out.str();
+    };
+    stream << "{\n";
+    stream << "  \"schema_version\": 1,\n";
+    std::vector<std::string> manifest_lines;
+    manifest_lines.push_back("    \"manifest_revision\": "
+                             + std::to_string(telemetry.manifest_revision.value_or(0)));
+    manifest_lines.push_back("    \"tag\": " + format_string(telemetry.tag));
+    manifest_lines.push_back("    \"sha256\": " + format_string(telemetry.sha256));
+    manifest_lines.push_back("    \"width\": " + format_int(telemetry.width));
+    manifest_lines.push_back("    \"height\": " + format_int(telemetry.height));
+    manifest_lines.push_back("    \"renderer\": " + format_string(telemetry.renderer));
+    manifest_lines.push_back("    \"captured_at\": " + format_string(telemetry.captured_at));
+    manifest_lines.push_back("    \"commit\": " + format_string(telemetry.commit));
+    manifest_lines.push_back("    \"notes\": " + format_string(telemetry.notes));
+    manifest_lines.push_back("    \"tolerance\": " + format_double(telemetry.tolerance));
+    stream << "  \"manifest\": {\n";
+    for (std::size_t i = 0; i < manifest_lines.size(); ++i) {
+        stream << manifest_lines[i];
+        if (i + 1 < manifest_lines.size()) {
+            stream << ",\n";
+        }
     }
+    stream << "\n  },\n";
+    std::vector<std::string> run_lines;
+    run_lines.push_back("    \"timestamp_ns\": " + std::to_string(run.timestamp_ns));
+    run_lines.push_back("    \"status\": \"" + escape_json_string(run.status) + "\"");
+    run_lines.push_back("    \"hardware_capture\": " + std::string(run.hardware_capture ? "true" : "false"));
+    run_lines.push_back("    \"require_present\": " + std::string(run.require_present ? "true" : "false"));
+    if (run.mean_error) {
+        std::ostringstream out;
+        out << std::setprecision(8) << *run.mean_error;
+        run_lines.push_back("    \"mean_error\": " + out.str());
+    } else {
+        run_lines.push_back("    \"mean_error\": null");
+    }
+    if (run.max_channel_delta) {
+        run_lines.push_back("    \"max_channel_delta\": "
+                            + std::to_string(*run.max_channel_delta));
+    } else {
+        run_lines.push_back("    \"max_channel_delta\": null");
+    }
+    run_lines.push_back("    \"screenshot_path\": " + format_string(run.screenshot_path));
+    run_lines.push_back("    \"diff_path\": " + format_string(run.diff_path));
+    stream << "  \"run\": {\n";
+    for (std::size_t i = 0; i < run_lines.size(); ++i) {
+        stream << run_lines[i];
+        if (i + 1 < run_lines.size()) {
+            stream << ",\n";
+        }
+    }
+    stream << "\n  }\n";
+    stream << "}\n";
 }
 
 auto history_metrics_root(std::string const& widget_path) -> std::string {
@@ -1814,9 +2016,33 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    if (!options.screenshot_metrics_path) {
+        if (auto metrics_env = read_env_string("PAINT_EXAMPLE_METRICS_JSON")) {
+            options.screenshot_metrics_path = std::filesystem::path{*metrics_env};
+        }
+    }
+
+    auto absolutize_if_present = [](std::optional<std::filesystem::path>& candidate) {
+        if (!candidate) {
+            return;
+        }
+        std::error_code ec;
+        auto resolved = std::filesystem::absolute(*candidate, ec);
+        if (!ec) {
+            candidate = resolved;
+        }
+    };
+    absolutize_if_present(options.screenshot_path);
+    absolutize_if_present(options.screenshot_compare_path);
+    absolutize_if_present(options.screenshot_diff_path);
+    absolutize_if_present(options.screenshot_metrics_path);
+    absolutize_if_present(options.gpu_texture_path);
+
     auto baseline_version_env = read_env_string("PAINT_EXAMPLE_BASELINE_VERSION");
     auto baseline_tag_env = read_env_string("PAINT_EXAMPLE_BASELINE_TAG");
     auto baseline_sha_env = read_env_string("PAINT_EXAMPLE_BASELINE_SHA256");
+    BaselineTelemetryInputs baseline_telemetry{};
+    baseline_telemetry.tolerance = options.screenshot_max_mean_error;
     std::optional<int> baseline_manifest_revision;
     if (baseline_version_env) {
         auto parsed_revision = parse_env_int(*baseline_version_env);
@@ -1831,8 +2057,42 @@ int main(int argc, char** argv) {
             return 1;
         }
         baseline_manifest_revision = parsed_revision;
+        baseline_telemetry.manifest_revision = parsed_revision;
         std::cout << "paint_example: baseline manifest revision " << *parsed_revision
                   << " (required " << kRequiredBaselineManifestRevision << ")\n";
+    }
+    if (baseline_tag_env) {
+        baseline_telemetry.tag = *baseline_tag_env;
+    }
+    if (baseline_sha_env) {
+        baseline_telemetry.sha256 = *baseline_sha_env;
+    }
+    if (auto width_env = read_env_string("PAINT_EXAMPLE_BASELINE_WIDTH")) {
+        if (auto value = parse_env_int(*width_env)) {
+            baseline_telemetry.width = *value;
+        }
+    }
+    if (auto height_env = read_env_string("PAINT_EXAMPLE_BASELINE_HEIGHT")) {
+        if (auto value = parse_env_int(*height_env)) {
+            baseline_telemetry.height = *value;
+        }
+    }
+    if (auto renderer_env = read_env_string("PAINT_EXAMPLE_BASELINE_RENDERER")) {
+        baseline_telemetry.renderer = *renderer_env;
+    }
+    if (auto captured_env = read_env_string("PAINT_EXAMPLE_BASELINE_CAPTURED_AT")) {
+        baseline_telemetry.captured_at = *captured_env;
+    }
+    if (auto commit_env = read_env_string("PAINT_EXAMPLE_BASELINE_COMMIT")) {
+        baseline_telemetry.commit = *commit_env;
+    }
+    if (auto notes_env = read_env_string("PAINT_EXAMPLE_BASELINE_NOTES")) {
+        baseline_telemetry.notes = *notes_env;
+    }
+    if (auto tolerance_env = read_env_string("PAINT_EXAMPLE_BASELINE_TOLERANCE")) {
+        if (auto parsed_tolerance = parse_env_double(*tolerance_env)) {
+            baseline_telemetry.tolerance = *parsed_tolerance;
+        }
     }
 
     SP::PathSpace space;
@@ -1842,7 +2102,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    publish_baseline_metrics(space, baseline_manifest_revision, baseline_tag_env, baseline_sha_env);
+    publish_baseline_metrics(space, baseline_telemetry);
 
     auto app = SP::App::Create(space,
                                "paint_example",
@@ -2138,6 +2398,32 @@ int main(int argc, char** argv) {
         }
         auto require_live_capture = options.screenshot_require_present
                                     || options.screenshot_compare_path.has_value();
+        ScreenshotRunMetrics run_metrics{};
+        run_metrics.timestamp_ns = now_timestamp_ns();
+        run_metrics.require_present = require_live_capture;
+        if (options.screenshot_path) {
+            run_metrics.screenshot_path = options.screenshot_path->string();
+        }
+        auto refresh_diff_reference = [&]() {
+            if (!options.screenshot_diff_path) {
+                run_metrics.diff_path.reset();
+                return;
+            }
+            std::error_code diff_error;
+            if (std::filesystem::exists(*options.screenshot_diff_path, diff_error) && !diff_error) {
+                run_metrics.diff_path = options.screenshot_diff_path->string();
+                return;
+            }
+            run_metrics.diff_path.reset();
+        };
+        auto emit_metrics = [&](std::string_view status) {
+            refresh_diff_reference();
+            run_metrics.status.assign(status.begin(), status.end());
+            record_last_run_metrics(space, run_metrics);
+            if (options.screenshot_metrics_path) {
+                write_metrics_snapshot_json(*options.screenshot_metrics_path, baseline_telemetry, run_metrics);
+            }
+        };
         bool hardware_capture = true;
         if (paint_gpu_enabled) {
             hardware_capture = wait_for_paint_capture_ready(space,
@@ -2180,11 +2466,19 @@ int main(int argc, char** argv) {
         }
         if (!hardware_capture) {
             if (require_live_capture) {
+                run_metrics.hardware_capture = hardware_capture;
+                run_metrics.mean_error.reset();
+                run_metrics.max_channel_delta.reset();
+                emit_metrics("capture_failed");
                 SP::System::ShutdownDeclarativeRuntime(space);
                 return 1;
             }
             std::cerr << "paint_example: falling back to software renderer for screenshot\n";
             if (!write_image_png(strokes_preview, *options.screenshot_path)) {
+                run_metrics.hardware_capture = hardware_capture;
+                run_metrics.mean_error.reset();
+                run_metrics.max_channel_delta.reset();
+                emit_metrics("software_write_failed");
                 SP::System::ShutdownDeclarativeRuntime(space);
                 return 1;
             }
@@ -2200,6 +2494,10 @@ int main(int argc, char** argv) {
                                             *options.screenshot_path,
                                             options.screenshot_diff_path);
             if (!diff) {
+                run_metrics.hardware_capture = hardware_capture;
+                run_metrics.mean_error.reset();
+                run_metrics.max_channel_delta.reset();
+                emit_metrics("compare_failed");
                 SP::System::ShutdownDeclarativeRuntime(space);
                 return 1;
             }
@@ -2208,13 +2506,25 @@ int main(int argc, char** argv) {
                           << " exceeds threshold " << options.screenshot_max_mean_error
                           << " (max channel delta " << static_cast<int>(diff->max_channel_delta)
                           << ")\n";
+                run_metrics.hardware_capture = hardware_capture;
+                run_metrics.mean_error = diff->mean_error;
+                run_metrics.max_channel_delta = diff->max_channel_delta;
+                emit_metrics("mismatch");
                 SP::System::ShutdownDeclarativeRuntime(space);
                 return 1;
             }
             std::cout << "paint_example: screenshot baseline matched (mean error "
                       << diff->mean_error << ", max channel delta "
                       << static_cast<int>(diff->max_channel_delta) << ")\n";
+            run_metrics.mean_error = diff->mean_error;
+            run_metrics.max_channel_delta = diff->max_channel_delta;
+        } else {
+            run_metrics.mean_error.reset();
+            run_metrics.max_channel_delta.reset();
         }
+        run_metrics.hardware_capture = hardware_capture;
+        emit_metrics(options.screenshot_compare_path ? std::string_view{"match"}
+                                                     : std::string_view{"captured"});
         std::cout << "paint_example: saved screenshot to " << options.screenshot_path->string() << "\n";
         SP::System::ShutdownDeclarativeRuntime(space);
         return 0;
