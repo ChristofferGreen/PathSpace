@@ -1607,6 +1607,7 @@ auto make_blue_theme() -> WidgetTheme {
     theme.muted_text_color = {0.70f, 0.72f, 0.78f, 1.0f};
     theme.palette_text_on_light = {0.10f, 0.12f, 0.16f, 1.0f};
     theme.palette_text_on_dark = {1.0f, 1.0f, 1.0f, 1.0f};
+    theme.palette_swatches = kDefaultPaletteSwatches;
 
     return theme;
 }
@@ -1653,6 +1654,14 @@ auto make_orange_theme() -> WidgetTheme {
     theme.muted_text_color = {0.855f, 0.698f, 0.612f, 1.0f};
     theme.palette_text_on_light = {0.15f, 0.08f, 0.02f, 1.0f};
     theme.palette_text_on_dark = {1.0f, 0.984f, 0.945f, 1.0f};
+    theme.palette_swatches = {{
+        {0.894f, 0.286f, 0.204f, 1.0f},
+        {0.973f, 0.490f, 0.184f, 1.0f},
+        {0.992f, 0.771f, 0.263f, 1.0f},
+        {0.255f, 0.682f, 0.356f, 1.0f},
+        {0.118f, 0.475f, 0.678f, 1.0f},
+        {0.624f, 0.258f, 0.584f, 1.0f},
+    }};
     return theme;
 }
 

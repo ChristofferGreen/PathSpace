@@ -7,6 +7,7 @@
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
+#include <pathspace/ui/declarative/HistoryTelemetry.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
@@ -207,6 +208,20 @@ struct PaletteColor {
     std::array<float, 4> color;
 };
 
+struct PaletteEntryMeta {
+    const char* id;
+    const char* label;
+};
+
+constexpr std::array<PaletteEntryMeta, 6> kPaletteEntries{{
+    {"paint_palette_red", "Red"},
+    {"paint_palette_orange", "Orange"},
+    {"paint_palette_yellow", "Yellow"},
+    {"paint_palette_green", "Green"},
+    {"paint_palette_blue", "Blue"},
+    {"paint_palette_purple", "Purple"},
+}};
+
 struct PaintLayoutMetrics {
     float controls_width = 0.0f;
     float controls_spacing = 0.0f;
@@ -249,15 +264,22 @@ auto palette_button_text_color(std::array<float, 4> const& background,
     return theme.palette_text_on_dark;
 }
 
-auto palette_colors() -> std::vector<PaletteColor> {
-    return {
-        {"paint_palette_red", "Red", {0.905f, 0.173f, 0.247f, 1.0f}},
-        {"paint_palette_orange", "Orange", {0.972f, 0.545f, 0.192f, 1.0f}},
-        {"paint_palette_yellow", "Yellow", {0.995f, 0.847f, 0.207f, 1.0f}},
-        {"paint_palette_green", "Green", {0.172f, 0.701f, 0.368f, 1.0f}},
-        {"paint_palette_blue", "Blue", {0.157f, 0.407f, 0.933f, 1.0f}},
-        {"paint_palette_purple", "Purple", {0.560f, 0.247f, 0.835f, 1.0f}},
-    };
+auto palette_colors(SP::UI::Builders::Widgets::WidgetTheme const& theme)
+    -> std::vector<PaletteColor> {
+    std::vector<PaletteColor> colors;
+    colors.reserve(kPaletteEntries.size());
+    for (std::size_t i = 0; i < kPaletteEntries.size(); ++i) {
+        auto color = theme.palette_swatches[i];
+        if (color[3] <= 0.0f) {
+            color = SP::UI::Builders::Widgets::kDefaultPaletteSwatches[i];
+        }
+        colors.push_back(PaletteColor{
+            kPaletteEntries[i].id,
+            kPaletteEntries[i].label,
+            color,
+        });
+    }
+    return colors;
 }
 
 auto log_error(SP::Expected<void> const& status, std::string const& context) -> void {
@@ -315,23 +337,32 @@ auto record_history_state(SP::PathSpace& space,
     write_history_metric(space, metrics_root, "state_timestamp_ns", now_timestamp_ns());
 }
 
+struct HistoryErrorInfo {
+    std::string context;
+    std::string message;
+    std::string code;
+    std::uint64_t timestamp_ns = 0;
+};
+
 auto record_history_error(SP::PathSpace& space,
                           std::string const& metrics_root,
                           std::string_view context,
-                          SP::Error const* error) -> void {
+                          SP::Error const* error) -> HistoryErrorInfo {
+    HistoryErrorInfo info{};
+    info.context.assign(context.begin(), context.end());
     if (metrics_root.empty()) {
-        return;
+        return info;
     }
-    std::string message;
-    std::string code;
     if (error != nullptr) {
-        message = SP::describeError(*error);
-        code = std::string(SP::errorCodeToString(error->code));
+        info.message = SP::describeError(*error);
+        info.code = std::string(SP::errorCodeToString(error->code));
     }
-    write_history_metric(space, metrics_root, "last_error_context", std::string{context});
-    write_history_metric(space, metrics_root, "last_error_message", message);
-    write_history_metric(space, metrics_root, "last_error_code", code);
-    write_history_metric(space, metrics_root, "last_error_timestamp_ns", now_timestamp_ns());
+    info.timestamp_ns = now_timestamp_ns();
+    write_history_metric(space, metrics_root, "last_error_context", info.context);
+    write_history_metric(space, metrics_root, "last_error_message", info.message);
+    write_history_metric(space, metrics_root, "last_error_code", info.code);
+    write_history_metric(space, metrics_root, "last_error_timestamp_ns", info.timestamp_ns);
+    return info;
 }
 
 auto initialize_history_metrics(SP::PathSpace& space, std::string const& widget_path) -> void {
@@ -350,6 +381,12 @@ auto initialize_history_metrics(SP::PathSpace& space, std::string const& widget_
     write_history_metric(space, metrics_root, "last_error_message", std::string{});
     write_history_metric(space, metrics_root, "last_error_code", std::string{});
     write_history_metric(space, metrics_root, "last_error_timestamp_ns", static_cast<std::uint64_t>(0));
+    SP::UI::Declarative::HistoryBindingTelemetryCard card{};
+    card.state = "pending";
+    card.state_timestamp_ns = now_timestamp_ns();
+    card.buttons_enabled = false;
+    card.buttons_enabled_last_change_ns = card.state_timestamp_ns;
+    write_history_metric(space, metrics_root, "card", card);
 }
 
 auto window_view_base(SP::UI::Builders::WindowPath const& window_path,
@@ -1251,7 +1288,67 @@ struct HistoryBinding {
     std::uint64_t undo_failures = 0;
     std::uint64_t redo_failures = 0;
     bool buttons_enabled = false;
+    std::uint64_t buttons_enabled_last_change_ns = 0;
+    std::string state = "pending";
+    std::uint64_t state_timestamp_ns = 0;
+    std::string last_error_context;
+    std::string last_error_message;
+    std::string last_error_code;
+    std::uint64_t last_error_timestamp_ns = 0;
 };
+
+auto make_history_card(HistoryBinding const& binding)
+    -> SP::UI::Declarative::HistoryBindingTelemetryCard {
+    SP::UI::Declarative::HistoryBindingTelemetryCard card{};
+    card.state = binding.state;
+    card.state_timestamp_ns = binding.state_timestamp_ns;
+    card.buttons_enabled = binding.buttons_enabled;
+    card.buttons_enabled_last_change_ns = binding.buttons_enabled_last_change_ns;
+    card.undo_total = binding.undo_total;
+    card.undo_failures_total = binding.undo_failures;
+    card.redo_total = binding.redo_total;
+    card.redo_failures_total = binding.redo_failures;
+    card.last_error_context = binding.last_error_context;
+    card.last_error_message = binding.last_error_message;
+    card.last_error_code = binding.last_error_code;
+    card.last_error_timestamp_ns = binding.last_error_timestamp_ns;
+    return card;
+}
+
+auto publish_history_binding_card(SP::PathSpace& space, HistoryBinding const& binding) -> void {
+    if (binding.metrics_root.empty()) {
+        return;
+    }
+    write_history_metric(space, binding.metrics_root, "card", make_history_card(binding));
+}
+
+auto set_binding_state(SP::PathSpace& space,
+                       HistoryBinding& binding,
+                       std::string_view state) -> void {
+    if (binding.metrics_root.empty()) {
+        return;
+    }
+    auto timestamp = now_timestamp_ns();
+    binding.state.assign(state.begin(), state.end());
+    binding.state_timestamp_ns = timestamp;
+    write_history_metric(space, binding.metrics_root, "state", std::string{state});
+    write_history_metric(space, binding.metrics_root, "state_timestamp_ns", timestamp);
+    publish_history_binding_card(space, binding);
+}
+
+auto set_binding_buttons_enabled(SP::PathSpace& space,
+                                 HistoryBinding& binding,
+                                 bool enabled) -> void {
+    if (binding.metrics_root.empty()) {
+        return;
+    }
+    auto timestamp = now_timestamp_ns();
+    binding.buttons_enabled = enabled;
+    binding.buttons_enabled_last_change_ns = timestamp;
+    write_history_metric(space, binding.metrics_root, "buttons_enabled", enabled);
+    write_history_metric(space, binding.metrics_root, "buttons_enabled_last_change_ns", timestamp);
+    publish_history_binding_card(space, binding);
+}
 
 auto make_history_binding(SP::PathSpace& space, std::string root_path) -> SP::Expected<HistoryBinding> {
     auto metrics_root = history_metrics_root(root_path);
@@ -1275,7 +1372,9 @@ auto make_history_binding(SP::PathSpace& space, std::string root_path) -> SP::Ex
         .root = std::move(root_path),
         .metrics_root = std::move(metrics_root),
     };
-    record_history_state(space, binding.metrics_root, "ready");
+    binding.buttons_enabled = false;
+    binding.buttons_enabled_last_change_ns = now_timestamp_ns();
+    set_binding_state(space, binding, "ready");
     return binding;
 }
 
@@ -1340,17 +1439,14 @@ auto set_history_buttons_enabled(SP::PathSpace& space,
     } else if (bindings.paint_widget_path && !bindings.paint_widget_path->empty()) {
         metrics_root = history_metrics_root(*bindings.paint_widget_path);
     }
-    auto publish_buttons_metric = [&](bool target_state) {
-        write_history_metric(space, metrics_root, "buttons_enabled", target_state);
-        write_history_metric(space, metrics_root, "buttons_enabled_last_change_ns", now_timestamp_ns());
-    };
     if (binding_ptr) {
         if (binding_ptr->buttons_enabled != enabled) {
-            binding_ptr->buttons_enabled = enabled;
-            publish_buttons_metric(enabled);
+            set_binding_buttons_enabled(space, *binding_ptr, enabled);
         }
     } else {
-        publish_buttons_metric(enabled);
+        auto timestamp = now_timestamp_ns();
+        write_history_metric(space, metrics_root, "buttons_enabled", enabled);
+        write_history_metric(space, metrics_root, "buttons_enabled_last_change_ns", timestamp);
     }
     auto update = [&](std::shared_ptr<std::string> const& target, std::string_view name) {
         if (!target || target->empty()) {
@@ -1374,7 +1470,7 @@ auto make_palette_fragment(PaintUiBindings const& bindings,
                            SP::UI::Builders::Widgets::WidgetTheme const& theme)
     -> SP::UI::Declarative::WidgetFragment {
     constexpr int kButtonsPerRow = 3;
-    auto colors = palette_colors();
+    auto colors = palette_colors(theme);
     SP::UI::Declarative::Stack::Args column{};
     column.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
     auto vertical_spacing = std::max(6.0f, 10.0f * layout.controls_scale);
@@ -1515,21 +1611,29 @@ auto make_actions_fragment(PaintUiBindings const& bindings,
                                              binding_ptr->redo_failures);
                     }
                 }
+                publish_history_binding_card(ctx.space, *binding_ptr);
             };
             SP::Expected<void> status = action == HistoryAction::Undo ? binding_ptr->undo->undo(root)
                                                                       : binding_ptr->undo->redo(root);
             if (!status) {
                 update_action_metrics(false);
                 log_error(status, action == HistoryAction::Undo ? "UndoableSpace::undo" : "UndoableSpace::redo");
-                record_history_state(ctx.space, binding_ptr->metrics_root, "error");
-                record_history_error(ctx.space,
-                                     binding_ptr->metrics_root,
-                                     action == HistoryAction::Undo ? "UndoableSpace::undo" : "UndoableSpace::redo",
-                                     &status.error());
+                set_binding_state(ctx.space, *binding_ptr, "error");
+
+                auto error_info = record_history_error(ctx.space,
+                                                       binding_ptr->metrics_root,
+                                                       action == HistoryAction::Undo ? "UndoableSpace::undo"
+                                                                                      : "UndoableSpace::redo",
+                                                       &status.error());
+                binding_ptr->last_error_context = error_info.context;
+                binding_ptr->last_error_message = error_info.message;
+                binding_ptr->last_error_code = error_info.code;
+                binding_ptr->last_error_timestamp_ns = error_info.timestamp_ns;
+                publish_history_binding_card(ctx.space, *binding_ptr);
                 return;
             }
             update_action_metrics(true);
-            record_history_state(ctx.space, binding_ptr->metrics_root, "ready");
+            set_binding_state(ctx.space, *binding_ptr, "ready");
             auto status_label = bindings.status_label_path ? *bindings.status_label_path : std::string{};
             if (!status_label.empty()) {
                 auto status_path = SP::UI::Builders::WidgetPath{status_label};

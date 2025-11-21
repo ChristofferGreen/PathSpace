@@ -2009,6 +2009,15 @@ auto TranslateTreeLayout(TreeLayout& layout, float dx, float dy) -> void;
 
 } // namespace Input
 
+inline constexpr std::array<std::array<float, 4>, 6> kDefaultPaletteSwatches{{
+    {0.905f, 0.173f, 0.247f, 1.0f},
+    {0.972f, 0.545f, 0.192f, 1.0f},
+    {0.995f, 0.847f, 0.207f, 1.0f},
+    {0.172f, 0.701f, 0.368f, 1.0f},
+    {0.157f, 0.407f, 0.933f, 1.0f},
+    {0.560f, 0.247f, 0.835f, 1.0f},
+}};
+
 struct WidgetTheme {
     ButtonStyle button{};
     ToggleStyle toggle{};
@@ -2035,6 +2044,7 @@ struct WidgetTheme {
     std::array<float, 4> muted_text_color{0.70f, 0.72f, 0.78f, 1.0f};
     std::array<float, 4> palette_text_on_light{0.10f, 0.12f, 0.16f, 1.0f};
     std::array<float, 4> palette_text_on_dark{1.0f, 1.0f, 1.0f, 1.0f};
+    std::array<std::array<float, 4>, 6> palette_swatches{kDefaultPaletteSwatches};
 };
 
 struct ThemeSelection {

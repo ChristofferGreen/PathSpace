@@ -108,8 +108,7 @@ TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
 
     auto metrics_base = std::string(scene->path.getPath()) + "/runtime/lifecycle/metrics";
     auto buckets_path = metrics_base + "/widgets_with_buckets";
-    auto builds_root = std::string(scene->path.getPath()) + "/builds";
-    SP::ConcretePathStringView builds_view{builds_root};
+    auto last_revision_path = metrics_base + "/last_revision";
 
     auto wait_until = [&](auto&& predicate) {
         auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{20};
@@ -122,10 +121,10 @@ TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
         return false;
     };
 
-    auto wait_for_revision = [&](std::size_t target) {
+    auto wait_for_revision = [&](std::uint64_t target) {
         return wait_until([&]() {
-            auto builds = space.listChildren(builds_view);
-            return builds.size() >= target;
+            auto revision = space.read<std::uint64_t, std::string>(last_revision_path);
+            return revision && *revision >= target;
         });
     };
 

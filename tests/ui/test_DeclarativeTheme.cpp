@@ -103,6 +103,25 @@ TEST_CASE("Theme::SetColor updates storage and compiled value") {
     REQUIRE(recompiled.has_value());
     CHECK_EQ(recompiled->palette_text_on_light[0], doctest::Approx(readable.rgba[0]));
     CHECK_EQ(recompiled->palette_text_on_light[1], doctest::Approx(readable.rgba[1]));
+
+    SP::UI::Declarative::Theme::ColorValue swatch{};
+    swatch.rgba = {0.12f, 0.88f, 0.65f, 1.0f};
+    status = SP::UI::Declarative::Theme::SetColor(fx.space,
+                                                  fx.app_root_view(),
+                                                  result->canonical_name,
+                                                  "palette/swatches/green",
+                                                  swatch);
+    REQUIRE(status.has_value());
+    auto swatch_token = fx.space.read<std::array<float, 4>, std::string>(
+        result->edit_root.getPath() + "/colors/palette/swatches/green");
+    REQUIRE(swatch_token.has_value());
+    CHECK_EQ((*swatch_token)[0], doctest::Approx(swatch.rgba[0]));
+    CHECK_EQ((*swatch_token)[1], doctest::Approx(swatch.rgba[1]));
+    auto recompiled_swatch =
+        fx.space.read<SP::UI::Builders::Widgets::WidgetTheme, std::string>(theme_paths->value.getPath());
+    REQUIRE(recompiled_swatch.has_value());
+    CHECK_EQ(recompiled_swatch->palette_swatches[3][0], doctest::Approx(swatch.rgba[0]));
+    CHECK_EQ(recompiled_swatch->palette_swatches[3][1], doctest::Approx(swatch.rgba[1]));
 }
 
 TEST_CASE("Theme::SetColor rejects unknown token") {

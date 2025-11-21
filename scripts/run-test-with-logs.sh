@@ -240,6 +240,26 @@ append_log_manifest() {
   } >>"$PATHSPACE_TEST_LOG_MANIFEST" || true
 }
 
+append_exit_banner() {
+  local log_path="$1"
+  local rc="$2"
+  local timestamp
+  timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  local detail=""
+  if [[ "$rc" -eq 124 ]]; then
+    detail="timeout after ${TIMEOUT}s (rc=${rc})"
+  elif [[ "$rc" -ge 128 ]]; then
+    local signal=$((rc - 128))
+    detail="signal ${signal} (rc=${rc})"
+  else
+    detail="exit code ${rc}"
+  fi
+  {
+    echo ""
+    printf "[test-runner] EXIT %s at %s\n" "$detail" "$timestamp"
+  } >>"$log_path"
+}
+
 RC=0
 if [[ "$TIMEOUT" -gt 0 && -n "$TIMEOUT_CMD" ]]; then
   if ! "${TIMEOUT_CMD}" "${TIMEOUT}s" "${BASE_CMD[@]}" >"$TMP_LOG" 2>&1; then
@@ -261,6 +281,7 @@ if [[ "$RC" -eq 0 ]]; then
 fi
 
 mv "$TMP_LOG" "$FINAL_LOG"
+append_exit_banner "$FINAL_LOG" "$RC"
 append_log_manifest "failure" "$FINAL_LOG"
 echo "[test-runner] ${LABEL} failed (exit ${RC}). Log saved to: ${FINAL_LOG}" >&2
 if command -v tail >/dev/null 2>&1; then

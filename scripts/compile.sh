@@ -756,6 +756,11 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
       return 1
     }
 
+    add_test_command "PathSpaceTests" "$CORE_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}"
+    if [[ -x "$UI_TEST_EXE" ]]; then
+      add_test_command "PathSpaceUITests" "$UI_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}" "${UI_TEST_EXTRA_ARGS_ARRAY[@]}"
+    fi
+
     if [[ "$LOOP" -gt 0 && ${#LOOP_FILTER_LABELS[@]} -gt 0 ]]; then
       for entry in "${LOOP_FILTER_LABELS[@]}"; do
         found_match=0
@@ -771,11 +776,6 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
           die "Loop label filter '$entry' did not match any configured tests"
         fi
       done
-    fi
-
-    add_test_command "PathSpaceTests" "$CORE_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}"
-    if [[ -x "$UI_TEST_EXE" ]]; then
-      add_test_command "PathSpaceUITests" "$UI_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}" "${UI_TEST_EXTRA_ARGS_ARRAY[@]}"
     fi
 
     if [[ "$(uname)" == "Darwin" ]]; then

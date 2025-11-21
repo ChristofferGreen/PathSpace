@@ -30,6 +30,9 @@ New helper switches (November 21, 2025):
 - `--loop-keep-logs LABELS` keeps success logs for additional tests (default = `PathSpaceUITests` when `--loop` is used). Disable via `--loop-keep-logs=none`.
 - `--loop-label LABEL` (repeatable, glob-friendly) restricts the loop to specific tests so you can hammer just `PathSpaceUITests` without re-running `PathSpaceTests`.
 - `--ui-test-extra-args "--success"` appends doctest flags to `PathSpaceUITests` only; this is the recommended way to surface doctest’s `--success` output when chasing flakes. Environment equivalents exist for automation: `PATHSPACE_LOOP_KEEP_LOGS`, `PATHSPACE_LOOP_LABEL_FILTER`, and `PATHSPACE_UI_TEST_EXTRA_ARGS`.
+- Loop filters are validated **after** the test commands register, so `--loop-label PathSpaceUITests` no longer trips the “did not match any configured tests” error when you only want the UI suite. Filtered runs print `Skipping <label> (loop filter)` for clarity.
+- Every saved log now ends with a `[test-runner] EXIT …` banner (exit code, decoded signal, or timeout plus UTC timestamp) emitted by `scripts/run-test-with-logs.sh`, so you can tell immediately whether a loop iteration died to SIGTERM, the 20 s timeout, or a non-zero exit before opening the artifacts.
+- Undo/redo telemetry lives under `widgets/<id>/metrics/history_binding/*`; when triaging paint_example regressions, read the `card` node (`HistoryBindingTelemetryCard`) to get the current state, button enablement timestamps, undo/redo counters, and last error context without replaying screenshots (`pathspace_inspect --path "<app>/widgets/paint/metrics/history_binding/card"` is the quickest way today).
 
 ### 1.4 Telemetry, throttling, and subscriber toggles
 

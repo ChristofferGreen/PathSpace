@@ -194,6 +194,12 @@ constexpr ColorBinding kColorBindings[] = {
     THEME_COLOR_BINDING("muted_text/color", theme.muted_text_color),
     THEME_COLOR_BINDING("palette/text_on_light", theme.palette_text_on_light),
     THEME_COLOR_BINDING("palette/text_on_dark", theme.palette_text_on_dark),
+    THEME_COLOR_BINDING("palette/swatches/red", theme.palette_swatches[0]),
+    THEME_COLOR_BINDING("palette/swatches/orange", theme.palette_swatches[1]),
+    THEME_COLOR_BINDING("palette/swatches/yellow", theme.palette_swatches[2]),
+    THEME_COLOR_BINDING("palette/swatches/green", theme.palette_swatches[3]),
+    THEME_COLOR_BINDING("palette/swatches/blue", theme.palette_swatches[4]),
+    THEME_COLOR_BINDING("palette/swatches/purple", theme.palette_swatches[5]),
 };
 
 #undef THEME_COLOR_BINDING
