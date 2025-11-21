@@ -218,6 +218,7 @@ struct PaintLayoutMetrics {
     float canvas_height = 0.0f;
     float canvas_offset_x = 0.0f;
     float canvas_offset_y = 0.0f;
+    float controls_scale = 1.0f;
 };
 
 auto ensure_active_panel(SP::UI::Declarative::Stack::Args& args) -> void {
@@ -1200,12 +1201,18 @@ auto compute_layout_metrics(int window_width, int window_height) -> PaintLayoutM
     PaintLayoutMetrics metrics{};
     metrics.padding_x = 32.0f;
     metrics.padding_y = 32.0f;
-    metrics.controls_spacing = 28.0f;
-    metrics.controls_padding_main = 20.0f;
-    metrics.controls_padding_cross = 18.0f;
-    metrics.palette_button_height = 44.0f;
     auto width_f = static_cast<float>(std::max(window_width, 800));
     auto height_f = static_cast<float>(std::max(window_height, 600));
+    if (height_f >= 800.0f) {
+        metrics.controls_scale = 1.0f;
+    } else {
+        metrics.controls_scale = std::clamp(height_f / 800.0f, 0.82f, 1.0f);
+    }
+    auto scale = metrics.controls_scale;
+    metrics.controls_spacing = std::lerp(18.0f, 28.0f, scale);
+    metrics.controls_padding_main = std::lerp(14.0f, 20.0f, scale);
+    metrics.controls_padding_cross = std::lerp(12.0f, 18.0f, scale);
+    metrics.palette_button_height = std::lerp(36.0f, 44.0f, scale);
     metrics.controls_width = std::clamp(width_f * 0.28f, 300.0f, 420.0f);
     metrics.canvas_offset_x = metrics.padding_x + metrics.controls_width + metrics.controls_spacing;
     metrics.canvas_offset_y = metrics.padding_y;
@@ -1226,12 +1233,35 @@ struct PaintUiBindings {
     std::shared_ptr<std::string> paint_widget_path;
     std::shared_ptr<std::string> status_label_path;
     std::shared_ptr<std::string> brush_label_path;
+    std::shared_ptr<std::string> undo_button_path;
+    std::shared_ptr<std::string> redo_button_path;
     std::shared_ptr<std::shared_ptr<HistoryBinding>> history_binding;
     std::shared_ptr<BrushState> brush_state;
 };
 
 constexpr auto kControlsStackChildren =
     std::to_array<std::string_view>({"status_label", "brush_label", "brush_slider", "palette", "actions"});
+constexpr auto kActionsStackChildren = std::to_array<std::string_view>({"undo_button", "redo_button"});
+
+auto set_history_buttons_enabled(SP::PathSpace& space,
+                                 PaintUiBindings const& bindings,
+                                 bool enabled) -> void {
+    auto update = [&](std::shared_ptr<std::string> const& target, std::string_view name) {
+        if (!target || target->empty()) {
+            return;
+        }
+        auto widget_path = SP::UI::Builders::WidgetPath{*target};
+        auto status = SP::UI::Declarative::Button::SetEnabled(space, widget_path, enabled);
+        if (!status) {
+            auto context = std::string{"Button::SetEnabled("};
+            context.append(name);
+            context.push_back(')');
+            log_error(status, context);
+        }
+    };
+    update(bindings.undo_button_path, "undo");
+    update(bindings.redo_button_path, "redo");
+}
 
 auto make_palette_fragment(PaintUiBindings const& bindings,
                            PaintLayoutMetrics const& layout) -> SP::UI::Declarative::WidgetFragment {
@@ -1239,7 +1269,8 @@ auto make_palette_fragment(PaintUiBindings const& bindings,
     auto colors = palette_colors();
     SP::UI::Declarative::Stack::Args column{};
     column.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
-    column.style.spacing = 10.0f;
+    auto vertical_spacing = std::max(6.0f, 10.0f * layout.controls_scale);
+    column.style.spacing = vertical_spacing;
     column.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
     auto column_width = std::max(layout.controls_width - layout.controls_padding_cross * 2.0f, 240.0f);
     column.style.width = column_width;
@@ -1248,7 +1279,7 @@ auto make_palette_fragment(PaintUiBindings const& bindings,
     for (std::size_t index = 0; index < colors.size();) {
         SP::UI::Declarative::Stack::Args row{};
         row.style.axis = SP::UI::Builders::Widgets::StackAxis::Horizontal;
-        row.style.spacing = 10.0f;
+        row.style.spacing = vertical_spacing;
         row.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
         auto total_spacing = row.style.spacing * static_cast<float>(kButtonsPerRow - 1);
         auto available_width = std::max(column_width - total_spacing,
@@ -1261,10 +1292,11 @@ auto make_palette_fragment(PaintUiBindings const& bindings,
             args.label = entry.label;
             args.style.width = base_width;
             args.style.height = layout.palette_button_height;
-            args.style.corner_radius = 10.0f;
+            args.style.corner_radius = std::max(6.0f, 10.0f * layout.controls_scale);
             args.style.background_color = entry.color;
             args.style.text_color = palette_button_text_color(entry.color);
-            args.style.typography = make_typography(18.0f, 22.0f);
+            args.style.typography = make_typography(18.0f * layout.controls_scale,
+                                                    22.0f * layout.controls_scale);
             args.on_press = [bindings, entry](SP::UI::Declarative::ButtonContext& ctx) {
                 if (bindings.brush_state) {
                     bindings.brush_state->color = entry.color;
@@ -1313,7 +1345,7 @@ auto make_actions_fragment(PaintUiBindings const& bindings,
                            PaintLayoutMetrics const& layout) -> SP::UI::Declarative::WidgetFragment {
     SP::UI::Declarative::Stack::Args row{};
     row.style.axis = SP::UI::Builders::Widgets::StackAxis::Horizontal;
-    row.style.spacing = 12.0f;
+    row.style.spacing = std::max(8.0f, 12.0f * layout.controls_scale);
     row.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
     auto column_width = std::max(layout.controls_width - layout.controls_padding_cross * 2.0f, 240.0f);
     auto button_width = std::max(140.0f, (column_width - row.style.spacing) * 0.5f);
@@ -1324,13 +1356,16 @@ auto make_actions_fragment(PaintUiBindings const& bindings,
                            HistoryAction action) {
         SP::UI::Declarative::Button::Args args{};
         args.label = std::move(label);
+        args.enabled = false;
         args.style.width = button_width;
-        args.style.height = 42.0f;
-        args.style.corner_radius = 8.0f;
+        args.style.height = std::max(34.0f, 42.0f * layout.controls_scale);
+        args.style.corner_radius = std::max(5.0f, 8.0f * layout.controls_scale);
         args.on_press = [bindings, action](SP::UI::Declarative::ButtonContext& ctx) {
             auto binding_ptr = bindings.history_binding ? *bindings.history_binding : std::shared_ptr<HistoryBinding>{};
             if (!binding_ptr) {
-                std::cerr << "paint_example: history binding missing" << std::endl;
+                std::cerr << "paint_example: history binding missing for "
+                          << (action == HistoryAction::Undo ? "undo" : "redo")
+                          << " button\n";
                 return;
             }
             auto root = SP::ConcretePathStringView{binding_ptr->root};
@@ -1366,7 +1401,7 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
                              PaintLayoutMetrics const& layout) -> SP::UI::Declarative::WidgetFragment {
     SP::UI::Declarative::Stack::Args controls{};
     controls.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
-    controls.style.spacing = std::max(12.0f, layout.controls_spacing * 0.6f);
+    controls.style.spacing = std::max(10.0f, layout.controls_spacing * 0.6f);
     controls.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
     controls.style.width = layout.controls_width;
     controls.style.height = layout.canvas_height;
@@ -1379,7 +1414,8 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
         .id = "status_label",
         .fragment = SP::UI::Declarative::Label::Fragment({
             .text = "Pick a color and drag on the canvas",
-            .typography = make_typography(24.0f, 30.0f),
+            .typography = make_typography(24.0f * layout.controls_scale,
+                                          30.0f * layout.controls_scale),
             .color = {0.92f, 0.94f, 0.98f, 1.0f},
         }),
     });
@@ -1389,7 +1425,8 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
         .id = "brush_label",
         .fragment = SP::UI::Declarative::Label::Fragment({
             .text = format_brush_state(brush_state->size, brush_state->color),
-            .typography = make_typography(20.0f, 26.0f),
+            .typography = make_typography(20.0f * layout.controls_scale,
+                                          26.0f * layout.controls_scale),
             .color = {0.82f, 0.86f, 0.92f, 1.0f},
         }),
     });
@@ -1401,11 +1438,12 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
     slider_args.value = brush_state->size;
     slider_args.style.width = std::max(180.0f,
                                        layout.controls_width - layout.controls_padding_cross * 2.0f);
-    slider_args.style.height = 40.0f;
-    slider_args.style.track_height = 8.0f;
-    slider_args.style.thumb_radius = 11.0f;
+    slider_args.style.height = std::max(32.0f, 40.0f * layout.controls_scale);
+    slider_args.style.track_height = std::max(6.0f, 8.0f * layout.controls_scale);
+    slider_args.style.thumb_radius = std::max(8.0f, 11.0f * layout.controls_scale);
     slider_args.style.label_color = {0.84f, 0.88f, 0.94f, 1.0f};
-    slider_args.style.label_typography = make_typography(18.0f, 22.0f);
+    slider_args.style.label_typography = make_typography(18.0f * layout.controls_scale,
+                                                         22.0f * layout.controls_scale);
     slider_args.on_change = [bindings](SP::UI::Declarative::SliderContext& ctx) {
         if (bindings.brush_state) {
             bindings.brush_state->size = ctx.value;
@@ -1571,6 +1609,8 @@ int main(int argc, char** argv) {
         .paint_widget_path = std::make_shared<std::string>(),
         .status_label_path = std::make_shared<std::string>(),
         .brush_label_path = std::make_shared<std::string>(),
+        .undo_button_path = std::make_shared<std::string>(),
+        .redo_button_path = std::make_shared<std::string>(),
         .history_binding = std::make_shared<std::shared_ptr<HistoryBinding>>(),
         .brush_state = brush_state,
     };
@@ -1641,6 +1681,17 @@ int main(int argc, char** argv) {
         SP::System::ShutdownDeclarativeRuntime(space);
         return 1;
     }
+    auto actions_root = controls_root + "/children/actions";
+    if (!wait_for_stack_children(space,
+                                 actions_root,
+                                 std::span<const std::string_view>(kActionsStackChildren),
+                                 std::chrono::milliseconds(1000),
+                                 debug_layout_logging)) {
+        SP::System::ShutdownDeclarativeRuntime(space);
+        return 1;
+    }
+    *bindings.undo_button_path = actions_root + "/children/undo_button";
+    *bindings.redo_button_path = actions_root + "/children/redo_button";
 
     auto history_binding_result = make_history_binding(space, paint_widget_path);
     if (!history_binding_result) {
@@ -1650,6 +1701,7 @@ int main(int argc, char** argv) {
     }
     auto history_binding = std::make_shared<HistoryBinding>(std::move(*history_binding_result));
     *bindings.history_binding = history_binding;
+    set_history_buttons_enabled(space, bindings, true);
     auto paint_widget = SP::UI::Builders::WidgetPath{paint_widget_path};
 
     auto widget_count = count_window_widgets(space, window_view_path);

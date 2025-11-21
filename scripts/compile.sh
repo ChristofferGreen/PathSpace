@@ -655,6 +655,7 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
     paint_screenshot_script="$ROOT_DIR/scripts/check_paint_screenshot.py"
     if command -v python3 >/dev/null 2>&1 && [[ -f "$paint_screenshot_script" ]]; then
       add_test_command "PaintExampleScreenshot" python3 "$paint_screenshot_script" --build-dir "$BUILD_DIR"
+      add_test_command "PaintExampleScreenshot720" python3 "$paint_screenshot_script" --build-dir "$BUILD_DIR" --baseline "$ROOT_DIR/docs/images/paint_example_720_baseline.png" --height 720 --tag paint_720
     else
       info "PaintExampleScreenshot harness unavailable; skipping (python3 or script missing)."
     fi
