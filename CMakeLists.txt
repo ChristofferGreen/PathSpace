@@ -88,6 +88,9 @@ target_link_libraries(pathspace_history_savefile PRIVATE PathSpace)
 add_executable(pathspace_history_cli_roundtrip tools/history_cli_roundtrip.cpp)
 target_link_libraries(pathspace_history_cli_roundtrip PRIVATE PathSpace)
 
+add_executable(pathspace_paint_screenshot_card tools/paint_screenshot_card.cpp)
+target_link_libraries(pathspace_paint_screenshot_card PRIVATE PathSpace)
+
 if(PATHSPACE_ENABLE_UI)
     add_executable(pathspace_hsat_inspect tools/hsat_inspect.cpp)
     target_link_libraries(pathspace_hsat_inspect PRIVATE PathSpace)
@@ -120,7 +123,8 @@ if(BUILD_PATHSPACE_EXAMPLES)
         target_compile_definitions(devices_example PRIVATE PATHIO_BACKEND_MACOS=1)
     endif()
 
-    add_executable(paint_example examples/paint_example.cpp)
+    add_executable(paint_example
+        examples/paint_example.cpp)
     target_link_libraries(paint_example PRIVATE PathSpace)
     if(APPLE)
         if(CMAKE_OBJCXX_COMPILER_ID MATCHES "Clang")

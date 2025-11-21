@@ -1,5 +1,7 @@
 #include "declarative_example_shared.hpp"
 
+#include <pathspace/examples/paint/PaintControls.hpp>
+
 #include <pathspace/history/UndoableSpace.hpp>
 #include <pathspace/layer/PathAlias.hpp>
 #include <pathspace/path/ConcretePath.hpp>
@@ -42,6 +44,10 @@
 using namespace PathSpaceExamples;
 
 namespace {
+
+namespace PaintControlsNS = SP::Examples::PaintControls;
+using PaintControlsNS::BrushState;
+using PaintLayoutMetrics = PaintControlsNS::PaintLayoutMetrics;
 
 constexpr int kRequiredBaselineManifestRevision = 1;
 
@@ -277,85 +283,6 @@ auto escape_json_string(std::string_view value) -> std::string {
     return escaped;
 }
 
-struct PaletteColor {
-    const char* id;
-    const char* label;
-    std::array<float, 4> color;
-};
-
-struct PaletteEntryMeta {
-    const char* id;
-    const char* label;
-};
-
-constexpr std::array<PaletteEntryMeta, 6> kPaletteEntries{{
-    {"paint_palette_red", "Red"},
-    {"paint_palette_orange", "Orange"},
-    {"paint_palette_yellow", "Yellow"},
-    {"paint_palette_green", "Green"},
-    {"paint_palette_blue", "Blue"},
-    {"paint_palette_purple", "Purple"},
-}};
-
-struct PaintLayoutMetrics {
-    float controls_width = 0.0f;
-    float controls_spacing = 0.0f;
-    float padding_x = 0.0f;
-    float padding_y = 0.0f;
-    float controls_padding_main = 0.0f;
-    float controls_padding_cross = 0.0f;
-    float palette_button_height = 0.0f;
-    float canvas_width = 0.0f;
-    float canvas_height = 0.0f;
-    float canvas_offset_x = 0.0f;
-    float canvas_offset_y = 0.0f;
-    float controls_scale = 1.0f;
-};
-
-auto ensure_active_panel(SP::UI::Declarative::Stack::Args& args) -> void {
-    if (!args.active_panel.empty() || args.panels.empty()) {
-        return;
-    }
-    args.active_panel = args.panels.front().id;
-}
-
-auto make_typography(float font_size, float line_height)
-    -> SP::UI::Builders::Widgets::TypographyStyle {
-    SP::UI::Builders::Widgets::TypographyStyle style{};
-    style.font_size = font_size;
-    style.line_height = line_height;
-    style.letter_spacing = 0.0f;
-    style.baseline_shift = 0.0f;
-    return style;
-}
-
-auto palette_button_text_color(std::array<float, 4> const& background,
-                               SP::UI::Builders::Widgets::WidgetTheme const& theme)
-    -> std::array<float, 4> {
-    auto luminance = background[0] * 0.299f + background[1] * 0.587f + background[2] * 0.114f;
-    if (luminance > 0.65f) {
-        return theme.palette_text_on_light;
-    }
-    return theme.palette_text_on_dark;
-}
-
-auto palette_colors(SP::UI::Builders::Widgets::WidgetTheme const& theme)
-    -> std::vector<PaletteColor> {
-    std::vector<PaletteColor> colors;
-    colors.reserve(kPaletteEntries.size());
-    for (std::size_t i = 0; i < kPaletteEntries.size(); ++i) {
-        auto color = theme.palette_swatches[i];
-        if (color[3] <= 0.0f) {
-            color = SP::UI::Builders::Widgets::kDefaultPaletteSwatches[i];
-        }
-        colors.push_back(PaletteColor{
-            kPaletteEntries[i].id,
-            kPaletteEntries[i].label,
-            color,
-        });
-    }
-    return colors;
-}
 
 auto log_error(SP::Expected<void> const& status, std::string const& context) -> void {
     if (status) {
@@ -1619,43 +1546,6 @@ auto make_history_binding(SP::PathSpace& space, std::string root_path) -> SP::Ex
     return binding;
 }
 
-struct BrushState {
-    float size = 12.0f;
-    std::array<float, 4> color{1.0f, 1.0f, 1.0f, 1.0f};
-};
-
-auto compute_layout_metrics(int window_width, int window_height) -> PaintLayoutMetrics {
-    PaintLayoutMetrics metrics{};
-    metrics.padding_x = 32.0f;
-    metrics.padding_y = 32.0f;
-    auto width_f = static_cast<float>(std::max(window_width, 800));
-    auto height_f = static_cast<float>(std::max(window_height, 600));
-    if (height_f >= 800.0f) {
-        metrics.controls_scale = 1.0f;
-    } else {
-        metrics.controls_scale = std::clamp(height_f / 800.0f, 0.82f, 1.0f);
-    }
-    auto scale = metrics.controls_scale;
-    metrics.controls_spacing = std::lerp(18.0f, 28.0f, scale);
-    metrics.controls_padding_main = std::lerp(14.0f, 20.0f, scale);
-    metrics.controls_padding_cross = std::lerp(12.0f, 18.0f, scale);
-    metrics.palette_button_height = std::lerp(36.0f, 44.0f, scale);
-    metrics.controls_width = std::clamp(width_f * 0.28f, 300.0f, 420.0f);
-    metrics.canvas_offset_x = metrics.padding_x + metrics.controls_width + metrics.controls_spacing;
-    metrics.canvas_offset_y = metrics.padding_y;
-    auto available_width = width_f - (metrics.canvas_offset_x + metrics.padding_x);
-    metrics.canvas_width = std::max(640.0f, available_width);
-    auto max_canvas_width = width_f - metrics.canvas_offset_x - metrics.padding_x;
-    if (max_canvas_width > 0.0f) {
-        metrics.canvas_width = std::min(metrics.canvas_width, max_canvas_width);
-    } else {
-        metrics.canvas_width = std::max(320.0f, metrics.canvas_width);
-    }
-    auto available_height = height_f - metrics.padding_y * 2.0f;
-    metrics.canvas_height = std::max(520.0f, available_height);
-    return metrics;
-}
-
 struct PaintUiBindings {
     std::shared_ptr<std::string> paint_widget_path;
     std::shared_ptr<std::string> status_label_path;
@@ -1706,106 +1596,126 @@ auto set_history_buttons_enabled(SP::PathSpace& space,
     update(bindings.redo_button_path, "redo");
 }
 
-auto make_palette_fragment(PaintUiBindings const& bindings,
-                           PaintLayoutMetrics const& layout,
-                           SP::UI::Builders::Widgets::WidgetTheme const& theme)
+auto build_controls_fragment(PaintUiBindings const& bindings,
+                             PaintControlsNS::PaintLayoutMetrics const& layout,
+                             SP::UI::Builders::Widgets::WidgetTheme const& theme)
     -> SP::UI::Declarative::WidgetFragment {
-    constexpr int kButtonsPerRow = 3;
-    auto colors = palette_colors(theme);
-    SP::UI::Declarative::Stack::Args column{};
-    column.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
-    auto vertical_spacing = std::max(6.0f, 10.0f * layout.controls_scale);
-    column.style.spacing = vertical_spacing;
-    column.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
-    auto column_width = std::max(layout.controls_width - layout.controls_padding_cross * 2.0f, 240.0f);
-    column.style.width = column_width;
+    using namespace PaintControlsNS;
+    SP::UI::Declarative::Stack::Args controls{};
+    controls.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
+    controls.style.spacing = std::max(10.0f, layout.controls_spacing * 0.6f);
+    controls.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
+    controls.style.width = layout.controls_width;
+    controls.style.height = layout.canvas_height;
+    controls.style.padding_main_start = layout.controls_padding_main;
+    controls.style.padding_main_end = layout.controls_padding_main;
+    controls.style.padding_cross_start = layout.controls_padding_cross;
+    controls.style.padding_cross_end = layout.controls_padding_cross;
 
-    int row_index = 0;
-    for (std::size_t index = 0; index < colors.size();) {
-        SP::UI::Declarative::Stack::Args row{};
-        row.style.axis = SP::UI::Builders::Widgets::StackAxis::Horizontal;
-        row.style.spacing = vertical_spacing;
-        row.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
-        auto total_spacing = row.style.spacing * static_cast<float>(kButtonsPerRow - 1);
-        auto available_width = std::max(column_width - total_spacing,
-                                        96.0f * static_cast<float>(kButtonsPerRow));
-        auto base_width = std::max(96.0f, available_width / static_cast<float>(kButtonsPerRow));
+    controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "status_label",
+        .fragment = SP::UI::Declarative::Label::Fragment({
+            .text = "Pick a color and drag on the canvas",
+            .typography = MakeTypography(24.0f * layout.controls_scale,
+                                         30.0f * layout.controls_scale),
+            .color = {0.92f, 0.94f, 0.98f, 1.0f},
+        }),
+    });
 
-        for (int col = 0; col < kButtonsPerRow && index < colors.size(); ++col, ++index) {
-            auto const& entry = colors[index];
-            SP::UI::Declarative::Button::Args args{};
-            args.label = entry.label;
-            args.style.width = base_width;
-            args.style.height = layout.palette_button_height;
-            args.style.corner_radius = std::max(6.0f, 10.0f * layout.controls_scale);
-            args.style.background_color = entry.color;
-            args.style.text_color = palette_button_text_color(entry.color, theme);
-            args.style.typography = make_typography(18.0f * layout.controls_scale,
-                                                    22.0f * layout.controls_scale);
-            args.on_press = [bindings, entry](SP::UI::Declarative::ButtonContext& ctx) {
-                if (bindings.brush_state) {
-                    bindings.brush_state->color = entry.color;
-                }
-                auto paint_root = bindings.paint_widget_path ? *bindings.paint_widget_path : std::string{};
-                if (!paint_root.empty()) {
-                    auto status = apply_brush_color(ctx.space, paint_root, entry.color);
-                    log_error(status, "apply_brush_color");
-                }
-                auto brush_label = bindings.brush_label_path ? *bindings.brush_label_path : std::string{};
-                if (!brush_label.empty() && bindings.brush_state) {
-                    auto brush_path = SP::UI::Builders::WidgetPath{brush_label};
-                    log_error(SP::UI::Declarative::Label::SetText(ctx.space,
-                                                                  brush_path,
-                                                                  format_brush_state(bindings.brush_state->size,
-                                                                                     bindings.brush_state->color)),
-                              "Label::SetText");
-                }
-                auto status_path = bindings.status_label_path ? *bindings.status_label_path : std::string{};
-                if (!status_path.empty()) {
-                    auto widget_path = SP::UI::Builders::WidgetPath{status_path};
-                    std::ostringstream message;
-                    message << "Selected " << entry.label << " paint";
-                    log_error(SP::UI::Declarative::Label::SetText(ctx.space, widget_path, message.str()),
-                              "Label::SetText");
-                }
-            };
-            row.panels.push_back(SP::UI::Declarative::Stack::Panel{
-                .id = entry.id,
-                .fragment = SP::UI::Declarative::Button::Fragment(std::move(args)),
-            });
-        }
+    auto brush_state = bindings.brush_state ? bindings.brush_state : std::make_shared<BrushState>();
+    controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "brush_label",
+        .fragment = SP::UI::Declarative::Label::Fragment({
+            .text = format_brush_state(brush_state->size, brush_state->color),
+            .typography = MakeTypography(20.0f * layout.controls_scale,
+                                         26.0f * layout.controls_scale),
+            .color = {0.82f, 0.86f, 0.92f, 1.0f},
+        }),
+    });
 
-        ensure_active_panel(row);
-        column.panels.push_back(SP::UI::Declarative::Stack::Panel{
-            .id = std::string{"palette_row_"} + std::to_string(row_index++),
-            .fragment = SP::UI::Declarative::Stack::Fragment(std::move(row)),
-        });
-    }
+    BrushSliderConfig slider_config{
+        .layout = layout,
+        .brush_state = brush_state,
+        .minimum = 1.0f,
+        .maximum = 64.0f,
+        .step = 1.0f,
+        .on_change = [bindings](SP::UI::Declarative::SliderContext& ctx, float value) {
+            if (bindings.brush_state) {
+                bindings.brush_state->size = value;
+            }
+            auto paint_root = bindings.paint_widget_path ? *bindings.paint_widget_path : std::string{};
+            if (!paint_root.empty() && bindings.brush_state) {
+                auto status = apply_brush_size(ctx.space, paint_root, bindings.brush_state->size);
+                log_error(status, "apply_brush_size");
+            }
+            auto brush_label = bindings.brush_label_path ? *bindings.brush_label_path : std::string{};
+            if (!brush_label.empty() && bindings.brush_state) {
+                auto label_path = SP::UI::Builders::WidgetPath{brush_label};
+                log_error(SP::UI::Declarative::Label::SetText(ctx.space,
+                                                              label_path,
+                                                              format_brush_state(bindings.brush_state->size,
+                                                                                 bindings.brush_state->color)),
+                          "Label::SetText");
+            }
+            auto status_label = bindings.status_label_path ? *bindings.status_label_path : std::string{};
+            if (!status_label.empty()) {
+                auto label_path = SP::UI::Builders::WidgetPath{status_label};
+                std::ostringstream message;
+                message << "Brush size adjusted to " << std::lround(value) << " px";
+                log_error(SP::UI::Declarative::Label::SetText(ctx.space,
+                                                              label_path,
+                                                              message.str()),
+                          "Label::SetText");
+            }
+        },
+    };
+    controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "brush_slider",
+        .fragment = BuildBrushSliderFragment(slider_config),
+    });
 
-    ensure_active_panel(column);
-    return SP::UI::Declarative::Stack::Fragment(std::move(column));
-}
+    auto palette_entries = BuildDefaultPaletteEntries(theme);
+    PaletteComponentConfig palette_config{
+        .layout = layout,
+        .theme = theme,
+        .entries = std::span<const PaletteEntry>(palette_entries.data(), palette_entries.size()),
+        .brush_state = brush_state,
+        .on_select = [bindings](SP::UI::Declarative::ButtonContext& ctx, PaletteEntry const& entry) {
+            if (bindings.brush_state) {
+                bindings.brush_state->color = entry.color;
+            }
+            auto paint_root = bindings.paint_widget_path ? *bindings.paint_widget_path : std::string{};
+            if (!paint_root.empty()) {
+                auto status = apply_brush_color(ctx.space, paint_root, entry.color);
+                log_error(status, "apply_brush_color");
+            }
+            auto brush_label = bindings.brush_label_path ? *bindings.brush_label_path : std::string{};
+            if (!brush_label.empty() && bindings.brush_state) {
+                auto brush_path = SP::UI::Builders::WidgetPath{brush_label};
+                log_error(SP::UI::Declarative::Label::SetText(ctx.space,
+                                                              brush_path,
+                                                              format_brush_state(bindings.brush_state->size,
+                                                                                 bindings.brush_state->color)),
+                          "Label::SetText");
+            }
+            auto status_path = bindings.status_label_path ? *bindings.status_label_path : std::string{};
+            if (!status_path.empty()) {
+                auto widget_path = SP::UI::Builders::WidgetPath{status_path};
+                std::ostringstream message;
+                message << "Selected " << entry.label << " paint";
+                log_error(SP::UI::Declarative::Label::SetText(ctx.space, widget_path, message.str()),
+                          "Label::SetText");
+            }
+        },
+    };
+    controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "palette",
+        .fragment = BuildPaletteFragment(palette_config),
+    });
 
-auto make_actions_fragment(PaintUiBindings const& bindings,
-                           PaintLayoutMetrics const& layout) -> SP::UI::Declarative::WidgetFragment {
-    SP::UI::Declarative::Stack::Args row{};
-    row.style.axis = SP::UI::Builders::Widgets::StackAxis::Horizontal;
-    row.style.spacing = std::max(8.0f, 12.0f * layout.controls_scale);
-    row.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
-    auto column_width = std::max(layout.controls_width - layout.controls_padding_cross * 2.0f, 240.0f);
-    auto button_width = std::max(140.0f, (column_width - row.style.spacing) * 0.5f);
-
-    enum class HistoryAction { Undo, Redo };
-    auto make_button = [&](std::string id,
-                           std::string label,
-                           HistoryAction action) {
-        SP::UI::Declarative::Button::Args args{};
-        args.label = std::move(label);
-        args.enabled = false;
-        args.style.width = button_width;
-        args.style.height = std::max(34.0f, 42.0f * layout.controls_scale);
-        args.style.corner_radius = std::max(5.0f, 8.0f * layout.controls_scale);
-        args.on_press = [bindings, action](SP::UI::Declarative::ButtonContext& ctx) {
+    HistoryActionsConfig actions_config{
+        .layout = layout,
+        .on_action = [bindings](SP::UI::Declarative::ButtonContext& ctx, HistoryAction action) {
             auto binding_ptr = bindings.history_binding ? *bindings.history_binding : std::shared_ptr<HistoryBinding>{};
             if (!binding_ptr) {
                 std::cerr << "paint_example: history binding missing for "
@@ -1817,7 +1727,8 @@ auto make_actions_fragment(PaintUiBindings const& bindings,
                 SP::Error missing_error{SP::Error::Code::UnknownError, "history_binding_missing"};
                 record_history_error(ctx.space,
                                      metrics_root,
-                                     action == HistoryAction::Undo ? "UndoableSpace::undo" : "UndoableSpace::redo",
+                                     action == HistoryAction::Undo ? "UndoableSpace::undo"
+                                                                    : "UndoableSpace::redo",
                                      &missing_error);
                 return;
             }
@@ -1884,114 +1795,14 @@ auto make_actions_fragment(PaintUiBindings const& bindings,
                                                                                            : "Redo applied"),
                           "Label::SetText");
             }
-        };
-        row.panels.push_back(SP::UI::Declarative::Stack::Panel{
-            .id = std::move(id),
-            .fragment = SP::UI::Declarative::Button::Fragment(std::move(args)),
-        });
+        },
     };
-
-    make_button("undo_button", "Undo Stroke", HistoryAction::Undo);
-    make_button("redo_button", "Redo Stroke", HistoryAction::Redo);
-    ensure_active_panel(row);
-    return SP::UI::Declarative::Stack::Fragment(std::move(row));
-}
-
-auto build_controls_fragment(PaintUiBindings const& bindings,
-                             PaintLayoutMetrics const& layout,
-                             SP::UI::Builders::Widgets::WidgetTheme const& theme)
-    -> SP::UI::Declarative::WidgetFragment {
-    SP::UI::Declarative::Stack::Args controls{};
-    controls.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
-    controls.style.spacing = std::max(10.0f, layout.controls_spacing * 0.6f);
-    controls.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
-    controls.style.width = layout.controls_width;
-    controls.style.height = layout.canvas_height;
-    controls.style.padding_main_start = layout.controls_padding_main;
-    controls.style.padding_main_end = layout.controls_padding_main;
-    controls.style.padding_cross_start = layout.controls_padding_cross;
-    controls.style.padding_cross_end = layout.controls_padding_cross;
-
-    controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
-        .id = "status_label",
-        .fragment = SP::UI::Declarative::Label::Fragment({
-            .text = "Pick a color and drag on the canvas",
-            .typography = make_typography(24.0f * layout.controls_scale,
-                                          30.0f * layout.controls_scale),
-            .color = {0.92f, 0.94f, 0.98f, 1.0f},
-        }),
-    });
-
-    auto brush_state = bindings.brush_state ? bindings.brush_state : std::make_shared<BrushState>();
-    controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
-        .id = "brush_label",
-        .fragment = SP::UI::Declarative::Label::Fragment({
-            .text = format_brush_state(brush_state->size, brush_state->color),
-            .typography = make_typography(20.0f * layout.controls_scale,
-                                          26.0f * layout.controls_scale),
-            .color = {0.82f, 0.86f, 0.92f, 1.0f},
-        }),
-    });
-
-    SP::UI::Declarative::Slider::Args slider_args{};
-    slider_args.minimum = 1.0f;
-    slider_args.maximum = 64.0f;
-    slider_args.step = 1.0f;
-    slider_args.value = brush_state->size;
-    slider_args.style.width = std::max(180.0f,
-                                       layout.controls_width - layout.controls_padding_cross * 2.0f);
-    slider_args.style.height = std::max(32.0f, 40.0f * layout.controls_scale);
-    slider_args.style.track_height = std::max(6.0f, 8.0f * layout.controls_scale);
-    slider_args.style.thumb_radius = std::max(8.0f, 11.0f * layout.controls_scale);
-    slider_args.style.label_color = {0.84f, 0.88f, 0.94f, 1.0f};
-    slider_args.style.label_typography = make_typography(18.0f * layout.controls_scale,
-                                                         22.0f * layout.controls_scale);
-    slider_args.on_change = [bindings](SP::UI::Declarative::SliderContext& ctx) {
-        if (bindings.brush_state) {
-            bindings.brush_state->size = ctx.value;
-        }
-        auto paint_root = bindings.paint_widget_path ? *bindings.paint_widget_path : std::string{};
-        if (!paint_root.empty() && bindings.brush_state) {
-            auto status = apply_brush_size(ctx.space, paint_root, bindings.brush_state->size);
-            log_error(status, "apply_brush_size");
-        }
-        auto brush_label = bindings.brush_label_path ? *bindings.brush_label_path : std::string{};
-        if (!brush_label.empty() && bindings.brush_state) {
-            auto label_path = SP::UI::Builders::WidgetPath{brush_label};
-            log_error(SP::UI::Declarative::Label::SetText(ctx.space,
-                                                          label_path,
-                                                          format_brush_state(bindings.brush_state->size,
-                                                                             bindings.brush_state->color)),
-                      "Label::SetText");
-        }
-        auto status_label = bindings.status_label_path ? *bindings.status_label_path : std::string{};
-        if (!status_label.empty()) {
-            auto label_path = SP::UI::Builders::WidgetPath{status_label};
-            std::ostringstream message;
-            message << "Brush size adjusted to " << std::lround(ctx.value) << " px";
-            log_error(SP::UI::Declarative::Label::SetText(ctx.space,
-                                                          label_path,
-                                                          message.str()),
-                      "Label::SetText");
-        }
-    };
-
-    controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
-        .id = "brush_slider",
-        .fragment = SP::UI::Declarative::Slider::Fragment(slider_args),
-    });
-
-    controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
-        .id = "palette",
-        .fragment = make_palette_fragment(bindings, layout, theme),
-    });
-
     controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
         .id = "actions",
-        .fragment = make_actions_fragment(bindings, layout),
+        .fragment = BuildHistoryActionsFragment(actions_config),
     });
 
-    ensure_active_panel(controls);
+    EnsureActivePanel(controls);
     return SP::UI::Declarative::Stack::Fragment(std::move(controls));
 }
 
@@ -2188,7 +1999,7 @@ int main(int argc, char** argv) {
     bool screenshot_mode = options.screenshot_path.has_value();
     bool debug_layout_logging = std::getenv("PAINT_EXAMPLE_DEBUG_LAYOUT") != nullptr;
 
-    auto layout_metrics = compute_layout_metrics(options.width, options.height);
+    auto layout_metrics = PaintControlsNS::ComputeLayoutMetrics(options.width, options.height);
 
     PaintUiBindings bindings{
         .paint_widget_path = std::make_shared<std::string>(),

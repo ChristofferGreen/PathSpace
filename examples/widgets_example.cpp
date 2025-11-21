@@ -1,5 +1,6 @@
 #include "declarative_example_shared.hpp"
 
+#include <pathspace/examples/paint/PaintControls.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
 #include <algorithm>
@@ -15,6 +16,8 @@
 #include <vector>
 
 using namespace PathSpaceExamples;
+namespace PaintControlsNS = SP::Examples::PaintControls;
+using PaintControlsNS::BrushState;
 
 namespace {
 
@@ -97,6 +100,8 @@ int main(int argc, char** argv) {
     }
     auto app_root = *app;
     auto app_root_view = SP::App::AppRootPathView{app_root.getPath()};
+    auto theme_selection = SP::UI::Builders::Widgets::LoadTheme(space, app_root_view, "");
+    auto active_theme = theme_selection.theme;
 
     SP::Window::CreateOptions window_opts{};
     window_opts.name = "gallery_window";
@@ -274,6 +279,90 @@ int main(int argc, char** argv) {
                                                    tree_args);
     if (!tree) {
         std::cerr << "widgets_example: failed to create tree\n";
+        return 1;
+    }
+
+    auto paint_controls_layout = PaintControlsNS::ComputeLayoutMetrics(options.width, options.height);
+    auto gallery_brush_state = std::make_shared<BrushState>();
+
+    PaintControlsNS::BrushSliderConfig gallery_slider_config{
+        .layout = paint_controls_layout,
+        .brush_state = gallery_brush_state,
+        .minimum = 1.0f,
+        .maximum = 64.0f,
+        .step = 1.0f,
+        .on_change = [status_label_path = *status_label](SP::UI::Declarative::SliderContext& ctx, float value) {
+            std::ostringstream stream;
+            stream << "Brush slider demo = " << std::fixed << std::setprecision(1) << value;
+            log_error(SP::UI::Declarative::Label::SetText(ctx.space,
+                                                          status_label_path,
+                                                          stream.str()),
+                      "Label::SetText");
+        },
+    };
+
+    auto palette_entries = PaintControlsNS::BuildDefaultPaletteEntries(active_theme);
+    PaintControlsNS::PaletteComponentConfig palette_config{
+        .layout = paint_controls_layout,
+        .theme = active_theme,
+        .entries = std::span<const PaintControlsNS::PaletteEntry>(palette_entries.data(), palette_entries.size()),
+        .brush_state = gallery_brush_state,
+        .on_select = [status_label_path = *status_label](SP::UI::Declarative::ButtonContext& ctx,
+                                                        PaintControlsNS::PaletteEntry const& entry) {
+            std::ostringstream stream;
+            stream << "Palette demo selected " << entry.label;
+            log_error(SP::UI::Declarative::Label::SetText(ctx.space,
+                                                          status_label_path,
+                                                          stream.str()),
+                      "Label::SetText");
+        },
+    };
+
+    PaintControlsNS::HistoryActionsConfig history_config{
+        .layout = paint_controls_layout,
+        .on_action = [status_label_path = *status_label](SP::UI::Declarative::ButtonContext& ctx,
+                                                        PaintControlsNS::HistoryAction action) {
+            std::ostringstream stream;
+            stream << (action == PaintControlsNS::HistoryAction::Undo ? "Undo" : "Redo")
+                   << " demo action";
+            log_error(SP::UI::Declarative::Label::SetText(ctx.space,
+                                                          status_label_path,
+                                                          stream.str()),
+                      "Label::SetText");
+        },
+        .undo_label = "Undo Demo",
+        .redo_label = "Redo Demo",
+    };
+
+    SP::UI::Declarative::Stack::Args paint_controls_stack{};
+    paint_controls_stack.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
+    paint_controls_stack.style.spacing = std::max(10.0f, paint_controls_layout.controls_spacing * 0.5f);
+    paint_controls_stack.style.padding_main_start = paint_controls_layout.controls_padding_main;
+    paint_controls_stack.style.padding_main_end = paint_controls_layout.controls_padding_main;
+    paint_controls_stack.style.padding_cross_start = paint_controls_layout.controls_padding_cross;
+    paint_controls_stack.style.padding_cross_end = paint_controls_layout.controls_padding_cross;
+    paint_controls_stack.style.width = std::min(420.0f, paint_controls_layout.controls_width);
+
+    paint_controls_stack.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "demo_brush_slider",
+        .fragment = PaintControlsNS::BuildBrushSliderFragment(gallery_slider_config),
+    });
+    paint_controls_stack.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "demo_palette",
+        .fragment = PaintControlsNS::BuildPaletteFragment(palette_config),
+    });
+    paint_controls_stack.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "demo_history",
+        .fragment = PaintControlsNS::BuildHistoryActionsFragment(history_config),
+    });
+    PaintControlsNS::EnsureActivePanel(paint_controls_stack);
+
+    auto paint_controls = SP::UI::Declarative::Stack::Create(space,
+                                                             window_view,
+                                                             "paint_controls_gallery",
+                                                             std::move(paint_controls_stack));
+    if (!paint_controls) {
+        std::cerr << "widgets_example: failed to create paint controls demo\n";
         return 1;
     }
 

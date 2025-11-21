@@ -59,7 +59,7 @@ Every construct adheres to:
 
 ### Stack-value bindings
 - Local bindings are introduced via ordinary executions that instantiate a type in the current frame: `[float] exposure(1.0f)` allocates and initializes a stack slot named `exposure`.
-- `mut` inside the bracket list marks the execution as writable so later `assign` calls may target that binding (`[float mut] exposure(1.0f)`).
+- `mut` inside the bracket list marks the execution as writable so later `assign` calls may target that binding (`[float mut] exposure(1.0f)`). When a definition has no explicit type token (e.g., nested helpers), `[mut] helper()` marks the helper itself as stateful.
 - Statements end at newline boundaries—there is no semicolon token in PrimeScript. Blocks group statements using `{ … }` as in the uniform envelope.
 - Namespace blocks mirror C++ inheritance: `namespace demo { … }` automatically qualifies enclosed identifiers (`demo::hello_values`). The parser treats namespace declarations as part of the uniform envelope so transforms can inspect them when generating metadata.
 

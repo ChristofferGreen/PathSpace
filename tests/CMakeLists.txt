@@ -11,6 +11,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/core/test_NodeDataSnapshot.cpp
   unit/ext/test_alpaca.cpp
   unit/task/test_TaskPool.cpp
+  unit/inspector/test_PaintScreenshotCard.cpp
   unit/test_PathSpace_read.cpp
   unit/test_PathSpace_nesting.cpp
   unit/test_PathSpace_extract.cpp
@@ -225,6 +226,26 @@ set_tests_properties(PaintExampleScreenshot PROPERTIES LABELS ui RESOURCE_LOCK u
             --manifest "${CMAKE_SOURCE_DIR}/docs/images/paint_example_baselines.json"
   )
 set_tests_properties(PaintExampleScreenshot720 PROPERTIES LABELS ui RESOURCE_LOCK ui_gpu_capture)
+
+  add_test(NAME PaintExampleScreenshot600
+    COMMAND "${PATHSPACE_TEST_RUNNER}"
+            --label PaintExampleScreenshot600
+            --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+            --timeout 120
+            --env PATHSPACE_LOG=1
+            --env PATHSPACE_TEST_TIMEOUT=1
+            --env MallocNanoZone=0
+            --
+            python3
+            "${CMAKE_SOURCE_DIR}/scripts/check_paint_screenshot.py"
+            --build-dir "${CMAKE_BINARY_DIR}"
+            --baseline "${CMAKE_SOURCE_DIR}/docs/images/paint_example_600_baseline.png"
+            --width 1024
+            --height 600
+            --tag paint_600
+            --manifest "${CMAKE_SOURCE_DIR}/docs/images/paint_example_baselines.json"
+  )
+set_tests_properties(PaintExampleScreenshot600 PROPERTIES LABELS ui RESOURCE_LOCK ui_gpu_capture)
 
   if(APPLE)
     add_test(NAME PixelNoisePerfHarness

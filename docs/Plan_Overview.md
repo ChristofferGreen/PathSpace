@@ -37,7 +37,7 @@ Provide a single index of active planning documents, ordered by current priority
    Cross-app deck/timeline/filesystem concept; re-evaluate once renderer priorities stabilize.
 
 10. **Plan_PrimeScript.md** (research)  
-   Exploratory unified scripting/shading language idea; no implementation scheduled.
+   Exploratory unified scripting/shading language idea; draft syntax/semantics spec lives in `docs/PrimeScript_SyntaxSpec.md` (2025-11-21) to unblock parser prototype scoping.
 
 11. **Plan_IOPump_Finished.md**  
    Input runtime roadmap that introduces the IO Trellis, IO Pump, routing Trellis, and telemetry/throttling knobs feeding declarative widgets. _Completed November 17, 2025 — see `docs/finished/Plan_IOPump_Finished.md` for history._

@@ -23,6 +23,17 @@
       "commit": "3c9e0ece9ca392b122d674282edd161c38470b6e",
       "notes": "PATHSPACE_ENABLE_METAL_UPLOADS=1 PATHSPACE_UI_METAL=ON ./build/paint_example --gpu-smoke --height=720 --screenshot --screenshot-require-present",
       "revision": 1
+    },
+    "paint_600": {
+      "path": "docs/images/paint_example_600_baseline.png",
+      "width": 1024,
+      "height": 600,
+      "renderer": "metal_present",
+      "sha256": "37c9648791790a52cce8d0e04b5c8415e92c3396055abc6f2c16e8707fe79c7e",
+      "captured_at": "2025-11-21T19:46:00Z",
+      "commit": "76ecc8256b09afa33a2c6a8fbfa2bf3d77b2c2f2",
+      "notes": "PATHSPACE_ENABLE_METAL_UPLOADS=1 PATHSPACE_UI_METAL=ON ./build/paint_example --gpu-smoke --width=1024 --height=600 --screenshot --screenshot-require-present",
+      "revision": 1
     }
   }
 }

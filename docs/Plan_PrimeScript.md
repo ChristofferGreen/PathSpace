@@ -32,37 +32,73 @@ PrimeScript is built around a simple philosophy: program meaning emerges from tw
 - **Effects:** functions are pure by default. Authors opt into side effects with attributes such as `[effects(global_write, io_stdout)]`. Standard library routines permit stdout/stderr logging; backends reject unsupported effects (e.g., GPU code requesting filesystem access).
 - **Namespaces & includes:** identifiers follow `namespace::symbol`. `include<"/std/io", version="1.2.0">` searches the include path for a zipped archive or plain directory whose layout mirrors `/version/first_namespace/second_namespace/...`. Versions live in the leading segment (e.g., `1.2/std/io/*.prime` or `1/std/io/*.prime`). If the version attribute provides one or two numbers (`1` or `1.2`), the newest matching archive is selected; three-part versions (`1.2.0`) require an exact match. Each `.prime` source file is inline-expanded exactly once and registered under `std::io::`; duplicate includes are ignored. Folders prefixed with `_` remain private.
 - **Transform-driven control flow:** control structures desugar into prefix calls (`if(cond, then_block{…}, else_block{…})`). Infix operators (`a + b`) become canonical calls (`plus(a, b)`), ensuring IR/backends see a small, predictable surface.
-- **Mutability:** bindings are immutable by default. Mutability is opt-in via attributes (`[mutable] let x = …`, `[mutable] datum{…}`). Transforms enforce that only mutable bindings can serve as `assign` or pointer-write targets.
+- **Mutability:** bindings are immutable by default. Opt into mutation by placing `mut` inside the stack-value execution or helper (`[Integer mut] exposure(42)`, `[mut] Create()`). Transforms enforce that only mutable bindings can serve as `assign` or pointer-write targets.
+
+### Example function syntax
+```
+namespace demo {
+  [return<void>]
+  hello_values() {
+    [string] message("Hello PrimeScript")
+    [i32] iterations(3i32)
+    [float mut] exposure(1.25f)
+    [float3] tone_curve(0.8f, 0.9f, 1.1f)
+
+    log_line(message)
+    assign(exposure, clamp(exposure, 0.0f, 2.0f))
+    execute_repeat(iterations) {
+      apply_curve(tone_curve, exposure)
+    }
+  }
+}
+```
+Statements are separated by newlines; semicolons never appear in PrimeScript source.
 
 ### Struct & type categories (draft)
-- **Struct definition priority:** before we can classify data lanes or label POD types, lock down how PrimeScript structs are declared, laid out, and mapped onto backend storage. This includes member ordering, padding, default mutability, and transform hooks for layout attributes (`[packed]`, `[align]`).
-- **Proposed syntax (exploratory):** treat struct declarations as a transform envelope with no runtime parameters, e.g. `[struct pod no_padding] Color { first_member<Integer> second_member<string> }`. Each member becomes a transform-style execution; additional tags like `mutable`, `default(value)` or `handle<PathNode>` can decorate the member invocation.
-- **Baseline layout rule (suggested):** members default to source-order packing with no implicit padding. A struct tagged `[pod]` may still introduce backend-mandated padding, but only when the layout metadata records the exact reason (e.g., SIMD granularity). `[no_padding]` is an explicit contract—no extra bytes may be inserted; if a backend cannot honour it, compilation fails. `[platform_independent_padding]` locks the final byte layout so every backend emits identical padding bytes, ensuring bit-for-bit portability.
-- **Alignment transforms:** member declarations accept layout helpers such as `[align_bytes(8)] color<Float>` or `[align_kbytes(1)] buffer_handle<Handle>`, giving backends explicit padding guarantees without bespoke syntax.
-- **Stack value executions:** every local binding is introduced through an execution that materialises a value for the current frame’s stack, e.g. `[Integer] exposure(42)` or `[Color] tint(default_color())`. A default expression is mandatory so the stack slot is fully initialised before use.
-- **Type transforms size the frame:** metafunctions such as `Integer` rewrite the AST with sizing metadata so the compiler can reserve the correct stack width before lowering to IR. Custom types are expected to expose the same metadata hooks.
-- **Platform constraints:** each backend may enforce minimum alignment/padding for certain types (SIMD lanes, GPU storage buffers); the struct metadata must record both the requested layout and the runtime-imposed adjustments so high-speed code stays portable.
-- **IR layout manifest:** struct transforms embed a `layout` table directly into the IR type descriptor (field name → offset, size, padding flag). Backends consume that single source of truth; layout validation tools read it via `primescriptc --emit-ir`. If `[no_padding]` or `[platform_independent_padding]` cannot be honoured, codegen aborts during IR validation.
-  - **Proposed schema:** extend the IR type descriptor with `layout.total_size_bytes`, `layout.alignment_bytes`, and an ordered `layout.fields` array. Each field record carries `{ name, offset_bytes, size_bytes, padding_kind }`, where `padding_kind` is one of `none`, `explicit` (requested by user transforms), or `backend` (platform-imposed with diagnostic details). Struct-level tags (`pod`, `no_padding`, `platform_independent_padding`) translate into validation clauses against these metadata entries.
-- **Plain-old data (POD):** trivially copyable scalars/structs with no hidden lifetimes; default pass-by-reference is safe and `[copy]` generates value snapshots.
-- **Handles:** opaque identifiers that reference managed resources (PathSpace nodes, textures, etc.). Lifetimes tie to the owning subsystem rather than value semantics; borrow rules must spell out readable vs mutable access.
-- **GPU-resident values:** data that only exists in device memory (buffers, textures). Requires explicit staging/copy transforms before CPU inspection.
-- **Documentation TODO:** formalise how each category maps onto IR storage classes and backend-specific codegen before promoting PrimeScript beyond research.
+- **Struct tag as transform:** `[struct ...]` in the envelope is purely declarative. It records a layout manifest (field names, types, offsets) and validates the body, but the underlying syntax remains a standard definition. Un-tagged definitions may still be instantiated as structs; they simply skip the extra validation/metadata until another transform (e.g. `[stack]`) demands it.
+- **Placement tags (`[stack]`, `[heap]`, `[buffer]`):** placement transforms consume the manifest and enforce where the shape may live. `[stack]` means “legal to instantiate on the stack”; attempting to allocate it on the heap triggers a compile-time error. Future tags like `[heap allocator=arena::frame]` or `[buffer std=std140]` follow the same pattern.
+- **POD tag as validation:** `[pod]` asserts trivially-copyable semantics. Violations (hidden lifetimes, handles, async captures) raise diagnostics; without the tag the compiler treats the body permissively.
+- **Member syntax:** every field is just a stack-value execution (`[float mut] exposure(1.0f)`, `[handle<PathNode>] target(get_default())`). Attributes (`[mut]`, `[align_bytes(16)]`, `[handle<PathNode>]`) decorate the execution, and transforms record the metadata for layout consumers.
+- **Baseline layout rule:** members default to source-order packing. Backend-imposed padding is allowed only when the metadata (`layout.fields[].padding_kind`) records the reason; `[no_padding]` and `[platform_independent_padding]` fail the build if the backend cannot honor them bit-for-bit.
+- **Alignment transforms:** `[align_bytes(n)]` (or `[align_kbytes(n)]`) may appear on the struct or field; violations again produce diagnostics instead of silent adjustments.
+- **Stack value executions:** every local binding—including struct “fields”—materializes via `[Type qualifiers…] name(args)` so stack frames remain declarative (e.g., `[float mut] exposure(1.0f)`). Default expressions are mandatory for `[stack]` layouts to keep frames fully initialized.
+- **Lifecycle helpers (Create/Destroy):** Within a struct-tagged definition, nested definitions named `Create` and `Destroy` gain constructor/destructor semantics. Placement-specific variants add suffixes (`CreateStack`, `DestroyHeap`, etc.). Without these helpers the field initializer list defines the default constructor/destructor semantics. `this` is implicitly available inside helpers (mutable by default) so they can either mutate the instance or merely perform side effects such as logging. Add `mut` to the helper’s transform list when it writes to `this`; omit it for pure helpers. We capitalise system-provided helper names so they stand out, but authors are free to use uppercase identifiers elsewhere—only the documented helper names receive special treatment.
+  ```
+  namespace demo {
+    [struct pod stack]
+    color_grade() {
+      [float mut] exposure(1.0f)
+
+      [mut]
+      Create() {
+        assign(this.exposure, clamp(this.exposure, 0.0f, 2.0f))
+      }
+
+      Destroy() {
+        log_line("color grade destroyed")
+      }
+    }
+  }
+  ```
+- **IR layout manifest:** `[struct]` extends the IR descriptor with `layout.total_size_bytes`, `layout.alignment_bytes`, and ordered `layout.fields`. Each field record stores `{ name, type, offset_bytes, size_bytes, padding_kind, category }`. Placement transforms consume this manifest verbatim, ensuring C++, VM, and GPU backends share one source of truth.
+- **Categories:** `[pod]`, `[handle]`, `[gpu_lane]` tags classify members for borrow/resource rules. Handles remain opaque tokens with subsystem-managed lifetimes; GPU lanes require staging transforms before CPU inspection.
+- **Documentation TODO:** finalise how manifest categories map to PathSpace storage classes and ensure placement transforms emit consistent diagnostics when tags conflict (`[stack]` + `[gpu_lane]`, etc.).
 
 ### Built-in transforms (draft)
 - **Purpose:** built-in transforms are metafunctions that stamp semantic flags on the AST; later passes (borrow checker, backend filters) consume those flags. They do not emit code directly.
 - **Evaluation mode:** when the compiler sees `[transform ...]`, it routes through the metafunction's declared signature—pure token rewrites operate on the raw stream, while semantic transforms receive the AST node and in-place metadata writers.
-- **`copy`:** force copy-on-entry for a parameter or binding, even when references are the default. Often paired with `mutable`.
-- **`mutable`:** mark the local binding as writable; without it the binding behaves like a `const` reference.
-- **`restrict<T>`:** constrain the accepted type to `T` (or satisfy concept-like predicates once defined). Applied alongside `copy`/`mutable` when needed.
+- **`copy`:** force copy-on-entry for a parameter or binding, even when references are the default. Often paired with `mut`.
+- **`mut`:** mark the local binding as writable; without it the binding behaves like a `const` reference.
+- **`restrict<T>`:** constrain the accepted type to `T` (or satisfy concept-like predicates once defined). Applied alongside `copy`/`mut` when needed.
 - **`return<T>`:** optional contract that pins the inferred return type. Recommended for public APIs or when disambiguation is required.
 - **`effects(...)`:** declare side-effect capabilities; absence implies purity. Backends reject unsupported capabilities.
 - **`align_bytes(n)`, `align_kbytes(n)`:** encode alignment requirements for struct members and buffers. `align_kbytes` applies `n * 1024` bytes before emitting the metadata.
-- **Scheduling helpers:** `stack("id")`, `runner("hint")`, `capabilities(...)` reuse the same transform plumbing to annotate execution metadata.
+- **Scheduling helpers:** `stack_arena("id")`, `runner("hint")`, `capabilities(...)` reuse the same transform plumbing to annotate execution metadata.
+- **`struct`, `pod`, `stack`, `heap`, `buffer`:** declarative tags that emit metadata/validation only. They never change syntax; instead they fail compilation when the body violates the advertised contract (e.g., `[stack]` forbids heap placement, `[pod]` forbids handles/async fields).
 - **Documentation TODO:** ship a full catalog of built-in transforms once the borrow checker and effect model solidify; this list captures the current baseline only.
 
 ### Core library surface (draft)
-- **`assign(target, value)`:** canonical mutation primitive; only valid when `target` carries the `mutable` flag.
+- **`assign(target, value)`:** canonical mutation primitive; only valid when `target` carried `mut` at declaration time.
 - **`plus`, `minus`, `multiply`, `divide`:** arithmetic wrappers used after operator desugaring.
 - **`clamp(value, min, max)`:** numeric helper used heavily in rendering scripts.
 - **`execute_if<Bool>(cond, then_block{…}, else_block{…})`:** canonical conditional form after control-flow desugaring.
@@ -80,7 +116,7 @@ PrimeScript is built around a simple philosophy: program meaning emerges from tw
 - **Future: stack arenas (optional):** exploring named stack arenas (launch executions on specific stacks, clone/snapshot stacks, resume in parallel). Deferred until after v1; flagged as an advanced runtime capability needing copy semantics + effect-safety rules.
 
 ### Execution Metadata (draft)
-- **Placement:** executions may annotate a target stack arena (`[stack("physics")] execute_task<…>(…)`). Absent an annotation, they run on the default stack.
+- **Placement:** executions may annotate a target stack arena (`[stack_arena("physics")] execute_task<…>(…)`). Absent an annotation, they run on the default stack.
 - **Scheduler affinity:** optional hint for the runtime thread/fiber executing the frame (`[runner("render-thread")]`). Backends can ignore hints they cannot satisfy.
 - **Capabilities:** effect masks double as capability descriptors (IO, global write, GPU access, etc.). Additional attributes can narrow capabilities (`[capabilities(io_stdout, pathspace_insert)]`).
 - **Instrumentation:** executions carry metadata (source file/line, stack id, runner hint) for diagnostics and tracing.
@@ -100,15 +136,15 @@ PrimeScript is built around a simple philosophy: program meaning emerges from tw
 - **Inlining transforms:** standard transforms may inline pure lambdas; async/task-oriented lambdas stay as closures.
 - **PathSpace interop:** captured handles respect frame lifetimes; transforms force reference-count or move semantics as required.
 
-## Literals & Data Blocks (draft)
+## Literals & Composite Construction (draft)
 - **Numeric literals:** decimal, float, hexadecimal with optional width suffixes (`42u32`, `1.0f64`).
 - **Strings:** quoted with escapes (`"…"`) or raw (`R"( … )"`).
 - **Boolean & null:** keywords `true`, `false`, `null` map to backend equivalents.
-- **Datum blocks:** `datum<Type>{ field = value }` desugar into constructor executions; type omitted implies structural inference (`datum{ x = 1, y = 2 }`).
+- **Composite constructors:** structured values are introduced through standard type executions (`ColorGrade(hue_shift = 0.1f, exposure = 0.95f)`) or helper transforms that expand the uniform envelope. Named arguments map to fields, and every field must have either an explicit argument or a placement-provided default before validation.
 - **Collections:** `array<Type>{ … }`, `map<Key,Value>{ … }` (or bracket sugar) rewrite to standard builder functions.
 - **Conversions:** no implicit coercions. Use explicit executions (`convert<float>(value)`) or custom transforms.
-- **Mutability:** values immutable by default; `[mutable]` attribute required to opt-in.
-- **Open design:** finalise literal suffix catalogue, raw string semantics across backends, and whether datum blocks allow nested includes/compile-time evaluation.
+- **Mutability:** values immutable by default; include `mut` in the stack-value execution to opt-in (`[float mut] value(...)`).
+- **Open design:** finalise literal suffix catalogue, raw string semantics across backends, and the composite-constructor defaults/validation rules.
 
 ## Pointers & References (draft)
 - **Explicit types:** `Pointer<T>`, `Reference<T>` mirror C++ semantics; no implicit conversions.
@@ -144,7 +180,7 @@ clamp_exposure(img) {
   );
 }
 
-tweak_color([copy mutable restrict<Image>] img) {
+tweak_color([copy mut restrict<Image>] img) {
   assign(img.exposure, clamp(img.exposure, 0.0f, 1.0f));
   assign(img.gamma, plus(img.gamma, 0.1f));
   apply_grade(img);
@@ -200,13 +236,13 @@ float blend(float a, float b) {
 - Static analysis/lint integrated into CI to catch undefined constructs before codegen.
 
 ## Next Steps (Exploratory)
-1. Draft detailed syntax/semantics spec and circulate for review.
+1. Draft detailed syntax/semantics spec and circulate for review. _(Draft v0.1 captured in `docs/PrimeScript_SyntaxSpec.md` on 2025-11-21; review/feedback tracking TBD.)_
 2. Prototype parser + IR builder (Phase 0).
 3. Evaluate reuse of existing shader toolchains (glslang, SPIRV-Cross) vs bespoke emitters.
 4. Design import/package system (module syntax, search paths, visibility rules, transform distribution).
 5. Define library/versioning strategy so include resolution enforces compatibility.
 6. Flesh out stack/class specifications (calling convention, class sugar transforms, dispatch strategy) across backends.
-7. Lock down literal/datum syntax across backends and add conformance tests.
+7. Lock down composite literal syntax across backends and add conformance tests.
 8. Decide machine-code strategy (C++ emission, direct LLVM IR, third-party JIT) and prototype.
 9. Define diagnostics/tooling plan (source maps, error reporting pipeline, incremental tooling, future PathSpace-native editor).
 10. Document staffing/time requirements before promoting PrimeScript onto the active PathSpace roadmap.

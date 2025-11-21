@@ -4,12 +4,13 @@
 
 include(FetchContent)
 
-# FetchContent_Declare(
-# nlohmann
-# GIT_REPOSITORY https://github.com/nlohmann/json.git
-# GIT_TAG v3.11.3
-# )
-# FetchContent_MakeAvailable(nlohmann)
+FetchContent_Declare(
+    nlohmann
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.3
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(nlohmann)
 FetchContent_Declare(
     ParallelHashmap
     GIT_REPOSITORY https://github.com/greg7mdp/parallel-hashmap.git
@@ -71,6 +72,7 @@ add_library(PathSpace
     type/SlidingBuffer.cpp
     log/TaggedLogger.cpp
     PathSpace.cpp
+    inspector/PaintScreenshotCard.cpp
     layer/PathSpaceTrellis.cpp
     io/IoEventsSerialization.cpp
     runtime/IOPump.cpp
@@ -173,6 +175,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/PathRenderer2DDetailDraw.cpp
         ui/PathRenderer2DDetailEncode.cpp
         ui/PathRenderer2D.cpp
+        examples/paint/PaintControls.cpp
         $<$<BOOL:APPLE>:ui/LocalWindowBridge.mm>
         $<$<BOOL:APPLE>:ui/PathWindowView.mm>
         $<$<NOT:$<BOOL:APPLE>>:ui/PathWindowView.cpp>
@@ -290,6 +293,10 @@ if(PATHSPACE_ENABLE_EXTRA)
         layer/io/PathIOPointerMixer.hpp
         layer/io/PathIOGamepad.hpp
     )
+endif()
+
+if(PATHSPACE_ENABLE_UI)
+    list(APPEND _pathspace_public_headers examples/paint/PaintControls.hpp)
 endif()
 list(JOIN _pathspace_public_headers ";" _pathspace_public_header_string)
 set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "${_pathspace_public_header_string}")
