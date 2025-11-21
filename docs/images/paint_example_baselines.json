@@ -1,39 +1,39 @@
 {
   "schema_version": 1,
-  "manifest_revision": 1,
+  "manifest_revision": 3,
   "captures": {
     "1280x800": {
       "path": "docs/images/paint_example_baseline.png",
       "width": 1280,
       "height": 800,
       "renderer": "metal_present",
-      "sha256": "8a9f6daabd69d66b385a27b72f717eab87537608f8276b880abf369919aa28e6",
-      "captured_at": "2025-11-21T11:36:07Z",
-      "commit": "3c9e0ece9ca392b122d674282edd161c38470b6e",
-      "notes": "PATHSPACE_ENABLE_METAL_UPLOADS=1 PATHSPACE_UI_METAL=ON ./build/paint_example --gpu-smoke --screenshot --screenshot-require-present",
-      "revision": 1
+      "sha256": "26cf939a3c2fe6d29bdd9dfe4093e3d91e609b2c04c3d982768c79b361b4ad0b",
+      "captured_at": "2025-11-21T20:37:11.290690Z",
+      "commit": "7618de208782a1e21d9f173be03633c634996444",
+      "notes": "controls layout baseline refresh after clean build",
+      "revision": 3
     },
     "paint_720": {
       "path": "docs/images/paint_example_720_baseline.png",
       "width": 1280,
       "height": 720,
       "renderer": "metal_present",
-      "sha256": "184578b683d35539b478b66a9673a15b1807ae2642fbeb4427820a19b8975771",
-      "captured_at": "2025-11-21T11:42:18Z",
-      "commit": "3c9e0ece9ca392b122d674282edd161c38470b6e",
-      "notes": "PATHSPACE_ENABLE_METAL_UPLOADS=1 PATHSPACE_UI_METAL=ON ./build/paint_example --gpu-smoke --height=720 --screenshot --screenshot-require-present",
-      "revision": 1
+      "sha256": "93a573e973ff3585387080966e667274f36ad32863770867ae05d2be7a2203b8",
+      "captured_at": "2025-11-21T20:37:11.597521Z",
+      "commit": "7618de208782a1e21d9f173be03633c634996444",
+      "notes": "controls layout baseline refresh after clean build",
+      "revision": 3
     },
     "paint_600": {
       "path": "docs/images/paint_example_600_baseline.png",
       "width": 1024,
       "height": 600,
       "renderer": "metal_present",
-      "sha256": "37c9648791790a52cce8d0e04b5c8415e92c3396055abc6f2c16e8707fe79c7e",
-      "captured_at": "2025-11-21T19:46:00Z",
-      "commit": "76ecc8256b09afa33a2c6a8fbfa2bf3d77b2c2f2",
-      "notes": "PATHSPACE_ENABLE_METAL_UPLOADS=1 PATHSPACE_UI_METAL=ON ./build/paint_example --gpu-smoke --width=1024 --height=600 --screenshot --screenshot-require-present",
-      "revision": 1
+      "sha256": "6e754d64d18c5c79f490b157bf44238b8cfd14929c0891f837eeacfe0d51715d",
+      "captured_at": "2025-11-21T20:37:11.907141Z",
+      "commit": "7618de208782a1e21d9f173be03633c634996444",
+      "notes": "controls layout baseline refresh after clean build",
+      "revision": 3
     }
   }
 }

@@ -1557,7 +1557,9 @@ struct PaintUiBindings {
 };
 
 constexpr auto kControlsStackChildren =
-    std::to_array<std::string_view>({"status_label", "brush_label", "brush_slider", "palette", "actions"});
+    std::to_array<std::string_view>({"status_section", "brush_slider", "palette", "actions"});
+constexpr auto kStatusStackChildren =
+    std::to_array<std::string_view>({"status_label", "brush_label"});
 constexpr auto kActionsStackChildren = std::to_array<std::string_view>({"undo_button", "redo_button"});
 
 auto set_history_buttons_enabled(SP::PathSpace& space,
@@ -1603,7 +1605,7 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
     using namespace PaintControlsNS;
     SP::UI::Declarative::Stack::Args controls{};
     controls.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
-    controls.style.spacing = std::max(10.0f, layout.controls_spacing * 0.6f);
+    controls.style.spacing = std::max(layout.controls_section_spacing, 8.0f);
     controls.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
     controls.style.width = layout.controls_width;
     controls.style.height = layout.canvas_height;
@@ -1612,7 +1614,21 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
     controls.style.padding_cross_start = layout.controls_padding_cross;
     controls.style.padding_cross_end = layout.controls_padding_cross;
 
-    controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
+    auto make_section_stack = [&](float spacing) {
+        SP::UI::Declarative::Stack::Args section{};
+        section.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
+        section.style.spacing = spacing;
+        section.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
+        section.style.padding_main_start = layout.section_padding_main;
+        section.style.padding_main_end = layout.section_padding_main;
+        section.style.padding_cross_start = layout.section_padding_cross;
+        section.style.padding_cross_end = layout.section_padding_cross;
+        section.style.width = layout.controls_content_width + layout.section_padding_cross * 2.0f;
+        return section;
+    };
+
+    auto status_section = make_section_stack(layout.status_block_spacing);
+    status_section.panels.push_back(SP::UI::Declarative::Stack::Panel{
         .id = "status_label",
         .fragment = SP::UI::Declarative::Label::Fragment({
             .text = "Pick a color and drag on the canvas",
@@ -1623,7 +1639,7 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
     });
 
     auto brush_state = bindings.brush_state ? bindings.brush_state : std::make_shared<BrushState>();
-    controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
+    status_section.panels.push_back(SP::UI::Declarative::Stack::Panel{
         .id = "brush_label",
         .fragment = SP::UI::Declarative::Label::Fragment({
             .text = format_brush_state(brush_state->size, brush_state->color),
@@ -1631,6 +1647,11 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
                                          26.0f * layout.controls_scale),
             .color = {0.82f, 0.86f, 0.92f, 1.0f},
         }),
+    });
+    EnsureActivePanel(status_section);
+    controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "status_section",
+        .fragment = SP::UI::Declarative::Stack::Fragment(std::move(status_section)),
     });
 
     BrushSliderConfig slider_config{
@@ -1669,9 +1690,15 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
             }
         },
     };
+    auto slider_section = make_section_stack(0.0f);
+    slider_section.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "brush_slider_widget",
+        .fragment = BuildBrushSliderFragment(slider_config),
+    });
+    EnsureActivePanel(slider_section);
     controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
         .id = "brush_slider",
-        .fragment = BuildBrushSliderFragment(slider_config),
+        .fragment = SP::UI::Declarative::Stack::Fragment(std::move(slider_section)),
     });
 
     auto palette_entries = BuildDefaultPaletteEntries(theme);
@@ -1708,9 +1735,15 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
             }
         },
     };
+    auto palette_section = make_section_stack(layout.palette_row_spacing);
+    palette_section.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "palette_grid",
+        .fragment = BuildPaletteFragment(palette_config),
+    });
+    EnsureActivePanel(palette_section);
     controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
         .id = "palette",
-        .fragment = BuildPaletteFragment(palette_config),
+        .fragment = SP::UI::Declarative::Stack::Fragment(std::move(palette_section)),
     });
 
     HistoryActionsConfig actions_config{
@@ -2064,8 +2097,6 @@ int main(int argc, char** argv) {
 
     auto stack_root = ui_stack->getPath();
     auto controls_root = stack_root + "/children/controls_panel";
-    *bindings.status_label_path = controls_root + "/children/status_label";
-    *bindings.brush_label_path = controls_root + "/children/brush_label";
     *bindings.paint_widget_path = stack_root + "/children/canvas_panel";
     auto paint_widget_path = *bindings.paint_widget_path;
 
@@ -2079,6 +2110,17 @@ int main(int argc, char** argv) {
         SP::System::ShutdownDeclarativeRuntime(space);
         return 1;
     }
+    auto status_root = controls_root + "/children/status_section";
+    if (!wait_for_stack_children(space,
+                                 status_root,
+                                 std::span<const std::string_view>(kStatusStackChildren),
+                                 std::chrono::milliseconds(1000),
+                                 debug_layout_logging)) {
+        SP::System::ShutdownDeclarativeRuntime(space);
+        return 1;
+    }
+    *bindings.status_label_path = status_root + "/children/status_label";
+    *bindings.brush_label_path = status_root + "/children/brush_label";
     auto actions_root = controls_root + "/children/actions";
     if (!wait_for_stack_children(space,
                                  actions_root,

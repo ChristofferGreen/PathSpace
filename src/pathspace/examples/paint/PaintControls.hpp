@@ -15,10 +15,17 @@ namespace SP::Examples::PaintControls {
 struct PaintLayoutMetrics {
     float controls_width = 0.0f;
     float controls_spacing = 0.0f;
+    float controls_section_spacing = 0.0f;
     float padding_x = 0.0f;
     float padding_y = 0.0f;
     float controls_padding_main = 0.0f;
     float controls_padding_cross = 0.0f;
+    float section_padding_main = 0.0f;
+    float section_padding_cross = 0.0f;
+    float controls_content_width = 0.0f;
+    float status_block_spacing = 0.0f;
+    float palette_row_spacing = 0.0f;
+    float actions_row_spacing = 0.0f;
     float palette_button_height = 0.0f;
     float canvas_width = 0.0f;
     float canvas_height = 0.0f;

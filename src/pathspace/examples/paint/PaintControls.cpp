@@ -47,10 +47,18 @@ auto ComputeLayoutMetrics(int window_width, int window_height) -> PaintLayoutMet
     }
     auto scale = metrics.controls_scale;
     metrics.controls_spacing = std::lerp(18.0f, 28.0f, scale);
-    metrics.controls_padding_main = std::lerp(14.0f, 20.0f, scale);
-    metrics.controls_padding_cross = std::lerp(12.0f, 18.0f, scale);
-    metrics.palette_button_height = std::lerp(36.0f, 44.0f, scale);
-    metrics.controls_width = std::clamp(width_f * 0.28f, 300.0f, 420.0f);
+    metrics.controls_section_spacing = std::lerp(20.0f, 30.0f, scale);
+    metrics.controls_padding_main = std::lerp(18.0f, 26.0f, scale);
+    metrics.controls_padding_cross = std::lerp(16.0f, 22.0f, scale);
+    metrics.section_padding_main = std::lerp(8.0f, 12.0f, scale);
+    metrics.section_padding_cross = std::lerp(10.0f, 16.0f, scale);
+    metrics.status_block_spacing = std::lerp(6.0f, 10.0f, scale);
+    metrics.palette_row_spacing = std::lerp(10.0f, 16.0f, scale);
+    metrics.actions_row_spacing = std::lerp(10.0f, 16.0f, scale);
+    metrics.palette_button_height = std::lerp(40.0f, 52.0f, scale);
+    metrics.controls_width = std::clamp(width_f * 0.30f, 320.0f, 460.0f);
+    auto column_width = std::max(metrics.controls_width - metrics.controls_padding_cross * 2.0f, 240.0f);
+    metrics.controls_content_width = std::max(column_width - metrics.section_padding_cross * 2.0f, 220.0f);
     metrics.canvas_offset_x = metrics.padding_x + metrics.controls_width + metrics.controls_spacing;
     metrics.canvas_offset_y = metrics.padding_y;
     auto available_width = width_f - (metrics.canvas_offset_x + metrics.padding_x);
@@ -104,17 +112,17 @@ auto BuildPaletteFragment(PaletteComponentConfig const& config)
     -> SP::UI::Declarative::WidgetFragment {
     SP::UI::Declarative::Stack::Args column{};
     column.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
-    auto vertical_spacing = std::max(6.0f, 10.0f * config.layout.controls_scale);
+    auto vertical_spacing = std::max(config.layout.palette_row_spacing, 8.0f);
     column.style.spacing = vertical_spacing;
     column.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
-    auto column_width = std::max(config.layout.controls_width - config.layout.controls_padding_cross * 2.0f, 240.0f);
+    auto column_width = std::max(config.layout.controls_content_width, 240.0f);
     column.style.width = column_width;
 
     int row_index = 0;
     for (std::size_t index = 0; index < config.entries.size();) {
         SP::UI::Declarative::Stack::Args row{};
         row.style.axis = SP::UI::Builders::Widgets::StackAxis::Horizontal;
-        row.style.spacing = vertical_spacing;
+        row.style.spacing = std::max(10.0f, 14.0f * config.layout.controls_scale);
         row.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
         auto total_spacing = row.style.spacing * static_cast<float>(kButtonsPerRow - 1);
         auto available_width = std::max(column_width - total_spacing,
@@ -130,8 +138,8 @@ auto BuildPaletteFragment(PaletteComponentConfig const& config)
             args.style.corner_radius = std::max(6.0f, 10.0f * config.layout.controls_scale);
             args.style.background_color = entry.color;
             args.style.text_color = palette_button_text_color(entry.color, config.theme);
-            args.style.typography = MakeTypography(18.0f * config.layout.controls_scale,
-                                                   22.0f * config.layout.controls_scale);
+            args.style.typography = MakeTypography(19.0f * config.layout.controls_scale,
+                                                   24.0f * config.layout.controls_scale);
             args.on_press = [entry, handler = config.on_select, brush_state = config.brush_state](
                                 SP::UI::Declarative::ButtonContext& ctx) {
                 if (brush_state) {
@@ -165,15 +173,13 @@ auto BuildBrushSliderFragment(BrushSliderConfig const& config)
     slider.maximum = config.maximum;
     slider.step = config.step;
     slider.value = config.brush_state ? config.brush_state->size : slider.minimum;
-    slider.style.width = std::max(180.0f,
-                                  config.layout.controls_width
-                                      - config.layout.controls_padding_cross * 2.0f);
-    slider.style.height = std::max(32.0f, 40.0f * config.layout.controls_scale);
-    slider.style.track_height = std::max(6.0f, 8.0f * config.layout.controls_scale);
-    slider.style.thumb_radius = std::max(8.0f, 11.0f * config.layout.controls_scale);
+    slider.style.width = std::max(200.0f, config.layout.controls_content_width);
+    slider.style.height = std::max(34.0f, 44.0f * config.layout.controls_scale);
+    slider.style.track_height = std::max(7.0f, 9.0f * config.layout.controls_scale);
+    slider.style.thumb_radius = std::max(9.0f, 12.0f * config.layout.controls_scale);
     slider.style.label_color = {0.84f, 0.88f, 0.94f, 1.0f};
-    slider.style.label_typography = MakeTypography(18.0f * config.layout.controls_scale,
-                                                   22.0f * config.layout.controls_scale);
+    slider.style.label_typography = MakeTypography(19.0f * config.layout.controls_scale,
+                                                   24.0f * config.layout.controls_scale);
     slider.on_change = [handler = config.on_change, brush_state = config.brush_state](
                           SP::UI::Declarative::SliderContext& ctx) {
         if (brush_state) {
@@ -190,10 +196,15 @@ auto BuildHistoryActionsFragment(HistoryActionsConfig const& config)
     -> SP::UI::Declarative::WidgetFragment {
     SP::UI::Declarative::Stack::Args row{};
     row.style.axis = SP::UI::Builders::Widgets::StackAxis::Horizontal;
-    row.style.spacing = std::max(8.0f, 12.0f * config.layout.controls_scale);
+    row.style.spacing = std::max(config.layout.actions_row_spacing, 8.0f);
     row.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
-    auto column_width = std::max(config.layout.controls_width - config.layout.controls_padding_cross * 2.0f, 240.0f);
-    auto button_width = std::max(140.0f, (column_width - row.style.spacing) * 0.5f);
+    row.style.padding_main_start = config.layout.section_padding_main;
+    row.style.padding_main_end = config.layout.section_padding_main;
+    row.style.padding_cross_start = config.layout.section_padding_cross;
+    row.style.padding_cross_end = config.layout.section_padding_cross;
+    row.style.width = config.layout.controls_content_width + config.layout.section_padding_cross * 2.0f;
+    auto column_width = std::max(config.layout.controls_content_width, 240.0f);
+    auto button_width = std::max(150.0f, (column_width - row.style.spacing) * 0.5f);
 
     auto build_button = [&](std::string id,
                             std::string label,
@@ -202,8 +213,10 @@ auto BuildHistoryActionsFragment(HistoryActionsConfig const& config)
         args.label = std::move(label);
         args.enabled = false;
         args.style.width = button_width;
-        args.style.height = std::max(34.0f, 42.0f * config.layout.controls_scale);
-        args.style.corner_radius = std::max(5.0f, 8.0f * config.layout.controls_scale);
+        args.style.height = std::max(36.0f, 44.0f * config.layout.controls_scale);
+        args.style.corner_radius = std::max(6.0f, 9.0f * config.layout.controls_scale);
+        args.style.typography = MakeTypography(18.0f * config.layout.controls_scale,
+                                               22.0f * config.layout.controls_scale);
         args.on_press = [handler = config.on_action, action](SP::UI::Declarative::ButtonContext& ctx) {
             if (handler) {
                 handler(ctx, action);
