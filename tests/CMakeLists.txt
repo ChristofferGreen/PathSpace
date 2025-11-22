@@ -24,6 +24,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/history/test_UndoJournalState.cpp
   unit/history/test_UndoJournalPersistence.cpp
   unit/history/test_UndoableSpace.cpp
+  unit/examples/test_ExampleCli.cpp
   unit/runtime/test_IOPump.cpp
   unit/runtime/test_TelemetryControl.cpp
   test_main.cpp
@@ -49,6 +50,10 @@ if(PATHSPACE_ENABLE_EXTRA)
     unit/layer/test_PointerDefault_Composition.cpp
     unit/io/test_IoTrellis.cpp
   )
+endif()
+
+if(PATHSPACE_ENABLE_UI)
+  target_sources(PathSpaceTests PRIVATE unit/ui/test_HistoryBinding.cpp)
 endif()
 
 if(PATHSPACE_ENABLE_UI)

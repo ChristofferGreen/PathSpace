@@ -77,6 +77,7 @@ add_library(PathSpace
     io/IoEventsSerialization.cpp
     runtime/IOPump.cpp
     runtime/TelemetryControl.cpp
+    examples/cli/ExampleCli.cpp
 )
 
 if(PATHSPACE_ENABLE_APP)
@@ -137,6 +138,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/declarative/Runtime.cpp
         ui/declarative/Schema.cpp
         ui/declarative/Telemetry.cpp
+        ui/declarative/HistoryBinding.cpp
         ui/declarative/PaintSurfaceRuntime.cpp
         ui/declarative/PaintSurfaceUploader.cpp
         ui/declarative/StackReadiness.cpp
@@ -177,6 +179,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/PathRenderer2DDetailEncode.cpp
         ui/PathRenderer2D.cpp
         examples/paint/PaintControls.cpp
+        ui/screenshot/ScreenshotService.cpp
         $<$<BOOL:APPLE>:ui/LocalWindowBridge.mm>
         $<$<BOOL:APPLE>:ui/PathWindowView.mm>
         $<$<NOT:$<BOOL:APPLE>>:ui/PathWindowView.cpp>
@@ -283,6 +286,7 @@ target_link_libraries(PathSpace
 set(_pathspace_public_headers
     PathSpace.hpp
     layer/PathSpaceTrellis.hpp
+    examples/cli/ExampleCli.hpp
 )
 if(PATHSPACE_ENABLE_EXTRA)
     list(APPEND _pathspace_public_headers

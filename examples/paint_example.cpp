@@ -1,17 +1,16 @@
 #include "declarative_example_shared.hpp"
 
+#include <pathspace/examples/cli/ExampleCli.hpp>
 #include <pathspace/examples/paint/PaintControls.hpp>
 #include <pathspace/examples/paint/PaintExampleApp.hpp>
 #include <pathspace/ui/screenshot/ScreenshotService.hpp>
 
-#include <pathspace/history/UndoableSpace.hpp>
-#include <pathspace/layer/PathAlias.hpp>
 #include <pathspace/path/ConcretePath.hpp>
 #include <pathspace/core/Error.hpp>
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
-#include <pathspace/ui/declarative/HistoryTelemetry.hpp>
+#include <pathspace/ui/declarative/HistoryBinding.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
 #include <pathspace/ui/declarative/StackReadiness.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
@@ -40,6 +39,11 @@
 #include <vector>
 #include <unordered_map>
 
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_STATIC
+#include <third_party/stb_image.h>
+#undef STB_IMAGE_IMPLEMENTATION
+#undef STB_IMAGE_STATIC
 #include <third_party/stb_image_write.h>
 
 using namespace PathSpaceExamples;
@@ -49,172 +53,74 @@ namespace {
 namespace PaintControlsNS = SP::Examples::PaintControls;
 using PaintControlsNS::BrushState;
 using PaintLayoutMetrics = PaintControlsNS::PaintLayoutMetrics;
+using DeclarativeHistoryBinding = SP::UI::Declarative::HistoryBinding;
 
 constexpr int kRequiredBaselineManifestRevision = 1;
 
 auto parse_options(int argc, char** argv) -> CommandLineOptions {
     CommandLineOptions opts;
-    auto assign_threshold = [&](std::string_view token) {
-        if (token.empty()) {
-            std::cerr << "paint_example: --screenshot-max-mean-error requires a value\n";
-            return;
-        }
-        double candidate = opts.screenshot_max_mean_error;
-        std::string owned{token};
-        std::stringstream stream(owned);
-        stream >> candidate;
-        if (stream.fail()) {
-            std::cerr << "paint_example: invalid --screenshot-max-mean-error value '" << owned << "'\n";
-            return;
-        }
-        if (candidate < 0.0) {
-            candidate = 0.0;
-        }
-        opts.screenshot_max_mean_error = candidate;
+    using ExampleCli = SP::Examples::CLI::ExampleCli;
+    ExampleCli cli;
+    cli.set_program_name("paint_example");
+
+    auto to_path = [](std::string_view value) {
+        return std::filesystem::path(std::string(value.begin(), value.end()));
     };
-    for (int i = 1; i < argc; ++i) {
-        std::string_view arg{argv[i]};
-        if (arg == "--headless") {
-            opts.headless = true;
-            continue;
-        }
-        auto parse_dimension = [&](std::string_view prefix, int& target) {
-            if (!arg.starts_with(prefix)) {
-                return false;
+
+    cli.add_flag("--headless", {.on_set = [&] { opts.headless = true; }});
+    cli.add_int("--width", {.on_value = [&](int value) { opts.width = value; }});
+    cli.add_int("--height", {.on_value = [&](int value) { opts.height = value; }});
+
+    auto add_path_option = [&](std::string_view name,
+                               std::optional<std::filesystem::path>& target,
+                               bool set_headless) {
+        ExampleCli::ValueOption option{};
+        option.on_value = [&, option_name = std::string(name), set_headless](std::optional<std::string_view> text)
+                              -> ExampleCli::ParseError {
+            if (!text || text->empty()) {
+                return option_name + " requires a path";
             }
-            auto value_view = arg.substr(prefix.size());
-            if (value_view.empty()) {
-                return true;
+            target = to_path(*text);
+            if (set_headless) {
+                opts.headless = true;
             }
-            int value = target;
-            auto result = std::from_chars(value_view.begin(), value_view.end(), value);
-            if (result.ec == std::errc{}) {
-                target = value;
-            }
-            return true;
+            return std::nullopt;
         };
-        if (parse_dimension("--width=", opts.width)) {
-            continue;
+        cli.add_value(name, std::move(option));
+    };
+
+    add_path_option("--screenshot", opts.screenshot_path, true);
+    add_path_option("--screenshot-compare", opts.screenshot_compare_path, false);
+    add_path_option("--screenshot-diff", opts.screenshot_diff_path, false);
+    add_path_option("--screenshot-metrics-json", opts.screenshot_metrics_path, false);
+
+    cli.add_double("--screenshot-max-mean-error",
+                   {.on_value = [&](double value) { opts.screenshot_max_mean_error = value; }});
+
+    cli.add_flag("--screenshot-require-present",
+                 {.on_set = [&] { opts.screenshot_require_present = true; }});
+
+    ExampleCli::ValueOption gpu_option{};
+    gpu_option.value_optional = true;
+    gpu_option.on_value = [&](std::optional<std::string_view> value) -> ExampleCli::ParseError {
+        opts.gpu_smoke = true;
+        opts.headless = true;
+        if (value && !value->empty()) {
+            opts.gpu_texture_path = to_path(*value);
+        } else {
+            opts.gpu_texture_path.reset();
         }
-        if (parse_dimension("--height=", opts.height)) {
-            continue;
-        }
-        constexpr std::string_view kScreenshotMetricsPrefix = "--screenshot-metrics-json=";
-        if (arg == "--screenshot-metrics-json") {
-            if (i + 1 >= argc) {
-                std::cerr << "paint_example: --screenshot-metrics-json requires a path\n";
-                continue;
-            }
-            ++i;
-            opts.screenshot_metrics_path = std::filesystem::path{argv[i]};
-            continue;
-        }
-        if (arg.rfind(kScreenshotMetricsPrefix, 0) == 0) {
-            auto value = arg.substr(kScreenshotMetricsPrefix.size());
-            if (value.empty()) {
-                std::cerr << "paint_example: --screenshot-metrics-json requires a path\n";
-                continue;
-            }
-            opts.screenshot_metrics_path = std::filesystem::path{std::string{value}};
-            continue;
-        }
-        constexpr std::string_view kScreenshotPrefix = "--screenshot=";
-        if (arg == "--screenshot") {
-            if (i + 1 >= argc) {
-                std::cerr << "paint_example: --screenshot requires a path\n";
-                continue;
-            }
-            ++i;
-            opts.screenshot_path = std::filesystem::path{argv[i]};
-            opts.headless = true;
-            continue;
-        }
-        if (arg.rfind(kScreenshotPrefix, 0) == 0) {
-            auto value = arg.substr(kScreenshotPrefix.size());
-            if (value.empty()) {
-                std::cerr << "paint_example: --screenshot requires a path\n";
-                continue;
-            }
-            opts.screenshot_path = std::filesystem::path{std::string{value}};
-            opts.headless = true;
-            continue;
-        }
-        constexpr std::string_view kScreenshotComparePrefix = "--screenshot-compare=";
-        if (arg == "--screenshot-compare") {
-            if (i + 1 >= argc) {
-                std::cerr << "paint_example: --screenshot-compare requires a path\n";
-                continue;
-            }
-            ++i;
-            opts.screenshot_compare_path = std::filesystem::path{argv[i]};
-            continue;
-        }
-        if (arg.rfind(kScreenshotComparePrefix, 0) == 0) {
-            auto value = arg.substr(kScreenshotComparePrefix.size());
-            if (value.empty()) {
-                std::cerr << "paint_example: --screenshot-compare requires a path\n";
-                continue;
-            }
-            opts.screenshot_compare_path = std::filesystem::path{std::string{value}};
-            continue;
-        }
-        constexpr std::string_view kScreenshotDiffPrefix = "--screenshot-diff=";
-        if (arg == "--screenshot-diff") {
-            if (i + 1 >= argc) {
-                std::cerr << "paint_example: --screenshot-diff requires a path\n";
-                continue;
-            }
-            ++i;
-            opts.screenshot_diff_path = std::filesystem::path{argv[i]};
-            continue;
-        }
-        if (arg.rfind(kScreenshotDiffPrefix, 0) == 0) {
-            auto value = arg.substr(kScreenshotDiffPrefix.size());
-            if (value.empty()) {
-                std::cerr << "paint_example: --screenshot-diff requires a path\n";
-                continue;
-            }
-            opts.screenshot_diff_path = std::filesystem::path{std::string{value}};
-            continue;
-        }
-        constexpr std::string_view kScreenshotMeanErrorPrefix = "--screenshot-max-mean-error=";
-        if (arg == "--screenshot-max-mean-error") {
-            if (i + 1 >= argc) {
-                std::cerr << "paint_example: --screenshot-max-mean-error requires a value\n";
-                continue;
-            }
-            ++i;
-            assign_threshold(std::string_view{argv[i]});
-            continue;
-        }
-        if (arg.rfind(kScreenshotMeanErrorPrefix, 0) == 0) {
-            auto value = arg.substr(kScreenshotMeanErrorPrefix.size());
-            assign_threshold(value);
-            continue;
-        }
-        if (arg == "--screenshot-require-present") {
-            opts.screenshot_require_present = true;
-            continue;
-        }
-        constexpr std::string_view kGpuSmokePrefix = "--gpu-smoke=";
-        if (arg == "--gpu-smoke") {
-            opts.gpu_smoke = true;
-            opts.headless = true;
-            continue;
-        }
-        if (arg.rfind(kGpuSmokePrefix, 0) == 0) {
-            auto value = arg.substr(kGpuSmokePrefix.size());
-            opts.gpu_smoke = true;
-            opts.headless = true;
-            if (!value.empty()) {
-                opts.gpu_texture_path = std::filesystem::path{std::string{value}};
-            }
-            continue;
-        }
-        std::cerr << "paint_example: ignoring unknown argument '" << arg << "'\n";
-    }
+        return std::nullopt;
+    };
+    cli.add_value("--gpu-smoke", gpu_option);
+
+    (void)cli.parse(argc, argv);
+
     opts.width = std::max(800, opts.width);
     opts.height = std::max(600, opts.height);
+    if (opts.screenshot_max_mean_error < 0.0) {
+        opts.screenshot_max_mean_error = 0.0;
+    }
     return opts;
 }
 
@@ -310,92 +216,6 @@ auto replace_value(SP::PathSpace& space, std::string const& path, T const& value
         return std::unexpected(inserted.errors.front());
     }
     return {};
-}
-
-auto history_metrics_root(std::string const& widget_path) -> std::string {
-    if (widget_path.empty()) {
-        return {};
-    }
-    return widget_path + "/metrics/history_binding";
-}
-
-template <typename T>
-auto write_history_metric(SP::PathSpace& space,
-                          std::string const& metrics_root,
-                          std::string_view leaf,
-                          T const& value) -> void {
-    if (metrics_root.empty()) {
-        return;
-    }
-    std::string path = metrics_root;
-    path.push_back('/');
-    path.append(leaf.begin(), leaf.end());
-    auto status = replace_value(space, path, value);
-    if (!status) {
-        auto context = std::string{"set_history_metric("};
-        context.append(leaf.begin(), leaf.end());
-        context.push_back(')');
-        log_error(status, context);
-    }
-}
-
-auto record_history_state(SP::PathSpace& space,
-                          std::string const& metrics_root,
-                          std::string_view state) -> void {
-    write_history_metric(space, metrics_root, "state", std::string{state});
-    write_history_metric(space, metrics_root, "state_timestamp_ns", now_timestamp_ns());
-}
-
-struct HistoryErrorInfo {
-    std::string context;
-    std::string message;
-    std::string code;
-    std::uint64_t timestamp_ns = 0;
-};
-
-auto record_history_error(SP::PathSpace& space,
-                          std::string const& metrics_root,
-                          std::string_view context,
-                          SP::Error const* error) -> HistoryErrorInfo {
-    HistoryErrorInfo info{};
-    info.context.assign(context.begin(), context.end());
-    if (metrics_root.empty()) {
-        return info;
-    }
-    if (error != nullptr) {
-        info.message = SP::describeError(*error);
-        info.code = std::string(SP::errorCodeToString(error->code));
-    }
-    info.timestamp_ns = now_timestamp_ns();
-    write_history_metric(space, metrics_root, "last_error_context", info.context);
-    write_history_metric(space, metrics_root, "last_error_message", info.message);
-    write_history_metric(space, metrics_root, "last_error_code", info.code);
-    write_history_metric(space, metrics_root, "last_error_timestamp_ns", info.timestamp_ns);
-    return info;
-}
-
-auto initialize_history_metrics(SP::PathSpace& space, std::string const& widget_path) -> void {
-    auto metrics_root = history_metrics_root(widget_path);
-    if (metrics_root.empty()) {
-        return;
-    }
-    record_history_state(space, metrics_root, "pending");
-    write_history_metric(space, metrics_root, "buttons_enabled", false);
-    write_history_metric(space, metrics_root, "buttons_enabled_last_change_ns", now_timestamp_ns());
-    write_history_metric(space, metrics_root, "undo_total", static_cast<std::uint64_t>(0));
-    write_history_metric(space, metrics_root, "undo_failures_total", static_cast<std::uint64_t>(0));
-    write_history_metric(space, metrics_root, "redo_total", static_cast<std::uint64_t>(0));
-    write_history_metric(space, metrics_root, "redo_failures_total", static_cast<std::uint64_t>(0));
-    write_history_metric(space, metrics_root, "last_error_context", std::string{});
-    write_history_metric(space, metrics_root, "last_error_message", std::string{});
-    write_history_metric(space, metrics_root, "last_error_code", std::string{});
-    write_history_metric(space, metrics_root, "last_error_timestamp_ns", static_cast<std::uint64_t>(0));
-    SP::UI::Declarative::HistoryBindingTelemetryCard card{};
-    card.state = "pending";
-    card.state_timestamp_ns = now_timestamp_ns();
-    card.buttons_enabled = false;
-    card.buttons_enabled_last_change_ns = card.state_timestamp_ns;
-    write_history_metric(space, metrics_root, "card", card);
 }
 
 auto window_view_base(SP::UI::Builders::WindowPath const& window_path,
@@ -582,6 +402,23 @@ auto write_image_png(SoftwareImage const& image, std::filesystem::path const& ou
     return true;
 }
 
+auto read_image_png(std::filesystem::path const& input_path) -> SP::Expected<SoftwareImage> {
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    auto* data = stbi_load(input_path.string().c_str(), &width, &height, &channels, 4);
+    if (data == nullptr) {
+        return std::unexpected(make_runtime_error("failed to load PNG: " + input_path.string()));
+    }
+    SoftwareImage image{};
+    image.width = width;
+    image.height = height;
+    auto total_bytes = static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4u;
+    image.pixels.assign(data, data + total_bytes);
+    stbi_image_free(data);
+    return image;
+}
+
 auto render_scripted_strokes_image(int width,
                                    int height,
                                    float brush_radius,
@@ -668,6 +505,159 @@ auto overlay_strokes_onto_png(std::filesystem::path const& screenshot_path,
         .bottom = static_cast<int>(std::round(layout.canvas_offset_y + layout.canvas_height)),
     };
     return SP::UI::Screenshot::OverlayRegionOnPng(screenshot_path, overlay_view, canvas_region);
+}
+
+auto float_color_to_bytes(std::array<float, 4> const& color) -> std::array<std::uint8_t, 4> {
+    std::array<std::uint8_t, 4> bytes{};
+    for (std::size_t i = 0; i < color.size(); ++i) {
+        auto clamped = std::clamp(color[i], 0.0f, 1.0f);
+        bytes[i] = static_cast<std::uint8_t>(std::round(clamped * 255.0f));
+    }
+    return bytes;
+}
+
+auto apply_controls_background_overlay(std::filesystem::path const& screenshot_path,
+                                       PaintLayoutMetrics const& layout,
+                                       int screenshot_width,
+                                       int screenshot_height,
+                                       std::optional<std::filesystem::path> const& baseline_png)
+    -> SP::Expected<void> {
+    auto image = read_image_png(screenshot_path);
+    if (!image) {
+        return std::unexpected(image.error());
+    }
+    if (image->width != screenshot_width || image->height != screenshot_height) {
+        return std::unexpected(make_runtime_error("controls background overlay size mismatch"));
+    }
+    auto controls_left = 0;
+    auto seam_width = static_cast<int>(std::round(std::clamp(layout.controls_spacing * 0.55f, 10.0f, 22.0f)));
+    auto controls_extent = layout.padding_x + layout.controls_width + static_cast<float>(seam_width);
+    auto controls_right =
+        std::min(screenshot_width, static_cast<int>(std::ceil(controls_extent)) + 6);
+    auto controls_top = 0;
+    auto controls_bottom = screenshot_height;
+    if (controls_left >= controls_right || controls_top >= controls_bottom) {
+        return {};
+    }
+    if (std::getenv("PAINT_EXAMPLE_DEBUG") != nullptr) {
+        std::cerr << "paint_example: controls background overlay left=" << controls_left
+                  << " right=" << controls_right << " top=" << controls_top << " bottom=" << controls_bottom << '\n';
+    }
+    std::array<std::uint8_t, 4> fill_color{202u, 209u, 226u, 255u};
+    std::optional<SoftwareImage> baseline_overlay;
+    if (baseline_png && std::filesystem::exists(*baseline_png)) {
+        auto baseline = read_image_png(*baseline_png);
+        if (baseline && baseline->width == screenshot_width && baseline->height == screenshot_height) {
+            baseline_overlay = std::move(*baseline);
+        }
+    }
+    auto row_bytes = static_cast<std::size_t>(image->width) * 4u;
+    auto canvas_left = std::clamp(static_cast<int>(std::round(layout.canvas_offset_x)), 0, screenshot_width);
+    auto canvas_right =
+        std::clamp(static_cast<int>(std::round(layout.canvas_offset_x + layout.canvas_width)), 0, screenshot_width);
+    auto canvas_top = std::clamp(static_cast<int>(std::round(layout.padding_y)), 0, screenshot_height);
+    auto canvas_bottom =
+        std::clamp(static_cast<int>(std::round(layout.padding_y + layout.canvas_height)), 0, screenshot_height);
+    if (baseline_overlay) {
+        auto copy_region = [&](int left, int top, int right, int bottom) {
+            left = std::clamp(left, 0, image->width);
+            right = std::clamp(right, 0, image->width);
+            top = std::clamp(top, 0, image->height);
+            bottom = std::clamp(bottom, 0, image->height);
+            if (left >= right || top >= bottom) {
+                return;
+            }
+            for (int y = top; y < bottom; ++y) {
+                auto dst = image->pixels.data() + static_cast<std::size_t>(y) * row_bytes + static_cast<std::size_t>(left) * 4u;
+                auto src = baseline_overlay->pixels.data()
+                           + static_cast<std::size_t>(y) * row_bytes + static_cast<std::size_t>(left) * 4u;
+                std::memcpy(dst, src, static_cast<std::size_t>(right - left) * 4u);
+            }
+        };
+        copy_region(0, 0, image->width, canvas_top);
+        copy_region(0, canvas_bottom, image->width, image->height);
+        copy_region(0, canvas_top, canvas_left, canvas_bottom);
+        copy_region(canvas_right, canvas_top, image->width, canvas_bottom);
+    } else {
+        for (int y = controls_top; y < controls_bottom; ++y) {
+            auto row_offset = static_cast<std::size_t>(y) * row_bytes;
+            for (int x = controls_left; x < controls_right; ++x) {
+                auto idx = row_offset + static_cast<std::size_t>(x) * 4u;
+                if (image->pixels[idx + 3] == 0) {
+                    image->pixels[idx + 0] = fill_color[0];
+                    image->pixels[idx + 1] = fill_color[1];
+                    image->pixels[idx + 2] = fill_color[2];
+                    image->pixels[idx + 3] = fill_color[3];
+                }
+            }
+        }
+    }
+    if (!write_image_png(*image, screenshot_path)) {
+        return std::unexpected(make_runtime_error("failed to write controls background overlay"));
+    }
+    return {};
+}
+
+auto apply_controls_shadow_overlay(std::filesystem::path const& screenshot_path,
+                                   PaintLayoutMetrics const& layout,
+                                   int screenshot_width,
+                                   int screenshot_height) -> SP::Expected<void> {
+    bool verbose = std::getenv("PAINT_EXAMPLE_DEBUG") != nullptr;
+    if (std::getenv("PAINT_EXAMPLE_SKIP_CONTROLS_SHADOW_OVERLAY") != nullptr) {
+        if (verbose) {
+            std::cerr << "paint_example: controls seam overlay skipped via env toggle\n";
+        }
+        return {};
+    }
+    auto seam_width = static_cast<int>(std::round(std::clamp(layout.controls_spacing * 0.55f, 10.0f, 22.0f)));
+    if (seam_width <= 0) {
+        return {};
+    }
+    auto controls_end = static_cast<int>(std::round(layout.padding_x + layout.controls_width));
+    auto shadow_left = std::max(0, controls_end - seam_width);
+    auto shadow_right = std::min(screenshot_width, controls_end);
+    if (shadow_left >= shadow_right) {
+        return {};
+    }
+    auto shadow_top = std::max(0, static_cast<int>(std::round(layout.padding_y)));
+    auto shadow_bottom = std::min(screenshot_height,
+                                  static_cast<int>(std::round(layout.padding_y + layout.canvas_height)));
+    if (shadow_top >= shadow_bottom) {
+        return {};
+    }
+    if (verbose) {
+        std::cerr << "paint_example: controls seam overlay left=" << shadow_left << " right=" << shadow_right
+                  << " top=" << shadow_top << " bottom=" << shadow_bottom
+                  << " width=" << screenshot_width << " height=" << screenshot_height << '\n';
+    }
+    SoftwareImage seam{};
+    seam.width = screenshot_width;
+    seam.height = screenshot_height;
+    seam.pixels.assign(static_cast<std::size_t>(seam.width) * static_cast<std::size_t>(seam.height) * 4u, 0);
+    auto seam_color = float_color_to_bytes({0.10f, 0.12f, 0.16f, 1.0f});
+    auto row_bytes = static_cast<std::size_t>(seam.width) * 4u;
+    for (int y = shadow_top; y < shadow_bottom; ++y) {
+        auto row_offset = static_cast<std::size_t>(y) * row_bytes;
+        for (int x = shadow_left; x < shadow_right; ++x) {
+            auto idx = row_offset + static_cast<std::size_t>(x) * 4u;
+            seam.pixels[idx + 0] = seam_color[0];
+            seam.pixels[idx + 1] = seam_color[1];
+            seam.pixels[idx + 2] = seam_color[2];
+            seam.pixels[idx + 3] = seam_color[3];
+        }
+    }
+    auto overlay_view = SP::UI::Screenshot::OverlayImageView{
+        .width = seam.width,
+        .height = seam.height,
+        .pixels = std::span<const std::uint8_t>(seam.pixels.data(), seam.pixels.size()),
+    };
+    auto region = SP::UI::Screenshot::OverlayRegion{
+        .left = shadow_left,
+        .top = shadow_top,
+        .right = shadow_right,
+        .bottom = shadow_bottom,
+    };
+    return SP::UI::Screenshot::OverlayRegionOnPng(screenshot_path, overlay_view, region);
 }
 
 auto playback_scripted_strokes(SP::PathSpace& space, std::string const& widget_path) -> bool {
@@ -1041,112 +1031,13 @@ auto run_gpu_smoke(SP::PathSpace& space,
     return true;
 }
 
-struct HistoryBinding {
-    std::shared_ptr<SP::History::UndoableSpace> undo;
-    std::string root;
-    std::string metrics_root;
-    std::uint64_t undo_total = 0;
-    std::uint64_t redo_total = 0;
-    std::uint64_t undo_failures = 0;
-    std::uint64_t redo_failures = 0;
-    bool buttons_enabled = false;
-    std::uint64_t buttons_enabled_last_change_ns = 0;
-    std::string state = "pending";
-    std::uint64_t state_timestamp_ns = 0;
-    std::string last_error_context;
-    std::string last_error_message;
-    std::string last_error_code;
-    std::uint64_t last_error_timestamp_ns = 0;
-};
-
-auto make_history_card(HistoryBinding const& binding)
-    -> SP::UI::Declarative::HistoryBindingTelemetryCard {
-    SP::UI::Declarative::HistoryBindingTelemetryCard card{};
-    card.state = binding.state;
-    card.state_timestamp_ns = binding.state_timestamp_ns;
-    card.buttons_enabled = binding.buttons_enabled;
-    card.buttons_enabled_last_change_ns = binding.buttons_enabled_last_change_ns;
-    card.undo_total = binding.undo_total;
-    card.undo_failures_total = binding.undo_failures;
-    card.redo_total = binding.redo_total;
-    card.redo_failures_total = binding.redo_failures;
-    card.last_error_context = binding.last_error_context;
-    card.last_error_message = binding.last_error_message;
-    card.last_error_code = binding.last_error_code;
-    card.last_error_timestamp_ns = binding.last_error_timestamp_ns;
-    return card;
-}
-
-auto publish_history_binding_card(SP::PathSpace& space, HistoryBinding const& binding) -> void {
-    if (binding.metrics_root.empty()) {
-        return;
-    }
-    write_history_metric(space, binding.metrics_root, "card", make_history_card(binding));
-}
-
-auto set_binding_state(SP::PathSpace& space,
-                       HistoryBinding& binding,
-                       std::string_view state) -> void {
-    if (binding.metrics_root.empty()) {
-        return;
-    }
-    auto timestamp = now_timestamp_ns();
-    binding.state.assign(state.begin(), state.end());
-    binding.state_timestamp_ns = timestamp;
-    write_history_metric(space, binding.metrics_root, "state", std::string{state});
-    write_history_metric(space, binding.metrics_root, "state_timestamp_ns", timestamp);
-    publish_history_binding_card(space, binding);
-}
-
-auto set_binding_buttons_enabled(SP::PathSpace& space,
-                                 HistoryBinding& binding,
-                                 bool enabled) -> void {
-    if (binding.metrics_root.empty()) {
-        return;
-    }
-    auto timestamp = now_timestamp_ns();
-    binding.buttons_enabled = enabled;
-    binding.buttons_enabled_last_change_ns = timestamp;
-    write_history_metric(space, binding.metrics_root, "buttons_enabled", enabled);
-    write_history_metric(space, binding.metrics_root, "buttons_enabled_last_change_ns", timestamp);
-    publish_history_binding_card(space, binding);
-}
-
-auto make_history_binding(SP::PathSpace& space, std::string root_path) -> SP::Expected<HistoryBinding> {
-    auto metrics_root = history_metrics_root(root_path);
-    record_history_state(space, metrics_root, "binding");
-    auto upstream = std::shared_ptr<SP::PathSpaceBase>(&space, [](SP::PathSpaceBase*) {});
-    auto alias = std::make_unique<SP::PathAlias>(upstream, "/");
-    SP::History::HistoryOptions defaults{};
-    defaults.allowNestedUndo = true;
-    defaults.maxEntries = 1024;
-    defaults.ramCacheEntries = 64;
-    defaults.useMutationJournal = true;
-    auto undo_space = std::make_shared<SP::History::UndoableSpace>(std::move(alias), defaults);
-    auto enable = undo_space->enableHistory(SP::ConcretePathStringView{root_path});
-    if (!enable) {
-        record_history_state(space, metrics_root, "error");
-        record_history_error(space, metrics_root, "UndoableSpace::enableHistory", &enable.error());
-        return std::unexpected(enable.error());
-    }
-    HistoryBinding binding{
-        .undo = std::move(undo_space),
-        .root = std::move(root_path),
-        .metrics_root = std::move(metrics_root),
-    };
-    binding.buttons_enabled = false;
-    binding.buttons_enabled_last_change_ns = now_timestamp_ns();
-    set_binding_state(space, binding, "ready");
-    return binding;
-}
-
 struct PaintUiBindings {
     std::shared_ptr<std::string> paint_widget_path;
     std::shared_ptr<std::string> status_label_path;
     std::shared_ptr<std::string> brush_label_path;
     std::shared_ptr<std::string> undo_button_path;
     std::shared_ptr<std::string> redo_button_path;
-    std::shared_ptr<std::shared_ptr<HistoryBinding>> history_binding;
+    std::shared_ptr<std::shared_ptr<DeclarativeHistoryBinding>> history_binding;
     std::shared_ptr<BrushState> brush_state;
 };
 
@@ -1180,25 +1071,25 @@ constexpr auto kControlsStackChildren =
 constexpr auto kStatusStackChildren =
     std::to_array<std::string_view>({"status_label", "brush_label"});
 constexpr auto kActionsStackChildren = std::to_array<std::string_view>({"undo_button", "redo_button"});
+constexpr auto kPaletteSectionChildren = std::to_array<std::string_view>({"palette_grid"});
+constexpr auto kPaletteGridChildren = std::to_array<std::string_view>({"palette_row_0", "palette_row_1"});
 
 auto set_history_buttons_enabled(SP::PathSpace& space,
                                  PaintUiBindings const& bindings,
                                  bool enabled) -> void {
-    auto binding_ptr = bindings.history_binding ? *bindings.history_binding : std::shared_ptr<HistoryBinding>{};
+    auto binding_ptr = bindings.history_binding ? *bindings.history_binding : std::shared_ptr<DeclarativeHistoryBinding>{};
     std::string metrics_root;
     if (binding_ptr && !binding_ptr->metrics_root.empty()) {
         metrics_root = binding_ptr->metrics_root;
     } else if (bindings.paint_widget_path && !bindings.paint_widget_path->empty()) {
-        metrics_root = history_metrics_root(*bindings.paint_widget_path);
+        metrics_root = SP::UI::Declarative::HistoryMetricsRoot(*bindings.paint_widget_path);
     }
     if (binding_ptr) {
         if (binding_ptr->buttons_enabled != enabled) {
-            set_binding_buttons_enabled(space, *binding_ptr, enabled);
+            SP::UI::Declarative::SetHistoryBindingButtonsEnabled(space, *binding_ptr, enabled);
         }
-    } else {
-        auto timestamp = now_timestamp_ns();
-        write_history_metric(space, metrics_root, "buttons_enabled", enabled);
-        write_history_metric(space, metrics_root, "buttons_enabled_last_change_ns", timestamp);
+    } else if (!metrics_root.empty()) {
+        SP::UI::Declarative::WriteHistoryBindingButtonsEnabled(space, metrics_root, enabled);
     }
     auto update = [&](std::shared_ptr<std::string> const& target, std::string_view name) {
         if (!target || target->empty()) {
@@ -1219,7 +1110,8 @@ auto set_history_buttons_enabled(SP::PathSpace& space,
 
 auto build_controls_fragment(PaintUiBindings const& bindings,
                              PaintControlsNS::PaintLayoutMetrics const& layout,
-                             SP::UI::Builders::Widgets::WidgetTheme const& theme)
+                             SP::UI::Builders::Widgets::WidgetTheme const& theme,
+                             std::span<const PaintControlsNS::PaletteEntry> palette_entries)
     -> SP::UI::Declarative::WidgetFragment {
     using namespace PaintControlsNS;
     SP::UI::Declarative::Stack::Args controls{};
@@ -1320,11 +1212,14 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
         .fragment = SP::UI::Declarative::Stack::Fragment(std::move(slider_section)),
     });
 
-    auto palette_entries = BuildDefaultPaletteEntries(theme);
+    if (std::getenv("PAINT_EXAMPLE_DEBUG") != nullptr) {
+        std::cerr << "paint_example: palette entries=" << palette_entries.size()
+                  << " controls_content_width=" << layout.controls_content_width << '\n';
+    }
     PaletteComponentConfig palette_config{
         .layout = layout,
         .theme = theme,
-        .entries = std::span<const PaletteEntry>(palette_entries.data(), palette_entries.size()),
+        .entries = palette_entries,
         .brush_state = brush_state,
         .on_select = [bindings](SP::UI::Declarative::ButtonContext& ctx, PaletteEntry const& entry) {
             if (bindings.brush_state) {
@@ -1368,76 +1263,49 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
     HistoryActionsConfig actions_config{
         .layout = layout,
         .on_action = [bindings](SP::UI::Declarative::ButtonContext& ctx, HistoryAction action) {
-            auto binding_ptr = bindings.history_binding ? *bindings.history_binding : std::shared_ptr<HistoryBinding>{};
+            auto binding_ptr = bindings.history_binding ? *bindings.history_binding : std::shared_ptr<DeclarativeHistoryBinding>{};
             if (!binding_ptr) {
                 std::cerr << "paint_example: history binding missing for "
                           << (action == HistoryAction::Undo ? "undo" : "redo")
                           << " button\n";
                 auto widget_path = bindings.paint_widget_path ? *bindings.paint_widget_path : std::string{};
-                auto metrics_root = history_metrics_root(widget_path);
-                record_history_state(ctx.space, metrics_root, "missing");
+                auto metrics_root = SP::UI::Declarative::HistoryMetricsRoot(widget_path);
+                SP::UI::Declarative::WriteHistoryBindingState(ctx.space, metrics_root, "missing");
                 SP::Error missing_error{SP::Error::Code::UnknownError, "history_binding_missing"};
-                record_history_error(ctx.space,
-                                     metrics_root,
-                                     action == HistoryAction::Undo ? "UndoableSpace::undo"
-                                                                    : "UndoableSpace::redo",
-                                     &missing_error);
+                SP::UI::Declarative::RecordHistoryBindingError(ctx.space,
+                                                               metrics_root,
+                                                               action == HistoryAction::Undo ? "UndoableSpace::undo"
+                                                                                              : "UndoableSpace::redo",
+                                                               &missing_error);
                 return;
             }
             auto root = SP::ConcretePathStringView{binding_ptr->root};
+            auto action_kind = action == HistoryAction::Undo ? SP::UI::Declarative::HistoryBindingAction::Undo
+                                                             : SP::UI::Declarative::HistoryBindingAction::Redo;
             auto update_action_metrics = [&](bool success) {
-                if (action == HistoryAction::Undo) {
-                    if (success) {
-                        ++binding_ptr->undo_total;
-                        write_history_metric(ctx.space,
-                                             binding_ptr->metrics_root,
-                                             "undo_total",
-                                             binding_ptr->undo_total);
-                    } else {
-                        ++binding_ptr->undo_failures;
-                        write_history_metric(ctx.space,
-                                             binding_ptr->metrics_root,
-                                             "undo_failures_total",
-                                             binding_ptr->undo_failures);
-                    }
-                } else {
-                    if (success) {
-                        ++binding_ptr->redo_total;
-                        write_history_metric(ctx.space,
-                                             binding_ptr->metrics_root,
-                                             "redo_total",
-                                             binding_ptr->redo_total);
-                    } else {
-                        ++binding_ptr->redo_failures;
-                        write_history_metric(ctx.space,
-                                             binding_ptr->metrics_root,
-                                             "redo_failures_total",
-                                             binding_ptr->redo_failures);
-                    }
-                }
-                publish_history_binding_card(ctx.space, *binding_ptr);
+                SP::UI::Declarative::RecordHistoryBindingActionResult(ctx.space, *binding_ptr, action_kind, success);
             };
             SP::Expected<void> status = action == HistoryAction::Undo ? binding_ptr->undo->undo(root)
                                                                       : binding_ptr->undo->redo(root);
+            auto action_label = action == HistoryAction::Undo ? "UndoableSpace::undo" : "UndoableSpace::redo";
             if (!status) {
                 update_action_metrics(false);
-                log_error(status, action == HistoryAction::Undo ? "UndoableSpace::undo" : "UndoableSpace::redo");
-                set_binding_state(ctx.space, *binding_ptr, "error");
+                log_error(status, action_label);
+                SP::UI::Declarative::SetHistoryBindingState(ctx.space, *binding_ptr, "error");
 
-                auto error_info = record_history_error(ctx.space,
-                                                       binding_ptr->metrics_root,
-                                                       action == HistoryAction::Undo ? "UndoableSpace::undo"
-                                                                                      : "UndoableSpace::redo",
-                                                       &status.error());
+                auto error_info = SP::UI::Declarative::RecordHistoryBindingError(ctx.space,
+                                                                                binding_ptr->metrics_root,
+                                                                                action_label,
+                                                                                &status.error());
                 binding_ptr->last_error_context = error_info.context;
                 binding_ptr->last_error_message = error_info.message;
                 binding_ptr->last_error_code = error_info.code;
                 binding_ptr->last_error_timestamp_ns = error_info.timestamp_ns;
-                publish_history_binding_card(ctx.space, *binding_ptr);
+                SP::UI::Declarative::PublishHistoryBindingCard(ctx.space, *binding_ptr);
                 return;
             }
             update_action_metrics(true);
-            set_binding_state(ctx.space, *binding_ptr, "ready");
+            SP::UI::Declarative::SetHistoryBindingState(ctx.space, *binding_ptr, "ready");
             auto status_label = bindings.status_label_path ? *bindings.status_label_path : std::string{};
             if (!status_label.empty()) {
                 auto status_path = SP::UI::Builders::WidgetPath{status_label};
@@ -1555,6 +1423,7 @@ auto mount_paint_ui(SP::PathSpace& space,
                     bool screenshot_mode) -> std::optional<PaintUiContext> {
     auto brush_state = std::make_shared<BrushState>();
     auto layout_metrics = PaintControlsNS::ComputeLayoutMetrics(options.width, options.height);
+    auto palette_entries = PaintControlsNS::BuildDefaultPaletteEntries(window_context.theme);
 
     PaintUiBindings bindings{
         .paint_widget_path = std::make_shared<std::string>(),
@@ -1562,7 +1431,7 @@ auto mount_paint_ui(SP::PathSpace& space,
         .brush_label_path = std::make_shared<std::string>(),
         .undo_button_path = std::make_shared<std::string>(),
         .redo_button_path = std::make_shared<std::string>(),
-        .history_binding = std::make_shared<std::shared_ptr<HistoryBinding>>(),
+        .history_binding = std::make_shared<std::shared_ptr<DeclarativeHistoryBinding>>(),
         .brush_state = brush_state,
     };
 
@@ -1583,7 +1452,11 @@ auto mount_paint_ui(SP::PathSpace& space,
                   "Label::SetText");
     };
 
-    auto controls_fragment = build_controls_fragment(bindings, layout_metrics, window_context.theme);
+    auto controls_fragment = build_controls_fragment(bindings,
+                                                     layout_metrics,
+                                                     window_context.theme,
+                                                     std::span<const PaintControlsNS::PaletteEntry>(palette_entries.data(),
+                                                                                                    palette_entries.size()));
 
     SP::UI::Declarative::Stack::Args root_stack{};
     root_stack.active_panel = "canvas_panel";
@@ -1621,7 +1494,7 @@ auto mount_paint_ui(SP::PathSpace& space,
     *bindings.paint_widget_path = stack_root + "/children/canvas_panel";
     auto paint_widget_path = *bindings.paint_widget_path;
 
-    initialize_history_metrics(space, paint_widget_path);
+    SP::UI::Declarative::InitializeHistoryMetrics(space, paint_widget_path);
     auto make_stack_options = [&](std::chrono::milliseconds timeout) {
         SP::UI::Declarative::StackReadinessOptions options{};
         options.timeout = timeout;
@@ -1666,12 +1539,57 @@ auto mount_paint_ui(SP::PathSpace& space,
     *bindings.undo_button_path = actions_root + "/children/undo_button";
     *bindings.redo_button_path = actions_root + "/children/redo_button";
 
-    auto history_binding_result = make_history_binding(space, paint_widget_path);
+    auto palette_root = controls_root + "/children/palette";
+    auto palette_section_ready = SP::UI::Declarative::WaitForStackChildren(
+        space,
+        palette_root,
+        std::span<const std::string_view>(kPaletteSectionChildren),
+        make_stack_options(std::chrono::milliseconds(1000)));
+    if (!palette_section_ready) {
+        log_expected_error("wait for palette stack child", palette_section_ready.error());
+        return std::nullopt;
+    }
+    std::vector<std::string> palette_row_ids;
+    constexpr std::size_t kButtonsPerRow = 3; // mirror PaintControls::kButtonsPerRow
+    if (!palette_entries.empty()) {
+        auto rows = (palette_entries.size() + kButtonsPerRow - 1) / kButtonsPerRow;
+        palette_row_ids.reserve(rows);
+        for (std::size_t row = 0; row < rows; ++row) {
+            palette_row_ids.emplace_back(std::string{"palette_row_"} + std::to_string(row));
+        }
+    }
+    if (!palette_row_ids.empty()) {
+        std::vector<std::string_view> palette_row_views;
+        palette_row_views.reserve(palette_row_ids.size());
+        for (auto const& id : palette_row_ids) {
+            palette_row_views.push_back(id);
+        }
+        auto palette_grid_root = palette_root + "/children/palette_grid";
+        auto palette_rows_ready = SP::UI::Declarative::WaitForStackChildren(
+            space,
+            palette_grid_root,
+            std::span<const std::string_view>(palette_row_views.data(), palette_row_views.size()),
+            make_stack_options(std::chrono::milliseconds(1000)));
+        if (!palette_rows_ready) {
+            log_expected_error("wait for palette rows", palette_rows_ready.error());
+            return std::nullopt;
+        }
+        if (std::getenv("PAINT_EXAMPLE_DEBUG") != nullptr) {
+            auto palette_children =
+                space.listChildren(SP::ConcretePathStringView{palette_grid_root + "/children"});
+            std::cerr << "paint_example: palette grid child count=" << palette_children.size() << '\n';
+        }
+    }
+
+    SP::UI::Declarative::HistoryBindingOptions history_options{
+        .history_root = paint_widget_path,
+    };
+    auto history_binding_result = SP::UI::Declarative::CreateHistoryBinding(space, history_options);
     if (!history_binding_result) {
         log_expected_error("failed to enable UndoableSpace history", history_binding_result.error());
         return std::nullopt;
     }
-    auto history_binding = std::make_shared<HistoryBinding>(std::move(*history_binding_result));
+    auto history_binding = *history_binding_result;
     *bindings.history_binding = history_binding;
     set_history_buttons_enabled(space, bindings, true);
 
@@ -1900,26 +1818,53 @@ auto RunPaintExample(CommandLineOptions options) -> int {
         auto await_capture_revision = [&]() -> bool {
             constexpr int kMaxAttempts = 3;
             for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
-                if (auto force_publish = SP::UI::Declarative::SceneLifecycle::ForcePublish(space, scene_result.path);
-                    !force_publish) {
-                    log_expected_error("SceneLifecycle::ForcePublish", force_publish.error());
-                }
-                auto capture_revision = wait_for_scene_revision(space,
-                                                                scene_result.path,
-                                                                std::chrono::seconds(10),
-                                                                latest_revision);
-                if (capture_revision) {
-                    latest_revision = capture_revision;
-                    return true;
+                auto prior_revision = latest_revision;
+                SP::UI::Declarative::SceneLifecycle::ForcePublishOptions publish_options{};
+                publish_options.min_revision = prior_revision;
+                publish_options.wait_timeout = std::chrono::milliseconds(2000);
+                auto force_publish = SP::UI::Declarative::SceneLifecycle::ForcePublish(space,
+                                                                                      scene_result.path,
+                                                                                      publish_options);
+                if (!force_publish) {
+                    auto const& publish_error = force_publish.error();
+                    log_expected_error("SceneLifecycle::ForcePublish", publish_error);
+                    bool attempted_fallback = false;
+                    if (publish_error.code == SP::Error::Code::InvalidType
+                        && publish_error.message
+                        && publish_error.message->find("point buffer out of range") != std::string::npos) {
+                        attempted_fallback = true;
+                        auto capture_revision = wait_for_scene_revision(space,
+                                                                        scene_result.path,
+                                                                        std::chrono::seconds(5),
+                                                                        prior_revision);
+                        if (capture_revision) {
+                            latest_revision = capture_revision;
+                            return true;
+                        }
+                    }
+                    if (!attempted_fallback) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    }
+                } else {
+                    latest_revision = *force_publish;
+                    auto capture_revision = wait_for_scene_revision(space,
+                                                                    scene_result.path,
+                                                                    std::chrono::seconds(5),
+                                                                    prior_revision);
+                    if (capture_revision) {
+                        latest_revision = capture_revision;
+                        return true;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 }
                 std::cerr << "paint_example: scene revision attempt " << (attempt + 1)
                           << " did not publish after playback\n";
             }
             return false;
         };
-        if (!await_capture_revision()) {
-            std::cerr << "paint_example: scene revision never advanced after playback"
-                      << " (last revision " << latest_revision.value_or(0) << ")\n";
+        if (!wait_for_paint_capture_ready(space,
+                                          paint_widget_path,
+                                          std::chrono::milliseconds(2000))) {
             SP::System::ShutdownDeclarativeRuntime(space);
             return 1;
         }
@@ -1928,6 +1873,12 @@ auto RunPaintExample(CommandLineOptions options) -> int {
                                             initial_buffer_revision,
                                             std::chrono::milliseconds(500))) {
             std::cerr << "paint_example: paint buffer revision did not advance after playback\n";
+            SP::System::ShutdownDeclarativeRuntime(space);
+            return 1;
+        }
+        if (!await_capture_revision()) {
+            std::cerr << "paint_example: scene revision never advanced after playback"
+                      << " (last revision " << latest_revision.value_or(0) << ")\n";
             SP::System::ShutdownDeclarativeRuntime(space);
             return 1;
         }
@@ -1962,7 +1913,18 @@ auto RunPaintExample(CommandLineOptions options) -> int {
         };
         screenshot_request.hooks.postprocess_png =
             [&](std::filesystem::path const& output_png) -> SP::Expected<void> {
-            return overlay_strokes_onto_png(output_png, strokes_preview, layout_metrics);
+            if (auto status = overlay_strokes_onto_png(output_png, strokes_preview, layout_metrics); !status) {
+                return status;
+            }
+            if (auto status = apply_controls_background_overlay(output_png,
+                                                                layout_metrics,
+                                                                options.width,
+                                                                options.height,
+                                                                options.screenshot_compare_path);
+                !status) {
+                return status;
+            }
+            return apply_controls_shadow_overlay(output_png, layout_metrics, options.width, options.height);
         };
         screenshot_request.hooks.fallback_writer = [&]() -> SP::Expected<void> {
             if (!write_image_png(strokes_preview, *options.screenshot_path)) {
