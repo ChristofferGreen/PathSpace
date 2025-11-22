@@ -71,9 +71,10 @@ if(PATHSPACE_ENABLE_UI)
     ui/test_HtmlReplay.cpp
     ui/test_SceneHitTest.cpp
     ui/test_DeclarativeWidgets.cpp
-    ui/test_DeclarativeSceneLifecycle.cpp
-    ui/test_DeclarativePaintSurface.cpp
-    ui/test_WidgetEventTrellis.cpp
+  ui/test_DeclarativeSceneLifecycle.cpp
+  ui/test_DeclarativePaintSurface.cpp
+  ui/test_ScreenshotOverlay.cpp
+  ui/test_WidgetEventTrellis.cpp
     ui/test_WidgetStateMutators.cpp
     ui/test_DeclarativeTheme.cpp
   ui/test_PathWindowView.cpp
@@ -192,60 +193,58 @@ if(PATHSPACE_ENABLE_UI)
   )
   set_tests_properties(PathSpaceUITests PROPERTIES LABELS ui)
 
-  add_test(NAME PaintExampleScreenshot
-    COMMAND "${PATHSPACE_TEST_RUNNER}"
-            --label PaintExampleScreenshot
-            --log-dir "${PATHSPACE_TEST_LOG_DIR}"
-            --timeout 120
-            --env PATHSPACE_LOG=1
-            --env PATHSPACE_TEST_TIMEOUT=1
-            --env MallocNanoZone=0
-            --
-            python3
-            "${CMAKE_SOURCE_DIR}/scripts/check_paint_screenshot.py"
-            --build-dir "${CMAKE_BINARY_DIR}"
-            --manifest "${CMAKE_SOURCE_DIR}/docs/images/paint_example_baselines.json"
-  )
-set_tests_properties(PaintExampleScreenshot PROPERTIES LABELS ui RESOURCE_LOCK ui_gpu_capture)
+  if(TARGET pathspace_screenshot_cli)
+    add_test(NAME PaintExampleScreenshot
+      COMMAND "${PATHSPACE_TEST_RUNNER}"
+              --label PaintExampleScreenshot
+              --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+              --timeout 120
+              --env PATHSPACE_LOG=1
+              --env PATHSPACE_TEST_TIMEOUT=1
+              --env MallocNanoZone=0
+              --env PATHSPACE_ENABLE_METAL_UPLOADS=1
+              --env PATHSPACE_UI_METAL=ON
+              --
+              $<TARGET_FILE:pathspace_screenshot_cli>
+              --manifest "${CMAKE_SOURCE_DIR}/docs/images/paint_example_baselines.json"
+              --tag 1280x800
+    )
+    set_tests_properties(PaintExampleScreenshot PROPERTIES LABELS ui RESOURCE_LOCK ui_gpu_capture)
 
-  add_test(NAME PaintExampleScreenshot720
-    COMMAND "${PATHSPACE_TEST_RUNNER}"
-            --label PaintExampleScreenshot720
-            --log-dir "${PATHSPACE_TEST_LOG_DIR}"
-            --timeout 120
-            --env PATHSPACE_LOG=1
-            --env PATHSPACE_TEST_TIMEOUT=1
-            --env MallocNanoZone=0
-            --
-            python3
-            "${CMAKE_SOURCE_DIR}/scripts/check_paint_screenshot.py"
-            --build-dir "${CMAKE_BINARY_DIR}"
-            --baseline "${CMAKE_SOURCE_DIR}/docs/images/paint_example_720_baseline.png"
-            --height 720
-            --tag paint_720
-            --manifest "${CMAKE_SOURCE_DIR}/docs/images/paint_example_baselines.json"
-  )
-set_tests_properties(PaintExampleScreenshot720 PROPERTIES LABELS ui RESOURCE_LOCK ui_gpu_capture)
+    add_test(NAME PaintExampleScreenshot720
+      COMMAND "${PATHSPACE_TEST_RUNNER}"
+              --label PaintExampleScreenshot720
+              --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+              --timeout 120
+              --env PATHSPACE_LOG=1
+              --env PATHSPACE_TEST_TIMEOUT=1
+              --env MallocNanoZone=0
+              --env PATHSPACE_ENABLE_METAL_UPLOADS=1
+              --env PATHSPACE_UI_METAL=ON
+              --
+              $<TARGET_FILE:pathspace_screenshot_cli>
+              --manifest "${CMAKE_SOURCE_DIR}/docs/images/paint_example_baselines.json"
+              --tag paint_720
+    )
+    set_tests_properties(PaintExampleScreenshot720 PROPERTIES LABELS ui RESOURCE_LOCK ui_gpu_capture)
 
-  add_test(NAME PaintExampleScreenshot600
-    COMMAND "${PATHSPACE_TEST_RUNNER}"
-            --label PaintExampleScreenshot600
-            --log-dir "${PATHSPACE_TEST_LOG_DIR}"
-            --timeout 120
-            --env PATHSPACE_LOG=1
-            --env PATHSPACE_TEST_TIMEOUT=1
-            --env MallocNanoZone=0
-            --
-            python3
-            "${CMAKE_SOURCE_DIR}/scripts/check_paint_screenshot.py"
-            --build-dir "${CMAKE_BINARY_DIR}"
-            --baseline "${CMAKE_SOURCE_DIR}/docs/images/paint_example_600_baseline.png"
-            --width 1024
-            --height 600
-            --tag paint_600
-            --manifest "${CMAKE_SOURCE_DIR}/docs/images/paint_example_baselines.json"
-  )
-set_tests_properties(PaintExampleScreenshot600 PROPERTIES LABELS ui RESOURCE_LOCK ui_gpu_capture)
+    add_test(NAME PaintExampleScreenshot600
+      COMMAND "${PATHSPACE_TEST_RUNNER}"
+              --label PaintExampleScreenshot600
+              --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+              --timeout 120
+              --env PATHSPACE_LOG=1
+              --env PATHSPACE_TEST_TIMEOUT=1
+              --env MallocNanoZone=0
+              --env PATHSPACE_ENABLE_METAL_UPLOADS=1
+              --env PATHSPACE_UI_METAL=ON
+              --
+              $<TARGET_FILE:pathspace_screenshot_cli>
+              --manifest "${CMAKE_SOURCE_DIR}/docs/images/paint_example_baselines.json"
+              --tag paint_600
+    )
+    set_tests_properties(PaintExampleScreenshot600 PROPERTIES LABELS ui RESOURCE_LOCK ui_gpu_capture)
+  endif()
 
   if(APPLE)
     add_test(NAME PixelNoisePerfHarness
