@@ -93,7 +93,7 @@ Statements are separated by newlines; semicolons never appear in PrimeScript sou
 - **`return<T>`:** optional contract that pins the inferred return type. Recommended for public APIs or when disambiguation is required.
 - **`effects(...)`:** declare side-effect capabilities; absence implies purity. Backends reject unsupported capabilities.
 - **`align_bytes(n)`, `align_kbytes(n)`:** encode alignment requirements for struct members and buffers. `align_kbytes` applies `n * 1024` bytes before emitting the metadata.
-- **Scheduling helpers:** `stack_arena("id")`, `runner("hint")`, `capabilities(...)` reuse the same transform plumbing to annotate execution metadata.
+- **Capability helpers:** `capabilities(...)` reuse the transform plumbing to describe opt-in privileges without encoding backend-specific scheduling hints.
 - **`struct`, `pod`, `stack`, `heap`, `buffer`:** declarative tags that emit metadata/validation only. They never change syntax; instead they fail compilation when the body violates the advertised contract (e.g., `[stack]` forbids heap placement, `[pod]` forbids handles/async fields).
 - **Documentation TODO:** ship a full catalog of built-in transforms once the borrow checker and effect model solidify; this list captures the current baseline only.
 
@@ -113,21 +113,37 @@ Statements are separated by newlines; semicolons never appear in PrimeScript sou
 - **Resource handles:** PathSpace references/handles live inside frames as opaque values; lifetimes follow lexical scope.
 - **Tail execution (planned):** future optimisation collapses tail executions to reuse frames (VM optional, GPU required).
 - **Effect annotations:** purity by default; explicit `[effects(...)]` opt-ins. Standard library defaults to stdout/stderr effects.
-- **Future: stack arenas (optional):** exploring named stack arenas (launch executions on specific stacks, clone/snapshot stacks, resume in parallel). Deferred until after v1; flagged as an advanced runtime capability needing copy semantics + effect-safety rules.
 
 ### Execution Metadata (draft)
-- **Placement:** executions may annotate a target stack arena (`[stack_arena("physics")] execute_task<…>(…)`). Absent an annotation, they run on the default stack.
-- **Scheduler affinity:** optional hint for the runtime thread/fiber executing the frame (`[runner("render-thread")]`). Backends can ignore hints they cannot satisfy.
+- **Scheduling scope:** queue/thread selection stays host-driven; v0.1 exposes no stack- or runner-specific annotations, so executions inherit the embedding runtime’s default placement.
 - **Capabilities:** effect masks double as capability descriptors (IO, global write, GPU access, etc.). Additional attributes can narrow capabilities (`[capabilities(io_stdout, pathspace_insert)]`).
-- **Instrumentation:** executions carry metadata (source file/line, stack id, runner hint) for diagnostics and tracing.
-- **Open design items:** finalise attribute syntax, scheduling semantics, and enforcement rules for stack/runner hints across VM, C++, and GLSL backends.
+- **Instrumentation:** executions carry metadata (source file/line plus effect/capability masks) for diagnostics and tracing.
+- **Open design items:** finalise the capability taxonomy and determine which instrumentation fields flow into inspector tooling vs. runtime-only logs.
 
 ## Type & Class Semantics (draft)
 - **Structural classes:** `[return<void>] class<Name>(members{…})` desugars into namespace `Name::` plus constructors/metadata. Instances are produced via constructor executions.
 - **Composition over inheritance:** “extends” rewrites replicate members and install delegation logic; no hidden virtual dispatch unless a transform adds it.
 - **Generics:** classes accept template parameters (`class<Vector<T>>(…)`) and specialise through the transform pipeline.
 - **Interop:** generated code treats classes as structs plus free functions (`Name::method(instance, …)`); VM closures follow the same convention.
-- **Open design items:** decide field visibility syntax, static/constant member handling, and constructor semantics once package and effect designs settle.
+- **Field visibility:** stack-value declarations accept `[public]`, `[package]`, or `[private]` transforms (default: private). The compiler records `visibility` metadata per field so tooling and backends enforce access rules consistently. `[package]` exposes the field to any module compiled into the same package; `[public]` emits accessors in the generated namespace surface.
+- **Static members:** add `[static]` to hoist storage to namespace scope while reusing the field’s visibility transform. Static fields still participate in the struct manifest so documentation and reflection stay aligned, but only one storage slot exists per struct definition.
+- **Example:**
+  ```
+  namespace demo {
+    [struct]
+    brush_settings() {
+      [public float] size(12.0f)
+      [private float] jitter(0.1f)
+      [package static handle<Texture>] palette(load_default_palette())
+
+      [public]
+      Create() {
+        assign(this.size, clamp(this.size, 1.0f, 64.0f))
+      }
+    }
+  }
+  ```
+- **Open design items:** decide constructor semantics (beyond the `Create`/`Destroy` helpers) and constant member behaviour once the package/effect designs settle.
 
 ## Lambdas & Higher-Order Functions (draft)
 - **Syntax mirrors definitions:** lambdas omit the identifier (`[capture] <T>(params){ body }`). Captures rewrite into explicit parameters/structs.

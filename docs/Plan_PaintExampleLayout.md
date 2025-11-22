@@ -79,10 +79,9 @@ Status Legend — ✅ Done · 🚧 In Progress · ⏳ Planned
 6. 🚧 Update this plan + docs with any new decisions or baseline hashes (including the supplemental 1024×600 reference if it changes).
 
 ## Next Steps
-1. 🚧 Promote the Python SSE dev panel into the first-class inspector/web adapter once the C++ HTTP stack lands so production builds do not rely on the helper script; reuse the `/api/cards/paint-example` JSON + SSE contract verbatim.
-2. ⏳ Adopt the shared paint controls components inside `widgets_example` / `devices_example` to prove the shared header + library wiring works outside the paint sample (and document the import steps for other examples).
-3. ⏳ Document the baseline refresh playbook (`scripts/paint_example_capture.py --tags 1280x800 paint_720 paint_600`) so every future layout tweak updates all three captures (800/720/600) in one go.
-4. ⏳ Align `examples/paint_example.cpp` structure and declarative syntax with the canonical example layout described in `docs/Plan_WidgetDeclarativeAPI.md` (syntax sample section) so we demonstrate the preferred builder patterns verbatim.
+1. ⏳ Adopt the shared paint controls components inside `widgets_example` / `devices_example` to prove the shared header + library wiring works outside the paint sample (and document the import steps for other examples).
+2. ⏳ Document the baseline refresh playbook (`scripts/paint_example_capture.py --tags 1280x800 paint_720 paint_600`) so every future layout tweak updates all three captures (800/720/600) in one go.
+3. ⏳ Align `examples/paint_example.cpp` structure and declarative syntax with the canonical example layout described in `docs/Plan_WidgetDeclarativeAPI.md` (syntax sample section) so we demonstrate the preferred builder patterns verbatim.
 
 ## Platformization Opportunities
 To keep this example lean and ensure other UI samples benefit, spin the following into shared PathSpace components:

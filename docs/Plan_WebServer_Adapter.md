@@ -53,7 +53,7 @@ Browser ──HTTP(S)──> Web Server Adapter ──PathSpace Client API──
 5. **Live Updates (optional)**
    - SSE endpoint `/apps/<app>/<view>/events` watches `output/v1/common/frameIndex` and pushes new revision IDs.
    - Browser reloads partial DOM via fetch or full page refresh based on adapter mode.
-   - Reference implementation: `scripts/paint_example_inspector_panel.py` already exposes `/api/cards/paint-example` (JSON) and `/api/cards/paint-example/events` (SSE) by shelling into `pathspace_paint_screenshot_card`. Treat this Python helper as the contract prototype for the upcoming C++ adapter routes and mirror its event names (`card`, `card-error`) plus JSON schema when graduating the feature.
+   - Reference implementation: `scripts/paint_example_inspector_panel.py` exposes `/api/cards/paint-example` (JSON) and `/api/cards/paint-example/events` (SSE) by shelling into `pathspace_paint_screenshot_card`. This helper is a dev-only convenience; the adapter can choose whether or not to mirror the same payload when web priorities resume.
 
 ## URL Mapping
 | HTTP Path | Description | PathSpace Source |
@@ -63,8 +63,6 @@ Browser ──HTTP(S)──> Web Server Adapter ──PathSpace Client API──
 | `/assets/<app>/<fingerprint>` | Fingerprinted static asset (fonts, images) | `renderers/<rid>/targets/html/<view>/output/v1/html/assets/<fingerprint>` or app `resources/` |
 | `/api/path/<encoded-path>` | (Optional) JSON API to read PathSpace nodes | Direct `read` with permission checks; returns JSON |
 | `/apps/<app>/<view>/events` | Live update stream (SSE/WebSocket) | Watch `output/v1/common` for revision changes |
-| `/api/cards/paint-example` | Paint screenshot card (JSON) | `diagnostics/ui/paint_example/screenshot_baseline/*` via `PaintScreenshotCard` helper |
-| `/api/cards/paint-example/events` | SSE stream for screenshot card updates (`card` / `card-error` events) | Same as above; prototype implemented in `scripts/paint_example_inspector_panel.py` |
 
 ## Session & Security
 - **Session Store** — In-memory for dev; pluggable (Redis) for production. Store `user_id`, `app_root`, `permissions`.
