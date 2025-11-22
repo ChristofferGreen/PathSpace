@@ -68,3 +68,5 @@ No need to store details about a worklog of dates when things where added.
 - 2025-11-20: Set `PAINT_EXAMPLE_DEBUG=1` when running the sample to dump lifecycle metrics, descriptor state, and per-stroke offsets. Use it to chase the lingering “stroke command references point buffer out of range” errors until the renderer/pipeline fix lands.
 
 - 2025-11-22: Screenshot overlays now route through `SP::UI::Screenshot::OverlayRegionOnPng`; the paint example wires it into the ScreenshotService postprocess hook and `tests/ui/test_ScreenshotOverlay.cpp` verifies the helper so CLI captures, regression tests, and manual runs all share the same PNG compositing path.
+
+- 2025-11-22: paint_example screenshot mode now waits for the paint buffer revision to advance before invoking ScreenshotService, and pathspace_screenshot_cli resolves manifest-relative baseline paths (plus six capture attempts) so CTest no longer fails just because it launches from build/tests.

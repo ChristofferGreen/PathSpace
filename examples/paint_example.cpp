@@ -845,6 +845,22 @@ auto wait_for_scene_revision(SP::PathSpace& space,
     return std::nullopt;
 }
 
+auto wait_for_paint_buffer_revision(SP::PathSpace& space,
+                                    std::string const& widget_path,
+                                    std::uint64_t min_revision,
+                                    std::chrono::milliseconds timeout) -> bool {
+    auto revision_path = widget_path + "/render/buffer/revision";
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto revision = space.read<std::uint64_t, std::string>(revision_path);
+        if (revision && *revision > min_revision) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return false;
+}
+
 auto count_window_widgets(SP::PathSpace& space, std::string const& window_view_path) -> std::size_t {
     auto widgets_root = window_view_path + "/widgets";
     auto children = space.listChildren(SP::ConcretePathStringView{widgets_root});
@@ -1790,6 +1806,10 @@ auto RunPaintExample(CommandLineOptions options) -> int {
     auto paint_widget_path = ui_context->paint_widget_path;
     bool const paint_gpu_enabled = ui_context->paint_gpu_enabled;
     auto paint_widget = SP::UI::Builders::WidgetPath{paint_widget_path};
+    auto initial_buffer_revision = [&]() -> std::uint64_t {
+        auto revision = space.read<std::uint64_t, std::string>(paint_widget_path + "/render/buffer/revision");
+        return revision.value_or(0);
+    }();
 
     auto const& window_view_path = window_context->window_view_path;
     auto& window_result = window_context->window;
@@ -1900,6 +1920,14 @@ auto RunPaintExample(CommandLineOptions options) -> int {
         if (!await_capture_revision()) {
             std::cerr << "paint_example: scene revision never advanced after playback"
                       << " (last revision " << latest_revision.value_or(0) << ")\n";
+            SP::System::ShutdownDeclarativeRuntime(space);
+            return 1;
+        }
+        if (!wait_for_paint_buffer_revision(space,
+                                            paint_widget_path,
+                                            initial_buffer_revision,
+                                            std::chrono::milliseconds(500))) {
+            std::cerr << "paint_example: paint buffer revision did not advance after playback\n";
             SP::System::ShutdownDeclarativeRuntime(space);
             return 1;
         }
