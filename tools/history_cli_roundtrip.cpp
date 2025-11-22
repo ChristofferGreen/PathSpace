@@ -1,4 +1,5 @@
 #include <pathspace/PathSpace.hpp>
+#include <pathspace/examples/cli/ExampleCli.hpp>
 #include <pathspace/history/UndoableSpace.hpp>
 #include <pathspace/path/ConcretePath.hpp>
 
@@ -17,7 +18,6 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <stdexcept>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -112,6 +112,59 @@ private:
     std::vector<std::pair<std::string, std::string>> texts_;
 };
 
+struct RoundtripCliOptions {
+    bool                keep_scratch          = false;
+    bool                debug_logging         = false;
+    bool                show_help             = false;
+    std::optional<fs::path> archive_dir;
+    std::optional<fs::path> scratch_root_override;
+};
+
+void print_usage() {
+    std::cout << "Usage: pathspace_history_cli_roundtrip [--keep-scratch] [--debug-logging]\n"
+                 "       pathspace_history_cli_roundtrip [--archive-dir <path>] [--scratch-root <path>]\n"
+                 "       pathspace_history_cli_roundtrip --help\n";
+}
+
+auto parse_cli(int argc, char** argv) -> std::optional<RoundtripCliOptions> {
+    using SP::Examples::CLI::ExampleCli;
+    RoundtripCliOptions options{};
+
+    ExampleCli cli;
+    cli.set_program_name("pathspace_history_cli_roundtrip");
+    cli.set_error_logger([](std::string const& text) { std::cerr << text << "\n"; });
+    cli.set_unknown_argument_handler([&](std::string_view token) {
+        std::cerr << "pathspace_history_cli_roundtrip: unknown argument '" << token << "'\n";
+        return false;
+    });
+
+    cli.add_flag("--help", {.on_set = [&] { options.show_help = true; }});
+    cli.add_alias("-h", "--help");
+    cli.add_flag("--keep-scratch", {.on_set = [&] { options.keep_scratch = true; }});
+    cli.add_flag("--debug-logging", {.on_set = [&] { options.debug_logging = true; }});
+
+    auto add_path_option = [&](std::string_view name, std::optional<fs::path>& target) {
+        ExampleCli::ValueOption opt{};
+        opt.on_value = [&](std::optional<std::string_view> value) -> ExampleCli::ParseError {
+            if (!value || value->empty()) {
+                return std::string(name) + " requires a path";
+            }
+            target = fs::path(std::string{*value});
+            return std::nullopt;
+        };
+        cli.add_value(name, std::move(opt));
+    };
+
+    add_path_option("--archive-dir", options.archive_dir);
+    add_path_option("--scratch-root", options.scratch_root_override);
+
+    if (!cli.parse(argc, argv)) {
+        return std::nullopt;
+    }
+
+    return options;
+}
+
 auto encodeRoot(std::string_view root) -> std::string {
     if (root.empty() || root == "/") {
         return "__root";
@@ -124,10 +177,14 @@ auto encodeRoot(std::string_view root) -> std::string {
     return encoded;
 }
 
-auto makeScratchDirectory() -> fs::path {
-    auto base = fs::temp_directory_path() / "pathspace_cli_roundtrip";
+auto makeScratchDirectory(std::optional<fs::path> base_override) -> std::optional<fs::path> {
+    auto base = base_override ? *base_override : (fs::temp_directory_path() / "pathspace_cli_roundtrip");
     std::error_code ec;
     fs::create_directories(base, ec);
+    if (ec) {
+        std::cerr << "Failed to create scratch base '" << base << "': " << ec.message() << "\n";
+        return std::nullopt;
+    }
 
     std::random_device rd;
     std::mt19937       gen(rd());
@@ -143,11 +200,15 @@ auto makeScratchDirectory() -> fs::path {
         if (fs::create_directories(candidate, ec))
             return candidate;
 
-        if (ec && ec != std::errc::file_exists)
+        if (ec && ec != std::errc::file_exists) {
+            std::cerr << "Failed to create scratch directory '" << candidate << "': "
+                      << ec.message() << "\n";
             break;
+        }
     }
 
-    throw std::runtime_error("Failed to allocate scratch directory for CLI roundtrip harness");
+    std::cerr << "Failed to allocate scratch directory under " << base << "\n";
+    return std::nullopt;
 }
 
 auto runCommand(fs::path const& exe, std::vector<std::string> const& args) -> int {
@@ -347,36 +408,53 @@ auto makeTelemetryJson(std::string const& timestamp,
 } // namespace
 
 int main(int argc, char** argv) {
-    (void)argc;
-    try {
-        auto selfPath = fs::weakly_canonical(fs::path{argv[0]});
-        auto buildDir = selfPath.parent_path();
-        auto cliPath  = buildDir / "pathspace_history_savefile";
-        if (!fs::exists(cliPath)) {
-            std::cerr << "Unable to locate pathspace_history_savefile next to "
-                      << selfPath << "\n";
-            return EXIT_FAILURE;
-        }
+    auto cliOptions = parse_cli(argc, argv);
+    if (!cliOptions) {
+        return EXIT_FAILURE;
+    }
+    if (cliOptions->show_help) {
+        print_usage();
+        return EXIT_SUCCESS;
+    }
 
-        auto scratchRoot = makeScratchDirectory();
-        ScopedDirectory cleanup{scratchRoot};
-        if (std::getenv("PATHSPACE_CLI_ROUNDTRIP_KEEP"))
-            cleanup.dismiss();
+    auto selfPath = fs::weakly_canonical(fs::path{argv[0]});
+    auto buildDir = selfPath.parent_path();
+    auto cliPath  = buildDir / "pathspace_history_savefile";
+    if (!fs::exists(cliPath)) {
+        std::cerr << "Unable to locate pathspace_history_savefile next to "
+                  << selfPath << "\n";
+        return EXIT_FAILURE;
+    }
 
-        std::optional<fs::path> archiveDir;
+    auto scratchRootOpt = makeScratchDirectory(cliOptions->scratch_root_override);
+    if (!scratchRootOpt) {
+        return EXIT_FAILURE;
+    }
+    auto scratchRoot = *scratchRootOpt;
+    ScopedDirectory cleanup{scratchRoot};
+    bool keepScratch = cliOptions->keep_scratch
+        || (std::getenv("PATHSPACE_CLI_ROUNDTRIP_KEEP") != nullptr);
+    if (keepScratch) {
+        cleanup.dismiss();
+    }
+
+    std::optional<fs::path> archiveDir = cliOptions->archive_dir;
+    if (!archiveDir) {
         if (auto* env = std::getenv("PATHSPACE_CLI_ROUNDTRIP_ARCHIVE_DIR")) {
             if (*env != '\0')
                 archiveDir = fs::path{env};
         }
-        if (!archiveDir) {
-            if (auto* env = std::getenv("PATHSPACE_TEST_ARTIFACT_DIR")) {
-                if (*env != '\0')
-                    archiveDir = fs::path{env} / "history_cli_roundtrip";
-            }
+    }
+    if (!archiveDir) {
+        if (auto* env = std::getenv("PATHSPACE_TEST_ARTIFACT_DIR")) {
+            if (*env != '\0')
+                archiveDir = fs::path{env} / "history_cli_roundtrip";
         }
-        ArtifactArchiver archiver{archiveDir};
+    }
+    ArtifactArchiver archiver{archiveDir};
 
-        bool debugLogging = std::getenv("PATHSPACE_CLI_ROUNDTRIP_DEBUG") != nullptr;
+    bool debugLogging = cliOptions->debug_logging
+        || (std::getenv("PATHSPACE_CLI_ROUNDTRIP_DEBUG") != nullptr);
 
         auto exportBase = scratchRoot / "export_root";
         auto importBase = scratchRoot / "import_root";
@@ -588,10 +666,4 @@ int main(int argc, char** argv) {
         std::cout << "History savefile CLI roundtrip verified successfully\n";
         std::cout << "Telemetry: " << telemetryJson;
         return EXIT_SUCCESS;
-    } catch (std::exception const& ex) {
-        std::cerr << "Unhandled exception: " << ex.what() << "\n";
-    } catch (...) {
-        std::cerr << "Unhandled unknown exception\n";
-    }
-    return EXIT_FAILURE;
 }

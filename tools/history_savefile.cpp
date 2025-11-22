@@ -1,15 +1,18 @@
 #include <pathspace/PathSpace.hpp>
+#include <pathspace/examples/cli/ExampleCli.hpp>
 #include <pathspace/history/UndoableSpace.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <optional>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <utility>
+#include <vector>
 
 using namespace SP;
 using namespace SP::History;
@@ -87,92 +90,174 @@ std::string error_code_to_string(Error::Code code) {
     return oss.str();
 }
 
-std::optional<ParsedArguments> parse_arguments(int argc, char** argv) {
+struct CliParseResult {
+    bool show_help = false;
+    std::optional<ParsedArguments> arguments;
+};
+
+auto parse_arguments(int argc, char** argv) -> std::optional<CliParseResult> {
+    auto log_error = [](std::string_view message) {
+        std::cerr << "pathspace_history_savefile: " << message << "\n";
+    };
+
     if (argc < 2) {
+        log_error("missing command");
         print_usage();
         return std::nullopt;
     }
 
-    std::string_view command{argv[1]};
-    if (command == "--help" || command == "-h") {
-        print_usage();
-        std::exit(EXIT_SUCCESS);
+    CliParseResult result{};
+
+    std::string_view command_token{argv[1]};
+    if (command_token == "--help" || command_token == "-h") {
+        result.show_help = true;
+        return result;
     }
 
-    ParsedArguments args;
-    if (command == "export") {
+    ParsedArguments args{};
+    if (command_token == "export") {
         args.command = Command::Export;
-    } else if (command == "import") {
+    } else if (command_token == "import") {
         args.command = Command::Import;
     } else {
-        std::cerr << "Unknown command: " << command << "\n";
+        log_error(std::string{"unknown command '"} + std::string{command_token} + "'");
         print_usage();
         return std::nullopt;
     }
 
-    for (int i = 2; i < argc; ++i) {
-        std::string_view option{argv[i]};
-        auto require_value = [&](std::string_view name) -> std::string {
-            if (i + 1 >= argc) {
-                std::cerr << name << " requires a value\n";
-                throw std::runtime_error("missing argument");
-            }
-            ++i;
-            return std::string{argv[i]};
-        };
+    using SP::Examples::CLI::ExampleCli;
+    ExampleCli cli;
+    cli.set_program_name("pathspace_history_savefile");
+    cli.set_error_logger([](std::string const& text) { std::cerr << text << "\n"; });
+    cli.set_unknown_argument_handler([&](std::string_view token) {
+        std::cerr << "pathspace_history_savefile: unknown option '" << token << "'\n";
+        return false;
+    });
 
-        try {
-            if (option == "--root") {
-                args.rootPath = require_value(option);
-            } else if (option == "--history-dir") {
-                args.historyDir = std::filesystem::path(require_value(option));
-            } else if (option == "--out") {
-                args.filePath = std::filesystem::path(require_value(option));
-            } else if (option == "--in") {
-                args.filePath = std::filesystem::path(require_value(option));
-            } else if (option == "--persistence-root") {
-                args.persistenceRootOverride = std::filesystem::path(require_value(option));
-            } else if (option == "--namespace") {
-                args.namespaceOverride = require_value(option);
-            } else if (option == "--no-fsync") {
-                args.fsyncData = false;
-            } else if (option == "--no-apply-options") {
-                args.applyOptions = false;
-            } else if (option == "--help" || option == "-h") {
-                print_usage();
-                std::exit(EXIT_SUCCESS);
-            } else {
-                std::cerr << "Unknown option: " << option << "\n";
-                return std::nullopt;
-            }
-        } catch (std::runtime_error const&) {
+    cli.add_flag("--help", {.on_set = [&] { result.show_help = true; }});
+    cli.add_alias("-h", "--help");
+
+    ExampleCli::ValueOption root_option{};
+    root_option.on_value = [&](std::optional<std::string_view> value) -> ExampleCli::ParseError {
+        if (!value || value->empty()) {
+            return std::string{"--root requires a path"};
+        }
+        args.rootPath = std::string{*value};
+        return std::nullopt;
+    };
+    cli.add_value("--root", std::move(root_option));
+
+    ExampleCli::ValueOption history_dir_option{};
+    history_dir_option.on_value = [&](std::optional<std::string_view> value) -> ExampleCli::ParseError {
+        if (!value || value->empty()) {
+            return std::string{"--history-dir requires a path"};
+        }
+        args.historyDir = std::filesystem::path(std::string{*value});
+        return std::nullopt;
+    };
+    cli.add_value("--history-dir", std::move(history_dir_option));
+
+    bool saw_out = false;
+    bool saw_in  = false;
+
+    ExampleCli::ValueOption out_option{};
+    out_option.on_value = [&](std::optional<std::string_view> value) -> ExampleCli::ParseError {
+        if (!value || value->empty()) {
+            return std::string{"--out requires a path"};
+        }
+        args.filePath = std::filesystem::path(std::string{*value});
+        saw_out = true;
+        return std::nullopt;
+    };
+    cli.add_value("--out", std::move(out_option));
+
+    ExampleCli::ValueOption in_option{};
+    in_option.on_value = [&](std::optional<std::string_view> value) -> ExampleCli::ParseError {
+        if (!value || value->empty()) {
+            return std::string{"--in requires a path"};
+        }
+        args.filePath = std::filesystem::path(std::string{*value});
+        saw_in = true;
+        return std::nullopt;
+    };
+    cli.add_value("--in", std::move(in_option));
+
+    ExampleCli::ValueOption persistence_root_option{};
+    persistence_root_option.on_value = [&](std::optional<std::string_view> value)
+        -> ExampleCli::ParseError {
+        if (!value || value->empty()) {
+            return std::string{"--persistence-root requires a path"};
+        }
+        args.persistenceRootOverride = std::filesystem::path(std::string{*value});
+        return std::nullopt;
+    };
+    cli.add_value("--persistence-root", std::move(persistence_root_option));
+
+    ExampleCli::ValueOption namespace_option{};
+    namespace_option.on_value = [&](std::optional<std::string_view> value) -> ExampleCli::ParseError {
+        if (!value || value->empty()) {
+            return std::string{"--namespace requires a value"};
+        }
+        args.namespaceOverride = std::string{*value};
+        return std::nullopt;
+    };
+    cli.add_value("--namespace", std::move(namespace_option));
+
+    cli.add_flag("--no-fsync", {.on_set = [&] { args.fsyncData = false; }});
+    cli.add_flag("--no-apply-options", {.on_set = [&] { args.applyOptions = false; }});
+
+    std::vector<char*> forwarded;
+    forwarded.reserve(std::max(2, argc - 1));
+    forwarded.push_back(argv[0]);
+    for (int i = 2; i < argc; ++i) {
+        forwarded.push_back(argv[i]);
+    }
+
+    if (!cli.parse(static_cast<int>(forwarded.size()), forwarded.data())) {
+        return std::nullopt;
+    }
+
+    if (result.show_help) {
+        return result;
+    }
+
+    if (args.rootPath.empty()) {
+        log_error("--root is required");
+        return std::nullopt;
+    }
+    if (args.historyDir.empty()) {
+        log_error("--history-dir is required");
+        return std::nullopt;
+    }
+
+    if (args.command == Command::Export) {
+        if (!saw_out || saw_in) {
+            log_error("export requires --out and must not specify --in");
+            return std::nullopt;
+        }
+    } else {
+        if (!saw_in || saw_out) {
+            log_error("import requires --in and must not specify --out");
             return std::nullopt;
         }
     }
 
-    if (args.rootPath.empty()) {
-        std::cerr << "--root is required\n";
-        return std::nullopt;
-    }
-    if (args.historyDir.empty()) {
-        std::cerr << "--history-dir is required\n";
-        return std::nullopt;
-    }
     if (args.filePath.empty()) {
-        std::cerr << (args.command == Command::Export ? "--out" : "--in") << " is required\n";
+        log_error("missing savefile path");
         return std::nullopt;
     }
 
     if (args.command == Command::Export && !args.applyOptions) {
-        std::cerr << "--no-apply-options is only valid for import\n";
+        log_error("--no-apply-options is only valid for import");
         return std::nullopt;
     }
     if (args.command == Command::Import && !args.fsyncData) {
-        std::cerr << "--no-fsync is only valid for export\n";
+        log_error("--no-fsync is only valid for export");
         return std::nullopt;
     }
 
-    return args;
+    result.arguments = args;
+    return result;
 }
 
 std::string encode_root_token(std::string_view root) {
@@ -320,21 +405,29 @@ int run_import(ParsedArguments const& args, PersistenceLayout const& layout) {
 } // namespace
 
 int main(int argc, char** argv) {
-    auto argsOpt = parse_arguments(argc, argv);
-    if (!argsOpt) {
+    auto cli = parse_arguments(argc, argv);
+    if (!cli) {
+        return EXIT_FAILURE;
+    }
+    if (cli->show_help) {
+        print_usage();
+        return EXIT_SUCCESS;
+    }
+    if (!cli->arguments) {
         return EXIT_FAILURE;
     }
 
-    auto layoutOpt = derive_layout(*argsOpt);
+    auto const& args = *cli->arguments;
+    auto layoutOpt = derive_layout(args);
     if (!layoutOpt) {
         return EXIT_FAILURE;
     }
 
-    switch (argsOpt->command) {
+    switch (args.command) {
     case Command::Export:
-        return run_export(*argsOpt, *layoutOpt);
+        return run_export(args, *layoutOpt);
     case Command::Import:
-        return run_import(*argsOpt, *layoutOpt);
+        return run_import(args, *layoutOpt);
     }
 
     return EXIT_FAILURE;

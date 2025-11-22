@@ -1,3 +1,4 @@
+#include <pathspace/examples/cli/ExampleCli.hpp>
 #include <pathspace/ui/HtmlSerialization.hpp>
 #include <pathspace/ui/HtmlAdapter.hpp>
 
@@ -26,9 +27,10 @@ struct Summary {
 };
 
 struct CommandLineOptions {
-    bool        pretty_output = false;
-    bool        read_stdin    = false;
-    std::string input_path;
+    bool                         pretty_output = false;
+    bool                         read_stdin    = false;
+    bool                         show_help     = false;
+    std::optional<std::string>   input_path;
 };
 
 void print_usage() {
@@ -46,61 +48,67 @@ void print_usage() {
 }
 
 auto parse_arguments(int argc, char** argv) -> std::optional<CommandLineOptions> {
+    using SP::Examples::CLI::ExampleCli;
     CommandLineOptions options{};
-    bool seen_input = false;
 
-    for (int i = 1; i < argc; ++i) {
-        std::string arg{argv[i]};
-        if (arg == "--help" || arg == "-h") {
-            print_usage();
-            std::exit(EXIT_SUCCESS);
-        } else if (arg == "--pretty") {
-            options.pretty_output = true;
-        } else if (arg == "--stdin") {
-            if (seen_input) {
-                std::cerr << "Multiple input sources specified\n";
-                return std::nullopt;
-            }
-            options.read_stdin = true;
-            seen_input = true;
-        } else if (arg == "--input" || arg == "-i") {
-            if (seen_input) {
-                std::cerr << "Multiple input sources specified\n";
-                return std::nullopt;
-            }
-            if (i + 1 >= argc) {
-                std::cerr << "--input requires a file path\n";
-                return std::nullopt;
-            }
-            options.input_path = argv[++i];
-            seen_input = true;
-        } else if (arg == "-") {
-            if (seen_input) {
-                std::cerr << "Multiple input sources specified\n";
-                return std::nullopt;
-            }
-            options.read_stdin = true;
-            seen_input = true;
-        } else if (!arg.empty() && arg.front() == '-') {
-            std::cerr << "Unknown argument: " << arg << "\n";
-            return std::nullopt;
-        } else {
-            if (seen_input) {
-                std::cerr << "Multiple positional inputs specified\n";
-                return std::nullopt;
-            }
-            options.input_path = std::move(arg);
-            seen_input = true;
+    ExampleCli cli;
+    cli.set_program_name("pathspace_hsat_inspect");
+    cli.set_error_logger([](std::string const& text) { std::cerr << text << "\n"; });
+
+    cli.add_flag("--help", {.on_set = [&] { options.show_help = true; }});
+    cli.add_alias("-h", "--help");
+    cli.add_flag("--pretty", {.on_set = [&] { options.pretty_output = true; }});
+    cli.add_flag("--stdin", {.on_set = [&] { options.read_stdin = true; }});
+
+    ExampleCli::ValueOption input_option{};
+    input_option.on_value = [&](std::optional<std::string_view> value) -> ExampleCli::ParseError {
+        if (!value || value->empty()) {
+            return std::string{"--input requires a file path"};
         }
-    }
+        if (options.input_path) {
+            return std::string{"input path already specified"};
+        }
+        options.input_path = std::string{*value};
+        return std::nullopt;
+    };
+    cli.add_value("--input", std::move(input_option));
+    cli.add_alias("-i", "--input");
 
-    if (!seen_input) {
-        std::cerr << "No input specified\n";
+    cli.set_unknown_argument_handler([&](std::string_view token) {
+        if (token == "-") {
+            if (options.input_path || options.read_stdin) {
+                std::cerr << "pathspace_hsat_inspect: multiple input sources specified\n";
+                return false;
+            }
+            options.read_stdin = true;
+            return true;
+        }
+        if (!token.empty() && token.front() == '-') {
+            std::cerr << "pathspace_hsat_inspect: unknown argument '" << token << "'\n";
+            return false;
+        }
+        if (options.input_path || options.read_stdin) {
+            std::cerr << "pathspace_hsat_inspect: multiple positional inputs specified\n";
+            return false;
+        }
+        options.input_path = std::string{token};
+        return true;
+    });
+
+    if (!cli.parse(argc, argv)) {
         return std::nullopt;
     }
 
-    if (options.read_stdin && !options.input_path.empty()) {
-        std::cerr << "Cannot combine --stdin with a file path\n";
+    if (options.show_help) {
+        return options;
+    }
+
+    if (options.read_stdin && options.input_path) {
+        std::cerr << "pathspace_hsat_inspect: cannot combine --stdin with a file path\n";
+        return std::nullopt;
+    }
+    if (!options.read_stdin && !options.input_path) {
+        std::cerr << "pathspace_hsat_inspect: no input specified\n";
         return std::nullopt;
     }
 
@@ -240,17 +248,20 @@ auto is_reference_mime(std::string_view mime) -> bool {
 int main(int argc, char** argv) {
     auto options = parse_arguments(argc, argv);
     if (!options) {
-        print_usage();
         return EXIT_FAILURE;
+    }
+    if (options->show_help) {
+        print_usage();
+        return EXIT_SUCCESS;
     }
 
     std::vector<std::uint8_t> payload;
     if (options->read_stdin) {
         payload = read_all_stdin();
     } else {
-        auto data = read_all_file(options->input_path);
+        auto data = read_all_file(*options->input_path);
         if (!data) {
-            std::cerr << "Failed to read HSAT payload from '" << options->input_path << "'\n";
+            std::cerr << "Failed to read HSAT payload from '" << *options->input_path << "'\n";
             return EXIT_FAILURE;
         }
         payload = std::move(*data);

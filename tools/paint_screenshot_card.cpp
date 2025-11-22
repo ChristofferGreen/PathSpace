@@ -1,10 +1,14 @@
 #include "inspector/PaintScreenshotCard.hpp"
 #include "core/Error.hpp"
 
+#include <pathspace/examples/cli/ExampleCli.hpp>
+
+#include <charconv>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -12,6 +16,14 @@ using namespace SP;
 using namespace SP::Inspector;
 
 namespace {
+
+struct PaintScreenshotCardCliOptions {
+    bool                                  show_help        = false;
+    bool                                  emit_json_stdout = false;
+    std::size_t                           max_runs         = 10;
+    std::filesystem::path                 metrics_path;
+    std::optional<std::filesystem::path>  output_json_path;
+};
 
 auto severityToString(PaintScreenshotSeverity severity) -> std::string_view {
     switch (severity) {
@@ -32,52 +44,85 @@ auto printUsage() {
                  "[--max-runs N] [--json] [--output-json <path>]\n";
 }
 
+auto parse_cli(int argc, char** argv) -> std::optional<PaintScreenshotCardCliOptions> {
+    using SP::Examples::CLI::ExampleCli;
+    PaintScreenshotCardCliOptions options{};
+
+    ExampleCli cli;
+    cli.set_program_name("pathspace_paint_screenshot_card");
+    cli.set_error_logger([](std::string const& text) { std::cerr << text << "\n"; });
+    cli.set_unknown_argument_handler([&](std::string_view token) {
+        std::cerr << "pathspace_paint_screenshot_card: unknown argument '" << token << "'\n";
+        return false;
+    });
+
+    cli.add_flag("--help", {.on_set = [&] { options.show_help = true; }});
+    cli.add_alias("-h", "--help");
+    cli.add_flag("--json", {.on_set = [&] { options.emit_json_stdout = true; }});
+
+    ExampleCli::ValueOption metrics_option{};
+    metrics_option.on_value = [&](std::optional<std::string_view> value) -> ExampleCli::ParseError {
+        if (!value || value->empty()) {
+            return std::string{"--metrics-json requires a path"};
+        }
+        options.metrics_path = std::filesystem::path(std::string{*value});
+        return std::nullopt;
+    };
+    cli.add_value("--metrics-json", std::move(metrics_option));
+
+    ExampleCli::ValueOption max_runs_option{};
+    max_runs_option.on_value = [&](std::optional<std::string_view> value) -> ExampleCli::ParseError {
+        if (!value || value->empty()) {
+            return std::string{"--max-runs requires a value"};
+        }
+        int parsed = 0;
+        auto begin = value->data();
+        auto end   = begin + value->size();
+        auto res   = std::from_chars(begin, end, parsed);
+        if (res.ec != std::errc{} || parsed <= 0) {
+            return std::string{"--max-runs expects a positive integer"};
+        }
+        options.max_runs = static_cast<std::size_t>(parsed);
+        return std::nullopt;
+    };
+    cli.add_value("--max-runs", std::move(max_runs_option));
+
+    ExampleCli::ValueOption output_option{};
+    output_option.on_value = [&](std::optional<std::string_view> value) -> ExampleCli::ParseError {
+        if (!value || value->empty()) {
+            return std::string{"--output-json requires a path"};
+        }
+        options.output_json_path = std::filesystem::path(std::string{*value});
+        return std::nullopt;
+    };
+    cli.add_value("--output-json", std::move(output_option));
+
+    if (!cli.parse(argc, argv)) {
+        return std::nullopt;
+    }
+
+    if (!options.show_help && options.metrics_path.empty()) {
+        std::cerr << "pathspace_paint_screenshot_card: --metrics-json is required\n";
+        return std::nullopt;
+    }
+
+    return options;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
-    std::filesystem::path metrics_path;
-    std::size_t max_runs = 10;
-    bool emit_json_stdout = false;
-    std::optional<std::filesystem::path> output_json_path;
-
-    for (int i = 1; i < argc; ++i) {
-        std::string_view arg{argv[i]};
-        if (arg == "--metrics-json" && i + 1 < argc) {
-            metrics_path = argv[++i];
-            continue;
-        }
-        if (arg == "--max-runs" && i + 1 < argc) {
-            try {
-                max_runs = static_cast<std::size_t>(std::stoul(argv[++i]));
-            } catch (...) {
-                std::cerr << "Invalid value for --max-runs\n";
-                return EXIT_FAILURE;
-            }
-            continue;
-        }
-        if (arg == "--json") {
-            emit_json_stdout = true;
-            continue;
-        }
-        if (arg == "--output-json" && i + 1 < argc) {
-            output_json_path = std::filesystem::path{argv[++i]};
-            continue;
-        }
-        if (arg == "--help" || arg == "-h") {
-            printUsage();
-            return EXIT_SUCCESS;
-        }
-        std::cerr << "Unknown argument: " << arg << "\n";
-        printUsage();
+    auto cli = parse_cli(argc, argv);
+    if (!cli) {
         return EXIT_FAILURE;
     }
-
-    if (metrics_path.empty()) {
+    if (cli->show_help) {
         printUsage();
-        return EXIT_FAILURE;
+        return EXIT_SUCCESS;
     }
 
-    auto runs = LoadPaintScreenshotRunsFromJson(metrics_path, max_runs);
+    auto runs = LoadPaintScreenshotRunsFromJson(cli->metrics_path, cli->max_runs);
+
     if (!runs) {
         std::cerr << "Failed to parse diagnostics: "
                   << describeError(runs.error()) << "\n";
@@ -85,20 +130,21 @@ int main(int argc, char** argv) {
     }
 
     PaintScreenshotCardOptions options{};
-    options.max_runs = max_runs;
+    options.max_runs = cli->max_runs;
     auto card = BuildPaintScreenshotCardFromRuns(std::move(*runs), options);
     auto json_payload = SerializePaintScreenshotCard(card);
 
-    if (output_json_path) {
-        std::ofstream out(*output_json_path, std::ios::trunc);
+    if (cli->output_json_path) {
+        std::ofstream out(*cli->output_json_path, std::ios::trunc);
         if (!out) {
-            std::cerr << "Failed to open " << output_json_path->string() << " for writing\n";
+            std::cerr << "Failed to open " << cli->output_json_path->string()
+                      << " for writing\n";
             return EXIT_FAILURE;
         }
         out << json_payload << "\n";
     }
 
-    if (emit_json_stdout) {
+    if (cli->emit_json_stdout) {
         std::cout << json_payload << std::endl;
         return EXIT_SUCCESS;
     }
