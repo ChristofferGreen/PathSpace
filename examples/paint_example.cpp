@@ -1556,6 +1556,31 @@ struct PaintUiBindings {
     std::shared_ptr<BrushState> brush_state;
 };
 
+struct PaintWindowContext {
+    SP::App::AppRootPath app_root;
+    SP::Window::CreateResult window;
+    SP::Scene::CreateResult scene;
+    SP::UI::Builders::App::BootstrapResult bootstrap;
+    std::string window_view_path;
+    SP::UI::Builders::Widgets::WidgetTheme theme;
+};
+
+struct PaintUiContext {
+    PaintUiBindings bindings;
+    PaintControlsNS::PaintLayoutMetrics layout_metrics;
+    std::string stack_root;
+    std::string controls_root;
+    std::string paint_widget_path;
+    bool paint_gpu_enabled = false;
+};
+
+auto create_paint_window_context(SP::PathSpace& space, CommandLineOptions const& options)
+    -> std::optional<PaintWindowContext>;
+auto mount_paint_ui(SP::PathSpace& space,
+                    PaintWindowContext const& window_context,
+                    CommandLineOptions const& options,
+                    bool screenshot_mode) -> std::optional<PaintUiContext>;
+
 constexpr auto kControlsStackChildren =
     std::to_array<std::string_view>({"status_section", "brush_slider", "palette", "actions"});
 constexpr auto kStatusStackChildren =
@@ -1839,6 +1864,221 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
     return SP::UI::Declarative::Stack::Fragment(std::move(controls));
 }
 
+auto create_paint_window_context(SP::PathSpace& space, CommandLineOptions const& options)
+    -> std::optional<PaintWindowContext> {
+    auto launch = SP::System::LaunchStandard(space);
+    if (!launch) {
+        std::cerr << "paint_example: failed to launch declarative runtime\n";
+        return std::nullopt;
+    }
+
+    auto app = SP::App::Create(space,
+                               "paint_example",
+                               {.title = "Declarative Paint"});
+    if (!app) {
+        std::cerr << "paint_example: failed to create app\n";
+        return std::nullopt;
+    }
+    auto app_root = *app;
+    auto app_root_view = SP::App::AppRootPathView{app_root.getPath()};
+    auto theme_selection = SP::UI::Builders::Widgets::LoadTheme(space, app_root_view, "");
+    auto active_theme = theme_selection.theme;
+
+    SP::Window::CreateOptions window_opts{};
+    window_opts.name = "paint_window";
+    window_opts.title = "Declarative Paint Surface";
+    window_opts.width = options.width;
+    window_opts.height = options.height;
+    window_opts.visible = true;
+    auto window_result = SP::Window::Create(space, app_root_view, window_opts);
+    if (!window_result) {
+        std::cerr << "paint_example: failed to create window\n";
+        return std::nullopt;
+    }
+    auto window = *window_result;
+
+    SP::Scene::CreateOptions scene_opts{};
+    scene_opts.name = "paint_scene";
+    scene_opts.description = "Declarative paint scene";
+    auto scene_result = SP::Scene::Create(space, app_root_view, window.path, scene_opts);
+    if (!scene_result) {
+        std::cerr << "paint_example: failed to create scene\n";
+        return std::nullopt;
+    }
+    auto scene = *scene_result;
+
+    auto bootstrap_result = build_bootstrap_from_window(space,
+                                                        app_root_view,
+                                                        window.path,
+                                                        window.view_name);
+    if (!bootstrap_result) {
+        log_expected_error("failed to prepare presenter bootstrap", bootstrap_result.error());
+        return std::nullopt;
+    }
+    auto bootstrap = *bootstrap_result;
+    auto capture_status = set_capture_framebuffer_enabled(space,
+                                                          window.path,
+                                                          window.view_name,
+                                                          true);
+    if (!capture_status) {
+        log_expected_error("enable framebuffer capture", capture_status.error());
+        return std::nullopt;
+    }
+    bootstrap.present_policy.capture_framebuffer = true;
+    auto bind_scene = SP::UI::Builders::Surface::SetScene(space, bootstrap.surface, scene.path);
+    if (!bind_scene) {
+        log_expected_error("Surface::SetScene", bind_scene.error());
+        return std::nullopt;
+    }
+
+    constexpr std::string_view kPointerDevice = "/system/devices/in/pointer/default";
+    constexpr std::string_view kKeyboardDevice = "/system/devices/in/text/default";
+    ensure_device_push_config(space, std::string{kPointerDevice}, "paint_example");
+    ensure_device_push_config(space, std::string{kKeyboardDevice}, "paint_example");
+    auto pointer_devices = std::array<std::string, 1>{std::string{kPointerDevice}};
+    auto keyboard_devices = std::array<std::string, 1>{std::string{kKeyboardDevice}};
+    subscribe_window_devices(space,
+                             window.path,
+                             std::span<const std::string>(pointer_devices.data(), pointer_devices.size()),
+                             std::span<const std::string>{},
+                             std::span<const std::string>(keyboard_devices.data(), keyboard_devices.size()));
+
+    auto window_view_path = std::string(window.path.getPath()) + "/views/" + window.view_name;
+    PaintWindowContext context{
+        .app_root = std::move(app_root),
+        .window = std::move(window),
+        .scene = std::move(scene),
+        .bootstrap = std::move(bootstrap),
+        .window_view_path = std::move(window_view_path),
+        .theme = std::move(active_theme),
+    };
+    return context;
+}
+
+auto mount_paint_ui(SP::PathSpace& space,
+                    PaintWindowContext const& window_context,
+                    CommandLineOptions const& options,
+                    bool screenshot_mode) -> std::optional<PaintUiContext> {
+    auto brush_state = std::make_shared<BrushState>();
+    auto layout_metrics = PaintControlsNS::ComputeLayoutMetrics(options.width, options.height);
+
+    PaintUiBindings bindings{
+        .paint_widget_path = std::make_shared<std::string>(),
+        .status_label_path = std::make_shared<std::string>(),
+        .brush_label_path = std::make_shared<std::string>(),
+        .undo_button_path = std::make_shared<std::string>(),
+        .redo_button_path = std::make_shared<std::string>(),
+        .history_binding = std::make_shared<std::shared_ptr<HistoryBinding>>(),
+        .brush_state = brush_state,
+    };
+
+    SP::UI::Declarative::PaintSurface::Args paint_args{};
+    paint_args.brush_size = brush_state->size;
+    paint_args.brush_color = brush_state->color;
+    paint_args.buffer_width = static_cast<std::uint32_t>(std::max(1.0f, layout_metrics.canvas_width));
+    paint_args.buffer_height = static_cast<std::uint32_t>(std::max(1.0f, layout_metrics.canvas_height));
+    paint_args.gpu_enabled = options.gpu_smoke || screenshot_mode;
+    bool const paint_gpu_enabled = paint_args.gpu_enabled;
+    paint_args.on_draw = [status_label_path = bindings.status_label_path](SP::UI::Declarative::PaintSurfaceContext& ctx) {
+        auto label_path = status_label_path ? *status_label_path : std::string{};
+        if (label_path.empty()) {
+            return;
+        }
+        auto widget_path = SP::UI::Builders::WidgetPath{label_path};
+        log_error(SP::UI::Declarative::Label::SetText(ctx.space, widget_path, "Stroke recorded"),
+                  "Label::SetText");
+    };
+
+    auto controls_fragment = build_controls_fragment(bindings, layout_metrics, window_context.theme);
+
+    SP::UI::Declarative::Stack::Args root_stack{};
+    root_stack.active_panel = "canvas_panel";
+    root_stack.style.axis = SP::UI::Builders::Widgets::StackAxis::Horizontal;
+    root_stack.style.spacing = layout_metrics.controls_spacing;
+    root_stack.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Start;
+    root_stack.style.padding_main_start = layout_metrics.padding_x;
+    root_stack.style.padding_main_end = layout_metrics.padding_x;
+    root_stack.style.padding_cross_start = layout_metrics.padding_y;
+    root_stack.style.padding_cross_end = layout_metrics.padding_y;
+    root_stack.style.width = layout_metrics.controls_width + layout_metrics.canvas_width
+                             + layout_metrics.controls_spacing + layout_metrics.padding_x * 2.0f;
+    root_stack.style.height = layout_metrics.canvas_height + layout_metrics.padding_y * 2.0f;
+    root_stack.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "controls_panel",
+        .fragment = std::move(controls_fragment),
+    });
+    root_stack.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "canvas_panel",
+        .fragment = SP::UI::Declarative::PaintSurface::Fragment(paint_args),
+    });
+
+    auto ui_stack = SP::UI::Declarative::Stack::Create(
+        space,
+        SP::App::ConcretePathView{window_context.window_view_path},
+        "ui_stack",
+        std::move(root_stack));
+    if (!ui_stack) {
+        log_expected_error("create UI stack", ui_stack.error());
+        return std::nullopt;
+    }
+
+    auto stack_root = ui_stack->getPath();
+    auto controls_root = stack_root + "/children/controls_panel";
+    *bindings.paint_widget_path = stack_root + "/children/canvas_panel";
+    auto paint_widget_path = *bindings.paint_widget_path;
+
+    initialize_history_metrics(space, paint_widget_path);
+    bool debug_layout_logging = std::getenv("PAINT_EXAMPLE_DEBUG_LAYOUT") != nullptr;
+    if (!wait_for_stack_children(space,
+                                 controls_root,
+                                 std::span<const std::string_view>(kControlsStackChildren),
+                                 std::chrono::milliseconds(1500),
+                                 debug_layout_logging)) {
+        return std::nullopt;
+    }
+
+    auto status_root = controls_root + "/children/status_section";
+    if (!wait_for_stack_children(space,
+                                 status_root,
+                                 std::span<const std::string_view>(kStatusStackChildren),
+                                 std::chrono::milliseconds(1000),
+                                 debug_layout_logging)) {
+        return std::nullopt;
+    }
+    *bindings.status_label_path = status_root + "/children/status_label";
+    *bindings.brush_label_path = status_root + "/children/brush_label";
+
+    auto actions_root = controls_root + "/children/actions";
+    if (!wait_for_stack_children(space,
+                                 actions_root,
+                                 std::span<const std::string_view>(kActionsStackChildren),
+                                 std::chrono::milliseconds(1000),
+                                 debug_layout_logging)) {
+        return std::nullopt;
+    }
+    *bindings.undo_button_path = actions_root + "/children/undo_button";
+    *bindings.redo_button_path = actions_root + "/children/redo_button";
+
+    auto history_binding_result = make_history_binding(space, paint_widget_path);
+    if (!history_binding_result) {
+        log_expected_error("failed to enable UndoableSpace history", history_binding_result.error());
+        return std::nullopt;
+    }
+    auto history_binding = std::make_shared<HistoryBinding>(std::move(*history_binding_result));
+    *bindings.history_binding = history_binding;
+    set_history_buttons_enabled(space, bindings, true);
+
+    PaintUiContext context{
+        .bindings = std::move(bindings),
+        .layout_metrics = layout_metrics,
+        .stack_root = std::move(stack_root),
+        .controls_root = std::move(controls_root),
+        .paint_widget_path = std::move(paint_widget_path),
+        .paint_gpu_enabled = paint_gpu_enabled,
+    };
+    return context;
+}
+
 auto log_expected_error(std::string const& context, SP::Error const& error) -> void {
     std::cerr << "paint_example: " << context << " error (code=" << static_cast<int>(error.code) << ")";
     if (error.message) {
@@ -1940,212 +2180,37 @@ int main(int argc, char** argv) {
     }
 
     SP::PathSpace space;
-    auto launch = SP::System::LaunchStandard(space);
-    if (!launch) {
-        std::cerr << "paint_example: failed to launch declarative runtime\n";
+
+    auto window_context = create_paint_window_context(space, options);
+    if (!window_context) {
+        SP::System::ShutdownDeclarativeRuntime(space);
         return 1;
     }
 
     publish_baseline_metrics(space, baseline_telemetry);
 
-    auto app = SP::App::Create(space,
-                               "paint_example",
-                               {.title = "Declarative Paint"});
-    if (!app) {
-        std::cerr << "paint_example: failed to create app\n";
-        SP::System::ShutdownDeclarativeRuntime(space);
-        return 1;
-    }
-    auto app_root = *app;
-    auto app_root_view = SP::App::AppRootPathView{app_root.getPath()};
-    auto theme_selection = SP::UI::Builders::Widgets::LoadTheme(space, app_root_view, "");
-    auto active_theme = theme_selection.theme;
-
-    SP::Window::CreateOptions window_opts{};
-    window_opts.name = "paint_window";
-    window_opts.title = "Declarative Paint Surface";
-    window_opts.width = options.width;
-    window_opts.height = options.height;
-    window_opts.visible = true;
-    auto window = SP::Window::Create(space, app_root_view, window_opts);
-    if (!window) {
-        std::cerr << "paint_example: failed to create window\n";
-        SP::System::ShutdownDeclarativeRuntime(space);
-        return 1;
-    }
-
-    SP::Scene::CreateOptions scene_opts{};
-    scene_opts.name = "paint_scene";
-    scene_opts.description = "Declarative paint scene";
-    auto scene = SP::Scene::Create(space, app_root_view, window->path, scene_opts);
-    if (!scene) {
-        std::cerr << "paint_example: failed to create scene\n";
-        SP::System::ShutdownDeclarativeRuntime(space);
-        return 1;
-    }
-    auto scene_result = *scene;
-
-    auto bootstrap = build_bootstrap_from_window(space,
-                                                 app_root_view,
-                                                 window->path,
-                                                 window->view_name);
-    if (!bootstrap) {
-        log_expected_error("failed to prepare presenter bootstrap", bootstrap.error());
-        SP::System::ShutdownDeclarativeRuntime(space);
-        return 1;
-    }
-    if (auto capture_status = set_capture_framebuffer_enabled(space,
-                                                              window->path,
-                                                              window->view_name,
-                                                              true);
-        !capture_status) {
-        log_expected_error("enable framebuffer capture", capture_status.error());
-        SP::System::ShutdownDeclarativeRuntime(space);
-        return 1;
-    }
-    bootstrap->present_policy.capture_framebuffer = true;
-
-    auto bind_scene = SP::UI::Builders::Surface::SetScene(space, (*bootstrap).surface, scene_result.path);
-    if (!bind_scene) {
-        log_expected_error("Surface::SetScene", bind_scene.error());
-        SP::System::ShutdownDeclarativeRuntime(space);
-        return 1;
-    }
-
-    constexpr std::string_view kPointerDevice = "/system/devices/in/pointer/default";
-    constexpr std::string_view kKeyboardDevice = "/system/devices/in/text/default";
-    ensure_device_push_config(space, std::string{kPointerDevice}, "paint_example");
-    ensure_device_push_config(space, std::string{kKeyboardDevice}, "paint_example");
-    auto pointer_devices = std::vector<std::string>{std::string{kPointerDevice}};
-    auto keyboard_devices = std::vector<std::string>{std::string{kKeyboardDevice}};
-    subscribe_window_devices(space,
-                             window->path,
-                             std::span<const std::string>(pointer_devices),
-                             std::span<const std::string>{},
-                             std::span<const std::string>(keyboard_devices));
-
-    auto window_view_path = window_view_base(window->path, window->view_name);
-    auto window_view = SP::App::ConcretePathView{window_view_path};
-
-    auto brush_state = std::make_shared<BrushState>();
-
     bool screenshot_mode = options.screenshot_path.has_value();
-    bool debug_layout_logging = std::getenv("PAINT_EXAMPLE_DEBUG_LAYOUT") != nullptr;
 
-    auto layout_metrics = PaintControlsNS::ComputeLayoutMetrics(options.width, options.height);
-
-    PaintUiBindings bindings{
-        .paint_widget_path = std::make_shared<std::string>(),
-        .status_label_path = std::make_shared<std::string>(),
-        .brush_label_path = std::make_shared<std::string>(),
-        .undo_button_path = std::make_shared<std::string>(),
-        .redo_button_path = std::make_shared<std::string>(),
-        .history_binding = std::make_shared<std::shared_ptr<HistoryBinding>>(),
-        .brush_state = brush_state,
-    };
-
-    SP::UI::Declarative::PaintSurface::Args paint_args{};
-    paint_args.brush_size = brush_state->size;
-    paint_args.brush_color = brush_state->color;
-    paint_args.buffer_width = static_cast<std::uint32_t>(std::max(1.0f, layout_metrics.canvas_width));
-    paint_args.buffer_height = static_cast<std::uint32_t>(std::max(1.0f, layout_metrics.canvas_height));
-    paint_args.gpu_enabled = options.gpu_smoke || screenshot_mode;
-    bool const paint_gpu_enabled = paint_args.gpu_enabled;
-    paint_args.on_draw = [status_label_path = bindings.status_label_path](SP::UI::Declarative::PaintSurfaceContext& ctx) {
-        auto label_path = status_label_path ? *status_label_path : std::string{};
-        if (label_path.empty()) {
-            return;
-        }
-        auto widget_path = SP::UI::Builders::WidgetPath{label_path};
-        log_error(SP::UI::Declarative::Label::SetText(ctx.space, widget_path, "Stroke recorded"),
-                  "Label::SetText");
-    };
-
-    auto controls_fragment = build_controls_fragment(bindings, layout_metrics, active_theme);
-
-    SP::UI::Declarative::Stack::Args root_stack{};
-    root_stack.active_panel = "canvas_panel";
-    root_stack.style.axis = SP::UI::Builders::Widgets::StackAxis::Horizontal;
-    root_stack.style.spacing = layout_metrics.controls_spacing;
-    root_stack.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Start;
-    root_stack.style.padding_main_start = layout_metrics.padding_x;
-    root_stack.style.padding_main_end = layout_metrics.padding_x;
-    root_stack.style.padding_cross_start = layout_metrics.padding_y;
-    root_stack.style.padding_cross_end = layout_metrics.padding_y;
-    root_stack.style.width = layout_metrics.controls_width + layout_metrics.canvas_width
-                             + layout_metrics.controls_spacing + layout_metrics.padding_x * 2.0f;
-    root_stack.style.height = layout_metrics.canvas_height + layout_metrics.padding_y * 2.0f;
-
-    root_stack.panels.push_back(SP::UI::Declarative::Stack::Panel{
-        .id = "controls_panel",
-        .fragment = std::move(controls_fragment),
-    });
-    root_stack.panels.push_back(SP::UI::Declarative::Stack::Panel{
-        .id = "canvas_panel",
-        .fragment = SP::UI::Declarative::PaintSurface::Fragment(paint_args),
-    });
-
-    auto ui_stack = SP::UI::Declarative::Stack::Create(space,
-                                                       window_view,
-                                                       "ui_stack",
-                                                       std::move(root_stack));
-    if (!ui_stack) {
-        log_expected_error("create UI stack", ui_stack.error());
+    auto ui_context = mount_paint_ui(space, *window_context, options, screenshot_mode);
+    if (!ui_context) {
         SP::System::ShutdownDeclarativeRuntime(space);
         return 1;
     }
 
-    auto stack_root = ui_stack->getPath();
-    auto controls_root = stack_root + "/children/controls_panel";
-    *bindings.paint_widget_path = stack_root + "/children/canvas_panel";
-    auto paint_widget_path = *bindings.paint_widget_path;
-
-    initialize_history_metrics(space, paint_widget_path);
-
-    if (!wait_for_stack_children(space,
-                                 controls_root,
-                                 std::span<const std::string_view>(kControlsStackChildren),
-                                 std::chrono::milliseconds(1500),
-                                 debug_layout_logging)) {
-        SP::System::ShutdownDeclarativeRuntime(space);
-        return 1;
-    }
-    auto status_root = controls_root + "/children/status_section";
-    if (!wait_for_stack_children(space,
-                                 status_root,
-                                 std::span<const std::string_view>(kStatusStackChildren),
-                                 std::chrono::milliseconds(1000),
-                                 debug_layout_logging)) {
-        SP::System::ShutdownDeclarativeRuntime(space);
-        return 1;
-    }
-    *bindings.status_label_path = status_root + "/children/status_label";
-    *bindings.brush_label_path = status_root + "/children/brush_label";
-    auto actions_root = controls_root + "/children/actions";
-    if (!wait_for_stack_children(space,
-                                 actions_root,
-                                 std::span<const std::string_view>(kActionsStackChildren),
-                                 std::chrono::milliseconds(1000),
-                                 debug_layout_logging)) {
-        SP::System::ShutdownDeclarativeRuntime(space);
-        return 1;
-    }
-    *bindings.undo_button_path = actions_root + "/children/undo_button";
-    *bindings.redo_button_path = actions_root + "/children/redo_button";
-
-    auto history_binding_result = make_history_binding(space, paint_widget_path);
-    if (!history_binding_result) {
-        log_expected_error("failed to enable UndoableSpace history", history_binding_result.error());
-        SP::System::ShutdownDeclarativeRuntime(space);
-        return 1;
-    }
-    auto history_binding = std::make_shared<HistoryBinding>(std::move(*history_binding_result));
-    *bindings.history_binding = history_binding;
-    set_history_buttons_enabled(space, bindings, true);
+    auto& bindings = ui_context->bindings;
+    auto brush_state = bindings.brush_state;
+    auto const& layout_metrics = ui_context->layout_metrics;
+    auto paint_widget_path = ui_context->paint_widget_path;
+    bool const paint_gpu_enabled = ui_context->paint_gpu_enabled;
     auto paint_widget = SP::UI::Builders::WidgetPath{paint_widget_path};
 
+    auto const& window_view_path = window_context->window_view_path;
+    auto& window_result = window_context->window;
+    auto& scene_result = window_context->scene;
+    auto& bootstrap = window_context->bootstrap;
+
     auto widget_count = count_window_widgets(space, window_view_path);
-    auto scene_widgets_root = make_scene_widgets_root(scene_result.path, window->path, window->view_name);
+    auto scene_widgets_root = make_scene_widgets_root(scene_result.path, window_result.path, window_result.view_name);
     if (!wait_for_widget_buckets(space,
                                  scene_result.path,
                                  widget_count,
@@ -2288,8 +2353,8 @@ int main(int argc, char** argv) {
         }
         if (hardware_capture) {
             auto warmup = capture_present_frame(space,
-                                                window->path,
-                                                window->view_name,
+                                                window_result.path,
+                                                window_result.view_name,
                                                 std::chrono::milliseconds(1500));
             if (!warmup) {
                 hardware_capture = false;
@@ -2305,8 +2370,8 @@ int main(int argc, char** argv) {
                               << latest_revision.value_or(0) << ", capturing latest published frame\n";
                 }
                 bool captured = capture_window_screenshot(space,
-                                                          window->path,
-                                                          window->view_name,
+                                                          window_result.path,
+                                                          window_result.view_name,
                                                           options.width,
                                                           options.height,
                                                           *options.screenshot_path,
@@ -2397,9 +2462,9 @@ int main(int argc, char** argv) {
     PresentLoopHooks hooks{};
 
     run_present_loop(space,
-                     window->path,
-                     window->view_name,
-                     *bootstrap,
+                     window_result.path,
+                     window_result.view_name,
+                     bootstrap,
                      options.width,
                      options.height,
                      hooks);

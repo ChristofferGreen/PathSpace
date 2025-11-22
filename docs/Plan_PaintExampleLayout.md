@@ -54,6 +54,11 @@ Status Legend — ✅ Done · 🚧 In Progress · ⏳ Planned
 - ✅ Introduced `docs/images/paint_example_baselines.json` plus `scripts/paint_example_capture.py`; the manifest records width/height, renderer mode, capture timestamp, commit hash, and SHA256 for the 1280×800 + 1280×720 PNGs. `scripts/check_paint_screenshot.py` now validates those hashes/dimensions, exports `PAINT_EXAMPLE_BASELINE_*` env vars, and paint_example refuses to run when the manifest revision drops below `kRequiredBaselineManifestRevision` (currently `1`).
 - ✅ Inspector surfacing landed: `examples/paint_example.cpp` publishes the baseline manifest (`width`, `height`, `renderer`, `captured_at`, `commit`, `notes`, `sha256`, `tolerance`) plus `last_run/*` stats (status, timestamp, hardware vs software capture, mean error, diff artifact) under `diagnostics/ui/paint_example/screenshot_baseline`, writes the same payload to disk via `--screenshot-metrics-json`, and `scripts/check_paint_screenshot.py` now sets the matching `PAINT_EXAMPLE_BASELINE_*` env vars automatically. `scripts/paint_example_diagnostics_ingest.py` (covered by `tests/tools/test_paint_example_diagnostics_ingest.py`) ingests the per-run JSON files into dashboard/inspector-ready summaries so regressions show up before anyone eyeballs the PNG diff.
 
+## Progress — November 22, 2025
+- ✅ Added a dedicated “Baseline Refresh Playbook” section to this plan so every controls/layout change refreshes the 1280×800, 1280×720, and 1024×600 Metal captures plus `docs/images/paint_example_baselines.json` in one atomic procedure (capture helper, verifier, diagnostics ingest, failure handling, and manifest log seeded with revision 3 from 2025-11-21).
+- ✅ `examples/devices_example.cpp` now exposes `--paint-controls-demo [--width=1280 --height=800]`, launches the declarative runtime, and mounts the shared `SP::Examples::PaintControls` stack under `devices_paint_controls` beside a status label (`devices_status_label`). The slider/palette/history callbacks reuse the shared typography helper and update the status label + stdout log, demonstrating exactly which includes (`declarative_example_shared.hpp`, `<pathspace/examples/paint/PaintControls.hpp>`) and config snippets (ComputeLayoutMetrics, BrushSliderConfig, PaletteComponentConfig, HistoryActionsConfig) other samples should copy.
+- ✅ `examples/paint_example.cpp` now mirrors the canonical builder flow from `docs/Plan_WidgetDeclarativeAPI.md`: `create_paint_window_context` handles the launch → app → window → scene bootstrap (including device subscriptions and present policy), while `mount_paint_ui` mounts the horizontal stack + paint surface via declarative fragments. Helpers wrap the syntax-sample sequence verbatim, so newcomers can diff the plan’s snippet against the live implementation without wading through screenshot/smoke-test plumbing.
+
 ## Work Breakdown
 1. 🚧 **Controls Column MVP**
    - Mount status & brush labels with typography + padding.
@@ -78,10 +83,61 @@ Status Legend — ✅ Done · 🚧 In Progress · ⏳ Planned
 5. 🚧 Run `./scripts/compile.sh --clean --test --loop=15 --release` (and bump `--per-test-timeout 40` if a new failure needs more headroom). The harness now auto-archives any failing iteration (`test-logs/loop_failures/...`); include that path in bug reports when a loop flakes so we can diff against the November 21, 2025 green baseline (`PathSpaceUITests_loop15of15_20251121-113607.log`). This loop now executes both `PaintExampleScreenshot` and `PaintExampleScreenshot720`.
 6. 🚧 Update this plan + docs with any new decisions or baseline hashes (including the supplemental 1024×600 reference if it changes).
 
+### Baseline Refresh Playbook (all resolutions must move together)
+
+**Warning:** never land a UI/layout change unless all three Metal baselines (1280×800, 1280×720, 1024×600) plus `docs/images/paint_example_baselines.json` are refreshed in the same commit. Mixing revisions breaks CI determinism because `scripts/check_paint_screenshot.py` enforces the manifest SHA + dimension contract before it ever captures a frame.
+
+**Prerequisites**
+- `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j` already completed; `build/paint_example` must exist.
+- GPU capture flags exported for the shell session: `PATHSPACE_ENABLE_METAL_UPLOADS=1` and `PATHSPACE_UI_METAL=ON`.
+- Clean working tree for all tracked PNGs so baseline diffs stay obvious in `git status`.
+
+**Step-by-step loop**
+1. Capture all resolutions in one shot:
+   ```
+   PATHSPACE_ENABLE_METAL_UPLOADS=1 PATHSPACE_UI_METAL=ON \
+     scripts/paint_example_capture.py --tags 1280x800 paint_720 paint_600 \
+     --notes "baseline refresh <short reason>"
+   ```
+   - The helper replays each capture with `--screenshot-require-present --gpu-smoke`, writes fresh PNGs, bumps the per-tag `revision`, records the git commit, and increments `manifest_revision`.
+2. Validate each capture against itself plus the manifest metadata so CI will agree:
+   ```
+   for tag in 1280x800 paint_720 paint_600; do
+     scripts/check_paint_screenshot.py \
+       --build-dir build \
+       --manifest docs/images/paint_example_baselines.json \
+       --tag "${tag}" \
+       --baseline "$(jq -r ".captures[\"${tag}\"].path" docs/images/paint_example_baselines.json)" \
+       --metrics-output "build/artifacts/paint_example/${tag}_metrics.json";
+   done
+   ```
+   - Expect mean error ≤ 0.0015; the script retries once if Metal hands us a stale frame. Any mismatch means recapture before continuing.
+3. Aggregate diagnostics for inspector/dashboards so downstream tooling mirrors the same data:
+   ```
+   scripts/paint_example_diagnostics_ingest.py \
+     --inputs build/artifacts/paint_example/*_metrics.json \
+     --output-json build/test-logs/paint_example/diagnostics.json \
+     --output-html build/test-logs/paint_example/diagnostics.html
+   ```
+   - Attach the JSON path to bug reports and stash the HTML in `test-logs/` so `scripts/paint_example_inspector_panel.py` stays in sync.
+4. Update this plan (section below) with the new manifest revision, UTC timestamps, and SHA256 prefixes so reviewers can eyeball whether your commit actually ran the playbook.
+5. Run the usual validation loop (`./scripts/compile.sh --clean --test --loop=15 --release`) because the screenshot tests re-read the updated manifest during every iteration.
+
+**Failure Handling**
+- If `paint_example_capture.py` fails before touching files, re-run after fixing the root cause; if it fails mid-way, delete the partially-updated PNGs and re-run so revision counters remain consistent.
+- Never hand-edit the manifest; use the capture helper so SHA, timestamps, revision numbers, and commit hashes stay aligned.
+- When `scripts/check_paint_screenshot.py` refuses to run due to manifest mismatch, recapture the offending tag (do **not** force it to use the wrong PNG path).
+
+**Baseline refresh log (fill this table every time the manifest revision changes)**
+
+| Tag / resolution | Captured at (UTC) | SHA256 (first 12 chars) | Notes | Manifest revision |
+| ---------------- | ----------------- | ----------------------- | ----- | ----------------- |
+| 1280x800 | 2025-11-21T20:37:11.290690Z | 26cf939a3c2f | controls layout baseline refresh after clean build | 3 |
+| paint_720 (1280×720) | 2025-11-21T20:37:11.597521Z | 93a573e973ff | controls layout baseline refresh after clean build | 3 |
+| paint_600 (1024×600) | 2025-11-21T20:37:11.907141Z | 6e754d64d18c | controls layout baseline refresh after clean build | 3 |
+
 ## Next Steps
-1. ⏳ Adopt the shared paint controls components inside `widgets_example` / `devices_example` to prove the shared header + library wiring works outside the paint sample (and document the import steps for other examples).
-2. ⏳ Document the baseline refresh playbook (`scripts/paint_example_capture.py --tags 1280x800 paint_720 paint_600`) so every future layout tweak updates all three captures (800/720/600) in one go.
-3. ⏳ Align `examples/paint_example.cpp` structure and declarative syntax with the canonical example layout described in `docs/Plan_WidgetDeclarativeAPI.md` (syntax sample section) so we demonstrate the preferred builder patterns verbatim.
+1. ⏳ Promote the baseline capture workflow into a reusable CLI/service (see Platformization) so new UI samples inherit deterministic Metal screenshots without copy/pasting the paint helper scripts.
 
 ## Platformization Opportunities
 To keep this example lean and ensure other UI samples benefit, spin the following into shared PathSpace components:
