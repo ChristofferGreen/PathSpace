@@ -10,6 +10,7 @@
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/HistoryTelemetry.hpp>
+#include <pathspace/ui/declarative/StackReadiness.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
@@ -1289,49 +1290,6 @@ auto wait_for_scene_widgets(SP::PathSpace& space,
     return false;
 }
 
-auto wait_for_stack_children(SP::PathSpace& space,
-                             std::string const& stack_root,
-                             std::span<const std::string_view> required_children,
-                             std::chrono::milliseconds timeout,
-                             bool verbose) -> bool {
-    if (required_children.empty()) {
-        return true;
-    }
-    auto children_root = stack_root + "/children";
-    std::vector<std::string_view> last_missing;
-    auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-        auto children = space.listChildren(SP::ConcretePathStringView{children_root});
-        std::vector<std::string_view> missing;
-        missing.reserve(required_children.size());
-        for (auto child : required_children) {
-            auto it = std::find(children.begin(), children.end(), child);
-            if (it == children.end()) {
-                missing.push_back(child);
-            }
-        }
-        if (missing.empty()) {
-            if (verbose) {
-                std::cerr << "paint_example: controls stack ready at '" << children_root << "' with "
-                          << children.size() << " children\n";
-            }
-            return true;
-        }
-        if (verbose && missing != last_missing) {
-            std::cerr << "paint_example: waiting for controls children at '" << children_root << "', missing";
-            for (auto child : missing) {
-                std::cerr << " " << child;
-            }
-            std::cerr << "\n";
-            last_missing = missing;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(25));
-    }
-    std::cerr << "paint_example: timed out waiting for controls stack children at '"
-              << children_root << "'\n";
-    return false;
-}
-
 auto wait_for_paint_capture_ready(SP::PathSpace& space,
                                   std::string const& widget_path,
                                   std::chrono::milliseconds timeout) -> bool {
@@ -2029,31 +1987,48 @@ auto mount_paint_ui(SP::PathSpace& space,
 
     initialize_history_metrics(space, paint_widget_path);
     bool debug_layout_logging = std::getenv("PAINT_EXAMPLE_DEBUG_LAYOUT") != nullptr;
-    if (!wait_for_stack_children(space,
-                                 controls_root,
-                                 std::span<const std::string_view>(kControlsStackChildren),
-                                 std::chrono::milliseconds(1500),
-                                 debug_layout_logging)) {
+    auto make_stack_options = [&](std::chrono::milliseconds timeout) {
+        SP::UI::Declarative::StackReadinessOptions options{};
+        options.timeout = timeout;
+        options.verbose = debug_layout_logging;
+        if (debug_layout_logging) {
+            options.log = [](std::string_view message) {
+                std::cerr << "paint_example: " << message << '\n';
+            };
+        }
+        return options;
+    };
+    auto controls_ready = SP::UI::Declarative::WaitForStackChildren(
+        space,
+        controls_root,
+        std::span<const std::string_view>(kControlsStackChildren),
+        make_stack_options(std::chrono::milliseconds(1500)));
+    if (!controls_ready) {
+        log_expected_error("wait for controls stack children", controls_ready.error());
         return std::nullopt;
     }
 
     auto status_root = controls_root + "/children/status_section";
-    if (!wait_for_stack_children(space,
-                                 status_root,
-                                 std::span<const std::string_view>(kStatusStackChildren),
-                                 std::chrono::milliseconds(1000),
-                                 debug_layout_logging)) {
+    auto status_ready = SP::UI::Declarative::WaitForStackChildren(
+        space,
+        status_root,
+        std::span<const std::string_view>(kStatusStackChildren),
+        make_stack_options(std::chrono::milliseconds(1000)));
+    if (!status_ready) {
+        log_expected_error("wait for status stack children", status_ready.error());
         return std::nullopt;
     }
     *bindings.status_label_path = status_root + "/children/status_label";
     *bindings.brush_label_path = status_root + "/children/brush_label";
 
     auto actions_root = controls_root + "/children/actions";
-    if (!wait_for_stack_children(space,
-                                 actions_root,
-                                 std::span<const std::string_view>(kActionsStackChildren),
-                                 std::chrono::milliseconds(1000),
-                                 debug_layout_logging)) {
+    auto actions_ready = SP::UI::Declarative::WaitForStackChildren(
+        space,
+        actions_root,
+        std::span<const std::string_view>(kActionsStackChildren),
+        make_stack_options(std::chrono::milliseconds(1000)));
+    if (!actions_ready) {
+        log_expected_error("wait for actions stack children", actions_ready.error());
         return std::nullopt;
     }
     *bindings.undo_button_path = actions_root + "/children/undo_button";

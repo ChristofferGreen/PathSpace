@@ -6,6 +6,7 @@
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/MaterialShaderKey.hpp>
 #include <pathspace/ui/HtmlAdapter.hpp>
+#include <pathspace/ui/declarative/StackReadiness.hpp>
 
 #include <algorithm>
 #include <array>
@@ -15,6 +16,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <cstdlib>
 #include <iomanip>
 #include <filesystem>
 #include <fstream>
@@ -94,6 +96,49 @@ using SP::UI::MaterialDescriptor;
 namespace Pipeline = SP::UI::PipelineFlags;
 using SP::UI::MaterialResourceResidency;
 using SP::UI::Html::Asset;
+
+struct ScopedEnvVar {
+    explicit ScopedEnvVar(std::string name, std::string value)
+        : name_(std::move(name)) {
+        if (auto* current = std::getenv(name_.c_str())) {
+            had_previous_ = true;
+            previous_value_ = current;
+        }
+        set(value.c_str());
+    }
+
+    ScopedEnvVar(ScopedEnvVar const&) = delete;
+    ScopedEnvVar& operator=(ScopedEnvVar const&) = delete;
+
+    ~ScopedEnvVar() {
+        if (had_previous_) {
+            set(previous_value_.c_str());
+        } else {
+            unset();
+        }
+    }
+
+private:
+    void set(char const* value) {
+#if defined(_WIN32)
+        _putenv_s(name_.c_str(), value);
+#else
+        setenv(name_.c_str(), value, 1);
+#endif
+    }
+
+    void unset() {
+#if defined(_WIN32)
+        _putenv_s(name_.c_str(), "");
+#else
+        unsetenv(name_.c_str());
+#endif
+    }
+
+    std::string name_;
+    bool had_previous_{false};
+    std::string previous_value_;
+};
 
 struct BuildersFixture {
     PathSpace     space;
@@ -6533,7 +6578,7 @@ TEST_CASE("App bootstrap helper wires renderer, surface, and window defaults") {
     CHECK(storedSettings->surface.size_px.height == 360);
     CHECK(storedSettings->renderer.backend_kind == RendererKind::Software2D);
 
-    auto dirtyRects = read_value<std::vector<DirtyRectHint>>(fx.space,
+auto dirtyRects = read_value<std::vector<DirtyRectHint>>(fx.space,
                                                              std::string(result.target.getPath())
                                                              + "/hints/dirtyRects");
     REQUIRE(dirtyRects);
@@ -6543,6 +6588,89 @@ TEST_CASE("App bootstrap helper wires renderer, surface, and window defaults") {
     CHECK(hint.min_y == doctest::Approx(0.0f));
     CHECK(hint.max_x == doctest::Approx(640.0f));
     CHECK(hint.max_y == doctest::Approx(360.0f));
+}
+
+TEST_CASE("Stack readiness helper waits for declarative stack children") {
+    PathSpace space;
+    auto stack_root = std::string{"/system/widgets/runtime/test_stack"};
+    auto required = std::to_array<std::string_view>({"panel_a", "panel_b"});
+
+    std::vector<std::string> log_lines;
+    SP::UI::Declarative::StackReadinessOptions options{};
+    options.timeout = std::chrono::milliseconds{500};
+    options.poll_interval = std::chrono::milliseconds{10};
+    options.verbose = true;
+    options.log = [&](std::string_view line) {
+        log_lines.emplace_back(line);
+    };
+
+    std::thread publisher([&]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds{30});
+        REQUIRE(space.insert(stack_root + "/children/panel_a", 1).nbrValuesInserted == 1);
+        std::this_thread::sleep_for(std::chrono::milliseconds{30});
+        REQUIRE(space.insert(stack_root + "/children/panel_b", 1).nbrValuesInserted == 1);
+    });
+
+    auto ready = SP::UI::Declarative::WaitForStackChildren(space,
+                                                           stack_root,
+                                                           std::span<const std::string_view>(required),
+                                                           options);
+    publisher.join();
+    REQUIRE(ready);
+    CHECK_FALSE(log_lines.empty());
+    CHECK(std::any_of(log_lines.begin(), log_lines.end(), [](std::string const& line) {
+        return line.find("panel_a") != std::string::npos || line.find("panel_b") != std::string::npos;
+    }));
+}
+
+TEST_CASE("Stack readiness helper honors PATHSPACE_UI_DEBUG_STACK_LAYOUT env flag") {
+    ScopedEnvVar verbose{"PATHSPACE_UI_DEBUG_STACK_LAYOUT", "1"};
+    PathSpace space;
+    auto stack_root = std::string{"/system/widgets/runtime/env_stack"};
+    auto required = std::to_array<std::string_view>({"panel_env"});
+
+    std::vector<std::string> log_lines;
+    SP::UI::Declarative::StackReadinessOptions options{};
+    options.timeout = std::chrono::milliseconds{250};
+    options.poll_interval = std::chrono::milliseconds{20};
+    options.log = [&](std::string_view line) {
+        log_lines.emplace_back(line);
+    };
+
+    std::thread publisher([&]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds{50});
+        REQUIRE(space.insert(stack_root + "/children/panel_env", 1).nbrValuesInserted == 1);
+    });
+
+    auto ready = SP::UI::Declarative::WaitForStackChildren(space,
+                                                           stack_root,
+                                                           std::span<const std::string_view>(required),
+                                                           options);
+    publisher.join();
+    REQUIRE(ready);
+    CHECK_FALSE(log_lines.empty());
+    CHECK(std::any_of(log_lines.begin(), log_lines.end(), [](std::string const& line) {
+        return line.find("env_stack") != std::string::npos;
+    }));
+}
+
+TEST_CASE("Stack readiness helper reports missing children on timeout") {
+    PathSpace space;
+    auto stack_root = std::string{"/system/widgets/runtime/never_ready"};
+    auto required = std::to_array<std::string_view>({"missing_panel"});
+
+    SP::UI::Declarative::StackReadinessOptions options{};
+    options.timeout = std::chrono::milliseconds{60};
+    options.poll_interval = std::chrono::milliseconds{10};
+
+    auto ready = SP::UI::Declarative::WaitForStackChildren(space,
+                                                           stack_root,
+                                                           std::span<const std::string_view>(required),
+                                                           options);
+    REQUIRE_FALSE(ready);
+    CHECK(ready.error().code == Error::Code::Timeout);
+    REQUIRE(ready.error().message);
+    CHECK(ready.error().message->find("missing_panel") != std::string::npos);
 }
 
 } // TEST_SUITE
