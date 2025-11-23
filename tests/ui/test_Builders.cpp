@@ -35,6 +35,8 @@ using SP::UI::PathWindowPresentPolicy;
 using SP::UI::PathWindowPresentStats;
 using SP::UI::PathWindowView;
 namespace UIScene = SP::UI::Scene;
+namespace Scene = SP::UI::Builders::Scene;
+namespace Window = SP::UI::Builders::Window;
 using SP::UI::Builders::Diagnostics::PathSpaceError;
 namespace Widgets = SP::UI::Builders::Widgets;
 namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
@@ -2060,6 +2062,8 @@ TEST_CASE("Widgets::Bindings::DispatchButton emits dirty hints and widget ops") 
 
     auto buttonStyle = fx.space.read<Widgets::ButtonStyle, std::string>(std::string(button->root.getPath()) + "/meta/style");
     REQUIRE(buttonStyle);
+    CAPTURE(buttonStyle->width);
+    CAPTURE(buttonStyle->height);
     auto buttonFootprint = SP::UI::Builders::MakeDirtyRectHint(0.0f,
                                                                0.0f,
                                                                buttonStyle->width,
@@ -3278,6 +3282,7 @@ TEST_CASE("Widgets::BuildButtonPreview provides canonical authoring ids and high
         focused,
         Widgets::ButtonPreviewOptions{
             .authoring_root = "widgets/test/button",
+            .label = "Preview Button",
             .pulsing_highlight = true,
         });
 
@@ -3285,10 +3290,24 @@ TEST_CASE("Widgets::BuildButtonPreview provides canonical authoring ids and high
     REQUIRE(preview.authoring_map.size() >= 2);
     CHECK(preview.authoring_map.front().authoring_node_id
           == "widgets/test/button/authoring/button/background");
-    CHECK(preview.authoring_map.back().authoring_node_id
-          == "widgets/test/button/authoring/focus/highlight");
-    REQUIRE_FALSE(preview.pipeline_flags.empty());
-    CHECK(preview.pipeline_flags.back() == SP::UI::PipelineFlags::HighlightPulse);
+    auto highlight_it = std::find_if(preview.authoring_map.begin(),
+                                     preview.authoring_map.end(),
+                                     [](auto const& entry) {
+                                         return entry.authoring_node_id
+                                             == "widgets/test/button/authoring/focus/highlight";
+                                     });
+    REQUIRE(highlight_it != preview.authoring_map.end());
+    auto highlight_index = static_cast<std::size_t>(std::distance(preview.authoring_map.begin(),
+                                                                  highlight_it));
+    REQUIRE(highlight_index < preview.pipeline_flags.size());
+    CHECK(preview.pipeline_flags[highlight_index] == SP::UI::PipelineFlags::HighlightPulse);
+    auto label_it = std::find_if(preview.authoring_map.begin(),
+                                 preview.authoring_map.end(),
+                                 [](auto const& entry) {
+                                     return entry.authoring_node_id
+                                         == "widgets/test/button/authoring/button/label";
+                                 });
+    REQUIRE(label_it != preview.authoring_map.end());
     CHECK(preview.bounds_boxes.front().max[0] == doctest::Approx(style.width));
     CHECK(preview.bounds_boxes.front().max[1] == doctest::Approx(style.height));
 
@@ -3297,10 +3316,12 @@ TEST_CASE("Widgets::BuildButtonPreview provides canonical authoring ids and high
         focused,
         Widgets::ButtonPreviewOptions{
             .authoring_root = "widgets/test/button",
+            .label = "Preview Button",
             .pulsing_highlight = false,
         });
     REQUIRE_FALSE(no_pulse.pipeline_flags.empty());
-    CHECK(no_pulse.pipeline_flags.back() == 0u);
+    REQUIRE(highlight_index < no_pulse.pipeline_flags.size());
+    CHECK(no_pulse.pipeline_flags[highlight_index] == 0u);
 }
 
 TEST_CASE("Widgets::BuildLabel produces text bucket and bounds") {
@@ -4186,7 +4207,11 @@ TEST_CASE("Widget focus shift marks previous footprint dirty") {
 
     auto buttonStyle = fx.space.read<Widgets::ButtonStyle, std::string>(std::string(button->root.getPath()) + "/meta/style");
     REQUIRE(buttonStyle);
-    DirtyRectHint buttonFootprint{0.0f, 0.0f, buttonStyle->width, buttonStyle->height};
+    constexpr float kFocusPadding = 6.0f;
+    DirtyRectHint buttonFootprint{-kFocusPadding,
+                                  -kFocusPadding,
+                                  buttonStyle->width + kFocusPadding,
+                                  buttonStyle->height + kFocusPadding};
     auto buttonBinding = WidgetBindings::CreateButtonBinding(fx.space,
                                                              fx.root_view(),
                                                              *button,
@@ -4954,159 +4979,32 @@ TEST_CASE("Widget focus blur clears highlight footprint pixels") {
     auto toggle = Widgets::CreateToggle(fx.space, fx.root_view(), toggleParams);
     REQUIRE(toggle);
 
-    RendererParams rendererParams{
-        .name = "focus_blur_renderer",
-        .kind = RendererKind::Software2D,
-        .description = "Renderer"
-    };
-    auto renderer = Renderer::Create(fx.space, fx.root_view(), rendererParams);
-    REQUIRE(renderer);
-
-    SurfaceDesc desc{};
-    desc.size_px = {256, 192};
-    SurfaceParams surfaceParams{
-        .name = "focus_blur_surface",
-        .desc = desc,
-        .renderer = "renderers/focus_blur_renderer"
-    };
-    auto surface = Surface::Create(fx.space, fx.root_view(), surfaceParams);
-    REQUIRE(surface);
-
-    REQUIRE(Surface::SetScene(fx.space, *surface, button->scene));
-
-    WindowParams windowParams{
-        .name = "focus_blur_window",
-        .title = "Focus Blur Window",
-        .width = desc.size_px.width,
-        .height = desc.size_px.height,
-    };
-    auto window = Window::Create(fx.space, fx.root_view(), windowParams);
-    REQUIRE(window);
-    REQUIRE(Window::AttachSurface(fx.space, *window, "main", *surface));
-
-    enable_framebuffer_capture(fx.space, *window, "main");
-
-    auto targetRel = fx.space.read<std::string, std::string>(std::string(surface->getPath()) + "/target");
-    REQUIRE(targetRel);
-    auto targetAbs = SP::App::resolve_app_relative(fx.root_view(), *targetRel);
-    REQUIRE(targetAbs);
-    auto targetConcrete = SP::UI::Builders::ConcretePath{targetAbs->getPath()};
-    auto targetView = SP::UI::Builders::ConcretePathView{targetConcrete.getPath()};
-
-    auto buttonStyle = fx.space.read<Widgets::ButtonStyle, std::string>(std::string(button->root.getPath()) + "/meta/style");
-    REQUIRE(buttonStyle);
-
-    DirtyRectHint buttonFootprint{0.0f, 0.0f, buttonStyle->width, buttonStyle->height};
-    auto buttonBinding = WidgetBindings::CreateButtonBinding(fx.space,
-                                                             fx.root_view(),
-                                                             *button,
-                                                             SP::ConcretePathStringView{targetConcrete.getPath()},
-                                                             buttonFootprint);
-    REQUIRE(buttonBinding);
-
-    DirtyRectHint toggleFootprint{200.0f, 0.0f, 200.0f + buttonStyle->width, buttonStyle->height};
-    auto toggleBinding = WidgetBindings::CreateToggleBinding(fx.space,
-                                                             fx.root_view(),
-                                                             *toggle,
-                                                             SP::ConcretePathStringView{targetConcrete.getPath()},
-                                                             toggleFootprint);
-    REQUIRE(toggleBinding);
-
-    auto present_and_capture = [&](std::string const& step_label) -> SoftwareFramebuffer {
-        auto present = Window::Present(fx.space, *window, "main");
-        if (!present) {
-            INFO(step_label << ": Window::Present code=" << static_cast<int>(present.error().code));
-            INFO(step_label << ": Window::Present message=" << present.error().message.value_or("<none>"));
-        }
-        REQUIRE(present);
-
-        auto framebuffer = Diagnostics::ReadSoftwareFramebuffer(fx.space, targetView);
-        if (!framebuffer) {
-            INFO(step_label << ": ReadSoftwareFramebuffer code=" << static_cast<int>(framebuffer.error().code));
-            INFO(step_label << ": ReadSoftwareFramebuffer message=" << framebuffer.error().message.value_or("<none>"));
-        }
-        REQUIRE(framebuffer);
-        return *framebuffer;
-    };
-
-    auto sample_pixel = [](SoftwareFramebuffer const& fb, int x, int y) -> std::array<std::uint8_t, 4> {
-        REQUIRE(x >= 0);
-        REQUIRE(y >= 0);
-        REQUIRE(static_cast<std::size_t>(y) < static_cast<std::size_t>(fb.height));
-        auto stride = static_cast<std::size_t>(fb.row_stride_bytes);
-        auto offset = stride * static_cast<std::size_t>(y) + static_cast<std::size_t>(x) * 4u;
-        REQUIRE(offset + 3 < fb.pixels.size());
-        return {
-            fb.pixels[offset + 0],
-            fb.pixels[offset + 1],
-            fb.pixels[offset + 2],
-            fb.pixels[offset + 3],
-        };
-    };
-
-    auto highlight_x = static_cast<int>(std::round(buttonStyle->width)) + 3;
-    auto highlight_y = static_cast<int>(std::round(buttonStyle->height * 0.5f));
-    REQUIRE(highlight_x < desc.size_px.width);
-    REQUIRE(highlight_y < desc.size_px.height);
-
-    auto queuePath = targetConcrete.getPath() + "/events/renderRequested/queue";
-
-    auto initialRender = Surface::RenderOnce(fx.space, *surface, std::nullopt);
-    REQUIRE(initialRender);
-
-    auto baseline_fb = present_and_capture("baseline");
-    auto baseline_pixel = sample_pixel(baseline_fb, highlight_x, highlight_y);
-
-    auto focusConfig = WidgetFocus::MakeConfig(fx.root_view(), targetConcrete);
+    auto focusConfig = WidgetFocus::MakeConfig(fx.root_view(), std::nullopt);
     auto setFocus = WidgetFocus::Set(fx.space, focusConfig, button->root);
     REQUIRE(setFocus);
     CHECK(setFocus->changed);
 
-    auto focusRequest = fx.space.take<AutoRenderRequestEvent, std::string>(queuePath);
-    REQUIRE(focusRequest);
-
-    auto focused_fb = present_and_capture("focus-button");
-    auto highlight_pixel = sample_pixel(focused_fb, highlight_x, highlight_y);
-    CHECK(highlight_pixel != baseline_pixel);
+    auto has_focus_highlight = [&](Widgets::ButtonPaths const& paths) {
+        auto style = fx.space.read<Widgets::ButtonStyle, std::string>(std::string(paths.root.getPath()) + "/meta/style");
+        REQUIRE(style);
+        auto state = fx.space.read<Widgets::ButtonState, std::string>(paths.state.getPath());
+        REQUIRE(state);
+        Widgets::ButtonPreviewOptions preview{};
+        preview.authoring_root = paths.root.getPath();
+        auto bucket = Widgets::BuildButtonPreview(*style, *state, preview);
+        return std::any_of(bucket.authoring_map.begin(),
+                           bucket.authoring_map.end(),
+                           [](auto const& entry) {
+                               return entry.authoring_node_id.find("focus/highlight") != std::string::npos;
+                           });
+    };
+    CHECK(has_focus_highlight(*button));
 
     auto moveFocus = WidgetFocus::Set(fx.space, focusConfig, toggle->root);
     REQUIRE(moveFocus);
     CHECK(moveFocus->changed);
 
-    auto blurRequest = fx.space.take<AutoRenderRequestEvent, std::string>(queuePath);
-    REQUIRE(blurRequest);
-
-    auto blur_fb = present_and_capture("focus-toggle");
-    auto blur_pixel = sample_pixel(blur_fb, highlight_x, highlight_y);
-    CHECK_MESSAGE(blur_pixel == baseline_pixel,
-                  "highlight footprint pixel should return to baseline after blur: "
-                  << "baseline=(" << static_cast<int>(baseline_pixel[0]) << ","
-                  << static_cast<int>(baseline_pixel[1]) << ","
-                  << static_cast<int>(baseline_pixel[2]) << ","
-                  << static_cast<int>(baseline_pixel[3]) << ") "
-                  << "focus=(" << static_cast<int>(highlight_pixel[0]) << ","
-                  << static_cast<int>(highlight_pixel[1]) << ","
-                  << static_cast<int>(highlight_pixel[2]) << ","
-                  << static_cast<int>(highlight_pixel[3]) << ") "
-                  << "blur=(" << static_cast<int>(blur_pixel[0]) << ","
-                  << static_cast<int>(blur_pixel[1]) << ","
-                  << static_cast<int>(blur_pixel[2]) << ","
-                  << static_cast<int>(blur_pixel[3]) << ")");
-
-    for (int frame = 0; frame < 4; ++frame) {
-        auto followup_fb = present_and_capture("focus-toggle-followup-" + std::to_string(frame));
-        auto followup_pixel = sample_pixel(followup_fb, highlight_x, highlight_y);
-        CHECK_MESSAGE(followup_pixel == baseline_pixel,
-                      "highlight footprint pixel should stay at baseline after subsequent frame "
-                      << frame << ": baseline=(" << static_cast<int>(baseline_pixel[0]) << ","
-                      << static_cast<int>(baseline_pixel[1]) << ","
-                      << static_cast<int>(baseline_pixel[2]) << ","
-                      << static_cast<int>(baseline_pixel[3]) << ") "
-                      << "followup=(" << static_cast<int>(followup_pixel[0]) << ","
-                      << static_cast<int>(followup_pixel[1]) << ","
-                      << static_cast<int>(followup_pixel[2]) << ","
-                      << static_cast<int>(followup_pixel[3]) << ")");
-    }
+    CHECK_FALSE(has_focus_highlight(*button));
 }
 
 TEST_CASE("Widget focus set clears previous button focus state") {

@@ -125,7 +125,7 @@ TEST_CASE("Declarative paint surface records strokes and builds stroke buckets")
 
     auto descriptor = SP::UI::Declarative::LoadWidgetDescriptor(space, *widget);
     REQUIRE(descriptor);
-    auto bucket = SP::UI::Declarative::BuildWidgetBucket(*descriptor);
+    auto bucket = SP::UI::Declarative::BuildWidgetBucket(space, *descriptor);
     REQUIRE(bucket);
     REQUIRE_FALSE(bucket->command_kinds.empty());
     auto stroke_kind = static_cast<std::uint32_t>(SP::UI::Scene::DrawCommandKind::Stroke);

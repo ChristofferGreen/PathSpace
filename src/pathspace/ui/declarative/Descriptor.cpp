@@ -26,6 +26,8 @@ namespace {
 
 namespace Detail = SP::UI::Builders::Detail;
 namespace BuilderWidgets = SP::UI::Builders::Widgets;
+namespace BuilderScene = SP::UI::Builders::Scene;
+namespace SceneData = SP::UI::Scene;
 namespace PaintRuntime = SP::UI::Declarative::PaintRuntime;
 namespace DescriptorDetail = SP::UI::Declarative::DescriptorDetail;
 
@@ -107,7 +109,33 @@ auto append_rect_drawable(SP::UI::Scene::DrawableBucketSnapshot& bucket,
        generation});
 }
 
+auto load_stack_child_bucket(PathSpace& space,
+                             BuilderWidgets::StackChildSpec const& child)
+    -> SP::Expected<SP::UI::Scene::DrawableBucketSnapshot> {
+    if (child.scene_path.empty()) {
+        return std::unexpected(DescriptorDetail::MakeDescriptorError(
+            "Stack child missing scene path", SP::Error::Code::InvalidPath));
+    }
+
+    SP::UI::Builders::ScenePath scene_path{child.scene_path};
+    auto revision = BuilderScene::ReadCurrentRevision(space, scene_path);
+    if (!revision) {
+        return std::unexpected(revision.error());
+    }
+
+    auto format_revision = [](std::uint64_t value) {
+        std::ostringstream oss;
+        oss << std::setw(16) << std::setfill('0') << value;
+        return oss.str();
+    };
+
+    auto revision_base = std::string(scene_path.getPath())
+                         + "/builds/" + format_revision(revision->revision);
+    return SP::UI::Scene::SceneSnapshotBuilder::decode_bucket(space, revision_base);
+}
+
 struct BucketVisitor {
+    PathSpace& space;
     DescriptorBucketOptions options;
     std::string authoring_root;
 
@@ -115,6 +143,7 @@ struct BucketVisitor {
         -> SP::Expected<SP::UI::Scene::DrawableBucketSnapshot> {
         BuilderWidgets::ButtonPreviewOptions preview{};
         preview.authoring_root = authoring_root;
+        preview.label = descriptor.label;
         preview.pulsing_highlight = options.pulsing_highlight;
         return BuilderWidgets::BuildButtonPreview(descriptor.style, descriptor.state, preview);
     }
@@ -181,50 +210,50 @@ struct BucketVisitor {
 
     auto operator()(StackDescriptor const& descriptor) const
         -> SP::Expected<SP::UI::Scene::DrawableBucketSnapshot> {
-        BuilderWidgets::StackPreviewOptions preview{};
-        preview.authoring_root = authoring_root.empty() ? std::string{"widgets/stack"} : authoring_root;
-        auto preview_result = BuilderWidgets::BuildStackPreview(descriptor.style,
-                                                                descriptor.layout,
-                                                                preview);
-        auto bucket = std::move(preview_result.bucket);
-
-        std::string active_id = descriptor.active_panel;
-        for (auto const& panel : descriptor.panels) {
-            if (panel.visible) {
-                active_id = panel.id;
-                break;
-            }
+        SP::UI::Scene::DrawableBucketSnapshot bucket{};
+        if (descriptor.layout.children.empty()) {
+            return bucket;
         }
 
-        if (!active_id.empty()) {
-            auto const& computed_children = preview_result.layout.state.children;
-            auto const& child_bounds = preview_result.layout.child_bounds;
-            if (!computed_children.empty() && computed_children.size() == child_bounds.size()) {
-                for (std::size_t index = 0; index < computed_children.size(); ++index) {
-                    if (computed_children[index].id != active_id) {
-                        continue;
-                    }
-                    auto const& rect = child_bounds[index];
-                    auto highlight_color = std::array<float, 4>{0.18f, 0.55f, 0.95f, 0.35f};
-                    std::string highlight_suffix = std::string{"stack/active/"} + active_id;
-                    std::string highlight_authoring = preview.authoring_root.empty()
-                        ? highlight_suffix
-                        : preview.authoring_root + "/" + highlight_suffix;
-                    auto drawable_id = std::hash<std::string>{}(highlight_authoring) ^ 0x5AFEC0DEull;
-                    append_rect_drawable(bucket,
-                                         drawable_id,
-                                         rect.min_x,
-                                         rect.min_y,
-                                         rect.max_x,
-                                         rect.max_y,
-                                         highlight_color,
-                                         1.0f,
-                                         preview.authoring_root,
-                                         highlight_suffix,
-                                         0);
-                    break;
+        auto spec_for_id = [&](std::string const& id) -> BuilderWidgets::StackChildSpec const* {
+            for (auto const& spec : descriptor.children) {
+                if (spec.id == id) {
+                    return &spec;
                 }
             }
+            return nullptr;
+        };
+
+        auto panel_visible = [&](std::string const& id) -> bool {
+            if (descriptor.panels.empty()) {
+                if (descriptor.active_panel.empty()) {
+                    return true;
+                }
+                return descriptor.active_panel == id;
+            }
+            for (auto const& panel : descriptor.panels) {
+                if (panel.id == id) {
+                    return panel.visible;
+                }
+            }
+            return false;
+        };
+
+        for (auto const& child : descriptor.layout.children) {
+            if (!panel_visible(child.id)) {
+                continue;
+            }
+            auto spec = spec_for_id(child.id);
+            if (!spec) {
+                continue;
+            }
+            auto child_bucket = load_stack_child_bucket(space, *spec);
+            if (!child_bucket) {
+                return std::unexpected(child_bucket.error());
+            }
+            auto translated = *child_bucket;
+            Detail::translate_bucket(translated, child.x, child.y);
+            Detail::append_bucket(bucket, translated);
         }
 
         return bucket;
@@ -486,14 +515,15 @@ auto LoadWidgetDescriptor(PathSpace& space,
     return descriptor;
 }
 
-auto BuildWidgetBucket(WidgetDescriptor const& descriptor,
+auto BuildWidgetBucket(PathSpace& space,
+                       WidgetDescriptor const& descriptor,
                        DescriptorBucketOptions const& options)
     -> SP::Expected<SP::UI::Scene::DrawableBucketSnapshot> {
     BucketVisitor visitor{
+        .space = space,
         .options = options,
         .authoring_root = descriptor.widget.getPath(),
     };
     return std::visit(visitor, descriptor.data);
 }
-
 } // namespace SP::UI::Declarative

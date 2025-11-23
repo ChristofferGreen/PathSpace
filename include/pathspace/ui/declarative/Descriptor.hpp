@@ -112,7 +112,8 @@ struct DescriptorBucketOptions {
                                         SP::UI::Builders::WidgetPath const& widget)
     -> SP::Expected<WidgetDescriptor>;
 
-[[nodiscard]] auto BuildWidgetBucket(WidgetDescriptor const& descriptor,
+[[nodiscard]] auto BuildWidgetBucket(PathSpace& space,
+                                     WidgetDescriptor const& descriptor,
                                      DescriptorBucketOptions const& options = {})
     -> SP::Expected<SP::UI::Scene::DrawableBucketSnapshot>;
 

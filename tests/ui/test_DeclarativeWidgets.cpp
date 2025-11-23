@@ -133,7 +133,7 @@ TEST_CASE("WidgetDescriptor reproduces button bucket") {
     auto descriptor = LoadWidgetDescriptor(fx.space, *button);
     REQUIRE(descriptor.has_value());
 
-    auto bucket = BuildWidgetBucket(*descriptor);
+    auto bucket = BuildWidgetBucket(fx.space, *descriptor);
     REQUIRE(bucket.has_value());
 
     auto style = fx.space.read<WidgetsNS::ButtonStyle, std::string>((*button).getPath()
@@ -144,6 +144,7 @@ TEST_CASE("WidgetDescriptor reproduces button bucket") {
     REQUIRE(state.has_value());
     WidgetsNS::ButtonPreviewOptions preview{};
     preview.authoring_root = button->getPath();
+    preview.label = "Descriptor";
     auto reference = WidgetsNS::BuildButtonPreview(*style, *state, preview);
 
     CHECK(bucket->drawable_ids == reference.drawable_ids);
@@ -162,7 +163,7 @@ TEST_CASE("WidgetDescriptor reproduces slider bucket") {
 
     auto descriptor = LoadWidgetDescriptor(fx.space, *slider);
     REQUIRE(descriptor.has_value());
-    auto bucket = BuildWidgetBucket(*descriptor);
+    auto bucket = BuildWidgetBucket(fx.space, *descriptor);
     REQUIRE(bucket.has_value());
 
     auto style = fx.space.read<WidgetsNS::SliderStyle, std::string>((*slider).getPath()
@@ -192,7 +193,7 @@ TEST_CASE("WidgetDescriptor reproduces list bucket") {
 
     auto descriptor = LoadWidgetDescriptor(fx.space, *list);
     REQUIRE(descriptor.has_value());
-    auto bucket = BuildWidgetBucket(*descriptor);
+    auto bucket = BuildWidgetBucket(fx.space, *descriptor);
     REQUIRE(bucket.has_value());
 
     auto style = fx.space.read<WidgetsNS::ListStyle, std::string>((*list).getPath()
@@ -311,7 +312,7 @@ TEST_CASE("WidgetDescriptor reproduces input field bucket with theme defaults") 
 
     auto descriptor = LoadWidgetDescriptor(fx.space, *input);
     REQUIRE(descriptor.has_value());
-    auto bucket = BuildWidgetBucket(*descriptor);
+    auto bucket = BuildWidgetBucket(fx.space, *descriptor);
     REQUIRE(bucket.has_value());
 
     auto const& data = std::get<InputFieldDescriptor>(descriptor->data);
@@ -349,7 +350,7 @@ TEST_CASE("WidgetDescriptor publishes stack layout metadata and preview bucket")
     CHECK_FALSE(data.panels.back().visible);
     CHECK_EQ(data.style.axis, WidgetsNS::StackAxis::Vertical);
     CHECK_EQ(data.layout.children.size(), 2U);
-    auto bucket = BuildWidgetBucket(*descriptor);
+    auto bucket = BuildWidgetBucket(fx.space, *descriptor);
     REQUIRE(bucket.has_value());
     CHECK_FALSE(bucket->drawable_ids.empty());
 }
@@ -404,7 +405,7 @@ TEST_CASE("PaintSurface descriptor captures brush metadata") {
     CHECK_EQ(data.brush_color[2], doctest::Approx(0.1f));
     CHECK_EQ(data.brush_color[3], doctest::Approx(1.0f));
 
-    auto bucket = BuildWidgetBucket(*descriptor);
+    auto bucket = BuildWidgetBucket(fx.space, *descriptor);
     REQUIRE(bucket.has_value());
     CHECK_FALSE(bucket->drawable_ids.empty());
 }
@@ -417,7 +418,7 @@ TEST_CASE("PaintSurface bucket includes buffer background before strokes") {
 
     auto descriptor = LoadWidgetDescriptor(fx.space, *paint);
     REQUIRE(descriptor.has_value());
-    auto bucket = BuildWidgetBucket(*descriptor);
+    auto bucket = BuildWidgetBucket(fx.space, *descriptor);
     REQUIRE(bucket.has_value());
     REQUIRE_FALSE(bucket->drawable_ids.empty());
     REQUIRE_FALSE(bucket->command_kinds.empty());
