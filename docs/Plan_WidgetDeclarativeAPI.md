@@ -227,6 +227,7 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - ✅ (Nov 14, 2025) Added `SP::System::LaunchStandard`, `SP::App::Create`, `SP::Window::Create`, and `SP::Scene::Create` under `include/pathspace/ui/declarative/Runtime.hpp`. The helpers seed `/system/themes`, normalize `/system/applications/<app>`, and wire `windows/<id>/views/<view>` to `scenes/<scene>` under the declarative schema so later phases can assume the canonical nodes exist.
    - ✅ (Nov 14, 2025) Runtime now starts the `/system/widgets/runtime/input` pump (draining `widgets/<widget>/ops/inbox/queue` into `ops/actions/...`), tracks health metrics, and auto-attaches a default renderer/surface binding so every window view has a populated `surface`/`renderer` pair plus `structure/window/<id>/{surface,renderer,present}` mirrors. Scene + window helpers also stamp the active theme onto `style/theme`.
    - ✅ (November 19, 2025) `Window::Create` now seeds renderer target settings the first time a declarative window is bound so freshly created apps can resolve presenter bootstraps without running the legacy renderer pipeline once. Missing `targets/<name>/settings` nodes are populated with the window dimensions, default clear color, and software backend metadata.
+   - ✅ (November 23, 2025) Added the umbrella header `<pathspace/system/Standard.hpp>` so samples can include the declarative bootstrap via the canonical path, and moved the identifier sanitizer helpers under `SP::System::detail` to avoid leaking generic `SP::detail` symbols.
 1. **API surface**
    - ✅ (November 14, 2025) Declarative helpers now ship in `include/pathspace/ui/declarative/Widgets.hpp`. `Widgets::Mount` consumes `WidgetFragment`s, every widget exposes `Create` + `Fragment` helpers, and update utilities (`Button::SetLabel`, `Slider::SetValue`, `List::SetItems`, `Label::SetText`, etc.) mark `render/dirty` when state changes. Removal is currently logical (`state/removed = true`) so runtime consumers can detach widgets without blowing away history; the `Move` helper stubs out with `Error::UnimplementedFeature` and is tracked below so we can preserve arbitrary subtree state when reparenting. `PaintSurface::Create` seeds brush/gpu metadata and registers draw handlers using the new registry.
    - ✅ (November 15, 2025) `Widgets::Move` now relocates existing widget subtrees by remounting the trie nodes, re-binding event handlers, and marking both the widget and its parents dirty so the lifecycle worker rebuilds buckets on the next pass. Moving between containers no longer requires recreating widgets or re-registering handlers.
@@ -297,6 +298,7 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - Add parity tests comparing declarative buckets vs. legacy.
    - Cover focus navigation (including list/tree selections).
    - Extend fuzz harnesses for random widget trees and callback firing.
+   - ✅ (November 23, 2025) Reworked the “Widget focus blur clears highlight footprint pixels” UITest to assert on declarative bucket metadata instead of framebuffer samples so we can prove focus highlight geometry toggles without relying on brittle screenshot coordinates.
 3. **Docs**
    - Document the workflow (`docs/WidgetDeclarativeAPI/md`).
    - Update onboarding/checklists and provide migration notes.
@@ -328,6 +330,7 @@ Keep this journal in sync as we chip away at the serialization issue so we can p
    - Promote declarative API in high-level docs; mark legacy APIs deprecated.
 4. **Consumer migration**
    - Port internal tools/examples; offer migration aids.
+   - ✅ (November 23, 2025) `examples/paint_example_new.cpp` mirrors the doc sketch (LaunchStandard → App::Create → Window::Create → Button::Create → App::RunUI) and wires screenshot capture through `ScreenshotService`, so we can sanity-check the minimalist API with `--screenshot` before touching the heavier paint demo.
 
 ### Phase 4 – Deprecation & Removal
 1. **Deprecation notice**

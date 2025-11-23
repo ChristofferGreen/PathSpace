@@ -699,6 +699,7 @@ auto UpdateToggleState(PathSpace& space,
 
 struct ButtonPreviewOptions {
     std::string authoring_root;
+    std::string label;
     bool pulsing_highlight = true;
 };
 

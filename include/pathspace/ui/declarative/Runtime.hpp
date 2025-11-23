@@ -9,9 +9,31 @@
 #include <pathspace/ui/declarative/PaintSurfaceUploader.hpp>
 #include <pathspace/ui/declarative/WidgetEventTrellis.hpp>
 
+#include <cctype>
 #include <optional>
 #include <string>
 #include <string_view>
+
+namespace SP::System::detail {
+inline auto sanitize_identifier(std::string_view raw, std::string_view fallback) -> std::string {
+    if (raw.empty()) {
+        raw = fallback;
+    }
+    std::string out;
+    out.reserve(raw.size());
+    for (char ch : raw) {
+        if (std::isalnum(static_cast<unsigned char>(ch)) || ch == '-' || ch == '_') {
+            out.push_back(ch);
+        } else if (ch == ' ' || ch == '.') {
+            out.push_back('_');
+        }
+    }
+    if (out.empty()) {
+        out.assign(fallback.begin(), fallback.end());
+    }
+    return out;
+}
+} // namespace SP::System::detail
 
 namespace SP::System {
 
@@ -87,9 +109,31 @@ struct CreateResult {
                           CreateOptions const& options = {}) -> SP::Expected<CreateResult>;
 
 [[nodiscard]] inline auto Create(PathSpace& space,
+                                 SP::App::AppRootPathView app_root,
+                                 std::string_view title,
+                                 int width = 1280,
+                                 int height = 720) -> SP::Expected<CreateResult> {
+    CreateOptions options{};
+    options.title = std::string(title);
+    options.name = SP::System::detail::sanitize_identifier(title, "window");
+    options.width = width;
+    options.height = height;
+    options.visible = true;
+    return Create(space, app_root, options);
+}
+
+[[nodiscard]] inline auto Create(PathSpace& space,
                                  SP::App::AppRootPath const& app_root,
                                  CreateOptions const& options = {}) -> SP::Expected<CreateResult> {
     return Create(space, SP::App::AppRootPathView{app_root.getPath()}, options);
+}
+
+[[nodiscard]] inline auto Create(PathSpace& space,
+                                 SP::App::AppRootPath const& app_root,
+                                 std::string_view title,
+                                 int width = 1280,
+                                 int height = 720) -> SP::Expected<CreateResult> {
+    return Create(space, SP::App::AppRootPathView{app_root.getPath()}, title, width, height);
 }
 
 } // namespace SP::Window
@@ -124,3 +168,22 @@ struct CreateResult {
                             SP::UI::Builders::ScenePath const& scene_path) -> SP::Expected<void>;
 
 } // namespace SP::Scene
+
+namespace SP::App {
+
+struct RunOptions {
+    int window_width = 1280;
+    int window_height = 720;
+    std::string window_title;
+};
+
+[[nodiscard]] auto RunUI(PathSpace& space,
+                         SP::Scene::CreateResult const& scene,
+                         SP::Window::CreateResult const& window,
+                         RunOptions const& options = {}) -> SP::Expected<void>;
+
+[[nodiscard]] auto RunUI(PathSpace& space,
+                         SP::UI::Builders::ScenePath const& scene_path,
+                         RunOptions const& options = {}) -> SP::Expected<void>;
+
+} // namespace SP::App

@@ -651,6 +651,7 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
     fi
     if [[ "$ENABLE_METAL_TESTS" -eq 1 ]]; then
       TEST_ENV_FLAGS+=("--env" "PATHSPACE_ENABLE_METAL_UPLOADS=1")
+      TEST_ENV_FLAGS+=("--env" "PATHSPACE_UI_METAL=ON")
     fi
     if [[ "$SANITIZER" == "asan" ]]; then
       export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=1:halt_on_error=1:strict_init_order=1:color=always}"
@@ -881,13 +882,14 @@ PY
       fi
     fi
 
-    paint_screenshot_script="$ROOT_DIR/scripts/check_paint_screenshot.py"
+    paint_screenshot_cli="$BUILD_DIR/pathspace_screenshot_cli"
     paint_manifest="$ROOT_DIR/docs/images/paint_example_baselines.json"
-    if command -v python3 >/dev/null 2>&1 && [[ -f "$paint_screenshot_script" ]]; then
-      add_test_command "PaintExampleScreenshot" python3 "$paint_screenshot_script" --build-dir "$BUILD_DIR" --manifest "$paint_manifest"
-      add_test_command "PaintExampleScreenshot720" python3 "$paint_screenshot_script" --build-dir "$BUILD_DIR" --baseline "$ROOT_DIR/docs/images/paint_example_720_baseline.png" --height 720 --tag paint_720 --manifest "$paint_manifest"
+    if [[ -x "$paint_screenshot_cli" ]]; then
+      add_test_command "PaintExampleScreenshot" "$paint_screenshot_cli" --manifest "$paint_manifest" --tag 1280x800
+      add_test_command "PaintExampleScreenshot720" "$paint_screenshot_cli" --manifest "$paint_manifest" --tag paint_720
+      add_test_command "PaintExampleScreenshot600" "$paint_screenshot_cli" --manifest "$paint_manifest" --tag paint_600
     else
-      info "PaintExampleScreenshot harness unavailable; skipping (python3 or script missing)."
+      info "pathspace_screenshot_cli missing; skipping PaintExampleScreenshot harness."
     fi
 
     if [[ ${#TEST_LABELS[@]} -eq 0 ]]; then

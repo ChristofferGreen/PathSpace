@@ -4,7 +4,7 @@
 #include <pathspace/ui/declarative/Widgets.hpp>
 
 #include <algorithm>
-#include <charconv>
+#include <pathspace/examples/cli/ExampleCli.hpp>
 #include <cstdlib>
 #include <system_error>
 #include <iomanip>
@@ -29,35 +29,16 @@ struct CommandLineOptions {
 
 auto parse_options(int argc, char** argv) -> CommandLineOptions {
     CommandLineOptions opts;
-    for (int i = 1; i < argc; ++i) {
-        std::string_view arg{argv[i]};
-        if (arg == "--headless") {
-            opts.headless = true;
-            continue;
-        }
-        auto parse_dimension = [&](std::string_view prefix, int& target) {
-            if (!arg.starts_with(prefix)) {
-                return false;
-            }
-            auto value_view = arg.substr(prefix.size());
-            if (value_view.empty()) {
-                return true;
-            }
-            int value = target;
-            auto result = std::from_chars(value_view.begin(), value_view.end(), value);
-            if (result.ec == std::errc{}) {
-                target = value;
-            }
-            return true;
-        };
-        if (parse_dimension("--width=", opts.width)) {
-            continue;
-        }
-        if (parse_dimension("--height=", opts.height)) {
-            continue;
-        }
-        std::cerr << "widgets_example: ignoring unknown argument '" << arg << "'\n";
-    }
+    using ExampleCli = SP::Examples::CLI::ExampleCli;
+    ExampleCli cli;
+    cli.set_program_name("widgets_example");
+
+    cli.add_flag("--headless", {.on_set = [&] { opts.headless = true; }});
+    cli.add_int("--width", {.on_value = [&](int value) { opts.width = value; }});
+    cli.add_int("--height", {.on_value = [&](int value) { opts.height = value; }});
+
+    (void)cli.parse(argc, argv);
+
     opts.width = std::max(640, opts.width);
     opts.height = std::max(480, opts.height);
     return opts;

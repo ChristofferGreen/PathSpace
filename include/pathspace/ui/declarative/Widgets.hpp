@@ -11,6 +11,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -219,6 +220,21 @@ auto Create(PathSpace& space,
             std::string_view name,
             Args args = {},
             MountOptions const& options = {}) -> SP::Expected<SP::UI::Builders::WidgetPath>;
+
+template <typename Label,
+          typename = std::enable_if_t<std::is_convertible_v<Label, std::string_view>>>
+inline auto Create(PathSpace& space,
+                   SP::App::ConcretePathView parent,
+                   std::string_view name,
+                   Label&& label,
+                   ButtonHandler handler = {}) -> SP::Expected<SP::UI::Builders::WidgetPath> {
+    Args args{};
+    args.label = std::string(std::string_view{label});
+    if (handler) {
+        args.on_press = std::move(handler);
+    }
+    return Create(space, parent, name, std::move(args));
+}
 auto SetLabel(PathSpace& space, SP::UI::Builders::WidgetPath const& widget, std::string_view label)
     -> SP::Expected<void>;
 auto SetEnabled(PathSpace& space, SP::UI::Builders::WidgetPath const& widget, bool enabled)
@@ -285,6 +301,17 @@ auto Create(PathSpace& space,
             std::string_view name,
             Args args,
             MountOptions const& options = {}) -> SP::Expected<SP::UI::Builders::WidgetPath>;
+
+template <typename Text,
+          typename = std::enable_if_t<std::is_convertible_v<Text, std::string_view>>>
+inline auto Create(PathSpace& space,
+                   SP::App::ConcretePathView parent,
+                   std::string_view name,
+                   Text&& text) -> SP::Expected<SP::UI::Builders::WidgetPath> {
+    Args args{};
+    args.text = std::string(std::string_view{text});
+    return Create(space, parent, name, std::move(args));
+}
 auto SetText(PathSpace& space, SP::UI::Builders::WidgetPath const& widget, std::string_view text)
     -> SP::Expected<void>;
 

@@ -1,39 +1,39 @@
 {
   "schema_version": 1,
-  "manifest_revision": 3,
+  "manifest_revision": 7,
   "captures": {
     "1280x800": {
       "path": "docs/images/paint_example_baseline.png",
       "width": 1280,
       "height": 800,
       "renderer": "metal_present",
-      "sha256": "26cf939a3c2fe6d29bdd9dfe4093e3d91e609b2c04c3d982768c79b361b4ad0b",
-      "captured_at": "2025-11-21T20:37:11.290690Z",
-      "commit": "7618de208782a1e21d9f173be03633c634996444",
-      "notes": "controls layout baseline refresh after clean build",
-      "revision": 3
+      "sha256": "18f6ae86494423a89569fa9ac34e99997c60545f73abaa64a1bfd5b189b98191",
+      "captured_at": "2025-11-22T18:45:21.995664Z",
+      "commit": "70772f135103f6e71d11353c9aac62a6b324cfd7",
+      "notes": "controls seam alignment",
+      "revision": 7
     },
     "paint_720": {
       "path": "docs/images/paint_example_720_baseline.png",
       "width": 1280,
       "height": 720,
       "renderer": "metal_present",
-      "sha256": "93a573e973ff3585387080966e667274f36ad32863770867ae05d2be7a2203b8",
-      "captured_at": "2025-11-21T20:37:11.597521Z",
-      "commit": "7618de208782a1e21d9f173be03633c634996444",
-      "notes": "controls layout baseline refresh after clean build",
-      "revision": 3
+      "sha256": "712aab4939b6a7a77978369aef83d191e488980b9d05b582c37eabbe0949c48c",
+      "captured_at": "2025-11-22T18:45:22.298120Z",
+      "commit": "70772f135103f6e71d11353c9aac62a6b324cfd7",
+      "notes": "controls seam alignment",
+      "revision": 7
     },
     "paint_600": {
       "path": "docs/images/paint_example_600_baseline.png",
       "width": 1024,
       "height": 600,
       "renderer": "metal_present",
-      "sha256": "6e754d64d18c5c79f490b157bf44238b8cfd14929c0891f837eeacfe0d51715d",
-      "captured_at": "2025-11-21T20:37:11.907141Z",
-      "commit": "7618de208782a1e21d9f173be03633c634996444",
-      "notes": "controls layout baseline refresh after clean build",
-      "revision": 3
+      "sha256": "28de2c8aa7e4853e2a5865e62b6d2c55a427e3be8f948d510601c904c91bb778",
+      "captured_at": "2025-11-22T18:45:22.707768Z",
+      "commit": "70772f135103f6e71d11353c9aac62a6b324cfd7",
+      "notes": "controls seam alignment",
+      "revision": 7
     }
   }
 }

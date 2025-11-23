@@ -96,9 +96,32 @@ inline auto button_background_color(Widgets::ButtonStyle const& style,
     return base;
 }
 
+inline auto button_label_color(Widgets::ButtonStyle const& style,
+                        Widgets::ButtonState const& state) -> std::array<float, 4> {
+    auto color = style.text_color;
+    if (!state.enabled) {
+        return scale_alpha(desaturate_color(color, 0.45f), 0.6f);
+    }
+    if (state.pressed) {
+        return darken_color(color, 0.1f);
+    }
+    if (state.hovered) {
+        return lighten_color(color, 0.08f);
+    }
+    return color;
+}
+
+inline auto sanitize_button_typography(Widgets::TypographyStyle style) -> Widgets::TypographyStyle {
+    style.font_size = std::max(style.font_size, 1.0f);
+    style.line_height = std::max(style.line_height, style.font_size);
+    style.letter_spacing = std::max(style.letter_spacing, 0.0f);
+    return style;
+}
+
 inline auto build_button_bucket(Widgets::ButtonStyle const& style,
                          Widgets::ButtonState const& state,
                          std::string_view authoring_root,
+                         std::string_view label,
                          bool pulsing_highlight = false) -> SceneData::DrawableBucketSnapshot {
     float width = std::max(style.width, 1.0f);
     float height = std::max(style.height, 1.0f);
@@ -115,19 +138,43 @@ inline auto build_button_bucket(Widgets::ButtonStyle const& style,
         auto highlight_color = lighten_color(config.color, 0.35f);
         append_focus_highlight(bucket, width, height, authoring_root, pulsing_highlight, highlight_color);
     }
+
+    if (!label.empty()) {
+        auto typography = sanitize_button_typography(style.typography);
+        float text_width = Text::MeasureTextWidth(label, typography);
+        float origin_x = (width - text_width) * 0.5f;
+        origin_x = std::max(origin_x, 0.0f);
+        float text_height = typography.line_height;
+        float baseline_y = (height - text_height) * 0.5f;
+        baseline_y = std::max(baseline_y, 0.0f);
+        auto label_bucket = Text::BuildTextBucket(label,
+                                                  origin_x,
+                                                  baseline_y,
+                                                  typography,
+                                                  button_label_color(style, state),
+                                                  0xB17B1001ull,
+                                                  make_widget_authoring_id(authoring_root, "button/label"),
+                                                  0.5f);
+        if (label_bucket) {
+            append_bucket(bucket, label_bucket->bucket);
+        }
+    }
+
     return bucket;
 }
 
 inline auto build_button_bucket(Widgets::ButtonStyle const& style,
                          Widgets::ButtonState const& state,
+                         std::string_view label = {},
                          bool pulsing_highlight = false) -> SceneData::DrawableBucketSnapshot {
-    return build_button_bucket(style, state, {}, pulsing_highlight);
+    return build_button_bucket(style, state, {}, label, pulsing_highlight);
 }
 
 inline auto publish_button_state_scenes(PathSpace& space,
                                  AppRootPathView appRoot,
                                  std::string_view name,
-                                 Widgets::ButtonStyle const& style) -> SP::Expected<Widgets::WidgetStateScenes> {
+                                 Widgets::ButtonStyle const& style,
+                                 std::string_view label) -> SP::Expected<Widgets::WidgetStateScenes> {
     auto widgetRoot = combine_relative(appRoot, std::string("widgets/") + std::string(name));
     if (!widgetRoot) {
         return std::unexpected(widgetRoot.error());
@@ -157,7 +204,7 @@ inline auto publish_button_state_scenes(PathSpace& space,
         if (!scenePath) {
             return std::unexpected(scenePath.error());
         }
-        auto bucket = build_button_bucket(style, variant.button_state, authoring_root);
+        auto bucket = build_button_bucket(style, variant.button_state, authoring_root, label);
         if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
             return std::unexpected(status.error());
         }

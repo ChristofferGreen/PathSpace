@@ -294,12 +294,12 @@ auto CreateButton(PathSpace& space,
         return std::unexpected(scenePath.error());
     }
 
-    auto stateScenes = publish_button_state_scenes(space, appRoot, params.name, style);
+    auto stateScenes = publish_button_state_scenes(space, appRoot, params.name, style, params.label);
     if (!stateScenes) {
         return std::unexpected(stateScenes.error());
     }
 
-    auto bucket = build_button_bucket(style, defaultState, widgetRoot->getPath());
+    auto bucket = build_button_bucket(style, defaultState, widgetRoot->getPath(), params.label);
     if (auto status = publish_scene_snapshot(space, appRoot, *scenePath, bucket); !status) {
         return std::unexpected(status.error());
     }
@@ -732,6 +732,17 @@ auto UpdateButtonState(PathSpace& space,
     if (!styleValue) {
         return std::unexpected(styleValue.error());
     }
+    auto labelValue = space.read<std::string, std::string>(paths.label.getPath());
+    std::string label_text;
+    if (labelValue) {
+        label_text = *labelValue;
+    } else {
+        auto const& err = labelValue.error();
+        if (err.code != SP::Error::Code::NoSuchPath
+            && err.code != SP::Error::Code::NoObjectFound) {
+            return std::unexpected(err);
+        }
+    }
     auto appRootPath = derive_app_root_for(ConcretePathView{paths.root.getPath()});
     if (!appRootPath) {
         return std::unexpected(appRootPath.error());
@@ -741,7 +752,7 @@ auto UpdateButtonState(PathSpace& space,
     if (!pulsing) {
         return std::unexpected(pulsing.error());
     }
-    auto bucket = build_button_bucket(*styleValue, new_state, paths.root.getPath(), *pulsing);
+    auto bucket = build_button_bucket(*styleValue, new_state, paths.root.getPath(), label_text, *pulsing);
     if (auto status = publish_scene_snapshot(space, appRootView, paths.scene, bucket); !status) {
         return std::unexpected(status.error());
     }
@@ -893,6 +904,7 @@ auto BuildButtonPreview(Widgets::ButtonStyle const& style,
     return build_button_bucket(style,
                                state,
                                std::string_view{options.authoring_root},
+                               std::string_view{options.label},
                                options.pulsing_highlight);
 }
 

@@ -96,6 +96,133 @@ inline auto make_identity_transform() -> SceneData::Transform {
     return transform;
 }
 
+template <typename Cmd>
+inline auto read_command(std::vector<std::uint8_t> const& payload, std::size_t offset) -> Cmd {
+    Cmd cmd{};
+    std::memcpy(&cmd, payload.data() + offset, sizeof(Cmd));
+    return cmd;
+}
+
+template <typename Cmd>
+inline auto write_command(std::vector<std::uint8_t>& payload, std::size_t offset, Cmd const& cmd) -> void {
+    std::memcpy(payload.data() + offset, &cmd, sizeof(Cmd));
+}
+
+inline auto translate_bucket(SceneData::DrawableBucketSnapshot& bucket,
+                             float dx,
+                             float dy) -> void {
+    for (auto& sphere : bucket.bounds_spheres) {
+        sphere.center[0] += dx;
+        sphere.center[1] += dy;
+    }
+    for (auto& box : bucket.bounds_boxes) {
+        box.min[0] += dx;
+        box.max[0] += dx;
+        box.min[1] += dy;
+        box.max[1] += dy;
+    }
+
+    std::size_t offset = 0;
+    for (auto kind_value : bucket.command_kinds) {
+        auto kind = static_cast<SceneData::DrawCommandKind>(kind_value);
+        switch (kind) {
+        case SceneData::DrawCommandKind::Rect: {
+            auto cmd = read_command<SceneData::RectCommand>(bucket.command_payload, offset);
+            cmd.min_x += dx;
+            cmd.max_x += dx;
+            cmd.min_y += dy;
+            cmd.max_y += dy;
+            write_command(bucket.command_payload, offset, cmd);
+            break;
+        }
+        case SceneData::DrawCommandKind::RoundedRect: {
+            auto cmd = read_command<SceneData::RoundedRectCommand>(bucket.command_payload, offset);
+            cmd.min_x += dx;
+            cmd.max_x += dx;
+            cmd.min_y += dy;
+            cmd.max_y += dy;
+            write_command(bucket.command_payload, offset, cmd);
+            break;
+        }
+        case SceneData::DrawCommandKind::TextGlyphs: {
+            auto cmd = read_command<SceneData::TextGlyphsCommand>(bucket.command_payload, offset);
+            cmd.min_x += dx;
+            cmd.max_x += dx;
+            cmd.min_y += dy;
+            cmd.max_y += dy;
+            write_command(bucket.command_payload, offset, cmd);
+            break;
+        }
+        default:
+            break;
+        }
+        offset += SceneData::payload_size_bytes(kind);
+    }
+}
+
+inline auto append_bucket(SceneData::DrawableBucketSnapshot& dest,
+                          SceneData::DrawableBucketSnapshot const& src) -> void {
+    if (src.drawable_ids.empty()) {
+        return;
+    }
+
+    auto drawable_base = static_cast<std::uint32_t>(dest.drawable_ids.size());
+    auto command_base = static_cast<std::uint32_t>(dest.command_kinds.size());
+    auto clip_base = static_cast<std::int32_t>(dest.clip_nodes.size());
+
+    dest.drawable_ids.insert(dest.drawable_ids.end(), src.drawable_ids.begin(), src.drawable_ids.end());
+    dest.world_transforms.insert(dest.world_transforms.end(), src.world_transforms.begin(), src.world_transforms.end());
+    dest.bounds_spheres.insert(dest.bounds_spheres.end(), src.bounds_spheres.begin(), src.bounds_spheres.end());
+    dest.bounds_boxes.insert(dest.bounds_boxes.end(), src.bounds_boxes.begin(), src.bounds_boxes.end());
+    dest.bounds_box_valid.insert(dest.bounds_box_valid.end(), src.bounds_box_valid.begin(), src.bounds_box_valid.end());
+    dest.layers.insert(dest.layers.end(), src.layers.begin(), src.layers.end());
+    dest.z_values.insert(dest.z_values.end(), src.z_values.begin(), src.z_values.end());
+    dest.material_ids.insert(dest.material_ids.end(), src.material_ids.begin(), src.material_ids.end());
+    dest.pipeline_flags.insert(dest.pipeline_flags.end(), src.pipeline_flags.begin(), src.pipeline_flags.end());
+    dest.visibility.insert(dest.visibility.end(), src.visibility.begin(), src.visibility.end());
+
+    for (auto offset : src.command_offsets) {
+        dest.command_offsets.push_back(offset + command_base);
+    }
+    dest.command_counts.insert(dest.command_counts.end(), src.command_counts.begin(), src.command_counts.end());
+
+    dest.command_kinds.insert(dest.command_kinds.end(), src.command_kinds.begin(), src.command_kinds.end());
+    dest.command_payload.insert(dest.command_payload.end(), src.command_payload.begin(), src.command_payload.end());
+
+    for (auto index : src.opaque_indices) {
+        dest.opaque_indices.push_back(index + drawable_base);
+    }
+    for (auto index : src.alpha_indices) {
+        dest.alpha_indices.push_back(index + drawable_base);
+    }
+
+    for (auto const& entry : src.layer_indices) {
+        SceneData::LayerIndices adjusted{entry.layer, {}};
+        adjusted.indices.reserve(entry.indices.size());
+        for (auto idx : entry.indices) {
+            adjusted.indices.push_back(idx + drawable_base);
+        }
+        dest.layer_indices.push_back(std::move(adjusted));
+    }
+
+    dest.stroke_points.insert(dest.stroke_points.end(), src.stroke_points.begin(), src.stroke_points.end());
+
+    if (!src.clip_nodes.empty()) {
+        for (auto node : src.clip_nodes) {
+            node.next = (node.next < 0) ? -1 : node.next + clip_base;
+            dest.clip_nodes.push_back(node);
+        }
+        for (auto head : src.clip_head_indices) {
+            dest.clip_head_indices.push_back(head < 0 ? -1 : head + clip_base);
+        }
+    } else {
+        dest.clip_head_indices.insert(dest.clip_head_indices.end(), src.clip_head_indices.begin(), src.clip_head_indices.end());
+    }
+
+    dest.authoring_map.insert(dest.authoring_map.end(), src.authoring_map.begin(), src.authoring_map.end());
+    dest.drawable_fingerprints.insert(dest.drawable_fingerprints.end(), src.drawable_fingerprints.begin(), src.drawable_fingerprints.end());
+}
+
 inline auto make_widget_authoring_id(std::string_view base_path,
                                std::string_view suffix) -> std::string {
     if (base_path.empty()) {

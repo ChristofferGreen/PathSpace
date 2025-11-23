@@ -91,6 +91,11 @@ target_link_libraries(pathspace_history_cli_roundtrip PRIVATE PathSpace)
 add_executable(pathspace_paint_screenshot_card tools/paint_screenshot_card.cpp)
 target_link_libraries(pathspace_paint_screenshot_card PRIVATE PathSpace)
 
+if(BUILD_PATHSPACE_EXAMPLES)
+  add_executable(pathspace_screenshot_cli tools/pathspace_screenshot_cli.cpp)
+  target_link_libraries(pathspace_screenshot_cli PRIVATE paint_example_lib)
+endif()
+
 if(PATHSPACE_ENABLE_UI)
     add_executable(pathspace_hsat_inspect tools/hsat_inspect.cpp)
     target_link_libraries(pathspace_hsat_inspect PRIVATE PathSpace)
@@ -123,9 +128,14 @@ if(BUILD_PATHSPACE_EXAMPLES)
         target_compile_definitions(devices_example PRIVATE PATHIO_BACKEND_MACOS=1)
     endif()
 
-    add_executable(paint_example
+    add_library(paint_example_lib STATIC
         examples/paint_example.cpp)
-    target_link_libraries(paint_example PRIVATE PathSpace)
+    target_link_libraries(paint_example_lib PUBLIC PathSpace)
+    target_compile_definitions(paint_example_lib PRIVATE PATHSPACE_PAINT_EXAMPLE_NO_MAIN=1)
+
+    add_executable(paint_example
+        examples/paint_example_main.cpp)
+    target_link_libraries(paint_example PRIVATE paint_example_lib)
     if(APPLE)
         if(CMAKE_OBJCXX_COMPILER_ID MATCHES "Clang")
             set_source_files_properties(
@@ -140,6 +150,18 @@ if(BUILD_PATHSPACE_EXAMPLES)
             "-framework QuartzCore"
             "-framework IOSurface")
         target_compile_definitions(paint_example PRIVATE PATHIO_BACKEND_MACOS=1)
+    endif()
+
+    add_executable(paint_example_new
+        examples/paint_example_new.cpp)
+    target_link_libraries(paint_example_new PRIVATE PathSpace)
+    if(APPLE)
+        target_link_libraries(paint_example_new PRIVATE
+            "-framework Cocoa"
+            "-framework Metal"
+            "-framework QuartzCore"
+            "-framework IOSurface")
+        target_compile_definitions(paint_example_new PRIVATE PATHIO_BACKEND_MACOS=1)
     endif()
 
     add_executable(html_replay_example examples/html_replay_example.cpp)

@@ -133,8 +133,13 @@ TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
     REQUIRE(first_revision_ready);
 
     REQUIRE(SP::UI::Declarative::Button::SetLabel(space, *button, "cycle"));
-    auto force_publish = SP::UI::Declarative::SceneLifecycle::ForcePublish(space, scene->path);
+    SP::UI::Declarative::SceneLifecycle::ForcePublishOptions publish_options{};
+    publish_options.min_revision = std::uint64_t{1};
+    auto force_publish = SP::UI::Declarative::SceneLifecycle::ForcePublish(space,
+                                                                           scene->path,
+                                                                           publish_options);
     REQUIRE(force_publish);
+    CHECK_GE(*force_publish, std::uint64_t{2});
     auto second_revision_ready = wait_for_revision(2);
     REQUIRE(second_revision_ready);
 
@@ -151,6 +156,33 @@ TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
     CHECK(buckets_cleared);
 
     REQUIRE(SP::Scene::Shutdown(space, scene->path));
+}
+
+TEST_CASE("Scene lifecycle force publish reports missing worker") {
+    PathSpace space;
+
+    SP::System::LaunchOptions launch_options{};
+    launch_options.start_input_runtime = false;
+    launch_options.start_io_pump = false;
+    launch_options.start_io_telemetry_control = false;
+    REQUIRE(SP::System::LaunchStandard(space, launch_options));
+    RuntimeGuard runtime_guard{space};
+
+    auto app_root = SP::App::Create(space, "force_publish_missing_worker");
+    REQUIRE(app_root);
+
+    SP::Window::CreateOptions window_options;
+    window_options.name = "missing_window";
+    auto window = SP::Window::Create(space, *app_root, window_options);
+    REQUIRE(window);
+
+    auto scene = SP::Scene::Create(space, *app_root, window->path, {});
+    REQUIRE(scene);
+    REQUIRE(SP::Scene::Shutdown(space, scene->path));
+
+    auto force_publish = SP::UI::Declarative::SceneLifecycle::ForcePublish(space, scene->path, {});
+    REQUIRE_FALSE(force_publish);
+    CHECK_EQ(force_publish.error().code, SP::Error::Code::NotFound);
 }
 
 TEST_CASE("Focus and theme changes invalidate declarative widgets") {

@@ -1,6 +1,7 @@
 #include "declarative_example_shared.hpp"
 
 #include <pathspace/PathSpace.hpp>
+#include <pathspace/examples/cli/ExampleCli.hpp>
 #include <pathspace/examples/paint/PaintControls.hpp>
 #include <pathspace/layer/io/PathIOGamepad.hpp>
 #include <pathspace/layer/io/PathIOKeyboard.hpp>
@@ -10,7 +11,6 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <charconv>
 #include <cstdint>
 #include <csignal>
 #include <iomanip>
@@ -40,37 +40,16 @@ struct CommandLineOptions {
 
 static auto parse_options(int argc, char** argv) -> CommandLineOptions {
     CommandLineOptions opts;
-    for (int i = 1; i < argc; ++i) {
-        std::string_view arg{argv[i]};
-        if (arg == "--paint-controls-demo") {
-            opts.paint_controls_demo = true;
-            continue;
-        }
-        auto parse_dimension = [&](std::string_view prefix, int& target) {
-            if (!arg.starts_with(prefix)) {
-                return false;
-            }
-            auto value_view = arg.substr(prefix.size());
-            if (value_view.empty()) {
-                return true;
-            }
-            int value = target;
-            auto result = std::from_chars(value_view.begin(), value_view.end(), value);
-            if (result.ec == std::errc{}) {
-                target = value;
-            } else if (result.ec != std::errc::invalid_argument) {
-                std::cerr << "devices_example: invalid value for '" << prefix << "'\n";
-            }
-            return true;
-        };
-        if (parse_dimension("--width=", opts.width)) {
-            continue;
-        }
-        if (parse_dimension("--height=", opts.height)) {
-            continue;
-        }
-        std::cerr << "devices_example: ignoring unknown argument '" << arg << "'\n";
-    }
+    using ExampleCli = SP::Examples::CLI::ExampleCli;
+    ExampleCli cli;
+    cli.set_program_name("devices_example");
+
+    cli.add_flag("--paint-controls-demo", {.on_set = [&] { opts.paint_controls_demo = true; }});
+    cli.add_int("--width", {.on_value = [&](int value) { opts.width = value; }});
+    cli.add_int("--height", {.on_value = [&](int value) { opts.height = value; }});
+
+    (void)cli.parse(argc, argv);
+
     opts.width = std::max(640, opts.width);
     opts.height = std::max(480, opts.height);
     return opts;

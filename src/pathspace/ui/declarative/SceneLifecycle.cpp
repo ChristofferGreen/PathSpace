@@ -15,9 +15,12 @@
 
 #include <pathspace/path/ConcretePath.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
+#include <deque>
 #include <exception>
 #include <map>
 #include <memory>
@@ -71,6 +74,13 @@ auto widget_kind_to_string(SP::UI::Declarative::WidgetKind kind) -> std::string_
     return "unknown";
 }
 
+auto is_point_buffer_out_of_range(SP::Error const& error) -> bool {
+    if (error.code != SP::Error::Code::InvalidType || !error.message) {
+        return false;
+    }
+    return error.message->find("point buffer out of range") != std::string::npos;
+}
+
 struct BucketCompareResult {
     bool had_previous = false;
     bool parity_ok = true;
@@ -78,6 +88,14 @@ struct BucketCompareResult {
 };
 
 struct SceneLifecycleWorker {
+    struct ForcePublishRequest {
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool completed = false;
+        std::optional<std::uint64_t> revision;
+        std::optional<SP::Error> error;
+    };
+
     SceneLifecycleWorker(PathSpace& space,
                          std::string app_root,
                          std::string scene_path,
@@ -99,7 +117,6 @@ struct SceneLifecycleWorker {
         trellis_disable_path_ = trellis_path_ + "/_system/disable";
         control_queue_path_ = scene_path_ + "/runtime/lifecycle/control";
         theme_invalidate_command_ = control_queue_path_ + ":invalidate_theme";
-        force_publish_command_ = control_queue_path_ + ":force_publish";
         metrics_base_ = scene_path_ + "/runtime/lifecycle/metrics";
         auto renderer_leaf = window_path_ + "/views/" + view_name_ + "/renderer";
         auto renderer_relative = space_.read<std::string, std::string>(renderer_leaf);
@@ -136,6 +153,7 @@ struct SceneLifecycleWorker {
         if (worker_.joinable()) {
             worker_.join();
         }
+        fail_all_force_publish_requests(SP::Error{SP::Error::Code::UnknownError, "scene lifecycle worker stopped"});
         (void)BuilderDetail::replace_single<bool>(space_, scene_path_ + "/runtime/lifecycle/state/running", false);
     }
 
@@ -143,8 +161,54 @@ struct SceneLifecycleWorker {
         (void)space_.insert(control_queue_path_, theme_invalidate_command_);
     }
 
-    void request_force_publish() {
-        (void)space_.insert(control_queue_path_, force_publish_command_);
+    auto force_publish(ForcePublishOptions const& options) -> SP::Expected<std::uint64_t> {
+        auto request = std::make_shared<ForcePublishRequest>();
+        auto request_id = next_force_publish_id_.fetch_add(1, std::memory_order_relaxed);
+        {
+            std::lock_guard<std::mutex> guard(force_publish_mutex_);
+            force_publish_requests_.emplace(request_id, request);
+        }
+        enqueue_force_publish_request(request_id);
+        increment_force_publish_inflight();
+        {
+            std::lock_guard<std::mutex> guard(pending_mutex_);
+            pending_publish_reason_ = scene_path_;
+        }
+        pending_publish_.store(true, std::memory_order_release);
+        write_metric("pending_publish", true);
+        auto inserted = space_.insert(control_queue_path_, control_queue_path_);
+        if (!inserted.errors.empty()) {
+            remove_force_publish_request(request_id);
+            remove_force_publish_queue_entry(request_id);
+            decrement_force_publish_inflight();
+            return std::unexpected(inserted.errors.front());
+        }
+        auto deadline = std::chrono::steady_clock::now() + options.wait_timeout;
+        std::unique_lock<std::mutex> lock(request->mutex);
+        while (!request->completed) {
+            if (request->cv.wait_until(lock, deadline) == std::cv_status::timeout) {
+                remove_force_publish_request(request_id);
+                remove_force_publish_queue_entry(request_id);
+                decrement_force_publish_inflight();
+                auto error = SP::Error{SP::Error::Code::Timeout, "force publish timed out"};
+                request->completed = true;
+                request->error = error;
+                return std::unexpected(error);
+            }
+        }
+        decrement_force_publish_inflight();
+        if (request->error) {
+            write_metric("force_publish_last_error", request->error->message.value_or("force publish failed"));
+            return std::unexpected(*request->error);
+        }
+        auto revision = request->revision.value_or(last_revision_);
+        if (options.min_revision && revision <= *options.min_revision) {
+            auto err = SP::Error{SP::Error::Code::UnknownError, "scene revision did not advance"};
+            write_metric("force_publish_last_error", err.message.value_or("scene revision did not advance"));
+            return std::unexpected(err);
+        }
+        write_metric("force_publish_last_error", std::string{});
+        return revision;
     }
 
     [[nodiscard]] auto matches_app(std::string_view candidate) const -> bool {
@@ -156,6 +220,105 @@ struct SceneLifecycleWorker {
     }
 
 private:
+    void enqueue_force_publish_request(std::uint64_t request_id) {
+        std::lock_guard<std::mutex> guard(force_publish_queue_mutex_);
+        force_publish_request_queue_.push_back(request_id);
+    }
+
+    void remove_force_publish_queue_entry(std::uint64_t request_id) {
+        std::lock_guard<std::mutex> guard(force_publish_queue_mutex_);
+        auto it = std::find(force_publish_request_queue_.begin(), force_publish_request_queue_.end(), request_id);
+        if (it != force_publish_request_queue_.end()) {
+            force_publish_request_queue_.erase(it);
+        }
+    }
+
+    [[nodiscard]] auto take_force_publish_request() -> std::optional<std::uint64_t> {
+        std::lock_guard<std::mutex> guard(force_publish_queue_mutex_);
+        if (force_publish_request_queue_.empty()) {
+            return std::nullopt;
+        }
+        auto id = force_publish_request_queue_.front();
+        force_publish_request_queue_.pop_front();
+        return id;
+    }
+
+    void complete_force_publish_request(std::uint64_t request_id,
+                                        SP::Expected<std::uint64_t> result) {
+        std::shared_ptr<ForcePublishRequest> request;
+        {
+            std::lock_guard<std::mutex> guard(force_publish_mutex_);
+            auto it = force_publish_requests_.find(request_id);
+            if (it == force_publish_requests_.end()) {
+                return;
+            }
+            request = it->second;
+            force_publish_requests_.erase(it);
+        }
+        if (!request) {
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(request->mutex);
+            request->completed = true;
+            if (result) {
+                request->revision = *result;
+            } else {
+                request->error = result.error();
+            }
+        }
+        request->cv.notify_all();
+    }
+
+    void remove_force_publish_request(std::uint64_t request_id) {
+        std::lock_guard<std::mutex> guard(force_publish_mutex_);
+        force_publish_requests_.erase(request_id);
+    }
+
+    void fail_all_force_publish_requests(SP::Error error) {
+        std::vector<std::shared_ptr<ForcePublishRequest>> pending;
+        {
+            std::lock_guard<std::mutex> guard(force_publish_mutex_);
+            for (auto& [_, request] : force_publish_requests_) {
+                pending.push_back(request);
+            }
+            force_publish_requests_.clear();
+        }
+        {
+            std::lock_guard<std::mutex> guard(force_publish_queue_mutex_);
+            force_publish_request_queue_.clear();
+        }
+        for (auto& request : pending) {
+            if (!request) {
+                continue;
+            }
+            {
+                std::lock_guard<std::mutex> lock(request->mutex);
+                request->completed = true;
+                request->error = error;
+            }
+            request->cv.notify_all();
+        }
+        force_publish_inflight_.store(0, std::memory_order_release);
+        write_metric("force_publish_inflight", static_cast<std::uint64_t>(0));
+        write_metric("force_publish_last_error", error.message.value_or("force publish failed"));
+    }
+
+    void increment_force_publish_inflight() {
+        auto value = force_publish_inflight_.fetch_add(1, std::memory_order_acq_rel) + 1;
+        write_metric("force_publish_inflight", value);
+    }
+
+    void decrement_force_publish_inflight() {
+        auto prev = force_publish_inflight_.load(std::memory_order_acquire);
+        while (prev > 0
+               && !force_publish_inflight_.compare_exchange_weak(prev,
+                                                                  prev - 1,
+                                                                  std::memory_order_acq_rel,
+                                                                  std::memory_order_acquire)) {
+        }
+        write_metric("force_publish_inflight", force_publish_inflight_.load(std::memory_order_acquire));
+    }
     auto mount_trellis() -> SP::Expected<void> {
         auto alias = std::shared_ptr<PathSpaceBase>(&space_, [](PathSpaceBase*) {});
         auto trellis = std::make_unique<PathSpaceTrellis>(alias);
@@ -169,6 +332,8 @@ private:
         write_metric("sources_active_total", active_sources_);
         write_metric("last_revision", last_revision_);
         write_metric("pending_publish", false);
+        write_metric("force_publish_inflight", static_cast<std::uint64_t>(0));
+        write_metric("force_publish_last_error", std::string{});
         (void)BuilderDetail::replace_single<bool>(space_, scene_path_ + "/runtime/lifecycle/state/running", true);
         return {};
     }
@@ -218,12 +383,6 @@ private:
         }
         if (payload == theme_invalidate_command_) {
             mark_all_widgets_dirty();
-            return;
-        }
-        if (payload == force_publish_command_) {
-            pending_publish_.store(false, std::memory_order_release);
-            write_metric("pending_publish", false);
-            publish_scene_snapshot(scene_path_);
             return;
         }
     }
@@ -368,7 +527,7 @@ private:
             }
             return;
         }
-        auto bucket = BuildWidgetBucket(*descriptor);
+        auto bucket = BuildWidgetBucket(space_, *descriptor);
         if (!bucket) {
             clear_dirty();
             return;
@@ -448,14 +607,28 @@ private:
         publish_scene_snapshot(reason.empty() ? scene_path_ : reason);
     }
 
-    void publish_scene_snapshot(std::string const& reason) {
+    auto publish_scene_snapshot(std::string const& reason,
+                                std::optional<std::uint64_t> force_publish_request = std::nullopt)
+        -> SP::Expected<std::uint64_t> {
+        auto request_id = force_publish_request;
+        if (!request_id) {
+            request_id = take_force_publish_request();
+        }
         auto publish_start = std::chrono::steady_clock::now();
         auto aggregate = aggregate_scene_bucket();
         if (!aggregate.has_value()) {
-            return;
+            auto error = SP::Error{SP::Error::Code::NoObjectFound, "no drawable buckets ready"};
+            if (request_id) {
+                complete_force_publish_request(*request_id, std::unexpected(error));
+            }
+            return std::unexpected(error);
         }
         if (aggregate->drawable_ids.empty()) {
-            return;
+            auto error = SP::Error{SP::Error::Code::NoObjectFound, "scene contains no drawables"};
+            if (request_id) {
+                complete_force_publish_request(*request_id, std::unexpected(error));
+            }
+            return std::unexpected(error);
         }
         auto now = std::chrono::system_clock::now();
         SP::UI::Scene::SnapshotPublishOptions opts{};
@@ -468,7 +641,10 @@ private:
         auto revision = snapshot_builder_.publish(opts, *aggregate);
         if (!revision) {
             record_publish_failure(revision.error());
-            return;
+            if (request_id) {
+                complete_force_publish_request(*request_id, revision);
+            }
+            return revision;
         }
         auto publish_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()
                                                                                - publish_start)
@@ -485,6 +661,10 @@ private:
         write_metric("last_revision", last_revision_);
         write_metric("last_published_ms", to_epoch_ms(now));
         (void)BuilderDetail::replace_single<std::string>(space_, metrics_base_ + "/last_published_widget", reason);
+        if (request_id) {
+            complete_force_publish_request(*request_id, revision);
+        }
+        return revision;
     }
 
     void record_publish_failure(SP::Error const& error) {
@@ -691,7 +871,6 @@ private:
     std::string trellis_disable_path_;
     std::string control_queue_path_;
     std::string theme_invalidate_command_;
-    std::string force_publish_command_;
     std::string metrics_base_;
     std::string renderer_target_path_;
     std::thread worker_;
@@ -711,6 +890,12 @@ private:
     std::mutex bucket_mutex_;
     std::map<std::string, std::shared_ptr<SP::UI::Scene::DrawableBucketSnapshot>> bucket_cache_;
     bool has_renderer_target_ = false;
+    std::atomic<std::uint64_t> next_force_publish_id_{1};
+    std::mutex force_publish_mutex_;
+    std::unordered_map<std::uint64_t, std::shared_ptr<ForcePublishRequest>> force_publish_requests_;
+    std::atomic<std::uint64_t> force_publish_inflight_{0};
+    std::mutex force_publish_queue_mutex_;
+    std::deque<std::uint64_t> force_publish_request_queue_;
 };
 
 std::mutex g_lifecycle_mutex;
@@ -764,7 +949,8 @@ auto Stop(PathSpace& space,
 }
 
 auto ForcePublish(PathSpace& space,
-                  SP::UI::Builders::ScenePath const& scene_path) -> SP::Expected<void> {
+                  SP::UI::Builders::ScenePath const& scene_path,
+                  ForcePublishOptions const& options) -> SP::Expected<std::uint64_t> {
     (void)space;
     std::shared_ptr<SceneLifecycleWorker> worker;
     {
@@ -775,10 +961,22 @@ auto ForcePublish(PathSpace& space,
             worker = it->second;
         }
     }
-    if (worker) {
-        worker->request_force_publish();
+    if (!worker) {
+        return std::unexpected(SP::Error{SP::Error::Code::NotFound, "scene lifecycle not running"});
     }
-    return {};
+    constexpr int kMaxForcePublishRetries = 3;
+    SP::Error last_error{SP::Error::Code::UnknownError, "force publish failed"};
+    for (int attempt = 0; attempt < kMaxForcePublishRetries; ++attempt) {
+        auto publish = worker->force_publish(options);
+        if (publish) {
+            return publish;
+        }
+        last_error = publish.error();
+        if (!is_point_buffer_out_of_range(last_error)) {
+            return std::unexpected(last_error);
+        }
+    }
+    return std::unexpected(last_error);
 }
 
 auto InvalidateThemes(PathSpace& space,
