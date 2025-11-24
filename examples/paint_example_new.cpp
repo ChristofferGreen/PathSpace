@@ -9,6 +9,7 @@
 #include <pathspace/ui/screenshot/ScreenshotService.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -298,6 +299,13 @@ auto capture_screenshot(SP::PathSpace& space,
         return status;
     }
 
+    auto mark_dirty = SP::UI::Builders::Scene::MarkDirty(space,
+                                                         scene.path,
+                                                         SP::UI::Builders::Scene::DirtyKind::All);
+    if (!mark_dirty) {
+        return std::unexpected(mark_dirty.error());
+    }
+
     auto revision_path = std::string(scene.path.getPath()) + "/current_revision";
     auto current_revision = space.read<std::uint64_t, std::string>(revision_path);
     std::uint64_t target_revision = current_revision.value_or(0);
@@ -421,6 +429,8 @@ int main(int argc, char** argv) {
     auto window_view = SP::App::ConcretePathView{window_view_path};
     auto window_widgets_root = window_view_path + "/widgets";
 
+    auto pressed_toggle = std::make_shared<std::atomic<bool>>(false);
+
     SP::UI::Declarative::Button::Args button_args{};
     button_args.label = "Press Me";
     button_args.style.width = 240.0f;
@@ -429,8 +439,15 @@ int main(int argc, char** argv) {
     button_args.style.text_color = {0.95f, 0.98f, 1.0f, 1.0f};
     button_args.style.typography.font_size = 30.0f;
     button_args.style.typography.line_height = 36.0f;
-    button_args.on_press = [](SP::UI::Declarative::ButtonContext&) {
-        std::cout << "paint_example_new: button pressed\n";
+    button_args.on_press = [pressed_toggle](SP::UI::Declarative::ButtonContext& ctx) {
+        bool new_state = !pressed_toggle->load(std::memory_order_acquire);
+        pressed_toggle->store(new_state, std::memory_order_release);
+        auto label = new_state ? "Thanks!" : "Press Me";
+        if (auto status = SP::UI::Declarative::Button::SetLabel(ctx.space, ctx.widget, label); !status) {
+            std::cerr << "paint_example_new: failed to update button label ("
+                      << SP::describeError(status.error()) << ")\n";
+        }
+        std::cout << "paint_example_new: button pressed (" << (new_state ? "armed" : "reset") << ")\n";
     };
 
     SP::UI::Declarative::Stack::Args layout_args{};

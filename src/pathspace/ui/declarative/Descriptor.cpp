@@ -112,26 +112,57 @@ auto append_rect_drawable(SP::UI::Scene::DrawableBucketSnapshot& bucket,
 auto load_stack_child_bucket(PathSpace& space,
                              BuilderWidgets::StackChildSpec const& child)
     -> SP::Expected<SP::UI::Scene::DrawableBucketSnapshot> {
-    if (child.scene_path.empty()) {
-        return std::unexpected(DescriptorDetail::MakeDescriptorError(
-            "Stack child missing scene path", SP::Error::Code::InvalidPath));
-    }
+    auto attempt_scene_snapshot = [&]() -> SP::Expected<SP::UI::Scene::DrawableBucketSnapshot> {
+        if (child.scene_path.empty()) {
+            return std::unexpected(DescriptorDetail::MakeDescriptorError(
+                "Stack child missing scene path", SP::Error::Code::InvalidPath));
+        }
 
-    SP::UI::Builders::ScenePath scene_path{child.scene_path};
-    auto revision = BuilderScene::ReadCurrentRevision(space, scene_path);
-    if (!revision) {
-        return std::unexpected(revision.error());
-    }
+        SP::UI::Builders::ScenePath scene_path{child.scene_path};
+        auto revision = BuilderScene::ReadCurrentRevision(space, scene_path);
+        if (!revision) {
+            return std::unexpected(revision.error());
+        }
 
-    auto format_revision = [](std::uint64_t value) {
-        std::ostringstream oss;
-        oss << std::setw(16) << std::setfill('0') << value;
-        return oss.str();
+        auto format_revision = [](std::uint64_t value) {
+            std::ostringstream oss;
+            oss << std::setw(16) << std::setfill('0') << value;
+            return oss.str();
+        };
+
+        auto revision_base = std::string(scene_path.getPath())
+                             + "/builds/" + format_revision(revision->revision);
+        return SP::UI::Scene::SceneSnapshotBuilder::decode_bucket(space, revision_base);
     };
 
-    auto revision_base = std::string(scene_path.getPath())
-                         + "/builds/" + format_revision(revision->revision);
-    return SP::UI::Scene::SceneSnapshotBuilder::decode_bucket(space, revision_base);
+    auto bucket = attempt_scene_snapshot();
+    if (bucket) {
+        return bucket;
+    }
+
+    auto const& scene_error = bucket.error();
+    switch (scene_error.code) {
+    case SP::Error::Code::NoSuchPath:
+    case SP::Error::Code::NoObjectFound:
+    case SP::Error::Code::InvalidPath:
+        break;
+    default:
+        return std::unexpected(scene_error);
+    }
+
+    if (child.widget_path.empty()) {
+        return std::unexpected(scene_error);
+    }
+
+    auto descriptor = LoadWidgetDescriptor(space, SP::UI::Builders::WidgetPath{child.widget_path});
+    if (!descriptor) {
+        return std::unexpected(descriptor.error());
+    }
+    auto rebuilt = BuildWidgetBucket(space, *descriptor);
+    if (!rebuilt) {
+        return std::unexpected(rebuilt.error());
+    }
+    return rebuilt;
 }
 
 struct BucketVisitor {
