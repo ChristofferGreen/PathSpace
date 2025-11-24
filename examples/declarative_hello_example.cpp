@@ -142,6 +142,17 @@ int main() {
         return 1;
     }
 
+    auto readiness = ensure_declarative_scene_ready(space,
+                                                    scene->path,
+                                                    window->path,
+                                                    window->view_name);
+    if (!readiness) {
+        std::cerr << "declarative_hello_example: scene readiness failed: "
+                  << SP::describeError(readiness.error()) << "\n";
+        SP::System::ShutdownDeclarativeRuntime(space);
+        return 1;
+    }
+
     LocalInputBridge bridge{};
     bridge.space = &space;
     install_local_window_bridge(bridge);

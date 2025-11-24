@@ -170,6 +170,16 @@ int main(int argc, char** argv) {
         return fail(space, "failed to create button");
     }
 
+    auto readiness = ensure_declarative_scene_ready(space,
+                                                    scene->path,
+                                                    window->path,
+                                                    window->view_name);
+    if (!readiness) {
+        std::cerr << "widgets_example_minimal: scene readiness failed: "
+                  << SP::describeError(readiness.error()) << "\n";
+        return fail(space, "scene readiness failed");
+    }
+
     LocalInputBridge bridge{};
     bridge.space = &space;
     install_local_window_bridge(bridge);

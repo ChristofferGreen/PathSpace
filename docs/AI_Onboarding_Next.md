@@ -35,7 +35,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
    ./build/tests/PathSpaceUITests --test-case "PathSurfaceMetal integrates with ObjC++ presenter harness"
    ```
    The targeted Metal UITest ensures the GPU bridge stays healthy after the latest ObjC++ harness updates.
-  - **Visual sanity check:** `./build/widgets_example --screenshot /tmp/widgets_gallery.png` now runs headless, drives a scripted slider drag, renders once, and writes a PNG. Use this for deterministic focus/highlight checks even on hosts without a GUI session. Pair it with `./build/paint_example --screenshot /tmp/paint_demo.png` to capture the declarative paint surface after its scripted brush replay and compare art-direction tweaks via PNG diffs.
+  - **Visual sanity check:** `./build/widgets_example --screenshot /tmp/widgets_gallery.png` now runs headless, drives a scripted slider drag, renders once, and writes a PNG. Use this for deterministic focus/highlight checks even on hosts without a GUI session. Pair it with `./build/paint_example --screenshot /tmp/paint_demo.png` to capture the declarative paint surface after its scripted brush replay and compare art-direction tweaks via PNG diffs. All declarative demos call `PathSpaceExamples::ensure_declarative_scene_ready` before presenting, so you can assume lifecycle metrics + scene structure are fully populated before these screenshots fire.
 
 ## 2. Current Priorities (October 21, 2025)
 

@@ -774,67 +774,6 @@ auto wait_for_gpu_state(SP::PathSpace& space,
     return read_gpu_state(space, widget_path);
 }
 
-auto wait_for_scene_revision(SP::PathSpace& space,
-                             SP::UI::Builders::ScenePath const& scene_path,
-                             std::chrono::milliseconds timeout,
-                             std::optional<std::uint64_t> min_revision = std::nullopt)
-    -> std::optional<std::uint64_t> {
-    auto revision_path = std::string(scene_path.getPath()) + "/current_revision";
-    auto format_revision = [](std::uint64_t revision) {
-        std::ostringstream oss;
-        oss << std::setw(16) << std::setfill('0') << revision;
-        return oss.str();
-    };
-    auto deadline = std::chrono::steady_clock::now() + timeout;
-    std::optional<std::uint64_t> ready_revision;
-    while (std::chrono::steady_clock::now() < deadline) {
-        auto revision = space.read<std::uint64_t, std::string>(revision_path);
-        if (revision) {
-            if (*revision != 0
-                && (!min_revision.has_value() || *revision > *min_revision)) {
-                ready_revision = *revision;
-                break;
-            }
-        } else {
-            auto const& error = revision.error();
-            if (error.code != SP::Error::Code::NoObjectFound
-                && error.code != SP::Error::Code::NoSuchPath) {
-                log_expected_error("read scene revision", error);
-                return std::nullopt;
-            }
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
-    if (!ready_revision) {
-        std::cerr << "paint_example: timed out waiting for scene '"
-                  << scene_path.getPath() << "' to publish";
-        if (min_revision) {
-            std::cerr << " revision > " << *min_revision;
-        }
-        std::cerr << std::endl;
-        return std::nullopt;
-    }
-    auto revision_str = format_revision(*ready_revision);
-    auto bucket_path = std::string(scene_path.getPath()) + "/builds/" + revision_str + "/bucket/drawables.bin";
-    auto bucket_deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < bucket_deadline) {
-        auto drawables = space.read<std::vector<std::uint8_t>, std::string>(bucket_path);
-        if (drawables) {
-            return ready_revision;
-        }
-        auto const& error = drawables.error();
-        if (error.code != SP::Error::Code::NoSuchPath
-            && error.code != SP::Error::Code::NoObjectFound) {
-            log_expected_error("read scene bucket", error);
-            return std::nullopt;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
-    std::cerr << "paint_example: timed out waiting for scene bucket '"
-              << bucket_path << "'" << std::endl;
-    return std::nullopt;
-}
-
 auto wait_for_paint_buffer_revision(SP::PathSpace& space,
                                     std::string const& widget_path,
                                     std::uint64_t min_revision,
@@ -851,70 +790,6 @@ auto wait_for_paint_buffer_revision(SP::PathSpace& space,
     return false;
 }
 
-auto count_window_widgets(SP::PathSpace& space, std::string const& window_view_path) -> std::size_t {
-    auto widgets_root = window_view_path + "/widgets";
-    auto children = space.listChildren(SP::ConcretePathStringView{widgets_root});
-    return children.size();
-}
-
-auto wait_for_widget_buckets(SP::PathSpace& space,
-                             SP::UI::Builders::ScenePath const& scene_path,
-                             std::size_t expected_widgets,
-                             std::chrono::milliseconds timeout) -> bool {
-    if (expected_widgets == 0) {
-        return true;
-    }
-    auto metrics_base = std::string(scene_path.getPath()) + "/runtime/lifecycle/metrics";
-    auto widgets_path = metrics_base + "/widgets_with_buckets";
-    auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-        auto buckets = space.read<std::uint64_t, std::string>(widgets_path);
-        if (buckets && *buckets >= expected_widgets) {
-            return true;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(25));
-    }
-    std::cerr << "paint_example: timed out waiting for declarative widgets to publish ("
-              << expected_widgets << " expected buckets)\n";
-    return false;
-}
-
-auto make_scene_widgets_root(SP::UI::Builders::ScenePath const& scene_path,
-                             SP::UI::Builders::WindowPath const& window_path,
-                             std::string const& view_name) -> std::string {
-    auto window_component = std::string(window_path.getPath());
-    auto slash = window_component.find_last_of('/');
-    if (slash != std::string::npos) {
-        window_component = window_component.substr(slash + 1);
-    }
-    std::string root = std::string(scene_path.getPath());
-    root.append("/structure/widgets/windows/");
-    root.append(window_component);
-    root.append("/views/");
-    root.append(view_name);
-    root.append("/widgets");
-    return root;
-}
-
-auto wait_for_scene_widgets(SP::PathSpace& space,
-                            std::string const& scene_widgets_root,
-                            std::size_t expected_widgets,
-                            std::chrono::milliseconds timeout) -> bool {
-    if (expected_widgets == 0) {
-        return true;
-    }
-    auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-        auto children = space.listChildren(SP::ConcretePathStringView{scene_widgets_root});
-        if (children.size() >= expected_widgets) {
-            return true;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(25));
-    }
-    std::cerr << "paint_example: timed out waiting for scene widget structure at '"
-              << scene_widgets_root << "' (" << expected_widgets << " expected entries)\n";
-    return false;
-}
 
 auto wait_for_paint_capture_ready(SP::PathSpace& space,
                                   std::string const& widget_path,
@@ -1734,22 +1609,20 @@ auto RunPaintExample(CommandLineOptions options) -> int {
     auto& scene_result = window_context->scene;
     auto& bootstrap = window_context->bootstrap;
 
-    auto widget_count = count_window_widgets(space, window_view_path);
-    auto scene_widgets_root = make_scene_widgets_root(scene_result.path, window_result.path, window_result.view_name);
-    if (!wait_for_widget_buckets(space,
-                                 scene_result.path,
-                                 widget_count,
-                                 std::chrono::seconds(5))
-        || !wait_for_scene_widgets(space,
-                                   scene_widgets_root,
-                                   widget_count,
-                                   std::chrono::seconds(5))) {
+    auto readiness = ensure_declarative_scene_ready(space,
+                                                    scene_result.path,
+                                                    window_result.path,
+                                                    window_result.view_name);
+    if (!readiness) {
+        std::cerr << "paint_example: failed to wait for declarative widgets: "
+                  << SP::describeError(readiness.error()) << "\n";
         SP::System::ShutdownDeclarativeRuntime(space);
         return 1;
     }
 
-    auto latest_revision = wait_for_scene_revision(space, scene_result.path, std::chrono::seconds(3));
+    auto latest_revision = readiness->scene_revision;
     if (!latest_revision) {
+        std::cerr << "paint_example: scene readiness did not produce a revision\n";
         SP::System::ShutdownDeclarativeRuntime(space);
         return 1;
     }
@@ -1833,12 +1706,12 @@ auto RunPaintExample(CommandLineOptions options) -> int {
                         && publish_error.message
                         && publish_error.message->find("point buffer out of range") != std::string::npos) {
                         attempted_fallback = true;
-                        auto capture_revision = wait_for_scene_revision(space,
-                                                                        scene_result.path,
-                                                                        std::chrono::seconds(5),
-                                                                        prior_revision);
+                        auto capture_revision = wait_for_declarative_scene_revision(space,
+                                                                                    scene_result.path,
+                                                                                    std::chrono::seconds(5),
+                                                                                    prior_revision);
                         if (capture_revision) {
-                            latest_revision = capture_revision;
+                            latest_revision = *capture_revision;
                             return true;
                         }
                     }
@@ -1847,12 +1720,12 @@ auto RunPaintExample(CommandLineOptions options) -> int {
                     }
                 } else {
                     latest_revision = *force_publish;
-                    auto capture_revision = wait_for_scene_revision(space,
-                                                                    scene_result.path,
-                                                                    std::chrono::seconds(5),
-                                                                    prior_revision);
+                    auto capture_revision = wait_for_declarative_scene_revision(space,
+                                                                                scene_result.path,
+                                                                                std::chrono::seconds(5),
+                                                                                prior_revision);
                     if (capture_revision) {
-                        latest_revision = capture_revision;
+                        latest_revision = *capture_revision;
                         return true;
                     }
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));

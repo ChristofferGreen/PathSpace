@@ -347,6 +347,17 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    auto readiness = ensure_declarative_scene_ready(space,
+                                                    scene->path,
+                                                    window->path,
+                                                    window->view_name);
+    if (!readiness) {
+        std::cerr << "widgets_example: scene readiness failed: "
+                  << SP::describeError(readiness.error()) << "\n";
+        SP::System::ShutdownDeclarativeRuntime(space);
+        return 1;
+    }
+
     if (options.headless) {
         std::cout << "widgets_example: headless mode enabled, declarative widgets mounted at\n"
                   << "  " << button->getPath() << "\n"

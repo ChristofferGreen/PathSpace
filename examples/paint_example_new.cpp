@@ -118,148 +118,31 @@ auto window_component_name(SP::UI::Builders::WindowPath const& window_path) -> s
     return raw.substr(slash + 1);
 }
 
-auto wait_for_scene_widgets(SP::PathSpace& space,
-                            std::string const& widgets_root,
-                            std::size_t expected_widgets,
-                            std::chrono::milliseconds timeout) -> SP::Expected<void> {
-    if (expected_widgets == 0) {
-        return {};
-    }
-    auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-        auto children = space.listChildren(SP::ConcretePathStringView{widgets_root});
-        if (children.size() >= expected_widgets) {
-            return {};
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(25));
-    }
-    return std::unexpected(SP::Error{SP::Error::Code::Timeout,
-                                     "scene widget structure did not publish"});
-}
-
-auto wait_for_widget_buckets(SP::PathSpace& space,
-                             SP::Scene::CreateResult const& scene,
-                             std::size_t expected_widgets,
-                             std::chrono::milliseconds timeout) -> SP::Expected<void> {
-    if (expected_widgets == 0) {
-        return {};
-    }
-    auto metrics_base = std::string(scene.path.getPath()) + "/runtime/lifecycle/metrics";
-    auto widgets_path = metrics_base + "/widgets_with_buckets";
-    auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-        auto buckets = space.read<std::uint64_t, std::string>(widgets_path);
-        if (buckets && *buckets >= expected_widgets) {
-            return {};
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(25));
-    }
-    return std::unexpected(SP::Error{SP::Error::Code::Timeout,
-                                     "widgets never published render buckets"});
-}
-
-auto wait_for_scene_revision(SP::PathSpace& space,
-                             SP::Scene::CreateResult const& scene,
-                             std::uint64_t min_revision,
-                             std::chrono::milliseconds timeout) -> SP::Expected<void> {
-    auto revision_path = std::string(scene.path.getPath()) + "/current_revision";
-    auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-        auto revision = space.read<std::uint64_t, std::string>(revision_path);
-        if (revision && *revision >= min_revision) {
-            return {};
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(25));
-    }
-    return std::unexpected(SP::Error{SP::Error::Code::Timeout, "scene revision did not advance"});
-}
-
-auto wait_for_scene_revision_with_bucket(SP::PathSpace& space,
-                                         SP::Scene::CreateResult const& scene,
-                                         std::uint64_t min_revision,
-                                         std::chrono::milliseconds timeout) -> SP::Expected<std::uint64_t> {
-    auto revision_path = std::string(scene.path.getPath()) + "/current_revision";
-    auto format_revision = [](std::uint64_t revision) {
-        std::ostringstream oss;
-        oss << std::setw(16) << std::setfill('0') << revision;
-        return oss.str();
-    };
-    std::optional<std::uint64_t> ready_revision;
-    auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-        auto revision = space.read<std::uint64_t, std::string>(revision_path);
-        if (revision && *revision > min_revision) {
-            ready_revision = *revision;
-            break;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
-    if (!ready_revision) {
-        return std::unexpected(SP::Error{SP::Error::Code::Timeout, "scene did not publish a new revision"});
-    }
-    auto revision_str = format_revision(*ready_revision);
-    auto bucket_path = std::string(scene.path.getPath()) + "/builds/" + revision_str + "/bucket/drawables.bin";
-    auto bucket_deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < bucket_deadline) {
-        auto drawables = space.read<std::vector<std::uint8_t>, std::string>(bucket_path);
-        if (drawables) {
-            return *ready_revision;
-        }
-        auto const& error = drawables.error();
-        if (error.code != SP::Error::Code::NoSuchPath
-            && error.code != SP::Error::Code::NoObjectFound) {
-            return std::unexpected(error);
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
-    return std::unexpected(SP::Error{SP::Error::Code::Timeout, "scene bucket never materialized"});
-}
-
-auto wait_for_scene_view_root(SP::PathSpace& space,
-                              SP::Scene::CreateResult const& scene,
-                              SP::Window::CreateResult const& window,
-                              std::chrono::milliseconds timeout) -> SP::Expected<std::string> {
-    auto window_component = window_component_name(window.path);
-
-    auto windows_root = std::string(scene.path.getPath()) + "/structure/widgets/windows";
-    auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-        auto window_ids = space.listChildren(SP::ConcretePathStringView{windows_root});
-        auto has_window = std::find(window_ids.begin(), window_ids.end(), window_component) != window_ids.end();
-        if (has_window) {
-            auto view_root = windows_root + "/" + window_component + "/views/" + window.view_name + "/widgets";
-            auto views = space.listChildren(
-                SP::ConcretePathStringView{windows_root + "/" + window_component + "/views"});
-            auto has_view = std::find(views.begin(), views.end(), window.view_name) != views.end();
-            if (has_view) {
-                return view_root;
-            }
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(25));
-    }
-    return std::unexpected(
-        SP::Error{SP::Error::Code::Timeout, "scene lifecycle never published window/view structure"});
-}
-
 auto capture_screenshot(SP::PathSpace& space,
                         SP::Scene::CreateResult const& scene,
                         SP::Window::CreateResult const& window,
                         std::string const& window_widgets_root,
                         Options const& options) -> SP::Expected<void> {
     bool debug_logging = std::getenv("PAINT_EXAMPLE_NEW_DEBUG") != nullptr;
-    auto widget_count = space.listChildren(SP::ConcretePathStringView{window_widgets_root}).size();
-    if (widget_count == 0) {
-        widget_count = 1; // expect button widget
+    auto readiness = PathSpaceExamples::ensure_declarative_scene_ready(space,
+                                                                       scene.path,
+                                                                       window.path,
+                                                                       window.view_name);
+    if (!readiness) {
+        return std::unexpected(readiness.error());
     }
 
-    auto scene_widgets_root_result = wait_for_scene_view_root(space,
-                                                              scene,
-                                                              window,
-                                                              std::chrono::seconds(5));
-    if (!scene_widgets_root_result) {
-        return std::unexpected(scene_widgets_root_result.error());
+    auto widget_count = readiness->widget_count;
+    if (widget_count == 0) {
+        widget_count = space.listChildren(SP::ConcretePathStringView{window_widgets_root}).size();
+        if (widget_count == 0) {
+            widget_count = 1; // expect button widget
+        }
     }
-    auto scene_widgets_root = *scene_widgets_root_result;
+
+    auto scene_widgets_root = PathSpaceExamples::make_scene_widgets_root(scene.path,
+                                                                         window.path,
+                                                                         window.view_name);
     if (debug_logging) {
         auto scene_widgets = space.listChildren(SP::ConcretePathStringView{scene_widgets_root});
         std::cerr << "paint_example_new(debug): scene widgets (capture) =";
@@ -272,12 +155,12 @@ auto capture_screenshot(SP::PathSpace& space,
         std::cerr << "\n";
     }
 
-    if (auto status = wait_for_scene_widgets(space,
-                                             scene_widgets_root,
-                                             widget_count,
-                                             std::chrono::seconds(5));
-        !status) {
-        return status;
+    auto readiness_verify = PathSpaceExamples::ensure_declarative_scene_ready(space,
+                                                                              scene.path,
+                                                                              window.path,
+                                                                              window.view_name);
+    if (!readiness_verify) {
+        return std::unexpected(readiness_verify.error());
     }
     auto scene_widget_entries = space.listChildren(SP::ConcretePathStringView{scene_widgets_root});
     if (debug_logging) {
@@ -300,14 +183,6 @@ auto capture_screenshot(SP::PathSpace& space,
             }
         }
     }
-    if (auto status = wait_for_widget_buckets(space,
-                                              scene,
-                                              widget_count,
-                                              std::chrono::seconds(5));
-        !status) {
-        return status;
-    }
-
     auto mark_dirty = SP::UI::Builders::Scene::MarkDirty(space,
                                                          scene.path,
                                                          SP::UI::Builders::Scene::DirtyKind::All);
@@ -327,10 +202,10 @@ auto capture_screenshot(SP::PathSpace& space,
     }
     target_revision = std::max(target_revision, *forced);
     auto wait_floor = target_revision > 0 ? target_revision - 1 : 0;
-    auto ready_revision = wait_for_scene_revision_with_bucket(space,
-                                                              scene,
-                                                              wait_floor,
-                                                              std::chrono::seconds(5));
+    auto ready_revision = PathSpaceExamples::wait_for_declarative_scene_revision(space,
+                                                                                scene.path,
+                                                                                std::chrono::seconds(5),
+                                                                                wait_floor);
     if (!ready_revision) {
         return std::unexpected(ready_revision.error());
     }
@@ -602,6 +477,14 @@ int main(int argc, char** argv) {
                           << SP::describeError(bucket_data.error()) << "\n";
             }
         }
+    }
+
+    auto readiness = PathSpaceExamples::ensure_declarative_scene_ready(space,
+                                                                       scene->path,
+                                                                       window->path,
+                                                                       window->view_name);
+    if (!readiness) {
+        return exit_with_error(space, "scene readiness failed", readiness.error());
     }
 
     if (options.screenshot_path) {

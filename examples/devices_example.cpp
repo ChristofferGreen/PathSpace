@@ -289,6 +289,15 @@ static std::optional<PaintControlsDemoHandles> launch_paint_controls_demo(PathSp
         return std::nullopt;
     }
 
+    auto readiness = PathSpaceExamples::ensure_declarative_scene_ready(space,
+                                                                       scene->path,
+                                                                       window->path,
+                                                                       window->view_name);
+    if (!readiness) {
+        log_expected_error("scene readiness", readiness.error());
+        return std::nullopt;
+    }
+
     constexpr std::string_view kPointerDevice = "/system/devices/in/pointer/default";
     constexpr std::string_view kKeyboardDevice = "/system/devices/in/text/default";
     PathSpaceExamples::ensure_device_push_config(space, std::string{kPointerDevice}, "devices_example_ui");

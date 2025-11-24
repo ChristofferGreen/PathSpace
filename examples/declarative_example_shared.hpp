@@ -2,6 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
+#include <pathspace/core/Error.hpp>
 #include <pathspace/runtime/IOPump.hpp>
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/LocalWindowBridge.hpp>
@@ -13,9 +14,12 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
+#include <iomanip>
 #include <optional>
 #include <span>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -346,6 +350,199 @@ inline void run_present_loop(SP::PathSpace& space,
         }
         last_frame = now;
     }
+}
+
+struct DeclarativeReadinessOptions {
+    std::chrono::milliseconds widget_timeout{std::chrono::milliseconds(5000)};
+    std::chrono::milliseconds revision_timeout{std::chrono::milliseconds(3000)};
+    bool wait_for_structure = true;
+    bool wait_for_buckets = true;
+    bool wait_for_revision = true;
+    std::optional<std::uint64_t> min_revision;
+};
+
+struct DeclarativeReadinessResult {
+    std::size_t widget_count = 0;
+    std::optional<std::uint64_t> scene_revision;
+};
+
+inline auto make_window_view_path(SP::UI::Builders::WindowPath const& window,
+                                 std::string const& view_name) -> std::string {
+    std::string view_path = std::string(window.getPath());
+    view_path.append("/views/");
+    view_path.append(view_name);
+    return view_path;
+}
+
+inline auto make_scene_widgets_root(SP::UI::Builders::ScenePath const& scene,
+                                    SP::UI::Builders::WindowPath const& window,
+                                    std::string const& view_name) -> std::string {
+    auto window_component = std::string(window.getPath());
+    auto slash = window_component.find_last_of('/');
+    if (slash != std::string::npos) {
+        window_component = window_component.substr(slash + 1);
+    }
+    std::string root = std::string(scene.getPath());
+    root.append("/structure/widgets/windows/");
+    root.append(window_component);
+    root.append("/views/");
+    root.append(view_name);
+    root.append("/widgets");
+    return root;
+}
+
+inline auto count_window_widgets(SP::PathSpace& space,
+                                 SP::UI::Builders::WindowPath const& window,
+                                 std::string const& view_name) -> std::size_t {
+    auto widgets_root = make_window_view_path(window, view_name) + "/widgets";
+    auto children = space.listChildren(SP::ConcretePathStringView{widgets_root});
+    return children.size();
+}
+
+inline auto wait_for_declarative_scene_widgets(SP::PathSpace& space,
+                                               std::string const& widgets_root,
+                                               std::size_t expected_widgets,
+                                               std::chrono::milliseconds timeout) -> SP::Expected<void> {
+    if (expected_widgets == 0) {
+        return {};
+    }
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto children = space.listChildren(SP::ConcretePathStringView{widgets_root});
+        if (children.size() >= expected_widgets) {
+            return {};
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    }
+    return std::unexpected(SP::Error{SP::Error::Code::Timeout,
+                                     "scene widget structure did not publish"});
+}
+
+inline auto wait_for_declarative_widget_buckets(SP::PathSpace& space,
+                                                SP::UI::Builders::ScenePath const& scene,
+                                                std::size_t expected_widgets,
+                                                std::chrono::milliseconds timeout) -> SP::Expected<void> {
+    if (expected_widgets == 0) {
+        return {};
+    }
+    auto metrics_base = std::string(scene.getPath()) + "/runtime/lifecycle/metrics";
+    auto widgets_path = metrics_base + "/widgets_with_buckets";
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto buckets = space.read<std::uint64_t, std::string>(widgets_path);
+        if (buckets && *buckets >= expected_widgets) {
+            return {};
+        }
+        if (buckets && *buckets == 0 && expected_widgets == 0) {
+            return {};
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    }
+    return std::unexpected(SP::Error{SP::Error::Code::Timeout,
+                                     "widgets never published render buckets"});
+}
+
+inline auto wait_for_declarative_scene_revision(SP::PathSpace& space,
+                                                SP::UI::Builders::ScenePath const& scene,
+                                                std::chrono::milliseconds timeout,
+                                                std::optional<std::uint64_t> min_revision = std::nullopt)
+    -> SP::Expected<std::uint64_t> {
+    auto revision_path = std::string(scene.getPath()) + "/current_revision";
+    auto format_revision = [](std::uint64_t revision) {
+        std::ostringstream oss;
+        oss << std::setw(16) << std::setfill('0') << revision;
+        return oss.str();
+    };
+    std::optional<std::uint64_t> ready_revision;
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto revision = space.read<std::uint64_t, std::string>(revision_path);
+        if (revision) {
+            if (*revision != 0
+                && (!min_revision.has_value() || *revision > *min_revision)) {
+                ready_revision = *revision;
+                break;
+            }
+        } else {
+            auto const& error = revision.error();
+            if (error.code != SP::Error::Code::NoSuchPath
+                && error.code != SP::Error::Code::NoObjectFound) {
+                return std::unexpected(error);
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    if (!ready_revision) {
+        return std::unexpected(SP::Error{SP::Error::Code::Timeout,
+                                         "scene revision did not publish"});
+    }
+    auto revision_str = format_revision(*ready_revision);
+    auto bucket_path = std::string(scene.getPath()) + "/builds/" + revision_str + "/bucket/drawables.bin";
+    auto bucket_deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < bucket_deadline) {
+        auto drawables = space.read<std::vector<std::uint8_t>, std::string>(bucket_path);
+        if (drawables) {
+            return *ready_revision;
+        }
+        auto const& error = drawables.error();
+        if (error.code != SP::Error::Code::NoSuchPath
+            && error.code != SP::Error::Code::NoObjectFound) {
+            return std::unexpected(error);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    return std::unexpected(SP::Error{SP::Error::Code::Timeout,
+                                     "scene bucket did not publish"});
+}
+
+inline auto readiness_skip_requested() -> bool {
+    return std::getenv("PATHSPACE_SKIP_UI_READY_WAIT") != nullptr;
+}
+
+inline auto ensure_declarative_scene_ready(SP::PathSpace& space,
+                                           SP::UI::Builders::ScenePath const& scene,
+                                           SP::UI::Builders::WindowPath const& window,
+                                           std::string const& view_name,
+                                           DeclarativeReadinessOptions const& options = {})
+    -> SP::Expected<DeclarativeReadinessResult> {
+    DeclarativeReadinessResult result{};
+    result.widget_count = count_window_widgets(space, window, view_name);
+    if (readiness_skip_requested()) {
+        return result;
+    }
+    if (result.widget_count == 0) {
+        return result;
+    }
+    if (options.wait_for_structure) {
+        auto scene_widgets_root = make_scene_widgets_root(scene, window, view_name);
+        auto status = wait_for_declarative_scene_widgets(space,
+                                                        scene_widgets_root,
+                                                        result.widget_count,
+                                                        options.widget_timeout);
+        if (!status) {
+            return std::unexpected(status.error());
+        }
+    }
+    if (options.wait_for_buckets) {
+        auto status = wait_for_declarative_widget_buckets(space,
+                                                          scene,
+                                                          result.widget_count,
+                                                          options.widget_timeout);
+        if (!status) {
+            return std::unexpected(status.error());
+        }
+    }
+    if (options.wait_for_revision) {
+        auto revision = wait_for_declarative_scene_revision(space,
+                                                            scene,
+                                                            options.revision_timeout,
+                                                            options.min_revision);
+        if (!revision) {
+            return std::unexpected(revision.error());
+        }
+        result.scene_revision = *revision;
+    }
+    return result;
 }
 
 } // namespace PathSpaceExamples
