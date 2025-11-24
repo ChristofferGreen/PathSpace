@@ -5,10 +5,12 @@
 #include <pathspace/system/Standard.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
+#include <pathspace/ui/declarative/StackReadiness.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/screenshot/ScreenshotService.hpp>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -17,6 +19,7 @@
 #include <sstream>
 #include <iostream>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -325,6 +328,31 @@ auto capture_screenshot(SP::PathSpace& space,
     if (!ready_revision) {
         return std::unexpected(ready_revision.error());
     }
+    if (debug_logging) {
+        auto format_revision = [](std::uint64_t revision) {
+            std::ostringstream oss;
+            oss << std::setw(16) << std::setfill('0') << revision;
+            return oss.str();
+        };
+        auto revision_base = std::string(scene.path.getPath()) + "/builds/" + format_revision(*ready_revision);
+        auto bucket = SP::UI::Scene::SceneSnapshotBuilder::decode_bucket(space, revision_base);
+        if (!bucket) {
+            std::cerr << "paint_example_new(debug): decode_bucket failed "
+                      << SP::describeError(bucket.error()) << "\n";
+        } else {
+            std::cerr << "paint_example_new(debug): bucket drawable count=" << bucket->drawable_ids.size() << "\n";
+            for (std::size_t i = 0; i < bucket->bounds_boxes.size(); ++i) {
+                auto const& box = bucket->bounds_boxes[i];
+                std::cerr << "  drawable[" << i << "] bounds=(" << box.min[0]
+                          << ", " << box.min[1] << ") - (" << box.max[0]
+                          << ", " << box.max[1] << ")";
+                if (i < bucket->authoring_map.size()) {
+                    std::cerr << " authoring=" << bucket->authoring_map[i].authoring_node_id;
+                }
+                std::cerr << "\n";
+            }
+        }
+    }
 
     SP::UI::Screenshot::ScreenshotRequest request{
         .space = space,
@@ -480,11 +508,45 @@ int main(int argc, char** argv) {
     if (auto activate = SP::UI::Declarative::Stack::SetActivePanel(space, *layout, "button_panel"); !activate) {
         return exit_with_error(space, "Stack::SetActivePanel failed", activate.error());
     }
+    auto stack_root = layout->getPath();
+    auto required_children = std::array<std::string_view, 1>{"button_panel"};
+    SP::UI::Declarative::StackReadinessOptions readiness_options{};
+    readiness_options.timeout = std::chrono::milliseconds{1500};
+    readiness_options.poll_interval = std::chrono::milliseconds{25};
+    readiness_options.verbose = std::getenv("PAINT_EXAMPLE_NEW_DEBUG") != nullptr;
+    if (readiness_options.verbose) {
+        readiness_options.log = [](std::string_view message) {
+            std::cerr << "paint_example_new(debug): " << message << '\n';
+        };
+    }
+    if (auto ready = SP::UI::Declarative::WaitForStackChildren(space,
+                                                               stack_root,
+                                                               std::span<const std::string_view>(required_children),
+                                                               readiness_options);
+        !ready) {
+        return exit_with_error(space, "stack children never published", ready.error());
+    }
 
     if (std::getenv("PAINT_EXAMPLE_NEW_DEBUG")) {
         auto lifecycle_state_path = std::string(scene->path.getPath()) + "/runtime/lifecycle/state/running";
         if (auto running = space.read<bool, std::string>(lifecycle_state_path); running) {
             std::cerr << "paint_example_new(debug): lifecycle running=" << (*running ? "true" : "false") << "\n";
+        }
+        auto layout_children_path = stack_root + "/layout/children";
+        auto layout_children =
+            space.read<std::vector<SP::UI::Builders::Widgets::StackChildSpec>, std::string>(layout_children_path);
+        if (layout_children) {
+            std::cerr << "paint_example_new(debug): layout children ids=";
+            if (layout_children->empty()) {
+                std::cerr << " <none>";
+            }
+            for (auto const& spec : *layout_children) {
+                std::cerr << " " << spec.id;
+            }
+            std::cerr << "\n";
+        } else {
+            std::cerr << "paint_example_new(debug): layout children read error "
+                      << SP::describeError(layout_children.error()) << "\n";
         }
         auto print_children = [&](std::string const& root, int depth, auto&& self_ref) -> void {
             auto entries = space.listChildren(SP::ConcretePathStringView{root});
