@@ -210,11 +210,6 @@ struct BucketVisitor {
 
     auto operator()(StackDescriptor const& descriptor) const
         -> SP::Expected<SP::UI::Scene::DrawableBucketSnapshot> {
-        SP::UI::Scene::DrawableBucketSnapshot bucket{};
-        if (descriptor.layout.children.empty()) {
-            return bucket;
-        }
-
         auto spec_for_id = [&](std::string const& id) -> BuilderWidgets::StackChildSpec const* {
             for (auto const& spec : descriptor.children) {
                 if (spec.id == id) {
@@ -239,6 +234,32 @@ struct BucketVisitor {
             return false;
         };
 
+        auto preview_bucket = [&]() -> SP::Expected<SP::UI::Scene::DrawableBucketSnapshot> {
+            auto preview_state = descriptor.layout;
+            if (!preview_state.children.empty()) {
+                std::vector<BuilderWidgets::StackLayoutComputedChild> visible_children;
+                visible_children.reserve(preview_state.children.size());
+                for (auto const& child : preview_state.children) {
+                    if (panel_visible(child.id)) {
+                        visible_children.push_back(child);
+                    }
+                }
+                if (!visible_children.empty()) {
+                    preview_state.children = std::move(visible_children);
+                }
+            }
+            BuilderWidgets::StackPreviewOptions preview{};
+            preview.authoring_root = authoring_root;
+            auto built = BuilderWidgets::BuildStackPreview(descriptor.style, preview_state, preview);
+            return built.bucket;
+        };
+
+        SP::UI::Scene::DrawableBucketSnapshot bucket{};
+        if (descriptor.layout.children.empty() || descriptor.children.empty()) {
+            return preview_bucket();
+        }
+
+        bool appended = false;
         for (auto const& child : descriptor.layout.children) {
             if (!panel_visible(child.id)) {
                 continue;
@@ -249,11 +270,16 @@ struct BucketVisitor {
             }
             auto child_bucket = load_stack_child_bucket(space, *spec);
             if (!child_bucket) {
-                return std::unexpected(child_bucket.error());
+                return preview_bucket();
             }
             auto translated = *child_bucket;
             Detail::translate_bucket(translated, child.x, child.y);
             Detail::append_bucket(bucket, translated);
+            appended = true;
+        }
+
+        if (!appended) {
+            return preview_bucket();
         }
 
         return bucket;
