@@ -179,6 +179,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/PathRenderer2DDetailEncode.cpp
         ui/PathRenderer2D.cpp
         examples/paint/PaintControls.cpp
+        examples/paint/PaintExampleNewUI.cpp
         ui/screenshot/ScreenshotService.cpp
         $<$<BOOL:APPLE>:ui/LocalWindowBridge.mm>
         $<$<BOOL:APPLE>:ui/PathWindowView.mm>

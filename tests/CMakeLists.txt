@@ -83,6 +83,7 @@ if(PATHSPACE_ENABLE_UI)
     ui/test_WidgetStateMutators.cpp
     ui/test_DeclarativeTheme.cpp
   ui/test_PathWindowView.cpp
+  ui/test_PaintExampleNew.cpp
   ui/test_BackendAdapters.cpp
   ui/test_DeclarativeRuntime.cpp
   test_main.cpp

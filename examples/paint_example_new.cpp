@@ -3,6 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/core/Error.hpp>
 #include <pathspace/examples/cli/ExampleCli.hpp>
+#include <pathspace/examples/paint/PaintExampleNewUI.hpp>
 #include <pathspace/path/ConcretePath.hpp>
 #include <pathspace/system/Standard.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
@@ -28,13 +29,8 @@
 
 namespace {
 
-using PathSpaceExamples::ensure_device_push_config;
-using PathSpaceExamples::install_local_window_bridge;
 using PathSpaceExamples::LocalInputBridge;
-using PathSpaceExamples::subscribe_window_devices;
-
-constexpr std::string_view kPointerDevice = "/system/devices/in/pointer/default";
-constexpr std::string_view kKeyboardDevice = "/system/devices/in/text/default";
+using PathSpaceExamples::install_local_window_bridge;
 
 struct Options {
     int width = 800;
@@ -463,19 +459,6 @@ int main(int argc, char** argv) {
         return exit_with_error(space, "Surface::SetScene failed", bind.error());
     }
 
-    ensure_device_push_config(space, std::string{kPointerDevice}, "paint_example_new");
-    ensure_device_push_config(space, std::string{kKeyboardDevice}, "paint_example_new");
-    auto pointer_devices = std::array<std::string, 1>{std::string{kPointerDevice}};
-    auto keyboard_devices = std::array<std::string, 1>{std::string{kKeyboardDevice}};
-    subscribe_window_devices(space,
-                             window->path,
-                             std::span<const std::string>(pointer_devices.data(), pointer_devices.size()),
-                             std::span<const std::string>{},
-                             std::span<const std::string>(keyboard_devices.data(), keyboard_devices.size()));
-    LocalInputBridge bridge{};
-    bridge.space = &space;
-    install_local_window_bridge(bridge);
-
     auto window_view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
     auto window_view = SP::App::ConcretePathView{window_view_path};
     auto window_widgets_root = window_view_path + "/widgets";
@@ -501,55 +484,23 @@ int main(int argc, char** argv) {
         std::cout << "paint_example_new: button pressed (" << (new_state ? "armed" : "reset") << ")\n";
     };
 
-    SP::UI::Declarative::Stack::Args layout_args{};
-    layout_args.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
-    layout_args.style.align_main = SP::UI::Builders::Widgets::StackAlignMain::Center;
-    layout_args.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Center;
-    auto button_width = button_args.style.width;
-    auto button_height = button_args.style.height;
-    auto vertical_padding = std::max(0.0f, (static_cast<float>(options.height) - button_height) * 0.5f);
-    auto horizontal_padding = std::max(0.0f, (static_cast<float>(options.width) - button_width) * 0.5f);
-    layout_args.style.width = static_cast<float>(options.width);
-    layout_args.style.height = static_cast<float>(options.height);
-    layout_args.style.padding_main_start = vertical_padding;
-    layout_args.style.padding_main_end = vertical_padding;
-    layout_args.style.padding_cross_start = horizontal_padding;
-    layout_args.style.padding_cross_end = horizontal_padding;
-    layout_args.panels.push_back(SP::UI::Declarative::Stack::Panel{
-        .id = "button_panel",
-        .fragment = SP::UI::Declarative::Button::Fragment(button_args),
-    });
-    layout_args.active_panel = "button_panel";
+    auto mounted_ui = PathSpaceExamples::PaintExampleNew::MountButtonUI(space,
+                                                                        window_view,
+                                                                        options.width,
+                                                                        options.height,
+                                                                        std::move(button_args));
+    if (!mounted_ui) {
+        return exit_with_error(space, "MountButtonUI failed", mounted_ui.error());
+    }
+    auto stack_root = mounted_ui->stack_path.getPath();
+    auto button_path = mounted_ui->button_path;
+    auto layout_width = mounted_ui->layout_width;
+    auto layout_height = mounted_ui->layout_height;
 
-    auto layout = SP::UI::Declarative::Stack::Create(space,
-                                                     window_view,
-                                                     "button_panel_root",
-                                                     std::move(layout_args));
-    if (!layout) {
-        return exit_with_error(space, "Stack::Create failed", layout.error());
+    auto enable_input = PathSpaceExamples::PaintExampleNew::EnableWindowInput(space, *window, "paint_example_new");
+    if (!enable_input) {
+        return exit_with_error(space, "EnableWindowInput failed", enable_input.error());
     }
-    if (auto activate = SP::UI::Declarative::Stack::SetActivePanel(space, *layout, "button_panel"); !activate) {
-        return exit_with_error(space, "Stack::SetActivePanel failed", activate.error());
-    }
-    auto stack_root = layout->getPath();
-    auto required_children = std::array<std::string_view, 1>{"button_panel"};
-    SP::UI::Declarative::StackReadinessOptions readiness_options{};
-    readiness_options.timeout = std::chrono::milliseconds{1500};
-    readiness_options.poll_interval = std::chrono::milliseconds{25};
-    readiness_options.verbose = std::getenv("PAINT_EXAMPLE_NEW_DEBUG") != nullptr;
-    if (readiness_options.verbose) {
-        readiness_options.log = [](std::string_view message) {
-            std::cerr << "paint_example_new(debug): " << message << '\n';
-        };
-    }
-    if (auto ready = SP::UI::Declarative::WaitForStackChildren(space,
-                                                               stack_root,
-                                                               std::span<const std::string_view>(required_children),
-                                                               readiness_options);
-        !ready) {
-        return exit_with_error(space, "stack children never published", ready.error());
-    }
-
     if (std::getenv("PAINT_EXAMPLE_NEW_DEBUG")) {
         auto lifecycle_state_path = std::string(scene->path.getPath()) + "/runtime/lifecycle/state/running";
         if (auto running = space.read<bool, std::string>(lifecycle_state_path); running) {
@@ -657,6 +608,10 @@ int main(int argc, char** argv) {
         SP::System::ShutdownDeclarativeRuntime(space);
         return 0;
     }
+
+    LocalInputBridge bridge{};
+    bridge.space = &space;
+    install_local_window_bridge(bridge);
 
     auto run = SP::App::RunUI(space,
                               *scene,
