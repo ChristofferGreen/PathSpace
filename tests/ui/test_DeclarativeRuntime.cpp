@@ -1,6 +1,8 @@
 #include "third_party/doctest.h"
 
 #include <pathspace/PathSpace.hpp>
+#include <pathspace/io/IoEvents.hpp>
+#include <pathspace/runtime/IOPump.hpp>
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
@@ -182,4 +184,146 @@ TEST_CASE("Declarative input task invokes registered handlers") {
     REQUIRE(press_event);
     CHECK(press_event->sequence == inbox_event->sequence);
 
+}
+
+TEST_CASE("paint_example_new-style button reacts to pointer press via widget runtime") {
+    using namespace std::chrono_literals;
+    PathSpace space;
+
+    auto target_widget = std::make_shared<std::string>();
+    auto target_authoring = std::make_shared<std::string>();
+
+    SP::System::LaunchOptions launch_options{};
+    launch_options.widget_event_options.refresh_interval = 1ms;
+    launch_options.widget_event_options.idle_sleep = 1ms;
+    launch_options.widget_event_options.hit_test_override =
+        [target_widget, target_authoring](PathSpace&,
+                                          std::string const&,
+                                          float scene_x,
+                                          float scene_y) -> SP::Expected<SP::UI::Builders::Scene::HitTestResult> {
+            SP::UI::Builders::Scene::HitTestResult result{};
+            if (!target_widget->empty()) {
+                result.hit = true;
+                result.target.authoring_node_id = *target_authoring;
+                result.position.scene_x = scene_x;
+                result.position.scene_y = scene_y;
+                result.position.has_local = true;
+                result.position.local_x = 8.0f;
+                result.position.local_y = 8.0f;
+            }
+            return result;
+        };
+
+    auto launch = SP::System::LaunchStandard(space, launch_options);
+    REQUIRE(launch);
+    RuntimeGuard runtime_guard{space};
+
+    auto app_root = SP::App::Create(space, "paint_example_button");
+    REQUIRE(app_root);
+
+    SP::Window::CreateOptions window_options;
+    window_options.title = "Declarative Button";
+    window_options.width = 400;
+    window_options.height = 240;
+    auto window = SP::Window::Create(space, *app_root, window_options);
+    REQUIRE(window);
+
+    auto scene = SP::Scene::Create(space, *app_root, window->path);
+    REQUIRE(scene);
+
+    auto window_view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
+    auto window_view = SP::App::ConcretePathView{window_view_path};
+
+    auto pressed = std::make_shared<std::atomic<bool>>(false);
+
+    SP::UI::Declarative::Button::Args button_args{};
+    button_args.label = "Press Me";
+    button_args.style.width = 240.0f;
+    button_args.style.height = 64.0f;
+    button_args.style.corner_radius = 16.0f;
+    button_args.style.text_color = {0.95f, 0.98f, 1.0f, 1.0f};
+    button_args.style.typography.font_size = 30.0f;
+    button_args.style.typography.line_height = 36.0f;
+    button_args.on_press = [pressed](SP::UI::Declarative::ButtonContext&) {
+        pressed->store(true, std::memory_order_release);
+    };
+
+    auto button_width = button_args.style.width;
+    auto button_height = button_args.style.height;
+
+    SP::UI::Declarative::Stack::Args layout_args{};
+    layout_args.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
+    layout_args.style.align_main = SP::UI::Builders::Widgets::StackAlignMain::Center;
+    layout_args.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Center;
+    layout_args.style.width = static_cast<float>(window_options.width);
+    layout_args.style.height = static_cast<float>(window_options.height);
+    auto vertical_padding = (layout_args.style.height - button_height) * 0.5f;
+    if (vertical_padding < 0.0f) {
+        vertical_padding = 0.0f;
+    }
+    auto horizontal_padding = (layout_args.style.width - button_width) * 0.5f;
+    if (horizontal_padding < 0.0f) {
+        horizontal_padding = 0.0f;
+    }
+    layout_args.style.padding_main_start = vertical_padding;
+    layout_args.style.padding_main_end = vertical_padding;
+    layout_args.style.padding_cross_start = horizontal_padding;
+    layout_args.style.padding_cross_end = horizontal_padding;
+    layout_args.panels.push_back(SP::UI::Declarative::Stack::Panel{
+        .id = "button_panel",
+        .fragment = SP::UI::Declarative::Button::Fragment(std::move(button_args)),
+    });
+    layout_args.active_panel = "button_panel";
+
+    auto layout_width = layout_args.style.width;
+    auto layout_height = layout_args.style.height;
+
+    auto layout = SP::UI::Declarative::Stack::Create(space,
+                                                     window_view,
+                                                     "button_panel_root",
+                                                     std::move(layout_args));
+    REQUIRE(layout);
+    auto activate = SP::UI::Declarative::Stack::SetActivePanel(space, *layout, "button_panel");
+    REQUIRE(activate);
+
+    auto button_path = layout->getPath() + "/children/button_panel";
+    *target_widget = button_path;
+    *target_authoring = button_path + "/authoring/button/background";
+
+    auto token = SP::Runtime::MakeRuntimeWindowToken(window->path.getPath());
+    auto events_root = std::string("/system/widgets/runtime/events/");
+    auto pointer_queue = events_root + token + "/pointer/queue";
+    auto button_queue = events_root + token + "/button/queue";
+
+    SP::IO::PointerEvent move{};
+    move.device_path = "/system/devices/in/pointer/default";
+    move.pointer_id = 1;
+    move.motion.absolute = true;
+    move.motion.absolute_x = layout_width * 0.5f;
+    move.motion.absolute_y = layout_height * 0.5f;
+    (void)space.insert(pointer_queue, move);
+
+    std::this_thread::sleep_for(5ms);
+
+    SP::IO::ButtonEvent press_event{};
+    press_event.source = SP::IO::ButtonSource::Mouse;
+    press_event.device_path = "/system/devices/in/pointer/default";
+    press_event.button_code = 1;
+    press_event.button_id = 1;
+    press_event.state.pressed = true;
+    (void)space.insert(button_queue, press_event);
+
+    auto release_event = press_event;
+    release_event.state.pressed = false;
+    (void)space.insert(button_queue, release_event);
+
+    bool observed = false;
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        if (pressed->load(std::memory_order_acquire)) {
+            observed = true;
+            break;
+        }
+        std::this_thread::sleep_for(5ms);
+    }
+    CHECK(observed);
 }

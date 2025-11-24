@@ -545,6 +545,39 @@ auto pump_widget(PathSpace& space,
     }
 }
 
+void pump_widget_tree(PathSpace& space,
+                      std::string const& widget_root,
+                      std::size_t max_actions,
+                      PumpStats& stats,
+                      WidgetMetricsMap& widget_metrics,
+                      std::chrono::nanoseconds slow_threshold) {
+    pump_widget(space, widget_root, max_actions, stats, widget_metrics, slow_threshold);
+
+    auto children_root = widget_root + "/children";
+    auto children = list_children(space, children_root);
+    for (auto const& child_name : children) {
+        std::string child_path = children_root;
+        child_path.push_back('/');
+        child_path.append(child_name);
+        pump_widget_tree(space, child_path, max_actions, stats, widget_metrics, slow_threshold);
+    }
+}
+
+void pump_widgets_in_root(PathSpace& space,
+                          std::string const& widgets_root,
+                          std::size_t max_actions,
+                          PumpStats& stats,
+                          WidgetMetricsMap& widget_metrics,
+                          std::chrono::nanoseconds slow_threshold) {
+    auto widgets = list_children(space, widgets_root);
+    for (auto const& widget : widgets) {
+        std::string widget_root = widgets_root;
+        widget_root.push_back('/');
+        widget_root.append(widget);
+        pump_widget_tree(space, widget_root, max_actions, stats, widget_metrics, slow_threshold);
+    }
+}
+
 auto pump_once(PathSpace& space, InputTaskOptions const& options) -> PumpResult {
     PumpResult result{};
     auto loop_start = now_ns();
@@ -552,21 +585,29 @@ auto pump_once(PathSpace& space, InputTaskOptions const& options) -> PumpResult 
 
     auto apps = list_children(space, "/system/applications");
     for (auto const& app : apps) {
-        std::string widgets_root = "/system/applications/";
-        widgets_root.append(app);
-        widgets_root.append("/widgets");
+        std::string app_root = "/system/applications/";
+        app_root.append(app);
 
-        auto widgets = list_children(space, widgets_root);
-        for (auto const& widget : widgets) {
-            std::string widget_root = widgets_root;
-            widget_root.push_back('/');
-            widget_root.append(widget);
-            pump_widget(space,
-                        widget_root,
-                        options.max_actions_per_widget,
-                        result.stats,
-                        result.widget_metrics,
-                        slow_threshold);
+        pump_widgets_in_root(space,
+                             app_root + "/widgets",
+                             options.max_actions_per_widget,
+                             result.stats,
+                             result.widget_metrics,
+                             slow_threshold);
+
+        auto windows_root = app_root + "/windows";
+        auto windows = list_children(space, windows_root);
+        for (auto const& window_name : windows) {
+            auto views_root = windows_root + "/" + window_name + "/views";
+            auto views = list_children(space, views_root);
+            for (auto const& view_name : views) {
+                pump_widgets_in_root(space,
+                                     views_root + "/" + view_name + "/widgets",
+                                     options.max_actions_per_widget,
+                                     result.stats,
+                                     result.widget_metrics,
+                                     slow_threshold);
+            }
         }
     }
 
