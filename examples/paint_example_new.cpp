@@ -1,3 +1,5 @@
+#include "declarative_example_shared.hpp"
+
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/core/Error.hpp>
 #include <pathspace/examples/cli/ExampleCli.hpp>
@@ -25,6 +27,14 @@
 #include <thread>
 
 namespace {
+
+using PathSpaceExamples::ensure_device_push_config;
+using PathSpaceExamples::install_local_window_bridge;
+using PathSpaceExamples::LocalInputBridge;
+using PathSpaceExamples::subscribe_window_devices;
+
+constexpr std::string_view kPointerDevice = "/system/devices/in/pointer/default";
+constexpr std::string_view kKeyboardDevice = "/system/devices/in/text/default";
 
 struct Options {
     int width = 800;
@@ -452,6 +462,19 @@ int main(int argc, char** argv) {
     if (auto bind = bind_scene_to_surface(space, *app, *scene, *window); !bind) {
         return exit_with_error(space, "Surface::SetScene failed", bind.error());
     }
+
+    ensure_device_push_config(space, std::string{kPointerDevice}, "paint_example_new");
+    ensure_device_push_config(space, std::string{kKeyboardDevice}, "paint_example_new");
+    auto pointer_devices = std::array<std::string, 1>{std::string{kPointerDevice}};
+    auto keyboard_devices = std::array<std::string, 1>{std::string{kKeyboardDevice}};
+    subscribe_window_devices(space,
+                             window->path,
+                             std::span<const std::string>(pointer_devices.data(), pointer_devices.size()),
+                             std::span<const std::string>{},
+                             std::span<const std::string>(keyboard_devices.data(), keyboard_devices.size()));
+    LocalInputBridge bridge{};
+    bridge.space = &space;
+    install_local_window_bridge(bridge);
 
     auto window_view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
     auto window_view = SP::App::ConcretePathView{window_view_path};
