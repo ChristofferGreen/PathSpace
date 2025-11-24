@@ -165,6 +165,7 @@ Runtime note (Nov 19, 2025): Focused input fields now receive synthesized `TextD
 | `state/history/<stroke-id>` | dir | rt | Ordered stroke history (UndoableSpace-backed). |
 | `state/history/<stroke-id>/meta` | value | rt | Stroke metadata (brush size, color, commit flag). |
 | `state/history/<stroke-id>/points` | value | rt | Widget-local points captured for the stroke. |
+| `state/history/<stroke-id>/version` | value | rt | Monotonic counter incremented every time meta/points are rewritten to guarantee consistent descriptor reads. |
 | `state/history/last_stroke_id` | value | rt | Last stroke identifier processed by the runtime. |
 | `render/buffer` | value | rt | CPU-readable paint buffer. |
 | `render/buffer/metrics/{width,height,dpi}` | value | rt | Buffer metrics derived from layout × DPI. |
@@ -176,7 +177,9 @@ Runtime note (Nov 19, 2025): Focused input fields now receive synthesized `TextD
 
 Descriptor status: paint surfaces expose brush metadata, buffer metrics, viewport and revision info, recorded stroke paths, and GPU staging metadata through the descriptor so the runtime can synthesize background quads plus `DrawCommandKind::Stroke` buckets. When `render/gpu/state == Ready`, the uploader also writes `assets/texture` for future image-command use.
 
-`PaintStrokeBegin`, `PaintStrokeUpdate`, and `PaintStrokeCommit` ops now populate the paint surface action queue with pointer-local coordinates. The runtime forwards each op to `events/draw/queue`, appends points under `state/history/<id>/{meta,points}`, increments `render/buffer/revision`, records stroke footprints under `render/buffer/pendingDirty` + `/render/gpu/dirtyRects`, flips `render/gpu/state` to `DirtyPartial`, and invokes the optional `draw` handler so reducers can append custom behavior or enqueue uploads manually if desired.
+`PaintStrokeBegin`, `PaintStrokeUpdate`, and `PaintStrokeCommit` ops now populate the paint surface action queue with pointer-local coordinates. The runtime forwards each op to `events/draw/queue`, appends points under `state/history/<id>/{meta,points}` (bumping `state/history/<id>/version` after every write), increments `render/buffer/revision`, records stroke footprints under `render/buffer/pendingDirty` + `/render/gpu/dirtyRects`, flips `render/gpu/state` to `DirtyPartial`, and invokes the optional `draw` handler so reducers can append custom behavior or enqueue uploads manually if desired.
+
+Descriptors, SceneLifecycle, and tooling read paint history through the versioned API (`PaintRuntime::ReadStrokePointsConsistent`), which re-reads `state/history/<id>/version` before/after grabbing `points`. If the version changes mid-read the helper retries, guaranteeing that cached buckets only reference stroke points that actually exist.
 
 **Startup guard (Nov 24, 2025):** Declarative demos must wait for lifecycle metrics, scene structure, and at least one published revision before presenting or running screenshot loops. Use `PathSpaceExamples::ensure_declarative_scene_ready` (from `examples/declarative_example_shared.hpp`) right after mounting widgets; it counts `/windows/<id>/views/<view>/widgets/*`, polls `/runtime/lifecycle/metrics/widgets_with_buckets`, waits for `/scenes/<scene>/structure/widgets/windows/<window>/views/<view>/widgets`, and optionally blocks on `/scenes/<scene>/current_revision` + `/builds/<rev>/bucket/drawables.bin`. All samples now call this helper before presenting so empty-window flashes stay gone and future demos inherit the same contract.
 

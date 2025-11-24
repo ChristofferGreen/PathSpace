@@ -555,14 +555,14 @@ auto ReadPaintSurfaceDescriptor(PathSpace& space, std::string const& root)
         if (!meta) {
             return std::unexpected(meta.error());
         }
-        auto points = ReadRequired<std::vector<PaintStrokePoint>>(space, stroke_root + "/points");
-        if (!points) {
-            return std::unexpected(points.error());
-        }
         PaintSurfaceStrokeDescriptor stroke{};
         stroke.id = *parsed;
         stroke.meta = *meta;
-        stroke.points = *points;
+        auto points = PaintRuntime::ReadStrokePointsConsistent(space, root, *parsed);
+        if (!points) {
+            return std::unexpected(points.error());
+        }
+        stroke.points = std::move(*points);
         descriptor.strokes.push_back(std::move(stroke));
     }
 

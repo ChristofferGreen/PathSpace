@@ -24,4 +24,9 @@ auto LoadStrokeRecords(PathSpace& space,
 auto ReadBufferMetrics(PathSpace& space,
                        std::string const& widget_path) -> SP::Expected<PaintBufferMetrics>;
 
+auto ReadStrokePointsConsistent(PathSpace& space,
+                                std::string const& widget_path,
+                                std::uint64_t stroke_id)
+    -> SP::Expected<std::vector<PaintStrokePoint>>;
+
 } // namespace SP::UI::Declarative::PaintRuntime

@@ -138,6 +138,63 @@ TEST_CASE("Declarative paint surface records strokes and builds stroke buckets")
     }
 }
 
+TEST_CASE("Paint stroke history increments version for each mutation") {
+    SP::PathSpace space;
+    SP::System::LaunchOptions launch_options{};
+    launch_options.start_input_runtime = false;
+    launch_options.start_io_pump = false;
+    launch_options.start_io_telemetry_control = false;
+    REQUIRE(SP::System::LaunchStandard(space, launch_options));
+    RuntimeGuard runtime_guard{space};
+
+    auto app_root = SP::App::Create(space, "paint_surface_version_app");
+    REQUIRE(app_root);
+
+    SP::Window::CreateOptions window_options;
+    window_options.name = "version_window";
+    auto window = SP::Window::Create(space, *app_root, window_options);
+    REQUIRE(window);
+
+    auto scene = SP::Scene::Create(space, *app_root, window->path, {});
+    REQUIRE(scene);
+
+    auto window_view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
+    auto window_view = SP::App::ConcretePathView{window_view_path};
+
+    SP::UI::Declarative::PaintSurface::Args args{};
+    auto widget = SP::UI::Declarative::PaintSurface::Create(space,
+                                                            window_view,
+                                                            "version_canvas",
+                                                            args);
+    REQUIRE(widget);
+
+    auto widget_path = widget->getPath();
+    auto version_path = std::string(widget_path) + "/state/history/42/version";
+    auto read_version = [&]() -> std::uint64_t {
+        auto value = space.read<std::uint64_t, std::string>(version_path);
+        if (!value) {
+            return 0;
+        }
+        return *value;
+    };
+
+    auto begin = make_action(widget_path, WidgetOpKind::PaintStrokeBegin, 4.0f, 4.0f);
+    REQUIRE(PaintRuntime::HandleAction(space, begin));
+    CHECK_EQ(read_version(), 1);
+
+    auto update = make_action(widget_path, WidgetOpKind::PaintStrokeUpdate, 8.0f, 10.0f);
+    REQUIRE(PaintRuntime::HandleAction(space, update));
+    CHECK_EQ(read_version(), 2);
+
+    auto commit = make_action(widget_path, WidgetOpKind::PaintStrokeCommit, 16.0f, 18.0f);
+    REQUIRE(PaintRuntime::HandleAction(space, commit));
+    CHECK_EQ(read_version(), 3);
+
+    auto points = PaintRuntime::ReadStrokePointsConsistent(space, widget_path, 42);
+    REQUIRE(points);
+    CHECK_EQ(points->size(), 3);
+}
+
 TEST_CASE("Declarative paint surface GPU uploader stages texture payload") {
     using namespace std::chrono_literals;
     SP::PathSpace space;

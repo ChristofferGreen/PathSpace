@@ -27,6 +27,7 @@ using SP::UI::Builders::Widgets::Bindings::WidgetOpKind;
 
 constexpr std::string_view kStrokePrefix{"paint_surface/stroke/"};
 constexpr std::size_t kMaxPendingDirty = 32;
+constexpr int kMaxStrokeReadAttempts = 5;
 
 template <typename T>
 auto ensure_value(PathSpace& space, std::string const& path, T const& value) -> SP::Expected<void> {
@@ -224,6 +225,14 @@ auto points_path(std::string const& widget_path, std::uint64_t stroke_id) -> std
     return path;
 }
 
+auto points_version_path(std::string const& widget_path, std::uint64_t stroke_id) -> std::string {
+    std::string path = widget_path;
+    path.append("/state/history/");
+    path.append(std::to_string(stroke_id));
+    path.append("/version");
+    return path;
+}
+
 auto meta_path(std::string const& widget_path, std::uint64_t stroke_id) -> std::string {
     std::string path = widget_path;
     path.append("/state/history/");
@@ -234,12 +243,39 @@ auto meta_path(std::string const& widget_path, std::uint64_t stroke_id) -> std::
 
 auto read_points(PathSpace& space, std::string const& widget_path, std::uint64_t stroke_id)
     -> SP::Expected<std::vector<PaintStrokePoint>> {
-    auto path = points_path(widget_path, stroke_id);
-    auto value = BuilderDetail::read_optional<std::vector<PaintStrokePoint>>(space, path);
+    auto points_leaf = points_path(widget_path, stroke_id);
+    auto version_leaf = points_version_path(widget_path, stroke_id);
+    for (int attempt = 0; attempt < kMaxStrokeReadAttempts; ++attempt) {
+        auto version_before = BuilderDetail::read_optional<std::uint64_t>(space, version_leaf);
+        if (!version_before) {
+            return std::unexpected(version_before.error());
+        }
+        auto points = BuilderDetail::read_optional<std::vector<PaintStrokePoint>>(space, points_leaf);
+        if (!points) {
+            return std::unexpected(points.error());
+        }
+        auto version_after = BuilderDetail::read_optional<std::uint64_t>(space, version_leaf);
+        if (!version_after) {
+            return std::unexpected(version_after.error());
+        }
+        auto before_value = version_before->value_or(std::uint64_t{0});
+        auto after_value = version_after->value_or(before_value);
+        if (before_value == after_value) {
+            return points->value_or(std::vector<PaintStrokePoint>{});
+        }
+    }
+    return std::unexpected(BuilderDetail::make_error("paint stroke points mutated during read",
+                                                     SP::Error::Code::Timeout));
+}
+
+auto read_points_version(PathSpace& space, std::string const& widget_path, std::uint64_t stroke_id)
+    -> SP::Expected<std::uint64_t> {
+    auto path = points_version_path(widget_path, stroke_id);
+    auto value = BuilderDetail::read_optional<std::uint64_t>(space, path);
     if (!value) {
         return std::unexpected(value.error());
     }
-    return value->value_or(std::vector<PaintStrokePoint>{});
+    return value->value_or(std::uint64_t{0});
 }
 
 auto read_meta(PathSpace& space, std::string const& widget_path, std::uint64_t stroke_id)
@@ -261,9 +297,18 @@ auto write_stroke(PathSpace& space,
     if (!meta_status) {
         return meta_status;
     }
-    return BuilderDetail::replace_single(space,
-                                         points_path(widget_path, stroke_id),
-                                         points);
+    auto points_status = BuilderDetail::replace_single(space,
+                                                       points_path(widget_path, stroke_id),
+                                                       points);
+    if (!points_status) {
+        return points_status;
+    }
+    auto version = read_points_version(space, widget_path, stroke_id);
+    if (!version) {
+        return std::unexpected(version.error());
+    }
+    auto next = *version + 1;
+    return BuilderDetail::replace_single(space, points_version_path(widget_path, stroke_id), next);
 }
 
 } // namespace
@@ -333,6 +378,13 @@ auto ReadBufferMetrics(PathSpace& space, std::string const& widget_path)
     }
     metrics.dpi = *dpi_value;
     return metrics;
+}
+
+auto ReadStrokePointsConsistent(PathSpace& space,
+                                std::string const& widget_path,
+                                std::uint64_t stroke_id)
+    -> SP::Expected<std::vector<PaintStrokePoint>> {
+    return read_points(space, widget_path, stroke_id);
 }
 
 auto append_point(PathSpace& space,
@@ -482,15 +534,14 @@ auto LoadStrokeRecords(PathSpace& space,
         if (!meta) {
             continue;
         }
-        auto points = BuilderDetail::read_optional<std::vector<PaintStrokePoint>>(space,
-                                                                                 history_root + "/" + child + "/points");
-        if (!points) {
-            continue;
-        }
         PaintStrokeRecord record{};
         record.id = *id;
         record.meta = *meta;
-        record.points = points->value_or(std::vector<PaintStrokePoint>{});
+        auto points = read_points(space, widget_path, *id);
+        if (!points) {
+            continue;
+        }
+        record.points = std::move(*points);
         records.push_back(std::move(record));
     }
     std::sort(records.begin(), records.end(), [](auto const& lhs, auto const& rhs) {
