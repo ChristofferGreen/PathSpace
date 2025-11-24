@@ -2,17 +2,56 @@
 
 #include "../../../../examples/declarative_example_shared.hpp"
 
+#include <pathspace/layer/io/PathIOMouse.hpp>
+#include <pathspace/layer/io/PathIOKeyboard.hpp>
 #include <pathspace/ui/declarative/StackReadiness.hpp>
 
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <memory>
 #include <span>
 
 namespace PathSpaceExamples::PaintExampleNew {
 namespace {
 constexpr std::string_view kPointerDevice = "/system/devices/in/pointer/default";
 constexpr std::string_view kKeyboardDevice = "/system/devices/in/text/default";
+
+auto ensure_pointer_device(SP::PathSpace& space) -> SP::Expected<void> {
+    auto roots = space.listChildren(SP::ConcretePathStringView{"/system/devices/in/pointer"});
+    auto has_default = std::find(roots.begin(), roots.end(), "default") != roots.end();
+    if (!has_default) {
+        auto device = std::make_unique<SP::PathIOMouse>(SP::PathIOMouse::BackendMode::Off);
+        auto inserted = space.insert<"/system/devices/in/pointer/default">(std::move(device));
+        if (!inserted.errors.empty()) {
+            return std::unexpected(inserted.errors.front());
+        }
+    }
+    return {};
+}
+
+auto ensure_keyboard_device(SP::PathSpace& space) -> SP::Expected<void> {
+    auto roots = space.listChildren(SP::ConcretePathStringView{"/system/devices/in/text"});
+    auto has_default = std::find(roots.begin(), roots.end(), "default") != roots.end();
+    if (!has_default) {
+        auto device = std::make_unique<SP::PathIOKeyboard>(SP::PathIOKeyboard::BackendMode::Off);
+        auto inserted = space.insert<"/system/devices/in/text/default">(std::move(device));
+        if (!inserted.errors.empty()) {
+            return std::unexpected(inserted.errors.front());
+        }
+    }
+    return {};
+}
+}
+
+auto EnsureInputDevices(SP::PathSpace& space) -> SP::Expected<void> {
+    if (auto ensure_pointer = ensure_pointer_device(space); !ensure_pointer) {
+        return std::unexpected(ensure_pointer.error());
+    }
+    if (auto ensure_keyboard = ensure_keyboard_device(space); !ensure_keyboard) {
+        return std::unexpected(ensure_keyboard.error());
+    }
+    return {};
 }
 
 auto MountButtonUI(SP::PathSpace& space,
@@ -78,6 +117,10 @@ auto MountButtonUI(SP::PathSpace& space,
 auto EnableWindowInput(SP::PathSpace& space,
                        SP::Window::CreateResult const& window,
                        std::string_view telemetry_tag) -> SP::Expected<void> {
+    if (auto ensured = EnsureInputDevices(space); !ensured) {
+        return ensured;
+    }
+
     ensure_device_push_config(space, std::string{kPointerDevice}, std::string(telemetry_tag));
     ensure_device_push_config(space, std::string{kKeyboardDevice}, std::string(telemetry_tag));
 

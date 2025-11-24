@@ -177,6 +177,11 @@ auto AppendDrawableBucket(DrawableBucketSnapshot& dest,
         dest.glyph_vertices.insert(dest.glyph_vertices.end(), src.glyph_vertices.begin(), src.glyph_vertices.end());
     }
 
+    auto stroke_base = static_cast<std::uint32_t>(dest.stroke_points.size());
+    if (!src.stroke_points.empty()) {
+        dest.stroke_points.insert(dest.stroke_points.end(), src.stroke_points.begin(), src.stroke_points.end());
+    }
+
     auto payload_base = dest.command_payload.size();
     dest.command_kinds.insert(dest.command_kinds.end(), src.command_kinds.begin(), src.command_kinds.end());
     dest.command_payload.insert(dest.command_payload.end(), src.command_payload.begin(), src.command_payload.end());
@@ -195,6 +200,12 @@ auto AppendDrawableBucket(DrawableBucketSnapshot& dest,
                 std::memcpy(&command, ptr, sizeof(TextGlyphsCommand));
                 command.glyph_offset += glyph_base;
                 std::memcpy(ptr, &command, sizeof(TextGlyphsCommand));
+            } else if (kind == DrawCommandKind::Stroke && size >= sizeof(StrokeCommand)) {
+                auto* ptr = dest.command_payload.data() + payload_offset;
+                StrokeCommand command{};
+                std::memcpy(&command, ptr, sizeof(StrokeCommand));
+                command.point_offset += stroke_base;
+                std::memcpy(ptr, &command, sizeof(StrokeCommand));
             }
             payload_offset += size;
         }

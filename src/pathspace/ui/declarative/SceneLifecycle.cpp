@@ -684,14 +684,8 @@ private:
         }
 
         SP::UI::Scene::DrawableBucketSnapshot combined{};
-        auto should_include = [](std::string const& widget_path) {
-            return widget_path.find("/children/") == std::string::npos;
-        };
         for (auto const& [_, bucket_ptr] : snapshot) {
             if (!bucket_ptr) {
-                continue;
-            }
-            if (!should_include(_)) {
                 continue;
             }
             SP::UI::Scene::AppendDrawableBucket(combined, *bucket_ptr);

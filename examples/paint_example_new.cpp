@@ -430,6 +430,10 @@ int main(int argc, char** argv) {
     auto options = parse_options(argc, argv);
 
     SP::PathSpace space;
+    auto ensure_devices = PathSpaceExamples::PaintExampleNew::EnsureInputDevices(space);
+    if (!ensure_devices) {
+        return exit_with_error(space, "EnsureInputDevices failed", ensure_devices.error());
+    }
     auto launch = SP::System::LaunchStandard(space);
     if (!launch) {
         return exit_with_error(space, "LaunchStandard failed", launch.error());

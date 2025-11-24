@@ -16,6 +16,8 @@ struct ButtonUiResult {
     float layout_height = 0.0f;
 };
 
+auto EnsureInputDevices(SP::PathSpace& space) -> SP::Expected<void>;
+
 auto MountButtonUI(SP::PathSpace& space,
                    SP::App::ConcretePathView window_view,
                    int window_width,

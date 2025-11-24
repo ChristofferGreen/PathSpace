@@ -2,6 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
+#include <pathspace/io/IoTrellis.hpp>
 #include <pathspace/runtime/IOPump.hpp>
 #include <pathspace/runtime/TelemetryControl.hpp>
 #include <pathspace/ui/Builders.hpp>
@@ -41,6 +42,8 @@ struct LaunchOptions {
     std::string default_theme_name = "default";
     bool start_input_runtime = true;
     SP::UI::Declarative::InputTaskOptions input_task_options{};
+    bool start_io_trellis = true;
+    SP::IO::IoTrellisOptions io_trellis_options{};
     bool start_io_pump = true;
     SP::Runtime::IoPumpOptions io_pump_options{};
     bool start_io_telemetry_control = true;
@@ -56,6 +59,7 @@ struct LaunchResult {
     std::string default_theme_path;
     bool input_runtime_started = false;
     std::string input_runtime_state_path;
+    bool io_trellis_started = false;
     bool io_pump_started = false;
     std::string io_pump_state_path;
     bool telemetry_control_started = false;

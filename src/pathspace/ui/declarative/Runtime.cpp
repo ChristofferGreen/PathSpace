@@ -7,17 +7,20 @@
 #include <pathspace/ui/LocalWindowBridge.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceUploader.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
+#include <pathspace/io/IoTrellis.hpp>
 #include <pathspace/layer/io/PathIOMouse.hpp>
 #include <pathspace/layer/io/PathIOKeyboard.hpp>
 
 #include <chrono>
 #include <cctype>
 #include <cstdint>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -27,12 +30,45 @@ using SP::PathSpace;
 using ScenePath = SP::UI::Builders::ScenePath;
 using WindowPath = SP::UI::Builders::WindowPath;
 
+std::mutex g_io_trellis_mutex;
+std::unordered_map<SP::PathSpace*, SP::IO::IoTrellisHandle> g_io_trellis_handles;
+
 constexpr auto kSystemLaunchFlag = std::string_view{"/system/state/runtime_launched"};
 constexpr auto kInputRuntimeState = std::string_view{"/system/widgets/runtime/input/state"};
 constexpr auto kRendererConfigSuffix = std::string_view{"/config/renderer/default"};
 constexpr auto kDefaultRendererName = std::string_view{"widgets_declarative_renderer"};
 constexpr auto kDefaultSurfacePrefix = std::string_view{"widgets_surface"};
 constexpr auto kDefaultThemeActive = std::string_view{"/config/theme/active"};
+
+auto ensure_io_trellis(SP::PathSpace& space,
+                       SP::IO::IoTrellisOptions const& options) -> SP::Expected<bool> {
+    std::lock_guard<std::mutex> guard(g_io_trellis_mutex);
+    auto existing = g_io_trellis_handles.find(&space);
+    if (existing != g_io_trellis_handles.end()) {
+        return false;
+    }
+    auto handle = SP::IO::CreateIOTrellis(space, options);
+    if (!handle) {
+        return std::unexpected(handle.error());
+    }
+    g_io_trellis_handles.emplace(&space, std::move(*handle));
+    return true;
+}
+
+void shutdown_io_trellis(SP::PathSpace& space) {
+    std::optional<SP::IO::IoTrellisHandle> handle;
+    {
+        std::lock_guard<std::mutex> guard(g_io_trellis_mutex);
+        auto it = g_io_trellis_handles.find(&space);
+        if (it != g_io_trellis_handles.end()) {
+            handle.emplace(std::move(it->second));
+            g_io_trellis_handles.erase(it);
+        }
+    }
+    if (handle) {
+        handle->shutdown();
+    }
+}
 
 template <typename T>
 auto ensure_value(SP::PathSpace& space,
@@ -593,6 +629,14 @@ auto LaunchStandard(PathSpace& space, LaunchOptions const& options) -> SP::Expec
         result.input_runtime_state_path = std::string{kInputRuntimeState};
     }
 
+    if (options.start_io_trellis) {
+        auto trellis_started = ensure_io_trellis(space, options.io_trellis_options);
+        if (!trellis_started) {
+            return std::unexpected(trellis_started.error());
+        }
+        result.io_trellis_started = *trellis_started;
+    }
+
     if (options.start_io_pump) {
         auto pump_started = SP::Runtime::CreateIOPump(space, options.io_pump_options);
         if (!pump_started) {
@@ -645,6 +689,7 @@ auto ShutdownDeclarativeRuntime(PathSpace& space) -> void {
     SP::UI::Declarative::SceneLifecycle::StopAll(space);
     SP::UI::Declarative::ShutdownWidgetEventTrellis(space);
     SP::Runtime::ShutdownIOPump(space);
+    shutdown_io_trellis(space);
     SP::Runtime::ShutdownTelemetryControl(space);
     SP::UI::Declarative::ShutdownInputTask(space);
     SP::UI::Declarative::ShutdownPaintSurfaceUploader(space);
