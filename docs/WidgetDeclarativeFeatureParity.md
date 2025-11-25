@@ -36,8 +36,7 @@ This document cross-references the legacy imperative widget builders (`src/paths
 
 ## 4. Outstanding Gaps / Follow-ups
 
-1. **Accessibility validation:** The declarative schema defines accessibility nodes and bridges to `PathWindowView.mm`, but VoiceOver smoke tests and troubleshooting docs remain TODO (docs/Plan_WidgetDeclarativeAPI.md:184-190). Legacy widgets already ship the tested bridge, so declarative parity still requires automated coverage plus a contributor runbook.
-2. **Performance validation matrix:** Phase 3 also calls for benchmark comparisons between the legacy and declarative pipelines. This audit documents functional parity, but perf measurements (FPS, latency, telemetry deltas) still need to be recorded before Phase 3 can close out entirely.
-3. **Inspector/consumer migration tracking:** While samples now use the declarative API, several internal tools (e.g., web inspector views mentioned in `Plan_PathSpace_Inspector.md`) still rely on legacy paths. Track those migrations separately so the deprecation window can be scheduled confidently.
+1. **Performance validation matrix:** Phase 3 calls for benchmark comparisons between the legacy and declarative pipelines. This audit documents functional parity, but perf measurements (FPS, latency, telemetry deltas) still need to be recorded before Phase 3 can close out entirely.
+2. **Inspector/consumer migration tracking:** While samples now use the declarative API, several internal tools (e.g., web inspector views mentioned in `Plan_PathSpace_Inspector.md`) still rely on legacy paths. Track those migrations separately so the deprecation window can be scheduled confidently.
 
 The matrix above should be refreshed whenever new widgets land or when telemetry/worker contracts change. Update this file and the Phase 3 checklist inside `docs/Plan_WidgetDeclarativeAPI.md` together to keep planning artifacts in sync.
