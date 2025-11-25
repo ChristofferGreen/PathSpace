@@ -21,10 +21,11 @@ Review these documents (order matters):
 1. `docs/AI_Onboarding.md` (this file) — overview and next steps.
 2. `docs/AI_Architecture.md` — PathSpace core architecture, concurrency policies, snapshot pipeline.
 3. `docs/AI_Paths.md` — canonical namespace/layout conventions.
-4. `docs/Plan_SceneGraph_Renderer.md` — renderer stack plan, snapshot semantics, target contracts.
-5. `docs/Plan_SceneGraph.md` — current phase status and outstanding tasks.
-6. `docs/AI_Debugging_Playbook.md` — hands-on troubleshooting steps, log capture workflow, and diagnostics quick reference.
-7. Any task-specific plans under `docs/` (e.g., `Plan_CartaLinea.md`) when relevant.
+4. `docs/WidgetDeclarativeAPI.md` — declarative runtime workflow (bootstrap, widget helpers, readiness guard, handler/focus/runtime services, testing discipline).
+5. `docs/Plan_SceneGraph_Renderer.md` — renderer stack plan, snapshot semantics, target contracts.
+6. `docs/Plan_SceneGraph.md` — current phase status and outstanding tasks.
+7. `docs/AI_Debugging_Playbook.md` — hands-on troubleshooting steps, log capture workflow, and diagnostics quick reference.
+8. Any task-specific plans under `docs/` (e.g., `Plan_CartaLinea.md`) when relevant.
 
 Skim `docs/AI_Todo.task` for open epics/features and cross-check the implementation plan.
 

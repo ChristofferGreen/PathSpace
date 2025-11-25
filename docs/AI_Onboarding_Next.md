@@ -15,6 +15,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
    - `docs/Plan_SceneGraph.md` — check Phase 7 for the freshly completed Metal streaming work and remaining GPU milestones.
    - `docs/AI_Todo.task` — verify priority ordering and align new work with open items.
    - `docs/Widget_Schema_Reference.md` — per-widget declarative schema tables; read alongside `docs/AI_Paths.md` before touching widget namespaces.
+   - `docs/WidgetDeclarativeAPI.md` — declarative runtime workflow (LaunchStandard/App/Window/Scene helpers, handler registry, readiness guard, paint/history helpers, testing discipline). Consult this before modifying declarative widgets or samples.
 
 3. **Build/Test Baseline**
    ```bash

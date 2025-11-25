@@ -16,6 +16,7 @@ examples, tests, and tooling.
   and keep `cmake --build build -j` handy while iterating.
 - Plan to run the full 5× UI loop before committing:
   `ctest --test-dir build --output-on-failure -j --repeat-until-fail 5 --timeout 20`.
+- Read `docs/WidgetDeclarativeAPI.md` for the declarative runtime workflow (LaunchStandard/App/Window/Scene helpers, fragment mounting, handler registry, readiness guard, paint/history bindings, and testing discipline). Treat it as the operational playbook for declarative widgets and keep it updated when behaviors change.
 - Runtime bootstrap tip (November 17, 2025): `SP::System::LaunchStandard`, `SP::App::Create`, `SP::Window::Create`, and `SP::Scene::Create` now seed `/config/theme`, `/config/renderer/default`, `windows/<id>/views/<view>/{scene,surface,renderer}`, and `scenes/<id>/structure/window/<window>` automatically and start both the `/system/widgets/runtime/input` worker and the `/system/widgets/runtime/io` pump by default. Window creation also registers `/system/widgets/runtime/windows/<token>` entries so bridges can populate `subscriptions/{pointer,button,text}/devices` (device paths such as `/system/devices/in/pointer/default`). Call `SP::System::ShutdownDeclarativeRuntime` in short-lived tests/examples when you do not want either worker thread to survive `PathSpace` teardown.
 
 ### Declarative samples (November 19, 2025)
@@ -114,6 +115,8 @@ Keep `docs/AI_Paths.md` in sync if you introduce new metadata keys or queues.
   `Window::Present`.
 - Point declarative contributors at `declarative_theme_example` when documenting
   theme overrides so the runtime-focused sample stays current.
+- Update `docs/WidgetDeclarativeAPI.md` whenever workflow, readiness, or
+  testing expectations change so contributors have a single operational guide.
 - Update `docs/Plan_SceneGraph.md` (Phase 8 status list) and
   `docs/AI_Onboarding_Next.md` to mention the new widget and any follow-on work.
 - If new queues or metadata land, refresh `docs/AI_Debugging_Playbook.md` with

@@ -300,8 +300,7 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - Extend fuzz harnesses for random widget trees and callback firing.
    - ✅ (November 23, 2025) Reworked the “Widget focus blur clears highlight footprint pixels” UITest to assert on declarative bucket metadata instead of framebuffer samples so we can prove focus highlight geometry toggles without relying on brittle screenshot coordinates.
 3. **Docs**
-   - Document the workflow (`docs/WidgetDeclarativeAPI/md`).
-   - Update onboarding/checklists and provide migration notes.
+   - ✅ (November 25, 2025) Authored `docs/WidgetDeclarativeAPI.md`, covering runtime bootstrap, widget/fragments, handler registry, readiness guards, paint/history bindings, testing discipline, migration checklist, and troubleshooting. Updated `docs/AI_Onboarding.md`, `docs/AI_Onboarding_Next.md`, and `docs/Widget_Contribution_Quickstart.md` to reference the guide so every contributor follows the declarative workflow before touching code.
 
 ## Debug Journal — November 19, 2025
 
