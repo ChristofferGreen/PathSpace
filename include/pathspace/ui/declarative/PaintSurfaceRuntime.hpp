@@ -29,4 +29,13 @@ auto ReadStrokePointsConsistent(PathSpace& space,
                                 std::uint64_t stroke_id)
     -> SP::Expected<std::vector<PaintStrokePoint>>;
 
+auto ApplyLayoutSize(PathSpace& space,
+                     std::string const& widget_path) -> SP::Expected<bool>;
+
+inline auto ApplyLayoutSize(PathSpace& space,
+                            SP::UI::Builders::WidgetPath const& widget)
+    -> SP::Expected<bool> {
+    return ApplyLayoutSize(space, widget.getPath());
+}
+
 } // namespace SP::UI::Declarative::PaintRuntime

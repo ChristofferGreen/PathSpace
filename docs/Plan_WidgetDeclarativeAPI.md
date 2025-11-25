@@ -165,7 +165,7 @@ Canonical namespaces stay consistent across widgets: `state/` for mutable widget
 - When the layout expands, allocate a new buffer at the larger resolution, replay stroke history from `state/history/<seq>` into the new buffer, and refresh `assets/texture` if GPU staging is enabled. Mark `render/dirty = true` and enqueue an auto-render event.
 - When the layout shrinks, retain the existing buffer; update `render/buffer/viewport` to describe the visible rectangle and let presenters clip to that region so future expansions can reuse the preserved data.
 - Input processing normalises pointer coordinates to layout space before writing stroke entries; render tasks multiply by the stored metrics to convert back to pixel coordinates. Stylus overrides can request higher DPI by writing `render/buffer/metrics/dpi_override` before the next expansion.
-- Add resize regression tests that grow/shrink the widget, verifying buffer metrics, viewport clipping, and stroke replay maintain fidelity without data loss.
+- ✅ (November 25, 2025) Added resize regression coverage via `tests/ui/test_DeclarativePaintSurface.cpp` ("Paint surface layout resizing updates metrics and viewport"), plus `PaintRuntime::ApplyLayoutSize` which reads `layout/computed/size` + window DPI, rewrites `render/buffer/{metrics,viewport}`, queues full-buffer dirty hints, and keeps GPU staging in sync so stroke history survives grow/shrink cycles.
 
 The paintable surface widget reuses the same namespaces but adds `render/buffer` to store the current picture (CPU-readable texture) and an optional `assets/texture` node for GPU residency. Draw events append stroke metadata under `state/history/<id>` so undo/redo tasks can rebuild the buffer on demand.
 

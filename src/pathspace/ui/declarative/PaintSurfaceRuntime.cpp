@@ -3,10 +3,12 @@
 #include "../BuildersDetail.hpp"
 #include "widgets/Common.hpp"
 
+#include <pathspace/app/AppPaths.hpp>
 #include <pathspace/path/ConcretePath.hpp>
 #include <pathspace/ui/Builders.hpp>
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cmath>
 #include <optional>
@@ -28,6 +30,219 @@ using SP::UI::Builders::Widgets::Bindings::WidgetOpKind;
 constexpr std::string_view kStrokePrefix{"paint_surface/stroke/"};
 constexpr std::size_t kMaxPendingDirty = 32;
 constexpr int kMaxStrokeReadAttempts = 5;
+
+auto enqueue_dirty_hint(PathSpace& space,
+                        std::string const& widget_path,
+                        DirtyRectHint const& hint) -> SP::Expected<void>;
+auto gpu_enabled(PathSpace& space, std::string const& widget_path) -> bool;
+auto increment_revision(PathSpace& space, std::string const& widget_path) -> void;
+auto write_gpu_state(PathSpace& space,
+                     std::string const& widget_path,
+                     PaintGpuState state) -> void;
+auto log_gpu_event(PathSpace& space,
+                   std::string const& widget_path,
+                   std::string_view message) -> void;
+
+struct WidgetAddress {
+    std::string app_root;
+    std::string window_path;
+    std::string window_name;
+    std::string view_name;
+};
+
+struct LayoutSize {
+    float width = 0.0f;
+    float height = 0.0f;
+};
+
+struct LayoutPixels {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+};
+
+auto extract_widget_address(std::string const& widget_path) -> std::optional<WidgetAddress> {
+    constexpr std::string_view kApplications{"/system/applications/"};
+    constexpr std::string_view kWindows{"/windows/"};
+    constexpr std::string_view kViews{"/views/"};
+
+    if (widget_path.find(kApplications) != 0) {
+        return std::nullopt;
+    }
+
+    auto app_start = kApplications.size();
+    auto app_end = widget_path.find('/', app_start);
+    if (app_end == std::string::npos) {
+        return std::nullopt;
+    }
+
+    auto windows_pos = widget_path.find(kWindows, app_end);
+    if (windows_pos == std::string::npos) {
+        return std::nullopt;
+    }
+
+    auto window_name_start = windows_pos + kWindows.size();
+    auto window_name_end = widget_path.find('/', window_name_start);
+    if (window_name_end == std::string::npos) {
+        return std::nullopt;
+    }
+
+    auto views_pos = widget_path.find(kViews, window_name_end);
+    if (views_pos == std::string::npos) {
+        return std::nullopt;
+    }
+
+    auto view_name_start = views_pos + kViews.size();
+    auto view_name_end = widget_path.find('/', view_name_start);
+    if (view_name_end == std::string::npos) {
+        return std::nullopt;
+    }
+
+    WidgetAddress address{};
+    address.app_root = widget_path.substr(0, app_end);
+    address.window_path = widget_path.substr(0, window_name_end);
+    address.window_name = widget_path.substr(window_name_start, window_name_end - window_name_start);
+    address.view_name = widget_path.substr(view_name_start, view_name_end - view_name_start);
+    return address;
+}
+
+auto read_layout_size(PathSpace& space, std::string const& widget_path)
+    -> SP::Expected<std::optional<LayoutSize>> {
+    auto path = widget_path + "/layout/computed/size";
+    auto stored = BuilderDetail::read_optional<std::array<float, 2>>(space, path);
+    if (!stored) {
+        return std::unexpected(stored.error());
+    }
+    if (!stored->has_value()) {
+        return std::optional<LayoutSize>{};
+    }
+    auto const& arr = **stored;
+    LayoutSize size{arr[0], arr[1]};
+    return size;
+}
+
+auto read_window_dpi(PathSpace& space, WidgetAddress const& address) -> SP::Expected<float> {
+    auto scene_leaf = address.window_path + "/views/" + address.view_name + "/scene";
+    auto scene_relative = BuilderDetail::read_optional<std::string>(space, scene_leaf);
+    if (!scene_relative) {
+        return std::unexpected(scene_relative.error());
+    }
+
+    if (!scene_relative->has_value() || scene_relative->value().empty()) {
+        return 1.0f;
+    }
+
+    auto resolved = SP::App::resolve_app_relative(SP::App::AppRootPathView{address.app_root},
+                                                  scene_relative->value());
+    if (!resolved) {
+        return std::unexpected(resolved.error());
+    }
+
+    auto metrics_path = resolved->getPath();
+    metrics_path.append("/structure/window/");
+    metrics_path.append(address.window_name);
+    metrics_path.append("/metrics/dpi");
+
+    auto dpi_value = BuilderDetail::read_optional<double>(space, metrics_path);
+    if (!dpi_value) {
+        return std::unexpected(dpi_value.error());
+    }
+    auto dpi = dpi_value->value_or(1.0);
+    if (dpi <= 0.0) {
+        dpi = 1.0;
+    }
+    return static_cast<float>(dpi);
+}
+
+auto layout_to_pixels(LayoutSize const& layout, float dpi)
+    -> std::optional<LayoutPixels> {
+    if (layout.width <= 0.0f || layout.height <= 0.0f) {
+        return std::nullopt;
+    }
+    auto clamped_dpi = std::max(dpi, 1.0f);
+    auto to_pixels = [&](float value) -> std::uint32_t {
+        auto scaled = static_cast<double>(value) * static_cast<double>(clamped_dpi);
+        auto rounded = static_cast<std::int64_t>(std::lround(std::max(0.0, scaled)));
+        return static_cast<std::uint32_t>(std::max<std::int64_t>(1, rounded));
+    };
+    LayoutPixels pixels{to_pixels(layout.width), to_pixels(layout.height)};
+    return pixels;
+}
+
+auto make_full_dirty_hint(LayoutPixels const& pixels) -> DirtyRectHint {
+    DirtyRectHint hint{};
+    hint.min_x = 0.0f;
+    hint.min_y = 0.0f;
+    hint.max_x = static_cast<float>(pixels.width);
+    hint.max_y = static_cast<float>(pixels.height);
+    return hint;
+}
+
+auto write_buffer_metrics(PathSpace& space,
+                          std::string const& widget_path,
+                          LayoutPixels const& pixels,
+                          float dpi) -> SP::Expected<bool> {
+    auto metrics = ReadBufferMetrics(space, widget_path);
+    if (!metrics) {
+        return std::unexpected(metrics.error());
+    }
+
+    bool mutated = false;
+    auto width_path = widget_path + "/render/buffer/metrics/width";
+    if (metrics->width != pixels.width) {
+        if (auto status = BuilderDetail::replace_single(space, width_path, pixels.width); !status) {
+            return std::unexpected(status.error());
+        }
+        mutated = true;
+    }
+
+    auto height_path = widget_path + "/render/buffer/metrics/height";
+    if (metrics->height != pixels.height) {
+        if (auto status = BuilderDetail::replace_single(space, height_path, pixels.height); !status) {
+            return std::unexpected(status.error());
+        }
+        mutated = true;
+    }
+
+    auto dpi_path = widget_path + "/render/buffer/metrics/dpi";
+    if (metrics->dpi != dpi) {
+        if (auto status = BuilderDetail::replace_single(space, dpi_path, dpi); !status) {
+            return std::unexpected(status.error());
+        }
+        mutated = true;
+    }
+
+    PaintBufferViewport viewport{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = static_cast<float>(pixels.width),
+        .max_y = static_cast<float>(pixels.height),
+    };
+    auto viewport_path = widget_path + "/render/buffer/viewport";
+    if (auto status = BuilderDetail::replace_single(space, viewport_path, viewport); !status) {
+        return std::unexpected(status.error());
+    }
+
+    if (!mutated) {
+        return false;
+    }
+
+    increment_revision(space, widget_path);
+    auto dirty = WidgetDetail::mark_render_dirty(space, widget_path);
+    if (!dirty) {
+        return std::unexpected(dirty.error());
+    }
+
+    auto hint = make_full_dirty_hint(pixels);
+    auto hint_status = enqueue_dirty_hint(space, widget_path, hint);
+    if (!hint_status) {
+        auto message = hint_status.error().message.value_or("failed to enqueue dirty hint");
+        log_gpu_event(space, widget_path, message);
+    } else if (gpu_enabled(space, widget_path)) {
+        write_gpu_state(space, widget_path, PaintGpuState::DirtyFull);
+    }
+
+    return true;
+}
 
 template <typename T>
 auto ensure_value(PathSpace& space, std::string const& path, T const& value) -> SP::Expected<void> {
@@ -548,6 +763,33 @@ auto LoadStrokeRecords(PathSpace& space,
         return lhs.id < rhs.id;
     });
     return records;
+}
+
+auto ApplyLayoutSize(PathSpace& space, std::string const& widget_path) -> SP::Expected<bool> {
+    auto layout = read_layout_size(space, widget_path);
+    if (!layout) {
+        return std::unexpected(layout.error());
+    }
+    if (!layout->has_value()) {
+        return false;
+    }
+
+    auto address = extract_widget_address(widget_path);
+    if (!address) {
+        return false;
+    }
+
+    auto dpi = read_window_dpi(space, *address);
+    if (!dpi) {
+        return std::unexpected(dpi.error());
+    }
+
+    auto pixels = layout_to_pixels(**layout, *dpi);
+    if (!pixels) {
+        return false;
+    }
+
+    return write_buffer_metrics(space, widget_path, *pixels, *dpi);
 }
 
 } // namespace SP::UI::Declarative::PaintRuntime
