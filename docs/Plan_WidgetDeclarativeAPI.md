@@ -323,7 +323,8 @@ Keep this journal in sync as we chip away at the serialization issue so we can p
 
 ### Phase 3 – Migration & Parity
 1. **Feature audit**
-   - Matrix of widget features vs. legacy; fill gaps.
+   - ✅ (November 25, 2025) `docs/WidgetDeclarativeFeatureParity.md` now documents widget-by-widget parity (interaction, rendering, telemetry) between the legacy builders and the declarative runtime, with explicit references to the supporting code/tests.
+   - Outstanding follow-ups from the audit: land the macOS accessibility/VoiceOver smoke tests described in this plan and record the renderer/perf comparison matrix before deprecating the legacy builders.
 2. **Performance validation**
    - Benchmark both pipelines and optimize if necessary.
 3. **Documentation alignment**

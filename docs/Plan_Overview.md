@@ -56,6 +56,7 @@ Provide a single index of active planning documents, ordered by current priority
 8. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
 
 ## Status Snapshot — November 17, 2025
+- ✅ (November 25, 2025) Phase 3 feature audit for `Plan_WidgetDeclarativeAPI` published (`docs/WidgetDeclarativeFeatureParity.md`). The matrix confirms declarative-vs-legacy parity for widgets, focus, telemetry, and samples; remaining Phase 3 work tracks perf validation plus accessibility automation.
 - ✅ (November 17, 2025) IO Trellis Phase 1 landed: `CreateIOTrellis` now drains `/system/devices/in/{pointer,text,keyboard,gamepad}` providers, emits canonical events under `/system/io/events/{pointer,button,text}`, exposes metrics at `/system/io/events/metrics/*`, and ships with coverage in `tests/unit/io/test_IoTrellis.cpp`. Telemetry stays off until `/_system/telemetry/io/events_enabled` is toggled.
 - ✅ (November 17, 2025) IO Pump Phase 2 landed: `CreateIOPump` registers window subscriptions under `/system/widgets/runtime/windows/<token>`, forwards Trellis events into `/system/widgets/runtime/events/<token>/{pointer,button,text}/queue` (with `/global/*` fallbacks), and records per-stream metrics plus drop counts beside the existing input runtime stats.
 - ✅ (November 14, 2025) PathSpaceTrellis fan-in layer rebuilt; see `docs/finished/Plan_PathSpaceTrellis_Finished.md` for the final notes.
