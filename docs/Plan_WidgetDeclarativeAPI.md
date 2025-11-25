@@ -265,7 +265,7 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
    - Aggregator combines updated buckets into the scene snapshot when notified of dirty widgets.
    - Updated buckets swap in incrementally so presents pick up refreshed data on the next frame.
    - Publish revisions via `SceneSnapshotBuilder` to preserve presenter compatibility.
-   - ✅ (November 18, 2025) Paint surface runtime now records stroke metadata under `state/history/<id>/{meta,points}` (as of November 24 it also maintains `state/history/<id>/version` counters), rebuilds render buckets using `Scene::DrawCommandKind::Stroke`, tracks buffer metrics/revisions, and keeps the scene lifecycle cache in sync with dirty signals. GPU staging/upload workers remain TODO.
+   - ✅ (November 25, 2025) Paint surface runtime now records stroke metadata under `state/history/<id>/{meta,points}` (as of November 24 it also maintains `state/history/<id>/version` counters), rebuilds render buckets using `Scene::DrawCommandKind::Stroke`, tracks buffer metrics/revisions, and keeps the scene lifecycle cache in sync with dirty signals. The dedicated paint GPU uploader now ships with `LaunchStandard`: it enumerates GPU-enabled widgets, drains `/render/gpu/dirtyRects`, re-rasterizes stroke history into `assets/texture`, flips `render/gpu/state` through `Uploading → Ready`, and logs/telemeters activity under `/system/widgets/runtime/paint_gpu/{metrics,log}`. Regression coverage lives in `tests/ui/test_DeclarativePaintSurface.cpp` (GPU uploader test) and `examples/paint_example --gpu-smoke`/`PaintExampleScreenshot` guardrails to ensure the staged texture stays in sync with the scene buckets.
    - ✅ (November 18, 2025) `render/buffer/pendingDirty` now tracks coalesced dirty rectangles per widget, SceneLifecycle forwards them to the active renderer target (`targets/<tid>/hints/dirtyRects`), and the new paint GPU uploader watches `render/gpu/state`, rasterizes stroke history into `assets/texture`, and publishes telemetry/logs under `/system/widgets/runtime/paint_gpu/*`. Presenters can bind the staged texture whenever the state flips to `Ready`.
 7. **Telemetry / logging**
    - ✅ (November 19, 2025) Added schema/focus/input/render telemetry: descriptor loads now publish `loads_total`/`failures_total` and per-widget logs, focus transitions emit `scene/runtime/focus/metrics` counters plus `widgets/<id>/metrics/focus/*`, InputTask records loop latency/backlog while mirroring handler failures/slow handlers to `widgets/<id>/log/events`, and SceneLifecycle reports dirty/publish timings with parity diffs under `scene/runtime/lifecycle/*`.
@@ -327,16 +327,16 @@ Keep this journal in sync as we chip away at the serialization issue so we can p
 2. **Performance validation**
    - ✅ (November 25, 2025) Added the deterministic `benchmarks/ui/widget_pipeline_benchmark.cpp` harness plus the `widget_pipeline` scenario in `scripts/perf_guardrail.py`. The benchmark drives identical button/toggle/slider/list/paint loads through the legacy builders and the declarative runtime, records bucket latency/bytes, dirty-widget throughput, and paint GPU upload timing, and the guardrail enforces the captured baselines in `docs/perf/performance_baseline.json` so regressions block pre-push.
 3. **Documentation alignment**
-   - Promote declarative API in high-level docs; mark legacy APIs deprecated.
+   - ✅ (November 25, 2025) README, onboarding guides, and widget contribution docs now default to the declarative runtime, link to `docs/WidgetDeclarativeAPI.md`, and label the legacy builders as compatibility-only. Future doc edits must keep those references in sync when declarative behaviour changes.
 4. **Consumer migration**
    - Port internal tools/examples; offer migration aids.
    - ✅ (November 23, 2025) `examples/paint_example_new.cpp` mirrors the doc sketch (LaunchStandard → App::Create → Window::Create → Button::Create → App::RunUI) and wires screenshot capture through `ScreenshotService`, so we can sanity-check the minimalist API with `--screenshot` before touching the heavier paint demo.
 
 ### Phase 4 – Deprecation & Removal
 1. **Deprecation notice**
-   - Announce timeline; add diagnostics for legacy usage.
+   - ✅ (November 25, 2025) Instrumented every `SP::UI::Builders::*` entry point so Legacy usage is counted under `/_system/diagnostics/legacy_widget_builders/<entry>/{usage_total,last_entry,last_path,last_timestamp_ns}`. The shared status block (`/_system/diagnostics/legacy_widget_builders/status/{phase,support_window_expires,plan}`) publishes the timeline, and the runtime now honors `PATHSPACE_LEGACY_WIDGET_BUILDERS={allow,warn,error}` (default `warn`) so operators can promote warnings to hard failures immediately.
 2. **Support window**
-   - Maintain compatibility during transition.
+   - Warning phase runs through February 1, 2026 (`support_window_expires` mirrors the timestamp). Owners must watch the diagnostics counters during this window, update doc callouts, and flip CI/pre-push to `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` once the per-repo counters stay at zero for a full release cycle.
 3. **Removal**
    - Delete legacy builders/samples after window; simplify remaining docs.
 4. **Post-mortem**

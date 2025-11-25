@@ -84,6 +84,13 @@ plus tests in sync. Read it before touching declarative UI code or examples.
 | Paint GPU uploader | `/system/widgets/runtime/paint_gpu` | Rasterizes stroke history into `assets/texture`, tracks dirty rectangles, and logs upload failures before falling back to CPU buckets. |
 | Focus controller | `<app>/widgets/focus/current` + per-window mirrors | Depth-first traversal order is recomputed whenever widgets mount or are removed; wrapping per-container traversal can be disabled by setting `focus/wrap = false` on the container root. |
 
+### PaintSurface GPU staging
+- **Enable it at mount time** — set `PaintSurface::Args::gpu_enabled = true`. The fragment helper writes `render/gpu/enabled`, seeds `render/gpu/{state,stats,fence/start,fence/end}`, clears `render/buffer/pendingDirty`, and leaves the widget in `Idle`.
+- **Dirty hints + state machine** — every stroke append records a `DirtyRectHint` under both `render/buffer/pendingDirty` and `/render/gpu/dirtyRects`, bumps `render/buffer/revision`, and flips `render/gpu/state` to `DirtyPartial`. When you need a full re-rasterization (e.g., after external code resizes the buffer), set the state to `DirtyFull` before the uploader runs so the next upload increments both the per-widget `full_uploads` counter and the global `full_uploads_total` metric.
+- **Uploader lifecycle** — `SP::System::LaunchStandard` starts the uploader unless `LaunchOptions::start_paint_gpu_uploader` is `false`. The worker enumerates GPU-enabled paint widgets under `/system/applications/*/{windows,widgets}` each poll, drains dirty rect queues, replays stroke history via `PaintRuntime::LoadStrokeRecords`, writes the serialized `PaintTexturePayload` to `assets/texture`, and clears pending hints. Upload timings land in `widgets/<id>/render/gpu/stats` while global metrics/logs live at `/system/widgets/runtime/paint_gpu/{metrics,log/errors/queue}`.
+- **Presenter coordination** — SceneLifecycle forwards `render/buffer/pendingDirty` hints into the active renderer target, so even when GPU uploads lag the CPU buckets stay in sync. Presenters bind `assets/texture` whenever `render/gpu/state == Ready`; otherwise they continue sampling the CPU buffer.
+- **Diagnostics & tests** — `tests/ui/test_DeclarativePaintSurface.cpp` exercises the uploader end-to-end (waiting for `render/gpu/state` to reach `Ready`, verifying staged pixels and stats). `examples/paint_example --gpu-smoke[=png]` plus the `PaintExampleScreenshot` CTest target keep the staged texture in parity with the paint scene and fail fast if uploads fall back to the software rasterizer. Check `/system/widgets/runtime/paint_gpu/log/errors/queue` when uploads stall, and watch `widgets/<id>/render/gpu/stats.failures_total` or the global `*_metrics/failures_total` counter inside the compile-loop logs.
+
 ## 5. Example Workflow
 1. Bootstrap via the helper in `examples/declarative_example_shared.hpp`:
    ```cpp
@@ -179,3 +186,31 @@ plus tests in sync. Read it before touching declarative UI code or examples.
 - Cross-link new sections from `docs/AI_Onboarding_Next.md`,
   `docs/Widget_Contribution_Quickstart.md`, and `docs/Plan_WidgetDeclarativeAPI.md`
   so maintainers know the guide exists.
+
+## 10. Deprecation & Documentation Alignment
+- README, onboarding guides (`docs/AI_Onboarding*.md`), and the widget contribution
+  quickstart now point here as the canonical workflow. Keep their callouts in sync
+  whenever this guide changes so new contributors never land on the legacy builder
+  instructions by accident.
+- When legacy compatibility shims truly disappear, update `docs/WidgetDeclarativeFeatureParity.md`
+  and flip the Phase 3 “documentation alignment” + Phase 4 deprecation bullets inside
+  `docs/Plan_WidgetDeclarativeAPI.md`.
+- If a doc still references the imperative bucket builders as the preferred
+  workflow, treat that as a bug: open an issue or update it immediately as part
+  of the declarative deprecation effort.
+
+## 11. Legacy Builder Deprecation Telemetry
+- Every legacy `SP::UI::Builders::*` entry point now records usage under
+  `/_system/diagnostics/legacy_widget_builders/<entry>/`:
+  - `usage_total` — cumulative invocation count (per-space, so clear it before capturing a new baseline).
+  - `last_entry`, `last_path`, `last_timestamp_ns` — identify the latest offending builder and widget path.
+  - `status/{phase,support_window_expires,plan}` — publishes the active policy (`phase = warning`,
+    `support_window_expires = 2026-02-01T00:00:00Z`, `plan = docs/Plan_WidgetDeclarativeAPI.md` today).
+- Runtime enforcement is driven by `PATHSPACE_LEGACY_WIDGET_BUILDERS`:
+  1. `allow` — counters only, no logs or failures.
+  2. `warn` (default) — counters plus a one-time log per entry.
+  3. `error` — builder calls fail with `Error::NotSupported`, propagating through the existing `std::expected` channels so CI/pre-push can block immediately.
+- Expectations before the February 1, 2026 support-window cutoff:
+  - Keep the diagnostics tree at zero; CI can scrape `usage_total` to guarantee no regressions slip in.
+  - Flip CI/pre-push to `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` once the repo stays clean for a full validation cycle.
+  - Update this guide and `docs/Plan_WidgetDeclarativeAPI.md` if the timeline or enforcement knobs change so downstream teams do not guess.
