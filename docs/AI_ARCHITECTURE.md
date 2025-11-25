@@ -3,6 +3,7 @@
 
 Renderer snapshot builder details have moved out of this architecture document. See docs/Plan_SceneGraph_Renderer.md (“Decision: Snapshot Builder”) for the authoritative policy, rebuild triggers, publish/GC protocol, and performance notes. This file focuses on PathSpace core (paths, trie storage, concurrency/wait/notify, views/alias layers, and OS I/O). New AI assistants should first walk through docs/AI_Onboarding.md for the session bootstrap checklist.
 
+> **Declarative-first note (November 25, 2025):** All UI work now flows through the declarative widget runtime documented in `docs/WidgetDeclarativeAPI.md`. Legacy imperative builders (`src/pathspace/ui/Widget*.cpp`) remain only as compatibility shims until downstream tools finish migrating; treat any references in this file as historical context and cross-check the declarative guide before editing UI code.
 > **Context update (October 15, 2025):** PathSpace documentation now assumes the assistant context launched for this cycle; earlier references to legacy contexts should be interpreted accordingly.
 > **Concurrency update (November 14, 2025):** PathSpaceTrellis redesign completed; see `docs/finished/Plan_PathSpaceTrellis_Finished.md` for the final fan-in notes. Historical background remains in `docs/finished/Plan_PathSpace_FanIn_Abandoned.md`.
 
@@ -21,7 +22,9 @@ Present policy (backend-aware) and the software progressive present are document
 > **Telemetry update (October 20, 2025):** Residency metrics now also publish `cpuSoftBudgetRatio`, `cpuHardBudgetRatio`, `gpuSoftBudgetRatio`, `gpuHardBudgetRatio`, per-budget exceed flags, and `overallStatus` under `diagnostics/metrics/residency/` so dashboards and alerts can consume thresholds without bespoke parsing.
 > **Renderer staging (October 19, 2025):** Builders can now provision Metal targets alongside the software path. The rendering pipeline still populates targets through the software raster; enabling true Metal uploads is gated behind the environment variable `PATHSPACE_ENABLE_METAL_UPLOADS=1` while we finish the GPU encoder. When the flag is unset (or PATHSPACE_UI_METAL is disabled at build time) render contexts automatically fall back to `RendererKind::Software2D` so the CPU path remains the default in tests and CI.
 
-### Widget Namespace Summary (October 24, 2025)
+### Widget Namespace Summary (October 24, 2025 — declarative runtime)
+
+> Declarative widgets own these namespaces via the runtime described in `docs/WidgetDeclarativeAPI.md`. The legacy builder files referenced throughout the docs still exist for consumers that have not migrated, but they should not be extended for new features; funnel all UI changes through the declarative helpers so the runtime can keep buckets, handlers, focus, and telemetry in sync.
 
 - Widget roots live at `<app>/widgets/<widget-id>`. Roots encapsulate mutable state (`state`), canonical metadata (`meta/kind`), style/material data (`meta/style`, `meta/label`, `meta/range`, `meta/items`, `meta/nodes`), and interaction queues (`ops/inbox/queue`, `ops/actions/inbox/queue`). Layout containers add `layout/{style,children,computed}` so layout recomputation stays observable.
 - Widget scenes mount under `<app>/scenes/widgets/<widget-id>` with immutable snapshots per state (`states/<state-name>/snapshot`) and `current_revision` pointing at the active revision. Builders stamp `meta/name` and `meta/description` on first publish to keep diagnostics readable.

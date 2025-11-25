@@ -7,9 +7,18 @@ UI stack. Follow it before touching the widget builders so the PathSpace trie
 layout, interaction queues, reducers, and diagnostics stay aligned across
 examples, tests, and tooling.
 
+> **Declarative-first policy (November 25, 2025):** All new widgets, samples, and tests must use the declarative runtime (`include/pathspace/ui/declarative/**`). The legacy imperative builders under `src/pathspace/ui/Widget*.cpp` remain in the tree for compatibility with consumers that have not migrated yet; only touch them when backporting critical fixes or deleting dead code as part of the deprecation plan documented in `docs/Plan_WidgetDeclarativeAPI.md`.
+
+> **Deprecation telemetry:** Legacy builder usage now increments counters under
+> `/_system/diagnostics/legacy_widget_builders/<entry>/`. The default enforcement
+> mode is `PATHSPACE_LEGACY_WIDGET_BUILDERS=warn`; set it to `error` locally and
+> in CI once your branch stays clean so regressions fail fast. The shared status
+> block (`/_system/diagnostics/legacy_widget_builders/status/*`) publishes the
+> support-window deadline (February 1, 2026) and the authoritative plan link.
+
 ## Prerequisites
 - Read `docs/Plan_SceneGraph.md` (Phase 8), `docs/AI_Paths.md`
-  (widgets section), and skim existing builder code in
+  (widgets section), and—only when diagnosing compatibility bugs—skim the legacy builder code in
   `src/pathspace/ui/WidgetBuildersCore.cpp`.
 - Keep `docs/Widget_Schema_Reference.md` nearby; it mirrors the declarative schema headers so you can confirm every node you author.
 - Build the Release tree (`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release`)
@@ -48,6 +57,8 @@ examples, tests, and tooling.
 Keep `docs/AI_Paths.md` in sync if you introduce new metadata keys or queues.
 
 ## Implementation Checklist
+
+The steps below describe the declarative workflow. When legacy builder files are mentioned, treat them as reference only—the actual widget behaviour should be authored via `SP::UI::Declarative::*` helpers and their associated runtime services.
 
 ### 1. Publish the canonical scene
 - Extend `src/pathspace/ui/WidgetBuildersCore.cpp` and helper inlines

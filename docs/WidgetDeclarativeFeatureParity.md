@@ -39,5 +39,6 @@ The deterministic `widget_pipeline_benchmark` (`benchmarks/ui/widget_pipeline_be
 ## 4. Outstanding Gaps / Follow-ups
 
 1. **Inspector/consumer migration tracking:** While samples now use the declarative API, several internal tools (e.g., web inspector views mentioned in `Plan_PathSpace_Inspector.md`) still rely on legacy paths. Track those migrations separately so the deprecation window can be scheduled confidently.
+2. **Legacy builder telemetry:** `/_system/diagnostics/legacy_widget_builders/<entry>/usage_total` must stay at zero before we enable `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` by default. Keep CI scraping these counters and record any non-zero usage in the next status update so the support-window timeline stays credible.
 
 The matrix above should be refreshed whenever new widgets land or when telemetry/worker contracts change. Update this file and the Phase 3 checklist inside `docs/Plan_WidgetDeclarativeAPI.md` together to keep planning artifacts in sync.

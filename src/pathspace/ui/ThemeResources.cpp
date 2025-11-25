@@ -109,6 +109,7 @@ auto Ensure(PathSpace& space,
             AppRootPathView appRoot,
             std::string_view theme_name,
             WidgetTheme const& defaults) -> SP::Expected<ThemePaths> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Config::Theme::Ensure");
     auto sanitized = SanitizeName(theme_name);
     auto paths = make_paths(appRoot, sanitized);
     if (!paths) {
@@ -131,6 +132,7 @@ auto Ensure(PathSpace& space,
 
 auto Load(PathSpace& space,
           ThemePaths const& paths) -> SP::Expected<WidgetTheme> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Config::Theme::Load");
     auto app_root = extract_app_root(paths.root.getPath());
     if (!app_root) {
         return std::unexpected(app_root.error());
@@ -194,6 +196,7 @@ auto Load(PathSpace& space,
 auto SetActive(PathSpace& space,
                AppRootPathView appRoot,
                std::string_view theme_name) -> SP::Expected<void> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Config::Theme::SetActive");
     auto sanitized = SanitizeName(theme_name);
     auto active = active_theme_path(appRoot);
     if (!active) {
@@ -208,6 +211,7 @@ auto SetActive(PathSpace& space,
 
 auto LoadActive(PathSpace& space,
                 AppRootPathView appRoot) -> SP::Expected<std::string> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Config::Theme::LoadActive");
     auto active = active_theme_path(appRoot);
     if (!active) {
         return std::unexpected(active.error());

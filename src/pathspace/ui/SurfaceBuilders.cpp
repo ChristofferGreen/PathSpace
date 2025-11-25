@@ -7,6 +7,7 @@ using namespace Detail;
 auto Create(PathSpace& space,
              AppRootPathView appRoot,
              SurfaceParams const& params) -> SP::Expected<SurfacePath> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Surface::Create");
     if (auto status = ensure_identifier(params.name, "surface name"); !status) {
         return std::unexpected(status.error());
     }
@@ -83,6 +84,7 @@ auto Create(PathSpace& space,
 auto SetScene(PathSpace& space,
                SurfacePath const& surfacePath,
                ScenePath const& scenePath) -> SP::Expected<void> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Surface::SetScene");
     auto surfaceRoot = derive_app_root_for(ConcretePathView{surfacePath.getPath()});
     if (!surfaceRoot) {
         return std::unexpected(surfaceRoot.error());
@@ -130,6 +132,7 @@ auto SetScene(PathSpace& space,
 auto RenderOnce(PathSpace& space,
                  SurfacePath const& surfacePath,
                  std::optional<RenderSettings> settingsOverride) -> SP::Expected<SP::FutureAny> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Surface::RenderOnce");
     auto context = prepare_surface_render_context(space, surfacePath, settingsOverride);
     if (!context) {
         return std::unexpected(context.error());
@@ -159,5 +162,4 @@ auto RenderOnce(PathSpace& space,
 }
 
 } // namespace SP::UI::Builders::Surface
-
 

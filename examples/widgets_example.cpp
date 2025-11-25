@@ -82,7 +82,11 @@ int main(int argc, char** argv) {
     auto app_root = *app;
     auto app_root_view = SP::App::AppRootPathView{app_root.getPath()};
     auto theme_selection = SP::UI::Builders::Widgets::LoadTheme(space, app_root_view, "");
-    auto active_theme = theme_selection.theme;
+    if (!theme_selection) {
+        std::cerr << "widgets_example: failed to load theme\n";
+        return 1;
+    }
+    auto active_theme = theme_selection->theme;
 
     SP::Window::CreateOptions window_opts{};
     window_opts.name = "gallery_window";

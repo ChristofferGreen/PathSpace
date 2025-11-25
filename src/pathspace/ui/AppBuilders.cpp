@@ -15,6 +15,7 @@ auto Bootstrap(PathSpace& space,
                AppRootPathView appRoot,
                ScenePath const& scene,
                BootstrapParams const& params) -> SP::Expected<BootstrapResult> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "App::Bootstrap");
     if (auto status = ensure_identifier(params.view_name, "view name"); !status) {
         return std::unexpected(status.error());
     }
@@ -224,6 +225,7 @@ auto UpdateSurfaceSize(PathSpace& space,
                        int width,
                        int height,
                        ResizeSurfaceOptions const& options) -> SP::Expected<void> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "App::UpdateSurfaceSize");
     if (width <= 0 || height <= 0) {
         return std::unexpected(make_error("surface dimensions must be positive"));
     }

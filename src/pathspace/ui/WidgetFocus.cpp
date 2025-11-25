@@ -789,6 +789,7 @@ auto MakeConfig(AppRootPathView appRoot,
 
 auto Current(PathSpace const& space,
              ConcretePathView focus_state) -> SP::Expected<std::optional<std::string>> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::Focus::Current");
     std::string path{focus_state.getPath()};
     auto existing = read_optional<std::string>(space, path);
     if (!existing) {
@@ -833,6 +834,7 @@ auto Set(PathSpace& space,
          Config const& config,
          WidgetPath const& widget,
          std::optional<FocusTransitionInfo> telemetry_info) -> SP::Expected<UpdateResult> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::Focus::Set");
     std::string target_path{widget.getPath()};
     auto app_root_path = derive_app_root_for(ConcretePathView{target_path});
     if (!app_root_path) {
@@ -960,6 +962,7 @@ auto Set(PathSpace& space,
 
 auto Clear(PathSpace& space,
            Config const& config) -> SP::Expected<bool> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::Focus::Clear");
     auto current = Current(space, ConcretePathView{config.focus_state.getPath()});
     if (!current) {
         return std::unexpected(current.error());
@@ -1044,6 +1047,7 @@ auto Move(PathSpace& space,
           Config const& config,
           std::span<WidgetPath const> order,
           Direction direction) -> SP::Expected<std::optional<UpdateResult>> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::Focus::Move");
     if (order.empty()) {
         return std::optional<UpdateResult>{};
     }
@@ -1100,6 +1104,7 @@ auto Move(PathSpace& space,
 auto Move(PathSpace& space,
           Config const& config,
           Direction direction) -> SP::Expected<std::optional<UpdateResult>> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::Focus::Move");
     auto current = Current(space, ConcretePathView{config.focus_state.getPath()});
     if (!current) {
         return std::unexpected(current.error());
@@ -1143,6 +1148,7 @@ auto Move(PathSpace& space,
 auto ApplyHit(PathSpace& space,
               Config const& config,
               Scene::HitTestResult const& hit) -> SP::Expected<std::optional<UpdateResult>> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::Focus::ApplyHit");
     auto target = ResolveHitTarget(hit);
     if (!target) {
         return std::optional<UpdateResult>{};
@@ -1157,18 +1163,21 @@ auto ApplyHit(PathSpace& space,
 auto SetPulsingHighlight(PathSpace& space,
                          AppRootPathView appRoot,
                          bool enabled) -> SP::Expected<void> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::Focus::SetPulsingHighlight");
     std::string root{appRoot.getPath()};
     return write_pulsing_highlight(space, root, enabled);
 }
 
 auto PulsingHighlightEnabled(PathSpace& space,
                              AppRootPathView appRoot) -> SP::Expected<bool> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::Focus::PulsingHighlightEnabled");
     std::string root{appRoot.getPath()};
     return read_pulsing_highlight(space, root);
 }
 
 auto BuildWindowOrder(PathSpace& space,
                       WindowPath const& window_path) -> SP::Expected<std::vector<WidgetPath>> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::Focus::BuildWindowOrder");
     auto app_root = derive_app_root_for(ConcretePathView{window_path.getPath()});
     if (!app_root) {
         return std::unexpected(app_root.error());

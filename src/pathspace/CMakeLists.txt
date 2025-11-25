@@ -123,6 +123,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/SurfaceBuilders.cpp
         ui/WindowBuilders.cpp
         ui/AppBuilders.cpp
+        ui/LegacyBuildersDeprecation.cpp
         ui/TextBuilder.cpp
         ui/WidgetBuildersCore.cpp
         ui/WidgetBindings.cpp

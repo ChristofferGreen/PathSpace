@@ -15,9 +15,11 @@ Links:
 - docs/AI_Paths.md (canonical namespace/layout conventions)
 - docs/Plan_Overview.md (index of active plan documents and priorities)
 - docs/Plan_Distributed_PathSpace.md (distributed mounting/network plan)
+- docs/WidgetDeclarativeAPI.md (workflow for the declarative widget runtime; required reading for UI work)
+- docs/WidgetDeclarativeFeatureParity.md (migration tracker comparing legacy and declarative widgets)
 - docs/Plan_PathSpace_Inspector.md (live PathSpace inspector roadmap)
 - examples/devices_example.cpp (experimental device IO example)
-- examples/paint_example.cpp (minimal software paint demo; currently macOS-only)
+- examples/paint_example.cpp (declarative paint demo + screenshot harness)
 - build/docs/html/index.html (Doxygen API Reference)
 
 ## Architecture at a Glance
@@ -25,6 +27,7 @@ Links:
 - **Paths & globbing** — Strongly-typed `ConcretePath`/`GlobPath` wrappers provide component iterators, pattern matching (`*`, `**`, ranges), and validation (`src/pathspace/path/`).
 - **Wait/notify** — Blocking reads register waiters in concrete/glob registries and wake via a `NotificationSink` token; timeouts surface as `Error::Timeout` (`Wait/notify` + `Blocking` in the architecture doc).
 - **Layers & PathIO** — Permission-checked views (`PathView`), alias mounts (`PathAlias`), and OS/event bridges live in `src/pathspace/layer/`. Enable macOS backends with `-DENABLE_PATHIO_MACOS=ON` and review the PathIO guidance near the end of `docs/AI_Architecture.md`.
+- **Declarative widget runtime** — Declarative helpers in `include/pathspace/ui/declarative/**` mount widgets entirely through PathSpace state. `SP::System::LaunchStandard`, `App::Create`, `Window::Create`, and `Scene::Create` bootstrap the runtime; widgets use `Button::Create`, `List::Create`, etc., instead of hand-built buckets. Legacy imperative builders are compatibility-only and will be removed once downstream consumers migrate (see `docs/WidgetDeclarativeAPI.md`).
 - **Canonical namespaces** — `docs/AI_Paths.md` defines system/app/render targets; renderer and presenter plans live in `docs/Plan_SceneGraph_Renderer.md`.
 
 ## Quick start

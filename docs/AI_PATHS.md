@@ -86,6 +86,9 @@ Conventions:
   - `/system/widgets/runtime/paint_gpu/state/running` — bool flag managed by the declarative paint-surface uploader worker responsible for keeping `assets/texture` in sync.
   - `/system/widgets/runtime/paint_gpu/metrics/{uploads_total,partial_uploads_total,full_uploads_total,failures_total,widgets_pending,last_upload_ns}` — telemetry describing staged texture uploads and queue depth.
   - `/system/widgets/runtime/paint_gpu/log/errors/queue` — string queue capturing rasterization or upload failures before the runtime falls back to CPU stroke buckets.
+- Legacy builder diagnostics
+  - `/_system/diagnostics/legacy_widget_builders/status/{phase,support_window_expires,plan}` — publishes the current enforcement mode (`phase`), the support-window cutoff timestamp, and the authoritative doc link (currently `docs/Plan_WidgetDeclarativeAPI.md`).
+  - `/_system/diagnostics/legacy_widget_builders/<entry>/{usage_total,last_entry,last_path,last_timestamp_ns}` — per-builder counters mirroring how often each legacy `SP::UI::Builders::*` entry is invoked plus the most recent widget path and timestamp. CI can scrape these nodes to enforce `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` once the repo stays clean; the default mode is `warn`.
 
 ## 2) Application subtree layout (app-relative)
 

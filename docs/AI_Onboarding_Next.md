@@ -16,6 +16,8 @@ Welcome! This repository just transitioned away from a previous assistant. The n
    - `docs/AI_Todo.task` — verify priority ordering and align new work with open items.
    - `docs/Widget_Schema_Reference.md` — per-widget declarative schema tables; read alongside `docs/AI_Paths.md` before touching widget namespaces.
    - `docs/WidgetDeclarativeAPI.md` — declarative runtime workflow (LaunchStandard/App/Window/Scene helpers, handler registry, readiness guard, paint/history helpers, testing discipline). Consult this before modifying declarative widgets or samples.
+   - **Important:** The declarative runtime is the supported UI surface. Legacy imperative builders remain only for compatibility work; do not add new features there unless you are migrating an unmigrated consumer and documenting the follow-up plan to remove it.
+   - **Deprecation telemetry:** Every legacy builder entry reports to `/_system/diagnostics/legacy_widget_builders/<entry>/`. Keep the counters at zero and set `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` in CI/pre-push once you confirm the repo stays clean; the global status block publishes the February 1, 2026 support-window cutoff.
 
 3. **Build/Test Baseline**
    ```bash

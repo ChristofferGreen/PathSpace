@@ -2057,8 +2057,8 @@ struct ThemeSelection {
 auto MakeDefaultWidgetTheme() -> WidgetTheme;
 auto MakeSunsetWidgetTheme() -> WidgetTheme;
 auto LoadTheme(PathSpace& space,
-              AppRootPathView appRoot,
-              std::string_view requested_name) -> ThemeSelection;
+               AppRootPathView appRoot,
+               std::string_view requested_name) -> SP::Expected<ThemeSelection>;
 auto ApplyTheme(WidgetTheme const& theme, ButtonParams& params) -> void;
 auto ApplyTheme(WidgetTheme const& theme, ToggleParams& params) -> void;
 auto ApplyTheme(WidgetTheme const& theme, SliderParams& params) -> void;

@@ -167,7 +167,11 @@ static std::optional<PaintControlsDemoHandles> launch_paint_controls_demo(PathSp
     auto app_root_view = SP::App::AppRootPathView{app_root.getPath()};
 
     auto theme_selection = SP::UI::Builders::Widgets::LoadTheme(space, app_root_view, "");
-    auto active_theme = theme_selection.theme;
+    if (!theme_selection) {
+        log_expected_error("Widgets::LoadTheme", theme_selection.error());
+        return std::nullopt;
+    }
+    auto active_theme = theme_selection->theme;
 
     SP::Window::CreateOptions window_opts{};
     window_opts.name = "devices_controls_window";

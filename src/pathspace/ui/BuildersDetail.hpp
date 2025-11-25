@@ -1,6 +1,7 @@
 #pragma once
 
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathSurfaceMetal.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>

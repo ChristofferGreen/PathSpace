@@ -43,6 +43,7 @@ auto DefaultActionsQueue(WidgetPath const& widget_root) -> ConcretePath {
 auto ReducePending(PathSpace& space,
                    ConcretePathView ops_queue,
                    std::size_t max_actions) -> SP::Expected<std::vector<WidgetAction>> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::Reducers::ReducePending");
     std::vector<WidgetAction> actions;
     if (max_actions == 0) {
         return actions;
@@ -74,6 +75,7 @@ auto ReducePending(PathSpace& space,
 auto PublishActions(PathSpace& space,
                     ConcretePathView actions_queue,
                     std::span<WidgetAction const> actions) -> SP::Expected<void> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::Reducers::PublishActions");
     if (actions.empty()) {
         return {};
     }
@@ -96,6 +98,7 @@ auto PublishActions(PathSpace& space,
 auto ProcessPendingActions(PathSpace& space,
                            WidgetPath const& widget_root,
                            std::size_t max_actions) -> SP::Expected<ProcessActionsResult> {
+    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::Reducers::ProcessPendingActions");
     ProcessActionsResult result{};
     result.ops_queue = WidgetOpsQueue(widget_root);
     result.actions_queue = DefaultActionsQueue(widget_root);
