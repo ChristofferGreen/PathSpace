@@ -14,8 +14,8 @@ examples, tests, and tooling.
 - Keep `docs/Widget_Schema_Reference.md` nearby; it mirrors the declarative schema headers so you can confirm every node you author.
 - Build the Release tree (`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release`)
   and keep `cmake --build build -j` handy while iterating.
-- Plan to run the full 15× UI loop before committing:
-  `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20`.
+- Plan to run the full 5× UI loop before committing:
+  `ctest --test-dir build --output-on-failure -j --repeat-until-fail 5 --timeout 20`.
 - Runtime bootstrap tip (November 17, 2025): `SP::System::LaunchStandard`, `SP::App::Create`, `SP::Window::Create`, and `SP::Scene::Create` now seed `/config/theme`, `/config/renderer/default`, `windows/<id>/views/<view>/{scene,surface,renderer}`, and `scenes/<id>/structure/window/<window>` automatically and start both the `/system/widgets/runtime/input` worker and the `/system/widgets/runtime/io` pump by default. Window creation also registers `/system/widgets/runtime/windows/<token>` entries so bridges can populate `subscriptions/{pointer,button,text}/devices` (device paths such as `/system/devices/in/pointer/default`). Call `SP::System::ShutdownDeclarativeRuntime` in short-lived tests/examples when you do not want either worker thread to survive `PathSpace` teardown.
 
 ### Declarative samples (November 19, 2025)

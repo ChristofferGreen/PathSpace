@@ -53,7 +53,7 @@
 ## 4. Workflow Reminders
 - Always rerun the full loop before handoff:
   ```bash
-  ./scripts/compile.sh --test --loop=15 --per-test-timeout=20
+  ./scripts/compile.sh --test --loop=5 --per-test-timeout=20
   ```
   This wrapper will also trigger `HtmlCanvasVerify` and `HtmlAssetInspect` when Node is available.
 - When HTML outputs change intentionally, update:

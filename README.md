@@ -44,11 +44,11 @@ cmake --build build -j
 
 3) Run tests (recommended)
 ```bash
-ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20
+ctest --test-dir build --output-on-failure -j --repeat-until-fail 5 --timeout 20
 ```
 or use the helper that wraps the loop/timeout policy from `docs/AI_Architecture.md`:
 ```bash
-./scripts/compile.sh --loop=15 --timeout=20
+./scripts/compile.sh --loop=5 --timeout=20
 ```
 
 4) Use in your project

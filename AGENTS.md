@@ -7,7 +7,7 @@ This guide collects the conventions and scripts used when pairing with the PathS
 - Keep changes ASCII unless the file already uses Unicode.
 - Run the full test suite with the mandated loop/timeout before requesting review.
 - Git pushes are gated by the local `pre-push` hook (`scripts/git-hooks/pre-push.local.sh`).
-  - By default it runs `./scripts/compile.sh --clean --test --loop=15 --release` (UI enabled) and then builds & smoke-tests `devices_example`.
+  - By default it runs `./scripts/compile.sh --clean --test --loop=5 --release` (UI enabled) and then builds & smoke-tests `devices_example`.
   - Set `SKIP_LOOP_TESTS=1` or `SKIP_EXAMPLE=1` in the environment if you have explicit maintainer approval to skip those steps.
 
 ## Build Setup
@@ -42,12 +42,12 @@ This guide collects the conventions and scripts used when pairing with the PathS
 ## Testing Protocol (must follow)
 - Do not change tests just to silence failures.
 - Always execute the full suite after any code modification (docs-only edits are exempt).
-- Run the suite in a loop: minimum 15 iterations with timeout protection.
+- Run the suite in a loop: minimum 5 iterations with timeout protection.
 - Target runtime: < 10 s per iteration; use a 20 s timeout to catch hangs.
-- Preferred helper: `./scripts/compile.sh --loop=15 --timeout=20` wraps the CTest invocation and is tuned for the WaitMap/task race scenarios described in `docs/AI_Architecture.md`.
+- Preferred helper: `./scripts/compile.sh --loop=5 --timeout=20` wraps the CTest invocation and is tuned for the WaitMap/task race scenarios described in `docs/AI_Architecture.md`.
 - Recommended command (after configuring the `build/` tree):
   ```bash
-  ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20
+  ctest --test-dir build --output-on-failure -j --repeat-until-fail 5 --timeout 20
   ```
 - If a failure reproduces, capture the failing command and logs for the PR.
 

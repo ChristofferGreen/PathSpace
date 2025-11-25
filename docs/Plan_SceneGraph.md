@@ -10,7 +10,7 @@
 
 ## Success Criteria
 - A new `src/pathspace/ui/` subsystem shipping the MVP feature set behind build flags.
-- Repeatable end-to-end tests (including 15× loop runs) covering snapshot publish/adopt, render, and present flows.
+- Repeatable end-to-end tests (including 5× loop runs) covering snapshot publish/adopt, render, and present flows.
 - Documentation, metrics, and diagnostics that let maintainers debug renderer issues without spelunking through the code.
 
 ## Active Focus Areas
@@ -85,7 +85,7 @@ Ship the resource-backed font pipeline described in `docs/Plan_SceneGraph_Render
 **Phase 4 – HTML Adapter & Diagnostics (1–2 days)**
 - Wire HTML adapter to emit `@font-face` rules referencing `output/v1/html/assets/fonts/<fingerprint>.woff2`.
 - Update diagnostics builders to surface active fonts, atlas residency, and shaping cache stats.
-- Extend logging/test harnesses to capture font diagnostics during the 15× loop.
+- Extend logging/test harnesses to capture font diagnostics during the 5× loop.
 
 **Phase 5 – Rollout & Hardening (ongoing)**
 - Run perf guardrail + renderer loop to establish baseline deltas (expect initial regression due to shaping; track metrics).

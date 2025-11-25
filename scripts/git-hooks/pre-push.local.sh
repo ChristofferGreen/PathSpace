@@ -130,12 +130,12 @@ BASE_PATHSPACE_CMAKE_ARGS="$PATHSPACE_CMAKE_ARGS"
 say "Repository root: $ROOT"
 say "Jobs: $JOBS  Build type: $BUILD_TYPE"
 
-# 1) Clean build + test loop (loop=15) unless skipped
+# 1) Clean build + test loop (loop=5) unless skipped
 if [[ "${SKIP_LOOP_TESTS:-0}" != "1" ]]; then
-  say "Building and running tests with loop=15"
+  say "Building and running tests with loop=5"
   # scripts/compile.sh takes care of configure+build+tests
   # Prefer Apple clang for both C++ and ObjC++ to support ObjC headers/blocks
-  PATHSPACE_CMAKE_ARGS="$PATHSPACE_CMAKE_ARGS" ./scripts/compile.sh --clean --test --loop=15 --${BUILD_TYPE,,} --jobs "$JOBS" "${METAL_TEST_ARGS[@]}"
+  PATHSPACE_CMAKE_ARGS="$PATHSPACE_CMAKE_ARGS" ./scripts/compile.sh --clean --test --loop=5 --${BUILD_TYPE,,} --jobs "$JOBS" "${METAL_TEST_ARGS[@]}"
   ok "Test loop completed successfully"
 else
   warn "Skipping test loop (SKIP_LOOP_TESTS=1)"

@@ -106,13 +106,13 @@ task {
   acceptance_criteria: [
     "Binding helper API diff state payloads and emits dirty hints (instead of full republishes) when widget states change.",
     "Ops inbox schema documented; sample reducers translate button/toggle ops into app state mutations.",
-    "Tests exercise hover/press/release flows and confirm auto-render scheduling remains stable (loop=15)."
+    "Tests exercise hover/press/release flows and confirm auto-render scheduling remains stable (loop=5)."
   ]
 
   steps: [
     "DONE (Oct 20, 2025) Implemented `Widgets::Bindings::Dispatch{Button,Toggle,Slider}` helpers that diff widget state, submit dirty rect hints, and auto-schedule renders.",
     "DONE (Oct 20, 2025) Defined `WidgetOp` schema under `widgets/<id>/ops/inbox/queue` (documented in Plan_SceneGraph.md & AI_Paths.md).",
-    "DONE (Oct 20, 2025) Added doctest coverage exercising hover/press/release and slider updates (loop=15 harness)."
+    "DONE (Oct 20, 2025) Added doctest coverage exercising hover/press/release and slider updates (loop=5 harness)."
   ]
 }
 
@@ -266,7 +266,7 @@ task {
     acceptance_criteria: [
       "Waiting on a glob path (e.g., \"/a/*/c\") wakes on matching concrete notifications.",
       "Existing glob tests are extended or mirrored to cover WatchRegistry paths.",
-      "No deadlocks or self-wake races; loop=15 remains green."
+      "No deadlocks or self-wake races; loop=5 remains green."
     ]
     steps: [
       "Index glob waiters efficiently; avoid O(N) scans.",
@@ -285,7 +285,7 @@ task {
     priority: P2
     acceptance_criteria: [
       "A single abstraction governs waiters; glob/concrete behaviors documented and tested.",
-      "No functional regressions; loop=15 remains green; performance notes updated."
+      "No functional regressions; loop=5 remains green; performance notes updated."
     ]
   }
 
@@ -366,7 +366,7 @@ task {
     acceptance_criteria: [
       "SlidingBuffer uses std::pmr::vector<uint8_t> with allocator plumbing.",
       "Node::ChildrenMap uses a PMR allocator parameter.",
-      "All tests pass loop=15 with default resource."
+      "All tests pass loop=5 with default resource."
     ]
     risks: [
       "phmap allocator interactions; validate template parameters and perf."
@@ -413,7 +413,7 @@ task {
     priority: P2
     acceptance_criteria: [
       "Bench scripts run with default and tuned custom resources; results summarized in docs.",
-      "loop=15 remains green under both configurations."
+      "loop=5 remains green under both configurations."
     ]
   }
 }
@@ -477,7 +477,7 @@ task {
     priority: P1
     acceptance_criteria: [
       "Test-only backend feeds scripted events to PathIO paths.",
-      "All PathIO tests pass loop=15 without device access."
+      "All PathIO tests pass loop=5 without device access."
     ]
   }
 
@@ -510,7 +510,7 @@ task {
     priority: P1
     acceptance_criteria: [
       "Mouse move/click readable via /io/mouse; keyboard keydown/keyup via /io/keyboard.",
-      "Notify/wait triggers on event arrival; loop=15 remains green with simulated inputs."
+      "Notify/wait triggers on event arrival; loop=5 remains green with simulated inputs."
     ]
   }
 }
@@ -787,11 +787,11 @@ task {
 
 task {
   name: "macOS CI Job [CI]"
-  description: "Add a macOS CI job mirroring loop=15 to catch platform-specific issues."
+  description: "Add a macOS CI job mirroring loop=5 to catch platform-specific issues."
   status: planned
   priority: P2
   acceptance_criteria: [
-    "A macOS job runs ./scripts/compile.sh --clean --test --loop=15.",
+    "A macOS job runs ./scripts/compile.sh --clean --test --loop=5.",
     "Branch protection includes both Linux and macOS checks."
   ]
 }

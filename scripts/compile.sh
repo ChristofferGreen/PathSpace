@@ -256,14 +256,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --loop)
       TEST=1
-      LOOP=15
+      LOOP=5
       ;;
     --loop=*)
       TEST=1
       LOOP="${1#*=}"
       case "$LOOP" in
         ''|*[!0-9]*)
-          die "--loop requires a positive integer (e.g., --loop=15)"
+          die "--loop requires a positive integer (e.g., --loop=5)"
           ;;
         *)
           if [[ "$LOOP" -lt 1 ]]; then

@@ -1,12 +1,12 @@
 Never create a new git branch, only ever use master.
-Current_Plan_Doc is ./docs/finished/Plan_PaintExampleLayout_Finished.md (completed November 22, 2025; request a replacement plan when a new priority emerges.)
+Current_Plan_Doc is ./docs/Plan_WidgetDeclarativeAPI.md
 1. Have a read through of the docs in ./docs.
 2. From Current_Plan_Doc, identify the highest-priority unfinished item (follow its own priority markers or sequencing). Explain why it’s next.
 3. Produce an implementation plan: scope, affected files/modules, validation/tests (include loop expectations), risks, and required doc updates. Ask for confirmation before executing the plan.
 
 Coding preference: avoid C++ exceptions entirely. When representing failures, use existing `std::expected`/`Error` returns, status objects, or other explicit error channels instead of `throw`. Introduce exceptions only when integrating unavoidable third-party APIs, and document any such cases.
 
-1. Implement the change, rebuild (`cmake --build build -j`), execute ./scripts/compile.sh --clean --test --loop=15 --release (unless maintainer-approved skips are set), and report results. Use Conventional Commit format when committing.
+1. Implement the change, rebuild (`cmake --build build -j`), execute ./scripts/compile.sh --clean --test --loop=5 --release (unless maintainer-approved skips are set), and report results. Use Conventional Commit format when committing.
 2. Update all relevant docs under docs/ to reflect the new status and decisions (mention specific files touched). Summarize remaining TODOs.
 3. If Current_Plan_Docis complete, verify references (use rg), append _Finished to its name, move it into docs/finished/, and update any docs linking to it.
 4. Write down anything you learn that is of interest in ./docs/Memory.md

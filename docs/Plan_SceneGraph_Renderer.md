@@ -1236,7 +1236,7 @@ Usage notes:
 - Treat all `Create` helpers as idempotent: if the target subtree already exists, the helper returns the canonical absolute path without rewriting metadata. (Verified by `Scene::Create` doctest on October 14, 2025.)
 - `Renderer::UpdateSettings` performs a single-path atomic replace after draining any queued settings values under `<target>/settings`; callers should coalesce state before invoking it (doctest coverage ensures stale entries are discarded).
 - `Surface::SetScene` and `Window::AttachSurface` enforce shared app roots, rejecting cross-app bindings with a typed `InvalidPath` error so misuse is caught during integration.
-- The Builders suite is exercised in the 15× compile loop (`./scripts/compile.sh --loop=15 --per-test-timeout 20`) to guarantee the helpers remain race-free under load.
+- The Builders suite is exercised in the 5× compile loop (`./scripts/compile.sh --loop=5 --per-test-timeout 20`) to guarantee the helpers remain race-free under load.
 - `SceneSnapshotBuilder` serializes drawable buckets with explicit SoA fields (world transforms, bounding spheres/boxes with validity flags, material/pipeline metadata, command offsets/counts, command stream, pre-filtered opaque/alpha indices, and per-layer index blocks) plus per-revision resource fingerprints _and_ per-drawable hashes persisted in `fingerprints.bin`; doctests validate round-tripping and retention behaviour, and legacy snapshots recompute hashes on decode.
 
 Source layout (proposed):
@@ -1805,7 +1805,7 @@ Performance targets:
 - 1080p: ≈1px microtris with 1–2 rays/vertex on modern RT hardware within present budgets; progressive accumulation improves quality over time.
 
 Tests:
-- Microtri density and budget control; fixed-seed determinism for per-vertex lighting; clean fallback when hardware RT is unavailable; concurrency loop=15 remains green.
+- Microtri density and budget control; fixed-seed determinism for per-vertex lighting; clean fallback when hardware RT is unavailable; concurrency loop=5 remains green.
 
 Docs and examples:
 - Add “Hybrid Microtri + RT” to docs/AI_ARCHITECTURE.md with dataflow and buffer lifetimes; provide sample scenes showing area lights, glossy/refraction, and environment lighting.
@@ -2258,7 +2258,7 @@ C++ types per key:
 - `examples/pixel_noise_example.cpp` now accepts `--backend=<software|metal>` (default Software2D) so perf runs can target either renderer backend without code changes.
 - Baselines live under `docs/perf/`: `pixel_noise_baseline.json` tracks the Software2D path and `pixel_noise_metal_baseline.json` captures the Metal2D run with `PATHSPACE_ENABLE_METAL_UPLOADS=1`.
 - `scripts/check_pixel_noise_baseline.py` reads the baseline’s `backendKind`, forwards the matching `--backend` switch, and automatically enables Metal uploads when the baseline expects Metal2D.
-- CTest registers `PixelNoisePerfHarness` (Software2D) and `PixelNoisePerfHarnessMetal` (Metal2D, gated by `PATHSPACE_UI_METAL`) so the mandated 15× loop covers both backends against the same FPS/latency budgets (≥25 FPS, ≤20 ms average render/present, ≤40 ms present-call after the shaped text integration).
+- CTest registers `PixelNoisePerfHarness` (Software2D) and `PixelNoisePerfHarnessMetal` (Metal2D, gated by `PATHSPACE_UI_METAL`) so the mandated 5× loop covers both backends against the same FPS/latency budgets (≥25 FPS, ≤20 ms average render/present, ≤40 ms present-call after the shaped text integration).
 - Refresh both JSON baselines with `scripts/capture_pixel_noise_baseline.sh` (add `--backend=metal` plus `PATHSPACE_ENABLE_METAL_UPLOADS=1` for the Metal capture) whenever intentional perf shifts occur; commit the pair together so CI expectations stay aligned.
 
 App-relative resolution helpers:
@@ -2353,6 +2353,6 @@ These items clarify edge cases or finalize small inconsistencies. Resolve and re
 
 - Thread-safe target cache (November 8, 2025) — `PathRenderer2D::target_cache()` is a process-wide `std::unordered_map` with no locking. Before we allow overlapping renders per target (e.g., auto-render + manual trigger), wrap the cache in a mutex or shard it per-target so cache mutations stay race-free.
 - Damage pipeline ownership (November 8, 2025) — Extract the dirty-rect merge heuristics and stats accumulation from `PathRenderer2D` into a dedicated helper module. This keeps the renderer core lean and enables focused unit tests for hint coalescing and tile snapping.
-- Progressive/presenter stress tests (November 8, 2025) — Add a regression that renders while presenting on a separate thread, rapidly mutating progressive tiles to validate the seq/epoch retry logic. Integrate it into the 15× loop so concurrency races surface reliably.
+- Progressive/presenter stress tests (November 8, 2025) — Add a regression that renders while presenting on a separate thread, rapidly mutating progressive tiles to validate the seq/epoch retry logic. Integrate it into the 5× loop so concurrency races surface reliably.
 - Surface cache lifecycle hooks (November 8, 2025) — Teach the Builders caches to drop `PathSurfaceSoftware`/`PathSurfaceMetal` entries when their renderer target or app root is removed. Prevents stale buffers from leaking across long-lived sessions and reduces cross-test coupling.
 - Contention instrumentation (November 8, 2025) — Emit optional metrics for encode worker stall time and progressive tile retry counts under `targets/<tid>/output/v1/diagnostics/metrics`. Helps us detect when multithreaded paths regress under load.

@@ -616,6 +616,6 @@ Atomicity rules:
 - Mount new UI components under the application root and use the typed path helpers to validate app-relative references before storing them.
 - Widget toolkit: prefer the shared builder APIs (`Builders::Widgets::CreateButton`, `CreateToggle`, `CreateStack`, etc.) when adding UI primitives. Keep state paths (`/widgets/<id>/state`, `/meta/style`, `/layout/*`, etc.), canonical authoring nodes (`/widgets/<id>/authoring/...`), and update helpers (`UpdateButtonState`, `UpdateToggleState`, `UpdateStackLayout`) in sync with any new widgets.
 - Stack layout metadata lives under `/widgets/<id>/layout/{style,children,computed}`. `style` records axis/alignment/spacing, `children` lists widget roots + per-child constraints, and `computed` caches the latest layout frames. Bindings reuse `layout/computed` to derive dirty hints and auto-render events when layouts change.
-- When adding renderer targets or surfaces, document the path contract in `docs/Plan_SceneGraph_Renderer.md` and ensure tests cover atomic settings adoption and output publication (loop=15).
+- When adding renderer targets or surfaces, document the path contract in `docs/Plan_SceneGraph_Renderer.md` and ensure tests cover atomic settings adoption and output publication (loop=5).
 - Update the Mermaid sources in `docs/images/` if data flow or pipeline steps change; keep the inline diagrams in this section synchronized.
 - Cross-link new C++ entry points (`PathRenderer2D`, `PathSurface*`, `PathWindowView`, etc.) from this section so contributors can navigate between docs and code.

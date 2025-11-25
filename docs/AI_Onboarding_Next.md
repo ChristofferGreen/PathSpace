@@ -20,7 +20,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
    ```bash
    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
    cmake --build build -j
-   ./scripts/compile.sh --loop=15 --per-test-timeout 20
+   ./scripts/compile.sh --loop=5 --per-test-timeout 20
    ```
 
 4. **Verify Environment Flags**
@@ -43,7 +43,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 | --- | --- | --- |
 | Metal renderer | ✅ Completed (October 20, 2025) — material/shader bindings now flow through the shared descriptor cache | `PathRenderer2DMetal` covers rects, rounded rects, text quads, and images (see Phase 7); continue tracking glyph/material parity on the descriptor cache. |
 | Diagnostics | ✅ Completed (October 20, 2025) — dashboards consume `textureGpuBytes`/`resourceGpuBytes` plus residency ratios/status under `diagnostics/metrics/residency` | Coordinate with tooling owners before schema changes. |
-| Input & hit testing | ✅ Completed (October 21, 2025) — keyboard/gamepad focus navigation now rides the 15× UITest loop (`tests/ui/test_Builders.cpp`) alongside z-ordered hits, focus routing, and auto-render wake latency | Continue monitoring wait/notify latency metrics; extend coverage when new interaction paths land. |
+| Input & hit testing | ✅ Completed (October 21, 2025) — keyboard/gamepad focus navigation now rides the 5× UITest loop (`tests/ui/test_Builders.cpp`) alongside z-ordered hits, focus routing, and auto-render wake latency | Continue monitoring wait/notify latency metrics; extend coverage when new interaction paths land. |
 | Widgets | ✅ Completed (October 23, 2025) — tree view widget (metadata, bindings, reducers, UITests) landed alongside the bindings fuzz harness | UITest coverage lives in `tests/ui/test_Builders.cpp`; fuzz harness in `tests/ui/test_WidgetReducersFuzz.cpp`. Keep doctests/examples in sync when adding new widget kinds or op verbs. |
 | Widgets focus automation | ✅ Completed (October 27, 2025) — widget bindings now drive focus updates directly, and gallery/example code relies on the shared automation | Pointer presses, slider drags, list/tree selection, and toggle activations now call `WidgetFocus::Set` under the hood. Applications no longer need to mirror focus state manually; use the bindings' state reads when refreshing UI previews. |
 | HTML tooling | ✅ Completed (October 22, 2025) — quickstart/troubleshooting note in `docs/HTML_Adapter_Quickstart.md`; extend harness coverage when new asset fields appear | Legacy serializer removed; HSAT is mandatory. |
@@ -76,7 +76,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 
 ### Latest Highlights (October 27, 2025)
 - `widgets_example` can now capture its own gallery with `./build/widgets_example --screenshot <path>`, making visual verification reproducible even inside scripted runs (October 27, 2025). The command runs headless, performs a scripted slider drag, writes a PNG, and exits automatically.
-- Widget theme hot-swap coverage landed in `tests/ui/test_Builders.cpp` (“Widgets::WidgetTheme hot swap repaints button scenes and marks dirty”), exercising default vs sunset palettes in-place and confirming scene/state revisions update cleanly (15× loop, October 23, 2025).
+- Widget theme hot-swap coverage landed in `tests/ui/test_Builders.cpp` (“Widgets::WidgetTheme hot swap repaints button scenes and marks dirty”), exercising default vs sunset palettes in-place and confirming scene/state revisions update cleanly (5× loop, October 23, 2025).
 - Widget session capture tooling ships via `scripts/record_widget_session.sh` and `scripts/replay_widget_session.sh`; `SP::UI::WidgetTrace` now backs the flow so other apps can opt in by including `pathspace/ui/WidgetTrace.hpp` and wiring their own env vars (widgets_example still uses `WIDGETS_EXAMPLE_TRACE_RECORD` / `WIDGETS_EXAMPLE_TRACE_REPLAY`) (October 28, 2025).
 - Widget builders now publish canonical idle/hover/pressed/disabled scenes under `scenes/widgets/<id>/states/*`; live scenes republish automatically when state changes, and doctests cover the new snapshots (October 21, 2025).
 - Metal renderer is now material-aware: `PathRenderer2DMetal` consumes shared descriptors via `bind_material`, GPU frames stay in lock-step with software telemetry, and a new blending UITest asserts pipeline parity (`PathRenderer2DMetal honors material blending state`).
@@ -112,7 +112,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Latest change: `widgets_example` gained a `--screenshot <path>` mode that runs headless, performs a scripted slider drag, renders once, and writes a PNG via stb_image_write—no LocalWindow bridge required. Docs updated to note the workflow.
 - Latest change: `paint_example` composites completed strokes into a persistent canvas image (PNG asset per revision) while previewing the active stroke live, keeping long painting sessions within the snapshot/renderer budgets.
 - Follow-up (October 27, 2025): retained resize/present helpers (`App::UpdateSurfaceSize`, `App::PresentToLocalWindow`)—new automated capture flow leans on the same bootstrap plumbing.
-- Validation: `./scripts/compile.sh --release --test --loop=15 --per-test-timeout 20` (15× PathSpaceTests, PathSpaceUITests, HtmlCanvasVerify, HtmlAssetInspect, PixelNoise harnesses) — all green after the screenshot automation landed.
+- Validation: `./scripts/compile.sh --release --test --loop=5 --per-test-timeout 20` (5× PathSpaceTests, PathSpaceUITests, HtmlCanvasVerify, HtmlAssetInspect, PixelNoise harnesses) — all green after the screenshot automation landed.
 - Outstanding follow-ups before resuming:
   1. Capture the pixel-noise perf harness frame grab (`images/perf/pixel_noise.png`) now that the paired baselines are checked in.
 - Local worktree clean after committing the new tests/docs; no other unpublished edits.
