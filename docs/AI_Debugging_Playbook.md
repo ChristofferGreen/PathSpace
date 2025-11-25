@@ -255,7 +255,8 @@ Environment knobs (all respected by the wrapper and the logger):
 
 ### 5.3 Renderer/Presenter Performance Guardrail
 
-- Run `./scripts/perf_guardrail.py --build-dir build --build-type Release --jobs <n>` to execute the PathRenderer2D benchmark and the pixel noise example, compare their metrics against `docs/perf/performance_baseline.json`, and fail if regressions exceed per-metric tolerances.
+- Run `./scripts/perf_guardrail.py --build-dir build --build-type Release --jobs <n>` to execute all registered scenarios (PathRenderer2D, pixel noise, and the declarative-vs-legacy widget pipeline), compare their metrics against `docs/perf/performance_baseline.json`, and fail if regressions exceed per-metric tolerances.
+- Use `./scripts/perf_guardrail.py --scenarios widget_pipeline --print` for a fast local read on declarative widget latency/dirty throughput regressions before kicking off the longer renderer runs.
 - Append `--history-dir build/perf/history --print` when iterating locally; the helper writes a JSONL snapshot per scenario so you can trend metrics after each change.
 - Refresh the baseline only after intentional performance wins: `./scripts/perf_guardrail.py --build-dir build --build-type Release --jobs <n> --write-baseline`. Commit the updated JSON alongside the change and note the justification in the PR description.
 - The guardrail runs automatically from `scripts/compile.sh --perf-report` and the local pre-push hook; export `SKIP_PERF_GUARDRAIL=1` sparingly (e.g., when profiling on unsupported hardware) and document the reason in the PR.

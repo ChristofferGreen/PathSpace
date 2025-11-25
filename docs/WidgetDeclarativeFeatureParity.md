@@ -34,9 +34,10 @@ This document cross-references the legacy imperative widget builders (`src/paths
 | Screenshot & readiness automation | Legacy paint screenshot tooling depended on bespoke scripts. | Declarative samples gate on `PathSpaceExamples::ensure_declarative_scene_ready`, run screenshot capture through `SP::UI::Screenshot::ScreenshotService`, and store manifests/baselines (`docs/Memory.md:5-41`). | ✅ Deterministic capture/diff workflow; CI harnesses enforce visual parity. |
 | Telemetry & diagnostics | Legacy widgets emitted limited per-widget metrics. | Declarative runtime publishes schema/focus/input/render telemetry plus per-widget logs (`docs/Plan_WidgetDeclarativeAPI.md:242-272`, `docs/Plan_WidgetDeclarativeAPI_EventRouting.md:5-62`). | ✅ Broader coverage (handlers, focus, lifecycle, GPU uploads) and shared logging roots. |
 
+The deterministic `widget_pipeline_benchmark` (`benchmarks/ui/widget_pipeline_benchmark.cpp`) now compares the legacy bucket builders with the declarative descriptor path, records bucket bytes/latency plus declarative dirty-widget throughput and paint GPU upload timings, and feeds the `widget_pipeline` scenario in `scripts/perf_guardrail.py`. The captured tolerances live in `docs/perf/performance_baseline.json`, so the pre-push guardrail halts regressions automatically.
+
 ## 4. Outstanding Gaps / Follow-ups
 
-1. **Performance validation matrix:** Phase 3 calls for benchmark comparisons between the legacy and declarative pipelines. This audit documents functional parity, but perf measurements (FPS, latency, telemetry deltas) still need to be recorded before Phase 3 can close out entirely.
-2. **Inspector/consumer migration tracking:** While samples now use the declarative API, several internal tools (e.g., web inspector views mentioned in `Plan_PathSpace_Inspector.md`) still rely on legacy paths. Track those migrations separately so the deprecation window can be scheduled confidently.
+1. **Inspector/consumer migration tracking:** While samples now use the declarative API, several internal tools (e.g., web inspector views mentioned in `Plan_PathSpace_Inspector.md`) still rely on legacy paths. Track those migrations separately so the deprecation window can be scheduled confidently.
 
 The matrix above should be refreshed whenever new widgets land or when telemetry/worker contracts change. Update this file and the Phase 3 checklist inside `docs/Plan_WidgetDeclarativeAPI.md` together to keep planning artifacts in sync.

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-10-23T14:34:07.737053+00:00",
+  "generatedAt": "2025-11-25T12:20:00.000000+00:00",
   "scenarios": {
     "path_renderer2d": {
       "metadata": {
@@ -109,6 +109,61 @@
         },
         "tileStats.averageBytesCopied": {
           "absolute": 200000.0,
+          "direction": "increase",
+          "percent": 25.0
+        }
+      }
+    },
+    "widget_pipeline": {
+      "metadata": {
+        "command": {
+          "iterations": 200,
+          "seed": 1337
+        },
+        "legacy": {
+          "bucketTotalMs": 2.716875
+        },
+        "declarative": {
+          "bucketTotalMs": 16.86966,
+          "mutateTotalMs": 114.405872
+        }
+      },
+      "metrics": {
+        "legacy.bucketAvgMs": 0.013584375,
+        "legacy.bucketBytesPerIter": 8633.8,
+        "declarative.bucketAvgMs": 0.0843483,
+        "declarative.bucketBytesPerIter": 11654.8,
+        "declarative.dirtyWidgetsPerSec": 6992.6480696725075,
+        "declarative.paintGpuLastUploadNs": 1254541.0
+      },
+      "tolerances": {
+        "legacy.bucketAvgMs": {
+          "absolute": 0.4,
+          "direction": "increase",
+          "percent": 15.0
+        },
+        "legacy.bucketBytesPerIter": {
+          "absolute": 2000.0,
+          "direction": "increase",
+          "percent": 20.0
+        },
+        "declarative.bucketAvgMs": {
+          "absolute": 0.5,
+          "direction": "increase",
+          "percent": 15.0
+        },
+        "declarative.bucketBytesPerIter": {
+          "absolute": 2000.0,
+          "direction": "increase",
+          "percent": 20.0
+        },
+        "declarative.dirtyWidgetsPerSec": {
+          "absolute": 15.0,
+          "direction": "decrease",
+          "percent": 20.0
+        },
+        "declarative.paintGpuLastUploadNs": {
+          "absolute": 5000000.0,
           "direction": "increase",
           "percent": 25.0
         }

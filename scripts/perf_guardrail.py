@@ -325,6 +325,40 @@ def run_pixel_noise_example(ctx: PerfContext) -> ScenarioResult:
     return ScenarioResult(metrics=metrics, metadata=metadata, raw=report)
 
 
+def run_widget_pipeline_benchmark(ctx: PerfContext) -> ScenarioResult:
+    binary = ctx.locate_binary(["widget_pipeline_benchmark"])
+    ctx.log(f"Running {binary.name} (widget pipeline benchmark)")
+    with tempfile.TemporaryDirectory(prefix="perf_guardrail_widget_") as tmp:
+        report_path = pathlib.Path(tmp) / "widget_pipeline_metrics.json"
+        args = [
+            str(binary),
+            "--iterations=200",
+            f"--write-json={report_path}",
+        ]
+        ctx.run(args)
+        report = _load_json(report_path)
+
+    metrics_raw = report.get("metrics", {})
+    metrics = {
+        key: float(metrics_raw[key])
+        for key in (
+            "legacy.bucketAvgMs",
+            "legacy.bucketBytesPerIter",
+            "declarative.bucketAvgMs",
+            "declarative.bucketBytesPerIter",
+            "declarative.dirtyWidgetsPerSec",
+            "declarative.paintGpuLastUploadNs",
+        )
+        if key in metrics_raw
+    }
+
+    metadata = {
+        "command": report.get("command"),
+        "details": report.get("metadata"),
+    }
+    return ScenarioResult(metrics=metrics, metadata=metadata, raw=report)
+
+
 SCENARIOS: List[ScenarioDefinition] = [
     ScenarioDefinition(
         name="path_renderer2d",
@@ -350,6 +384,19 @@ SCENARIOS: List[ScenarioDefinition] = [
             "tileStats.averageBytesCopied": Tolerance(direction="increase", percent=25.0, absolute=200_000.0),
         },
     ),
+    ScenarioDefinition(
+        name="widget_pipeline",
+        description="Declarative vs legacy widget pipeline",
+        runner=run_widget_pipeline_benchmark,
+        tolerances={
+            "legacy.bucketAvgMs": Tolerance(direction="increase", percent=15.0, absolute=0.4),
+            "legacy.bucketBytesPerIter": Tolerance(direction="increase", percent=20.0, absolute=2000.0),
+            "declarative.bucketAvgMs": Tolerance(direction="increase", percent=15.0, absolute=0.5),
+            "declarative.bucketBytesPerIter": Tolerance(direction="increase", percent=20.0, absolute=2000.0),
+            "declarative.dirtyWidgetsPerSec": Tolerance(direction="decrease", percent=20.0, absolute=15.0),
+            "declarative.paintGpuLastUploadNs": Tolerance(direction="increase", percent=25.0, absolute=5_000_000.0),
+        },
+    ),
 ]
 
 
@@ -364,6 +411,8 @@ def build_required_targets(ctx: PerfContext, selected: Iterable[ScenarioDefiniti
             targets.append("path_renderer2d_benchmark")
         elif scenario.name == "pixel_noise_software":
             targets.append("pixel_noise_example")
+        elif scenario.name == "widget_pipeline":
+            targets.append("widget_pipeline_benchmark")
     ctx.build_targets(targets)
 
 

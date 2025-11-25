@@ -324,9 +324,9 @@ Keep this journal in sync as we chip away at the serialization issue so we can p
 ### Phase 3 – Migration & Parity
 1. **Feature audit**
    - ✅ (November 25, 2025) `docs/WidgetDeclarativeFeatureParity.md` now documents widget-by-widget parity (interaction, rendering, telemetry) between the legacy builders and the declarative runtime, with explicit references to the supporting code/tests.
-   - Outstanding follow-ups from the audit: record the renderer/perf comparison matrix and keep the inspector/consumer migration tracker current so downstream tools retire legacy paths before the deprecation window.
+   - Outstanding follow-up: keep the inspector/consumer migration tracker current so downstream tools retire legacy paths before the deprecation window.
 2. **Performance validation**
-   - Benchmark both pipelines and optimize if necessary.
+   - ✅ (November 25, 2025) Added the deterministic `benchmarks/ui/widget_pipeline_benchmark.cpp` harness plus the `widget_pipeline` scenario in `scripts/perf_guardrail.py`. The benchmark drives identical button/toggle/slider/list/paint loads through the legacy builders and the declarative runtime, records bucket latency/bytes, dirty-widget throughput, and paint GPU upload timing, and the guardrail enforces the captured baselines in `docs/perf/performance_baseline.json` so regressions block pre-push.
 3. **Documentation alignment**
    - Promote declarative API in high-level docs; mark legacy APIs deprecated.
 4. **Consumer migration**
