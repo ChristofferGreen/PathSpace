@@ -326,6 +326,7 @@ Keep this journal in sync as we chip away at the serialization issue so we can p
    - Outstanding follow-up: keep the inspector/consumer migration tracker current so downstream tools retire legacy paths before the deprecation window.
 2. **Performance validation**
    - ✅ (November 25, 2025) Added the deterministic `benchmarks/ui/widget_pipeline_benchmark.cpp` harness plus the `widget_pipeline` scenario in `scripts/perf_guardrail.py`. The benchmark drives identical button/toggle/slider/list/paint loads through the legacy builders and the declarative runtime, records bucket latency/bytes, dirty-widget throughput, and paint GPU upload timing, and the guardrail enforces the captured baselines in `docs/perf/performance_baseline.json` so regressions block pre-push.
+   - ✅ (November 25, 2025) Regenerated `docs/perf/performance_baseline.json` after the schema/journal overhead landed. Declarative bucket synthesis now averages ~1.05 ms per iteration on the reference machine (up from 0.084 ms before the journal rewrite), so the guardrail compares against the new steady-state numbers instead of the pre-journal values.
 3. **Documentation alignment**
    - ✅ (November 25, 2025) README, onboarding guides, and widget contribution docs now default to the declarative runtime, link to `docs/WidgetDeclarativeAPI.md`, and label the legacy builders as compatibility-only. Future doc edits must keep those references in sync when declarative behaviour changes.
 4. **Consumer migration**

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-25T12:20:00.000000+00:00",
+  "generatedAt": "2025-11-25T20:48:46.538639+00:00",
   "scenarios": {
     "path_renderer2d": {
       "metadata": {
@@ -12,7 +12,7 @@
             "/Users/chrgre01/src/PathSpace/build/benchmarks/path_renderer2d_benchmark",
             "--canvas=3840x2160",
             "--metrics",
-            "--write-json=/var/folders/dw/20lzppxd4wb92wccyqh_g6zm0000gn/T/perf_guardrail_zy54zpes/renderer_metrics.json"
+            "--write-json=/var/folders/dw/20lzppxd4wb92wccyqh_g6zm0000gn/T/perf_guardrail_0fxqcqjs/renderer_metrics.json"
           ],
           "program": "/Users/chrgre01/src/PathSpace/build/benchmarks/path_renderer2d_benchmark"
         },
@@ -23,12 +23,12 @@
         }
       },
       "metrics": {
-        "full.avgMs": 73.617812,
-        "full.fps": 13.583669,
-        "incremental.avgMs": 7.57089,
-        "incremental.damage.averageCoverage": 0.000574,
+        "full.avgMs": 76.380854,
+        "full.fps": 13.092286,
+        "incremental.avgMs": 1.448517,
+        "incremental.damage.averageCoverage": 0.002037,
         "incremental.damage.averageTilesDirty": 4.125,
-        "incremental.fps": 132.084871
+        "incremental.fps": 690.361464
       },
       "tolerances": {
         "full.avgMs": {
@@ -73,7 +73,7 @@
           "headless": true,
           "height": 720,
           "maxFrames": 120,
-          "minFps": 25.0,
+          "minFps": 50.0,
           "presentRefreshHz": 0.0,
           "runtimeLimitSeconds": null,
           "seed": 123456789,
@@ -86,26 +86,26 @@
         }
       },
       "metrics": {
-        "summary.averageFps": 28.497498,
-        "summary.averagePresentCallMs": 35.089874,
-        "summary.averageRenderMs": 0.672887,
+        "summary.averageFps": 133.963738,
+        "summary.averagePresentCallMs": 7.46457,
+        "summary.averageRenderMs": 0.267732,
         "tileStats.averageBytesCopied": 30720.0
       },
       "tolerances": {
         "summary.averageFps": {
-          "absolute": 5.0,
+          "absolute": 15.0,
           "direction": "decrease",
-          "percent": 15.0
+          "percent": 12.0
         },
         "summary.averagePresentCallMs": {
-          "absolute": 10.0,
-          "direction": "increase",
-          "percent": 20.0
-        },
-        "summary.averageRenderMs": {
-          "absolute": 0.5,
+          "absolute": 3.0,
           "direction": "increase",
           "percent": 25.0
+        },
+        "summary.averageRenderMs": {
+          "absolute": 0.4,
+          "direction": "increase",
+          "percent": 20.0
         },
         "tileStats.averageBytesCopied": {
           "absolute": 200000.0,
@@ -120,33 +120,25 @@
           "iterations": 200,
           "seed": 1337
         },
-        "legacy": {
-          "bucketTotalMs": 2.716875
-        },
-        "declarative": {
-          "bucketTotalMs": 16.86966,
-          "mutateTotalMs": 114.405872
+        "details": {
+          "declarative": {
+            "bucketTotalMs": 210.224377,
+            "mutateTotalMs": 100.575078
+          },
+          "legacy": {
+            "bucketTotalMs": 1.453334
+          }
         }
       },
       "metrics": {
-        "legacy.bucketAvgMs": 0.013584375,
-        "legacy.bucketBytesPerIter": 8633.8,
-        "declarative.bucketAvgMs": 0.0843483,
+        "declarative.bucketAvgMs": 1.051121885,
         "declarative.bucketBytesPerIter": 11654.8,
-        "declarative.dirtyWidgetsPerSec": 6992.6480696725075,
-        "declarative.paintGpuLastUploadNs": 1254541.0
+        "declarative.dirtyWidgetsPerSec": 7954.256818970601,
+        "declarative.paintGpuLastUploadNs": 1004334.0,
+        "legacy.bucketAvgMs": 0.007266669999999999,
+        "legacy.bucketBytesPerIter": 8633.8
       },
       "tolerances": {
-        "legacy.bucketAvgMs": {
-          "absolute": 0.4,
-          "direction": "increase",
-          "percent": 15.0
-        },
-        "legacy.bucketBytesPerIter": {
-          "absolute": 2000.0,
-          "direction": "increase",
-          "percent": 20.0
-        },
         "declarative.bucketAvgMs": {
           "absolute": 0.5,
           "direction": "increase",
@@ -166,6 +158,16 @@
           "absolute": 5000000.0,
           "direction": "increase",
           "percent": 25.0
+        },
+        "legacy.bucketAvgMs": {
+          "absolute": 0.4,
+          "direction": "increase",
+          "percent": 15.0
+        },
+        "legacy.bucketBytesPerIter": {
+          "absolute": 2000.0,
+          "direction": "increase",
+          "percent": 20.0
         }
       }
     }
