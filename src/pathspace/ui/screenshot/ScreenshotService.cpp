@@ -119,7 +119,7 @@ auto pack_framebuffer(std::vector<std::uint8_t> const& framebuffer,
 }
 
 auto capture_present_frame(SP::PathSpace& space,
-                           SP::UI::Builders::WindowPath const& window_path,
+                           SP::UI::WindowPath const& window_path,
                            std::string const& view_name,
                            std::chrono::milliseconds timeout)
     -> std::optional<SP::UI::Builders::Window::WindowPresentResult> {

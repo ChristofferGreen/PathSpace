@@ -3,6 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/PathTypes.hpp>
 
 #include <chrono>
 #include <cstdint>
@@ -33,20 +34,20 @@ struct ManualPumpResult {
 
 [[nodiscard]] auto Start(PathSpace& space,
                          SP::App::AppRootPathView app_root,
-                         SP::UI::Builders::ScenePath const& scene_path,
-                         SP::UI::Builders::WindowPath const& window_path,
+                         SP::UI::ScenePath const& scene_path,
+                         SP::UI::WindowPath const& window_path,
                          std::string_view view_name,
                          Options const& options = {}) -> SP::Expected<void>;
 
 [[nodiscard]] auto Stop(PathSpace& space,
-                        SP::UI::Builders::ScenePath const& scene_path) -> SP::Expected<void>;
+                        SP::UI::ScenePath const& scene_path) -> SP::Expected<void>;
 
 [[nodiscard]] auto ForcePublish(PathSpace& space,
-                                SP::UI::Builders::ScenePath const& scene_path,
+                                SP::UI::ScenePath const& scene_path,
                                 ForcePublishOptions const& options = {}) -> SP::Expected<std::uint64_t>;
 
 [[nodiscard]] auto PumpSceneOnce(PathSpace& space,
-                                 SP::UI::Builders::ScenePath const& scene_path,
+                                 SP::UI::ScenePath const& scene_path,
                                  ManualPumpOptions const& options = {}) -> SP::Expected<ManualPumpResult>;
 
 auto InvalidateThemes(PathSpace& space,

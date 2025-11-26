@@ -1106,8 +1106,8 @@ std::unordered_map<std::string, std::shared_ptr<SceneLifecycleWorker>> g_lifecyc
 
 auto Start(PathSpace& space,
            SP::App::AppRootPathView app_root,
-           SP::UI::Builders::ScenePath const& scene_path,
-           SP::UI::Builders::WindowPath const& window_path,
+           SP::UI::ScenePath const& scene_path,
+           SP::UI::WindowPath const& window_path,
            std::string_view view_name,
            Options const& options) -> SP::Expected<void> {
     auto key = std::string(scene_path.getPath());
@@ -1131,7 +1131,7 @@ auto Start(PathSpace& space,
 }
 
 auto Stop(PathSpace& space,
-          SP::UI::Builders::ScenePath const& scene_path) -> SP::Expected<void> {
+          SP::UI::ScenePath const& scene_path) -> SP::Expected<void> {
     (void)space;
     std::shared_ptr<SceneLifecycleWorker> worker;
     {
@@ -1150,7 +1150,7 @@ auto Stop(PathSpace& space,
 }
 
 auto ForcePublish(PathSpace& space,
-                  SP::UI::Builders::ScenePath const& scene_path,
+                  SP::UI::ScenePath const& scene_path,
                   ForcePublishOptions const& options) -> SP::Expected<std::uint64_t> {
     (void)space;
     std::shared_ptr<SceneLifecycleWorker> worker;
@@ -1181,7 +1181,7 @@ auto ForcePublish(PathSpace& space,
 }
 
 auto PumpSceneOnce(PathSpace& space,
-                   SP::UI::Builders::ScenePath const& scene_path,
+                   SP::UI::ScenePath const& scene_path,
                    ManualPumpOptions const& options) -> SP::Expected<ManualPumpResult> {
     (void)space;
     std::shared_ptr<SceneLifecycleWorker> worker;

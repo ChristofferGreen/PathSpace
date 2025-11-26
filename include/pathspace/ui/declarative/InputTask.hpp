@@ -2,6 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/PathTypes.hpp>
 
 #include <chrono>
 #include <string_view>
@@ -48,7 +49,7 @@ auto ShutdownInputTask(PathSpace& space) -> void;
  * `/system/widgets/runtime/input/{windows,apps}/.../metrics/\*`.
  */
 auto PumpWindowWidgetsOnce(PathSpace& space,
-                           SP::UI::Builders::WindowPath const& window,
+                           SP::UI::WindowPath const& window,
                            std::string_view view_name,
                            ManualPumpOptions const& options = {}) -> SP::Expected<ManualPumpResult>;
 

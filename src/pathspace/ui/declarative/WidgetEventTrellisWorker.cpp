@@ -18,7 +18,7 @@ using BuilderDetail::derive_app_root_for;
 using BuilderDetail::read_optional;
 using BuilderDetail::replace_single;
 using BuilderDetail::to_epoch_ns;
-using SP::UI::Builders::ScenePath;
+using SP::UI::ScenePath;
 
 WidgetEventTrellisWorker::WidgetEventTrellisWorker(PathSpace& space,
                                                    WidgetEventTrellisOptions options)

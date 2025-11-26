@@ -4,6 +4,7 @@
 #include <pathspace/io/IoEvents.hpp>
 #include <pathspace/runtime/IOPump.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/PathTypes.hpp>
 #include <pathspace/ui/declarative/InputTask.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
@@ -28,7 +29,7 @@ struct RuntimeGuard {
     SP::PathSpace& space;
 };
 
-auto app_component_from_window(SP::UI::Builders::WindowPath const& window) -> std::string {
+auto app_component_from_window(SP::UI::WindowPath const& window) -> std::string {
     constexpr std::string_view kPrefix = "/system/applications/";
     std::string path = std::string(window.getPath());
     if (!path.starts_with(kPrefix)) {

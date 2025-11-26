@@ -5,20 +5,9 @@
 #include "path/GlobPath.hpp"
 
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/PathTypes.hpp>
 
 namespace SP::UI {
-
-using ConcretePath = SP::ConcretePathString;
-using ConcretePathView = SP::ConcretePathStringView;
-using GlobPath = SP::GlobPathString;
-using GlobPathView = SP::GlobPathStringView;
-
-using AppRootPath = Builders::AppRootPath;
-using ScenePath = Builders::ScenePath;
-using RendererPath = Builders::RendererPath;
-using SurfacePath = Builders::SurfacePath;
-using WindowPath = Builders::WindowPath;
-using HtmlTargetPath = Builders::HtmlTargetPath;
 
 using SceneParams = Builders::SceneParams;
 using SceneRevisionDesc = Builders::SceneRevisionDesc;

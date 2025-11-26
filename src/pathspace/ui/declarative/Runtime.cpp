@@ -28,8 +28,8 @@ namespace {
 
 using namespace SP::UI::Builders::Detail;
 using SP::PathSpace;
-using ScenePath = SP::UI::Builders::ScenePath;
-using WindowPath = SP::UI::Builders::WindowPath;
+using ScenePath = SP::UI::ScenePath;
+using WindowPath = SP::UI::WindowPath;
 
 std::mutex g_io_trellis_mutex;
 std::unordered_map<SP::PathSpace*, SP::IO::IoTrellisHandle> g_io_trellis_handles;
@@ -290,7 +290,7 @@ void ensure_device_push_config(SP::PathSpace& space,
 }
 
 void subscribe_window_devices(SP::PathSpace& space,
-                              SP::UI::Builders::WindowPath const& window,
+                              SP::UI::WindowPath const& window,
                               std::span<const std::string> pointer_devices,
                               std::span<const std::string> text_devices) {
     auto token = SP::Runtime::MakeRuntimeWindowToken(window.getPath());
@@ -310,17 +310,17 @@ void subscribe_window_devices(SP::PathSpace& space,
 }
 
 struct SceneWindowBinding {
-    SP::UI::Builders::WindowPath window_path;
+    SP::UI::WindowPath window_path;
     std::string view_name;
 };
 
-auto derive_app_root_from_scene(SP::UI::Builders::ScenePath const& scene_path)
+auto derive_app_root_from_scene(SP::UI::ScenePath const& scene_path)
     -> SP::Expected<SP::App::AppRootPath> {
     return SP::App::derive_app_root(SP::App::ConcretePathView{scene_path.getPath()});
 }
 
 auto resolve_scene_window_binding(SP::PathSpace& space,
-                                 SP::UI::Builders::ScenePath const& scene_path,
+                                 SP::UI::ScenePath const& scene_path,
                                  SP::App::AppRootPathView app_root)
     -> SP::Expected<SceneWindowBinding> {
     auto windows_root = std::string(scene_path.getPath()) + "/structure/window";
@@ -336,7 +336,7 @@ auto resolve_scene_window_binding(SP::PathSpace& space,
     }
     auto window_path_str = std::string(app_root.getPath()) + "/windows/" + window_component;
     SceneWindowBinding binding{
-        .window_path = SP::UI::Builders::WindowPath{window_path_str},
+        .window_path = SP::UI::WindowPath{window_path_str},
         .view_name = *view_value,
     };
     return binding;
@@ -509,7 +509,7 @@ auto ensure_view_binding(PathSpace& space,
 
 auto build_bootstrap_from_window(SP::PathSpace& space,
                                 SP::App::AppRootPathView app_root,
-                                SP::UI::Builders::WindowPath const& window,
+                                SP::UI::WindowPath const& window,
                                 std::string const& view_name)
     -> SP::Expected<SP::UI::Builders::App::BootstrapResult> {
     using namespace SP::UI::Builders;
@@ -986,7 +986,7 @@ auto Create(PathSpace& space,
 }
 
 auto Shutdown(PathSpace& space,
-              SP::UI::Builders::ScenePath const& scene_path) -> SP::Expected<void> {
+              SP::UI::ScenePath const& scene_path) -> SP::Expected<void> {
     return SP::UI::Declarative::SceneLifecycle::Stop(space, scene_path);
 }
 
@@ -1071,7 +1071,7 @@ auto RunUI(SP::PathSpace& space,
 }
 
 auto RunUI(SP::PathSpace& space,
-           SP::UI::Builders::ScenePath const& scene_path,
+           SP::UI::ScenePath const& scene_path,
            RunOptions const& options) -> SP::Expected<void> {
     auto app_root = derive_app_root_from_scene(scene_path);
     if (!app_root) {

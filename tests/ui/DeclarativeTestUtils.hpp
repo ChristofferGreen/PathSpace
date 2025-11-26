@@ -3,6 +3,7 @@
 #include <pathspace/core/Error.hpp>
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/PathTypes.hpp>
 
 #include "../../examples/declarative_example_shared.hpp"
 
@@ -177,8 +178,8 @@ inline auto format_error(std::string_view context, SP::Error const& error) -> st
 }
 
 inline auto ensure_scene_ready(SP::PathSpace& space,
-                               SP::UI::Builders::ScenePath const& scene,
-                               SP::UI::Builders::WindowPath const& window,
+                               SP::UI::ScenePath const& scene,
+                               SP::UI::WindowPath const& window,
                                std::string const& view_name,
                                PathSpaceExamples::DeclarativeReadinessOptions options)
     -> SP::Expected<PathSpaceExamples::DeclarativeReadinessResult> {

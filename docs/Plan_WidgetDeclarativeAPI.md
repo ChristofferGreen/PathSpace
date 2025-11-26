@@ -349,6 +349,7 @@ Keep this journal in sync as we chip away at the serialization issue so we can p
    - ✅ (November 26, 2025) `scripts/compile.sh`, the local pre-push hook, and CI now export `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` by default, stream every guard hit into the JSONL reporter specified via `PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT`, and rely on the shared test runner’s automatic `LegacyBuilders::ScopedAllow` handling for `tests/ui/*` so compatibility suites still execute without masking production regressions.
 3. **Removal**
    - ⚠️ (November 26, 2025) Added the build-time kill switch `PATHSPACE_DISABLE_LEGACY_BUILDERS`. Setting the option during configuration defines `PATHSPACE_DISABLE_LEGACY_BUILDERS=1`, causing any inclusion of `include/pathspace/ui/Builders.hpp` to fail compilation with migration guidance. Use this toggle to flush straggling dependencies (samples, tests, perf harnesses) before deleting the underlying sources.
+   - ✅ (November 26, 2025) Introduced `include/pathspace/ui/PathTypes.hpp` and migrated the declarative runtime, screenshot helpers, examples, and doctest harnesses to the shared `SP::UI::{WindowPath,ScenePath}` aliases so they no longer depend on `SP::UI::Builders::*` for fundamental path handles. This confines the remaining builder usage to theme/style structs and render helpers ahead of the final removal step.
    - Delete legacy builders/samples after window; simplify remaining docs.
 4. **Post-mortem**
    - Record lessons learned and perf comparisons.

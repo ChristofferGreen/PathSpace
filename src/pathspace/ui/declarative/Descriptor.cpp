@@ -118,7 +118,7 @@ auto load_stack_child_bucket(PathSpace& space,
                 "Stack child missing scene path", SP::Error::Code::InvalidPath));
         }
 
-        SP::UI::Builders::ScenePath scene_path{child.scene_path};
+        SP::UI::ScenePath scene_path{child.scene_path};
         auto revision = BuilderScene::ReadCurrentRevision(space, scene_path);
         if (!revision) {
             return std::unexpected(revision.error());

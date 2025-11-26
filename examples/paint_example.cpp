@@ -248,13 +248,13 @@ auto replace_value(SP::PathSpace& space, std::string const& path, T const& value
     return {};
 }
 
-auto window_view_base(SP::UI::Builders::WindowPath const& window_path,
+auto window_view_base(SP::UI::WindowPath const& window_path,
                       std::string const& view_name) -> std::string {
     return std::string(window_path.getPath()) + "/views/" + view_name;
 }
 
 auto set_capture_framebuffer_enabled(SP::PathSpace& space,
-                                     SP::UI::Builders::WindowPath const& window_path,
+                                     SP::UI::WindowPath const& window_path,
                                      std::string const& view_name,
                                      bool enabled) -> SP::Expected<void> {
     auto base = window_view_base(window_path, view_name);

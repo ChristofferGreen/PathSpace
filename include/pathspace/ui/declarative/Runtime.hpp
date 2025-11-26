@@ -6,6 +6,7 @@
 #include <pathspace/runtime/IOPump.hpp>
 #include <pathspace/runtime/TelemetryControl.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/PathTypes.hpp>
 #include <pathspace/ui/declarative/InputTask.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceUploader.hpp>
 #include <pathspace/ui/declarative/WidgetEventTrellis.hpp>
@@ -104,7 +105,7 @@ struct CreateOptions {
 };
 
 struct CreateResult {
-    SP::UI::Builders::WindowPath path;
+    SP::UI::WindowPath path;
     std::string view_name;
 };
 
@@ -152,24 +153,24 @@ struct CreateOptions {
 };
 
 struct CreateResult {
-    SP::UI::Builders::ScenePath path;
+    SP::UI::ScenePath path;
     std::string view_name;
 };
 
 [[nodiscard]] auto Create(PathSpace& space,
                           SP::App::AppRootPathView app_root,
-                          SP::UI::Builders::WindowPath const& window_path,
+                          SP::UI::WindowPath const& window_path,
                           CreateOptions const& options = {}) -> SP::Expected<CreateResult>;
 
 [[nodiscard]] inline auto Create(PathSpace& space,
                                  SP::App::AppRootPath const& app_root,
-                                 SP::UI::Builders::WindowPath const& window_path,
+                                 SP::UI::WindowPath const& window_path,
                                   CreateOptions const& options = {}) -> SP::Expected<CreateResult> {
     return Create(space, SP::App::AppRootPathView{app_root.getPath()}, window_path, options);
 }
 
 [[nodiscard]] auto Shutdown(PathSpace& space,
-                            SP::UI::Builders::ScenePath const& scene_path) -> SP::Expected<void>;
+                            SP::UI::ScenePath const& scene_path) -> SP::Expected<void>;
 
 } // namespace SP::Scene
 
@@ -187,7 +188,7 @@ struct RunOptions {
                          RunOptions const& options = {}) -> SP::Expected<void>;
 
 [[nodiscard]] auto RunUI(PathSpace& space,
-                         SP::UI::Builders::ScenePath const& scene_path,
+                         SP::UI::ScenePath const& scene_path,
                          RunOptions const& options = {}) -> SP::Expected<void>;
 
 } // namespace SP::App

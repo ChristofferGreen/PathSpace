@@ -133,7 +133,7 @@ static bool drain_device_events(DeviceEventSink& sink) {
 }
 
 struct PaintControlsDemoHandles {
-    SP::UI::Builders::WindowPath window_path;
+    SP::UI::WindowPath window_path;
     std::string view_name;
     SP::UI::Builders::App::BootstrapResult bootstrap;
     SP::UI::Builders::WidgetPath status_label;

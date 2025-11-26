@@ -3,6 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/path/ConcretePath.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/PathTypes.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
@@ -51,7 +52,7 @@ struct DeclarativeFixture {
     }
 
     SP::App::AppRootPath app_root;
-    SP::UI::Builders::WindowPath window_path;
+    SP::UI::WindowPath window_path;
     std::string window_name = "main_window";
 };
 
@@ -221,7 +222,7 @@ TEST_CASE("Declarative focus metadata mirrors window and widget state") {
     REQUIRE(scene.has_value());
     struct SceneCleanup {
         PathSpace& space;
-        Builders::ScenePath path;
+        SP::UI::ScenePath path;
         ~SceneCleanup() {
             (void)SP::Scene::Shutdown(space, path);
         }

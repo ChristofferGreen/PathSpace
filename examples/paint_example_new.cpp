@@ -109,7 +109,7 @@ auto exit_with_error(SP::PathSpace& space,
     return 1;
 }
 
-auto window_component_name(SP::UI::Builders::WindowPath const& window_path) -> std::string {
+auto window_component_name(SP::UI::WindowPath const& window_path) -> std::string {
     auto raw = std::string(window_path.getPath());
     auto slash = raw.find_last_of('/');
     if (slash == std::string::npos || slash + 1 >= raw.size()) {

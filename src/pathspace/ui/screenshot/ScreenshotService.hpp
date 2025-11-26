@@ -2,6 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/PathTypes.hpp>
 
 #include <chrono>
 #include <filesystem>
@@ -53,7 +54,7 @@ struct BaselineMetadata {
 
 struct ScreenshotRequest {
     SP::PathSpace& space;
-    SP::UI::Builders::WindowPath window_path;
+    SP::UI::WindowPath window_path;
     std::string view_name;
     int width = 0;
     int height = 0;

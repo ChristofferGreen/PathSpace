@@ -23,6 +23,10 @@ plus tests in sync. Read it before touching declarative UI code or examples.
    `/system/widgets/runtime/*` workers (input, IO pump, widget event trellis),
    renderer targets, and telemetry roots. Disable individual workers only when
    writing targeted tests.
+2. Include `<pathspace/ui/PathTypes.hpp>` when you need canonical handles such as
+   `SP::UI::WindowPath` or `SP::UI::ScenePath`. The header re-exports the common
+   aliases from declarative code so you no longer have to depend on
+   `SP::UI::Builders::*` just to store window/scene/widget paths.
 2. `SP::App::Create` returns the canonical app root and registers renderer/theme
    defaults. `SP::Window::Create` mounts the window under the app, seeds
    `views/<view>/{scene,surface,renderer}` bindings, and registers device

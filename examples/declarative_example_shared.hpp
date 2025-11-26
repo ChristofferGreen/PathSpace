@@ -5,6 +5,7 @@
 #include <pathspace/core/Error.hpp>
 #include <pathspace/runtime/IOPump.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/PathTypes.hpp>
 #include <pathspace/ui/LocalWindowBridge.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
@@ -143,7 +144,7 @@ inline auto read_manual_metric(SP::PathSpace& space,
 }
 
 inline void record_manual_pump_metrics(SP::PathSpace& space,
-                                       SP::UI::Builders::WindowPath const& window,
+                                       SP::UI::WindowPath const& window,
                                        std::string const& view_name) {
     if (!manual_pump_metrics_requested()) {
         return;
@@ -335,7 +336,7 @@ inline void install_local_window_bridge(LocalInputBridge& bridge) {
 
 inline auto build_bootstrap_from_window(SP::PathSpace& space,
                                         SP::App::AppRootPathView app_root,
-                                        SP::UI::Builders::WindowPath const& window,
+                                        SP::UI::WindowPath const& window,
                                         std::string const& view_name)
     -> SP::Expected<SP::UI::Builders::App::BootstrapResult> {
     using namespace SP::UI::Builders;
@@ -414,7 +415,7 @@ inline auto build_bootstrap_from_window(SP::PathSpace& space,
 }
 
 inline void subscribe_window_devices(SP::PathSpace& space,
-                                     SP::UI::Builders::WindowPath const& window,
+                                     SP::UI::WindowPath const& window,
                                      std::span<std::string const> pointer_devices,
                                      std::span<std::string const> button_devices,
                                      std::span<std::string const> text_devices) {
@@ -451,7 +452,7 @@ struct PresentLoopHooks {
 };
 
 inline void run_present_loop(SP::PathSpace& space,
-                             SP::UI::Builders::WindowPath const& window,
+                             SP::UI::WindowPath const& window,
                              std::string const& view_name,
                              SP::UI::Builders::App::BootstrapResult& bootstrap,
                              int initial_width,
@@ -526,7 +527,7 @@ struct DeclarativeReadinessResult {
     std::optional<std::uint64_t> scene_revision;
 };
 
-inline auto make_window_view_path(SP::UI::Builders::WindowPath const& window,
+inline auto make_window_view_path(SP::UI::WindowPath const& window,
                                  std::string const& view_name) -> std::string {
     std::string view_path = std::string(window.getPath());
     view_path.append("/views/");
@@ -542,7 +543,7 @@ inline auto window_component_name(std::string const& window_path) -> std::string
     return window_path.substr(slash + 1);
 }
 
-inline auto app_root_from_window(SP::UI::Builders::WindowPath const& window) -> std::string {
+inline auto app_root_from_window(SP::UI::WindowPath const& window) -> std::string {
     auto full = std::string(window.getPath());
     auto windows_pos = full.find("/windows/");
     if (windows_pos == std::string::npos) {
@@ -551,7 +552,7 @@ inline auto app_root_from_window(SP::UI::Builders::WindowPath const& window) -> 
     return full.substr(0, windows_pos);
 }
 
-inline auto make_scene_widgets_root_components(SP::UI::Builders::ScenePath const& scene,
+inline auto make_scene_widgets_root_components(SP::UI::ScenePath const& scene,
                                                std::string_view window_component,
                                                std::string_view view_name) -> std::string {
     std::string root = std::string(scene.getPath());
@@ -563,15 +564,15 @@ inline auto make_scene_widgets_root_components(SP::UI::Builders::ScenePath const
     return root;
 }
 
-inline auto make_scene_widgets_root(SP::UI::Builders::ScenePath const& scene,
-                                    SP::UI::Builders::WindowPath const& window,
+inline auto make_scene_widgets_root(SP::UI::ScenePath const& scene,
+                                    SP::UI::WindowPath const& window,
                                     std::string const& view_name) -> std::string {
     auto window_component = window_component_name(std::string(window.getPath()));
     return make_scene_widgets_root_components(scene, window_component, view_name);
 }
 
 inline auto force_window_software_renderer(SP::PathSpace& space,
-                                           SP::UI::Builders::WindowPath const& window,
+                                           SP::UI::WindowPath const& window,
                                            std::string const& view_name) -> SP::Expected<void> {
     auto view_base = std::string(window.getPath()) + "/views/" + view_name;
     auto renderer_rel = space.read<std::string, std::string>(view_base + "/renderer");
@@ -601,7 +602,7 @@ inline auto force_window_software_renderer(SP::PathSpace& space,
 }
 
 inline auto count_window_widgets(SP::PathSpace& space,
-                                 SP::UI::Builders::WindowPath const& window,
+                                 SP::UI::WindowPath const& window,
                                  std::string const& view_name) -> std::size_t {
     auto widgets_root = make_window_view_path(window, view_name) + "/widgets";
     auto children = space.listChildren(SP::ConcretePathStringView{widgets_root});
@@ -661,7 +662,7 @@ inline auto wait_for_declarative_scene_widgets(SP::PathSpace& space,
 }
 
 inline auto wait_for_declarative_widget_buckets(SP::PathSpace& space,
-                                                SP::UI::Builders::ScenePath const& scene,
+                                                SP::UI::ScenePath const& scene,
                                                 std::size_t expected_widgets,
                                                 std::chrono::milliseconds timeout) -> SP::Expected<void> {
     if (expected_widgets == 0) {
@@ -685,7 +686,7 @@ inline auto wait_for_declarative_widget_buckets(SP::PathSpace& space,
 }
 
 inline auto wait_for_declarative_scene_revision(SP::PathSpace& space,
-                                                SP::UI::Builders::ScenePath const& scene,
+                                                SP::UI::ScenePath const& scene,
                                                 std::chrono::milliseconds timeout,
                                                 std::optional<std::uint64_t> min_revision = std::nullopt)
     -> SP::Expected<std::uint64_t> {
@@ -738,7 +739,7 @@ inline auto wait_for_declarative_scene_revision(SP::PathSpace& space,
 }
 
 inline auto read_scene_lifecycle_diagnostics(SP::PathSpace& space,
-                                             SP::UI::Builders::ScenePath const& scene) -> std::string {
+                                             SP::UI::ScenePath const& scene) -> std::string {
     auto metrics_base = std::string(scene.getPath()) + "/runtime/lifecycle/metrics";
     auto read_string = [&](std::string const& leaf) -> std::optional<std::string> {
         auto value = space.read<std::string, std::string>(metrics_base + "/" + leaf);
@@ -798,7 +799,7 @@ inline auto read_scene_lifecycle_diagnostics(SP::PathSpace& space,
 }
 
 inline auto force_scene_publish_with_retry(SP::PathSpace& space,
-                                           SP::UI::Builders::ScenePath const& scene,
+                                           SP::UI::ScenePath const& scene,
                                            std::chrono::milliseconds widget_timeout,
                                            std::chrono::milliseconds publish_timeout,
                                            std::optional<std::uint64_t> min_revision,
@@ -886,8 +887,8 @@ inline auto readiness_skip_requested() -> bool {
 }
 
 inline auto ensure_declarative_scene_ready(SP::PathSpace& space,
-                                           SP::UI::Builders::ScenePath const& scene,
-                                           SP::UI::Builders::WindowPath const& window,
+                                           SP::UI::ScenePath const& scene,
+                                           SP::UI::WindowPath const& window,
                                            std::string const& view_name,
                                            DeclarativeReadinessOptions const& options = {})
     -> SP::Expected<DeclarativeReadinessResult> {

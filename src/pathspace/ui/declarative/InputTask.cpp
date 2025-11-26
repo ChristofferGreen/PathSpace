@@ -808,7 +808,7 @@ std::unordered_map<PathSpace*, std::shared_ptr<InputRuntimeWorker>> g_runtime_wo
 } // namespace
 
 auto PumpWindowWidgetsOnce(PathSpace& space,
-                           SP::UI::Builders::WindowPath const& window,
+                           SP::UI::WindowPath const& window,
                            std::string_view view_name,
                            ManualPumpOptions const& options) -> SP::Expected<ManualPumpResult> {
     if (view_name.empty()) {
