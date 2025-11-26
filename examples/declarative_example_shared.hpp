@@ -358,6 +358,8 @@ struct DeclarativeReadinessOptions {
     bool wait_for_structure = true;
     bool wait_for_buckets = true;
     bool wait_for_revision = true;
+    bool wait_for_runtime_metrics = false;
+    std::chrono::milliseconds runtime_metrics_timeout{std::chrono::milliseconds(2000)};
     std::optional<std::uint64_t> min_revision;
 };
 
@@ -397,6 +399,39 @@ inline auto count_window_widgets(SP::PathSpace& space,
     auto widgets_root = make_window_view_path(window, view_name) + "/widgets";
     auto children = space.listChildren(SP::ConcretePathStringView{widgets_root});
     return children.size();
+}
+
+inline auto wait_for_runtime_metric_visible(SP::PathSpace& space,
+                                            std::string const& metric_path,
+                                            std::chrono::milliseconds timeout) -> SP::Expected<void> {
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto value = space.read<std::uint64_t, std::string>(metric_path);
+        if (value) {
+            return {};
+        }
+        auto const& error = value.error();
+        if (error.code != SP::Error::Code::NoSuchPath
+            && error.code != SP::Error::Code::NoObjectFound) {
+            return std::unexpected(error);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{20});
+    }
+    return std::unexpected(SP::Error{SP::Error::Code::Timeout,
+                                     "runtime metric path did not appear: " + metric_path});
+}
+
+inline auto wait_for_runtime_metrics_ready(SP::PathSpace& space,
+                                           std::chrono::milliseconds timeout) -> SP::Expected<void> {
+    constexpr std::string_view kInputMetric =
+        "/system/widgets/runtime/input/metrics/widgets_processed_total";
+    constexpr std::string_view kWidgetOpsMetric =
+        "/system/widgets/runtime/events/metrics/widget_ops_total";
+    if (auto status = wait_for_runtime_metric_visible(space, std::string(kInputMetric), timeout);
+        !status) {
+        return status;
+    }
+    return wait_for_runtime_metric_visible(space, std::string(kWidgetOpsMetric), timeout);
 }
 
 inline auto wait_for_declarative_scene_widgets(SP::PathSpace& space,
@@ -507,6 +542,12 @@ inline auto ensure_declarative_scene_ready(SP::PathSpace& space,
     -> SP::Expected<DeclarativeReadinessResult> {
     DeclarativeReadinessResult result{};
     result.widget_count = count_window_widgets(space, window, view_name);
+    if (options.wait_for_runtime_metrics) {
+        auto metrics_ready = wait_for_runtime_metrics_ready(space, options.runtime_metrics_timeout);
+        if (!metrics_ready) {
+            return std::unexpected(metrics_ready.error());
+        }
+    }
     if (readiness_skip_requested()) {
         return result;
     }

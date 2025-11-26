@@ -314,16 +314,18 @@ Status snapshot for the empty paint window investigation:
 
 Keep this journal in sync as we chip away at the serialization issue so we can pick up right where we left off next session.
 
-- ⚠️ **(November 26, 2025 — Highest Priority)** The mandated loop is still red even after instrumenting the declarative tests. Latest runs (`test-logs/loop_failures/20251126-101528_PathSpaceUITests_loop1/…`) now fail immediately with:
-  - `tests/ui/test_DeclarativeRuntime.cpp` reporting that `/system/widgets/runtime/input/metrics/widgets_processed_total` never advances and that the scene readiness helper cannot find mounted widgets (the button is created under the app root but the runtime still isn’t draining the new `/windows/<id>/widgets` entries).
-  - `tests/ui/test_DeclarativeSceneLifecycle.cpp` timing out on the same readiness wait despite the helper, implying the lifecycle worker is not publishing even a single revision under the stress harness.
-  - `tests/ui/test_Builders.cpp` (“Scene dirty event wait-notify latency stays within budget”) still hitting the historical timeout even on a clean tree.
-  - `tests/ui/test_WidgetReducersFuzz.cpp` occasionally receiving SIGTERM once the loop timer runs out.
-  **Required fix sequence:**
-    1. Verify that `SP::System::LaunchStandard` actually starts the declarative services inside doctest (check `/system/widgets/runtime/input/state/running`). If not, hand-launch the workers in the fixtures or set `LaunchOptions::start_input_runtime=true`.
-    2. Ensure declarative widgets mount under the window namespace the runtime scans (likely `/system/applications/<app>/windows/<win>/widgets/*`). Today the tests mount via `MountPolicy::WindowWidgets` but the readiness helper still can’t see children; either the helper needs to look under the concrete window path for tests or we must pass the window view path into `ensure_scene_ready`.
-    3. Add explicit waits for `/system/widgets/runtime/input/metrics/widgets_processed_total` and `/system/widgets/runtime/events/metrics/widget_ops_total` to the runtime itself (not just the tests) so we can prove progress before asserting on queues.
-    4. Once the declarative tests pass locally, rerun the full loop and chase the legacy `test_Builders.cpp` latency failure so it stops anchoring the priority list.
+- ✅ **(November 26, 2025)** Declarative doctests now mount their widgets directly under `/system/applications/<app>/windows/<win>/views/<view>/widgets/*` and `PathSpaceExamples::ensure_declarative_scene_ready` gained a `wait_for_runtime_metrics` option that blocks on `/system/widgets/runtime/{input,events}/metrics/*` before tests enqueue ops. `tests/ui/DeclarativeTestUtils.hpp` scales the new timeout so the targeted doctests consistently observe `widgets_processed_total` increments when run outside the loop.
+
+- ⚠️ **(November 26, 2025 — Highest Priority)** The mandated loop is still red under the tightened harness (`PATHSPACE_TEST_TIMEOUT=1`, `PATHSPACE_ENABLE_METAL_UPLOADS=1`). The latest failure (`test-logs/loop_failures/20251126-115235_PathSpaceUITests_loop1/…`) shows:
+  - `tests/ui/test_DeclarativeRuntime.cpp` timing out on both input-task doctests even though the widgets now live under the window view paths, which means the runtime isn’t draining `/windows/<win>/views/<view>/widgets/*` quickly enough once hundreds of widgets from earlier suites exist.
+  - `tests/ui/test_DeclarativeSceneLifecycle.cpp` still reporting “scene widget structure did not publish,” so the lifecycle worker is either starved under the same load or the readiness helper needs to subscribe to the scene root before waiting.
+  - `tests/ui/test_PaintExampleNew.cpp` failing its pointer-subscription smoke because `PresentToLocalWindow` never reports `publish=true` when Metal uploads are forced on.
+  - `tests/ui/test_Builders.cpp` (“Scene dirty event wait-notify latency stays within budget”) and `tests/ui/test_WidgetEventTrellis.cpp` (“WidgetEventTrellis fuzzes declarative paint stroke ops”) both tripping the 20 s loop timeout, matching the historical flakes we keep seeing when the harness squeezes wait/notify latency.
+  **Next steps:**
+    1. Add instrumentation (per-app/window pump counters plus optional per-test overrides) to `InputTask` so `tests/ui/test_DeclarativeRuntime.cpp` can demand immediate processing of the window it just mounted even when the runtime is walking every other app. Option B is to expose a “pump this root once” helper the tests can call directly when `PATHSPACE_TEST_TIMEOUT<=1`.
+    2. Extend `PathSpaceExamples::ensure_declarative_scene_ready` so doctests can tell it which window/view pair to mirror into `/scenes/<scene>/structure/widgets/...` before waiting; that should unblock the lifecycle doctest as soon as the worker publishes a single structure node.
+    3. Audit the Metal-present path in `tests/ui/test_PaintExampleNew.cpp` while `PATHSPACE_ENABLE_METAL_UPLOADS=1` is set—either force the test into the software renderer during the loop or fix the present bootstrap so the pointer subscription/publish handshake succeeds under the metal backend.
+    4. For the long-running fuzz/dirty-notify tests, introduce harness-aware iteration scaling (e.g., reduce iterations or widen waits when `PATHSPACE_TEST_TIMEOUT` is tiny) so they don’t burn the entire 20 s window before the declarative tests even run; if the scaling hides real bugs, add a separate “full fuzz” label that we can trigger outside the loop.
 
 ### Phase 3 – Migration & Parity
 1. **Feature audit**

@@ -160,6 +160,7 @@ inline auto ensure_scene_ready(SP::PathSpace& space,
     -> SP::Expected<PathSpaceExamples::DeclarativeReadinessResult> {
     options.widget_timeout = scaled_timeout(options.widget_timeout, 1.0);
     options.revision_timeout = scaled_timeout(options.revision_timeout, 1.0);
+    options.runtime_metrics_timeout = scaled_timeout(options.runtime_metrics_timeout, 1.0);
     return PathSpaceExamples::ensure_declarative_scene_ready(space, scene, window, view_name, options);
 }
 

@@ -125,7 +125,7 @@ TEST_CASE("Declarative input task drains widget ops") {
     SP::UI::Declarative::MountOptions mount_options;
     mount_options.policy = SP::UI::Declarative::MountPolicy::WindowWidgets;
     auto button = SP::UI::Declarative::Button::Create(space,
-                                                      SP::App::ConcretePathView{app_root->getPath()},
+                                                      window_view,
                                                       "inputwidgets_button",
                                                       std::move(button_args),
                                                       mount_options);
@@ -135,6 +135,7 @@ TEST_CASE("Declarative input task drains widget ops") {
     readiness_options.wait_for_revision = false;
     readiness_options.wait_for_structure = false;
     readiness_options.wait_for_buckets = false;
+    readiness_options.wait_for_runtime_metrics = true;
     auto readiness = DeclarativeTestUtils::ensure_scene_ready(space,
                                                               scene->path,
                                                               window->path,
@@ -214,7 +215,7 @@ TEST_CASE("Declarative input task invokes registered handlers") {
     SP::UI::Declarative::MountOptions mount_options;
     mount_options.policy = SP::UI::Declarative::MountPolicy::WindowWidgets;
     auto button = SP::UI::Declarative::Button::Create(space,
-                                                      SP::App::ConcretePathView{app_root->getPath()},
+                                                      window_view,
                                                       "handler_button",
                                                       std::move(args),
                                                       mount_options);
@@ -224,6 +225,7 @@ TEST_CASE("Declarative input task invokes registered handlers") {
     readiness_options.wait_for_revision = false;
     readiness_options.wait_for_structure = false;
     readiness_options.wait_for_buckets = false;
+    readiness_options.wait_for_runtime_metrics = true;
     auto readiness = DeclarativeTestUtils::ensure_scene_ready(space,
                                                               scene->path,
                                                               window->path,
@@ -394,6 +396,7 @@ TEST_CASE("paint_example_new-style button reacts to pointer press via widget run
     readiness_options.wait_for_revision = false;
     readiness_options.wait_for_structure = false;
     readiness_options.wait_for_buckets = false;
+    readiness_options.wait_for_runtime_metrics = true;
     auto readiness = DeclarativeTestUtils::ensure_scene_ready(space,
                                                               scene->path,
                                                               window->path,
