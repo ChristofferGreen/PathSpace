@@ -1,5 +1,9 @@
 #pragma once
 
+#if defined(PATHSPACE_DISABLE_LEGACY_BUILDERS)
+#error "Legacy widget builders have been disabled (set PATHSPACE_DISABLE_LEGACY_BUILDERS=OFF or migrate to SP::UI::Declarative)."
+#endif
+
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/task/Future.hpp>

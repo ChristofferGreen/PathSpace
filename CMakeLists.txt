@@ -42,6 +42,12 @@ option(PATHSPACE_UI_SOFTWARE "Enable software surface backend" ON)
 option(PATHSPACE_UI_METAL "Enable Metal surface/presenter (Apple)" ${APPLE})
 option(PATHSPACE_ENABLE_APP "Build app-layer helpers" ON)
 option(PATHSPACE_ENABLE_EXTRA "Build optional runtime extras (PathIO providers, discovery, etc.)" ON)
+option(PATHSPACE_DISABLE_LEGACY_BUILDERS
+       "Emit a compile-time error whenever the legacy widget builders API is referenced"
+       OFF)
+if(PATHSPACE_DISABLE_LEGACY_BUILDERS)
+    add_compile_definitions(PATHSPACE_DISABLE_LEGACY_BUILDERS=1)
+endif()
 
 # Add options for sanitizers
 option(ENABLE_THREAD_SANITIZER "Enable Thread Sanitizer" OFF)

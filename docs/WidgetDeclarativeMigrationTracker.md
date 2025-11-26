@@ -16,6 +16,7 @@ Phase 3 of `docs/Plan_WidgetDeclarativeAPI.md` requires us to prove that every
 
 ## Watchpoints & Alerts
 - **Legacy builder telemetry:** `/_system/diagnostics/legacy_widget_builders/<entry>/usage_total` must remain at **0** before we flip `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` globally (deadline: February 1, 2026). Investigate any non-zero spike immediately and update this tracker with the offending consumer.
+- **Kill switch dry run:** Projects can now configure builds with `-DPATHSPACE_DISABLE_LEGACY_BUILDERS=ON` to force a compile-time error whenever `include/pathspace/ui/Builders.hpp` is referenced. Use this flag to prove that a consumer is ready for full removal before we eliminate the header entirely.
 - **Scene readiness guard:** Downstream tools should depend on `PathSpaceExamples::ensure_declarative_scene_ready` (documented in `docs/Memory.md`) to guarantee buckets exist before presenting. Note which consumers do not yet invoke the helper and file work items.
 - **JSON / distributed prerequisites:** The inspector and web adapter rows stay “pending” until the JSON serializer and distributed mount phases listed in their respective plans land. Keep their blockers in sync with `docs/Plan_Distributed_PathSpace.md` milestones.
 
