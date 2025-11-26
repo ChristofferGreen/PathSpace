@@ -17,6 +17,7 @@ Links:
 - docs/Plan_Distributed_PathSpace.md (distributed mounting/network plan)
 - docs/WidgetDeclarativeAPI.md (workflow for the declarative widget runtime; required reading for UI work)
 - docs/WidgetDeclarativeFeatureParity.md (migration tracker comparing legacy and declarative widgets)
+- docs/WidgetDeclarativeMigrationTracker.md (live status board for inspector/web/consumer adoption of the declarative runtime)
 - docs/Plan_PathSpace_Inspector.md (live PathSpace inspector roadmap)
 - examples/devices_example.cpp (experimental device IO example)
 - examples/paint_example.cpp (declarative paint demo + screenshot harness)

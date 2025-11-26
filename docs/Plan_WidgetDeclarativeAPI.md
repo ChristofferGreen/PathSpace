@@ -323,7 +323,7 @@ Keep this journal in sync as we chip away at the serialization issue so we can p
 ### Phase 3 – Migration & Parity
 1. **Feature audit**
    - ✅ (November 25, 2025) `docs/WidgetDeclarativeFeatureParity.md` now documents widget-by-widget parity (interaction, rendering, telemetry) between the legacy builders and the declarative runtime, with explicit references to the supporting code/tests.
-   - Outstanding follow-up: keep the inspector/consumer migration tracker current so downstream tools retire legacy paths before the deprecation window.
+   - ✅ (November 26, 2025) Published `docs/WidgetDeclarativeMigrationTracker.md` to track inspector/web/consumer adoption status and telemetry. Keep that file updated whenever a downstream tool changes status so we can prove legacy builder usage is at zero ahead of the February 1, 2026 cutoff.
 2. **Performance validation**
    - ✅ (November 25, 2025) Added the deterministic `benchmarks/ui/widget_pipeline_benchmark.cpp` harness plus the `widget_pipeline` scenario in `scripts/perf_guardrail.py`. The benchmark drives identical button/toggle/slider/list/paint loads through the legacy builders and the declarative runtime, records bucket latency/bytes, dirty-widget throughput, and paint GPU upload timing, and the guardrail enforces the captured baselines in `docs/perf/performance_baseline.json` so regressions block pre-push.
    - ✅ (November 25, 2025) Regenerated `docs/perf/performance_baseline.json` after the schema/journal overhead landed. Declarative bucket synthesis now averages ~1.05 ms per iteration on the reference machine (up from 0.084 ms before the journal rewrite), so the guardrail compares against the new steady-state numbers instead of the pre-journal values.
