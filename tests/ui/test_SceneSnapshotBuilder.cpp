@@ -4,6 +4,7 @@
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
+#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -13,6 +14,7 @@
 #include <vector>
 #include <cstring>
 #include <iomanip>
+#include <mutex>
 #include <sstream>
 
 namespace {
@@ -328,8 +330,29 @@ TEST_CASE("rapid publishes maintain retention and latest revision") {
     constexpr int kThreads = 4;
     constexpr int kPublishesPerThread = 4;
     std::atomic<int> counter{0};
+    std::atomic<bool> publish_failed{false};
+    std::mutex publish_error_mutex;
+    std::vector<std::string> publish_errors;
+
+    auto append_publish_error = [&](SP::Error const& error,
+                                    int thread_id,
+                                    int iteration) {
+        std::ostringstream oss;
+        oss << "publish error thread=" << thread_id
+            << " iteration=" << iteration
+            << " code=" << static_cast<int>(error.code)
+            << " message=";
+        if (error.message) {
+            oss << *error.message;
+        } else {
+            oss << "<none>";
+        }
+        std::lock_guard<std::mutex> lock{publish_error_mutex};
+        publish_errors.push_back(oss.str());
+    };
 
     auto publish_worker = [&](int thread_id) {
+        SP::UI::LegacyBuilders::ScopedAllow legacy_allow;
         for (int i = 0; i < kPublishesPerThread; ++i) {
             auto bucket = make_bucket(2, 2);
             SnapshotPublishOptions opts{};
@@ -340,7 +363,11 @@ TEST_CASE("rapid publishes maintain retention and latest revision") {
                 std::chrono::milliseconds{1'000 + 5 * seq + thread_id}
             };
             auto rev = builder.publish(opts, bucket);
-            REQUIRE(rev);
+            if (!rev) {
+                publish_failed.store(true, std::memory_order_relaxed);
+                append_publish_error(rev.error(), thread_id, i);
+                return;
+            }
         }
     };
 
@@ -351,6 +378,15 @@ TEST_CASE("rapid publishes maintain retention and latest revision") {
     }
     for (auto& thread : threads) {
         thread.join();
+    }
+
+    if (publish_failed.load(std::memory_order_relaxed)) {
+        std::string merged;
+        for (auto const& err : publish_errors) {
+            merged.append(err);
+            merged.push_back('\n');
+        }
+        REQUIRE_MESSAGE(false, merged);
     }
 
     auto pruneStatus = builder.prune();

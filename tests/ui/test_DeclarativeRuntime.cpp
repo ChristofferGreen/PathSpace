@@ -7,9 +7,15 @@
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
+#include <pathspace/path/ConcretePath.hpp>
+
+#include "DeclarativeTestUtils.hpp"
+
 #include <atomic>
 #include <chrono>
+#include <string>
 #include <thread>
+#include <utility>
 
 using namespace SP;
 
@@ -103,8 +109,50 @@ TEST_CASE("Declarative input task drains widget ops") {
     auto app_root = SP::App::Create(space, "inputwidgets");
     REQUIRE(app_root);
 
-    std::string widget_root = std::string(app_root->getPath()) + "/widgets/test_widget";
+    SP::Window::CreateOptions window_options;
+    window_options.name = "inputwidgets_window";
+    auto window = SP::Window::Create(space, *app_root, window_options);
+    REQUIRE(window);
+
+    auto scene = SP::Scene::Create(space, *app_root, window->path, {});
+    REQUIRE(scene);
+
+    auto window_view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
+    auto window_view = SP::App::ConcretePathView{window_view_path};
+
+    SP::UI::Declarative::Button::Args button_args{};
+    button_args.label = "Loop";
+    SP::UI::Declarative::MountOptions mount_options;
+    mount_options.policy = SP::UI::Declarative::MountPolicy::WindowWidgets;
+    auto button = SP::UI::Declarative::Button::Create(space,
+                                                      SP::App::ConcretePathView{app_root->getPath()},
+                                                      "inputwidgets_button",
+                                                      std::move(button_args),
+                                                      mount_options);
+    REQUIRE(button);
+
+    PathSpaceExamples::DeclarativeReadinessOptions readiness_options{};
+    readiness_options.wait_for_revision = false;
+    readiness_options.wait_for_structure = false;
+    readiness_options.wait_for_buckets = false;
+    auto readiness = DeclarativeTestUtils::ensure_scene_ready(space,
+                                                              scene->path,
+                                                              window->path,
+                                                              window->view_name,
+                                                              readiness_options);
+    if (!readiness) {
+        FAIL_CHECK(DeclarativeTestUtils::format_error("input task readiness", readiness.error()));
+    }
+    REQUIRE(readiness);
+
+    auto widget_root = std::string(button->getPath());
     auto queue_path = widget_root + "/ops/inbox/queue";
+    auto actions_path = widget_root + "/ops/actions/inbox/queue";
+
+
+    auto metric_path = std::string(DeclarativeTestUtils::kInputWidgetsProcessedMetric);
+    auto baseline = DeclarativeTestUtils::read_metric(space, metric_path);
+    REQUIRE(baseline);
 
     SP::UI::Builders::Widgets::Bindings::WidgetOp op{};
     op.kind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Activate;
@@ -112,13 +160,23 @@ TEST_CASE("Declarative input task drains widget ops") {
     op.value = 1.0f;
     (void)space.insert(queue_path, op);
 
-    auto actions_path = widget_root + "/ops/actions/inbox/queue";
-    auto action = space.take<SP::UI::Builders::Widgets::Reducers::WidgetAction>(
+    auto metric_wait = DeclarativeTestUtils::wait_for_metric_at_least(
+        space,
+        metric_path,
+        *baseline + 1,
+        DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{1500}, 3.0));
+    if (!metric_wait) {
+        FAIL_CHECK(DeclarativeTestUtils::format_error("input task metric", metric_wait.error()));
+    }
+    REQUIRE(metric_wait);
+
+    auto action = DeclarativeTestUtils::take_with_retry<SP::UI::Builders::Widgets::Reducers::WidgetAction>(
+        space,
         actions_path,
-        SP::Out{} & SP::Block{200ms});
+        std::chrono::milliseconds{50},
+        DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{500}, 4.0));
     REQUIRE(action);
     CHECK(action->kind == op.kind);
-
 }
 
 TEST_CASE("Declarative input task invokes registered handlers") {
@@ -135,6 +193,16 @@ TEST_CASE("Declarative input task invokes registered handlers") {
 
     auto app_root = SP::App::Create(space, "handlerapp");
     REQUIRE(app_root);
+    SP::Window::CreateOptions window_options;
+    window_options.name = "handler_window";
+    auto window = SP::Window::Create(space, *app_root, window_options);
+    REQUIRE(window);
+
+    auto scene = SP::Scene::Create(space, *app_root, window->path, {});
+    REQUIRE(scene);
+
+    auto window_view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
+    auto window_view = SP::App::ConcretePathView{window_view_path};
 
     SP::UI::Declarative::Button::Args args{};
     args.label = "Invoke";
@@ -152,35 +220,71 @@ TEST_CASE("Declarative input task invokes registered handlers") {
                                                       mount_options);
     REQUIRE(button);
 
-    auto queue_path = std::string(button->getPath()) + "/ops/inbox/queue";
+    PathSpaceExamples::DeclarativeReadinessOptions readiness_options{};
+    readiness_options.wait_for_revision = false;
+    readiness_options.wait_for_structure = false;
+    readiness_options.wait_for_buckets = false;
+    auto readiness = DeclarativeTestUtils::ensure_scene_ready(space,
+                                                              scene->path,
+                                                              window->path,
+                                                              window->view_name,
+                                                              readiness_options);
+    if (!readiness) {
+        FAIL_CHECK(DeclarativeTestUtils::format_error("handler readiness", readiness.error()));
+    }
+    REQUIRE(readiness);
+
+    auto widget_path = std::string(button->getPath());
+    auto queue_path = widget_path + "/ops/inbox/queue";
+    auto events_inbox = widget_path + "/events/inbox/queue";
+    auto press_events = widget_path + "/events/press/queue";
+
+
+    auto metric_path = std::string(DeclarativeTestUtils::kInputWidgetsProcessedMetric);
+    auto baseline = DeclarativeTestUtils::read_metric(space, metric_path);
+    REQUIRE(baseline);
+
     SP::UI::Builders::Widgets::Bindings::WidgetOp op{};
     op.kind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Activate;
-    op.widget_path = button->getPath();
+    op.widget_path = widget_path;
     op.value = 1.0f;
     (void)space.insert(queue_path, op);
 
+    auto metric_wait = DeclarativeTestUtils::wait_for_metric_at_least(
+        space,
+        metric_path,
+        *baseline + 1,
+        DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{1500}, 3.0));
+    if (!metric_wait) {
+        FAIL_CHECK(DeclarativeTestUtils::format_error("handler metric", metric_wait.error()));
+    }
+    REQUIRE(metric_wait);
+
+    auto handler_budget = DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{1500}, 2.5);
+    auto handler_deadline = std::chrono::steady_clock::now() + handler_budget;
     bool observed = false;
-    for (int attempts = 0; attempts < 50; ++attempts) {
+    while (std::chrono::steady_clock::now() < handler_deadline) {
         if (handler_flag->load(std::memory_order_acquire)) {
             observed = true;
             break;
         }
-        std::this_thread::sleep_for(10ms);
+        std::this_thread::sleep_for(std::chrono::milliseconds{10});
     }
     CHECK(observed);
 
-    auto events_inbox = std::string(button->getPath()) + "/events/inbox/queue";
-    auto press_events = std::string(button->getPath()) + "/events/press/queue";
-
-    auto inbox_event = space.take<SP::UI::Builders::Widgets::Reducers::WidgetAction>(
+    auto inbox_event = DeclarativeTestUtils::take_with_retry<SP::UI::Builders::Widgets::Reducers::WidgetAction>(
+        space,
         events_inbox,
-        SP::Out{} & SP::Block{200ms});
+        std::chrono::milliseconds{50},
+        DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{500}, 4.0));
     REQUIRE(inbox_event);
     CHECK(inbox_event->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Activate);
 
-    auto press_event = space.take<SP::UI::Builders::Widgets::Reducers::WidgetAction>(
+    auto press_event = DeclarativeTestUtils::take_with_retry<SP::UI::Builders::Widgets::Reducers::WidgetAction>(
+        space,
         press_events,
-        SP::Out{} & SP::Block{200ms});
+        std::chrono::milliseconds{50},
+        DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{500}, 4.0));
     REQUIRE(press_event);
     CHECK(press_event->sequence == inbox_event->sequence);
 
@@ -286,14 +390,39 @@ TEST_CASE("paint_example_new-style button reacts to pointer press via widget run
     auto activate = SP::UI::Declarative::Stack::SetActivePanel(space, *layout, "button_panel");
     REQUIRE(activate);
 
+    PathSpaceExamples::DeclarativeReadinessOptions readiness_options{};
+    readiness_options.wait_for_revision = false;
+    readiness_options.wait_for_structure = false;
+    readiness_options.wait_for_buckets = false;
+    auto readiness = DeclarativeTestUtils::ensure_scene_ready(space,
+                                                              scene->path,
+                                                              window->path,
+                                                              window->view_name,
+                                                              readiness_options);
+    if (!readiness) {
+        FAIL_CHECK(DeclarativeTestUtils::format_error("paint button readiness", readiness.error()));
+    }
+    REQUIRE(readiness);
+
     auto button_path = layout->getPath() + "/children/button_panel";
     *target_widget = button_path;
     *target_authoring = button_path + "/authoring/button/background";
+
 
     auto token = SP::Runtime::MakeRuntimeWindowToken(window->path.getPath());
     auto events_root = std::string("/system/widgets/runtime/events/");
     auto pointer_queue = events_root + token + "/pointer/queue";
     auto button_queue = events_root + token + "/button/queue";
+
+    auto pointer_metric_path = std::string(DeclarativeTestUtils::kWidgetEventsPointerMetric);
+    auto button_metric_path = std::string(DeclarativeTestUtils::kWidgetEventsButtonMetric);
+    auto ops_metric_path = std::string(DeclarativeTestUtils::kWidgetEventsOpsMetric);
+    auto pointer_baseline = DeclarativeTestUtils::read_metric(space, pointer_metric_path);
+    REQUIRE(pointer_baseline);
+    auto button_baseline = DeclarativeTestUtils::read_metric(space, button_metric_path);
+    REQUIRE(button_baseline);
+    auto ops_baseline = DeclarativeTestUtils::read_metric(space, ops_metric_path);
+    REQUIRE(ops_baseline);
 
     SP::IO::PointerEvent move{};
     move.device_path = "/system/devices/in/pointer/default";
@@ -302,8 +431,15 @@ TEST_CASE("paint_example_new-style button reacts to pointer press via widget run
     move.motion.absolute_x = layout_width * 0.5f;
     move.motion.absolute_y = layout_height * 0.5f;
     (void)space.insert(pointer_queue, move);
-
-    std::this_thread::sleep_for(5ms);
+    auto pointer_wait = DeclarativeTestUtils::wait_for_metric_at_least(
+        space,
+        pointer_metric_path,
+        *pointer_baseline + 1,
+        DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{1000}, 3.0));
+    if (!pointer_wait) {
+        FAIL_CHECK(DeclarativeTestUtils::format_error("pointer metric", pointer_wait.error()));
+    }
+    REQUIRE(pointer_wait);
 
     SP::IO::ButtonEvent press_event{};
     press_event.source = SP::IO::ButtonSource::Mouse;
@@ -317,13 +453,34 @@ TEST_CASE("paint_example_new-style button reacts to pointer press via widget run
     release_event.state.pressed = false;
     (void)space.insert(button_queue, release_event);
 
+    auto button_wait = DeclarativeTestUtils::wait_for_metric_at_least(
+        space,
+        button_metric_path,
+        *button_baseline + 2,
+        DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{1500}, 3.0));
+    if (!button_wait) {
+        FAIL_CHECK(DeclarativeTestUtils::format_error("button metric", button_wait.error()));
+    }
+    REQUIRE(button_wait);
+    auto ops_wait = DeclarativeTestUtils::wait_for_metric_at_least(
+        space,
+        ops_metric_path,
+        *ops_baseline + 1,
+        DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{1500}, 3.0));
+    if (!ops_wait) {
+        FAIL_CHECK(DeclarativeTestUtils::format_error("widget ops metric", ops_wait.error()));
+    }
+    REQUIRE(ops_wait);
+
+    auto press_wait_budget = DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{2000}, 3.0);
+    auto press_deadline = std::chrono::steady_clock::now() + press_wait_budget;
     bool observed = false;
-    for (int attempt = 0; attempt < 100; ++attempt) {
+    while (std::chrono::steady_clock::now() < press_deadline) {
         if (pressed->load(std::memory_order_acquire)) {
             observed = true;
             break;
         }
-        std::this_thread::sleep_for(5ms);
+        std::this_thread::sleep_for(std::chrono::milliseconds{5});
     }
     CHECK(observed);
 }

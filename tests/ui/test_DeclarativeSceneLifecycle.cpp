@@ -8,6 +8,8 @@
 
 #include <pathspace/path/ConcretePath.hpp>
 
+#include "DeclarativeTestUtils.hpp"
+
 #include <chrono>
 #include <string>
 #include <thread>
@@ -111,25 +113,25 @@ TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
     auto buckets_path = metrics_base + "/widgets_with_buckets";
     auto last_revision_path = metrics_base + "/last_revision";
 
-    auto wait_until = [&](auto&& predicate) {
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{20};
-        while (std::chrono::steady_clock::now() < deadline) {
-            if (predicate()) {
-                return true;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds{5});
-        }
-        return false;
-    };
+    PathSpaceExamples::DeclarativeReadinessOptions readiness_options{};
+    readiness_options.widget_timeout = DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{2500}, 3.0);
+    readiness_options.revision_timeout = DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{2000}, 3.0);
+    readiness_options.min_revision = std::uint64_t{1};
+    auto readiness = DeclarativeTestUtils::ensure_scene_ready(space,
+                                                              scene->path,
+                                                              window->path,
+                                                              window->view_name,
+                                                              readiness_options);
+    if (!readiness) {
+        FAIL_CHECK(DeclarativeTestUtils::format_error("scene lifecycle readiness", readiness.error()));
+    }
+    REQUIRE(readiness);
 
-    auto wait_for_revision = [&](std::uint64_t target) {
-        return wait_until([&]() {
-            auto revision = space.read<std::uint64_t, std::string>(last_revision_path);
-            return revision && *revision >= target;
-        });
-    };
-
-    auto first_revision_ready = wait_for_revision(1);
+    auto first_revision_ready = DeclarativeTestUtils::wait_for_metric_at_least(
+        space,
+        last_revision_path,
+        std::uint64_t{1},
+        DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{2000}, 3.0));
     REQUIRE(first_revision_ready);
 
     REQUIRE(SP::UI::Declarative::Button::SetLabel(space, *button, "cycle"));
@@ -140,7 +142,11 @@ TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
                                                                            publish_options);
     REQUIRE(force_publish);
     CHECK_GE(*force_publish, std::uint64_t{2});
-    auto second_revision_ready = wait_for_revision(2);
+    auto second_revision_ready = DeclarativeTestUtils::wait_for_metric_at_least(
+        space,
+        last_revision_path,
+        std::uint64_t{2},
+        DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{2000}, 3.0));
     REQUIRE(second_revision_ready);
 
     auto buckets = space.read<std::uint64_t, std::string>(buckets_path);
@@ -149,11 +155,12 @@ TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
 
     REQUIRE(SP::UI::Declarative::Remove(space, *button));
 
-    auto buckets_cleared = wait_until([&]() {
-        auto remaining = space.read<std::uint64_t, std::string>(buckets_path);
-        return remaining && *remaining == 0;
-    });
-    CHECK(buckets_cleared);
+    auto buckets_cleared = DeclarativeTestUtils::wait_for_metric_equal(
+        space,
+        buckets_path,
+        std::uint64_t{0},
+        DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{2000}, 3.0));
+    REQUIRE(buckets_cleared);
 
     REQUIRE(SP::Scene::Shutdown(space, scene->path));
 }
