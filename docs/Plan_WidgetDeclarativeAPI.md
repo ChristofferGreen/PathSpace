@@ -338,6 +338,7 @@ Keep this journal in sync as we chip away at the serialization issue so we can p
    - ✅ (November 25, 2025) Instrumented every `SP::UI::Builders::*` entry point so Legacy usage is counted under `/_system/diagnostics/legacy_widget_builders/<entry>/{usage_total,last_entry,last_path,last_timestamp_ns}`. The shared status block (`/_system/diagnostics/legacy_widget_builders/status/{phase,support_window_expires,plan}`) publishes the timeline, and the runtime now honors `PATHSPACE_LEGACY_WIDGET_BUILDERS={allow,warn,error}` (default `warn`) so operators can promote warnings to hard failures immediately.
 2. **Support window**
    - Warning phase runs through February 1, 2026 (`support_window_expires` mirrors the timestamp). Owners must watch the diagnostics counters during this window, update doc callouts, and flip CI/pre-push to `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` once the per-repo counters stay at zero for a full release cycle.
+   - ✅ (November 26, 2025) `scripts/compile.sh`, the local pre-push hook, and CI now export `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` by default, stream every guard hit into the JSONL reporter specified via `PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT`, and rely on the shared test runner’s automatic `LegacyBuilders::ScopedAllow` handling for `tests/ui/*` so compatibility suites still execute without masking production regressions.
 3. **Removal**
    - Delete legacy builders/samples after window; simplify remaining docs.
 4. **Post-mortem**

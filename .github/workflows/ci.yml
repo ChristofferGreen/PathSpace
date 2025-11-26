@@ -55,6 +55,9 @@ jobs:
         run: cmake --build build-${{ matrix.config.name }}
 
       - name: Test (${{ matrix.config.name }})
+        env:
+          PATHSPACE_LEGACY_WIDGET_BUILDERS: error
+          PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT: ${{ github.workspace }}/build-${{ matrix.config.name }}/legacy_builders_ci.jsonl
         run: ctest --test-dir build-${{ matrix.config.name }} --output-on-failure
 
   metal-macos:
@@ -68,4 +71,7 @@ jobs:
           brew install cmake ninja || true
 
       - name: Build & Test (metal presenter)
+        env:
+          PATHSPACE_LEGACY_WIDGET_BUILDERS: error
+          PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT: ${{ github.workspace }}/build/legacy_builders_ci_macos.jsonl
         run: ./scripts/compile.sh --release --test --loop=1 --per-test-timeout 20 --enable-metal-tests

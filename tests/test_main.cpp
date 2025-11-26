@@ -1,17 +1,37 @@
 #define DOCTEST_CONFIG_IMPLEMENT
 #include "third_party/doctest.h"
 #include "log/TaggedLogger.hpp"
+#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
+
 #include <cstdlib>
 #include <cstring>
+#include <optional>
+#include <string_view>
+
+namespace {
+
+auto should_allow_legacy_builders(std::string_view file) -> bool {
+    constexpr std::string_view kUiDir = "/tests/ui/";
+    constexpr std::string_view kUiDirWin = "\\tests\\ui\\";
+    return file.find(kUiDir) != std::string_view::npos || file.find(kUiDirWin) != std::string_view::npos;
+}
+
+} // namespace
 
 struct ShowTestStart : public doctest::IReporter {
     ShowTestStart(const doctest::ContextOptions& /* in */) {
     }
+    std::optional<SP::UI::LegacyBuilders::ScopedAllow> legacy_allow_;
     void test_case_start(const doctest::TestCaseData& in) override {
 #ifdef SP_LOG_DEBUG
         std::lock_guard<std::mutex> lock(SP::logger().coutMutex);
 #endif
         std::cout << "Test: " << in.m_name << std::endl;
+        if (should_allow_legacy_builders(in.m_file.c_str())) {
+            legacy_allow_.emplace();
+        } else {
+            legacy_allow_.reset();
+        }
     }
     void report_query(const doctest::QueryData&) override {
     }
@@ -22,8 +42,10 @@ struct ShowTestStart : public doctest::IReporter {
     void test_case_reenter(const doctest::TestCaseData&) override {
     }
     void test_case_end(const doctest::CurrentTestCaseStats&) override {
+        legacy_allow_.reset();
     }
     void test_case_exception(const doctest::TestCaseException&) override {
+        legacy_allow_.reset();
     }
     void subcase_start(const doctest::SubcaseSignature& in) override {
 #ifdef SP_LOG_DEBUG

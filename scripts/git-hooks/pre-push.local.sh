@@ -112,6 +112,16 @@ run_with_timeout() {
 ROOT="$(repo_root)"
 cd "$ROOT"
 
+if [[ -z "${PATHSPACE_LEGACY_WIDGET_BUILDERS:-}" ]]; then
+  export PATHSPACE_LEGACY_WIDGET_BUILDERS="error"
+fi
+if [[ -z "${PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT:-}" ]]; then
+  export PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT="$ROOT/build/prepush_legacy_builders.jsonl"
+fi
+LEGACY_REPORT_DIR="$(dirname "$PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT")"
+mkdir -p "$LEGACY_REPORT_DIR"
+: >"$PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT"
+
 JOBS="${JOBS:-$(cpu_jobs)}"
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 

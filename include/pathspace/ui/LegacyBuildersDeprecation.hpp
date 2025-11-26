@@ -9,6 +9,16 @@
 
 namespace SP::UI::LegacyBuilders {
 
+class ScopedAllow {
+public:
+    ScopedAllow();
+    ScopedAllow(ScopedAllow const&) = delete;
+    ScopedAllow(ScopedAllow&&) = delete;
+    auto operator=(ScopedAllow const&) -> ScopedAllow& = delete;
+    auto operator=(ScopedAllow&&) -> ScopedAllow& = delete;
+    ~ScopedAllow();
+};
+
 auto NoteUsage(PathSpace& space,
                std::string_view entry_point,
                std::optional<SP::ConcretePathStringView> path_hint = std::nullopt) -> SP::Expected<void>;

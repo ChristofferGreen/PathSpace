@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <cctype>
+#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
 #include <mutex>
@@ -112,11 +113,29 @@ auto sanitize_component(std::string_view entry_point) -> std::string {
     return sanitized;
 }
 
+auto scoped_allow_depth() -> int& {
+    thread_local int depth = 0;
+    return depth;
+}
+
 struct ProcessState {
     std::mutex mutex;
     bool banner_emitted = false;
     std::unordered_set<std::string> warned_entries;
 };
+
+struct ReporterState {
+    std::mutex mutex;
+    bool initialized = false;
+    bool disabled = false;
+    std::FILE* file = nullptr;
+    std::string path;
+};
+
+auto reporter_state() -> ReporterState& {
+    static ReporterState reporter;
+    return reporter;
+}
 
 auto state() -> ProcessState& {
     static ProcessState s;
@@ -167,7 +186,101 @@ auto ensure_status_paths(PathSpace& space) -> void {
     (void)replace_single<std::string>(space, std::string{kStatusDocPath}, "docs/Plan_WidgetDeclarativeAPI.md");
 }
 
+auto ensure_report_file_locked(ReporterState& reporter) -> bool {
+    if (reporter.disabled) {
+        return false;
+    }
+    if (!reporter.initialized) {
+        reporter.initialized = true;
+        if (const char* path = std::getenv("PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT")) {
+            if (*path != '\0') {
+                reporter.path = path;
+                reporter.file = std::fopen(reporter.path.c_str(), "a");
+                if (!reporter.file) {
+                    reporter.disabled = true;
+                    return false;
+                }
+            } else {
+                reporter.disabled = true;
+                return false;
+            }
+        } else {
+            reporter.disabled = true;
+            return false;
+        }
+    }
+    return reporter.file != nullptr;
+}
+
+auto escape_json(std::string_view value) -> std::string {
+    std::string out;
+    out.reserve(value.size() + 8);
+    for (char ch : value) {
+        switch (ch) {
+            case '\\':
+                out += "\\\\";
+                break;
+            case '"':
+                out += "\\\"";
+                break;
+            case '\n':
+                out += "\\n";
+                break;
+            case '\r':
+                out += "\\r";
+                break;
+            case '\t':
+                out += "\\t";
+                break;
+            default:
+                if (static_cast<unsigned char>(ch) < 0x20) {
+                    char buffer[7];
+                    std::snprintf(buffer, sizeof(buffer), "\\u%04x",
+                                  static_cast<unsigned int>(static_cast<unsigned char>(ch)));
+                    out.append(buffer);
+                } else {
+                    out.push_back(ch);
+                }
+                break;
+        }
+    }
+    return out;
+}
+
+auto emit_report(std::string_view entry_point,
+                 std::optional<SP::ConcretePathStringView> path_hint,
+                 std::uint64_t timestamp_ns) -> void {
+    auto& reporter = reporter_state();
+    auto lock = std::unique_lock<std::mutex>{reporter.mutex};
+    if (!ensure_report_file_locked(reporter)) {
+        return;
+    }
+    auto path = path_hint.has_value() ? std::string(path_hint->getPath()) : std::string{};
+    auto line = std::string{"{\"entry\":\""}
+                + escape_json(entry_point)
+                + "\",\"path\":\"" + escape_json(path)
+                + "\",\"timestamp_ns\":" + std::to_string(timestamp_ns)
+                + "}\n";
+    std::fwrite(line.data(), 1, line.size(), reporter.file);
+    std::fflush(reporter.file);
+}
+
+auto scope_allows_legacy_usage() -> bool {
+    return scoped_allow_depth() > 0;
+}
+
 } // namespace
+
+ScopedAllow::ScopedAllow() {
+    ++scoped_allow_depth();
+}
+
+ScopedAllow::~ScopedAllow() {
+    auto& depth = scoped_allow_depth();
+    if (depth > 0) {
+        --depth;
+    }
+}
 
 auto SupportWindowDeadline() -> std::string_view {
     return kSupportWindowDeadline;
@@ -178,6 +291,8 @@ auto NoteUsage(PathSpace& space,
                std::optional<SP::ConcretePathStringView> path_hint) -> SP::Expected<void> {
     ensure_status_paths(space);
     emit_log_once(entry_point, path_hint);
+    auto timestamp_ns = now_ns();
+    emit_report(entry_point, path_hint, timestamp_ns);
 
     auto sanitized = sanitize_component(entry_point);
     auto base = std::string{kDiagnosticsRoot} + "/" + sanitized;
@@ -201,8 +316,12 @@ auto NoteUsage(PathSpace& space,
     if (path_hint.has_value()) {
         (void)replace_single<std::string>(space, last_path_path, std::string(path_hint->getPath()));
     }
-    if (auto status = replace_single<std::uint64_t>(space, last_timestamp_path, now_ns()); !status) {
+    if (auto status = replace_single<std::uint64_t>(space, last_timestamp_path, timestamp_ns); !status) {
         return status;
+    }
+
+    if (scope_allows_legacy_usage()) {
+        return {};
     }
 
     switch (mode_from_env()) {
@@ -212,7 +331,8 @@ auto NoteUsage(PathSpace& space,
             return {};
         case EnforcementMode::Error:
             return std::unexpected(make_error(
-                "legacy widget builders are disabled (set PATHSPACE_LEGACY_WIDGET_BUILDERS=allow to bypass locally)",
+                "legacy widget builder entry '" + std::string(entry_point)
+                    + "' is disabled (set PATHSPACE_LEGACY_WIDGET_BUILDERS=allow to bypass locally)",
                 SP::Error::Code::NotSupported));
     }
     return {};

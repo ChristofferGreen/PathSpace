@@ -209,8 +209,11 @@ plus tests in sync. Read it before touching declarative UI code or examples.
     `support_window_expires = 2026-02-01T00:00:00Z`, `plan = docs/Plan_WidgetDeclarativeAPI.md` today).
 - Runtime enforcement is driven by `PATHSPACE_LEGACY_WIDGET_BUILDERS`:
   1. `allow` — counters only, no logs or failures.
-  2. `warn` (default) — counters plus a one-time log per entry.
+  2. `warn` — counters plus a one-time log per entry.
   3. `error` — builder calls fail with `Error::NotSupported`, propagating through the existing `std::expected` channels so CI/pre-push can block immediately.
+  - `scripts/compile.sh`, `.github/workflows/ci.yml`, and `scripts/git-hooks/pre-push.local.sh` now export `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` automatically so any accidental legacy usage in examples, binaries, or new tests fails fast by default.
+- Set `PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT=<path>` to append JSONL diagnostics (`{"entry":"Widgets::CreateButton","path":"/system/...","timestamp_ns":...}`) for every guard hit. `compile.sh`/CI wire this up to `build/legacy_builders_usage.jsonl` so investigating regressions does not require scraping `_system/diagnostics`.
+- Compatibility suites that intentionally exercise the legacy API (all `tests/ui/*`) run under the same environment but the shared test reporter instantiates `SP::UI::LegacyBuilders::ScopedAllow` for those files. Use the RAII helper directly if you need to isolate a bespoke repro; the scope only suppresses the hard failure—telemetry and reporter output still fire so we can track remaining usage.
 - Expectations before the February 1, 2026 support-window cutoff:
   - Keep the diagnostics tree at zero; CI can scrape `usage_total` to guarantee no regressions slip in.
   - Flip CI/pre-push to `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` once the repo stays clean for a full validation cycle.

@@ -17,7 +17,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
    - `docs/Widget_Schema_Reference.md` — per-widget declarative schema tables; read alongside `docs/AI_Paths.md` before touching widget namespaces.
    - `docs/WidgetDeclarativeAPI.md` — declarative runtime workflow (LaunchStandard/App/Window/Scene helpers, handler registry, readiness guard, paint/history helpers, testing discipline). Consult this before modifying declarative widgets or samples.
    - **Important:** The declarative runtime is the supported UI surface. Legacy imperative builders remain only for compatibility work; do not add new features there unless you are migrating an unmigrated consumer and documenting the follow-up plan to remove it.
-   - **Deprecation telemetry:** Every legacy builder entry reports to `/_system/diagnostics/legacy_widget_builders/<entry>/`. Keep the counters at zero and set `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` in CI/pre-push once you confirm the repo stays clean; the global status block publishes the February 1, 2026 support-window cutoff.
+   - **Deprecation telemetry:** Every legacy builder entry reports to `/_system/diagnostics/legacy_widget_builders/<entry>/`. The toolchain already exports `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` (plus `PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT=<build>/legacy_builders_usage.jsonl`) inside `scripts/compile.sh`, the local pre-push hook, and CI so accidental usage fails immediately and leaves JSON artifacts. UI doctests that intentionally cover the legacy API auto-install `SP::UI::LegacyBuilders::ScopedAllow` based on their `tests/ui/*` source paths—telemetry still records their activity, but the guard prevents the hard failure.
 
 3. **Build/Test Baseline**
    ```bash

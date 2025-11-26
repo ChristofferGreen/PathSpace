@@ -53,7 +53,7 @@ Investigate and resolve failures prior to new development.
 - Run the full compile loop after meaningful code changes (tests-only edits may skip).
 - Update documentation alongside code when behavior or contracts change. Use `docs/AI_Debugging_Playbook.md` to capture new log paths, diagnostics, or repro procedures whenever tooling changes.
 - Treat `docs/WidgetDeclarativeAPI.md` as the authoritative UI workflow. All new widget or sample work must use the declarative runtime; only touch the legacy imperative builders when explicitly migrating existing consumers.
-- Legacy builder detections now live under `/_system/diagnostics/legacy_widget_builders/<entry>/*`; keep those counters at zero and flip CI/pre-push to `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` once the repo stays clean so we hit the February 1, 2026 support-window deadline with enforcement already on.
+- Legacy builder detections now live under `/_system/diagnostics/legacy_widget_builders/<entry>/*`; `scripts/compile.sh`, the local pre-push hook, and CI already export `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` plus `PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT=<build>/legacy_builders_usage.jsonl` so any accidental usage fails immediately and leaves a JSON trail. UI tests still exercise the legacy API, so the shared doctest reporter instantiates `SP::UI::LegacyBuilders::ScopedAllow` for `tests/ui/*`—telemetry/reporting remains active, only the hard failure is suppressed.
 - When you notice a missing or thin test, either land the coverage or file the follow-up in `docs/Plan_SceneGraph.md` / `docs/AI_Todo.task` so the gap is tracked for the next session.
 
 ## 6. Rapid Context Refresh Commands
