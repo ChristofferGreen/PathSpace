@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <fstream>
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
@@ -63,6 +64,155 @@ inline auto utf32_to_utf8(char32_t ch) -> std::string {
 inline auto now_timestamp_ns() -> std::uint64_t {
     auto now = std::chrono::steady_clock::now().time_since_epoch();
     return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
+}
+
+inline auto manual_pump_metrics_requested() -> bool {
+    if (const char* env = std::getenv("PATHSPACE_RECORD_MANUAL_PUMPS")) {
+        if (env[0] == '0' && env[1] == '\0') {
+            return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+inline auto manual_pump_metrics_file_path() -> std::optional<std::string> {
+    if (const char* dir = std::getenv("PATHSPACE_TEST_ARTIFACT_DIR")) {
+        if (*dir == '\0') {
+            return std::nullopt;
+        }
+        std::string path{dir};
+        if (!path.empty() && path.back() != '/') {
+            path.push_back('/');
+        }
+        path.append("manual_pump_metrics.jsonl");
+        return path;
+    }
+    return std::nullopt;
+}
+
+inline auto json_escape(std::string_view value) -> std::string {
+    std::string escaped;
+    escaped.reserve(value.size() + 16);
+    for (char ch : value) {
+        switch (ch) {
+        case '"':
+            escaped.append("\\\"");
+            break;
+        case '\\':
+            escaped.append("\\\\");
+            break;
+        default:
+            escaped.push_back(ch);
+            break;
+        }
+    }
+    return escaped;
+}
+
+inline auto app_component_from_window_path(std::string const& window_path) -> std::optional<std::string> {
+    constexpr char kPrefix[] = "/system/applications/";
+    constexpr std::size_t kPrefixLen = sizeof(kPrefix) - 1;
+    if (window_path.size() < kPrefixLen) {
+        return std::nullopt;
+    }
+    if (window_path.compare(0, kPrefixLen, kPrefix) != 0) {
+        return std::nullopt;
+    }
+    auto remainder = window_path.substr(kPrefixLen);
+    auto slash = remainder.find('/');
+    if (slash == std::string::npos) {
+        return std::nullopt;
+    }
+    return remainder.substr(0, slash);
+}
+
+inline auto read_manual_metric(SP::PathSpace& space,
+                               std::string const& base,
+                               std::string const& leaf) -> std::optional<std::uint64_t> {
+    auto value = space.read<std::uint64_t, std::string>(base + "/" + leaf);
+    if (value) {
+        return *value;
+    }
+    auto const& error = value.error();
+    if (error.code == SP::Error::Code::NoSuchPath
+        || error.code == SP::Error::Code::NoObjectFound) {
+        return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+inline void record_manual_pump_metrics(SP::PathSpace& space,
+                                       SP::UI::Builders::WindowPath const& window,
+                                       std::string const& view_name) {
+    if (!manual_pump_metrics_requested()) {
+        return;
+    }
+    auto output_path = manual_pump_metrics_file_path();
+    if (!output_path) {
+        return;
+    }
+    auto app_component = app_component_from_window_path(window.getPath());
+    if (!app_component) {
+        return;
+    }
+    auto window_token = SP::Runtime::MakeRuntimeWindowToken(window.getPath());
+    std::string window_metrics_base = std::string("/system/widgets/runtime/input/windows/") + window_token + "/metrics";
+    std::string app_metrics_base = std::string("/system/widgets/runtime/input/apps/") + *app_component + "/metrics";
+
+    auto collect_metrics = [&](std::string const& base) {
+        std::vector<std::pair<std::string, std::uint64_t>> metrics;
+        auto append_metric = [&](char const* leaf) {
+            if (auto value = read_manual_metric(space, base, leaf)) {
+                metrics.emplace_back(leaf, *value);
+            }
+        };
+        append_metric("widgets_processed_total");
+        append_metric("actions_published_total");
+        append_metric("manual_pumps_total");
+        append_metric("last_manual_pump_ns");
+        return metrics;
+    };
+
+    auto window_metrics = collect_metrics(window_metrics_base);
+    auto app_metrics = collect_metrics(app_metrics_base);
+    if (window_metrics.empty() && app_metrics.empty()) {
+        return;
+    }
+
+    std::ostringstream payload;
+    payload << "{\"timestamp_ns\":" << now_timestamp_ns();
+    payload << ",\"window_path\":\"" << json_escape(window.getPath()) << '"';
+    payload << ",\"window_token\":\"" << json_escape(window_token) << '"';
+    payload << ",\"view\":\"" << json_escape(view_name) << '"';
+    payload << ",\"app_component\":\"" << json_escape(*app_component) << '"';
+
+    auto write_metric_object = [&](char const* key,
+                                   std::vector<std::pair<std::string, std::uint64_t>> const& metrics) {
+        if (metrics.empty()) {
+            return;
+        }
+        payload << ",\"" << key << "\":{";
+        bool first = true;
+        for (auto const& entry : metrics) {
+            if (!first) {
+                payload << ',';
+            }
+            first = false;
+            payload << '"' << entry.first << "\":" << entry.second;
+        }
+        payload << "}";
+    };
+
+    write_metric_object("window_metrics", window_metrics);
+    write_metric_object("app_metrics", app_metrics);
+    payload << "}\n";
+
+    std::ofstream out(*output_path, std::ios::app);
+    if (!out.is_open()) {
+        return;
+    }
+    out << payload.str();
 }
 
 inline auto to_mouse_button(SP::UI::LocalMouseButton button) -> SP::MouseButton {
@@ -809,6 +959,7 @@ inline auto ensure_declarative_scene_ready(SP::PathSpace& space,
             return std::unexpected(status.error());
         }
     }
+    record_manual_pump_metrics(space, window, view_name);
     return result;
 }
 

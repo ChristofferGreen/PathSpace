@@ -75,3 +75,33 @@ jobs:
           PATHSPACE_LEGACY_WIDGET_BUILDERS: error
           PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT: ${{ github.workspace }}/build/legacy_builders_ci_macos.jsonl
         run: ./scripts/compile.sh --release --test --loop=1 --per-test-timeout 20 --enable-metal-tests
+
+  loop-stability:
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install cmake ninja || true
+
+      - name: Run loop-stability harness
+        env:
+          PATHSPACE_TEST_TIMEOUT: "1"
+          PATHSPACE_LOOP_KEEP_LOGS: PathSpaceUITests
+          PATHSPACE_RECORD_MANUAL_PUMPS: "1"
+          PATHSPACE_LOOP_BASELINE_OUT: ${{ github.workspace }}/loop_baseline.json
+          PATHSPACE_LEGACY_WIDGET_BUILDERS: error
+          PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT: ${{ github.workspace }}/build/legacy_builders_loop.jsonl
+        run: ./scripts/compile.sh --clean --test --loop=5 --release --per-test-timeout 20
+
+      - name: Upload loop-stability artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loop-stability-logs
+          path: |
+            build/test-logs
+            loop_baseline.json

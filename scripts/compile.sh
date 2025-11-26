@@ -749,6 +749,94 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
       fi
     }
 
+    emit_loop_baseline_summary() {
+      if [[ -z "${PATHSPACE_LOOP_BASELINE_OUT:-}" ]]; then
+        return
+      fi
+      if [[ "${LOOP:-0}" -le 0 ]]; then
+        return
+      fi
+      if [[ -z "${TEST_LOG_MANIFEST:-}" ]]; then
+        return
+      fi
+      require_tool python3
+      local labels_dump=""
+      for label in "${TEST_LABELS[@]}"; do
+        labels_dump+="$label"$'\n'
+      done
+      LOOP_LABELS_DATA="$labels_dump" python3 - "$PATHSPACE_LOOP_BASELINE_OUT" "$COUNT" "$PER_TEST_TIMEOUT" "$TEST_LOG_MANIFEST" "$TEST_LOG_DIR" <<'PY'
+import csv
+import datetime as dt
+import json
+import os
+import sys
+
+out_path = sys.argv[1]
+loop_iterations = int(sys.argv[2])
+per_test_timeout = int(sys.argv[3])
+manifest_path = sys.argv[4]
+log_dir = sys.argv[5]
+labels = [line for line in os.environ.get("LOOP_LABELS_DATA", "").splitlines() if line]
+records = []
+if manifest_path and os.path.exists(manifest_path):
+    with open(manifest_path, newline='') as handle:
+        reader = csv.reader(handle, delimiter='\t')
+        for row in reader:
+            if len(row) < 5:
+                continue
+            iteration = None if row[1] == "-" else row[1]
+            log_path = row[3]
+            artifacts_path = row[4]
+            if log_dir:
+                try:
+                    log_path = os.path.relpath(log_path, log_dir)
+                except ValueError:
+                    pass
+                try:
+                    artifacts_path = os.path.relpath(artifacts_path, log_dir)
+                except ValueError:
+                    pass
+            records.append({
+                "label": row[0],
+                "iteration": iteration,
+                "status": row[2],
+                "log": log_path,
+                "artifacts": artifacts_path,
+            })
+summary = {
+    "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+    "loop_iterations": loop_iterations,
+    "per_test_timeout": per_test_timeout,
+    "labels": labels,
+    "log_manifest": manifest_path,
+    "records": records,
+}
+with open(out_path, "w", encoding="utf-8") as handle:
+    json.dump(summary, handle, indent=2)
+PY
+      info "Loop baseline summary written to ${PATHSPACE_LOOP_BASELINE_OUT}"
+    }
+
+    ingest_manual_pump_metrics() {
+      if [[ -z "${PATHSPACE_RECORD_MANUAL_PUMPS:-}" || "${PATHSPACE_RECORD_MANUAL_PUMPS}" == "0" ]]; then
+        return
+      fi
+      if [[ -z "$TEST_LOG_DIR" ]]; then
+        return
+      fi
+      if [[ ! -f "$SCRIPT_DIR/manual_pump_ingest.py" ]]; then
+        info "manual_pump_ingest.py missing; skipping manual pump summary."
+        return
+      fi
+      require_tool python3
+      local summary_path="$TEST_LOG_DIR/manual_pump_summary.json"
+      if python3 "$SCRIPT_DIR/manual_pump_ingest.py" --log-root "$TEST_LOG_DIR" --output "$summary_path"; then
+        info "Manual pump summary written to $summary_path"
+      else
+        info "Manual pump ingest failed (non-fatal)."
+      fi
+    }
+
     archive_loop_failure() {
       local label="$1"
       local iteration="$2"
@@ -1038,6 +1126,8 @@ PY
         fi
 
         report_log_manifest
+        emit_loop_baseline_summary
+        ingest_manual_pump_metrics
       else
         info "Running tests in a loop ($COUNT iterations)..."
         for i in $(seq 1 "$COUNT"); do
@@ -1072,6 +1162,8 @@ PY
         done
         info "All $COUNT iterations passed."
         report_log_manifest
+        emit_loop_baseline_summary
+        ingest_manual_pump_metrics
       fi
     else
       for idx in "${!TEST_LABELS[@]}"; do
@@ -1092,6 +1184,7 @@ PY
         fi
       done
       info "Tests completed successfully."
+      ingest_manual_pump_metrics
     fi
   fi
 else
