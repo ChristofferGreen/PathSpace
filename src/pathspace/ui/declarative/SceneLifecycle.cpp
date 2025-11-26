@@ -21,6 +21,8 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <charconv>
+#include <system_error>
 #include <exception>
 #include <map>
 #include <memory>
@@ -74,6 +76,20 @@ auto widget_kind_to_string(SP::UI::Declarative::WidgetKind kind) -> std::string_
     return "unknown";
 }
 
+auto parse_uint64(std::string_view text) -> std::optional<std::uint64_t> {
+    if (text.empty()) {
+        return std::nullopt;
+    }
+    std::uint64_t value = 0;
+    auto first = text.data();
+    auto last = first + text.size();
+    auto result = std::from_chars(first, last, value);
+    if (result.ec != std::errc() || result.ptr != last) {
+        return std::nullopt;
+    }
+    return value;
+}
+
 auto is_point_buffer_out_of_range(SP::Error const& error) -> bool {
     if (error.code != SP::Error::Code::InvalidType || !error.message) {
         return false;
@@ -93,6 +109,15 @@ struct SceneLifecycleWorker {
         std::condition_variable cv;
         bool completed = false;
         std::optional<std::uint64_t> revision;
+        std::optional<SP::Error> error;
+    };
+
+    struct ManualPumpRequest {
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool completed = false;
+        ManualPumpOptions options;
+        ManualPumpResult result{};
         std::optional<SP::Error> error;
     };
 
@@ -154,6 +179,7 @@ struct SceneLifecycleWorker {
             worker_.join();
         }
         fail_all_force_publish_requests(SP::Error{SP::Error::Code::UnknownError, "scene lifecycle worker stopped"});
+        fail_all_manual_pump_requests(SP::Error{SP::Error::Code::UnknownError, "scene lifecycle worker stopped"});
         (void)BuilderDetail::replace_single<bool>(space_, scene_path_ + "/runtime/lifecycle/state/running", false);
     }
 
@@ -209,6 +235,40 @@ struct SceneLifecycleWorker {
         }
         write_metric("force_publish_last_error", std::string{});
         return revision;
+    }
+
+    auto manual_pump(ManualPumpOptions const& options) -> SP::Expected<ManualPumpResult> {
+        auto request = std::make_shared<ManualPumpRequest>();
+        request->options = options;
+        auto request_id = next_manual_pump_id_.fetch_add(1, std::memory_order_relaxed);
+        {
+            std::lock_guard<std::mutex> guard(manual_pump_mutex_);
+            manual_pump_requests_.emplace(request_id, request);
+        }
+        {
+            std::lock_guard<std::mutex> guard(manual_pump_queue_mutex_);
+            manual_pump_request_queue_.push_back(request_id);
+        }
+        manual_pump_pending_.store(true, std::memory_order_release);
+        (void)space_.insert(control_queue_path_, control_queue_path_);
+        auto wait_timeout = options.wait_timeout.count() > 0
+            ? options.wait_timeout
+            : std::chrono::milliseconds{1000};
+        auto deadline = std::chrono::steady_clock::now() + wait_timeout;
+        std::unique_lock<std::mutex> lock(request->mutex);
+        while (!request->completed) {
+            if (request->cv.wait_until(lock, deadline) == std::cv_status::timeout) {
+                remove_manual_pump_request(request_id);
+                auto error = SP::Error{SP::Error::Code::Timeout, "scene manual pump timed out"};
+                request->completed = true;
+                request->error = error;
+                return std::unexpected(error);
+            }
+        }
+        if (request->error) {
+            return std::unexpected(*request->error);
+        }
+        return request->result;
     }
 
     [[nodiscard]] auto matches_app(std::string_view candidate) const -> bool {
@@ -304,6 +364,108 @@ private:
         write_metric("force_publish_last_error", error.message.value_or("force publish failed"));
     }
 
+    auto execute_manual_pump(ManualPumpOptions const& options) -> SP::Expected<ManualPumpResult> {
+        register_widget_sources();
+        if (options.mark_all_widgets_dirty) {
+            mark_all_widgets_dirty();
+        }
+        auto before_processed = events_processed_;
+        scan_dirty_widgets();
+        flush_pending_publish();
+        ManualPumpResult result{};
+        result.widgets_processed = events_processed_ - before_processed;
+        result.buckets_ready = bucket_cache_size_;
+        return result;
+    }
+
+    auto peek_manual_pump_request(std::uint64_t request_id) -> std::shared_ptr<ManualPumpRequest> {
+        std::lock_guard<std::mutex> guard(manual_pump_mutex_);
+        auto it = manual_pump_requests_.find(request_id);
+        if (it == manual_pump_requests_.end()) {
+            return nullptr;
+        }
+        return it->second;
+    }
+
+    void drain_manual_pump_requests() {
+        if (!manual_pump_pending_.load(std::memory_order_acquire)) {
+            return;
+        }
+        std::deque<std::uint64_t> pending;
+        {
+            std::lock_guard<std::mutex> guard(manual_pump_queue_mutex_);
+            pending.swap(manual_pump_request_queue_);
+        }
+        manual_pump_pending_.store(false, std::memory_order_release);
+        for (auto request_id : pending) {
+            auto request = peek_manual_pump_request(request_id);
+            if (!request) {
+                continue;
+            }
+            auto result = execute_manual_pump(request->options);
+            complete_manual_pump_request(request_id, result);
+        }
+    }
+
+    void complete_manual_pump_request(std::uint64_t request_id,
+                                      SP::Expected<ManualPumpResult> result) {
+        std::shared_ptr<ManualPumpRequest> request;
+        {
+            std::lock_guard<std::mutex> guard(manual_pump_mutex_);
+            auto it = manual_pump_requests_.find(request_id);
+            if (it == manual_pump_requests_.end()) {
+                return;
+            }
+            request = it->second;
+            manual_pump_requests_.erase(it);
+        }
+        if (!request) {
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(request->mutex);
+            request->completed = true;
+            if (result) {
+                request->result = *result;
+            } else {
+                request->error = result.error();
+            }
+        }
+        request->cv.notify_all();
+    }
+
+    void remove_manual_pump_request(std::uint64_t request_id) {
+        std::lock_guard<std::mutex> guard(manual_pump_mutex_);
+        manual_pump_requests_.erase(request_id);
+    }
+
+    void fail_all_manual_pump_requests(SP::Error const& error) {
+        std::vector<std::shared_ptr<ManualPumpRequest>> pending;
+        {
+            std::lock_guard<std::mutex> guard(manual_pump_mutex_);
+            for (auto& [_, request] : manual_pump_requests_) {
+                pending.push_back(request);
+            }
+            manual_pump_requests_.clear();
+        }
+        {
+            std::lock_guard<std::mutex> guard(manual_pump_queue_mutex_);
+            manual_pump_request_queue_.clear();
+        }
+        manual_pump_pending_.store(false, std::memory_order_release);
+        for (auto& request : pending) {
+            if (!request) {
+                continue;
+            }
+            {
+                std::lock_guard<std::mutex> lock(request->mutex);
+                request->completed = true;
+                request->error = error;
+            }
+            request->cv.notify_all();
+        }
+    }
+
     void increment_force_publish_inflight() {
         auto value = force_publish_inflight_.fetch_add(1, std::memory_order_acq_rel) + 1;
         write_metric("force_publish_inflight", value);
@@ -344,6 +506,7 @@ private:
                 register_widget_sources();
                 scan_dirty_widgets();
                 flush_pending_publish();
+                drain_manual_pump_requests();
 
                 auto result = space_.take<std::string>(trellis_path_,
                                                        SP::Out{} & SP::Block{options_.trellis_wait});
@@ -520,6 +683,7 @@ private:
         };
         Telemetry::RecordSchemaSample(space_, schema_sample);
         if (!descriptor) {
+            record_descriptor_error(widget_path, descriptor.error());
             clear_dirty();
             if (descriptor.error().code == Error::Code::NoObjectFound
                 || descriptor.error().code == Error::Code::InvalidPath) {
@@ -529,6 +693,7 @@ private:
         }
         auto bucket = BuildWidgetBucket(space_, *descriptor);
         if (!bucket) {
+            record_bucket_error(widget_path, bucket.error());
             clear_dirty();
             return;
         }
@@ -617,14 +782,24 @@ private:
         auto publish_start = std::chrono::steady_clock::now();
         auto aggregate = aggregate_scene_bucket();
         if (!aggregate.has_value()) {
-            auto error = SP::Error{SP::Error::Code::NoObjectFound, "no drawable buckets ready"};
+            std::ostringstream oss;
+            oss << "no drawable buckets ready (widgets_registered=" << widgets_registered_
+                << ", bucket_cache_size=" << bucket_cache_size_
+                << ", events_processed=" << events_processed_
+                << ", window_widgets_root=" << window_widgets_root_ << ")";
+            auto error = SP::Error{SP::Error::Code::NoObjectFound, oss.str()};
             if (request_id) {
                 complete_force_publish_request(*request_id, std::unexpected(error));
             }
             return std::unexpected(error);
         }
         if (aggregate->drawable_ids.empty()) {
-            auto error = SP::Error{SP::Error::Code::NoObjectFound, "scene contains no drawables"};
+            std::ostringstream oss;
+            oss << "scene contains no drawables (widgets_registered=" << widgets_registered_
+                << ", bucket_cache_size=" << bucket_cache_size_
+                << ", events_processed=" << events_processed_
+                << ", window_widgets_root=" << window_widgets_root_ << ")";
+            auto error = SP::Error{SP::Error::Code::NoObjectFound, oss.str()};
             if (request_id) {
                 complete_force_publish_request(*request_id, std::unexpected(error));
             }
@@ -671,6 +846,24 @@ private:
         (void)BuilderDetail::replace_single<std::string>(space_,
                                                          metrics_base_ + "/last_error",
                                                          error.message.value_or("scene publish failed"));
+    }
+
+    void record_descriptor_error(std::string const& widget_path, SP::Error const& error) {
+        std::ostringstream oss;
+        oss << widget_path << " code=" << static_cast<int>(error.code);
+        if (error.message) {
+            oss << " message=" << *error.message;
+        }
+        write_metric("last_descriptor_error", oss.str());
+    }
+
+    void record_bucket_error(std::string const& widget_path, SP::Error const& error) {
+        std::ostringstream oss;
+        oss << widget_path << " code=" << static_cast<int>(error.code);
+        if (error.message) {
+            oss << " message=" << *error.message;
+        }
+        write_metric("last_bucket_error", oss.str());
     }
 
     [[nodiscard]] auto aggregate_scene_bucket() -> std::optional<SP::UI::Scene::DrawableBucketSnapshot> {
@@ -853,6 +1046,8 @@ private:
         } catch (...) {
             sp_log("SceneLifecycleWorker[" + scene_path_ + "] failed to update running state", "SceneLifecycle");
         }
+        fail_all_force_publish_requests(SP::Error{SP::Error::Code::UnknownError, std::string(message)});
+        fail_all_manual_pump_requests(SP::Error{SP::Error::Code::UnknownError, std::string(message)});
     }
 
 private:
@@ -896,6 +1091,12 @@ private:
     std::atomic<std::uint64_t> force_publish_inflight_{0};
     std::mutex force_publish_queue_mutex_;
     std::deque<std::uint64_t> force_publish_request_queue_;
+    std::atomic<std::uint64_t> next_manual_pump_id_{1};
+    std::mutex manual_pump_mutex_;
+    std::unordered_map<std::uint64_t, std::shared_ptr<ManualPumpRequest>> manual_pump_requests_;
+    std::mutex manual_pump_queue_mutex_;
+    std::deque<std::uint64_t> manual_pump_request_queue_;
+    std::atomic<bool> manual_pump_pending_{false};
 };
 
 std::mutex g_lifecycle_mutex;
@@ -977,6 +1178,25 @@ auto ForcePublish(PathSpace& space,
         }
     }
     return std::unexpected(last_error);
+}
+
+auto PumpSceneOnce(PathSpace& space,
+                   SP::UI::Builders::ScenePath const& scene_path,
+                   ManualPumpOptions const& options) -> SP::Expected<ManualPumpResult> {
+    (void)space;
+    std::shared_ptr<SceneLifecycleWorker> worker;
+    {
+        std::lock_guard<std::mutex> guard(g_lifecycle_mutex);
+        auto key = std::string(scene_path.getPath());
+        auto it = g_lifecycle_workers.find(key);
+        if (it != g_lifecycle_workers.end()) {
+            worker = it->second;
+        }
+    }
+    if (!worker) {
+        return std::unexpected(SP::Error{SP::Error::Code::NotFound, "scene lifecycle not running"});
+    }
+    return worker->manual_pump(options);
 }
 
 auto InvalidateThemes(PathSpace& space,

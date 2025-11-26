@@ -8,6 +8,7 @@
 #include <pathspace/path/ConcretePath.hpp>
 #include <pathspace/core/Error.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/HistoryBinding.hpp>
@@ -1218,6 +1219,7 @@ auto create_paint_window_context(SP::PathSpace& space, CommandLineOptions const&
     }
     auto app_root = *app;
     auto app_root_view = SP::App::AppRootPathView{app_root.getPath()};
+    SP::UI::LegacyBuilders::ScopedAllow theme_allow{};
     auto theme_selection = SP::UI::Builders::Widgets::LoadTheme(space, app_root_view, "");
     if (!theme_selection) {
         log_expected_error("Widgets::LoadTheme", theme_selection.error());

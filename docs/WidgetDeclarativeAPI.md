@@ -1,6 +1,6 @@
 # Declarative Widget API Workflow
 
-_Last updated: November 25, 2025_
+_Last updated: November 26, 2025_
 
 This guide explains how to build, test, and ship declarative widgets in PathSpace.
 It complements `docs/AI_ARCHITECTURE.md`, `docs/AI_PATHS.md`, and
@@ -31,8 +31,23 @@ plus tests in sync. Read it before touching declarative UI code or examples.
    worker that rebuilds buckets whenever widgets flip `render/dirty`.
 4. Always call `PathSpaceExamples::ensure_declarative_scene_ready(...)` (from
    `examples/declarative_example_shared.hpp`) before running a UI loop or taking
-   screenshots. It waits for lifecycle metrics, scene widgets, and snapshot
-   buckets so windows never flash empty frames.
+   screenshots. The helper now accepts overrides for the scene window component
+   and view (`scene_window_component_override`, `scene_view_override`,
+   `ensure_scene_window_mirror`) so doctests with custom naming can monitor the
+   exact `/scenes/<scene>/structure/widgets/windows/<window>/views/<view>/widgets`
+   subtree they expect. It still waits for lifecycle metrics, scene widgets, and
+   snapshot buckets so windows never flash empty frames. When tests need to
+   guarantee that a scene publishes a revision before proceeding (e.g., under
+   the `PATHSPACE_TEST_TIMEOUT=1` harness), set `force_scene_publish = true` in
+   `DeclarativeReadinessOptions`. With `pump_scene_before_force_publish`
+   (enabled by default), the helper now calls
+   `SceneLifecycle::PumpSceneOnce` before each `ForcePublish` attempt so the
+   lifecycle worker synchronously drains pending `render/dirty` widgets and
+   populates `runtime/lifecycle/metrics/widgets_with_buckets` even on the first
+   build. The forced publish reuses the caller’s `min_revision`/timeout and
+   returns the revision immediately, bypassing the passive `current_revision`
+   wait. Override `scene_pump_options` only when you need to tweak the pump
+   timeout or force a full re-mark of the widget tree.
 5. Shut down with `SP::System::ShutdownDeclarativeRuntime(space)` in tests to
    avoid leaking the worker threads into later suites.
 
@@ -80,7 +95,7 @@ plus tests in sync. Read it before touching declarative UI code or examples.
 | InputTask | `/system/widgets/runtime/input` | Drains reducer actions, mirrors widget ops into `events/*/queue`, invokes handlers, records per-loop metrics (widgets processed, backlog, handler latency). |
 | IO Pump | `/system/widgets/runtime/io` + `/system/widgets/runtime/windows` | Fans `/system/io/events/{pointer,button,text}` into per-window queues. Windows subscribe via `subscriptions/{pointer,button,text}/devices`. |
 | Widget Event Trellis | `/system/widgets/runtime/events` | Performs hit tests per window, mutates widget state (hover, pressed, slider value, list selection, tree expand/collapse, text cursor/delete), marks `render/dirty`, and emits `WidgetOp`s. |
-| Scene Lifecycle | `<app>/scenes/<scene>/runtime/lifecycle` | Watches `render/events/dirty`, rebuilds descriptors via `RenderDescriptor`, caches buckets under `scene/structure/widgets/<widget>/render/bucket`, and publishes revisions via `SceneSnapshotBuilder`. |
+| Scene Lifecycle | `<app>/scenes/<scene>/runtime/lifecycle` | Watches `render/events/dirty`, rebuilds descriptors via `RenderDescriptor`, caches buckets under `scene/structure/widgets/<widget>/render/bucket`, publishes revisions via `SceneSnapshotBuilder`, and exposes `SceneLifecycle::PumpSceneOnce` for deterministic bucket synthesis before a forced publish. |
 | Paint GPU uploader | `/system/widgets/runtime/paint_gpu` | Rasterizes stroke history into `assets/texture`, tracks dirty rectangles, and logs upload failures before falling back to CPU buckets. |
 | Focus controller | `<app>/widgets/focus/current` + per-window mirrors | Depth-first traversal order is recomputed whenever widgets mount or are removed; wrapping per-container traversal can be disabled by setting `focus/wrap = false` on the container root. |
 
@@ -168,7 +183,10 @@ plus tests in sync. Read it before touching declarative UI code or examples.
 - **Empty window / missing buckets**: ensure you called
   `PathSpaceExamples::ensure_declarative_scene_ready`, check
   `scene/runtime/lifecycle/log/events`, and verify widgets are flipping
-  `render/dirty` when state changes.
+  `render/dirty` when state changes. When the lifecycle worker is throttled (or
+  a fresh build hasn’t produced any buckets yet), enable
+  `pump_scene_before_force_publish` or call `SceneLifecycle::PumpSceneOnce`
+  directly to synchronously rebuild widget buckets before forcing a publish.
 - **Handlers not firing**: inspect `widgets/<id>/metrics/handlers/*` and
   `widgets/<id>/log/events`. Use `Widgets::Handlers::Read` to confirm the
   registry entry exists. Missing bindings often trace back to fragments mounted
@@ -180,6 +198,13 @@ plus tests in sync. Read it before touching declarative UI code or examples.
 - **Input stalls**: check `/system/widgets/runtime/input/metrics` for growing
   backlog or handler latency; use `PATHSPACE_TEST_TIMEOUT` env to reproduce
   compile-loop conditions.
+- **Tight-loop UITests**: when `PATHSPACE_TEST_TIMEOUT` shrinks the global loop,
+  call `SP::UI::Declarative::PumpWindowWidgetsOnce(space, window_path, view)`
+  to synchronously drain the widgets you just mounted. Watch the per-window/app
+  counters under `/system/widgets/runtime/input/windows/<token>/metrics/*` and
+  `/system/widgets/runtime/input/apps/<app>/metrics/*` to prove the manual pump
+  ran before asserting on reducer results—this avoids waiting for the shared
+  worker to come back to your test window.
 
 ## 9. Keeping the Guide Current
 - Whenever declarative widgets gain new namespaces, telemetry, runtime flags, or

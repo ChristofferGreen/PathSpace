@@ -7,6 +7,8 @@
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/LocalWindowBridge.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
+#include <pathspace/ui/declarative/SceneLifecycle.hpp>
+#include <pathspace/path/ConcretePath.hpp>
 
 #include <pathspace/layer/io/PathIOMouse.hpp>
 #include <pathspace/layer/io/PathIOKeyboard.hpp>
@@ -361,6 +363,12 @@ struct DeclarativeReadinessOptions {
     bool wait_for_runtime_metrics = false;
     std::chrono::milliseconds runtime_metrics_timeout{std::chrono::milliseconds(2000)};
     std::optional<std::uint64_t> min_revision;
+    bool ensure_scene_window_mirror = false;
+    std::optional<std::string> scene_window_component_override;
+    std::optional<std::string> scene_view_override;
+    bool force_scene_publish = false;
+    bool pump_scene_before_force_publish = true;
+    SP::UI::Declarative::SceneLifecycle::ManualPumpOptions scene_pump_options{};
 };
 
 struct DeclarativeReadinessResult {
@@ -376,14 +384,26 @@ inline auto make_window_view_path(SP::UI::Builders::WindowPath const& window,
     return view_path;
 }
 
-inline auto make_scene_widgets_root(SP::UI::Builders::ScenePath const& scene,
-                                    SP::UI::Builders::WindowPath const& window,
-                                    std::string const& view_name) -> std::string {
-    auto window_component = std::string(window.getPath());
-    auto slash = window_component.find_last_of('/');
-    if (slash != std::string::npos) {
-        window_component = window_component.substr(slash + 1);
+inline auto window_component_name(std::string const& window_path) -> std::string {
+    auto slash = window_path.find_last_of('/');
+    if (slash == std::string::npos) {
+        return window_path;
     }
+    return window_path.substr(slash + 1);
+}
+
+inline auto app_root_from_window(SP::UI::Builders::WindowPath const& window) -> std::string {
+    auto full = std::string(window.getPath());
+    auto windows_pos = full.find("/windows/");
+    if (windows_pos == std::string::npos) {
+        return {};
+    }
+    return full.substr(0, windows_pos);
+}
+
+inline auto make_scene_widgets_root_components(SP::UI::Builders::ScenePath const& scene,
+                                               std::string_view window_component,
+                                               std::string_view view_name) -> std::string {
     std::string root = std::string(scene.getPath());
     root.append("/structure/widgets/windows/");
     root.append(window_component);
@@ -391,6 +411,43 @@ inline auto make_scene_widgets_root(SP::UI::Builders::ScenePath const& scene,
     root.append(view_name);
     root.append("/widgets");
     return root;
+}
+
+inline auto make_scene_widgets_root(SP::UI::Builders::ScenePath const& scene,
+                                    SP::UI::Builders::WindowPath const& window,
+                                    std::string const& view_name) -> std::string {
+    auto window_component = window_component_name(std::string(window.getPath()));
+    return make_scene_widgets_root_components(scene, window_component, view_name);
+}
+
+inline auto force_window_software_renderer(SP::PathSpace& space,
+                                           SP::UI::Builders::WindowPath const& window,
+                                           std::string const& view_name) -> SP::Expected<void> {
+    auto view_base = std::string(window.getPath()) + "/views/" + view_name;
+    auto renderer_rel = space.read<std::string, std::string>(view_base + "/renderer");
+    if (!renderer_rel) {
+        return std::unexpected(renderer_rel.error());
+    }
+    if (renderer_rel->empty()) {
+        return {};
+    }
+    auto app_root = app_root_from_window(window);
+    if (app_root.empty()) {
+        return std::unexpected(SP::Error{SP::Error::Code::InvalidPath, "window missing app root"});
+    }
+    std::string renderer_abs = app_root;
+    renderer_abs.push_back('/');
+    renderer_abs.append(*renderer_rel);
+    auto renderer_view = SP::ConcretePathStringView{renderer_abs};
+    auto settings = SP::UI::Builders::Renderer::ReadSettings(space, renderer_view);
+    if (!settings) {
+        return std::unexpected(settings.error());
+    }
+    if (!settings->renderer.metal_uploads_enabled) {
+        return {};
+    }
+    settings->renderer.metal_uploads_enabled = false;
+    return SP::UI::Builders::Renderer::UpdateSettings(space, renderer_view, *settings);
 }
 
 inline auto count_window_widgets(SP::PathSpace& space,
@@ -530,6 +587,150 @@ inline auto wait_for_declarative_scene_revision(SP::PathSpace& space,
                                      "scene bucket did not publish"});
 }
 
+inline auto read_scene_lifecycle_diagnostics(SP::PathSpace& space,
+                                             SP::UI::Builders::ScenePath const& scene) -> std::string {
+    auto metrics_base = std::string(scene.getPath()) + "/runtime/lifecycle/metrics";
+    auto read_string = [&](std::string const& leaf) -> std::optional<std::string> {
+        auto value = space.read<std::string, std::string>(metrics_base + "/" + leaf);
+        if (!value) {
+            auto const& error = value.error();
+            if (error.code == SP::Error::Code::NoSuchPath
+                || error.code == SP::Error::Code::NoObjectFound) {
+                return std::nullopt;
+            }
+            return std::string{"<error reading " + leaf + ">"};
+        }
+        return *value;
+    };
+    auto read_uint = [&](std::string const& leaf) -> std::optional<std::uint64_t> {
+        auto value = space.read<std::uint64_t, std::string>(metrics_base + "/" + leaf);
+        if (!value) {
+            auto const& error = value.error();
+            if (error.code == SP::Error::Code::NoSuchPath
+                || error.code == SP::Error::Code::NoObjectFound) {
+                return std::nullopt;
+            }
+            return std::uint64_t{0};
+        }
+        return *value;
+    };
+    std::ostringstream oss;
+    bool has_data = false;
+    if (auto widgets = read_uint("widgets_with_buckets")) {
+        oss << "widgets_with_buckets=" << *widgets;
+        has_data = true;
+    }
+    if (auto descriptor = read_string("last_descriptor_error")) {
+        if (has_data) {
+            oss << ' ';
+        }
+        oss << "last_descriptor_error=" << *descriptor;
+        has_data = true;
+    }
+    if (auto bucket = read_string("last_bucket_error")) {
+        if (has_data) {
+            oss << ' ';
+        }
+        oss << "last_bucket_error=" << *bucket;
+        has_data = true;
+    }
+    if (auto last_error = read_string("last_error")) {
+        if (has_data) {
+            oss << ' ';
+        }
+        oss << "last_error=" << *last_error;
+        has_data = true;
+    }
+    if (!has_data) {
+        return {};
+    }
+    return oss.str();
+}
+
+inline auto force_scene_publish_with_retry(SP::PathSpace& space,
+                                           SP::UI::Builders::ScenePath const& scene,
+                                           std::chrono::milliseconds widget_timeout,
+                                           std::chrono::milliseconds publish_timeout,
+                                           std::optional<std::uint64_t> min_revision,
+                                           DeclarativeReadinessOptions const& readiness_options)
+    -> SP::Expected<std::uint64_t> {
+    auto deadline = std::chrono::steady_clock::now() + widget_timeout;
+    SP::Error last_error{SP::Error::Code::Timeout, "scene force publish timed out"};
+    SP::UI::Declarative::SceneLifecycle::ForcePublishOptions publish_options{};
+    publish_options.wait_timeout = publish_timeout;
+    publish_options.min_revision = min_revision;
+    auto make_pump_options = [&]() {
+        auto pump_options = readiness_options.scene_pump_options;
+        if (pump_options.wait_timeout.count() <= 0) {
+            pump_options.wait_timeout = widget_timeout;
+        }
+        return pump_options;
+    };
+    auto pump_if_needed = [&]() -> SP::Expected<void> {
+        if (!readiness_options.pump_scene_before_force_publish) {
+            return {};
+        }
+        auto pump_options = make_pump_options();
+        auto pump_result = SP::UI::Declarative::SceneLifecycle::PumpSceneOnce(space, scene, pump_options);
+        if (!pump_result) {
+            auto const& error = pump_result.error();
+            if (error.code == SP::Error::Code::Timeout) {
+                return std::unexpected(error);
+            }
+            return std::unexpected(error);
+        }
+        return {};
+    };
+    if (readiness_options.pump_scene_before_force_publish) {
+        auto pump_status = pump_if_needed();
+        if (!pump_status) {
+            last_error = pump_status.error();
+        }
+    }
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto forced = SP::UI::Declarative::SceneLifecycle::ForcePublish(space, scene, publish_options);
+        if (forced) {
+            return forced;
+        }
+        last_error = forced.error();
+        if (last_error.code == SP::Error::Code::NoObjectFound
+            && readiness_options.pump_scene_before_force_publish) {
+            auto pump_status = pump_if_needed();
+            if (!pump_status) {
+                last_error = pump_status.error();
+                if (last_error.code != SP::Error::Code::Timeout
+                    && last_error.code != SP::Error::Code::NoObjectFound) {
+                    return std::unexpected(last_error);
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds{25});
+            continue;
+        }
+        if (last_error.code != SP::Error::Code::NoObjectFound
+            && last_error.code != SP::Error::Code::Timeout) {
+            auto diag = read_scene_lifecycle_diagnostics(space, scene);
+            if (!diag.empty()) {
+                if (last_error.message) {
+                    last_error.message = *last_error.message + "; " + diag;
+                } else {
+                    last_error.message = diag;
+                }
+            }
+            return std::unexpected(last_error);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{25});
+    }
+    auto diag = read_scene_lifecycle_diagnostics(space, scene);
+    if (!diag.empty()) {
+        if (last_error.message) {
+            last_error.message = *last_error.message + "; " + diag;
+        } else {
+            last_error.message = diag;
+        }
+    }
+    return std::unexpected(last_error);
+}
+
 inline auto readiness_skip_requested() -> bool {
     return std::getenv("PATHSPACE_SKIP_UI_READY_WAIT") != nullptr;
 }
@@ -542,6 +743,12 @@ inline auto ensure_declarative_scene_ready(SP::PathSpace& space,
     -> SP::Expected<DeclarativeReadinessResult> {
     DeclarativeReadinessResult result{};
     result.widget_count = count_window_widgets(space, window, view_name);
+    auto scene_window_component = options.scene_window_component_override
+        ? *options.scene_window_component_override
+        : window_component_name(std::string(window.getPath()));
+    auto scene_view_name = options.scene_view_override
+        ? *options.scene_view_override
+        : view_name;
     if (options.wait_for_runtime_metrics) {
         auto metrics_ready = wait_for_runtime_metrics_ready(space, options.runtime_metrics_timeout);
         if (!metrics_ready) {
@@ -554,17 +761,20 @@ inline auto ensure_declarative_scene_ready(SP::PathSpace& space,
     if (result.widget_count == 0) {
         return result;
     }
-    if (options.wait_for_structure) {
-        auto scene_widgets_root = make_scene_widgets_root(scene, window, view_name);
-        auto status = wait_for_declarative_scene_widgets(space,
-                                                        scene_widgets_root,
-                                                        result.widget_count,
-                                                        options.widget_timeout);
-        if (!status) {
-            return std::unexpected(status.error());
+    std::optional<std::uint64_t> publish_revision;
+    if (options.force_scene_publish) {
+        auto forced = force_scene_publish_with_retry(space,
+                                                     scene,
+                                                     options.widget_timeout,
+                                                     options.revision_timeout,
+                                                     options.min_revision,
+                                                     options);
+        if (!forced) {
+            return std::unexpected(forced.error());
         }
+        publish_revision = *forced;
     }
-    if (options.wait_for_buckets) {
+    if (options.wait_for_buckets && !options.force_scene_publish) {
         auto status = wait_for_declarative_widget_buckets(space,
                                                           scene,
                                                           result.widget_count,
@@ -574,14 +784,30 @@ inline auto ensure_declarative_scene_ready(SP::PathSpace& space,
         }
     }
     if (options.wait_for_revision) {
-        auto revision = wait_for_declarative_scene_revision(space,
-                                                            scene,
-                                                            options.revision_timeout,
-                                                            options.min_revision);
-        if (!revision) {
-            return std::unexpected(revision.error());
+        if (publish_revision) {
+            result.scene_revision = *publish_revision;
+        } else {
+            auto revision = wait_for_declarative_scene_revision(space,
+                                                                scene,
+                                                                options.revision_timeout,
+                                                                options.min_revision);
+            if (!revision) {
+                return std::unexpected(revision.error());
+            }
+            result.scene_revision = *revision;
         }
-        result.scene_revision = *revision;
+    }
+    if (options.wait_for_structure && !options.force_scene_publish) {
+        auto scene_widgets_root = make_scene_widgets_root_components(scene,
+                                                                     scene_window_component,
+                                                                     scene_view_name);
+        auto status = wait_for_declarative_scene_widgets(space,
+                                                        scene_widgets_root,
+                                                        result.widget_count,
+                                                        options.widget_timeout);
+        if (!status) {
+            return std::unexpected(status.error());
+        }
     }
     return result;
 }

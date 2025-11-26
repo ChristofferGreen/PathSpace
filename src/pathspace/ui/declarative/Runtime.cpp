@@ -5,6 +5,7 @@
 #include <pathspace/core/Error.hpp>
 #include <pathspace/ui/Helpers.hpp>
 #include <pathspace/ui/LocalWindowBridge.hpp>
+#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceUploader.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
 #include <pathspace/io/IoTrellis.hpp>
@@ -350,6 +351,7 @@ auto ensure_theme(PathSpace& space,
         ? SP::UI::Builders::Widgets::MakeSunsetWidgetTheme()
         : SP::UI::Builders::Widgets::MakeDefaultWidgetTheme();
 
+    SP::UI::LegacyBuilders::ScopedAllow theme_allow{};
     auto ensured = SP::UI::Builders::Config::Theme::Ensure(space, app_root, sanitized, defaults);
     if (!ensured) {
         return std::unexpected(ensured.error());
@@ -376,6 +378,7 @@ auto ensure_renderer(PathSpace& space,
     params.name = renderer_name.empty() ? std::string{kDefaultRendererName} : std::string(renderer_name);
     params.kind = SP::UI::Builders::RendererKind::Software2D;
     params.description = "Declarative widget renderer";
+    SP::UI::LegacyBuilders::ScopedAllow renderer_allow{};
     auto renderer = SP::UI::Builders::Renderer::Create(space, app_root, params);
     if (!renderer) {
         return std::unexpected(renderer.error());
@@ -779,6 +782,7 @@ auto Create(PathSpace& space,
     if (auto status = ensure_value<std::string>(space, base + "/style/theme", std::string{}); !status) {
         return std::unexpected(status.error());
     }
+    SP::UI::LegacyBuilders::ScopedAllow theme_allow{};
     auto active_theme = SP::UI::Builders::Config::Theme::LoadActive(space, app_root);
     if (active_theme) {
         (void)replace_single<std::string>(space, base + "/style/theme", *active_theme);

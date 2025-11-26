@@ -21,7 +21,7 @@ auto should_allow_legacy_builders(std::string_view file) -> bool {
 struct ShowTestStart : public doctest::IReporter {
     ShowTestStart(const doctest::ContextOptions& /* in */) {
     }
-    std::optional<SP::UI::LegacyBuilders::ScopedAllow> legacy_allow_;
+    std::optional<SP::UI::LegacyBuilders::ScopedAllowAllThreads> legacy_allow_;
     void test_case_start(const doctest::TestCaseData& in) override {
 #ifdef SP_LOG_DEBUG
         std::lock_guard<std::mutex> lock(SP::logger().coutMutex);

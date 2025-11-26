@@ -3,6 +3,7 @@
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
+#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <third_party/stb_image_write.h>
@@ -995,6 +996,7 @@ auto install_noise_hook(std::shared_ptr<NoiseState> state) -> HookGuard {
 } // namespace
 
 int main(int argc, char** argv) {
+    SP::UI::LegacyBuilders::ScopedAllowAllThreads legacy_allow_guard{};
     auto options = parse_options(argc, argv);
 
 #if !defined(PATHSPACE_UI_METAL)

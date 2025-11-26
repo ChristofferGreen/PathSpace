@@ -21,6 +21,16 @@ struct ForcePublishOptions {
     std::optional<std::uint64_t> min_revision;
 };
 
+struct ManualPumpOptions {
+    std::chrono::milliseconds wait_timeout = std::chrono::milliseconds{0};
+    bool mark_all_widgets_dirty = true;
+};
+
+struct ManualPumpResult {
+    std::uint64_t widgets_processed = 0;
+    std::uint64_t buckets_ready = 0;
+};
+
 [[nodiscard]] auto Start(PathSpace& space,
                          SP::App::AppRootPathView app_root,
                          SP::UI::Builders::ScenePath const& scene_path,
@@ -34,6 +44,10 @@ struct ForcePublishOptions {
 [[nodiscard]] auto ForcePublish(PathSpace& space,
                                 SP::UI::Builders::ScenePath const& scene_path,
                                 ForcePublishOptions const& options = {}) -> SP::Expected<std::uint64_t>;
+
+[[nodiscard]] auto PumpSceneOnce(PathSpace& space,
+                                 SP::UI::Builders::ScenePath const& scene_path,
+                                 ManualPumpOptions const& options = {}) -> SP::Expected<ManualPumpResult>;
 
 auto InvalidateThemes(PathSpace& space,
                       SP::App::AppRootPathView app_root) -> void;

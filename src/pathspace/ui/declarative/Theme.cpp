@@ -4,6 +4,7 @@
 
 #include <pathspace/core/Error.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
+#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -274,6 +275,7 @@ auto load_theme_value(PathSpace& space,
     if (!paths) {
         return std::unexpected(paths.error());
     }
+    SP::UI::LegacyBuilders::ScopedAllow theme_allow{};
     auto loaded = SP::UI::Builders::Config::Theme::Load(space, *paths);
     if (!loaded) {
         return std::unexpected(loaded.error());

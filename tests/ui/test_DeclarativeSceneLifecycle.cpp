@@ -81,7 +81,6 @@ TEST_CASE("Scene lifecycle exposes dirty event queues") {
 
 TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
     PathSpace space;
-
     SP::System::LaunchOptions launch_options{};
     launch_options.start_input_runtime = false;
     launch_options.start_io_pump = false;
@@ -116,7 +115,14 @@ TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
     PathSpaceExamples::DeclarativeReadinessOptions readiness_options{};
     readiness_options.widget_timeout = DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{2500}, 3.0);
     readiness_options.revision_timeout = DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{2000}, 3.0);
-    readiness_options.min_revision = std::uint64_t{1};
+    readiness_options.min_revision = std::uint64_t{0}; // wait for the first non-zero revision
+    readiness_options.scene_window_component_override = PathSpaceExamples::window_component_name(
+        std::string(window->path.getPath()));
+    readiness_options.scene_view_override = window->view_name;
+    readiness_options.ensure_scene_window_mirror = true;
+    readiness_options.wait_for_buckets = false;
+    readiness_options.wait_for_structure = false;
+    readiness_options.force_scene_publish = true;
     auto readiness = DeclarativeTestUtils::ensure_scene_ready(space,
                                                               scene->path,
                                                               window->path,
@@ -161,6 +167,47 @@ TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
         std::uint64_t{0},
         DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{2000}, 3.0));
     REQUIRE(buckets_cleared);
+
+    REQUIRE(SP::Scene::Shutdown(space, scene->path));
+}
+
+TEST_CASE("Scene lifecycle manual pump synthesizes widget buckets") {
+    PathSpace space;
+    SP::System::LaunchOptions launch_options{};
+    launch_options.start_input_runtime = false;
+    launch_options.start_io_pump = false;
+    launch_options.start_io_telemetry_control = false;
+    REQUIRE(SP::System::LaunchStandard(space, launch_options));
+    RuntimeGuard runtime_guard{space};
+
+    auto app_root = SP::App::Create(space, "scene_lifecycle_manual_pump");
+    REQUIRE(app_root);
+
+    SP::Window::CreateOptions window_options;
+    window_options.name = "manual_pump_window";
+    auto window = SP::Window::Create(space, *app_root, window_options);
+    REQUIRE(window);
+
+    auto scene = SP::Scene::Create(space, *app_root, window->path, {});
+    REQUIRE(scene);
+
+    auto window_view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
+    auto window_view = SP::App::ConcretePathView{window_view_path};
+
+    auto label = SP::UI::Declarative::Label::Create(space,
+                                                    window_view,
+                                                    "manual_label",
+                                                    std::string{"ready"});
+    REQUIRE(label);
+
+    SP::UI::Declarative::SceneLifecycle::ManualPumpOptions pump_options{};
+    pump_options.wait_timeout = DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{2000}, 3.0);
+    auto pump_result = SP::UI::Declarative::SceneLifecycle::PumpSceneOnce(space,
+                                                                          scene->path,
+                                                                          pump_options);
+    REQUIRE(pump_result);
+    CHECK_GT(pump_result->widgets_processed, std::uint64_t{0});
+    CHECK_GT(pump_result->buckets_ready, std::uint64_t{0});
 
     REQUIRE(SP::Scene::Shutdown(space, scene->path));
 }

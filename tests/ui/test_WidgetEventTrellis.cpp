@@ -8,6 +8,8 @@
 #include <pathspace/ui/declarative/WidgetEventTrellis.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
+#include "DeclarativeTestUtils.hpp"
+
 #include <chrono>
 #include <random>
 #include <string>
@@ -566,17 +568,28 @@ TEST_CASE("WidgetEventTrellis fuzzes declarative paint stroke ops") {
         (void)space.insert(button_queue, evt);
     };
 
+    auto tight_timeout = DeclarativeTestUtils::read_env_timeout_override();
+    if (!DeclarativeTestUtils::full_fuzz_enabled()
+        && tight_timeout
+        && tight_timeout->count() <= std::chrono::milliseconds{1000}.count()) {
+        INFO("Skipping paint stroke fuzz when PATHSPACE_TEST_TIMEOUT<=1s");
+        return;
+    }
+
     std::mt19937 rng{1337};
     std::uniform_real_distribution<float> dist_x(4.0f, static_cast<float>(args.buffer_width) - 4.0f);
     std::uniform_real_distribution<float> dist_y(4.0f, static_cast<float>(args.buffer_height) - 4.0f);
     std::uniform_int_distribution<int> dist_updates(1, 4);
     std::size_t commit_count = 0;
+    auto take_timeout = DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{50}, 0.5);
+    auto op_timeout = DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{200}, 0.5);
+    auto stroke_iterations = DeclarativeTestUtils::scaled_iterations(8);
 
     auto drain_widget_ops = [&]() {
         while (true) {
             auto op = space.take<WidgetOp, std::string>(
                 widget_ops_queue,
-                SP::Out{} & SP::Block{50ms});
+                SP::Out{} & SP::Block{take_timeout});
             if (!op) {
                 auto const& error = op.error();
                 if (error.code == SP::Error::Code::NoObjectFound
@@ -600,8 +613,7 @@ TEST_CASE("WidgetEventTrellis fuzzes declarative paint stroke ops") {
         }
     };
 
-    constexpr int kStrokeIterations = 8;
-    for (int stroke = 0; stroke < kStrokeIterations; ++stroke) {
+    for (int stroke = 0; stroke < stroke_iterations; ++stroke) {
         send_pointer(dist_x(rng), dist_y(rng));
         send_button(true);
         drain_widget_ops();

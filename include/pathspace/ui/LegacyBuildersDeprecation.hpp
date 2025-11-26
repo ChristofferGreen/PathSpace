@@ -19,6 +19,16 @@ public:
     ~ScopedAllow();
 };
 
+class ScopedAllowAllThreads {
+public:
+    ScopedAllowAllThreads();
+    ScopedAllowAllThreads(ScopedAllowAllThreads const&) = delete;
+    ScopedAllowAllThreads(ScopedAllowAllThreads&&) = delete;
+    auto operator=(ScopedAllowAllThreads const&) -> ScopedAllowAllThreads& = delete;
+    auto operator=(ScopedAllowAllThreads&&) -> ScopedAllowAllThreads& = delete;
+    ~ScopedAllowAllThreads();
+};
+
 auto NoteUsage(PathSpace& space,
                std::string_view entry_point,
                std::optional<SP::ConcretePathStringView> path_hint = std::nullopt) -> SP::Expected<void>;

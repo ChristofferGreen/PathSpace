@@ -12,6 +12,7 @@ Coding preference: avoid C++ exceptions entirely. When representing failures, us
 4. Write down anything you learn that is of interest in ./docs/Memory.md
 5. If we made a new commit we shall perform: "git push origin master" and fix any issues it shows.
 6. Provide a final recap: code changes, test evidence, doc updates, next recommended task.
+7. If it was not possible to make a commit due to test failures then update the Current_Plan_Doc with a plan to fix the tests that give an error and make a commit without running tests.
 
 No need to ask if the plan looks ok, just do it.
 

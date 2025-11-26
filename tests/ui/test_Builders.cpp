@@ -8,6 +8,8 @@
 #include <pathspace/ui/HtmlAdapter.hpp>
 #include <pathspace/ui/declarative/StackReadiness.hpp>
 
+#include "DeclarativeTestUtils.hpp"
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -35,8 +37,8 @@ using SP::UI::PathWindowPresentPolicy;
 using SP::UI::PathWindowPresentStats;
 using SP::UI::PathWindowView;
 namespace UIScene = SP::UI::Scene;
-namespace Scene = SP::UI::Builders::Scene;
-namespace Window = SP::UI::Builders::Window;
+namespace BuilderScene = SP::UI::Builders::Scene;
+namespace BuilderWindow = SP::UI::Builders::Window;
 using SP::UI::Builders::Diagnostics::PathSpaceError;
 namespace Widgets = SP::UI::Builders::Widgets;
 namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
@@ -345,7 +347,7 @@ void expect_matches_widget_golden(std::string_view name,
 
 auto decode_state_bucket(BuildersFixture& fx,
                          ScenePath const& scene) -> DrawableBucketSnapshot {
-    auto revision = Scene::ReadCurrentRevision(fx.space, scene);
+    auto revision = BuilderScene::ReadCurrentRevision(fx.space, scene);
     REQUIRE(revision);
     auto base = std::string(scene.getPath()) + "/builds/" + format_revision(revision->revision);
     auto bucket = SceneSnapshotBuilder::decode_bucket(fx.space, base);
@@ -450,11 +452,11 @@ struct WidgetGoldenRenderer {
             .scale = 1.0f,
             .background = "#000000",
         };
-        auto windowResult = Window::Create(fx.space, fx.root_view(), windowParams);
+        auto windowResult = BuilderWindow::Create(fx.space, fx.root_view(), windowParams);
         REQUIRE(windowResult);
         window = *windowResult;
 
-        auto attached = Window::AttachSurface(fx.space, window, view_name, surface);
+        auto attached = BuilderWindow::AttachSurface(fx.space, window, view_name, surface);
         REQUIRE(attached);
 
         enable_framebuffer_capture(fx.space, window, view_name);
@@ -472,10 +474,10 @@ struct WidgetGoldenRenderer {
         auto setScene = Surface::SetScene(fx.space, surface, scene);
         REQUIRE(setScene);
 
-        auto present = Window::Present(fx.space, window, view_name);
+        auto present = BuilderWindow::Present(fx.space, window, view_name);
         if (!present) {
-            INFO("Window::Present error code = " << static_cast<int>(present.error().code));
-            INFO("Window::Present error message = " << present.error().message.value_or("<none>"));
+            INFO("BuilderWindow::Present error code = " << static_cast<int>(present.error().code));
+            INFO("BuilderWindow::Present error message = " << present.error().message.value_or("<none>"));
         }
         REQUIRE(present);
 
@@ -630,7 +632,7 @@ auto publish_minimal_scene(BuildersFixture& fx, ScenePath const& scenePath) -> v
     opts.metadata.command_count = bucket.command_kinds.size();
     auto revision = builder.publish(opts, bucket);
     REQUIRE(revision);
-    auto ready = Scene::WaitUntilReady(fx.space, scenePath, std::chrono::milliseconds{10});
+    auto ready = BuilderScene::WaitUntilReady(fx.space, scenePath, std::chrono::milliseconds{10});
     REQUIRE(ready);
 }
 
@@ -700,7 +702,7 @@ TEST_CASE("Scene publish and read current revision") {
     BuildersFixture fx;
 
     SceneParams sceneParams{ .name = "main", .description = "Main scene" };
-    auto scenePath = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    auto scenePath = BuilderScene::Create(fx.space, fx.root_view(), sceneParams);
     REQUIRE(scenePath);
 
     SceneRevisionDesc revision{};
@@ -711,17 +713,17 @@ TEST_CASE("Scene publish and read current revision") {
     std::vector<std::byte> bucket(8, std::byte{0x1F});
     std::vector<std::byte> metadata(4, std::byte{0x2A});
 
-    auto publish = Scene::PublishRevision(fx.space,
+    auto publish = BuilderScene::PublishRevision(fx.space,
                                           *scenePath,
                                           revision,
                                           std::span<const std::byte>(bucket.data(), bucket.size()),
                                           std::span<const std::byte>(metadata.data(), metadata.size()));
     REQUIRE(publish);
 
-    auto wait = Scene::WaitUntilReady(fx.space, *scenePath, std::chrono::milliseconds{10});
+    auto wait = BuilderScene::WaitUntilReady(fx.space, *scenePath, std::chrono::milliseconds{10});
     REQUIRE(wait);
 
-    auto current = Scene::ReadCurrentRevision(fx.space, *scenePath);
+    auto current = BuilderScene::ReadCurrentRevision(fx.space, *scenePath);
     REQUIRE(current);
     CHECK(current->revision == revision.revision);
     CHECK(current->author == revision.author);
@@ -865,7 +867,7 @@ TEST_CASE("Surface::RenderOnce handles metal renderer targets") {
     REQUIRE(surface);
 
     SceneParams sceneParams{ .name = "main", .description = "scene" };
-    auto scene = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    auto scene = BuilderScene::Create(fx.space, fx.root_view(), sceneParams);
     REQUIRE(scene);
 
     publish_minimal_scene(fx, *scene);
@@ -894,11 +896,11 @@ TEST_CASE("Surface::RenderOnce handles metal renderer targets") {
     CHECK(storedSettings->surface.metal.texture_usage == desc.metal.texture_usage);
 }
 
-TEST_CASE("Window::Present handles metal renderer targets") {
+TEST_CASE("BuilderWindow::Present handles metal renderer targets") {
     BuildersFixture fx;
 
     if (std::getenv("PATHSPACE_ENABLE_METAL_UPLOADS") != nullptr) {
-        INFO("Window::Present metal path exercised by dedicated PATHSPACE_ENABLE_METAL_UPLOADS UITest; skipping builders coverage");
+        INFO("BuilderWindow::Present metal path exercised by dedicated PATHSPACE_ENABLE_METAL_UPLOADS UITest; skipping builders coverage");
         return;
     }
 
@@ -913,7 +915,7 @@ TEST_CASE("Window::Present handles metal renderer targets") {
     REQUIRE(surface);
 
     SceneParams sceneParams{ .name = "main", .description = "scene" };
-    auto scene = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    auto scene = BuilderScene::Create(fx.space, fx.root_view(), sceneParams);
     REQUIRE(scene);
 
     publish_minimal_scene(fx, *scene);
@@ -922,16 +924,16 @@ TEST_CASE("Window::Present handles metal renderer targets") {
     REQUIRE(linked);
 
     WindowParams windowParams{ .name = "Main", .title = "Window", .width = 1024, .height = 768, .scale = 1.0f, .background = "#000" };
-    auto window = Window::Create(fx.space, fx.root_view(), windowParams);
+    auto window = BuilderWindow::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(window);
 
-    auto attached = Window::AttachSurface(fx.space, *window, "view", *surface);
+    auto attached = BuilderWindow::AttachSurface(fx.space, *window, "view", *surface);
     REQUIRE(attached);
 
-    auto present = Window::Present(fx.space, *window, "view");
+    auto present = BuilderWindow::Present(fx.space, *window, "view");
     if (!present) {
-        INFO("Window::Present error code = " << static_cast<int>(present.error().code));
-        INFO("Window::Present error message = " << present.error().message.value_or("<none>"));
+        INFO("BuilderWindow::Present error code = " << static_cast<int>(present.error().code));
+        INFO("BuilderWindow::Present error message = " << present.error().message.value_or("<none>"));
     }
     CHECK(present);
 
@@ -946,15 +948,15 @@ TEST_CASE("Window::Present handles metal renderer targets") {
     CHECK_FALSE(storedSettings->renderer.metal_uploads_enabled);
 }
 
-TEST_CASE("Scene::Create is idempotent and preserves metadata") {
+TEST_CASE("BuilderScene::Create is idempotent and preserves metadata") {
     BuildersFixture fx;
 
     SceneParams firstParams{ .name = "main", .description = "First description" };
-    auto first = Scene::Create(fx.space, fx.root_view(), firstParams);
+    auto first = BuilderScene::Create(fx.space, fx.root_view(), firstParams);
     REQUIRE(first);
 
     SceneParams secondParams{ .name = "main", .description = "Second description" };
-    auto second = Scene::Create(fx.space, fx.root_view(), secondParams);
+    auto second = BuilderScene::Create(fx.space, fx.root_view(), secondParams);
     REQUIRE(second);
     CHECK(second->getPath() == first->getPath());
 
@@ -1041,7 +1043,7 @@ TEST_CASE("Surface creation binds renderer and scene") {
     CHECK(*rendererStr == "renderers/2d");
 
     SceneParams sceneParams{ .name = "main", .description = "scene" };
-    auto scene = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    auto scene = BuilderScene::Create(fx.space, fx.root_view(), sceneParams);
     REQUIRE(scene);
 
     auto link = Surface::SetScene(fx.space, *surface, *scene);
@@ -1066,53 +1068,53 @@ TEST_CASE("Scene dirty markers update state and queue") {
     BuildersFixture fx;
 
     SceneParams sceneParams{ .name = "dirty_scene", .description = "Dirty scene" };
-    auto scenePath = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    auto scenePath = BuilderScene::Create(fx.space, fx.root_view(), sceneParams);
     REQUIRE(scenePath);
 
-    auto initialState = Scene::ReadDirtyState(fx.space, *scenePath);
+    auto initialState = BuilderScene::ReadDirtyState(fx.space, *scenePath);
     REQUIRE(initialState);
     CHECK(initialState->sequence == 0);
-    CHECK(initialState->pending == Scene::DirtyKind::None);
+    CHECK(initialState->pending == BuilderScene::DirtyKind::None);
 
-    auto seq1 = Scene::MarkDirty(fx.space, *scenePath, Scene::DirtyKind::Structure);
+    auto seq1 = BuilderScene::MarkDirty(fx.space, *scenePath, BuilderScene::DirtyKind::Structure);
     REQUIRE(seq1);
     CHECK(*seq1 > 0);
 
-    auto stateAfterFirst = Scene::ReadDirtyState(fx.space, *scenePath);
+    auto stateAfterFirst = BuilderScene::ReadDirtyState(fx.space, *scenePath);
     REQUIRE(stateAfterFirst);
     CHECK(stateAfterFirst->sequence == *seq1);
-    CHECK((stateAfterFirst->pending & Scene::DirtyKind::Structure) == Scene::DirtyKind::Structure);
+    CHECK((stateAfterFirst->pending & BuilderScene::DirtyKind::Structure) == BuilderScene::DirtyKind::Structure);
 
-    auto event1 = Scene::TakeDirtyEvent(fx.space, *scenePath, std::chrono::milliseconds{20});
+    auto event1 = BuilderScene::TakeDirtyEvent(fx.space, *scenePath, std::chrono::milliseconds{20});
     REQUIRE(event1);
     CHECK(event1->sequence == *seq1);
-    CHECK(event1->kinds == Scene::DirtyKind::Structure);
+    CHECK(event1->kinds == BuilderScene::DirtyKind::Structure);
 
-    auto seq2 = Scene::MarkDirty(fx.space, *scenePath, Scene::DirtyKind::Visual | Scene::DirtyKind::Text);
+    auto seq2 = BuilderScene::MarkDirty(fx.space, *scenePath, BuilderScene::DirtyKind::Visual | BuilderScene::DirtyKind::Text);
     REQUIRE(seq2);
     CHECK(*seq2 > *seq1);
 
-    auto event2 = Scene::TakeDirtyEvent(fx.space, *scenePath, std::chrono::milliseconds{20});
+    auto event2 = BuilderScene::TakeDirtyEvent(fx.space, *scenePath, std::chrono::milliseconds{20});
     REQUIRE(event2);
     CHECK(event2->sequence == *seq2);
-    CHECK((event2->kinds & Scene::DirtyKind::Visual) == Scene::DirtyKind::Visual);
-    CHECK((event2->kinds & Scene::DirtyKind::Text) == Scene::DirtyKind::Text);
+    CHECK((event2->kinds & BuilderScene::DirtyKind::Visual) == BuilderScene::DirtyKind::Visual);
+    CHECK((event2->kinds & BuilderScene::DirtyKind::Text) == BuilderScene::DirtyKind::Text);
 
-    auto stateAfterSecond = Scene::ReadDirtyState(fx.space, *scenePath);
+    auto stateAfterSecond = BuilderScene::ReadDirtyState(fx.space, *scenePath);
     REQUIRE(stateAfterSecond);
     CHECK(stateAfterSecond->sequence == *seq2);
-    CHECK((stateAfterSecond->pending & Scene::DirtyKind::Structure) == Scene::DirtyKind::Structure);
-    CHECK((stateAfterSecond->pending & Scene::DirtyKind::Visual) == Scene::DirtyKind::Visual);
-    CHECK((stateAfterSecond->pending & Scene::DirtyKind::Text) == Scene::DirtyKind::Text);
+    CHECK((stateAfterSecond->pending & BuilderScene::DirtyKind::Structure) == BuilderScene::DirtyKind::Structure);
+    CHECK((stateAfterSecond->pending & BuilderScene::DirtyKind::Visual) == BuilderScene::DirtyKind::Visual);
+    CHECK((stateAfterSecond->pending & BuilderScene::DirtyKind::Text) == BuilderScene::DirtyKind::Text);
 
-    auto cleared = Scene::ClearDirty(fx.space, *scenePath, Scene::DirtyKind::Visual);
+    auto cleared = BuilderScene::ClearDirty(fx.space, *scenePath, BuilderScene::DirtyKind::Visual);
     REQUIRE(cleared);
 
-    auto stateAfterClear = Scene::ReadDirtyState(fx.space, *scenePath);
+    auto stateAfterClear = BuilderScene::ReadDirtyState(fx.space, *scenePath);
     REQUIRE(stateAfterClear);
-    CHECK((stateAfterClear->pending & Scene::DirtyKind::Visual) == Scene::DirtyKind::None);
-    CHECK((stateAfterClear->pending & Scene::DirtyKind::Structure) == Scene::DirtyKind::Structure);
-    CHECK((stateAfterClear->pending & Scene::DirtyKind::Text) == Scene::DirtyKind::Text);
+    CHECK((stateAfterClear->pending & BuilderScene::DirtyKind::Visual) == BuilderScene::DirtyKind::None);
+    CHECK((stateAfterClear->pending & BuilderScene::DirtyKind::Structure) == BuilderScene::DirtyKind::Structure);
+    CHECK((stateAfterClear->pending & BuilderScene::DirtyKind::Text) == BuilderScene::DirtyKind::Text);
 }
 
 TEST_CASE("Scene dirty event wait-notify latency stays within budget") {
@@ -1121,18 +1123,23 @@ TEST_CASE("Scene dirty event wait-notify latency stays within budget") {
     BuildersFixture fx;
 
     SceneParams sceneParams{ .name = "dirty_notify_scene", .description = "Dirty notifications" };
-    auto scenePath = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    auto scenePath = BuilderScene::Create(fx.space, fx.root_view(), sceneParams);
     REQUIRE(scenePath);
 
     std::atomic<bool> waiterReady{false};
     bool              eventSucceeded = false;
-    Scene::DirtyEvent event{};
+    BuilderScene::DirtyEvent event{};
     std::chrono::milliseconds observedLatency{0};
+
+    auto wait_timeout = DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{1000}, 1.0);
+    if (wait_timeout < std::chrono::milliseconds{500}) {
+        wait_timeout = std::chrono::milliseconds{500};
+    }
 
     std::thread waiter([&]() {
         waiterReady.store(true, std::memory_order_release);
         auto start = std::chrono::steady_clock::now();
-        auto taken = Scene::TakeDirtyEvent(fx.space, *scenePath, 500ms);
+        auto taken = BuilderScene::TakeDirtyEvent(fx.space, *scenePath, wait_timeout);
         auto end = std::chrono::steady_clock::now();
 
         observedLatency = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
@@ -1148,14 +1155,14 @@ TEST_CASE("Scene dirty event wait-notify latency stays within budget") {
 
     std::this_thread::sleep_for(20ms);
 
-    auto seq = Scene::MarkDirty(fx.space, *scenePath, Scene::DirtyKind::Structure);
+    auto seq = BuilderScene::MarkDirty(fx.space, *scenePath, BuilderScene::DirtyKind::Structure);
     REQUIRE(seq);
 
     waiter.join();
 
     REQUIRE(eventSucceeded);
     CHECK(event.sequence == *seq);
-    CHECK(event.kinds == Scene::DirtyKind::Structure);
+    CHECK(event.kinds == BuilderScene::DirtyKind::Structure);
     CHECK(observedLatency >= 20ms);
     CHECK(observedLatency < 200ms);
 }
@@ -1174,17 +1181,17 @@ TEST_CASE("Window attach surface records binding") {
     REQUIRE(surface);
 
     WindowParams windowParams{ .name = "Main", .title = "app", .width = 800, .height = 600, .scale = 1.0f, .background = "#000" };
-    auto window = Window::Create(fx.space, fx.root_view(), windowParams);
+    auto window = BuilderWindow::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(window);
 
-    auto attached = Window::AttachSurface(fx.space, *window, "view", *surface);
+    auto attached = BuilderWindow::AttachSurface(fx.space, *window, "view", *surface);
     REQUIRE(attached);
 
     auto surfaceBinding = read_value<std::string>(fx.space, std::string(window->getPath()) + "/views/view/surface");
     REQUIRE(surfaceBinding);
     CHECK(*surfaceBinding == "surfaces/pane");
 
-    auto present = Window::Present(fx.space, *window, "view");
+    auto present = BuilderWindow::Present(fx.space, *window, "view");
     CHECK_FALSE(present);
     CHECK(present.error().code == Error::Code::NoSuchPath);
 }
@@ -1200,7 +1207,7 @@ TEST_CASE("Renderer::ResolveTargetBase rejects empty specifications") {
     CHECK(target.error().code == Error::Code::InvalidPath);
 }
 
-TEST_CASE("Window::AttachSurface enforces shared app roots") {
+TEST_CASE("BuilderWindow::AttachSurface enforces shared app roots") {
     BuildersFixture fx;
 
     RendererParams rendererParams{ .name = "2d", .kind = RendererKind::Software2D, .description = "Renderer" };
@@ -1212,11 +1219,11 @@ TEST_CASE("Window::AttachSurface enforces shared app roots") {
     REQUIRE(surface);
 
     WindowParams windowParams{ .name = "Main", .title = "app", .width = 800, .height = 600, .scale = 1.0f, .background = "#000" };
-    auto window = Window::Create(fx.space, fx.root_view(), windowParams);
+    auto window = BuilderWindow::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(window);
 
     SurfacePath foreignSurface{ "/system/applications/other_app/surfaces/pane" };
-    auto attached = Window::AttachSurface(fx.space, *window, "view", foreignSurface);
+    auto attached = BuilderWindow::AttachSurface(fx.space, *window, "view", foreignSurface);
     CHECK_FALSE(attached);
     CHECK(attached.error().code == Error::Code::InvalidPath);
 }
@@ -1527,7 +1534,7 @@ TEST_CASE("Renderer::RenderHtml writes DOM outputs for html targets") {
     REQUIRE(renderer);
 
     SceneParams sceneParams{ .name = "scene_html_dom", .description = "html dom" };
-    auto scene = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    auto scene = BuilderScene::Create(fx.space, fx.root_view(), sceneParams);
     REQUIRE(scene);
     publish_minimal_scene(fx, *scene);
 
@@ -1580,7 +1587,7 @@ TEST_CASE("Renderer::RenderHtml falls back to canvas when DOM budget exceeded") 
     REQUIRE(renderer);
 
     SceneParams sceneParams{ .name = "scene_html_canvas", .description = "html canvas" };
-    auto scene = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    auto scene = BuilderScene::Create(fx.space, fx.root_view(), sceneParams);
     REQUIRE(scene);
     publish_minimal_scene(fx, *scene);
 
@@ -1627,7 +1634,7 @@ TEST_CASE("Renderer::RenderHtml writes DOM outputs for html targets") {
     REQUIRE(renderer);
 
     SceneParams sceneParams{ .name = "scene_html_dom", .description = "html dom" };
-    auto scene = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    auto scene = BuilderScene::Create(fx.space, fx.root_view(), sceneParams);
     REQUIRE(scene);
     publish_minimal_scene(fx, *scene);
 
@@ -1713,12 +1720,12 @@ TEST_CASE("Widgets::CreateButton publishes snapshot and state") {
     CHECK(created->states.disabled.getPath()
           == "/system/applications/test_app/scenes/widgets/primary/states/disabled");
 
-    auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    auto revision = BuilderScene::ReadCurrentRevision(fx.space, created->scene);
     REQUIRE(revision);
     CHECK(revision->revision > 0);
 
     auto read_scene_bucket = [&](SP::UI::Builders::ScenePath const& scene) {
-        auto stateRevision = Scene::ReadCurrentRevision(fx.space, scene);
+        auto stateRevision = BuilderScene::ReadCurrentRevision(fx.space, scene);
         REQUIRE(stateRevision);
         auto base = std::string(scene.getPath()) + "/builds/" + format_revision(stateRevision->revision);
         auto bucket = SceneSnapshotBuilder::decode_bucket(fx.space, base);
@@ -1760,7 +1767,7 @@ TEST_CASE("Widgets::CreateButton publishes snapshot and state") {
     REQUIRE(changed);
     CHECK(*changed);
 
-    auto updatedRevision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    auto updatedRevision = BuilderScene::ReadCurrentRevision(fx.space, created->scene);
     REQUIRE(updatedRevision);
     CHECK(updatedRevision->revision > revision->revision);
 
@@ -1807,7 +1814,7 @@ TEST_CASE("Widgets::WidgetTheme hot swap repaints button scenes and marks dirty"
     };
 
     auto read_revision = [&](ScenePath const& scene) -> std::uint64_t {
-        auto revision = Scene::ReadCurrentRevision(fx.space, scene);
+        auto revision = BuilderScene::ReadCurrentRevision(fx.space, scene);
         REQUIRE(revision);
         return revision->revision;
     };
@@ -1830,7 +1837,7 @@ TEST_CASE("Widgets::WidgetTheme hot swap repaints button scenes and marks dirty"
 
     auto drain_dirty_queue = [&](ScenePath const& scene) {
         while (true) {
-            auto event = Scene::TakeDirtyEvent(fx.space, scene, std::chrono::milliseconds{1});
+            auto event = BuilderScene::TakeDirtyEvent(fx.space, scene, std::chrono::milliseconds{1});
             if (event) {
                 continue;
             }
@@ -1914,7 +1921,7 @@ TEST_CASE("Widgets::CreateToggle publishes snapshot and state") {
           == "/system/applications/test_app/scenes/widgets/toggle_primary/states/disabled");
 
     auto ensure_state_scene = [&](SP::UI::Builders::ScenePath const& scene) {
-        auto rev = Scene::ReadCurrentRevision(fx.space, scene);
+        auto rev = BuilderScene::ReadCurrentRevision(fx.space, scene);
         REQUIRE(rev);
         CHECK(rev->revision > 0);
     };
@@ -1923,7 +1930,7 @@ TEST_CASE("Widgets::CreateToggle publishes snapshot and state") {
     ensure_state_scene(created->states.pressed);
     ensure_state_scene(created->states.disabled);
 
-    auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    auto revision = BuilderScene::ReadCurrentRevision(fx.space, created->scene);
     REQUIRE(revision);
     CHECK(revision->revision > 0);
 
@@ -1938,7 +1945,7 @@ TEST_CASE("Widgets::CreateToggle publishes snapshot and state") {
     REQUIRE(toggle_state);
     CHECK(toggle_state->checked);
 
-    auto updatedRevision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    auto updatedRevision = BuilderScene::ReadCurrentRevision(fx.space, created->scene);
     REQUIRE(updatedRevision);
     CHECK(updatedRevision->revision > revision->revision);
 
@@ -2000,7 +2007,7 @@ TEST_CASE("Widgets::CreateSlider publishes snapshot and state") {
           == "/system/applications/test_app/scenes/widgets/slider_primary/states/disabled");
 
     auto ensure_state_scene = [&](SP::UI::Builders::ScenePath const& scene) {
-        auto rev = Scene::ReadCurrentRevision(fx.space, scene);
+        auto rev = BuilderScene::ReadCurrentRevision(fx.space, scene);
         REQUIRE(rev);
         CHECK(rev->revision > 0);
     };
@@ -2009,7 +2016,7 @@ TEST_CASE("Widgets::CreateSlider publishes snapshot and state") {
     ensure_state_scene(created->states.pressed);
     ensure_state_scene(created->states.disabled);
 
-    auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    auto revision = BuilderScene::ReadCurrentRevision(fx.space, created->scene);
     REQUIRE(revision);
     CHECK(revision->revision > 0);
 
@@ -2026,7 +2033,7 @@ TEST_CASE("Widgets::CreateSlider publishes snapshot and state") {
     CHECK(updated->value == doctest::Approx(0.75f));
     CHECK(updated->dragging);
 
-    auto updatedRevision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    auto updatedRevision = BuilderScene::ReadCurrentRevision(fx.space, created->scene);
     REQUIRE(updatedRevision);
     CHECK(updatedRevision->revision > revision->revision);
 
@@ -3148,7 +3155,7 @@ TEST_CASE("Widgets::CreateList publishes snapshot and metadata") {
           == "/system/applications/test_app/scenes/widgets/inventory/states/disabled");
 
     auto ensure_state_scene = [&](SP::UI::Builders::ScenePath const& scene) {
-        auto rev = Scene::ReadCurrentRevision(fx.space, scene);
+        auto rev = BuilderScene::ReadCurrentRevision(fx.space, scene);
         REQUIRE(rev);
         CHECK(rev->revision > 0);
     };
@@ -3157,7 +3164,7 @@ TEST_CASE("Widgets::CreateList publishes snapshot and metadata") {
     ensure_state_scene(created->states.pressed);
     ensure_state_scene(created->states.disabled);
 
-    auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    auto revision = BuilderScene::ReadCurrentRevision(fx.space, created->scene);
     REQUIRE(revision);
     CHECK(revision->revision != 0);
 }
@@ -3201,7 +3208,7 @@ TEST_CASE("Widgets::CreateTextField publishes snapshot and metadata") {
     CHECK(footprint->max_y > footprint->min_y);
 
     auto ensure_state_scene = [&](SP::UI::Builders::ScenePath const& scene) {
-        auto rev = Scene::ReadCurrentRevision(fx.space, scene);
+        auto rev = BuilderScene::ReadCurrentRevision(fx.space, scene);
         REQUIRE(rev);
         CHECK(rev->revision > 0);
     };
@@ -3210,7 +3217,7 @@ TEST_CASE("Widgets::CreateTextField publishes snapshot and metadata") {
     ensure_state_scene(created->states.pressed);
     ensure_state_scene(created->states.disabled);
 
-    auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    auto revision = BuilderScene::ReadCurrentRevision(fx.space, created->scene);
     REQUIRE(revision);
     CHECK(revision->revision != 0);
 }
@@ -3253,7 +3260,7 @@ TEST_CASE("Widgets::CreateTextArea publishes snapshot and metadata") {
     CHECK(footprint->max_y > footprint->min_y);
 
     auto ensure_state_scene = [&](SP::UI::Builders::ScenePath const& scene) {
-        auto rev = Scene::ReadCurrentRevision(fx.space, scene);
+        auto rev = BuilderScene::ReadCurrentRevision(fx.space, scene);
         REQUIRE(rev);
         CHECK(rev->revision > 0);
     };
@@ -3262,7 +3269,7 @@ TEST_CASE("Widgets::CreateTextArea publishes snapshot and metadata") {
     ensure_state_scene(created->states.pressed);
     ensure_state_scene(created->states.disabled);
 
-    auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    auto revision = BuilderScene::ReadCurrentRevision(fx.space, created->scene);
     REQUIRE(revision);
     CHECK(revision->revision != 0);
 }
@@ -3589,7 +3596,7 @@ TEST_CASE("Widgets::CreateTree publishes snapshot and metadata") {
     REQUIRE(storedKind);
     CHECK(*storedKind == "tree");
 
-    auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    auto revision = BuilderScene::ReadCurrentRevision(fx.space, created->scene);
     REQUIRE(revision);
     CHECK(revision->revision != 0);
 }
@@ -3811,7 +3818,7 @@ TEST_CASE("Widgets::CreateStack composes vertical layout") {
     CHECK(toggleChild.y > buttonChild.y);
     CHECK(sliderChild.y > toggleChild.y);
 
-    auto revision = Scene::ReadCurrentRevision(fx.space, stack->scene);
+    auto revision = BuilderScene::ReadCurrentRevision(fx.space, stack->scene);
     REQUIRE(revision);
     auto base = std::string(stack->scene.getPath()) + "/builds/" + format_revision(revision->revision);
     auto bucket = SceneSnapshotBuilder::decode_bucket(fx.space, base);
@@ -3836,7 +3843,7 @@ TEST_CASE("Widgets::UpdateListState clamps indices and marks dirty") {
     auto created = Widgets::CreateList(fx.space, fx.root_view(), listParams);
     REQUIRE(created);
 
-    auto revision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    auto revision = BuilderScene::ReadCurrentRevision(fx.space, created->scene);
     REQUIRE(revision);
 
     auto desired = Widgets::MakeListState()
@@ -3856,7 +3863,7 @@ TEST_CASE("Widgets::UpdateListState clamps indices and marks dirty") {
     CHECK(updated->hovered_index == 2);
     CHECK(updated->scroll_offset == doctest::Approx(64.0f)); // two rows * 32 - 32
 
-    auto updatedRevision = Scene::ReadCurrentRevision(fx.space, created->scene);
+    auto updatedRevision = BuilderScene::ReadCurrentRevision(fx.space, created->scene);
     REQUIRE(updatedRevision);
     CHECK(updatedRevision->revision > revision->revision);
 
@@ -3873,11 +3880,11 @@ TEST_CASE("Widgets::ResolveHitTarget extracts canonical widget path from hit tes
     auto button = Widgets::CreateButton(fx.space, fx.root_view(), params);
     REQUIRE(button);
 
-    Scene::HitTestRequest request{};
+    BuilderScene::HitTestRequest request{};
     request.x = 12.0f;
     request.y = 16.0f;
 
-    auto hit = Scene::HitTest(fx.space, button->scene, request);
+    auto hit = BuilderScene::HitTest(fx.space, button->scene, request);
     REQUIRE(hit);
     REQUIRE(hit->hit);
 
@@ -4093,11 +4100,11 @@ TEST_CASE("Widgets::Focus::ApplyHit focuses widget from hit test") {
 
     auto config = WidgetFocus::MakeConfig(fx.root_view());
 
-    Scene::HitTestRequest request{};
+    BuilderScene::HitTestRequest request{};
     request.x = 8.0f;
     request.y = 8.0f;
 
-    auto hit = Scene::HitTest(fx.space, button->scene, request);
+    auto hit = BuilderScene::HitTest(fx.space, button->scene, request);
     REQUIRE(hit);
     REQUIRE(hit->hit);
 
@@ -4383,9 +4390,9 @@ TEST_CASE("Widget focus slider-to-list transition covers highlight footprint") {
         .width = desc.size_px.width,
         .height = desc.size_px.height,
     };
-    auto window = Window::Create(fx.space, fx.root_view(), windowParams);
+    auto window = BuilderWindow::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(window);
-    REQUIRE(Window::AttachSurface(fx.space, *window, "main", *surface));
+    REQUIRE(BuilderWindow::AttachSurface(fx.space, *window, "main", *surface));
     enable_framebuffer_capture(fx.space, *window, "main");
 
     auto targetRel = fx.space.read<std::string, std::string>(std::string(surface->getPath()) + "/target");
@@ -4403,10 +4410,10 @@ TEST_CASE("Widget focus slider-to-list transition covers highlight footprint") {
                             << render.error().message.value_or("<none>"));
         }
         REQUIRE(render);
-        auto present = Window::Present(fx.space, *window, "main");
+        auto present = BuilderWindow::Present(fx.space, *window, "main");
         if (!present) {
-            INFO(step_label << ": Window::Present code=" << static_cast<int>(present.error().code));
-            INFO(step_label << ": Window::Present message="
+            INFO(step_label << ": BuilderWindow::Present code=" << static_cast<int>(present.error().code));
+            INFO(step_label << ": BuilderWindow::Present message="
                             << present.error().message.value_or("<none>"));
         }
         REQUIRE(present);
@@ -4717,7 +4724,7 @@ TEST_CASE("Widget focus slider-to-list transition covers highlight footprint") {
     REQUIRE(listState);
     CHECK(listState->focused);
 
-    auto sliderRevision = Scene::ReadCurrentRevision(fx.space, slider->scene);
+    auto sliderRevision = BuilderScene::ReadCurrentRevision(fx.space, slider->scene);
     REQUIRE(sliderRevision);
     auto sliderRevisionPath = std::string(slider->scene.getPath())
         + "/builds/"
@@ -4880,9 +4887,9 @@ TEST_CASE("Widget focus slider-to-list transition marks previous footprint witho
         .width = desc.size_px.width,
         .height = desc.size_px.height,
     };
-    auto window = Window::Create(fx.space, fx.root_view(), windowParams);
+    auto window = BuilderWindow::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(window);
-    REQUIRE(Window::AttachSurface(fx.space, *window, "main", *surface));
+    REQUIRE(BuilderWindow::AttachSurface(fx.space, *window, "main", *surface));
 
     auto targetRel = fx.space.read<std::string, std::string>(std::string(surface->getPath()) + "/target");
     REQUIRE(targetRel);
@@ -5949,7 +5956,7 @@ TEST_CASE("Renderer::RenderHtml hydrates image assets into output") {
     REQUIRE(renderer);
 
     SceneParams sceneParams{ .name = "scene_html_assets", .description = "html assets" };
-    auto scene = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    auto scene = BuilderScene::Create(fx.space, fx.root_view(), sceneParams);
     REQUIRE(scene);
 
     constexpr std::uint64_t kImageFingerprint = 0xABCDEF0102030405ull;
@@ -5965,7 +5972,7 @@ TEST_CASE("Renderer::RenderHtml hydrates image assets into output") {
     auto revision = builder.publish(opts, bucket);
     REQUIRE(revision);
 
-    auto ready = Scene::WaitUntilReady(fx.space, *scene, std::chrono::milliseconds{10});
+    auto ready = BuilderScene::WaitUntilReady(fx.space, *scene, std::chrono::milliseconds{10});
     REQUIRE(ready);
 
     auto revision_base = std::string(scene->getPath()) + "/builds/" + format_revision(*revision);
@@ -6073,7 +6080,7 @@ TEST_CASE("Renderer::RenderHtml clears stale asset payloads") {
     REQUIRE(renderer);
 
     SceneParams sceneParams{ .name = "scene_html_stale", .description = "html stale assets" };
-    auto scene = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    auto scene = BuilderScene::Create(fx.space, fx.root_view(), sceneParams);
     REQUIRE(scene);
 
     constexpr std::uint64_t kImageFingerprint = 0xABCDEF0102030405ull;
@@ -6089,7 +6096,7 @@ TEST_CASE("Renderer::RenderHtml clears stale asset payloads") {
     auto revision = builder.publish(opts, bucket_with_image);
     REQUIRE(revision);
 
-    auto ready = Scene::WaitUntilReady(fx.space, *scene, std::chrono::milliseconds{10});
+    auto ready = BuilderScene::WaitUntilReady(fx.space, *scene, std::chrono::milliseconds{10});
     REQUIRE(ready);
 
     auto revision_base = std::string(scene->getPath()) + "/builds/" + format_revision(*revision);
@@ -6140,7 +6147,7 @@ TEST_CASE("Renderer::RenderHtml clears stale asset payloads") {
     auto revision2 = builder.publish(opts2, bucket_no_assets);
     REQUIRE(revision2);
 
-    auto ready2 = Scene::WaitUntilReady(fx.space, *scene, std::chrono::milliseconds{10});
+    auto ready2 = BuilderScene::WaitUntilReady(fx.space, *scene, std::chrono::milliseconds{10});
     REQUIRE(ready2);
 
     auto render_html2 = Renderer::RenderHtml(fx.space, ConcretePathView{target->getPath()});
@@ -6380,7 +6387,7 @@ TEST_CASE("App bootstrap helper wires renderer, surface, and window defaults") {
         .name = "gallery",
         .description = "bootstrap scene",
     };
-    auto scenePath = Scene::Create(fx.space, fx.root_view(), sceneParams);
+    auto scenePath = BuilderScene::Create(fx.space, fx.root_view(), sceneParams);
     REQUIRE(scenePath);
 
     AppBootstrap::BootstrapParams params;

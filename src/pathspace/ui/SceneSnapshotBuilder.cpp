@@ -2,6 +2,7 @@
 
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
+#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 
 #include "SceneSnapshotBuilderDetail.hpp"
 
@@ -506,6 +507,7 @@ auto SceneSnapshotBuilder::store_bucket(std::uint64_t revision,
         return status;
     }
 
+    SP::UI::LegacyBuilders::ScopedAllow publish_allow{};
     auto publish = Builders::Scene::PublishRevision(space_,
                                                     scene_path_,
                                                     revisionDesc,

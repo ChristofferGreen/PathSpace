@@ -4,6 +4,7 @@
 #include <pathspace/io/IoEvents.hpp>
 #include <pathspace/runtime/IOPump.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/declarative/InputTask.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
@@ -26,6 +27,20 @@ struct RuntimeGuard {
     ~RuntimeGuard() { SP::System::ShutdownDeclarativeRuntime(space); }
     SP::PathSpace& space;
 };
+
+auto app_component_from_window(SP::UI::Builders::WindowPath const& window) -> std::string {
+    constexpr std::string_view kPrefix = "/system/applications/";
+    std::string path = std::string(window.getPath());
+    if (!path.starts_with(kPrefix)) {
+        return {};
+    }
+    auto remainder = path.substr(kPrefix.size());
+    auto slash = remainder.find('/');
+    if (slash == std::string::npos) {
+        return {};
+    }
+    return remainder.substr(0, slash);
+}
 
 } // namespace
 
@@ -136,6 +151,7 @@ TEST_CASE("Declarative input task drains widget ops") {
     readiness_options.wait_for_structure = false;
     readiness_options.wait_for_buckets = false;
     readiness_options.wait_for_runtime_metrics = true;
+    readiness_options.force_scene_publish = true;
     auto readiness = DeclarativeTestUtils::ensure_scene_ready(space,
                                                               scene->path,
                                                               window->path,
@@ -151,9 +167,16 @@ TEST_CASE("Declarative input task drains widget ops") {
     auto actions_path = widget_root + "/ops/actions/inbox/queue";
 
 
-    auto metric_path = std::string(DeclarativeTestUtils::kInputWidgetsProcessedMetric);
-    auto baseline = DeclarativeTestUtils::read_metric(space, metric_path);
-    REQUIRE(baseline);
+    auto window_token = SP::Runtime::MakeRuntimeWindowToken(window->path.getPath());
+    auto app_component = app_component_from_window(window->path);
+    auto window_metric_path = std::string("/system/widgets/runtime/input/windows/")
+                              + window_token + "/metrics/widgets_processed_total";
+    auto app_metric_path = std::string("/system/widgets/runtime/input/apps/")
+                           + app_component + "/metrics/widgets_processed_total";
+    auto window_baseline_metric = DeclarativeTestUtils::read_metric(space, window_metric_path);
+    std::uint64_t window_baseline = window_baseline_metric ? *window_baseline_metric : 0;
+    auto app_baseline_metric = DeclarativeTestUtils::read_metric(space, app_metric_path);
+    std::uint64_t app_baseline = app_baseline_metric ? *app_baseline_metric : 0;
 
     SP::UI::Builders::Widgets::Bindings::WidgetOp op{};
     op.kind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Activate;
@@ -161,15 +184,21 @@ TEST_CASE("Declarative input task drains widget ops") {
     op.value = 1.0f;
     (void)space.insert(queue_path, op);
 
-    auto metric_wait = DeclarativeTestUtils::wait_for_metric_at_least(
-        space,
-        metric_path,
-        *baseline + 1,
-        DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{1500}, 3.0));
-    if (!metric_wait) {
-        FAIL_CHECK(DeclarativeTestUtils::format_error("input task metric", metric_wait.error()));
-    }
-    REQUIRE(metric_wait);
+    SP::UI::Declarative::ManualPumpOptions pump_options{};
+    pump_options.include_app_widgets = true;
+    auto pump_result = SP::UI::Declarative::PumpWindowWidgetsOnce(space,
+                                                                  window->path,
+                                                                  window->view_name,
+                                                                  pump_options);
+    REQUIRE(pump_result);
+    CHECK(pump_result->widgets_processed >= 1);
+
+    auto window_after_metric = DeclarativeTestUtils::read_metric(space, window_metric_path);
+    REQUIRE(window_after_metric);
+    CHECK(*window_after_metric >= window_baseline + pump_result->widgets_processed);
+    auto app_after_metric = DeclarativeTestUtils::read_metric(space, app_metric_path);
+    REQUIRE(app_after_metric);
+    CHECK(*app_after_metric >= app_baseline + pump_result->widgets_processed);
 
     auto action = DeclarativeTestUtils::take_with_retry<SP::UI::Builders::Widgets::Reducers::WidgetAction>(
         space,
@@ -226,6 +255,7 @@ TEST_CASE("Declarative input task invokes registered handlers") {
     readiness_options.wait_for_structure = false;
     readiness_options.wait_for_buckets = false;
     readiness_options.wait_for_runtime_metrics = true;
+    readiness_options.force_scene_publish = true;
     auto readiness = DeclarativeTestUtils::ensure_scene_ready(space,
                                                               scene->path,
                                                               window->path,
@@ -242,9 +272,16 @@ TEST_CASE("Declarative input task invokes registered handlers") {
     auto press_events = widget_path + "/events/press/queue";
 
 
-    auto metric_path = std::string(DeclarativeTestUtils::kInputWidgetsProcessedMetric);
-    auto baseline = DeclarativeTestUtils::read_metric(space, metric_path);
-    REQUIRE(baseline);
+    auto window_token = SP::Runtime::MakeRuntimeWindowToken(window->path.getPath());
+    auto app_component = app_component_from_window(window->path);
+    auto window_metric_path = std::string("/system/widgets/runtime/input/windows/")
+                              + window_token + "/metrics/widgets_processed_total";
+    auto app_metric_path = std::string("/system/widgets/runtime/input/apps/")
+                           + app_component + "/metrics/widgets_processed_total";
+    auto window_baseline_metric = DeclarativeTestUtils::read_metric(space, window_metric_path);
+    std::uint64_t window_baseline = window_baseline_metric ? *window_baseline_metric : 0;
+    auto app_baseline_metric = DeclarativeTestUtils::read_metric(space, app_metric_path);
+    std::uint64_t app_baseline = app_baseline_metric ? *app_baseline_metric : 0;
 
     SP::UI::Builders::Widgets::Bindings::WidgetOp op{};
     op.kind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Activate;
@@ -252,15 +289,21 @@ TEST_CASE("Declarative input task invokes registered handlers") {
     op.value = 1.0f;
     (void)space.insert(queue_path, op);
 
-    auto metric_wait = DeclarativeTestUtils::wait_for_metric_at_least(
-        space,
-        metric_path,
-        *baseline + 1,
-        DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{1500}, 3.0));
-    if (!metric_wait) {
-        FAIL_CHECK(DeclarativeTestUtils::format_error("handler metric", metric_wait.error()));
-    }
-    REQUIRE(metric_wait);
+    SP::UI::Declarative::ManualPumpOptions handler_pump_options{};
+    handler_pump_options.include_app_widgets = true;
+    auto pump_result = SP::UI::Declarative::PumpWindowWidgetsOnce(space,
+                                                                  window->path,
+                                                                  window->view_name,
+                                                                  handler_pump_options);
+    REQUIRE(pump_result);
+    CHECK(pump_result->widgets_processed >= 1);
+
+    auto window_after_metric = DeclarativeTestUtils::read_metric(space, window_metric_path);
+    REQUIRE(window_after_metric);
+    CHECK(*window_after_metric >= window_baseline + pump_result->widgets_processed);
+    auto app_after_metric = DeclarativeTestUtils::read_metric(space, app_metric_path);
+    REQUIRE(app_after_metric);
+    CHECK(*app_after_metric >= app_baseline + pump_result->widgets_processed);
 
     auto handler_budget = DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{1500}, 2.5);
     auto handler_deadline = std::chrono::steady_clock::now() + handler_budget;
@@ -397,6 +440,7 @@ TEST_CASE("paint_example_new-style button reacts to pointer press via widget run
     readiness_options.wait_for_structure = false;
     readiness_options.wait_for_buckets = false;
     readiness_options.wait_for_runtime_metrics = true;
+    readiness_options.force_scene_publish = true;
     auto readiness = DeclarativeTestUtils::ensure_scene_ready(space,
                                                               scene->path,
                                                               window->path,

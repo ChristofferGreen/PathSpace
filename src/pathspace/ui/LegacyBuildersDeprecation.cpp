@@ -4,6 +4,7 @@
 
 #include <pathspace/log/TaggedLogger.hpp>
 
+#include <atomic>
 #include <chrono>
 #include <cctype>
 #include <cstdio>
@@ -115,6 +116,11 @@ auto sanitize_component(std::string_view entry_point) -> std::string {
 
 auto scoped_allow_depth() -> int& {
     thread_local int depth = 0;
+    return depth;
+}
+
+auto global_allow_depth() -> std::atomic<int>& {
+    static std::atomic<int> depth{0};
     return depth;
 }
 
@@ -266,7 +272,7 @@ auto emit_report(std::string_view entry_point,
 }
 
 auto scope_allows_legacy_usage() -> bool {
-    return scoped_allow_depth() > 0;
+    return scoped_allow_depth() > 0 || global_allow_depth().load(std::memory_order_acquire) > 0;
 }
 
 } // namespace
@@ -279,6 +285,18 @@ ScopedAllow::~ScopedAllow() {
     auto& depth = scoped_allow_depth();
     if (depth > 0) {
         --depth;
+    }
+}
+
+ScopedAllowAllThreads::ScopedAllowAllThreads() {
+    global_allow_depth().fetch_add(1, std::memory_order_acq_rel);
+}
+
+ScopedAllowAllThreads::~ScopedAllowAllThreads() {
+    auto& depth = global_allow_depth();
+    auto current = depth.load(std::memory_order_acquire);
+    while (current > 0 && !depth.compare_exchange_weak(current, current - 1, std::memory_order_acq_rel)) {
+        // retry until decrement succeeds or depth reached zero.
     }
 }
 

@@ -1,6 +1,7 @@
 #include "Helpers.hpp"
 
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 
 namespace SP::UI {
 
@@ -31,6 +32,7 @@ auto PublishRevision(PathSpace& space,
                      SceneRevisionDesc const& revision,
                      std::span<std::byte const> drawableBucket,
                      std::span<std::byte const> metadata) -> SP::Expected<void> {
+    SP::UI::LegacyBuilders::ScopedAllow publish_allow{};
     return Builders::Scene::PublishRevision(space, scenePath, revision, drawableBucket, metadata);
 }
 

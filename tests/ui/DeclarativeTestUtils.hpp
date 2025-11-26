@@ -54,6 +54,30 @@ inline auto scaled_timeout(std::chrono::milliseconds fallback,
     return std::chrono::milliseconds{scaled};
 }
 
+inline auto full_fuzz_enabled() -> bool {
+    return std::getenv("PATHSPACE_FULL_FUZZ") != nullptr;
+}
+
+inline int scaled_iterations(int default_iterations,
+                             int min_iterations = 1,
+                             double scale = 0.5) {
+    if (full_fuzz_enabled()) {
+        return default_iterations;
+    }
+    auto timeout_override = read_env_timeout_override();
+    if (!timeout_override) {
+        return default_iterations;
+    }
+    if (timeout_override->count() <= 1500) {
+        auto scaled = static_cast<int>(std::llround(static_cast<double>(default_iterations) * scale));
+        if (scaled < min_iterations) {
+            scaled = min_iterations;
+        }
+        return scaled;
+    }
+    return default_iterations;
+}
+
 inline auto read_metric(SP::PathSpace& space, std::string const& metric_path)
     -> SP::Expected<std::uint64_t> {
     auto value = space.read<std::uint64_t, std::string>(metric_path);

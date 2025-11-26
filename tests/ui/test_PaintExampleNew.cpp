@@ -2,6 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/examples/paint/PaintExampleNewUI.hpp>
+#include "../../examples/declarative_example_shared.hpp"
 #include <pathspace/layer/io/PathIOMouse.hpp>
 #include <pathspace/system/Standard.hpp>
 #include <pathspace/ui/Builders.hpp>
@@ -70,6 +71,10 @@ void init_harness(TestHarness& harness) {
     auto window = SP::Window::Create(harness.space, *app, window_opts);
     REQUIRE(window);
     harness.window = *window;
+    auto disable_metal = PathSpaceExamples::force_window_software_renderer(harness.space,
+                                                                           harness.window.path,
+                                                                           harness.window.view_name);
+    REQUIRE(disable_metal);
 
     auto scene = SP::Scene::Create(harness.space, *app, window->path);
     REQUIRE(scene);
@@ -111,9 +116,20 @@ void init_harness(TestHarness& harness) {
                                                                              "paint_example_new_device_test");
     REQUIRE(input_ready);
 
-    auto publish = SP::UI::Declarative::SceneLifecycle::ForcePublish(harness.space, harness.scene.path, {});
-    REQUIRE(publish);
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    PathSpaceExamples::DeclarativeReadinessOptions readiness_options{};
+    readiness_options.wait_for_runtime_metrics = true;
+    readiness_options.scene_window_component_override = PathSpaceExamples::window_component_name(
+        std::string(harness.window.path.getPath()));
+    readiness_options.scene_view_override = harness.window.view_name;
+    readiness_options.wait_for_buckets = false;
+    readiness_options.wait_for_structure = false;
+    readiness_options.force_scene_publish = true;
+    auto readiness = PathSpaceExamples::ensure_declarative_scene_ready(harness.space,
+                                                                       harness.scene.path,
+                                                                       harness.window.path,
+                                                                       harness.window.view_name,
+                                                                       readiness_options);
+    REQUIRE(readiness);
 }
 
 void send_pointer_event(TestHarness& harness, SP::PathIOMouse::Event event) {

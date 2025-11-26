@@ -4,6 +4,7 @@
 #include "../WidgetDetail.hpp"
 
 #include <pathspace/ui/TextBuilder.hpp>
+#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 
 #include <algorithm>
@@ -376,6 +377,7 @@ auto ResolveThemeForWidget(PathSpace& space,
     if (!resolved) {
         return std::unexpected(resolved.error());
     }
+    SP::UI::LegacyBuilders::ScopedAllow theme_allow{};
     auto loaded = SP::UI::Builders::Config::Theme::Load(space, *resolved);
     if (!loaded) {
         return std::unexpected(loaded.error());

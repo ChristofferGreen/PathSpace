@@ -8,6 +8,7 @@
 
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
+#include <pathspace/runtime/IOPump.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -56,6 +57,10 @@ constexpr std::string_view kMetricsLastHandler = "/system/widgets/runtime/input/
 constexpr std::string_view kMetricsEventsEnqueued = "/system/widgets/runtime/input/metrics/events_enqueued_total";
 constexpr std::string_view kMetricsEventsDropped = "/system/widgets/runtime/input/metrics/events_dropped_total";
 constexpr std::string_view kLogErrors = "/system/widgets/runtime/input/log/errors/queue";
+constexpr std::string_view kWindowMetricsBase = "/system/widgets/runtime/input/windows";
+constexpr std::string_view kAppMetricsBase = "/system/widgets/runtime/input/apps";
+
+auto now_ns() -> std::uint64_t;
 
 template <typename T>
 auto ensure_value(PathSpace& space,
@@ -117,6 +122,45 @@ auto list_children(PathSpace& space, std::string const& path) -> std::vector<std
     return space.listChildren(SP::ConcretePathStringView{path});
 }
 
+auto derive_app_component(std::string const& window_path) -> std::optional<std::string> {
+    constexpr std::string_view kPrefix = "/system/applications/";
+    if (!window_path.starts_with(kPrefix)) {
+        return std::nullopt;
+    }
+    auto remainder = window_path.substr(kPrefix.size());
+    auto pos = remainder.find('/');
+    if (pos == std::string::npos) {
+        return std::nullopt;
+    }
+    return remainder.substr(0, pos);
+}
+
+auto make_window_widgets_root(std::string const& window_path, std::string_view view_name) -> std::string {
+    std::string root = window_path;
+    root.append("/views/");
+    root.append(view_name);
+    root.append("/widgets");
+    return root;
+}
+
+auto ensure_metric_counter(PathSpace& space,
+                           std::string const& path,
+                           std::uint64_t delta) -> void {
+    auto current = space.read<std::uint64_t, std::string>(path);
+    std::uint64_t value = 0;
+    if (current) {
+        value = *current;
+    }
+    value += delta;
+    (void)replace_single<std::uint64_t>(space, path, value);
+}
+
+auto ensure_metric_flag(PathSpace& space,
+                        std::string const& path,
+                        std::uint64_t value) -> void {
+    (void)replace_single<std::uint64_t>(space, path, value);
+}
+
 struct PumpStats {
     std::size_t widgets_processed = 0;
     std::size_t widgets_with_work = 0;
@@ -131,6 +175,34 @@ struct PumpStats {
     std::size_t op_backlog = 0;
 };
 
+void publish_manual_metrics(PathSpace& space,
+                            std::string const& window_token,
+                            std::string const& app_component,
+                            PumpStats const& stats) {
+    auto window_base = std::string(kWindowMetricsBase) + "/" + window_token + "/metrics";
+    auto app_base = std::string(kAppMetricsBase) + "/" + app_component + "/metrics";
+
+    auto ensure_root = [&](std::string const& base) {
+        (void)ensure_value<std::uint64_t>(space, base + "/widgets_processed_total", 0);
+        (void)ensure_value<std::uint64_t>(space, base + "/actions_published_total", 0);
+        (void)ensure_value<std::uint64_t>(space, base + "/manual_pumps_total", 0);
+        (void)ensure_value<std::uint64_t>(space, base + "/last_manual_pump_ns", 0);
+    };
+
+    ensure_root(window_base);
+    ensure_root(app_base);
+
+    ensure_metric_counter(space, window_base + "/widgets_processed_total", stats.widgets_processed);
+    ensure_metric_counter(space, window_base + "/actions_published_total", stats.actions_published);
+    ensure_metric_counter(space, window_base + "/manual_pumps_total", 1);
+    ensure_metric_flag(space, window_base + "/last_manual_pump_ns", now_ns());
+
+    ensure_metric_counter(space, app_base + "/widgets_processed_total", stats.widgets_processed);
+    ensure_metric_counter(space, app_base + "/actions_published_total", stats.actions_published);
+    ensure_metric_counter(space, app_base + "/manual_pumps_total", 1);
+    ensure_metric_flag(space, app_base + "/last_manual_pump_ns", now_ns());
+}
+
 struct WidgetHandlerCounters {
     std::uint64_t invoked = 0;
     std::uint64_t failures = 0;
@@ -144,8 +216,6 @@ struct PumpResult {
     PumpStats stats;
     WidgetMetricsMap widget_metrics;
 };
-
-auto now_ns() -> std::uint64_t;
 
 enum class HandlerMetricKind {
     Invoked,
@@ -736,6 +806,51 @@ std::mutex g_runtime_mutex;
 std::unordered_map<PathSpace*, std::shared_ptr<InputRuntimeWorker>> g_runtime_workers;
 
 } // namespace
+
+auto PumpWindowWidgetsOnce(PathSpace& space,
+                           SP::UI::Builders::WindowPath const& window,
+                           std::string_view view_name,
+                           ManualPumpOptions const& options) -> SP::Expected<ManualPumpResult> {
+    if (view_name.empty()) {
+        return std::unexpected(SP::Error{SP::Error::Code::InvalidPath, "view name must not be empty"});
+    }
+
+    PumpResult result{};
+    auto slow_threshold = std::chrono::duration_cast<std::chrono::nanoseconds>(options.slow_handler_threshold);
+    auto window_path = std::string(window.getPath());
+    auto window_widgets_root = make_window_widgets_root(window_path, view_name);
+
+    pump_widgets_in_root(space,
+                         window_widgets_root,
+                         options.max_actions_per_widget,
+                         result.stats,
+                         result.widget_metrics,
+                         slow_threshold);
+
+    std::optional<std::string> app_component = derive_app_component(window_path);
+    if (options.include_app_widgets && app_component) {
+        std::string app_widgets_root = "/system/applications/";
+        app_widgets_root.append(*app_component);
+        app_widgets_root.append("/widgets");
+        pump_widgets_in_root(space,
+                             app_widgets_root,
+                             options.max_actions_per_widget,
+                             result.stats,
+                             result.widget_metrics,
+                             slow_threshold);
+    }
+
+    if (options.publish_window_metrics && app_component) {
+        auto window_token = SP::Runtime::MakeRuntimeWindowToken(window.getPath());
+        publish_manual_metrics(space, window_token, *app_component, result.stats);
+    }
+
+    ManualPumpResult output{
+        .widgets_processed = result.stats.widgets_processed,
+        .actions_published = result.stats.actions_published,
+    };
+    return output;
+}
 
 auto CreateInputTask(PathSpace& space,
                      InputTaskOptions const& options) -> SP::Expected<bool> {
