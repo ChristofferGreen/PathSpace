@@ -154,6 +154,11 @@ plus tests in sync. Read it before touching declarative UI code or examples.
     lifecycle, paint surface, theme tests).
   - `PaintExampleScreenshot*` + `PixelNoisePerfHarness*` tests require the
     `ui_gpu_capture` resource lock; run them serially when reproducing locally.
+    When Metal capture flakes on headless hosts, set
+    `PATHSPACE_SCREENSHOT_FORCE_SOFTWARE=1` (or run `pathspace_screenshot_cli
+    --force-software`) to force the deterministic software fallback. Without
+    the guard, the harness now fails explicitly if it had to fall back so loop
+    jobs notice missing hardware captures.
 - **Examples**: use the helper CLI wrappers (`examples/widgets_example`,
   `examples/paint_example`, `examples/declarative_hello_example`,
   `examples/devices_example --paint-controls-demo`) only after running the
@@ -195,6 +200,10 @@ plus tests in sync. Read it before touching declarative UI code or examples.
   `scripts/check_paint_screenshot.py --tags 1280x800 paint_720 paint_600` to
   compare against the baselines listed in `docs/images/paint_example_baselines.json`.
   Logs land in `build/test-logs/paint_example/` with overlay diagnostics.
+  The CLI + Python helper both record `hardware_capture` in the metrics JSON
+  and error when a fallback happens without
+  `PATHSPACE_SCREENSHOT_FORCE_SOFTWARE=1`, so CI can opt into the software
+  path while still surfacing unintended regressions.
 - **Input stalls**: check `/system/widgets/runtime/input/metrics` for growing
   backlog or handler latency; use `PATHSPACE_TEST_TIMEOUT` env to reproduce
   compile-loop conditions.

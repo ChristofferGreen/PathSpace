@@ -13,6 +13,15 @@ from pathlib import Path
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 
+def env_truthy(value: str | None) -> bool:
+    if value is None:
+        return False
+    lowered = value.strip().lower()
+    if lowered in ("", "0", "false", "no", "off"):
+        return False
+    return True
+
+
 def build_argument_parser(repo_root: Path) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run paint_example in screenshot mode and verify the framebuffer matches the baseline PNG."
@@ -317,6 +326,19 @@ def main() -> int:
         snapshot = json.loads(metrics_path.read_text())
         status = snapshot.get("run", {}).get("status")
         print(f"[paint-example-screenshot] Metrics status: {status}")
+        hardware_capture = snapshot.get("run", {}).get("hardware_capture")
+        guard_enabled = env_truthy(os.environ.get("PATHSPACE_SCREENSHOT_FORCE_SOFTWARE"))
+        if hardware_capture is True:
+            print("[paint-example-screenshot] Capture mode: Window::Present hardware")
+        elif hardware_capture is False:
+            print("[paint-example-screenshot] Capture mode: software fallback")
+            if not guard_enabled:
+                print("[paint-example-screenshot] ERROR: hardware capture unavailable. "
+                      "Set PATHSPACE_SCREENSHOT_FORCE_SOFTWARE=1 to allow fallback.",
+                      file=sys.stderr)
+                return 1
+        else:
+            print("[paint-example-screenshot] Metrics missing hardware_capture flag", file=sys.stderr)
     except FileNotFoundError:
         print(f"[paint-example-screenshot] Metrics file missing: {metrics_path}", file=sys.stderr)
     except json.JSONDecodeError as exc:

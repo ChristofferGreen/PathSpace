@@ -500,17 +500,19 @@ auto ScreenshotService::Capture(ScreenshotRequest const& request) -> SP::Expecte
 
     std::vector<std::uint8_t> capture_pixels;
     bool hardware_capture = false;
-    auto present = capture_present_frame(request.space,
-                                         request.window_path,
-                                         request.view_name,
-                                         request.present_timeout);
-    if (present) {
-        auto packed = pack_framebuffer(present->framebuffer, request.width, request.height);
-        if (!packed) {
-            std::cerr << "ScreenshotService: framebuffer packing failed\n";
-        } else {
-            capture_pixels = std::move(*packed);
-            hardware_capture = true;
+    if (!request.force_software) {
+        auto present = capture_present_frame(request.space,
+                                             request.window_path,
+                                             request.view_name,
+                                             request.present_timeout);
+        if (present) {
+            auto packed = pack_framebuffer(present->framebuffer, request.width, request.height);
+            if (!packed) {
+                std::cerr << "ScreenshotService: framebuffer packing failed\n";
+            } else {
+                capture_pixels = std::move(*packed);
+                hardware_capture = true;
+            }
         }
     }
 
@@ -549,6 +551,13 @@ auto ScreenshotService::Capture(ScreenshotRequest const& request) -> SP::Expecte
             if (!fallback) {
                 emit_metrics("fallback_failed");
                 return std::unexpected(fallback.error());
+            }
+            if (request.hooks.postprocess_png) {
+                auto post_file = request.hooks.postprocess_png(request.output_png);
+                if (!post_file) {
+                    emit_metrics("postprocess_failed");
+                    return std::unexpected(post_file.error());
+                }
             }
         } else {
             emit_metrics("fallback_unavailable");

@@ -68,6 +68,7 @@ struct ScreenshotRequest {
     BaselineMetadata baseline_metadata;
     std::string telemetry_root = "/diagnostics/ui/screenshot";
     std::string telemetry_namespace = "default";
+    bool force_software = false;
 };
 
 struct ScreenshotResult {

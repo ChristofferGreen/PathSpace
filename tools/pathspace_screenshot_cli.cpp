@@ -10,6 +10,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -36,7 +37,57 @@ struct CliArgs {
     std::optional<std::filesystem::path> diff_output;
     std::optional<std::filesystem::path> metrics_output;
     std::optional<double> tolerance_override;
+    bool force_software = false;
+    bool allow_software_fallback = false;
 };
+
+std::optional<bool> parse_bool_string(std::string text) {
+    if (text.empty()) {
+        return std::nullopt;
+    }
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    if (text == "1" || text == "true" || text == "yes" || text == "on") {
+        return true;
+    }
+    if (text == "0" || text == "false" || text == "no" || text == "off") {
+        return false;
+    }
+    return std::nullopt;
+}
+
+std::optional<bool> read_force_env_flag() {
+    if (const char* value = std::getenv("PATHSPACE_SCREENSHOT_FORCE_SOFTWARE")) {
+        return parse_bool_string(std::string(value));
+    }
+    return std::nullopt;
+}
+
+std::optional<bool> read_hardware_capture_flag(std::filesystem::path const& metrics_path) {
+    std::ifstream stream(metrics_path);
+    if (!stream) {
+        std::cerr << "pathspace_screenshot_cli: failed to open metrics file " << metrics_path << "\n";
+        return std::nullopt;
+    }
+    try {
+        auto metrics = nlohmann::json::parse(stream);
+        auto run_it = metrics.find("run");
+        if (run_it == metrics.end() || !run_it->is_object()) {
+            std::cerr << "pathspace_screenshot_cli: metrics JSON missing 'run' object\n";
+            return std::nullopt;
+        }
+        auto hardware_it = run_it->find("hardware_capture");
+        if (hardware_it == run_it->end() || !hardware_it->is_boolean()) {
+            std::cerr << "pathspace_screenshot_cli: metrics JSON missing 'hardware_capture' flag\n";
+            return std::nullopt;
+        }
+        return hardware_it->get<bool>();
+    } catch (std::exception const& err) {
+        std::cerr << "pathspace_screenshot_cli: failed to parse metrics JSON: " << err.what() << "\n";
+        return std::nullopt;
+    }
+}
 
 void print_usage() {
     std::cerr << "Usage: pathspace_screenshot_cli [options]\n"
@@ -47,7 +98,9 @@ void print_usage() {
               << "  --screenshot-output <path> Output PNG path (default build/artifacts/paint_example/<tag>_screenshot.png)\n"
               << "  --diff-output <path>      Diff PNG path (default build/artifacts/paint_example/<tag>_diff.png)\n"
               << "  --metrics-output <path>   Metrics JSON path (default build/artifacts/paint_example/<tag>_metrics.json)\n"
-              << "  --tolerance <value>       Override max mean absolute error threshold\n";
+              << "  --tolerance <value>       Override max mean absolute error threshold\n"
+              << "  --force-software          Force software fallback capture (skips Window::Present)\n"
+              << "  --allow-software-fallback Allow software fallback without forcing it\n";
 }
 
 std::optional<CliArgs> parse_cli(int argc, char** argv) {
@@ -106,6 +159,8 @@ std::optional<CliArgs> parse_cli(int argc, char** argv) {
     add_optional_path("--diff-output", args.diff_output);
     add_optional_path("--metrics-output", args.metrics_output);
     cli.add_double("--tolerance", {.on_value = [&](double value) { args.tolerance_override = value; }});
+    cli.add_flag("--force-software", {.on_set = [&] { args.force_software = true; args.allow_software_fallback = true; }});
+    cli.add_flag("--allow-software-fallback", {.on_set = [&] { args.allow_software_fallback = true; }});
 
     auto help_handler = [] {
         print_usage();
@@ -116,6 +171,12 @@ std::optional<CliArgs> parse_cli(int argc, char** argv) {
 
     if (!cli.parse(argc, argv)) {
         return std::nullopt;
+    }
+    if (auto env_force = read_force_env_flag()) {
+        args.force_software = *env_force;
+        if (*env_force) {
+            args.allow_software_fallback = true;
+        }
     }
     return args;
 }
@@ -270,12 +331,15 @@ int main(int argc, char** argv) {
 
     double tolerance = parsed_args.tolerance_override.value_or(entry.value("tolerance", 0.0015));
 
+    bool fallback_guard = parsed_args.force_software || parsed_args.allow_software_fallback;
+
     PathSpaceExamples::CommandLineOptions options;
     options.width = width;
     options.height = height;
     options.headless = true;
     options.gpu_smoke = true;
-    options.screenshot_require_present = true;
+    options.screenshot_require_present = false;
+    options.screenshot_force_software = parsed_args.force_software;
     options.screenshot_max_mean_error = tolerance;
     options.screenshot_path = screenshot_path;
     options.screenshot_compare_path = baseline_path;
@@ -349,6 +413,22 @@ int main(int argc, char** argv) {
     for (int attempt = 1; attempt <= kMaxAttempts; ++attempt) {
         int exit_code = run_capture(attempt);
         if (exit_code == 0) {
+            auto hardware_capture = read_hardware_capture_flag(metrics_path);
+            if (hardware_capture) {
+                if (*hardware_capture) {
+                    std::cout << "pathspace_screenshot_cli: capture mode = Window::Present hardware\n";
+                    return 0;
+                }
+                std::cout << "pathspace_screenshot_cli: capture mode = software fallback\n";
+                if (!fallback_guard) {
+                    std::cerr << "pathspace_screenshot_cli: hardware capture unavailable; "
+                              << "set PATHSPACE_SCREENSHOT_FORCE_SOFTWARE=1 or rerun later" << "\n";
+                    return 2;
+                }
+                return 0;
+            }
+            std::cerr << "pathspace_screenshot_cli: capture succeeded but metrics missing; "
+                      << "continuing without capture-mode validation\n";
             return 0;
         }
         if (attempt == kMaxAttempts) {

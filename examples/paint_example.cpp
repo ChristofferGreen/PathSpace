@@ -18,6 +18,7 @@
 #include <pathspace/ui/declarative/Widgets.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <array>
 #include <cstdlib>
 #include <chrono>
@@ -50,6 +51,9 @@
 using namespace PathSpaceExamples;
 
 namespace {
+
+auto read_env_string(char const* key) -> std::optional<std::string>;
+auto parse_env_bool(std::string const& text) -> std::optional<bool>;
 
 namespace PaintControlsNS = SP::Examples::PaintControls;
 using PaintControlsNS::BrushState;
@@ -100,6 +104,8 @@ auto parse_options(int argc, char** argv) -> CommandLineOptions {
 
     cli.add_flag("--screenshot-require-present",
                  {.on_set = [&] { opts.screenshot_require_present = true; }});
+    cli.add_flag("--screenshot-force-software",
+                 {.on_set = [&] { opts.screenshot_force_software = true; }});
 
     ExampleCli::ValueOption gpu_option{};
     gpu_option.value_optional = true;
@@ -121,6 +127,12 @@ auto parse_options(int argc, char** argv) -> CommandLineOptions {
     opts.height = std::max(600, opts.height);
     if (opts.screenshot_max_mean_error < 0.0) {
         opts.screenshot_max_mean_error = 0.0;
+    }
+
+    if (auto env_force = read_env_string("PATHSPACE_SCREENSHOT_FORCE_SOFTWARE")) {
+        if (auto parsed = parse_env_bool(*env_force)) {
+            opts.screenshot_force_software = *parsed;
+        }
     }
     return opts;
 }
@@ -198,6 +210,23 @@ auto parse_env_int(std::string const& text) -> std::optional<int> {
         return std::nullopt;
     }
     return result;
+}
+
+auto parse_env_bool(std::string const& text) -> std::optional<bool> {
+    if (text.empty()) {
+        return std::nullopt;
+    }
+    auto normalized = text;
+    std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    if (normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on") {
+        return true;
+    }
+    if (normalized == "0" || normalized == "false" || normalized == "no" || normalized == "off") {
+        return false;
+    }
+    return std::nullopt;
 }
 
 auto parse_env_double(std::string const& text) -> std::optional<double> {
@@ -1693,7 +1722,7 @@ auto RunPaintExample(CommandLineOptions options) -> int {
             }
         }
         auto require_live_capture = options.screenshot_require_present
-                                    || options.screenshot_compare_path.has_value();
+                                    && !options.screenshot_force_software;
         auto await_capture_revision = [&]() -> bool {
             constexpr int kMaxAttempts = 3;
             for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
@@ -1778,6 +1807,7 @@ auto RunPaintExample(CommandLineOptions options) -> int {
             .baseline_metadata = options.baseline_metadata,
             .telemetry_root = options.screenshot_telemetry_root,
             .telemetry_namespace = options.screenshot_telemetry_namespace,
+            .force_software = options.screenshot_force_software,
         };
         screenshot_request.hooks.ensure_ready = [&]() -> SP::Expected<void> {
             if (!paint_gpu_enabled) {
@@ -1819,6 +1849,14 @@ auto RunPaintExample(CommandLineOptions options) -> int {
             return 1;
         }
         log_lifecycle_state("after_capture_attempt");
+        std::cout << "paint_example: capture mode = "
+                  << (capture_result->hardware_capture ? "Window::Present hardware"
+                                                       : "software fallback")
+                  << "\n";
+        if (!capture_result->hardware_capture && !options.screenshot_force_software) {
+            std::cout << "paint_example: hardware capture unavailable; consider setting "
+                      << "PATHSPACE_SCREENSHOT_FORCE_SOFTWARE=1 for CI fallback" << "\n";
+        }
         if (capture_result->matched_baseline) {
             std::cout << "paint_example: screenshot baseline matched (mean error "
                       << capture_result->mean_error.value_or(0.0)
