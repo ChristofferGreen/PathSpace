@@ -22,7 +22,18 @@ Unless noted otherwise, all paths are application-relative and live under `/syst
 
 - Consult `AI_PATHS.md` when you need the overall layout (e.g., where `scenes/<id>/builds/<revision>` or `renderers/<rid>/targets/...` live) or when changing non-widget namespaces.
 - Use this appendix when editing `widgets/<widget-id>/...`, `widgets/focus/current`, or the declarative lifecycle plumbing (`scene/structure/widgets/*`, `runtime/lifecycle/*`, handler/descriptor nodes).
-- When you introduce or retire base nodes (application/window/scene/theme), update `AI_PATHS.md` first, then reference the change here only if there is a widget-facing implication.
+- When you introduce or retire base nodes (application/window/scene/theme), update `AI_PATHS.md` first, then refresh the tables here so widget authors do not have to hunt across outdated references.
+
+## Base declarative namespaces
+
+| Node | Base path | Key properties | Notes |
+| --- | --- | --- | --- |
+| **Application** | `/system/applications/<app>` | `state/title`, `windows/<windowId>`, `scenes/<sceneId>`, `themes/<name>`, `events/lifecycle/handler` | `SP::App::Create` mounts the root, seeds renderer/theme defaults, and records lifecycle handlers. |
+| **Window** | `<app>/windows/<windowId>` | `state/title`, `state/visible`, `style/theme`, `views/<viewId>/{scene,surface,renderer,present}`, `widgets/<widgetName>`, `events/{close,focus}/handler`, `render/dirty` | Declarative widget roots mount under `widgets/<name>`; `Window::Create` wires renderer + surface bindings and registers device subscriptions. |
+| **Scene** | `<app>/scenes/<sceneId>` | `structure/widgets/<widgetPath>`, `structure/window/<windowId>/{focus,current,metrics/dpi}`, `snapshot/<rev>`, `metrics/*`, `events/present/handler`, `views/<viewId>/dirty`, `state/attached`, `render/dirty` | `Scene::Create` spawns the lifecycle worker that drains `render/events/dirty`, rebuilds buckets, and publishes revisions. |
+| **Theme** | `<app>/themes/<name>` | `colors/<token>`, `typography/<token>`, `spacing/<token>`, `style/inherits`, compiled value under `config/theme/<name>/value` | Widgets inherit `style/theme` up the parent → window → app chain before falling back to `/themes/default`; `Theme::{Create,SetColor,RebuildValue}` keep editable + compiled blobs in sync. |
+
+This table mirrors the “Canonical Path Schema” snapshot inside `docs/Plan_WidgetDeclarativeAPI.md`. Whenever the plan gains a row/column, update both this file and `docs/AI_PATHS.md` so downstream contributors always see the live schema.
 
 ### Theme resolver (November 18, 2025)
 
@@ -56,6 +67,7 @@ These nodes exist under every declarative widget root (`widgets/<widget-id>/…`
 | Path | Kind | Req | Notes |
 | --- | --- | --- | --- |
 | `state` | dir | req | Widget state payload (struct per widget type). |
+| `state/removed` | flag | opt | Logical removal marker. Runtime helpers leave the subtree intact but lifecycle workers immediately deregister and evict render buckets when this flips true. |
 | `style/theme` | value | opt | Theme override scoped to the widget subtree. |
 | `focus/order` | value | rt | Zero-based depth-first order assigned by the focus controller. |
 | `focus/disabled` | flag | opt | When true, the widget is skipped during traversal. |
@@ -63,11 +75,14 @@ These nodes exist under every declarative widget root (`widgets/<widget-id>/…`
 | `focus/current` | flag | rt | Boolean flag indicating the widget currently holds focus. |
 | `layout/{orientation,spacing,computed/*}` | value | opt/rt | Layout hints plus computed metrics. |
 | `children/<child-name>` | dir | opt | Nested widget fragments. |
+| `ops/inbox/queue` | queue | rt | Reducer input queue used by the declarative runtime when it needs to mutate widget-local state ahead of handler dispatch. |
+| `ops/actions/inbox/queue` | queue | rt | Reducer output queue; InputTask mirrors every action into the canonical event queues before resolving handlers. |
 | `events/<event>/handler` | callable | opt | Stores `HandlerBinding { registry_key, kind }`; runtime resolves registry ids to lambdas. Fragment specs carry handler metadata so `Widgets::Mount` re-registers them automatically, and scenes can override a binding with `Widgets::Handlers::{Replace,Wrap,Restore}` without touching the raw path. |
 | `events/inbox/queue` | queue | rt | Canonical `WidgetAction` stream populated by the declarative runtime. |
 | `events/<event>/queue` | queue | opt | Optional filtered queue (press/toggle/change/etc.) for tooling that only needs a single event family. |
 | `metrics/handlers/{invoked_total,failures_total,missing_total}` | value | rt | Per-widget handler telemetry recorded by the input runtime. |
 | `metrics/focus/{acquired_total,lost_total}` | value | rt | Counters tracking how often the widget gains or loses focus; useful for spotting flapping focus targets. |
+| `metrics/history_binding/*` | value | opt/rt | Present when `HistoryBinding` wraps the widget; records readiness, button enablement, undo/redo counters, and the serialized telemetry card. |
 | `render/synthesize` | value | req | `RenderDescriptor` describing the widget kind. |
 | `render/bucket` | value | rt | Cached `DrawableBucketSnapshot` rebuilt when `render/dirty` flips. |
 | `render/dirty` | flag | rt | Raised by helpers whenever state/style changes. |
@@ -76,6 +91,20 @@ These nodes exist under every declarative widget root (`widgets/<widget-id>/…`
 | `log/events` | queue | rt | Per-widget diagnostic log; the InputTask mirrors handler failures, reducer errors, enqueue drops, and slow-handler warnings (> configurable threshold) into this queue so tooling can audit misbehaving widgets without scraping global logs. |
 
 All widgets also inherit the global queues documented elsewhere (e.g., `widgets/<id>/ops/inbox/queue`, `ops/actions/inbox/queue`) plus the auto-render queue under the window target.
+
+### Composition rules & fragments
+
+- Treat every `WidgetFragment` as a fully-instantiated subspace. Mounting a fragment copies its subtree under `children/<name>`, rewrites handler bindings for the destination path, and re-registers callable nodes inside the handler registry so callbacks keep working.
+- Parent overrides win: when both the parent and the fragment define `events/<event>/handler`, `Widgets::Mount` preserves the parent handler unless the caller explicitly replaces it via the arg struct.
+- Containers that accept child fragments (`List`, `Tree`, `Stack`, paint controls, etc.) enumerate the fragment’s `children/*` and mount each child in order. Mount operations mark the parent `render/dirty`, enqueue `render/events/dirty`, and queue a synthetic auto-render event so new widgets appear immediately.
+- Undoable widgets should colocate all history-affecting nodes under the same root before enabling `HistoryBinding`. The helper sets up `UndoableSpace` mirrors, seeds telemetry, and toggles undo/redo buttons via `SetHistoryBindingButtonsEnabled`.
+
+### Dirty propagation & lifecycle
+
+1. Declarative helpers rewrite widget state and flip `render/dirty`; they also push the widget path into `render/events/dirty` so the lifecycle trellis notices the change.
+2. `SceneLifecycle::PumpSceneOnce` (manual) or the background lifecycle worker drains dirty queues, synthesizes `WidgetDescriptor` objects, rebuilds buckets, and records metrics under `runtime/lifecycle/metrics/*`.
+3. Updated buckets publish under `scene/structure/widgets/<widget>/render/bucket` and flow into `SceneSnapshotBuilder` revisions. Snapshot metadata mirrors to `scenes/<scene>/builds/<revision>/bucket/*` plus the summary files consumed by presenter targets.
+4. Renderer targets get notified via the normal dirty hint queue; presenters read `scene/runtime/focus/*`, `structure/window/<window>/focus/current`, and `renderers/<rid>/targets/<name>/output/*` to stay in sync. Focus updates also flip `widgets/<id>/focus/current` (boolean) and `structure/window/<window>/focus/current` (path string) so accessibility and inputs share the same data.
 
 ## Widget-specific nodes
 

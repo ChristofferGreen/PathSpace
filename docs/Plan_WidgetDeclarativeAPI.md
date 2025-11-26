@@ -193,9 +193,7 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
 
 1. **Schema definition**
    - ✅ (November 14, 2025) Canonical schema captured in `include/pathspace/ui/declarative/Schema.hpp`; docs updated (`docs/AI_PATHS.md`) to publish the shared namespaces and widget overlays.
-   - Inventory widgets and document required/optional fields, including `children`, `render/*`, `state/*`, and event nodes.
-   - Update `docs/AI_PATHS.md` with canonical layout.
-   - Ensure composition rules are defined (parents adopting child buckets/paths).
+   - ✅ (November 26, 2025) `docs/Widget_Schema_Reference.md` now enumerates every widget’s required vs. optional leaves (state/style/layout/children/events/render/metrics), documents fragment composition + dirty propagation rules, and mirrors the canonical application/window/scene/theme table. `docs/AI_PATHS.md` picked up the same canonical table so the plan, schema appendix, and namespace guide stay synchronized.
 2. **Event nodes**
    - Map each widget event to canonical `events/<event>/handler` nodes (single callable per event) and document defaults.
    - Provide helpers for installing/uninstalling handlers directly via PathSpace inserts so fragments and scenes can replace lambdas safely.

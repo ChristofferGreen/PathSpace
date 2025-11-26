@@ -96,6 +96,18 @@ Conventions:
 
 The following subtrees are standardized within each application root (one of the absolute roots above). See docs/Plan_SceneGraph_Renderer.md for detailed semantics and responsibilities.
 
+### Declarative canonical schema
+
+| Node | Base path | Required highlights | Notes |
+| --- | --- | --- | --- |
+| **Application** | `/system/applications/<app>` | `state/title`, `windows/<windowId>`, `scenes/<sceneId>`, `themes/<name>`, `events/lifecycle/handler` | Created by `SP::App::Create`; also seeds renderer + theme defaults referenced by declarative helpers. |
+| **Window** | `<app>/windows/<windowId>` | `state/title`, `state/visible`, `style/theme`, `views/<viewId>/{scene,surface,renderer,present}`, `widgets/<widgetName>`, `events/{close,focus}/handler`, `render/dirty` | `SP::Window::Create` mounts this subtree, registers `/system/widgets/runtime/windows/<token>` subscriptions, and becomes the parent for declarative widget roots. |
+| **Scene** | `<app>/scenes/<sceneId>` | `structure/widgets/<widgetPath>`, `structure/window/<windowId>/{focus,current,metrics/dpi}`, `views/<viewId>/dirty`, `snapshot/<rev>`, `metrics/*`, `events/present/handler`, `state/attached`, `render/dirty` | `SP::Scene::Create` spawns the lifecycle worker and wires the window view bindings; `SceneLifecycle::PumpSceneOnce` lives under this namespace. |
+| **Theme** | `<app>/themes/<name>` | `colors/<token>`, `typography/<token>`, `spacing/<token>`, `style/inherits`, compiled mirror at `config/theme/<name>/value` | Declarative widgets inherit `style/theme` from the widget → parent → window → application (`themes/default`) chain. |
+| **Widget root** | `<app>/windows/<windowId>/widgets/<widgetId>` | `state/*`, `layout/*`, `children/*`, `events/<event>/{handler,queue}`, `render/{synthesize,bucket,dirty}`, `focus/*`, `metrics/*`, `log/events` | Details live in `docs/Widget_Schema_Reference.md`; every widget also exposes `ops/{inbox,actions}/queue` plus the handler registry binding stored at `events/<event>/handler`. |
+
+Keep this table in sync with `docs/Plan_WidgetDeclarativeAPI.md` (“Canonical Path Schema”) and `docs/Widget_Schema_Reference.md`. Whenever you add or retire leaves under any of these anchors, update all three references in the same change so authors never have to reconcile conflicting schemas.
+
 - Scenes
   - `scenes/<scene-id>/`
     - `src/...` — authoring tree (mutable)
