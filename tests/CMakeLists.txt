@@ -12,6 +12,8 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/ext/test_alpaca.cpp
   unit/task/test_TaskPool.cpp
   unit/inspector/test_PaintScreenshotCard.cpp
+  unit/inspector/test_InspectorSnapshot.cpp
+  unit/inspector/test_InspectorHttpServer.cpp
   unit/test_PathSpace_read.cpp
   unit/test_PathSpace_nesting.cpp
   unit/test_PathSpace_extract.cpp

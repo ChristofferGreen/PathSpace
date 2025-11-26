@@ -32,6 +32,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(alpaca)
 
+FetchContent_Declare(
+    cpp_httplib
+    GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
+    GIT_TAG v0.15.3
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(cpp_httplib)
+
 # FetchContent_Declare(
 # foonathan_memory
 # GIT_TAG 016c9fb
@@ -73,6 +81,8 @@ add_library(PathSpace
     log/TaggedLogger.cpp
     PathSpace.cpp
     inspector/PaintScreenshotCard.cpp
+    inspector/InspectorSnapshot.cpp
+    inspector/InspectorHttpServer.cpp
     layer/PathSpaceTrellis.cpp
     io/IoEventsSerialization.cpp
     runtime/IOPump.cpp
@@ -270,6 +280,7 @@ target_include_directories(PathSpace
     ${cista_SOURCE_DIR}/include
     ${alpaca_SOURCE_DIR}/include
     ${foonathan_memory_SOURCE_DIR}/include
+    ${cpp_httplib_SOURCE_DIR}
 )
 
 # Opt-in debug logging to keep test runs fast by default
