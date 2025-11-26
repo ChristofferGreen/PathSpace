@@ -7,6 +7,7 @@
 
 #include <charconv>
 #include <chrono>
+#include <string_view>
 #include <system_error>
 #include <utility>
 
@@ -138,6 +139,15 @@ auto InspectorHttpServer::port() const -> std::uint16_t {
 }
 
 auto InspectorHttpServer::configure_routes(httplib::Server& server) -> void {
+    if (options_.enable_ui) {
+        server.Get("/", [this](httplib::Request const&, httplib::Response& res) {
+            this->handle_ui_request(res, "index.html");
+        });
+        server.Get("/index.html", [this](httplib::Request const&, httplib::Response& res) {
+            this->handle_ui_request(res, "index.html");
+        });
+    }
+
     server.Get("/inspector/tree", [this](httplib::Request const& req, httplib::Response& res) {
         auto options = options_.snapshot;
         if (auto root = req.get_param_value("root"); !root.empty()) {
@@ -208,6 +218,13 @@ auto InspectorHttpServer::configure_routes(httplib::Server& server) -> void {
         res.status = 200;
         res.set_content(SerializePaintScreenshotCard(*card), "application/json");
     });
+}
+
+auto InspectorHttpServer::handle_ui_request(httplib::Response& res, std::string_view asset) -> void {
+    auto bundle = LoadInspectorUiAsset(options_.ui_root, asset);
+    res.status  = 200;
+    res.set_content(bundle.content, bundle.content_type);
+    res.set_header("Cache-Control", "no-store");
 }
 
 } // namespace SP::Inspector

@@ -2,6 +2,7 @@
 
 #include "core/Error.hpp"
 #include "inspector/InspectorSnapshot.hpp"
+#include "inspector/InspectorUiAssets.hpp"
 #include "inspector/PaintScreenshotCard.hpp"
 
 #include <atomic>
@@ -30,6 +31,8 @@ public:
         int                        port      = 8765;
         InspectorSnapshotOptions   snapshot;
         PaintScreenshotCardOptions paint_card;
+        std::string                ui_root;
+        bool                       enable_ui = true;
     };
 
     explicit InspectorHttpServer(PathSpace& space);
@@ -50,6 +53,7 @@ public:
 
 private:
     auto configure_routes(httplib::Server& server) -> void;
+    auto handle_ui_request(httplib::Response& res, std::string_view asset) -> void;
 
     PathSpace&                  space_;
     Options                     options_;

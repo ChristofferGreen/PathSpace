@@ -83,6 +83,7 @@ add_library(PathSpace
     inspector/PaintScreenshotCard.cpp
     inspector/InspectorSnapshot.cpp
     inspector/InspectorHttpServer.cpp
+    inspector/InspectorUiAssets.cpp
     layer/PathSpaceTrellis.cpp
     io/IoEventsSerialization.cpp
     runtime/IOPump.cpp

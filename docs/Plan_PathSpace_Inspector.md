@@ -22,13 +22,14 @@
 ## Status Update — November 26, 2025
 - `InspectorSnapshot` (C++ API + JSON serializer) now walks declarative PathSpace trees with depth/child limits so we can serve canonical widget and diagnostics nodes without touching legacy builders.
 - `InspectorHttpServer` wraps the snapshot builder plus `BuildPaintScreenshotCard` behind `/inspector/tree`, `/inspector/node`, and `/inspector/cards/paint-example` HTTP endpoints (blocking GET, JSON responses, percent-encoded `root` support). The server embeds cleanly inside any process that already owns a `PathSpace`.
+- The bundled SPA now ships with the server: `/` serves an inline tree/detail UI (root/depth controls, node viewer, paint screenshot card) that talks directly to the JSON endpoints. Custom assets can be mounted with `InspectorHttpServer::Options::ui_root` or `pathspace_inspector_server --ui-root <dir>`, and `--no-ui` disables static serving when embedding the server behind an existing site.
 - `pathspace_inspector_server` is the thin CLI host (localhost binding, Ctrl+C shutdown) that seeds demo data when launched with no arguments. Apps should embed the server directly instead of shelling into the CLI, but the executable keeps tests and demos simple.
-- Phase 0 scope is effectively unblocked: backend JSON + manual refresh endpoints exist, configs live in code (`InspectorHttpServer::Options`), and tests cover both the snapshot builder and HTTP surface.
+- Phase 0 scope is complete: backend JSON + manual refresh endpoints exist, the SPA is served directly by `InspectorHttpServer`, configs live in code (`InspectorHttpServer::Options`), and tests cover both the snapshot builder and HTTP surface. Phase 1 onwards track SSE/search/distributed improvements.
 
 ### Immediate Follow-ups
-1. Build the browser panel that consumes `/inspector/tree` + `/inspector/node` and renders the tree/detail panes described below.
-2. Add SSE wiring once the web adapter backlog resumes (Phase 1) so `/inspector/stream` can share the same JSON payloads.
-3. Wire the paint screenshot dashboard card to the new endpoint and delete `scripts/paint_example_inspector_panel.py` once the UI migrates.
+1. Layer SSE + incremental diff handling into the SPA once `/inspector/stream` lands so live updates do not require manual refreshes.
+2. Add search/watchlist affordances to the SPA (front-end work can start now; backend indexing lives under Phase 1).
+3. Wire downstream dashboards to `/inspector/cards/paint-example` and retire the Python proxy once consumers migrate.
 
 ## Architecture Overview
 
@@ -64,8 +65,8 @@ PathSpace App ──(distributed mount)──> Web Server Inspector API ──SS
 - Auth via existing session; assume local PathSpace.
 - Document setup in README (e.g., `./scripts/run_inspector.sh`).
 - Include the paint example screenshot card by default: reuse `SP::Inspector::BuildPaintScreenshotCard`, showing severity, tolerance, last-run metadata, and artifact links. When a live PathSpace isn’t mounted, fall back to the aggregated JSON written by `scripts/paint_example_diagnostics_ingest.py` (the CLI already covers this flow).
-- Local preview now lives at `http://localhost:8765/` via `scripts/paint_example_inspector_panel.py`. The helper provides both JSON (`/api/cards/paint-example`) and SSE (`/api/cards/paint-example/events`) endpoints by shelling into `pathspace_paint_screenshot_card --json`, emitting `card` / `card-error` events whenever the diagnostics tree changes. Phase 0 may continue to rely on this helper; migrating the contract into the web adapter is optional and can wait until the adapter workstream resurfaces.
-- ✅ (November 26, 2025) `InspectorHttpServer` and the new `pathspace_inspector_server` demo host now cover the backend portion of this phase. Apps can embed the server next to their declarative PathSpace roots, and the CLI seeds demo data for quick manual testing. Remaining work: browser UI (tree/detail) plus documentation of the HTTP contract in the README.
+- Local preview now lives at `http://localhost:8765/` via `tools/inspector_server`. `/` serves the bundled SPA, `/inspector/*` exposes JSON endpoints, and `--ui-root <dir>` allows hot-reloading custom assets. The legacy `scripts/paint_example_inspector_panel.py` still proxies the paint screenshot card for SSE prototyping but is no longer required for standard workflows.
+- ✅ (November 26, 2025) `InspectorHttpServer`, the SPA, and the `pathspace_inspector_server` demo host now cover the entirety of Phase 0. Apps embed the server alongside their declarative PathSpace roots, the CLI seeds demo data for quick manual testing, and documentation now points at the bundled UI instead of the Python proxy.
 
 ### Phase 1 — Live Updates & Search
 - Add SSE streaming for incremental updates (insert/update/remove).
@@ -110,7 +111,7 @@ PathSpace App ──(distributed mount)──> Web Server Inspector API ──SS
 - Add README snippet showing how to launch the inspector and connect to a running app.
 
 ## Next Actions
-1. Finalize JSON schema and SSE diff format (coordinate with serialization task).
-2. Wire the browser panel to `InspectorHttpServer` (manual refresh for now), replacing the Python proxy with the new `/inspector/*` endpoints.
-3. Add backlog entries per phase (P1 for Phase 1 work items: SSE, search, watchlists).
-4. Update Plan Overview with inspector availability once the UI lands and document how to embed `InspectorHttpServer` inside apps.
+1. Finalize JSON schema + SSE diff format (coordinate with serialization task) so `/inspector/stream` can mirror `/inspector/tree`.
+2. Extend the SPA with search/watchlist panes and wire it to the upcoming SSE endpoint (fall back to polling when SSE is disabled).
+3. Add backlog entries per phase (P1 for Phase 1 work items: SSE, search, watchlists).
+4. Update Plan Overview with inspector availability once the UI + SSE path lands and document how to embed `InspectorHttpServer` inside apps (including `--ui-root` guidance).

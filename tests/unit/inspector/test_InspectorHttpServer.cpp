@@ -45,3 +45,34 @@ TEST_CASE("Inspector HTTP server serves snapshot JSON") {
     server.stop();
     server.join();
 }
+
+TEST_CASE("Inspector HTTP server serves embedded UI") {
+    SP::PathSpace space;
+
+    SP::Inspector::InspectorHttpServer::Options options;
+    options.host          = "127.0.0.1";
+    options.port          = 0;
+    options.enable_ui     = true;
+
+    SP::Inspector::InspectorHttpServer server(space, options);
+    auto                               started = server.start();
+    REQUIRE(started);
+
+    httplib::Client client("127.0.0.1", server.port());
+    client.set_connection_timeout(1, 0);
+    client.set_read_timeout(1, 0);
+
+    httplib::Result response;
+    for (int attempt = 0; attempt < 5 && !response; ++attempt) {
+        response = client.Get("/");
+        if (!response) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    }
+    REQUIRE(response);
+    CHECK(response->status == 200);
+    CHECK(response->body.find("PathSpace Inspector") != std::string::npos);
+
+    server.stop();
+    server.join();
+}

@@ -74,6 +74,12 @@ auto parse_arguments(int argc, char** argv, bool& demo) -> SP::Inspector::Inspec
             }
         } else if (arg == "--no-demo") {
             demo = false;
+        } else if (arg == "--ui-root") {
+            if (auto value = next_value()) {
+                options.ui_root = std::string{*value};
+            }
+        } else if (arg == "--no-ui") {
+            options.enable_ui = false;
         }
     }
     return options;
