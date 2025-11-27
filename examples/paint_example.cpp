@@ -7,7 +7,8 @@
 
 #include <pathspace/path/ConcretePath.hpp>
 #include <pathspace/core/Error.hpp>
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/Helpers.hpp>
 #include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
@@ -1297,7 +1298,7 @@ auto create_paint_window_context(SP::PathSpace& space, CommandLineOptions const&
         log_expected_error("enable framebuffer capture", capture_status.error());
         return std::nullopt;
     }
-    auto bind_scene = SP::UI::Builders::Surface::SetScene(space, present_handles.surface, scene.path);
+    auto bind_scene = SP::UI::Surface::SetScene(space, present_handles.surface, scene.path);
     if (!bind_scene) {
         log_expected_error("Surface::SetScene", bind_scene.error());
         return std::nullopt;

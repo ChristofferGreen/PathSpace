@@ -2,7 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/path/ConcretePath.hpp>
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
 #include <pathspace/ui/PathTypes.hpp>
 #include <pathspace/ui/declarative/ThemeConfig.hpp>
 #include <pathspace/ui/DrawCommands.hpp>

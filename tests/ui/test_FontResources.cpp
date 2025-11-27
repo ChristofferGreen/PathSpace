@@ -1,7 +1,7 @@
 #include "third_party/doctest.h"
 
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
 #include <pathspace/ui/FontAtlasCache.hpp>
 #include <pathspace/ui/FontManager.hpp>
 

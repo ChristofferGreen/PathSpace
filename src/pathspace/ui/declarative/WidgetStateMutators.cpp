@@ -3,7 +3,7 @@
 #include "WidgetEventCommon.hpp"
 #include <pathspace/ui/declarative/Detail.hpp>
 
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
 
 #include <algorithm>
 #include <optional>

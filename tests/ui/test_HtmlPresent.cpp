@@ -2,7 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/HtmlAdapter.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>

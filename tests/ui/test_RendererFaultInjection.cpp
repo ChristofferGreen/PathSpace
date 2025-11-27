@@ -2,7 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>

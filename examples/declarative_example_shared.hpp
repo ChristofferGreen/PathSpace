@@ -4,7 +4,7 @@
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/core/Error.hpp>
 #include <pathspace/runtime/IOPump.hpp>
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
 #include <pathspace/ui/PathTypes.hpp>
 #include <pathspace/ui/LocalWindowBridge.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>

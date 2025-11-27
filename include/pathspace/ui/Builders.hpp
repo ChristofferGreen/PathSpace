@@ -1,6 +1,6 @@
 #pragma once
 
-#if defined(PATHSPACE_DISABLE_LEGACY_BUILDERS)
+#if defined(PATHSPACE_DISABLE_LEGACY_BUILDERS) && !defined(PATHSPACE_LEGACY_ALLOW_BUILDERS_HEADER)
 #error "Legacy widget builders have been disabled (set PATHSPACE_DISABLE_LEGACY_BUILDERS=OFF or migrate to SP::UI::Declarative)."
 #endif
 

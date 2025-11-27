@@ -5,7 +5,8 @@
 #include "../../examples/declarative_example_shared.hpp"
 #include <pathspace/layer/io/PathIOMouse.hpp>
 #include <pathspace/system/Standard.hpp>
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/Helpers.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
 
@@ -86,8 +87,8 @@ void init_harness(TestHarness& harness) {
     REQUIRE(surface_rel);
     auto surface_abs = SP::App::resolve_app_relative(SP::App::AppRootPathView{app->getPath()}, *surface_rel);
     REQUIRE(surface_abs);
-    auto surface_path = SP::UI::Builders::SurfacePath{surface_abs->getPath()};
-    auto set_scene = SP::UI::Builders::Surface::SetScene(harness.space, surface_path, harness.scene.path);
+    auto surface_path = SP::UI::SurfacePath{surface_abs->getPath()};
+    auto set_scene = SP::UI::Surface::SetScene(harness.space, surface_path, harness.scene.path);
     REQUIRE(set_scene);
 
     auto present_handles = SP::UI::Declarative::BuildPresentHandles(harness.space,

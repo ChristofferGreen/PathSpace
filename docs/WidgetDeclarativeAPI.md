@@ -30,7 +30,7 @@ plus tests in sync. Read it before touching declarative UI code or examples.
 3. Include `<pathspace/ui/WidgetSharedTypes.hpp>` whenever you need the shared
    widget data (`WidgetTheme`, style structs, stack enums, handler payloads,
    `DirtyRectHint`, `WidgetAction`, etc.) without dragging in the rest of
-   `Builders.hpp`. Declarative headers/tests now pull from this header so you can
+   `BuildersShared.hpp`/`WidgetSharedTypes.hpp`. Declarative headers/tests now pull from these headers so you can
    manipulate widget data and telemetry independently of the legacy builder
    functions.
 2. `SP::App::Create` returns the canonical app root and registers renderer/theme
@@ -76,7 +76,7 @@ plus tests in sync. Read it before touching declarative UI code or examples.
      (no `Builders::Window::Present` dependency).
    - `PresentFrameToLocalWindow` still mirrors the legacy
      `PresentToLocalWindow` behaviour so interactive loops can blit IOSurfaces
-     or CPU framebuffers without including `Builders.hpp`.
+    or CPU framebuffers without including `BuildersShared.hpp`.
 
    `PathSpaceExamples::run_present_loop` now consumes these handles directly,
    and the screenshot service (`ScreenshotService::Capture`) calls the same
@@ -88,7 +88,7 @@ plus tests in sync. Read it before touching declarative UI code or examples.
    `ThemeConfig::{SanitizeName,Resolve,Ensure,Load,SetActive,LoadActive}` expose
    the canonical declarative entry points; the legacy
    `Builders::Config::Theme::*` functions now simply forward to them so you no
-   longer have to include `Builders.hpp` to work with theme metadata.
+  longer have to include `BuildersShared.hpp` to work with theme metadata.
 
 ## 3. Building Widgets Declaratively
 - **Create vs. Fragment**
@@ -143,7 +143,7 @@ plus tests in sync. Read it before touching declarative UI code or examples.
 - The legacy `SP::UI::Builders::Widgets::Reducers::*` functions still exist for compatibility, but they now forward to the declarative helpers after running the guard. Use them only in compatibility suites while we delete the remaining legacy builder coverage.
 
 ### Text bucket synthesis
-- Declarative code should include `pathspace/ui/declarative/Text.hpp` and call `SP::UI::Declarative::Text::BuildTextBucket` when labels or descriptor paths need text drawables. The helper shares the glyph shaping cache with the legacy builders but no longer drags the rest of `Builders.hpp` into declarative sources.
+- Declarative code should include `pathspace/ui/declarative/Text.hpp` and call `SP::UI::Declarative::Text::BuildTextBucket` when labels or descriptor paths need text drawables. The helper shares the glyph shaping cache with the legacy builders but no longer drags the rest of `BuildersShared.hpp` into declarative sources.
 - `include/pathspace/ui/TextBuilder.hpp` re-exports the declarative API so existing builder call sites continue to work; once legacy samples are gone we can delete the shim entirely.
 
 ### PaintSurface GPU staging

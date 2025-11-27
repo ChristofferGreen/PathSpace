@@ -1,6 +1,6 @@
 #include "third_party/doctest.h"
 
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
 
 namespace WidgetInput = SP::UI::Builders::Widgets::Input;
 namespace Widgets = SP::UI::Builders::Widgets;

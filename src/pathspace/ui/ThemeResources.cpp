@@ -1,4 +1,4 @@
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
 
 #include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 #include <pathspace/ui/declarative/ThemeConfig.hpp>

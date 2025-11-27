@@ -1,7 +1,7 @@
 #include "Common.hpp"
 
 #include <pathspace/path/ConcretePath.hpp>
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
 
 #include <atomic>
 #include <cstdint>

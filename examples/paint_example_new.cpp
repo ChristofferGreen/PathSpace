@@ -6,6 +6,7 @@
 #include <pathspace/examples/paint/PaintExampleNewUI.hpp>
 #include <pathspace/path/ConcretePath.hpp>
 #include <pathspace/system/Standard.hpp>
+#include <pathspace/ui/Helpers.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
 #include <pathspace/ui/declarative/StackReadiness.hpp>
@@ -295,8 +296,8 @@ auto bind_scene_to_surface(SP::PathSpace& space,
     if (!surface_abs) {
         return std::unexpected(surface_abs.error());
     }
-    auto surface_path = SP::UI::Builders::SurfacePath{surface_abs->getPath()};
-    return SP::UI::Builders::Surface::SetScene(space, surface_path, scene.path);
+    auto surface_path = SP::UI::SurfacePath{surface_abs->getPath()};
+    return SP::UI::Surface::SetScene(space, surface_path, scene.path);
 }
 
 } // namespace

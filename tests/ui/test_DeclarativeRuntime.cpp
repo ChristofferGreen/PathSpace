@@ -3,7 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/io/IoEvents.hpp>
 #include <pathspace/runtime/IOPump.hpp>
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
 #include <pathspace/ui/PathTypes.hpp>
 #include <pathspace/ui/declarative/InputTask.hpp>
 #include <pathspace/ui/declarative/Reducers.hpp>

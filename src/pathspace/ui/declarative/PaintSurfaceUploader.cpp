@@ -4,7 +4,7 @@
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/core/Out.hpp>
 #include <pathspace/path/ConcretePath.hpp>
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 

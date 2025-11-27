@@ -2,7 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/Helpers.hpp>
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
 
 #include <chrono>
 #include <cstddef>
@@ -91,15 +91,10 @@ TEST_CASE("Surface::SetScene requires shared app root") {
     auto helperOk = Surface::SetScene(fx.space, *surfacePath, *scenePath);
     CHECK(helperOk.has_value());
 
-    auto builderOk = SP::UI::Builders::Surface::SetScene(fx.space, *surfacePath, *scenePath);
-    CHECK(builderOk.has_value());
-
     SurfacePath foreignSurface{ "/system/applications/other_app/surfaces/editor" };
     auto helperMismatch = Surface::SetScene(fx.space, foreignSurface, *scenePath);
     CHECK_FALSE(helperMismatch.has_value());
-
-    auto builderMismatch = SP::UI::Builders::Surface::SetScene(fx.space, foreignSurface, *scenePath);
-    CHECK_FALSE(builderMismatch.has_value());
+    CHECK(helperMismatch.error().code == SP::Error::Code::InvalidPath);
 }
 
 TEST_CASE("Window::Create returns canonical path") {

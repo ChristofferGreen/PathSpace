@@ -10,7 +10,7 @@
 #include <pathspace/ui/declarative/Telemetry.hpp>
 #include <pathspace/ui/declarative/widgets/Common.hpp>
 
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
 
 #include <pathspace/path/ConcretePath.hpp>
 

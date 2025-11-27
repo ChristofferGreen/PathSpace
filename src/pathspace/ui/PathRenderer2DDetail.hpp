@@ -1,7 +1,7 @@
 #pragma once
 
 #include <pathspace/ui/PathRenderer2D.hpp>
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
 #include <pathspace/ui/FontAtlas.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/ImageCache.hpp>

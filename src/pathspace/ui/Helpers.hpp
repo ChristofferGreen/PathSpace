@@ -4,7 +4,7 @@
 
 #include "path/GlobPath.hpp"
 
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
 #include <pathspace/ui/PathTypes.hpp>
 
 namespace SP::UI {

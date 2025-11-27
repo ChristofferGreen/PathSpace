@@ -6,7 +6,7 @@
 #include <pathspace/ui/declarative/Reducers.hpp>
 #include <pathspace/ui/declarative/Telemetry.hpp>
 
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/runtime/IOPump.hpp>
 

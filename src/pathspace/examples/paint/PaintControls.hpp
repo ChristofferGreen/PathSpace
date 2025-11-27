@@ -1,6 +1,6 @@
 #pragma once
 
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
 #include <array>

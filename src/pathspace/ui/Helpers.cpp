@@ -1,7 +1,9 @@
 #include "Helpers.hpp"
 
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/app/AppPaths.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
 #include <pathspace/ui/LegacyBuildersDeprecation.hpp>
+#include <pathspace/ui/declarative/Detail.hpp>
 
 namespace SP::UI {
 
@@ -13,6 +15,28 @@ auto root_view(AppRootPath const& root) -> Builders::AppRootPathView {
 
 auto path_view(ConcretePath const& path) -> Builders::ConcretePathView {
     return Builders::ConcretePathView{path.getPath()};
+}
+
+auto relative_to_root(SP::App::AppRootPathView root,
+                      ConcretePathView absolute) -> SP::Expected<std::string> {
+    if (auto status = SP::App::ensure_within_app(root, absolute); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto const root_path = root.getPath();
+    auto const absolute_path = absolute.getPath();
+    if (absolute_path.size() == root_path.size()) {
+        return std::string{};
+    }
+    // ensure_absolute_path starts with root_path + '/'
+    if (absolute_path[root_path.size()] != '/') {
+        return std::unexpected(
+            SP::UI::Declarative::Detail::make_error(
+                "path '" + std::string(absolute_path) + "' is not nested under application root '"
+                + std::string(root_path) + "'",
+                SP::Error::Code::InvalidPath));
+    }
+    return std::string(absolute_path.substr(root_path.size() + 1));
 }
 
 } // namespace
@@ -93,7 +117,50 @@ auto Create(PathSpace& space,
 auto SetScene(PathSpace& space,
               SurfacePath const& surfacePath,
               ScenePath const& scenePath) -> SP::Expected<void> {
-    return Builders::Surface::SetScene(space, surfacePath, scenePath);
+    namespace Detail = SP::UI::Declarative::Detail;
+
+    auto surfaceRoot = Detail::derive_app_root_for(ConcretePathView{surfacePath.getPath()});
+    if (!surfaceRoot) {
+        return std::unexpected(surfaceRoot.error());
+    }
+    auto sceneRoot = Detail::derive_app_root_for(ConcretePathView{scenePath.getPath()});
+    if (!sceneRoot) {
+        return std::unexpected(sceneRoot.error());
+    }
+    if (surfaceRoot->getPath() != sceneRoot->getPath()) {
+        return std::unexpected(
+            Detail::make_error("surface and scene belong to different applications",
+                               SP::Error::Code::InvalidPath));
+    }
+
+    auto rootView = SP::App::AppRootPathView{surfaceRoot->getPath()};
+    auto sceneRelative = relative_to_root(rootView, ConcretePathView{scenePath.getPath()});
+    if (!sceneRelative) {
+        return std::unexpected(sceneRelative.error());
+    }
+
+    auto sceneField = std::string(surfacePath.getPath()) + "/scene";
+    if (auto status = Detail::replace_single<std::string>(space, sceneField, *sceneRelative); !status) {
+        return status;
+    }
+
+    auto targetField = std::string(surfacePath.getPath()) + "/target";
+    auto targetRelative = space.read<std::string, std::string>(targetField);
+    if (!targetRelative) {
+        if (targetRelative.error().code == SP::Error::Code::NoObjectFound) {
+            return std::unexpected(
+                Detail::make_error("surface missing target binding", SP::Error::Code::InvalidPath));
+        }
+        return std::unexpected(targetRelative.error());
+    }
+
+    auto targetAbsolute = SP::App::resolve_app_relative(rootView, *targetRelative);
+    if (!targetAbsolute) {
+        return std::unexpected(targetAbsolute.error());
+    }
+
+    auto targetScenePath = std::string(targetAbsolute->getPath()) + "/scene";
+    return Detail::replace_single<std::string>(space, targetScenePath, *sceneRelative);
 }
 
 auto RenderOnce(PathSpace& space,

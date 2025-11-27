@@ -2,7 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/BuildersShared.hpp>
 #include <pathspace/ui/FontManager.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/TextBuilder.hpp>

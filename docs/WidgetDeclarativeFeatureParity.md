@@ -40,7 +40,7 @@ Declarative loops, screenshot capture, and `SP::App::RunUI` now rely on
 `SP::UI::Declarative::{BuildPresentHandles,ResizePresentSurface,PresentWindowFrame,PresentFrameToLocalWindow}`
 for presenter plumbing. Those wrappers keep the renderer/surface/target wiring
 inside the declarative runtime, so top-level code and helpers no longer include
-`<pathspace/ui/Builders.hpp>` just to resize a surface or display a frame.
+`<pathspace/ui/BuildersShared.hpp>` just to resize a surface or display a frame.
 
 ## 4. Outstanding Gaps / Follow-ups
 
