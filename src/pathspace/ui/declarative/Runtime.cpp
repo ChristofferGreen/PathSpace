@@ -1,6 +1,5 @@
 #include <pathspace/ui/declarative/Runtime.hpp>
-
-#include "../BuildersDetail.hpp"
+#include <pathspace/ui/declarative/Detail.hpp>
 
 #include <pathspace/core/Error.hpp>
 #include <pathspace/ui/Helpers.hpp>
@@ -12,6 +11,10 @@
 #include <pathspace/io/IoTrellis.hpp>
 #include <pathspace/layer/io/PathIOMouse.hpp>
 #include <pathspace/layer/io/PathIOKeyboard.hpp>
+
+#if defined(__APPLE__)
+#include <CoreFoundation/CoreFoundation.h>
+#endif
 
 #include <chrono>
 #include <cctype>
@@ -28,7 +31,7 @@
 
 namespace {
 
-using namespace SP::UI::Builders::Detail;
+using namespace SP::UI::Declarative::Detail;
 using SP::PathSpace;
 using ScenePath = SP::UI::ScenePath;
 using WindowPath = SP::UI::WindowPath;

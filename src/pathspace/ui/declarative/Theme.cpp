@@ -1,6 +1,5 @@
 #include <pathspace/ui/declarative/Theme.hpp>
-
-#include "../BuildersDetail.hpp"
+#include <pathspace/ui/declarative/Detail.hpp>
 
 #include <pathspace/core/Error.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
@@ -18,9 +17,9 @@ namespace SP::UI::Declarative::Theme {
 
 namespace {
 
-using SP::UI::Builders::Detail::replace_single;
-using SP::UI::Builders::Detail::read_optional;
-using SP::UI::Builders::Detail::make_error;
+using SP::UI::Declarative::Detail::replace_single;
+using SP::UI::Declarative::Detail::read_optional;
+using SP::UI::Declarative::Detail::make_error;
 namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
 using Color = std::array<float, 4>;
 

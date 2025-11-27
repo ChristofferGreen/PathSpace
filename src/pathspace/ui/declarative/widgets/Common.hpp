@@ -1,8 +1,7 @@
 #pragma once
 
+#include <pathspace/ui/declarative/Detail.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
-
-#include "../../BuildersDetail.hpp"
 
 #include <string>
 #include <string_view>
@@ -10,14 +9,17 @@
 
 namespace SP::UI::Declarative::Detail {
 
-namespace BuilderDetail = SP::UI::Builders::Detail;
 namespace BuilderWidgets = SP::UI::Builders::Widgets;
+namespace DeclarativeDetail = SP::UI::Declarative::Detail;
 
-auto make_error(std::string message,
-                SP::Error::Code code = SP::Error::Code::UnknownError) -> SP::Error;
+using DeclarativeDetail::make_error;
 
-auto ensure_widget_name(std::string_view name) -> SP::Expected<void>;
-auto ensure_child_name(std::string_view name) -> SP::Expected<void>;
+inline auto ensure_widget_name(std::string_view name) -> SP::Expected<void> {
+    return DeclarativeDetail::ensure_identifier(name, "widget name");
+}
+inline auto ensure_child_name(std::string_view name) -> SP::Expected<void> {
+    return DeclarativeDetail::ensure_identifier(name, "child name");
+}
 
 auto make_path(std::string base, std::string_view component) -> std::string;
 auto mount_base(std::string_view parent, MountOptions const& options) -> std::string;
@@ -26,7 +28,7 @@ template <typename T>
 inline auto write_value(PathSpace& space,
                         std::string const& path,
                         T const& value) -> SP::Expected<void> {
-    if (auto status = BuilderDetail::replace_single<T>(space, path, value); !status) {
+    if (auto status = DeclarativeDetail::replace_single<T>(space, path, value); !status) {
         return std::unexpected(status.error());
     }
     return {};

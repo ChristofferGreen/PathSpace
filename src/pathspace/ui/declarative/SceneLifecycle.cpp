@@ -6,10 +6,9 @@
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/SceneUtilities.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
+#include <pathspace/ui/declarative/Detail.hpp>
 #include <pathspace/ui/declarative/Telemetry.hpp>
 #include <pathspace/ui/declarative/widgets/Common.hpp>
-
-#include "../BuildersDetail.hpp"
 
 #include <pathspace/ui/Builders.hpp>
 
@@ -41,7 +40,7 @@ namespace SP::UI::Declarative::SceneLifecycle {
 
 namespace {
 
-namespace BuilderDetail = SP::UI::Builders::Detail;
+namespace DeclarativeDetail = SP::UI::Declarative::Detail;
 namespace BuilderRenderer = SP::UI::Builders::Renderer;
 using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
 namespace Telemetry = SP::UI::Declarative::Telemetry;
@@ -180,7 +179,7 @@ struct SceneLifecycleWorker {
         }
         fail_all_force_publish_requests(SP::Error{SP::Error::Code::UnknownError, "scene lifecycle worker stopped"});
         fail_all_manual_pump_requests(SP::Error{SP::Error::Code::UnknownError, "scene lifecycle worker stopped"});
-        (void)BuilderDetail::replace_single<bool>(space_, scene_path_ + "/runtime/lifecycle/state/running", false);
+        (void)DeclarativeDetail::replace_single<bool>(space_, scene_path_ + "/runtime/lifecycle/state/running", false);
     }
 
     void request_theme_invalidation() {
@@ -496,7 +495,7 @@ private:
         write_metric("pending_publish", false);
         write_metric("force_publish_inflight", static_cast<std::uint64_t>(0));
         write_metric("force_publish_last_error", std::string{});
-        (void)BuilderDetail::replace_single<bool>(space_, scene_path_ + "/runtime/lifecycle/state/running", true);
+        (void)DeclarativeDetail::replace_single<bool>(space_, scene_path_ + "/runtime/lifecycle/state/running", true);
         return {};
     }
 
@@ -567,7 +566,7 @@ private:
             cleanup_widget(widget_root);
             return;
         }
-        (void)BuilderDetail::replace_single<bool>(space_, widget_root + "/render/dirty", true);
+        (void)DeclarativeDetail::replace_single<bool>(space_, widget_root + "/render/dirty", true);
         auto event_path = widget_root + "/render/events/dirty";
         (void)space_.insert(event_path, widget_root);
         auto children_root = widget_root + "/children";
@@ -666,7 +665,7 @@ private:
             if (current_version && *current_version != observed_version) {
                 return;
             }
-            (void)BuilderDetail::replace_single<bool>(space_, widget_path + "/render/dirty", false);
+            (void)DeclarativeDetail::replace_single<bool>(space_, widget_path + "/render/dirty", false);
             cleared = true;
         };
         auto schema_start = std::chrono::steady_clock::now();
@@ -701,7 +700,7 @@ private:
         auto relative = make_relative(widget_path);
         auto structure_base = scene_path_ + "/structure/widgets" + relative;
         auto bucket_path = structure_base + "/render/bucket";
-        if (auto stored = BuilderDetail::replace_single(space_, bucket_path, *bucket); !stored) {
+        if (auto stored = DeclarativeDetail::replace_single(space_, bucket_path, *bucket); !stored) {
             clear_dirty();
             return;
         }
@@ -835,7 +834,7 @@ private:
         have_published_ = true;
         write_metric("last_revision", last_revision_);
         write_metric("last_published_ms", to_epoch_ms(now));
-        (void)BuilderDetail::replace_single<std::string>(space_, metrics_base_ + "/last_published_widget", reason);
+        (void)DeclarativeDetail::replace_single<std::string>(space_, metrics_base_ + "/last_published_widget", reason);
         if (request_id) {
             complete_force_publish_request(*request_id, revision);
         }
@@ -843,7 +842,7 @@ private:
     }
 
     void record_publish_failure(SP::Error const& error) {
-        (void)BuilderDetail::replace_single<std::string>(space_,
+        (void)DeclarativeDetail::replace_single<std::string>(space_,
                                                          metrics_base_ + "/last_error",
                                                          error.message.value_or("scene publish failed"));
     }
@@ -902,7 +901,7 @@ private:
             return;
         }
         auto pending_path = widget_path + "/render/buffer/pendingDirty";
-        auto pending = BuilderDetail::read_optional<std::vector<DirtyRectHint>>(space_, pending_path);
+        auto pending = DeclarativeDetail::read_optional<std::vector<DirtyRectHint>>(space_, pending_path);
         if (!pending || !pending->has_value()) {
             return;
         }
@@ -915,7 +914,7 @@ private:
         if (!submitted) {
             return;
         }
-        (void)BuilderDetail::replace_single(space_, pending_path, std::vector<DirtyRectHint>{});
+        (void)DeclarativeDetail::replace_single(space_, pending_path, std::vector<DirtyRectHint>{});
     }
 
     void remove_widget_bucket(std::string const& widget_path) {
@@ -987,7 +986,7 @@ private:
         auto relative = make_relative(widget_root);
         auto structure_base = scene_path_ + "/structure/widgets" + relative;
         auto bucket_path = structure_base + "/render/bucket";
-        (void)BuilderDetail::replace_single(space_, bucket_path, SP::UI::Scene::DrawableBucketSnapshot{});
+        (void)DeclarativeDetail::replace_single(space_, bucket_path, SP::UI::Scene::DrawableBucketSnapshot{});
     }
 
     void cleanup_widget_subtree(std::string const& widget_root) {
@@ -1027,7 +1026,7 @@ private:
 
     template <typename T>
     void write_metric(std::string const& leaf, T const& value) {
-        (void)BuilderDetail::replace_single<T>(space_, metrics_base_ + "/" + leaf, value);
+        (void)DeclarativeDetail::replace_single<T>(space_, metrics_base_ + "/" + leaf, value);
     }
 
     void handle_worker_exception(std::string_view reason) noexcept {
@@ -1040,7 +1039,7 @@ private:
             sp_log("SceneLifecycleWorker[" + scene_path_ + "] failed to write last_error metric", "SceneLifecycle");
         }
         try {
-            (void)BuilderDetail::replace_single<bool>(space_,
+            (void)DeclarativeDetail::replace_single<bool>(space_,
                                                       scene_path_ + "/runtime/lifecycle/state/running",
                                                       false);
         } catch (...) {

@@ -1,6 +1,5 @@
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 
-#include "../BuildersDetail.hpp"
 #include "widgets/Common.hpp"
 
 #include <pathspace/app/AppPaths.hpp>
@@ -22,8 +21,8 @@ namespace SP::UI::Declarative::PaintRuntime {
 
 namespace {
 
-namespace BuilderDetail = SP::UI::Builders::Detail;
 namespace WidgetDetail = SP::UI::Declarative::Detail;
+namespace DeclarativeDetail = SP::UI::Declarative::Detail;
 using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
 using SP::UI::Builders::Widgets::Bindings::WidgetOpKind;
 
@@ -108,7 +107,7 @@ auto extract_widget_address(std::string const& widget_path) -> std::optional<Wid
 auto read_layout_size(PathSpace& space, std::string const& widget_path)
     -> SP::Expected<std::optional<LayoutSize>> {
     auto path = widget_path + "/layout/computed/size";
-    auto stored = BuilderDetail::read_optional<std::array<float, 2>>(space, path);
+    auto stored = DeclarativeDetail::read_optional<std::array<float, 2>>(space, path);
     if (!stored) {
         return std::unexpected(stored.error());
     }
@@ -122,7 +121,7 @@ auto read_layout_size(PathSpace& space, std::string const& widget_path)
 
 auto read_window_dpi(PathSpace& space, WidgetAddress const& address) -> SP::Expected<float> {
     auto scene_leaf = address.window_path + "/views/" + address.view_name + "/scene";
-    auto scene_relative = BuilderDetail::read_optional<std::string>(space, scene_leaf);
+    auto scene_relative = DeclarativeDetail::read_optional<std::string>(space, scene_leaf);
     if (!scene_relative) {
         return std::unexpected(scene_relative.error());
     }
@@ -142,7 +141,7 @@ auto read_window_dpi(PathSpace& space, WidgetAddress const& address) -> SP::Expe
     metrics_path.append(address.window_name);
     metrics_path.append("/metrics/dpi");
 
-    auto dpi_value = BuilderDetail::read_optional<double>(space, metrics_path);
+    auto dpi_value = DeclarativeDetail::read_optional<double>(space, metrics_path);
     if (!dpi_value) {
         return std::unexpected(dpi_value.error());
     }
@@ -189,7 +188,7 @@ auto write_buffer_metrics(PathSpace& space,
     bool mutated = false;
     auto width_path = widget_path + "/render/buffer/metrics/width";
     if (metrics->width != pixels.width) {
-        if (auto status = BuilderDetail::replace_single(space, width_path, pixels.width); !status) {
+        if (auto status = DeclarativeDetail::replace_single(space, width_path, pixels.width); !status) {
             return std::unexpected(status.error());
         }
         mutated = true;
@@ -197,7 +196,7 @@ auto write_buffer_metrics(PathSpace& space,
 
     auto height_path = widget_path + "/render/buffer/metrics/height";
     if (metrics->height != pixels.height) {
-        if (auto status = BuilderDetail::replace_single(space, height_path, pixels.height); !status) {
+        if (auto status = DeclarativeDetail::replace_single(space, height_path, pixels.height); !status) {
             return std::unexpected(status.error());
         }
         mutated = true;
@@ -205,7 +204,7 @@ auto write_buffer_metrics(PathSpace& space,
 
     auto dpi_path = widget_path + "/render/buffer/metrics/dpi";
     if (metrics->dpi != dpi) {
-        if (auto status = BuilderDetail::replace_single(space, dpi_path, dpi); !status) {
+        if (auto status = DeclarativeDetail::replace_single(space, dpi_path, dpi); !status) {
             return std::unexpected(status.error());
         }
         mutated = true;
@@ -218,7 +217,7 @@ auto write_buffer_metrics(PathSpace& space,
         .max_y = static_cast<float>(pixels.height),
     };
     auto viewport_path = widget_path + "/render/buffer/viewport";
-    if (auto status = BuilderDetail::replace_single(space, viewport_path, viewport); !status) {
+    if (auto status = DeclarativeDetail::replace_single(space, viewport_path, viewport); !status) {
         return std::unexpected(status.error());
     }
 
@@ -246,14 +245,14 @@ auto write_buffer_metrics(PathSpace& space,
 
 template <typename T>
 auto ensure_value(PathSpace& space, std::string const& path, T const& value) -> SP::Expected<void> {
-    auto existing = BuilderDetail::read_optional<T>(space, path);
+    auto existing = DeclarativeDetail::read_optional<T>(space, path);
     if (!existing) {
         return std::unexpected(existing.error());
     }
     if (existing->has_value()) {
         return {};
     }
-    return BuilderDetail::replace_single(space, path, value);
+    return DeclarativeDetail::replace_single(space, path, value);
 }
 
 auto log_gpu_event(PathSpace& space, std::string const& widget_path, std::string_view message) -> void {
@@ -292,14 +291,14 @@ auto write_gpu_state(PathSpace& space,
                      std::string const& widget_path,
                      PaintGpuState state) -> void {
     auto path = widget_path + "/render/gpu/state";
-    (void)BuilderDetail::replace_single(space,
+    (void)DeclarativeDetail::replace_single(space,
                                         path,
                                         std::string(PaintGpuStateToString(state)));
 }
 
 auto read_gpu_state(PathSpace& space, std::string const& widget_path) -> PaintGpuState {
     auto path = widget_path + "/render/gpu/state";
-    auto stored = BuilderDetail::read_optional<std::string>(space, path);
+    auto stored = DeclarativeDetail::read_optional<std::string>(space, path);
     if (!stored || !stored->has_value()) {
         return PaintGpuState::Idle;
     }
@@ -337,7 +336,7 @@ auto append_pending_dirty(PathSpace& space,
         return {};
     }
     auto pending_path = widget_path + "/render/buffer/pendingDirty";
-    auto pending = BuilderDetail::read_optional<std::vector<DirtyRectHint>>(space, pending_path);
+    auto pending = DeclarativeDetail::read_optional<std::vector<DirtyRectHint>>(space, pending_path);
     if (!pending) {
         return std::unexpected(pending.error());
     }
@@ -346,7 +345,7 @@ auto append_pending_dirty(PathSpace& space,
     if (values.size() > kMaxPendingDirty) {
         values.erase(values.begin(), values.end() - kMaxPendingDirty);
     }
-    return BuilderDetail::replace_single(space, pending_path, values);
+    return DeclarativeDetail::replace_single(space, pending_path, values);
 }
 
 auto enqueue_dirty_hint(PathSpace& space,
@@ -365,7 +364,7 @@ auto enqueue_dirty_hint(PathSpace& space,
 
 auto gpu_enabled(PathSpace& space, std::string const& widget_path) -> bool {
     auto path = widget_path + "/render/gpu/enabled";
-    auto value = BuilderDetail::read_optional<bool>(space, path);
+    auto value = DeclarativeDetail::read_optional<bool>(space, path);
     if (!value || !value->has_value()) {
         return false;
     }
@@ -374,12 +373,12 @@ auto gpu_enabled(PathSpace& space, std::string const& widget_path) -> bool {
 
 auto increment_revision(PathSpace& space, std::string const& widget_path) -> void {
     auto path = widget_path + "/render/buffer/revision";
-    auto current = BuilderDetail::read_optional<std::uint64_t>(space, path);
+    auto current = DeclarativeDetail::read_optional<std::uint64_t>(space, path);
     if (!current) {
         return;
     }
     auto value = current->value_or(0);
-    (void)BuilderDetail::replace_single(space, path, value + 1);
+    (void)DeclarativeDetail::replace_single(space, path, value + 1);
 }
 
 auto parse_stroke_id(std::string const& component) -> std::optional<std::uint64_t> {
@@ -406,7 +405,7 @@ auto parse_child_id(std::string const& name) -> std::optional<std::uint64_t> {
 
 auto read_brush_size(PathSpace& space, std::string const& widget_path) -> SP::Expected<float> {
     auto path = widget_path + "/state/brush/size";
-    auto value = BuilderDetail::read_optional<float>(space, path);
+    auto value = DeclarativeDetail::read_optional<float>(space, path);
     if (!value) {
         return std::unexpected(value.error());
     }
@@ -416,7 +415,7 @@ auto read_brush_size(PathSpace& space, std::string const& widget_path) -> SP::Ex
 auto read_brush_color(PathSpace& space, std::string const& widget_path)
     -> SP::Expected<std::array<float, 4>> {
     auto path = widget_path + "/state/brush/color";
-    auto value = BuilderDetail::read_optional<std::array<float, 4>>(space, path);
+    auto value = DeclarativeDetail::read_optional<std::array<float, 4>>(space, path);
     if (!value) {
         return std::unexpected(value.error());
     }
@@ -461,15 +460,15 @@ auto read_points(PathSpace& space, std::string const& widget_path, std::uint64_t
     auto points_leaf = points_path(widget_path, stroke_id);
     auto version_leaf = points_version_path(widget_path, stroke_id);
     for (int attempt = 0; attempt < kMaxStrokeReadAttempts; ++attempt) {
-        auto version_before = BuilderDetail::read_optional<std::uint64_t>(space, version_leaf);
+        auto version_before = DeclarativeDetail::read_optional<std::uint64_t>(space, version_leaf);
         if (!version_before) {
             return std::unexpected(version_before.error());
         }
-        auto points = BuilderDetail::read_optional<std::vector<PaintStrokePoint>>(space, points_leaf);
+        auto points = DeclarativeDetail::read_optional<std::vector<PaintStrokePoint>>(space, points_leaf);
         if (!points) {
             return std::unexpected(points.error());
         }
-        auto version_after = BuilderDetail::read_optional<std::uint64_t>(space, version_leaf);
+        auto version_after = DeclarativeDetail::read_optional<std::uint64_t>(space, version_leaf);
         if (!version_after) {
             return std::unexpected(version_after.error());
         }
@@ -479,14 +478,14 @@ auto read_points(PathSpace& space, std::string const& widget_path, std::uint64_t
             return points->value_or(std::vector<PaintStrokePoint>{});
         }
     }
-    return std::unexpected(BuilderDetail::make_error("paint stroke points mutated during read",
+    return std::unexpected(DeclarativeDetail::make_error("paint stroke points mutated during read",
                                                      SP::Error::Code::Timeout));
 }
 
 auto read_points_version(PathSpace& space, std::string const& widget_path, std::uint64_t stroke_id)
     -> SP::Expected<std::uint64_t> {
     auto path = points_version_path(widget_path, stroke_id);
-    auto value = BuilderDetail::read_optional<std::uint64_t>(space, path);
+    auto value = DeclarativeDetail::read_optional<std::uint64_t>(space, path);
     if (!value) {
         return std::unexpected(value.error());
     }
@@ -496,7 +495,7 @@ auto read_points_version(PathSpace& space, std::string const& widget_path, std::
 auto read_meta(PathSpace& space, std::string const& widget_path, std::uint64_t stroke_id)
     -> SP::Expected<std::optional<PaintStrokeMeta>> {
     auto path = meta_path(widget_path, stroke_id);
-    auto value = BuilderDetail::read_optional<PaintStrokeMeta>(space, path);
+    auto value = DeclarativeDetail::read_optional<PaintStrokeMeta>(space, path);
     if (!value) {
         return std::unexpected(value.error());
     }
@@ -508,11 +507,11 @@ auto write_stroke(PathSpace& space,
                   std::uint64_t stroke_id,
                   PaintStrokeMeta const& meta,
                   std::vector<PaintStrokePoint> const& points) -> SP::Expected<void> {
-    auto meta_status = BuilderDetail::replace_single(space, meta_path(widget_path, stroke_id), meta);
+    auto meta_status = DeclarativeDetail::replace_single(space, meta_path(widget_path, stroke_id), meta);
     if (!meta_status) {
         return meta_status;
     }
-    auto points_status = BuilderDetail::replace_single(space,
+    auto points_status = DeclarativeDetail::replace_single(space,
                                                        points_path(widget_path, stroke_id),
                                                        points);
     if (!points_status) {
@@ -523,7 +522,7 @@ auto write_stroke(PathSpace& space,
         return std::unexpected(version.error());
     }
     auto next = *version + 1;
-    return BuilderDetail::replace_single(space, points_version_path(widget_path, stroke_id), next);
+    return DeclarativeDetail::replace_single(space, points_version_path(widget_path, stroke_id), next);
 }
 
 } // namespace
@@ -706,7 +705,7 @@ auto HandleAction(PathSpace& space, WidgetAction const& action) -> SP::Expected<
     }
 
     if (*updated) {
-        (void)BuilderDetail::replace_single(space,
+        (void)DeclarativeDetail::replace_single(space,
                                             action.widget_path + "/state/history/last_stroke_id",
                                             *stroke_id);
         auto dirty = WidgetDetail::mark_render_dirty(space, action.widget_path);

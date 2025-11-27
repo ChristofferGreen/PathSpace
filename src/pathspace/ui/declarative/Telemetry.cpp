@@ -1,6 +1,5 @@
 #include <pathspace/ui/declarative/Telemetry.hpp>
-
-#include "../BuildersDetail.hpp"
+#include <pathspace/ui/declarative/Detail.hpp>
 
 #include <chrono>
 #include <sstream>
@@ -8,7 +7,7 @@
 
 namespace SP::UI::Declarative::Telemetry {
 namespace {
-namespace BuilderDetail = SP::UI::Builders::Detail;
+namespace Detail = SP::UI::Declarative::Detail;
 
 constexpr std::string_view kSchemaMetricsBase = "/system/widgets/runtime/schema/metrics";
 constexpr std::string_view kSchemaLogPath = "/system/widgets/runtime/schema/log/events";
@@ -22,15 +21,15 @@ auto now_ms() -> std::uint64_t {
 
 template <typename T>
 void assign(PathSpace& space, std::string const& path, T const& value) {
-    (void)BuilderDetail::replace_single<T>(space, path, value);
+    (void)Detail::replace_single<T>(space, path, value);
 }
 
 template <typename T>
 void increment(PathSpace& space, std::string const& path, T delta) {
-    auto existing = BuilderDetail::read_optional<T>(space, path);
+    auto existing = Detail::read_optional<T>(space, path);
     T value = (existing && existing->has_value()) ? **existing : T{};
     value += delta;
-    (void)BuilderDetail::replace_single<T>(space, path, value);
+    (void)Detail::replace_single<T>(space, path, value);
 }
 
 void append_log(PathSpace& space, std::string const& path, std::string const& message) {
@@ -148,4 +147,3 @@ void AppendRenderCompareLog(PathSpace& space,
 }
 
 } // namespace SP::UI::Declarative::Telemetry
-

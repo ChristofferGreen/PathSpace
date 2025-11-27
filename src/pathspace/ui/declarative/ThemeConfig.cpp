@@ -1,6 +1,5 @@
 #include <pathspace/ui/declarative/ThemeConfig.hpp>
-
-#include "../BuildersDetail.hpp"
+#include <pathspace/ui/declarative/Detail.hpp>
 
 #include <pathspace/core/Error.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
@@ -14,7 +13,7 @@
 
 namespace SP::UI::Declarative::ThemeConfig {
 
-using namespace SP::UI::Builders::Detail;
+using namespace SP::UI::Declarative::Detail;
 
 namespace {
 

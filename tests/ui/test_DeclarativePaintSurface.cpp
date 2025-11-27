@@ -4,6 +4,7 @@
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
+#include <pathspace/ui/declarative/Detail.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
@@ -20,7 +21,7 @@ using WidgetAction = SP::UI::Builders::Widgets::Reducers::WidgetAction;
 using WidgetOpKind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind;
 using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
 namespace PaintRuntime = SP::UI::Declarative::PaintRuntime;
-namespace BuilderDetail = SP::UI::Builders::Detail;
+namespace BuilderDetail = SP::UI::Declarative::Detail;
 
 struct RuntimeGuard {
     explicit RuntimeGuard(SP::PathSpace& s) : space(s) {}

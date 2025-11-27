@@ -1,6 +1,5 @@
 #include <pathspace/ui/declarative/InputTask.hpp>
-
-#include "../BuildersDetail.hpp"
+#include <pathspace/ui/declarative/Detail.hpp>
 #include "widgets/Common.hpp"
 
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
@@ -27,7 +26,7 @@ namespace SP::UI::Declarative {
 namespace {
 
 using namespace SP::UI::Builders;
-using namespace SP::UI::Builders::Detail;
+using namespace SP::UI::Declarative::Detail;
 namespace WidgetReducers = SP::UI::Builders::Widgets::Reducers;
 using SP::UI::Declarative::ButtonContext;
 using SP::UI::Declarative::HandlerBinding;

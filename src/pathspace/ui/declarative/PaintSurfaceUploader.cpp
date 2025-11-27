@@ -1,6 +1,5 @@
 #include <pathspace/ui/declarative/PaintSurfaceUploader.hpp>
-
-#include "../BuildersDetail.hpp"
+#include <pathspace/ui/declarative/Detail.hpp>
 
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/core/Out.hpp>
@@ -29,21 +28,21 @@ namespace SP::UI::Declarative {
 
 namespace {
 
-namespace BuilderDetail = SP::UI::Builders::Detail;
+namespace Detail = SP::UI::Declarative::Detail;
 using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
 
 constexpr std::string_view kAppsRoot = "/system/applications";
 
 template <typename T>
 auto ensure_value(PathSpace& space, std::string const& path, T const& value) -> SP::Expected<void> {
-    auto existing = BuilderDetail::read_optional<T>(space, path);
+    auto existing = Detail::read_optional<T>(space, path);
     if (!existing) {
         return std::unexpected(existing.error());
     }
     if (existing->has_value()) {
         return {};
     }
-    return BuilderDetail::replace_single(space, path, value);
+    return Detail::replace_single(space, path, value);
 }
 
 auto now_ns() -> std::uint64_t {
@@ -52,7 +51,7 @@ auto now_ns() -> std::uint64_t {
 }
 
 auto read_gpu_state(PathSpace& space, std::string const& widget_path) -> PaintGpuState {
-    auto state = BuilderDetail::read_optional<std::string>(space, widget_path + "/render/gpu/state");
+    auto state = Detail::read_optional<std::string>(space, widget_path + "/render/gpu/state");
     if (!state || !state->has_value()) {
         return PaintGpuState::Idle;
     }
@@ -62,13 +61,13 @@ auto read_gpu_state(PathSpace& space, std::string const& widget_path) -> PaintGp
 auto set_gpu_state(PathSpace& space,
                    std::string const& widget_path,
                    PaintGpuState state) -> void {
-    (void)BuilderDetail::replace_single(space,
+    (void)Detail::replace_single(space,
                                         widget_path + "/render/gpu/state",
                                         std::string(PaintGpuStateToString(state)));
 }
 
 auto gpu_enabled(PathSpace& space, std::string const& widget_path) -> bool {
-    auto enabled = BuilderDetail::read_optional<bool>(space, widget_path + "/render/gpu/enabled");
+    auto enabled = Detail::read_optional<bool>(space, widget_path + "/render/gpu/enabled");
     if (!enabled || !enabled->has_value()) {
         return false;
     }
@@ -111,7 +110,7 @@ public:
         if (worker_.joinable()) {
             worker_.join();
         }
-        (void)BuilderDetail::replace_single(space_, options_.state_path, false);
+        (void)Detail::replace_single(space_, options_.state_path, false);
     }
 
 private:
@@ -143,7 +142,7 @@ private:
         if (auto status = ensure_value(space_, last_duration, std::uint64_t{0}); !status) {
             return status;
         }
-        (void)BuilderDetail::replace_single(space_, options_.state_path, true);
+        (void)Detail::replace_single(space_, options_.state_path, true);
         return {};
     }
 
@@ -174,19 +173,19 @@ private:
         std::string path = options_.metrics_root;
         path.push_back('/');
         path.append(leaf);
-        (void)BuilderDetail::replace_single(space_, path, value);
+        (void)Detail::replace_single(space_, path, value);
     }
 
     void increment_metric(std::string_view leaf, std::uint64_t delta = 1) {
         std::string path = options_.metrics_root;
         path.push_back('/');
         path.append(leaf);
-        auto current = BuilderDetail::read_optional<std::uint64_t>(space_, path);
+        auto current = Detail::read_optional<std::uint64_t>(space_, path);
         if (!current || !current->has_value()) {
-            (void)BuilderDetail::replace_single(space_, path, delta);
+            (void)Detail::replace_single(space_, path, delta);
             return;
         }
-        (void)BuilderDetail::replace_single(space_, path, **current + delta);
+        (void)Detail::replace_single(space_, path, **current + delta);
     }
 
     void log_error(std::string message) {
@@ -199,7 +198,7 @@ private:
     void upload_widget(std::string const& widget_path, PaintGpuState state) {
         set_gpu_state(space_, widget_path, PaintGpuState::Uploading);
         auto start_ns = now_ns();
-        (void)BuilderDetail::replace_single(space_, widget_path + "/render/gpu/fence/start", start_ns);
+        (void)Detail::replace_single(space_, widget_path + "/render/gpu/fence/start", start_ns);
 
         auto metrics = PaintRuntime::ReadBufferMetrics(space_, widget_path);
         if (!metrics) {
@@ -211,7 +210,7 @@ private:
             fail_widget(widget_path, strokes.error().message.value_or("failed to load strokes"));
             return;
         }
-        auto revision = BuilderDetail::read_optional<std::uint64_t>(space_, widget_path + "/render/buffer/revision");
+        auto revision = Detail::read_optional<std::uint64_t>(space_, widget_path + "/render/buffer/revision");
         std::uint64_t current_revision = 0;
         if (revision && revision->has_value()) {
             current_revision = **revision;
@@ -221,17 +220,17 @@ private:
         rasterized.payload.revision = current_revision;
 
         auto texture_path = widget_path + "/assets/texture";
-        auto stored = BuilderDetail::replace_single(space_, texture_path, rasterized.payload);
+        auto stored = Detail::replace_single(space_, texture_path, rasterized.payload);
         if (!stored) {
             fail_widget(widget_path, stored.error().message.value_or("failed to write texture payload"));
             return;
         }
 
-        (void)BuilderDetail::replace_single(space_, widget_path + "/render/buffer/pendingDirty", std::vector<DirtyRectHint>{});
+        (void)Detail::replace_single(space_, widget_path + "/render/buffer/pendingDirty", std::vector<DirtyRectHint>{});
         drain_dirty_queue(widget_path);
 
         auto end_ns = now_ns();
-        (void)BuilderDetail::replace_single(space_, widget_path + "/render/gpu/fence/end", end_ns);
+        (void)Detail::replace_single(space_, widget_path + "/render/gpu/fence/end", end_ns);
 
         update_widget_stats(widget_path, state, rasterized.bytes, end_ns - start_ns, current_revision);
         set_gpu_state(space_, widget_path, PaintGpuState::Ready);
@@ -250,7 +249,7 @@ private:
                              std::uint64_t duration_ns,
                              std::uint64_t revision) {
         auto stats_path = widget_path + "/render/gpu/stats";
-        auto stats_value = BuilderDetail::read_optional<PaintGpuStats>(space_, stats_path);
+        auto stats_value = Detail::read_optional<PaintGpuStats>(space_, stats_path);
         PaintGpuStats stats = stats_value && stats_value->has_value() ? **stats_value : PaintGpuStats{};
         stats.uploads_total += 1;
         if (state == PaintGpuState::DirtyFull) {
@@ -263,7 +262,7 @@ private:
         stats.last_upload_bytes = upload_bytes;
         stats.last_upload_duration_ns = duration_ns;
         stats.last_revision = revision;
-        (void)BuilderDetail::replace_single(space_, stats_path, stats);
+        (void)Detail::replace_single(space_, stats_path, stats);
         increment_metric("uploads_total");
     }
 
@@ -349,7 +348,7 @@ private:
         auto entries = space_.listChildren(SP::ConcretePathStringView{root});
         for (auto const& name : entries) {
             auto widget_root = root + "/" + name;
-            auto descriptor = BuilderDetail::read_optional<RenderDescriptor>(space_, widget_root + "/render/synthesize");
+            auto descriptor = Detail::read_optional<RenderDescriptor>(space_, widget_root + "/render/synthesize");
             if (descriptor && descriptor->has_value()
                 && descriptor->value().kind == WidgetKind::PaintSurface) {
                 widgets.push_back(widget_root);

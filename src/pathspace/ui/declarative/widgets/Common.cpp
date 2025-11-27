@@ -183,19 +183,6 @@ public:
 
 } // namespace
 
-auto make_error(std::string message,
-                SP::Error::Code code) -> SP::Error {
-    return BuilderDetail::make_error(std::move(message), code);
-}
-
-auto ensure_widget_name(std::string_view name) -> SP::Expected<void> {
-    return BuilderDetail::ensure_identifier(name, "widget name");
-}
-
-auto ensure_child_name(std::string_view name) -> SP::Expected<void> {
-    return BuilderDetail::ensure_identifier(name, "child name");
-}
-
 auto make_path(std::string base, std::string_view component) -> std::string {
     if (!base.empty() && base.back() != '/') {
         base.push_back('/');
@@ -264,7 +251,7 @@ auto mark_render_dirty(PathSpace& space,
     auto version_path = root + "/render/dirty_version";
     auto current_version = space.read<std::uint64_t, std::string>(version_path);
     std::uint64_t next_version = current_version ? (*current_version + 1) : 1;
-    if (auto status = BuilderDetail::replace_single<std::uint64_t>(space, version_path, next_version); !status) {
+    if (auto status = replace_single<std::uint64_t>(space, version_path, next_version); !status) {
         return status;
     }
     return {};

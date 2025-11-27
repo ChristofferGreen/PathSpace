@@ -3,8 +3,6 @@
 #include "WidgetStateMutators.hpp"
 #include "widgets/Common.hpp"
 
-#include "../BuildersDetail.hpp"
-
 #include <cmath>
 #include <optional>
 #include <string>
@@ -13,12 +11,8 @@
 namespace SP::UI::Declarative {
 
 namespace DeclarativeDetail = SP::UI::Declarative::Detail;
-namespace BuilderDetail = SP::UI::Builders::Detail;
 namespace BuilderWidgets = SP::UI::Builders::Widgets;
 namespace BuildersScene = SP::UI::Builders::Scene;
-
-using BuilderDetail::read_optional;
-using BuilderDetail::replace_single;
 
 namespace {
     auto format_paint_component(std::uint64_t stroke_id) -> std::string {

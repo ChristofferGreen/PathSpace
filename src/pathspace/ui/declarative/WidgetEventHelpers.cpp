@@ -1,6 +1,5 @@
 #include "WidgetEventCommon.hpp"
 
-#include "../BuildersDetail.hpp"
 #include "WidgetStateMutators.hpp"
 #include "widgets/Common.hpp"
 
@@ -17,10 +16,7 @@
 
 namespace SP::UI::Declarative {
 
-namespace BuilderDetail = SP::UI::Builders::Detail;
 namespace DeclarativeDetail = SP::UI::Declarative::Detail;
-using BuilderDetail::replace_single;
-using BuilderDetail::window_component_for;
 
 auto now_ns() -> std::uint64_t {
     auto now = std::chrono::steady_clock::now().time_since_epoch();
@@ -86,7 +82,7 @@ auto read_slider_data(PathSpace& space, std::string const& widget_path)
 auto write_slider_state(PathSpace& space,
                         std::string const& widget_path,
                         BuilderWidgets::SliderState const& state) -> bool {
-    auto status = replace_single<BuilderWidgets::SliderState>(space,
+    auto status = DeclarativeDetail::replace_single<BuilderWidgets::SliderState>(space,
                                                              widget_path + "/state",
                                                              state);
     if (!status) {
@@ -218,7 +214,7 @@ auto read_text_state(PathSpace& space, std::string const& widget_path)
 auto write_text_state(PathSpace& space,
                       std::string const& widget_path,
                       BuilderWidgets::TextFieldState const& state) -> bool {
-    auto status = replace_single<BuilderWidgets::TextFieldState>(space,
+    auto status = DeclarativeDetail::replace_single<BuilderWidgets::TextFieldState>(space,
                                                                 widget_path + "/state",
                                                                 state);
     if (!status) {
@@ -325,7 +321,7 @@ auto focused_widget_path(PathSpace& space,
         }
     }
 
-    auto component = window_component_for(binding.window_path);
+    auto component = DeclarativeDetail::window_component_for(binding.window_path);
     if (!component) {
         enqueue_error(space, "WidgetEventTrellis failed to derive window component for focus path");
         return std::nullopt;
@@ -424,7 +420,7 @@ auto list_item_id(ListData const& data, std::int32_t index) -> std::optional<std
 auto write_stack_active_panel(PathSpace& space,
                               std::string const& widget_path,
                               std::string const& panel_id) -> bool {
-    auto status = replace_single<std::string>(space,
+    auto status = DeclarativeDetail::replace_single<std::string>(space,
                                               widget_path + "/state/active_panel",
                                               panel_id);
     if (!status) {

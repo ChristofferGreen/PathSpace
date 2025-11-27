@@ -1,7 +1,5 @@
 #include "Common.hpp"
 
-#include "../../WidgetDetail.hpp"
-
 #include <algorithm>
 #include <cstdint>
 #include <utility>
@@ -11,8 +9,8 @@ namespace SP::UI::Declarative {
 
 namespace WidgetDetail = SP::UI::Declarative::Detail;
 using SP::UI::Builders::WidgetPath;
-namespace BuilderDetail = SP::UI::Builders::Detail;
 namespace BuilderWidgets = SP::UI::Builders::Widgets;
+namespace DeclarativeDetail = SP::UI::Declarative::Detail;
 
 namespace {
 
@@ -95,7 +93,7 @@ auto rebuild_layout(PathSpace& space,
         auto computed = BuilderWidgets::StackLayoutState{};
         computed.width = std::max(style.width, 0.0f);
         computed.height = std::max(style.height, 0.0f);
-        if (auto status = BuilderDetail::write_stack_metadata(space, root, style, specs, computed); !status) {
+        if (auto status = DeclarativeDetail::write_stack_metadata(space, root, style, specs, computed); !status) {
             return status;
         }
         (void)WidgetDetail::mark_render_dirty(space, root);
@@ -107,12 +105,12 @@ auto rebuild_layout(PathSpace& space,
     params.style = style;
     params.children = specs;
 
-    auto computed = BuilderDetail::compute_stack(space, params);
+    auto computed = DeclarativeDetail::compute_stack_layout_state(space, params);
     if (!computed) {
         return std::unexpected(computed.error());
     }
-    auto layout_state = computed->first.state;
-    if (auto status = BuilderDetail::write_stack_metadata(space, root, style, specs, layout_state); !status) {
+    auto layout_state = *computed;
+    if (auto status = DeclarativeDetail::write_stack_metadata(space, root, style, specs, layout_state); !status) {
         return status;
     }
     (void)WidgetDetail::mark_render_dirty(space, root);

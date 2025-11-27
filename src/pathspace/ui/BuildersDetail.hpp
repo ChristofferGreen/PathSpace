@@ -1,6 +1,7 @@
 #pragma once
 
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/DetailShared.hpp>
 #include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathSurfaceMetal.hpp>
@@ -53,7 +54,8 @@ inline constexpr std::string_view kWindowsSegment = "/windows/";
 inline constexpr std::string_view kWidgetAuthoringMarker = "/authoring/";
 inline std::atomic<std::uint64_t> g_auto_render_sequence{0};
 inline std::atomic<std::uint64_t> g_scene_dirty_sequence{0};
-inline std::atomic<std::uint64_t> g_widget_op_sequence{0};
+inline std::atomic<std::uint64_t>& g_widget_op_sequence =
+    SP::UI::DetailShared::widget_op_sequence();
 
 struct SceneRevisionRecord {
     uint64_t    revision = 0;

@@ -1,7 +1,7 @@
 #include "WidgetStateMutators.hpp"
 
 #include "WidgetEventCommon.hpp"
-#include "../BuildersDetail.hpp"
+#include <pathspace/ui/declarative/Detail.hpp>
 
 #include <pathspace/ui/Builders.hpp>
 
@@ -11,9 +11,7 @@
 
 namespace SP::UI::Declarative::Detail {
 
-namespace BuilderDetail = SP::UI::Builders::Detail;
 namespace BuilderWidgets = SP::UI::Builders::Widgets;
-using BuilderDetail::replace_single;
 
 namespace {
 

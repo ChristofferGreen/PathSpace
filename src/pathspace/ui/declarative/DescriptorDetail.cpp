@@ -1,7 +1,7 @@
 #include "DescriptorDetail.hpp"
 
-#include "../BuildersDetail.hpp"
 #include "../WidgetDetail.hpp"
+#include <pathspace/ui/declarative/Detail.hpp>
 
 #include <pathspace/ui/TextBuilder.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
@@ -20,7 +20,7 @@
 #include <vector>
 
 namespace SP::UI::Declarative::DescriptorDetail {
-namespace Detail = SP::UI::Builders::Detail;
+namespace Detail = SP::UI::Declarative::Detail;
 namespace BuilderWidgets = SP::UI::Builders::Widgets;
 namespace PaintRuntime = SP::UI::Declarative::PaintRuntime;
 namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;

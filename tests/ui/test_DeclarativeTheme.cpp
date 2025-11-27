@@ -3,7 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/ui/Builders.hpp>
-#include <pathspace/ui/BuildersDetail.hpp>
+#include <pathspace/ui/declarative/Detail.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Theme.hpp>
 #include <pathspace/ui/declarative/ThemeConfig.hpp>
@@ -226,7 +226,7 @@ TEST_CASE("Theme::RebuildValue replays manual color edits") {
                                                    std::string{"themes/"} + created->canonical_name);
     REQUIRE(edit_root.has_value());
     std::array<float, 4> manual_override{0.8f, 0.2f, 0.6f, 1.0f};
-    REQUIRE(SP::UI::Builders::Detail::replace_single(fx.space,
+    REQUIRE(SP::UI::Declarative::Detail::replace_single(fx.space,
                                                      edit_root->getPath()
                                                          + "/colors/button/background",
                                                      manual_override)

@@ -7,6 +7,7 @@
 #include <pathspace/ui/declarative/ThemeConfig.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
+#include <pathspace/ui/declarative/Detail.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
@@ -24,7 +25,7 @@ using namespace SP;
 using namespace SP::UI::Declarative;
 namespace Builders = SP::UI::Builders;
 namespace WidgetsNS = SP::UI::Builders::Widgets;
-namespace DetailNS = SP::UI::Builders::Detail;
+namespace DetailNS = SP::UI::Declarative::Detail;
 namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
 
 struct DeclarativeFixture {

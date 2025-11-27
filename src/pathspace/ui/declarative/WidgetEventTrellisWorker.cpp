@@ -3,21 +3,14 @@
 #include "WidgetStateMutators.hpp"
 #include "widgets/Common.hpp"
 
-#include "../BuildersDetail.hpp"
-
 #include <pathspace/app/AppPaths.hpp>
 
 #include <chrono>
 
 namespace SP::UI::Declarative {
 
-namespace BuilderDetail = SP::UI::Builders::Detail;
 namespace BuilderWidgets = SP::UI::Builders::Widgets;
 namespace DeclarativeDetail = SP::UI::Declarative::Detail;
-using BuilderDetail::derive_app_root_for;
-using BuilderDetail::read_optional;
-using BuilderDetail::replace_single;
-using BuilderDetail::to_epoch_ns;
 using SP::UI::ScenePath;
 
 WidgetEventTrellisWorker::WidgetEventTrellisWorker(PathSpace& space,
@@ -76,7 +69,7 @@ void WidgetEventTrellisWorker::stop() {
     }
 
 auto WidgetEventTrellisWorker::ensure_roots() -> SP::Expected<void> {
-        if (auto status = replace_single<bool>(space_, state_path_, false); !status) {
+        if (auto status = DeclarativeDetail::replace_single<bool>(space_, state_path_, false); !status) {
             return status;
         }
         auto pointer_path = metrics_root_ + "/pointer_events_total";
@@ -84,26 +77,26 @@ auto WidgetEventTrellisWorker::ensure_roots() -> SP::Expected<void> {
         auto ops_path = metrics_root_ + "/widget_ops_total";
         auto hit_path = metrics_root_ + "/hit_test_failures_total";
         auto dispatch_path = metrics_root_ + "/last_dispatch_ns";
-        if (auto status = replace_single<std::uint64_t>(space_, pointer_path, 0); !status) {
+        if (auto status = DeclarativeDetail::replace_single<std::uint64_t>(space_, pointer_path, 0); !status) {
             return status;
         }
-        if (auto status = replace_single<std::uint64_t>(space_, button_path, 0); !status) {
+        if (auto status = DeclarativeDetail::replace_single<std::uint64_t>(space_, button_path, 0); !status) {
             return status;
         }
-        if (auto status = replace_single<std::uint64_t>(space_, ops_path, 0); !status) {
+        if (auto status = DeclarativeDetail::replace_single<std::uint64_t>(space_, ops_path, 0); !status) {
             return status;
         }
-        if (auto status = replace_single<std::uint64_t>(space_, hit_path, 0); !status) {
+        if (auto status = DeclarativeDetail::replace_single<std::uint64_t>(space_, hit_path, 0); !status) {
             return status;
         }
-        if (auto status = replace_single<std::uint64_t>(space_, dispatch_path, 0); !status) {
+        if (auto status = DeclarativeDetail::replace_single<std::uint64_t>(space_, dispatch_path, 0); !status) {
             return status;
         }
         return {};
     }
 
 void WidgetEventTrellisWorker::publish_running(bool value) {
-        (void)replace_single<bool>(space_, state_path_, value);
+        (void)DeclarativeDetail::replace_single<bool>(space_, state_path_, value);
     }
 
 void WidgetEventTrellisWorker::run() {
@@ -157,12 +150,12 @@ auto WidgetEventTrellisWorker::build_binding(std::string const& token) -> std::o
         base.push_back('/');
         base.append(token);
 
-        auto window_path = read_optional<std::string>(space_, base + "/window");
+        auto window_path = DeclarativeDetail::read_optional<std::string>(space_, base + "/window");
         if (!window_path || !window_path->has_value()) {
             return std::nullopt;
         }
 
-        auto app_root = derive_app_root_for(SP::App::ConcretePathView{**window_path});
+        auto app_root = DeclarativeDetail::derive_app_root_for(SP::App::ConcretePathView{**window_path});
         if (!app_root) {
             return std::nullopt;
         }
@@ -182,7 +175,7 @@ auto WidgetEventTrellisWorker::resolve_scene_path(WindowBinding const& binding) 
         std::string views_root = binding.window_path + "/views";
         auto views = list_children(space_, views_root);
         for (auto const& view_name : views) {
-            auto scene_rel = read_optional<std::string>(
+            auto scene_rel = DeclarativeDetail::read_optional<std::string>(
                 space_, views_root + "/" + view_name + "/scene");
             if (!scene_rel || !scene_rel->has_value()) {
                 continue;
@@ -275,11 +268,11 @@ auto WidgetEventTrellisWorker::pointer_state(std::string const& token) -> Pointe
     }
 
 void WidgetEventTrellisWorker::publish_metrics() {
-        (void)replace_single<std::uint64_t>(space_, metrics_root_ + "/pointer_events_total", pointer_events_total_);
-        (void)replace_single<std::uint64_t>(space_, metrics_root_ + "/button_events_total", button_events_total_);
-        (void)replace_single<std::uint64_t>(space_, metrics_root_ + "/widget_ops_total", widget_ops_total_);
-        (void)replace_single<std::uint64_t>(space_, metrics_root_ + "/hit_test_failures_total", hit_test_failures_);
-        (void)replace_single<std::uint64_t>(space_, metrics_root_ + "/last_dispatch_ns", last_dispatch_ns_);
+        (void)DeclarativeDetail::replace_single<std::uint64_t>(space_, metrics_root_ + "/pointer_events_total", pointer_events_total_);
+        (void)DeclarativeDetail::replace_single<std::uint64_t>(space_, metrics_root_ + "/button_events_total", button_events_total_);
+        (void)DeclarativeDetail::replace_single<std::uint64_t>(space_, metrics_root_ + "/widget_ops_total", widget_ops_total_);
+        (void)DeclarativeDetail::replace_single<std::uint64_t>(space_, metrics_root_ + "/hit_test_failures_total", hit_test_failures_);
+        (void)DeclarativeDetail::replace_single<std::uint64_t>(space_, metrics_root_ + "/last_dispatch_ns", last_dispatch_ns_);
     }
 
 void WidgetEventTrellisWorker::emit_widget_op(WindowBinding const& binding,
@@ -309,8 +302,8 @@ void WidgetEventTrellisWorker::emit_widget_op(WindowBinding const& binding,
         op.target_id = target.component;
         op.pointer = pointer;
         op.value = value;
-        op.sequence = BuilderDetail::g_widget_op_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
-        op.timestamp_ns = to_epoch_ns(std::chrono::system_clock::now());
+        op.sequence = DeclarativeDetail::g_widget_op_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
+        op.timestamp_ns = DeclarativeDetail::to_epoch_ns(std::chrono::system_clock::now());
 
         auto queue_path = target.widget_path + "/ops/inbox/queue";
         auto inserted = space_.insert(queue_path, op);

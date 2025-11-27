@@ -145,6 +145,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/declarative/InputTask.cpp
         ui/declarative/Descriptor.cpp
         ui/declarative/DescriptorDetail.cpp
+        ui/declarative/Detail.cpp
         ui/declarative/SceneLifecycle.cpp
         ui/declarative/Theme.cpp
         ui/declarative/ThemeConfig.cpp

@@ -3,8 +3,6 @@
 #include "WidgetStateMutators.hpp"
 #include "widgets/Common.hpp"
 
-#include "../BuildersDetail.hpp"
-
 #include <algorithm>
 #include <cmath>
 #include <string>

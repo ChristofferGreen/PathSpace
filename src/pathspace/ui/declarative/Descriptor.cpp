@@ -1,11 +1,10 @@
 #include <pathspace/ui/declarative/Descriptor.hpp>
 
 #include "DescriptorDetail.hpp"
-
-#include "../BuildersDetail.hpp"
-#include "../WidgetDetail.hpp"
+#include <pathspace/ui/declarative/Detail.hpp>
 
 #include <pathspace/core/Error.hpp>
+#include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/SceneUtilities.hpp>
 #include <pathspace/ui/TextBuilder.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
@@ -24,7 +23,7 @@
 namespace SP::UI::Declarative {
 namespace {
 
-namespace Detail = SP::UI::Builders::Detail;
+namespace Detail = SP::UI::Declarative::Detail;
 namespace BuilderWidgets = SP::UI::Builders::Widgets;
 namespace BuilderScene = SP::UI::Builders::Scene;
 namespace SceneData = SP::UI::Scene;
