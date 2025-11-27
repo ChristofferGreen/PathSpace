@@ -1,7 +1,7 @@
 #pragma once
 
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceTypes.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 

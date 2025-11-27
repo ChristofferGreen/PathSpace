@@ -2,7 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 
 #include <array>

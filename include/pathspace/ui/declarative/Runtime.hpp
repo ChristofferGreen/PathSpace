@@ -5,7 +5,6 @@
 #include <pathspace/io/IoTrellis.hpp>
 #include <pathspace/runtime/IOPump.hpp>
 #include <pathspace/runtime/TelemetryControl.hpp>
-#include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/PathTypes.hpp>
 #include <pathspace/ui/declarative/InputTask.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceUploader.hpp>

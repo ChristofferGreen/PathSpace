@@ -2,7 +2,6 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/PathTypes.hpp>
 
 #include <chrono>

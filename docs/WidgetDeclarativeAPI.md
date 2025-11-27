@@ -27,6 +27,12 @@ plus tests in sync. Read it before touching declarative UI code or examples.
    `SP::UI::WindowPath` or `SP::UI::ScenePath`. The header re-exports the common
    aliases from declarative code so you no longer have to depend on
    `SP::UI::Builders::*` just to store window/scene/widget paths.
+3. Include `<pathspace/ui/WidgetSharedTypes.hpp>` whenever you need the shared
+   widget data (`WidgetTheme`, style structs, stack enums, handler payloads,
+   `DirtyRectHint`, `WidgetAction`, etc.) without dragging in the rest of
+   `Builders.hpp`. Declarative headers/tests now pull from this header so you can
+   manipulate widget data and telemetry independently of the legacy builder
+   functions.
 2. `SP::App::Create` returns the canonical app root and registers renderer/theme
    defaults. `SP::Window::Create` mounts the window under the app, seeds
    `views/<view>/{scene,surface,renderer}` bindings, and registers device
