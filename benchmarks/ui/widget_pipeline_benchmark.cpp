@@ -62,12 +62,6 @@ struct SampleData {
     std::vector<BuilderWidgets::ListItem> list_items;
 };
 
-struct LegacyMetrics {
-    double bucket_total_ms = 0.0;
-    double bucket_avg_ms = 0.0;
-    double bucket_bytes_per_iter = 0.0;
-};
-
 struct DeclarativeMetrics {
     double mutate_total_ms = 0.0;
     double bucket_total_ms = 0.0;
@@ -225,56 +219,6 @@ auto make_sample_data() -> SampleData {
         rotated.front().label = "Item " + std::to_string(offset);
     }
     return rotated;
-}
-
-auto run_legacy_pipeline(SampleData const& sample,
-                         CommandLineOptions const& options) -> LegacyMetrics {
-    std::size_t total_bytes = 0;
-    BuilderWidgets::ButtonPreviewOptions button_preview{};
-    button_preview.authoring_root = "legacy/button";
-    button_preview.pulsing_highlight = false;
-    auto bucket_start = Clock::now();
-    for (int iteration = 0; iteration < options.iterations; ++iteration) {
-        auto button_state = sample.button_state;
-        button_state.pressed = (iteration % 2) == 0;
-        button_state.hovered = (iteration % 3) == 0;
-        button_preview.label = "Bench " + std::to_string(iteration % 100);
-        auto button_bucket = BuilderWidgets::BuildButtonPreview(sample.button_style,
-                                                               button_state,
-                                                               button_preview);
-        total_bytes += bucket_bytes(button_bucket);
-
-        auto toggle_state = sample.toggle_state;
-        toggle_state.checked = (iteration % 4) == 0;
-        auto toggle_bucket = BuilderWidgets::BuildTogglePreview(sample.toggle_style, toggle_state);
-        total_bytes += bucket_bytes(toggle_bucket);
-
-        auto slider_state = sample.slider_state;
-        auto phase = static_cast<float>(iteration % 100) / 100.0f;
-        slider_state.value = sample.slider_range.minimum
-                             + (sample.slider_range.maximum - sample.slider_range.minimum) * phase;
-        auto slider_bucket = BuilderWidgets::BuildSliderPreview(sample.slider_style,
-                                                                sample.slider_range,
-                                                                slider_state);
-        total_bytes += bucket_bytes(slider_bucket);
-
-        auto list_items = rotate_items(sample.list_items, static_cast<std::size_t>(iteration));
-        auto list_state = BuilderWidgets::ListState{};
-        list_state.hovered_index = iteration % static_cast<int>(list_items.size());
-        list_state.selected_index = (iteration / 2) % static_cast<int>(list_items.size());
-        auto list_result = BuilderWidgets::BuildListPreview(sample.list_style,
-                                                            std::span<const BuilderWidgets::ListItem>{list_items},
-                                                            list_state);
-        total_bytes += bucket_bytes(list_result.bucket);
-    }
-    auto bucket_duration = Clock::now() - bucket_start;
-
-    LegacyMetrics metrics;
-    metrics.bucket_total_ms = std::chrono::duration<double, std::milli>(bucket_duration).count();
-    metrics.bucket_avg_ms = metrics.bucket_total_ms / static_cast<double>(options.iterations);
-    metrics.bucket_bytes_per_iter = static_cast<double>(total_bytes)
-                                    / static_cast<double>(options.iterations);
-    return metrics;
 }
 
 auto create_app(PathSpace& space) -> SP::Expected<SP::App::AppRootPath> {
@@ -572,7 +516,6 @@ auto create_app(PathSpace& space) -> SP::Expected<SP::App::AppRootPath> {
 }
 
 auto write_report_json(CommandLineOptions const& options,
-                       LegacyMetrics const& legacy,
                        DeclarativeMetrics const& declarative) -> nlohmann::json {
     nlohmann::json json;
     json["command"] = {
@@ -581,8 +524,6 @@ auto write_report_json(CommandLineOptions const& options,
     };
 
     json["metrics"] = {
-        {"legacy.bucketAvgMs", legacy.bucket_avg_ms},
-        {"legacy.bucketBytesPerIter", legacy.bucket_bytes_per_iter},
         {"declarative.bucketAvgMs", declarative.bucket_avg_ms},
         {"declarative.bucketBytesPerIter", declarative.bucket_bytes_per_iter},
         {"declarative.dirtyWidgetsPerSec", declarative.dirty_per_sec},
@@ -590,9 +531,6 @@ auto write_report_json(CommandLineOptions const& options,
     };
 
     json["metadata"] = {
-        {"legacy", {
-             {"bucketTotalMs", legacy.bucket_total_ms},
-        }},
         {"declarative", {
              {"bucketTotalMs", declarative.bucket_total_ms},
              {"mutateTotalMs", declarative.mutate_total_ms},
@@ -606,8 +544,6 @@ auto write_report_json(CommandLineOptions const& options,
 int main(int argc, char** argv) {
     auto options = parse_args(argc, argv);
     auto sample = make_sample_data();
-
-    LegacyMetrics legacy = run_legacy_pipeline(sample, options);
 
     SP::PathSpace space;
     DeclarativePaths paths;
@@ -628,7 +564,7 @@ int main(int argc, char** argv) {
     }
     SP::System::ShutdownDeclarativeRuntime(space);
 
-    auto report = write_report_json(options, legacy, *declarative);
+    auto report = write_report_json(options, *declarative);
     if (!options.output_path.empty()) {
         std::ofstream file(options.output_path);
         if (!file) {
@@ -641,7 +577,6 @@ int main(int argc, char** argv) {
     }
 
     if (options.verbose) {
-        std::cout << "legacy.bucketAvgMs=" << legacy.bucket_avg_ms << "\n";
         std::cout << "declarative.bucketAvgMs=" << declarative->bucket_avg_ms << "\n";
         std::cout << "declarative.dirtyWidgetsPerSec=" << declarative->dirty_per_sec << "\n";
         std::cout << "declarative.paintGpuLastUploadNs=" << declarative->paint_gpu_last_upload_ns << "\n";

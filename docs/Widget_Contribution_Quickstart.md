@@ -140,8 +140,9 @@ The steps below describe the declarative workflow. When legacy builder files are
 
 ## Testing Checklist
 - Rebuild: `cmake --build build -j`.
-- Update/record goldens in `tests/ui/test_Builders.cpp` (state snapshots) and
-  ensure Html replays stay deterministic (`node`-backed `HtmlCanvasVerify`).
+- Update/record goldens in `tests/ui/test_DeclarativeWidgets.cpp`
+  (state snapshots + descriptor parity) and ensure Html replays stay
+  deterministic (`node`-backed `HtmlCanvasVerify`).
 - Exercise fuzz + reducers: `tests/ui/test_WidgetReducersFuzz.cpp`.
 - Run the full loop: `ctest --test-dir build --output-on-failure -j --repeat-until-fail 15 --timeout 20`.
 - If the widget affects Metal uploads or HTML output, re-run the optional

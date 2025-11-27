@@ -342,8 +342,6 @@ def run_widget_pipeline_benchmark(ctx: PerfContext) -> ScenarioResult:
     metrics = {
         key: float(metrics_raw[key])
         for key in (
-            "legacy.bucketAvgMs",
-            "legacy.bucketBytesPerIter",
             "declarative.bucketAvgMs",
             "declarative.bucketBytesPerIter",
             "declarative.dirtyWidgetsPerSec",
@@ -386,11 +384,9 @@ SCENARIOS: List[ScenarioDefinition] = [
     ),
     ScenarioDefinition(
         name="widget_pipeline",
-        description="Declarative vs legacy widget pipeline",
+        description="Declarative widget pipeline mutations/buckets",
         runner=run_widget_pipeline_benchmark,
         tolerances={
-            "legacy.bucketAvgMs": Tolerance(direction="increase", percent=15.0, absolute=0.4),
-            "legacy.bucketBytesPerIter": Tolerance(direction="increase", percent=20.0, absolute=2000.0),
             "declarative.bucketAvgMs": Tolerance(direction="increase", percent=15.0, absolute=0.5),
             "declarative.bucketBytesPerIter": Tolerance(direction="increase", percent=20.0, absolute=2000.0),
             "declarative.dirtyWidgetsPerSec": Tolerance(direction="decrease", percent=20.0, absolute=15.0),

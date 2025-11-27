@@ -7,6 +7,7 @@
 > **Context update (October 15, 2025):** All renderer milestones now track the assistant context introduced in this launch; treat previous context references as historical.
 > **Decision update (October 16, 2025):** macOS presenters now use a CAMetalLayer-backed Metal swapchain instead of CoreGraphics blits so fullscreen windows avoid CPU copies; treat the Metal presenter as MVP-critical.
 > **Follow-up (October 17, 2025):** Present pipeline must eliminate software framebuffer copies—PathSurfaceSoftware and the presenter will move to a shared IOSurface-backed buffer so the renderer writes directly into the drawable without memcpy.
+> **UITest update (November 27, 2025):** The historical references to `tests/ui/test_Builders.cpp` now map to the declarative suites (`tests/ui/test_DeclarativeWidgets.cpp`, `tests/ui/test_WidgetEventTrellis.cpp`, `tests/ui/test_DeclarativeSceneLifecycle.cpp`, etc.) because the legacy builder tests have been retired. Treat the old name as shorthand for the current declarative UITests when reviewing coverage callouts below.
 Scope: UI surfaces, renderers, presenters, multi-scene targets; atomic params and snapshot-based rendering
 
 ## Goals

@@ -223,7 +223,7 @@ plus tests in sync. Read it before touching declarative UI code or examples.
    sync and buttons enable/disable automatically.
 5. Update docs/tests: whenever you migrate a widget, refresh 
    `docs/WidgetDeclarativeFeatureParity.md`, ensure state snapshots under
-   `scenes/widgets/<name>/states/*` still pass in `tests/ui/test_Builders.cpp`,
+  `scenes/widgets/<name>/states/*` still pass in `tests/ui/test_DeclarativeWidgets.cpp`,
    and capture new paint/widget screenshots if the layout changes.
 6. Keep `docs/AI_Paths.md`, `docs/Widget_Schema_Reference.md`, and this guide in
    sync with any new path nodes, telemetry leaves, or readiness requirements.

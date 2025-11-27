@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-25T20:48:46.538639+00:00",
+  "generatedAt": "2025-11-27T10:23:39+00:00",
   "scenarios": {
     "path_renderer2d": {
       "metadata": {
@@ -122,21 +122,16 @@
         },
         "details": {
           "declarative": {
-            "bucketTotalMs": 210.224377,
-            "mutateTotalMs": 100.575078
-          },
-          "legacy": {
-            "bucketTotalMs": 1.453334
+            "bucketTotalMs": 15.486544,
+            "mutateTotalMs": 102.381454
           }
         }
       },
       "metrics": {
-        "declarative.bucketAvgMs": 1.051121885,
+        "declarative.bucketAvgMs": 0.07743272,
         "declarative.bucketBytesPerIter": 11654.8,
-        "declarative.dirtyWidgetsPerSec": 7954.256818970601,
-        "declarative.paintGpuLastUploadNs": 1004334.0,
-        "legacy.bucketAvgMs": 0.007266669999999999,
-        "legacy.bucketBytesPerIter": 8633.8
+        "declarative.dirtyWidgetsPerSec": 7813.915203821974,
+        "declarative.paintGpuLastUploadNs": 1105209.0
       },
       "tolerances": {
         "declarative.bucketAvgMs": {
@@ -158,16 +153,6 @@
           "absolute": 5000000.0,
           "direction": "increase",
           "percent": 25.0
-        },
-        "legacy.bucketAvgMs": {
-          "absolute": 0.4,
-          "direction": "increase",
-          "percent": 15.0
-        },
-        "legacy.bucketBytesPerIter": {
-          "absolute": 2000.0,
-          "direction": "increase",
-          "percent": 20.0
         }
       }
     }
