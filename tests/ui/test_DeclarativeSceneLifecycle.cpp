@@ -3,6 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
+#include <pathspace/ui/declarative/ThemeConfig.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
@@ -15,6 +16,7 @@
 #include <thread>
 
 using namespace SP;
+namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
 
 namespace {
 
@@ -281,12 +283,12 @@ TEST_CASE("Focus and theme changes invalidate declarative widgets") {
     CHECK_EQ(*focus_event, button->getPath());
 
     auto sunset_theme = SP::UI::Builders::Widgets::MakeSunsetWidgetTheme();
-    auto ensured = SP::UI::Builders::Config::Theme::Ensure(space,
+    auto ensured = ThemeConfig::Ensure(space,
                                                           SP::App::AppRootPathView{app_root->getPath()},
                                                           "sunset",
                                                           sunset_theme);
     REQUIRE(ensured);
-    auto set_theme = SP::UI::Builders::Config::Theme::SetActive(space,
+    auto set_theme = ThemeConfig::SetActive(space,
                                                                 SP::App::AppRootPathView{app_root->getPath()},
                                                                 "sunset");
     REQUIRE(set_theme);

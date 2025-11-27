@@ -4,6 +4,7 @@
 #include <pathspace/path/ConcretePath.hpp>
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/PathTypes.hpp>
+#include <pathspace/ui/declarative/ThemeConfig.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
@@ -24,7 +25,7 @@ using namespace SP::UI::Declarative;
 namespace Builders = SP::UI::Builders;
 namespace WidgetsNS = SP::UI::Builders::Widgets;
 namespace DetailNS = SP::UI::Builders::Detail;
-namespace ThemeConfig = SP::UI::Builders::Config::Theme;
+namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
 
 struct DeclarativeFixture {
     PathSpace space;

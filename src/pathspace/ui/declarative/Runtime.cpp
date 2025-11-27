@@ -6,6 +6,7 @@
 #include <pathspace/ui/Helpers.hpp>
 #include <pathspace/ui/LocalWindowBridge.hpp>
 #include <pathspace/ui/LegacyBuildersDeprecation.hpp>
+#include <pathspace/ui/declarative/ThemeConfig.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceUploader.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
 #include <pathspace/io/IoTrellis.hpp>
@@ -31,6 +32,7 @@ using namespace SP::UI::Builders::Detail;
 using SP::PathSpace;
 using ScenePath = SP::UI::ScenePath;
 using WindowPath = SP::UI::WindowPath;
+namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
 
 std::mutex g_io_trellis_mutex;
 std::unordered_map<SP::PathSpace*, SP::IO::IoTrellisHandle> g_io_trellis_handles;
@@ -347,17 +349,17 @@ auto ensure_theme(PathSpace& space,
                   SP::App::AppRootPathView app_root,
                   std::string_view requested) -> SP::Expected<std::string> {
     std::string normalized = requested.empty() ? "default" : std::string(requested);
-    auto sanitized = SP::UI::Builders::Config::Theme::SanitizeName(normalized);
+    auto sanitized = ThemeConfig::SanitizeName(normalized);
     auto defaults = sanitized == "sunset"
         ? SP::UI::Builders::Widgets::MakeSunsetWidgetTheme()
         : SP::UI::Builders::Widgets::MakeDefaultWidgetTheme();
 
     SP::UI::LegacyBuilders::ScopedAllow theme_allow{};
-    auto ensured = SP::UI::Builders::Config::Theme::Ensure(space, app_root, sanitized, defaults);
+    auto ensured = ThemeConfig::Ensure(space, app_root, sanitized, defaults);
     if (!ensured) {
         return std::unexpected(ensured.error());
     }
-    if (auto status = SP::UI::Builders::Config::Theme::SetActive(space, app_root, sanitized); !status) {
+    if (auto status = ThemeConfig::SetActive(space, app_root, sanitized); !status) {
         return std::unexpected(status.error());
     }
     return sanitized;
@@ -914,7 +916,7 @@ auto Create(PathSpace& space,
         return std::unexpected(status.error());
     }
     SP::UI::LegacyBuilders::ScopedAllow theme_allow{};
-    auto active_theme = SP::UI::Builders::Config::Theme::LoadActive(space, app_root);
+    auto active_theme = ThemeConfig::LoadActive(space, app_root);
     if (active_theme) {
         (void)replace_single<std::string>(space, base + "/style/theme", *active_theme);
     } else {

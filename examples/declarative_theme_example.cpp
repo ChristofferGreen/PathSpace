@@ -1,8 +1,9 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Theme.hpp>
+#include <pathspace/ui/declarative/ThemeConfig.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
 #include <array>
@@ -12,6 +13,8 @@
 #include <memory>
 #include <optional>
 #include <string>
+
+namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
 
 namespace {
 
@@ -123,7 +126,7 @@ int main() {
                                  "Button::Create");
 
     auto button_theme_paths = unwrap_or_exit(
-        SP::UI::Builders::Config::Theme::Resolve(app_view, sunset_theme.canonical_name),
+        ThemeConfig::Resolve(app_view, sunset_theme.canonical_name),
         "Resolve sunset theme");
     auto compiled = unwrap_or_exit(space.read<SP::UI::Builders::Widgets::WidgetTheme, std::string>(
                                       button_theme_paths.value.getPath()),
@@ -134,13 +137,13 @@ int main() {
     print_color(compiled.button.background_color);
 
     std::cout << "Switching active theme back to " << base_theme.canonical_name << "...\n";
-    unwrap_or_exit(SP::UI::Builders::Config::Theme::SetActive(space,
+    unwrap_or_exit(ThemeConfig::SetActive(space,
                                                               app_view,
                                                               base_theme.canonical_name),
                    "SetActive sunrise");
 
     auto updated_paths = unwrap_or_exit(
-        SP::UI::Builders::Config::Theme::Resolve(app_view, base_theme.canonical_name),
+        ThemeConfig::Resolve(app_view, base_theme.canonical_name),
         "Resolve sunrise theme");
     auto updated = unwrap_or_exit(space.read<SP::UI::Builders::Widgets::WidgetTheme, std::string>(
                                       updated_paths.value.getPath()),

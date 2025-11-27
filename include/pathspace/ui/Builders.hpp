@@ -35,6 +35,7 @@
 #include <pathspace/layer/io/PathIOMouse.hpp>
 #include <pathspace/layer/io/PathIOMouse.hpp>
 #include <pathspace/ui/WidgetSharedTypes.hpp>
+#include <pathspace/ui/declarative/ThemeConfig.hpp>
 
 namespace SP::UI::Builders {
 
@@ -553,10 +554,7 @@ inline App::BootstrapParams::BootstrapParams() {
 
 namespace Config::Theme {
 
-struct ThemePaths {
-    ConcretePath root;
-    ConcretePath value;
-};
+using ThemePaths = SP::UI::Declarative::ThemeConfig::ThemePaths;
 
 auto SanitizeName(std::string_view theme_name) -> std::string;
 

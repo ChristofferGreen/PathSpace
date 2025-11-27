@@ -80,6 +80,14 @@ plus tests in sync. Read it before touching declarative UI code or examples.
    and the screenshot service (`ScreenshotService::Capture`) calls the same
    helpers when it needs to read back a framebuffer.
 
+7. Include `<pathspace/ui/declarative/ThemeConfig.hpp>` whenever you need to
+   provision, load, or switch themes outside the higher-level
+   `SP::UI::Declarative::Theme::{Create,SetColor,RebuildValue}` helpers.
+   `ThemeConfig::{SanitizeName,Resolve,Ensure,Load,SetActive,LoadActive}` expose
+   the canonical declarative entry points; the legacy
+   `Builders::Config::Theme::*` functions now simply forward to them so you no
+   longer have to include `Builders.hpp` to work with theme metadata.
+
 ## 3. Building Widgets Declaratively
 - **Create vs. Fragment**
   - `Widget::Create(space, parent_path, name, args...)` mounts a widget at a

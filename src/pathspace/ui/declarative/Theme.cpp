@@ -4,7 +4,7 @@
 
 #include <pathspace/core/Error.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
-#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
+#include <pathspace/ui/declarative/ThemeConfig.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -21,6 +21,7 @@ namespace {
 using SP::UI::Builders::Detail::replace_single;
 using SP::UI::Builders::Detail::read_optional;
 using SP::UI::Builders::Detail::make_error;
+namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
 using Color = std::array<float, 4>;
 
 template <typename T>
@@ -236,7 +237,7 @@ auto update_compiled_theme(PathSpace& space,
                            SP::App::AppRootPathView app_root,
                            std::string const& sanitized_name,
                            WidgetTheme const& updated) -> SP::Expected<void> {
-    auto paths = SP::UI::Builders::Config::Theme::Ensure(space,
+    auto paths = ThemeConfig::Ensure(space,
                                                          app_root,
                                                          sanitized_name,
                                                          updated);
@@ -271,12 +272,11 @@ auto load_theme_value(PathSpace& space,
                       SP::App::AppRootPathView app_root,
                       std::string const& sanitized) -> SP::Expected<WidgetTheme> {
     auto defaults = SP::UI::Builders::Widgets::MakeDefaultWidgetTheme();
-    auto paths = SP::UI::Builders::Config::Theme::Ensure(space, app_root, sanitized, defaults);
+    auto paths = ThemeConfig::Ensure(space, app_root, sanitized, defaults);
     if (!paths) {
         return std::unexpected(paths.error());
     }
-    SP::UI::LegacyBuilders::ScopedAllow theme_allow{};
-    auto loaded = SP::UI::Builders::Config::Theme::Load(space, *paths);
+    auto loaded = ThemeConfig::Load(space, *paths);
     if (!loaded) {
         return std::unexpected(loaded.error());
     }
@@ -293,10 +293,10 @@ auto Create(PathSpace& space,
                                           SP::Error::Code::InvalidPath));
     }
 
-    auto sanitized = SP::UI::Builders::Config::Theme::SanitizeName(options.name);
+    auto sanitized = ThemeConfig::SanitizeName(options.name);
     std::optional<std::string> sanitized_inherits;
     if (options.inherits && !options.inherits->empty()) {
-        sanitized_inherits = SP::UI::Builders::Config::Theme::SanitizeName(*options.inherits);
+        sanitized_inherits = ThemeConfig::SanitizeName(*options.inherits);
     }
 
     WidgetTheme seed = options.seed_theme.value_or(SP::UI::Builders::Widgets::MakeDefaultWidgetTheme());
@@ -309,7 +309,7 @@ auto Create(PathSpace& space,
     }
 
     auto config_paths =
-        SP::UI::Builders::Config::Theme::Ensure(space, app_root, sanitized, seed);
+        ThemeConfig::Ensure(space, app_root, sanitized, seed);
     if (!config_paths) {
         return std::unexpected(config_paths.error());
     }
@@ -347,7 +347,7 @@ auto Create(PathSpace& space,
     }
 
     if (options.set_active) {
-        auto status = SP::UI::Builders::Config::Theme::SetActive(space, app_root, sanitized);
+        auto status = ThemeConfig::SetActive(space, app_root, sanitized);
         if (!status) {
             return std::unexpected(status.error());
         }
@@ -371,7 +371,7 @@ auto SetColor(PathSpace& space,
         return std::unexpected(make_error("theme name must not be empty",
                                           SP::Error::Code::InvalidPath));
     }
-    auto sanitized_name = SP::UI::Builders::Config::Theme::SanitizeName(theme_name);
+    auto sanitized_name = ThemeConfig::SanitizeName(theme_name);
     auto normalized_token = normalize_token(token);
     if (!normalized_token) {
         return std::unexpected(normalized_token.error());
@@ -420,7 +420,7 @@ auto RebuildValue(PathSpace& space,
         return std::unexpected(make_error("theme name must not be empty",
                                           SP::Error::Code::InvalidPath));
     }
-    auto sanitized = SP::UI::Builders::Config::Theme::SanitizeName(theme_name);
+    auto sanitized = ThemeConfig::SanitizeName(theme_name);
     auto theme = load_theme_value(space, app_root, sanitized);
     if (!theme) {
         return std::unexpected(theme.error());

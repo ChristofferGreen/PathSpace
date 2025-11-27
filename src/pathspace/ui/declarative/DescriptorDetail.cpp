@@ -4,8 +4,8 @@
 #include "../WidgetDetail.hpp"
 
 #include <pathspace/ui/TextBuilder.hpp>
-#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
+#include <pathspace/ui/declarative/ThemeConfig.hpp>
 
 #include <algorithm>
 #include <array>
@@ -23,6 +23,7 @@ namespace SP::UI::Declarative::DescriptorDetail {
 namespace Detail = SP::UI::Builders::Detail;
 namespace BuilderWidgets = SP::UI::Builders::Widgets;
 namespace PaintRuntime = SP::UI::Declarative::PaintRuntime;
+namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
 
 namespace {
 
@@ -372,13 +373,11 @@ auto ResolveThemeForWidget(PathSpace& space,
         found_override = false;
     }
 
-    auto sanitized = SP::UI::Builders::Config::Theme::SanitizeName(*theme_value);
-    auto resolved = SP::UI::Builders::Config::Theme::Resolve(app_root_view, sanitized);
+    auto sanitized = ThemeConfig::SanitizeName(*theme_value);
+    auto resolved = ThemeConfig::Resolve(app_root_view, sanitized);
     if (!resolved) {
         return std::unexpected(resolved.error());
-    }
-    SP::UI::LegacyBuilders::ScopedAllow theme_allow{};
-    auto loaded = SP::UI::Builders::Config::Theme::Load(space, *resolved);
+    }    auto loaded = ThemeConfig::Load(space, *resolved);
     if (!loaded) {
         return std::unexpected(loaded.error());
     }

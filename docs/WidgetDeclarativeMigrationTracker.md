@@ -1,6 +1,6 @@
 # Widget Declarative Migration Tracker
 
-_Updated: November 26, 2025_
+_Updated: November 27, 2025_
 
 ## Purpose
 Phase 3 of `docs/Plan_WidgetDeclarativeAPI.md` requires us to prove that every downstream tool consuming widget data has migrated (or has an explicit plan to migrate) off the legacy `SP::UI::Builders::*` surface before the February 1, 2026 support-window cutoff. This tracker records the status of each consumer named across the active plans (`Plan_PathSpace_Inspector.md`, `Plan_WebServer_Adapter.md`, `Plan_PathSpaceWindowManager.md`, `Plan_PathSpaceTerminal.md`, and related docs) so we can see, at a glance, which teams still rely on legacy paths and what telemetry guards their progress.
@@ -16,6 +16,7 @@ Phase 3 of `docs/Plan_WidgetDeclarativeAPI.md` requires us to prove that every
 
 ## Watchpoints & Alerts
 - **Legacy builder telemetry:** `/_system/diagnostics/legacy_widget_builders/<entry>/usage_total` must remain at **0** before we flip `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` globally (deadline: February 1, 2026). Investigate any non-zero spike immediately and update this tracker with the offending consumer.
+- **Theme config usage:** Theme provisioning/loading now lives exclusively under `SP::UI::Declarative::ThemeConfig`. If you see `Builders::Config::Theme::*` in new patches, treat it as a regression—those functions exist only as thin shims emitting the legacy guard. Update affected consumers to include `<pathspace/ui/declarative/ThemeConfig.hpp>` directly and record the fix here.
 - **Kill switch dry run:** Projects can now configure builds with `-DPATHSPACE_DISABLE_LEGACY_BUILDERS=ON` to force a compile-time error whenever `include/pathspace/ui/Builders.hpp` is referenced. Use this flag to prove that a consumer is ready for full removal before we eliminate the header entirely.
 - **Scene readiness guard:** Downstream tools should depend on `PathSpaceExamples::ensure_declarative_scene_ready` (documented in `docs/Memory.md`) to guarantee buckets exist before presenting. Note which consumers do not yet invoke the helper and file work items.
 - **JSON / distributed prerequisites:** The inspector and web adapter rows stay “pending” until the JSON serializer and distributed mount phases listed in their respective plans land. Keep their blockers in sync with `docs/Plan_Distributed_PathSpace.md` milestones.
