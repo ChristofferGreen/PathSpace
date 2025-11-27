@@ -20,6 +20,7 @@
 #   TSAN_LOOP=N             -> override TSan test loop iterations (default 1)
 #   SANITIZER_CLEAN=1       -> force sanitized passes to clean their build directories before running
 #   SANITIZER_BUILD_TYPE=TYPE -> override sanitized build type (default Debug)
+#   SKIP_KILL_SWITCH_DRY_RUN=1 -> skip the legacy-builder kill-switch compile/test dry run
 
 set -euo pipefail
 
@@ -254,6 +255,18 @@ if [[ "${SKIP_PERF_GUARDRAIL:-0}" != "1" ]]; then
   fi
 else
   warn "Skipping performance guardrail (SKIP_PERF_GUARDRAIL=1)"
+fi
+
+if [[ "${SKIP_KILL_SWITCH_DRY_RUN:-0}" != "1" ]]; then
+  say "Running legacy builder kill-switch dry run"
+  if ./scripts/kill_switch_dry_run.sh --jobs "$JOBS"; then
+    ok "Kill switch dry run succeeded"
+  else
+    err "Kill switch dry run failed"
+    exit 1
+  fi
+else
+  warn "Skipping kill switch dry run (SKIP_KILL_SWITCH_DRY_RUN=1)"
 fi
 
 ok "Local pre-push checks passed"

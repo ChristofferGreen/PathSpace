@@ -97,6 +97,12 @@ jobs:
           PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT: ${{ github.workspace }}/build/legacy_builders_loop.jsonl
         run: ./scripts/compile.sh --clean --test --loop=5 --release --per-test-timeout 20
 
+      - name: Kill-switch dry run
+        env:
+          PATHSPACE_LEGACY_WIDGET_BUILDERS: error
+          PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT: ${{ github.workspace }}/build-kill-switch-loop/legacy_builders_kill_switch.jsonl
+        run: ./scripts/kill_switch_dry_run.sh --build-dir build-kill-switch-loop
+
       - name: Upload loop-stability artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -105,3 +111,4 @@ jobs:
           path: |
             build/test-logs
             loop_baseline.json
+            build-kill-switch-loop/test-logs
